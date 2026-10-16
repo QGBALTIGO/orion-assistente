@@ -43,4 +43,7 @@ app.include_router(catalog_router)
 @app.get("/panel", include_in_schema=False)
 async def panel() -> FileResponse:
     """Painel HTML; dados protegidos por sessão HttpOnly com CSRF."""
-    return FileResponse(Path(__file__).parent / "static" / "panel.html")
+    return FileResponse(
+        Path(__file__).parent / "static" / "panel.html",
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
