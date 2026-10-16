@@ -112,3 +112,13 @@ test("do not fetch/import chat history or auto reply on inbound callbacks",()=>{
   assert.match(src,/markOnlineOnConnect:false/);
   assert.match(src,/syncFullHistory:false/);
 });
+
+test("Baileys retry cache has bounded TTL without changing persistent auth",()=>{
+  const server=fs.readFileSync(new URL("../src/server.mjs",import.meta.url),"utf8");
+  assert.match(server,/msgRetryCounterCache=new NodeCache/);
+  assert.match(server,/stdTTL:600,checkperiod:120,useClones:false/);
+  assert.match(server,/maxMsgRetryCount:5/);
+  assert.match(server,/keys:makeCacheableSignalKeyStore\(state.keys,logger\)/);
+  assert.match(server,/getMessage:async key=>/);
+  assert.doesNotMatch(server,/assertSessions\(\s*\[/);
+});
