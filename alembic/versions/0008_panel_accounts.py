@@ -26,7 +26,7 @@ def upgrade():
         sa.Column("auth_version", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
                   server_default=sa.text("now()")),
-        sa.CheckConstraint("role IN ('member', 'support')", name="ck_panel_account_role"),
+        sa.CheckConstraint("role IN ('member', 'admin')", name="ck_panel_account_role"),
         sa.CheckConstraint("auth_version > 0", name="ck_panel_account_auth_version"),
         sa.CheckConstraint("email = lower(email)", name="ck_panel_account_lower_email"),
     )
