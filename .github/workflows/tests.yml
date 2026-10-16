@@ -52,6 +52,9 @@ jobs:
         run: |
           docker compose config --quiet
           docker build -t orion-barbearias:fatia0 .
-          docker run -d --name orion-health -p 127.0.0.1:18000:8000 orion-barbearias:fatia0
-          trap 'docker rm -f orion-health >/dev/null 2>&1 || true' EXIT
-          curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 2 http://127.0.0.1:18000/health
+          docker compose up -d postgres redis
+          trap 'docker compose down -v >/dev/null 2>&1 || true' EXIT
+          docker compose --profile tools run --rm migrate
+          docker compose --profile tools run --rm test
+          docker compose up -d api worker
+          curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 2 http://127.0.0.1:8000/health
