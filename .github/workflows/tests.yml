@@ -1,6 +1,7 @@
 name: FATIA 0 - testes PostgreSQL
 on:
   push:
+    branches: [main]
   pull_request:
 permissions:
   contents: read
@@ -57,4 +58,4 @@ jobs:
           docker compose --profile tools run --rm migrate
           docker compose --profile tools run --rm test
           docker compose up -d api worker
-          curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 2 http://127.0.0.1:8000/health
+          curl --fail --silent --show-error --retry 15 --retry-all-errors --retry-delay 1 http://127.0.0.1:8000/health
