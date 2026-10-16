@@ -15,6 +15,7 @@ services:
       - ./infra/postgres/init/001-roles.sh:/docker-entrypoint-initdb.d/001-roles.sh:ro
       - ./infra/postgres/init/001-roles.sql:/etc/orion/001-roles.sql:ro
       - ./infra/postgres/upgrade-support.sql:/etc/orion/upgrade-support.sql:ro
+      - ./infra/postgres/upgrade-booking.sql:/etc/orion/upgrade-booking.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-barber_saas}"]
       interval: 5s

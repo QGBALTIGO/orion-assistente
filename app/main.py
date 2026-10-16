@@ -3,11 +3,12 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from app.catalog_api import router as catalog_router
+from app.booking_api import router as bookings_router
 
 app = FastAPI(
     title="Orion Barbearias",
-    description="Catálogo interno — FATIA 1",
-    version="0.1.0",
+    description="Catálogo e agenda interna — FATIA 2",
+    version="0.2.0",
 )
 
 
@@ -17,6 +18,7 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+app.include_router(bookings_router)
 app.include_router(catalog_router)
 
 
