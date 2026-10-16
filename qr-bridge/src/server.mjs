@@ -494,7 +494,8 @@ const server=http.createServer(async(req,res)=>{
     if(path==="/internal/settings"&&req.method==="POST"){
       if(status!=="connected"||!socket)return reply(res,409,{error:"not_connected"});
       const settings=connectedStore.update(await collectBody(req),{
-        chatbot:false,transcription:!!transcriberConfig()
+        chatbot:false,transcription:!!transcriberConfig(),
+        callBlocking:typeof socket.rejectCall==="function"
       });
       return reply(res,200,{settings});
     }
