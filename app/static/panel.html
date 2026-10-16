@@ -599,7 +599,7 @@ const $=id=>document.getElementById(id);
 let csrf="",page="dispositivo",method="qr",showQr=false,deviceStatus="starting",lastDeviceStatus="starting",pairExpiresAt=0,
     statusTimer=null,chatTimer=null,selectedPhone="",chatsBusy=false;
 let wizardStep="choose",wizardIndex=0,wizardAttempted=false,wizardSuccessUntil=0,
-    wizardSuccessDone=false,wizardQrDeadline=0,wizardClocks=null;
+    wizardSuccessDone=false,wizardQrDeadline=0,wizardClocks=null,statusSequence=0;
 const steps={
  qr:[
   ["Abra o WhatsApp","No celular, abra o WhatsApp ou WhatsApp Business."],
@@ -770,9 +770,9 @@ $("wizardCodeBack").addEventListener("click",()=>{
  renderGuide();
 });
 $("wizardRecover").addEventListener("click",()=>{$("repairConnection").click()});
-$("wizardOpenCenter").addEventListener("click",()=>{
+$("wizardOpenCenter").addEventListener("click",async()=>{
  wizardSuccessUntil=0;wizardSuccessDone=true;
- if(connectedSnapshot?.status==="connected")renderConnectedCenter(connectedSnapshot);
+ await updateStatus();
 });
 function statusWord(s){
  return ({connected:"Conectado",qr_ready:"Aguardando leitura",qr_expired:"QR expirou",
@@ -962,9 +962,11 @@ $("deviceSettingsForm").addEventListener("submit",async event=>{
 
 async function updateStatus(){
  if(!csrf)return;
+ const requestId=++statusSequence;
  try{
-  const previous=deviceStatus;
   const result=await api("/api/v1/qr/status");
+  if(requestId!==statusSequence)return; // Older requests cannot overwrite newer state.
+  const previous=deviceStatus;
   deviceStatus=result.status;lastDeviceStatus=result.status;
   const active=result.status==="connected";
   if(active&&previous!=="connected"&&wizardAttempted&&!wizardSuccessDone){
@@ -1022,6 +1024,7 @@ async function updateStatus(){
     $("codeStatus").textContent="Código expirado. Solicite outro código para continuar.";
   }else if(showQr&&page==="dispositivo"&&method==="qr")await updateQr();
  }catch(ex){
+  if(requestId!==statusSequence)return;
   renderConnectedCenter({status:"error"});
   $("globalStatus").textContent="Serviço indisponível";
   $("deviceState").textContent=ex.message;
