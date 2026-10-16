@@ -118,3 +118,35 @@ async def test_recipient_inspection_requires_auth_and_does_not_send(monkeypatch)
         assert okay.status_code==200
         assert okay.json()["hasLid"]
         assert calls==[("/internal/recipient","GET",{"phone":"5521997557364"})]
+
+
+
+@pytest.mark.asyncio
+async def test_manual_fresh_device_mode_is_strict_and_one_message_only(monkeypatch):
+    from app import qr_api
+    monkeypatch.setenv("SUPPORT_API_TOKEN","support-token-for-test-1234567890123456")
+    calls=[]
+    async def fake_bridge(path,method="GET",payload=None,query=None):
+        calls.append((path,method,payload))
+        return {"accepted":True,"delivery":"pending",
+                "freshDeviceLookupRequested":payload.get("freshDevices",False)}
+    monkeypatch.setattr(qr_api,"_bridge",fake_bridge)
+    headers={"Authorization":"Bearer support-token-for-test-1234567890123456"}
+    endpoint="/api/v1/qr/send"
+    base={"phone":"5521997557364","text":"Mensagem sintética de teste"}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="https://test") as client:
+        assert (await client.post(endpoint,json={**base,"freshDevices":True})).status_code==401
+        assert (await client.post(endpoint,json={**base,"freshDevices":"true"},
+                                  headers=headers)).status_code==422
+        requested=await client.post(endpoint,json={**base,"freshDevices":True},
+                                    headers=headers)
+        assert requested.status_code==200
+        assert requested.json()["freshDeviceLookupRequested"] is True
+        ordinary=await client.post(endpoint,json=base,headers=headers)
+        assert ordinary.status_code==200
+        assert ordinary.json()["freshDeviceLookupRequested"] is False
+    assert calls==[
+        ("/internal/send","POST",{**base,"freshDevices":True}),
+        ("/internal/send","POST",{**base,"freshDevices":False})
+    ]
