@@ -20,11 +20,15 @@ import {sendStoredText} from "./reliable-send.mjs";
 import {inspectLookup,inspectDelivery} from "./recipient-diagnostics.mjs";
 import {makeDurableInbox} from "./durable-inbox.mjs";
 import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-health.mjs";
+import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
 const SESSION_DIR=process.env.QR_SESSION_DIR || "/data/auth";
 const KEY=process.env.QR_BRIDGE_TOKEN || "";
 const logger=pino({level:"silent"});
+// libsignal-node 6.x logs full SessionEntry objects including ratchet keys.
+// Redact those exact calls before any socket/session operation; keep normal logs.
+protectSignalSessionLogs();
 // Baileys 6.7.24 accepts CacheStore here. A bounded TTL protects against
 // stale Signal retry state; it does NOT change long-lived auth credentials.
 const msgRetryCounterCache=new NodeCache({
