@@ -105,6 +105,52 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 @media(max-width:790px){.app{display:block}.sidebar{position:static;height:auto;padding:14px 16px;gap:12px}.sidebar .brand{padding-left:0}.nav{flex-direction:row;overflow-x:auto}.nav-item{white-space:nowrap;padding:10px}.sidebar-bottom,.side-label{display:none}.content{padding:24px 16px 40px}.header{align-items:flex-start}.chat-grid{grid-template-columns:1fr}.chat-list{max-height:200px}.grid-form{grid-template-columns:1fr}.grid-form .wide{grid-column:1}}
 @media(max-width:450px){.method-selector{gap:8px}.method{padding:12px 5px}.method span:last-child{font-size:.69rem}.header{display:block}.header .pill{margin-top:12px}.card{padding:16px}}
 @media(prefers-reduced-motion:reduce){.btn{transition:none}}
+
+/* Central do dispositivo vinculado: dark, compacta, acessível e responsiva. */
+.device-hub{max-width:950px;margin:0 auto}
+.device-hero{background:linear-gradient(145deg,#111a18,#0a100f);border:1px solid #27463a;border-radius:20px;padding:27px;margin:0 0 18px;box-shadow:0 18px 45px #0004}
+.device-hero-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.device-id{display:flex;align-items:center;gap:17px;min-width:0}
+.device-photo{width:70px;height:70px;min-width:70px;border-radius:50%;background:radial-gradient(circle at 20% 20%,#246f55,#0a2c24);display:grid;place-items:center;color:#d5fbea;border:2px solid #356d54;overflow:hidden}
+.device-photo img{width:100%;height:100%;object-fit:cover}
+.device-name{font-size:1.3rem;font-weight:840;color:#f8fcf9;overflow-wrap:anywhere}
+.device-icon{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.device-muted{font-size:.79rem;color:#8fa89e}
+.device-online{display:inline-flex;gap:7px;align-items:center;padding:5px 10px;background:#133b2a;border:1px solid #245e3c;color:#70f1a6;border-radius:30px;font-size:.75rem;font-weight:750}
+.device-number{font-size:.98rem;font-weight:650;color:#dcf7eb;margin:16px 0 0;display:flex;align-items:center;gap:10px}
+.device-menu{position:relative}
+.device-menu summary{list-style:none;cursor:pointer}.device-menu summary::-webkit-details-marker{display:none}
+.device-menu nav{position:absolute;right:0;top:46px;min-width:220px;padding:7px;background:#0c1512;border:1px solid #365449;box-shadow:0 16px 45px #0009;z-index:10;border-radius:12px}
+.device-menu nav button{display:flex;width:100%;align-items:center;gap:9px;border:0;background:transparent;color:#daede3;padding:11px 12px;text-align:left;border-radius:7px}
+.device-menu nav button:hover{background:#163c2e}.device-menu nav button.danger-link{color:#ffa999}
+.device-info-row{padding-top:20px;margin-top:22px;border-top:1px solid #244238;display:flex;gap:18px;justify-content:space-between;flex-wrap:wrap}
+.device-stats{border:1px solid #27463a;border-radius:17px;background:#111a18;padding:21px;margin-bottom:18px}
+.device-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:16px}
+.device-stat{background:#080f0d;border:1px solid #264237;border-radius:12px;padding:18px 7px;text-align:center}
+.device-stat strong{font-size:clamp(1.32rem,2.7vw,2rem);line-height:1.2;font-variant-numeric:tabular-nums;display:block;color:#e5fff1}
+.device-stat small{display:block;margin-top:7px;text-transform:uppercase;letter-spacing:.08em}
+.device-stat-hint{margin:12px 0 0;font-size:.77rem;color:#98baa9}
+.device-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin-bottom:18px}
+.device-actions .btn{padding:13px 9px}
+.device-features{border:1px solid #27463a;border-radius:16px;background:#111a18;overflow:hidden;margin-bottom:19px}
+.device-feature{display:flex;align-items:center;justify-content:space-between;gap:13px;padding:17px 20px;border-bottom:1px solid #263e34}
+.device-feature:last-child{border-bottom:0}.device-feature strong{display:flex;align-items:center;gap:10px}
+.device-feature small{display:block;margin-top:3px}
+.device-feature .feature-state{white-space:nowrap;font-size:.73rem;border:1px solid #396752;color:#8feac2;padding:5px 9px;border-radius:40px;background:#0a3022}
+.device-feature .feature-state.off{color:#b7c5c0;background:#19231f;border-color:#3a4a41}
+.device-feature button{border:0;background:none;color:inherit;text-align:left;width:100%;padding:0;display:flex;justify-content:space-between;align-items:center}
+.device-feature button:disabled{cursor:not-allowed;opacity:.68}
+.device-dialog{color:#f0f9f4;background:#0b1411;border:1px solid #38604e;border-radius:18px;padding:25px;max-width:min(96vw,680px);width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 30px 100px #000b}
+.device-dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
+.device-dialog h2{margin-bottom:7px}.device-dialog .modal-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px;flex-wrap:wrap}
+.device-dialog .checkrow{display:flex;align-items:center;gap:11px;padding:10px 0;font-size:.92rem}
+.device-dialog .checkrow input{width:18px;height:18px;accent-color:#1eac7e;flex-shrink:0}
+.device-dialog fieldset{border:1px solid #2b4a3c;border-radius:11px;padding:13px 16px;margin-top:16px}
+.device-dialog legend{font-weight:750;padding:0 7px}.device-dialog small{display:block;margin-top:5px}
+.device-dialog .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.device-dialog pre{white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid #2a4639;background:#07100d;padding:13px;border-radius:9px;color:#a9d7c4}
+@media(max-width:740px){.device-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.device-actions{grid-template-columns:1fr}.device-dialog .form-grid{grid-template-columns:1fr}.device-hero{padding:18px}.device-feature{padding:15px 12px}}
+
 </style>
 </head>
 <body>
@@ -145,6 +191,124 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
         <div><div class="eyebrow">Orion / Dispositivos</div><h1>Conectar WhatsApp</h1><p class="subhead">Vincule seu número em poucos passos. Escolha como deseja conectar.</p></div>
         <div class="pill"><span id="statusDot" class="dot amber"></span><span id="globalStatus">Verificando conexão</span></div>
       </div>
+
+      <div id="connectedCenter" class="device-hub hidden" aria-label="Central do WhatsApp conectado">
+        <div class="device-hero">
+          <div class="device-hero-top">
+            <div class="device-id">
+              <div class="device-photo" id="realPhotoFrame">
+                <span id="realPhotoFallback"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8L7.2 10a16 16 0 0 0 6.8 6.8l1.5-1.8a2 2 0 0 1 1.8-.6l3 .5a2 2 0 0 1 1.7 2Z"/></svg></span>
+                <img id="realWhatsAppPhoto" class="hidden" alt="Foto do perfil do WhatsApp conectado" referrerpolicy="no-referrer">
+              </div>
+              <div>
+                <div class="device-name" id="realWhatsAppName">Carregando perfil…</div>
+                <div class="row" style="gap:8px;margin-top:6px">
+                  <span class="device-online"><span class="dot green"></span> Conectado</span>
+                  <small>WhatsApp vinculado · Baileys</small>
+                </div>
+              </div>
+            </div>
+            <details class="device-menu" id="deviceOptions">
+              <summary class="btn secondary"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg> Opções</summary>
+              <nav aria-label="Ações do dispositivo conectado">
+                <button id="deviceMenuChats" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8L7.2 10a16 16 0 0 0 6.8 6.8l1.5-1.8a2 2 0 0 1 1.8-.6l3 .5a2 2 0 0 1 1.7 2Z"/></svg> Conversas</button>
+                <button id="deviceMenuSettings" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></svg> Configurações</button>
+                <button id="deviceMenuDiagnostics" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M5 15l4-4 3 3 6-7"/><path d="M16 7h2v2"/></svg> Diagnósticos</button>
+                <button id="deviceMenuRestart" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.4 6M20 4v7h-7"/></svg> Reiniciar conexão</button>
+                <button id="deviceMenuDisconnect" class="danger-link" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h14l-4-4m4 4-4 4M17 17H3l4-4m-4 4 4 4"/></svg> Desconectar / trocar</button>
+              </nav>
+            </details>
+          </div>
+          <div class="device-info-row">
+            <div><div class="device-muted">NÚMERO DO WHATSAPP</div>
+              <div class="device-number"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8L7.2 10a16 16 0 0 0 6.8 6.8l1.5-1.8a2 2 0 0 1 1.8-.6l3 .5a2 2 0 0 1 1.7 2Z"/></svg><span id="realWhatsAppPhone">Consultando…</span></div></div>
+            <div class="device-muted" id="deviceLastSync">Consultando a sincronização…</div>
+          </div>
+        </div>
+        <section class="device-stats" aria-labelledby="deviceStatsTitle">
+          <div class="row" style="justify-content:space-between">
+            <strong id="deviceStatsTitle"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M5 15l4-4 3 3 6-7"/><path d="M16 7h2v2"/></svg> Estatísticas de mensagens</strong>
+            <small>Dados reais do Orion</small>
+          </div>
+          <div class="device-stat-grid">
+            <div class="device-stat"><strong id="statToday">—</strong><small>Hoje</small></div>
+            <div class="device-stat"><strong id="statWeek">—</strong><small>7 dias</small></div>
+            <div class="device-stat"><strong id="statMonth">—</strong><small>30 dias</small></div>
+            <div class="device-stat"><strong id="statTotal">—</strong><small>Total registrado</small></div>
+          </div>
+          <p class="device-stat-hint" id="statsCoverage">Carregando período medido…</p>
+        </section>
+        <div class="device-actions">
+          <button class="btn secondary" id="deviceRestart" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.4 6M20 4v7h-7"/></svg> Reiniciar</button>
+          <button class="btn secondary" id="deviceDiagnostics" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M5 15l4-4 3 3 6-7"/><path d="M16 7h2v2"/></svg> Diagnósticos</button>
+          <button class="btn secondary" id="deviceSettings" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></svg> Configurações</button>
+        </div>
+        <section class="device-features" aria-label="Recursos do dispositivo">
+          <div class="device-feature"><button id="deviceChatbot" type="button">
+            <span><strong><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="14" rx="3"/><path d="M12 3v4m-5 6h.01M17 13h.01M8 17h8"/></svg> Chatbot</strong><small id="deviceChatbotHint">Conexão com o agendamento</small></span>
+            <span class="feature-state off" id="deviceChatbotState">Desativado</span>
+          </button></div>
+          <div class="device-feature"><button id="deviceTranscript" type="button">
+            <span><strong><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"/></svg> Transcrição de áudio</strong><small id="deviceTranscriptHint">Reconhecimento com Whisper privado</small></span>
+            <span class="feature-state off" id="deviceTranscriptState">Desativado</span>
+          </button></div>
+          <div class="device-feature"><button id="deviceCallBlock" type="button">
+            <span><strong><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg> Bloquear ligações</strong><small>Horários, exceções e resposta opcional</small></span>
+            <span class="feature-state off" id="deviceCallBlockState">Desativado</span>
+          </button></div>
+        </section>
+        <p class="device-muted">Conector não oficial de teste: alguns eventos podem não ser entregues pelo WhatsApp. Nenhuma função é ativada automaticamente.</p>
+      </div>
+      <dialog id="deviceSettingsDialog" class="device-dialog" aria-labelledby="deviceSettingsTitle">
+        <form id="deviceSettingsForm">
+          <h2 id="deviceSettingsTitle">Configurações do dispositivo</h2>
+          <p>Preferências desta conexão, salvas em armazenamento criptografado.</p>
+          <fieldset>
+            <legend>Atendimento e áudios</legend>
+            <label class="checkrow"><input id="settingsChatbot" type="checkbox"> Ativar chatbot de agendamentos</label>
+            <small id="settingsChatbotHint">Exige integração do canal vinculado com a agenda.</small>
+            <label class="checkrow"><input id="settingsTranscription" type="checkbox"> Transcrever automaticamente áudios recebidos</label>
+            <small id="settingsTranscriptionHint">A transcrição fica apenas na caixa interna. Nenhuma resposta é enviada.</small>
+            <label for="settingsLanguage">Idioma dos áudios</label>
+            <select id="settingsLanguage"><option value="auto">Detectar automaticamente</option><option value="pt">Português</option><option value="en">Inglês</option><option value="es">Espanhol</option></select>
+          </fieldset>
+          <fieldset>
+            <legend>Bloqueio de ligações</legend>
+            <label class="checkrow"><input id="settingsBlockCalls" type="checkbox"> Rejeitar chamadas recebidas</label>
+            <label class="checkrow"><input id="settingsCallReply" type="checkbox"> Enviar resposta automática após chamada rejeitada</label>
+            <small>Ative somente após informar os contatos. Evita repetir mensagens para um mesmo número nesta sessão.</small>
+            <label for="settingsReplyText">Mensagem após rejeição</label>
+            <textarea id="settingsReplyText" maxlength="240"></textarea>
+            <label for="settingsAllowedCallers">Sempre permitir ligações destes números (DDI + DDD, um por linha)</label>
+            <textarea id="settingsAllowedCallers" placeholder="5567999999999"></textarea>
+            <label class="checkrow"><input id="settingsCallSchedule" type="checkbox"> Bloquear fora do horário de atendimento</label>
+            <div class="form-grid">
+              <div><label for="settingsStart">Das</label><input id="settingsStart" type="time" value="09:00"></div>
+              <div><label for="settingsEnd">Até</label><input id="settingsEnd" type="time" value="18:00"></div>
+            </div>
+            <label for="settingsWeekdays">Dias permitidos</label>
+            <select id="settingsWeekdays" multiple size="7">
+              <option value="0">Domingo</option><option value="1" selected>Segunda-feira</option>
+              <option value="2" selected>Terça-feira</option><option value="3" selected>Quarta-feira</option>
+              <option value="4" selected>Quinta-feira</option><option value="5" selected>Sexta-feira</option>
+              <option value="6">Sábado</option>
+            </select>
+            <small>Fuso horário: Mato Grosso do Sul (America/Campo_Grande). Fora da janela, a chamada é rejeitada.</small>
+          </fieldset>
+          <p id="deviceSettingsFeedback" class="feedback" role="status" aria-live="polite"></p>
+          <div class="modal-actions">
+            <button id="deviceSettingsCancel" type="button" class="btn ghost">Cancelar</button>
+            <button id="deviceSettingsSave" type="submit" class="btn">Salvar alterações</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="deviceDiagnosticsDialog" class="device-dialog" aria-labelledby="deviceDiagnosticsTitle">
+        <h2 id="deviceDiagnosticsTitle">Diagnósticos da conexão</h2>
+        <p>Somente estados operacionais, sem expor sessões Signal ou credenciais.</p>
+        <pre id="deviceDiagnosticsText">Consultando…</pre>
+        <div class="modal-actions"><button id="deviceDiagnosticsClose" class="btn secondary" type="button">Fechar</button></div>
+      </dialog>
+      <div id="disconnectedWizard">
       <div id="connectedBanner" class="connected-banner hidden">
         <strong>✓ Dispositivo conectado com sucesso!</strong>
         <small id="connectedPhone">A conexão está ativa. Você já pode abrir Conversas para ler e enviar mensagens manualmente.</small>
@@ -219,6 +383,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
             <p class="footer-hint" style="margin:13px 0 0">O WhatsApp pode revogar a sessão se o celular principal ficar sem utilizar o aplicativo por mais de 14 dias. Respostas automáticas permanecem desligadas.</p>
           </div>
         </div>
+      </div>
       </div>
     </section>
     <section id="page-conversas" class="page hidden">
