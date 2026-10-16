@@ -20,6 +20,12 @@ if(Buffer.byteLength(KEY)<32 || !SESSION_DIR.startsWith("/data/")){
   throw Error("Configuração segura do bridge não encontrada");
 }
 fs.mkdirSync(SESSION_DIR,{recursive:true,mode:0o700});
+const ACTIVE_MARKER=SESSION_DIR+".active";
+let authDir=SESSION_DIR;
+try {
+  const candidate=fs.readFileSync(ACTIVE_MARKER,"utf8").trim();
+  if(candidate.startsWith(SESSION_DIR+"-renew-")&&candidate.startsWith("/data/"))authDir=candidate;
+} catch {}
 let socket=null,generation=0,timer=null,attempts=0,status="starting",
   qr="",qrAt=0,lastError=null,pairedNumber="",pairingCode="",pairAt=0,requesting=false;
 const messages=[],seen=new Set(),sendTimes=[],MAX=500;
@@ -102,7 +108,7 @@ async function connect(){
   clearTimeout(timer);timer=null;qr="";qrAt=0;pairingCode="";pairAt=0;
   status="connecting";
   try{
-    const {state,saveCreds}=await useMultiFileAuthState(SESSION_DIR);
+    const {state,saveCreds}=await useMultiFileAuthState(authDir);
     const client=makeWASocket({auth:state,browser:Browsers.ubuntu("Orion"),
       printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,logger});
     socket=client;installListeners(client,mine,saveCreds);
@@ -163,6 +169,23 @@ const server=http.createServer(async(req,res)=>{
     }
     if(path==="/internal/pair"&&req.method==="POST")
       return reply(res,200,await pair((await collectBody(req)).phone));
+    if(path==="/internal/recover"&&req.method==="POST"){
+      if(status!=="logged_out")return reply(res,409,{error:"not_logged_out"});
+      ++generation;
+      clearTimeout(timer);timer=null;
+      try{socket?.end(undefined)}catch{}
+      socket=null;
+      // Keep revoked credentials isolated for later secure cleanup: never
+      // overwrite them with fresh auth or print their contents.
+      authDir=SESSION_DIR+"-renew-"+randomUUID();
+      fs.mkdirSync(authDir,{recursive:true,mode:0o700});
+      fs.writeFileSync(ACTIVE_MARKER,authDir,{mode:0o600});
+      qr="";qrAt=0;pairingCode="";pairAt=0;pairedNumber="";
+      messages.splice(0);seen.clear();sendTimes.splice(0);
+      lastError=null;attempts=0;
+      await connect();
+      return reply(res,202,{status:"connecting"});
+    }
     if(path==="/internal/reconnect"&&req.method==="POST"){
       if(status==="connected")return reply(res,409,{error:"already_connected"});
       if(socket){try{socket.end(undefined)}catch{}}
