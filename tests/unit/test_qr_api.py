@@ -15,12 +15,15 @@ async def test_qr_requires_support_and_never_exposes_api_key(monkeypatch):
         for path in ("/api/v1/qr/status","/api/v1/qr/image"):
             response=await client.get(path)
             assert response.status_code==401
-        html=await client.get("/conectar-whatsapp")
+        redirect=await client.get("/conectar-whatsapp",follow_redirects=False)
+        assert redirect.status_code==303
+        assert redirect.headers["location"]=="/panel?aba=dispositivo"
+        html=await client.get("/panel")
         assert html.status_code==200
         assert "bridge-token-for-test" not in html.text
         assert "QR Code" in html.text
         assert "<script" in html.text
-        assert "Authorization" in html.text
+        assert "SUPPORT_API_TOKEN" not in html.text
 
 
 @pytest.mark.asyncio
