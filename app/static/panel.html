@@ -582,24 +582,28 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 "use strict";
 const $=id=>document.getElementById(id);
 let authEpoch=0;
-let csrf="",page="dispositivo",method="qr",showQr=false,deviceStatus="starting",lastDeviceStatus="starting",pairExpiresAt=0,
+let csrf="",page="dispositivo",method="code",showQr=false,deviceStatus="starting",lastDeviceStatus="starting",pairExpiresAt=0,
     statusTimer=null,chatTimer=null,selectedPhone="",chatsBusy=false;
-let wizardStep="choose",wizardIndex=0,wizardAttempted=false,wizardSuccessUntil=0,
+let wizardStep="tutorial",wizardAttempted=false,wizardSuccessUntil=0,
     wizardSuccessDone=false,wizardQrDeadline=0,wizardClocks=null,statusSequence=0;
 const steps={
  qr:[
-  ["Abra o WhatsApp","No celular, abra o WhatsApp ou WhatsApp Business."],
-  ["Acesse Dispositivos conectados","No Android, use o menu ⋮; no iPhone, abra Configurações."],
-  ["Confira outros vínculos","Se já houver uma sessão antiga deste mesmo bot, revise-a antes de adicionar outra."],
-  ["Toque em Conectar dispositivo","Prepare a câmera do aplicativo para escanear o QR Code."],
-  ["Pronto para escanear?","Toque em Mostrar QR. Ele é temporário e deve ser lido no próprio WhatsApp."]
+  ["Abra o WhatsApp","Abra o WhatsApp normal ou o WhatsApp Business no celular."],
+  ["Vá às configurações","No iPhone, abra Configurações. No Android, toque no menu ⋮."],
+  ["Entre em Dispositivos conectados","Veja os dispositivos vinculados à sua conta."],
+  ["Confira conexões anteriores","Se houver uma sessão antiga do Orion, revise antes de adicionar outra."],
+  ["Toque em Conectar dispositivo","Seu WhatsApp abrirá a tela para escanear um QR Code."],
+  ["Deixe o celular pronto","Mantenha o WhatsApp aberto, com a câmera preparada."],
+  ["Pronto para escanear","Clique no botão abaixo para mostrar o QR Code temporário."]
  ],
  code:[
-  ["Abra o WhatsApp","No celular, abra o WhatsApp ou WhatsApp Business."],
-  ["Entre em Dispositivos conectados","No Android, use o menu ⋮; no iPhone, abra Configurações."],
-  ["Escolha Conectar dispositivo","Na tela de conexão, selecione Conectar com número de telefone."],
-  ["Confira o número da conta","Use DDI, DDD e o número que está ativo nesse WhatsApp."],
-  ["Pronto para gerar?","Avance, gere um código novo e digite-o no WhatsApp antes de expirar."]
+  ["Abra o WhatsApp","Abra o WhatsApp normal ou o WhatsApp Business no celular."],
+  ["Vá às configurações","No iPhone, abra Configurações. No Android, toque no menu ⋮."],
+  ["Entre em Dispositivos conectados","Veja os dispositivos já vinculados à sua conta."],
+  ["Confira conexões anteriores","Se houver uma sessão antiga deste bot, confira antes de adicionar outra."],
+  ["Toque em Conectar dispositivo","Na tela de dispositivos conectados, escolha Conectar dispositivo."],
+  ["Escolha Conectar com número","Toque na opção Conectar com número de telefone."],
+  ["Pronto para gerar o código","Clique no botão abaixo e digite o código gerado no WhatsApp."]
  ]
 };
 const fields={
