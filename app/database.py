@@ -11,6 +11,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
+from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -31,7 +32,10 @@ def get_engine() -> AsyncEngine:
         raise RuntimeError("APP_DATABASE_URL exige PostgreSQL com asyncpg")
     if make_url(url).username != "app_runtime":
         raise RuntimeError("A API deve conectar somente com o papel app_runtime")
-    return create_async_engine(url, pool_pre_ping=True)
+    options = {"pool_pre_ping": True}
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        options["poolclass"] = NullPool
+    return create_async_engine(url, **options)
 
 
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
