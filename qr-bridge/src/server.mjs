@@ -10,7 +10,7 @@ import {timingSafeEqual,randomUUID} from "node:crypto";
 import makeWASocket,{DisconnectReason,Browsers,useMultiFileAuthState} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import pino from "pino";
-import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode} from "./core.mjs";
+import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode,connectionPhase} from "./core.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
 const SESSION_DIR=process.env.QR_SESSION_DIR || "/data/auth";
@@ -38,9 +38,7 @@ function pushMessage(item){
   while(messages.length>MAX){const old=messages.shift();seen.delete(old.id)}
 }
 function visibleStatus(){
-  if(status==="qr_ready"&&!freshQR(qrAt))return "qr_expired";
-  if(status==="connecting"&&Date.now()-connectStartedAt>25000)return "qr_delayed";
-  return status;
+  return connectionPhase(status,qrAt,connectStartedAt);
 }
 function stats(){
   const phase=visibleStatus();
