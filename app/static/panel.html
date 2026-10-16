@@ -824,11 +824,39 @@ async function api(url,method="GET",data){
  }
  return response.json();
 }
+let authScreen="login",loginRole="support",resetToken="";
+function messageAuth(text){
+ const element=$("authGlobalMessage");
+ element.textContent=text||"";element.classList.toggle("hidden",!text);
+}
+function authScreenShow(screen){
+ if(!["login","register","forgot","reset"].includes(screen))return;
+ authScreen=screen;
+ const formIds={login:"loginForm",register:"registerForm",forgot:"forgotForm",reset:"resetForm"};
+ for(const [key,id] of Object.entries(formIds))$(id).classList.toggle("hidden",screen!==key);
+ $("authTabs").classList.toggle("hidden",screen==="forgot"||screen==="reset");
+ for(const [button,selected] of [["authTabLogin",screen==="login"],["authTabRegister",screen==="register"]]){
+   $(button).classList.toggle("active",selected);
+   $(button).setAttribute("aria-selected",String(selected));
+ }
+ for(const id of ["loginError","registerError","forgotError","resetError"]){$(id).textContent=""}
+ messageAuth("");
+}
 function showLogin(){
  csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);
- $("appView").classList.add("hidden");$("loginView").classList.remove("hidden");
+ $("appView").classList.add("hidden");
+ $("memberView").classList.add("hidden");
+ $("loginView").classList.remove("hidden");
+ authScreenShow("login");
 }
-function showApp(){
+function showMember(){
+ $("loginView").classList.add("hidden");$("appView").classList.add("hidden");
+ $("memberView").classList.remove("hidden");
+}
+function showApp(role="support"){
+ loginRole=role;
+ if(role!=="support"){showMember();return}
+ $("memberView").classList.add("hidden");
  $("loginView").classList.add("hidden");$("appView").classList.remove("hidden");
  statusTimer&&clearInterval(statusTimer);statusTimer=setInterval(updateStatus,4500);
  wizardClocks&&clearInterval(wizardClocks);
@@ -837,24 +865,137 @@ function showApp(){
  const desired=new URLSearchParams(location.search).get("aba");
  openPage(["conversas","cadastros"].includes(desired)?desired:"dispositivo");
 }
-$("loginForm").addEventListener("submit",async ev=>{
- ev.preventDefault();authEpoch++;$("loginError").textContent="";
+async function publicAuth(path,payload){
+ const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},
+   credentials:"same-origin",cache:"no-store",body:JSON.stringify(payload)});
+ const body=await r.json().catch(()=>({}));
+ if(!r.ok)throw Error(errorMessage(body,r.status));
+ return body;
+}
+async function authFeatures(){
  try{
-  const r=await fetch("/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},
-    credentials:"same-origin",body:JSON.stringify({username:$("username").value,password:$("password").value})});
-  const payload=await r.json().catch(()=>({}));
-  if(!r.ok)throw Error(errorMessage(payload,r.status));
-  csrf=payload.csrf;$("password").value="";showApp();
- }catch(ex){$("loginError").textContent=ex.message;}
+  const result=await fetch("/auth/features",{cache:"no-store",credentials:"same-origin"});
+  const available=await result.json();
+  $("authSubmitRegister").disabled=!available.registration;
+  $("registrationHint").textContent=available.registration?
+    "Você receberá um e-mail de confirmação para ativar sua conta.":
+    "Novos cadastros estarão disponíveis após configurar o envio de e-mails.";
+  $("authSubmitForgot").disabled=!available.passwordRecovery;
+  if(!available.passwordRecovery)
+    $("forgotError").textContent="Recuperação indisponível até configurar o envio de e-mails.";
+ }catch{
+  $("authSubmitRegister").disabled=true;
+  $("authSubmitForgot").disabled=true;
+  $("registrationHint").textContent="Não foi possível verificar a disponibilidade do cadastro.";
+ }
+}
+$("authTabLogin").addEventListener("click",()=>authScreenShow("login"));
+$("authTabRegister").addEventListener("click",()=>authScreenShow("register"));
+$("authForgotLink").addEventListener("click",()=>authScreenShow("forgot"));
+document.querySelectorAll("[data-back-login]").forEach(button=>
+ button.addEventListener("click",()=>authScreenShow("login")));
+document.querySelectorAll("[data-password-toggle]").forEach(button=>
+ button.addEventListener("click",()=>{
+   const target=$(button.getAttribute("data-password-toggle"));
+   const visible=target.type==="text";
+   target.type=visible?"password":"text";
+   button.setAttribute("aria-label",visible?"Mostrar senha":"Ocultar senha");
+ }));
+$("loginForm").addEventListener("submit",async event=>{
+ event.preventDefault();authEpoch++;$("loginError").textContent="";
+ const button=$("authSubmitLogin");button.disabled=true;
+ try{
+  const result=await publicAuth("/auth/login",{
+    username:$("username").value,password:$("password").value,
+    remember:$("rememberMe").checked
+  });
+  csrf=result.csrf;
+  $("password").value="";
+  showApp(result.role||"support");
+ }catch(error){$("loginError").textContent=error.message}
+ finally{button.disabled=false}
+});
+$("registerForm").addEventListener("submit",async event=>{
+ event.preventDefault();$("registerError").textContent="";
+ if($("registerPassword").value!==$("registerConfirm").value){
+   $("registerError").textContent="As senhas não coincidem.";return;
+ }
+ const button=$("authSubmitRegister");button.disabled=true;
+ try{
+  const result=await publicAuth("/auth/register",{
+    name:$("registerName").value,email:$("registerEmail").value,
+    password:$("registerPassword").value
+  });
+  $("registerPassword").value="";$("registerConfirm").value="";
+  authScreenShow("login");
+  messageAuth(result.message||"Confira sua caixa de entrada para confirmar a conta.");
+ }catch(error){$("registerError").textContent=error.message}
+ finally{button.disabled=false;await authFeatures()}
+});
+$("forgotForm").addEventListener("submit",async event=>{
+ event.preventDefault();$("forgotError").textContent="";
+ const button=$("authSubmitForgot");button.disabled=true;
+ try{
+  const result=await publicAuth("/auth/password/forgot",{email:$("forgotEmail").value});
+  authScreenShow("login");messageAuth(result.message);
+ }catch(error){$("forgotError").textContent=error.message}
+ finally{button.disabled=false;await authFeatures()}
+});
+$("resetForm").addEventListener("submit",async event=>{
+ event.preventDefault();$("resetError").textContent="";
+ if($("resetPassword").value!==$("resetConfirm").value){
+   $("resetError").textContent="As senhas não coincidem.";return;
+ }
+ const button=$("authSubmitReset");button.disabled=true;
+ try{
+  const result=await publicAuth("/auth/password/reset",{
+    token:resetToken,password:$("resetPassword").value
+  });
+  resetToken="";
+  $("resetPassword").value="";$("resetConfirm").value="";
+  authScreenShow("login");messageAuth(result.message);
+ }catch(error){$("resetError").textContent=error.message}
+ finally{button.disabled=false}
+});
+$("ownerClaimForm").addEventListener("submit",async event=>{
+ event.preventDefault();$("ownerClaimError").textContent="";
+ const button=$("ownerClaimForm").querySelector('button[type="submit"]');
+ button.disabled=true;
+ try{
+   const result=await api("/auth/admin/claim","POST",{
+     legacy_password:$("ownerLegacyPassword").value
+   });
+   $("ownerLegacyPassword").value="";
+   showLogin();messageAuth(result.reloginRequired?
+     "Permissão verificada. Entre novamente para ativar o acesso administrativo.":
+     "Operação concluída.");
+ }catch(error){$("ownerClaimError").textContent=error.message}
+ finally{button.disabled=false}
+});
+$("memberLogout").addEventListener("click",async()=>{
+ try{await api("/auth/logout","POST",{})}finally{showLogin()}
 });
 (async()=>{
  const epoch=authEpoch;
+ const params=new URLSearchParams(location.search);
+ const verify=params.get("verify"),reset=params.get("reset");
+ if(verify||reset){
+   history.replaceState({}, "", "/panel");
+   showLogin();
+   if(reset){resetToken=reset;authScreenShow("reset");return}
+   try{
+     const result=await publicAuth("/auth/verify",{token:verify});
+     authScreenShow("login");messageAuth(result.message);
+   }catch(error){authScreenShow("login");messageAuth(error.message)}
+   return;
+ }
  try{
-   const r=await api("/auth/me");
+   const result=await api("/auth/me");
    if(epoch!==authEpoch)return;
-   csrf=r.csrf;showApp();
+   csrf=result.csrf;showApp(result.role);
  }catch{if(epoch===authEpoch)showLogin()}
 })();
+void authFeatures();
 function openPage(target){
  page=target;
  document.querySelectorAll(".page").forEach(x=>x.classList.toggle("hidden",x.id!=="page-"+target));
