@@ -213,7 +213,10 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
               <button id="repairConnection" class="btn secondary hidden">Refazer vínculo</button>
             </div>
             <div id="deviceState" class="pill" style="margin-top:15px">Aguardando resposta</div>
-            <p class="footer-hint" style="margin:13px 0 0">Após conectar, a sessão fica no armazenamento privado do servidor. O envio automático permanece desligado.</p>
+            <p class="footer-hint" id="linkedMode">A conexão do servidor não depende da internet do celular depois da vinculação.</p>
+            <p class="footer-hint" id="ingestionState" role="status" aria-live="polite">Verificando sincronização de mensagens...</p>
+            <p class="footer-hint" id="inboxState">As mensagens recentes são mantidas de forma criptografada no servidor por até sete dias.</p>
+            <p class="footer-hint" style="margin:13px 0 0">O WhatsApp pode revogar a sessão se o celular principal ficar sem utilizar o aplicativo por mais de 14 dias. Respostas automáticas permanecem desligadas.</p>
           </div>
         </div>
       </div>
@@ -224,7 +227,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
         <div class="pill"><span id="chatDot" class="dot amber"></span><span id="chatConnection">Verificando...</span></div>
       </div>
       <div class="card"><div class="row" style="justify-content:space-between">
-        <div><strong>Conversas recentes</strong><p style="margin-bottom:0">Mensagens disponíveis apenas durante a sessão de execução atual.</p></div>
+        <div><strong>Conversas recentes</strong><p style="margin-bottom:0">Mensagens privadas recentes, mantidas por até sete dias no armazenamento criptografado da Railway. Não importa o histórico antigo.</p></div>
         <button class="btn secondary" id="reloadChats">Atualizar conversas</button>
       </div></div>
       <div class="chat-grid">
@@ -402,6 +405,17 @@ async function updateStatus(){
   $("statusDot").className="dot "+(active?"green":result.status==="logged_out"?"red":"amber");
   $("globalStatus").textContent=statusWord(result.status);
   $("deviceState").textContent=statusWord(result.status)+(result.lastError?": "+result.lastError:"");
+  const ingestion={
+    receiving:"✓ Sincronização ativa: o conector recebeu eventos de mensagens.",
+    initializing:"Conectado ao WhatsApp. Verificando sincronização inicial...",
+    awaiting_initial_sync:"Conectado, mas ainda sem confirmação de sincronização de mensagens. Um teste com outro telefone é recomendado.",
+    unknown:"Aguardando informações de sincronização.",
+    disconnected:"Mensagens indisponíveis enquanto o dispositivo estiver desconectado."
+  };
+  $("ingestionState").textContent=ingestion[result.ingestion]||"Verificando sincronização...";
+  $("inboxState").textContent=result.inboxPersistence==="ready"
+    ?"Caixa de conversas criptografada no servidor, preservada durante reinícios (até sete dias)."
+    :"Atenção: armazenamento de conversas precisa de verificação antes de confiar na persistência.";
   $("chatDot").className="dot "+(active?"green":"amber");
   $("chatConnection").textContent=active?"Conectado":"Desconectado";
   $("connectedBanner").classList.toggle("hidden",!active);

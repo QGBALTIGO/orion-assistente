@@ -16,6 +16,8 @@ import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
 import {makeMessageRetryStore,deliveryFromAck,advanceDelivery} from "./message-retry-store.mjs";
 import {makeEncryptedRetryStore} from "./encrypted-retry-store.mjs";
 import {sendStoredText} from "./reliable-send.mjs";
+import {makeDurableInbox} from "./durable-inbox.mjs";
+import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-health.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
 const SESSION_DIR=process.env.QR_SESSION_DIR || "/data/auth";
@@ -36,7 +38,14 @@ let socket=null,generation=0,timer=null,attempts=0,status="starting",
   pairingRequestedForGeneration=-1, pairPhone="",saveQueue=Promise.resolve(),
   notifiedGeneration=-1,
   qr="",qrAt=0,lastError=null,pairedNumber="",pairingCode="",pairAt=0,requesting=false;
-const messages=[],seen=new Set(),sendTimes=[],MAX=500;
+let durableInbox=makeDurableInbox({directory:authDir,secret:KEY});
+const messages=durableInbox.load();
+const seen=new Set(messages.map(x=>x.id)),sendTimes=[],MAX=500;
+let connectedSince=0,lastInboundAt=0,pendingNotificationsReceived=false,inboundSinceConnect=false,
+  recentAppends=0;
+function persistInbox(){
+  if(!durableInbox.save(messages))console.warn("Orion QR: caixa de mensagens não persistida (sem dados pessoais)");
+}
 const retryMessages=makeMessageRetryStore();
 let encryptedRetry=makeEncryptedRetryStore({
   directory:path.join(authDir,"retry-encrypted"),
@@ -64,11 +73,17 @@ const retryDiagnostics={
 };
 const deliveryReceipts=new Map();
 const deliveryStart=new Map();
+for(const row of messages){
+  if(row.direction==="out" && row.id.startsWith("out:")){
+    deliveryReceipts.set(row.id.slice(4),row.delivery||"pending");
+  }
+}
 
 function pushMessage(item){
   if(seen.has(item.id))return;
   seen.add(item.id);messages.push(item);
   while(messages.length>MAX){const old=messages.shift();seen.delete(old.id)}
+  persistInbox();
 }
 function visibleStatus(){
   if(status==="pairing"&&pairAt>0&&Date.now()-pairAt>=90000)
@@ -85,7 +100,15 @@ function stats(){
     retainedMessages:messages.length,paired:!!pairingCode,
     connectionNotice:process.env.ORION_NOTIFY_SELF_ON_LINK==="1" ? noticeState(authDir) : "disabled",
     deliveryDiagnostics:{...retryDiagnostics},
-    reliableSendEnabled:process.env.QR_RELIABLE_SEND_V2==="1"};
+    reliableSendEnabled:process.env.QR_RELIABLE_SEND_V2==="1",
+    primaryPhoneOnlineRequired:false,automaticRepliesEnabled:false,
+    inboxPersistence:durableInbox.health(),
+    retainedMessages:messages.length,
+    ingestion:ingestionHealth({connected:status==="connected",openAt:connectedSince,
+      pendingNotifications:pendingNotificationsReceived,hasCurrentMessages:inboundSinceConnect}),
+    connectedSince:status==="connected"?connectedSince:null,
+    lastInboundAt:lastInboundAt||null,
+    recentBufferedMessages:recentAppends};
 }
 function auth(req){
   const input=Buffer.from(String(req.headers["x-orion-bridge-key"]||""));
@@ -137,30 +160,40 @@ function installListeners(client,mine,saveCreds){
         deliveryStart.delete(id);
       }
       const found=messages.find(x=>x.id==="out:"+id);
-      if(found)found.delivery=after;
+      if(found){found.delivery=after;persistInbox();}
     }
   });
   client.ev.on("messages.upsert",async ({messages:incoming,type})=>{
-    if(mine!==generation||status!=="connected"||type!=="notify")return;
+    if(mine!==generation||status!=="connected")return;
     for(const message of incoming||[]){
+      if(!shouldIngestUpsert(type,message.messageTimestamp))continue;
       if(message.key?.id && message.message)retryMessages.save(message.key,message.message);
       if(message.key?.fromMe)continue;
       const phone=await resolveMessagePhone(message.key,client);
       if(!phone||!message.key?.id||!message.message)continue;
       const body=extractText(message.message);
       if(!body || typeof body!=="string")continue;
-      pushMessage({id:"wa:"+message.key.id,phone,body:body.slice(0,2000),
-        direction:"in",at:Date.now()});
+      const at=timestampMs(message.messageTimestamp)||Date.now();
+      const id="wa:"+message.key.id;
+      if(seen.has(id))continue;
+      pushMessage({id,phone,body:body.slice(0,2000),
+        direction:"in",at});
+      lastInboundAt=Date.now();inboundSinceConnect=true;
+      if(type==="append")recentAppends++;
     }
   });
   client.ev.on("connection.update",update=>{
     if(mine!==generation)return;
+    if(update.receivedPendingNotifications===true)
+      pendingNotificationsReceived=true;
     if(update.qr && pairingRequestedForGeneration!==mine){
       qr=update.qr;qrAt=Date.now();lastQrAt=qrAt;status="qr_ready";lastError=null;
       console.info("Orion QR: pareamento disponível (conteúdo omitido)");
     }
     if(update.connection==="open"){
       status="connected";everConnected=true;qr="";qrAt=0;pairingCode="";pairAt=0;attempts=0;
+      connectedSince=Date.now();inboundSinceConnect=false;
+      if(update.receivedPendingNotifications===true)pendingNotificationsReceived=true;
       pairedNumber=normalizeFromJid(client.user?.id?.split(":")[0]+"@s.whatsapp.net")||"";
       lastError=null;console.info("Orion QR: dispositivo conectado");
       if(process.env.ORION_NOTIFY_SELF_ON_LINK==="1" && notifiedGeneration!==mine){
@@ -205,6 +238,7 @@ function installListeners(client,mine,saveCreds){
     }
     if(update.connection==="close"){
       qr="";qrAt=0;pairingCode="";pairAt=0;
+      connectedSince=0;pendingNotificationsReceived=false;inboundSinceConnect=false;
       const code=Number(update.lastDisconnect?.error?.output?.statusCode);
       lastDisconnectCode=Number.isFinite(code)?code:null;
       console.info("Orion QR: conexão encerrada (código="+(lastDisconnectCode??"desconhecido")+")");
@@ -235,6 +269,7 @@ async function connect(){
   const mine=++generation;
   clearTimeout(timer);timer=null;qr="";qrAt=0;pairingCode="";pairAt=0;
   status="connecting";connectStartedAt=Date.now();pairingRequestedForGeneration=-1;
+  pendingNotificationsReceived=false;inboundSinceConnect=false;
   try{
     const {state,saveCreds}=await useMultiFileAuthState(authDir);
     // Prefer the WhatsApp Web client revision instead of a months-old
@@ -378,6 +413,11 @@ const server=http.createServer(async(req,res)=>{
       qr="";qrAt=0;pairingCode="";pairAt=0;pairedNumber="";
       messages.splice(0);seen.clear();sendTimes.splice(0);
       retryMessages.clear();deliveryReceipts.clear();deliveryStart.clear();
+      durableInbox=makeDurableInbox({directory:authDir,secret:KEY});
+      const restored=durableInbox.load();
+      for(const row of restored){messages.push(row);seen.add(row.id)}
+      lastInboundAt=0;pendingNotificationsReceived=false;inboundSinceConnect=false;
+      recentAppends=0;
       encryptedRetry=makeEncryptedRetryStore({
         directory:path.join(authDir,"retry-encrypted"),secret:KEY,
         serialize:obj=>JSON.stringify(obj,BufferJSON.replacer),
