@@ -132,7 +132,9 @@ async def test_combined_services_buffers_shift_pause_and_blocks(booking_db):
     assert start_at(d["day"], 14, 30).isoformat() not in available
     assert start_at(d["day"], 16, 30).isoformat() not in available
     assert start_at(d["day"], 17).isoformat() not in available
-    assert start_at(d["day"], 13).isoformat() in available
+    # 13h ainda conflita com a pausa por exigir 5 min de preparação.
+    assert start_at(d["day"], 13).isoformat() not in available
+    assert start_at(d["day"], 13, 15).isoformat() in available
     async with d["factory"]() as s:
         long = await list_slots(s, d["a"], d["pro2"], [d["platinum"]], d["day"])
     assert start_at(d["day"], 17).isoformat() not in long["slots"]
@@ -250,10 +252,14 @@ async def test_fifty_simultaneous_requests_one_hold(booking_db):
             return None
     results = await asyncio.gather(*(one(i) for i in range(50)))
     assert sum(x is not None for x in results) == 1, results
+    winner = next(x for x in results if x is not None)
+    async with d["factory"]() as s:
+        confirmation = await confirm_hold(s, d["a"], winner)
+    assert confirmation["status"] == "confirmed"
     async with d["migrator"].begin() as s:
         count = (await s.execute(text("""
             SELECT count(*) FROM appointments WHERE tenant_id=:t
-              AND professional_id=:p AND status='hold'
+              AND professional_id=:p AND status='confirmed'
         """), {"t": d["a"], "p": d["pro"]})).scalar_one()
         assert count == 1
 
