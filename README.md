@@ -129,7 +129,7 @@ Não apague volumes de dados para aplicar migração.
 preencher APP_SUPPORT_PASSWORD, antes de aplicar a migration da FATIA 1:
 
 ```bash
-docker compose up -d postgres
+docker compose up -d --wait postgres
 docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -v db_name="$POSTGRES_DB" -v support_password="$APP_SUPPORT_PASSWORD" -f /etc/orion/upgrade-support.sql'
 docker compose --profile tools run --rm --build migrate
 ```
