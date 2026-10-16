@@ -148,7 +148,9 @@ test("conexão confirmada pelo backend ativa etapa de sucesso, sem envio",async(
   await h.byId("pairForm").fire("submit");
   h.connect();
   await h.byId("statusRefresh").click();
-  assert.equal(h.byId("wizardSuccess").classList.contains("hidden"),false);
+  assert.equal(h.byId("wizardSuccess").classList.contains("hidden"),false,
+    JSON.stringify({calls:h.calls.map(x=>x.url),stepCount:h.byId("wizardStepCount").textContent,
+      pairingCode:h.byId("pairCode").textContent,card:h.byId("wizardCard").textContent}));
   assert.equal(h.byId("connectedCenter").classList.contains("hidden"),true);
   await h.byId("wizardOpenCenter").click();
   assert.equal(h.byId("connectedCenter").classList.contains("hidden"),false);
