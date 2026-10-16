@@ -60,6 +60,7 @@ jobs:
           docker build -t orion-barbearias:fatia0 .
           docker compose up -d postgres redis
           trap 'docker compose down -v >/dev/null 2>&1 || true' EXIT
+          docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -v db_name="$POSTGRES_DB" -v support_password="$APP_SUPPORT_PASSWORD" -f /etc/orion/upgrade-support.sql'
           docker compose --profile tools run --rm migrate
           docker compose --profile tools run --rm test
           docker compose up -d api worker

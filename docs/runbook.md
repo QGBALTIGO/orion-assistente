@@ -24,3 +24,9 @@ docker compose --profile tools run --rm --build test
 Backups cifrados externos e testes de restauração, rotação de segredos,
 observabilidade, proteção de endpoints administrativos e plano de contingência
 são pendências. Não promover ao piloto sem aprovar as fatias respectivas.
+
+## Upgrade preservando volume da FATIA 0
+
+Se app_support não existia quando o volume foi criado, use o script
+idempotente detalhado no README. Depois aplique a migration normalmente.
+Nunca apague volumes persistentes para atualizar a instalação.
