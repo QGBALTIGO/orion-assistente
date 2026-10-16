@@ -13,6 +13,7 @@ from app.metrics_api import router as metrics_router
 from app.advanced_api import router as advanced_router
 from app.qr_api import router as qr_router
 from app.panel_auth import router as panel_auth_router
+from app.account_auth import router as account_auth_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -37,7 +38,19 @@ app.include_router(metrics_router)
 app.include_router(advanced_router)
 app.include_router(qr_router)
 app.include_router(panel_auth_router)
+app.include_router(account_auth_router)
 app.include_router(catalog_router)
+
+
+@app.get("/brand/{asset}", include_in_schema=False)
+async def branding(asset: str) -> FileResponse:
+    if asset not in {"orion-brand-dark.svg","orion-brand-light.svg","orion-symbol.svg"}:
+        from fastapi import HTTPException
+        raise HTTPException(404)
+    return FileResponse(Path(__file__).parent / "static" / asset,
+                        media_type="image/svg+xml",
+                        headers={"Cache-Control":"public, max-age=3600",
+                                 "X-Content-Type-Options":"nosniff"})
 
 
 @app.get("/panel", include_in_schema=False)

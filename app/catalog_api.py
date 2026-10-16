@@ -49,20 +49,20 @@ async def authenticate(request: Request, authorization: str | None = Header(defa
                 raise HTTPException(503, "Escopo do leitor não configurado") from None
     if request.cookies.get("__Host-orion_session"):
         from app.panel_auth import panel_actor
-        await panel_actor(request)
-        return Actor("support")
+        session = await panel_actor(request)
+        return Actor(session["role"])
     raise HTTPException(401, "Credenciais de operador inválidas", headers={"WWW-Authenticate": "Bearer"})
 
 
 def authorize(actor: Actor, tenant_id: UUID, *, write: bool = False) -> None:
-    if actor.role == "support":
+    if actor.role in {"support","admin"}:
         return
     if write or actor.tenant_id != tenant_id:
         raise HTTPException(403, "Operação não autorizada para este estabelecimento")
 
 
 def support_only(actor: Actor) -> None:
-    if actor.role != "support":
+    if actor.role not in {"support","admin"}:
         raise HTTPException(403, "Ação reservada à equipe de suporte")
 
 
