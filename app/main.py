@@ -1,4 +1,4 @@
-"""API interna de operação da FATIA 1 (somente pessoal autorizado)."""
+"""API Orion: oito fatias técnicas, integrações externas opt-in."""
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -10,11 +10,12 @@ from app.ops_api import router as ops_router
 from app.landing_api import router as landing_router
 from app.billing_api import router as billing_router
 from app.metrics_api import router as metrics_router
+from app.advanced_api import router as advanced_router
 
 app = FastAPI(
     title="Orion Barbearias",
-    description="Catálogo e agenda interna — FATIA 2",
-    version="0.2.0",
+    description="Agenda SaaS multiempresa — desenvolvimento controlado",
+    version="0.8.0",
 )
 
 
@@ -31,6 +32,7 @@ app.include_router(ops_router)
 app.include_router(landing_router)
 app.include_router(billing_router)
 app.include_router(metrics_router)
+app.include_router(advanced_router)
 app.include_router(catalog_router)
 
 

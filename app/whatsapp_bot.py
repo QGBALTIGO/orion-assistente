@@ -39,9 +39,32 @@ async def reply(tenant: UUID, channel: UUID, sender: str, body: str, redis) -> s
         return None
     state = json.loads(await redis.get(key) or "{}")
     user_text = body.strip().lower()
+    if user_text in {"sair", "parar mensagens", "cancelar publicidade"}:
+        async with get_session_factory()() as s:
+            async with tenant_transaction(s,tenant):
+                await s.execute(text("""
+                    INSERT INTO contact_consents
+                    (tenant_id,contact_e164,marketing_opt_in,source)
+                    VALUES (:t,:phone,false,'whatsapp')
+                    ON CONFLICT (tenant_id,contact_e164) DO UPDATE
+                    SET marketing_opt_in=false,source='whatsapp',updated_at=now()
+                """),{"t":tenant,"phone":sender})
+        await redis.delete(key)
+        return "Seu contato foi retirado das comunicações promocionais."
+
     factory = get_session_factory()
     if user_text in {"falar com humano", "falar com barbeiro", "atendente"}:
         await redis.set(key, json.dumps({"step": "human"}), ex=TTL)
+        async with get_session_factory()() as s:
+            async with tenant_transaction(s,tenant):
+                await s.execute(text("""
+                    INSERT INTO human_handoffs
+                    (tenant_id,channel_id,contact_e164,status,expires_at)
+                    VALUES (:t,:c,:phone,'active',now()+interval '30 minutes')
+                    ON CONFLICT (tenant_id,channel_id,contact_e164)
+                    DO UPDATE SET status='active',
+                      expires_at=now()+interval '30 minutes'
+                """),{"t":tenant,"c":channel,"phone":sender})
         return "Entendi. Vou encaminhar seu pedido de atendimento humano."
     if state.get("step") == "human":
         return None

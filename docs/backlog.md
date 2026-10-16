@@ -3,7 +3,7 @@
 Documento oficial: `Prompt_Mestre_Codex_SaaS_WhatsApp_Barbearias.md`
 fornecido pelo proprietário fora do repositório (não versionar segredos).
 
-- **FATIA 0 (atual):** Fundação FastAPI, Docker, PostgreSQL 16, RLS,
+- **FATIA 0 (base implementada/testada):** Fundação FastAPI, Docker, PostgreSQL 16, RLS,
   usuários separados, migrations, Arq, /health, testes reais e CI.
   Aceite pendente até CI/PostgreSQL real confirmar as verificações.
 - **FATIA 1 (implementada na branch própria, pendente da CI):** catálogo,
@@ -22,5 +22,7 @@ fornecido pelo proprietário fora do repositório (não versionar segredos).
 - **FATIA 8:** inbox humana, IA, CRM/campanhas autorizadas, automações e
   canais opcionais.
 
-**Regra:** não implementar nem publicar fatia seguinte sem aceite técnico
-e autorização explícita. Sem credenciais de terceiros nesta fundação.
+**Entrega técnica:** PRs dependentes da 0 até a 8, mediante autorização do
+usuário para continuar. **Entrega comercial/produção:** condicionada ao
+piloto real e às integrações externas autorizadas. Até lá, não ativar Meta,
+Google, Asaas ou campanhas nem anunciar funcionalidades experimentais.
