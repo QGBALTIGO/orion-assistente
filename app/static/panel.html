@@ -857,7 +857,7 @@ function showMember(){
 }
 function showApp(role="support"){
  loginRole=role;
- if(role!=="support"){showMember();return}
+ if(role!=="support"&&role!=="admin"){showMember();return}
  $("memberView").classList.add("hidden");
  $("loginView").classList.add("hidden");$("appView").classList.remove("hidden");
  statusTimer&&clearInterval(statusTimer);statusTimer=setInterval(updateStatus,4500);
