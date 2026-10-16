@@ -117,11 +117,11 @@ jobs:
               makeMessage:async()=>message,
               relay:async(dest,msg,opts)=>{
                 relays++;
-                assert.deepEqual(cache.get({id:opts.messageId}),message.message);
+                assert.equal(JSON.stringify(cache.get({id:opts.messageId}),BufferJSON.replacer),JSON.stringify(message.message,BufferJSON.replacer));
                 assert.deepEqual(msg,message.message);
                 assert.equal(dest,to);
               }});
             assert.equal(relays,1);
-            assert.deepEqual(cache.get({id:message.key.id}),message.message);
+            assert.equal(JSON.stringify(cache.get({id:message.key.id}),BufferJSON.replacer),JSON.stringify(message.message,BufferJSON.replacer));
             console.log("ORION_BAILEYS_REAL_PACKAGE_DRY_RUN_OK");
           '
