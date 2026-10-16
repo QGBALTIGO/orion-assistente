@@ -151,6 +151,90 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 .device-dialog pre{white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid #2a4639;background:#07100d;padding:13px;border-radius:9px;color:#a9d7c4}
 @media(max-width:740px){.device-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.device-actions{grid-template-columns:1fr}.device-dialog .form-grid{grid-template-columns:1fr}.device-hero{padding:18px}.device-feature{padding:15px 12px}}
 
+
+/* Orion / guided pairing — mobile-first interactive setup */
+.wizard-shell{--wizard-green:#0dbb8f;--wizard-dark:#07110e;width:min(100%,660px);margin:8px auto 38px;color:#f4fff9}
+.wizard-heading{text-align:center;margin:0 auto 24px}
+.wizard-eyebrow{font-size:.69rem;letter-spacing:.19em;color:#5be2b6;font-weight:800}
+.wizard-heading h2{font-size:clamp(1.5rem,3.4vw,1.95rem);margin:7px 0 4px}
+.wizard-heading p{margin:0;font-size:.9rem;color:#a3b9af}
+.wizard-methods{gap:12px;margin-bottom:17px}
+.wizard-method{min-height:126px;background:#080e0c;border:1px solid #2b443a;color:#e9fff5;border-radius:13px;padding:16px 10px;transition:transform .2s,border-color .2s,box-shadow .2s,background .2s}
+.wizard-method:hover{transform:translateY(-2px);border-color:#22a77f}
+.wizard-method.active{background:#0a2d24;border-color:#10be91;box-shadow:0 0 0 1px #1d8c6a5c}
+.wizard-method-icon{display:grid;place-items:center;color:#36d6ac}
+.wizard-method strong{font-size:.96rem}
+.wizard-method span:last-child{color:#a7b9ae;font-size:.75rem}
+.wizard-card{background:#090f0d;border:1px solid #315346;border-radius:17px;box-shadow:0 20px 55px #0005;padding:clamp(18px,3.8vw,29px);min-height:260px;overflow:hidden}
+.wizard-pane:not(.hidden){animation:wizard-enter .26s ease-out both}
+@keyframes wizard-enter{from{opacity:.1;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+.wizard-number{color:#49e3b3;font-size:.67rem;font-weight:820;letter-spacing:.17em}
+.wizard-card h3{font-size:clamp(1.17rem,3vw,1.45rem);color:#f3fdf8;line-height:1.3;margin:11px 0 7px}
+.wizard-card p{color:#aac1b5;font-size:.91rem;line-height:1.55}
+.wizard-welcome-symbol{width:66px;height:66px;border-radius:20px;background:#0d3d30;border:1px solid #276b52;color:#61e6ba;display:grid;place-items:center;margin:26px 0 14px}
+.wizard-step-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.wizard-plain{border:0;background:transparent;color:#a4d9c2;font-size:.79rem;padding:7px;cursor:pointer}
+.wizard-progress{margin:14px 0 8px;height:5px;border-radius:6px;background:#1a3329;overflow:hidden}
+.wizard-progress span{display:block;background:linear-gradient(90deg,#13aa7b,#5de9b8);height:100%;width:20%;border-radius:6px;transition:width .3s}
+.wizard-illustration{height:185px;display:grid;place-items:center;border:1px solid #194736;border-radius:15px;background:radial-gradient(ellipse at 50% 45%,#10392c,#07120e 74%);margin:19px 0}
+.wizard-graphic-svg{width:min(100%,340px);height:100%;overflow:visible}
+.wizard-phone{animation:wizard-float 3.2s ease-in-out infinite}
+.wizard-scan{animation:wizard-scan 2.8s linear infinite}
+.wizard-tap{transform-origin:225px 130px;animation:wizard-tap 2.2s ease-in-out infinite}
+@keyframes wizard-float{50%{transform:translateY(-3px)}}
+@keyframes wizard-scan{0%{transform:translateY(-42px);opacity:0}24%{opacity:1}75%{opacity:1}100%{transform:translateY(43px);opacity:0}}
+@keyframes wizard-tap{0%,100%{transform:scale(.98)}50%{transform:scale(1.1)}}
+.wizard-step-copy{min-height:100px}
+.wizard-steps-actions{display:flex;justify-content:space-between;gap:12px;margin-top:22px;flex-wrap:wrap}
+.wizard-primary{background:#0b9d77;color:#ecfff7;border:1px solid #19ac83;box-shadow:0 6px 20px #0b8b6530;font-weight:800}
+.wizard-primary:hover{background:#13ad82}
+.wizard-footer{display:flex;align-items:center;justify-content:center;gap:9px;padding:16px 12px;text-align:center;font-size:.76rem;color:#8da99a}
+.wizard-footer .dot{flex-shrink:0}
+.wizard-explain{margin-top:6px}
+.wizard-qr-wrap{width:min(100%,320px);min-height:280px;display:grid;place-items:center;margin:14px auto;background:#fff;border-radius:13px;padding:12px;box-shadow:0 12px 36px #0004}
+.wizard-qr-wrap img{width:min(100%,290px);aspect-ratio:1;object-fit:contain}
+.wizard-qr-placeholder{color:#20503d;text-align:center;min-height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+.wizard-qr-placeholder small{color:#4f7565}
+.wizard-qr-time{text-align:center;font-size:.86rem;color:#9ec4b2;margin:9px auto 5px}
+.wizard-qr-time strong{color:#67f4c0;font-size:1.1rem;font-variant-numeric:tabular-nums}
+.wizard-spinner{width:32px;height:32px;border:3px solid #8ad9b8;border-top-color:#0b815a;border-radius:50%;animation:wizard-spin .8s linear infinite}
+@keyframes wizard-spin{to{transform:rotate(360deg)}}
+.wizard-status{color:#65e2b3;min-height:20px;font-size:.9rem;margin:10px 0 0;text-align:center}
+.wizard-hint{text-align:center;font-size:.8rem!important;margin:8px 0}
+.wizard-phone-input{display:flex;gap:8px;align-items:center;border:1px solid #3f6554;border-radius:11px;background:#111b17;padding:0 13px}
+.wizard-phone-input span{font-weight:750;color:#69d4ac;white-space:nowrap}
+.wizard-phone-input input{border:0!important;box-shadow:none!important;background:transparent!important;width:100%;padding:14px 4px;min-width:0}
+.wizard-code-result{text-align:center;margin:14px 0}
+.wizard-code-check{font-size:1.8rem;color:#40dca3}
+.wizard-code-result .code-box{font-size:clamp(1.4rem,5vw,2.25rem);letter-spacing:.15em;border-radius:11px;background:#edf8f1;color:#096b50;border:0}
+.wizard-code-result .btn{max-width:340px;margin:auto}
+.wizard-success{text-align:center;padding:20px 0 12px}
+.wizard-success-ring{width:100px;height:100px;display:grid;place-items:center;margin:10px auto 22px;border-radius:50%;background:#103c2a}
+.wizard-success-ring svg{width:80px;height:80px;fill:none;stroke:#50efaa;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.wizard-success-ring circle{stroke-dasharray:183;stroke-dashoffset:183;animation:circle-draw .65s ease-out forwards}
+.wizard-success-ring path{stroke-dasharray:55;stroke-dashoffset:55;animation:circle-draw .5s .55s ease-out forwards}
+@keyframes circle-draw{to{stroke-dashoffset:0}}
+.wizard-success h3{margin:17px 0 8px}
+@media(max-width:640px){
+ .wizard-shell{width:100%;margin-top:0}
+ .wizard-card{border-radius:14px;padding:18px}
+ .wizard-methods{gap:9px}
+ .wizard-method{padding:13px 7px;min-height:111px}
+ .wizard-method-icon svg{width:26px;height:26px}
+ .wizard-illustration{height:165px}
+ .wizard-steps-actions{flex-direction:column-reverse}
+ .wizard-steps-actions>.btn{width:100%;min-height:47px}
+ .wizard-card input{font-size:16px}
+ .wizard-card .wizard-primary{min-height:46px}
+}
+@media(min-width:900px){.wizard-shell{width:min(100%,700px)}.wizard-illustration{height:200px}}
+@media(prefers-reduced-motion:reduce){
+ .wizard-pane:not(.hidden),.wizard-phone,.wizard-scan,.wizard-tap,.wizard-spinner,
+ .wizard-success-ring circle,.wizard-success-ring path{animation:none!important}
+ .wizard-progress span{transition:none}
+ .wizard-success-ring circle,.wizard-success-ring path{stroke-dashoffset:0}
+}
+
 </style>
 </head>
 <body>
@@ -315,82 +399,130 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
         <pre id="deviceDiagnosticsText">Consultando…</pre>
         <div class="modal-actions"><button id="deviceDiagnosticsClose" class="btn secondary" type="button">Fechar</button></div>
       </dialog>
-      <div id="disconnectedWizard">
-      <div id="connectedBanner" class="connected-banner hidden">
-        <strong>✓ Dispositivo conectado com sucesso!</strong>
-        <small id="connectedPhone">A conexão está ativa. Você já pode abrir Conversas para ler e enviar mensagens manualmente.</small>
-        <div class="row" style="margin-top:15px"><button id="openChats" class="btn">Abrir conversas →</button></div>
-      </div>
-      <div class="method-selector" role="tablist" aria-label="Forma de conexão">
-        <button class="method active" data-method="qr" role="tab" aria-selected="true">
-          <span class="symbol">▦</span><strong>QR Code</strong><span>Escaneie com seu telefone</span>
-        </button>
-        <button class="method" data-method="code" role="tab" aria-selected="false">
-          <span class="symbol">▯</span><strong>Código</strong><span>Digite no seu telefone</span>
-        </button>
-      </div>
-      <div class="columns">
-        <div>
-          <div class="card">
-            <div class="eyebrow">Passo a passo</div>
-            <h2 id="guideTitle">Como conectar por QR Code</h2>
-            <p class="subhead">Siga estas instruções no WhatsApp do celular que será conectado.</p>
-            <div id="guideGraphic" class="illustration" aria-label="Ilustração de um celular lendo um QR">
-              <div class="phone"><div class="fakeqr"></div><span>Dispositivos conectados</span></div>
-              <div class="sheen">Simulação ilustrativa<br>do pareamento</div>
-            </div>
-            <div id="guideSteps" class="steps"></div>
-            <p class="note">A conexão utiliza um cliente de dispositivo vinculado não oficial. Use apenas um número sob sua administração. A conta pode sofrer desconexões ou restrições.</p>
-          </div>
+      <div id="disconnectedWizard" class="wizard-shell">
+        <div class="wizard-heading">
+          <span class="wizard-eyebrow">VINCULAR DISPOSITIVO</span>
+          <h2>Conecte seu WhatsApp</h2>
+          <p>Um passo de cada vez. Sem complicação.</p>
         </div>
-        <div>
-          <div id="qrPanel" class="card">
-            <div class="eyebrow">Conectar por QR</div>
-            <h2>Pronto para escanear?</h2>
-            <p>Abra Dispositivos conectados no WhatsApp e prepare a câmera do celular.</p>
-            <button id="startQr" class="btn full">Já fiz os passos, mostrar meu QR Code</button>
-            <div id="qrBox" class="qr-wrap">
-              <div id="qrEmpty" class="qr-empty"><span class="huge">▦</span><strong>Seu QR aparecerá aqui</strong><p>Clique no botão acima quando estiver pronto.</p></div>
+        <div class="method-selector wizard-methods" role="group" aria-label="Escolha a forma de conexão">
+          <button type="button" class="method wizard-method" data-method="qr" aria-pressed="false">
+            <span class="wizard-method-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.8" y="2.8" width="7" height="7" rx="1"/><rect x="14.2" y="2.8" width="7" height="7" rx="1"/><rect x="2.8" y="14.2" width="7" height="7" rx="1"/><path d="M14.5 14.5h2v2h-2zm4 0H21m-2.5 4H21M14.5 19.5v1.5"/></svg></span>
+            <strong>QR Code</strong><span>Escaneie com seu telefone</span>
+          </button>
+          <button type="button" class="method wizard-method" data-method="code" aria-pressed="false">
+            <span class="wizard-method-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg></span>
+            <strong>Código</strong><span>Digite no seu telefone</span>
+          </button>
+        </div>
+        <div class="wizard-card" id="wizardCard" aria-live="polite" aria-atomic="false">
+          <div id="wizardChoose" class="wizard-pane">
+            <span class="wizard-number">01 / 03</span>
+            <div class="wizard-welcome-symbol"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg></div>
+            <h3>Como prefere conectar?</h3>
+            <p>Escolha uma das opções acima. Você verá somente as instruções necessárias.</p>
+          </div>
+          <div id="wizardTutorial" class="wizard-pane hidden">
+            <div class="wizard-step-top">
+              <span class="wizard-number" id="wizardStepCount">PASSO 1 DE 5</span>
+              <button id="wizardTutorialClose" type="button" class="wizard-plain" aria-label="Voltar à escolha de método">Trocar método</button>
+            </div>
+            <div class="wizard-progress" role="progressbar" id="wizardProgress" aria-label="Progresso do tutorial" aria-valuemin="1" aria-valuemax="5" aria-valuenow="1">
+              <span id="wizardProgressFill"></span>
+            </div>
+            <div id="guideGraphic" class="wizard-illustration"><svg viewBox="0 0 340 178" role="img" aria-label="Ilustração animada de um celular acessando Dispositivos conectados" class="wizard-graphic-svg">
+<defs><linearGradient id="wf" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#1ed4a0"/><stop offset="1" stop-color="#076950"/></linearGradient></defs>
+<circle cx="170" cy="89" r="79" fill="#0b4234" opacity=".25"/><circle cx="170" cy="89" r="60" fill="#147557" opacity=".13"/>
+<g class="wizard-phone">
+<rect x="124" y="10" width="92" height="156" rx="17" fill="#061713" stroke="#418c73" stroke-width="2.5"/>
+<rect x="132" y="24" width="76" height="132" rx="10" fill="#0c2d23"/>
+<path d="M155 17h30" stroke="#86d8bb" stroke-width="3" stroke-linecap="round"/>
+<circle cx="170" cy="146" r="3" fill="#6aba9b"/>
+<g stroke="#78e5bc" fill="none" stroke-width="2">
+<rect x="149" y="43" width="17" height="17" rx="2"/><rect x="175" y="43" width="17" height="17" rx="2"/>
+<rect x="149" y="69" width="17" height="17" rx="2"/><path d="M175 70h7v7h-7zm10 0h7m-7 7h7m-17 8h17"/>
+</g><path d="M149 100h43m-43 10h34" stroke="#549a7d" stroke-width="4" stroke-linecap="round"/>
+</g><path class="wizard-scan" d="M120 92h100" stroke="#2cf2b8" stroke-width="3" stroke-linecap="round"/>
+<g class="wizard-tap"><circle cx="226" cy="126" r="18" fill="#18a67b" opacity=".20"/>
+<path d="M222 144v-21a5 5 0 0 1 10 0v9l3-3a6 6 0 0 1 7 0l7 8v7" fill="#77ebc0" stroke="#0b3f31" stroke-width="2" stroke-linejoin="round"/></g>
+<path d="M82 89h20m136 0h20" stroke="#267b60" stroke-width="2" stroke-dasharray="3 6"/>
+</svg></div>
+            <div class="wizard-step-copy">
+              <h3 id="guideTitle">Abra o WhatsApp no celular</h3>
+              <p id="wizardStepDescription">Pode ser WhatsApp ou WhatsApp Business.</p>
+            </div>
+            <div id="guideSteps" class="hidden" aria-hidden="true"></div>
+            <div class="wizard-steps-actions">
+              <button id="wizardPrevious" type="button" class="btn ghost">Voltar</button>
+              <button id="wizardNext" type="button" class="btn wizard-primary">Próximo passo <span aria-hidden="true">→</span></button>
+            </div>
+          </div>
+          <div id="qrPanel" class="wizard-pane hidden">
+            <span class="wizard-number">ETAPA FINAL • QR CODE</span>
+            <h3>Escaneie o código</h3>
+            <p class="wizard-explain">Abra <strong>Dispositivos conectados</strong> e escaneie usando o WhatsApp do celular.</p>
+            <div class="wizard-qr-time">Tempo restante: <strong id="qrCountdown" aria-live="off">—</strong></div>
+            <div id="qrBox" class="wizard-qr-wrap">
+              <div id="qrEmpty" class="wizard-qr-placeholder">
+                <span class="wizard-spinner" aria-hidden="true"></span>
+                <strong>Preparando QR Code…</strong>
+                <small>Essa etapa só começa depois do tutorial.</small>
+              </div>
               <img id="qrImage" class="hidden" alt="QR Code temporário para vincular seu WhatsApp">
             </div>
-            <p id="qrStatus" class="status-text" role="status" aria-live="polite"></p>
-            <p id="qrFeedback" class="feedback" aria-live="polite">O código se atualiza automaticamente quando necessário.</p>
-            <button id="refreshQr" class="btn secondary">Atualizar ou tentar novamente</button>
+            <p id="qrStatus" class="wizard-status" role="status" aria-live="polite"></p>
+            <p id="qrFeedback" class="wizard-hint" aria-live="polite">Aguardando resposta do WhatsApp…</p>
+            <div class="wizard-steps-actions">
+              <button id="wizardQrBack" class="btn ghost" type="button">Voltar</button>
+              <button id="refreshQr" type="button" class="btn wizard-primary">Atualizar conexão</button>
+            </div>
+            <button id="startQr" type="button" class="hidden">Preparar QR Code</button>
           </div>
-          <div id="codePanel" class="card hidden">
-            <div class="eyebrow">Conectar por código</div>
-            <h2>Vincule usando seu número</h2>
-            <p>Não precisa escanear. Vamos gerar um código de oito caracteres que você digitará no WhatsApp.</p>
-            <form id="pairForm">
-              <label for="pairPhone">Telefone com DDI e DDD</label>
-              <input id="pairPhone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="+55 67 99999-9999" maxlength="26">
-              <small>Digite o número que está instalado no WhatsApp, incluindo código do país.</small>
-              <button class="btn full" type="submit" style="margin-top:18px">Gerar código de emparelhamento</button>
-              <button id="retryCode" class="btn secondary full" type="button" style="margin-top:9px">Reiniciar conexão para novo código</button>
-            </form>
-            <div id="codeResult" class="hidden">
-              <p style="margin:20px 0 5px">Digite este código no seu WhatsApp:</p>
+          <div id="codePanel" class="wizard-pane hidden">
+            <span class="wizard-number">ETAPA FINAL • CÓDIGO</span>
+            <div id="wizardCodeInput">
+              <h3>Informe o número do WhatsApp</h3>
+              <p class="wizard-explain">O mesmo número que está no aparelho a conectar, com DDI e DDD.</p>
+              <form id="pairForm">
+                <label for="pairPhone">Número do WhatsApp</label>
+                <div class="wizard-phone-input"><span aria-hidden="true">+55</span><input id="pairPhone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="11 99999-9999" maxlength="26"></div>
+                <small>Informe seu número completo, incluindo o código do país (+55).</small>
+                <button id="wizardGenerate" class="btn wizard-primary full" type="submit">Gerar código de conexão</button>
+              </form>
+            </div>
+            <div id="codeResult" class="hidden wizard-code-result">
+              <div class="wizard-code-check" aria-hidden="true">✓</div>
+              <h3>Digite este código no WhatsApp</h3>
+              <p>Em Dispositivos conectados, escolha <strong>Conectar com número de telefone</strong>.</p>
               <div class="code-box" id="pairCode" aria-live="polite"></div>
-              <p class="footer-hint">Código temporário. Se expirar, gere outro.</p>
-              <button class="btn secondary full" id="copyCode">Copiar código</button>
+              <div class="wizard-qr-time">Expira em <strong id="codeCountdown">—</strong></div>
+              <button id="copyCode" class="btn wizard-primary full" type="button">Copiar código</button>
+              <p class="wizard-hint">Aguarde a confirmação automática da conexão.</p>
             </div>
-            <p id="codeStatus" class="feedback" role="status" aria-live="polite"></p>
-            <p class="note">Algumas versões do WhatsApp rejeitam códigos de clientes não oficiais mesmo após a geração. Se isso ocorrer, teste o QR Code e não repita muitos códigos em sequência.</p>
+            <p id="codeStatus" class="wizard-status" role="status" aria-live="polite"></p>
+            <div class="wizard-steps-actions">
+              <button id="wizardCodeBack" class="btn ghost" type="button">Voltar</button>
+              <button id="retryCode" class="btn secondary" type="button">Solicitar novo código</button>
+            </div>
           </div>
-          <div class="card">
-            <div class="row" style="justify-content:space-between">
-              <div><h2>Estado da conexão</h2><p class="subhead" style="margin-bottom:0">Atualização em tempo real.</p></div>
-              <button id="statusRefresh" class="btn ghost">Atualizar</button>
-              <button id="repairConnection" class="btn secondary hidden">Refazer vínculo</button>
-            </div>
-            <div id="deviceState" class="pill" style="margin-top:15px">Aguardando resposta</div>
-            <p class="footer-hint" id="linkedMode">A conexão do servidor não depende da internet do celular depois da vinculação.</p>
-            <p class="footer-hint" id="ingestionState" role="status" aria-live="polite">Verificando sincronização de mensagens...</p>
-            <p class="footer-hint" id="inboxState">As mensagens recentes são mantidas de forma criptografada no servidor por até sete dias.</p>
-            <p class="footer-hint" style="margin:13px 0 0">O WhatsApp pode revogar a sessão se o celular principal ficar sem utilizar o aplicativo por mais de 14 dias. Respostas automáticas permanecem desligadas.</p>
+          <div id="wizardSuccess" class="wizard-pane hidden wizard-success" role="status" aria-live="polite">
+            <div class="wizard-success-ring"><svg viewBox="0 0 64 64" role="img" aria-label="Conexão concluída"><circle cx="32" cy="32" r="29"/><path d="M18 33l10 10 19-21"/></svg></div>
+            <span class="device-online"><span class="dot green"></span> Conectado com sucesso</span>
+            <h3>Seu WhatsApp está pronto!</h3>
+            <p>Dispositivo vinculado. A central será aberta em instantes.</p>
+            <button id="wizardOpenCenter" class="btn wizard-primary" type="button">Abrir minha central →</button>
           </div>
         </div>
-      </div>
+        <div class="wizard-footer">
+          <span class="dot amber" aria-hidden="true"></span>
+          <span id="wizardConnectionHint">Conexão protegida. Nenhuma mensagem é enviada durante o vínculo.</span>
+        </div>
+        <div id="wizardLegacySupport" class="hidden" aria-hidden="true">
+          <div id="connectedBanner"><span id="connectedPhone"></span><button id="openChats" type="button">Abrir conversas</button></div>
+          <button id="statusRefresh" type="button">Atualizar status</button>
+          <button id="repairConnection" type="button">Refazer vínculo</button>
+          <span id="deviceState"></span><span id="ingestionState"></span><span id="inboxState"></span>
+        </div>
       </div>
     </section>
     <section id="page-conversas" class="page hidden">
