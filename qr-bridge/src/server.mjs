@@ -216,4 +216,7 @@ const server=http.createServer(async(req,res)=>{
 });
 server.headersTimeout=10000;
 server.requestTimeout=15000;
-server.listen(PORT,"0.0.0.0",()=>connect().catch(()=>{}));
+server.listen({port:PORT, host:"::", ipv6Only:false},()=>{
+  console.info("Orion QR: serviço privado em IPv6/dual-stack, porta "+PORT);
+  connect().catch(()=>{});
+});
