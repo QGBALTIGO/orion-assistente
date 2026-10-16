@@ -23,6 +23,8 @@ BACKEND_ERRORS={
     "Aguarde um minuto antes de enviar mais mensagens":"Limite temporário de envios. Aguarde um minuto.",
     "Número inválido. Informe DDI + DDD + telefone":"Número inválido, informe DDI e DDD.",
     "Mensagem deve ter entre 1 e 1200 caracteres":"A mensagem deve conter entre 1 e 1200 caracteres.",
+    "Modo de teste indisponível: envio confiável não habilitado":"O teste de atualização dos dispositivos não está habilitado neste servidor.",
+    "Opção de dispositivos inválida":"Opção de diagnóstico inválida.",
 }
 
 
@@ -62,6 +64,7 @@ class PairPayload(BaseModel):
 class SendPayload(BaseModel):
     phone:str=Field(pattern=r"^[1-9]\d{7,14}$")
     text:str=Field(min_length=1,max_length=1200)
+    freshDevices:bool=Field(default=False, strict=True)
 
 
 @router.get("/health/whatsapp",include_in_schema=False)
