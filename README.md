@@ -171,3 +171,9 @@ O motor interno continua sendo autoridade de agendamento. Google usa OAuth por e
 refresh token criptografado e outbox com retry (nenhum evento real sem opt-in).
 A exportação CSV UTF-8 com BOM evita fórmulas do Excel e exige autorização da empresa.
 Consulte [docs/google-calendar.md](docs/google-calendar.md).
+
+## FATIA 5 — Preparação do piloto
+
+O teste de restauração pg_dump/pg_restore roda em banco efêmero no CI.
+Para checklist de pré-requisitos, execute `python scripts/pilot_preflight.py`.
+Consulte [docs/pilot-beta.md](docs/pilot-beta.md). **Piloto real ainda não autorizado nem executado.**
