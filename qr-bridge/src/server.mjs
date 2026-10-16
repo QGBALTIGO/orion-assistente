@@ -38,6 +38,8 @@ function pushMessage(item){
   while(messages.length>MAX){const old=messages.shift();seen.delete(old.id)}
 }
 function visibleStatus(){
+  if(status==="pairing"&&pairAt>0&&Date.now()-pairAt>=90000)
+    return "pair_expired";
   return connectionPhase(status,qrAt,connectStartedAt);
 }
 function stats(){
