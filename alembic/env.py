@@ -47,6 +47,10 @@ def run_migrations_online() -> None:
         # Um ambiente pré-existente deve reprovar se não usa app_migrator.
         if connection.exec_driver_sql("SELECT current_user").scalar_one() != "app_migrator":
             raise RuntimeError("Migrations exigem exclusivamente o usuário app_migrator")
+        # SQLAlchemy 2.x: até SELECT inicia transação implícita.
+        # Sem COMMIT aqui, o context.begin_transaction() do Alembic detecta
+        # uma transação externa e o fechamento da conexão desfaz todo o DDL.
+        connection.commit()
         context.configure(connection=connection)
         with context.begin_transaction():
             context.run_migrations()
