@@ -23,8 +23,16 @@ async def transcribe(request: Request):
     length=request.headers.get("content-length")
     if length and (not length.isdigit() or int(length)>2_000_000):
         raise HTTPException(413,"too large")
-    data=await request.body()
-    if not 0<len(data)<=2_000_000:
+    # Enforce streaming size even when a client omits Content-Length.
+    chunks=[]
+    size=0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size>2_000_000:
+            raise HTTPException(413,"too large")
+        chunks.append(chunk)
+    data=b"".join(chunks)
+    if not data:
         raise HTTPException(413,"too large")
     language=request.headers.get("x-orion-audio-language","auto")
     if language not in ("auto","pt","en","es"):
