@@ -736,35 +736,25 @@ function renderGuide(){
 }
 function selectWizardMode(next){
  if(!["qr","code"].includes(next)||deviceStatus==="connected")return;
- method=next;wizardIndex=0;wizardStep="tutorial";showQr=false;
+ method=next;wizardStep="tutorial";showQr=false;
  $("codeStatus").textContent="";$("qrStatus").textContent="";
  renderGuide();
 }
 document.querySelectorAll("[data-method]").forEach(x=>
  x.addEventListener("click",()=>selectWizardMode(x.dataset.method)));
-$("wizardTutorialClose").addEventListener("click",()=>{
- wizardStep="choose";showQr=false;renderGuide();
-});
-$("wizardPrevious").addEventListener("click",()=>{
- if(wizardIndex>0)wizardIndex--;
- else wizardStep="choose";
- renderGuide();
-});
 $("wizardNext").addEventListener("click",async()=>{
  if(wizardStep!=="tutorial")return;
- const count=steps[method].length;
- if(wizardIndex<count-1){wizardIndex++;renderGuide();return}
  if(method==="qr"){
    wizardStep="qr";showQr=true;wizardAttempted=true;renderGuide();
    await attemptQrRefresh();
- }else{wizardStep="code_form";renderGuide();$("pairPhone").focus()}
+ }else{wizardStep="code_form";renderGuide();$("pairPhone").focus();}
 });
 $("wizardQrBack").addEventListener("click",()=>{
- showQr=false;wizardStep="tutorial";wizardIndex=steps.qr.length-1;renderGuide();
+ showQr=false;wizardStep="tutorial";renderGuide();
 });
 $("wizardCodeBack").addEventListener("click",()=>{
  if(wizardStep==="code_ready"){wizardStep="code_form"}
- else{wizardStep="tutorial";wizardIndex=steps.code.length-1}
+ else{wizardStep="tutorial"}
  renderGuide();
 });
 $("wizardRecover").addEventListener("click",()=>{$("repairConnection").click()});
@@ -977,7 +967,7 @@ async function updateStatus(){
     },2300);
   }
   if(!active&&previous==="connected"){
-    wizardStep="choose";wizardIndex=0;wizardSuccessDone=false;
+    wizardStep="tutorial";wizardSuccessDone=false;
     wizardSuccessUntil=0;wizardAttempted=false;showQr=false;renderGuide();
   }
   renderConnectedCenter(result);
@@ -998,12 +988,9 @@ async function updateStatus(){
   $("chatDot").className="dot "+(active?"green":"amber");
   $("chatConnection").textContent=active?"Conectado":"Desconectado";
   $("connectedBanner").classList.toggle("hidden",!active);
-  $("wizardConnectionHint").textContent=active?"Dispositivo vinculado.":
-    ["logged_out","pair_failed"].includes(result.status)?
-      "A sessão anterior foi revogada. Use Refazer vínculo antes de tentar novamente.":
-    "Conexão não oficial, limitada ao número que você administra.";
   $("repairConnection").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
   $("wizardRecover").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
+  $("wizardRecoveryArea").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
   $("refreshQr").disabled=result.status==="connected"||result.status==="pairing";
   $("connectedPhone").textContent=result.phone?
     "Dispositivo "+result.phone+" conectado. Você pode ler e enviar mensagens manualmente.":
@@ -1134,7 +1121,7 @@ $("repairConnection").addEventListener("click",async()=>{
   $("repairConnection").disabled=true;
   try{
     await api("/api/v1/qr/recover","POST",{});
-    method="qr";wizardStep="tutorial";wizardIndex=0;
+    method="code";wizardStep="tutorial";
     showQr=false;renderGuide();await updateStatus();
     $("qrFeedback").textContent="Sessão renovada. Escaneie o novo QR pelo telefone.";
   }catch(ex){$("qrFeedback").textContent=ex.message;}
