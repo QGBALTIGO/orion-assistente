@@ -91,7 +91,7 @@ async def booking_db():
         }
     finally:
         async with migrator.begin() as s:
-            for table in ("usage_counters", "calendar_outbox", "appointment_history", "appointment_items", "appointments",
+            for table in ("authorized_staff", "whatsapp_channels", "usage_counters", "calendar_outbox", "appointment_history", "appointment_items", "appointments",
                           "customers", "working_breaks", "professional_services",
                           "working_hours", "schedule_blocks", "time_off", "services",
                           "professionals", "tenant_audit"):
@@ -324,3 +324,117 @@ async def test_postgres_exclusion_rejects_overlap_even_without_booking_service(b
                        "start": data["start_at"], "end": data["end_at"],
                        "begin": data["occupied_from"], "stop": data["occupied_until"],
                        "expiry": datetime.now(UTC)+timedelta(minutes=5)})
+
+
+
+class MemoryRedis:
+    def __init__(self):
+        self.data = {}
+
+    async def get(self, key):
+        return self.data.get(key)
+
+    async def set(self, key, value, ex=None):
+        self.data[key] = value
+
+    async def delete(self, key):
+        self.data.pop(key, None)
+
+
+@pytest.mark.asyncio
+async def test_signed_phone_scopes_customer_cancel_and_reschedule(booking_db):
+    """Número autorizado pela Meta (argumento assinado) precisa ser dono da reserva."""
+    import json
+    from app.whatsapp_commands import try_command
+
+    d=booking_db
+    redis=MemoryRedis()
+    channel=uuid4()
+    sender=phone(432)
+    other=phone(433)
+    async with d["factory"]() as s:
+        reservation=await book_appointment(s,d["a"],d["pro"],[d["beard"]],
+                                           sender,"Cliente sintético",start_at(d["day"],10),
+                                           "wa-owner-001")
+    async with d["factory"]() as s:
+        await confirm_hold(s,d["a"],reservation["id"])
+    protocol=reservation["protocol"]
+    key=f"wa:state:{d['a']}:{channel}:{sender}"
+    ignored,warning=await try_command(d["a"],channel,other,
+          "cancelar "+protocol.lower(),{},redis,"other-key")
+    assert ignored and "não encontrada" in warning.lower()
+    ignored,prompt=await try_command(d["a"],channel,sender,
+          "remarcar "+protocol.lower(),{},redis,key)
+    assert ignored and "nova data" in prompt.lower()
+    saved=json.loads(redis.data[key])
+    ignored,moved=await try_command(d["a"],channel,sender,
+          start_at(d["day"],14).strftime("%Y-%m-%d %H:%M"),saved,redis,key)
+    assert ignored and "Remarcado" in moved
+    assert protocol in moved
+    ignored,_=await try_command(d["a"],channel,sender,
+          "cancelar "+protocol.lower(),{},redis,key)
+    saved=json.loads(redis.data[key])
+    ignored,cancelled=await try_command(d["a"],channel,sender,
+          "sim cancelar",saved,redis,key)
+    assert ignored and "cancelado" in cancelled
+    async with d["migrator"].connect() as s:
+        state=(await s.execute(text("SELECT status FROM appointments WHERE id=:id"),
+                               {"id":reservation["id"]})).scalar_one()
+        assert state=="cancelled"
+
+
+@pytest.mark.asyncio
+async def test_staff_commands_are_phone_bound_and_block_availability(booking_db):
+    """Barber só bloqueia a agenda vinculada, pausa do bot só pode por owner."""
+    import json
+    from app.whatsapp_commands import try_command
+    from app.whatsapp_bot import reply
+
+    d=booking_db
+    redis=MemoryRedis()
+    channel=uuid4()
+    owner=phone(700)
+    barber=phone(701)
+    stranger=phone(702)
+    async with d["migrator"].begin() as s:
+        await s.execute(text("""
+            INSERT INTO whatsapp_channels
+            (id,tenant_id,phone_number_id,business_number,status,bot_enabled)
+            VALUES (:c,:tenant,:phone,'+5567999999999','testing',true)
+        """),{"c":channel,"tenant":d["a"],"phone":"staff-"+str(channel)})
+        await s.execute(text("""
+            INSERT INTO authorized_staff(tenant_id,phone_e164,role,professional_id)
+            VALUES (:t,:owner,'owner',:pro),(:t,:barber,'barber',:pro)
+        """),{"t":d["a"],"owner":owner,"barber":barber,"pro":d["pro"]})
+    start=start_at(d["day"],14)
+    daystr=d["day"].isoformat()
+    key=f"wa:state:{d['a']}:{channel}:{barber}"
+    handled,response=await try_command(d["a"],channel,stranger,"agenda hoje",{},redis,"stranger")
+    assert handled and "restrito" in response.lower()
+    handled,response=await try_command(d["a"],channel,barber,"pausar bot",{},redis,key)
+    assert handled and "reservado" in response.lower()
+    handled,response=await try_command(d["a"],channel,barber,
+                                      f"bloquear {daystr} 14:00-15:00",{},redis,key)
+    assert handled and "confirmar" in response.lower()
+    pending=json.loads(redis.data[key])
+    handled,response=await try_command(d["a"],channel,barber,
+                                      "confirmar bloqueio",pending,redis,key)
+    assert handled and "bloqueado" in response.lower()
+    async with d["factory"]() as s:
+        avail=await list_slots(s,d["a"],d["pro"],[d["beard"]],d["day"])
+    assert start.isoformat() not in avail["slots"]
+    async with d["factory"]() as s:
+        other_avail=await list_slots(s,d["a"],d["pro2"],[d["beard"]],d["day"])
+    assert start.isoformat() in other_avail["slots"]
+    ownerkey=f"wa:state:{d['a']}:{channel}:{owner}"
+    handled,response=await try_command(d["a"],channel,owner,"pausar bot",{},redis,ownerkey)
+    assert handled and "CONFIRMAR PAUSA" in response
+    pending=json.loads(redis.data[ownerkey])
+    handled,response=await try_command(d["a"],channel,owner,
+                                      "confirmar pausa",pending,redis,ownerkey)
+    assert handled and "pausado" in response
+    async with d["migrator"].connect() as s:
+        active=(await s.execute(text(
+            "SELECT bot_enabled FROM whatsapp_channels WHERE id=:c"
+        ),{"c":channel})).scalar_one()
+    assert active is False

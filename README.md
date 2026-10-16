@@ -1,14 +1,15 @@
-# Orion Barbearias — FATIAS 0, 1 e 2
+# Orion Barbearias — código das FATIAS 0–8
 
 Fundação de um SaaS gerenciado de agendamento por WhatsApp para barbearias.
-**Status: implementação de fundação, não pronta para clientes reais.**
-Escopo estritamente limitado à **FATIA 0** do Prompt Mestre (seção 19).
-Não há agenda, login, bot, integrações externas, pagamentos ou landing page nesta entrega.
+**Status: desenvolvimento e testes automatizados; não liberado para clientes reais.**
+O histórico contém PRs incrementais das FATIAS 0–8. Integrações e módulos
+comerciais avançados permanecem desabilitados ou incompletos sem piloto,
+credenciais oficiais, revisão de segurança e autorizações dos titulares.
 
 ## Stack
 Python 3.12, FastAPI, SQLAlchemy async + asyncpg, Alembic + psycopg,
-PostgreSQL **16**, Redis 7, Arq e Docker Compose. A API publica somente
-`GET /health` → `{"status":"ok"}`.
+PostgreSQL **16**, Redis 7, Arq e Docker Compose. A API publica `GET /health` e rotas documentadas no código.
+A agenda interna permanece a autoridade de reservas.
 
 ## Desenvolvimento local com Docker
 
@@ -190,3 +191,16 @@ Mais informações: [docs/commercial.md](docs/commercial.md) e [docs/pricing-cos
 A suíte de integração insere 15 tenants sintéticos e verifica em paralelo isolamento
 RLS e canais distintos. Consulte [docs/capacity.md](docs/capacity.md). Sem piloto
 real ou testes de carga em Railway, capacidade para quinze NÃO está comprovada.
+
+## FATIA 8 — Estruturas avançadas protegidas
+
+Tabelas multiempresa RLS para handoff humano, consentimento explícito,
+campanhas em rascunho e workflows desabilitados. Rotas internas
+requerem operador autenticado. O envio de campanhas retorna 423,
+a IA não pode alterar tenant nem reservar por ferramenta livre, e o
+transcritor de testes é explicitamente fictício.
+
+**Não é plataforma BotBot pronta**, nem integra Chatwoot, LLM,
+transcrição real, visualizador React Flow ou onboarding autônomo.
+Essas integrações requerem piloto real, orçamento aprovado, revisão de
+licenças e testes específicos. Veja [docs/advanced.md](docs/advanced.md).
