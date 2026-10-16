@@ -306,6 +306,12 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                    "price": item["price_cents"], "prep": item["prep_min"],
                    "cleanup": item["cleanup_min"], "order": order})
         await history(s, tenant, item_id, "hold_created")
+        await s.execute(text("""
+            INSERT INTO usage_counters (tenant_id,period,bookings)
+            VALUES (:tenant,date_trunc('month',CURRENT_DATE)::date,1)
+            ON CONFLICT (tenant_id,period) DO UPDATE
+            SET bookings=usage_counters.bookings+1
+        """),{"tenant":tenant})
         return await read_appointment(s, tenant, item_id)
 
 

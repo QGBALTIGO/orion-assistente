@@ -54,6 +54,12 @@ async def process_inbound_event(ctx: dict, tenant_id: str, event_id: str):
                     UPDATE inbound_events SET status='processed',processed_at=now(),
                         message_text='',processing_at=NULL WHERE tenant_id=:t AND id=:id
                 """), {"t":tenant,"id":event})
+                await session.execute(text("""
+                    INSERT INTO usage_counters (tenant_id,period,inbound_messages)
+                    VALUES (:t,date_trunc('month',CURRENT_DATE)::date,1)
+                    ON CONFLICT (tenant_id,period) DO UPDATE
+                    SET inbound_messages=usage_counters.inbound_messages+1
+                """),{"t":tenant})
         return "processed"
     except Exception:
         async with factory() as session:

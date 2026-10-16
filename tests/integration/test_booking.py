@@ -91,7 +91,7 @@ async def booking_db():
         }
     finally:
         async with migrator.begin() as s:
-            for table in ("calendar_outbox", "appointment_history", "appointment_items", "appointments",
+            for table in ("usage_counters", "calendar_outbox", "appointment_history", "appointment_items", "appointments",
                           "customers", "working_breaks", "professional_services",
                           "working_hours", "schedule_blocks", "time_off", "services",
                           "professionals", "tenant_audit"):

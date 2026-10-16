@@ -184,3 +184,9 @@ Landing original em `/` sem CTA ativo enquanto SALES_WHATSAPP_E164 não estiver 
 A entrada Asaas `/webhooks/asaas` aceita somente eventos autenticados com token exclusivo de webhook.
 Nenhum pagamento é criado ou cobrado pelo sistema nesta prévia.
 Mais informações: [docs/commercial.md](docs/commercial.md) e [docs/pricing-costs.md](docs/pricing-costs.md).
+
+## FATIA 7 — Teste sintético de quinze empresas
+
+A suíte de integração insere 15 tenants sintéticos e verifica em paralelo isolamento
+RLS e canais distintos. Consulte [docs/capacity.md](docs/capacity.md). Sem piloto
+real ou testes de carga em Railway, capacidade para quinze NÃO está comprovada.
