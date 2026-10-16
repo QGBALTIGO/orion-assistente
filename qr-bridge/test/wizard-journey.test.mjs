@@ -21,7 +21,10 @@ test("todos os elementos do wizard existem e cada ID é único",()=>{
 
 function harness(){
   const elements=new Map(),calls=[],copied=[];
-  let connectionStatus="starting";
+  let connectionStatus="starting",currentTime=Date.now(),timerCallback=null;
+  class FakeDate extends Date {
+    static now(){return currentTime}
+  }
   class Element {
     constructor(id=""){this.id=id;this.style={};this.value=id==="resource"?"authorized_staff":"";
       this.dataset={};this.disabled=false;this.checked=false;this.textContent="";
@@ -86,13 +89,16 @@ function harness(){
     location:{search:"",hostname:"localhost",protocol:"https:"},
     navigator:{clipboard:{writeText:async x=>copied.push(x)}},
     Option:class{constructor(label,value){this.label=label;this.value=value}},
-    URLSearchParams,Date,Number,Intl,Math,Object,Array,String,RegExp,Set,Map,JSON,
-    clearInterval(){},setInterval(){return 1},setTimeout(){return 1},
+    URLSearchParams,Date:FakeDate,Number,Intl,Math,Object,Array,String,RegExp,Set,Map,JSON,
+    clearInterval(){},
+    setInterval(fn,ms){if(ms===1000)timerCallback=fn;return 1},
+    setTimeout(){return 1},
     confirm:()=>true,prompt:()=>null,
     alert:()=>{},console:{log(){},warn(){},error(){}}
   };
   vm.runInNewContext(script,context,{filename:"orion-connected-panel.js"});
   return {byId,tabs,calls,copied,connect:()=>{connectionStatus="connected"},
+    advance:ms=>{currentTime+=ms;timerCallback?.()},
     flush:()=>new Promise(resolve=>setImmediate(resolve))};
 }
 
@@ -155,4 +161,60 @@ test("conexão confirmada pelo backend ativa etapa de sucesso, sem envio",async(
   await h.byId("wizardOpenCenter").click();
   assert.equal(h.byId("connectedCenter").classList.contains("hidden"),false);
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/send"),false);
+});
+
+
+test("troca de método e voltar do tutorial não aciona QR ou pareamento",async()=>{
+ const h=harness();
+ await h.tabs[0].click();
+ await h.byId("wizardNext").click();
+ await h.byId("wizardPrevious").click();
+ await h.byId("wizardTutorialClose").click();
+ assert.equal(h.byId("wizardChoose").classList.contains("hidden"),false);
+ await h.tabs[1].click();
+ await h.byId("wizardPrevious").click();
+ assert.equal(h.byId("wizardChoose").classList.contains("hidden"),false);
+ assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"||x.url==="/api/v1/qr/pair"),false);
+});
+
+test("QR expira no tempo anunciado e só atualiza ao clicar",async()=>{
+ const h=harness();
+ await h.byId("loginForm").fire("submit");
+ await h.flush();
+ await h.tabs[0].click();
+ for(let i=0;i<5;i++)await h.byId("wizardNext").click();
+ await h.flush();
+ const before=h.calls.filter(x=>x.url==="/api/v1/qr/image").length;
+ assert.ok(before>=1);
+ h.advance(45000);
+ assert.equal(h.byId("qrImage").classList.contains("hidden"),true);
+ assert.match(h.byId("qrStatus").textContent,/expirado/);
+ assert.equal(h.calls.filter(x=>x.url==="/api/v1/qr/reconnect").length,0);
+ await h.byId("refreshQr").click();
+ assert.ok(h.calls.filter(x=>x.url==="/api/v1/qr/image").length>before);
+});
+
+test("código expira e volta ao formulário sem reenviar pedidos automaticamente",async()=>{
+ const h=harness();
+ await h.byId("loginForm").fire("submit");
+ await h.flush();
+ await h.tabs[1].click();
+ for(let i=0;i<5;i++)await h.byId("wizardNext").click();
+ h.byId("pairPhone").value="5511999999999";
+ await h.byId("pairForm").fire("submit");
+ assert.equal(h.byId("codeResult").classList.contains("hidden"),false);
+ const before=h.calls.filter(x=>x.url==="/api/v1/qr/pair").length;
+ h.advance(80000);
+ assert.equal(h.byId("codeResult").classList.contains("hidden"),true);
+ assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
+ assert.match(h.byId("codeStatus").textContent,/expirou/);
+ assert.equal(h.calls.filter(x=>x.url==="/api/v1/qr/pair").length,before);
+});
+
+test("CSS garante dispositivos móveis, tablets e redução de movimento",()=>{
+ assert.match(html,/@media\(max-width:640px\)/);
+ assert.match(html,/@media\(min-width:900px\)/);
+ assert.match(html,/prefers-reduced-motion:reduce/);
+ assert.match(html,/viewBox="0 0 340 178"/);
+ assert.match(html,/aria-pressed=/);
 });
