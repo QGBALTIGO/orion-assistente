@@ -1,6 +1,7 @@
 """API protegida para QR/código e caixa de conversas do dispositivo vinculado."""
 import os
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlencode
 
 import httpx
@@ -23,6 +24,13 @@ BACKEND_ERRORS={
     "Aguarde um minuto antes de enviar mais mensagens":"Limite temporário de envios. Aguarde um minuto.",
     "Número inválido. Informe DDI + DDD + telefone":"Número inválido, informe DDI e DDD.",
     "Mensagem deve ter entre 1 e 1200 caracteres":"A mensagem deve conter entre 1 e 1200 caracteres.",
+    "not_connected":"Conecte o WhatsApp antes de alterar as configurações.",
+    "restart_not_allowed":"A reinicialização não está disponível agora ou está em intervalo de segurança.",
+    "disconnect_not_allowed":"Desconexão não autorizada ou dispositivo indisponível.",
+    "disconnect_failed":"Não foi possível confirmar a desconexão. Verifique o dispositivo.",
+    "Chatbot não integrado ao canal vinculado":"O chatbot ainda não está integrado neste canal.",
+    "Serviço de transcrição não configurado":"Configure primeiro o serviço privado de transcrição.",
+    "Dispositivo ainda indisponível":"O dispositivo ainda não está pronto.",
 }
 
 
@@ -57,6 +65,35 @@ async def _bridge(path:str,method:str="GET",payload:dict|None=None,query:dict|No
 
 class PairPayload(BaseModel):
     phone:str=Field(pattern=r"^[1-9]\d{7,14}$")
+
+
+class CallWindow(BaseModel):
+    start: str=Field(pattern=r"^(?:[01]\\d|2[0-3]):[0-5]\\d$")
+    end: str=Field(pattern=r"^(?:[01]\\d|2[0-3]):[0-5]\\d$")
+    weekdays: list[int]=Field(max_length=7)
+
+
+class ConnectedSettings(BaseModel):
+    model_config={"extra":"forbid"}
+    chatbot: bool=False
+    transcription: bool=False
+    language: Literal["auto","pt","en","es"]="auto"
+    callBlocking: bool=False
+    callReply: bool=False
+    callReplyText: str=Field(default="Não podemos atender ligações agora. Por favor, envie uma mensagem.",max_length=240)
+    allowedCallers: list[str]=Field(default_factory=list,max_length=30)
+    callSchedule: bool=False
+    callHours: CallWindow=Field(default_factory=lambda:CallWindow(
+        start="09:00",end="18:00",weekdays=[1,2,3,4,5]
+    ))
+
+
+class ConfirmRestart(BaseModel):
+    confirm: Literal["REINICIAR"]
+
+
+class ConfirmDisconnect(BaseModel):
+    confirm: Literal["DESCONECTAR"]
 
 
 class SendPayload(BaseModel):
@@ -124,6 +161,30 @@ async def qr_recipient(phone:str=Query(pattern=r"^[1-9]\d{7,14}$"),
     """Consulta sob demanda, sem enviar mensagens nem alterar sessão Signal."""
     support_only(actor)
     return await _bridge("/internal/recipient",query={"phone":phone})
+
+
+@router.post("/api/v1/qr/settings")
+async def qr_update_settings(data:ConnectedSettings,actor:Actor=Depends(authenticate)):
+    support_only(actor)
+    return await _bridge("/internal/settings","POST",data.model_dump())
+
+
+@router.post("/api/v1/qr/profile/refresh")
+async def qr_refresh_profile(actor:Actor=Depends(authenticate)):
+    support_only(actor)
+    return await _bridge("/internal/profile/refresh","POST",{})
+
+
+@router.post("/api/v1/qr/restart")
+async def qr_restart(data:ConfirmRestart,actor:Actor=Depends(authenticate)):
+    support_only(actor)
+    return await _bridge("/internal/restart","POST",data.model_dump())
+
+
+@router.post("/api/v1/qr/disconnect")
+async def qr_disconnect(data:ConfirmDisconnect,actor:Actor=Depends(authenticate)):
+    support_only(actor)
+    return await _bridge("/internal/disconnect","POST",data.model_dump())
 
 
 @router.post("/api/v1/qr/send")
