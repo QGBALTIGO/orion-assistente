@@ -80,16 +80,19 @@ async function connect() {
       if (update.qr) {
         qrValue = update.qr; qrAt = Date.now();
         status = "qr_ready"; lastError = null;
+        console.info("Orion QR: código de pareamento disponível (conteúdo omitido)");
       }
       if (update.connection === "open") {
         status = "connected"; qrValue = ""; qrAt = 0;
         attempts = 0; lastError = null;
+        console.info("Orion QR: dispositivo vinculado");
       }
       if (update.connection === "close") {
         qrValue = ""; qrAt = 0;
         const code = update.lastDisconnect?.error?.output?.statusCode;
         if (code === DisconnectReason.loggedOut) {
           status = "logged_out";
+          console.info("Orion QR: sessão desvinculada");
           lastError = "Sessão removida pelo WhatsApp. Novo vínculo requer revisão manual.";
           return;
         }
@@ -103,6 +106,7 @@ async function connect() {
     });
   } catch {
     status = "error";
+    console.info("Orion QR: falha genérica ao iniciar socket");
     lastError = "Falha ao iniciar conexão. Verifique integridade do volume.";
     reconnectTimer = setTimeout(() => {
       if (mine === generation) connect().catch(() => {});
