@@ -7,8 +7,8 @@ const html=fs.readFileSync(new URL("../../app/static/panel.html",import.meta.url
 const script=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)][0]?.[1];
 assert.ok(script,"O painel deve incluir seu controlador JavaScript");
 const ids=new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]));
-const required=["disconnectedWizard","wizardChoose","wizardTutorial","wizardStepCount",
-  "wizardNext","wizardPrevious","wizardSuccess","wizardOpenCenter",
+const required=["disconnectedWizard","wizardTutorial","guideSteps",
+  "wizardNext","wizardSuccess","wizardOpenCenter",
   "qrPanel","qrCountdown","qrImage","codePanel","pairForm","pairCode","copyCode",
   "retryCode","wizardRecover","connectedCenter"];
 test("todos os elementos do wizard existem e cada ID é único",()=>{
@@ -104,12 +104,13 @@ function harness(){
 
 test("QR: modo escolhido, 5 etapas, preparo real somente após clique, contagem verdadeira",async()=>{
   const h=harness();
-  assert.equal(h.byId("wizardChoose").classList.contains("hidden"),false);
+  assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
+  assert.equal(h.byId("guideSteps").children.length,7);
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"),false);
   await h.tabs[0].click();
   assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
-  assert.equal(h.byId("guideTitle").textContent,"Abra o WhatsApp");
-  for(let i=0;i<5;i++)await h.byId("wizardNext").click();
+  assert.equal(h.byId("guideSteps").children.length,7);
+  await h.byId("wizardNext").click();
   await h.flush();await h.flush();
   assert.equal(h.byId("qrPanel").classList.contains("hidden"),false);
   assert.ok(h.calls.some(x=>x.url==="/api/v1/qr/image"));
@@ -121,7 +122,7 @@ test("QR: modo escolhido, 5 etapas, preparo real somente após clique, contagem 
 test("Código: tutorial -> número -> geração real -> código -> copiar",async()=>{
   const h=harness();
   await h.tabs[1].click();
-  for(let i=0;i<5;i++)await h.byId("wizardNext").click();
+  await h.byId("wizardNext").click();
   assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
   h.byId("pairPhone").value="11 99999-9999";
   await h.byId("pairForm").fire("submit");
@@ -137,7 +138,7 @@ test("Código: tutorial -> número -> geração real -> código -> copiar",async
 test("número inválido não envia solicitação de pareamento",async()=>{
   const h=harness();
   await h.tabs[1].click();
-  for(let i=0;i<5;i++)await h.byId("wizardNext").click();
+  await h.byId("wizardNext").click();
   h.byId("pairPhone").value="abc";
   await h.byId("pairForm").fire("submit");
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/pair"),false);
@@ -149,7 +150,7 @@ test("conexão confirmada pelo backend ativa etapa de sucesso, sem envio",async(
   await h.byId("loginForm").fire("submit");
   await h.flush();await h.flush();
   await h.tabs[1].click();
-  for(let i=0;i<5;i++)await h.byId("wizardNext").click();
+  await h.byId("wizardNext").click();
   h.byId("pairPhone").value="5511999999999";
   await h.byId("pairForm").fire("submit");
   h.connect();
@@ -164,17 +165,27 @@ test("conexão confirmada pelo backend ativa etapa de sucesso, sem envio",async(
 });
 
 
-test("troca de método e voltar do tutorial não aciona QR ou pareamento",async()=>{
+test("tutorial integral mostra sete passos de uma vez e avança com um clique",async()=>{
  const h=harness();
- await h.tabs[0].click();
- await h.byId("wizardNext").click();
- await h.byId("wizardPrevious").click();
- await h.byId("wizardTutorialClose").click();
- assert.equal(h.byId("wizardChoose").classList.contains("hidden"),false);
- await h.tabs[1].click();
- await h.byId("wizardPrevious").click();
- assert.equal(h.byId("wizardChoose").classList.contains("hidden"),false);
+ assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
+ assert.equal(h.byId("guideSteps").children.length,7);
+ assert.equal(h.byId("guideSteps").children[0].children[1].children[0].textContent,"PASSO 1");
+ assert.equal(h.byId("guideSteps").children[6].children[1].children[0].textContent,"PASSO 7");
  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"||x.url==="/api/v1/qr/pair"),false);
+ await h.tabs[0].click();
+ assert.equal(h.byId("guideSteps").children.length,7);
+ assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
+ assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"),false);
+ await h.byId("wizardNext").click();
+ await h.flush();
+ assert.equal(h.byId("qrPanel").classList.contains("hidden"),false);
+ assert.ok(h.calls.some(x=>x.url==="/api/v1/qr/image"));
+ await h.byId("wizardQrBack").click();
+ assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
+ assert.equal(h.byId("guideSteps").children.length,7);
+ await h.tabs[1].click();
+ await h.byId("wizardNext").click();
+ assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
 });
 
 test("QR expira no tempo anunciado e só atualiza ao clicar",async()=>{
@@ -182,7 +193,7 @@ test("QR expira no tempo anunciado e só atualiza ao clicar",async()=>{
  await h.byId("loginForm").fire("submit");
  await h.flush();
  await h.tabs[0].click();
- for(let i=0;i<5;i++)await h.byId("wizardNext").click();
+ await h.byId("wizardNext").click();
  await h.flush();
  const before=h.calls.filter(x=>x.url==="/api/v1/qr/image").length;
  assert.ok(before>=1);
@@ -199,7 +210,7 @@ test("código expira e volta ao formulário sem reenviar pedidos automaticamente
  await h.byId("loginForm").fire("submit");
  await h.flush();
  await h.tabs[1].click();
- for(let i=0;i<5;i++)await h.byId("wizardNext").click();
+ await h.byId("wizardNext").click();
  h.byId("pairPhone").value="5511999999999";
  await h.byId("pairForm").fire("submit");
  assert.equal(h.byId("codeResult").classList.contains("hidden"),false);
@@ -215,6 +226,11 @@ test("CSS garante dispositivos móveis, tablets e redução de movimento",()=>{
  assert.match(html,/@media\(max-width:640px\)/);
  assert.match(html,/@media\(min-width:900px\)/);
  assert.match(html,/prefers-reduced-motion:reduce/);
- assert.match(html,/viewBox="0 0 340 178"/);
+ assert.match(html,/\.wizard-timeline-step/);
+ assert.match(html,/wizard-continue/);
+ assert.doesNotMatch(html,/Conexão não oficial, limitada ao número que você administra/);
+ assert.doesNotMatch(html,/Ambiente de homologação/);
+ assert.doesNotMatch(html,/wizardPrevious|wizardTutorialClose|wizardStepCount/);
+ assert.equal([...html.matchAll(/id="wizardNext"/g)].length,1);
  assert.match(html,/aria-pressed=/);
 });
