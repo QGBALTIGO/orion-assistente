@@ -32,3 +32,11 @@ export function inspectDelivery(rows,phone,retryCounts=new Map()){
     // An absent receipt is not proof the text is unreadable.
     lastReceipt:outgoing.length?String(outgoing[outgoing.length-1].delivery||"unknown"):"none"};
 }
+
+/**
+ * Compute live delivery/retry diagnostics for every lookup outcome.
+ * Never cache the counters: retry receipts can change between inspections.
+ */
+export function attachDeliveryDiagnostics(summary,rows,phone,retryCounts){
+  return {...summary,delivery:inspectDelivery(rows,phone,retryCounts)};
+}
