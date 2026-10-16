@@ -43,6 +43,14 @@ export function freshQR(timestamp,now=Date.now()){
   return Number.isFinite(timestamp)&&timestamp>0&&now>=timestamp&&now-timestamp<45000;
 }
 
+
+export function connectionPhase(status,qrTimestamp,startedAt,now=Date.now()){
+  if(status==="qr_ready"&&!freshQR(qrTimestamp,now))return "qr_expired";
+  if(status==="connecting"&&now-startedAt>25000)return "qr_delayed";
+  return status;
+}
+
+
 export function formatPairingCode(code) {
   const raw=String(code||"").replace(/-/g,"").toUpperCase();
   if(!/^[A-Z0-9]{8}$/.test(raw))throw Error("Formato inesperado de código");
