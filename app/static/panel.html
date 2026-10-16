@@ -195,6 +195,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
               <input id="pairPhone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="+55 67 99999-9999" maxlength="26">
               <small>Digite o número que está instalado no WhatsApp, incluindo código do país.</small>
               <button class="btn full" type="submit" style="margin-top:18px">Gerar código de emparelhamento</button>
+              <button id="retryCode" class="btn secondary full" type="button" style="margin-top:9px">Reiniciar conexão para novo código</button>
             </form>
             <div id="codeResult" class="hidden">
               <p style="margin:20px 0 5px">Digite este código no seu WhatsApp:</p>
@@ -389,7 +390,7 @@ document.querySelectorAll("[data-method]").forEach(x=>x.addEventListener("click"
 }));
 function statusWord(s){
  return ({connected:"Conectado",qr_ready:"Aguardando leitura",qr_expired:"QR expirou",
- qr_delayed:"QR demorando a carregar",pair_failed:"Pareamento recusado",
+ qr_delayed:"QR demorando a carregar",pair_failed:"Pareamento recusado",pair_expired:"Código expirado",
  connecting:"Preparando",reconnecting:"Reconectando",logged_out:"Sessão desvinculada",
  error:"Falha na conexão",starting:"Iniciando",pairing:"Aguardando código no celular"})[s]||"Aguardando";
 }
@@ -417,7 +418,8 @@ async function updateStatus(){
     pairExpiresAt=0;$("codeResult").classList.add("hidden");
     $("codeStatus").textContent="O WhatsApp recusou ou revogou esta sessão. Clique em Refazer vínculo para gerar uma sessão nova.";
     if(showQr&&method==="qr")await updateQr();
-  }else if(result.status==="pairing"&&pairExpiresAt>0&&Date.now()>pairExpiresAt){
+  }else if(result.status==="pair_expired"||
+    (result.status==="pairing"&&pairExpiresAt>0&&Date.now()>pairExpiresAt)){
     pairExpiresAt=0;$("codeResult").classList.add("hidden");
     $("codeStatus").textContent="Código expirado. Reinicie a conexão para solicitar um novo.";
   }else if(showQr&&page==="dispositivo"&&method==="qr")await updateQr();
@@ -469,7 +471,7 @@ async function attemptQrRefresh(){
   try{
     const state=await api("/api/v1/qr/status");
     deviceStatus=state.status;
-    if(["qr_expired","qr_delayed","error","reconnecting"].includes(state.status)||
+    if(["qr_expired","qr_delayed","error","reconnecting","pair_expired"].includes(state.status)||
       (state.status==="connecting"&&state.waitingSeconds>=25)){
       await api("/api/v1/qr/reconnect","POST",{});
       $("qrFeedback").textContent="Criando outra tentativa de conexão. Aguarde até 25 segundos.";
@@ -497,6 +499,22 @@ $("pairForm").addEventListener("submit",async ev=>{
   $("codeStatus").textContent="Código solicitado. Digite-o imediatamente em Dispositivos conectados → Conectar com número de telefone. A conexão só é confirmada quando o status mudar para Conectado.";
  }catch(ex){$("codeStatus").textContent=ex.message;}
  finally{submit.disabled=false;}
+});
+$("retryCode").addEventListener("click",async()=>{
+  const button=$("retryCode");
+  if(deviceStatus==="connected"){$("codeStatus").textContent="WhatsApp já conectado.";return;}
+  if(!confirm("Reiniciar a conexão do WhatsApp para gerar outro código?"))return;
+  button.disabled=true;$("codeResult").classList.add("hidden");pairExpiresAt=0;
+  $("codeStatus").textContent="Reiniciando. Aguarde o novo QR interno antes de gerar o código...";
+  try{
+    const state=await api("/api/v1/qr/status");deviceStatus=state.status;
+    const url=["logged_out","pair_failed"].includes(state.status)?
+      "/api/v1/qr/recover":"/api/v1/qr/reconnect";
+    await api(url,"POST",{});
+    $("codeStatus").textContent="Conexão reiniciada. Aguarde alguns segundos e clique novamente em Gerar código.";
+    await updateStatus();
+  }catch(ex){$("codeStatus").textContent=ex.message;}
+  finally{button.disabled=false;}
 });
 $("copyCode").addEventListener("click",async()=>{
  try{await navigator.clipboard.writeText($("pairCode").textContent.replace("-",""));
