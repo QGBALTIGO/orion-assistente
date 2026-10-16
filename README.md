@@ -75,11 +75,20 @@ Os unitários rodam sem serviços; os testes de integração exigem
 Defina `REQUIRE_POSTGRES_TESTS=1` para fazer falhar em vez de pular a
 integração quando variáveis faltarem.
 
-## Deploy Railway (futuro, sem executar nesta FATIA 0)
+## Homologação Railway implantada (2026-10-16)
 
-Consulte [docs/railway.md](docs/railway.md) para configuração de API/worker,
-URLs de conexão separadas, provisionamento de papéis e pré-requisitos.
-Nenhuma credencial, conta Railway ou domínio foi conectado por esta mudança.
+Consulte [docs/railway-homologacao.md](docs/railway-homologacao.md) para a
+configuração implantada de API/worker, papéis separados, migrations e
+limitações de segurança. Domínio de testes:
+https://orion-assistente-production.up.railway.app
+
+Barbearia sintética de homologação: tenant_id
+`82552b25-d0c8-5338-8c42-49f11de59e45`. Administração: `/panel`,
+utilizando o `SUPPORT_API_TOKEN` guardado nas variáveis do serviço web
+na Railway. Não transmitir token por links, screenshots ou mensagens.
+Nenhuma credencial real de integrações externas está ativa.
+
+Referência histórica: [docs/railway.md](docs/railway.md). foi conectado por esta mudança.
 
 ## Documentação
 - [Arquitetura](docs/architecture.md)
@@ -204,3 +213,20 @@ transcritor de testes é explicitamente fictício.
 transcrição real, visualizador React Flow ou onboarding autônomo.
 Essas integrações requerem piloto real, orçamento aprovado, revisão de
 licenças e testes específicos. Veja [docs/advanced.md](docs/advanced.md).
+
+## Teste online da agenda
+
+1. Abra https://orion-assistente-production.up.railway.app/ (landing) e
+   https://orion-assistente-production.up.railway.app/panel (painel).
+2. Localize o `SUPPORT_API_TOKEN` nas variáveis privadas do serviço
+   `orion-assistente` no projeto Railway `strong-creation`.
+3. Insira esse token **apenas no painel HTTPS**. Selecione a barbearia
+   com nome DEMONSTRAÇÃO FICTÍCIA. Há dois profissionais, três serviços,
+   expedientes de segunda a sábado; o WhatsApp externo está desativado.
+4. A API interativa em `/docs` permite consultar disponibilidade,
+   criar holds, confirmar, cancelar e remarcar com token Bearer. Use somente
+   clientes e números **fictícios**, nunca clientes de verdade.
+
+API e worker estão no ambiente chamado `production` pela Railway,
+mas este é um **ambiente de testes não homologado para dados reais**.
+
