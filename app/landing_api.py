@@ -12,7 +12,7 @@ router=APIRouter()
 
 @router.get("/",response_class=HTMLResponse,include_in_schema=False)
 async def landing():
-    content=(Path(__file__).parents[1]/"landing"/"index.html").read_text(encoding="utf-8")
+    content=(Path.cwd()/"landing"/"index.html").read_text(encoding="utf-8")
     phone=os.getenv("SALES_WHATSAPP_E164","")
     if re.fullmatch(r"\+55[1-9][0-9]{9,10}",phone):
         url="https://wa.me/"+phone[1:]+"?text="+quote("Quero conhecer o Orion para minha barbearia.")
