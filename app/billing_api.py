@@ -103,12 +103,16 @@ async def reconcile_event(event_id:str,provider=None):
                     WHERE id=:id
                 """),{"id":stored["id"]})
                 return "ignored"
-            await s.execute(text("""
-                UPDATE subscriptions SET status=:status,updated_at=now(),
-                    last_verified_payment_at=CASE WHEN :status='active' THEN now()
-                      ELSE last_verified_payment_at END
-                WHERE id=:id
-            """),{"status":next_status,"id":sub["id"]})
+            if next_status=="active":
+                await s.execute(text("""
+                    UPDATE subscriptions SET status='active',updated_at=now(),
+                        last_verified_payment_at=now() WHERE id=:id
+                """),{"id":sub["id"]})
+            else:
+                await s.execute(text("""
+                    UPDATE subscriptions SET status='past_due',updated_at=now()
+                    WHERE id=:id
+                """),{"id":sub["id"]})
             await s.execute(text("""
                 UPDATE billing_events SET status='verified',verified_at=now()
                 WHERE id=:id
