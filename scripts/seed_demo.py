@@ -5,6 +5,7 @@ ORION_SEED_DEMO=1 e depois precisa ser removida do pre-deploy.
 """
 import asyncio
 import os
+from datetime import time
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
 from sqlalchemy import text
@@ -62,7 +63,7 @@ async def seed() -> None:
                         ON CONFLICT (tenant_id, professional_id, service_id) DO NOTHING
                     """), {"tenant":TENANT,"pro":pid,"service":sid})
                 for weekday in range(6):
-                    finish = "13:00" if weekday == 5 else "18:00"
+                    finish = time(13, 0) if weekday == 5 else time(18, 0)
                     await session.execute(text("""
                         INSERT INTO working_hours
                             (tenant_id,professional_id,weekday,start_time,end_time)
