@@ -9,6 +9,7 @@ from app.integrations_api import router as integrations_router
 from app.ops_api import router as ops_router
 from app.landing_api import router as landing_router
 from app.billing_api import router as billing_router
+from app.metrics_api import router as metrics_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -29,6 +30,7 @@ app.include_router(integrations_router)
 app.include_router(ops_router)
 app.include_router(landing_router)
 app.include_router(billing_router)
+app.include_router(metrics_router)
 app.include_router(catalog_router)
 
 
