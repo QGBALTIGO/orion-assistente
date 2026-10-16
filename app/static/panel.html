@@ -516,6 +516,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
         <div class="wizard-footer">
           <span class="dot amber" aria-hidden="true"></span>
           <span id="wizardConnectionHint">Conexão protegida. Nenhuma mensagem é enviada durante o vínculo.</span>
+          <button id="wizardRecover" type="button" class="btn ghost hidden">Refazer vínculo</button>
         </div>
         <div id="wizardLegacySupport" class="hidden" aria-hidden="true">
           <div id="connectedBanner"><span id="connectedPhone"></span><button id="openChats" type="button">Abrir conversas</button></div>
@@ -597,24 +598,22 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 const $=id=>document.getElementById(id);
 let csrf="",page="dispositivo",method="qr",showQr=false,deviceStatus="starting",lastDeviceStatus="starting",pairExpiresAt=0,
     statusTimer=null,chatTimer=null,selectedPhone="",chatsBusy=false;
+let wizardStep="choose",wizardIndex=0,wizardAttempted=false,wizardSuccessUntil=0,
+    wizardSuccessDone=false,wizardQrDeadline=0,wizardClocks=null;
 const steps={
  qr:[
-  ["Abra o WhatsApp","No celular que será conectado, abra o WhatsApp ou WhatsApp Business."],
-  ["Entre nas configurações","No Android, toque no menu ⋮. No iPhone, abra Configurações."],
-  ["Acesse Dispositivos conectados","Procure a opção Dispositivos conectados."],
-  ["Confira conexões antigas","Se já vinculou o Orion neste aparelho, remova a sessão anterior caso queira substituí-la."],
-  ["Evite conexões duplicadas","Se tiver outros bots vinculados, avalie possíveis conflitos antes de continuar."],
-  ["Toque em Conectar dispositivo","Autorize o pareamento no WhatsApp. Será aberta a câmera."],
-  ["Escaneie o código","Clique em Mostrar meu QR Code aqui ao lado e aponte a câmera do WhatsApp."]
+  ["Abra o WhatsApp","No celular, abra o WhatsApp ou WhatsApp Business."],
+  ["Acesse Dispositivos conectados","No Android, use o menu ⋮; no iPhone, abra Configurações."],
+  ["Confira outros vínculos","Se já houver uma sessão antiga deste mesmo bot, revise-a antes de adicionar outra."],
+  ["Toque em Conectar dispositivo","Prepare a câmera do aplicativo para escanear o QR Code."],
+  ["Pronto para escanear?","Toque em Mostrar QR. Ele é temporário e deve ser lido no próprio WhatsApp."]
  ],
  code:[
-  ["Abra o WhatsApp","No telefone principal, abra o WhatsApp ou WhatsApp Business."],
-  ["Vá para Dispositivos conectados","Acesse Configurações (ou menu ⋮) → Dispositivos conectados."],
-  ["Confira sessões anteriores","Se houver uma conexão antiga do Orion, remova-a caso queira fazer um novo vínculo."],
-  ["Revise outros bots conectados","Múltiplas automações no mesmo número podem causar conflitos."],
-  ["Toque em Conectar dispositivo","Acesse o fluxo de vincular um novo dispositivo."],
-  ["Escolha Conectar com número de telefone","No celular, selecione a alternativa de inserir código."],
-  ["Gere e digite o código","Digite o número aqui ao lado e insira o código de oito caracteres no WhatsApp."]
+  ["Abra o WhatsApp","No celular, abra o WhatsApp ou WhatsApp Business."],
+  ["Entre em Dispositivos conectados","No Android, use o menu ⋮; no iPhone, abra Configurações."],
+  ["Escolha Conectar dispositivo","Na tela de conexão, selecione Conectar com número de telefone."],
+  ["Confira o número da conta","Use DDI, DDD e o número que está ativo nesse WhatsApp."],
+  ["Pronto para gerar?","Avance, gere um código novo e digite-o no WhatsApp antes de expirar."]
  ]
 };
 const fields={
@@ -644,12 +643,14 @@ async function api(url,method="GET",data){
  return response.json();
 }
 function showLogin(){
- csrf="";clearInterval(statusTimer);clearInterval(chatTimer);
+ csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);
  $("appView").classList.add("hidden");$("loginView").classList.remove("hidden");
 }
 function showApp(){
  $("loginView").classList.add("hidden");$("appView").classList.remove("hidden");
  statusTimer&&clearInterval(statusTimer);statusTimer=setInterval(updateStatus,4500);
+ wizardClocks&&clearInterval(wizardClocks);
+ wizardClocks=setInterval(updateWizardClocks,1000);
  updateStatus();loadTenants();
  const desired=new URLSearchParams(location.search).get("aba");
  openPage(["conversas","cadastros"].includes(desired)?desired:"dispositivo");
@@ -679,27 +680,100 @@ $("openChats").addEventListener("click",()=>openPage("conversas"));
 $("logout").addEventListener("click",async()=>{
  try{await api("/auth/logout","POST",{});}finally{showLogin();}
 });
-function renderGuide(){
- $("guideTitle").textContent=method==="qr"?"Como conectar pelo QR Code":"Como conectar pelo código";
- $("guideSteps").replaceChildren();
- for(const [i,step] of steps[method].entries()){
-  const line=document.createElement("div");line.className="step";
-  const mark=document.createElement("div");mark.className="step-mark";mark.textContent=i===0?"▯":"✓";
-  const copy=document.createElement("div"),caption=document.createElement("small");
-  caption.textContent="Passo "+(i+1);const title=document.createElement("strong");
-  title.textContent=step[0];const body=document.createElement("p");body.textContent=step[1];
-  copy.append(caption,title,body);line.append(mark,copy);$("guideSteps").append(line);
- }
- $("qrPanel").classList.toggle("hidden",method!=="qr");
- $("codePanel").classList.toggle("hidden",method!=="code");
- document.querySelectorAll("[data-method]").forEach(x=>{
-   const active=x.dataset.method===method;x.classList.toggle("active",active);
-   x.setAttribute("aria-selected",String(active));
- });
+function countdownLabel(ms) {
+ const seconds=Math.max(0,Math.ceil(ms/1000));
+ return seconds?seconds+" s":"expirado";
 }
-document.querySelectorAll("[data-method]").forEach(x=>x.addEventListener("click",()=>{
- method=x.dataset.method;renderGuide();
-}));
+function updateWizardClocks(){
+ if(wizardStep==="qr"){
+   const expired=wizardQrDeadline>0&&Date.now()>=wizardQrDeadline;
+   $("qrCountdown").textContent=wizardQrDeadline?
+     countdownLabel(wizardQrDeadline-Date.now()):"aguardando";
+   if(expired){
+     $("qrStatus").textContent="QR Code expirado.";
+     $("qrFeedback").textContent="Use Atualizar conexão para solicitar um código novo.";
+     $("qrImage").classList.add("hidden");$("qrEmpty").classList.remove("hidden");
+     $("qrEmpty").querySelector("strong").textContent="O QR expirou";
+   }
+ }
+ if(wizardStep==="code_ready"){
+   const seconds=pairExpiresAt?countdownLabel(pairExpiresAt-Date.now()):"—";
+   $("codeCountdown").textContent=seconds;
+   if(pairExpiresAt>0&&Date.now()>=pairExpiresAt){
+     pairExpiresAt=0;wizardStep="code_form";renderGuide();
+     $("codeStatus").textContent="O código expirou. Solicite um novo código de pareamento.";
+   }
+ }
+}
+function renderGuide(){
+ const panes={
+   choose:"wizardChoose",tutorial:"wizardTutorial",qr:"qrPanel",
+   code_form:"codePanel",code_ready:"codePanel",success:"wizardSuccess"
+ };
+ for(const id of ["wizardChoose","wizardTutorial","qrPanel","codePanel","wizardSuccess"])
+   $(id).classList.toggle("hidden",id!==panes[wizardStep]);
+ document.querySelectorAll("[data-method]").forEach(x=>{
+   const selected=wizardStep!=="choose"&&x.dataset.method===method;
+   x.classList.toggle("active",selected);
+   x.setAttribute("aria-pressed",String(selected));
+ });
+ if(wizardStep==="tutorial"){
+   const total=steps[method].length,current=steps[method][wizardIndex];
+   $("guideTitle").textContent=current[0];
+   $("wizardStepDescription").textContent=current[1];
+   $("wizardStepCount").textContent="PASSO "+(wizardIndex+1)+" DE "+total;
+   $("wizardProgressFill").style.width=(((wizardIndex+1)/total)*100)+"%";
+   $("wizardProgress").setAttribute("aria-valuemax",String(total));
+   $("wizardProgress").setAttribute("aria-valuenow",String(wizardIndex+1));
+   $("wizardPrevious").textContent=wizardIndex?"Passo anterior":"Escolher método";
+   $("wizardNext").textContent=wizardIndex===total-1?
+      (method==="qr"?"Mostrar meu QR Code →":"Informar meu número →"):"Próximo passo →";
+ }
+ if(wizardStep==="code_form"||wizardStep==="code_ready"){
+   $("wizardCodeInput").classList.toggle("hidden",wizardStep!=="code_form");
+   $("codeResult").classList.toggle("hidden",wizardStep!=="code_ready");
+   $("retryCode").classList.toggle("hidden",wizardStep!=="code_ready");
+ }
+ if(wizardStep==="qr"||wizardStep==="code_ready")updateWizardClocks();
+}
+function selectWizardMode(next){
+ if(!["qr","code"].includes(next)||deviceStatus==="connected")return;
+ method=next;wizardIndex=0;wizardStep="tutorial";showQr=false;
+ $("codeStatus").textContent="";$("qrStatus").textContent="";
+ renderGuide();
+}
+document.querySelectorAll("[data-method]").forEach(x=>
+ x.addEventListener("click",()=>selectWizardMode(x.dataset.method)));
+$("wizardTutorialClose").addEventListener("click",()=>{
+ wizardStep="choose";showQr=false;renderGuide();
+});
+$("wizardPrevious").addEventListener("click",()=>{
+ if(wizardIndex>0)wizardIndex--;
+ else wizardStep="choose";
+ renderGuide();
+});
+$("wizardNext").addEventListener("click",async()=>{
+ if(wizardStep!=="tutorial")return;
+ const count=steps[method].length;
+ if(wizardIndex<count-1){wizardIndex++;renderGuide();return}
+ if(method==="qr"){
+   wizardStep="qr";showQr=true;wizardAttempted=true;renderGuide();
+   await attemptQrRefresh();
+ }else{wizardStep="code_form";renderGuide();$("pairPhone").focus()}
+});
+$("wizardQrBack").addEventListener("click",()=>{
+ showQr=false;wizardStep="tutorial";wizardIndex=steps.qr.length-1;renderGuide();
+});
+$("wizardCodeBack").addEventListener("click",()=>{
+ if(wizardStep==="code_ready"){wizardStep="code_form"}
+ else{wizardStep="tutorial";wizardIndex=steps.code.length-1}
+ renderGuide();
+});
+$("wizardRecover").addEventListener("click",()=>{$("repairConnection").click()});
+$("wizardOpenCenter").addEventListener("click",()=>{
+ wizardSuccessUntil=0;wizardSuccessDone=true;
+ if(connectedSnapshot?.status==="connected")renderConnectedCenter(connectedSnapshot);
+});
 function statusWord(s){
  return ({connected:"Conectado",qr_ready:"Aguardando leitura",qr_expired:"QR expirou",
  qr_delayed:"QR demorando a carregar",pair_failed:"Pareamento recusado",pair_expired:"Código expirado",
@@ -710,8 +784,9 @@ let connectedSnapshot=null;
 function renderConnectedCenter(data){
  connectedSnapshot=data;
  const active=data.status==="connected";
- $("connectedCenter").classList.toggle("hidden",!active);
- $("disconnectedWizard").classList.toggle("hidden",active);
+ const successPlaying=active&&wizardStep==="success"&&Date.now()<wizardSuccessUntil;
+ $("connectedCenter").classList.toggle("hidden",!active||successPlaying);
+ $("disconnectedWizard").classList.toggle("hidden",active&&!successPlaying);
  const headerPill=$("page-dispositivo").querySelector(".header .pill");
  if(headerPill)headerPill.classList.toggle("hidden",active);
  const sub=$("page-dispositivo").querySelector(".header .subhead");
@@ -888,8 +963,23 @@ $("deviceSettingsForm").addEventListener("submit",async event=>{
 async function updateStatus(){
  if(!csrf)return;
  try{
-  const result=await api("/api/v1/qr/status");deviceStatus=result.status;lastDeviceStatus=result.status;
+  const previous=deviceStatus;
+  const result=await api("/api/v1/qr/status");
+  deviceStatus=result.status;lastDeviceStatus=result.status;
   const active=result.status==="connected";
+  if(active&&previous!=="connected"&&wizardAttempted&&!wizardSuccessDone){
+    wizardAttempted=false;wizardStep="success";wizardSuccessUntil=Date.now()+2200;
+    renderGuide();
+    setTimeout(()=>{
+      if(deviceStatus==="connected"&&Date.now()>=wizardSuccessUntil){
+        wizardSuccessDone=true;renderConnectedCenter(connectedSnapshot||result)
+      }
+    },2300);
+  }
+  if(!active&&previous==="connected"){
+    wizardStep="choose";wizardIndex=0;wizardSuccessDone=false;
+    wizardSuccessUntil=0;wizardAttempted=false;showQr=false;renderGuide();
+  }
   renderConnectedCenter(result);
   $("statusDot").className="dot "+(active?"green":result.status==="logged_out"?"red":"amber");
   $("globalStatus").textContent=statusWord(result.status);
@@ -908,7 +998,12 @@ async function updateStatus(){
   $("chatDot").className="dot "+(active?"green":"amber");
   $("chatConnection").textContent=active?"Conectado":"Desconectado";
   $("connectedBanner").classList.toggle("hidden",!active);
+  $("wizardConnectionHint").textContent=active?"Dispositivo vinculado.":
+    ["logged_out","pair_failed"].includes(result.status)?
+      "A sessão anterior foi revogada. Use Refazer vínculo antes de tentar novamente.":
+    "Conexão não oficial, limitada ao número que você administra.";
   $("repairConnection").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
+  $("wizardRecover").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
   $("refreshQr").disabled=result.status==="connected"||result.status==="pairing";
   $("connectedPhone").textContent=result.phone?
     "Dispositivo "+result.phone+" conectado. Você pode ler e enviar mensagens manualmente.":
@@ -923,8 +1018,8 @@ async function updateStatus(){
     if(showQr&&method==="qr")await updateQr();
   }else if(result.status==="pair_expired"||
     (result.status==="pairing"&&pairExpiresAt>0&&Date.now()>pairExpiresAt)){
-    pairExpiresAt=0;$("codeResult").classList.add("hidden");
-    $("codeStatus").textContent="Código expirado. Reinicie a conexão para solicitar um novo.";
+    pairExpiresAt=0;wizardStep="code_form";renderGuide();
+    $("codeStatus").textContent="Código expirado. Solicite outro código para continuar.";
   }else if(showQr&&page==="dispositivo"&&method==="qr")await updateQr();
  }catch(ex){
   renderConnectedCenter({status:"error"});
@@ -938,11 +1033,14 @@ async function updateQr(){
   const info=await api("/api/v1/qr/image");
   if(info.status==="connected"){showQr=false;updateStatus();return}
   if(info.image&&info.image.startsWith("data:image/png;base64,")){
+   wizardQrDeadline=Date.now()+Math.max(0,Number(info.expiresIn)||0)*1000;
    $("qrImage").src=info.image;$("qrImage").classList.remove("hidden");
    $("qrEmpty").classList.add("hidden");
    $("qrStatus").textContent="QR Code pronto para escanear";
-   $("qrFeedback").textContent="Expira em aproximadamente "+info.expiresIn+" segundos. A página atualizará automaticamente.";
+   $("qrFeedback").textContent="Escaneie pelo WhatsApp do celular. O código é temporário.";
+   updateWizardClocks();
   }else{
+   wizardQrDeadline=0;
    $("qrImage").classList.add("hidden");$("qrEmpty").classList.remove("hidden");
    const failed=["logged_out","pair_failed","error"].includes(info.status);
    const expired=info.status==="qr_expired";
@@ -991,15 +1089,19 @@ $("pairForm").addEventListener("submit",async ev=>{
  ev.preventDefault();$("codeStatus").textContent="Gerando código, aguarde...";
  $("codeResult").classList.add("hidden");pairExpiresAt=0;
  const submit=$("pairForm").querySelector('button[type="submit"]');submit.disabled=true;
- const phone=normalize($("pairPhone").value);
+ const raw=normalize($("pairPhone").value);
+ const phone=/^\d{10,11}$/.test(raw)?"55"+raw:raw;
  if(!/^[1-9]\d{7,14}$/.test(phone)){
    $("codeStatus").textContent="Insira o DDI, DDD e número válido.";submit.disabled=false;return;
  }
  try{
   const r=await api("/api/v1/qr/pair","POST",{phone});
   if(r.status==="connected"){$("codeStatus").textContent="Este WhatsApp já está conectado.";return}
-  $("pairCode").textContent=r.code;$("codeResult").classList.remove("hidden");
-  pairExpiresAt=Date.now()+Math.min(90,Math.max(1,r.expiresIn||90))*1000;
+  if(typeof r.code!=="string"||!/^[A-Z0-9]{4}-?[A-Z0-9]{4}$/i.test(r.code))
+    throw Error("O WhatsApp não retornou um código válido.");
+  $("pairCode").textContent=r.code;
+  pairExpiresAt=Date.now()+Math.min(90,Math.max(1,Number(r.expiresIn)||90))*1000;
+  wizardStep="code_ready";wizardAttempted=true;renderGuide();
   $("codeStatus").textContent="Código solicitado. Digite-o imediatamente em Dispositivos conectados → Conectar com número de telefone. A conexão só é confirmada quando o status mudar para Conectado.";
  }catch(ex){$("codeStatus").textContent=ex.message;}
  finally{submit.disabled=false;}
@@ -1031,7 +1133,8 @@ $("repairConnection").addEventListener("click",async()=>{
   $("repairConnection").disabled=true;
   try{
     await api("/api/v1/qr/recover","POST",{});
-    method="qr";renderGuide();showQr=true;await updateStatus();
+    method="qr";wizardStep="tutorial";wizardIndex=0;
+    showQr=false;renderGuide();await updateStatus();
     $("qrFeedback").textContent="Sessão renovada. Escaneie o novo QR pelo telefone.";
   }catch(ex){$("qrFeedback").textContent=ex.message;}
   finally{$("repairConnection").disabled=false;}
