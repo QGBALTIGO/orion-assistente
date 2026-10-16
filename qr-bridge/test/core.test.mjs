@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import {
   validPhone,normalizeFromJid,extractText,resolveMessagePhone,
-  freshQR,formatPairingCode
+  freshQR,formatPairingCode,connectionPhase
 } from "../src/core.mjs";
 
 test("telefone Brasil com DDI e DDD é normalizado",()=>{
@@ -102,4 +102,25 @@ test("socket HTTP IPv6 privado aceita conexões em ::1",async()=>{
   }finally{
     await new Promise(resolve=>server.close(resolve));
   }
+});
+
+test("QR em preparação sinaliza atraso após 25 segundos",()=>{
+  assert.equal(connectionPhase("connecting",0,1000,25000),"connecting");
+  assert.equal(connectionPhase("connecting",0,1000,26001),"qr_delayed");
+  assert.equal(connectionPhase("reconnecting",0,1000,26001),"reconnecting");
+});
+
+test("QR vence após 45 segundos, mas não deixa estado conectado",()=>{
+  assert.equal(connectionPhase("qr_ready",1000,1000,45999),"qr_ready");
+  assert.equal(connectionPhase("qr_ready",1000,1000,46000),"qr_expired");
+  assert.equal(connectionPhase("connected",0,1000,70000),"connected");
+});
+
+test("pareamento recusado deve ser mostrado explicitamente",()=>{
+  assert.equal(connectionPhase("pair_failed",0,0,100000),"pair_failed");
+  assert.equal(connectionPhase("logged_out",0,0,100000),"logged_out");
+});
+
+test("estados nunca geram QR falso sem timestamp",()=>{
+  assert.equal(connectionPhase("qr_ready",0,0,200),"qr_expired");
 });
