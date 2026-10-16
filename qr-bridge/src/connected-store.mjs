@@ -81,9 +81,14 @@ export function makeConnectedStore({directory,secret,timezone="America/Campo_Gra
   }
   const save=()=>{if(!healthy)throw Error("Armazenamento conectado requer reparo");
     atomicWrite(file,state,key)};
-  const dayFor=(date)=>new Intl.DateTimeFormat("en-CA",{
+  const dayFormat=new Intl.DateTimeFormat("en-CA",{
     timeZone:timezone,year:"numeric",month:"2-digit",day:"2-digit"
-  }).format(date);
+  });
+  const dayFor=date=>{
+    const fields=Object.fromEntries(dayFormat.formatToParts(date)
+      .filter(x=>x.type!=="literal").map(x=>[x.type,x.value]));
+    return fields.year+"-"+fields.month+"-"+fields.day;
+  };
   return {
     health:()=>healthy?"ready":"unavailable",
     setIdentity(jid){
