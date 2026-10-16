@@ -28,6 +28,15 @@ def number_choice(value: str, upper: int) -> int | None:
 
 async def reply(tenant: UUID, channel: UUID, sender: str, body: str, redis) -> str | None:
     key = state_key(str(tenant), str(channel), sender)
+    # Suspensão comercial nunca remove histórico nem libera acesso de suporte.
+    async with get_session_factory()() as check_session:
+        async with tenant_transaction(check_session, tenant):
+            inactive = (await check_session.execute(text("""
+                SELECT 1 FROM subscriptions WHERE tenant_id=:t
+                  AND status IN ('suspended','canceled') LIMIT 1
+            """), {"t":tenant})).first()
+    if inactive:
+        return None
     state = json.loads(await redis.get(key) or "{}")
     user_text = body.strip().lower()
     factory = get_session_factory()

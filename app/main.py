@@ -7,6 +7,8 @@ from app.booking_api import router as bookings_router
 from app.whatsapp_api import router as whatsapp_router
 from app.integrations_api import router as integrations_router
 from app.ops_api import router as ops_router
+from app.landing_api import router as landing_router
+from app.billing_api import router as billing_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -25,6 +27,8 @@ app.include_router(bookings_router)
 app.include_router(whatsapp_router)
 app.include_router(integrations_router)
 app.include_router(ops_router)
+app.include_router(landing_router)
+app.include_router(billing_router)
 app.include_router(catalog_router)
 
 
