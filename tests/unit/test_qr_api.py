@@ -68,3 +68,25 @@ async def test_private_bridge_health_fails_closed_when_network_unreachable(monke
         assert response.status_code==503
         assert "socket" not in response.text
         assert "telefone" not in response.text
+
+
+
+@pytest.mark.asyncio
+async def test_recover_requires_admin_and_only_forwards_to_private_bridge(monkeypatch):
+    from app import qr_api
+    monkeypatch.setenv("SUPPORT_API_TOKEN","support-token-for-test-1234567890123456")
+    calls=[]
+    async def fake_bridge(path,method="GET",payload=None,query=None):
+        calls.append((path,method))
+        return {"status":"connecting"}
+    monkeypatch.setattr(qr_api,"_bridge",fake_bridge)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="https://test") as client:
+        forbidden=await client.post("/api/v1/qr/recover")
+        assert forbidden.status_code==401
+        okay=await client.post("/api/v1/qr/recover",headers={
+            "Authorization":"Bearer support-token-for-test-1234567890123456"
+        })
+        assert okay.status_code==200
+        assert okay.json()=={"status":"connecting"}
+        assert calls==[("/internal/recover","POST")]
