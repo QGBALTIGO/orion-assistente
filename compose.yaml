@@ -62,6 +62,10 @@ services:
     command: ["arq", "app.worker.WorkerSettings"]
     environment:
       REDIS_URL: redis://redis:6379/0
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:${APP_RUNTIME_PASSWORD}@postgres:5432/${POSTGRES_DB:-barber_saas}
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:${APP_SUPPORT_PASSWORD}@postgres:5432/${POSTGRES_DB:-barber_saas}
+      META_LIVE_SEND: "0"
+      INTEGRATION_FERNET_KEY: ${INTEGRATION_FERNET_KEY:-}
     depends_on:
       redis: {condition: service_healthy}
     restart: unless-stopped

@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from app.catalog_api import router as catalog_router
 from app.booking_api import router as bookings_router
+from app.whatsapp_api import router as whatsapp_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -19,6 +20,7 @@ async def health() -> dict[str, str]:
 
 
 app.include_router(bookings_router)
+app.include_router(whatsapp_router)
 app.include_router(catalog_router)
 
 
