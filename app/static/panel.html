@@ -567,11 +567,171 @@ function statusWord(s){
  connecting:"Preparando",reconnecting:"Reconectando",logged_out:"Sessão desvinculada",
  error:"Falha na conexão",starting:"Iniciando",pairing:"Aguardando código no celular"})[s]||"Aguardando";
 }
+let connectedSnapshot=null;
+function renderConnectedCenter(data){
+ connectedSnapshot=data;
+ const active=data.status==="connected";
+ $("connectedCenter").classList.toggle("hidden",!active);
+ $("disconnectedWizard").classList.toggle("hidden",active);
+ const sub=$("page-dispositivo").querySelector(".header .subhead");
+ if(sub)sub.textContent=active?"Seu número, métricas e configurações em um só lugar.":"Vincule seu número em poucos passos.";
+ if(!active)return;
+ const profile=data.profile||{};
+ $("realWhatsAppName").textContent=profile.name||"Nome não disponibilizado pelo WhatsApp";
+ $("realWhatsAppPhone").textContent=data.phone?"+"+data.phone:"Número indisponível";
+ const photo=$("realWhatsAppPhoto"),fallback=$("realPhotoFallback");
+ if(profile.photoUrl && /^https:\/\//.test(profile.photoUrl)){
+   if(photo.src!==profile.photoUrl)photo.src=profile.photoUrl;
+   photo.classList.remove("hidden");fallback.classList.add("hidden");
+ }else{
+   photo.removeAttribute("src");photo.classList.add("hidden");fallback.classList.remove("hidden");
+ }
+ $("deviceLastSync").textContent=data.ingestion==="receiving"
+   ?"Sincronização de mensagens confirmada":"Conectado · aguardando confirmação de sincronização";
+ const stats=data.messageStats||{};
+ const format=n=>Number.isSafeInteger(n)&&n>=0?new Intl.NumberFormat("pt-BR").format(n):"—";
+ $("statToday").textContent=stats.available?format(stats.today):"—";
+ $("statWeek").textContent=stats.available?format(stats.last7Days):"—";
+ $("statMonth").textContent=stats.available?format(stats.last30Days):"—";
+ $("statTotal").textContent=stats.available?format(stats.total):"—";
+ $("statsCoverage").textContent=stats.available?
+   "Mensagens novas registradas desde "+new Date(stats.trackingSince).toLocaleString("pt-BR")+
+   " · horário do MS · Não inclui mensagens anteriores à ativação.": 
+   "Ainda não há contagem auditável: verifique o armazenamento da instância.";
+ const settings=data.featureSettings||{};
+ const cap=data.featureCapabilities||{};
+ for(const [node,enabled,available] of [
+   ["deviceChatbot",settings.chatbot,cap.chatbot],
+   ["deviceTranscript",settings.transcription,cap.transcription],
+   ["deviceCallBlock",settings.callBlocking,cap.callBlocking]
+ ]){
+   const badge=$(node+"State");
+   badge.textContent=!available?"Não configurado":enabled?"Ativado":"Desativado";
+   badge.classList.toggle("off",!enabled||!available);
+ }
+ $("deviceChatbotHint").textContent=cap.chatbot?
+   "Respostas automáticas da agenda":"Aguardando integração do canal com a agenda";
+ $("deviceTranscriptHint").textContent=cap.transcription?
+   "Reconhecimento privado de áudios recebidos":"Instale o serviço privado faster-whisper para habilitar";
+}
+$("realWhatsAppPhoto").addEventListener("error",()=>{
+ $("realWhatsAppPhoto").classList.add("hidden");
+ $("realPhotoFallback").classList.remove("hidden");
+});
+function closeOptions(){$("deviceOptions").open=false}
+function showDeviceSettings(){
+ closeOptions();
+ if(connectedSnapshot?.status!=="connected")return;
+ const c=connectedSnapshot.featureSettings||{},caps=connectedSnapshot.featureCapabilities||{};
+ $("settingsChatbot").checked=!!c.chatbot;
+ $("settingsChatbot").disabled=!caps.chatbot;
+ $("settingsChatbotHint").textContent=caps.chatbot?"Recurso vinculado à agenda.":"Indisponível: o canal WhatsApp ainda não está associado ao serviço de agenda.";
+ $("settingsTranscription").checked=!!c.transcription;
+ $("settingsTranscription").disabled=!caps.transcription;
+ $("settingsTranscriptionHint").textContent=caps.transcription?
+  "Somente áudios novos; texto registrado na caixa criptografada, sem resposta automática.":
+  "Requer serviço faster-whisper privado conectado. Não será ativado sem backend.";
+ $("settingsLanguage").value=c.language||"auto";
+ $("settingsBlockCalls").checked=!!c.callBlocking;
+ $("settingsBlockCalls").disabled=!caps.callBlocking;
+ $("settingsCallReply").checked=!!c.callReply;
+ $("settingsReplyText").value=c.callReplyText||"";
+ $("settingsAllowedCallers").value=(c.allowedCallers||[]).join("\n");
+ $("settingsCallSchedule").checked=!!c.callSchedule;
+ $("settingsStart").value=c.callHours?.start||"09:00";
+ $("settingsEnd").value=c.callHours?.end||"18:00";
+ for(const option of $("settingsWeekdays").options)
+   option.selected=(c.callHours?.weekdays||[1,2,3,4,5]).includes(Number(option.value));
+ $("deviceSettingsFeedback").textContent="";
+ $("deviceSettingsDialog").showModal();
+}
+async function showDeviceDiagnostics(){
+ closeOptions();
+ $("deviceDiagnosticsDialog").showModal();
+ $("deviceDiagnosticsText").textContent="Consultando o conector privado…";
+ try{
+   const d=await api("/api/v1/qr/status");
+   const values={
+     estado:d.status,
+     conexao:d.connectionType,
+     sincronizacao:d.ingestion,
+     armazenamentoMensagens:d.inboxPersistence,
+     armazenamentoControles:d.controlStorage,
+     ultimoRecebimento:d.lastInboundAt?new Date(d.lastInboundAt).toLocaleString("pt-BR"):"Ainda não observado",
+     recibos:d.deliveryDiagnostics?.receiptUpdates??0,
+     recuperacoesComCache:d.deliveryDiagnostics?.cacheHits??0,
+     recuperacoesSemCache:d.deliveryDiagnostics?.cacheMisses??0,
+     cacheMensagens:d.retainedMessages??0
+   };
+   $("deviceDiagnosticsText").textContent=Object.entries(values)
+     .map(([key,value])=>key+": "+String(value)).join("\n");
+ }catch(ex){$("deviceDiagnosticsText").textContent=ex.message}
+}
+async function restartConnectedDevice(){
+ closeOptions();
+ if(!confirm("Reiniciar a conexão do WhatsApp? A sessão existente será preservada."))return;
+ try{
+   await api("/api/v1/qr/restart","POST",{confirm:"REINICIAR"});
+   await updateStatus();
+ }catch(ex){alert(ex.message)}
+}
+async function disconnectConnectedDevice(){
+ closeOptions();
+ if(connectedSnapshot?.status!=="connected")return;
+ const confirmation=prompt("Isso revoga a sessão vinculada e permite conectar outra conta.\nDigite DESCONECTAR para confirmar:");
+ if(confirmation!=="DESCONECTAR")return;
+ if(!confirm("Última confirmação: deseja revogar o dispositivo WhatsApp atual?"))return;
+ try{
+   await api("/api/v1/qr/disconnect","POST",{confirm:"DESCONECTAR"});
+   await updateStatus();
+ }catch(ex){alert(ex.message)}
+}
+for(const id of ["deviceSettings","deviceMenuSettings","deviceChatbot","deviceTranscript","deviceCallBlock"])
+ $(id).addEventListener("click",showDeviceSettings);
+for(const id of ["deviceDiagnostics","deviceMenuDiagnostics"])
+ $(id).addEventListener("click",showDeviceDiagnostics);
+for(const id of ["deviceRestart","deviceMenuRestart"])
+ $(id).addEventListener("click",restartConnectedDevice);
+$("deviceMenuDisconnect").addEventListener("click",disconnectConnectedDevice);
+$("deviceMenuChats").addEventListener("click",()=>{closeOptions();openPage("conversas")});
+$("deviceSettingsCancel").addEventListener("click",()=>$("deviceSettingsDialog").close());
+$("deviceDiagnosticsClose").addEventListener("click",()=>$("deviceDiagnosticsDialog").close());
+$("deviceSettingsForm").addEventListener("submit",async event=>{
+ event.preventDefault();
+ if(!connectedSnapshot || connectedSnapshot.status!=="connected")return;
+ const input={
+   chatbot:$("settingsChatbot").checked,
+   transcription:$("settingsTranscription").checked,
+   language:$("settingsLanguage").value,
+   callBlocking:$("settingsBlockCalls").checked,
+   callReply:$("settingsCallReply").checked,
+   callReplyText:$("settingsReplyText").value,
+   allowedCallers:$("settingsAllowedCallers").value.split(/[\s,;]+/).filter(Boolean),
+   callSchedule:$("settingsCallSchedule").checked,
+   callHours:{
+     start:$("settingsStart").value,end:$("settingsEnd").value,
+     weekdays:[...$("settingsWeekdays").selectedOptions].map(x=>Number(x.value))
+   }
+ };
+ if(input.callReply && !connectedSnapshot.featureSettings?.callReply &&
+   !confirm("Permitir que o Orion envie mensagens automáticas aos números que ligarem?"))return;
+ $("deviceSettingsSave").disabled=true;
+ $("deviceSettingsFeedback").textContent="Salvando configurações no servidor…";
+ try{
+   const result=await api("/api/v1/qr/settings","POST",input);
+   connectedSnapshot.featureSettings=result.settings;
+   renderConnectedCenter(connectedSnapshot);
+   $("deviceSettingsDialog").close();
+ }catch(ex){$("deviceSettingsFeedback").textContent=ex.message}
+ finally{$("deviceSettingsSave").disabled=false}
+});
+
 async function updateStatus(){
  if(!csrf)return;
  try{
   const result=await api("/api/v1/qr/status");deviceStatus=result.status;lastDeviceStatus=result.status;
   const active=result.status==="connected";
+  renderConnectedCenter(result);
   $("statusDot").className="dot "+(active?"green":result.status==="logged_out"?"red":"amber");
   $("globalStatus").textContent=statusWord(result.status);
   $("deviceState").textContent=statusWord(result.status)+(result.lastError?": "+result.lastError:"");
@@ -608,6 +768,7 @@ async function updateStatus(){
     $("codeStatus").textContent="Código expirado. Reinicie a conexão para solicitar um novo.";
   }else if(showQr&&page==="dispositivo"&&method==="qr")await updateQr();
  }catch(ex){
+  renderConnectedCenter({status:"error"});
   $("globalStatus").textContent="Serviço indisponível";
   $("deviceState").textContent=ex.message;
   $("statusDot").className="dot red";
