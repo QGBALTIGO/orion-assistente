@@ -17,7 +17,7 @@ import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
 import {makeMessageRetryStore,deliveryFromAck,advanceDelivery} from "./message-retry-store.mjs";
 import {makeEncryptedRetryStore} from "./encrypted-retry-store.mjs";
 import {sendStoredText} from "./reliable-send.mjs";
-import {inspectLookup,inspectDelivery} from "./recipient-diagnostics.mjs";
+import {inspectLookup,attachDeliveryDiagnostics} from "./recipient-diagnostics.mjs";
 import {makeDurableInbox} from "./durable-inbox.mjs";
 import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-health.mjs";
 
@@ -357,7 +357,8 @@ async function recipientInspection(value){
   if(status!=="connected" || !socket)throw Error("O WhatsApp não está conectado");
   const now=Date.now();
   const cached=recipientInspections.get(phone);
-  if(cached&&cached.expires>now)return {...cached.data,delivery:inspectDelivery(messages,phone,resendCounterByMessage)};
+  if(cached&&cached.expires>now)
+    return attachDeliveryDiagnostics(cached.data,messages,phone,resendCounterByMessage);
   // onWhatsApp returns PN plus optional LID in this installed Baileys version.
   // No assertSessions(force), no sent message and no auth-state mutation.
   let lookup;
@@ -365,20 +366,20 @@ async function recipientInspection(value){
   try {
     lookup=await socket.onWhatsApp(phone);
   }catch{
-    return {registered:null,identity:"lookup_failed",hasLid:null,
+    return attachDeliveryDiagnostics({registered:null,identity:"lookup_failed",hasLid:null,
       self:phone===String(socket.user?.id||"").split(":")[0].split("@")[0],
-      lookupMs:null,delivery:inspectDelivery(messages,phone),
-      note:"WhatsApp não respondeu à consulta. Nenhuma mensagem foi enviada."};
+      lookupMs:null,
+      note:"WhatsApp não respondeu à consulta. Nenhuma mensagem foi enviada."},
+      messages,phone,resendCounterByMessage);
   }
   const summary=inspectLookup(phone,lookup,socket.user?.id);
-  const data={...summary,lookupMs:Date.now()-started,
-    delivery:inspectDelivery(messages,phone)};
+  const data={...summary,lookupMs:Date.now()-started};
   if(recipientInspections.size>=40){
     const oldest=recipientInspections.keys().next().value;
     recipientInspections.delete(oldest);
   }
   recipientInspections.set(phone,{data,expires:now+90000});
-  return data;
+  return attachDeliveryDiagnostics(data,messages,phone,resendCounterByMessage);
 }
 async function send(phone,text){
   const target=validPhone(phone);
