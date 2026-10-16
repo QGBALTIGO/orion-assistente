@@ -62,7 +62,7 @@ export function shouldRejectCall(settings,phone,when=new Date(),timezone="Americ
   if(!settings.callBlocking || settings.allowedCallers.includes(phone))return false;
   if(!settings.callSchedule)return true;
   const parts=Object.fromEntries(new Intl.DateTimeFormat("en-US",{
-    timeZone:timezone,hour12:false,weekday:"short",hour:"2-digit",minute:"2-digit"
+    timeZone:timezone,hourCycle:"h23",weekday:"short",hour:"2-digit",minute:"2-digit"
   }).formatToParts(when).filter(p=>p.type!=="literal").map(p=>[p.type,p.value]));
   const day=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(parts.weekday);
   const clock=parts.hour.padStart(2,"0")+":"+parts.minute;
