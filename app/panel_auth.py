@@ -19,6 +19,7 @@ from redis.exceptions import RedisError
 router = APIRouter(prefix="/auth", tags=["Sessão do painel"])
 COOKIE = "__Host-orion_session"
 TTL = 12 * 3600
+REMEMBER_TTL = 30 * 24 * 3600
 
 
 def _redis():
@@ -68,6 +69,15 @@ async def panel_actor(request: Request) -> dict:
     if not content:
         raise HTTPException(401, "Sessão expirada, entre novamente")
     data = json.loads(content)
+    if data.get("account_id"):
+        from app.account_auth import current_account
+        try:
+            row = await current_account(data["account_id"], data["auth_version"])
+        except (ValueError,KeyError):
+            raise HTTPException(401,"Sessão inválida") from None
+        # A changed role/password invalidates prior sessions.
+        if row["role"] != data["role"]:
+            raise HTTPException(401,"Sessão expirada") from None
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         _same_origin(request)
         value = request.headers.get("x-orion-csrf", "")
@@ -77,8 +87,9 @@ async def panel_actor(request: Request) -> dict:
 
 
 class Login(BaseModel):
-    username: str = Field(min_length=1, max_length=60)
+    username: str = Field(min_length=1, max_length=254)
     password: str = Field(min_length=1, max_length=200)
+    remember: bool = False
 
 
 @router.post("/login")
@@ -97,21 +108,31 @@ async def login(payload: Login, request: Request, response: Response):
         valid_user = secrets.compare_digest(
             payload.username.strip().lower(), os.getenv("PANEL_ADMIN_USERNAME", "admin").lower()
         )
-        if not (valid_user and _password_valid(payload.password)):
+        legacy_admin = valid_user and _password_valid(payload.password)
+        account = None
+        if not legacy_admin:
+            # Registered accounts receive their true role, NEVER a blanket support role.
+            from app.account_auth import authenticate_account
+            account = await authenticate_account(payload.username,payload.password)
+        if not (legacy_admin or account):
             pipe = redis.pipeline()
             pipe.incr(ip_key)
             pipe.expire(ip_key, 900)
             await pipe.execute()
-            raise HTTPException(401, "Usuário ou senha incorretos")
+            raise HTTPException(401, "E-mail ou senha incorretos, ou conta ainda não verificada")
         await redis.delete(ip_key)
         token = secrets.token_urlsafe(32)
         csrf = secrets.token_urlsafe(32)
-        await redis.set(_hash_cookie(token), json.dumps({"role": "support", "csrf": csrf}),
-                        ex=TTL, nx=True)
-        response.set_cookie(COOKIE, token, max_age=TTL, secure=True,
-                            httponly=True, samesite="strict", path="/")
+        lifespan = REMEMBER_TTL if payload.remember else TTL
+        claims={"role": account["role"] if account else "support","csrf":csrf}
+        if account:
+            claims.update({"account_id":account["id"],"auth_version":account["version"]})
+        await redis.set(_hash_cookie(token),json.dumps(claims),ex=lifespan,nx=True)
+        response.set_cookie(COOKIE,token,max_age=lifespan,secure=True,
+                            httponly=True,samesite="strict",path="/")
         response.headers["Cache-Control"] = "no-store"
-        return {"ok": True, "csrf": csrf}
+        return {"ok":True,"csrf":csrf,"role":claims["role"],
+                "name":account["name"] if account else "Administrador"}
     except (RedisError, OSError):
         raise HTTPException(503, "Login temporariamente indisponível") from None
     finally:
@@ -120,7 +141,8 @@ async def login(payload: Login, request: Request, response: Response):
 
 @router.get("/me")
 async def me(data: dict = Depends(panel_actor)):
-    return {"authenticated": True, "role": data["role"], "csrf": data["csrf"]}
+    return {"authenticated": True, "role": data["role"], "csrf": data["csrf"],
+            "account":bool(data.get("account_id"))}
 
 
 @router.post("/logout")
