@@ -82,7 +82,7 @@ async def test_verified_account_separation_recovery_owner_claim(monkeypatch):
         assert (await c.get("/auth/me")).status_code==401
         signin=await c.post("/auth/login",json={
             "username":address,"password":registration["password"]},headers=h)
-        assert signin.json()["role"]=="support"
+        assert signin.json()["role"]=="admin"
         assert (await c.get("/api/v1/qr/status")).json()["status"]=="connected"
         forgot=await c.post("/auth/password/forgot",json={"email":address},headers=h)
         assert forgot.status_code==200,forgot.text
@@ -99,7 +99,7 @@ async def test_verified_account_separation_recovery_owner_claim(monkeypatch):
             "username":address,"password":registration["password"]},headers=h)).status_code==401
         new_login=await c.post("/auth/login",json={
             "username":address,"password":"New#Pass123456"},headers=h)
-        assert new_login.status_code==200 and new_login.json()["role"]=="support"
+        assert new_login.status_code==200 and new_login.json()["role"]=="admin"
 
 
 @pytest.mark.asyncio
