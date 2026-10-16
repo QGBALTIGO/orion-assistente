@@ -86,7 +86,7 @@ def create_roles() -> str:
 def make_connection_url(role: str, password: str) -> str:
     admin_url = make_url(required("DATABASE_URL").replace("postgres://", "postgresql://", 1))
     return str(admin_url.set(
-        drivername="postgresql+psycopg",
+        drivername="postgresql",
         username=role,
         password=password,
     ).render_as_string(hide_password=False))
