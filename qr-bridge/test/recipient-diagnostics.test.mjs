@@ -39,7 +39,7 @@ test("delivery counts are per-contact and pending never means delivered",()=>{
     {phone:"5521999999999",direction:"out",delivery:"read"}
   ];
   assert.deepEqual(inspectDelivery(rows,p),{
-    count:4,pending:1,serverAccepted:1,delivered:1,read:1,failed:0,lastReceipt:"read"
+    count:4,pending:1,serverAccepted:1,delivered:1,read:1,failed:0,retryRequests:0,messagesWithRetry:0,lastReceipt:"read"
   });
 });
 test("no receipt available is not proof of failed decryption",()=>{
