@@ -15,6 +15,8 @@ SELECT format(
 ) \gexec
 REVOKE ALL ON DATABASE :"db_name" FROM PUBLIC;
 GRANT CONNECT ON DATABASE :"db_name" TO app_runtime, app_migrator, app_support;
+-- btree_gist é extensão confiável; apenas o papel de migration cria extensões.
+GRANT CREATE ON DATABASE :"db_name" TO app_migrator;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO app_runtime, app_migrator, app_support;
 GRANT CREATE ON SCHEMA public TO app_migrator;

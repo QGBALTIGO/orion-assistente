@@ -1,4 +1,4 @@
-# Orion Barbearias — FATIA 0 + FATIA 1
+# Orion Barbearias — FATIAS 0, 1 e 2
 
 Fundação de um SaaS gerenciado de agendamento por WhatsApp para barbearias.
 **Status: implementação de fundação, não pronta para clientes reais.**
@@ -136,3 +136,9 @@ docker compose --profile tools run --rm --build migrate
 
 O procedimento é idempotente e não elimina dados. Não use `down -v` como
 forma de atualização de uma instalação com informações persistentes.
+
+## FATIA 2 — Agenda interna
+
+Consulte [docs/booking-engine.md](docs/booking-engine.md) para rotas de disponibilidade,
+holds, confirmações, cancelamento, remarcação, isolamento e testes de concorrência.
+A aplicação ainda NÃO recebe mensagens WhatsApp nem permite agendamento pelo cliente final.

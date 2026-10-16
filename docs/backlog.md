@@ -11,8 +11,8 @@ fornecido pelo proprietário fora do repositório (não versionar segredos).
   interface de suporte em pt-BR, autenticação Bearer e viewer restrito.
   Os papéis WhatsApp owner/barber/assistant são cadastrados, não autenticação WhatsApp.
   A autorização operacional não substitui contas de staff e sessões futuras.
-- **FATIA 2:** motor de agenda sem WhatsApp, holds, protocolo, conflitos,
-  duração de serviços combinados e testes de concorrência (50 tentativas).
+- **FATIA 2 (em validação nesta branch):** agenda interna, holds, protocolo,
+  snapshots, cancelamento/remarcação, serviço combinado e teste de 50 tentativas.
 - **FATIA 3:** Meta WhatsApp Cloud API com autorização, webhooks assinados,
   máquina de estados e comandos administrativos permitidos.
 - **FATIA 4:** Google Calendar OAuth opt-in, outbox/retries, exportação CSV.
