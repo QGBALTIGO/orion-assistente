@@ -44,3 +44,14 @@ jobs:
         run: alembic upgrade head
       - name: Rodar suite incluindo RLS real
         run: pytest -q -ra
+      - name: Validar build Docker, Compose e health HTTP
+        env:
+          POSTGRES_PASSWORD: ci-postgres-only
+          APP_RUNTIME_PASSWORD: ci-runtime-only
+          APP_MIGRATOR_PASSWORD: ci-migrator-only
+        run: |
+          docker compose config --quiet
+          docker build -t orion-barbearias:fatia0 .
+          docker run -d --name orion-health -p 127.0.0.1:18000:8000 orion-barbearias:fatia0
+          trap 'docker rm -f orion-health >/dev/null 2>&1 || true' EXIT
+          curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 2 http://127.0.0.1:18000/health
