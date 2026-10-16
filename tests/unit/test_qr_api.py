@@ -37,3 +37,34 @@ async def test_qr_backend_fails_closed_without_configuration(monkeypatch):
             "Authorization":"Bearer support-token-for-test-1234567890123456"
         })
         assert response.status_code==503
+
+
+
+@pytest.mark.asyncio
+async def test_private_bridge_health_requires_real_reachability(monkeypatch):
+    from app import qr_api
+    async def reachable(path,method="GET",payload=None,query=None):
+        assert path=="/internal/status"
+        return {"status":"qr_ready","hasQr":True}
+    monkeypatch.setattr(qr_api,"_bridge",reachable)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="https://test") as client:
+        response=await client.get("/health/whatsapp")
+        assert response.status_code==200
+        assert response.json()=={"status":"ok","bridge":"reachable"}
+        assert "hasQr" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_private_bridge_health_fails_closed_when_network_unreachable(monkeypatch):
+    from app import qr_api
+    from fastapi import HTTPException
+    async def unavailable(path,method="GET",payload=None,query=None):
+        raise HTTPException(503,"socket connection refused")
+    monkeypatch.setattr(qr_api,"_bridge",unavailable)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="https://test") as client:
+        response=await client.get("/health/whatsapp")
+        assert response.status_code==503
+        assert "socket" not in response.text
+        assert "telefone" not in response.text
