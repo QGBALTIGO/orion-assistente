@@ -7,7 +7,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import {timingSafeEqual,randomUUID} from "node:crypto";
-import makeWASocket,{DisconnectReason,Browsers,useMultiFileAuthState} from "@whiskeysockets/baileys";
+import makeWASocket,{DisconnectReason,Browsers,useMultiFileAuthState,fetchLatestWaWebVersion} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import pino from "pino";
 import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode,connectionPhase} from "./core.mjs";
@@ -136,7 +136,20 @@ async function connect(){
   status="connecting";connectStartedAt=Date.now();pairingRequestedForGeneration=-1;
   try{
     const {state,saveCreds}=await useMultiFileAuthState(authDir);
+    // Prefer the WhatsApp Web client revision instead of a months-old
+    // bundled default. Official fetch may fail; in that case use bundled
+    // Baileys version rather than blocking the QR forever.
+    let currentVersion;
+    if(process.env.QR_WA_VERSION_AUTO!=="0"){
+      try{
+        const result=await fetchLatestWaWebVersion({timeout:3500});
+        const v=result.version;
+        if(result.isLatest&&Array.isArray(v)&&v.length===3&&
+          v.every(x=>Number.isSafeInteger(x)&&x>0))currentVersion=v;
+      }catch{}
+    }
     const client=makeWASocket({auth:state,browser:Browsers.windows("Chrome"),
+      ...(currentVersion?{version:currentVersion}:{}),
       printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,logger});
     socket=client;installListeners(client,mine,saveCreds);
   }catch{
