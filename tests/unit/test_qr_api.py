@@ -118,3 +118,58 @@ async def test_recipient_inspection_requires_auth_and_does_not_send(monkeypatch)
         assert okay.status_code==200
         assert okay.json()["hasLid"]
         assert calls==[("/internal/recipient","GET",{"phone":"5521997557364"})]
+
+
+@pytest.mark.asyncio
+async def test_connected_device_controls_reject_unauthorized_and_validate_confirmation(monkeypatch):
+    from app import qr_api
+    monkeypatch.setenv("SUPPORT_API_TOKEN","support-token-for-test-1234567890123456")
+    calls=[]
+    async def fake_bridge(path,method="GET",payload=None,query=None):
+        calls.append((path,method,payload))
+        return {"status":"ok"}
+    monkeypatch.setattr(qr_api,"_bridge",fake_bridge)
+    auth={"Authorization":"Bearer support-token-for-test-1234567890123456"}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="https://test") as client:
+        assert (await client.post("/api/v1/qr/restart",
+                                  json={"confirm":"REINICIAR"})).status_code==401
+        assert (await client.post("/api/v1/qr/disconnect",headers=auth,
+                                  json={"confirm":"CONFIRMO"})).status_code==422
+        assert (await client.post("/api/v1/qr/restart",headers=auth,
+                                  json={"confirm":"REINICIAR"})).status_code==200
+        assert (await client.post("/api/v1/qr/disconnect",headers=auth,
+                                  json={"confirm":"DESCONECTAR"})).status_code==200
+        assert (await client.post("/api/v1/qr/profile/refresh",headers=auth)).status_code==200
+    assert calls==[
+        ("/internal/restart","POST",{"confirm":"REINICIAR"}),
+        ("/internal/disconnect","POST",{"confirm":"DESCONECTAR"}),
+        ("/internal/profile/refresh","POST",{})
+    ]
+
+
+@pytest.mark.asyncio
+async def test_connected_settings_are_support_only_and_strict(monkeypatch):
+    from app import qr_api
+    monkeypatch.setenv("SUPPORT_API_TOKEN","support-token-for-test-1234567890123456")
+    calls=[]
+    async def fake_bridge(path,method="GET",payload=None,query=None):
+        calls.append((path,method,payload))
+        return {"settings":payload}
+    monkeypatch.setattr(qr_api,"_bridge",fake_bridge)
+    auth={"Authorization":"Bearer support-token-for-test-1234567890123456"}
+    data={"callBlocking":True,"callSchedule":True,
+          "callHours":{"start":"09:00","end":"18:00","weekdays":[1,2,3,4,5]}}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="https://test") as client:
+        assert (await client.post("/api/v1/qr/settings",json=data)).status_code==401
+        assert (await client.post("/api/v1/qr/settings",headers=auth,
+                                  json={**data,"unexpected":"x"})).status_code==422
+        assert (await client.post("/api/v1/qr/settings",headers=auth,
+                                  json={**data,"callHours":{"start":"bad","end":"18:00",
+                                                             "weekdays":[1,2,3]}})).status_code==422
+        okay=await client.post("/api/v1/qr/settings",headers=auth,json=data)
+        assert okay.status_code==200,okay.text
+        assert okay.json()["settings"]["callBlocking"] is True
+    assert len(calls)==1
+    assert calls[0][0:2]==("/internal/settings","POST")

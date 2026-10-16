@@ -105,6 +105,136 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 @media(max-width:790px){.app{display:block}.sidebar{position:static;height:auto;padding:14px 16px;gap:12px}.sidebar .brand{padding-left:0}.nav{flex-direction:row;overflow-x:auto}.nav-item{white-space:nowrap;padding:10px}.sidebar-bottom,.side-label{display:none}.content{padding:24px 16px 40px}.header{align-items:flex-start}.chat-grid{grid-template-columns:1fr}.chat-list{max-height:200px}.grid-form{grid-template-columns:1fr}.grid-form .wide{grid-column:1}}
 @media(max-width:450px){.method-selector{gap:8px}.method{padding:12px 5px}.method span:last-child{font-size:.69rem}.header{display:block}.header .pill{margin-top:12px}.card{padding:16px}}
 @media(prefers-reduced-motion:reduce){.btn{transition:none}}
+
+/* Central do dispositivo vinculado: dark, compacta, acessível e responsiva. */
+.device-hub{max-width:950px;margin:0 auto}
+.device-hero{background:linear-gradient(145deg,#111a18,#0a100f);border:1px solid #27463a;border-radius:20px;padding:27px;margin:0 0 18px;box-shadow:0 18px 45px #0004}
+.device-hero-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.device-id{display:flex;align-items:center;gap:17px;min-width:0}
+.device-photo{width:70px;height:70px;min-width:70px;border-radius:50%;background:radial-gradient(circle at 20% 20%,#246f55,#0a2c24);display:grid;place-items:center;color:#d5fbea;border:2px solid #356d54;overflow:hidden}
+.device-photo img{width:100%;height:100%;object-fit:cover}
+.device-name{font-size:1.3rem;font-weight:840;color:#f8fcf9;overflow-wrap:anywhere}
+.device-icon{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.device-muted{font-size:.79rem;color:#8fa89e}
+.device-online{display:inline-flex;gap:7px;align-items:center;padding:5px 10px;background:#133b2a;border:1px solid #245e3c;color:#70f1a6;border-radius:30px;font-size:.75rem;font-weight:750}
+.device-number{font-size:.98rem;font-weight:650;color:#dcf7eb;margin:16px 0 0;display:flex;align-items:center;gap:10px}
+.device-menu{position:relative}
+.device-menu summary{list-style:none;cursor:pointer}.device-menu summary::-webkit-details-marker{display:none}
+.device-menu nav{position:absolute;right:0;top:46px;min-width:220px;padding:7px;background:#0c1512;border:1px solid #365449;box-shadow:0 16px 45px #0009;z-index:10;border-radius:12px}
+.device-menu nav button{display:flex;width:100%;align-items:center;gap:9px;border:0;background:transparent;color:#daede3;padding:11px 12px;text-align:left;border-radius:7px}
+.device-menu nav button:hover{background:#163c2e}.device-menu nav button.danger-link{color:#ffa999}
+.device-info-row{padding-top:20px;margin-top:22px;border-top:1px solid #244238;display:flex;gap:18px;justify-content:space-between;flex-wrap:wrap}
+.device-stats{border:1px solid #27463a;border-radius:17px;background:#111a18;padding:21px;margin-bottom:18px}
+.device-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:16px}
+.device-stat{background:#080f0d;border:1px solid #264237;border-radius:12px;padding:18px 7px;text-align:center}
+.device-stat strong{font-size:clamp(1.32rem,2.7vw,2rem);line-height:1.2;font-variant-numeric:tabular-nums;display:block;color:#e5fff1}
+.device-stat small{display:block;margin-top:7px;text-transform:uppercase;letter-spacing:.08em}
+.device-stat-hint{margin:12px 0 0;font-size:.77rem;color:#98baa9}
+.device-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin-bottom:18px}
+.device-actions .btn{padding:13px 9px}
+.device-features{border:1px solid #27463a;border-radius:16px;background:#111a18;overflow:hidden;margin-bottom:19px}
+.device-feature{display:flex;align-items:center;justify-content:space-between;gap:13px;padding:17px 20px;border-bottom:1px solid #263e34}
+.device-feature:last-child{border-bottom:0}.device-feature strong{display:flex;align-items:center;gap:10px}
+.device-feature small{display:block;margin-top:3px}
+.device-feature .feature-state{white-space:nowrap;font-size:.73rem;border:1px solid #396752;color:#8feac2;padding:5px 9px;border-radius:40px;background:#0a3022}
+.device-feature .feature-state.off{color:#b7c5c0;background:#19231f;border-color:#3a4a41}
+.device-feature button{border:0;background:none;color:inherit;text-align:left;width:100%;padding:0;display:flex;justify-content:space-between;align-items:center}
+.device-feature button:disabled{cursor:not-allowed;opacity:.68}
+.device-dialog{color:#f0f9f4;background:#0b1411;border:1px solid #38604e;border-radius:18px;padding:25px;max-width:min(96vw,680px);width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 30px 100px #000b}
+.device-dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
+.device-dialog h2{margin-bottom:7px}.device-dialog .modal-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px;flex-wrap:wrap}
+.device-dialog .checkrow{display:flex;align-items:center;gap:11px;padding:10px 0;font-size:.92rem}
+.device-dialog .checkrow input{width:18px;height:18px;accent-color:#1eac7e;flex-shrink:0}
+.device-dialog fieldset{border:1px solid #2b4a3c;border-radius:11px;padding:13px 16px;margin-top:16px}
+.device-dialog legend{font-weight:750;padding:0 7px}.device-dialog small{display:block;margin-top:5px}
+.device-dialog .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.device-dialog pre{white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid #2a4639;background:#07100d;padding:13px;border-radius:9px;color:#a9d7c4}
+@media(max-width:740px){.device-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.device-actions{grid-template-columns:1fr}.device-dialog .form-grid{grid-template-columns:1fr}.device-hero{padding:18px}.device-feature{padding:15px 12px}}
+
+
+/* Orion / guided pairing — mobile-first interactive setup */
+.wizard-shell{--wizard-green:#0dbb8f;--wizard-dark:#07110e;width:min(100%,660px);margin:8px auto 38px;color:#f4fff9}
+.wizard-heading{text-align:center;margin:0 auto 24px}
+.wizard-eyebrow{font-size:.69rem;letter-spacing:.19em;color:#5be2b6;font-weight:800}
+.wizard-heading h2{font-size:clamp(1.5rem,3.4vw,1.95rem);margin:7px 0 4px}
+.wizard-heading p{margin:0;font-size:.9rem;color:#a3b9af}
+.wizard-methods{gap:12px;margin-bottom:17px}
+.wizard-method{min-height:126px;background:#080e0c;border:1px solid #2b443a;color:#e9fff5;border-radius:13px;padding:16px 10px;transition:transform .2s,border-color .2s,box-shadow .2s,background .2s}
+.wizard-method:hover{transform:translateY(-2px);border-color:#22a77f}
+.wizard-method.active{background:#0a2d24;border-color:#10be91;box-shadow:0 0 0 1px #1d8c6a5c}
+.wizard-method-icon{display:grid;place-items:center;color:#36d6ac}
+.wizard-method strong{font-size:.96rem}
+.wizard-method span:last-child{color:#a7b9ae;font-size:.75rem}
+.wizard-card{background:#090f0d;border:1px solid #315346;border-radius:17px;box-shadow:0 20px 55px #0005;padding:clamp(18px,3.8vw,29px);min-height:260px;overflow:hidden}
+.wizard-pane:not(.hidden){animation:wizard-enter .26s ease-out both}
+@keyframes wizard-enter{from{opacity:.1;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+.wizard-number{color:#49e3b3;font-size:.67rem;font-weight:820;letter-spacing:.17em}
+.wizard-card h3{font-size:clamp(1.17rem,3vw,1.45rem);color:#f3fdf8;line-height:1.3;margin:11px 0 7px}
+.wizard-card p{color:#aac1b5;font-size:.91rem;line-height:1.55}
+.wizard-welcome-symbol{width:66px;height:66px;border-radius:20px;background:#0d3d30;border:1px solid #276b52;color:#61e6ba;display:grid;place-items:center;margin:26px 0 14px}
+.wizard-step-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.wizard-plain{border:0;background:transparent;color:#a4d9c2;font-size:.79rem;padding:7px;cursor:pointer}
+.wizard-progress{margin:14px 0 8px;height:5px;border-radius:6px;background:#1a3329;overflow:hidden}
+.wizard-progress span{display:block;background:linear-gradient(90deg,#13aa7b,#5de9b8);height:100%;width:20%;border-radius:6px;transition:width .3s}
+.wizard-illustration{height:185px;display:grid;place-items:center;border:1px solid #194736;border-radius:15px;background:radial-gradient(ellipse at 50% 45%,#10392c,#07120e 74%);margin:19px 0}
+.wizard-graphic-svg{width:min(100%,340px);height:100%;overflow:visible}
+.wizard-phone{animation:wizard-float 3.2s ease-in-out infinite}
+.wizard-scan{animation:wizard-scan 2.8s linear infinite}
+.wizard-tap{transform-origin:225px 130px;animation:wizard-tap 2.2s ease-in-out infinite}
+@keyframes wizard-float{50%{transform:translateY(-3px)}}
+@keyframes wizard-scan{0%{transform:translateY(-42px);opacity:0}24%{opacity:1}75%{opacity:1}100%{transform:translateY(43px);opacity:0}}
+@keyframes wizard-tap{0%,100%{transform:scale(.98)}50%{transform:scale(1.1)}}
+.wizard-step-copy{min-height:100px}
+.wizard-steps-actions{display:flex;justify-content:space-between;gap:12px;margin-top:22px;flex-wrap:wrap}
+.wizard-primary{background:#0b9d77;color:#ecfff7;border:1px solid #19ac83;box-shadow:0 6px 20px #0b8b6530;font-weight:800}
+.wizard-primary:hover{background:#13ad82}
+.wizard-footer{display:flex;align-items:center;justify-content:center;gap:9px;padding:16px 12px;text-align:center;font-size:.76rem;color:#8da99a}
+.wizard-footer .dot{flex-shrink:0}
+.wizard-explain{margin-top:6px}
+.wizard-qr-wrap{width:min(100%,320px);min-height:280px;display:grid;place-items:center;margin:14px auto;background:#fff;border-radius:13px;padding:12px;box-shadow:0 12px 36px #0004}
+.wizard-qr-wrap img{width:min(100%,290px);aspect-ratio:1;object-fit:contain}
+.wizard-qr-placeholder{color:#20503d;text-align:center;min-height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+.wizard-qr-placeholder small{color:#4f7565}
+.wizard-qr-time{text-align:center;font-size:.86rem;color:#9ec4b2;margin:9px auto 5px}
+.wizard-qr-time strong{color:#67f4c0;font-size:1.1rem;font-variant-numeric:tabular-nums}
+.wizard-spinner{width:32px;height:32px;border:3px solid #8ad9b8;border-top-color:#0b815a;border-radius:50%;animation:wizard-spin .8s linear infinite}
+@keyframes wizard-spin{to{transform:rotate(360deg)}}
+.wizard-status{color:#65e2b3;min-height:20px;font-size:.9rem;margin:10px 0 0;text-align:center}
+.wizard-hint{text-align:center;font-size:.8rem!important;margin:8px 0}
+.wizard-phone-input{display:flex;gap:8px;align-items:center;border:1px solid #3f6554;border-radius:11px;background:#111b17;padding:0 13px}
+.wizard-phone-input span{font-weight:750;color:#69d4ac;white-space:nowrap}
+.wizard-phone-input input{border:0!important;box-shadow:none!important;background:transparent!important;width:100%;padding:14px 4px;min-width:0}
+.wizard-code-result{text-align:center;margin:14px 0}
+.wizard-code-check{font-size:1.8rem;color:#40dca3}
+.wizard-code-result .code-box{font-size:clamp(1.4rem,5vw,2.25rem);letter-spacing:.15em;border-radius:11px;background:#edf8f1;color:#096b50;border:0}
+.wizard-code-result .btn{max-width:340px;margin:auto}
+.wizard-success{text-align:center;padding:20px 0 12px}
+.wizard-success-ring{width:100px;height:100px;display:grid;place-items:center;margin:10px auto 22px;border-radius:50%;background:#103c2a}
+.wizard-success-ring svg{width:80px;height:80px;fill:none;stroke:#50efaa;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.wizard-success-ring circle{stroke-dasharray:183;stroke-dashoffset:183;animation:circle-draw .65s ease-out forwards}
+.wizard-success-ring path{stroke-dasharray:55;stroke-dashoffset:55;animation:circle-draw .5s .55s ease-out forwards}
+@keyframes circle-draw{to{stroke-dashoffset:0}}
+.wizard-success h3{margin:17px 0 8px}
+@media(max-width:640px){
+ .wizard-shell{width:100%;margin-top:0}
+ .wizard-card{border-radius:14px;padding:18px}
+ .wizard-methods{gap:9px}
+ .wizard-method{padding:13px 7px;min-height:111px}
+ .wizard-method-icon svg{width:26px;height:26px}
+ .wizard-illustration{height:165px}
+ .wizard-steps-actions{flex-direction:column-reverse}
+ .wizard-steps-actions>.btn{width:100%;min-height:47px}
+ .wizard-card input{font-size:16px}
+ .wizard-card .wizard-primary{min-height:46px}
+}
+@media(min-width:900px){.wizard-shell{width:min(100%,700px)}.wizard-illustration{height:200px}}
+@media(prefers-reduced-motion:reduce){
+ .wizard-pane:not(.hidden),.wizard-phone,.wizard-scan,.wizard-tap,.wizard-spinner,
+ .wizard-success-ring circle,.wizard-success-ring path{animation:none!important}
+ .wizard-progress span{transition:none}
+ .wizard-success-ring circle,.wizard-success-ring path{stroke-dashoffset:0}
+}
+
 </style>
 </head>
 <body>
@@ -145,79 +275,254 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
         <div><div class="eyebrow">Orion / Dispositivos</div><h1>Conectar WhatsApp</h1><p class="subhead">Vincule seu número em poucos passos. Escolha como deseja conectar.</p></div>
         <div class="pill"><span id="statusDot" class="dot amber"></span><span id="globalStatus">Verificando conexão</span></div>
       </div>
-      <div id="connectedBanner" class="connected-banner hidden">
-        <strong>✓ Dispositivo conectado com sucesso!</strong>
-        <small id="connectedPhone">A conexão está ativa. Você já pode abrir Conversas para ler e enviar mensagens manualmente.</small>
-        <div class="row" style="margin-top:15px"><button id="openChats" class="btn">Abrir conversas →</button></div>
-      </div>
-      <div class="method-selector" role="tablist" aria-label="Forma de conexão">
-        <button class="method active" data-method="qr" role="tab" aria-selected="true">
-          <span class="symbol">▦</span><strong>QR Code</strong><span>Escaneie com seu telefone</span>
-        </button>
-        <button class="method" data-method="code" role="tab" aria-selected="false">
-          <span class="symbol">▯</span><strong>Código</strong><span>Digite no seu telefone</span>
-        </button>
-      </div>
-      <div class="columns">
-        <div>
-          <div class="card">
-            <div class="eyebrow">Passo a passo</div>
-            <h2 id="guideTitle">Como conectar por QR Code</h2>
-            <p class="subhead">Siga estas instruções no WhatsApp do celular que será conectado.</p>
-            <div id="guideGraphic" class="illustration" aria-label="Ilustração de um celular lendo um QR">
-              <div class="phone"><div class="fakeqr"></div><span>Dispositivos conectados</span></div>
-              <div class="sheen">Simulação ilustrativa<br>do pareamento</div>
+
+      <div id="connectedCenter" class="device-hub hidden" aria-label="Central do WhatsApp conectado">
+        <div class="device-hero">
+          <div class="device-hero-top">
+            <div class="device-id">
+              <div class="device-photo" id="realPhotoFrame">
+                <span id="realPhotoFallback"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8L7.2 10a16 16 0 0 0 6.8 6.8l1.5-1.8a2 2 0 0 1 1.8-.6l3 .5a2 2 0 0 1 1.7 2Z"/></svg></span>
+                <img id="realWhatsAppPhoto" class="hidden" alt="Foto do perfil do WhatsApp conectado" referrerpolicy="no-referrer">
+              </div>
+              <div>
+                <div class="device-name" id="realWhatsAppName">Carregando perfil…</div>
+                <div class="row" style="gap:8px;margin-top:6px">
+                  <span class="device-online"><span class="dot green"></span> Conectado</span>
+                  <small>WhatsApp vinculado · Baileys</small>
+                </div>
+              </div>
             </div>
-            <div id="guideSteps" class="steps"></div>
-            <p class="note">A conexão utiliza um cliente de dispositivo vinculado não oficial. Use apenas um número sob sua administração. A conta pode sofrer desconexões ou restrições.</p>
+            <details class="device-menu" id="deviceOptions">
+              <summary class="btn secondary"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg> Opções</summary>
+              <nav aria-label="Ações do dispositivo conectado">
+                <button id="deviceMenuAlerts" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"/><circle cx="12" cy="12" r="4"/></svg> Alertas de conexão</button>
+                <button id="deviceMenuChats" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8L7.2 10a16 16 0 0 0 6.8 6.8l1.5-1.8a2 2 0 0 1 1.8-.6l3 .5a2 2 0 0 1 1.7 2Z"/></svg> Conversas</button>
+                <button id="deviceMenuSettings" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></svg> Configurações</button>
+                <button id="deviceMenuDiagnostics" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M5 15l4-4 3 3 6-7"/><path d="M16 7h2v2"/></svg> Diagnósticos</button>
+                <button id="deviceMenuRestart" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.4 6M20 4v7h-7"/></svg> Reiniciar conexão</button>
+                <button id="deviceMenuDisconnect" class="danger-link" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h14l-4-4m4 4-4 4M17 17H3l4-4m-4 4 4 4"/></svg> Desconectar / trocar</button>
+              </nav>
+            </details>
+          </div>
+          <div class="device-info-row">
+            <div><div class="device-muted">NÚMERO DO WHATSAPP</div>
+              <div class="device-number"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8L7.2 10a16 16 0 0 0 6.8 6.8l1.5-1.8a2 2 0 0 1 1.8-.6l3 .5a2 2 0 0 1 1.7 2Z"/></svg><span id="realWhatsAppPhone">Consultando…</span></div></div>
+            <div class="device-muted" id="deviceLastSync">Consultando a sincronização…</div>
           </div>
         </div>
-        <div>
-          <div id="qrPanel" class="card">
-            <div class="eyebrow">Conectar por QR</div>
-            <h2>Pronto para escanear?</h2>
-            <p>Abra Dispositivos conectados no WhatsApp e prepare a câmera do celular.</p>
-            <button id="startQr" class="btn full">Já fiz os passos, mostrar meu QR Code</button>
-            <div id="qrBox" class="qr-wrap">
-              <div id="qrEmpty" class="qr-empty"><span class="huge">▦</span><strong>Seu QR aparecerá aqui</strong><p>Clique no botão acima quando estiver pronto.</p></div>
+        <section class="device-stats" aria-labelledby="deviceStatsTitle">
+          <div class="row" style="justify-content:space-between">
+            <strong id="deviceStatsTitle"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M5 15l4-4 3 3 6-7"/><path d="M16 7h2v2"/></svg> Estatísticas de mensagens</strong>
+            <small>Dados reais do Orion</small>
+          </div>
+          <div class="device-stat-grid">
+            <div class="device-stat"><strong id="statToday">—</strong><small>Hoje</small></div>
+            <div class="device-stat"><strong id="statWeek">—</strong><small>7 dias</small></div>
+            <div class="device-stat"><strong id="statMonth">—</strong><small>30 dias</small></div>
+            <div class="device-stat"><strong id="statTotal">—</strong><small>Total registrado</small></div>
+          </div>
+          <p class="device-stat-hint" id="statsCoverage">Carregando período medido…</p>
+        </section>
+        <div class="device-actions">
+          <button class="btn secondary" id="deviceRestart" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.4 6M20 4v7h-7"/></svg> Reiniciar</button>
+          <button class="btn secondary" id="deviceDiagnostics" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M5 15l4-4 3 3 6-7"/><path d="M16 7h2v2"/></svg> Diagnósticos</button>
+          <button class="btn secondary" id="deviceSettings" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></svg> Configurações</button>
+        </div>
+        <section class="device-features" aria-label="Recursos do dispositivo">
+          <div class="device-feature"><button id="deviceChatbot" type="button">
+            <span><strong><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="14" rx="3"/><path d="M12 3v4m-5 6h.01M17 13h.01M8 17h8"/></svg> Chatbot</strong><small id="deviceChatbotHint">Conexão com o agendamento</small></span>
+            <span class="feature-state off" id="deviceChatbotState">Desativado</span>
+          </button></div>
+          <div class="device-feature"><button id="deviceTranscript" type="button">
+            <span><strong><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"/></svg> Transcrição de áudio</strong><small id="deviceTranscriptHint">Reconhecimento com Whisper privado</small></span>
+            <span class="feature-state off" id="deviceTranscriptState">Desativado</span>
+          </button></div>
+          <div class="device-feature"><button id="deviceCallBlock" type="button">
+            <span><strong><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg> Bloquear ligações</strong><small>Horários, exceções e resposta opcional</small></span>
+            <span class="feature-state off" id="deviceCallBlockState">Desativado</span>
+          </button></div>
+        </section>
+        <p class="device-muted">Conector não oficial de teste: alguns eventos podem não ser entregues pelo WhatsApp. Nenhuma função é ativada automaticamente.</p>
+      </div>
+      <dialog id="deviceSettingsDialog" class="device-dialog" aria-labelledby="deviceSettingsTitle">
+        <form id="deviceSettingsForm">
+          <h2 id="deviceSettingsTitle">Configurações do dispositivo</h2>
+          <p>Preferências desta conexão, salvas em armazenamento criptografado.</p>
+          <fieldset>
+            <legend>Atendimento e áudios</legend>
+            <label class="checkrow"><input id="settingsChatbot" type="checkbox"> Ativar chatbot de agendamentos</label>
+            <small id="settingsChatbotHint">Exige integração do canal vinculado com a agenda.</small>
+            <label class="checkrow"><input id="settingsTranscription" type="checkbox"> Transcrever automaticamente áudios recebidos</label>
+            <small id="settingsTranscriptionHint">A transcrição fica apenas na caixa interna. Nenhuma resposta é enviada.</small>
+            <label for="settingsLanguage">Idioma dos áudios</label>
+            <select id="settingsLanguage"><option value="auto">Detectar automaticamente</option><option value="pt">Português</option><option value="en">Inglês</option><option value="es">Espanhol</option></select>
+          </fieldset>
+          <fieldset>
+            <legend>Bloqueio de ligações</legend>
+            <label class="checkrow"><input id="settingsBlockCalls" type="checkbox"> Rejeitar chamadas recebidas</label>
+            <label class="checkrow"><input id="settingsCallReply" type="checkbox"> Enviar resposta automática após chamada rejeitada</label>
+            <small>Ative somente após informar os contatos. Evita repetir mensagens para um mesmo número nesta sessão.</small>
+            <label for="settingsReplyText">Mensagem após rejeição</label>
+            <textarea id="settingsReplyText" maxlength="240"></textarea>
+            <label for="settingsAllowedCallers">Sempre permitir ligações destes números (DDI + DDD, um por linha)</label>
+            <textarea id="settingsAllowedCallers" placeholder="5567999999999"></textarea>
+            <label class="checkrow"><input id="settingsCallSchedule" type="checkbox"> Bloquear fora do horário de atendimento</label>
+            <div class="form-grid">
+              <div><label for="settingsStart">Das</label><input id="settingsStart" type="time" value="09:00"></div>
+              <div><label for="settingsEnd">Até</label><input id="settingsEnd" type="time" value="18:00"></div>
+            </div>
+            <label for="settingsWeekdays">Dias permitidos</label>
+            <select id="settingsWeekdays" multiple size="7">
+              <option value="0">Domingo</option><option value="1" selected>Segunda-feira</option>
+              <option value="2" selected>Terça-feira</option><option value="3" selected>Quarta-feira</option>
+              <option value="4" selected>Quinta-feira</option><option value="5" selected>Sexta-feira</option>
+              <option value="6">Sábado</option>
+            </select>
+            <small>Fuso horário: Mato Grosso do Sul (America/Campo_Grande). Fora da janela, a chamada é rejeitada.</small>
+          </fieldset>
+          <p id="deviceSettingsFeedback" class="feedback" role="status" aria-live="polite"></p>
+          <div class="modal-actions">
+            <button id="deviceSettingsCancel" type="button" class="btn ghost">Cancelar</button>
+            <button id="deviceSettingsSave" type="submit" class="btn">Salvar alterações</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="deviceAlertsDialog" class="device-dialog" aria-labelledby="deviceAlertsTitle">
+        <h2 id="deviceAlertsTitle">Alertas operacionais</h2>
+        <p>Informações reais da instância conectada, sem mensagens fictícias.</p>
+        <ul id="deviceAlertsList"></ul>
+        <div class="modal-actions"><button id="deviceAlertsClose" class="btn secondary" type="button">Fechar</button></div>
+      </dialog>
+      <dialog id="deviceDiagnosticsDialog" class="device-dialog" aria-labelledby="deviceDiagnosticsTitle">
+        <h2 id="deviceDiagnosticsTitle">Diagnósticos da conexão</h2>
+        <p>Somente estados operacionais, sem expor sessões Signal ou credenciais.</p>
+        <pre id="deviceDiagnosticsText">Consultando…</pre>
+        <div class="modal-actions"><button id="deviceDiagnosticsClose" class="btn secondary" type="button">Fechar</button></div>
+      </dialog>
+      <div id="disconnectedWizard" class="wizard-shell">
+        <div class="wizard-heading">
+          <span class="wizard-eyebrow">VINCULAR DISPOSITIVO</span>
+          <h2>Conecte seu WhatsApp</h2>
+          <p>Um passo de cada vez. Sem complicação.</p>
+        </div>
+        <div class="method-selector wizard-methods" role="group" aria-label="Escolha a forma de conexão">
+          <button type="button" class="method wizard-method" data-method="qr" aria-pressed="false">
+            <span class="wizard-method-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.8" y="2.8" width="7" height="7" rx="1"/><rect x="14.2" y="2.8" width="7" height="7" rx="1"/><rect x="2.8" y="14.2" width="7" height="7" rx="1"/><path d="M14.5 14.5h2v2h-2zm4 0H21m-2.5 4H21M14.5 19.5v1.5"/></svg></span>
+            <strong>QR Code</strong><span>Escaneie com seu telefone</span>
+          </button>
+          <button type="button" class="method wizard-method" data-method="code" aria-pressed="false">
+            <span class="wizard-method-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg></span>
+            <strong>Código</strong><span>Digite no seu telefone</span>
+          </button>
+        </div>
+        <div class="wizard-card" id="wizardCard" aria-live="polite" aria-atomic="false">
+          <div id="wizardChoose" class="wizard-pane">
+            <span class="wizard-number">01 / 03</span>
+            <div class="wizard-welcome-symbol"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg></div>
+            <h3>Como prefere conectar?</h3>
+            <p>Escolha uma das opções acima. Você verá somente as instruções necessárias.</p>
+          </div>
+          <div id="wizardTutorial" class="wizard-pane hidden">
+            <div class="wizard-step-top">
+              <span class="wizard-number" id="wizardStepCount">PASSO 1 DE 5</span>
+              <button id="wizardTutorialClose" type="button" class="wizard-plain" aria-label="Voltar à escolha de método">Trocar método</button>
+            </div>
+            <div class="wizard-progress" role="progressbar" id="wizardProgress" aria-label="Progresso do tutorial" aria-valuemin="1" aria-valuemax="5" aria-valuenow="1">
+              <span id="wizardProgressFill"></span>
+            </div>
+            <div id="guideGraphic" class="wizard-illustration"><svg viewBox="0 0 340 178" role="img" aria-label="Ilustração animada de um celular acessando Dispositivos conectados" class="wizard-graphic-svg">
+<defs><linearGradient id="wf" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#1ed4a0"/><stop offset="1" stop-color="#076950"/></linearGradient></defs>
+<circle cx="170" cy="89" r="79" fill="#0b4234" opacity=".25"/><circle cx="170" cy="89" r="60" fill="#147557" opacity=".13"/>
+<g class="wizard-phone">
+<rect x="124" y="10" width="92" height="156" rx="17" fill="#061713" stroke="#418c73" stroke-width="2.5"/>
+<rect x="132" y="24" width="76" height="132" rx="10" fill="#0c2d23"/>
+<path d="M155 17h30" stroke="#86d8bb" stroke-width="3" stroke-linecap="round"/>
+<circle cx="170" cy="146" r="3" fill="#6aba9b"/>
+<g stroke="#78e5bc" fill="none" stroke-width="2">
+<rect x="149" y="43" width="17" height="17" rx="2"/><rect x="175" y="43" width="17" height="17" rx="2"/>
+<rect x="149" y="69" width="17" height="17" rx="2"/><path d="M175 70h7v7h-7zm10 0h7m-7 7h7m-17 8h17"/>
+</g><path d="M149 100h43m-43 10h34" stroke="#549a7d" stroke-width="4" stroke-linecap="round"/>
+</g><path class="wizard-scan" d="M120 92h100" stroke="#2cf2b8" stroke-width="3" stroke-linecap="round"/>
+<g class="wizard-tap"><circle cx="226" cy="126" r="18" fill="#18a67b" opacity=".20"/>
+<path d="M222 144v-21a5 5 0 0 1 10 0v9l3-3a6 6 0 0 1 7 0l7 8v7" fill="#77ebc0" stroke="#0b3f31" stroke-width="2" stroke-linejoin="round"/></g>
+<path d="M82 89h20m136 0h20" stroke="#267b60" stroke-width="2" stroke-dasharray="3 6"/>
+</svg></div>
+            <div class="wizard-step-copy">
+              <h3 id="guideTitle">Abra o WhatsApp no celular</h3>
+              <p id="wizardStepDescription">Pode ser WhatsApp ou WhatsApp Business.</p>
+            </div>
+            <div id="guideSteps" class="hidden" aria-hidden="true"></div>
+            <div class="wizard-steps-actions">
+              <button id="wizardPrevious" type="button" class="btn ghost">Voltar</button>
+              <button id="wizardNext" type="button" class="btn wizard-primary">Próximo passo <span aria-hidden="true">→</span></button>
+            </div>
+          </div>
+          <div id="qrPanel" class="wizard-pane hidden">
+            <span class="wizard-number">ETAPA FINAL • QR CODE</span>
+            <h3>Escaneie o código</h3>
+            <p class="wizard-explain">Abra <strong>Dispositivos conectados</strong> e escaneie usando o WhatsApp do celular.</p>
+            <div class="wizard-qr-time">Tempo restante: <strong id="qrCountdown" aria-live="off">—</strong></div>
+            <div id="qrBox" class="wizard-qr-wrap">
+              <div id="qrEmpty" class="wizard-qr-placeholder">
+                <span class="wizard-spinner" aria-hidden="true"></span>
+                <strong>Preparando QR Code…</strong>
+                <small>Essa etapa só começa depois do tutorial.</small>
+              </div>
               <img id="qrImage" class="hidden" alt="QR Code temporário para vincular seu WhatsApp">
             </div>
-            <p id="qrStatus" class="status-text" role="status" aria-live="polite"></p>
-            <p id="qrFeedback" class="feedback" aria-live="polite">O código se atualiza automaticamente quando necessário.</p>
-            <button id="refreshQr" class="btn secondary">Atualizar ou tentar novamente</button>
+            <p id="qrStatus" class="wizard-status" role="status" aria-live="polite"></p>
+            <p id="qrFeedback" class="wizard-hint" aria-live="polite">Aguardando resposta do WhatsApp…</p>
+            <div class="wizard-steps-actions">
+              <button id="wizardQrBack" class="btn ghost" type="button">Voltar</button>
+              <button id="refreshQr" type="button" class="btn wizard-primary">Atualizar conexão</button>
+            </div>
+            <button id="startQr" type="button" class="hidden">Preparar QR Code</button>
           </div>
-          <div id="codePanel" class="card hidden">
-            <div class="eyebrow">Conectar por código</div>
-            <h2>Vincule usando seu número</h2>
-            <p>Não precisa escanear. Vamos gerar um código de oito caracteres que você digitará no WhatsApp.</p>
-            <form id="pairForm">
-              <label for="pairPhone">Telefone com DDI e DDD</label>
-              <input id="pairPhone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="+55 67 99999-9999" maxlength="26">
-              <small>Digite o número que está instalado no WhatsApp, incluindo código do país.</small>
-              <button class="btn full" type="submit" style="margin-top:18px">Gerar código de emparelhamento</button>
-              <button id="retryCode" class="btn secondary full" type="button" style="margin-top:9px">Reiniciar conexão para novo código</button>
-            </form>
-            <div id="codeResult" class="hidden">
-              <p style="margin:20px 0 5px">Digite este código no seu WhatsApp:</p>
+          <div id="codePanel" class="wizard-pane hidden">
+            <span class="wizard-number">ETAPA FINAL • CÓDIGO</span>
+            <div id="wizardCodeInput">
+              <h3>Informe o número do WhatsApp</h3>
+              <p class="wizard-explain">O mesmo número que está no aparelho a conectar, com DDI e DDD.</p>
+              <form id="pairForm">
+                <label for="pairPhone">Número do WhatsApp</label>
+                <div class="wizard-phone-input"><span aria-hidden="true">+55</span><input id="pairPhone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="11 99999-9999" maxlength="26"></div>
+                <small>Informe seu número completo, incluindo o código do país (+55).</small>
+                <button id="wizardGenerate" class="btn wizard-primary full" type="submit">Gerar código de emparelhamento</button>
+              </form>
+            </div>
+            <div id="codeResult" class="hidden wizard-code-result">
+              <div class="wizard-code-check" aria-hidden="true">✓</div>
+              <h3>Digite este código no WhatsApp</h3>
+              <p>Em Dispositivos conectados, escolha <strong>Conectar com número de telefone</strong>.</p>
               <div class="code-box" id="pairCode" aria-live="polite"></div>
-              <p class="footer-hint">Código temporário. Se expirar, gere outro.</p>
-              <button class="btn secondary full" id="copyCode">Copiar código</button>
+              <div class="wizard-qr-time">Expira em <strong id="codeCountdown">—</strong></div>
+              <button id="copyCode" class="btn wizard-primary full" type="button">Copiar código</button>
+              <p class="wizard-hint">Aguarde a confirmação automática da conexão.</p>
             </div>
-            <p id="codeStatus" class="feedback" role="status" aria-live="polite"></p>
-            <p class="note">Algumas versões do WhatsApp rejeitam códigos de clientes não oficiais mesmo após a geração. Se isso ocorrer, teste o QR Code e não repita muitos códigos em sequência.</p>
-          </div>
-          <div class="card">
-            <div class="row" style="justify-content:space-between">
-              <div><h2>Estado da conexão</h2><p class="subhead" style="margin-bottom:0">Atualização em tempo real.</p></div>
-              <button id="statusRefresh" class="btn ghost">Atualizar</button>
-              <button id="repairConnection" class="btn secondary hidden">Refazer vínculo</button>
+            <p id="codeStatus" class="wizard-status" role="status" aria-live="polite"></p>
+            <div class="wizard-steps-actions">
+              <button id="wizardCodeBack" class="btn ghost" type="button">Voltar</button>
+              <button id="retryCode" class="btn secondary" type="button">Solicitar novo código</button>
             </div>
-            <div id="deviceState" class="pill" style="margin-top:15px">Aguardando resposta</div>
-            <p class="footer-hint" id="linkedMode">A conexão do servidor não depende da internet do celular depois da vinculação.</p>
-            <p class="footer-hint" id="ingestionState" role="status" aria-live="polite">Verificando sincronização de mensagens...</p>
-            <p class="footer-hint" id="inboxState">As mensagens recentes são mantidas de forma criptografada no servidor por até sete dias.</p>
-            <p class="footer-hint" style="margin:13px 0 0">O WhatsApp pode revogar a sessão se o celular principal ficar sem utilizar o aplicativo por mais de 14 dias. Respostas automáticas permanecem desligadas.</p>
           </div>
+          <div id="wizardSuccess" class="wizard-pane hidden wizard-success" role="status" aria-live="polite">
+            <div class="wizard-success-ring"><svg viewBox="0 0 64 64" role="img" aria-label="Conexão concluída"><circle cx="32" cy="32" r="29"/><path d="M18 33l10 10 19-21"/></svg></div>
+            <span class="device-online"><span class="dot green"></span> Conectado com sucesso</span>
+            <h3>Seu WhatsApp está pronto!</h3>
+            <p>Dispositivo vinculado. A central será aberta em instantes.</p>
+            <button id="wizardOpenCenter" class="btn wizard-primary" type="button">Abrir minha central →</button>
+          </div>
+        </div>
+        <div class="wizard-footer">
+          <span class="dot amber" aria-hidden="true"></span>
+          <span id="wizardConnectionHint">Conexão protegida. Nenhuma mensagem é enviada durante o vínculo.</span>
+          <button id="wizardRecover" type="button" class="btn ghost hidden">Refazer vínculo</button>
+        </div>
+        <div id="wizardLegacySupport" class="hidden" aria-hidden="true">
+          <div id="connectedBanner"><span id="connectedPhone"></span><button id="openChats" type="button">Abrir conversas</button></div>
+          <button id="statusRefresh" type="button">Atualizar status</button>
+          <button id="repairConnection" type="button">Refazer vínculo</button>
+          <span id="deviceState"></span><span id="ingestionState"></span><span id="inboxState"></span>
         </div>
       </div>
     </section>
@@ -291,26 +596,25 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 (()=>{
 "use strict";
 const $=id=>document.getElementById(id);
+let authEpoch=0;
 let csrf="",page="dispositivo",method="qr",showQr=false,deviceStatus="starting",lastDeviceStatus="starting",pairExpiresAt=0,
     statusTimer=null,chatTimer=null,selectedPhone="",chatsBusy=false;
+let wizardStep="choose",wizardIndex=0,wizardAttempted=false,wizardSuccessUntil=0,
+    wizardSuccessDone=false,wizardQrDeadline=0,wizardClocks=null,statusSequence=0;
 const steps={
  qr:[
-  ["Abra o WhatsApp","No celular que será conectado, abra o WhatsApp ou WhatsApp Business."],
-  ["Entre nas configurações","No Android, toque no menu ⋮. No iPhone, abra Configurações."],
-  ["Acesse Dispositivos conectados","Procure a opção Dispositivos conectados."],
-  ["Confira conexões antigas","Se já vinculou o Orion neste aparelho, remova a sessão anterior caso queira substituí-la."],
-  ["Evite conexões duplicadas","Se tiver outros bots vinculados, avalie possíveis conflitos antes de continuar."],
-  ["Toque em Conectar dispositivo","Autorize o pareamento no WhatsApp. Será aberta a câmera."],
-  ["Escaneie o código","Clique em Mostrar meu QR Code aqui ao lado e aponte a câmera do WhatsApp."]
+  ["Abra o WhatsApp","No celular, abra o WhatsApp ou WhatsApp Business."],
+  ["Acesse Dispositivos conectados","No Android, use o menu ⋮; no iPhone, abra Configurações."],
+  ["Confira outros vínculos","Se já houver uma sessão antiga deste mesmo bot, revise-a antes de adicionar outra."],
+  ["Toque em Conectar dispositivo","Prepare a câmera do aplicativo para escanear o QR Code."],
+  ["Pronto para escanear?","Toque em Mostrar QR. Ele é temporário e deve ser lido no próprio WhatsApp."]
  ],
  code:[
-  ["Abra o WhatsApp","No telefone principal, abra o WhatsApp ou WhatsApp Business."],
-  ["Vá para Dispositivos conectados","Acesse Configurações (ou menu ⋮) → Dispositivos conectados."],
-  ["Confira sessões anteriores","Se houver uma conexão antiga do Orion, remova-a caso queira fazer um novo vínculo."],
-  ["Revise outros bots conectados","Múltiplas automações no mesmo número podem causar conflitos."],
-  ["Toque em Conectar dispositivo","Acesse o fluxo de vincular um novo dispositivo."],
-  ["Escolha Conectar com número de telefone","No celular, selecione a alternativa de inserir código."],
-  ["Gere e digite o código","Digite o número aqui ao lado e insira o código de oito caracteres no WhatsApp."]
+  ["Abra o WhatsApp","No celular, abra o WhatsApp ou WhatsApp Business."],
+  ["Entre em Dispositivos conectados","No Android, use o menu ⋮; no iPhone, abra Configurações."],
+  ["Escolha Conectar dispositivo","Na tela de conexão, selecione Conectar com número de telefone."],
+  ["Confira o número da conta","Use DDI, DDD e o número que está ativo nesse WhatsApp."],
+  ["Pronto para gerar?","Avance, gere um código novo e digite-o no WhatsApp antes de expirar."]
  ]
 };
 const fields={
@@ -334,24 +638,26 @@ async function api(url,method="GET",data){
  const response=await fetch(url,{method,headers,body:data===undefined?undefined:JSON.stringify(data),credentials:"same-origin",cache:"no-store"});
  if(!response.ok){
    const json=await response.json().catch(()=>({}));
-   if(response.status===401&&url!=="/auth/login")showLogin();
+   if(response.status===401&&url!=="/auth/login"&&url!=="/auth/me")showLogin();
    throw Error(errorMessage(json,response.status));
  }
  return response.json();
 }
 function showLogin(){
- csrf="";clearInterval(statusTimer);clearInterval(chatTimer);
+ csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);
  $("appView").classList.add("hidden");$("loginView").classList.remove("hidden");
 }
 function showApp(){
  $("loginView").classList.add("hidden");$("appView").classList.remove("hidden");
  statusTimer&&clearInterval(statusTimer);statusTimer=setInterval(updateStatus,4500);
+ wizardClocks&&clearInterval(wizardClocks);
+ wizardClocks=setInterval(updateWizardClocks,1000);
  updateStatus();loadTenants();
  const desired=new URLSearchParams(location.search).get("aba");
  openPage(["conversas","cadastros"].includes(desired)?desired:"dispositivo");
 }
 $("loginForm").addEventListener("submit",async ev=>{
- ev.preventDefault();$("loginError").textContent="";
+ ev.preventDefault();authEpoch++;$("loginError").textContent="";
  try{
   const r=await fetch("/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},
     credentials:"same-origin",body:JSON.stringify({username:$("username").value,password:$("password").value})});
@@ -360,7 +666,14 @@ $("loginForm").addEventListener("submit",async ev=>{
   csrf=payload.csrf;$("password").value="";showApp();
  }catch(ex){$("loginError").textContent=ex.message;}
 });
-(async()=>{try{const r=await api("/auth/me");csrf=r.csrf;showApp();}catch{showLogin()}})();
+(async()=>{
+ const epoch=authEpoch;
+ try{
+   const r=await api("/auth/me");
+   if(epoch!==authEpoch)return;
+   csrf=r.csrf;showApp();
+ }catch{if(epoch===authEpoch)showLogin()}
+})();
 function openPage(target){
  page=target;
  document.querySelectorAll(".page").forEach(x=>x.classList.toggle("hidden",x.id!=="page-"+target));
@@ -375,38 +688,309 @@ $("openChats").addEventListener("click",()=>openPage("conversas"));
 $("logout").addEventListener("click",async()=>{
  try{await api("/auth/logout","POST",{});}finally{showLogin();}
 });
-function renderGuide(){
- $("guideTitle").textContent=method==="qr"?"Como conectar pelo QR Code":"Como conectar pelo código";
- $("guideSteps").replaceChildren();
- for(const [i,step] of steps[method].entries()){
-  const line=document.createElement("div");line.className="step";
-  const mark=document.createElement("div");mark.className="step-mark";mark.textContent=i===0?"▯":"✓";
-  const copy=document.createElement("div"),caption=document.createElement("small");
-  caption.textContent="Passo "+(i+1);const title=document.createElement("strong");
-  title.textContent=step[0];const body=document.createElement("p");body.textContent=step[1];
-  copy.append(caption,title,body);line.append(mark,copy);$("guideSteps").append(line);
- }
- $("qrPanel").classList.toggle("hidden",method!=="qr");
- $("codePanel").classList.toggle("hidden",method!=="code");
- document.querySelectorAll("[data-method]").forEach(x=>{
-   const active=x.dataset.method===method;x.classList.toggle("active",active);
-   x.setAttribute("aria-selected",String(active));
- });
+function countdownLabel(ms) {
+ const seconds=Math.max(0,Math.ceil(ms/1000));
+ return seconds?seconds+" s":"expirado";
 }
-document.querySelectorAll("[data-method]").forEach(x=>x.addEventListener("click",()=>{
- method=x.dataset.method;renderGuide();
-}));
+function updateWizardClocks(){
+ if(wizardStep==="qr"){
+   const expired=wizardQrDeadline>0&&Date.now()>=wizardQrDeadline;
+   $("qrCountdown").textContent=wizardQrDeadline?
+     countdownLabel(wizardQrDeadline-Date.now()):"aguardando";
+   if(expired){
+     $("qrStatus").textContent="QR Code expirado.";
+     $("qrFeedback").textContent="Use Atualizar conexão para solicitar um código novo.";
+     $("qrImage").classList.add("hidden");$("qrEmpty").classList.remove("hidden");
+     $("qrEmpty").querySelector("strong").textContent="O QR expirou";
+   }
+ }
+ if(wizardStep==="code_ready"){
+   const seconds=pairExpiresAt?countdownLabel(pairExpiresAt-Date.now()):"—";
+   $("codeCountdown").textContent=seconds;
+   if(pairExpiresAt>0&&Date.now()>=pairExpiresAt){
+     pairExpiresAt=0;wizardStep="code_form";renderGuide();
+     $("codeStatus").textContent="O código expirou. Solicite um novo código de pareamento.";
+   }
+ }
+}
+function renderGuide(){
+ const panes={
+   choose:"wizardChoose",tutorial:"wizardTutorial",qr:"qrPanel",
+   code_form:"codePanel",code_ready:"codePanel",success:"wizardSuccess"
+ };
+ for(const id of ["wizardChoose","wizardTutorial","qrPanel","codePanel","wizardSuccess"])
+   $(id).classList.toggle("hidden",id!==panes[wizardStep]);
+ document.querySelectorAll("[data-method]").forEach(x=>{
+   const selected=wizardStep!=="choose"&&x.dataset.method===method;
+   x.classList.toggle("active",selected);
+   x.setAttribute("aria-pressed",String(selected));
+ });
+ if(wizardStep==="tutorial"){
+   const total=steps[method].length,current=steps[method][wizardIndex];
+   $("guideTitle").textContent=current[0];
+   $("wizardStepDescription").textContent=current[1];
+   $("wizardStepCount").textContent="PASSO "+(wizardIndex+1)+" DE "+total;
+   $("wizardProgressFill").style.width=(((wizardIndex+1)/total)*100)+"%";
+   $("wizardProgress").setAttribute("aria-valuemax",String(total));
+   $("wizardProgress").setAttribute("aria-valuenow",String(wizardIndex+1));
+   $("wizardPrevious").textContent=wizardIndex?"Passo anterior":"Escolher método";
+   $("wizardNext").textContent=wizardIndex===total-1?
+      (method==="qr"?"Mostrar meu QR Code →":"Informar meu número →"):"Próximo passo →";
+ }
+ if(wizardStep==="code_form"||wizardStep==="code_ready"){
+   $("wizardCodeInput").classList.toggle("hidden",wizardStep!=="code_form");
+   $("codeResult").classList.toggle("hidden",wizardStep!=="code_ready");
+   $("retryCode").classList.toggle("hidden",wizardStep!=="code_ready");
+ }
+ if(wizardStep==="qr"||wizardStep==="code_ready")updateWizardClocks();
+}
+function selectWizardMode(next){
+ if(!["qr","code"].includes(next)||deviceStatus==="connected")return;
+ method=next;wizardIndex=0;wizardStep="tutorial";showQr=false;
+ $("codeStatus").textContent="";$("qrStatus").textContent="";
+ renderGuide();
+}
+document.querySelectorAll("[data-method]").forEach(x=>
+ x.addEventListener("click",()=>selectWizardMode(x.dataset.method)));
+$("wizardTutorialClose").addEventListener("click",()=>{
+ wizardStep="choose";showQr=false;renderGuide();
+});
+$("wizardPrevious").addEventListener("click",()=>{
+ if(wizardIndex>0)wizardIndex--;
+ else wizardStep="choose";
+ renderGuide();
+});
+$("wizardNext").addEventListener("click",async()=>{
+ if(wizardStep!=="tutorial")return;
+ const count=steps[method].length;
+ if(wizardIndex<count-1){wizardIndex++;renderGuide();return}
+ if(method==="qr"){
+   wizardStep="qr";showQr=true;wizardAttempted=true;renderGuide();
+   await attemptQrRefresh();
+ }else{wizardStep="code_form";renderGuide();$("pairPhone").focus()}
+});
+$("wizardQrBack").addEventListener("click",()=>{
+ showQr=false;wizardStep="tutorial";wizardIndex=steps.qr.length-1;renderGuide();
+});
+$("wizardCodeBack").addEventListener("click",()=>{
+ if(wizardStep==="code_ready"){wizardStep="code_form"}
+ else{wizardStep="tutorial";wizardIndex=steps.code.length-1}
+ renderGuide();
+});
+$("wizardRecover").addEventListener("click",()=>{$("repairConnection").click()});
+$("wizardOpenCenter").addEventListener("click",async()=>{
+ wizardSuccessUntil=0;wizardSuccessDone=true;
+ await updateStatus();
+});
 function statusWord(s){
  return ({connected:"Conectado",qr_ready:"Aguardando leitura",qr_expired:"QR expirou",
  qr_delayed:"QR demorando a carregar",pair_failed:"Pareamento recusado",pair_expired:"Código expirado",
  connecting:"Preparando",reconnecting:"Reconectando",logged_out:"Sessão desvinculada",
  error:"Falha na conexão",starting:"Iniciando",pairing:"Aguardando código no celular"})[s]||"Aguardando";
 }
+let connectedSnapshot=null;
+function renderConnectedCenter(data){
+ connectedSnapshot=data;
+ const active=data.status==="connected";
+ const successPlaying=active&&wizardStep==="success"&&Date.now()<wizardSuccessUntil;
+ $("connectedCenter").classList.toggle("hidden",!active||successPlaying);
+ $("disconnectedWizard").classList.toggle("hidden",active&&!successPlaying);
+ const headerPill=$("page-dispositivo").querySelector(".header .pill");
+ if(headerPill)headerPill.classList.toggle("hidden",active);
+ const sub=$("page-dispositivo").querySelector(".header .subhead");
+ if(sub)sub.textContent=active?"Seu número, métricas e configurações em um só lugar.":"Vincule seu número em poucos passos.";
+ if(!active)return;
+ const profile=data.profile||{};
+ $("realWhatsAppName").textContent=profile.name||"Nome não disponibilizado pelo WhatsApp";
+ $("realWhatsAppPhone").textContent=data.phone?"+"+data.phone:"Número indisponível";
+ const photo=$("realWhatsAppPhoto"),fallback=$("realPhotoFallback");
+ if(profile.photoUrl && /^https:\/\//.test(profile.photoUrl)){
+   if(photo.src!==profile.photoUrl)photo.src=profile.photoUrl;
+   photo.classList.remove("hidden");fallback.classList.add("hidden");
+ }else{
+   photo.removeAttribute("src");photo.classList.add("hidden");fallback.classList.remove("hidden");
+ }
+ $("deviceLastSync").textContent=data.ingestion==="receiving"
+   ?"Sincronização de mensagens confirmada":"Conectado · aguardando confirmação de sincronização";
+ const stats=data.messageStats||{};
+ const format=n=>Number.isSafeInteger(n)&&n>=0?new Intl.NumberFormat("pt-BR").format(n):"—";
+ $("statToday").textContent=stats.available?format(stats.today):"—";
+ $("statWeek").textContent=stats.available?format(stats.last7Days):"—";
+ $("statMonth").textContent=stats.available?format(stats.last30Days):"—";
+ $("statTotal").textContent=stats.available?format(stats.total):"—";
+ $("statsCoverage").textContent=stats.available?
+   "Mensagens novas registradas desde "+new Date(stats.trackingSince).toLocaleString("pt-BR")+
+   " · horário do MS · Não inclui mensagens anteriores à ativação.": 
+   "Ainda não há contagem auditável: verifique o armazenamento da instância.";
+ const settings=data.featureSettings||{};
+ const cap=data.featureCapabilities||{};
+ for(const [node,enabled,available] of [
+   ["deviceChatbot",settings.chatbot,cap.chatbot],
+   ["deviceTranscript",settings.transcription,cap.transcription],
+   ["deviceCallBlock",settings.callBlocking,cap.callBlocking]
+ ]){
+   const badge=$(node+"State");
+   badge.textContent=!available?"Não configurado":enabled?"Ativado":"Desativado";
+   badge.classList.toggle("off",!enabled||!available);
+ }
+ $("deviceChatbotHint").textContent=cap.chatbot?
+   "Respostas automáticas da agenda":"Aguardando integração do canal com a agenda";
+ $("deviceTranscriptHint").textContent=cap.transcription?
+   "Reconhecimento privado de áudios recebidos":"Instale o serviço privado faster-whisper para habilitar";
+}
+$("realWhatsAppPhoto").addEventListener("error",()=>{
+ $("realWhatsAppPhoto").classList.add("hidden");
+ $("realPhotoFallback").classList.remove("hidden");
+});
+function closeOptions(){$("deviceOptions").open=false}
+function showDeviceSettings(){
+ closeOptions();
+ if(connectedSnapshot?.status!=="connected")return;
+ const c=connectedSnapshot.featureSettings||{},caps=connectedSnapshot.featureCapabilities||{};
+ $("settingsChatbot").checked=!!c.chatbot;
+ $("settingsChatbot").disabled=!caps.chatbot;
+ $("settingsChatbotHint").textContent=caps.chatbot?"Recurso vinculado à agenda.":"Indisponível: o canal WhatsApp ainda não está associado ao serviço de agenda.";
+ $("settingsTranscription").checked=!!c.transcription;
+ $("settingsTranscription").disabled=!caps.transcription;
+ $("settingsTranscriptionHint").textContent=caps.transcription?
+  "Somente áudios novos; texto registrado na caixa criptografada, sem resposta automática.":
+  "Requer serviço faster-whisper privado conectado. Não será ativado sem backend.";
+ $("settingsLanguage").value=c.language||"auto";
+ $("settingsBlockCalls").checked=!!c.callBlocking;
+ $("settingsBlockCalls").disabled=!caps.callBlocking;
+ $("settingsCallReply").checked=!!c.callReply;
+ $("settingsReplyText").value=c.callReplyText||"";
+ $("settingsAllowedCallers").value=(c.allowedCallers||[]).join("\n");
+ $("settingsCallSchedule").checked=!!c.callSchedule;
+ $("settingsStart").value=c.callHours?.start||"09:00";
+ $("settingsEnd").value=c.callHours?.end||"18:00";
+ for(const option of $("settingsWeekdays").options)
+   option.selected=(c.callHours?.weekdays||[1,2,3,4,5]).includes(Number(option.value));
+ $("deviceSettingsFeedback").textContent="";
+ $("deviceSettingsDialog").showModal();
+}
+async function showDeviceDiagnostics(){
+ closeOptions();
+ $("deviceDiagnosticsDialog").showModal();
+ $("deviceDiagnosticsText").textContent="Consultando o conector privado…";
+ try{
+   const d=await api("/api/v1/qr/status");
+   const values={
+     estado:d.status,
+     conexao:d.connectionType,
+     sincronizacao:d.ingestion,
+     armazenamentoMensagens:d.inboxPersistence,
+     armazenamentoControles:d.controlStorage,
+     ultimoRecebimento:d.lastInboundAt?new Date(d.lastInboundAt).toLocaleString("pt-BR"):"Ainda não observado",
+     recibos:d.deliveryDiagnostics?.receiptUpdates??0,
+     recuperacoesComCache:d.deliveryDiagnostics?.cacheHits??0,
+     recuperacoesSemCache:d.deliveryDiagnostics?.cacheMisses??0,
+     cacheMensagens:d.retainedMessages??0
+   };
+   $("deviceDiagnosticsText").textContent=Object.entries(values)
+     .map(([key,value])=>key+": "+String(value)).join("\n");
+ }catch(ex){$("deviceDiagnosticsText").textContent=ex.message}
+}
+async function restartConnectedDevice(){
+ closeOptions();
+ if(!confirm("Reiniciar a conexão do WhatsApp? A sessão existente será preservada."))return;
+ try{
+   await api("/api/v1/qr/restart","POST",{confirm:"REINICIAR"});
+   await updateStatus();
+ }catch(ex){alert(ex.message)}
+}
+async function disconnectConnectedDevice(){
+ closeOptions();
+ if(connectedSnapshot?.status!=="connected")return;
+ const confirmation=prompt("Isso revoga a sessão vinculada e permite conectar outra conta.\nDigite DESCONECTAR para confirmar:");
+ if(confirmation!=="DESCONECTAR")return;
+ if(!confirm("Última confirmação: deseja revogar o dispositivo WhatsApp atual?"))return;
+ try{
+   await api("/api/v1/qr/disconnect","POST",{confirm:"DESCONECTAR"});
+   await updateStatus();
+ }catch(ex){alert(ex.message)}
+}
+for(const id of ["deviceSettings","deviceMenuSettings","deviceChatbot","deviceTranscript","deviceCallBlock"])
+ $(id).addEventListener("click",showDeviceSettings);
+for(const id of ["deviceDiagnostics","deviceMenuDiagnostics"])
+ $(id).addEventListener("click",showDeviceDiagnostics);
+for(const id of ["deviceRestart","deviceMenuRestart"])
+ $(id).addEventListener("click",restartConnectedDevice);
+$("deviceMenuDisconnect").addEventListener("click",disconnectConnectedDevice);
+$("deviceMenuAlerts").addEventListener("click",()=>{
+ closeOptions();
+ const d=connectedSnapshot||{},alerts=[];
+ if(d.lastError)alerts.push("Último problema informado pelo conector: "+d.lastError);
+ if(d.ingestion!=="receiving")
+   alerts.push("Ainda não há confirmação de recebimento de mensagens nesta conexão.");
+ if(d.inboxPersistence!=="ready")
+   alerts.push("Persistência da caixa de mensagens precisa de verificação.");
+ if(d.controlStorage!=="ready")
+   alerts.push("Armazenamento de configurações/métricas indisponível.");
+ if(!alerts.length)alerts.push("Nenhum alerta operacional identificado no último status.");
+ $("deviceAlertsList").replaceChildren();
+ for(const text of alerts){
+   const li=document.createElement("li");li.textContent=text;$("deviceAlertsList").append(li);
+ }
+ $("deviceAlertsDialog").showModal();
+});
+$("deviceAlertsClose").addEventListener("click",()=>$("deviceAlertsDialog").close());
+$("deviceMenuChats").addEventListener("click",()=>{closeOptions();openPage("conversas")});
+$("deviceSettingsCancel").addEventListener("click",()=>$("deviceSettingsDialog").close());
+$("deviceDiagnosticsClose").addEventListener("click",()=>$("deviceDiagnosticsDialog").close());
+$("deviceSettingsForm").addEventListener("submit",async event=>{
+ event.preventDefault();
+ if(!connectedSnapshot || connectedSnapshot.status!=="connected")return;
+ const input={
+   chatbot:$("settingsChatbot").checked,
+   transcription:$("settingsTranscription").checked,
+   language:$("settingsLanguage").value,
+   callBlocking:$("settingsBlockCalls").checked,
+   callReply:$("settingsCallReply").checked,
+   callReplyText:$("settingsReplyText").value,
+   allowedCallers:$("settingsAllowedCallers").value.split(/[\s,;]+/).filter(Boolean),
+   callSchedule:$("settingsCallSchedule").checked,
+   callHours:{
+     start:$("settingsStart").value,end:$("settingsEnd").value,
+     weekdays:[...$("settingsWeekdays").selectedOptions].map(x=>Number(x.value))
+   }
+ };
+ if(input.callReply && !connectedSnapshot.featureSettings?.callReply &&
+   !confirm("Permitir que o Orion envie mensagens automáticas aos números que ligarem?"))return;
+ $("deviceSettingsSave").disabled=true;
+ $("deviceSettingsFeedback").textContent="Salvando configurações no servidor…";
+ try{
+   const result=await api("/api/v1/qr/settings","POST",input);
+   connectedSnapshot.featureSettings=result.settings;
+   renderConnectedCenter(connectedSnapshot);
+   $("deviceSettingsDialog").close();
+ }catch(ex){$("deviceSettingsFeedback").textContent=ex.message}
+ finally{$("deviceSettingsSave").disabled=false}
+});
+
 async function updateStatus(){
  if(!csrf)return;
+ const requestId=++statusSequence;
  try{
-  const result=await api("/api/v1/qr/status");deviceStatus=result.status;lastDeviceStatus=result.status;
+  const result=await api("/api/v1/qr/status");
+  if(requestId!==statusSequence)return; // Older requests cannot overwrite newer state.
+  const previous=deviceStatus;
+  deviceStatus=result.status;lastDeviceStatus=result.status;
   const active=result.status==="connected";
+  if(active&&previous!=="connected"&&wizardAttempted&&!wizardSuccessDone){
+    wizardAttempted=false;wizardStep="success";wizardSuccessUntil=Date.now()+2200;
+    renderGuide();
+    setTimeout(()=>{
+      if(deviceStatus==="connected"&&Date.now()>=wizardSuccessUntil){
+        wizardSuccessDone=true;renderConnectedCenter(connectedSnapshot||result)
+      }
+    },2300);
+  }
+  if(!active&&previous==="connected"){
+    wizardStep="choose";wizardIndex=0;wizardSuccessDone=false;
+    wizardSuccessUntil=0;wizardAttempted=false;showQr=false;renderGuide();
+  }
+  renderConnectedCenter(result);
   $("statusDot").className="dot "+(active?"green":result.status==="logged_out"?"red":"amber");
   $("globalStatus").textContent=statusWord(result.status);
   $("deviceState").textContent=statusWord(result.status)+(result.lastError?": "+result.lastError:"");
@@ -424,7 +1008,12 @@ async function updateStatus(){
   $("chatDot").className="dot "+(active?"green":"amber");
   $("chatConnection").textContent=active?"Conectado":"Desconectado";
   $("connectedBanner").classList.toggle("hidden",!active);
+  $("wizardConnectionHint").textContent=active?"Dispositivo vinculado.":
+    ["logged_out","pair_failed"].includes(result.status)?
+      "A sessão anterior foi revogada. Use Refazer vínculo antes de tentar novamente.":
+    "Conexão não oficial, limitada ao número que você administra.";
   $("repairConnection").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
+  $("wizardRecover").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
   $("refreshQr").disabled=result.status==="connected"||result.status==="pairing";
   $("connectedPhone").textContent=result.phone?
     "Dispositivo "+result.phone+" conectado. Você pode ler e enviar mensagens manualmente.":
@@ -439,10 +1028,12 @@ async function updateStatus(){
     if(showQr&&method==="qr")await updateQr();
   }else if(result.status==="pair_expired"||
     (result.status==="pairing"&&pairExpiresAt>0&&Date.now()>pairExpiresAt)){
-    pairExpiresAt=0;$("codeResult").classList.add("hidden");
-    $("codeStatus").textContent="Código expirado. Reinicie a conexão para solicitar um novo.";
+    pairExpiresAt=0;wizardStep="code_form";renderGuide();
+    $("codeStatus").textContent="Código expirado. Solicite outro código para continuar.";
   }else if(showQr&&page==="dispositivo"&&method==="qr")await updateQr();
  }catch(ex){
+  if(requestId!==statusSequence)return;
+  renderConnectedCenter({status:"error"});
   $("globalStatus").textContent="Serviço indisponível";
   $("deviceState").textContent=ex.message;
   $("statusDot").className="dot red";
@@ -453,11 +1044,14 @@ async function updateQr(){
   const info=await api("/api/v1/qr/image");
   if(info.status==="connected"){showQr=false;updateStatus();return}
   if(info.image&&info.image.startsWith("data:image/png;base64,")){
+   wizardQrDeadline=Date.now()+Math.max(0,Number(info.expiresIn)||0)*1000;
    $("qrImage").src=info.image;$("qrImage").classList.remove("hidden");
    $("qrEmpty").classList.add("hidden");
    $("qrStatus").textContent="QR Code pronto para escanear";
-   $("qrFeedback").textContent="Expira em aproximadamente "+info.expiresIn+" segundos. A página atualizará automaticamente.";
+   $("qrFeedback").textContent="Escaneie pelo WhatsApp do celular. O código é temporário.";
+   updateWizardClocks();
   }else{
+   wizardQrDeadline=0;
    $("qrImage").classList.add("hidden");$("qrEmpty").classList.remove("hidden");
    const failed=["logged_out","pair_failed","error"].includes(info.status);
    const expired=info.status==="qr_expired";
@@ -506,15 +1100,19 @@ $("pairForm").addEventListener("submit",async ev=>{
  ev.preventDefault();$("codeStatus").textContent="Gerando código, aguarde...";
  $("codeResult").classList.add("hidden");pairExpiresAt=0;
  const submit=$("pairForm").querySelector('button[type="submit"]');submit.disabled=true;
- const phone=normalize($("pairPhone").value);
+ const raw=normalize($("pairPhone").value);
+ const phone=/^\d{10,11}$/.test(raw)?"55"+raw:raw;
  if(!/^[1-9]\d{7,14}$/.test(phone)){
    $("codeStatus").textContent="Insira o DDI, DDD e número válido.";submit.disabled=false;return;
  }
  try{
   const r=await api("/api/v1/qr/pair","POST",{phone});
   if(r.status==="connected"){$("codeStatus").textContent="Este WhatsApp já está conectado.";return}
-  $("pairCode").textContent=r.code;$("codeResult").classList.remove("hidden");
-  pairExpiresAt=Date.now()+Math.min(90,Math.max(1,r.expiresIn||90))*1000;
+  if(typeof r.code!=="string"||!/^[A-Z0-9]{4}-?[A-Z0-9]{4}$/i.test(r.code))
+    throw Error("O WhatsApp não retornou um código válido.");
+  $("pairCode").textContent=r.code;
+  pairExpiresAt=Date.now()+Math.min(90,Math.max(1,Number(r.expiresIn)||90))*1000;
+  wizardStep="code_ready";wizardAttempted=true;renderGuide();
   $("codeStatus").textContent="Código solicitado. Digite-o imediatamente em Dispositivos conectados → Conectar com número de telefone. A conexão só é confirmada quando o status mudar para Conectado.";
  }catch(ex){$("codeStatus").textContent=ex.message;}
  finally{submit.disabled=false;}
@@ -546,7 +1144,8 @@ $("repairConnection").addEventListener("click",async()=>{
   $("repairConnection").disabled=true;
   try{
     await api("/api/v1/qr/recover","POST",{});
-    method="qr";renderGuide();showQr=true;await updateStatus();
+    method="qr";wizardStep="tutorial";wizardIndex=0;
+    showQr=false;renderGuide();await updateStatus();
     $("qrFeedback").textContent="Sessão renovada. Escaneie o novo QR pelo telefone.";
   }catch(ex){$("qrFeedback").textContent=ex.message;}
   finally{$("repairConnection").disabled=false;}
