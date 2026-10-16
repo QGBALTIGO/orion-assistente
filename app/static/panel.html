@@ -235,6 +235,27 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
  .wizard-success-ring circle,.wizard-success-ring path{stroke-dashoffset:0}
 }
 
+
+/* Tutorial integral em linha do tempo, sem paginação. */
+.wizard-tutorial-heading h3{font-size:clamp(1.05rem,2.7vw,1.2rem);line-height:1.43;margin:0 0 6px}
+.wizard-tutorial-heading p{margin:0;font-size:.82rem}
+.wizard-timeline{display:grid;gap:0;margin:24px 0 8px}
+.wizard-timeline-step{display:grid;grid-template-columns:44px minmax(0,1fr);gap:15px;position:relative;min-height:75px;padding-bottom:20px}
+.wizard-timeline-step:last-child{min-height:57px;padding-bottom:0}
+.wizard-timeline-step:not(:last-child):before{content:"";position:absolute;left:21px;top:42px;bottom:-1px;border-left:2px solid #14765d}
+.wizard-timeline-dot{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;color:#effff7;background:linear-gradient(155deg,#219f86,#096b5b);border:2px solid #0d503e;box-shadow:0 2px 10px #0004;position:relative;z-index:1}
+.wizard-timeline-dot.edge{background:linear-gradient(155deg,#17aa90,#087c68);box-shadow:0 0 0 4px #0e3228,0 3px 12px #0005}
+.wizard-timeline-dot svg{width:19px;height:19px}
+.wizard-timeline-copy{min-width:0;padding-top:2px}
+.wizard-timeline-copy small{display:block;font-size:.67rem;font-weight:850;letter-spacing:.12em;color:#2fcaa0;margin:0 0 5px}
+.wizard-timeline-copy strong{display:block;color:#ecf8f2;font-size:.88rem;margin-bottom:2px}
+.wizard-timeline-copy p{color:#a8bbb0;font-size:.8rem;line-height:1.45;margin:0}
+.wizard-continue{width:100%;min-height:48px;margin-top:22px}
+@media(max-width:640px){.wizard-timeline-step{grid-template-columns:39px minmax(0,1fr);gap:12px;min-height:74px;padding-bottom:18px}
+.wizard-timeline-dot{width:39px;height:39px}
+.wizard-timeline-step:not(:last-child):before{left:19px;top:38px}
+.wizard-timeline-copy p{font-size:.79rem}.wizard-card{padding:16px}}
+
 </style>
 </head>
 <body>
@@ -416,46 +437,13 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
           </button>
         </div>
         <div class="wizard-card" id="wizardCard" aria-live="polite" aria-atomic="false">
-          <div id="wizardChoose" class="wizard-pane">
-            <span class="wizard-number">01 / 03</span>
-            <div class="wizard-welcome-symbol"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg></div>
-            <h3>Como prefere conectar?</h3>
-            <p>Escolha uma das opções acima. Você verá somente as instruções necessárias.</p>
-          </div>
-          <div id="wizardTutorial" class="wizard-pane hidden">
-            <div class="wizard-step-top">
-              <span class="wizard-number" id="wizardStepCount">PASSO 1 DE 5</span>
-              <button id="wizardTutorialClose" type="button" class="wizard-plain" aria-label="Voltar à escolha de método">Trocar método</button>
+          <div id="wizardTutorial" class="wizard-pane">
+            <div class="wizard-tutorial-heading">
+              <h3>Leia todos os passos abaixo e clique no botão no final desta página</h3>
+              <p>Conecte seu WhatsApp em poucos passos.</p>
             </div>
-            <div class="wizard-progress" role="progressbar" id="wizardProgress" aria-label="Progresso do tutorial" aria-valuemin="1" aria-valuemax="5" aria-valuenow="1">
-              <span id="wizardProgressFill"></span>
-            </div>
-            <div id="guideGraphic" class="wizard-illustration"><svg viewBox="0 0 340 178" role="img" aria-label="Ilustração animada de um celular acessando Dispositivos conectados" class="wizard-graphic-svg">
-<defs><linearGradient id="wf" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#1ed4a0"/><stop offset="1" stop-color="#076950"/></linearGradient></defs>
-<circle cx="170" cy="89" r="79" fill="#0b4234" opacity=".25"/><circle cx="170" cy="89" r="60" fill="#147557" opacity=".13"/>
-<g class="wizard-phone">
-<rect x="124" y="10" width="92" height="156" rx="17" fill="#061713" stroke="#418c73" stroke-width="2.5"/>
-<rect x="132" y="24" width="76" height="132" rx="10" fill="#0c2d23"/>
-<path d="M155 17h30" stroke="#86d8bb" stroke-width="3" stroke-linecap="round"/>
-<circle cx="170" cy="146" r="3" fill="#6aba9b"/>
-<g stroke="#78e5bc" fill="none" stroke-width="2">
-<rect x="149" y="43" width="17" height="17" rx="2"/><rect x="175" y="43" width="17" height="17" rx="2"/>
-<rect x="149" y="69" width="17" height="17" rx="2"/><path d="M175 70h7v7h-7zm10 0h7m-7 7h7m-17 8h17"/>
-</g><path d="M149 100h43m-43 10h34" stroke="#549a7d" stroke-width="4" stroke-linecap="round"/>
-</g><path class="wizard-scan" d="M120 92h100" stroke="#2cf2b8" stroke-width="3" stroke-linecap="round"/>
-<g class="wizard-tap"><circle cx="226" cy="126" r="18" fill="#18a67b" opacity=".20"/>
-<path d="M222 144v-21a5 5 0 0 1 10 0v9l3-3a6 6 0 0 1 7 0l7 8v7" fill="#77ebc0" stroke="#0b3f31" stroke-width="2" stroke-linejoin="round"/></g>
-<path d="M82 89h20m136 0h20" stroke="#267b60" stroke-width="2" stroke-dasharray="3 6"/>
-</svg></div>
-            <div class="wizard-step-copy">
-              <h3 id="guideTitle">Abra o WhatsApp no celular</h3>
-              <p id="wizardStepDescription">Pode ser WhatsApp ou WhatsApp Business.</p>
-            </div>
-            <div id="guideSteps" class="hidden" aria-hidden="true"></div>
-            <div class="wizard-steps-actions">
-              <button id="wizardPrevious" type="button" class="btn ghost">Voltar</button>
-              <button id="wizardNext" type="button" class="btn wizard-primary">Próximo passo <span aria-hidden="true">→</span></button>
-            </div>
+            <div id="guideSteps" class="wizard-timeline" role="list" aria-label="Todos os passos para conectar o WhatsApp"></div>
+            <button id="wizardNext" type="button" class="btn wizard-primary full wizard-continue">Concluí os passos e estou pronto para prosseguir</button>
           </div>
           <div id="qrPanel" class="wizard-pane hidden">
             <span class="wizard-number">ETAPA FINAL • QR CODE</span>
@@ -513,9 +501,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
             <button id="wizardOpenCenter" class="btn wizard-primary" type="button">Abrir minha central →</button>
           </div>
         </div>
-        <div class="wizard-footer">
-          <span class="dot amber" aria-hidden="true"></span>
-          <span id="wizardConnectionHint">Conexão protegida. Nenhuma mensagem é enviada durante o vínculo.</span>
+        <div class="wizard-footer hidden" id="wizardRecoveryArea">
           <button id="wizardRecover" type="button" class="btn ghost hidden">Refazer vínculo</button>
         </div>
         <div id="wizardLegacySupport" class="hidden" aria-hidden="true">
@@ -589,7 +575,6 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
         </div>
       </div>
     </section>
-    <p class="footer-hint" style="padding-top:18px">Orion · Ambiente de homologação · Conecte somente números e dados autorizados.</p>
   </main>
 </div>
 <script>
