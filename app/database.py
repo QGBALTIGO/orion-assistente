@@ -10,6 +10,7 @@ from typing import AsyncIterator
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -28,6 +29,8 @@ def get_engine() -> AsyncEngine:
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
     if not url.startswith("postgresql+asyncpg://"):
         raise RuntimeError("APP_DATABASE_URL exige PostgreSQL com asyncpg")
+    if make_url(url).username != "app_runtime":
+        raise RuntimeError("A API deve conectar somente com o papel app_runtime")
     return create_async_engine(url, pool_pre_ping=True)
 
 
