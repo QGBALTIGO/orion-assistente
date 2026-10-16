@@ -10,6 +10,7 @@ import {timingSafeEqual,randomUUID} from "node:crypto";
 import makeWASocket,{DisconnectReason,Browsers,useMultiFileAuthState} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import pino from "pino";
+import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode} from "./core.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
 const SESSION_DIR=process.env.QR_SESSION_DIR || "/data/auth";
@@ -23,18 +24,13 @@ let socket=null,generation=0,timer=null,attempts=0,status="starting",
   qr="",qrAt=0,lastError=null,pairedNumber="",pairingCode="",pairAt=0,requesting=false;
 const messages=[],seen=new Set(),sendTimes=[],MAX=500;
 
-function validPhone(input){
-  const phone=String(input||"").replace(/[()+\s-]/g,"");
-  if(!/^[1-9]\d{7,14}$/.test(phone))throw Error("Número inválido. Informe DDI + DDD + telefone");
-  return phone;
-}
 function pushMessage(item){
   if(seen.has(item.id))return;
   seen.add(item.id);messages.push(item);
   while(messages.length>MAX){const old=messages.shift();seen.delete(old.id)}
 }
 function stats(){
-  return {status,hasQr:status==="qr_ready"&&!!qr&&Date.now()-qrAt<45000,
+  return {status,hasQr:status==="qr_ready"&&!!qr&&freshQR(qrAt),
     lastError,phone:status==="connected"?pairedNumber:null,
     connectionType:"unofficial_linked_device",messagesEnabled:status==="connected",
     retainedMessages:messages.length,paired:!!pairingCode};
@@ -62,23 +58,13 @@ function collectBody(req){
     req.on("error",reject);
   });
 }
-function extractText(msg){
-  if(!msg||typeof msg!=="object")return null;
-  const source=msg.ephemeralMessage?.message||msg.viewOnceMessage?.message||msg;
-  return source.conversation||source.extendedTextMessage?.text||
-    source.imageMessage?.caption||source.videoMessage?.caption||null;
-}
-function normalizeFromJid(jid){
-  const match=String(jid||"").match(/^(\d{8,15})@s\.whatsapp\.net$/);
-  return match?.[1]||null;
-}
 function installListeners(client,mine,saveCreds){
   client.ev.on("creds.update",saveCreds);
-  client.ev.on("messages.upsert",({messages:incoming,type})=>{
+  client.ev.on("messages.upsert",async ({messages:incoming,type})=>{
     if(mine!==generation||status!=="connected"||type!=="notify")return;
     for(const message of incoming||[]){
       if(message.key?.fromMe)continue;
-      const phone=normalizeFromJid(message.key?.remoteJid);
+      const phone=await resolveMessagePhone(message.key,client);
       if(!phone||!message.key?.id||!message.message)continue;
       const body=extractText(message.message);
       if(!body || typeof body!=="string")continue;
@@ -131,14 +117,14 @@ async function pair(number){
   if(status==="logged_out")throw Error("Sessão revogada: reinicie o vínculo pelo WhatsApp");
   if(requesting)throw Error("Geração em andamento");
   const phone=validPhone(number);
-  if(!socket||!socket.requestPairingCode || !qr || Date.now()-qrAt>45000)
+  if(!socket||!socket.requestPairingCode || !qr || !freshQR(qrAt))
     throw Error("Aguarde a disponibilidade do QR e tente novamente");
   requesting=true;
   try{
     const code=await socket.requestPairingCode(phone);
-    if(!/^[A-Za-z0-9]{8}$/.test(code))throw Error("Formato inesperado de código");
-    pairingCode=code.toUpperCase();pairAt=Date.now();pairedNumber=phone;
-    return {status:"pairing",code:pairingCode.replace(/(.{4})/,"$1-"),
+    const formatted=formatPairingCode(code);
+    pairingCode=formatted.replace("-","");pairAt=Date.now();pairedNumber=phone;
+    return {status:"pairing",code:formatted,
       expiresIn:120};
   }finally{requesting=false}
 }
@@ -169,7 +155,7 @@ const server=http.createServer(async(req,res)=>{
       return reply(res,200,stats());
     if(path==="/internal/qr"&&req.method==="GET"){
       if(status==="connected")return reply(res,200,{status,image:null,expiresIn:0});
-      if(!qr||Date.now()-qrAt>=45000)
+      if(!qr||!freshQR(qrAt))
         return reply(res,200,{status,image:null,expiresIn:0});
       const image=await QRCode.toDataURL(qr,{errorCorrectionLevel:"M",margin:2,width:370});
       return reply(res,200,{status:"qr_ready",image,

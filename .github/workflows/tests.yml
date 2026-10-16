@@ -75,3 +75,20 @@ jobs:
           docker compose --profile tools run --rm test
           docker compose up -d api worker
           curl --fail --silent --show-error --retry 15 --retry-all-errors --retry-delay 1 http://127.0.0.1:8000/health
+
+  qr_bridge:
+    name: QR bridge — Node, IPv6, segurança e Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Sintaxe Node do conector
+        run: |
+          node --check qr-bridge/src/server.mjs
+          node --check qr-bridge/src/core.mjs
+      - name: Suite de telefone, pareamento, LID e IPv6
+        run: node --test qr-bridge/test/*.test.mjs
+      - name: Build da imagem real Node Baileys
+        run: docker build -f qr-bridge/Dockerfile -t orion-qr:ci qr-bridge
