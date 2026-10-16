@@ -40,6 +40,8 @@ export function validateSettings(input,capabilities={}){
     if(typeof out[k]!=="boolean")throw Error("Opção inválida: "+k);
   if(out.chatbot && !capabilities.chatbot)throw Error("Chatbot não integrado ao canal vinculado");
   if(out.transcription && !capabilities.transcription)throw Error("Serviço de transcrição não configurado");
+  if(out.callBlocking && capabilities.callBlocking===false)
+    throw Error("Bloqueio de chamadas não suportado nesta conexão");
   if(!["auto","pt","en","es"].includes(out.language))throw Error("Idioma inválido");
   if(typeof out.callReplyText!=="string" || out.callReplyText.length>240)
     throw Error("Mensagem de chamada inválida");
