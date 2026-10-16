@@ -211,6 +211,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
             <details class="device-menu" id="deviceOptions">
               <summary class="btn secondary"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg> Opções</summary>
               <nav aria-label="Ações do dispositivo conectado">
+                <button id="deviceMenuAlerts" type="button">⚑ Alertas de conexão</button>
                 <button id="deviceMenuChats" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8L7.2 10a16 16 0 0 0 6.8 6.8l1.5-1.8a2 2 0 0 1 1.8-.6l3 .5a2 2 0 0 1 1.7 2Z"/></svg> Conversas</button>
                 <button id="deviceMenuSettings" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></svg> Configurações</button>
                 <button id="deviceMenuDiagnostics" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M5 15l4-4 3 3 6-7"/><path d="M16 7h2v2"/></svg> Diagnósticos</button>
@@ -301,6 +302,12 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
             <button id="deviceSettingsSave" type="submit" class="btn">Salvar alterações</button>
           </div>
         </form>
+      </dialog>
+      <dialog id="deviceAlertsDialog" class="device-dialog" aria-labelledby="deviceAlertsTitle">
+        <h2 id="deviceAlertsTitle">Alertas operacionais</h2>
+        <p>Informações reais da instância conectada, sem mensagens fictícias.</p>
+        <ul id="deviceAlertsList"></ul>
+        <div class="modal-actions"><button id="deviceAlertsClose" class="btn secondary" type="button">Fechar</button></div>
       </dialog>
       <dialog id="deviceDiagnosticsDialog" class="device-dialog" aria-labelledby="deviceDiagnosticsTitle">
         <h2 id="deviceDiagnosticsTitle">Diagnósticos da conexão</h2>
@@ -693,6 +700,24 @@ for(const id of ["deviceDiagnostics","deviceMenuDiagnostics"])
 for(const id of ["deviceRestart","deviceMenuRestart"])
  $(id).addEventListener("click",restartConnectedDevice);
 $("deviceMenuDisconnect").addEventListener("click",disconnectConnectedDevice);
+$("deviceMenuAlerts").addEventListener("click",()=>{
+ closeOptions();
+ const d=connectedSnapshot||{},alerts=[];
+ if(d.lastError)alerts.push("Último problema informado pelo conector: "+d.lastError);
+ if(d.ingestion!=="receiving")
+   alerts.push("Ainda não há confirmação de recebimento de mensagens nesta conexão.");
+ if(d.inboxPersistence!=="ready")
+   alerts.push("Persistência da caixa de mensagens precisa de verificação.");
+ if(d.controlStorage!=="ready")
+   alerts.push("Armazenamento de configurações/métricas indisponível.");
+ if(!alerts.length)alerts.push("Nenhum alerta operacional identificado no último status.");
+ $("deviceAlertsList").replaceChildren();
+ for(const text of alerts){
+   const li=document.createElement("li");li.textContent=text;$("deviceAlertsList").append(li);
+ }
+ $("deviceAlertsDialog").showModal();
+});
+$("deviceAlertsClose").addEventListener("click",()=>$("deviceAlertsDialog").close());
 $("deviceMenuChats").addEventListener("click",()=>{closeOptions();openPage("conversas")});
 $("deviceSettingsCancel").addEventListener("click",()=>$("deviceSettingsDialog").close());
 $("deviceDiagnosticsClose").addEventListener("click",()=>$("deviceDiagnosticsDialog").close());
