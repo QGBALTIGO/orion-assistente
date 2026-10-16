@@ -32,7 +32,10 @@ export async function transcribeAudio(message,{
   const buffer=await downloadMediaMessage(message,"buffer",{},{
     logger,reuploadRequest:client.updateMediaMessage
   });
-  if(!Buffer.isBuffer(buffer)||buffer.length<1||buffer.length>2_000_000)return null;
+  if(!Buffer.isBuffer(buffer))return null;
+  if(buffer.length<1||buffer.length>2_000_000){
+    buffer.fill(0);return null;
+  }
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),35000);
   try{
