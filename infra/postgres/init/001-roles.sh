@@ -12,4 +12,4 @@ psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
   --set=db_name="$POSTGRES_DB" \
   --set=runtime_password="$APP_RUNTIME_PASSWORD" \
   --set=migrator_password="$APP_MIGRATOR_PASSWORD" \
-  --file=/docker-entrypoint-initdb.d/001-roles.sql
+  --file=/etc/orion/001-roles.sql
