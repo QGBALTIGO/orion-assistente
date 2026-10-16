@@ -80,10 +80,10 @@ bases legais e informações de tratamento aplicáveis.
 
 ## Estado sem dispositivo: assistente guiado
 
-O painel agora usa somente uma etapa visível por vez:
+O painel mostra **todos os passos do tutorial de uma vez**, mantendo apenas uma etapa funcional (tutorial, QR, código ou sucesso) visível:
 
-1. Escolher QR Code ou Código (nenhum pedido de imagem/código antes da escolha).
-2. Instruções curtas e animadas de 1 a 5, com Voltar, Próximo passo e Trocar método.
+1. O modo Código é selecionado por padrão, com opção de alternar para QR Code sem disparar nenhuma solicitação ao WhatsApp.
+2. Linha do tempo única com sete passos, SVGs, e **um único botão no fim:** “Concluí os passos e estou pronto para prosseguir”. Sem paginação.
 3. Mostrar QR a partir de `/api/v1/qr/image` (validade fornecida pelo servidor,
    contagem regressiva local e ação manual de atualizar), **ou** pedir código via
    `/api/v1/qr/pair` (telefone completo, copiar código, expiração verdadeira).
@@ -95,7 +95,7 @@ implementados. Nenhum QR/código é inventado, nenhum número é transmitido
 antes de o operador clicar para continuar, e um QR expirado não dispara
 reconexões contínuas sem ação manual.
 
-### Animação tutorial
+### Orientação visual
 
 O arquivo fornecido com o nome `scan-demo.gif` não era um GIF animado:
 seus bytes correspondem a PNG estático com fundo em gradiente, sem quadro
@@ -108,7 +108,7 @@ válido, pode substituir a ilustração preservando a etapa de tutorial.
 ### Cobertura de testes
 
 `qr-bridge/test/wizard-journey.test.mjs` executa a lógica do
-`panel.html` em ambiente sintético: mudança de modo, cinco passos,
+`panel.html` em ambiente sintético: mudança de modo, sete passos visíveis juntos, um botão final,
 solicitação de QR na hora certa, validade real e expiração, telefone
 validado, resposta real simulada de pareamento, cópia, retorno seguro ao
 formulário e animação de sucesso somente após status conectado.
@@ -120,3 +120,11 @@ PostgreSQL, Docker Compose e saúde HTTP.
 somente com testes simulados.** Após revisão, testar em sessão de homologação
 antes de trocar a tela em produção. Não revogar ou resetar automaticamente
 a sessão que já está vinculada.
+
+### Ajuste visual (16/10/2026)
+
+Foram removidos da interface pública os textos “Conexão não oficial,
+limitada ao número que você administra.” e “Orion · Ambiente de homologação ·
+Conecte somente números e dados autorizados.” A recuperação de vínculo
+continua acessível quando o backend reporta sessão revogada. Nenhuma das
+alterações exige reiniciar ou alterar a autenticação do conector.
