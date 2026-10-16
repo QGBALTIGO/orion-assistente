@@ -33,3 +33,6 @@ include = ["app*", "scripts*"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = ["integration: precisa de PostgreSQL real e migrations aplicadas"]
+
+[tool.setuptools.package-data]
+app = ["static/*.html"]
