@@ -15,8 +15,9 @@ async def main():
         try:
             result=await _bridge("/internal/status")
             state=result.get("status")
-            if state not in ("starting","connecting","qr_ready","connected",
-                             "reconnecting","logged_out","error"):
+            if state not in ("starting","connecting","qr_ready","qr_delayed",
+                             "qr_expired","pairing","pair_expired","pair_failed",
+                             "connected","reconnecting","logged_out","error"):
                 print("Orion QR: resposta inválida do bridge")
                 sys.exit(2)
             print(f"Orion QR: CONNECTED_TO_PRIVATE_BRIDGE, state={state}")
