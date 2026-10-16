@@ -1,0 +1,99 @@
+name: orion-barbearias
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-barber_saas}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+      APP_RUNTIME_PASSWORD: ${APP_RUNTIME_PASSWORD:?Defina APP_RUNTIME_PASSWORD no .env}
+      APP_MIGRATOR_PASSWORD: ${APP_MIGRATOR_PASSWORD:?Defina APP_MIGRATOR_PASSWORD no .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-barber_saas}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks: [private]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks: [private]
+
+  api:
+    build: .
+    environment:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:${APP_RUNTIME_PASSWORD}@postgres:5432/${POSTGRES_DB:-barber_saas}
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks: [private]
+
+  worker:
+    build: .
+    command: ["arq", "app.worker.WorkerSettings"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+    networks: [private]
+
+  migrate:
+    build: .
+    profiles: ["tools"]
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:${APP_MIGRATOR_PASSWORD}@postgres:5432/${POSTGRES_DB:-barber_saas}
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [private]
+
+  test:
+    build: .
+    profiles: ["tools"]
+    command: ["pytest", "-q", "-ra"]
+    environment:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:${APP_RUNTIME_PASSWORD}@postgres:5432/${POSTGRES_DB:-barber_saas}
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:${APP_MIGRATOR_PASSWORD}@postgres:5432/${POSTGRES_DB:-barber_saas}
+      REQUIRE_POSTGRES_TESTS: "1"
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [private]
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["proxy"]
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on: [api]
+    networks: [private]
+
+volumes:
+  postgres_data:
+
+networks:
+  private:
+    driver: bridge

@@ -1,0 +1,5 @@
+# Desenvolvimento local apenas; Railway faz terminação HTTPS na borda.
+:80 {
+    encode gzip
+    reverse_proxy api:8000
+}
