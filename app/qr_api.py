@@ -68,8 +68,8 @@ class PairPayload(BaseModel):
 
 
 class CallWindow(BaseModel):
-    start: str=Field(pattern=r"^(?:[01]\\d|2[0-3]):[0-5]\\d$")
-    end: str=Field(pattern=r"^(?:[01]\\d|2[0-3]):[0-5]\\d$")
+    start: str=Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    end: str=Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     weekdays: list[int]=Field(max_length=7)
 
 
