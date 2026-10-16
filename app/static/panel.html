@@ -208,6 +208,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
             <div class="row" style="justify-content:space-between">
               <div><h2>Estado da conexão</h2><p class="subhead" style="margin-bottom:0">Atualização em tempo real.</p></div>
               <button id="statusRefresh" class="btn ghost">Atualizar</button>
+              <button id="repairConnection" class="btn secondary hidden">Refazer vínculo</button>
             </div>
             <div id="deviceState" class="pill" style="margin-top:15px">Aguardando resposta</div>
             <p class="footer-hint" style="margin:13px 0 0">Após conectar, a sessão fica no armazenamento privado do servidor. O envio automático permanece desligado.</p>
@@ -401,6 +402,7 @@ async function updateStatus(){
   $("chatDot").className="dot "+(active?"green":"amber");
   $("chatConnection").textContent=active?"Conectado":"Desconectado";
   $("connectedBanner").classList.toggle("hidden",!active);
+  $("repairConnection").classList.toggle("hidden",result.status!=="logged_out");
   $("connectedPhone").textContent=result.phone?
     "Dispositivo "+result.phone+" conectado. Você pode ler e enviar mensagens manualmente.":
     "Dispositivo conectado. Você pode ler e enviar mensagens manualmente.";
@@ -448,6 +450,16 @@ $("copyCode").addEventListener("click",async()=>{
  }catch{$("codeStatus").textContent="Não foi possível copiar automaticamente; selecione o código acima."}
 });
 $("statusRefresh").addEventListener("click",updateStatus);
+$("repairConnection").addEventListener("click",async()=>{
+  if(!confirm("A sessão anterior foi desvinculada. Preparar uma nova conexão por QR Code?"))return;
+  $("repairConnection").disabled=true;
+  try{
+    await api("/api/v1/qr/recover","POST",{});
+    method="qr";renderGuide();showQr=true;await updateStatus();
+    $("qrFeedback").textContent="Sessão renovada. Escaneie o novo QR pelo telefone.";
+  }catch(ex){$("qrFeedback").textContent=ex.message;}
+  finally{$("repairConnection").disabled=false;}
+});
 $("reloadChats").addEventListener("click",loadChats);
 function startChats(){
  clearInterval(chatTimer);chatTimer=setInterval(async()=>{await loadChats();await refreshMessages()},6500);
