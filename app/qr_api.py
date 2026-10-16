@@ -88,6 +88,13 @@ async def qr_reconnect(actor:Actor=Depends(authenticate)):
     return await _bridge("/internal/reconnect","POST")
 
 
+@router.post("/api/v1/qr/recover")
+async def qr_recover(actor:Actor=Depends(authenticate)):
+    """Nova sessão apenas quando credencial anterior foi revogada."""
+    support_only(actor)
+    return await _bridge("/internal/recover","POST")
+
+
 @router.post("/api/v1/qr/pair")
 async def qr_pair(data:PairPayload,actor:Actor=Depends(authenticate)):
     support_only(actor)
