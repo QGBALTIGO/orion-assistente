@@ -184,7 +184,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
             </div>
             <p id="qrStatus" class="status-text" role="status" aria-live="polite"></p>
             <p id="qrFeedback" class="feedback" aria-live="polite">O código se atualiza automaticamente quando necessário.</p>
-            <button id="refreshQr" class="btn secondary">Atualizar QR Code</button>
+            <button id="refreshQr" class="btn secondary">Atualizar ou tentar novamente</button>
           </div>
           <div id="codePanel" class="card hidden">
             <div class="eyebrow">Conectar por código</div>
@@ -203,6 +203,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
               <button class="btn secondary full" id="copyCode">Copiar código</button>
             </div>
             <p id="codeStatus" class="feedback" role="status" aria-live="polite"></p>
+            <p class="note">Algumas versões do WhatsApp rejeitam códigos de clientes não oficiais mesmo após a geração. Se isso ocorrer, teste o QR Code e não repita muitos códigos em sequência.</p>
           </div>
           <div class="card">
             <div class="row" style="justify-content:space-between">
@@ -281,7 +282,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 (()=>{
 "use strict";
 const $=id=>document.getElementById(id);
-let csrf="",page="dispositivo",method="qr",showQr=false,deviceStatus="starting",
+let csrf="",page="dispositivo",method="qr",showQr=false,deviceStatus="starting",lastDeviceStatus="starting",pairExpiresAt=0,
     statusTimer=null,chatTimer=null,selectedPhone="",chatsBusy=false;
 const steps={
  qr:[
@@ -387,14 +388,15 @@ document.querySelectorAll("[data-method]").forEach(x=>x.addEventListener("click"
  method=x.dataset.method;renderGuide();
 }));
 function statusWord(s){
- return ({connected:"Conectado",qr_ready:"Aguardando leitura",connecting:"Preparando",
- reconnecting:"Reconectando",logged_out:"Sessão desvinculada",error:"Falha na conexão",
- starting:"Iniciando",pairing:"Código emitido"})[s]||"Aguardando";
+ return ({connected:"Conectado",qr_ready:"Aguardando leitura",qr_expired:"QR expirou",
+ qr_delayed:"QR demorando a carregar",pair_failed:"Pareamento recusado",
+ connecting:"Preparando",reconnecting:"Reconectando",logged_out:"Sessão desvinculada",
+ error:"Falha na conexão",starting:"Iniciando",pairing:"Aguardando código no celular"})[s]||"Aguardando";
 }
 async function updateStatus(){
  if(!csrf)return;
  try{
-  const result=await api("/api/v1/qr/status");deviceStatus=result.status;
+  const result=await api("/api/v1/qr/status");deviceStatus=result.status;lastDeviceStatus=result.status;
   const active=result.status==="connected";
   $("statusDot").className="dot "+(active?"green":result.status==="logged_out"?"red":"amber");
   $("globalStatus").textContent=statusWord(result.status);
@@ -402,12 +404,23 @@ async function updateStatus(){
   $("chatDot").className="dot "+(active?"green":"amber");
   $("chatConnection").textContent=active?"Conectado":"Desconectado";
   $("connectedBanner").classList.toggle("hidden",!active);
-  $("repairConnection").classList.toggle("hidden",result.status!=="logged_out");
+  $("repairConnection").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
+  $("refreshQr").disabled=result.status==="connected"||result.status==="pairing";
   $("connectedPhone").textContent=result.phone?
     "Dispositivo "+result.phone+" conectado. Você pode ler e enviar mensagens manualmente.":
     "Dispositivo conectado. Você pode ler e enviar mensagens manualmente.";
-  if(active){showQr=false;$("qrImage").classList.add("hidden");$("qrStatus").textContent="✓ WhatsApp conectado!";}
-  else if(showQr&&page==="dispositivo"&&method==="qr")await updateQr();
+  if(active){
+    showQr=false;pairExpiresAt=0;$("qrImage").classList.add("hidden");
+    $("qrStatus").textContent="✓ WhatsApp conectado!";
+    $("codeStatus").textContent="✓ O dispositivo foi conectado.";
+  }else if(result.status==="pair_failed"||result.status==="logged_out"){
+    pairExpiresAt=0;$("codeResult").classList.add("hidden");
+    $("codeStatus").textContent="O WhatsApp recusou ou revogou esta sessão. Clique em Refazer vínculo para gerar uma sessão nova.";
+    if(showQr&&method==="qr")await updateQr();
+  }else if(result.status==="pairing"&&pairExpiresAt>0&&Date.now()>pairExpiresAt){
+    pairExpiresAt=0;$("codeResult").classList.add("hidden");
+    $("codeStatus").textContent="Código expirado. Reinicie a conexão para solicitar um novo.";
+  }else if(showQr&&page==="dispositivo"&&method==="qr")await updateQr();
  }catch(ex){
   $("globalStatus").textContent="Serviço indisponível";
   $("deviceState").textContent=ex.message;
@@ -425,24 +438,65 @@ async function updateQr(){
    $("qrFeedback").textContent="Expira em aproximadamente "+info.expiresIn+" segundos. A página atualizará automaticamente.";
   }else{
    $("qrImage").classList.add("hidden");$("qrEmpty").classList.remove("hidden");
-   $("qrStatus").textContent="Preparando seu QR Code...";
-   $("qrFeedback").textContent="Aguarde alguns segundos. Estado atual: "+statusWord(info.status)+".";
+   const failed=["logged_out","pair_failed","error"].includes(info.status);
+   const expired=info.status==="qr_expired";
+   const delayed=info.status==="qr_delayed"||
+     (["connecting","reconnecting"].includes(info.status)&&info.waitingSeconds>=25);
+   if(failed){
+     $("qrStatus").textContent="Não foi possível preparar o QR.";
+     $("qrFeedback").textContent=info.lastError||"Sessão recusada ou desconectada. Clique em Refazer vínculo.";
+   }else if(expired||delayed){
+     $("qrStatus").textContent=expired?"O QR anterior expirou.":"Seu QR está demorando mais que o normal.";
+     $("qrFeedback").textContent="Clique em Atualizar ou tentar novamente para abrir uma nova conexão.";
+   }else if(info.status==="pairing"){
+     $("qrStatus").textContent="Aguardando autorização pelo código no celular.";
+     $("qrFeedback").textContent="Não gere outro QR enquanto estiver aguardando a confirmação do código.";
+   }else{
+     $("qrStatus").textContent="Preparando QR Code...";
+     const elapsed=Math.max(0,info.waitingSeconds||0);
+     $("qrFeedback").textContent="Conectando ao WhatsApp ("+elapsed+" s). Se passar de 25 s, você poderá tentar novamente.";
+   }
   }
  }catch(ex){$("qrStatus").textContent=ex.message;}
 }
-$("startQr").addEventListener("click",()=>{showQr=true;updateQr();});
-$("refreshQr").addEventListener("click",()=>{showQr=true;updateQr();});
+async function attemptQrRefresh(){
+  if(["logged_out","pair_failed"].includes(deviceStatus)){
+    $("qrFeedback").textContent="Esta sessão foi recusada. Clique em Refazer vínculo.";
+    return;
+  }
+  if(deviceStatus==="connected"||deviceStatus==="pairing")return;
+  const button=$("refreshQr");button.disabled=true;
+  try{
+    const state=await api("/api/v1/qr/status");
+    deviceStatus=state.status;
+    if(["qr_expired","qr_delayed","error","reconnecting"].includes(state.status)||
+      (state.status==="connecting"&&state.waitingSeconds>=25)){
+      await api("/api/v1/qr/reconnect","POST",{});
+      $("qrFeedback").textContent="Criando outra tentativa de conexão. Aguarde até 25 segundos.";
+    }
+    showQr=true;await updateQr();
+  }catch(ex){$("qrStatus").textContent=ex.message;}
+  finally{button.disabled=false;}
+}
+$("startQr").addEventListener("click",()=>{showQr=true;attemptQrRefresh();});
+$("refreshQr").addEventListener("click",attemptQrRefresh);
 const normalize=phone=>phone.replace(/[()+\s-]/g,"");
 $("pairForm").addEventListener("submit",async ev=>{
  ev.preventDefault();$("codeStatus").textContent="Gerando código, aguarde...";
+ $("codeResult").classList.add("hidden");pairExpiresAt=0;
+ const submit=$("pairForm").querySelector('button[type="submit"]');submit.disabled=true;
  const phone=normalize($("pairPhone").value);
- if(!/^[1-9]\d{7,14}$/.test(phone)){$("codeStatus").textContent="Insira o DDI, DDD e número válido.";return}
+ if(!/^[1-9]\d{7,14}$/.test(phone)){
+   $("codeStatus").textContent="Insira o DDI, DDD e número válido.";submit.disabled=false;return;
+ }
  try{
   const r=await api("/api/v1/qr/pair","POST",{phone});
   if(r.status==="connected"){$("codeStatus").textContent="Este WhatsApp já está conectado.";return}
   $("pairCode").textContent=r.code;$("codeResult").classList.remove("hidden");
-  $("codeStatus").textContent="Digite o código em Dispositivos conectados → Conectar com número de telefone.";
+  pairExpiresAt=Date.now()+Math.min(90,Math.max(1,r.expiresIn||90))*1000;
+  $("codeStatus").textContent="Código solicitado. Digite-o imediatamente em Dispositivos conectados → Conectar com número de telefone. A conexão só é confirmada quando o status mudar para Conectado.";
  }catch(ex){$("codeStatus").textContent=ex.message;}
+ finally{submit.disabled=false;}
 });
 $("copyCode").addEventListener("click",async()=>{
  try{await navigator.clipboard.writeText($("pairCode").textContent.replace("-",""));
@@ -451,7 +505,7 @@ $("copyCode").addEventListener("click",async()=>{
 });
 $("statusRefresh").addEventListener("click",updateStatus);
 $("repairConnection").addEventListener("click",async()=>{
-  if(!confirm("A sessão anterior foi desvinculada. Preparar uma nova conexão por QR Code?"))return;
+  if(!confirm("O WhatsApp recusou ou desvinculou a sessão anterior. Preparar uma nova conexão?"))return;
   $("repairConnection").disabled=true;
   try{
     await api("/api/v1/qr/recover","POST",{});
