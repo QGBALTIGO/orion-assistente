@@ -17,6 +17,7 @@ dependencies = [
   "arq>=0.26,<1",
   "tzdata>=2025.2",
   "cryptography>=43,<50",
+  "argon2-cffi>=23.1,<26",
 ]
 
 [project.optional-dependencies]
