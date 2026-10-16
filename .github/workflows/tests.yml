@@ -46,6 +46,16 @@ jobs:
             -f infra/postgres/init/001-roles.sql
       - name: Aplicar migration
         run: alembic upgrade head
+      - name: Testar pg_dump/restore em banco efêmero
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          pg_dump -h localhost -U postgres -d barber_saas -Fc -f /tmp/orion-smoke.dump
+          createdb -h localhost -U postgres orion_restore
+          pg_restore -h localhost -U postgres -d orion_restore --no-owner --no-acl --exit-on-error /tmp/orion-smoke.dump
+          test "$(psql -h localhost -U postgres -d orion_restore -tAc 'SELECT count(*) FROM alembic_version')" = "1"
+          dropdb -h localhost -U postgres orion_restore
+          rm -f /tmp/orion-smoke.dump
       - name: Rodar suite incluindo RLS real
         run: pytest -q -ra
       - name: Validar build Docker, Compose e health HTTP
