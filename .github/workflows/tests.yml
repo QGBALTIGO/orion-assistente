@@ -1,4 +1,4 @@
-name: FATIA 0 - testes PostgreSQL
+name: FATIA 0 e 1 - PostgreSQL e Docker
 on:
   push:
     branches: [main]
@@ -24,6 +24,8 @@ jobs:
     env:
       APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
       MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: test-support-ci-token-of-64-characters-000000000000000000000000000
       REQUIRE_POSTGRES_TESTS: "1"
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +42,7 @@ jobs:
             -v db_name=barber_saas \
             -v runtime_password=ci-runtime-only \
             -v migrator_password=ci-migrator-only \
+            -v support_password=ci-support-only \
             -f infra/postgres/init/001-roles.sql
       - name: Aplicar migration
         run: alembic upgrade head
@@ -50,11 +53,14 @@ jobs:
           POSTGRES_PASSWORD: ci-postgres-only
           APP_RUNTIME_PASSWORD: ci-runtime-only
           APP_MIGRATOR_PASSWORD: ci-migrator-only
+          APP_SUPPORT_PASSWORD: ci-support-only
+          SUPPORT_API_TOKEN: test-support-ci-token-of-64-characters-000000000000000000000000000
         run: |
           docker compose config --quiet
           docker build -t orion-barbearias:fatia0 .
-          docker compose up -d postgres redis
+          docker compose up -d --wait postgres redis
           trap 'docker compose down -v >/dev/null 2>&1 || true' EXIT
+          docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -v db_name="$POSTGRES_DB" -v support_password="$APP_SUPPORT_PASSWORD" -f /etc/orion/upgrade-support.sql'
           docker compose --profile tools run --rm migrate
           docker compose --profile tools run --rm test
           docker compose up -d api worker

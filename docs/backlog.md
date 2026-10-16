@@ -6,8 +6,11 @@ fornecido pelo proprietário fora do repositório (não versionar segredos).
 - **FATIA 0 (atual):** Fundação FastAPI, Docker, PostgreSQL 16, RLS,
   usuários separados, migrations, Arq, /health, testes reais e CI.
   Aceite pendente até CI/PostgreSQL real confirmar as verificações.
-- **FATIA 1 (não iniciar):** catálogo, profissionais, preços/durações,
-  expediente, folgas e painel interno mínimo; RBAC e testes.
+- **FATIA 1 (implementada na branch própria, pendente da CI):** catálogo,
+  equipe, profissionais, serviços, horários, pausas, folgas, bloqueios,
+  interface de suporte em pt-BR, autenticação Bearer e viewer restrito.
+  Os papéis WhatsApp owner/barber/assistant são cadastrados, não autenticação WhatsApp.
+  A autorização operacional não substitui contas de staff e sessões futuras.
 - **FATIA 2:** motor de agenda sem WhatsApp, holds, protocolo, conflitos,
   duração de serviços combinados e testes de concorrência (50 tentativas).
 - **FATIA 3:** Meta WhatsApp Cloud API com autorização, webhooks assinados,

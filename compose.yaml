@@ -9,10 +9,12 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
       APP_RUNTIME_PASSWORD: ${APP_RUNTIME_PASSWORD:?Defina APP_RUNTIME_PASSWORD no .env}
       APP_MIGRATOR_PASSWORD: ${APP_MIGRATOR_PASSWORD:?Defina APP_MIGRATOR_PASSWORD no .env}
+      APP_SUPPORT_PASSWORD: ${APP_SUPPORT_PASSWORD:?Defina APP_SUPPORT_PASSWORD no .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init/001-roles.sh:/docker-entrypoint-initdb.d/001-roles.sh:ro
       - ./infra/postgres/init/001-roles.sql:/etc/orion/001-roles.sql:ro
+      - ./infra/postgres/upgrade-support.sql:/etc/orion/upgrade-support.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-barber_saas}"]
       interval: 5s
@@ -36,6 +38,10 @@ services:
     build: .
     environment:
       APP_DATABASE_URL: postgresql+asyncpg://app_runtime:${APP_RUNTIME_PASSWORD}@postgres:5432/${POSTGRES_DB:-barber_saas}
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:${APP_SUPPORT_PASSWORD}@postgres:5432/${POSTGRES_DB:-barber_saas}
+      SUPPORT_API_TOKEN: ${SUPPORT_API_TOKEN:?Defina SUPPORT_API_TOKEN no .env}
+      VIEWER_API_TOKEN: ${VIEWER_API_TOKEN:-}
+      VIEWER_TENANT_ID: ${VIEWER_TENANT_ID:-}
       REDIS_URL: redis://redis:6379/0
     ports:
       - "127.0.0.1:8000:8000"
@@ -77,6 +83,10 @@ services:
     environment:
       APP_DATABASE_URL: postgresql+asyncpg://app_runtime:${APP_RUNTIME_PASSWORD}@postgres:5432/${POSTGRES_DB:-barber_saas}
       MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:${APP_MIGRATOR_PASSWORD}@postgres:5432/${POSTGRES_DB:-barber_saas}
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:${APP_SUPPORT_PASSWORD}@postgres:5432/${POSTGRES_DB:-barber_saas}
+      SUPPORT_API_TOKEN: ${SUPPORT_API_TOKEN:?Defina SUPPORT_API_TOKEN no .env}
+      VIEWER_API_TOKEN: ${VIEWER_API_TOKEN:-}
+      VIEWER_TENANT_ID: ${VIEWER_TENANT_ID:-}
       REQUIRE_POSTGRES_TESTS: "1"
     depends_on:
       postgres: {condition: service_healthy}

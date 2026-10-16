@@ -41,3 +41,13 @@ Nenhum domínio, preço, limite ou capacidade foi pressuposto.
 Rodar CI real PostgreSQL 16, revisar variáveis, configurar backups e restore,
 healthcheck e logs, autorizar custos/projeto/contas e aprovar as próximas fatias.
 O botão de deploy não substitui a validação de isolamento nem a autorização.
+
+
+## Adição na FATIA 1 (não implantada)
+Provisionar papel `app_support` (não owner/não BYPASSRLS) via SQL de init
+executado por administrador Railway **uma única vez**.
+API recebe `SUPPORT_DATABASE_URL` (somente app_support) e
+`SUPPORT_API_TOKEN` aleatório de alta entropia; worker não recebe
+essas credenciais. `VIEWER_API_TOKEN` e `VIEWER_TENANT_ID` opcionais.
+Não ativar domínio público/painel operacional até configurar regras de rede,
+rotação de token, rate limiting e revisão de permissões/backup.

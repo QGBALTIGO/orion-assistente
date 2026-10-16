@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "orion-barbearias"
-version = "0.0.1"
+version = "0.1.0"
 description = "Fundação multiempresa para agendamento de barbearias"
 requires-python = ">=3.12,<3.14"
 dependencies = [
@@ -15,6 +15,7 @@ dependencies = [
   "alembic>=1.13,<2",
   "psycopg[binary]>=3.2,<4",
   "arq>=0.26,<1",
+  "tzdata>=2025.2",
 ]
 
 [project.optional-dependencies]

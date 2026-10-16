@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orion | Operação interna</title>
+  <style>
+    :root {color-scheme:dark;--bg:#11151a;--surface:#1e2329;--border:#424950;--gold:#debf81;--ink:#edf0f2;--muted:#abb5bf;--green:#32856a}
+    * {box-sizing:border-box} body {font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink);margin:0}
+    main {max-width:1080px;margin:auto;padding:28px 20px 60px}
+    h1 {font-size:clamp(2rem,5vw,3rem);margin:8px 0 0} h2 {color:var(--gold);font-size:1.2rem}
+    .subtitle {color:var(--muted);margin:0 0 24px} .chip {color:var(--gold);font-size:.8rem;letter-spacing:.12em;text-transform:uppercase}
+    .layout {display:grid;grid-template-columns:minmax(280px,370px) 1fr;gap:22px}
+    section {background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;margin:16px 0}
+    label {display:block;font-weight:600;font-size:.88rem;margin:12px 0 4px}
+    input,select,textarea {width:100%;background:#11151a;border:1px solid #62717d;border-radius:8px;padding:11px;color:var(--ink);font:inherit}
+    input:focus,select:focus {outline:2px solid var(--gold)} button {background:var(--gold);color:#131313;border:0;padding:11px 18px;font-weight:750;border-radius:8px;cursor:pointer;margin-top:14px}
+    button.secondary {background:var(--green);color:white} button:focus-visible {outline:3px solid white}
+    table {width:100%;border-collapse:collapse;font-size:.85rem;word-break:break-word} td,th {padding:9px;border-bottom:1px solid var(--border);text-align:left}
+    .scroll {overflow-x:auto;max-width:100%} #notice {min-height:24px;color:var(--gold);white-space:pre-wrap}
+    small {color:var(--muted)} @media(max-width:720px) {.layout {grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main>
+  <span class="chip">Orion / Operação autorizada</span>
+  <h1>Configuração da barbearia</h1>
+  <p class="subtitle">Catálogo, equipe e expediente. Não é um aplicativo para clientes nem um sistema de reservas.</p>
+  <div class="layout">
+    <div>
+      <section>
+        <h2>1. Autenticar</h2>
+        <label for="token">Token de operador (somente no dispositivo autorizado)</label>
+        <input id="token" type="password" autocomplete="off" placeholder="Cole o token seguro">
+        <small>O token fica somente na memória desta página; não é salvo no navegador.</small>
+        <button id="loadTenants" class="secondary">Carregar barbearias</button>
+        <label for="tenant">Estabelecimento selecionado</label>
+        <select id="tenant"><option value="">Selecione</option></select>
+        <p id="notice" role="status" aria-live="polite"></p>
+      </section>
+      <section>
+        <h2>2. Nova barbearia</h2>
+        <form id="tenantForm">
+          <label>Nome<input name="name" required maxlength="160"></label>
+          <label>Identificador (slug)<input name="slug" required pattern="[a-z0-9-]+"></label>
+          <label>Fuso horário IANA<input name="timezone" value="America/Campo_Grande" required></label>
+          <button>Cadastrar barbearia</button>
+        </form>
+      </section>
+    </div>
+    <div>
+      <section>
+        <h2>3. Gerenciar cadastros</h2>
+        <label for="resource">Categoria</label>
+        <select id="resource"></select>
+        <form id="recordForm"></form>
+        <div class="scroll" id="results" aria-live="polite"></div>
+        <button class="secondary" id="refresh">Atualizar lista</button>
+      </section>
+    </div>
+  </div>
+</main>
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  // Campos conhecidos: não construir elementos a partir de texto remoto.
+  const fields = {
+    authorized_staff: [["phone_e164","Telefone E.164 (+55...)","text"],["role","Papel: owner, barber ou assistant","text"],["active","Ativo","checkbox"]],
+    professionals: [["name","Nome do profissional","text"],["active","Ativo","checkbox"]],
+    services: [["name","Nome do serviço","text"],["description","Descrição","text"],["duration_min","Duração (minutos)","number"],["price_cents","Preço (centavos)","number"],["prep_min","Preparação (minutos)","number"],["cleanup_min","Limpeza (minutos)","number"],["active","Ativo","checkbox"]],
+    professional_services: [["professional_id","ID do profissional","text"],["service_id","ID do serviço","text"]],
+    working_hours: [["professional_id","ID do profissional","text"],["weekday","Dia (0=segunda, 6=domingo)","number"],["start_time","Início","time"],["end_time","Fim","time"]],
+    working_breaks: [["working_hour_id","ID do expediente","text"],["start_time","Início da pausa","time"],["end_time","Fim da pausa","time"]],
+    time_off: [["professional_id","ID do profissional","text"],["starts_at","Início (com fuso)","text"],["ends_at","Fim (com fuso)","text"],["reason","Motivo (opcional)","text"]],
+    schedule_blocks: [["professional_id","ID do profissional","text"],["starts_at","Início (com fuso)","text"],["ends_at","Fim (com fuso)","text"],["reason","Motivo (opcional)","text"]]
+  };
+  const descriptions = {authorized_staff:"Telefones autorizados",professionals:"Profissionais",services:"Serviços",professional_services:"Serviços por profissional",working_hours:"Expediente",working_breaks:"Pausas",time_off:"Folgas",schedule_blocks:"Bloqueios"};
+  for(const [key,value] of Object.entries(descriptions)) $("resource").add(new Option(value,key));
+  const token = () => $("token").value.trim();
+  const headers = () => ({"Authorization":"Bearer "+token(),"Content-Type":"application/json"});
+  const notice = s => {$("notice").textContent=s};
+  async function req(url,opts={}) {
+    const r=await fetch(url,{...opts,headers:headers(),cache:"no-store"});
+    if(!r.ok) {let j=await r.json().catch(()=>({detail:"Erro"}));throw Error(typeof j.detail==="string"?j.detail:JSON.stringify(j.detail))}
+    return r.status===204?null:r.json();
+  }
+  async function loadTenants() {
+    try {
+      const data=await req("/api/v1/tenants");
+      $("tenant").replaceChildren(new Option("Selecione",""));
+      data.forEach(t=>$("tenant").add(new Option(t.name+" · "+t.slug,t.id)));
+      notice(data.length+" estabelecimento(s) carregado(s).");
+    } catch(e) {notice(e.message)}
+  }
+  function form() {
+    const f=$("recordForm");f.replaceChildren();
+    for(const [key,title,type] of fields[$("resource").value]) {
+      const label=document.createElement("label");label.textContent=title;
+      const inp=document.createElement("input");inp.name=key;inp.type=type;
+      if(type==="checkbox") inp.checked=true;
+      else if(!["description","reason","prep_min","cleanup_min"].includes(key)) inp.required=true;
+      label.append(inp);f.append(label);
+    }
+    const btn=document.createElement("button");btn.textContent="Cadastrar registro";f.append(btn);
+  }
+  async function loadRecords() {
+    if(!$("tenant").value) {notice("Selecione uma barbearia.");return}
+    try {
+      const data=await req("/api/v1/tenants/"+$("tenant").value+"/"+$("resource").value);
+      const area=$("results");area.replaceChildren();
+      const table=document.createElement("table");
+      for (const row of data) {
+        const tr=document.createElement("tr");
+        for(const [k,v] of Object.entries(row)) {
+          const td=document.createElement("td");td.textContent=k+": "+(v??"");tr.append(td);
+        }
+        table.append(tr);
+      }
+      area.append(table);
+      notice(data.length+" registro(s) carregado(s).");
+    } catch(e) {notice(e.message)}
+  }
+  $("loadTenants").onclick=loadTenants;
+  $("refresh").onclick=loadRecords;
+  $("tenant").onchange=loadRecords;
+  $("resource").onchange=()=>{form();loadRecords()};
+  $("tenantForm").onsubmit=async e=>{
+    e.preventDefault();
+    try {const payload=Object.fromEntries(new FormData(e.target));await req("/api/v1/tenants",{method:"POST",body:JSON.stringify(payload)});await loadTenants();e.target.reset()}
+    catch(err){notice(err.message)}
+  };
+  $("recordForm").onsubmit=async e=>{
+    e.preventDefault();
+    if(!$("tenant").value) {notice("Selecione uma barbearia.");return}
+    const payload={};
+    for(const inp of e.target.querySelectorAll("input")) {
+      if(inp.type==="checkbox") payload[inp.name]=inp.checked;
+      else if(inp.type==="number") payload[inp.name]=Number(inp.value||0);
+      else if(inp.value) payload[inp.name]=inp.value;
+    }
+    try {
+      await req("/api/v1/tenants/"+$("tenant").value+"/"+$("resource").value,{method:"POST",body:JSON.stringify(payload)});
+      e.target.reset();await loadRecords();
+    }catch(err){notice(err.message)}
+  };
+  form();
+})();
+</script>
+</body>
+</html>
