@@ -142,3 +142,19 @@ forma de atualização de uma instalação com informações persistentes.
 Consulte [docs/booking-engine.md](docs/booking-engine.md) para rotas de disponibilidade,
 holds, confirmações, cancelamento, remarcação, isolamento e testes de concorrência.
 A aplicação ainda NÃO recebe mensagens WhatsApp nem permite agendamento pelo cliente final.
+
+### Upgrade de um volume PostgreSQL existente: FATIA 2
+
+O banco anterior pode não ter o grant necessário para a extensão btree_gist.
+Atualize o papel de migrations sem apagar o banco, antes de aplicar Alembic:
+
+```bash
+docker compose up -d --wait postgres
+docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -v db_name="$POSTGRES_DB" -f /etc/orion/upgrade-booking.sql'
+docker compose --profile tools run --rm --build migrate
+docker compose --profile tools run --rm --build test
+```
+
+Em Railway, um administrador autorizado aplica o mesmo GRANT ao usuário
+app_migrator pelo painel/console seguro; não use a credencial migrator na API.
+Não fazer deploy externo sem autorização. Não usar down -v para atualizar.

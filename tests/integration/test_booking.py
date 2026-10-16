@@ -290,3 +290,37 @@ async def test_other_professional_and_other_tenant_remain_isolated(booking_db):
                     INSERT INTO customers (tenant_id,name,whatsapp_e164)
                     VALUES (:tenant,'Negado',:phone)
                 """), {"tenant": d["a"], "phone": phone(222)})
+
+
+@pytest.mark.asyncio
+async def test_postgres_exclusion_rejects_overlap_even_without_booking_service(booking_db):
+    """Segunda escrita SQL direta também é vetada pela constraint btree_gist."""
+    d = booking_db
+    at = start_at(d["day"], 10)
+    async with d["factory"]() as s:
+        booked = await book_appointment(s, d["a"], d["pro"], [d["beard"]],
+                                        phone(320), "Primeira pessoa", at, "constraint-0001")
+    async with d["migrator"].begin() as s:
+        data = (await s.execute(text("""
+            SELECT customer_id,start_at,end_at,occupied_from,occupied_until
+            FROM appointments WHERE id=:id
+        """), {"id": booked["id"]})).mappings().one()
+    from app.database import tenant_transaction
+    async with d["factory"]() as s:
+        with pytest.raises(DBAPIError):
+            async with tenant_transaction(s, d["a"]):
+                await s.execute(text("""
+                    INSERT INTO appointments (
+                        tenant_id,customer_id,professional_id,protocol,idempotency_key,
+                        request_fingerprint,start_at,end_at,occupied_from,occupied_until,
+                        status,hold_expires_at,total_cents
+                    ) VALUES (
+                        :tenant,:customer,:pro,:protocol,:idem,:fp,:start,:end,:begin,:stop,
+                        'hold',:expiry,2000
+                    )
+                """), {"tenant": d["a"], "customer": data["customer_id"],
+                       "pro": d["pro"], "protocol": "AG-XYZABC",
+                       "idem": "constraint-direct-write-0002", "fp": "x"*64,
+                       "start": data["start_at"], "end": data["end_at"],
+                       "begin": data["occupied_from"], "stop": data["occupied_until"],
+                       "expiry": datetime.now(UTC)+timedelta(minutes=5)})
