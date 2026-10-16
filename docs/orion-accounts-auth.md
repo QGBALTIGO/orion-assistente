@@ -30,7 +30,7 @@ A mudança Entrar/Criar conta/Esqueci senha usa animação leve; usuários com
   a pessoa deve entrar e comprovar também a senha administrativa legada
   na tela de vinculação de permissões. A sessão anterior é invalidada após
   a promoção; é necessário login novamente.
-- **Admin legado**: login atual permanece funcional. Desativá-lo só depois
+- **Papéis separados**: \`member\` para contas comuns, \`admin\` para a conta proprietária verificada, \`support\` para o login legado de manutenção. Administradores e suporte mantêm as rotas operacionais atuais; futuras funções exclusivas podem exigir explicitamente \`admin\`.\n- **Admin legado**: login atual permanece funcional. Desativá-lo só depois
   de uma migração e recuperação proprietária validadas.
 
 ## Configuração necessária para cadastro/recuperação
