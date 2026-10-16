@@ -9,10 +9,14 @@ SELECT format(
   'CREATE ROLE app_migrator LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS',
   :'migrator_password'
 ) \gexec
+SELECT format(
+  'CREATE ROLE app_support LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS',
+  :'support_password'
+) \gexec
 REVOKE ALL ON DATABASE :"db_name" FROM PUBLIC;
-GRANT CONNECT ON DATABASE :"db_name" TO app_runtime, app_migrator;
+GRANT CONNECT ON DATABASE :"db_name" TO app_runtime, app_migrator, app_support;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-GRANT USAGE ON SCHEMA public TO app_runtime, app_migrator;
+GRANT USAGE ON SCHEMA public TO app_runtime, app_migrator, app_support;
 GRANT CREATE ON SCHEMA public TO app_migrator;
 -- Tabelas futuras têm grants conservadores; migration define os grants de cada tabela.
 ALTER DEFAULT PRIVILEGES FOR ROLE app_migrator IN SCHEMA public

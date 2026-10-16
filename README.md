@@ -1,4 +1,4 @@
-# Orion Barbearias — FATIA 0
+# Orion Barbearias — FATIA 0 + FATIA 1
 
 Fundação de um SaaS gerenciado de agendamento por WhatsApp para barbearias.
 **Status: implementação de fundação, não pronta para clientes reais.**
@@ -89,3 +89,36 @@ Nenhuma credencial, conta Railway ou domínio foi conectado por esta mudança.
 
 **Aceite:** migrations passam e todos os testes de isolamento rodam sobre
 PostgreSQL real. Sem esse resultado, a FATIA 0 permanece não validada.
+
+
+## FATIA 1: catálogo interno e operação autorizada
+
+Após migrations, acesse \`http://127.0.0.1:8000/panel\`. A interface em
+português permite cadastrar barbearia, equipe autorizada, profissionais,
+serviços, vínculo de serviços/profissionais, expediente, pausas, folgas e
+bloqueios. A interface usa um token de suporte forte, informado em tempo de
+execução, sem salvar em localStorage. **Não compartilhe token ou senha por chat.**
+
+Configure mais duas credenciais novas e distintas no \`.env\`:
+\`APP_SUPPORT_PASSWORD\` (papel separado, sem BYPASSRLS) e
+\`SUPPORT_API_TOKEN\` (gerado com \`secrets.token_urlsafe(48)\`).
+\`VIEWER_API_TOKEN\` e \`VIEWER_TENANT_ID\` são opcionais para consulta
+de um único estabelecimento; leitores não fazem alterações.
+
+- \`POST /api/v1/tenants\` e \`GET /api/v1/tenants\`: somente suporte.
+- \`GET/POST /api/v1/tenants/{id}/{resource}\`: consulta/cadastro.
+- \`PUT/DELETE /api/v1/tenants/{id}/{resource}/{item_id}\`: edição e remoção.
+- \`GET /api/v1/tenants/{id}/audit\`: trilha de operações.
+- Todos exigem header \`Authorization: Bearer <token>\`.
+- O sistema não aceita \`tenant_id\` arbitrário em itens: suporte pode
+  escolher a empresa no painel após autenticação; leitor só usa seu escopo.
+- Os preços são inteiros em centavos. Cada dia do profissional admite um
+  intervalo principal de expediente e pausas internas.
+- Horários, folgas e bloqueios **não** criam reservas nesta fatia.
+
+Para verificar o isolamento real, rode
+\`docker compose --profile tools run --rm --build test\`.
+**Importante:** bancos antigos da FATIA 0 não ganham o novo papel
+\`app_support\` automaticamente: aprovisionar o papel explicitamente em
+ambiente já existente ANTES de executar \`alembic upgrade head\`.
+Não apague volumes de dados para aplicar migração.
