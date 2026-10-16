@@ -11,6 +11,7 @@ import {timingSafeEqual,randomUUID} from "node:crypto";
 import makeWASocket,{DisconnectReason,Browsers,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import pino from "pino";
+import NodeCache from "@cacheable/node-cache";
 import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode,connectionPhase,reconnectPlan} from "./core.mjs";
 import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
 import {makeMessageRetryStore,deliveryFromAck,advanceDelivery} from "./message-retry-store.mjs";
@@ -23,6 +24,11 @@ const PORT=Number(process.env.PORT || 3000);
 const SESSION_DIR=process.env.QR_SESSION_DIR || "/data/auth";
 const KEY=process.env.QR_BRIDGE_TOKEN || "";
 const logger=pino({level:"silent"});
+// Baileys 6.7.24 accepts CacheStore here. A bounded TTL protects against
+// stale Signal retry state; it does NOT change long-lived auth credentials.
+const msgRetryCounterCache=new NodeCache({
+  stdTTL:600,checkperiod:120,useClones:false
+});
 if(Buffer.byteLength(KEY)<32 || !SESSION_DIR.startsWith("/data/")){
   throw Error("Configuração segura do bridge não encontrada");
 }
@@ -286,6 +292,8 @@ async function connect(){
     }
     const client=makeWASocket({
       auth:{creds:state.creds,keys:makeCacheableSignalKeyStore(state.keys,logger)},
+      msgRetryCounterCache,
+      maxMsgRetryCount:5,
       getMessage:async key=>{
         const content=retryStore.get(key);
         if(content)retryDiagnostics.cacheHits++;
@@ -423,6 +431,7 @@ const server=http.createServer(async(req,res)=>{
         serialize:obj=>JSON.stringify(obj,BufferJSON.replacer),
         deserialize:str=>JSON.parse(str,BufferJSON.reviver)
       });
+      msgRetryCounterCache.flushAll();
       lastError=null;attempts=0;everConnected=false;lastDisconnectCode=null;
       await connect();
       return reply(res,202,{status:"connecting"});
