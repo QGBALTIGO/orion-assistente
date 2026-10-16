@@ -214,6 +214,9 @@ function installListeners(client,mine,saveCreds){
       if(message.key?.fromMe)continue;
       const phone=await resolveMessagePhone(message.key,client);
       if(!phone||!message.key?.id||!message.message)continue;
+      // Count each valid inbound message, including media without a transcript.
+      const at=timestampMs(message.messageTimestamp)||Date.now();
+      try{connectedStore.record("wa:"+message.key.id,at)}catch{}
       let body=extractText(message.message);
        if(!body){
          try{
@@ -225,7 +228,6 @@ function installListeners(client,mine,saveCreds){
          }catch{console.warn("Orion QR: transcrição não concluída (dados omitidos)")}
        }
        if(!body || typeof body!=="string")continue;
-      const at=timestampMs(message.messageTimestamp)||Date.now();
       const id="wa:"+message.key.id;
       if(seen.has(id))continue;
       pushMessage({id,phone,body:body.slice(0,2000),
