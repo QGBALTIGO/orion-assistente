@@ -11,6 +11,7 @@ from app.landing_api import router as landing_router
 from app.billing_api import router as billing_router
 from app.metrics_api import router as metrics_router
 from app.advanced_api import router as advanced_router
+from app.qr_api import router as qr_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -33,6 +34,7 @@ app.include_router(landing_router)
 app.include_router(billing_router)
 app.include_router(metrics_router)
 app.include_router(advanced_router)
+app.include_router(qr_router)
 app.include_router(catalog_router)
 
 

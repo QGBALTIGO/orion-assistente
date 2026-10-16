@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Orion | Conectar WhatsApp por QR</title>
+<style>
+:root{color-scheme:dark;--bg:#101719;--card:#202a2e;--edge:#39484e;--gold:#e4c487;--text:#f3f5f4;--muted:#abb8ba;--green:#81ca9f}
+*{box-sizing:border-box}body{margin:0;font:16px/1.55 system-ui,sans-serif;background:var(--bg);color:var(--text)}
+main{max-width:800px;margin:0 auto;padding:40px 20px 80px}
+a{color:var(--gold)}h1{font-size:clamp(2rem,5vw,3rem);line-height:1.12}
+small,.muted{color:var(--muted)}.label{color:var(--gold);font-weight:700;letter-spacing:.12em;font-size:.8rem;text-transform:uppercase}
+.panel{background:var(--card);border:1px solid var(--edge);border-radius:18px;padding:28px;margin:20px 0}
+input{width:100%;padding:13px;background:#0b1113;border:1px solid #819099;color:var(--text);border-radius:8px;font:inherit}
+button{padding:12px 20px;border-radius:8px;background:var(--gold);color:#1d2325;border:0;font:inherit;font-weight:800;cursor:pointer;margin-top:12px}
+button:disabled{opacity:.55;cursor:not-allowed}.outline{background:transparent;border:1px solid var(--gold);color:var(--gold)}
+#image{width:min(100%,380px);height:auto;border-radius:12px;padding:12px;background:white;display:none;margin:18px auto;image-rendering:pixelated}
+#status{min-height:40px;color:var(--green);font-weight:650;white-space:pre-wrap}
+#message{color:var(--gold);white-space:pre-wrap}
+ul{padding-left:20px}li{margin-bottom:8px}
+.note{border-left:3px solid var(--gold);padding-left:16px;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+<a href="/panel">← Voltar ao painel</a>
+<p class="label">Orion / Dispositivo de teste</p>
+<h1>Conectar WhatsApp por QR Code</h1>
+<p class="muted">Use um número de teste autorizado. Esta é uma conexão experimental por dispositivo vinculado, não a API oficial Meta.</p>
+<div class="panel">
+<label for="token"><strong>Token de suporte do Orion</strong></label>
+<input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Cole seu SUPPORT_API_TOKEN">
+<button id="start">Mostrar QR Code</button>
+<button class="outline" id="refresh" disabled>Atualizar QR</button>
+<p id="status" aria-live="polite">Aguardando autenticação.</p>
+<img id="image" alt="QR Code temporário para vincular o número de teste no WhatsApp">
+<p id="message" aria-live="polite"></p>
+<small>O token fica apenas na memória desta aba. O QR expira rapidamente e é renovado enquanto a sessão estiver aguardando conexão.</small>
+</div>
+<section class="panel">
+<h2>Como escanear no celular</h2>
+<ul>
+<li>Abra o <strong>WhatsApp</strong> ou <strong>WhatsApp Business</strong> no telefone principal.</li>
+<li>No Android: menu ⋮ → <strong>Dispositivos conectados</strong> → <strong>Conectar dispositivo</strong>.</li>
+<li>No iPhone: <strong>Configurações</strong> → <strong>Dispositivos conectados</strong> → <strong>Conectar dispositivo</strong>.</li>
+<li>Use a câmera do WhatsApp para ler o QR exibido nesta página.</li>
+<li>Confira se aparece a mensagem <strong>Conectado</strong> acima.</li>
+</ul>
+<p class="note"><strong>Atenção:</strong> somente contas sob sua administração e consentimento. O uso de bibliotecas não oficiais pode causar desconexões, restrições ou banimento da conta. Esta etapa não ativa o bot nem lê ou envia mensagens.</p>
+</section>
+</main>
+<script>
+(()=>{"use strict";
+const $=id=>document.getElementById(id);
+let key="",timer=null,busy=false;
+const status=$("status"),message=$("message"),image=$("image");
+async function call(endpoint,method="GET"){
+  const r=await fetch("/api/v1/qr/"+endpoint,{
+    method,cache:"no-store",
+    headers:{"Authorization":"Bearer "+key,"Accept":"application/json"}
+  });
+  if(!r.ok)throw new Error(r.status===401?"Token inválido ou expirado":
+                         r.status===403?"Apenas suporte autorizado pode acessar o QR":
+                         "Falha ao consultar conexão (HTTP "+r.status+").");
+  return r.json();
+}
+function stop(){if(timer){clearInterval(timer);timer=null}}
+async function update(){
+  if(busy || !key)return;
+  busy=true;
+  try{
+    const d=await call("image");
+    if(d.status==="connected"){
+      image.style.display="none"; image.removeAttribute("src");
+      status.textContent="✅ Conectado! O dispositivo de teste foi vinculado.";
+      message.textContent="Nenhuma mensagem é enviada automaticamente.";
+      $("refresh").disabled=true;stop();return;
+    }
+    if(d.image && d.image.startsWith("data:image/png;base64,")){
+      image.src=d.image;image.style.display="block";
+      status.textContent="QR disponível — abra Dispositivos conectados no telefone.";
+      message.textContent="Válido por cerca de "+d.expiresIn+" segundos.";
+    }else{
+      image.style.display="none";image.removeAttribute("src");
+      status.textContent=d.status==="logged_out"?"Sessão desconectada pelo WhatsApp.":
+        "Preparando conexão... ("+(d.status||"aguardando")+")";
+      message.textContent="O QR será exibido quando estiver pronto.";
+    }
+  }catch(err){
+    status.textContent="Não foi possível consultar o QR.";
+    message.textContent=err.message;
+    image.style.display="none";image.removeAttribute("src");
+    if(/Token inválido|Apenas suporte/.test(err.message)){stop();}
+  }finally{busy=false}
+}
+$("start").addEventListener("click",()=>{
+  const token=$("token").value.trim();
+  if(token.length<32){message.textContent="Cole o token seguro do suporte.";return}
+  key=token;$("token").value="";
+  $("refresh").disabled=false;stop();
+  update();timer=setInterval(update,4500);
+});
+$("refresh").addEventListener("click",update);
+window.addEventListener("pagehide",()=>{stop();key="";image.removeAttribute("src")});
+})();
+</script>
+</body></html>
