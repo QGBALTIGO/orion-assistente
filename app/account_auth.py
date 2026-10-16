@@ -296,6 +296,6 @@ async def claim_owner(payload:ClaimOwner,request:Request,data:dict=Depends(panel
             if not row or row["verified_at"] is None or not hmac.compare_digest(row["email"],owner):
                 raise HTTPException(403,"Conta sem autorização administrativa")
             await session.execute(text("""
-                UPDATE panel_accounts SET role='support',auth_version=auth_version+1 WHERE id=:id
+                UPDATE panel_accounts SET role='admin',auth_version=auth_version+1 WHERE id=:id
             """),{"id":UUID(data["account_id"])})
     return {"ok":True,"reloginRequired":True}
