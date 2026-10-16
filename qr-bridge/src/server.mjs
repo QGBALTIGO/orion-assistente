@@ -8,7 +8,7 @@ import http from "node:http";
 import path from "node:path";
 import fs from "node:fs";
 import {timingSafeEqual,randomUUID} from "node:crypto";
-import makeWASocket,{DisconnectReason,Browsers,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON} from "@whiskeysockets/baileys";
+import makeWASocket,{DisconnectReason,Browsers,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import pino from "pino";
 import NodeCache from "@cacheable/node-cache";
@@ -20,6 +20,8 @@ import {sendStoredText} from "./reliable-send.mjs";
 import {inspectLookup,inspectDelivery} from "./recipient-diagnostics.mjs";
 import {makeDurableInbox} from "./durable-inbox.mjs";
 import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-health.mjs";
+import {makeConnectedStore} from "./connected-store.mjs";
+import {transcriberConfig,cleanPictureUrl,transcribeAudio,handleCallOffers} from "./connected-features.mjs";
 import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
@@ -50,6 +52,18 @@ let socket=null,generation=0,timer=null,attempts=0,status="starting",
   notifiedGeneration=-1,
   qr="",qrAt=0,lastError=null,pairedNumber="",pairingCode="",pairAt=0,requesting=false;
 let durableInbox=makeDurableInbox({directory:authDir,secret:KEY});
+let connectedStore=makeConnectedStore({directory:authDir,secret:KEY});
+let connectedProfile={name:null,photoUrl:null,updatedAt:null},profileFetchedAt=0,lastRestartAt=0;
+const repliedToCallers=new Set();
+async function refreshConnectedProfile(client){
+  if(!client?.user?.id || Date.now()-profileFetchedAt<60000)return;
+  profileFetchedAt=Date.now();
+  const display=typeof client.user.name==="string"?client.user.name.trim().slice(0,90):"";
+  let photoUrl=null;
+  try{photoUrl=cleanPictureUrl(await client.profilePictureUrl(client.user.id,"image"))}catch{}
+  if(socket===client && status==="connected")
+    connectedProfile={name:display||null,photoUrl,updatedAt:Date.now()};
+}
 const messages=durableInbox.load();
 const seen=new Set(messages.map(x=>x.id)),sendTimes=[],MAX=500;
 let connectedSince=0,lastInboundAt=0,pendingNotificationsReceived=false,inboundSinceConnect=false,
@@ -93,6 +107,9 @@ for(const row of messages){
 function pushMessage(item){
   if(seen.has(item.id))return;
   seen.add(item.id);messages.push(item);
+  try{connectedStore.record(item.id,item.at)}catch{
+    console.warn("Orion QR: estatísticas indisponíveis; nenhuma contagem estimada");
+  }
   while(messages.length>MAX){const old=messages.shift();seen.delete(old.id)}
   persistInbox();
 }
@@ -119,7 +136,13 @@ function stats(){
       pendingNotifications:pendingNotificationsReceived,hasCurrentMessages:inboundSinceConnect}),
     connectedSince:status==="connected"?connectedSince:null,
     lastInboundAt:lastInboundAt||null,
-    recentBufferedMessages:recentAppends};
+    recentBufferedMessages:recentAppends,
+    profile:status==="connected"?connectedProfile:null,
+    messageStats:connectedStore.stats(),
+    featureSettings:status==="connected"?connectedStore.settings():null,
+    featureCapabilities:{chatbot:false,transcription:!!transcriberConfig(),
+      callBlocking:typeof socket?.rejectCall==="function"},
+    controlStorage:connectedStore.health()};
 }
 function auth(req){
   const input=Buffer.from(String(req.headers["x-orion-bridge-key"]||""));
@@ -174,6 +197,15 @@ function installListeners(client,mine,saveCreds){
       if(found){found.delivery=after;persistInbox();}
     }
   });
+  client.ev.on("call",async calls=>{
+    if(mine!==generation||status!=="connected")return;
+    try{
+      await handleCallOffers(calls,{
+        socket:client,settings:connectedStore.settings(),replySent:repliedToCallers,
+        sendReply:async(jid,body)=>{const phone=normalizeFromJid(jid);if(phone)await send(phone,body)}
+      });
+    }catch{console.warn("Orion QR: falha ao processar controle de chamada (dados omitidos)")}
+  });
   client.ev.on("messages.upsert",async ({messages:incoming,type})=>{
     if(mine!==generation||status!=="connected")return;
     for(const message of incoming||[]){
@@ -182,8 +214,17 @@ function installListeners(client,mine,saveCreds){
       if(message.key?.fromMe)continue;
       const phone=await resolveMessagePhone(message.key,client);
       if(!phone||!message.key?.id||!message.message)continue;
-      const body=extractText(message.message);
-      if(!body || typeof body!=="string")continue;
+      let body=extractText(message.message);
+       if(!body){
+         try{
+           const txt=await transcribeAudio(message,{
+             client,downloadMediaMessage,settings:connectedStore.settings(),
+             config:transcriberConfig(),logger
+           });
+           if(txt)body="[Áudio transcrito] "+txt;
+         }catch{console.warn("Orion QR: transcrição não concluída (dados omitidos)")}
+       }
+       if(!body || typeof body!=="string")continue;
       const at=timestampMs(message.messageTimestamp)||Date.now();
       const id="wa:"+message.key.id;
       if(seen.has(id))continue;
@@ -203,6 +244,10 @@ function installListeners(client,mine,saveCreds){
     }
     if(update.connection==="open"){
       status="connected";everConnected=true;qr="";qrAt=0;pairingCode="";pairAt=0;attempts=0;
+       try{connectedStore.setIdentity(client.user?.id)}catch{
+         console.warn("Orion QR: configuração criptografada indisponível")
+       }
+       void refreshConnectedProfile(client);
       connectedSince=Date.now();inboundSinceConnect=false;
       if(update.receivedPendingNotifications===true)pendingNotificationsReceived=true;
       pairedNumber=normalizeFromJid(client.user?.id?.split(":")[0]+"@s.whatsapp.net")||"";
@@ -439,6 +484,44 @@ const server=http.createServer(async(req,res)=>{
   try{
     if(path==="/internal/status"&&req.method==="GET")
       return reply(res,200,stats());
+    if(path==="/internal/profile/refresh"&&req.method==="POST"){
+      if(status!=="connected"||!socket)return reply(res,409,{error:"not_connected"});
+      await refreshConnectedProfile(socket);
+      return reply(res,200,{profile:connectedProfile});
+    }
+    if(path==="/internal/settings"&&req.method==="POST"){
+      if(status!=="connected"||!socket)return reply(res,409,{error:"not_connected"});
+      const settings=connectedStore.update(await collectBody(req),{
+        chatbot:false,transcription:!!transcriberConfig()
+      });
+      return reply(res,200,{settings});
+    }
+    if(path==="/internal/restart"&&req.method==="POST"){
+      const input=await collectBody(req);
+      if(input.confirm!=="REINICIAR"||status!=="connected"||Date.now()-lastRestartAt<60000)
+        return reply(res,409,{error:"restart_not_allowed"});
+      lastRestartAt=Date.now();
+      ++generation;clearTimeout(timer);timer=null;
+      try{socket?.end(undefined)}catch{}
+      await saveQueue;
+      await connect();
+      return reply(res,202,{status:"connecting"});
+    }
+    if(path==="/internal/disconnect"&&req.method==="POST"){
+      const input=await collectBody(req);
+      if(input.confirm!=="DESCONECTAR"||status!=="connected"||!socket)
+        return reply(res,409,{error:"disconnect_not_allowed"});
+      const old=socket;
+      ++generation;clearTimeout(timer);timer=null;
+      status="disconnecting";
+      try{await old.logout()}catch{
+        status="error";lastError="Não foi possível confirmar a desconexão.";
+        return reply(res,503,{error:"disconnect_failed"});
+      }
+      socket=null;status="logged_out";pairedNumber="";
+      connectedProfile={name:null,photoUrl:null,updatedAt:null};
+      return reply(res,200,{status:"logged_out"});
+    }
     if(path==="/internal/qr"&&req.method==="GET"){
       if(status==="connected")return reply(res,200,{status:"connected",image:null,expiresIn:0});
       if(!qr||!freshQR(qrAt))
@@ -467,6 +550,9 @@ const server=http.createServer(async(req,res)=>{
       messages.splice(0);seen.clear();sendTimes.splice(0);
       retryMessages.clear();deliveryReceipts.clear();deliveryStart.clear();
       durableInbox=makeDurableInbox({directory:authDir,secret:KEY});
+      connectedStore=makeConnectedStore({directory:authDir,secret:KEY});
+      connectedProfile={name:null,photoUrl:null,updatedAt:null};
+      profileFetchedAt=0;repliedToCallers.clear();
       const restored=durableInbox.load();
       for(const row of restored){messages.push(row);seen.add(row.id)}
       lastInboundAt=0;pendingNotificationsReceived=false;inboundSinceConnect=false;
