@@ -125,3 +125,16 @@ jobs:
             assert.equal(JSON.stringify(cache.get({id:message.key.id}),BufferJSON.replacer),JSON.stringify(message.message,BufferJSON.replacer));
             console.log("ORION_BAILEYS_REAL_PACKAGE_DRY_RUN_OK");
           '
+
+      - name: Verificar cache de retry com biblioteca real no contêiner
+        run: |
+          docker run --rm orion-qr:ci node --input-type=module -e '
+            import assert from "node:assert/strict";
+            import NodeCache from "@cacheable/node-cache";
+            const counter=new NodeCache({stdTTL:600,checkperiod:120,useClones:false});
+            counter.set("synthetic-id",1);
+            assert.equal(counter.get("synthetic-id"),1);
+            counter.flushAll();
+            assert.equal(counter.get("synthetic-id"),undefined);
+            console.log("ORION_BAILEYS_RETRY_CACHE_OK");
+          '
