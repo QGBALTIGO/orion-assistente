@@ -240,6 +240,10 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
             <input type="tel" id="chatPhone" placeholder="5567999999999" required>
             <label for="chatText">Mensagem</label>
             <textarea id="chatText" maxlength="1200" required placeholder="Escreva sua mensagem..."></textarea>
+            <label style="display:flex;align-items:flex-start;gap:8px;margin:10px 0 0;font-size:.88rem">
+              <input type="checkbox" id="freshDeviceNextSend" style="width:auto;margin-top:4px">
+              Teste pontual: consultar novamente os dispositivos deste contato no próximo envio. Não reenvia mensagens antigas nem redefine chaves.
+            </label>
             <div class="row"><button class="btn" type="submit" id="sendButton">Enviar mensagem →</button><small>Máximo: 5 envios por minuto. Sem campanhas.</small></div>
           </form>
           <div class="row" style="align-items:center;gap:12px;margin-top:13px;flex-wrap:wrap">
@@ -620,16 +624,21 @@ $("inspectRecipient").addEventListener("click",async()=>{
 $("sendForm").addEventListener("submit",async ev=>{
  ev.preventDefault();
  const phone=normalize($("chatPhone").value),text=$("chatText").value.trim();
+ const freshDevices=$("freshDeviceNextSend").checked;
  if(!/^[1-9]\d{7,14}$/.test(phone)){$("chatNotice").textContent="Informe número com DDI e DDD.";return}
  if(!text||text.length>1200){$("chatNotice").textContent="Escreva uma mensagem de até 1200 caracteres.";return}
  if(deviceStatus!=="connected"){$("chatNotice").textContent="Conecte seu WhatsApp antes de enviar.";return}
- if(!confirm("Enviar esta mensagem para +"+phone+" pelo WhatsApp conectado?"))return;
+ if(!confirm("Enviar uma nova mensagem para +"+phone+" pelo WhatsApp conectado?"+
+   (freshDevices?"\\nModo de teste: atualizar lista de dispositivos deste contato, sem redefinir a sessão.":"")))return;
  $("sendButton").disabled=true;$("chatNotice").textContent="Enviando...";
  try{
-  const result=await api("/api/v1/qr/send","POST",{phone,text});
+  const result=await api("/api/v1/qr/send","POST",{phone,text,freshDevices});
   if(!result.accepted)throw Error("O WhatsApp não confirmou a aceitação. Aguarde antes de tentar novamente.");
   selectedPhone=phone;$("chatTitle").textContent="Conversa com +"+phone;
-  $("chatText").value="";$("chatNotice").textContent="O WhatsApp aceitou o envio. Aguardando confirmação de entrega no celular.";
+  $("chatText").value="";$("freshDeviceNextSend").checked=false;
+  $("chatNotice").textContent="O WhatsApp aceitou o envio"+
+    (result.freshDeviceLookupRequested?" com nova consulta da lista de dispositivos":"")+
+    ". Ainda é necessário verificar no celular se a mensagem pôde ser lida.";
   await refreshMessages();await loadChats();
  }catch(ex){$("chatNotice").textContent=ex.message}
  finally{$("sendButton").disabled=false}
