@@ -17,13 +17,14 @@ async def main():
     if state=="connected":
         print("Already connected; no changes.")
         return
-    if state=="logged_out":
+    if state in ("logged_out","pair_failed"):
         changed=await _bridge("/internal/recover","POST")
         if changed.get("status")!="connecting":
             print("Recovery request was not acknowledged.")
             raise SystemExit(3)
         print("Revoked session isolated; awaiting fresh QR.")
-    elif state not in ("starting","connecting","qr_ready","reconnecting"):
+    elif state not in ("starting","connecting","qr_ready","qr_delayed",
+                        "qr_expired","reconnecting","pairing","pair_expired"):
         print("Unexpected status; no mutation performed.")
         raise SystemExit(2)
     for attempt in range(20):
