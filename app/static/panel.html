@@ -596,6 +596,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 (()=>{
 "use strict";
 const $=id=>document.getElementById(id);
+let authEpoch=0;
 let csrf="",page="dispositivo",method="qr",showQr=false,deviceStatus="starting",lastDeviceStatus="starting",pairExpiresAt=0,
     statusTimer=null,chatTimer=null,selectedPhone="",chatsBusy=false;
 let wizardStep="choose",wizardIndex=0,wizardAttempted=false,wizardSuccessUntil=0,
@@ -637,7 +638,7 @@ async function api(url,method="GET",data){
  const response=await fetch(url,{method,headers,body:data===undefined?undefined:JSON.stringify(data),credentials:"same-origin",cache:"no-store"});
  if(!response.ok){
    const json=await response.json().catch(()=>({}));
-   if(response.status===401&&url!=="/auth/login")showLogin();
+   if(response.status===401&&url!=="/auth/login"&&url!=="/auth/me")showLogin();
    throw Error(errorMessage(json,response.status));
  }
  return response.json();
@@ -656,7 +657,7 @@ function showApp(){
  openPage(["conversas","cadastros"].includes(desired)?desired:"dispositivo");
 }
 $("loginForm").addEventListener("submit",async ev=>{
- ev.preventDefault();$("loginError").textContent="";
+ ev.preventDefault();authEpoch++;$("loginError").textContent="";
  try{
   const r=await fetch("/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},
     credentials:"same-origin",body:JSON.stringify({username:$("username").value,password:$("password").value})});
@@ -665,7 +666,14 @@ $("loginForm").addEventListener("submit",async ev=>{
   csrf=payload.csrf;$("password").value="";showApp();
  }catch(ex){$("loginError").textContent=ex.message;}
 });
-(async()=>{try{const r=await api("/auth/me");csrf=r.csrf;showApp();}catch{showLogin()}})();
+(async()=>{
+ const epoch=authEpoch;
+ try{
+   const r=await api("/auth/me");
+   if(epoch!==authEpoch)return;
+   csrf=r.csrf;showApp();
+ }catch{if(epoch===authEpoch)showLogin()}
+})();
 function openPage(target){
  page=target;
  document.querySelectorAll(".page").forEach(x=>x.classList.toggle("hidden",x.id!=="page-"+target));
