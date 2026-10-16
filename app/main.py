@@ -42,6 +42,17 @@ app.include_router(account_auth_router)
 app.include_router(catalog_router)
 
 
+@app.get("/brand/{asset}", include_in_schema=False)
+async def branding(asset: str) -> FileResponse:
+    if asset not in {"orion-brand-dark.svg","orion-brand-light.svg","orion-symbol.svg"}:
+        from fastapi import HTTPException
+        raise HTTPException(404)
+    return FileResponse(Path(__file__).parent / "static" / asset,
+                        media_type="image/svg+xml",
+                        headers={"Cache-Control":"public, max-age=3600",
+                                 "X-Content-Type-Options":"nosniff"})
+
+
 @app.get("/panel", include_in_schema=False)
 async def panel() -> FileResponse:
     """Painel HTML; dados protegidos por sessão HttpOnly com CSRF."""
