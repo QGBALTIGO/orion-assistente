@@ -56,3 +56,12 @@ export function formatPairingCode(code) {
   if(!/^[A-Z0-9]{8}$/.test(raw))throw Error("Formato inesperado de código");
   return raw.slice(0,4)+"-"+raw.slice(4);
 }
+
+
+/** Disconnect 401 requires manual re-link. 515 is a normal pairing restart. */
+export function reconnectPlan(code,attempts=0,loggedOutCode=401,restartCode=515){
+  if(code===loggedOutCode)return {retry:false,delayMs:null};
+  if(code===restartCode)return {retry:true,delayMs:500};
+  const safeAttempt=Math.max(0,Math.min(4,Math.trunc(Number(attempts)||0)));
+  return {retry:true,delayMs:Math.min(30000,2000*(2**safeAttempt))};
+}

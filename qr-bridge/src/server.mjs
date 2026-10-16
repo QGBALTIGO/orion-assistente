@@ -10,7 +10,8 @@ import {timingSafeEqual,randomUUID} from "node:crypto";
 import makeWASocket,{DisconnectReason,Browsers,useMultiFileAuthState,fetchLatestWaWebVersion} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import pino from "pino";
-import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode,connectionPhase} from "./core.mjs";
+import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode,connectionPhase,reconnectPlan} from "./core.mjs";
+import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
 const SESSION_DIR=process.env.QR_SESSION_DIR || "/data/auth";
@@ -29,6 +30,7 @@ try {
 let socket=null,generation=0,timer=null,attempts=0,status="starting",
   connectStartedAt=Date.now(),lastQrAt=0,lastDisconnectCode=null,everConnected=false,
   pairingRequestedForGeneration=-1, pairPhone="",saveQueue=Promise.resolve(),
+  notifiedGeneration=-1,
   qr="",qrAt=0,lastError=null,pairedNumber="",pairingCode="",pairAt=0,requesting=false;
 const messages=[],seen=new Set(),sendTimes=[],MAX=500;
 
@@ -49,7 +51,8 @@ function stats(){
     waitingSeconds:Math.floor((Date.now()-connectStartedAt)/1000),
     phone:status==="connected"?pairedNumber:null,
     connectionType:"unofficial_linked_device",messagesEnabled:status==="connected",
-    retainedMessages:messages.length,paired:!!pairingCode};
+    retainedMessages:messages.length,paired:!!pairingCode,
+    connectionNotice:process.env.ORION_NOTIFY_SELF_ON_LINK==="1" ? noticeState(authDir) : "disabled"};
 }
 function auth(req){
   const input=Buffer.from(String(req.headers["x-orion-bridge-key"]||""));
@@ -105,6 +108,28 @@ function installListeners(client,mine,saveCreds){
       status="connected";everConnected=true;qr="";qrAt=0;pairingCode="";pairAt=0;attempts=0;
       pairedNumber=normalizeFromJid(client.user?.id?.split(":")[0]+"@s.whatsapp.net")||"";
       lastError=null;console.info("Orion QR: dispositivo conectado");
+      if(process.env.ORION_NOTIFY_SELF_ON_LINK==="1" && notifiedGeneration!==mine){
+        notifiedGeneration=mine;
+        // Only the authenticated account receives a one-time confirmation.
+        // Never send on QR creation, intermediate pairing or failed login.
+        setTimeout(async()=>{
+          if(mine!==generation || status!=="connected")return;
+          try{
+            await saveQueue;
+            if(mine!==generation || status!=="connected")return;
+            const result=await sendConnectionNoticeOnce({
+              authDir,
+              client,
+              isCurrent:()=>mine===generation&&status==="connected"&&socket===client,
+              onSent:item=>pushMessage({id:"out:"+(item.id||randomUUID()),
+                phone:item.phone,body:item.body,direction:"out",at:Date.now()}),
+            });
+            console.info("Orion QR: confirmação para a própria conta: "+result.state);
+          }catch{
+            console.warn("Orion QR: confirmação não concluída; estado preservado para análise");
+          }
+        },2500);
+      }
     }
     if(update.connection==="close"){
       qr="";qrAt=0;pairingCode="";pairAt=0;
@@ -122,8 +147,10 @@ function installListeners(client,mine,saveCreds){
       lastError=code===DisconnectReason.restartRequired?
         "WhatsApp solicitou reinicialização após pareamento; restaurando sessão.":
         "Conexão interrompida; tentando restabelecer.";
-      const delay=code===DisconnectReason.restartRequired?500:
-        Math.min(30000,2000*2**Math.min(attempts++,4));
+      const decision=reconnectPlan(code,attempts,DisconnectReason.loggedOut,
+        DisconnectReason.restartRequired);
+      const delay=decision.delayMs;
+      if(code!==DisconnectReason.restartRequired)attempts++;
       timer=setTimeout(()=>{
         if(mine===generation){
           void saveQueue.finally(()=>connect().catch(()=>{}));

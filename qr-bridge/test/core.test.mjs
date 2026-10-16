@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import {
   validPhone,normalizeFromJid,extractText,resolveMessagePhone,
-  freshQR,formatPairingCode,connectionPhase
+  freshQR,formatPairingCode,connectionPhase,reconnectPlan
 } from "../src/core.mjs";
 
 test("telefone Brasil com DDI e DDD é normalizado",()=>{
@@ -123,4 +123,19 @@ test("pareamento recusado deve ser mostrado explicitamente",()=>{
 
 test("estados nunca geram QR falso sem timestamp",()=>{
   assert.equal(connectionPhase("qr_ready",0,0,200),"qr_expired");
+});
+
+
+test("logout real (401) não reconecta até novo vínculo autorizado",()=>{
+  assert.deepEqual(reconnectPlan(401,0),{retry:false,delayMs:null});
+});
+
+test("restart exigido após pareamento (515) reconecta rapidamente",()=>{
+  assert.deepEqual(reconnectPlan(515,0),{retry:true,delayMs:500});
+});
+
+test("queda transitória gera backoff limitado e não força novo QR",()=>{
+  assert.deepEqual(reconnectPlan(408,0),{retry:true,delayMs:2000});
+  assert.deepEqual(reconnectPlan(408,1),{retry:true,delayMs:4000});
+  assert.deepEqual(reconnectPlan(408,8),{retry:true,delayMs:30000});
 });
