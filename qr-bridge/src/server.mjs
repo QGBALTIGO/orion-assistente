@@ -17,6 +17,7 @@ import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
 import {makeMessageRetryStore,deliveryFromAck,advanceDelivery} from "./message-retry-store.mjs";
 import {makeEncryptedRetryStore} from "./encrypted-retry-store.mjs";
 import {sendStoredText} from "./reliable-send.mjs";
+import {chooseFreshDeviceLookup} from "./device-refresh.mjs";
 import {inspectLookup,inspectDelivery} from "./recipient-diagnostics.mjs";
 import {makeDurableInbox} from "./durable-inbox.mjs";
 import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-health.mjs";
@@ -380,11 +381,16 @@ async function recipientInspection(value){
   recipientInspections.set(phone,{data,expires:now+90000});
   return data;
 }
-async function send(phone,text){
+async function send(phone,text,requestedFreshDevices=false){
   const target=validPhone(phone);
   if(status!=="connected"||!socket)throw Error("O WhatsApp não está conectado");
   if(typeof text!=="string"||!text.trim()||text.length>1200)
     throw Error("Mensagem deve ter entre 1 e 1200 caracteres");
+  // Fail before recording an attempt if the manual test cannot be performed.
+  const freshDevices=chooseFreshDeviceLookup(requestedFreshDevices,{
+    reliableSendEnabled:process.env.QR_RELIABLE_SEND_V2==="1",
+    globalDefault:process.env.QR_FORCE_FRESH_DEVICES==="1"
+  });
   const now=Date.now();
   while(sendTimes.length&&now-sendTimes[0]>60000)sendTimes.shift();
   if(sendTimes.length>=5)throw Error("Aguarde um minuto antes de enviar mais mensagens");
@@ -392,7 +398,6 @@ async function send(phone,text){
   const jid=target+"@s.whatsapp.net";
   const selectedSocket=socket;
   let result;
-  const freshDevices=process.env.QR_FORCE_FRESH_DEVICES==="1";
   if(process.env.QR_RELIABLE_SEND_V2==="1"){
     result=await sendStoredText({
       jid,text:text.trim(),store:retryStore,freshDevices,
@@ -423,7 +428,8 @@ async function send(phone,text){
     delivery:deliveryReceipts.get(result.key.id)||"pending"});
   // sendMessage resolve quando a biblioteca entrega ao transporte, não
   // quando o iPhone consegue descriptografar. Apenas receipts validam isso.
-  return {accepted:true,delivery:"pending",id};
+  return {accepted:true,delivery:"pending",id,
+    freshDeviceLookupRequested:requestedFreshDevices};
 }
 
 const server=http.createServer(async(req,res)=>{
@@ -508,7 +514,8 @@ const server=http.createServer(async(req,res)=>{
     }
     if(path==="/internal/send"&&req.method==="POST"){
       const body=await collectBody(req);
-      return reply(res,200,await send(body.phone,body.text));
+      const manualRefresh=body.freshDevices===undefined?false:body.freshDevices;
+      return reply(res,200,await send(body.phone,body.text,manualRefresh));
     }
     return reply(res,404,{error:"not_found"});
   }catch(error){
