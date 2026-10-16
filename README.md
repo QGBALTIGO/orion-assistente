@@ -177,3 +177,10 @@ Consulte [docs/google-calendar.md](docs/google-calendar.md).
 O teste de restauração pg_dump/pg_restore roda em banco efêmero no CI.
 Para checklist de pré-requisitos, execute `python scripts/pilot_preflight.py`.
 Consulte [docs/pilot-beta.md](docs/pilot-beta.md). **Piloto real ainda não autorizado nem executado.**
+
+## FATIA 6 — Landing e Asaas sandbox
+
+Landing original em `/` sem CTA ativo enquanto SALES_WHATSAPP_E164 não estiver definido.
+A entrada Asaas `/webhooks/asaas` aceita somente eventos autenticados com token exclusivo de webhook.
+Nenhum pagamento é criado ou cobrado pelo sistema nesta prévia.
+Mais informações: [docs/commercial.md](docs/commercial.md) e [docs/pricing-costs.md](docs/pricing-costs.md).

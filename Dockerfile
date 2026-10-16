@@ -11,6 +11,7 @@ COPY alembic/ ./alembic/
 COPY alembic.ini ./
 COPY tests/ ./tests/
 COPY scripts/ ./scripts/
+COPY landing/ ./landing/
 RUN pip install --no-cache-dir ".[test]" \
     && useradd --uid 10001 --create-home appuser
 
