@@ -60,6 +60,16 @@ class SendPayload(BaseModel):
     text:str=Field(min_length=1,max_length=1200)
 
 
+@router.get("/health/whatsapp",include_in_schema=False)
+async def whatsapp_bridge_health():
+    """Liveness de rede API→bridge; nunca revela sessão, QR ou telefone."""
+    try:
+        await _bridge("/internal/status")
+    except HTTPException:
+        raise HTTPException(503,"Conector privado indisponível") from None
+    return {"status":"ok","bridge":"reachable"}
+
+
 @router.get("/api/v1/qr/status")
 async def qr_status(actor:Actor=Depends(authenticate)):
     support_only(actor)
