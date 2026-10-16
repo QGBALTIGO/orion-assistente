@@ -4,7 +4,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -119,10 +119,10 @@ async def qr_messages(phone:str,actor:Actor=Depends(authenticate)):
 
 
 @router.get("/api/v1/qr/recipient")
-async def qr_recipient(phone:str,actor:Actor=Depends(authenticate)):
+async def qr_recipient(phone:str=Query(pattern=r"^[1-9]\d{7,14}$"),
+                       actor:Actor=Depends(authenticate)):
     """Consulta sob demanda, sem enviar mensagens nem alterar sessão Signal."""
     support_only(actor)
-    phone=PairPayload(phone=phone).phone
     return await _bridge("/internal/recipient",query={"phone":phone})
 
 
