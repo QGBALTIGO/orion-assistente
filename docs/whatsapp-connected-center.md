@@ -76,3 +76,47 @@ bases legais e informações de tratamento aplicáveis.
    **não executá-lo na sessão de produção durante testes visuais**.
 7. Verificar controle de acesso/CSRF, RLS onde aplicável, ausência de segredos
    nos logs e fallback quando serviços opcionais estiverem indisponíveis.
+
+
+## Estado sem dispositivo: assistente guiado
+
+O painel agora usa somente uma etapa visível por vez:
+
+1. Escolher QR Code ou Código (nenhum pedido de imagem/código antes da escolha).
+2. Instruções curtas e animadas de 1 a 5, com Voltar, Próximo passo e Trocar método.
+3. Mostrar QR a partir de `/api/v1/qr/image` (validade fornecida pelo servidor,
+   contagem regressiva local e ação manual de atualizar), **ou** pedir código via
+   `/api/v1/qr/pair` (telefone completo, copiar código, expiração verdadeira).
+4. Confirmar o sucesso **somente** a partir de
+   `/api/v1/qr/status` com `status:connected`, animar SVG e abrir a central.
+
+Os controles usam os endpoints antigos, autenticação de suporte e CSRF já
+implementados. Nenhum QR/código é inventado, nenhum número é transmitido
+antes de o operador clicar para continuar, e um QR expirado não dispara
+reconexões contínuas sem ação manual.
+
+### Animação tutorial
+
+O arquivo fornecido com o nome `scan-demo.gif` não era um GIF animado:
+seus bytes correspondem a PNG estático com fundo em gradiente, sem quadro
+instrucional de conexão. Para não mostrar um tutorial falso ou quebrado,
+o painel inclui uma **animação SVG/CSS nativa** de celular, leitura do QR e
+toque, sem links externos ou assets proprietários. A renderização respeita
+`prefers-reduced-motion`. Se posteriormente for fornecido um GIF animado
+válido, pode substituir a ilustração preservando a etapa de tutorial.
+
+### Cobertura de testes
+
+`qr-bridge/test/wizard-journey.test.mjs` executa a lógica do
+`panel.html` em ambiente sintético: mudança de modo, cinco passos,
+solicitação de QR na hora certa, validade real e expiração, telefone
+validado, resposta real simulada de pareamento, cópia, retorno seguro ao
+formulário e animação de sucesso somente após status conectado.
+`tests/unit/test_panel_session.py` verifica o painel autenticado e
+os endpoints, e o pipeline executa build da imagem real Baileys,
+PostgreSQL, Docker Compose e saúde HTTP.
+
+**Não há como provar emparelhamento WhatsApp real nem entrega no iPhone
+somente com testes simulados.** Após revisão, testar em sessão de homologação
+antes de trocar a tela em produção. Não revogar ou resetar automaticamente
+a sessão que já está vinculada.
