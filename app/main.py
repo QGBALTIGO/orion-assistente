@@ -12,6 +12,7 @@ from app.billing_api import router as billing_router
 from app.metrics_api import router as metrics_router
 from app.advanced_api import router as advanced_router
 from app.qr_api import router as qr_router
+from app.panel_auth import router as panel_auth_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -35,10 +36,11 @@ app.include_router(billing_router)
 app.include_router(metrics_router)
 app.include_router(advanced_router)
 app.include_router(qr_router)
+app.include_router(panel_auth_router)
 app.include_router(catalog_router)
 
 
 @app.get("/panel", include_in_schema=False)
 async def panel() -> FileResponse:
-    """Somente HTML estático. Dados são acessados via Bearer token."""
+    """Painel HTML; dados protegidos por sessão HttpOnly com CSRF."""
     return FileResponse(Path(__file__).parent / "static" / "panel.html")

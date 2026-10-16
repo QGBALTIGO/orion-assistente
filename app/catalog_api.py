@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -32,7 +32,7 @@ class Actor:
     tenant_id: UUID | None = None
 
 
-def authenticate(authorization: str | None = Header(default=None)) -> Actor:
+async def authenticate(request: Request, authorization: str | None = Header(default=None)) -> Actor:
     support = os.getenv("SUPPORT_API_TOKEN", "")
     viewer = os.getenv("VIEWER_API_TOKEN", "")
     if len(support) < 32:
@@ -47,6 +47,10 @@ def authenticate(authorization: str | None = Header(default=None)) -> Actor:
                 return Actor("viewer", UUID(assigned))
             except ValueError:
                 raise HTTPException(503, "Escopo do leitor não configurado") from None
+    if request.cookies.get("__Host-orion_session"):
+        from app.panel_auth import panel_actor
+        await panel_actor(request)
+        return Actor("support")
     raise HTTPException(401, "Credenciais de operador inválidas", headers={"WWW-Authenticate": "Bearer"})
 
 

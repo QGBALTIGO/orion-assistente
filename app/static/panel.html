@@ -1,152 +1,570 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Orion | Operação interna</title>
-  <style>
-    :root {color-scheme:dark;--bg:#11151a;--surface:#1e2329;--border:#424950;--gold:#debf81;--ink:#edf0f2;--muted:#abb5bf;--green:#32856a}
-    * {box-sizing:border-box} body {font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink);margin:0}
-    main {max-width:1080px;margin:auto;padding:28px 20px 60px}
-    h1 {font-size:clamp(2rem,5vw,3rem);margin:8px 0 0} h2 {color:var(--gold);font-size:1.2rem}
-    .subtitle {color:var(--muted);margin:0 0 24px} .chip {color:var(--gold);font-size:.8rem;letter-spacing:.12em;text-transform:uppercase}
-    .layout {display:grid;grid-template-columns:minmax(280px,370px) 1fr;gap:22px}
-    section {background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;margin:16px 0}
-    label {display:block;font-weight:600;font-size:.88rem;margin:12px 0 4px}
-    input,select,textarea {width:100%;background:#11151a;border:1px solid #62717d;border-radius:8px;padding:11px;color:var(--ink);font:inherit}
-    input:focus,select:focus {outline:2px solid var(--gold)} button {background:var(--gold);color:#131313;border:0;padding:11px 18px;font-weight:750;border-radius:8px;cursor:pointer;margin-top:14px}
-    button.secondary {background:var(--green);color:white} button:focus-visible {outline:3px solid white}
-    table {width:100%;border-collapse:collapse;font-size:.85rem;word-break:break-word} td,th {padding:9px;border-bottom:1px solid var(--border);text-align:left}
-    .scroll {overflow-x:auto;max-width:100%} #notice {min-height:24px;color:var(--gold);white-space:pre-wrap}
-    small {color:var(--muted)} @media(max-width:720px) {.layout {grid-template-columns:1fr}}
-  </style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Orion | Painel administrativo</title>
+<style>
+:root{color-scheme:dark;--bg:#091210;--surface:#111e1b;--surface2:#172722;--border:#304741;--accent:#16a17e;--accent2:#0e725c;--bright:#67e0b5;--text:#f3f9f6;--muted:#a2bbb1;--danger:#ef9987;--gold:#e1c78d;--radius:17px}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at 73% -22%,#17372e 0%,transparent 45%),var(--bg);color:var(--text);font:15px/1.57 system-ui,-apple-system,Segoe UI,sans-serif}
+button,input,select,textarea{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.48}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid var(--bright);outline-offset:3px}
+a{color:var(--bright)}h1,h2,h3,p{margin-top:0}
+h1{font-size:clamp(1.8rem,3.8vw,2.65rem);line-height:1.14;letter-spacing:-.035em;margin-bottom:9px}h2{font-size:1.23rem;letter-spacing:-.015em}h3{font-size:1rem}
+p{color:var(--muted)}small{color:var(--muted);font-size:.77rem}
+.hidden{display:none!important}
+#loginView{min-height:100vh;display:grid;place-items:center;padding:24px}
+.login-card{width:min(100%,420px);border:1px solid var(--border);background:var(--surface);box-shadow:0 20px 80px #0006;padding:36px;border-radius:22px}
+.logo{display:inline-grid;place-items:center;width:43px;height:43px;border-radius:13px;background:var(--accent);color:#06291e;font-weight:900;font-size:1.2rem;letter-spacing:-.07em}
+.brand{font-size:1.14rem;font-weight:850;letter-spacing:.10em;display:flex;align-items:center;gap:12px}
+.login-card .brand{margin-bottom:35px}
+label{font-weight:620;font-size:.86rem;color:#e7f4ed;display:block;margin:14px 0 7px}
+input,select,textarea{background:#0b1714;color:var(--text);border:1px solid #496459;border-radius:10px;width:100%;padding:12px 13px;outline:0}
+textarea{min-height:92px;resize:vertical}
+input::placeholder,textarea::placeholder{color:#77998a}
+input:focus,select:focus,textarea:focus{border-color:var(--bright)}
+.btn{border:1px solid transparent;border-radius:10px;padding:12px 18px;background:var(--accent);color:#03291e;font-weight:800;transition:filter .18s,transform .18s;display:inline-flex;gap:9px;align-items:center;justify-content:center;text-decoration:none}
+.btn:hover:not(:disabled){filter:brightness(1.13);transform:translateY(-1px)}
+.btn.secondary{background:#183d33;border:1px solid #376e59;color:#b0f0d7}
+.btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}
+.btn.danger{background:#482421;color:#ffd1c6;border:1px solid #79463f}
+.btn.full{width:100%}
+#loginError{min-height:23px;color:var(--danger);margin-top:13px}
+.app{min-height:100vh;display:grid;grid-template-columns:240px minmax(0,1fr)}
+.sidebar{border-right:1px solid var(--border);background:#0c1815;padding:28px 15px;display:flex;flex-direction:column;gap:24px;position:sticky;top:0;height:100vh}
+.sidebar .brand{padding-left:8px}
+.side-label{font-size:.72rem;color:#7fa594;letter-spacing:.16em;text-transform:uppercase;padding:0 12px;margin:8px 0 -10px}
+.nav{display:flex;flex-direction:column;gap:6px}
+.nav-item{border:1px solid transparent;color:#b9d0c5;background:transparent;border-radius:11px;text-align:left;display:flex;align-items:center;gap:12px;padding:13px;font-weight:680}
+.nav-item.selected{background:#153f32;color:#bcf5dc;border-color:#28634e}
+.nav-item:hover{background:#19332a}
+.nav-icon{width:24px;text-align:center;font-size:1.2rem}
+.sidebar-bottom{margin-top:auto;padding:13px;border-top:1px solid var(--border)}
+.sidebar-bottom .avatar{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.86rem;margin-bottom:14px}
+.avatar-dot{width:34px;height:34px;display:grid;place-items:center;border-radius:50%;background:#204b3a;color:#82dfb2;font-weight:850}
+.content{min-width:0;padding:32px clamp(16px,3.6vw,52px) 60px;max-width:1400px;width:100%;margin:0 auto}
+.header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:29px}
+.eyebrow{font-size:.71rem;letter-spacing:.19em;text-transform:uppercase;color:var(--bright);font-weight:790;margin-bottom:10px}
+.pill{border:1px solid var(--border);background:#14231e;color:var(--muted);border-radius:99px;font-weight:720;font-size:.78rem;padding:8px 12px;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#89968f}
+.dot.green{background:#48db8f;box-shadow:0 0 0 3px #175434}
+.dot.amber{background:#e4bf68}
+.dot.red{background:#f58478}
+.card{border:1px solid var(--border);background:linear-gradient(155deg,#16251f,#101a17);border-radius:var(--radius);padding:25px;margin-bottom:20px}
+.subhead{color:var(--muted);max-width:750px}
+.steps{display:grid;grid-template-columns:1fr;gap:0;margin-top:18px;margin-bottom:20px}
+.step{display:grid;grid-template-columns:47px minmax(0,1fr);gap:14px;position:relative;padding:9px 0 16px}
+.step:not(:last-child)::before{content:"";position:absolute;left:22px;top:45px;bottom:-1px;border-left:2px solid #2a6a56}
+.step-mark{border-radius:50%;background:#0e755b;border:3px solid #194437;color:#c6ffe5;width:45px;height:45px;display:grid;place-items:center;font-size:1.08rem;font-weight:800;z-index:1;box-shadow:0 3px 13px #0003}
+.step p{margin:0;color:#c2d5cb;font-size:.9rem}
+.step small{font-weight:850;letter-spacing:.12em;font-size:.65rem;text-transform:uppercase;color:var(--bright)}
+.step strong{display:block;font-size:.94rem;margin-top:1px}
+.method-selector{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-bottom:20px}
+.method{border:1px solid #415a4f;border-radius:12px;background:#101b18;color:var(--muted);padding:17px 12px;display:flex;flex-direction:column;align-items:center;gap:3px}
+.method .symbol{font-size:1.5rem;color:var(--bright)}
+.method strong{color:var(--text)}
+.method span:last-child{font-size:.78rem}
+.method.active{border-color:var(--accent);background:#0b382c;box-shadow:inset 0 0 0 1px #145440}
+.columns{display:grid;grid-template-columns:minmax(0,1.06fr) minmax(320px,.94fr);gap:20px;align-items:start}
+.qr-wrap{min-height:350px;border:1px dashed #3c6d56;background:#0b1914;border-radius:13px;display:grid;place-items:center;padding:24px;margin:16px 0}
+.qr-wrap img{max-width:min(100%,350px);background:white;border-radius:11px;padding:10px}
+.qr-empty{text-align:center;color:var(--muted)}
+.qr-empty .huge{display:block;font-size:3rem;color:var(--accent)}
+.status-text{font-weight:750;color:var(--bright);min-height:21px}
+.feedback{color:var(--muted);white-space:pre-wrap;min-height:26px}
+.code-box{margin-top:20px;padding:20px;border:1px solid #518375;background:#ecf7f1;color:#0f674d;font-size:clamp(1.9rem,5vw,2.7rem);font-weight:900;letter-spacing:.15em;text-align:center;border-radius:12px;word-break:break-all}
+.illustration{height:190px;display:grid;place-items:center;background:radial-gradient(circle at 55% 48%,#1f735a,#10352d 60%,#0e1b17);border-radius:13px;margin-bottom:12px;overflow:hidden;position:relative}
+.phone{height:167px;width:102px;border:7px solid #132c25;border-radius:18px;background:#e3fff0;box-shadow:15px 19px 0 #0003;display:flex;flex-direction:column;align-items:center;padding:15px 6px 8px}
+.phone:before{content:"";width:36px;height:5px;border-radius:6px;background:#11392c;margin-bottom:12px}
+.phone .fakeqr{width:65px;height:65px;background:repeating-linear-gradient(0deg,#13261c 0 4px,transparent 4px 8px),repeating-linear-gradient(90deg,transparent 0 7px,#224b36 7px 11px);background-blend-mode:multiply;opacity:.7;margin-top:4px}
+.phone span{color:#134935;font-size:.53rem;margin-top:12px;font-weight:900}
+.sheen{position:absolute;right:20px;top:24px;color:#b0eed1;font-size:.8rem;text-align:right;max-width:175px}
+.note{border-left:3px solid var(--gold);padding-left:15px;color:#adbea9;font-size:.82rem}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.connected-banner{border:1px solid #337d53;background:#143d27;border-radius:13px;padding:19px;color:#cbffdb;margin:18px 0}
+.connected-banner strong{color:#8ef1b5;font-size:1.18rem}
+.connected-banner small{display:block;margin-top:5px}
+.badge{background:#194d35;color:#86e5b4;border:1px solid #2e7252;border-radius:99px;padding:5px 11px;font-size:.8rem;font-weight:750}
+.table-wrap{overflow-x:auto;margin-top:20px}
+table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;border-bottom:1px solid var(--border);vertical-align:top;text-align:left;word-break:break-word}
+.grid-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.grid-form .wide{grid-column:1/-1}
+#records{max-height:480px;overflow:auto}
+.chat-grid{display:grid;grid-template-columns:270px minmax(0,1fr);gap:18px}
+.chat-list{max-height:500px;overflow-y:auto}
+.chat-item{display:block;width:100%;border:0;border-bottom:1px solid var(--border);background:transparent;color:var(--text);padding:14px;text-align:left}
+.chat-item:hover,.chat-item.current{background:#1c3f31}
+.chat-item small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bubbles{height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:16px;background:#0d1714;border-radius:12px}
+.bubble{padding:10px 14px;border:1px solid #2d5040;background:#1a3026;border-radius:12px 12px 12px 2px;max-width:83%;align-self:flex-start;overflow-wrap:anywhere;white-space:pre-wrap}
+.bubble.out{align-self:flex-end;background:#145640;border-radius:12px 12px 2px 12px}
+.bubble time{display:block;text-align:right;color:#bbcebf;font-size:.67rem;margin-top:5px}
+.footer-hint{color:#8aaca0;font-size:.79rem}
+@media(max-width:1100px){.columns{grid-template-columns:1fr}.card{padding:22px}}
+@media(max-width:790px){.app{display:block}.sidebar{position:static;height:auto;padding:14px 16px;gap:12px}.sidebar .brand{padding-left:0}.nav{flex-direction:row;overflow-x:auto}.nav-item{white-space:nowrap;padding:10px}.sidebar-bottom,.side-label{display:none}.content{padding:24px 16px 40px}.header{align-items:flex-start}.chat-grid{grid-template-columns:1fr}.chat-list{max-height:200px}.grid-form{grid-template-columns:1fr}.grid-form .wide{grid-column:1}}
+@media(max-width:450px){.method-selector{gap:8px}.method{padding:12px 5px}.method span:last-child{font-size:.69rem}.header{display:block}.header .pill{margin-top:12px}.card{padding:16px}}
+@media(prefers-reduced-motion:reduce){.btn{transition:none}}
+</style>
 </head>
 <body>
-<main>
-  <span class="chip">Orion / Operação autorizada</span>
-  <h1>Configuração da barbearia</h1>
-  <p><a style="color:#debf81" href="/conectar-whatsapp">Conectar WhatsApp por QR Code (número de teste) →</a></p>
-  <p class="subtitle">Catálogo, equipe e expediente. Não é um aplicativo para clientes nem um sistema de reservas.</p>
-  <div class="layout">
-    <div>
-      <section>
-        <h2>1. Autenticar</h2>
-        <label for="token">Token de operador (somente no dispositivo autorizado)</label>
-        <input id="token" type="password" autocomplete="off" placeholder="Cole o token seguro">
-        <small>O token fica somente na memória desta página; não é salvo no navegador.</small>
-        <button id="loadTenants" class="secondary">Carregar barbearias</button>
-        <label for="tenant">Estabelecimento selecionado</label>
-        <select id="tenant"><option value="">Selecione</option></select>
-        <p id="notice" role="status" aria-live="polite"></p>
-      </section>
-      <section>
-        <h2>2. Nova barbearia</h2>
-        <form id="tenantForm">
-          <label>Nome<input name="name" required maxlength="160"></label>
-          <label>Identificador (slug)<input name="slug" required pattern="[a-z0-9-]+"></label>
-          <label>Fuso horário IANA<input name="timezone" value="America/Campo_Grande" required></label>
-          <button>Cadastrar barbearia</button>
-        </form>
-      </section>
-    </div>
-    <div>
-      <section>
-        <h2>3. Gerenciar cadastros</h2>
-        <label for="resource">Categoria</label>
-        <select id="resource"></select>
-        <form id="recordForm"></form>
-        <div class="scroll" id="results" aria-live="polite"></div>
-        <button class="secondary" id="refresh">Atualizar lista</button>
-      </section>
-    </div>
+<section id="loginView">
+  <div class="login-card">
+    <div class="brand"><div class="logo">O</div> ORION.</div>
+    <div class="eyebrow">Acesso administrativo</div>
+    <h1>Bem-vindo de volta.</h1>
+    <p>Entre no painel para gerenciar a agenda e conectar seu WhatsApp.</p>
+    <form id="loginForm">
+      <label for="username">Usuário</label>
+      <input id="username" autocomplete="username" value="admin" required>
+      <label for="password">Senha de acesso</label>
+      <input id="password" type="password" autocomplete="current-password" required placeholder="Sua senha do Orion">
+      <button class="btn full" type="submit" style="margin-top:22px">Entrar no painel →</button>
+      <p id="loginError" role="alert" aria-live="polite"></p>
+    </form>
+    <small>Acesso protegido por sessão segura. Nenhum token técnico é necessário.</small>
   </div>
-</main>
+</section>
+<div id="appView" class="app hidden">
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">O</div> ORION.</div>
+    <div class="side-label">Gerenciamento</div>
+    <nav class="nav" aria-label="Páginas do painel">
+      <button class="nav-item" data-page="dispositivo"><span class="nav-icon">▦</span>Conectar dispositivo</button>
+      <button class="nav-item" data-page="conversas"><span class="nav-icon">✉</span>Conversas</button>
+      <button class="nav-item" data-page="cadastros"><span class="nav-icon">⚙</span>Cadastros</button>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="avatar"><div class="avatar-dot">A</div><div><strong>Administrador</strong><br><small>Painel Orion</small></div></div>
+      <button id="logout" class="btn ghost full">Sair com segurança</button>
+    </div>
+  </aside>
+  <main class="content">
+    <section id="page-dispositivo" class="page">
+      <div class="header">
+        <div><div class="eyebrow">Orion / Dispositivos</div><h1>Conectar WhatsApp</h1><p class="subhead">Vincule seu número em poucos passos. Escolha como deseja conectar.</p></div>
+        <div class="pill"><span id="statusDot" class="dot amber"></span><span id="globalStatus">Verificando conexão</span></div>
+      </div>
+      <div id="connectedBanner" class="connected-banner hidden">
+        <strong>✓ Dispositivo conectado com sucesso!</strong>
+        <small id="connectedPhone">A conexão está ativa. Você já pode abrir Conversas para ler e enviar mensagens manualmente.</small>
+        <div class="row" style="margin-top:15px"><button id="openChats" class="btn">Abrir conversas →</button></div>
+      </div>
+      <div class="method-selector" role="tablist" aria-label="Forma de conexão">
+        <button class="method active" data-method="qr" role="tab" aria-selected="true">
+          <span class="symbol">▦</span><strong>QR Code</strong><span>Escaneie com seu telefone</span>
+        </button>
+        <button class="method" data-method="code" role="tab" aria-selected="false">
+          <span class="symbol">▯</span><strong>Código</strong><span>Digite no seu telefone</span>
+        </button>
+      </div>
+      <div class="columns">
+        <div>
+          <div class="card">
+            <div class="eyebrow">Passo a passo</div>
+            <h2 id="guideTitle">Como conectar por QR Code</h2>
+            <p class="subhead">Siga estas instruções no WhatsApp do celular que será conectado.</p>
+            <div id="guideGraphic" class="illustration" aria-label="Ilustração de um celular lendo um QR">
+              <div class="phone"><div class="fakeqr"></div><span>Dispositivos conectados</span></div>
+              <div class="sheen">Simulação ilustrativa<br>do pareamento</div>
+            </div>
+            <div id="guideSteps" class="steps"></div>
+            <p class="note">A conexão utiliza um cliente de dispositivo vinculado não oficial. Use apenas um número sob sua administração. A conta pode sofrer desconexões ou restrições.</p>
+          </div>
+        </div>
+        <div>
+          <div id="qrPanel" class="card">
+            <div class="eyebrow">Conectar por QR</div>
+            <h2>Pronto para escanear?</h2>
+            <p>Abra Dispositivos conectados no WhatsApp e prepare a câmera do celular.</p>
+            <button id="startQr" class="btn full">Já fiz os passos, mostrar meu QR Code</button>
+            <div id="qrBox" class="qr-wrap">
+              <div id="qrEmpty" class="qr-empty"><span class="huge">▦</span><strong>Seu QR aparecerá aqui</strong><p>Clique no botão acima quando estiver pronto.</p></div>
+              <img id="qrImage" class="hidden" alt="QR Code temporário para vincular seu WhatsApp">
+            </div>
+            <p id="qrStatus" class="status-text" role="status" aria-live="polite"></p>
+            <p id="qrFeedback" class="feedback" aria-live="polite">O código se atualiza automaticamente quando necessário.</p>
+            <button id="refreshQr" class="btn secondary">Atualizar QR Code</button>
+          </div>
+          <div id="codePanel" class="card hidden">
+            <div class="eyebrow">Conectar por código</div>
+            <h2>Vincule usando seu número</h2>
+            <p>Não precisa escanear. Vamos gerar um código de oito caracteres que você digitará no WhatsApp.</p>
+            <form id="pairForm">
+              <label for="pairPhone">Telefone com DDI e DDD</label>
+              <input id="pairPhone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="+55 67 99999-9999" maxlength="26">
+              <small>Digite o número que está instalado no WhatsApp, incluindo código do país.</small>
+              <button class="btn full" type="submit" style="margin-top:18px">Gerar código de emparelhamento</button>
+            </form>
+            <div id="codeResult" class="hidden">
+              <p style="margin:20px 0 5px">Digite este código no seu WhatsApp:</p>
+              <div class="code-box" id="pairCode" aria-live="polite"></div>
+              <p class="footer-hint">Código temporário. Se expirar, gere outro.</p>
+              <button class="btn secondary full" id="copyCode">Copiar código</button>
+            </div>
+            <p id="codeStatus" class="feedback" role="status" aria-live="polite"></p>
+          </div>
+          <div class="card">
+            <div class="row" style="justify-content:space-between">
+              <div><h2>Estado da conexão</h2><p class="subhead" style="margin-bottom:0">Atualização em tempo real.</p></div>
+              <button id="statusRefresh" class="btn ghost">Atualizar</button>
+            </div>
+            <div id="deviceState" class="pill" style="margin-top:15px">Aguardando resposta</div>
+            <p class="footer-hint" style="margin:13px 0 0">Após conectar, a sessão fica no armazenamento privado do servidor. O envio automático permanece desligado.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="page-conversas" class="page hidden">
+      <div class="header"><div><div class="eyebrow">Orion / Atendimento</div><h1>Conversas do WhatsApp</h1>
+        <p class="subhead">Leia mensagens recebidas após a conexão e responda manualmente. Sem respostas automáticas.</p></div>
+        <div class="pill"><span id="chatDot" class="dot amber"></span><span id="chatConnection">Verificando...</span></div>
+      </div>
+      <div class="card"><div class="row" style="justify-content:space-between">
+        <div><strong>Conversas recentes</strong><p style="margin-bottom:0">Mensagens disponíveis apenas durante a sessão de execução atual.</p></div>
+        <button class="btn secondary" id="reloadChats">Atualizar conversas</button>
+      </div></div>
+      <div class="chat-grid">
+        <div class="card"><h2>Contatos</h2><div class="chat-list" id="chatList"><p>Nenhuma conversa registrada ainda.</p></div></div>
+        <div class="card">
+          <h2 id="chatTitle">Selecione um contato</h2>
+          <div id="chatBubbles" class="bubbles" aria-live="polite"><p>As mensagens novas aparecerão aqui após o vínculo.</p></div>
+          <form id="sendForm">
+            <label for="chatPhone">Número do destinatário (DDI + DDD)</label>
+            <input type="tel" id="chatPhone" placeholder="5567999999999" required>
+            <label for="chatText">Mensagem</label>
+            <textarea id="chatText" maxlength="1200" required placeholder="Escreva sua mensagem..."></textarea>
+            <div class="row"><button class="btn" type="submit" id="sendButton">Enviar mensagem →</button><small>Máximo: 5 envios por minuto. Sem campanhas.</small></div>
+          </form>
+          <p id="chatNotice" class="feedback" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+      <p class="note">Somente conversas privadas de texto. Arquivos e histórico anterior não são importados. Este modo é experimental e não substitui o WhatsApp oficial.</p>
+    </section>
+    <section id="page-cadastros" class="page hidden">
+      <div class="header"><div><div class="eyebrow">Orion / Configurações</div><h1>Gerenciar barbearias</h1>
+        <p class="subhead">Serviços, profissionais, agenda e permissões de acesso.</p></div></div>
+      <div class="columns">
+        <div>
+          <div class="card">
+            <h2>Selecionar barbearia</h2>
+            <label for="tenant">Estabelecimento</label>
+            <select id="tenant"><option value="">Carregando...</option></select>
+            <button class="btn secondary" id="loadTenants">Atualizar estabelecimentos</button>
+            <p id="notice" class="feedback" role="status" aria-live="polite"></p>
+          </div>
+          <div class="card"><h2>Nova barbearia</h2>
+            <form id="tenantForm">
+              <label for="newName">Nome</label><input id="newName" name="name" required maxlength="160">
+              <label for="newSlug">Identificador</label><input id="newSlug" name="slug" required pattern="[a-z0-9-]+">
+              <label for="newTz">Fuso horário</label><input id="newTz" name="timezone" value="America/Campo_Grande" required>
+              <button class="btn" type="submit">Cadastrar barbearia</button>
+            </form>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Equipe e serviços</h2>
+          <label for="resource">Categoria</label>
+          <select id="resource"></select>
+          <form id="recordForm" class="grid-form" style="margin-top:18px"></form>
+          <div class="row" style="margin-top:15px;justify-content:space-between"><h3>Registros</h3>
+            <button id="refresh" class="btn ghost">Atualizar lista</button></div>
+          <div id="records" class="table-wrap"></div>
+        </div>
+      </div>
+    </section>
+    <p class="footer-hint" style="padding-top:18px">Orion · Ambiente de homologação · Conecte somente números e dados autorizados.</p>
+  </main>
+</div>
 <script>
-(() => {
-  "use strict";
-  const $ = id => document.getElementById(id);
-  // Campos conhecidos: não construir elementos a partir de texto remoto.
-  const fields = {
-    authorized_staff: [["phone_e164","Telefone E.164 (+55...)","text"],["role","Papel: owner, barber ou assistant","text"],["active","Ativo","checkbox"]],
-    professionals: [["name","Nome do profissional","text"],["active","Ativo","checkbox"]],
-    services: [["name","Nome do serviço","text"],["description","Descrição","text"],["duration_min","Duração (minutos)","number"],["price_cents","Preço (centavos)","number"],["prep_min","Preparação (minutos)","number"],["cleanup_min","Limpeza (minutos)","number"],["active","Ativo","checkbox"]],
-    professional_services: [["professional_id","ID do profissional","text"],["service_id","ID do serviço","text"]],
-    working_hours: [["professional_id","ID do profissional","text"],["weekday","Dia (0=segunda, 6=domingo)","number"],["start_time","Início","time"],["end_time","Fim","time"]],
-    working_breaks: [["working_hour_id","ID do expediente","text"],["start_time","Início da pausa","time"],["end_time","Fim da pausa","time"]],
-    time_off: [["professional_id","ID do profissional","text"],["starts_at","Início (com fuso)","text"],["ends_at","Fim (com fuso)","text"],["reason","Motivo (opcional)","text"]],
-    schedule_blocks: [["professional_id","ID do profissional","text"],["starts_at","Início (com fuso)","text"],["ends_at","Fim (com fuso)","text"],["reason","Motivo (opcional)","text"]]
-  };
-  const descriptions = {authorized_staff:"Telefones autorizados",professionals:"Profissionais",services:"Serviços",professional_services:"Serviços por profissional",working_hours:"Expediente",working_breaks:"Pausas",time_off:"Folgas",schedule_blocks:"Bloqueios"};
-  for(const [key,value] of Object.entries(descriptions)) $("resource").add(new Option(value,key));
-  const token = () => $("token").value.trim();
-  const headers = () => ({"Authorization":"Bearer "+token(),"Content-Type":"application/json"});
-  const notice = s => {$("notice").textContent=s};
-  async function req(url,opts={}) {
-    const r=await fetch(url,{...opts,headers:headers(),cache:"no-store"});
-    if(!r.ok) {let j=await r.json().catch(()=>({detail:"Erro"}));throw Error(typeof j.detail==="string"?j.detail:JSON.stringify(j.detail))}
-    return r.status===204?null:r.json();
+(()=>{
+"use strict";
+const $=id=>document.getElementById(id);
+let csrf="",page="dispositivo",method="qr",showQr=false,deviceStatus="starting",
+    statusTimer=null,chatTimer=null,selectedPhone="",chatsBusy=false;
+const steps={
+ qr:[
+  ["Abra o WhatsApp","No celular que será conectado, abra o WhatsApp ou WhatsApp Business."],
+  ["Entre nas configurações","No Android, toque no menu ⋮. No iPhone, abra Configurações."],
+  ["Acesse Dispositivos conectados","Procure a opção Dispositivos conectados."],
+  ["Confira conexões antigas","Se já vinculou o Orion neste aparelho, remova a sessão anterior caso queira substituí-la."],
+  ["Evite conexões duplicadas","Se tiver outros bots vinculados, avalie possíveis conflitos antes de continuar."],
+  ["Toque em Conectar dispositivo","Autorize o pareamento no WhatsApp. Será aberta a câmera."],
+  ["Escaneie o código","Clique em Mostrar meu QR Code aqui ao lado e aponte a câmera do WhatsApp."]
+ ],
+ code:[
+  ["Abra o WhatsApp","No telefone principal, abra o WhatsApp ou WhatsApp Business."],
+  ["Vá para Dispositivos conectados","Acesse Configurações (ou menu ⋮) → Dispositivos conectados."],
+  ["Confira sessões anteriores","Se houver uma conexão antiga do Orion, remova-a caso queira fazer um novo vínculo."],
+  ["Revise outros bots conectados","Múltiplas automações no mesmo número podem causar conflitos."],
+  ["Toque em Conectar dispositivo","Acesse o fluxo de vincular um novo dispositivo."],
+  ["Escolha Conectar com número de telefone","No celular, selecione a alternativa de inserir código."],
+  ["Gere e digite o código","Digite o número aqui ao lado e insira o código de oito caracteres no WhatsApp."]
+ ]
+};
+const fields={
+ authorized_staff:[["phone_e164","Telefone (+55...)","text"],["role","Papel (owner/barber/assistant)","text"],["active","Ativo","checkbox"]],
+ professionals:[["name","Nome do profissional","text"],["active","Ativo","checkbox"]],
+ services:[["name","Serviço","text"],["description","Descrição","text"],["duration_min","Duração (min)","number"],["price_cents","Preço (centavos)","number"],["prep_min","Preparação (min)","number"],["cleanup_min","Limpeza (min)","number"],["active","Ativo","checkbox"]],
+ professional_services:[["professional_id","ID do profissional","text"],["service_id","ID do serviço","text"]],
+ working_hours:[["professional_id","ID do profissional","text"],["weekday","Dia (0=seg,6=dom)","number"],["start_time","Início","time"],["end_time","Fim","time"]],
+ working_breaks:[["working_hour_id","ID do expediente","text"],["start_time","Pausa início","time"],["end_time","Pausa fim","time"]],
+ time_off:[["professional_id","ID do profissional","text"],["starts_at","Início com fuso","text"],["ends_at","Fim com fuso","text"],["reason","Motivo","text"]],
+ schedule_blocks:[["professional_id","ID do profissional","text"],["starts_at","Início com fuso","text"],["ends_at","Fim com fuso","text"],["reason","Motivo","text"]]
+};
+const descriptions={authorized_staff:"Telefones autorizados",professionals:"Profissionais",services:"Serviços",
+ professional_services:"Serviços por profissional",working_hours:"Expediente",working_breaks:"Pausas",time_off:"Folgas",schedule_blocks:"Bloqueios"};
+for(const [key,val] of Object.entries(descriptions))$("resource").add(new Option(val,key));
+function errorMessage(data,code){return typeof data?.detail==="string"?data.detail:(typeof data?.error==="string"?data.error:
+  "O servidor retornou HTTP "+code+".")}
+async function api(url,method="GET",data){
+ const headers={"Accept":"application/json"};
+ if(method!=="GET"){headers["Content-Type"]="application/json";headers["X-Orion-CSRF"]=csrf;}
+ const response=await fetch(url,{method,headers,body:data===undefined?undefined:JSON.stringify(data),credentials:"same-origin",cache:"no-store"});
+ if(!response.ok){
+   const json=await response.json().catch(()=>({}));
+   if(response.status===401&&url!=="/auth/login")showLogin();
+   throw Error(errorMessage(json,response.status));
+ }
+ return response.json();
+}
+function showLogin(){
+ csrf="";clearInterval(statusTimer);clearInterval(chatTimer);
+ $("appView").classList.add("hidden");$("loginView").classList.remove("hidden");
+}
+function showApp(){
+ $("loginView").classList.add("hidden");$("appView").classList.remove("hidden");
+ statusTimer&&clearInterval(statusTimer);statusTimer=setInterval(updateStatus,4500);
+ updateStatus();loadTenants();
+ const desired=new URLSearchParams(location.search).get("aba");
+ openPage(["conversas","cadastros"].includes(desired)?desired:"dispositivo");
+}
+$("loginForm").addEventListener("submit",async ev=>{
+ ev.preventDefault();$("loginError").textContent="";
+ try{
+  const r=await fetch("/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},
+    credentials:"same-origin",body:JSON.stringify({username:$("username").value,password:$("password").value})});
+  const payload=await r.json().catch(()=>({}));
+  if(!r.ok)throw Error(errorMessage(payload,r.status));
+  csrf=payload.csrf;$("password").value="";showApp();
+ }catch(ex){$("loginError").textContent=ex.message;}
+});
+(async()=>{try{const r=await api("/auth/me");csrf=r.csrf;showApp();}catch{showLogin()}})();
+function openPage(target){
+ page=target;
+ document.querySelectorAll(".page").forEach(x=>x.classList.toggle("hidden",x.id!=="page-"+target));
+ document.querySelectorAll("[data-page]").forEach(x=>x.classList.toggle("selected",x.dataset.page===target));
+ if(target==="conversas"){loadChats();refreshMessages();startChats();}
+ else{clearInterval(chatTimer);chatTimer=null;}
+ if(target==="dispositivo"){renderGuide();updateStatus();}
+ history.replaceState({}, "", "/panel?aba="+encodeURIComponent(target));
+}
+document.querySelectorAll("[data-page]").forEach(x=>x.addEventListener("click",()=>openPage(x.dataset.page)));
+$("openChats").addEventListener("click",()=>openPage("conversas"));
+$("logout").addEventListener("click",async()=>{
+ try{await api("/auth/logout","POST",{});}finally{showLogin();}
+});
+function renderGuide(){
+ $("guideTitle").textContent=method==="qr"?"Como conectar pelo QR Code":"Como conectar pelo código";
+ $("guideSteps").replaceChildren();
+ for(const [i,step] of steps[method].entries()){
+  const line=document.createElement("div");line.className="step";
+  const mark=document.createElement("div");mark.className="step-mark";mark.textContent=i===0?"▯":"✓";
+  const copy=document.createElement("div"),caption=document.createElement("small");
+  caption.textContent="Passo "+(i+1);const title=document.createElement("strong");
+  title.textContent=step[0];const body=document.createElement("p");body.textContent=step[1];
+  copy.append(caption,title,body);line.append(mark,copy);$("guideSteps").append(line);
+ }
+ $("qrPanel").classList.toggle("hidden",method!=="qr");
+ $("codePanel").classList.toggle("hidden",method!=="code");
+ document.querySelectorAll("[data-method]").forEach(x=>{
+   const active=x.dataset.method===method;x.classList.toggle("active",active);
+   x.setAttribute("aria-selected",String(active));
+ });
+}
+document.querySelectorAll("[data-method]").forEach(x=>x.addEventListener("click",()=>{
+ method=x.dataset.method;renderGuide();
+}));
+function statusWord(s){
+ return ({connected:"Conectado",qr_ready:"Aguardando leitura",connecting:"Preparando",
+ reconnecting:"Reconectando",logged_out:"Sessão desvinculada",error:"Falha na conexão",
+ starting:"Iniciando",pairing:"Código emitido"})[s]||"Aguardando";
+}
+async function updateStatus(){
+ if(!csrf)return;
+ try{
+  const result=await api("/api/v1/qr/status");deviceStatus=result.status;
+  const active=result.status==="connected";
+  $("statusDot").className="dot "+(active?"green":result.status==="logged_out"?"red":"amber");
+  $("globalStatus").textContent=statusWord(result.status);
+  $("deviceState").textContent=statusWord(result.status)+(result.lastError?": "+result.lastError:"");
+  $("chatDot").className="dot "+(active?"green":"amber");
+  $("chatConnection").textContent=active?"Conectado":"Desconectado";
+  $("connectedBanner").classList.toggle("hidden",!active);
+  $("connectedPhone").textContent=result.phone?
+    "Dispositivo "+result.phone+" conectado. Você pode ler e enviar mensagens manualmente.":
+    "Dispositivo conectado. Você pode ler e enviar mensagens manualmente.";
+  if(active){showQr=false;$("qrImage").classList.add("hidden");$("qrStatus").textContent="✓ WhatsApp conectado!";}
+  else if(showQr&&page==="dispositivo"&&method==="qr")await updateQr();
+ }catch(ex){
+  $("globalStatus").textContent="Serviço indisponível";
+  $("deviceState").textContent=ex.message;
+  $("statusDot").className="dot red";
+ }
+}
+async function updateQr(){
+ try{
+  const info=await api("/api/v1/qr/image");
+  if(info.status==="connected"){showQr=false;updateStatus();return}
+  if(info.image&&info.image.startsWith("data:image/png;base64,")){
+   $("qrImage").src=info.image;$("qrImage").classList.remove("hidden");
+   $("qrEmpty").classList.add("hidden");
+   $("qrStatus").textContent="QR Code pronto para escanear";
+   $("qrFeedback").textContent="Expira em aproximadamente "+info.expiresIn+" segundos. A página atualizará automaticamente.";
+  }else{
+   $("qrImage").classList.add("hidden");$("qrEmpty").classList.remove("hidden");
+   $("qrStatus").textContent="Preparando seu QR Code...";
+   $("qrFeedback").textContent="Aguarde alguns segundos. Estado atual: "+statusWord(info.status)+".";
   }
-  async function loadTenants() {
-    try {
-      const data=await req("/api/v1/tenants");
-      $("tenant").replaceChildren(new Option("Selecione",""));
-      data.forEach(t=>$("tenant").add(new Option(t.name+" · "+t.slug,t.id)));
-      notice(data.length+" estabelecimento(s) carregado(s).");
-    } catch(e) {notice(e.message)}
+ }catch(ex){$("qrStatus").textContent=ex.message;}
+}
+$("startQr").addEventListener("click",()=>{showQr=true;updateQr();});
+$("refreshQr").addEventListener("click",()=>{showQr=true;updateQr();});
+const normalize=phone=>phone.replace(/[()+\s-]/g,"");
+$("pairForm").addEventListener("submit",async ev=>{
+ ev.preventDefault();$("codeStatus").textContent="Gerando código, aguarde...";
+ const phone=normalize($("pairPhone").value);
+ if(!/^[1-9]\d{7,14}$/.test(phone)){$("codeStatus").textContent="Insira o DDI, DDD e número válido.";return}
+ try{
+  const r=await api("/api/v1/qr/pair","POST",{phone});
+  if(r.status==="connected"){$("codeStatus").textContent="Este WhatsApp já está conectado.";return}
+  $("pairCode").textContent=r.code;$("codeResult").classList.remove("hidden");
+  $("codeStatus").textContent="Digite o código em Dispositivos conectados → Conectar com número de telefone.";
+ }catch(ex){$("codeStatus").textContent=ex.message;}
+});
+$("copyCode").addEventListener("click",async()=>{
+ try{await navigator.clipboard.writeText($("pairCode").textContent.replace("-",""));
+ $("codeStatus").textContent="Código copiado! Cole no seu WhatsApp.";
+ }catch{$("codeStatus").textContent="Não foi possível copiar automaticamente; selecione o código acima."}
+});
+$("statusRefresh").addEventListener("click",updateStatus);
+$("reloadChats").addEventListener("click",loadChats);
+function startChats(){
+ clearInterval(chatTimer);chatTimer=setInterval(async()=>{await loadChats();await refreshMessages()},6500);
+}
+async function loadChats(){
+ if(chatsBusy)return;chatsBusy=true;
+ try{
+  const data=await api("/api/v1/qr/chats");
+  const box=$("chatList");box.replaceChildren();
+  if(!data.items?.length){const p=document.createElement("p");p.textContent="Nenhuma mensagem recebida ainda.";box.append(p);return}
+  for(const row of data.items){
+   const b=document.createElement("button");b.className="chat-item"+(row.phone===selectedPhone?" current":"");
+   const name=document.createElement("strong"),desc=document.createElement("small");
+   name.textContent="+"+row.phone;desc.textContent=row.preview;
+   b.append(name,desc);b.addEventListener("click",()=>{
+    selectedPhone=row.phone;$("chatPhone").value=row.phone;
+    $("chatTitle").textContent="Conversa com +"+row.phone;
+    refreshMessages();loadChats();
+   });box.append(b);
   }
-  function form() {
-    const f=$("recordForm");f.replaceChildren();
-    for(const [key,title,type] of fields[$("resource").value]) {
-      const label=document.createElement("label");label.textContent=title;
-      const inp=document.createElement("input");inp.name=key;inp.type=type;
-      if(type==="checkbox") inp.checked=true;
-      else if(!["description","reason","prep_min","cleanup_min"].includes(key)) inp.required=true;
-      label.append(inp);f.append(label);
-    }
-    const btn=document.createElement("button");btn.textContent="Cadastrar registro";f.append(btn);
+ }catch(ex){$("chatNotice").textContent=ex.message}
+ finally{chatsBusy=false}
+}
+async function refreshMessages(){
+ if(!selectedPhone)return;
+ try{
+  const data=await api("/api/v1/qr/messages?phone="+encodeURIComponent(selectedPhone));
+  const area=$("chatBubbles");area.replaceChildren();
+  if(!data.items?.length){const p=document.createElement("p");p.textContent="Sem mensagens recentes.";area.append(p);return}
+  for(const item of data.items){
+   const bubble=document.createElement("div");bubble.className="bubble "+(item.direction==="out"?"out":"in");
+   const text=document.createElement("div"),time=document.createElement("time");
+   text.textContent=item.body;
+   time.textContent=new Date(item.at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+   bubble.append(text,time);area.append(bubble);
   }
-  async function loadRecords() {
-    if(!$("tenant").value) {notice("Selecione uma barbearia.");return}
-    try {
-      const data=await req("/api/v1/tenants/"+$("tenant").value+"/"+$("resource").value);
-      const area=$("results");area.replaceChildren();
-      const table=document.createElement("table");
-      for (const row of data) {
-        const tr=document.createElement("tr");
-        for(const [k,v] of Object.entries(row)) {
-          const td=document.createElement("td");td.textContent=k+": "+(v??"");tr.append(td);
-        }
-        table.append(tr);
-      }
-      area.append(table);
-      notice(data.length+" registro(s) carregado(s).");
-    } catch(e) {notice(e.message)}
+  area.scrollTop=area.scrollHeight;
+ }catch(ex){$("chatNotice").textContent=ex.message}
+}
+$("sendForm").addEventListener("submit",async ev=>{
+ ev.preventDefault();
+ const phone=normalize($("chatPhone").value),text=$("chatText").value.trim();
+ if(!/^[1-9]\d{7,14}$/.test(phone)){$("chatNotice").textContent="Informe número com DDI e DDD.";return}
+ if(!text||text.length>1200){$("chatNotice").textContent="Escreva uma mensagem de até 1200 caracteres.";return}
+ if(deviceStatus!=="connected"){$("chatNotice").textContent="Conecte seu WhatsApp antes de enviar.";return}
+ if(!confirm("Enviar esta mensagem para +"+phone+" pelo WhatsApp conectado?"))return;
+ $("sendButton").disabled=true;$("chatNotice").textContent="Enviando...";
+ try{
+  await api("/api/v1/qr/send","POST",{phone,text});
+  selectedPhone=phone;$("chatTitle").textContent="Conversa com +"+phone;
+  $("chatText").value="";$("chatNotice").textContent="Mensagem enviada pelo dispositivo.";
+  await refreshMessages();await loadChats();
+ }catch(ex){$("chatNotice").textContent=ex.message}
+ finally{$("sendButton").disabled=false}
+});
+async function loadTenants(){
+ try{
+  const data=await api("/api/v1/tenants");
+  const selected=$("tenant").value;
+  $("tenant").replaceChildren(new Option("Selecione uma barbearia",""));
+  for(const row of data)$("tenant").add(new Option(row.name+" · "+row.slug,row.id));
+  if([...$("tenant").options].some(x=>x.value===selected))$("tenant").value=selected;
+  else if(data.length)$("tenant").value=data[0].id;
+  $("notice").textContent=data.length+" estabelecimento(s) disponíveis.";
+  await loadRecords();
+ }catch(ex){$("notice").textContent=ex.message}
+}
+function renderForm(){
+ const form=$("recordForm");form.replaceChildren();
+ for(const [name,title,type] of fields[$("resource").value]){
+  const label=document.createElement("label");label.textContent=title;
+  const input=document.createElement("input");input.name=name;input.type=type;
+  if(type==="checkbox")input.checked=true;
+  else if(!["description","reason","prep_min","cleanup_min"].includes(name))input.required=true;
+  label.append(input);form.append(label);
+ }
+ const b=document.createElement("button");b.className="btn";b.textContent="Cadastrar registro";form.append(b);
+}
+async function loadRecords(){
+ const tenant=$("tenant").value;if(!tenant)return;
+ try{
+  const records=await api("/api/v1/tenants/"+tenant+"/"+$("resource").value);
+  const box=$("records");box.replaceChildren();
+  const table=document.createElement("table");
+  for(const record of records){
+   const tr=document.createElement("tr");
+   for(const [key,value] of Object.entries(record)){
+    const td=document.createElement("td");td.textContent=key+": "+(value??"");tr.append(td);
+   }table.append(tr);
   }
-  $("loadTenants").onclick=loadTenants;
-  $("refresh").onclick=loadRecords;
-  $("tenant").onchange=loadRecords;
-  $("resource").onchange=()=>{form();loadRecords()};
-  $("tenantForm").onsubmit=async e=>{
-    e.preventDefault();
-    try {const payload=Object.fromEntries(new FormData(e.target));await req("/api/v1/tenants",{method:"POST",body:JSON.stringify(payload)});await loadTenants();e.target.reset()}
-    catch(err){notice(err.message)}
-  };
-  $("recordForm").onsubmit=async e=>{
-    e.preventDefault();
-    if(!$("tenant").value) {notice("Selecione uma barbearia.");return}
-    const payload={};
-    for(const inp of e.target.querySelectorAll("input")) {
-      if(inp.type==="checkbox") payload[inp.name]=inp.checked;
-      else if(inp.type==="number") payload[inp.name]=Number(inp.value||0);
-      else if(inp.value) payload[inp.name]=inp.value;
-    }
-    try {
-      await req("/api/v1/tenants/"+$("tenant").value+"/"+$("resource").value,{method:"POST",body:JSON.stringify(payload)});
-      e.target.reset();await loadRecords();
-    }catch(err){notice(err.message)}
-  };
-  form();
+  box.append(table);
+  $("notice").textContent=records.length+" registro(s) encontrados.";
+ }catch(ex){$("notice").textContent=ex.message}
+}
+$("loadTenants").addEventListener("click",loadTenants);
+$("refresh").addEventListener("click",loadRecords);
+$("tenant").addEventListener("change",loadRecords);
+$("resource").addEventListener("change",()=>{renderForm();loadRecords()});
+$("tenantForm").addEventListener("submit",async ev=>{
+ ev.preventDefault();
+ try{await api("/api/v1/tenants","POST",Object.fromEntries(new FormData(ev.target)));
+ ev.target.reset();await loadTenants();}
+ catch(ex){$("notice").textContent=ex.message}
+});
+$("recordForm").addEventListener("submit",async ev=>{
+ ev.preventDefault();const tenant=$("tenant").value;
+ if(!tenant){$("notice").textContent="Selecione uma barbearia.";return}
+ const data={};for(const input of ev.target.querySelectorAll("input")){
+  if(input.type==="checkbox")data[input.name]=input.checked;
+  else if(input.type==="number")data[input.name]=Number(input.value||0);
+  else if(input.value)data[input.name]=input.value;
+ }
+ try{await api("/api/v1/tenants/"+tenant+"/"+$("resource").value,"POST",data);
+ ev.target.reset();await loadRecords();}
+ catch(ex){$("notice").textContent=ex.message}
+});
+renderForm();renderGuide();
 })();
 </script>
-</body>
-</html>
+</body></html>
