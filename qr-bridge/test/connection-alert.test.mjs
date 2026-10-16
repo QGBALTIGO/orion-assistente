@@ -141,3 +141,20 @@ test("recibo no volume não guarda número, conteúdo, sessão ou credenciais",a
     assert.equal(fs.statSync(noticePath(t.dir)).mode&0o777,0o600);
   }finally{t.remove()}
 });
+
+test("confirmação usa remetente autorizado e callback de transmissão nova",async()=>{
+ const tmp=temp();
+ try{
+   const first=fakeSocket(),sent=[];
+   const recorder=async (jid,text)=>{
+     sent.push({jid,text});
+     return {key:{id:"prepared-id"},message:{conversation:text}};
+   };
+   const state=await sendConnectionNoticeOnce({authDir:tmp.dir,client:first,
+     isCurrent:()=>true,sendText:recorder,
+     onSent:({message})=>assert.equal(message.conversation,CONNECTION_CONFIRMATION_TEXT)});
+   assert.equal(state.state,"sent");
+   assert.equal(sent.length,1);
+   assert.equal(first.calls.length,0);
+ }finally{tmp.remove()}
+});

@@ -42,6 +42,7 @@ function writeReceipt(file,state) {
 
 export async function sendConnectionNoticeOnce({
   authDir, client, isCurrent, onSent=()=>{},
+  sendText=(jid,text)=>client.sendMessage(jid,{text}),
 }) {
   if(!isCurrent() || !client || typeof client.sendMessage!=="function")
     return {state:"not_ready"};
@@ -65,7 +66,7 @@ export async function sendConnectionNoticeOnce({
     return {state:"not_ready"};
   }
   try {
-    const message=await client.sendMessage(ownJid,{text:CONNECTION_CONFIRMATION_TEXT});
+    const message=await sendText(ownJid,CONNECTION_CONFIRMATION_TEXT);
     writeReceipt(marker,"sent");
     onSent({id:message?.key?.id||null,phone:ownJid.split("@")[0],
       body:CONNECTION_CONFIRMATION_TEXT,message:message?.message||null});

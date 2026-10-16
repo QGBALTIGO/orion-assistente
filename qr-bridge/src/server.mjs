@@ -5,14 +5,17 @@
  * Mensagens recentes ficam apenas na RAM; sessão Baileys cifrada no volume.
  */
 import http from "node:http";
+import path from "node:path";
 import fs from "node:fs";
 import {timingSafeEqual,randomUUID} from "node:crypto";
-import makeWASocket,{DisconnectReason,Browsers,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore} from "@whiskeysockets/baileys";
+import makeWASocket,{DisconnectReason,Browsers,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import pino from "pino";
 import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode,connectionPhase,reconnectPlan} from "./core.mjs";
 import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
 import {makeMessageRetryStore,deliveryFromAck,advanceDelivery} from "./message-retry-store.mjs";
+import {makeEncryptedRetryStore} from "./encrypted-retry-store.mjs";
+import {sendStoredText} from "./reliable-send.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
 const SESSION_DIR=process.env.QR_SESSION_DIR || "/data/auth";
@@ -35,7 +38,32 @@ let socket=null,generation=0,timer=null,attempts=0,status="starting",
   qr="",qrAt=0,lastError=null,pairedNumber="",pairingCode="",pairAt=0,requesting=false;
 const messages=[],seen=new Set(),sendTimes=[],MAX=500;
 const retryMessages=makeMessageRetryStore();
+let encryptedRetry=makeEncryptedRetryStore({
+  directory:path.join(authDir,"retry-encrypted"),
+  secret:KEY,
+  serialize:obj=>JSON.stringify(obj,BufferJSON.replacer),
+  deserialize:str=>JSON.parse(str,BufferJSON.reviver)
+});
+const retryStore={
+  save(key,message){
+    const memory=retryMessages.save(key,message);
+    const encrypted=encryptedRetry.save(key,message);
+    return memory && encrypted;
+  },
+  get(key){
+    const cached=retryMessages.get(key);
+    if(cached)return cached;
+    const persisted=encryptedRetry.get(key);
+    if(persisted)retryMessages.save(key,persisted);
+    return persisted;
+  }
+};
+const retryDiagnostics={
+  cacheHits:0,cacheMisses:0,prepared:0,relayAccepted:0,
+  receiptUpdates:0,delivered:0,read:0,lastDeliveryDelayMs:null
+};
 const deliveryReceipts=new Map();
+const deliveryStart=new Map();
 
 function pushMessage(item){
   if(seen.has(item.id))return;
@@ -55,7 +83,9 @@ function stats(){
     phone:status==="connected"?pairedNumber:null,
     connectionType:"unofficial_linked_device",messagesEnabled:status==="connected",
     retainedMessages:messages.length,paired:!!pairingCode,
-    connectionNotice:process.env.ORION_NOTIFY_SELF_ON_LINK==="1" ? noticeState(authDir) : "disabled"};
+    connectionNotice:process.env.ORION_NOTIFY_SELF_ON_LINK==="1" ? noticeState(authDir) : "disabled",
+    deliveryDiagnostics:{...retryDiagnostics},
+    reliableSendEnabled:process.env.QR_RELIABLE_SEND_V2==="1"};
 }
 function auth(req){
   const input=Buffer.from(String(req.headers["x-orion-bridge-key"]||""));
@@ -98,6 +128,14 @@ function installListeners(client,mine,saveCreds){
       const prev=deliveryReceipts.get(id);
       const after=advanceDelivery(prev,next);
       deliveryReceipts.set(id,after);
+      retryDiagnostics.receiptUpdates++;
+      if(["delivered","read","played"].includes(after)){
+        if(!["delivered","read","played"].includes(prev))retryDiagnostics.delivered++;
+        if(["read","played"].includes(after) && !["read","played"].includes(prev))retryDiagnostics.read++;
+        const started=deliveryStart.get(id);
+        if(started && Number.isFinite(started))retryDiagnostics.lastDeliveryDelayMs=Date.now()-started;
+        deliveryStart.delete(id);
+      }
       const found=messages.find(x=>x.id==="out:"+id);
       if(found)found.delivery=after;
     }
@@ -137,6 +175,18 @@ function installListeners(client,mine,saveCreds){
             const result=await sendConnectionNoticeOnce({
               authDir,
               client,
+              sendText:async (jid,text)=>{
+                if(process.env.QR_RELIABLE_SEND_V2!=="1")return client.sendMessage(jid,{text});
+                return sendStoredText({
+                  jid,text,store:retryStore,freshDevices:false,
+                  makeMessage:async (recipient,messageText)=>generateWAMessage(
+                    recipient,{text:messageText},{
+                      userJid:client.user?.id,logger,
+                      messageId:generateMessageIDV2(client.user?.id)
+                    }),
+                  relay:(recipient,message,opts)=>client.relayMessage(recipient,message,opts)
+                });
+              },
               isCurrent:()=>mine===generation&&status==="connected"&&socket===client,
               onSent:item=>{
                 const id=item.id||randomUUID();
@@ -201,7 +251,12 @@ async function connect(){
     }
     const client=makeWASocket({
       auth:{creds:state.creds,keys:makeCacheableSignalKeyStore(state.keys,logger)},
-      getMessage:async key=>retryMessages.get(key),
+      getMessage:async key=>{
+        const content=retryStore.get(key);
+        if(content)retryDiagnostics.cacheHits++;
+        else retryDiagnostics.cacheMisses++;
+        return content;
+      },
       browser:Browsers.windows("Chrome"),
       ...(currentVersion?{version:currentVersion}:{}),
       printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,logger});
@@ -251,14 +306,37 @@ async function send(phone,text){
   if(sendTimes.length>=5)throw Error("Aguarde um minuto antes de enviar mais mensagens");
   sendTimes.push(now);
   const jid=target+"@s.whatsapp.net";
-  const result=await socket.sendMessage(jid,{text:text.trim()});
+  const selectedSocket=socket;
+  let result;
+  const freshDevices=process.env.QR_FORCE_FRESH_DEVICES==="1";
+  if(process.env.QR_RELIABLE_SEND_V2==="1"){
+    result=await sendStoredText({
+      jid,text:text.trim(),store:retryStore,freshDevices,
+      makeMessage:async (recipient,messageText)=>generateWAMessage(
+        recipient,{text:messageText},{
+          userJid:selectedSocket.user?.id,logger,
+          messageId:generateMessageIDV2(selectedSocket.user?.id)
+        }),
+      relay:(recipient,message,opts)=>selectedSocket.relayMessage(recipient,message,opts),
+      onPrepared:msg=>{
+        retryDiagnostics.prepared++;
+        deliveryReceipts.set(msg.key.id,"pending");
+        deliveryStart.set(msg.key.id,Date.now());
+      }
+    });
+  }else{
+    result=await selectedSocket.sendMessage(jid,{text:text.trim()});
+    if(result?.key?.id&&result?.message)retryStore.save(result.key,result.message);
+  }
   if(!result?.key?.id || !result?.message){
     return {accepted:false,delivery:"unconfirmed",error:"Sem comprovante do servidor WhatsApp"};
   }
-  retryMessages.save(result.key,result.message);
-  deliveryReceipts.set(result.key.id,"pending");
+  retryDiagnostics.relayAccepted++;
+  if(!deliveryReceipts.has(result.key.id))deliveryReceipts.set(result.key.id,"pending");
+  if(!deliveryStart.has(result.key.id))deliveryStart.set(result.key.id,Date.now());
   const id="out:"+result.key.id;
-  pushMessage({id,phone:target,body:text.trim(),direction:"out",at:Date.now(),delivery:"pending"});
+  pushMessage({id,phone:target,body:text.trim(),direction:"out",at:Date.now(),
+    delivery:deliveryReceipts.get(result.key.id)||"pending"});
   // sendMessage resolve quando a biblioteca entrega ao transporte, não
   // quando o iPhone consegue descriptografar. Apenas receipts validam isso.
   return {accepted:true,delivery:"pending",id};
@@ -299,7 +377,12 @@ const server=http.createServer(async(req,res)=>{
       fs.writeFileSync(ACTIVE_MARKER,authDir,{mode:0o600});
       qr="";qrAt=0;pairingCode="";pairAt=0;pairedNumber="";
       messages.splice(0);seen.clear();sendTimes.splice(0);
-      retryMessages.clear();deliveryReceipts.clear();
+      retryMessages.clear();deliveryReceipts.clear();deliveryStart.clear();
+      encryptedRetry=makeEncryptedRetryStore({
+        directory:path.join(authDir,"retry-encrypted"),secret:KEY,
+        serialize:obj=>JSON.stringify(obj,BufferJSON.replacer),
+        deserialize:str=>JSON.parse(str,BufferJSON.reviver)
+      });
       lastError=null;attempts=0;everConnected=false;lastDisconnectCode=null;
       await connect();
       return reply(res,202,{status:"connecting"});
