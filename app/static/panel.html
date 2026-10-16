@@ -703,28 +703,29 @@ function updateWizardClocks(){
  }
 }
 function renderGuide(){
- const panes={
-   choose:"wizardChoose",tutorial:"wizardTutorial",qr:"qrPanel",
-   code_form:"codePanel",code_ready:"codePanel",success:"wizardSuccess"
- };
- for(const id of ["wizardChoose","wizardTutorial","qrPanel","codePanel","wizardSuccess"])
+ const panes={tutorial:"wizardTutorial",qr:"qrPanel",code_form:"codePanel",code_ready:"codePanel",success:"wizardSuccess"};
+ for(const id of ["wizardTutorial","qrPanel","codePanel","wizardSuccess"])
    $(id).classList.toggle("hidden",id!==panes[wizardStep]);
  document.querySelectorAll("[data-method]").forEach(x=>{
-   const selected=wizardStep!=="choose"&&x.dataset.method===method;
+   const selected=wizardStep!=="success"&&x.dataset.method===method;
    x.classList.toggle("active",selected);
    x.setAttribute("aria-pressed",String(selected));
  });
  if(wizardStep==="tutorial"){
-   const total=steps[method].length,current=steps[method][wizardIndex];
-   $("guideTitle").textContent=current[0];
-   $("wizardStepDescription").textContent=current[1];
-   $("wizardStepCount").textContent="PASSO "+(wizardIndex+1)+" DE "+total;
-   $("wizardProgressFill").style.width=(((wizardIndex+1)/total)*100)+"%";
-   $("wizardProgress").setAttribute("aria-valuemax",String(total));
-   $("wizardProgress").setAttribute("aria-valuenow",String(wizardIndex+1));
-   $("wizardPrevious").textContent=wizardIndex?"Passo anterior":"Escolher método";
-   $("wizardNext").textContent=wizardIndex===total-1?
-      (method==="qr"?"Mostrar meu QR Code →":"Informar meu número →"):"Próximo passo →";
+   const list=$("guideSteps");list.replaceChildren();
+   const items=steps[method];
+   const phoneIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>';
+   const checkIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
+   items.forEach(([title,description],index)=>{
+     const item=document.createElement("div");item.className="wizard-timeline-step";item.setAttribute("role","listitem");
+     const marker=document.createElement("span");marker.className="wizard-timeline-dot"+(index===0||index===items.length-1?" edge":"");
+     marker.innerHTML=index===0||index===items.length-1?phoneIcon:checkIcon;
+     const body=document.createElement("div");body.className="wizard-timeline-copy";
+     const number=document.createElement("small");number.textContent="PASSO "+(index+1);
+     const heading=document.createElement("strong");heading.textContent=title;
+     const summary=document.createElement("p");summary.textContent=description;
+     body.append(number,heading,summary);item.append(marker,body);list.append(item);
+   });
  }
  if(wizardStep==="code_form"||wizardStep==="code_ready"){
    $("wizardCodeInput").classList.toggle("hidden",wizardStep!=="code_form");
