@@ -92,3 +92,36 @@ jobs:
         run: node --test qr-bridge/test/*.test.mjs
       - name: Build da imagem real Node Baileys
         run: docker build -f qr-bridge/Dockerfile -t orion-qr:ci qr-bridge
+
+      - name: Smoke test real Baileys + mensagem gerada e cache cifrado no contêiner
+        run: |
+          docker run --rm orion-qr:ci node --input-type=module -e '
+            import assert from "node:assert/strict";
+            import pino from "pino";
+            import {generateWAMessage,generateMessageIDV2,BufferJSON} from "@whiskeysockets/baileys";
+            import {makeEncryptedRetryStore} from "./src/encrypted-retry-store.mjs";
+            import {sendStoredText} from "./src/reliable-send.mjs";
+            const from="5521999999999@s.whatsapp.net";
+            const to="5521888888888@s.whatsapp.net";
+            const logger=pino({level:"silent"});
+            const message=await generateWAMessage(to,{text:"Mensagem sintética CI"},{
+              userJid:from,logger,messageId:generateMessageIDV2(from)});
+            assert.ok(message.key.id && message.message);
+            const cache=makeEncryptedRetryStore({
+              directory:"/data/ci-encrypted-retry",
+              secret:"ci-only-cryptographic-key-0123456789-do-not-use",
+              serialize:x=>JSON.stringify(x,BufferJSON.replacer),
+              deserialize:x=>JSON.parse(x,BufferJSON.reviver)});
+            let relays=0;
+            await sendStoredText({jid:to,text:"Mensagem sintética CI",store:cache,
+              makeMessage:async()=>message,
+              relay:async(dest,msg,opts)=>{
+                relays++;
+                assert.deepEqual(cache.get({id:opts.messageId}),message.message);
+                assert.deepEqual(msg,message.message);
+                assert.equal(dest,to);
+              }});
+            assert.equal(relays,1);
+            assert.deepEqual(cache.get({id:message.key.id}),message.message);
+            console.log("ORION_BAILEYS_REAL_PACKAGE_DRY_RUN_OK");
+          '
