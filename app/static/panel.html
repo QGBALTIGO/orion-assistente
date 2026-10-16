@@ -565,7 +565,7 @@ async function refreshMessages(){
    const bubble=document.createElement("div");bubble.className="bubble "+(item.direction==="out"?"out":"in");
    const text=document.createElement("div"),time=document.createElement("time");
    text.textContent=item.body;
-   time.textContent=new Date(item.at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+   time.textContent=new Date(item.at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})+(item.direction==="out"?" · "+({pending:"aguardando",server_accepted:"servidor aceitou",delivered:"entregue",read:"lida",played:"reproduzida",failed:"falhou"}[item.delivery]||"não confirmada"):"");
    bubble.append(text,time);area.append(bubble);
   }
   area.scrollTop=area.scrollHeight;
@@ -580,9 +580,10 @@ $("sendForm").addEventListener("submit",async ev=>{
  if(!confirm("Enviar esta mensagem para +"+phone+" pelo WhatsApp conectado?"))return;
  $("sendButton").disabled=true;$("chatNotice").textContent="Enviando...";
  try{
-  await api("/api/v1/qr/send","POST",{phone,text});
+  const result=await api("/api/v1/qr/send","POST",{phone,text});
+  if(!result.accepted)throw Error("O WhatsApp não confirmou a aceitação. Aguarde antes de tentar novamente.");
   selectedPhone=phone;$("chatTitle").textContent="Conversa com +"+phone;
-  $("chatText").value="";$("chatNotice").textContent="Mensagem enviada pelo dispositivo.";
+  $("chatText").value="";$("chatNotice").textContent="O WhatsApp aceitou o envio. Aguardando confirmação de entrega no celular.";
   await refreshMessages();await loadChats();
  }catch(ex){$("chatNotice").textContent=ex.message}
  finally{$("sendButton").disabled=false}

@@ -68,7 +68,7 @@ export async function sendConnectionNoticeOnce({
     const message=await client.sendMessage(ownJid,{text:CONNECTION_CONFIRMATION_TEXT});
     writeReceipt(marker,"sent");
     onSent({id:message?.key?.id||null,phone:ownJid.split("@")[0],
-      body:CONNECTION_CONFIRMATION_TEXT});
+      body:CONNECTION_CONFIRMATION_TEXT,message:message?.message||null});
     return {state:"sent"};
   }catch {
     // A send rejection does not prove the WhatsApp server didn't receive it.

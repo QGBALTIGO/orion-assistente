@@ -7,11 +7,12 @@
 import http from "node:http";
 import fs from "node:fs";
 import {timingSafeEqual,randomUUID} from "node:crypto";
-import makeWASocket,{DisconnectReason,Browsers,useMultiFileAuthState,fetchLatestWaWebVersion} from "@whiskeysockets/baileys";
+import makeWASocket,{DisconnectReason,Browsers,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import pino from "pino";
 import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode,connectionPhase,reconnectPlan} from "./core.mjs";
 import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
+import {makeMessageRetryStore,deliveryFromAck,advanceDelivery} from "./message-retry-store.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
 const SESSION_DIR=process.env.QR_SESSION_DIR || "/data/auth";
@@ -33,6 +34,8 @@ let socket=null,generation=0,timer=null,attempts=0,status="starting",
   notifiedGeneration=-1,
   qr="",qrAt=0,lastError=null,pairedNumber="",pairingCode="",pairAt=0,requesting=false;
 const messages=[],seen=new Set(),sendTimes=[],MAX=500;
+const retryMessages=makeMessageRetryStore();
+const deliveryReceipts=new Map();
 
 function pushMessage(item){
   if(seen.has(item.id))return;
@@ -86,9 +89,23 @@ function installListeners(client,mine,saveCreds){
       console.warn("Orion QR: falha ao salvar credenciais (dados omitidos)");
     });
   });
+  client.ev.on("messages.update",updates=>{
+    for(const item of updates||[]){
+      const id=item?.key?.id;
+      if(!id || !item?.key?.fromMe)continue;
+      const next=deliveryFromAck(item.update?.status);
+      if(!deliveryReceipts.has(id))continue;
+      const prev=deliveryReceipts.get(id);
+      const after=advanceDelivery(prev,next);
+      deliveryReceipts.set(id,after);
+      const found=messages.find(x=>x.id==="out:"+id);
+      if(found)found.delivery=after;
+    }
+  });
   client.ev.on("messages.upsert",async ({messages:incoming,type})=>{
     if(mine!==generation||status!=="connected"||type!=="notify")return;
     for(const message of incoming||[]){
+      if(message.key?.id && message.message)retryMessages.save(message.key,message.message);
       if(message.key?.fromMe)continue;
       const phone=await resolveMessagePhone(message.key,client);
       if(!phone||!message.key?.id||!message.message)continue;
@@ -121,8 +138,13 @@ function installListeners(client,mine,saveCreds){
               authDir,
               client,
               isCurrent:()=>mine===generation&&status==="connected"&&socket===client,
-              onSent:item=>pushMessage({id:"out:"+(item.id||randomUUID()),
-                phone:item.phone,body:item.body,direction:"out",at:Date.now()}),
+              onSent:item=>{
+                const id=item.id||randomUUID();
+                if(item.message)retryMessages.save({id},item.message);
+                deliveryReceipts.set(id,"pending");
+                pushMessage({id:"out:"+id,phone:item.phone,body:item.body,
+                  direction:"out",at:Date.now(),delivery:"pending"});
+              },
             });
             console.info("Orion QR: confirmação para a própria conta: "+result.state);
           }catch{
@@ -177,7 +199,10 @@ async function connect(){
           v.every(x=>Number.isSafeInteger(x)&&x>0))currentVersion=v;
       }catch{}
     }
-    const client=makeWASocket({auth:state,browser:Browsers.windows("Chrome"),
+    const client=makeWASocket({
+      auth:{creds:state.creds,keys:makeCacheableSignalKeyStore(state.keys,logger)},
+      getMessage:async key=>retryMessages.get(key),
+      browser:Browsers.windows("Chrome"),
       ...(currentVersion?{version:currentVersion}:{}),
       printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,logger});
     socket=client;installListeners(client,mine,saveCreds);
@@ -227,9 +252,16 @@ async function send(phone,text){
   sendTimes.push(now);
   const jid=target+"@s.whatsapp.net";
   const result=await socket.sendMessage(jid,{text:text.trim()});
-  const id="out:"+(result?.key?.id||randomUUID());
-  pushMessage({id,phone:target,body:text.trim(),direction:"out",at:Date.now()});
-  return {sent:true,id};
+  if(!result?.key?.id || !result?.message){
+    return {accepted:false,delivery:"unconfirmed",error:"Sem comprovante do servidor WhatsApp"};
+  }
+  retryMessages.save(result.key,result.message);
+  deliveryReceipts.set(result.key.id,"pending");
+  const id="out:"+result.key.id;
+  pushMessage({id,phone:target,body:text.trim(),direction:"out",at:Date.now(),delivery:"pending"});
+  // sendMessage resolve quando a biblioteca entrega ao transporte, não
+  // quando o iPhone consegue descriptografar. Apenas receipts validam isso.
+  return {accepted:true,delivery:"pending",id};
 }
 
 const server=http.createServer(async(req,res)=>{
@@ -267,6 +299,7 @@ const server=http.createServer(async(req,res)=>{
       fs.writeFileSync(ACTIVE_MARKER,authDir,{mode:0o600});
       qr="";qrAt=0;pairingCode="";pairAt=0;pairedNumber="";
       messages.splice(0);seen.clear();sendTimes.splice(0);
+      retryMessages.clear();deliveryReceipts.clear();
       lastError=null;attempts=0;everConnected=false;lastDisconnectCode=null;
       await connect();
       return reply(res,202,{status:"connecting"});
