@@ -211,7 +211,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
             <details class="device-menu" id="deviceOptions">
               <summary class="btn secondary"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg> Opções</summary>
               <nav aria-label="Ações do dispositivo conectado">
-                <button id="deviceMenuAlerts" type="button">⚑ Alertas de conexão</button>
+                <button id="deviceMenuAlerts" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"/><circle cx="12" cy="12" r="4"/></svg> Alertas de conexão</button>
                 <button id="deviceMenuChats" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8L7.2 10a16 16 0 0 0 6.8 6.8l1.5-1.8a2 2 0 0 1 1.8-.6l3 .5a2 2 0 0 1 1.7 2Z"/></svg> Conversas</button>
                 <button id="deviceMenuSettings" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></svg> Configurações</button>
                 <button id="deviceMenuDiagnostics" type="button"><svg class="device-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M5 15l4-4 3 3 6-7"/><path d="M16 7h2v2"/></svg> Diagnósticos</button>
@@ -580,6 +580,8 @@ function renderConnectedCenter(data){
  const active=data.status==="connected";
  $("connectedCenter").classList.toggle("hidden",!active);
  $("disconnectedWizard").classList.toggle("hidden",active);
+ const headerPill=$("page-dispositivo").querySelector(".header .pill");
+ if(headerPill)headerPill.classList.toggle("hidden",active);
  const sub=$("page-dispositivo").querySelector(".header .subhead");
  if(sub)sub.textContent=active?"Seu número, métricas e configurações em um só lugar.":"Vincule seu número em poucos passos.";
  if(!active)return;
