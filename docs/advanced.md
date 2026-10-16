@@ -55,3 +55,24 @@ execução de campanha autorizada contra sandbox restrita com opt-out.
 
 A ausência de integração externa, de aprovação do piloto e de capacidade
 validada torna incorreto declarar a FATIA 8 concluída comercialmente.
+
+## Comandos WhatsApp protegidos (complementação da FATIA 3)
+
+Quando o evento tem assinatura Meta validada e canal identificado pelo
+\`phone_number_id\`, a identidade do remetente é comparada com
+\`authorized_staff.phone_e164\` ativo no tenant. Barbeiro com
+\`professional_id\` vinculado vê apenas sua agenda; proprietário e
+assistente autorizados podem consultar a agenda da empresa.
+
+AGENDA HOJE / AGENDA AMANHÃ são comandos apenas para staff.
+PAUSAR BOT / RETOMAR BOT são exclusivos do owner e exigem confirmação
+em até dois minutos. BLOQUEAR AAAA-MM-DD HH:MM-HH:MM exige
+profissional vinculado e confirmação; revalida reservas e registra
+auditoria sob advisory lock transacional.
+
+Cliente tem MEUS HORÁRIOS, CANCELAR AG-XXXXXX (com SIM CANCELAR) e
+REMARCAR AG-XXXXXX. O protocolo não serve como senha:
+toda consulta e alteração valida novamente que o número Meta assinado
+é o titular da reserva. Histórico e escopo RLS são preservados.
+
+**Não aceitar esses comandos por canal não autenticado.**
