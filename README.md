@@ -158,3 +158,9 @@ docker compose --profile tools run --rm --build test
 Em Railway, um administrador autorizado aplica o mesmo GRANT ao usuário
 app_migrator pelo painel/console seguro; não use a credencial migrator na API.
 Não fazer deploy externo sem autorização. Não usar down -v para atualizar.
+
+## FATIA 3 — Webhook Meta e menus
+
+Webhook autenticado, deduplicação durável, Redis/Arq e provedor Fake.
+Instruções e limitações em [docs/whatsapp.md](docs/whatsapp.md).
+Sem conta Meta autorizada, o envio externo é mantido desabilitado.

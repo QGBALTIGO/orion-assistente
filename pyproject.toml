@@ -16,6 +16,7 @@ dependencies = [
   "psycopg[binary]>=3.2,<4",
   "arq>=0.26,<1",
   "tzdata>=2025.2",
+  "cryptography>=43,<50",
 ]
 
 [project.optional-dependencies]
