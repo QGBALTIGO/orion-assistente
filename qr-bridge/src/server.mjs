@@ -17,6 +17,7 @@ import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
 import {makeMessageRetryStore,deliveryFromAck,advanceDelivery} from "./message-retry-store.mjs";
 import {makeEncryptedRetryStore} from "./encrypted-retry-store.mjs";
 import {sendStoredText} from "./reliable-send.mjs";
+import {inspectLookup,inspectDelivery} from "./recipient-diagnostics.mjs";
 import {makeDurableInbox} from "./durable-inbox.mjs";
 import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-health.mjs";
 
@@ -295,6 +296,7 @@ async function connect(){
       msgRetryCounterCache,
       maxMsgRetryCount:5,
       getMessage:async key=>{
+        if(key?.id)countRetryRequest(String(key.id));
         const content=retryStore.get(key);
         if(content)retryDiagnostics.cacheHits++;
         else retryDiagnostics.cacheMisses++;
@@ -338,6 +340,45 @@ async function pair(number){
     status="pair_failed";
     throw error;
   }finally{requesting=false}
+}
+// Read-only USync contact lookup, only on deliberate operator action.
+// Short cooldown prevents repeated requests to WhatsApp for the same person.
+const recipientInspections=new Map();
+const resendCounterByMessage=new Map();
+function countRetryRequest(id){
+  if(!id)return;
+  if(!resendCounterByMessage.has(id)&&resendCounterByMessage.size>=1000){
+    resendCounterByMessage.delete(resendCounterByMessage.keys().next().value);
+  }
+  resendCounterByMessage.set(id,Math.min(20,(resendCounterByMessage.get(id)||0)+1));
+}
+async function recipientInspection(value){
+  const phone=validPhone(value);
+  if(status!=="connected" || !socket)throw Error("O WhatsApp não está conectado");
+  const now=Date.now();
+  const cached=recipientInspections.get(phone);
+  if(cached&&cached.expires>now)return {...cached.data,delivery:inspectDelivery(messages,phone,resendCounterByMessage)};
+  // onWhatsApp returns PN plus optional LID in this installed Baileys version.
+  // No assertSessions(force), no sent message and no auth-state mutation.
+  let lookup;
+  const started=Date.now();
+  try {
+    lookup=await socket.onWhatsApp(phone);
+  }catch{
+    return {registered:null,identity:"lookup_failed",hasLid:null,
+      self:phone===String(socket.user?.id||"").split(":")[0].split("@")[0],
+      lookupMs:null,delivery:inspectDelivery(messages,phone),
+      note:"WhatsApp não respondeu à consulta. Nenhuma mensagem foi enviada."};
+  }
+  const summary=inspectLookup(phone,lookup,socket.user?.id);
+  const data={...summary,lookupMs:Date.now()-started,
+    delivery:inspectDelivery(messages,phone)};
+  if(recipientInspections.size>=40){
+    const oldest=recipientInspections.keys().next().value;
+    recipientInspections.delete(oldest);
+  }
+  recipientInspections.set(phone,{data,expires:now+90000});
+  return data;
 }
 async function send(phone,text){
   const target=validPhone(phone);
@@ -431,6 +472,7 @@ const server=http.createServer(async(req,res)=>{
         serialize:obj=>JSON.stringify(obj,BufferJSON.replacer),
         deserialize:str=>JSON.parse(str,BufferJSON.reviver)
       });
+      recipientInspections.clear();resendCounterByMessage.clear();
       msgRetryCounterCache.flushAll();
       lastError=null;attempts=0;everConnected=false;lastDisconnectCode=null;
       await connect();
@@ -459,6 +501,10 @@ const server=http.createServer(async(req,res)=>{
     if(path==="/internal/messages"&&req.method==="GET"){
       const phone=validPhone(uri.searchParams.get("phone"));
       return reply(res,200,{items:messages.filter(x=>x.phone===phone).slice(-100)});
+    }
+    if(path==="/internal/recipient"&&req.method==="GET"){
+      const phone=validPhone(uri.searchParams.get("phone"));
+      return reply(res,200,await recipientInspection(phone));
     }
     if(path==="/internal/send"&&req.method==="POST"){
       const body=await collectBody(req);

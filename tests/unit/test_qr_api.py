@@ -90,3 +90,31 @@ async def test_recover_requires_admin_and_only_forwards_to_private_bridge(monkey
         assert okay.status_code==200
         assert okay.json()=={"status":"connecting"}
         assert calls==[("/internal/recover","POST")]
+
+
+
+@pytest.mark.asyncio
+async def test_recipient_inspection_requires_auth_and_does_not_send(monkeypatch):
+    from app import qr_api
+    monkeypatch.setenv("SUPPORT_API_TOKEN","support-token-for-test-1234567890123456")
+    calls=[]
+    async def fake_bridge(path,method="GET",payload=None,query=None):
+        calls.append((path,method,query))
+        return {"registered": True, "identity": "pn_confirmed",
+                "hasLid": True, "self": False,
+                "delivery": {"count": 1, "pending": 1}}
+    monkeypatch.setattr(qr_api,"_bridge",fake_bridge)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="https://test") as client:
+        denied=await client.get("/api/v1/qr/recipient?phone=5521997557364")
+        assert denied.status_code==401
+        invalid=await client.get("/api/v1/qr/recipient?phone=bad",headers={
+            "Authorization":"Bearer support-token-for-test-1234567890123456"
+        })
+        assert invalid.status_code==422
+        okay=await client.get("/api/v1/qr/recipient?phone=5521997557364",headers={
+            "Authorization":"Bearer support-token-for-test-1234567890123456"
+        })
+        assert okay.status_code==200
+        assert okay.json()["hasLid"]
+        assert calls==[("/internal/recipient","GET",{"phone":"5521997557364"})]

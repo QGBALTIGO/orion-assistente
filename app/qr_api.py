@@ -118,6 +118,14 @@ async def qr_messages(phone:str,actor:Actor=Depends(authenticate)):
     return await _bridge("/internal/messages",query={"phone":phone})
 
 
+@router.get("/api/v1/qr/recipient")
+async def qr_recipient(phone:str,actor:Actor=Depends(authenticate)):
+    """Consulta sob demanda, sem enviar mensagens nem alterar sessão Signal."""
+    support_only(actor)
+    phone=PairPayload(phone=phone).phone
+    return await _bridge("/internal/recipient",query={"phone":phone})
+
+
 @router.post("/api/v1/qr/send")
 async def qr_send(data:SendPayload,actor:Actor=Depends(authenticate)):
     support_only(actor)

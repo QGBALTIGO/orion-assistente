@@ -242,6 +242,11 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
             <textarea id="chatText" maxlength="1200" required placeholder="Escreva sua mensagem..."></textarea>
             <div class="row"><button class="btn" type="submit" id="sendButton">Enviar mensagem →</button><small>Máximo: 5 envios por minuto. Sem campanhas.</small></div>
           </form>
+          <div class="row" style="align-items:center;gap:12px;margin-top:13px;flex-wrap:wrap">
+            <button type="button" class="btn secondary" id="inspectRecipient">Verificar destinatário sem enviar mensagem</button>
+            <small>Consulta a identidade do número e o estado dos recibos recentes.</small>
+          </div>
+          <p id="recipientInspection" class="feedback" role="status" aria-live="polite"></p>
           <p id="chatNotice" class="feedback" role="status" aria-live="polite"></p>
         </div>
       </div>
@@ -585,6 +590,33 @@ async function refreshMessages(){
   area.scrollTop=area.scrollHeight;
  }catch(ex){$("chatNotice").textContent=ex.message}
 }
+$("inspectRecipient").addEventListener("click",async()=>{
+ const phone=normalize($("chatPhone").value),info=$("recipientInspection");
+ if(!/^[1-9]\d{7,14}$/.test(phone)){info.textContent="Informe DDI + DDD + número válido.";return;}
+ if(deviceStatus!=="connected"){info.textContent="Conecte o WhatsApp antes da verificação.";return;}
+ const button=$("inspectRecipient");button.disabled=true;
+ info.textContent="Consultando o WhatsApp. Nenhuma mensagem será enviada...";
+ try{
+  const r=await api("/api/v1/qr/recipient?phone="+encodeURIComponent(phone));
+  const exists=r.registered===true?"WhatsApp confirmou o número":
+    r.registered===false?"Número não confirmado pelo WhatsApp":
+    "Consulta indisponível";
+  const identity={pn_confirmed:"Identidade PN confirmada",
+    different_identifier:"Identificador diferente do número informado",
+    unverified:"Identidade ainda não verificada",
+    lookup_failed:"Falha ao consultar o WhatsApp",
+    unknown:"Identidade indisponível"}[r.identity]||"Identidade desconhecida";
+  const lid=r.hasLid===true?"LID presente":r.hasLid===false?"LID não informado":"LID desconhecido";
+  const d=r.delivery||{};
+  info.textContent=exists+" · "+identity+" · "+lid+(r.self?" · Esta é a própria conta vinculada":"")+
+    ". Últimos envios neste painel: "+(d.count||0)+
+    " (pendentes: "+(d.pending||0)+", confirmados como entregues/lidos: "+
+    ((d.delivered||0)+(d.read||0))+"). Pedidos de recuperação criptográfica nesta execução: "+(d.retryRequests||0)+
+    " em "+(d.messagesWithRetry||0)+" mensagens. "+
+    "Importante: 'pendente' não prova falha de descriptografia no celular.";
+ }catch(ex){info.textContent="Não foi possível verificar: "+ex.message}
+ finally{button.disabled=false;}
+});
 $("sendForm").addEventListener("submit",async ev=>{
  ev.preventDefault();
  const phone=normalize($("chatPhone").value),text=$("chatText").value.trim();
