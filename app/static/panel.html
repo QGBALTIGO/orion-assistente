@@ -256,24 +256,216 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 .wizard-timeline-step:not(:last-child):before{left:19px;top:38px}
 .wizard-timeline-copy p{font-size:.79rem}.wizard-card{padding:16px}}
 
+
+/* Autenticação Orion 2.0 — responsiva, adaptável ao tema, sem scripts externos. */
+#loginView{min-height:100vh;display:block;padding:0;background:#0e172a}
+.auth-shell{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.auth-visual{background:radial-gradient(ellipse at 20% 0%,#108e91,#1ac6b1 67%,#21cfb8);
+  position:relative;isolation:isolate;overflow:hidden;display:flex;flex-direction:column;justify-content:center;padding:clamp(34px,7vw,105px) clamp(30px,8vw,138px)}
+.auth-visual:before{content:"";position:absolute;inset:-30%;z-index:-1;background:radial-gradient(circle at 25% 20%,#085c6c75,transparent 38%),radial-gradient(circle at 100% 90%,#37d6e4ad,transparent 44%)}
+.auth-visual-logo{position:absolute;top:clamp(22px,4vw,52px);left:clamp(26px,6vw,92px)}
+.auth-visual-logo img{width:194px;height:auto;display:block;filter:drop-shadow(0 4px 15px #05292721)}
+.auth-hero{position:relative;max-width:590px;z-index:1}
+.auth-hero-kicker{display:inline-block;color:#eafffa;font-weight:750;font-size:.78rem;letter-spacing:.09em;text-transform:uppercase;margin-bottom:20px}
+.auth-hero h1{font-size:clamp(2.1rem,3.8vw,4.35rem);line-height:1.09;letter-spacing:-.055em;color:white;font-weight:850;margin:0 0 22px;text-wrap:balance}
+.auth-hero p{color:#edfffb;font-size:clamp(1rem,1.3vw,1.25rem);line-height:1.55;max-width:460px}
+.auth-hero ul{list-style:none;margin:29px 0 0;padding:0;color:white;display:grid;gap:14px;font-size:.95rem}
+.auth-hero li{display:flex;align-items:center;gap:12px}.auth-hero li span{font-size:1.1rem}
+.auth-visual-bottom{position:absolute;bottom:28px;left:clamp(26px,6vw,92px);font-size:.67rem;letter-spacing:.17em;color:#ecfffbaf;font-weight:700}
+.auth-orbit{position:absolute;width:320px;height:320px;right:-120px;bottom:-100px;border:1px solid #fff5;border-radius:50%;pointer-events:none;animation:auth-orbit 18s linear infinite}
+.auth-orbit span{display:block;position:absolute;border:1px solid #fff4;border-radius:50%;inset:45px}
+.auth-orbit span:nth-child(2){inset:90px}.auth-orbit span:nth-child(3){inset:133px;background:#fff4}
+@keyframes auth-orbit{to{transform:rotate(360deg)}}
+.auth-right{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:50px 24px 28px;background:#0e172a;color:#f5f7ff}
+.auth-card{width:min(100%,440px);border:1px solid #29364f;border-radius:17px;padding:clamp(22px,3vw,36px);background:#101b31;box-shadow:0 24px 70px #060d1d47}
+.auth-mobile-brand{display:none}
+.auth-card-top{text-align:center;margin-bottom:24px}.auth-card-top h2{font-size:1.4rem;color:#2fd1c1;margin:0 0 5px;letter-spacing:-.035em;font-weight:830}
+.auth-card-top p{font-size:.84rem;color:#bbc7d9;margin:0}
+.auth-tabs{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:4px;border-radius:11px;background:#182542;margin-bottom:19px}
+.auth-tab{background:transparent;border:0;border-radius:8px;color:#b9cbe0;font-size:.89rem;font-weight:650;min-height:39px}
+.auth-tab.active{background:#0c1429;color:#fff;box-shadow:0 1px 8px #02071455}
+.auth-form:not(.hidden){animation:auth-reveal .28s cubic-bezier(.18,.8,.33,1) both}
+@keyframes auth-reveal{from{opacity:.25;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.auth-form label{display:block;color:#f0f5ff;font-size:.84rem;font-weight:650;margin:15px 0 7px}
+.auth-form label small{font-weight:400;margin-left:5px}
+.auth-form input:not([type=checkbox]){width:100%;height:46px;border:1px solid #2c4064;border-radius:10px;background:#0e172a;color:#f3f6ff;font-size:.9rem;padding:12px 14px}
+.auth-form input:not([type=checkbox]):focus{border-color:#23c9b3}
+.auth-form input::placeholder{color:#8393b2}
+.auth-secret-field{position:relative}.auth-secret-field input{padding-right:50px!important}
+.auth-eye{position:absolute;right:6px;top:4px;height:38px;width:38px;border:0;background:transparent;color:#9eafc5;display:grid;place-items:center;border-radius:8px}
+.auth-eye svg{height:19px;width:19px}
+.auth-eye:hover{color:#20d0b6;background:#1a2b40}
+.auth-login-options{display:flex;gap:13px;justify-content:space-between;align-items:center;margin:16px 0 19px}
+.auth-form .auth-check{margin:0;font-weight:500;font-size:.82rem;display:flex;gap:9px;align-items:center;color:#c4d5e6}
+.auth-check input{width:16px;height:16px;accent-color:#19b7a4}
+.auth-text-link{border:0;background:none;color:#31cfbb;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:5px 0;font-size:.79rem}
+.auth-primary{width:100%;border:1px solid #23c4ad;border-radius:10px;background:linear-gradient(110deg,#079f98,#23c6ab);color:#062b30;font-weight:800;min-height:46px;padding:11px 17px;display:flex;align-items:center;justify-content:center;gap:10px;margin-top:19px;transition:filter .18s,transform .18s}
+.auth-primary:hover:not(:disabled){filter:brightness(1.11);transform:translateY(-1px)}
+.auth-privacy{display:flex;justify-content:center;align-items:center;gap:7px;font-size:.73rem;color:#a9bdd2;text-align:center;margin:25px 0 0}
+.auth-privacy svg{height:16px;width:16px;flex-shrink:0}
+.auth-hint{font-size:.76rem;text-align:center;margin:11px 0 0;color:#9cb3cb}
+.auth-error{color:#ffb6a6!important;font-size:.8rem!important;margin:12px 0 0;min-height:1em}
+.auth-message{background:#123b38;border:1px solid #287767;color:#aff4d6;border-radius:10px;padding:11px 12px;font-size:.8rem;margin-bottom:15px}
+.auth-form h3{color:#f4f7ff;font-size:1.18rem;margin:4px 0 6px}.auth-form p{font-size:.86rem}
+.auth-back{display:block;text-align:center;margin:16px auto 0}
+.auth-copyright{text-align:center;font-size:.72rem;color:#8295b1;margin:21px 0 0}
+.auth-member{min-height:100vh;background:#0c1527;display:grid;place-items:center;padding:26px;color:#f7faff}
+.auth-member-card{width:min(100%,470px);border:1px solid #2c4161;background:#111c33;border-radius:19px;padding:30px}
+.auth-member-card>picture img{width:190px;height:auto}.auth-member-card h1{margin-top:15px}
+.auth-member-card h2{font-size:1.03rem}.auth-member-card>button{margin-top:19px}
+@media(max-width:900px){
+ .auth-shell{grid-template-columns:1fr}.auth-visual{min-height:180px;padding:30px 35px 26px;justify-content:center;align-items:center;text-align:center}
+ .auth-visual-logo,.auth-orbit,.auth-visual-bottom,.auth-hero ul,.auth-hero-kicker{display:none}
+ .auth-hero h1{font-size:clamp(1.45rem,4vw,2rem);margin:0 0 7px;letter-spacing:-.045em}
+ .auth-hero p{font-size:.91rem;margin:0}
+ .auth-right{padding:27px 22px 33px}
+}
+@media(max-width:560px){
+ .auth-visual{min-height:130px;padding:25px 18px}
+ .auth-hero h1{font-size:1.42rem}.auth-hero p{font-size:.82rem}
+ .auth-right{padding:17px 13px 24px;justify-content:flex-start}
+ .auth-card{padding:22px 19px;border-radius:14px}
+ .auth-mobile-brand{display:block;text-align:center;margin:-4px 0 10px}
+ .auth-mobile-brand img{width:147px;height:auto}
+ .auth-card-top{margin-bottom:16px}
+ .auth-login-options{gap:8px}.auth-text-link{font-size:.78rem}
+ .auth-copyright{margin-top:12px}
+}
+@media(prefers-color-scheme:light){
+ #loginView,.auth-right{background:#f4f8fc;color:#142139}
+ .auth-card{background:#fff;border-color:#e0e7f1;box-shadow:0 14px 55px #0d233620}
+ .auth-card-top h2{color:#098d85}.auth-card-top p{color:#516078}
+ .auth-tabs{background:#ecf1f8}.auth-tab{color:#52627a}.auth-tab.active{background:white;color:#14233e;box-shadow:0 2px 7px #09142a19}
+ .auth-form label{color:#1d2c42}.auth-form input:not([type=checkbox]){background:#f9fbff;border-color:#cbd6e4;color:#15213a}
+ .auth-form input::placeholder{color:#8090a6}.auth-form .auth-check{color:#52637c}
+ .auth-privacy,.auth-copyright{color:#6e7e91}.auth-form h3{color:#15233c}
+ .auth-visual{background:radial-gradient(ellipse at 0% 0%,#0f9d9a,#18bea9 67%,#42d5c3)}
+ .auth-member{background:#f4f8fc;color:#16243c}.auth-member-card{background:white;border-color:#d9e4ee}
+ .auth-hint{color:#5e6f86}
+}
+@media(prefers-reduced-motion:reduce){
+ .auth-form:not(.hidden),.auth-orbit{animation:none!important}
+ .auth-primary{transition:none}
+}
+
 </style>
 </head>
 <body>
-<section id="loginView">
-  <div class="login-card">
-    <div class="brand"><div class="logo">O</div> ORION.</div>
-    <div class="eyebrow">Acesso administrativo</div>
-    <h1>Bem-vindo de volta.</h1>
-    <p>Entre no painel para gerenciar a agenda e conectar seu WhatsApp.</p>
-    <form id="loginForm">
-      <label for="username">Usuário</label>
-      <input id="username" autocomplete="username" value="admin" required>
-      <label for="password">Senha de acesso</label>
-      <input id="password" type="password" autocomplete="current-password" required placeholder="Sua senha do Orion">
-      <button class="btn full" type="submit" style="margin-top:22px">Entrar no painel →</button>
-      <p id="loginError" role="alert" aria-live="polite"></p>
+<section id="loginView" aria-label="Acesso à conta Orion">
+  <div class="auth-shell">
+    <aside class="auth-visual">
+      <picture class="auth-visual-logo">
+        <source media="(prefers-color-scheme: light)" srcset="/brand/orion-brand-light.svg">
+        <img src="/brand/orion-brand-dark.svg" alt="ORION — Recepcionista Digital" width="240" height="84">
+      </picture>
+      <div class="auth-hero">
+        <span class="auth-hero-kicker">O seu atendimento, em outra órbita.</span>
+        <h1>Um novo jeito de cuidar do seu tempo.</h1>
+        <p>Agenda, conversas e automações reunidas em um único lugar.</p>
+        <ul>
+          <li><span aria-hidden="true">✓</span> Mais praticidade no atendimento</li>
+          <li><span aria-hidden="true">✓</span> Sua rotina organizada, sempre</li>
+          <li><span aria-hidden="true">✓</span> Experiência simples e inteligente</li>
+        </ul>
+      </div>
+      <div class="auth-orbit" aria-hidden="true"><span></span><span></span><span></span></div>
+      <span class="auth-visual-bottom">ORION RECEPCIONISTA DIGITAL</span>
+    </aside>
+    <div class="auth-right">
+      <div class="auth-card">
+        <div class="auth-mobile-brand">
+          <picture>
+            <source media="(prefers-color-scheme: light)" srcset="/brand/orion-brand-light.svg">
+            <img src="/brand/orion-brand-dark.svg" alt="Orion" width="166" height="58">
+          </picture>
+        </div>
+        <div class="auth-card-top">
+          <h2>Bem-vindo ao Orion</h2>
+          <p>Entre na sua conta ou crie uma nova.</p>
+        </div>
+        <div id="authTabs" class="auth-tabs" role="tablist" aria-label="Acesso ao Orion">
+          <button id="authTabLogin" class="auth-tab active" type="button" role="tab" aria-selected="true">Entrar</button>
+          <button id="authTabRegister" class="auth-tab" type="button" role="tab" aria-selected="false">Criar conta</button>
+        </div>
+        <div id="authGlobalMessage" class="auth-message hidden" role="status" aria-live="polite"></div>
+        <form id="loginForm" class="auth-form" autocomplete="on">
+          <label for="username">E-mail da conta</label>
+          <input id="username" type="text" inputmode="email" autocomplete="username" placeholder="seu@email.com" required maxlength="254">
+          <label for="password">Senha</label>
+          <div class="auth-secret-field">
+            <input id="password" type="password" autocomplete="current-password" required placeholder="Digite sua senha">
+            <button type="button" class="auth-eye" data-password-toggle="password" aria-label="Mostrar senha">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <div class="auth-login-options">
+            <label class="auth-check"><input id="rememberMe" type="checkbox"> Lembrar de mim</label>
+            <button class="auth-text-link" id="authForgotLink" type="button">Esqueci minha senha</button>
+          </div>
+          <button id="authSubmitLogin" class="auth-primary" type="submit">Entrar <span aria-hidden="true">→</span></button>
+          <p id="loginError" class="auth-error" role="alert" aria-live="polite"></p>
+        </form>
+        <form id="registerForm" class="auth-form hidden" autocomplete="on">
+          <label for="registerName">Nome completo</label>
+          <input id="registerName" autocomplete="name" maxlength="120" required placeholder="Seu nome completo">
+          <label for="registerEmail">E-mail</label>
+          <input id="registerEmail" type="email" autocomplete="email" maxlength="254" required placeholder="seu@email.com">
+          <label for="registerPassword">Senha <small>mínimo de 12 caracteres</small></label>
+          <div class="auth-secret-field">
+            <input id="registerPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="Crie uma senha forte">
+            <button class="auth-eye" type="button" data-password-toggle="registerPassword" aria-label="Mostrar senha">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <label for="registerConfirm">Confirmar senha</label>
+          <input id="registerConfirm" type="password" autocomplete="new-password" minlength="12" required placeholder="Digite a senha novamente">
+          <button id="authSubmitRegister" class="auth-primary" type="submit">Criar minha conta <span aria-hidden="true">→</span></button>
+          <p id="registerError" class="auth-error" role="alert" aria-live="polite"></p>
+          <p class="auth-hint" id="registrationHint">Um e-mail de confirmação será enviado para ativar sua conta.</p>
+        </form>
+        <form id="forgotForm" class="auth-form hidden">
+          <h3>Recuperar senha</h3>
+          <p>Enviaremos um link seguro para seu e-mail cadastrado.</p>
+          <label for="forgotEmail">E-mail cadastrado</label>
+          <input id="forgotEmail" type="email" autocomplete="email" required placeholder="seu@email.com">
+          <button id="authSubmitForgot" class="auth-primary" type="submit">Enviar link de recuperação</button>
+          <button class="auth-text-link auth-back" type="button" data-back-login>Voltar para entrar</button>
+          <p id="forgotError" class="auth-error" role="alert" aria-live="polite"></p>
+        </form>
+        <form id="resetForm" class="auth-form hidden">
+          <h3>Criar nova senha</h3>
+          <p>Escolha uma senha nova e segura para sua conta.</p>
+          <label for="resetPassword">Nova senha</label>
+          <input id="resetPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="Mínimo de 12 caracteres">
+          <label for="resetConfirm">Confirmar nova senha</label>
+          <input id="resetConfirm" type="password" autocomplete="new-password" minlength="12" required placeholder="Repita a nova senha">
+          <button id="authSubmitReset" class="auth-primary" type="submit">Atualizar senha</button>
+          <button class="auth-text-link auth-back" type="button" data-back-login>Voltar para entrar</button>
+          <p id="resetError" class="auth-error" role="alert" aria-live="polite"></p>
+        </form>
+        <div class="auth-privacy"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> Seus dados protegidos. Acesso individual e seguro.</div>
+      </div>
+      <p class="auth-copyright">© Orion · Recepcionista Digital</p>
+    </div>
+  </div>
+</section>
+<section id="memberView" class="auth-member hidden" aria-label="Sua conta Orion">
+  <div class="auth-member-card">
+    <picture>
+      <source media="(prefers-color-scheme: light)" srcset="/brand/orion-brand-light.svg">
+      <img src="/brand/orion-brand-dark.svg" width="195" height="70" alt="Orion">
+    </picture>
+    <h1>Conta confirmada</h1>
+    <p>Seu acesso foi criado. Os recursos operacionais são liberados de acordo com as permissões da conta.</p>
+    <form id="ownerClaimForm" class="auth-form">
+      <h2>Já administra o Orion?</h2>
+      <p>Use a senha administrativa anterior para vincular seu perfil verificado.</p>
+      <label for="ownerLegacyPassword">Senha administrativa anterior</label>
+      <input id="ownerLegacyPassword" type="password" autocomplete="off" required>
+      <button class="auth-primary" type="submit">Validar permissão administrativa</button>
+      <p id="ownerClaimError" class="auth-error" role="alert"></p>
     </form>
-    <small>Acesso protegido por sessão segura. Nenhum token técnico é necessário.</small>
+    <button id="memberLogout" class="auth-text-link" type="button">Sair desta conta</button>
   </div>
 </section>
 <div id="appView" class="app hidden">
