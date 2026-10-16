@@ -11,7 +11,8 @@ services:
       APP_MIGRATOR_PASSWORD: ${APP_MIGRATOR_PASSWORD:?Defina APP_MIGRATOR_PASSWORD no .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./infra/postgres/init/001-roles.sh:/docker-entrypoint-initdb.d/001-roles.sh:ro
+      - ./infra/postgres/init/001-roles.sql:/etc/orion/001-roles.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-barber_saas}"]
       interval: 5s
