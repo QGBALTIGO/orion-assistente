@@ -137,4 +137,6 @@ jobs:
             counter.flushAll();
             assert.equal(counter.get("synthetic-id"),undefined);
             console.log("ORION_BAILEYS_RETRY_CACHE_OK");
+            counter.close?.();
+            process.exit(0);
           '
