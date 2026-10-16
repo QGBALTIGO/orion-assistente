@@ -43,6 +43,13 @@ services:
       SUPPORT_API_TOKEN: ${SUPPORT_API_TOKEN:?Defina SUPPORT_API_TOKEN no .env}
       VIEWER_API_TOKEN: ${VIEWER_API_TOKEN:-}
       VIEWER_TENANT_ID: ${VIEWER_TENANT_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-}
+      META_GRAPH_VERSION: ${META_GRAPH_VERSION:-v26.0}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      INTEGRATION_FERNET_KEY: ${INTEGRATION_FERNET_KEY:-}
       REDIS_URL: redis://redis:6379/0
     ports:
       - "127.0.0.1:8000:8000"
@@ -65,6 +72,9 @@ services:
       APP_DATABASE_URL: postgresql+asyncpg://app_runtime:${APP_RUNTIME_PASSWORD}@postgres:5432/${POSTGRES_DB:-barber_saas}
       SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:${APP_SUPPORT_PASSWORD}@postgres:5432/${POSTGRES_DB:-barber_saas}
       META_LIVE_SEND: "0"
+      GOOGLE_LIVE_SYNC: "0"
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       INTEGRATION_FERNET_KEY: ${INTEGRATION_FERNET_KEY:-}
     depends_on:
       redis: {condition: service_healthy}

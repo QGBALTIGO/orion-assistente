@@ -164,3 +164,10 @@ Não fazer deploy externo sem autorização. Não usar down -v para atualizar.
 Webhook autenticado, deduplicação durável, Redis/Arq e provedor Fake.
 Instruções e limitações em [docs/whatsapp.md](docs/whatsapp.md).
 Sem conta Meta autorizada, o envio externo é mantido desabilitado.
+
+## FATIA 4 — Google Calendar opcional e exportação CSV
+
+O motor interno continua sendo autoridade de agendamento. Google usa OAuth por empresa,
+refresh token criptografado e outbox com retry (nenhum evento real sem opt-in).
+A exportação CSV UTF-8 com BOM evita fórmulas do Excel e exige autorização da empresa.
+Consulte [docs/google-calendar.md](docs/google-calendar.md).

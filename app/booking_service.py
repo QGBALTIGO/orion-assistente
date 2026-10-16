@@ -166,6 +166,15 @@ async def history(s: AsyncSession, tenant: UUID, appointment: UUID, event: str):
         INSERT INTO appointment_history (tenant_id,appointment_id,event,operator)
         VALUES (:tenant,:appointment,:event,'support')
     """), {"tenant": tenant, "appointment": appointment, "event": event})
+    action={"confirmed":"create","rescheduled":"update","cancelled":"delete"}.get(event)
+    if action:
+        await s.execute(text("""
+            INSERT INTO calendar_outbox (tenant_id,appointment_id,action)
+            VALUES (:tenant,:appointment,:action)
+            ON CONFLICT (tenant_id,appointment_id) DO UPDATE
+            SET action=EXCLUDED.action,status='pending',attempts=0,
+                next_attempt_at=now(),updated_at=now(),last_error=NULL
+        """), {"tenant":tenant,"appointment":appointment,"action":action})
 
 
 def protocol():
