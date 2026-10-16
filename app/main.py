@@ -13,6 +13,7 @@ from app.metrics_api import router as metrics_router
 from app.advanced_api import router as advanced_router
 from app.qr_api import router as qr_router
 from app.panel_auth import router as panel_auth_router
+from app.account_auth import router as account_auth_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -37,6 +38,7 @@ app.include_router(metrics_router)
 app.include_router(advanced_router)
 app.include_router(qr_router)
 app.include_router(panel_auth_router)
+app.include_router(account_auth_router)
 app.include_router(catalog_router)
 
 
