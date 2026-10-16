@@ -629,7 +629,7 @@ $("sendForm").addEventListener("submit",async ev=>{
  if(!text||text.length>1200){$("chatNotice").textContent="Escreva uma mensagem de até 1200 caracteres.";return}
  if(deviceStatus!=="connected"){$("chatNotice").textContent="Conecte seu WhatsApp antes de enviar.";return}
  if(!confirm("Enviar uma nova mensagem para +"+phone+" pelo WhatsApp conectado?"+
-   (freshDevices?"\\nModo de teste: atualizar lista de dispositivos deste contato, sem redefinir a sessão.":"")))return;
+   (freshDevices?"\nModo de teste: atualizar lista de dispositivos deste contato, sem redefinir a sessão.":"")))return;
  $("sendButton").disabled=true;$("chatNotice").textContent="Enviando...";
  try{
   const result=await api("/api/v1/qr/send","POST",{phone,text,freshDevices});
