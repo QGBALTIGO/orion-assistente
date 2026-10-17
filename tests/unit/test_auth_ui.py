@@ -13,7 +13,7 @@ def test_auth_panel_has_all_screens_without_google_or_hardcoded_owner():
     for identifier in (
         "loginForm","registerForm","forgotForm","resetForm","rememberMe",
         "authTabLogin","authTabRegister","authGlobalMessage",
-        "ownerClaimForm","memberView","authSubmitRegister",
+        "page-member","memberProfileName","memberProfileEmail","authSubmitRegister",
     ):
         assert re.search(r'\bid="'+identifier+'"',html),identifier
     assert "Continuar com o Google" not in html
@@ -109,7 +109,7 @@ def test_signup_is_immediate_and_otp_is_only_for_recovery():
         assert route in html
     assert 'autocomplete="one-time-code"' in html
     assert 'pattern="[0-9]{6}"' in html
-    assert 'Conta criada' in html
+    assert 'Conta criada. Faça login com seu e-mail e senha.' in html
     assert 'authScreenShow("verify")' not in html
     assert 'token:resetToken' not in html
     assert 'Enviaremos um link seguro' not in html
@@ -152,3 +152,37 @@ def test_signup_has_no_redundant_notice_and_matches_password_minimum():
     assert 'Mínimo de 8 caracteres' in html
     for name in ("registerPassword","registerConfirm","resetPassword","resetConfirm"):
         assert re.search(r'id="'+name+r'"[^>]*minlength="8"',html),name
+
+
+def test_member_logs_directly_into_normal_dashboard_without_admin_claim():
+    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
+    assert 'id="page-member"' in html
+    assert 'data-page="member" data-member-only' in html
+    for forbidden in ("ownerClaimForm","ownerLegacyPassword","memberView",
+                      "Senha administrativa anterior","Já administra o Orion?",
+                      "Validar permissão administrativa"):
+        assert forbidden not in html
+    assert 'id="memberProfileName"' in html
+    assert 'id="memberProfileEmail"' in html
+    assert 'id="sidebarAccountName"' in html
+    assert 'id="sidebarAvatarInitial"' in html
+    assert 'if(!isAdmin){' in html
+    assert 'openPage("member");' in html
+    member_block=html.split('if(!isAdmin){',1)[1].split('return;',1)[0]
+    assert "updateStatus()" not in member_block
+    assert "loadTenants()" not in member_block
+    # A direct URL, an old bookmarked tab or console invocation can't make
+    # a member navigate the privileged pages. Server endpoints enforce role too.
+    assert 'if(loginRole!=="support"&&loginRole!=="admin")target="member";' in html
+    assert 'document.querySelectorAll("[data-admin-only]")' in html
+
+
+def test_account_profile_endpoint_keeps_only_its_own_identity():
+    from app import panel_auth
+    import inspect
+    code=inspect.getsource(panel_auth.panel_actor)
+    endpoint=inspect.getsource(panel_auth.me)
+    assert 'data["name"] = row["name"]' in code
+    assert 'data["email"] = row["email"]' in code
+    assert 'data["role"]' in code
+    assert 'data.get("name","Administrador")' in endpoint
