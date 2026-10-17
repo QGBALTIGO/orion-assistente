@@ -129,3 +129,62 @@ async def test_signup_is_fail_closed_without_smtp_and_no_auto_admin(monkeypatch)
             "name":"Outro Nome","email":"test-admin@example.test",
             "password":"Correct#Secret123"},headers={"Origin":"https://test"})
         assert response.status_code==503
+
+
+@pytest.mark.asyncio
+async def test_resend_testing_mode_never_sends_to_unapproved_recipient(monkeypatch):
+    cache=RedisDouble()
+    monkeypatch.setattr(panel_auth,"_redis",lambda:cache)
+    monkeypatch.setattr(account_auth,"_redis",lambda:cache)
+    monkeypatch.setenv("PANEL_EMAIL_TRANSPORT","resend_https")
+    monkeypatch.setenv("PANEL_EMAIL_ENABLED","1")
+    monkeypatch.setenv("PANEL_TEST_MODE","1")
+    monkeypatch.setenv("PANEL_TEST_EMAIL","owner-mailbox@example.test")
+    monkeypatch.setenv("PANEL_REGISTRATION_ENABLED","0")
+    monkeypatch.setenv("PANEL_SMTP_FROM","Orion <onboarding@resend.dev>")
+    monkeypatch.setenv("PANEL_SMTP_PASSWORD","test-resend-key-not-real")
+    monkeypatch.setenv("PANEL_PUBLIC_URL","https://test")
+    monkeypatch.setenv("PANEL_OTP_SECRET","otp-tests-only-secure-key-never-in-production-456")
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url="https://test") as c:
+        feature=(await c.get("/auth/features")).json()
+        assert feature=={"registration":True,"passwordRecovery":True,"testMode":True}
+        response=await c.post("/auth/register",json={
+            "name":"Outro Nome","email":"another@example.test",
+            "password":"Correct#Secret123"},headers={"Origin":"https://test"})
+        assert response.status_code==403
+        response=await c.post("/auth/verify/resend",json={
+            "email":"another@example.test"},headers={"Origin":"https://test"})
+        assert response.status_code==403
+        response=await c.post("/auth/password/forgot",json={
+            "email":"another@example.test"},headers={"Origin":"https://test"})
+        assert response.status_code==200
+        response=await c.post("/auth/password/reset",json={
+            "email":"another@example.test","code":"123456",
+            "password":"Correct#Secret123"},headers={"Origin":"https://test"})
+        assert response.status_code==403
+
+
+def test_resend_https_api_sends_without_smtp(monkeypatch):
+    monkeypatch.setenv("PANEL_EMAIL_TRANSPORT","resend_https")
+    monkeypatch.setenv("PANEL_SMTP_FROM","Orion <onboarding@resend.dev>")
+    monkeypatch.setenv("PANEL_SMTP_PASSWORD","ci-only-resend-secret")
+    monkeypatch.setenv("PANEL_SMTP_PORT","465")
+    responses=[]
+    class Response:
+        status_code=200
+        def json(self):return {"id":"synthetic-provider-uuid"}
+    def fake_post(url,headers,json,timeout):
+        responses.append((url,headers,json,timeout))
+        return Response()
+    monkeypatch.setattr(account_auth.httpx,"post",fake_post)
+    monkeypatch.setattr(account_auth.smtplib,"SMTP_SSL",
+        lambda *a,**kw: (_ for _ in ()).throw(AssertionError("No SMTP requests")))
+    account_auth._send_email("owner-mailbox@example.test","verify","123456","https://test")
+    assert len(responses)==1
+    url,headers,payload,timeout=responses[0]
+    assert url=="https://api.resend.com/emails"
+    assert headers["Authorization"]=="Bearer ci-only-resend-secret"
+    assert payload["to"]==["owner-mailbox@example.test"]
+    assert payload["from"]=="Orion <onboarding@resend.dev>"
+    assert "123456" in payload["html"] and "123456" in payload["text"]
+    assert timeout<=15
