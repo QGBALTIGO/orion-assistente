@@ -168,3 +168,28 @@ test("concurrent duplicate offers only reject and reply once",async()=>{
   assert.equal(rejected,1);
   assert.equal(replied,1);
 });
+
+test("automatic reply cannot be activated with an empty message",()=>{
+  assert.throws(()=>validateSettings({
+    callBlocking:true,callReply:true,callReplyText:"   "
+  }),/Informe uma mensagem/);
+  assert.equal(validateSettings({
+    callBlocking:true,callReply:true,callReplyText:"Agora não podemos atender."
+  }).callReply,true);
+});
+
+test("failed rejection can retry the same offered call event",async()=>{
+  const settings=validateSettings({callBlocking:true,callReply:false});
+  const recentCalls=new Map(),replySent=new Map();
+  let tried=0;
+  const args={
+    settings,recentCalls,replySent,
+    socket:{rejectCall:async()=>{
+      tried++;if(tried===1)throw Error("temporarily disconnected");
+    }}
+  };
+  const offer={id:"call-retry",from:"5567999912345@s.whatsapp.net",status:"offer"};
+  assert.deepEqual(await handleCallOffers([offer],args),["reject_failed"]);
+  assert.deepEqual(await handleCallOffers([offer],args),["rejected"]);
+  assert.equal(tried,2);
+});
