@@ -380,6 +380,38 @@ def render_service_menu(business_name: str, catalog: Sequence[Mapping], preferen
     return "\n\n".join(part for part in parts if part)
 
 
+def render_draft_request(services: Sequence[str], preferences=None, *,
+                         desired_day: str | None = None, desired_time: str | None = None,
+                         professional: str | None = None, ask_review: bool = True) -> str:
+    """Present caller-owned wishes, never a checked slot or an actionable summary.
+
+    The core supplies display-ready day/time, including any before/after/around
+    qualifier. No catalog arithmetic, availability inference or consent is added.
+    The existing final message boundary owns oversized-answer handling.
+    """
+    prefs = _preferences(preferences)
+    names = _labels(services, 12)
+    if type(ask_review) is not bool:
+        raise ValueError("Explicit review-question choice required")
+    light = prefs.emoji == "light"
+    identity, wishes = [], []
+    if names:
+        identity.append(_field("Serviço" if len(names) == 1 else "Serviços",
+                               " e ".join(_label(name) for name in names),
+                               light=light, icon=service_icon(names)))
+    if professional is not None:
+        identity.append(_field("Profissional", _label(_text(professional)), light=light))
+    if desired_day is not None:
+        wishes.append(_field("Data desejada", _label(_text(desired_day)), light=light, icon="📅"))
+    if desired_time is not None:
+        wishes.append(_field("Horário desejado", _label(_text(desired_time)), light=light, icon="🕒"))
+    parts = ["*Pedido em preparação — ainda sem reserva*", "\n".join(identity), "\n".join(wishes),
+             "_Ainda preciso consultar a disponibilidade na agenda._"]
+    if ask_review:
+        parts.append("Posso verificar e mostrar um novo resumo?")
+    return "\n\n".join(part for part in parts if part)
+
+
 @dataclass(frozen=True)
 class SummaryComposition:
     """A prepared body and its single core-owned decision, never a consent token."""

@@ -81,6 +81,8 @@ def conversation(monkeypatch):
         value = {"step": step, "services": [str(cut)], "day": "2026-11-20",
                  "professionals": [{"id": str(p["id"]), "name": p["name"]} for p in pros],
                  "customer_name": "Cliente Teste", **extra}
+        if step == "confirm":
+            value.setdefault("hold_snapshot", "a"*64)
         redis.values[key] = json.dumps(value)
         redis.values[key + ":catalog-context"] = qr_ai.qr_profile.catalog_revision(
             {"name": "Salão Exemplo", "timezone": "America/Campo_Grande"}, catalog, pros)
@@ -295,8 +297,13 @@ async def test_booking_conflict_still_fails_closed_and_never_confirms(conversati
     async def conflict(*args):
         raise HTTPException(409, "occupied")
     monkeypatch.setattr(qr_ai, "book_appointment", conflict)
-    reply = await h.turn("1", preview=False)
-    assert reply["step"] == "conflict" and not h.state()
+    readonly_slots(monkeypatch, h)
+    token = qr_ai._message_identity.set("synthetic-conflict-choice")
+    try:
+        reply = await h.turn("1", preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    assert reply["step"] == "time" and h.state()["services"] == [str(h.cut)] and not h.state().get("hold")
     assert "não está mais disponível" in reply["answer"]
     assert not h.calls["writes"]
 
@@ -442,7 +449,7 @@ async def test_availability_question_collects_missing_fields_then_reads_real_slo
     assert "qual profissional" in reply["answer"] and not seen
     reply = await h.turn("O Bruno")
     assert "14h30" in reply["answer"] and "20/11" in reply["answer"]
-    assert "Corte de cabelo com Bruno Souza" in reply["answer"]
+    assert "Corte de cabelo" in reply["answer"] and "*Profissional:* Bruno Souza" in reply["answer"]
     assert "1." not in reply["answer"] and "R$" not in reply["answer"]
     assert "Consulta sem reserva" in reply["answer"]
     assert seen[0][1:3] == (h.bruno, [h.cut])
@@ -457,7 +464,7 @@ async def test_availability_reads_backend_without_altering_booking_or_confirmati
                       price=3500, duration=30)
     seen = readonly_slots(monkeypatch, h)
     reply = await h.turn("Tem horários disponíveis para barba amanhã?", preview=False)
-    assert "Barba com Bruno Souza" in reply["answer"] and "14h30" in reply["answer"]
+    assert "*Serviço:* Barba" in reply["answer"] and "*Profissional:* Bruno Souza" in reply["answer"] and "14h30" in reply["answer"]
     assert reply["step"] == step and len(seen) == 1
     assert {k: v for k, v in h.state().items() if k not in {"history", "confirmation_expires_at", "confirmation_requires_review", "last_availability"}} == original
     assert bool(h.state().get("confirmation_requires_review")) == (step in {"confirm", "reschedule_confirm"})
@@ -515,8 +522,9 @@ async def test_a_query_about_b_requires_explicit_review_before_confirming_origin
            confirmation_expires_at=deadline)
     readonly_slots(monkeypatch, h)
     confirmed = []
-    async def confirm(db, tenant, item_id):
+    async def confirm(db, tenant, item_id, **scope):
         assert tenant == h.tenant
+        assert scope == {"customer_phone": "+5567999999999", "expected_snapshot": "a"*64}
         confirmed.append(str(item_id))
         return {"start_at": qr_ai.datetime.fromisoformat("2026-11-20T14:00:00-04:00"),
                 "total_cents": 3500, "protocol": "SYNTHETIC-A"}
@@ -546,7 +554,7 @@ async def test_query_cannot_restore_an_expired_or_missing_confirmation_summary(c
            confirmation_summary=None if missing else "Original summary",
            confirmation_expires_at=qr_ai.datetime.now().timestamp() + (-1 if expired else 40))
     reply = await h.turn("retomar resumo", preview=False)
-    assert reply["step"] == "expired" and not h.state()
+    assert reply["step"] != "confirmed" and h.state()["services"] == [str(h.cut)] and not h.state().get("hold")
     assert not h.calls["writes"]
 
 

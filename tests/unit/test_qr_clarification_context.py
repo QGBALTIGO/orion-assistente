@@ -207,5 +207,5 @@ async def test_price_correction_never_turns_isolated_yes_into_confirmation_befor
     await _corrected_price_draft(h)
     h.proposal["value"] = UnderstandingPlan(intents=["confirm"])
     result = await h.turn("SIM", preview=False)
-    assert result["step"] != "confirmed" and not h.calls["writes"] and not h.calls["names"]
-    assert not h.calls["reads"] and h.state().get("hold") is None
+    assert result["step"] == "confirm" and not any(row[0] == "confirm" for row in h.calls["writes"]) and not h.calls["names"]
+    assert [row[0] for row in h.calls["writes"]] == ["hold"] and h.state().get("hold") is not None

@@ -193,13 +193,13 @@ async def expire_holds(s: AsyncSession, tenant: UUID, professional: UUID, now: d
         await history(s, tenant, item_id, "hold_expired")
 
 
-async def history(s: AsyncSession, tenant: UUID, appointment: UUID, event: str):
+async def history(s: AsyncSession, tenant: UUID, appointment: UUID, event: str, *, calendar: bool = True):
     await s.execute(text("""
         INSERT INTO appointment_history (tenant_id,appointment_id,event,operator)
         VALUES (:tenant,:appointment,:event,'support')
     """), {"tenant": tenant, "appointment": appointment, "event": event})
     action={"confirmed":"create","rescheduled":"update","cancelled":"delete"}.get(event)
-    if action:
+    if action and calendar:
         await s.execute(text("""
             INSERT INTO calendar_outbox (tenant_id,appointment_id,action)
             VALUES (:tenant,:appointment,:action)
@@ -224,7 +224,7 @@ def fingerprint(professional: UUID, services: list[UUID], start: datetime, phone
 async def read_appointment(s: AsyncSession, tenant: UUID, item_id: UUID):
     row = (await s.execute(text("""
         SELECT a.id, a.tenant_id, a.customer_id, a.professional_id, a.protocol,
-               a.start_at, a.end_at, a.status, a.total_cents, a.hold_expires_at,
+               a.start_at, a.end_at, a.status, a.total_cents, a.hold_expires_at, a.updated_at,
                c.name AS customer_name
         FROM appointments a JOIN customers c ON c.id=a.customer_id AND c.tenant_id=a.tenant_id
         WHERE a.tenant_id=:tenant AND a.id=:id
@@ -240,10 +240,55 @@ async def read_appointment(s: AsyncSession, tenant: UUID, item_id: UUID):
     return {**dict(row), "items": [dict(x) for x in items]}
 
 
+async def _hold_proposal(s: AsyncSession, tenant: UUID, item_id: UUID):
+    detail = await read_appointment(s, tenant, item_id)
+    return {**detail, "expected_snapshot": appointment_snapshot(detail)}
+
+
+async def _owned_hold(s: AsyncSession, tenant: UUID, item_id: UUID, *,
+                      customer_phone: str, professional: UUID | None = None,
+                      expected_snapshot: str | None = None, lock: bool = False):
+    if not customer_phone:
+        fail(403, "A consulta exige o contato autenticado")
+    row = (await s.execute(text("""
+        SELECT * FROM appointments WHERE tenant_id=:tenant AND id=:id
+    """ + (" FOR UPDATE" if lock else "")), {"tenant": tenant, "id": item_id})).mappings().first()
+    if row is None:
+        fail(404, "Reserva temporária indisponível para este contato")
+    await verify_customer_snapshot(s, tenant, row, customer_phone, expected_snapshot)
+    if row["status"] != "hold" or (professional is not None and row["professional_id"] != professional):
+        fail(409, "Somente a própria reserva temporária desse profissional pode ser substituída")
+    return row
+
+
+async def preview_hold(s: AsyncSession, tenant: UUID, item_id: UUID, *, customer_phone: str):
+    """Read the owned temporary proposal and its real deadline without extending it."""
+    async with tenant_transaction(s, tenant):
+        await _owned_hold(s, tenant, item_id, customer_phone=customer_phone)
+        return await _hold_proposal(s, tenant, item_id)
+
+
+async def _replacement_hold(s, tenant, professional, item_id, phone, expected, now, *, lock=False):
+    if not isinstance(expected, str) or not expected:
+        fail(409, "Confira a reserva temporária antes de substituir o horário")
+    row = await _owned_hold(s, tenant, item_id, customer_phone=phone,
+                            professional=professional, expected_snapshot=expected, lock=lock)
+    if row["hold_expires_at"] is None or row["hold_expires_at"] <= now:
+        fail(409, "A reserva temporária expirou. Consulte um novo horário")
+    return row
+
+
 async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
-                     ids: list[UUID], target: date, now: datetime | None = None):
+                     ids: list[UUID], target: date, now: datetime | None = None, *,
+                     replace_hold_id: UUID | None = None, customer_phone: str | None = None,
+                     expected_snapshot: str | None = None):
     now = now or datetime.now(UTC)
     async with tenant_transaction(s, tenant):
+        if replace_hold_id is not None:
+            await _replacement_hold(s, tenant, professional, replace_hold_id, customer_phone,
+                                    expected_snapshot, now)
+        elif customer_phone is not None or expected_snapshot is not None:
+            fail(422, "A consulta de substituição exige a reserva temporária")
         shop, items = await load_bundle(s, tenant, professional, ids)
         local_now = now.astimezone(ZoneInfo(shop["timezone"]))
         if target < local_now.date() or target > local_now.date() + timedelta(days=shop["booking_horizon_days"]):
@@ -257,7 +302,8 @@ async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
                 start = local.astimezone(UTC).astimezone(ZoneInfo(shop["timezone"]))
                 if start.replace(tzinfo=None) != naive:
                     continue  # horário inexistente por mudança de fuso
-                await check_slot(s, tenant, professional, shop, items, start, now)
+                await check_slot(s, tenant, professional, shop, items, start, now,
+                                 ignore_appointment=replace_hold_id)
                 result.append(start.isoformat())
             except HTTPException:
                 continue
@@ -269,12 +315,23 @@ async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
 async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                            ids: list[UUID], phone: str, customer_name: str,
                            start: datetime, idempotency_key: str,
-                           now: datetime | None = None):
+                           now: datetime | None = None, *, replace_hold_id: UUID | None = None,
+                           expected_snapshot: str | None = None):
     """ÚNICA função para criar reservas/holds de todos os canais futuros."""
+    supplied_clock = now is not None
     now = now or datetime.now(UTC)
     fp = fingerprint(professional, ids, start, phone)
+    if replace_hold_id is not None:
+        if not isinstance(expected_snapshot, str) or not expected_snapshot:
+            fail(409, "Confira a reserva temporária antes de substituir o horário")
+        fp = hashlib.sha256(json.dumps({"request": fp, "replace_hold": str(replace_hold_id),
+                                       "snapshot": expected_snapshot}, sort_keys=True).encode()).hexdigest()
+    elif expected_snapshot is not None:
+        fail(422, "A substituição exige a reserva temporária")
     async with tenant_transaction(s, tenant):
         await acquire_professional_lock(s, tenant, professional)
+        if not supplied_clock:
+            now = datetime.now(UTC)
         existing = (await s.execute(text("""
             SELECT id, request_fingerprint FROM appointments
             WHERE tenant_id=:tenant AND idempotency_key=:key
@@ -282,10 +339,29 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
         if existing:
             if existing["request_fingerprint"] != fp:
                 fail(409, "Chave de idempotência já usada em outra solicitação")
-            return await read_appointment(s, tenant, existing["id"])
+            return await _hold_proposal(s, tenant, existing["id"])
+        if replace_hold_id is not None:
+            previous = await _replacement_hold(s, tenant, professional, replace_hold_id, phone,
+                                               expected_snapshot, now, lock=True)
+            if not supplied_clock:
+                now = datetime.now(UTC)
+                if previous["hold_expires_at"] <= now:
+                    fail(409, "A reserva temporária expirou. Consulte um novo horário")
         await expire_holds(s, tenant, professional, now)
         shop, items = await load_bundle(s, tenant, professional, ids)
-        b = await check_slot(s, tenant, professional, shop, items, start, now)
+        b = await check_slot(s, tenant, professional, shop, items, start, now,
+                             ignore_appointment=replace_hold_id)
+        if replace_hold_id is not None:
+            changed = (await s.execute(text("""
+                UPDATE appointments SET status='cancelled',hold_expires_at=NULL,updated_at=:now
+                WHERE tenant_id=:tenant AND id=:id AND professional_id=:professional AND status='hold'
+                  AND hold_expires_at>:now AND """ + CUSTOMER_MATCH_SQL + " RETURNING id"),
+                {"tenant": tenant, "id": replace_hold_id, "professional": professional,
+                 "now": now, "customer_phone": phone})).scalar_one_or_none()
+            if changed is None:
+                fail(409, "A reserva temporária mudou. Confira um novo resumo")
+            # This cancels an unconfirmed proposal, not a published calendar event.
+            await history(s, tenant, replace_hold_id, "cancelled", calendar=False)
         await s.execute(text("""
             INSERT INTO customers (tenant_id, whatsapp_e164, name)
             VALUES (:tenant,:phone,:name)
@@ -316,7 +392,7 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                         "id": item_id, "tenant": tenant, "customer": customer,
                         "professional": professional, "protocol": candidate,
                         "key": idempotency_key, "fp": fp,
-                        "expires": now + HOLD_TTL, **b,
+                        "expires": (now if supplied_clock else datetime.now(UTC)) + HOLD_TTL, **b,
                     })
                 break
             except IntegrityError as exc:
@@ -344,12 +420,13 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
             ON CONFLICT (tenant_id,period) DO UPDATE
             SET bookings=usage_counters.bookings+1
         """),{"tenant":tenant})
-        return await read_appointment(s, tenant, item_id)
+        return await _hold_proposal(s, tenant, item_id)
 
 
 async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
                        now: datetime | None = None, *, customer_phone: str | None = None,
                        expected_snapshot: str | None = None):
+    supplied_clock = now is not None
     now = now or datetime.now(UTC)
     expired = False
     result = None
@@ -364,6 +441,8 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
         hold = (await s.execute(text("""
             SELECT * FROM appointments WHERE tenant_id=:tenant AND id=:id FOR UPDATE
         """), {"tenant": tenant, "id": item_id})).mappings().one()
+        if not supplied_clock:
+            now = datetime.now(UTC)
         if customer_phone is not None or expected_snapshot is not None:
             await verify_customer_snapshot(s, tenant, hold, customer_phone, expected_snapshot)
         if hold["status"] == "confirmed":
@@ -401,8 +480,11 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
             changed = (await s.execute(text("""
                 UPDATE appointments SET status='confirmed',hold_expires_at=NULL,updated_at=:now
                 WHERE id=:id AND tenant_id=:tenant
+                  AND status='hold'
+                  AND hold_expires_at>COALESCE(CAST(:expiry_clock AS timestamptz),clock_timestamp())
                   AND """ + BUNDLE_MATCH_SQL + " AND " + CUSTOMER_MATCH_SQL + " RETURNING id"),
                 {"tenant": tenant, "id": item_id, "now": now,
+                 "expiry_clock": now if supplied_clock else None,
                  **bundle_guard_parameters(tenant, hold["professional_id"], list(ids), shop, items, customer_phone)})).scalar_one_or_none()
             if changed is None:
                 fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de confirmar")
