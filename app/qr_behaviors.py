@@ -105,4 +105,5 @@ def availability_question(value: str) -> bool:
     lower = norm(value)
     return bool(re.search(r"\b(?:disponive(?:l|is)|vagas?|horarios? livres|dias? livres)\b", lower)
                 or re.search(r"\b(?:quais?|tem|ha)\b.*\bhorarios?\b", lower)
-                or re.search(r"\bdias?\b.*\b(?:livres?|vagos?|disponiveis?)\b", lower))
+                or re.search(r"\bdias?\b.*\b(?:livres?|vagos?|disponiveis?)\b", lower)
+                or re.search(r"\b(?:quando|tem|ha)\b.*\blivres?\b|\blivres?\b.*\bquando\b", lower))

@@ -351,7 +351,7 @@ async def answer_availability(tenant: UUID, body: str, state: dict, business: di
     if day:
         inquiry["day"] = day.isoformat()
         inquiry.pop("search_next", None)
-    elif re.search(r"\b(?:que|qual|quais|proximos?)(?: sao)?(?: os?)?\s+dias?\b", norm(body)):
+    elif re.search(r"\b(?:que|qual|quais|proximos?)(?: sao)?(?: os?)?\s+dias?\b|\bquando\b|\btem\s+(?:algum\s+)?livre\b", norm(body)):
         inquiry["search_next"] = True
         inquiry.pop("day", None)
     chosen_day = None if inquiry.get("search_next") else inquiry.get("day") or state.get("day")
@@ -535,6 +535,13 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
         return {"answer": "Vou deixar esta conversa para atendimento humano. Para retomar o bot, envie MENU.", "step": "human"}
     if intent == "identity":
         return {"answer": "Sou o Orion, assistente virtual deste atendimento.", "step": state.get("step", "information")}
+    if intent == "greeting" and state.get("step") not in {None, "menu"}:
+        display = state.get("customer_name")
+        greeting = f"Olá, {display}!" if display else "Olá!"
+        selected = [item["name"] for item in catalog if str(item["id"]) in state.get("services", [])]
+        context = " Seu pedido atual é " + " e ".join(selected) + "." if selected else ""
+        return {"answer": greeting + context + " Posso ajudar com valores, consultar dias livres ou continuar seu pedido.",
+                "step": state["step"]}
     if state.get("confirmation_requires_review") and state.get("step") in {"confirm", "reschedule_confirm"}:
         resume = norm(body) in {"retomar resumo", "ver resumo", "rever resumo", "resumo original"}
         if resume:
