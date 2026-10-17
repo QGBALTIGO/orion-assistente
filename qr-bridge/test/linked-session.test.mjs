@@ -99,13 +99,13 @@ test("web panel closed and primary phone offline are not needed for socket stora
     assert.deepEqual(freshProcess.load(),[record]);
   }finally{t.cleanup()}
 });
-test("do not fetch/import chat history or auto reply on inbound callbacks",()=>{
+test("do not import chat history or reply before filtering own inbound callbacks",()=>{
   const src=fs.readFileSync(new URL("../src/server.mjs",import.meta.url),"utf8");
   const beginning=src.indexOf('client.ev.on("messages.upsert"');
   const ending=src.indexOf('client.ev.on("connection.update"',beginning);
   const handler=src.slice(beginning,ending);
   assert.ok(handler.includes('shouldIngestUpsert(type,message.messageTimestamp)'));
-  assert.ok(handler.includes('if(message.key?.fromMe)continue'));
+  assert.match(handler,/if\(message\.key\?\.fromMe\)[\s\S]*?continue;/);
   assert.ok(!handler.includes('sendMessage('));
   assert.ok(!handler.includes('sendStoredText('));
   assert.ok(!handler.includes('relayMessage('));

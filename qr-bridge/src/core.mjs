@@ -26,9 +26,15 @@ export async function resolveMessagePhone(key, client) {
   // pode ser confundido com número de telefone de um destinatário.
   const direct=normalizeFromJid(key?.remoteJid)||
     normalizeFromJid(key?.remoteJidAlt);
+  // Baileys can expose a verified PN alongside a LID-addressed private chat.
+  // Never interpret digits in @lid as a telephone number.
+  const privateLid=/^\d{8,20}(?::\d+)?@lid$/.test(String(key?.remoteJid||""));
+  const alias=privateLid ? normalizeFromJid(key?.senderPn) ||
+    normalizeFromJid(key?.participantPn) : null;
   if(direct) return direct;
+  if(alias)return alias;
   const lid=String(key?.remoteJid||"");
-  if(!/^\d{8,20}@lid$/.test(lid)) return null;
+  if(!/^\d{8,20}(?::\d+)?@lid$/.test(lid)) return null;
   try {
     const mapping=client?.signalRepository?.lidMapping;
     if(typeof mapping?.getPNForLID!=="function")return null;

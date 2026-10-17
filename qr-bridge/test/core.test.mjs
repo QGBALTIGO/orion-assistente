@@ -139,3 +139,18 @@ test("queda transitória gera backoff limitado e não força novo QR",()=>{
   assert.deepEqual(reconnectPlan(408,1),{retry:true,delayMs:4000});
   assert.deepEqual(reconnectPlan(408,8),{retry:true,delayMs:30000});
 });
+
+
+test("verified senderPn from private LID is accepted; opaque LID never treated as PN",async()=>{
+ const pn="5511999999999@s.whatsapp.net";
+ const key={remoteJid:"123456789012345@lid",senderPn:pn};
+ assert.equal(await resolveMessagePhone(key,{}),"5511999999999");
+ assert.equal(await resolveMessagePhone({remoteJid:"123456789012345@lid",
+   senderPn:"123456789012345@lid"},{}),null);
+ assert.equal(await resolveMessagePhone({remoteJid:"123456789012345@g.us",
+   senderPn:pn},{}),null);
+});
+test("verified participantPn from private LID works without mapping",async()=>{
+ assert.equal(await resolveMessagePhone({remoteJid:"123456789012345@lid",
+  participantPn:"5511999999999:2@s.whatsapp.net"},{}),"5511999999999");
+});
