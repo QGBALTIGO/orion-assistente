@@ -78,6 +78,9 @@ async def panel_actor(request: Request) -> dict:
         # A changed role/password invalidates prior sessions.
         if row["role"] != data["role"]:
             raise HTTPException(401,"Sessão expirada") from None
+        # Return only this account's display identity; never change the privilege role.
+        data["name"] = row["name"]
+        data["email"] = row["email"]
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         _same_origin(request)
         value = request.headers.get("x-orion-csrf", "")
@@ -142,7 +145,9 @@ async def login(payload: Login, request: Request, response: Response):
 @router.get("/me")
 async def me(data: dict = Depends(panel_actor)):
     return {"authenticated": True, "role": data["role"], "csrf": data["csrf"],
-            "account":bool(data.get("account_id"))}
+            "account":bool(data.get("account_id")),
+            "name":data.get("name","Administrador"),
+            "email":data.get("email")}
 
 
 @router.post("/logout")

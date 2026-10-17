@@ -494,6 +494,18 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
   background:#eafaf5;color:#0d6457;border-color:#50bbaa;
  }
 }
+
+/* Dedicated non-privileged member dashboard inside the main Orion shell. */
+.member-overview{width:min(100%,690px);background:linear-gradient(140deg,#122923,#101e1a);
+  border:1px solid var(--border);border-radius:20px;padding:clamp(20px,4vw,35px);box-shadow:0 14px 38px #0002}
+.member-overview-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.member-overview-top img{display:block;max-width:100%;width:178px;height:auto}
+.member-overview h2{font-size:1.3rem;margin:0 0 18px;color:#e6fff3}
+.member-detail{display:flex;flex-direction:column;gap:4px;padding:14px 0;border-top:1px solid #385448}
+.member-detail span{font-size:.8rem;color:var(--muted)}
+.member-detail strong{font-size:1rem;color:var(--text);overflow-wrap:anywhere}
+.member-next{margin-top:20px;font-size:.87rem}
+@media(max-width:760px){.member-overview{padding:22px}.member-detail{padding:13px 0}}
 </style>
 </head>
 <body>
@@ -600,40 +612,40 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
     </div>
   </div>
 </section>
-<section id="memberView" class="auth-member hidden" aria-label="Sua conta Orion">
-  <div class="auth-member-card">
-    <picture>
-      <source media="(prefers-color-scheme: light)" srcset="/brand/orion-brand-light.svg">
-      <img src="/brand/orion-brand-dark.svg" width="195" height="70" alt="Orion">
-    </picture>
-    <h1>Conta criada</h1>
-    <p>Seu acesso está pronto. Os recursos disponíveis dependem das permissões da sua conta.</p>
-    <form id="ownerClaimForm" class="auth-form">
-      <h2>Já administra o Orion?</h2>
-      <p>Use a senha administrativa anterior para vincular seu perfil verificado.</p>
-      <label for="ownerLegacyPassword">Senha administrativa anterior</label>
-      <input id="ownerLegacyPassword" type="password" autocomplete="off" required>
-      <button class="auth-primary" type="submit">Validar permissão administrativa</button>
-      <p id="ownerClaimError" class="auth-error" role="alert"></p>
-    </form>
-    <button id="memberLogout" class="auth-text-link" type="button">Sair desta conta</button>
-  </div>
-</section>
 <div id="appView" class="app hidden">
   <aside class="sidebar">
     <div class="brand"><div class="logo">O</div> ORION.</div>
-    <div class="side-label">Gerenciamento</div>
+    <div id="sidebarLabel" class="side-label">Gerenciamento</div>
     <nav class="nav" aria-label="Páginas do painel">
-      <button class="nav-item" data-page="dispositivo"><span class="nav-icon">▦</span>Conectar dispositivo</button>
-      <button class="nav-item" data-page="conversas"><span class="nav-icon">✉</span>Conversas</button>
-      <button class="nav-item" data-page="cadastros"><span class="nav-icon">⚙</span>Cadastros</button>
+      <button class="nav-item hidden" data-page="member" data-member-only> <span class="nav-icon" aria-hidden="true">⌂</span>Início</button>
+      <button class="nav-item" data-page="dispositivo" data-admin-only><span class="nav-icon">▦</span>Conectar dispositivo</button>
+      <button class="nav-item" data-page="conversas" data-admin-only><span class="nav-icon">✉</span>Conversas</button>
+      <button class="nav-item" data-page="cadastros" data-admin-only><span class="nav-icon">⚙</span>Cadastros</button>
     </nav>
     <div class="sidebar-bottom">
-      <div class="avatar"><div class="avatar-dot">A</div><div><strong>Administrador</strong><br><small>Painel Orion</small></div></div>
+      <div class="avatar"><div class="avatar-dot" id="sidebarAvatarInitial">A</div><div><strong id="sidebarAccountName">Administrador</strong><br><small id="sidebarAccountType">Painel Orion</small></div></div>
       <button id="logout" class="btn ghost full">Sair com segurança</button>
     </div>
   </aside>
   <main class="content">
+    <section id="page-member" class="page hidden" aria-labelledby="memberWelcome">
+      <div class="header">
+        <div><div class="eyebrow">Orion / Início</div><h1 id="memberWelcome">Bem-vindo ao Orion</h1>
+          <p class="subhead">Seu espaço para acompanhar sua conta.</p></div>
+      </div>
+      <section class="member-overview" aria-labelledby="memberProfileHeading">
+        <div class="member-overview-top">
+          <picture>
+            <source media="(prefers-color-scheme: light)" srcset="/brand/orion-brand-light.svg">
+            <img src="/brand/orion-brand-dark.svg" alt="Orion Recepcionista Digital" width="178" height="63">
+          </picture>
+        </div>
+        <h2 id="memberProfileHeading">Minha conta</h2>
+        <div class="member-detail"><span>Nome</span><strong id="memberProfileName">—</strong></div>
+        <div class="member-detail"><span>E-mail</span><strong id="memberProfileEmail">—</strong></div>
+      </section>
+      <p class="member-next">Os recursos da sua conta aparecerão aqui quando estiverem disponíveis.</p>
+    </section>
     <section id="page-dispositivo" class="page">
       <div class="header">
         <div><div class="eyebrow">Orion / Dispositivos</div><h1>Conectar WhatsApp</h1><p class="subhead">Vincule seu número em poucos passos. Escolha como deseja conectar.</p></div>
@@ -996,19 +1008,31 @@ function authScreenShow(screen){
 function showLogin(){
  csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);
  $("appView").classList.add("hidden");
- $("memberView").classList.add("hidden");
  $("loginView").classList.remove("hidden");
  authScreenShow("login");
 }
-function showMember(){
- $("loginView").classList.add("hidden");$("appView").classList.add("hidden");
- $("memberView").classList.remove("hidden");
-}
-function showApp(role="support"){
+function showApp(role="support",name="",email=""){
  loginRole=role;
- if(role!=="support"&&role!=="admin"){showMember();return}
- $("memberView").classList.add("hidden");
+ const isAdmin=role==="support"||role==="admin";
+ // Member accounts get their own normal dashboard, never an admin-password prompt.
+ // Protected WhatsApp, contacts and conversations are never fetched for members.
+ document.querySelectorAll("[data-admin-only]").forEach(node=>node.classList.toggle("hidden",!isAdmin));
+ document.querySelectorAll("[data-member-only]").forEach(node=>node.classList.toggle("hidden",isAdmin));
+ $("sidebarLabel").textContent=isAdmin?"Gerenciamento":"Minha área";
+ const displayName=isAdmin?"Administrador":(name||"Minha conta");
+ $("sidebarAccountName").textContent=displayName;
+ $("sidebarAccountType").textContent=isAdmin?"Painel Orion":"Minha conta";
+ $("sidebarAvatarInitial").textContent=displayName.trim().charAt(0).toLocaleUpperCase("pt-BR")||"O";
  $("loginView").classList.add("hidden");$("appView").classList.remove("hidden");
+ if(!isAdmin){
+   clearInterval(statusTimer);statusTimer=null;
+   clearInterval(chatTimer);chatTimer=null;
+   clearInterval(wizardClocks);wizardClocks=null;
+   $("memberProfileName").textContent=name||"—";
+   $("memberProfileEmail").textContent=email||"—";
+   openPage("member");
+   return;
+ }
  statusTimer&&clearInterval(statusTimer);statusTimer=setInterval(updateStatus,4500);
  wizardClocks&&clearInterval(wizardClocks);
  wizardClocks=setInterval(updateWizardClocks,1000);
@@ -1060,7 +1084,7 @@ $("loginForm").addEventListener("submit",async event=>{
   });
   csrf=result.csrf;
   $("password").value="";
-  showApp(result.role||"support");
+  showApp(result.role||"support",result.name||"",result.email||$("username").value.trim().toLowerCase());
  }catch(error){$("loginError").textContent=error.message}
  finally{button.disabled=false}
 });
@@ -1113,34 +1137,18 @@ $("resetForm").addEventListener("submit",async event=>{
  }catch(error){$("resetError").textContent=error.message}
  finally{button.disabled=false}
 });
-$("ownerClaimForm").addEventListener("submit",async event=>{
- event.preventDefault();$("ownerClaimError").textContent="";
- const button=$("ownerClaimForm").querySelector('button[type="submit"]');
- button.disabled=true;
- try{
-   const result=await api("/auth/admin/claim","POST",{
-     legacy_password:$("ownerLegacyPassword").value
-   });
-   $("ownerLegacyPassword").value="";
-   showLogin();messageAuth(result.reloginRequired?
-     "Permissão verificada. Entre novamente para ativar o acesso administrativo.":
-     "Operação concluída.");
- }catch(error){$("ownerClaimError").textContent=error.message}
- finally{button.disabled=false}
-});
-$("memberLogout").addEventListener("click",async()=>{
- try{await api("/auth/logout","POST",{})}finally{showLogin()}
-});
 (async()=>{
  const epoch=authEpoch;
  try{
    const result=await api("/auth/me");
    if(epoch!==authEpoch)return;
-   csrf=result.csrf;showApp(result.role);
+   csrf=result.csrf;showApp(result.role,result.name||"",result.email||"");
  }catch{if(epoch===authEpoch)showLogin()}
 })();
 void authFeatures();
 function openPage(target){
+ if(loginRole!=="support"&&loginRole!=="admin")target="member";
+ else if(target==="member")target="dispositivo";
  page=target;
  document.querySelectorAll(".page").forEach(x=>x.classList.toggle("hidden",x.id!=="page-"+target));
  document.querySelectorAll("[data-page]").forEach(x=>x.classList.toggle("selected",x.dataset.page===target));
