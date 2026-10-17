@@ -68,6 +68,11 @@ function boundMap(map,now,ttl){
   while(map.size>=MAX_CALL_CACHE)map.delete(map.keys().next().value);
 }
 export async function resolveCallPhone(call,socket){
+  // A few Baileys events expose callerPn as digits without a JID domain.
+  // Trust this explicit PN field, never digits extracted from an opaque LID.
+  for(const direct of [call?.callerPn,call?.senderPn]){
+    if(typeof direct==="string" && /^[1-9]\\d{7,14}$/.test(direct))return direct;
+  }
   for(const candidate of [call?.callerPn,call?.senderPn,call?.chatId,call?.from]){
     const phone=phoneFromPn(candidate);
     if(phone)return phone;
@@ -126,6 +131,9 @@ export async function handleCallOffers(calls,{
       count("rejected");
       actions.push("rejected");
     }catch{
+      // Only an accepted rejection is idempotent; Baileys may retry an offer
+      // after transient network loss and that retry should get another chance.
+      recentCalls.delete(dedup);
       count("rejectFailed");
       actions.push("reject_failed");
       continue;
