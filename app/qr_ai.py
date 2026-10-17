@@ -56,7 +56,8 @@ def requested_day(value: str, tz_name: str, now: datetime | None = None) -> date
     matches = list(re.finditer(r"\b(segunda|terca|quarta|quinta|sexta|sabado|domingo)(?:[ -]feira)?\b", normalized))
     matches = [m for m in matches if not re.match(r"\s+(?:opcao|vez|pessoa|alternativa|parcela|unidade)\b", normalized[m.end():])]
     if matches:
-        if len({m.group(1) for m in matches}) != 1 or re.search(r"\b\d{1,4}[-/]\d{1,2}\b", normalized):
+        if (len({m.group(1) for m in matches}) != 1
+                or re.search(r"\b\d{1,4}[-/]\d{1,2}\b|\b(?:hoje|amanha)\b", normalized)):
             return None  # Never silently select the first of competing days.
         delta = (weekdays[matches[-1].group(1)] - today.weekday()) % 7
         if delta == 0 and re.search(r"\bproxim[ao]\b", normalized):

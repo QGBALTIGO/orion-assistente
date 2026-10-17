@@ -45,7 +45,7 @@ def test_relative_dates_and_time_are_independent_of_llm():
     ("s�bado", date(2026, 10, 17)), ("domingo", date(2026, 10, 18)),
     ("pr�ximo s�bado", date(2026, 10, 24)),
     ("segunda ou ter�a", None), ("segunda op��o", None),
-    ("segunda, 20/10", None),
+    ("segunda, 20/10", None), ("segunda ou amanh�", None), ("segunda ou hoje", None),
 ])
 def test_weekdays_use_business_timezone_and_ambiguity_is_not_first_match(phrase, expected):
     now = datetime(2026, 10, 17, 10, 0, tzinfo=ZoneInfo("America/Campo_Grande"))
