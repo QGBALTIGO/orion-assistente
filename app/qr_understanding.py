@@ -99,6 +99,43 @@ def _service_mentions(message: str, catalog: list[dict]):
     return spans
 
 
+def unique_service_reply(message: str, catalog: list[dict], *, context_step: str) -> list[UUID] | None:
+    """Resolve a whole positive service-only answer to an actual service menu.
+
+    This is a narrow parser, not another intent classifier. Uncovered words or
+    any ambiguity defer the complete utterance to the normal understanding path.
+    The caller separately verifies that a service question was really presented.
+    """
+    if context_step != "menu" or not isinstance(message, str) or not message.strip() or len(message) > 1500 or len(catalog) > 60:
+        return None
+    text = normalized(message)
+    if "?" in text or "¿" in text or re.search(r"\d|\b(?:nao|nem|sem|nunca|menos|exceto|"
+        r"quanto|custa\w*|preco\w*|valor\w*|como|quando|quais?|onde|porque|por que|sera|duvida|"
+        r"se|caso|desde que|depende|talvez|ou|amanha|hoje|ontem|segunda|terca|quarta|quinta|sexta|sabado|domingo|"
+        r"compr\w*|pedido\w*|carrinho|orcamento|quantidade|unidades?|paga\w*|estoque|produtos?|"
+        r"agend\w*|reserv\w*|cancel\w*|remarc\w*|reagend\w*)\b", text):
+        return None
+    spans = _service_mentions(message, catalog)
+    if not spans:
+        return None
+    selected, previous_end = [], 0
+    for start, end, ids, negative in spans:
+        if len(ids) != 1 or negative or start < previous_end:
+            return None
+        gap = text[previous_end:start]
+        if previous_end == 0:
+            if gap.strip():
+                return None
+        elif not re.fullmatch(r"\s*(?:e|\+|&|,\s*e?)\s*", gap):
+            return None
+        sid = next(iter(ids))
+        if sid in selected:
+            return None  # A repeated service must not silently imply a quantity.
+        selected.append(sid)
+        previous_end = end
+    return selected if re.fullmatch(r"[.!\s]*", text[previous_end:]) else None
+
+
 _WEEKDAYS = {"segunda": 0, "terca": 1, "quarta": 2, "quinta": 3, "sexta": 4, "sabado": 5, "domingo": 6}
 _DAY = re.compile(r"\b(?:depois de amanha|amanha|hoje|\d{4}-\d{2}-\d{2}|"
                   r"\d{1,2}/\d{1,2}(?:/\d{4})?|segunda(?:-feira)?|terca(?:-feira)?|"

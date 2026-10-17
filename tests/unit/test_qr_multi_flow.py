@@ -3,7 +3,7 @@
 There is no Groq, Redis, PostgreSQL, WhatsApp or production operation here.
 """
 import json
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -749,3 +749,207 @@ async def test_typo_then_review_of_typed_summary_sends_one_question_with_new_id_
     assert h.state()["confirmation_message_id"] == "synthetic-review"
     assert h.state()["confirmation_expires_at"] == deadline and 1 <= h.redis.ttls[h.key] <= 40
     assert not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reply,expected", [("Cabelo", ("cut",)), ("Cabelo e barba", ("cut", "beard")),
+    ("Corte + Barba", ("cut", "beard"))])
+async def test_actual_oi_service_menu_accepts_complete_unique_service_reply_without_provider(flow, monkeypatch, reply, expected):
+    h = flow
+    async def forbidden(**kwargs):
+        raise AssertionError("A complete unique answer to the service menu must not call a provider")
+    monkeypatch.setattr(qr_ai, "interpret_plan", forbidden)
+    first = await h.turn("Oi", preview=False)
+    assert first["step"] == "menu" and "Qual serviço" in first["answer"] and h.state()["service_reply_expected"]
+    assert "_service_reply_prompt" not in first
+    result = await h.turn(reply, preview=False)
+    assert "Para qual dia" in result["answer"] and "Preciso distinguir" not in result["answer"]
+    assert h.state()["services"] == [str(getattr(h, name)) for name in expected]
+    assert not h.calls["plans"] and not h.calls["reads"] and not h.calls["writes"]
+    assert "service_reply_expected" not in h.state()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reply", ["quanto custa cabelo", "Não quero cabelo", "Cabelo, não, melhor só barba", "Meu nome é Cabelo", "Cabelo amanhã", "Cabelo e tatuagem"])
+async def test_service_menu_shortcut_does_not_bypass_whole_utterance_provider_for_other_intents(flow, reply):
+    h = flow
+    await h.turn("Oi", preview=False)
+    await h.turn(reply, preview=False)
+    assert h.calls["plans"] == [reply] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_service_menu_ambiguous_alias_still_requires_disambiguation_and_does_not_select_first(flow):
+    h = flow
+    h.catalog.append({"id": uuid4(), "name": "Corte Infantil", "price_cents": 2500, "duration_min": 30})
+    await h.turn("Oi", preview=False)
+    answer = await h.turn("Cabelo", preview=False)
+    assert h.calls["plans"] == ["Cabelo"] and "Preciso distinguir" in answer["answer"]
+    assert not h.state().get("services") and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_price_response_consumes_service_menu_question_instead_of_creating_implicit_booking(flow):
+    h = flow
+    await h.turn("Oi", preview=False)
+    await h.turn("quanto custa cabelo", preview=False)
+    assert not h.state().get("service_reply_expected")
+    await h.turn("Cabelo", preview=False)
+    assert h.calls["plans"] == ["quanto custa cabelo", "Cabelo"] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_unique_menu_service_reply_still_obeys_published_capabilities(flow):
+    h = flow
+    h.profile["capabilities"].remove("appointments")
+    await h.turn("Oi", preview=False)
+    result = await h.turn("Cabelo", preview=False)
+    assert result["step"] == "capability_unavailable" and not h.calls["writes"] and not h.state().get("services")
+
+
+@pytest.mark.asyncio
+async def test_catalog_revision_change_invalidates_the_old_service_question_shortcut(flow):
+    h = flow
+    await h.turn("Oi", preview=False)
+    h.catalog[0]["price_cents"] = 3600
+    await h.turn("Cabelo", preview=False)
+    assert h.calls["plans"] == ["Cabelo"] and not h.calls["writes"] and not h.state().get("services")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("read_text", ["Sim, pode mostrar o resumo.", "Pode mostrar o resumo?", "Sim, quero rever o resumo"])
+async def test_exact_real_read_request_reopens_summary_without_provider_or_operation(flow, monkeypatch, read_text):
+    h = flow
+    summary = qr_ai.presentation.render_summary(qr_ai.presentation.BookingSummary(("Corte",),
+        datetime.combine(h.tomorrow, datetime.min.time(), h.zone).replace(hour=16, minute=30), str(h.zone), 3500,
+        professional="Bruno", duration_min=40), h.profile["style_rules"])
+    deadline = datetime.now().timestamp()+40
+    h.seed("confirm", hold=str(uuid4()), price=3500, duration=40, confirmation_summary=summary,
+        confirmation_requires_review=True, confirmation_message_id="synthetic-original", confirmation_expires_at=deadline)
+    async def forbidden(**kwargs):
+        raise AssertionError("A complete read request must not need semantic consent")
+    monkeypatch.setattr(qr_ai, "interpret_plan", forbidden)
+    monkeypatch.setattr(qr_ai, "interpret_contextual_response", forbidden)
+    token = qr_ai._message_identity.set("synthetic-read")
+    try:
+        result = await h.turn(read_text, preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    assert summary in result["answer"] and result["answer"].count("Posso confirmar") == 1 and not h.calls["writes"]
+    assert h.state()["confirmation_message_id"] == "synthetic-read" and h.state()["confirmation_expires_at"] == deadline
+    assert 1 <= h.redis.ttls[h.key] <= 40
+    token = qr_ai._message_identity.set("synthetic-new-consent")
+    try:
+        done = await h.turn("Pode confirmar", preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    assert done["step"] == "confirmed" and [row[0] for row in h.calls["writes"]] == ["confirm"]
+
+
+@pytest.mark.parametrize("read_text", ["Não, pode mostrar o resumo", "Sim, pode mostrar o resumo se tiver desconto", "Pode mostrar o resumo e trocar para amanhã?", "Pode mostrar o resumo? Quanto custa a barba?"])
+def test_read_request_guard_requires_the_whole_positive_unconditional_utterance(read_text):
+    assert qr_ai._summary_requested(read_text) is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("second_intents", [["price"], ["booking", "price"]])
+@pytest.mark.parametrize("resume", ["Pode mostrar o resumo", "SIM"])
+async def test_clear_audio_summary_then_explicit_price_correction_discards_old_authority(flow, monkeypatch, second_intents, resume):
+    h = flow
+    token = qr_ai._message_identity.set("synthetic-clear-audio")
+    try:
+        original = await h.turn("Quero agendar corte e barba com Bruno na terça-feira às 15h.", preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    before = h.state()
+    assert original["step"] == "confirm" and "R$ 55,00" in original["answer"]
+    assert before["services"] == [str(h.cut), str(h.beard)]
+    old_hold, deadline = before["hold"], before["confirmation_expires_at"]
+    h.proposal["value"] = UnderstandingPlan(intents=second_intents, query_service_ids=[h.cut])
+    token = qr_ai._message_identity.set("synthetic-corrected-price")
+    try:
+        result = await h.turn("Pera,melhor só corte às16h30.Quanto fica?", preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    draft = h.state()
+    assert all(value in result["answer"] for value in ("R$ 35,00", "Corte", "16h30", "Bruno")), result
+    assert "Barba" not in result["answer"] and "R$ 55" not in result["answer"]
+    assert datetime.fromisoformat(before["selected_start"]).strftime("%d/%m/%Y") in result["answer"]
+    assert "Ainda preciso consultar" in result["answer"] and draft["booking_draft"]
+    assert draft["services"] == [str(h.cut)] and draft["pending_clock"] == "16:30"
+    assert draft["day"] == before["day"] and draft["professional"] == before["professional"]
+    assert draft["clarification_expires_at"] == deadline and 1 <= h.redis.ttls[h.key] <= 300
+    assert not set(draft) & {"hold", "selected_start", "confirmation_summary", "confirmation_message_id",
+                             "confirmation_requires_review", "confirmation_expires_at"}
+    assert [entry[0] for entry in h.calls["writes"]] == ["hold"] and len(h.calls["reads"]) == 1
+    async def forbidden(**kwargs):
+        raise AssertionError("Continuing the corrected private draft must not reinterpret an old summary")
+    monkeypatch.setattr(qr_ai, "interpret_plan", forbidden)
+    token = qr_ai._message_identity.set("synthetic-corrected-price")
+    try:
+        await h.turn("SIM", preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    assert [entry[0] for entry in h.calls["writes"]] == ["hold"] and len(h.calls["reads"]) == 1
+    token = qr_ai._message_identity.set("synthetic-corrected-review")
+    try:
+        summary = await h.turn(resume, preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    assert summary["step"] == "confirm" and "R$ 35,00" in summary["answer"] and "16h30" in summary["answer"]
+    assert h.state()["hold"] != old_hold and h.state()["confirmation_message_id"] == "synthetic-corrected-review"
+    assert h.calls["reads"][-1] == (h.bruno, [h.cut], date.fromisoformat(before["day"]))
+    assert [entry[0] for entry in h.calls["writes"]] == ["hold", "hold"]
+    assert h.calls["writes"][-1][1] == [h.cut] and h.calls["writes"][-1][2].strftime("%H:%M") == "16:30"
+    current_hold = h.state()["hold"]
+    token = qr_ai._message_identity.set("synthetic-fresh-final-consent")
+    try:
+        confirmed = await h.turn("Pode confirmar", preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    assert confirmed["step"] == "confirmed" and h.calls["writes"][-1] == ("confirm", qr_ai.UUID(current_hold))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("step", ["date", "professional", "time"])
+async def test_explicit_price_correction_of_an_in_progress_booking_keeps_current_facts_without_a_hold(flow, step):
+    h = flow
+    h.seed(step, services=[str(h.cut), str(h.beard)], pending_clock="15:00", pending_relation="exact")
+    result = await h.turn("Pera, melhor só corte às16h30. Quanto fica?", preview=False)
+    assert "R$ 35,00" in result["answer"] and "16h30" in result["answer"] and "Bruno" in result["answer"]
+    assert h.state()["services"] == [str(h.cut)] and h.state()["day"] == h.tomorrow.isoformat()
+    assert h.state()["professional"] == str(h.bruno) and h.state()["booking_draft"]
+    assert not h.calls["reads"] and not h.calls["writes"] and not h.calls["names"]
+
+
+@pytest.mark.asyncio
+async def test_expired_summary_price_correction_does_not_inherit_its_date_professional_or_authority(flow):
+    h = flow
+    h.seed("confirm", hold=str(uuid4()), services=[str(h.cut), str(h.beard)],
+        confirmation_summary="Old synthetic summary", confirmation_message_id="synthetic-expired",
+        confirmation_expires_at=datetime.now().timestamp()-1,
+        selected_start=datetime.combine(h.tomorrow, datetime.min.time(), h.zone).replace(hour=15).isoformat())
+    token = qr_ai._message_identity.set("synthetic-expired-price")
+    try:
+        result = await h.turn("Pera, melhor só corte às16h30. Quanto fica?", preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    assert "R$ 35,00" in result["answer"] and h.state()["services"] == [str(h.cut)]
+    assert not set(h.state()) & {"day", "professional", "hold", "selected_start", "confirmation_summary", "draft_review_message_id"}
+    token = qr_ai._message_identity.set("synthetic-expired-agreement")
+    try:
+        answer = await h.turn("SIM", preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    assert "dia" in answer["answer"] and not h.calls["reads"] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_booking_price_amendment_requires_appointments_capability_even_when_provider_says_only_price(flow):
+    h = flow
+    h.profile["capabilities"].remove("appointments")
+    original = h.seed("confirm", hold=str(uuid4()), price=5500, duration=60,
+        confirmation_summary="Synthetic original", confirmation_expires_at=datetime.now().timestamp()+60)
+    result = await h.turn("Pera, melhor só corte às16h30. Quanto fica?", preview=False)
+    assert result["step"] == "capability_unavailable" and h.state()["hold"] == original["hold"]
+    assert not h.state().get("booking_draft") and not h.calls["reads"] and not h.calls["writes"]

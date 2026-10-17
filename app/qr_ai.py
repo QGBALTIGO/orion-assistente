@@ -34,7 +34,7 @@ from app import qr_commerce
 from app import qr_intake_revision
 from app import qr_cancellation
 from app.groq_understanding import interpret_plan
-from app.qr_understanding import UnderstandingPlan, build_plan, clarification_for
+from app.qr_understanding import UnderstandingPlan, build_plan, clarification_for, unique_service_reply
 from app.qr_information import info as compose_information, faq_catalog
 from app.qr_dialogue import (contextual_response, interpret_contextual_response, choose_time, choose_professional,
     compound_candidate, interpret_compound_response)
@@ -59,6 +59,7 @@ def _preferences(business: dict) -> dict | None:
 
 def _summary_requested(body: str) -> bool:
     text = norm(body).strip(" ?!.,")
+    text = re.sub(r"^sim(?:\s*[,;.!]\s*|\s+)", "", text)
     return text in {"retomar resumo", "ver resumo", "rever resumo", "resumo original"} or bool(re.fullmatch(
         r"(?:(?:quero|pode|poderia|vamos|me)\s+)*(?:ver|rever|retomar|mostrar|mostra|conferir)\s+(?:(?:o|esse|meu)\s+)?resumo(?:\s+(?:de novo|novamente|original))?", text))
 
@@ -820,6 +821,157 @@ async def _review_after_inquiry(state: dict, redis, key: str):
         await redis.set(key, json.dumps(state), ex=300)
 
 
+def _draft_remaining(state: dict) -> float:
+    value = state.get("clarification_expires_at")
+    return max(0, value - datetime.now().timestamp()) if type(value) in {int, float} and math.isfinite(value) else 0
+
+
+def _price_correction_prefix(body: str, state: dict) -> str | None:
+    """A correction before a price question changes only the private request."""
+    if state.get("step") not in {"date", "professional", "time", "confirm"} or state.get("appointment"):
+        return None
+    parts = re.split(r"\b(?:quanto|precos?|valores?|custa\w*)\b", norm(body), maxsplit=1)
+    if len(parts) != 2:
+        return None
+    prefix = parts[0]
+    if (not re.search(r"\b(?:melhor|na verdade|quer dizer|em vez|ao inves|deixa|retir\w*|tira\w*|remove\w*)\b", prefix)
+            or re.search(r"\b(?:se|caso|desde que|talvez|ou)\b", prefix)):
+        return None
+    return prefix
+
+
+def _price_correction_source(state: dict, business: dict, catalog: list[dict], professionals: list[dict]) -> dict:
+    """Copy current factual choices, never a hold or authority to confirm it."""
+    if state.get("booking_draft"):
+        return state
+    now = datetime.now().timestamp()
+    deadline, fresh = now + 300, True
+    if state.get("step") == "confirm":
+        value = state.get("confirmation_expires_at")
+        fresh = type(value) in {int, float} and math.isfinite(value) and value > now
+        if fresh:
+            deadline = min(value, deadline)
+    source = {"booking_draft": True, "clarification_expires_at": deadline}
+    if not fresh:
+        return source  # An expired summary contributes no inherited choices.
+    valid = {str(row["id"]) for row in catalog}
+    ids = state.get("services")
+    if isinstance(ids, list) and ids and all(isinstance(value, str) and value in valid for value in ids):
+        source["services"] = ids[:]
+    person = next((row for row in professionals if str(row["id"]) == state.get("professional")), None)
+    if person:
+        source.update(professional=str(person["id"]), professional_name=person["name"])
+    zone = ZoneInfo(business["timezone"])
+    try:
+        day = date.fromisoformat(state["day"])
+        if day >= datetime.now(zone).date():
+            source["day"] = day.isoformat()
+    except (KeyError, TypeError, ValueError):
+        pass
+    clock = state.get("pending_clock")
+    if isinstance(clock, str) and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", clock):
+        source.update(pending_clock=clock, pending_relation=state.get("pending_relation", "exact"))
+    elif state.get("selected_start") and source.get("day"):
+        try:
+            selected = datetime.fromisoformat(state["selected_start"])
+            if selected.tzinfo is not None and selected.astimezone(zone).date().isoformat() == source["day"]:
+                source.update(pending_clock=selected.astimezone(zone).strftime("%H:%M"), pending_relation="exact")
+        except (TypeError, ValueError):
+            pass
+    for field in ("customer_name", "new_customer_name"):
+        if state.get(field):
+            source[field] = state[field]
+    return source
+
+
+def _merge_booking_draft(plan: UnderstandingPlan, state: dict, catalog: list[dict], professionals: list[dict]) -> UnderstandingPlan:
+    """Reuse only unambiguous facts from this short-lived, unconfirmed request."""
+    if not state.get("booking_draft") or _draft_remaining(state) <= 0 or "booking" not in plan.intents or set(plan.intents) & {"cancel", "reschedule", "confirm", "human"}:
+        return plan
+    update = {}
+    if (not plan.service_ids and "service" not in plan.ambiguities and not plan.declined_service_ids
+            and plan.selection_mode not in {"remove", "simulate"}):
+        ids = [UUID(value) for value in state.get("services", [])]
+        if ids and set(ids) <= {UUID(str(row["id"])) for row in catalog}:
+            update.update(service_ids=ids, selection_mode="replace")
+    if not plan.requested_date and "date" not in plan.ambiguities and state.get("day"):
+        update["requested_date"] = state["day"]
+    if not plan.professional_id and "professional" not in plan.ambiguities and state.get("professional"):
+        person = UUID(state["professional"])
+        if person in {UUID(str(row["id"])) for row in professionals}:
+            update["professional_id"] = person
+    if not plan.requested_time and "time" not in plan.ambiguities and state.get("pending_clock"):
+        update.update(requested_time=state["pending_clock"], time_relation=state.get("pending_relation", "exact"))
+    return plan.model_copy(update=update)
+
+
+async def _save_booking_draft(plan: UnderstandingPlan, state: dict, business: dict, catalog: list[dict], professionals: list[dict], redis, key: str, *, allow_complete: bool = False):
+    """An unclear booking saves facts, never a hold, consent or old summary."""
+    ambiguous = set(plan.ambiguities)
+    if ("booking" not in plan.intents or (not ambiguous and not allow_complete) or not ambiguous <= {"service", "date", "time", "professional"}
+            or set(plan.intents) & {"cancel", "reschedule", "confirm", "human"}):
+        return None
+    now = datetime.now().timestamp()
+    deadline = state["clarification_expires_at"] if state.get("booking_draft") and _draft_remaining(state) > 0 else now+300
+    pending = [field for field in ("service", "date", "professional", "time") if field in ambiguous]
+    step = {"service": "menu", "date": "date", "professional": "professional", "time": "time"}[pending[0]] if pending else "time"
+    draft = {"step": step, "booking_draft": True, "clarification_pending": pending, "clarification_expires_at": deadline}
+    if "service" not in ambiguous and plan.service_ids:
+        draft["services"] = [str(value) for value in plan.service_ids]
+    if "date" not in ambiguous and plan.requested_date:
+        draft["day"] = plan.requested_date
+    if "professional" not in ambiguous and plan.professional_id:
+        person = next((row for row in professionals if str(row["id"]) == str(plan.professional_id)), None)
+        if person:
+            draft.update(professional=str(person["id"]), professional_name=person["name"])
+    if "time" not in ambiguous and plan.requested_time:
+        draft.update(pending_clock=plan.requested_time, pending_relation=plan.time_relation)
+    if plan.customer_name or state.get("customer_name"):
+        draft["customer_name"] = plan.customer_name or state["customer_name"]
+    if plan.customer_name or state.get("new_customer_name"):
+        draft["new_customer_name"] = plan.customer_name or state["new_customer_name"]
+    if step == "menu":
+        draft["menu_ids"] = [str(row["id"]) for row in catalog[:12]]
+    if step == "professional":
+        draft["professionals"] = [{"id": str(row["id"]), "name": row["name"]} for row in professionals]
+    if step == "time":
+        draft["slots"] = []
+    await redis.set(key, json.dumps(draft), ex=max(1, min(300, int(deadline-now))))
+    return draft
+
+
+def _draft_description(state: dict, catalog: list[dict]) -> str:
+    names = [presentation.escape_label(row["name"]) for row in catalog if str(row["id"]) in state.get("services", [])]
+    lines = ["*Pedido em preparação — ainda sem reserva*"]
+    if names:
+        lines.append("*Serviços:* " + " e ".join(names))
+    if state.get("day"):
+        lines.append("*Data desejada:* " + date.fromisoformat(state["day"]).strftime("%d/%m/%Y"))
+    if state.get("pending_clock"):
+        hour, minute = state["pending_clock"].split(":")
+        clock = str(int(hour)) + "h" + (minute if minute != "00" else "")
+        relation = {"exact": "", "after": "depois de ", "before": "antes de ", "around": "por volta de "}.get(state.get("pending_relation"), "")
+        lines.append("*Horário desejado:* " + relation + clock)
+    if state.get("professional_name"):
+        lines.append("*Profissional:* " + presentation.escape_label(state["professional_name"]))
+    return "\n".join(lines) + "\n\nAinda preciso consultar a disponibilidade na agenda. Posso verificar e mostrar um novo resumo?"
+
+
+def _resume_booking_draft(body: str) -> bool:
+    text = norm(body).strip(" .!?")
+    return _summary_requested(body) or bool(re.fullmatch(
+        r"(?:quero|pode|podemos|vamos|gostaria de)\s+(?:seguir|continuar|prosseguir)\s+com\s+(?:esse|este|o)\s+pedido", text))
+
+
+def _draft_review_accepted(body: str, state: dict, catalog: list[dict], professionals: list[dict]) -> bool:
+    incoming, offered = _message_identity.get(), state.get("draft_review_message_id")
+    return bool(state.get("booking_draft") and _draft_remaining(state) > 0 and body.strip().lower() in YES
+        and incoming and offered and incoming != offered and not state.get("clarification_pending")
+        and state.get("services") and set(state["services"]) <= {str(row["id"]) for row in catalog}
+        and state.get("day") and state.get("professional") in {str(row["id"]) for row in professionals}
+        and state.get("pending_clock") and state.get("pending_relation") == "exact")
+
+
 async def prepare_booking_summary(tenant: UUID, phone: str, state: dict, when: str,
                                   business: dict, catalog: list[dict], redis, key: str,
                                   preview: bool, factual: str = ""):
@@ -855,6 +1007,8 @@ async def prepare_booking_summary(tenant: UUID, phone: str, state: dict, when: s
             return _bounded_reply(factual, "O horário não está mais disponível. Nenhuma reserva foi confirmada. Podemos consultar outro horário.", "conflict")
         state.update(step="confirm", hold=str(hold["id"]))
     state.pop("new_customer_name", None)
+    for field in ("booking_draft", "clarification_pending", "clarification_expires_at", "draft_review_message_id"):
+        state.pop(field, None)
     state.update(confirmation_summary=summary, confirmation_expires_at=datetime.now().timestamp() + 300,
                  selected_start=when, confirmation_message_id=_message_identity.get())
     await redis.set(key, json.dumps(state), ex=300)
@@ -934,6 +1088,8 @@ async def _natural_time_turn(tenant: UUID, phone: str, body: str, state: dict, b
 
 def _exact_legacy_choice(body: str, state: dict, intent: str | None) -> bool:
     clean, step = norm(body).strip(" ?!.,"), state.get("step", "")
+    if state.get("booking_draft") and _resume_booking_draft(body):
+        return False  # A draft must consult availability before any new summary.
     if step in {"time", "reschedule_time"} and (simple_schedule_reply(body, "time") or
             (clean.isdigit() and 12 <= int(clean) <= 23 and int(clean) > len(state.get("slots", [])))):
         return False  # Resolve an explicit clock against the full current backend result.
@@ -1115,6 +1271,14 @@ async def _multi_turn(tenant: UUID, phone: str, body: str, state: dict, business
             await redis.set(key, json.dumps(state), ex=300 if state.get("step") in {"confirm", "reschedule_confirm"} else STATE_TTL)
             return {"answer": "Encerrei somente a consulta de disponibilidade. O pedido anterior não foi confirmado, cancelado ou alterado.", "step": state.get("step", "menu")}
         return {"answer": resume_prompt(state), "step": state.get("step", "menu")}
+    draft_review = _draft_review_accepted(body, state, catalog, professionals)
+    if state.get("booking_draft") and body.strip().lower() in YES and not draft_review:
+        pending = state.get("clarification_pending") or [field for field, value in (
+            ("service", state.get("services")), ("date", state.get("day")),
+            ("professional", state.get("professional")), ("time", state.get("pending_clock"))) if not value]
+        if pending:
+            return {"answer": clarification_for(UnderstandingPlan(intents=["booking"], ambiguities=pending)), "step": state["step"]}
+        return {"answer": _draft_description(state, catalog), "step": state["step"]}
     context = {"service_ids": state.get("services", []), "step": state.get("step", "menu")}
     profile = business.get("profile") or {}
     hours = [{"opens": row["opens"][:5], "closes": row["closes"][:5]} for row in profile.get("hours", [])
@@ -1126,8 +1290,23 @@ async def _multi_turn(tenant: UUID, phone: str, body: str, state: dict, business
     local_choice = simple_schedule_reply(body, "date") or professional_choice(body, professionals) is not None or clock_choice
     priority = norm(body).strip(" ?!.,")
     deferred = state.get("deferred_plan")
+    service_reply = None
+    menu_ids = state.get("menu_ids")
+    if (state.get("step") == "menu" and state.get("service_reply_expected") is True
+            and not state.get("availability_query") and not deferred and (not state.get("pending_clock") or
+                (state.get("booking_draft") and "service" in state.get("clarification_pending", [])))
+            and isinstance(menu_ids, list) and menu_ids and set(menu_ids) <= {str(item["id"]) for item in catalog}):
+        resolved = unique_service_reply(body, catalog, context_step="menu")
+        if resolved and {str(item) for item in resolved} <= set(menu_ids):
+            service_reply = resolved
     try:
-        if deferred and priority in {"agendamento", "agendamento primeiro", "agenda", "agenda primeiro", "preparar agendamento", "preco", "precos", "valores", "precos primeiro"}:
+        if state.get("booking_draft") and (_resume_booking_draft(body) or draft_review):
+            plan = UnderstandingPlan(intents=["booking"])
+        elif service_reply:
+            plan = build_plan(message=body, catalog=catalog, professionals=professionals, context=context,
+                reference_date=datetime.now(ZoneInfo(business["timezone"])).date(),
+                proposal=UnderstandingPlan(intents=["booking"], service_ids=service_reply, selection_mode="replace"))
+        elif deferred and priority in {"agendamento", "agendamento primeiro", "agenda", "agenda primeiro", "preparar agendamento", "preco", "precos", "valores", "precos primeiro"}:
             plan = UnderstandingPlan.model_validate(deferred)
             if priority in {"preco", "precos", "valores", "precos primeiro"}:
                 plan = plan.model_copy(update={"intents": ["price"], "service_ids": [], "faq_ids": []})
@@ -1143,6 +1322,7 @@ async def _multi_turn(tenant: UUID, phone: str, body: str, state: dict, business
             faqs=faq_catalog(business), history=state.get("history", []), context=context,
             reference_date=datetime.now(ZoneInfo(business["timezone"])).date(), key=os.getenv("GROQ_API_KEY", ""),
             model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"))
+        plan = _merge_booking_draft(plan, state, catalog, professionals)
     except (GroqServiceError, ValueError):
         await _review_after_inquiry(state, redis, key)
         return {"answer": "Não consegui interpretar o pedido completo com segurança. Pode esclarecer o serviço, o dia e o horário finais? Nenhuma alteração foi confirmada.",
@@ -1172,8 +1352,31 @@ async def _multi_turn(tenant: UUID, phone: str, body: str, state: dict, business
         return _bounded_reply(factual, "", "information")
     if "service" in information.unresolved:
         return _bounded_reply(factual, "", state.get("step", "clarify"))
+    if "price" in operations and not operations & {"cancel", "reschedule", "human"}:
+        prefix = _price_correction_prefix(body, state)
+        if prefix and not plan.ambiguities:
+            if denial := capability_denial(business, "appointments"):
+                return denial
+            source = _price_correction_source(state, business, catalog, professionals)
+            amended = build_plan(message=prefix, catalog=catalog, professionals=professionals, context=context,
+                reference_date=datetime.now(ZoneInfo(business["timezone"])).date(), proposal=UnderstandingPlan(intents=["booking"]))
+            amended = _merge_booking_draft(amended, source, catalog, professionals)
+            draft = await _save_booking_draft(amended, source, business, catalog, professionals, redis, key, allow_complete=True)
+            if draft:
+                if (not draft["clarification_pending"] and draft.get("services") and draft.get("day")
+                        and draft.get("professional") and draft.get("pending_clock") and draft.get("pending_relation") == "exact"
+                        and _message_identity.get()):
+                    draft["draft_review_message_id"] = _message_identity.get()
+                    await redis.set(key, json.dumps(draft), ex=max(1, min(300, int(_draft_remaining(draft)))))
+                return _bounded_reply(factual, _draft_description(draft, catalog), draft["step"])
     if plan.requires_clarification:
         await _review_after_inquiry(state, redis, key)
+        draft = await _save_booking_draft(plan, state, business, catalog, professionals, redis, key)
+        if draft:
+            reply = _bounded_reply(factual, clarification_for(plan), draft["step"])
+            if draft["step"] == "menu":
+                reply["_service_reply_prompt"] = True
+            return reply
         return _bounded_reply(factual, clarification_for(plan), state.get("step", "clarify"))
     if "confirm" in operations and not changes:
         if state.get("step") not in {"confirm", "reschedule_confirm"}:
@@ -1256,6 +1459,7 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
     try:
         result = await _turn(tenant, phone, body, redis, namespace, preview)
         literal = result.pop("_literal_information", False)
+        service_question = result.pop("_service_reply_prompt", False) is True
         if result.get("answer"):
             result = {**result, "answer": presentation.render_message(result["answer"], _reply_preferences.get(), kind="message" if literal else result.get("step", "message"))}
             if not presentation.fits_message(result["answer"]):
@@ -1279,11 +1483,17 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
         except (TypeError, ValueError):
             current = None
         if isinstance(current, dict):
+            if current.get("step") == "menu" and service_question:
+                current["service_reply_expected"] = True
+            else:
+                current.pop("service_reply_expected", None)
             history = [item for item in history if isinstance(item, dict) and
                        item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str)]
             current["history"] = (history + [{"role": "user", "content": body[:1500]},
                 {"role": "assistant", "content": result["answer"][:1500]}])[-8:]
-            if current.get("step") in REVIEW_STEPS:
+            if current.get("booking_draft"):
+                ttl = max(1, min(300, int(_draft_remaining(current))))
+            elif current.get("step") in REVIEW_STEPS:
                 now = datetime.now().timestamp()
                 deadline = current.setdefault("confirmation_expires_at", now + 300)
                 try:
@@ -1311,6 +1521,9 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
             state = {}
     if not isinstance(state, dict):
         state = {}
+    if state.get("booking_draft") and _draft_remaining(state) <= 0:
+        await redis.delete(state_key)
+        state = {}
     business, catalog, professionals = await tenant_data(tenant)
     _reply_preferences.set(_preferences(business))
     _reply_facts.set((business, catalog))
@@ -1320,7 +1533,7 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
     old_revision = await redis.get(context_key)
     if isinstance(old_revision, bytes):
         old_revision = old_revision.decode()
-    active_choice = state.get("step") in {"date", "professional", "time", "confirm", "cancel_pick", "cancel_confirm"} or state.get("step", "").startswith("reschedule_")
+    active_choice = state.get("step") in {"date", "professional", "time", "confirm", "cancel_pick", "cancel_confirm"} or state.get("step", "").startswith("reschedule_") or bool(state.get("booking_draft"))
     context_changed = ((old_revision is not None and old_revision != revision)
                        or (old_revision is None and active_choice))
     await redis.set(context_key, revision, ex=STATE_TTL)
@@ -1370,9 +1583,10 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
         if kind != "none" or body.strip().isdigit():
             return await continue_reschedule(tenant, phone, body, state, business, redis, state_key, preview)
     if not _confirm_scoped:
-        compound = await _compound_booking_turn(tenant, phone, body, state, business, catalog, redis, state_key, preview)
-        if compound is not None:
-            return compound
+        if not _price_correction_prefix(body, state):
+            compound = await _compound_booking_turn(tenant, phone, body, state, business, catalog, redis, state_key, preview)
+            if compound is not None:
+                return compound
         commerce = await _commerce_turn(tenant, phone, body, state, business, catalog, redis, state_key, preview)
         if commerce is not None:
             return commerce
@@ -1664,7 +1878,7 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
         await redis.set(state_key, json.dumps({"step": "menu",
             "menu_ids": [str(item["id"]) for item in catalog[:12]],
             "customer_name": display}), ex=STATE_TTL)
-        return {"answer": catalog_menu(business, catalog, greet), "step": "menu"}
+        return {"answer": catalog_menu(business, catalog, greet), "step": "menu", "_service_reply_prompt": True}
     if state.get("step") == "menu" and text_clean.isdigit():
         if denial := capability_denial(business, "appointments"):
             return denial
@@ -1681,7 +1895,7 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
         "customer_name": state.get("customer_name")}), ex=STATE_TTL)
     return {"answer": catalog_menu(business, catalog,
             "A IA está temporariamente indisponível; vou usar o menu. " if degraded else ""),
-            "step": "menu", **({"degraded": True} if degraded else {})}
+            "step": "menu", "_service_reply_prompt": True, **({"degraded": True} if degraded else {})}
 
 
 _STATE_SNAPSHOT_SCRIPT = """

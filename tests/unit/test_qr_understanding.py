@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.qr_understanding import UnderstandingPlan, build_plan, clarification_for
+from app.qr_understanding import UnderstandingPlan, build_plan, clarification_for, unique_service_reply
 
 
 @pytest.fixture
@@ -18,6 +18,40 @@ def facts():
               "reference_date": date(2026, 10, 17),
               "context": {"hours": [{"opens": "08:00", "closes": "20:00"}]}}
     return cut, beard, brow, bruno, breno, kwargs
+
+
+@pytest.mark.parametrize("message,indices", [("Cabelo", (0,)), ("Corte de cabelo.", (0,)),
+    ("Cabelo e barba", (0, 1)), ("Corte de cabelo + Barba!", (0, 1)), ("Cabelo, Barba e Sobrancelha", (0, 1, 2)),
+    ("Cabelo & Barba", (0, 1))])
+def test_menu_service_reply_uses_complete_unique_existing_names_or_aliases(facts, message, indices):
+    ids = facts[:3]; catalog = facts[-1]["catalog"]
+    assert unique_service_reply(message, catalog, context_step="menu") == [ids[index] for index in indices]
+
+
+@pytest.mark.parametrize("message", ["Quanto custa cabelo", "Cabelo?", "Não quero cabelo", "Sem barba",
+    "Cabelo, não, melhor só barba", "Cabelo amanhã", "Cabelo às 14h", "Cabelo 20/10", "Cabelo ou barba",
+    "Cabelo e tatuagem", "Cabelo se der", "Cabelo caso tenha", "Quero comprar cabelo", "Cabelo no carrinho",
+    "Meu nome é Cabelo", "Cabelo e cabelo", "E cabelo", "Cabelo e", "Cabelo sem", "Cabelo + produto"])
+def test_menu_service_reply_never_ignores_uncovered_words_questions_conditions_or_changes(facts, message):
+    assert unique_service_reply(message, facts[-1]["catalog"], context_step="menu") is None
+
+
+@pytest.mark.parametrize("step", ["date", "professional", "time", "confirm", "reschedule_pick", "human", ""])
+def test_service_reply_parser_is_restricted_to_service_menu_context(facts, step):
+    assert unique_service_reply("Cabelo", facts[-1]["catalog"], context_step=step) is None
+
+
+def test_service_reply_does_not_choose_one_of_multiple_existing_cut_aliases(facts):
+    catalog = facts[-1]["catalog"] + [{"id": uuid4(), "name": "Corte Infantil", "price_cents": 2500}]
+    assert unique_service_reply("Cabelo", catalog, context_step="menu") is None
+
+
+def test_service_reply_reuses_owner_supplied_alias_without_new_niche_rule(facts):
+    catalog = facts[-1]["catalog"]
+    catalog[2]["aliases"] = ["Desenho facial"]
+    assert unique_service_reply("Desenho facial", catalog, context_step="menu") == [facts[2]]
+    catalog[1]["aliases"] = ["Desenho facial"]
+    assert unique_service_reply("Desenho facial", catalog, context_step="menu") is None
 
 
 def test_final_whole_utterance_correction_replaces_initial_service_and_hour(facts):

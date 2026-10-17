@@ -57,7 +57,10 @@ def control_intent(text: str) -> str | None:
     if any(s in lower for s in ("remarcar", "trocar meu horario", "mudar meu horario",
                                "adiar meu horario", "reagendar")):
         return "reschedule"
-    if any(s in lower for s in ("meus agendamentos", "tenho agendamento",
+    own_booking_question = re.fullmatch(
+        r"(?:eu\s+)?tenho\s+(?:(?:algum\s+)?agendamentos?(?:\s+confirmados?)?|"
+        r"(?:alguma\s+)?reserva(?:\s+marcada)?|(?:algum\s+)?horario\s+marcado)[?!.,\s]*", lower)
+    if own_booking_question or any(s in lower for s in ("meus agendamentos", "tenho agendamento",
                                "minha reserva", "meu horario marcado",
                                "quando esta meu horario", "historico de agendamentos")):
         return "my_bookings"
