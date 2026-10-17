@@ -4,6 +4,7 @@ This never downgrades or migrates the CI application's existing database. The
 owner URL is accepted only on loopback, and every disposable DB has a random name.
 """
 import hashlib
+import json
 import os
 import re
 from uuid import uuid4
@@ -121,7 +122,14 @@ def test_full_backup_restore_and_restricted_migration_preserves_real_rows(migrat
             after = {row[0]: row[1:] for row in structures[-1]}
             differences = {name: {"before": before.get(name), "restored": after.get(name)}
                            for name in before.keys() | after.keys() if before.get(name) != after.get(name)}
-            assert not differences, differences
+            if differences:
+                fields = ("rls", "force_rls", "columns", "constraints", "indexes", "policies")
+                detail = {name: {field: {"before": left, "restored": right}
+                                  for field, left, right in zip(fields, value["before"], value["restored"])
+                                  if left != right}
+                          for name, value in sorted(differences.items())[:2]}
+                print("SYNTHETIC_SCHEMA_DIFFERENCE=" + json.dumps(detail, sort_keys=True, default=str))
+            assert not differences, "Restored schema differs; see synthetic schema diagnostics"
         raise
     assert requests == ["POST", "GET"] and stored["body"].startswith(b"ORIONDB1")
     assert result["restore_verified"] is True and result["revision"] == ops.TARGET
