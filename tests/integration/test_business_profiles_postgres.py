@@ -23,6 +23,42 @@ from app.tenant_access import TenantAccess, resolve_tenant_access
 pytestmark = pytest.mark.integration
 
 
+@pytest.mark.asyncio
+async def test_verified_member_catalog_access_tracks_role_scope_and_revocation(profiles, monkeypatch):
+    from app import catalog_api, panel_auth
+    a, b, account, factory, migration = profiles
+    monkeypatch.setenv("BUSINESS_PROFILES_ENABLED", "1")
+    monkeypatch.setenv("SUPPORT_API_TOKEN", "synthetic-member-scope-support-" + "x" * 40)
+    monkeypatch.setattr(catalog_api, "get_session_factory", lambda: factory)
+    async def verified_session(_):
+        return {"role": "member", "account_id": str(account)}
+    monkeypatch.setattr(panel_auth, "panel_actor", verified_session)
+    api = FastAPI()
+    api.include_router(catalog_api.router)
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api), base_url="https://test",
+                                     cookies={"__Host-orion_session": "synthetic-verified-session"}) as client:
+            for role in ("owner", "editor", "viewer"):
+                async with migration.begin() as db:
+                    await db.execute(text("""INSERT INTO tenant_memberships(tenant_id,account_id,role,active)
+                        VALUES (:tenant,:account,:role,true) ON CONFLICT (tenant_id,account_id)
+                        DO UPDATE SET role=EXCLUDED.role,active=true"""),
+                        {"tenant": a, "account": account, "role": role})
+                assert (await client.get(f"/api/v1/tenants/{a}/services")).status_code == 200
+                assert (await client.get(f"/api/v1/tenants/{b}/services")).status_code == 403
+                assert (await client.get("/api/v1/tenants")).status_code == 403
+                response = await client.post(f"/api/v1/tenants/{a}/services", json={
+                    "name": "Synthetic membership service", "duration_min": 30, "price_cents": 2500})
+                assert response.status_code == (403 if role == "viewer" else 201), response.text
+            async with migration.begin() as db:
+                await db.execute(text("UPDATE tenant_memberships SET active=false WHERE tenant_id=:tenant AND account_id=:account"),
+                                 {"tenant": a, "account": account})
+            assert (await client.get(f"/api/v1/tenants/{a}/services")).status_code == 403
+    finally:
+        async with migration.begin() as db:
+            await db.execute(text("DELETE FROM services WHERE tenant_id=:tenant"), {"tenant": a})
+
+
 @pytest_asyncio.fixture
 async def profiles():
     runtime_url, migration_url = os.getenv("APP_DATABASE_URL"), os.getenv("MIGRATION_DATABASE_URL")

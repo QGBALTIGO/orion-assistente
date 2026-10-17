@@ -729,6 +729,15 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
 .orion-list-check svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
 .wizard-code-check{display:grid;place-items:center;width:50px;height:50px;margin:0 auto 12px;border-radius:50%;background:var(--soft-accent)}
 .wizard-code-check svg{width:26px;height:26px;stroke:var(--bright);stroke-width:2.5;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.business-steps{display:flex;gap:9px;flex-wrap:wrap;margin:20px 0}.business-steps button[aria-current="step"]{background:var(--selected-bg);border-color:var(--accent2)}
+.business-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.business-grid .wide{grid-column:1/-1}
+.business-fields{border:0;padding:0;margin:0;min-width:0}.business-checks{display:grid;gap:11px;margin:16px 0}.business-checks label{display:flex;align-items:flex-start;gap:10px;margin:0}
+.business-checks input{width:auto;margin-top:4px}.business-muted{color:var(--muted);font-size:.85rem}.business-styles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;margin-top:18px}
+.business-style{border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--panel-low)}.business-style.current{border-color:var(--accent2)}.business-style p{white-space:pre-wrap;font-size:.86rem;margin-bottom:9px}
+.business-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:20px}.business-repeat{display:grid;gap:10px;margin:12px 0}.business-repeat-row{border:1px solid var(--border);padding:13px;border-radius:10px;display:grid;gap:8px}
+.business-version-review{white-space:pre-wrap;max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:15px;margin-top:12px}
+.commerce-summary{white-space:pre-wrap;line-height:1.7;overflow-wrap:anywhere}.commerce-items{display:grid;gap:12px;margin:16px 0}.commerce-item{border:1px solid var(--border);border-radius:10px;padding:14px;display:grid;gap:9px}.commerce-item .row{gap:10px;align-items:center}.commerce-item input{max-width:130px}.commerce-warning{border-left:3px solid var(--accent2);padding-left:12px;line-height:1.65}.commerce-accept{display:flex;gap:10px;align-items:flex-start;margin:18px 0}.commerce-accept input{width:auto;margin-top:5px}.commerce-accept span{line-height:1.6}.commerce-lookup{border-top:1px solid var(--border);padding-top:20px;margin-top:24px}
+@media(max-width:700px){.business-grid,.business-styles{grid-template-columns:1fr}.business-grid .wide{grid-column:auto}.business-steps button{flex:1 1 120px}.business-actions .btn{flex:1 1 170px}}
 </style>
 </head>
 <body>
@@ -841,8 +850,10 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
       <button class="nav-item hidden" data-page="member" data-member-only> <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M9 21v-7h6v7"/></svg></span>Início</button>
       <button class="nav-item" data-page="dispositivo" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg></span>Conectar dispositivo</button>
       <button class="nav-item" data-page="conversas" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.5c-1.4 0-2.7-.9-3.9l-5.1 1.9 1.9-5.1A8.5 8.5 0 1 1 21 11.5Z"/><path d="M8 10h8m-8 4h5"/></svg></span>Conversas</button>
-      <button class="nav-item" data-page="ai" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="7" width="18" height="14" rx="3"/><path d="M12 3v4m-5 6h.01M17 13h.01M8 17h8"/></svg></span>Assistente IA</button>
-      <button class="nav-item" data-page="cadastros" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Cadastros</button>
+      <button class="nav-item hidden" id="aiNav" data-page="ai"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="7" width="18" height="14" rx="3"/><path d="M12 3v4m-5 6h.01M17 13h.01M8 17h8"/></svg></span>Testar atendimento</button>
+      <button id="catalogNav" class="nav-item hidden" data-page="cadastros"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Cadastros</button>
+      <button class="nav-item hidden" id="businessNav" data-page="empresa"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 21h18M5 21V4h14v17M9 8h2m2 0h2m-6 4h2m2 0h2m-6 4h2m2 0h2"/></svg></span>Configurar atendimento</button>
+      <button class="nav-item hidden" id="commerceNav" data-page="catalogo"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 7 9-4 9 4-9 4-9-4Zm0 0v10l9 4 9-4V7M12 11v10"/></svg></span>Catálogo e pedidos</button>
     </nav>
     <div class="sidebar-bottom">
       <div class="avatar"><div class="avatar-dot" id="sidebarAvatarInitial">A</div><div><strong id="sidebarAccountName">Administrador</strong><br><small id="sidebarAccountType">Painel Orion</small></div></div>
@@ -1127,45 +1138,177 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
       </div>
       <p class="note">Somente conversas privadas de texto. Arquivos e histórico anterior não são importados. Este modo é experimental e não substitui o WhatsApp oficial.</p>
     </section>
+    <section id="page-empresa" class="page hidden" aria-labelledby="businessHeading">
+      <div class="header"><div><div class="eyebrow">Orion / Sua empresa</div><h1 id="businessHeading">Configure seu atendimento</h1><p class="subhead">Apresente sua empresa, escolha a forma de conversar e revise o que o assistente poderá fazer.</p></div></div>
+      <div class="card"><label for="businessTenant">Empresa ou unidade</label><select id="businessTenant"><option value="">Escolha um estabelecimento</option></select>
+        <div class="business-actions"><button id="businessReload" class="btn secondary" type="button">Atualizar configuração</button><span id="businessStatus" class="pill">Escolha uma empresa</span></div>
+        <p id="businessAccess" class="business-muted"></p><p id="businessFeedback" class="feedback" role="status" aria-live="polite"></p></div>
+      <nav class="business-steps" aria-label="Etapas da configuração"><button id="businessStep1" class="btn secondary" type="button" aria-current="step">1. Empresa</button><button id="businessStep2" class="btn secondary" type="button">2. Estilo</button><button id="businessStep3" class="btn secondary" type="button">3. Atividades e revisão</button></nav>
+      <form id="businessForm"><fieldset id="businessFields" class="business-fields" disabled>
+        <div id="businessPane1" class="card"><h2>Apresente sua empresa</h2><p class="business-muted">Preencha informações verdadeiras. Nenhum preço, política ou promoção será criado automaticamente.</p>
+          <div class="business-grid">
+            <div><label for="bizName">Nome da empresa</label><input id="bizName" maxlength="160"></div><div><label for="bizUnit">Unidade (opcional)</label><input id="bizUnit" maxlength="120"></div>
+            <div><label for="bizCategories">Áreas de atuação</label><input id="bizCategories" maxlength="809" placeholder="Separe por vírgula: barbearia, estética"></div><div><label for="bizAssistant">Nome da assistente (opcional)</label><input id="bizAssistant" maxlength="80"></div>
+            <div class="wide"><label for="bizDescription">Como você descreve o negócio?</label><textarea id="bizDescription" maxlength="1000"></textarea></div>
+            <div class="wide"><label for="bizAddress">Localização ou endereço</label><input id="bizAddress" maxlength="500"></div>
+            <div><label for="bizTimezone">Fuso horário da empresa</label><input id="bizTimezone" maxlength="64" placeholder="America/Campo_Grande"></div><div><label for="bizContact">Telefone de contato com DDI</label><input id="bizContact" type="tel" maxlength="16" placeholder="+5567999999999"></div>
+          </div>
+          <details style="margin-top:20px"><summary>Horários e informações para responder dúvidas</summary><p class="business-muted">Estes horários são informativos. A agenda continua seguindo o expediente dos profissionais; este formulário não muda vagas ou reservas.</p>
+            <h3>Horários da empresa</h3><div id="businessHours" class="business-repeat"></div><button id="businessAddHours" class="btn secondary" type="button">Adicionar período</button>
+            <h3>Perguntas frequentes</h3><div id="businessFaqs" class="business-repeat"></div><button id="businessAddFaq" class="btn secondary" type="button">Adicionar pergunta</button>
+            <h3>Políticas da empresa</h3><div id="businessPolicies" class="business-repeat"></div><button id="businessAddPolicy" class="btn secondary" type="button">Adicionar política</button>
+            <h3>Diferenciais verificáveis</h3><div id="businessDifferentiators" class="business-repeat"></div><button id="businessAddDifferentiator" class="btn secondary" type="button">Adicionar diferencial</button>
+          </details>
+          <div class="business-actions"><button id="businessNext1" type="button" class="btn">Continuar para estilo</button></div>
+        </div>
+        <div id="businessPane2" class="card hidden"><h2>Como sua assistente conversa?</h2><p class="business-muted">O estilo muda a comunicação. Preços, permissões e regras continuam vindo dos dados da empresa.</p>
+          <div class="business-grid">
+            <div><label for="bizStyle">Estilo inicial</label><select id="bizStyle"><option value="warm">Acolhedor e próximo</option><option value="professional">Elegante e profissional</option><option value="relaxed">Descontraído</option><option value="direct">Direto e cordial</option></select></div>
+            <div><label for="bizEmoji">Emojis</label><select id="bizEmoji"><option value="none">Sem emojis</option><option value="light">Uso discreto</option></select></div>
+            <div><label for="bizLength">Tamanho preferido</label><select id="bizLength"><option value="short">Mais curto</option><option value="balanced">Equilibrado</option><option value="detailed">Mais detalhado</option></select></div>
+            <div><label for="bizFormality">Formalidade</label><select id="bizFormality"><option value="neutral">Natural e respeitosa</option><option value="formal">Mais formal</option></select></div>
+            <div><label for="bizCommercial">Sugestões comerciais</label><select id="bizCommercial"><option value="none">Sem sugestões de adicionais</option><option value="contextual">Uma sugestão pertinente, quando autorizada</option></select></div>
+            <div><label for="bizAvoid">Expressões a evitar (uma por linha)</label><textarea id="bizAvoid" maxlength="1619"></textarea></div>
+          </div>
+          <p class="business-muted">Os quatro estilos usam os mesmos fatos. Compare exemplos do catálogo real no botão de teste abaixo.</p><div id="businessStyleExamples" class="business-styles"></div>
+          <div class="business-actions"><button id="businessBack2" type="button" class="btn secondary">Voltar</button><button id="businessNext2" type="button" class="btn">Revisar atividades</button></div>
+        </div>
+        <div id="businessPane3" class="card hidden"><h2>O que o atendimento pode fazer?</h2><p class="business-muted">Habilite apenas atividades que fazem sentido para esta empresa.</p>
+          <div class="business-checks">
+            <label><input id="bizCapCatalog" type="checkbox"> Responder sobre o catálogo cadastrado</label><label><input id="bizCapAppointments" type="checkbox"> Receber solicitações de agendamento</label><label><input id="bizCapReschedule" type="checkbox"> Ajudar com remarcações</label><label><input id="bizCapHuman" type="checkbox"> Pausar o bot para atendimento humano</label><label><input id="bizCapProductOrders" type="checkbox"> Receber e confirmar pedidos de produtos com preço e estoque verificados (sem pagamentos)</label>
+            <p class="business-muted">Produtos, estoque e pedidos são configurados separadamente em Catálogo e pedidos. A ativação do atendimento comercial automático é informada nessa página.</p><label><input type="checkbox" disabled> Processar pagamentos — indisponível nesta etapa</label><label><input type="checkbox" disabled> Responder com voz — indisponível nesta etapa</label>
+          </div>
+          <h3>Objetivos do atendimento</h3><div class="business-checks"><label><input id="bizObjQuestions" type="checkbox"> Responder dúvidas</label><label><input id="bizObjChoose" type="checkbox"> Ajudar na escolha</label><label><input id="bizObjComplements" type="checkbox"> Sugerir complementos previamente autorizados</label><label><input id="bizObjBooking" type="checkbox"> Receber pedidos de agendamento</label><label><input id="bizObjHuman" type="checkbox"> Encaminhar assuntos à equipe</label></div>
+          <p class="business-muted">Descontos, mudanças de preço, reembolsos e exceções de cancelamento continuam exigindo atendimento humano. Pagamento só pode ser confirmado por uma integração verificada.</p>
+          <div class="business-actions"><button id="businessBack3" type="button" class="btn secondary">Voltar para estilo</button></div>
+        </div>
+      </fieldset></form>
+      <div class="card"><h2>Salvar, revisar e publicar</h2><p id="businessVersionState" class="business-muted">Nenhuma configuração carregada.</p><p id="businessWarnings" class="business-muted"></p>
+        <div class="business-actions"><button id="businessSave" class="btn" type="button" disabled>Salvar rascunho</button><button id="businessPublish" class="btn secondary" type="button" disabled>Publicar rascunho revisado</button><button id="businessTest" class="btn secondary" type="button" disabled>Testar atendimento atual</button><button id="businessTestDraft" class="btn secondary" type="button" disabled>Testar rascunho salvo</button><button id="businessExamples" class="btn secondary" type="button" disabled>Comparar 4 estilos com o catálogo</button></div>
+        <p id="businessRuntime" class="business-muted">A integração do perfil com o atendimento ainda não foi consultada.</p>
+        <p class="business-muted">Catálogo, expediente dos profissionais e reservas não são alterados por este formulário. O teste de rascunho é isolado e não publica alterações.</p>
+        <label for="businessVersion">Versões anteriores</label><select id="businessVersion"><option value="">Nenhuma versão carregada</option></select>
+        <div class="business-actions"><button id="businessReviewVersion" class="btn secondary" type="button" disabled>Revisar versão</button><button id="businessRollback" class="btn ghost" type="button" disabled>Restaurar versão revisada</button></div>
+        <div id="businessVersionReview" class="business-version-review hidden" aria-live="polite"></div>
+      </div>
+    </section>
+    <section id="page-catalogo" class="page hidden" aria-labelledby="commerceHeading">
+      <div class="header"><div><div class="eyebrow">Orion / Produtos e pedidos</div><h1 id="commerceHeading">Catálogo e pedidos</h1><p class="subhead">Cadastre produtos e consulte propostas calculadas pelo servidor. Criar ou confirmar um pedido não confirma pagamento.</p></div></div>
+      <div class="card"><label for="comTenant">Empresa do catálogo</label><select id="comTenant"><option value="">Escolha uma empresa</option></select>
+        <div class="business-actions"><button id="comReload" class="btn secondary" type="button">Atualizar catálogo</button><span id="comStatus" class="pill">Escolha uma empresa</span></div>
+        <p id="comAccess" class="business-muted"></p><p id="comAssistant" class="business-muted"></p><p id="comFeedback" class="feedback" role="status" aria-live="polite"></p>
+        <p id="comUnavailable" class="commerce-warning">O catálogo comercial precisa estar habilitado pelo servidor para esta área funcionar.</p>
+      </div>
+      <div id="comBody" class="hidden">
+        <nav class="business-steps" aria-label="Áreas do catálogo"><button id="comCatalogTab" class="btn secondary" type="button" aria-current="step">1. Produtos e estoque</button><button id="comOrdersTab" class="btn secondary" type="button">2. Orçamentos e pedidos</button></nav>
+        <div id="comCatalogPane">
+          <div class="card"><h2>Produto</h2><p class="business-muted">Use apenas informações oficiais. O cadastro começa inativo; marque Ativo quando estiver revisado.</p>
+            <label for="comProduct">Produto cadastrado</label><select id="comProduct"><option value="">Novo produto</option></select><button id="comProductNew" class="btn secondary" type="button">Preparar novo produto</button>
+            <form id="comProductForm"><fieldset id="comProductFields" class="business-fields" disabled><label for="comProductName">Nome do produto</label><input id="comProductName" required maxlength="160">
+              <label for="comDescription">Descrição oficial</label><textarea id="comDescription" maxlength="2000"></textarea><label for="comSynonyms">Outros nomes usados pelos clientes (um por linha)</label><textarea id="comSynonyms" maxlength="1619"></textarea>
+              <label for="comBenefits">Benefícios oficiais (um por linha)</label><textarea id="comBenefits" maxlength="6019"></textarea>
+              <h3>Perguntas frequentes do produto</h3><div id="comFaqRows" class="business-repeat"></div><button id="comFaqAdd" class="btn secondary" type="button">Adicionar pergunta do produto</button>
+              <div class="business-checks"><label><input id="comProductActive" type="checkbox"> Produto ativo no catálogo</label></div><button id="comProductSave" class="btn" type="submit">Salvar produto</button>
+            </fieldset></form><p id="comProductState" class="business-muted"></p>
+          </div>
+          <div class="card"><h2>Variantes e preços</h2><p class="business-muted">Uma variante identifica tamanho, modelo, cor ou outra opção. Preço ausente permanece sob consulta; nunca vira zero automaticamente.</p>
+            <label for="comVariant">Variante do produto selecionado</label><select id="comVariant"><option value="">Nova variante</option></select><button id="comVariantNew" class="btn secondary" type="button">Preparar nova variante</button>
+            <form id="comVariantForm"><fieldset id="comVariantFields" class="business-fields" disabled><div class="business-grid">
+              <div><label for="comVariantName">Nome da variante</label><input id="comVariantName" required maxlength="120"></div><div><label for="comSku">SKU ou código interno (opcional)</label><input id="comSku" maxlength="80"></div>
+              <div><label for="comPriceKind">Como o preço é informado?</label><select id="comPriceKind"><option value="on_request">Sob consulta</option><option value="fixed">Preço fixo</option><option value="from">A partir de</option><option value="custom">Personalizado após análise</option></select></div>
+              <div><label for="comPrice">Valor em reais</label><input id="comPrice" inputmode="decimal" maxlength="12" placeholder="Ex.: 29,90" disabled><small>Obrigatório somente para preço fixo ou a partir de.</small></div>
+            </div><h3>Atributos da variante</h3><div id="comAttributeRows" class="business-repeat"></div><button id="comAttributeAdd" class="btn secondary" type="button">Adicionar atributo</button>
+            <div class="business-checks"><label><input id="comVariantActive" type="checkbox"> Variante ativa no catálogo</label></div><button id="comVariantSave" class="btn" type="submit">Salvar variante</button></fieldset></form><p id="comVariantState" class="business-muted"></p>
+          </div>
+          <div class="card"><h2>Observação de estoque</h2><p id="comStockCurrent" class="business-muted">Selecione uma variante salva para consultar o estoque.</p>
+            <form id="comStockForm"><fieldset id="comStockFields" class="business-fields" disabled><label for="comStockMode">O estoque foi conferido?</label><select id="comStockMode"><option value="unknown">Desconhecido — consultar disponibilidade</option><option value="tracked">Contagem registrada</option></select>
+              <div class="business-grid"><div><label for="comStockQuantity">Quantidade contada</label><input id="comStockQuantity" type="number" min="0" max="10000000" step="1"></div><div><label for="comStockSource">Origem da contagem</label><input id="comStockSource" maxlength="160" placeholder="Ex.: conferência física pela equipe"></div>
+              <div><label for="comStockObserved">Quando foi conferido?</label><input id="comStockObserved" type="datetime-local"></div><div><label for="comStockUntil">Válido até</label><input id="comStockUntil" type="datetime-local"></div></div>
+              <p id="comStockTimezone" class="business-muted"></p><p class="business-muted">A validade deve ser posterior à contagem e de até 24 horas. Estoque desconhecido ou vencido impede confirmação automática.</p><button id="comStockSave" class="btn" type="submit">Registrar observação de estoque</button>
+            </fieldset></form>
+          </div>
+          <div class="card"><h2>Complementos aprovados</h2><p class="business-muted">Relacione o produto selecionado a outro produto real desta empresa, com uma justificativa oficial. Isto não cria desconto, disponibilidade ou oferta automática.</p>
+            <p id="comComplementSource" class="business-muted">Selecione um produto salvo.</p><button id="comComplementRead" class="btn secondary" type="button" disabled>Consultar complementos aprovados</button><div id="comComplementList" class="commerce-summary" aria-live="polite"></div>
+            <form id="comComplementForm"><fieldset id="comComplementFields" class="business-fields" disabled>
+              <label for="comComplementTarget">Produto complementar</label><select id="comComplementTarget"><option value="">Escolha outro produto</option></select>
+              <label for="comComplementReason">Justificativa oficial desta relação</label><textarea id="comComplementReason" maxlength="300" required></textarea>
+              <label class="commerce-accept"><input id="comComplementApproved" type="checkbox"><span>Aprovo expressamente esta relação para sugestões pertinentes, conforme o estilo e o contexto do atendimento.</span></label>
+              <button class="btn" type="submit">Salvar aprovação desta relação</button>
+            </fieldset></form><p class="business-muted">A lista mostra somente relações aprovadas entre produtos ativos com variantes ativas. Desmarcar a aprovação e salvar revoga a relação. Sugestões automáticas também dependem do modo comercial contextual e da conexão do atendimento.</p>
+          </div>
+        </div>
+        <div id="comOrdersPane" class="hidden">
+          <div class="card"><h2>Montar uma consulta ou proposta</h2><p class="business-muted">A consulta não grava pedidos. O orçamento salvo registra os itens e sua validade; a confirmação vem em uma etapa separada.</p>
+            <form id="comPlanForm"><fieldset id="comPlanFields" class="business-fields" disabled><div class="business-grid"><div><label for="comBasketVariant">Produto e variante ativos</label><select id="comBasketVariant"><option value="">Escolha um item</option></select></div><div><label for="comBasketQuantity">Quantidade para adicionar</label><input id="comBasketQuantity" type="number" min="1" max="1000" step="1" value="1"></div></div>
+              <button id="comBasketAdd" class="btn secondary" type="button">Adicionar item à proposta</button><div id="comBasket" class="commerce-items"></div>
+              <div class="business-grid"><div><label for="comCustomer">Nome do cliente (opcional para consulta)</label><input id="comCustomer" maxlength="120"></div><div><label for="comContact">Telefone do cliente com DDI</label><input id="comContact" type="tel" maxlength="16" placeholder="+5567999999999"></div><div><label for="comValidity">Validade do orçamento, em minutos</label><input id="comValidity" type="number" min="1" max="60" value="15"></div></div>
+              <p class="business-muted">O telefone é necessário para confirmar um pedido. Este formulário não envia mensagens ao cliente.</p><div class="business-actions"><button id="comEstimate" class="btn secondary" type="submit">Consultar valores e disponibilidade</button><button id="comQuoteCreate" class="btn" type="button">Salvar orçamento para revisão</button></div>
+            </fieldset></form>
+          </div>
+          <div class="card"><h2>Resumo retornado pelo servidor</h2><div id="comQuoteSummary" class="commerce-summary" aria-live="polite">Nenhuma consulta calculada.</div><p id="comQuoteValidity" class="business-muted"></p>
+            <button id="comOrderCreate" class="btn secondary" type="button" disabled>Criar pedido em rascunho deste orçamento</button>
+            <div id="comOrderSummary" class="commerce-summary" style="margin-top:18px" aria-live="polite">Nenhum pedido selecionado.</div>
+            <label class="commerce-accept"><input id="comAccept" type="checkbox" disabled><span>Revisei este resumo com o cliente e confirmo este pedido. O estoque será reservado; o pagamento continuará não verificado.</span></label>
+            <button id="comOrderConfirm" class="btn" type="button" disabled>Confirmar este pedido e reservar estoque</button><p class="commerce-warning">Pagamento não verificado. Este painel não cobra, não emite checkout e não confirma recebimentos.</p>
+            <div class="commerce-lookup"><h3>Consultar um registro existente</h3><p class="business-muted">Registros consultados não recuperam o código de confirmação. Sem esse código nesta sessão, prepare um novo orçamento antes de confirmar.</p>
+              <label for="comLookupQuote">Identificador do orçamento</label><input id="comLookupQuote" maxlength="36"><div class="business-actions"><button id="comReadQuote" class="btn secondary" type="button" disabled>Consultar orçamento salvo</button><button id="comReadOrderByQuote" class="btn secondary" type="button" disabled>Consultar pedido deste orçamento</button></div>
+              <label for="comLookupOrder">Identificador do pedido</label><input id="comLookupOrder" maxlength="36"><button id="comReadOrder" class="btn secondary" type="button" disabled>Consultar estado do pedido</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
     <section id="page-ai" class="page hidden">
       <div class="header"><div><div class="eyebrow">Orion / Automação inteligente</div>
-        <h1>Assistente com Groq</h1><p class="subhead">Teste a interpretação, os serviços e os horários reais do estabelecimento. Esta simulação não envia mensagens nem cria reservas.</p></div>
+        <h1>Teste seu atendimento</h1><p class="subhead">Converse por texto ou envie um arquivo de áudio. Valores e horários vêm do estabelecimento selecionado. Esta simulação não envia mensagens nem cria reservas.</p></div>
       </div>
       <div class="card">
         <div class="row" style="align-items:end;gap:14px;flex-wrap:wrap">
           <label style="flex:1;min-width:220px" for="aiTenant">Estabelecimento
             <select id="aiTenant"><option value="">Escolha o estabelecimento</option></select></label>
           <button type="button" id="aiReset" class="btn secondary">Nova conversa</button>
+          <button type="button" id="aiStatusRefresh" class="btn secondary">Atualizar disponibilidade</button>
           <span id="aiStatus" class="pill">Aguardando teste</span>
         </div>
+        <div class="business-grid" style="margin-top:16px">
+          <div><label for="aiProfile">Versão usada no teste</label><select id="aiProfile"><option value="">Atendimento atual</option></select></div>
+          <div><label for="aiStyle">Estilo para este teste de texto</label><select id="aiStyle"><option value="">Usar o estilo da versão</option><option value="warm">Acolhedor e próximo</option><option value="professional">Elegante e profissional</option><option value="relaxed">Descontraído</option><option value="direct">Direto e cordial</option></select></div>
+        </div>
+        <p id="aiMode" class="business-muted" role="status">Atendimento atual. Nenhum rascunho selecionado.</p>
         <p class="note" style="margin-top:12px">O modelo identifica intenções; valores e disponibilidade são consultados no Orion. A confirmação da simulação nunca grava no calendário.</p>
         <div id="aiMessages" class="bubbles" aria-live="polite" style="min-height:250px;max-height:480px;overflow-y:auto;margin-top:12px"></div>
         <form id="aiForm" style="margin-top:18px">
           <label for="aiInput">Mensagem do cliente</label>
           <textarea id="aiInput" rows="2" minlength="1" maxlength="1500" required placeholder="Ex.: Quero cortar o cabelo e fazer a barba amanhã"></textarea>
-          <div class="row"><button id="aiSend" class="btn" type="submit">Enviar para o simulador</button><small>Somente operador autorizado · dados de teste</small></div>
+          <div class="row"><button id="aiSend" class="btn" type="submit">Enviar para o simulador</button><small>Conversa de teste isolada desta empresa</small></div>
+        </form>
+        <form id="aiAudioForm" style="margin-top:20px">
+          <label for="aiAudioFile">Testar com arquivo de áudio</label><input id="aiAudioFile" type="file" accept="audio/ogg,audio/webm,audio/wav,audio/mpeg,audio/mp4" aria-describedby="aiAudioNote">
+          <p id="aiAudioNote" class="business-muted">Até 2 MB e 120 segundos, nos formatos OGG, WebM, WAV, MP3 ou M4A. O arquivo é enviado para transcrição; este painel não guarda a mídia. Áudio usa o estilo da versão selecionada, sem gerar voz.</p>
+          <p id="aiAudioAvailability" class="business-muted" role="status">Consulte a disponibilidade do teste antes de enviar um arquivo.</p>
+          <button id="aiAudioSend" class="btn secondary" type="submit">Transcrever e testar áudio</button>
         </form>
         <p id="aiDiagnostics" class="feedback" role="status" aria-live="polite"></p>
       </div>
     </section>
     <section id="page-cadastros" class="page hidden">
-      <div class="header"><div><div class="eyebrow">Orion / Configurações</div><h1>Gerenciar barbearias</h1>
+      <div class="header"><div><div class="eyebrow">Orion / Configurações</div><h1>Cadastros da empresa</h1>
         <p class="subhead">Serviços, profissionais, agenda e permissões de acesso.</p></div></div>
       <div class="columns">
         <div>
           <div class="card">
-            <h2>Selecionar barbearia</h2>
+            <h2>Selecionar empresa</h2>
             <label for="tenant">Estabelecimento</label>
             <select id="tenant"><option value="">Carregando...</option></select>
             <button class="btn secondary" id="loadTenants">Atualizar estabelecimentos</button>
             <p id="notice" class="feedback" role="status" aria-live="polite"></p>
           </div>
-          <div class="card"><h2>Nova barbearia</h2>
+          <div class="card" data-admin-only><h2>Nova empresa</h2>
             <form id="tenantForm">
               <label for="newName">Nome</label><input id="newName" name="name" required maxlength="160">
               <label for="newSlug">Identificador</label><input id="newSlug" name="slug" required pattern="[a-z0-9-]+">
               <label for="newTz">Fuso horário</label><input id="newTz" name="timezone" value="America/Campo_Grande" required>
-              <button class="btn" type="submit">Cadastrar barbearia</button>
+              <button class="btn" type="submit">Cadastrar empresa</button>
             </form>
           </div>
         </div>
@@ -1173,7 +1316,7 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
           <h2>Equipe e serviços</h2>
           <label for="resource">Categoria</label>
           <select id="resource"></select>
-          <form id="recordForm" class="grid-form" style="margin-top:18px"></form>
+          <p id="catalogAccess" class="business-muted"></p><form id="recordForm" style="margin-top:18px"><fieldset id="recordFields" class="business-fields grid-form" disabled></fieldset></form>
           <div class="row" style="margin-top:15px;justify-content:space-between"><h3>Registros</h3>
             <button id="refresh" class="btn ghost">Atualizar lista</button></div>
           <div id="records" class="table-wrap"></div>
@@ -1251,13 +1394,14 @@ for(const [key,val] of Object.entries(descriptions))$("resource").add(new Option
 function errorMessage(data,code){return typeof data?.detail==="string"?data.detail:(typeof data?.error==="string"?data.error:
   "O servidor retornou HTTP "+code+".")}
 async function api(url,method="GET",data){
+ const requestAuthEpoch=authEpoch,requestCsrf=csrf;
  const headers={"Accept":"application/json"};
  if(method!=="GET"){headers["Content-Type"]="application/json";headers["X-Orion-CSRF"]=csrf;}
  const response=await fetch(url,{method,headers,body:data===undefined?undefined:JSON.stringify(data),credentials:"same-origin",cache:"no-store"});
  if(!response.ok){
    const json=await response.json().catch(()=>({}));
-   if(response.status===401&&url!=="/auth/login"&&url!=="/auth/me")showLogin();
-   throw Error(errorMessage(json,response.status));
+   if(response.status===401&&requestAuthEpoch===authEpoch&&requestCsrf===csrf&&url!=="/auth/login"&&url!=="/auth/me")showLogin();
+   const error=Error(errorMessage(json,response.status));error.status=response.status;throw error;
  }
  return response.json();
 }
@@ -1280,7 +1424,13 @@ function authScreenShow(screen){
  messageAuth("");
 }
 function showLogin(){
+ ++authEpoch;
  csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);
+ resetAiConversation("");
+ clearAiProfileState();$("aiTenant").replaceChildren(new Option("Escolha o estabelecimento",""));
+ resetBusinessState();businessRows=[];$("businessTenant").replaceChildren(new Option("Escolha um estabelecimento",""));$("businessNav").classList.add("hidden");$("aiNav").classList.add("hidden");aiPreferredTenant="";aiPreferredVersion="";
+ resetCommerceState();$("comTenant").replaceChildren(new Option("Escolha uma empresa",""));$("commerceNav").classList.add("hidden");
+ resetCatalogState();$("catalogNav").classList.add("hidden");
  $("appView").classList.add("hidden");
  $("loginView").classList.remove("hidden");
  authScreenShow("login");
@@ -1298,6 +1448,7 @@ function showApp(role="support",name="",email=""){
  $("sidebarAccountType").textContent=isAdmin?"Painel Orion":"Minha conta";
  $("sidebarAvatarInitial").textContent=displayName.trim().charAt(0).toLocaleUpperCase("pt-BR")||"O";
  $("loginView").classList.add("hidden");$("appView").classList.remove("hidden");
+ void loadBusinesses();
  if(!isAdmin){
    clearInterval(statusTimer);statusTimer=null;
    clearInterval(chatTimer);chatTimer=null;
@@ -1310,9 +1461,9 @@ function showApp(role="support",name="",email=""){
  statusTimer&&clearInterval(statusTimer);statusTimer=setInterval(updateStatus,4500);
  wizardClocks&&clearInterval(wizardClocks);
  wizardClocks=setInterval(updateWizardClocks,1000);
- updateStatus();loadTenants();
+ updateStatus();
  const desired=new URLSearchParams(location.search).get("aba");
- openPage(["conversas","cadastros","ai"].includes(desired)?desired:"dispositivo");
+ openPage(["conversas","cadastros","ai","empresa","catalogo"].includes(desired)?desired:"dispositivo");
 }
 async function publicAuth(path,payload){
  const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},
@@ -1421,8 +1572,10 @@ $("resetForm").addEventListener("submit",async event=>{
 })();
 void authFeatures();
 function openPage(target){
- if(loginRole!=="support"&&loginRole!=="admin")target="member";
- else if(target==="member")target="dispositivo";
+ if(target!=="empresa"&&target!=="ai"&&target!=="catalogo"&&target!=="cadastros"){
+  if(loginRole!=="support"&&loginRole!=="admin")target="member";
+  else if(target==="member")target="dispositivo";
+ }
  page=target;
  document.querySelectorAll(".page").forEach(x=>x.classList.toggle("hidden",x.id!=="page-"+target));
  document.querySelectorAll("[data-page]").forEach(x=>x.classList.toggle("selected",x.dataset.page===target));
@@ -1430,6 +1583,9 @@ function openPage(target){
  else{clearInterval(chatTimer);chatTimer=null;}
  if(target==="dispositivo"){renderGuide();updateStatus();}
  if(target==="ai")void aiLoadTenants();
+ if(target==="empresa")void loadBusinesses();
+ if(target==="catalogo")void loadCommerceTenants();
+ if(target==="cadastros")void loadTenants();
  history.replaceState({}, "", "/panel?aba="+encodeURIComponent(target));
 }
 document.querySelectorAll("[data-page]").forEach(x=>x.addEventListener("click",()=>openPage(x.dataset.page)));
@@ -1968,7 +2124,7 @@ async function refreshMessages(){
   for(const item of data.items){
    const bubble=document.createElement("div");bubble.className="bubble "+(item.direction==="out"?"out":"in");
    const text=document.createElement("div"),time=document.createElement("time");
-   text.textContent=item.body;
+   appendWhatsAppText(text,item.body);
    time.textContent=new Date(item.at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})+(item.direction==="out"?" · "+({pending:"aguardando",server_accepted:"servidor aceitou",delivered:"entregue",read:"lida",played:"reproduzida",failed:"falhou"}[item.delivery]||"não confirmada"):"");
    bubble.append(text,time);area.append(bubble);
   }
@@ -2021,21 +2177,33 @@ $("sendForm").addEventListener("submit",async ev=>{
  }catch(ex){$("chatNotice").textContent=ex.message}
  finally{$("sendButton").disabled=false}
 });
+let catalogRows=[],catalogSequence=0,catalogReadSequence=0,catalogWriteSequence=0,catalogLoading=false,catalogWriting=false,catalogUncertain=false;
+function catalogCanWrite(){const row=catalogRows.find(row=>row.id===$("tenant").value);return !!row&&(["support","admin"].includes(loginRole)||row.role==="owner"||row.role==="editor"&&$("resource").value!=="authorized_staff")}
+function updateCatalogControls(){
+ $("recordFields").disabled=catalogLoading||catalogWriting||catalogUncertain||!catalogCanWrite();$("tenant").disabled=catalogWriting||catalogLoading;$("resource").disabled=catalogWriting||catalogLoading;$("loadTenants").disabled=catalogWriting;$("refresh").disabled=catalogWriting||catalogLoading;
+ const role=catalogRows.find(row=>row.id===$("tenant").value)?.role;$("catalogAccess").textContent=!$("tenant").value?"Selecione uma empresa autorizada.":catalogCanWrite()?"Você pode consultar e cadastrar registros nesta empresa.":role==="viewer"?"Seu acesso nesta empresa é somente leitura.":role==="editor"&&$("resource").value==="authorized_staff"?"Acessos da equipe podem ser consultados. Somente o proprietário pode alterá-los.":"A edição não está autorizada para este acesso.";
+}
+function resetCatalogState(){
+ ++catalogSequence;++catalogReadSequence;++catalogWriteSequence;catalogRows=[];catalogLoading=false;catalogWriting=false;catalogUncertain=false;
+ $("tenant").replaceChildren(new Option("Escolha uma empresa",""));$("records").replaceChildren();$("notice").textContent="";renderForm();updateCatalogControls();
+}
 async function loadTenants(){
+ if(catalogWriting)return;
+ const sequence=++catalogSequence,epoch=authEpoch,role=loginRole,selected=$("tenant").value;
+ catalogLoading=true;++catalogReadSequence;$("records").replaceChildren();updateCatalogControls();
+ const current=()=>sequence===catalogSequence&&epoch===authEpoch&&role===loginRole;
  try{
-  const data=await api("/api/v1/tenants");
-  const selected=$("tenant").value;
-  $("tenant").replaceChildren(new Option("Selecione uma barbearia",""));
-  for(const row of data)$("tenant").add(new Option(row.name+" · "+row.slug,row.id));
-  if([...$("tenant").options].some(x=>x.value===selected))$("tenant").value=selected;
-  else if(data.length)$("tenant").value=data[0].id;
-  $("notice").textContent=data.length+" estabelecimento(s) disponíveis.";
-  await loadRecords();
- }catch(ex){$("notice").textContent=ex.message}
+  const data=await api(["support","admin"].includes(role)?"/api/v1/tenants":"/api/v1/account/businesses");if(!current())return;
+  catalogRows=data;$("tenant").replaceChildren(new Option("Escolha uma empresa",""));
+  for(const row of data)$("tenant").add(new Option(row.name+(row.slug?" · "+row.slug:""),row.id));
+  $("tenant").value=data.some(row=>row.id===selected)?selected:(data[0]?.id||"");catalogLoading=false;catalogUncertain=false;renderForm();updateCatalogControls();
+  $("notice").textContent=data.length+" empresa(s) autorizada(s).";await loadRecords();
+ }catch(ex){if(current()){catalogRows=[];$("tenant").replaceChildren(new Option("Escolha uma empresa",""));$("notice").textContent=ex.message}}
+ finally{if(current()){catalogLoading=false;updateCatalogControls()}}
 }
 function renderForm(){
- const form=$("recordForm");form.replaceChildren();
- for(const [name,title,type] of fields[$("resource").value]){
+ const form=$("recordFields");form.replaceChildren();
+ for(const [name,title,type] of fields[$("resource").value]||[]){
   const label=document.createElement("label");label.textContent=title;
   const input=document.createElement("input");input.name=name;input.type=type;
   if(type==="checkbox")input.checked=true;
@@ -2043,11 +2211,14 @@ function renderForm(){
   label.append(input);form.append(label);
  }
  const b=document.createElement("button");b.className="btn";b.textContent="Cadastrar registro";form.append(b);
+ updateCatalogControls();
 }
 async function loadRecords(){
- const tenant=$("tenant").value;if(!tenant)return;
+ const tenant=$("tenant").value,resource=$("resource").value,epoch=authEpoch,role=loginRole,sequence=++catalogReadSequence;
+ $("records").replaceChildren();updateCatalogControls();if(!catalogRows.some(row=>row.id===tenant)||!Object.hasOwn(fields,resource))return;
+ const current=()=>sequence===catalogReadSequence&&epoch===authEpoch&&role===loginRole&&tenant===$("tenant").value&&resource===$("resource").value;
  try{
-  const records=await api("/api/v1/tenants/"+tenant+"/"+$("resource").value);
+  const records=await api("/api/v1/tenants/"+encodeURIComponent(tenant)+"/"+resource);if(!current())return;
   const box=$("records");box.replaceChildren();
   const table=document.createElement("table");
   for(const record of records){
@@ -2057,8 +2228,8 @@ async function loadRecords(){
    }table.append(tr);
   }
   box.append(table);
-  $("notice").textContent=records.length+" registro(s) encontrados.";
- }catch(ex){$("notice").textContent=ex.message}
+  catalogUncertain=false;updateCatalogControls();$("notice").textContent=records.length+" registro(s) encontrados.";
+ }catch(ex){if(current())$("notice").textContent=ex.message}
 }
 $("loadTenants").addEventListener("click",loadTenants);
 $("refresh").addEventListener("click",loadRecords);
@@ -2066,72 +2237,700 @@ $("tenant").addEventListener("change",loadRecords);
 $("resource").addEventListener("change",()=>{renderForm();loadRecords()});
 $("tenantForm").addEventListener("submit",async ev=>{
  ev.preventDefault();
+ if(!["support","admin"].includes(loginRole))return;
  try{await api("/api/v1/tenants","POST",Object.fromEntries(new FormData(ev.target)));
  ev.target.reset();await loadTenants();}
  catch(ex){$("notice").textContent=ex.message}
 });
-$("recordForm").addEventListener("submit",async ev=>{
- ev.preventDefault();const tenant=$("tenant").value;
- if(!tenant){$("notice").textContent="Selecione uma barbearia.";return}
- const data={};for(const input of ev.target.querySelectorAll("input")){
+async function submitRecord(ev){
+ ev.preventDefault();if(catalogWriting||catalogLoading||catalogUncertain||!catalogCanWrite()||!ev.target.reportValidity())return;
+ const tenant=$("tenant").value,resource=$("resource").value,epoch=authEpoch,role=loginRole,request=++catalogWriteSequence;
+ if(!Object.hasOwn(fields,resource))return;
+ const current=()=>request===catalogWriteSequence&&epoch===authEpoch&&role===loginRole&&tenant===$("tenant").value&&resource===$("resource").value;
+ const data={};try{for(const input of ev.target.querySelectorAll("input")){
   if(input.type==="checkbox")data[input.name]=input.checked;
-  else if(input.type==="number")data[input.name]=Number(input.value||0);
-  else if(input.value)data[input.name]=input.value;
- }
- try{await api("/api/v1/tenants/"+tenant+"/"+$("resource").value,"POST",data);
- ev.target.reset();await loadRecords();}
- catch(ex){$("notice").textContent=ex.message}
-});
+  else if(!input.value.trim()){if(input.required)throw Error("Preencha os campos obrigatórios. Valor ausente não é zero.");}
+  else if(input.type==="number"){const value=Number(input.value);if(!Number.isSafeInteger(value))throw Error("Informe números inteiros válidos.");data[input.name]=value;}
+  else data[input.name]=input.value.trim();
+ }}catch(error){$("notice").textContent=error.message;return;}
+ catalogWriting=true;updateCatalogControls();
+ try{await api("/api/v1/tenants/"+encodeURIComponent(tenant)+"/"+resource,"POST",data);if(!current())return;renderForm();await loadRecords();}
+ catch(ex){if(current()){catalogUncertain=ex.status!==422;$("notice").textContent=ex.message+(catalogUncertain?" Consulte a lista antes de tentar cadastrar novamente. Nenhuma nova tentativa será feita automaticamente.":"");}}
+ finally{if(current()){catalogWriting=false;updateCatalogControls()}}
+}
+$("recordForm").addEventListener("submit",submitRecord);
 
-let aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+const businessTextFields={business_name:"bizName",unit_name:"bizUnit",description:"bizDescription",address:"bizAddress",timezone:"bizTimezone",contact_phone:"bizContact",assistant_name:"bizAssistant"};
+const businessCaps={catalog_answers:"bizCapCatalog",appointments:"bizCapAppointments",rescheduling:"bizCapReschedule",human_handoff_request:"bizCapHuman",product_orders:"bizCapProductOrders"};
+const businessObjectives={answer_questions:"bizObjQuestions",help_choose:"bizObjChoose",offer_relevant_complements:"bizObjComplements",receive_appointment_requests:"bizObjBooking",request_human_help:"bizObjHuman"};
+const businessStyles={warm:"Acolhedor e próximo",professional:"Elegante e profissional",relaxed:"Descontraído",direct:"Direto e cordial"};
+const businessRepeatConfig={hours:{box:"businessHours",max:21,fields:[["weekday","Dia","day"],["opens","Abre às","time"],["closes","Fecha às","time"]]},
+ faqs:{box:"businessFaqs",max:30,fields:[["question","Pergunta",240],["answer","Resposta autorizada",1200]]},
+ policies:{box:"businessPolicies",max:20,fields:[["topic","Assunto",80],["description","Política da empresa",1200]]},
+ differentiators:{box:"businessDifferentiators",max:15,fields:[["text","Diferencial verificável",300]]}};
+let businessEpoch=0,businessListSequence=0,businessExampleSequence=0,businessReviewSequence=0,businessSnapshot=null,businessBase=null,businessRows=[],businessHistory=[],businessRepeaters={},
+ businessLoadedTenant="",businessDirty=false,businessBusy=false,businessStale=false,businessReviewed=null,businessExamplesPending=false;
+function businessUrl(tenant,suffix=""){return "/api/v1/tenants/"+encodeURIComponent(tenant)+"/business/profile"+suffix}
+function resetBusinessState(){
+ ++businessEpoch;++businessExampleSequence;++businessReviewSequence;businessSnapshot=null;businessBase=null;businessHistory=[];businessLoadedTenant="";businessDirty=false;businessBusy=false;businessStale=false;businessReviewed=null;businessExamplesPending=false;
+ for(const id of Object.values(businessTextFields))$(id).value="";
+ $("bizCategories").value="";$("bizAvoid").value="";
+ for(const id of [...Object.values(businessCaps),...Object.values(businessObjectives)])$(id).checked=false;
+ for(const [key,config] of Object.entries(businessRepeatConfig)){businessRepeaters[key]=[];$(config.box).replaceChildren()}
+ $("businessFields").disabled=true;$("businessVersionReview").replaceChildren();$("businessVersionReview").classList.add("hidden");
+ $("businessVersion").replaceChildren(new Option("Nenhuma versão carregada",""));
+ $("businessVersionState").textContent="Nenhuma configuração carregada.";$("businessWarnings").textContent="";$("businessAccess").textContent="";$("businessRuntime").textContent="A integração do perfil com o atendimento ainda não foi consultada.";
+ renderBusinessStyleExamples();
+ $("businessStatus").textContent="Escolha uma empresa";updateBusinessControls();
+}
+function businessCan(action){return !!businessSnapshot?.access?.[action]&&!businessStale}
+function updateBusinessControls(){
+ $("businessFields").disabled=!businessCan("can_edit_draft")||businessBusy;
+ $("businessSave").disabled=!businessCan("can_edit_draft")||businessBusy;
+ $("businessPublish").disabled=!businessCan("can_publish")||!businessSnapshot?.draft||businessDirty||businessBusy;
+ $("businessReviewVersion").disabled=!businessSnapshot||!$("businessVersion").value||businessBusy;
+ const version=businessHistory.find(x=>x.id===$("businessVersion").value);
+ $("businessRollback").disabled=!businessCan("can_publish")||businessBusy||businessDirty||!businessReviewed||businessReviewed.id!==version?.id||!version?.published_before||version.id===businessSnapshot?.published?.id;
+ $("businessTest").disabled=!businessSnapshot||businessBusy;
+ $("businessTestDraft").disabled=!businessSnapshot?.runtime_connected||!businessSnapshot?.draft||businessDirty||businessBusy;
+ $("businessExamples").disabled=!businessSnapshot?.runtime_connected||businessBusy||businessExamplesPending;
+ for(const [key,id] of Object.entries(businessCaps))$(id).disabled=!businessSnapshot?.supported_capabilities?.includes(key);
+}
+function businessChanged(){
+ if(!businessSnapshot||!businessCan("can_edit_draft"))return;
+ ++businessExampleSequence;businessExamplesPending=false;businessDirty=true;$("businessStatus").textContent="Alterações ainda não salvas";updateBusinessControls();renderBusinessStyleExamples();
+}
+function businessStep(number){
+ for(let i=1;i<=3;i++){$("businessPane"+i).classList.toggle("hidden",i!==number);$("businessStep"+i).setAttribute("aria-current",i===number?"step":"false")}
+}
+function addBusinessRow(key,values={},dirty=true){
+ const config=businessRepeatConfig[key],rows=businessRepeaters[key]||(businessRepeaters[key]=[]);
+ if(rows.length>=config.max){$("businessFeedback").textContent="Limite de registros desta seção atingido.";return;}
+ const row=document.createElement("div");row.className="business-repeat-row";
+ const editor={row,fields:{}};
+ for(const [field,label,kind] of config.fields){
+   const holder=document.createElement("label");holder.textContent=label;
+   const input=document.createElement(kind==="day"?"select":typeof kind==="number"&&kind>300?"textarea":"input");
+   if(kind==="day") ["Segunda-feira","Terça-feira","Quarta-feira","Quinta-feira","Sexta-feira","Sábado","Domingo"].forEach((name,i)=>input.add(new Option(name,String(i))));
+   else if(kind==="time")input.type="time";
+   else input.maxLength=kind;
+   input.required=true;input.value=String(values[field]??(kind==="day"?0:""));
+   holder.append(input);row.append(holder);editor.fields[field]=input;
+ }
+ const remove=document.createElement("button");remove.type="button";remove.className="btn ghost";remove.textContent="Remover este registro";
+ remove.addEventListener("click",()=>{businessRepeaters[key]=businessRepeaters[key].filter(x=>x!==editor);row.remove();businessChanged()});
+ row.append(remove);rows.push(editor);$(config.box).append(row);if(dirty)businessChanged();
+}
+function collectBusinessProfile(){
+ const profile=JSON.parse(JSON.stringify(businessBase));
+ for(const [field,id] of Object.entries(businessTextFields))profile[field]=$(id).value.trim()||null;
+ profile.categories=$("bizCategories").value.split(",").map(x=>x.trim()).filter(Boolean);
+ profile.capabilities=Object.entries(businessCaps).filter(([,id])=>$(id).checked).map(([key])=>key);
+ profile.objectives=Object.entries(businessObjectives).filter(([,id])=>$(id).checked).map(([key])=>key);
+ profile.style_rules={...profile.style_rules,style:$("bizStyle").value,emoji:$("bizEmoji").value,length:$("bizLength").value,
+   formality:$("bizFormality").value,commercial_intensity:$("bizCommercial").value,avoid_phrases:$("bizAvoid").value.split(/\n/).map(x=>x.trim()).filter(Boolean)};
+ for(const key of Object.keys(businessRepeatConfig))profile[key]=(businessRepeaters[key]||[]).map(editor=>{
+   const value=Object.fromEntries(Object.entries(editor.fields).map(([field,input])=>[field,field==="weekday"?Number(input.value):input.value.trim()]));
+   return key==="differentiators"?value.text:value;
+ });
+ return profile;
+}
+function renderBusinessStyleExamples(){
+ const box=$("businessStyleExamples");box.replaceChildren();
+ const examples={warm:"Linguagem acolhedora e respeitosa, com proximidade na conversa.",professional:"Linguagem organizada, cuidadosa e profissional.",relaxed:"Linguagem leve e informal, mantendo o respeito.",direct:"Linguagem breve e objetiva, com cordialidade."};
+ for(const [key,label] of Object.entries(businessStyles)){
+   const card=document.createElement("div");card.className="business-style"+(key===$("bizStyle").value?" current":"");
+   const heading=document.createElement("h3");heading.textContent=label;card.append(heading);
+   const p=document.createElement("p");p.textContent=examples[key];card.append(p);box.append(card);
+ }
+}
+async function loadBusinessStyleExamples(){
+ if(!businessSnapshot?.runtime_connected||businessBusy||businessExamplesPending)return;
+ const tenant=businessLoadedTenant,epoch=businessEpoch,sequence=++businessExampleSequence;
+ const current=()=>epoch===businessEpoch&&tenant===$("businessTenant").value&&sequence===businessExampleSequence;
+ businessExamplesPending=true;updateBusinessControls();$("businessFeedback").textContent="Consultando exemplos com o catálogo real...";
+ try{
+   const rules=collectBusinessProfile().style_rules;
+   const result=await api("/api/v1/tenants/"+encodeURIComponent(tenant)+"/ai/style-examples","POST",{style_rules:rules});
+   if(!current())return;
+   const box=$("businessStyleExamples");box.replaceChildren();
+   for(const example of result.examples||[]){
+     const card=document.createElement("div");card.className="business-style"+(example.style===$("bizStyle").value?" current":"");
+     const heading=document.createElement("h3");heading.textContent=example.label;const body=document.createElement("p");appendWhatsAppText(body,example.answer);card.append(heading,body);box.append(card);
+   }
+   businessStep(2);$("businessFeedback").textContent="Exemplos com o catálogo real e o estilo deste formulário. As outras informações não salvas não foram aplicadas ao atendimento.";
+ }catch(error){if(current())$("businessFeedback").textContent=error.message}
+ finally{if(current()){businessExamplesPending=false;updateBusinessControls()}}
+}
+function fillBusinessProfile(data,history){
+ businessSnapshot=data;businessHistory=history;businessBase=JSON.parse(JSON.stringify(data.draft?.profile||data.published?.profile||data.draft_template));
+ for(const [field,id] of Object.entries(businessTextFields))$(id).value=businessBase[field]||"";
+ $("bizCategories").value=(businessBase.categories||[]).join(", ");
+ const style=businessBase.style_rules||{};
+ for(const [field,id,fallback] of [["style","bizStyle","warm"],["emoji","bizEmoji","none"],["length","bizLength","balanced"],["formality","bizFormality","neutral"],["commercial_intensity","bizCommercial","none"]])$(id).value=style[field]||fallback;
+ $("bizAvoid").value=(style.avoid_phrases||[]).join("\n");
+ for(const [key,id] of Object.entries(businessCaps))$(id).checked=(businessBase.capabilities||[]).includes(key);
+ for(const [key,id] of Object.entries(businessObjectives))$(id).checked=(businessBase.objectives||[]).includes(key);
+ for(const [key,config] of Object.entries(businessRepeatConfig)){
+   businessRepeaters[key]=[];$(config.box).replaceChildren();for(const value of businessBase[key]||[])addBusinessRow(key,key==="differentiators"?{text:value}:value,false);
+ }
+ $("businessStatus").textContent=data.draft?"Rascunho · versão "+data.draft.revision:data.published?"Perfil publicado · versão "+data.published.revision:"Perfil ainda não publicado";
+ $("businessVersionState").textContent="Publicado: "+(data.published?"versão "+data.published.revision:"nenhuma versão")+". Rascunho: "+(data.draft?"versão "+data.draft.revision:"nenhum")+". Alterações neste formulário só são gravadas ao salvar.";
+ $("businessRuntime").textContent=data.runtime_connected?(data.published?"O perfil publicado está integrado ao atendimento. Alterações de rascunho só entram no atendimento após publicação.":"A integração está disponível, mas ainda não há um perfil publicado. O atendimento segue a configuração atual."):"A integração do perfil com o atendimento ainda está desativada. Salvar ou publicar registra a versão; o atendimento atual ainda não usa este perfil.";
+ const role={owner:"proprietário",editor:"editor",viewer:"somente leitura",support:"suporte",admin:"administrador"}[data.access?.role]||"acesso limitado";
+ $("businessAccess").textContent="Seu acesso: "+role+". "+(data.access?.can_publish?"Você pode revisar e publicar.":data.access?.can_edit_draft?"Você pode salvar rascunhos; a publicação exige o proprietário.":"Você pode consultar a configuração.");
+ const warnings=[];if(!businessBase.business_name)warnings.push("Nome da empresa ainda não informado.");if(!businessBase.assistant_name)warnings.push("Nome da assistente ainda não informado.");
+ if(data.warnings?.some(x=>x.includes("timezone_differs")))warnings.push("O fuso informado difere da agenda. A agenda continua usando "+data.scheduling_timezone+".");
+ if(businessBase.hours?.length)warnings.push("Os horários informativos não mudam as vagas dos profissionais.");
+ $("businessWarnings").textContent=warnings.join(" ");
+ $("businessVersion").replaceChildren(new Option("Escolha uma versão para revisar",""));
+ for(const version of history)$("businessVersion").add(new Option("Versão "+version.revision+(version.id===data.published?.id?" · publicada agora":version.published_before?" · já publicada":" · rascunho"),version.id));
+ businessDirty=false;businessStale=false;businessReviewed=null;renderBusinessStyleExamples();updateBusinessControls();
+}
+async function loadBusinessProfile(){
+ const tenant=$("businessTenant").value;resetBusinessState();const epoch=businessEpoch;
+ if(!tenant)return {epoch,ok:false};businessLoadedTenant=tenant;businessBusy=true;$("businessStatus").textContent="Consultando configuração...";updateBusinessControls();
+ const current=()=>epoch===businessEpoch&&tenant===$("businessTenant").value;
+ try{
+   const results=await Promise.allSettled([api(businessUrl(tenant)),api(businessUrl(tenant,"/history"))]);
+   if(!current())return {epoch,ok:false};if(results[0].status!=="fulfilled")throw results[0].reason;
+   fillBusinessProfile(results[0].value,results[1].status==="fulfilled"?results[1].value:[]);
+   if(results[1].status!=="fulfilled")$("businessFeedback").textContent="Configuração carregada; não foi possível consultar o histórico de versões.";
+   return {epoch,ok:true};
+ }catch(error){if(current()){$("businessStatus").textContent="Configuração indisponível";$("businessFeedback").textContent=error.message}return {epoch,ok:false}}
+ finally{if(current()){businessBusy=false;updateBusinessControls()}}
+}
+async function loadBusinesses(){
+ const requestId=++businessListSequence,epoch=businessEpoch,role=loginRole;
+ try{
+   const rows=await api(["support","admin"].includes(role)?"/api/v1/tenants":"/api/v1/account/businesses");
+   if(requestId!==businessListSequence||epoch!==businessEpoch||role!==loginRole)return;
+   businessRows=rows;$("businessNav").classList.toggle("hidden",!rows.length);$("aiNav").classList.toggle("hidden",!rows.length);$("commerceNav").classList.toggle("hidden",!rows.length);$("catalogNav").classList.toggle("hidden",!["support","admin"].includes(role)&&!rows.length);
+   const selected=$("businessTenant").value;$("businessTenant").replaceChildren(new Option("Escolha um estabelecimento",""));
+   for(const row of rows)$("businessTenant").add(new Option(row.name,row.id));
+   $("businessTenant").value=rows.some(x=>x.id===selected)?selected:(rows[0]?.id||"");
+   if($("businessTenant").value&&(!businessSnapshot||businessLoadedTenant!==$("businessTenant").value))await loadBusinessProfile();
+ }catch(error){if(requestId===businessListSequence&&epoch===businessEpoch)$("businessFeedback").textContent=error.message}
+}
+async function businessMutation(kind){
+ if(businessBusy||!businessSnapshot||businessStale)return;
+ if(kind==="draft"&&!businessCan("can_edit_draft")||kind!=="draft"&&!businessCan("can_publish"))return;
+ if(kind!=="draft"&&businessDirty){$("businessFeedback").textContent="Salve as alterações antes de publicar ou restaurar uma versão.";return;}
+ if(kind==="rollback"){
+   const version=businessHistory.find(x=>x.id===$("businessVersion").value);
+   if(!version?.published_before||version.id===businessSnapshot.published?.id||businessReviewed?.id!==version.id)return;
+ }
+ const tenant=businessLoadedTenant,epoch=businessEpoch,generation=businessSnapshot.generation;
+ let payload={expected_generation:generation};
+ if(kind==="draft"){
+   if(!$("businessForm").reportValidity())return;payload.profile=collectBusinessProfile();
+ }else{
+   payload.version_id=kind==="publish"?businessSnapshot.draft?.id:businessReviewed?.id;
+   if(!payload.version_id)return;
+   if(!confirm(kind==="publish"?"Publicar o rascunho revisado desta empresa? Catálogo e agenda não serão alterados.":"Restaurar a versão revisada desta empresa? O rascunho atual será preservado."))return;
+ }
+ const current=()=>epoch===businessEpoch&&tenant===$("businessTenant").value;
+ businessBusy=true;updateBusinessControls();$("businessFeedback").textContent="Gravando configuração...";
+ try{
+   const result=await api(businessUrl(tenant,"/"+(kind==="draft"?"draft":kind)),kind==="draft"?"PUT":"POST",payload);
+   if(!current())return;
+   const loaded=await loadBusinessProfile();
+   if(loaded.epoch!==businessEpoch||tenant!==$("businessTenant").value)return;
+   $("businessFeedback").textContent=(kind==="draft"?"Rascunho salvo":kind==="publish"?"Perfil publicado":"Versão restaurada")+" · versão "+result.revision+"."+(loaded.ok?"":" A operação foi confirmada; atualize para conferir o estado completo.");
+ }catch(error){if(current()){
+   if(error.status!==422){businessStale=true;$("businessStatus").textContent="Atualização necessária";}
+   $("businessFeedback").textContent=error.message+(error.status!==422?" Atualize a configuração antes de tentar gravar novamente. Suas alterações continuam no formulário.":"");
+ }}finally{if(current()){businessBusy=false;updateBusinessControls()}}
+}
+async function reviewBusinessVersion(){
+ const id=$("businessVersion").value,tenant=businessLoadedTenant,epoch=businessEpoch,sequence=++businessReviewSequence;if(!id||!businessSnapshot)return;
+ const current=()=>epoch===businessEpoch&&tenant===$("businessTenant").value&&id===$("businessVersion").value&&sequence===businessReviewSequence;
+ businessReviewed=null;updateBusinessControls();
+ try{
+   const version=await api(businessUrl(tenant,"/versions/"+encodeURIComponent(id)));
+   if(!current())return;
+   businessReviewed=version;
+   const p=version.profile,lines=["Versão "+version.revision,"Empresa: "+(p.business_name||"não informado"),"Unidade: "+(p.unit_name||"não informada"),"Assistente: "+(p.assistant_name||"não informada"),"Descrição: "+(p.description||"não informada"),"Endereço: "+(p.address||"não informado"),"Contato: "+(p.contact_phone||"não informado"),"Fuso: "+(p.timezone||"não informado"),"Áreas: "+(p.categories||[]).join(", "),"Estilo: "+(businessStyles[p.style_rules?.style]||"padrão")];
+   lines.push("Preferências: emojis "+p.style_rules?.emoji+", tamanho "+p.style_rules?.length+", formalidade "+p.style_rules?.formality+", sugestões "+p.style_rules?.commercial_intensity,"Expressões evitadas: "+(p.style_rules?.avoid_phrases||[]).join(", "),"Atividades: "+(p.capabilities||[]).join(", "),"Objetivos: "+(p.objectives||[]).join(", "));
+   for(const hour of p.hours||[])lines.push("Horário: dia "+hour.weekday+", "+hour.opens+"–"+hour.closes);
+   for(const faq of p.faqs||[])lines.push("Pergunta: "+faq.question+"\nResposta: "+faq.answer);
+   for(const policy of p.policies||[])lines.push("Política: "+policy.topic+" — "+policy.description);
+   for(const fact of p.differentiators||[])lines.push("Diferencial: "+fact);
+   $("businessVersionReview").textContent=lines.join("\n\n");$("businessVersionReview").classList.remove("hidden");updateBusinessControls();
+ }catch(error){if(current())$("businessFeedback").textContent=error.message}
+}
+$("businessForm").addEventListener("submit",event=>event.preventDefault());
+$("businessForm").addEventListener("input",businessChanged);$("businessForm").addEventListener("change",businessChanged);
+for(let i=1;i<=3;i++)$("businessStep"+i).addEventListener("click",()=>businessStep(i));
+for(const [id,step] of [["businessNext1",2],["businessNext2",3],["businessBack2",1],["businessBack3",2]])$(id).addEventListener("click",()=>businessStep(step));
+for(const [id,key] of [["businessAddHours","hours"],["businessAddFaq","faqs"],["businessAddPolicy","policies"],["businessAddDifferentiator","differentiators"]])$(id).addEventListener("click",()=>addBusinessRow(key));
+$("businessTenant").addEventListener("change",async()=>{
+ if(businessDirty&&!confirm("Há alterações não salvas. Deseja trocar de empresa e descartá-las?")){$("businessTenant").value=businessLoadedTenant;return;}
+ $("businessFeedback").textContent="";businessStep(1);await loadBusinessProfile();
+});
+$("businessReload").addEventListener("click",async()=>{if(businessDirty&&!confirm("Descartar as alterações não salvas e consultar a versão do servidor?"))return;$("businessFeedback").textContent="";await loadBusinessProfile()});
+$("businessSave").addEventListener("click",()=>businessMutation("draft"));$("businessPublish").addEventListener("click",()=>businessMutation("publish"));$("businessRollback").addEventListener("click",()=>businessMutation("rollback"));
+$("businessVersion").addEventListener("change",()=>{++businessReviewSequence;businessReviewed=null;$("businessVersionReview").classList.add("hidden");updateBusinessControls()});$("businessReviewVersion").addEventListener("click",reviewBusinessVersion);
+function openBusinessPreview(draft=false){
+ if(!businessSnapshot||businessBusy||draft&&(!businessSnapshot.runtime_connected||!businessSnapshot.draft||businessDirty))return;
+ aiPreferredTenant=businessLoadedTenant;aiPreferredVersion=draft?businessSnapshot.draft.id:"";openPage("ai");
+}
+$("businessTest").addEventListener("click",()=>openBusinessPreview());$("businessTestDraft").addEventListener("click",()=>openBusinessPreview(true));$("businessExamples").addEventListener("click",loadBusinessStyleExamples);
+
+let commerceEpoch=0,commerceListSequence=0,commerceOperationSequence=0,commercePlanSequence=0,
+    commerceTenant="",commerceState=null,commerceProducts=[],commerceProduct=null,commerceVariant=null,
+    commerceBusy=false,commerceStale=false,commerceActiveRequest=null,commerceProductDirty=false,commerceVariantDirty=false,commerceStockDirty=false,
+    commerceFaqRows=[],commerceAttributeRows=[],commerceBasket=[],commerceEstimate=null,commerceQuote=null,commerceOrder=null,
+    commerceToken=null,commerceOrderKey=null,commerceExpiryTimer=null,commerceComplements=[],commerceComplementDirty=false,commerceComplementSelected="";
+const commerceUuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+function commerceUrl(suffix,tenant=commerceTenant){return "/api/v1/tenants/"+encodeURIComponent(tenant)+"/commerce"+suffix}
+function commerceContext(){return {epoch:commerceEpoch,tenant:commerceTenant}}
+function commerceCurrent(context){return context.epoch===commerceEpoch&&context.tenant===commerceTenant&&context.tenant===$("comTenant").value}
+function commerceReady(){return commerceState?.enabled===true}
+function commerceCan(permission){return commerceReady()&&!commerceStale&&!!commerceState?.access?.[permission]}
+function commerceDirty(){return commerceProductDirty||commerceVariantDirty||commerceStockDirty||commerceComplementDirty}
+function commerceMoney(cents){return Number.isSafeInteger(cents)&&cents>=0?new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(cents/100):"Valor não informado"}
+function commercePrice(item){return item.price_kind==="fixed"?commerceMoney(item.unit_price_cents):item.price_kind==="from"?"A partir de "+commerceMoney(item.unit_price_cents):item.price_kind==="custom"?"Personalizado após análise":"Sob consulta"}
+function commerceDate(value){const date=new Date(value);return value&&Number.isFinite(date.getTime())?date.toLocaleString("pt-BR"):"não informada"}
+function commerceLocalDate(value){
+ const date=new Date(value);if(!value||!Number.isFinite(date.getTime()))return "";
+ const pad=n=>String(n).padStart(2,"0");return date.getFullYear()+"-"+pad(date.getMonth()+1)+"-"+pad(date.getDate())+"T"+pad(date.getHours())+":"+pad(date.getMinutes());
+}
+function commerceFindVariant(id){for(const product of commerceProducts){const variant=product.variants?.find(v=>v.id===id);if(variant)return {product,variant}}return null}
+function commerceHasCurrentToken(){return !!commerceQuote&&commerceToken?.quoteId===commerceQuote.id&&typeof commerceToken.value==="string"}
+function commerceQuoteFresh(){const expires=Date.parse(commerceQuote?.expires_at);return Number.isFinite(expires)&&expires>Date.now()}
+function commerceConfirmationReady(){return commerceCan("can_create_orders")&&!commerceBusy&&!commerceDirty()&&commerceOrder?.status==="draft"&&commerceOrder.quote_id===commerceQuote?.id&&commerceHasCurrentToken()&&commerceQuoteFresh()&&commerceQuote.confirmation_requirements_met===true&&!!commerceQuote.contact_e164}
+function updateCommerceControls(){
+ const ready=commerceReady(),edit=commerceCan("can_edit_catalog"),orders=commerceCan("can_create_orders"),blocked=commerceBusy||commerceStale;
+ $("comProductFields").disabled=!edit||commerceBusy||commerceVariantDirty||commerceStockDirty||commerceComplementDirty;$("comVariantFields").disabled=!edit||!commerceProduct||commerceBusy||commerceProductDirty||commerceStockDirty||commerceComplementDirty;$("comStockFields").disabled=!edit||!commerceVariant||commerceBusy||commerceProductDirty||commerceVariantDirty||commerceComplementDirty;
+ $("comComplementFields").disabled=!edit||!commerceProduct||commerceBusy||commerceProductDirty||commerceVariantDirty||commerceStockDirty;$("comComplementRead").disabled=!ready||!commerceProduct||commerceBusy;
+ $("comProduct").disabled=!ready||commerceBusy;$("comVariant").disabled=!ready||!commerceProduct||commerceBusy||commerceProductDirty;
+ $("comProductNew").disabled=!edit||commerceBusy;$("comVariantNew").disabled=!edit||!commerceProduct||commerceBusy||commerceProductDirty;
+ $("comPlanFields").disabled=!ready||blocked||commerceDirty();$("comQuoteCreate").disabled=!orders||blocked||commerceDirty()||!commerceBasket.length;
+ $("comEstimate").disabled=!ready||blocked||commerceDirty()||!commerceBasket.length;
+ $("comOrderCreate").disabled=!orders||blocked||commerceDirty()||!commerceQuote||!commerceHasCurrentToken()||!commerceQuoteFresh()||!!commerceOrder;
+ const confirmable=commerceConfirmationReady();$("comAccept").disabled=!confirmable;$("comOrderConfirm").disabled=!confirmable||!$("comAccept").checked;
+ $("comReadQuote").disabled=!ready||commerceBusy;$("comReadOrder").disabled=!ready||commerceBusy;$("comReadOrderByQuote").disabled=!ready||commerceBusy;
+ const numeric=["fixed","from"].includes($("comPriceKind").value);$("comPrice").disabled=!numeric;$("comPrice").required=numeric;
+ const tracked=$("comStockMode").value==="tracked";for(const id of ["comStockQuantity","comStockSource","comStockObserved","comStockUntil"]){$(id).disabled=!tracked;$(id).required=tracked;}
+}
+function commerceClearProposal(notice="Nenhuma consulta calculada."){
+ ++commercePlanSequence;clearTimeout(commerceExpiryTimer);commerceExpiryTimer=null;commerceEstimate=null;commerceQuote=null;commerceOrder=null;commerceToken=null;commerceOrderKey=null;$("comAccept").checked=false;
+ $("comQuoteSummary").textContent=notice;$("comQuoteValidity").textContent="";$("comOrderSummary").textContent="Nenhum pedido selecionado.";updateCommerceControls();
+}
+function resetCommerceState(){
+ ++commerceEpoch;commerceTenant="";commerceState=null;commerceProducts=[];commerceProduct=null;commerceVariant=null;commerceBusy=false;commerceStale=false;commerceActiveRequest=null;
+ commerceProductDirty=false;commerceVariantDirty=false;commerceStockDirty=false;commerceComplementDirty=false;commerceComplements=[];commerceBasket=[];commerceFaqRows=[];commerceAttributeRows=[];
+ commerceResetComplements();
+ for(const id of ["comProductName","comDescription","comSynonyms","comBenefits","comVariantName","comSku","comPrice","comStockQuantity","comStockSource","comStockObserved","comStockUntil","comCustomer","comContact","comLookupQuote","comLookupOrder"])$(id).value="";
+ $("comProductActive").checked=false;$("comVariantActive").checked=false;$("comPriceKind").value="on_request";$("comStockMode").value="unknown";$("comValidity").value="15";$("comBasketQuantity").value="1";
+ for(const id of ["comFaqRows","comAttributeRows","comBasket"])$(id).replaceChildren();
+ for(const [id,label] of [["comProduct","Novo produto"],["comVariant","Nova variante"],["comBasketVariant","Escolha um item"]])$(id).replaceChildren(new Option(label,""));
+ $("comBody").classList.add("hidden");$("comUnavailable").classList.remove("hidden");$("comUnavailable").textContent="O catálogo comercial precisa estar habilitado pelo servidor para esta área funcionar.";
+ $("comStatus").textContent="Escolha uma empresa";$("comAccess").textContent="";$("comAssistant").textContent="";$("comFeedback").textContent="";$("comProductState").textContent="";$("comVariantState").textContent="";$("comStockCurrent").textContent="Selecione uma variante salva para consultar o estoque.";
+ commerceClearProposal();
+}
+function commercePane(orders){$("comCatalogPane").classList.toggle("hidden",orders);$("comOrdersPane").classList.toggle("hidden",!orders);$("comCatalogTab").setAttribute("aria-current",orders?"false":"step");$("comOrdersTab").setAttribute("aria-current",orders?"step":"false")}
+async function loadCommerceTenants(){
+ const sequence=++commerceListSequence,epoch=commerceEpoch,role=loginRole;
+ try{
+   const rows=await api(["support","admin"].includes(role)?"/api/v1/tenants":"/api/v1/account/businesses");
+   if(sequence!==commerceListSequence||epoch!==commerceEpoch||role!==loginRole)return;
+   const selected=$("comTenant").value;$("comTenant").replaceChildren(new Option("Escolha uma empresa",""));for(const row of rows)$("comTenant").add(new Option(row.name,row.id));
+   $("comTenant").value=rows.some(row=>row.id===selected)?selected:(rows[0]?.id||"");
+   if($("comTenant").value&&commerceTenant!==$("comTenant").value)await loadCommerceTenant();
+ }catch(error){if(sequence===commerceListSequence&&epoch===commerceEpoch)$("comFeedback").textContent=error.message}
+}
+async function loadCommerceTenant({preserveLookups=false}={}){
+ const tenant=$("comTenant").value,lookups=preserveLookups&&tenant===commerceTenant?[$("comLookupQuote").value,$("comLookupOrder").value]:["",""];
+ resetCommerceState();commerceTenant=tenant;$("comLookupQuote").value=lookups[0];$("comLookupOrder").value=lookups[1];const context=commerceContext();if(!tenant)return;
+ commerceBusy=true;$("comStatus").textContent="Consultando disponibilidade do catálogo...";updateCommerceControls();
+ try{
+   const status=await api(commerceUrl("/status"));if(!commerceCurrent(context))return;
+   if(status.enabled!==true){$("comStatus").textContent="Catálogo comercial desativado";return;}
+   commerceState=status;$("comAccess").textContent="Seu acesso: "+({owner:"proprietário",editor:"editor",viewer:"somente leitura",admin:"administrador",support:"suporte"}[status.access?.role]||"limitado")+". "+(status.access?.can_edit_catalog?"Você pode editar o catálogo.":"Você pode consultar o catálogo e estimativas.");
+   $("comAssistant").textContent=status.assistant_connected?"O atendimento comercial automático está ativado no servidor.":"Catálogo e pedidos disponíveis para operação no painel. O atendimento comercial automático ainda está desativado.";
+   const products=await api(commerceUrl("/products"));if(!commerceCurrent(context))return;
+   commerceProducts=products;commerceRenderCatalog();
+   $("comBody").classList.remove("hidden");$("comUnavailable").classList.add("hidden");$("comStatus").textContent="Catálogo consultado · "+products.length+" produto(s)";
+ }catch(error){if(commerceCurrent(context)){commerceState=null;$("comStatus").textContent=error.status===423?"Catálogo comercial desativado":"Catálogo indisponível";$("comUnavailable").textContent=error.status===423?"O catálogo comercial ainda não está habilitado pelo servidor. Nenhum cadastro ou pedido pode ser realizado nesta área.":error.message;}}
+ finally{if(commerceCurrent(context)){commerceBusy=false;updateCommerceControls()}}
+}
+function commerceAddFields(kind,values={}){
+ const rows=kind==="faq"?commerceFaqRows:commerceAttributeRows,max=kind==="faq"?20:12;
+ if(rows.length>=max){$("comFeedback").textContent="Limite de registros desta seção atingido.";return;}
+ const row=document.createElement("div");row.className="business-repeat-row";const fields={};
+ for(const [key,label,size] of kind==="faq"?[["question","Pergunta do cliente",240],["answer","Resposta oficial",1200]]:[["key","Atributo",80],["value","Valor do atributo",80]]){
+   const holder=document.createElement("label");holder.textContent=label;const input=document.createElement(size>300?"textarea":"input");input.required=true;input.maxLength=size;input.value=values[key]||"";holder.append(input);row.append(holder);fields[key]=input;
+ }
+ const editor={row,fields},remove=document.createElement("button");remove.type="button";remove.className="btn ghost";remove.textContent="Remover este registro";
+ remove.addEventListener("click",()=>{if(!commerceCan("can_edit_catalog")||commerceBusy)return;if(kind==="faq")commerceFaqRows=commerceFaqRows.filter(item=>item!==editor);else commerceAttributeRows=commerceAttributeRows.filter(item=>item!==editor);row.remove();commerceCatalogChanged(kind==="faq"?"product":"variant")});
+ row.append(remove);rows.push(editor);$(kind==="faq"?"comFaqRows":"comAttributeRows").append(row);
+}
+function commerceSelectProduct(id=""){
+ commerceProduct=commerceProducts.find(p=>p.id===id)||null;$("comProduct").value=commerceProduct?.id||"";
+ const product=commerceProduct||{};$("comProductName").value=product.name||"";$("comDescription").value=product.description||"";$("comSynonyms").value=(product.synonyms||[]).join("\n");$("comBenefits").value=(product.official_benefits||[]).join("\n");$("comProductActive").checked=product.active===true;
+ commerceFaqRows=[];$("comFaqRows").replaceChildren();for(const faq of product.faqs||[])commerceAddFields("faq",faq);
+ $("comProductState").textContent=commerceProduct?"Produto salvo · revisão "+product.revision+" · "+(product.active?"ativo":"inativo"):"Novo produto. Nada será cadastrado antes de salvar.";
+ $("comVariant").replaceChildren(new Option("Nova variante",""));for(const variant of product.variants||[])$("comVariant").add(new Option(variant.name+(variant.sku?" · "+variant.sku:"")+(variant.active?"":" · inativa"),variant.id));
+ commerceProductDirty=false;commerceResetComplements();commerceSelectVariant("");updateCommerceControls();
+}
+function commerceSelectVariant(id=""){
+ commerceVariant=commerceProduct?.variants?.find(v=>v.id===id)||null;$("comVariant").value=commerceVariant?.id||"";const variant=commerceVariant||{};
+ $("comVariantName").value=variant.name||"";$("comSku").value=variant.sku||"";$("comVariantActive").checked=variant.active===true;$("comPriceKind").value=variant.price_kind||"on_request";
+ $("comPrice").value=Number.isSafeInteger(variant.unit_price_cents)?(variant.unit_price_cents/100).toFixed(2).replace(".",","):"";
+ commerceAttributeRows=[];$("comAttributeRows").replaceChildren();for(const [key,value] of Object.entries(variant.attributes||{}))commerceAddFields("attribute",{key,value});
+ $("comVariantState").textContent=commerceVariant?"Variante salva · revisão "+variant.revision+" · "+commercePrice(variant)+(variant.active?" · ativa":" · inativa"):"Salve uma variante antes de registrar estoque.";
+ $("comStockMode").value=variant.stock_mode||"unknown";$("comStockQuantity").value=variant.quantity_on_hand??"";$("comStockSource").value=variant.stock_source||"";$("comStockObserved").value=commerceLocalDate(variant.observed_at);$("comStockUntil").value=commerceLocalDate(variant.valid_until);
+ $("comStockTimezone").textContent="Datas e horas no fuso deste navegador: "+Intl.DateTimeFormat().resolvedOptions().timeZone+". O servidor recebe o instante com fuso.";
+ $("comStockCurrent").textContent=!commerceVariant?"Selecione uma variante salva para consultar o estoque.":variant.stock_mode!=="tracked"?"Estoque desconhecido. Disponibilidade precisa ser consultada.":"Contagem registrada: "+(variant.quantity_on_hand??"não informada")+". Unidades reservadas: "+(variant.reserved_quantity??"não informadas")+". Origem: "+(variant.stock_source||"não informada")+". Conferido em "+commerceDate(variant.observed_at)+"; válido até "+commerceDate(variant.valid_until)+". A confirmação revalida a disponibilidade.";
+ commerceVariantDirty=false;commerceStockDirty=false;updateCommerceControls();
+}
+function commerceRenderCatalog(productId="",variantId=""){
+ $("comProduct").replaceChildren(new Option("Novo produto",""));for(const product of commerceProducts)$("comProduct").add(new Option(product.name+(product.active?"":" · inativo"),product.id));
+ $("comBasketVariant").replaceChildren(new Option("Escolha um item",""));for(const product of commerceProducts.filter(p=>p.active))for(const variant of (product.variants||[]).filter(v=>v.active))$("comBasketVariant").add(new Option(product.name+" / "+variant.name+" · "+commercePrice(variant),variant.id));
+ commerceSelectProduct(productId);if(variantId)commerceSelectVariant(variantId);commerceRenderBasket();
+}
+function commerceResetComplements(){
+ commerceComplements=[];commerceComplementDirty=false;commerceComplementSelected="";$("comComplementTarget").replaceChildren(new Option("Escolha outro produto",""));
+ for(const product of commerceProducts)if(product.id!==commerceProduct?.id)$("comComplementTarget").add(new Option(product.name+(product.active?"":" · inativo"),product.id));
+ $("comComplementReason").value="";$("comComplementApproved").checked=false;$("comComplementList").textContent="Consulte as relações elegíveis salvas para este produto.";
+ $("comComplementSource").textContent=commerceProduct?"Produto de origem: "+commerceProduct.name:"Selecione um produto salvo.";
+}
+function commerceFillComplement(target){
+ commerceComplementSelected=target;$("comComplementTarget").value=target;const relation=commerceComplements.find(row=>row.target_product_id===target);
+ $("comComplementReason").value=relation?.reason||"";$("comComplementApproved").checked=!!relation;
+}
+function commerceRenderComplements(){
+ const box=$("comComplementList");box.replaceChildren();if(!commerceComplements.length){box.textContent="Nenhuma relação aprovada e elegível foi retornada para este produto.";return;}
+ for(const relation of commerceComplements){const row=document.createElement("p");row.textContent=relation.name+" — "+relation.reason;box.append(row);}
+}
+async function commerceReadComplements(){
+ if(!commerceReady()||commerceBusy||!commerceProduct)return;
+ if(commerceComplementDirty&&!confirm("Descartar a edição local desta relação e consultar as aprovações salvas?"))return;
+ const source=commerceProduct.id;
+ return commerceRun("Consultando relações aprovadas...",async current=>{
+   const rows=await api(commerceUrl("/products/"+encodeURIComponent(source)+"/complements"));if(!current()||commerceProduct?.id!==source)return;
+   commerceComplements=rows;commerceComplementDirty=false;commerceRenderComplements();commerceFillComplement($("comComplementTarget").value);$("comFeedback").textContent="Relações aprovadas e elegíveis consultadas. Nenhuma aprovação foi alterada.";
+ });
+}
+async function commerceSaveComplement(){
+ if(!commerceCan("can_edit_catalog")||commerceBusy||!commerceProduct||commerceProductDirty||commerceVariantDirty||commerceStockDirty)return;
+ const source=commerceProduct.id,target=$("comComplementTarget").value,reason=$("comComplementReason").value.trim();
+ if(!target||target===source||!commerceProducts.some(product=>product.id===target)||!reason||reason.length>300){$("comFeedback").textContent="Escolha outro produto deste catálogo e informe uma justificativa oficial de até 300 caracteres.";return;}
+ const payload={target_product_id:target,reason,approved:$("comComplementApproved").checked};
+ return commerceRun("Salvando aprovação da relação...",async current=>{
+   const result=await api(commerceUrl("/products/"+encodeURIComponent(source)+"/complements"),"PUT",payload);if(!current()||commerceProduct?.id!==source)return;
+   if(result.source_product_id!==source||result.target_product_id!==target||result.approved!==payload.approved)throw Error("O resultado não corresponde à aprovação enviada. Consulte o estado salvo antes de continuar.");
+   commerceComplementDirty=false;commerceClearProposal("A relação comercial foi alterada. Revise as consultas antes de preparar uma nova proposta.");
+   try{const rows=await api(commerceUrl("/products/"+encodeURIComponent(source)+"/complements"));if(!current()||commerceProduct?.id!==source)return;commerceComplements=rows;commerceRenderComplements();commerceFillComplement(target);$("comComplementReason").value=result.reason;$("comComplementApproved").checked=result.approved;$("comFeedback").textContent=payload.approved?"Aprovação confirmada pelo servidor. A sugestão depende de produtos elegíveis, contexto permitido e modo comercial contextual.":"Revogação confirmada pelo servidor. Esta relação não está mais aprovada para sugestões.";}
+   catch(error){if(current()){commerceStale=true;$("comFeedback").textContent="A alteração foi confirmada, mas não foi possível reler as relações. Atualize o catálogo antes de gravar novamente.";}}
+ },{mutation:true});
+}
+function commerceCatalogChanged(kind){
+ if(!commerceCan("can_edit_catalog")||commerceBusy)return;
+ if(kind==="product")commerceProductDirty=true;else if(kind==="variant")commerceVariantDirty=true;else if(kind==="complement")commerceComplementDirty=true;else commerceStockDirty=true;
+ $("comFeedback").textContent="Há alterações locais ainda não salvas. Salve ou descarte antes de preparar uma proposta.";$("comAccept").checked=false;updateCommerceControls();
+}
+function commerceParsePrice(value){
+ const text=String(value).trim();if(!/^(?:0|[1-9]\d*)(?:[.,]\d{1,2})?$/.test(text))throw Error("Informe o valor em reais, por exemplo 29,90. Preço vazio não é zero.");
+ const [whole,decimal=""]=text.replace(",",".").split("."),cents=Number(whole)*100+Number(decimal.padEnd(2,"0"));
+ if(!Number.isSafeInteger(cents)||cents>100_000_000)throw Error("O preço informado excede o limite do catálogo.");return cents;
+}
+function commerceLines(id,max,size){const values=$(id).value.split(/\n/).map(x=>x.trim()).filter(Boolean);if(values.length>max||values.some(x=>x.length>size))throw Error("Revise a lista: até "+max+" linhas, com no máximo "+size+" caracteres por linha.");return values}
+function commerceProductPayload(){
+ const name=$("comProductName").value.trim();if(!name)throw Error("Informe o nome do produto.");
+ return {name,description:$("comDescription").value.trim()||null,synonyms:commerceLines("comSynonyms",20,80),official_benefits:commerceLines("comBenefits",20,300),faqs:commerceFaqRows.map(row=>({question:row.fields.question.value.trim(),answer:row.fields.answer.value.trim()})),active:$("comProductActive").checked};
+}
+function commerceVariantPayload(){
+ const attributes={};for(const row of commerceAttributeRows){const key=row.fields.key.value.trim(),value=row.fields.value.value.trim();if(!key||!value||Object.hasOwn(attributes,key))throw Error("Cada atributo precisa ter um nome único e um valor.");Object.defineProperty(attributes,key,{value,enumerable:true,writable:true,configurable:true});}
+ const name=$("comVariantName").value.trim();if(!name)throw Error("Informe o nome da variante.");const kind=$("comPriceKind").value;return {name,sku:$("comSku").value.trim()||null,attributes,price_kind:kind,unit_price_cents:["fixed","from"].includes(kind)?commerceParsePrice($("comPrice").value):null,active:$("comVariantActive").checked};
+}
+function commerceStockPayload(){
+ if($("comStockMode").value!=="tracked")return {mode:"unknown",quantity_on_hand:null,observed_at:null,source:null,valid_until:null};
+ const quantity=$("comStockQuantity").value.trim(),observed=new Date($("comStockObserved").value),until=new Date($("comStockUntil").value),source=$("comStockSource").value.trim();
+ if(!/^\d+$/.test(quantity)||Number(quantity)>10_000_000||!source||!Number.isFinite(observed.getTime())||!Number.isFinite(until.getTime())||until<=observed||until-observed>24*3600*1000)throw Error("Informe quantidade, origem e datas válidas. A observação deve durar até 24 horas após a contagem.");
+ return {mode:"tracked",quantity_on_hand:Number(quantity),observed_at:observed.toISOString(),source,valid_until:until.toISOString()};
+}
+async function commerceRun(action,operation,{planning=false,mutation=false}={}){
+ if(!commerceReady()||commerceBusy)return;
+ const context=commerceContext(),request=++commerceOperationSequence,plan=commercePlanSequence;commerceActiveRequest=request;commerceBusy=true;updateCommerceControls();$("comFeedback").textContent=action;
+ const current=()=>commerceCurrent(context)&&commerceActiveRequest===request;
+ try{await operation(()=>current()&&(!planning||plan===commercePlanSequence),context)}
+ catch(error){if(current()){if(mutation&&error.status!==422){commerceStale=true;$("comStatus").textContent="Revise o estado antes de gravar novamente";$("comAccept").checked=false;}
+   $("comFeedback").textContent=error.message+(mutation&&error.status!==422?" Nenhuma nova tentativa será feita automaticamente. Consulte o registro ou atualize o catálogo antes de continuar.":"");}}
+ finally{if(current()){commerceActiveRequest=null;commerceBusy=false;updateCommerceControls()}}
+}
+async function commerceSave(kind){
+ if(!commerceCan("can_edit_catalog")||commerceBusy)return;
+ if(kind!=="product"&&commerceProductDirty||kind!=="variant"&&commerceVariantDirty||kind!=="stock"&&commerceStockDirty||commerceComplementDirty){$("comFeedback").textContent="Salve ou descarte a edição da outra seção antes de gravar esta alteração.";return;}
+ const form=$(kind==="product"?"comProductForm":kind==="variant"?"comVariantForm":"comStockForm");if(!form.reportValidity())return;
+ let body,url,method="PUT",productId=commerceProduct?.id||"",variantId=commerceVariant?.id||"";
+ try{
+   if(kind==="product"){const product=commerceProductPayload();method=productId?"PUT":"POST";url="/products"+(productId?"/"+encodeURIComponent(productId):"");body=productId?{expected_revision:commerceProduct.revision,product}:product;}
+   else if(kind==="variant"){if(!productId)return;const variant=commerceVariantPayload();method=variantId?"PUT":"POST";url="/products/"+encodeURIComponent(productId)+"/variants"+(variantId?"/"+encodeURIComponent(variantId):"");body=variantId?{expected_revision:commerceVariant.revision,variant}:variant;}
+   else{if(!variantId)return;url="/variants/"+encodeURIComponent(variantId)+"/stock";body={expected_revision:commerceVariant.inventory_revision,stock:commerceStockPayload()};}
+ }catch(error){$("comFeedback").textContent=error.message;return;}
+ return commerceRun("Gravando cadastro...",async current=>{
+   const result=await api(commerceUrl(url),method,body);if(!current())return;
+   if(kind==="product")productId=result.id;if(kind==="variant")variantId=result.id;
+   commerceClearProposal("O catálogo foi alterado. Consulte os itens novamente antes de preparar outra proposta.");
+   try{const products=await api(commerceUrl("/products"));if(!current())return;commerceProducts=products;commerceRenderCatalog(productId,variantId);$("comStatus").textContent="Catálogo consultado · "+products.length+" produto(s)";$("comFeedback").textContent="Cadastro confirmado pelo servidor. Orçamentos anteriores precisam de nova revisão.";}
+   catch(error){if(current()){commerceStale=true;$("comFeedback").textContent="A gravação foi confirmada, mas não foi possível reler o catálogo. Atualize antes de fazer outra alteração.";}}
+ },{mutation:true});
+}
+function commercePlanningChanged(){commerceClearProposal("A proposta foi alterada. Consulte valores e disponibilidade novamente.");updateCommerceControls()}
+function commerceRenderBasket(){
+ const box=$("comBasket");box.replaceChildren();if(!commerceBasket.length){const p=document.createElement("p");p.textContent="Nenhum item selecionado.";box.append(p);return;}
+ for(const item of commerceBasket){const found=commerceFindVariant(item.variant_id),row=document.createElement("div");row.className="commerce-item";const name=document.createElement("strong");name.textContent=found?found.product.name+" / "+found.variant.name:item.label||"Item indisponível no catálogo atual";row.append(name);
+   const label=document.createElement("label");label.textContent="Quantidade deste item";const quantity=document.createElement("input");quantity.type="number";quantity.min="1";quantity.max="1000";quantity.step="1";quantity.value=String(item.quantity);quantity.addEventListener("input",()=>{item.quantity=quantity.value;commercePlanningChanged()});label.append(quantity);row.append(label);
+   const remove=document.createElement("button");remove.type="button";remove.className="btn ghost";remove.textContent="Remover item";remove.addEventListener("click",()=>{commerceBasket=commerceBasket.filter(x=>x!==item);commercePlanningChanged();commerceRenderBasket()});row.append(remove);box.append(row);
+ }
+}
+function commerceAddBasket(){
+ if(!commerceReady()||commerceBusy||commerceStale||commerceDirty())return;
+ const id=$("comBasketVariant").value,found=commerceFindVariant(id),raw=$("comBasketQuantity").value.trim();
+ if(!found||!found.product.active||!found.variant.active||!/^\d+$/.test(raw)||Number(raw)<1||Number(raw)>1000){$("comFeedback").textContent="Escolha uma variante ativa e quantidade inteira de 1 a 1000.";return;}
+ if(commerceBasket.some(item=>item.variant_id===id)){$("comFeedback").textContent="Este item já está na proposta. Ajuste a quantidade na linha existente.";return;}
+ if(commerceBasket.length>=30){$("comFeedback").textContent="Uma proposta pode ter até 30 itens diferentes.";return;}
+ commerceBasket.push({variant_id:id,quantity:Number(raw),label:found.product.name+" / "+found.variant.name});commercePlanningChanged();commerceRenderBasket();
+}
+function commerceItems(){
+ if(!commerceBasket.length)throw Error("Adicione pelo menos um item à proposta.");
+ return commerceBasket.map(item=>{const quantity=String(item.quantity);if(!/^\d+$/.test(quantity)||Number(quantity)<1||Number(quantity)>1000)throw Error("Cada item deve ter quantidade inteira de 1 a 1000.");return {variant_id:item.variant_id,quantity:Number(quantity)}});
+}
+function commerceRenderProposal(value){
+ const box=$("comQuoteSummary");box.replaceChildren();const heading=document.createElement("strong");heading.textContent=value.kind==="quote"?"Orçamento salvo · "+value.id:"Consulta sem gravação de pedido";box.append(heading);
+ for(const item of value.items||[]){const row=document.createElement("p");row.textContent=item.product_name+" / "+item.variant_name+" · quantidade "+item.quantity+" · "+commercePrice(item)+(Number.isSafeInteger(item.total_cents)?" · valor da linha: "+commerceMoney(item.total_cents):"");
+   const attributes=Object.entries(item.attributes||{}).map(([key,val])=>key+": "+val).join(", ");if(attributes)row.textContent+="\n"+attributes;
+   const stock=item.stock||{};row.textContent+="\nDisponibilidade na consulta: "+(Number.isSafeInteger(stock.available_quantity)?stock.available_quantity+" unidade(s) informadas":"precisa de confirmação")+". Validade da contagem: "+commerceDate(stock.valid_until)+".";box.append(row);
+ }
+ const total=document.createElement("p");total.textContent=Number.isSafeInteger(value.total_cents)?"Valor dos itens: "+commerceMoney(value.total_cents):Number.isSafeInteger(value.minimum_total_cents)?"Valor mínimo dos itens: "+commerceMoney(value.minimum_total_cents)+". O total final exige análise.":"Total sob consulta. Nenhum valor final foi definido.";box.append(total);
+ const limitations={non_fixed_price:"Há preço a partir de, sob consulta ou personalizado.",unknown_stock:"Há estoque desconhecido.",stale_stock:"Há contagem de estoque vencida ou ainda não válida.",insufficient_stock:"A quantidade disponível é insuficiente."};
+ const warning=document.createElement("p");warning.textContent=(value.limitations||[]).map(code=>limitations[code]||"Há informação que exige revisão humana.").join(" ")+(value.confirmation_requirements_met===true?" A disponibilidade será revalidada ao confirmar o pedido.":" A confirmação automática não está disponível para este resumo.");box.append(warning);
+ $("comQuoteValidity").textContent=value.expires_at?"Validade do orçamento: "+commerceDate(value.expires_at)+(Date.parse(value.expires_at)<=Date.now()?" · expirado":"")+". Cliente: "+(value.customer_name||"não informado")+" · telefone: "+(value.contact_e164||"não informado")+".":"Valores e disponibilidade retornados pelo servidor nesta consulta.";
+}
+function commerceRenderOrder(){
+ const order=commerceOrder;$("comOrderSummary").textContent=!order?"Nenhum pedido selecionado.":"Pedido "+order.id+" · "+({draft:"rascunho, ainda não confirmado",confirmed:"confirmado pelo servidor",cancelled:"cancelado"}[order.status]||"estado não reconhecido")+" · revisão "+order.revision+".\nOrçamento vinculado: "+order.quote_id+".\nPagamento não verificado. Nenhuma cobrança foi realizada por este painel.";
+}
+function commerceArmExpiry(){
+ clearTimeout(commerceExpiryTimer);const context=commerceContext(),id=commerceQuote?.id,remaining=Date.parse(commerceQuote?.expires_at)-Date.now();
+ if(!Number.isFinite(remaining))return;
+ commerceExpiryTimer=setTimeout(()=>{if(commerceCurrent(context)&&commerceQuote?.id===id&&commerceOrder?.status!=="confirmed"){$("comAccept").checked=false;$("comFeedback").textContent="Orçamento expirado. Prepare uma nova proposta antes de confirmar.";updateCommerceControls()}},Math.max(0,Math.min(remaining+1,2147483647)));
+}
+async function commerceCalculate(save=false){
+ if(!commerceReady()||commerceBusy||commerceStale||commerceDirty()||save&&!commerceCan("can_create_orders"))return;
+ let payload;try{payload={items:commerceItems()};if(save){const validity=$("comValidity").value.trim(),contact=$("comContact").value.trim();if(!/^\d+$/.test(validity)||Number(validity)<1||Number(validity)>60||contact&&!/^\+[1-9]\d{7,14}$/.test(contact))throw Error("Informe validade de 1 a 60 minutos e telefone com DDI, ou deixe o telefone vazio apenas para consulta.");payload={...payload,customer_name:$("comCustomer").value.trim()||null,contact_e164:contact||null,validity_minutes:Number(validity)};}}
+ catch(error){$("comFeedback").textContent=error.message;return;}
+ return commerceRun(save?"Salvando orçamento para revisão...":"Consultando valores e disponibilidade...",async current=>{
+   const result=await api(commerceUrl(save?"/quotes":"/estimate"),"POST",payload);if(!current())return;
+   commerceEstimate=save?null:result;commerceOrder=null;commerceOrderKey=null;$("comAccept").checked=false;
+   if(save){const {confirmation_token,...quote}=result;commerceQuote=quote;commerceToken=typeof confirmation_token==="string"?{quoteId:quote.id,value:confirmation_token}:null;$("comLookupQuote").value=quote.id;commerceArmExpiry();}
+   else{commerceQuote=null;commerceToken=null;clearTimeout(commerceExpiryTimer);}
+   commerceRenderProposal(save?commerceQuote:result);commerceRenderOrder();$("comFeedback").textContent=save?"Orçamento salvo. Revise este resumo antes de criar ou confirmar um pedido.":"Consulta concluída. Nenhum pedido foi criado.";
+ },{planning:true,mutation:save});
+}
+async function commerceCreateOrder(){
+ if(!commerceCan("can_create_orders")||commerceBusy||commerceDirty()||!commerceQuote||!commerceHasCurrentToken()||!commerceQuoteFresh()||commerceOrder)return;
+ const quote=commerceQuote;commerceOrderKey=commerceOrderKey||crypto.randomUUID();const payload={quote_id:quote.id,idempotency_key:commerceOrderKey};
+ return commerceRun("Criando pedido em rascunho...",async current=>{const result=await api(commerceUrl("/orders"),"POST",payload);if(!current())return;if(result.quote_id!==quote.id)throw Error("O pedido retornado não corresponde ao orçamento revisado.");commerceOrder=result;$("comAccept").checked=false;$("comLookupOrder").value=result.id;commerceRenderOrder();$("comFeedback").textContent="Pedido em rascunho confirmado pelo servidor. Revise os itens e marque a confirmação explícita antes de reservar estoque.";},{planning:true,mutation:true});
+}
+async function commerceConfirmOrder(){
+ if(!commerceConfirmationReady()||!$("comAccept").checked){$("comFeedback").textContent="Revise um orçamento vigente e um pedido em rascunho, com preço e estoque confirmáveis, e marque a confirmação explícita.";return;}
+ const quote=commerceQuote,order=commerceOrder,payload={expected_revision:order.revision,confirmation_token:commerceToken.value};
+ if(!confirm("Confirmar o pedido "+order.id+" deste resumo por "+commerceMoney(quote.total_cents)+" para "+quote.contact_e164+"? O estoque será reservado. O pagamento continuará não verificado."))return;
+ return commerceRun("Confirmando o pedido revisado...",async current=>{const result=await api(commerceUrl("/orders/"+encodeURIComponent(order.id)+"/confirm"),"POST",payload);if(!current())return;if(result.id!==order.id||result.quote_id!==quote.id||result.status!=="confirmed")throw Error("Não foi possível confirmar o estado deste pedido. Consulte o registro antes de continuar.");commerceOrder=result;commerceToken=null;$("comAccept").checked=false;clearTimeout(commerceExpiryTimer);commerceRenderOrder();$("comFeedback").textContent="Pedido confirmado pelo servidor. Pagamento continua não verificado.";},{planning:true,mutation:true});
+}
+async function commerceRead(kind){
+ if(!["quote","order","by-quote"].includes(kind))return;
+ const id=$(kind==="order"?"comLookupOrder":"comLookupQuote").value.trim();if(!commerceUuid.test(id)){$("comFeedback").textContent="Informe o identificador completo do registro que deseja consultar.";return;}
+ const path=kind==="quote"?"/quotes/":kind==="by-quote"?"/orders/by-quote/":"/orders/";
+ return commerceRun("Consultando registro salvo...",async current=>{const result=await api(commerceUrl(path+encodeURIComponent(id)));if(!current())return;
+   const quote=kind==="quote"?result:result.quote;if(!quote||kind!=="quote"&&result.quote_id!==quote.id||(kind==="order"?result.id!==id:quote.id!==id))throw Error("O resumo retornado não corresponde ao registro consultado.");
+   commerceToken=null;commerceQuote=quote;commerceEstimate=null;commerceOrder=kind==="quote"?null:result;$("comLookupQuote").value=quote.id;if(commerceOrder)$("comLookupOrder").value=commerceOrder.id;$("comAccept").checked=false;commerceOrderKey=null;commerceRenderProposal(quote);commerceRenderOrder();commerceArmExpiry();$("comFeedback").textContent="Registro consultado sem repetir a operação anterior. Pagamento não verificado.";
+ });
+}
+for(const [id,kind] of [["comProductForm","product"],["comVariantForm","variant"],["comStockForm","stock"]]){
+ $(id).addEventListener("submit",event=>{event.preventDefault();return commerceSave(kind)});$(id).addEventListener("input",()=>commerceCatalogChanged(kind));$(id).addEventListener("change",()=>commerceCatalogChanged(kind));
+}
+$("comFaqAdd").addEventListener("click",()=>{if(!commerceCan("can_edit_catalog")||commerceBusy)return;commerceAddFields("faq");commerceCatalogChanged("product")});$("comAttributeAdd").addEventListener("click",()=>{if(!commerceCan("can_edit_catalog")||!commerceProduct||commerceBusy)return;commerceAddFields("attribute");commerceCatalogChanged("variant")});
+$("comProduct").addEventListener("change",()=>{if(commerceDirty()&&!confirm("Descartar edições locais e abrir outro produto?")){$("comProduct").value=commerceProduct?.id||"";return;}commerceSelectProduct($("comProduct").value)});
+$("comVariant").addEventListener("change",()=>{if((commerceVariantDirty||commerceStockDirty)&&!confirm("Descartar edições locais desta variante?")){$("comVariant").value=commerceVariant?.id||"";return;}commerceSelectVariant($("comVariant").value)});
+$("comProductNew").addEventListener("click",()=>{if(commerceCan("can_edit_catalog")&&!commerceBusy&&(!commerceDirty()||confirm("Descartar edições locais para preparar outro produto?")))commerceSelectProduct("")});
+$("comVariantNew").addEventListener("click",()=>{if(commerceCan("can_edit_catalog")&&commerceProduct&&!commerceBusy&&(!(commerceVariantDirty||commerceStockDirty)||confirm("Descartar edições locais para preparar outra variante?")))commerceSelectVariant("")});
+$("comPriceKind").addEventListener("change",updateCommerceControls);$("comStockMode").addEventListener("change",updateCommerceControls);
+$("comComplementRead").addEventListener("click",commerceReadComplements);$("comComplementForm").addEventListener("submit",event=>{event.preventDefault();return commerceSaveComplement()});
+$("comComplementTarget").addEventListener("change",()=>{const target=$("comComplementTarget").value;if(commerceComplementDirty&&!confirm("Descartar a edição local e escolher outra relação?")){$("comComplementTarget").value=commerceComplementSelected;return;}commerceFillComplement(target);commerceCatalogChanged("complement")});
+$("comComplementReason").addEventListener("input",()=>commerceCatalogChanged("complement"));$("comComplementApproved").addEventListener("change",()=>commerceCatalogChanged("complement"));
+$("comTenant").addEventListener("change",async()=>{if((commerceDirty()||commerceBasket.length)&&!confirm("Trocar de empresa e descartar a edição local? Os registros salvos permanecem no servidor.")){$("comTenant").value=commerceTenant;return;}commercePane(false);await loadCommerceTenant()});
+$("comReload").addEventListener("click",()=>{if((commerceDirty()||commerceBasket.length)&&!confirm("Atualizar o catálogo e descartar a edição local? Registros salvos continuarão disponíveis para consulta."))return;return loadCommerceTenant({preserveLookups:true})});
+$("comCatalogTab").addEventListener("click",()=>commercePane(false));$("comOrdersTab").addEventListener("click",()=>commercePane(true));$("comBasketAdd").addEventListener("click",commerceAddBasket);
+$("comPlanForm").addEventListener("submit",event=>{event.preventDefault();return commerceCalculate()});for(const id of ["comCustomer","comContact","comValidity"])$(id).addEventListener("input",commercePlanningChanged);
+$("comQuoteCreate").addEventListener("click",()=>commerceCalculate(true));$("comOrderCreate").addEventListener("click",commerceCreateOrder);$("comOrderConfirm").addEventListener("click",commerceConfirmOrder);$("comAccept").addEventListener("change",updateCommerceControls);
+$("comReadQuote").addEventListener("click",()=>commerceRead("quote"));$("comReadOrder").addEventListener("click",()=>commerceRead("order"));$("comReadOrderByQuote").addEventListener("click",()=>commerceRead("by-quote"));
+
+let aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)),aiPreferredTenant="",aiPreferredVersion="",
+    aiEpoch=0,aiRequestSequence=0,aiActiveRequest=null,aiStatusSequence=0,aiTenantSequence=0,aiProfileSequence=0,aiProfileData=null,aiProfileLoading=false,aiProfileSelectionRequired=false,aiReadiness=null,aiStatusLoading=false;
+function aiCurrentReadiness(){return aiReadiness?.epoch===aiEpoch&&aiReadiness.authEpoch===authEpoch&&aiReadiness.tenant===$("aiTenant").value?aiReadiness:null}
+function aiReady(audio=false){const status=aiCurrentReadiness();return !!status&&status.configured===true&&status.preview_enabled===true&&(!audio||status.audio_preview_enabled===true)}
+function updateAiControls(){
+ const busy=aiActiveRequest!==null||aiProfileLoading||aiProfileSelectionRequired;
+ $("aiSend").disabled=busy||!aiReady();
+ $("aiAudioSend").disabled=busy||!aiReady(true)||!!$("aiStyle").value;
+ $("aiAudioFile").disabled=busy||!aiReady(true)||!!$("aiStyle").value;
+ $("aiStatusRefresh").disabled=!$("aiTenant").value||aiStatusLoading;
+ $("aiAudioAvailability").textContent=!aiCurrentReadiness()?"Consulte a disponibilidade do teste antes de enviar um arquivo.":!aiReady()?"A simulação ainda não está habilitada ou configurada no servidor.":!aiReady(true)?"O teste por áudio está desativado no servidor. Você pode testar por texto.":$("aiStyle").value?"Para testar áudio, use o estilo da versão selecionada.":"O teste por arquivo de áudio está disponível.";
+}
+function resetAiConversation(notice="Nova conversa simulada."){
+ const readiness=aiCurrentReadiness();
+ ++aiEpoch;aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+ aiReadiness=readiness?{...readiness,epoch:aiEpoch}:null;aiStatusLoading=false;
+ aiActiveRequest=null;$("aiAudioFile").value="";updateAiControls();
+ $("aiMessages").replaceChildren();$("aiDiagnostics").textContent=notice;
+}
+function appendWhatsAppText(element,content){
+ const value=String(content??"");
+ const decode=text=>text.replace(/\\([*_])/g,"$1"),word=character=>!!character&&/[\p{L}\p{N}_]/u.test(character);
+ const escaped=index=>{let count=0;for(let i=index-1;i>=0&&value[i]==="\\";i--)count++;return count%2===1};
+ let cursor=0,index=0;
+ while(index<value.length){
+   const marker=value[index];if(!["*","_"].includes(marker)||escaped(index)||value[index-1]===marker||value[index+1]===marker||marker==="_"&&word(value[index-1])){index++;continue;}
+   let end=index+1,matched=false;for(;end<value.length&&value[end]!=="\n"&&end-index<=(marker==="*"?301:1201);end++){
+     if(value[end]!==marker||escaped(end)||value[end+1]===marker||value[end-1]===marker&&!escaped(end-1)||marker==="_"&&word(value[end+1]))continue;
+     const body=value.slice(index+1,end);if(!body||body.trim()!==body)break;
+     element.append(decode(value.slice(cursor,index)));const formatted=document.createElement(marker==="*"?"strong":"em");formatted.textContent=decode(body);element.append(formatted);
+     cursor=end+1;index=cursor;matched=true;break;
+   }
+   if(!matched)index++;
+ }
+ element.append(decode(value.slice(cursor)));
+}
 function aiBubble(content,direction){
  const wrapper=document.createElement("div");
- wrapper.className="bubble "+(direction==="in"?"incoming":"outgoing");
- wrapper.textContent=content;
+ wrapper.className="bubble "+(direction==="in"?"in":"out");
+ appendWhatsAppText(wrapper,content);
  $("aiMessages").append(wrapper);
  $("aiMessages").scrollTop=$("aiMessages").scrollHeight;
 }
 async function aiLoadTenants(){
+ const sequence=++aiTenantSequence,role=loginRole,preferredTenant=aiPreferredTenant,preferredVersion=aiPreferredVersion,last=$("aiTenant").value;
+ resetAiConversation("Consultando a empresa e a versão para iniciar o teste...");clearAiProfileState();
+ $("aiTenant").replaceChildren(new Option("Consultando estabelecimentos...",""));aiProfileLoading=true;updateAiControls();
+ const epoch=aiEpoch;
+ const current=()=>sequence===aiTenantSequence&&epoch===aiEpoch&&role===loginRole;
  try{
-   const tenants=await api("/api/v1/tenants");
-   const last=$("aiTenant").value;
+   const tenants=await api(["support","admin"].includes(role)?"/api/v1/tenants":"/api/v1/account/businesses");
+   if(!current())return;
    $("aiTenant").replaceChildren(new Option("Escolha o estabelecimento",""));
    for(const tenant of tenants)$("aiTenant").add(new Option(tenant.name,tenant.id));
-   if([...$("aiTenant").options].some(x=>x.value===last))$("aiTenant").value=last;
-   else if(tenants.length)$("aiTenant").value=tenants[0].id;
+   $("aiTenant").value=tenants.some(x=>x.id===preferredTenant)?preferredTenant:tenants.some(x=>x.id===last)?last:(tenants[0]?.id||"");
+   aiPreferredTenant="";aiPreferredVersion="";
+   resetAiConversation("Conversa reiniciada para a empresa e a versão selecionadas.");
+   void aiLoadProfiles(preferredVersion);
    await aiCheckStatus();
- }catch(ex){$("aiStatus").textContent=ex.message;}
+ }catch(ex){if(current()){aiProfileLoading=false;$("aiStatus").textContent=ex.message;updateAiControls();}}
+}
+function updateAiMode(){
+ if(aiProfileSelectionRequired){$("aiMode").textContent="O rascunho solicitado não pôde ser carregado. Escolha explicitamente uma versão para continuar o teste.";updateAiControls();return;}
+ const version=$("aiProfile").value,profile=version?aiProfileData?.draft:aiProfileData?.published;
+ $("aiMode").textContent=version?"Teste isolado do rascunho salvo · versão "+(profile?.revision||"selecionada")+". O atendimento publicado não será alterado.":"Atendimento atual"+(profile?" · perfil publicado, versão "+profile.revision:"")+". Nenhum rascunho selecionado.";
+ if($("aiStyle").value)$("aiMode").textContent+=" Estilo de texto neste teste: "+businessStyles[$("aiStyle").value]+". Para testar áudio, use o estilo da versão.";
+ updateAiControls();
+}
+function clearAiProfileState(){
+ aiProfileData=null;aiProfileLoading=false;aiProfileSelectionRequired=false;$("aiProfile").replaceChildren(new Option("Atendimento atual",""));$("aiProfile").value="";$("aiStyle").value="";$("aiProfile").disabled=true;$("aiStyle").disabled=true;updateAiMode();
+}
+function requireAiProfileSelection(){
+ aiProfileSelectionRequired=true;$("aiProfile").add(new Option("Escolha uma versão para continuar","_choose_"));$("aiProfile").value="_choose_";$("aiProfile").disabled=false;updateAiMode();
+}
+async function aiLoadProfiles(preferredVersion=""){
+ const tenant=$("aiTenant").value,epoch=aiEpoch,sequence=++aiProfileSequence;
+ clearAiProfileState();
+ if(!tenant)return;
+ aiProfileLoading=true;$("aiMode").textContent="Consultando as versões desta empresa antes de iniciar o teste...";updateAiControls();
+ const current=()=>epoch===aiEpoch&&tenant===$("aiTenant").value&&sequence===aiProfileSequence;
+ try{
+   const data=await api(businessUrl(tenant));if(!current())return;
+   aiProfileData=data;
+   if(data.runtime_connected&&data.draft&&data.draft.id!==data.published?.id)$("aiProfile").add(new Option("Rascunho salvo · versão "+data.draft.revision,data.draft.id));
+   if(preferredVersion&&data.runtime_connected&&data.draft?.id===preferredVersion)$("aiProfile").value=preferredVersion;
+   $("aiProfile").disabled=!data.runtime_connected||!data.draft||data.draft.id===data.published?.id;$("aiStyle").disabled=!data.runtime_connected;
+   if(preferredVersion&&$("aiProfile").value!==preferredVersion)requireAiProfileSelection();else updateAiMode();
+   if(!data.runtime_connected)$("aiMode").textContent+=" O uso de perfis e estilos personalizados ainda está desativado.";
+ }catch(error){if(current()){if(preferredVersion)requireAiProfileSelection();else $("aiMode").textContent="Atendimento atual. Não foi possível consultar versões do perfil: "+error.message;}}
+ finally{if(current()){aiProfileLoading=false;updateAiControls()}}
 }
 async function aiCheckStatus(){
- const tenant=$("aiTenant").value;if(!tenant)return;
+ const tenant=$("aiTenant").value,epoch=aiEpoch,requestId=++aiStatusSequence;
+ aiReadiness=null;aiStatusLoading=!!tenant;updateAiControls();
+ if(!tenant){$("aiStatus").textContent="Escolha um estabelecimento";return;}
+ $("aiStatus").textContent="Consultando disponibilidade da prévia...";
+ const current=()=>epoch===aiEpoch&&tenant===$("aiTenant").value&&requestId===aiStatusSequence;
  try{
   const result=await api("/api/v1/tenants/"+encodeURIComponent(tenant)+"/ai/status");
+  if(!current())return;
+  aiReadiness={tenant,epoch,authEpoch,configured:result.configured===true,preview_enabled:result.preview_enabled===true,audio_preview_enabled:result.audio_preview_enabled===true};
   $("aiStatus").textContent=result.configured&&result.preview_enabled?"Prévia disponível":"Prévia ainda não configurada";
- }catch(ex){$("aiStatus").textContent=ex.message;}
+ }catch(ex){if(current())$("aiStatus").textContent=ex.message;}
+ finally{if(current()){aiStatusLoading=false;updateAiControls()}}
 }
-$("aiTenant").addEventListener("change",async()=>{aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));$("aiMessages").replaceChildren();await aiCheckStatus()});
-$("aiReset").addEventListener("click",()=>{
- aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));$("aiMessages").replaceChildren();
- $("aiDiagnostics").textContent="Nova conversa simulada.";
+$("aiStatusRefresh").addEventListener("click",aiCheckStatus);
+$("aiTenant").addEventListener("change",async()=>{
+ resetAiConversation("Conversa reiniciada para o estabelecimento selecionado.");void aiLoadProfiles();await aiCheckStatus();
 });
-$("aiForm").addEventListener("submit",async event=>{
- event.preventDefault();
+$("aiReset").addEventListener("click",()=>{
+ resetAiConversation();
+ if(!aiProfileData)void aiLoadProfiles();
+});
+for(const id of ["aiProfile","aiStyle"])$(id).addEventListener("change",()=>{
+ if(id==="aiProfile")aiProfileSelectionRequired=$("aiProfile").value==="_choose_";
+ resetAiConversation("Conversa reiniciada para a versão e o estilo selecionados.");updateAiMode();
+});
+async function sendAiPreview(message,file=null){
+ if(aiProfileLoading||aiProfileSelectionRequired){$("aiDiagnostics").textContent=aiProfileLoading?"Aguarde a consulta da versão antes de enviar.":"Escolha a versão que deseja testar antes de enviar.";return;}
+ if(aiActiveRequest!==null)return;
  const tenant=$("aiTenant").value;
  if(!tenant){$("aiDiagnostics").textContent="Selecione um estabelecimento.";return}
- const message=$("aiInput").value.trim();if(!message)return;
- $("aiSend").disabled=true;
- aiBubble(message,"out");$("aiInput").value="";
+ if(!aiReady(!!file)){$("aiDiagnostics").textContent=aiCurrentReadiness()?file?"O teste por áudio não está disponível no servidor. Atualize a disponibilidade ou use texto.":"A prévia não está habilitada ou configurada no servidor.":"Atualize a disponibilidade do teste antes de enviar.";return;}
+ if(file&&$("aiStyle").value){$("aiDiagnostics").textContent="Para testar áudio, selecione Usar o estilo da versão.";return}
+ const mime=file?({"audio/ogg":"audio/ogg","audio/webm":"audio/webm","audio/wav":"audio/wav","audio/x-wav":"audio/wav","audio/wave":"audio/wav","audio/mpeg":"audio/mpeg","audio/mp3":"audio/mpeg","audio/mp4":"audio/mp4","audio/x-m4a":"audio/mp4"}[String(file.type||"").toLowerCase().split(";")[0]]):null;
+ if(file&&(!mime||!file.size||file.size>2_000_000)){$("aiDiagnostics").textContent="Escolha um áudio OGG, WebM, WAV, MP3 ou M4A de até 2 MB.";return}
+ if(!file&&!message)return;
+ const session=aiSession,epoch=aiEpoch,requestId=++aiRequestSequence;
+ const correlation=crypto.randomUUID(),version=$("aiProfile").value;
+ const baseProfile=version?aiProfileData?.draft?.profile:aiProfileData?.published?.profile;
+ const style=$("aiStyle").value&&aiProfileData?.runtime_connected?{...(baseProfile?.style_rules||{}),style:$("aiStyle").value}:null;
+ aiActiveRequest=requestId;
+ const current=()=>epoch===aiEpoch&&session===aiSession&&tenant===$("aiTenant").value&&aiActiveRequest===requestId;
+ updateAiControls();
+ aiBubble(file?"Áudio para teste: "+file.name:message,"out");if(file)$("aiAudioFile").value="";else $("aiInput").value="";
  try{
-  const data=await api("/api/v1/tenants/"+encodeURIComponent(tenant)+"/ai/conversation-preview",
-    "POST",{text:message,session:aiSession});
+  const url="/api/v1/tenants/"+encodeURIComponent(tenant)+"/ai/conversation-preview";
+  let data;
+  if(file){
+    const query=new URLSearchParams({session,request_id:correlation,reset:"false"});if(version)query.set("profile_version",version);
+    const response=await fetch(url+"/audio?"+query,{method:"POST",headers:{"Accept":"application/json","Content-Type":mime,"X-Orion-CSRF":csrf},body:file,credentials:"same-origin",cache:"no-store"});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok){if(response.status===401&&current())showLogin();throw Error(errorMessage(body,response.status))}data=body;
+  }else data=await api(url,"POST",{text:message,session,request_id:correlation,profile_version:version||null,style_rules:style});
+  if(!current())return;
+  if(file&&data.transcript)aiBubble("Transcrição: "+data.transcript,"out");
   aiBubble(data.answer||"Nenhuma resposta nesta etapa.","in");
   $("aiDiagnostics").textContent="Intenção/etapa: "+(data.step||"—")+
-     " · Modo simulado; nenhum envio para WhatsApp.";
- }catch(ex){$("aiDiagnostics").textContent=ex.message}
- finally{$("aiSend").disabled=false;$("aiInput").focus()}
+     " · "+(file?"Áudio transcrito; ":"")+"modo simulado, nenhum envio para WhatsApp.";
+ }catch(ex){if(current())$("aiDiagnostics").textContent=ex.message}
+ finally{if(current()){aiActiveRequest=null;updateAiControls();$("aiInput").focus()}}
+}
+$("aiForm").addEventListener("submit",event=>{
+ event.preventDefault();return sendAiPreview($("aiInput").value.trim());
+});
+$("aiAudioForm").addEventListener("submit",event=>{
+ event.preventDefault();const file=$("aiAudioFile").files?.[0];
+ if(!file){$("aiDiagnostics").textContent="Escolha um arquivo de áudio para testar.";return;}
+ return sendAiPreview("",file);
 });
 
-renderForm();renderGuide();
+renderForm();renderGuide();updateAiControls();
 })();
 </script>
 </body></html>

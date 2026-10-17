@@ -18,6 +18,7 @@ import {makeMessageRetryStore,deliveryFromAck,advanceDelivery} from "./message-r
 import {makeEncryptedRetryStore} from "./encrypted-retry-store.mjs";
 import {sendStoredText} from "./reliable-send.mjs";
 import {makeSendCapacity} from "./send-capacity.mjs";
+import {makeConversationIntake} from "./conversation-intake.mjs";
 import {inspectLookup,inspectDelivery} from "./recipient-diagnostics.mjs";
 import {makeDurableInbox} from "./durable-inbox.mjs";
 import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-health.mjs";
@@ -267,80 +268,114 @@ function installListeners(client,mine,saveCreds){
         actions.join(",")+" (números e identificadores omitidos)");
     }catch{console.warn("Orion QR: falha ao processar controle de chamada (dados omitidos)")}
   });
+  const inboundMetadata=new Map();
+  const intakeCurrent=()=>mine===generation&&socket===client&&status==='connected';
+  const groupSetting=(name,fallback,max)=>{
+    const raw=process.env[name],value=Number(raw);
+    return raw!==undefined&&Number.isSafeInteger(value)&&value>=0&&value<=max?value:fallback;
+  };
+  const settleMs=groupSetting('QR_AI_GROUP_WAIT_MS',350,2000);
+  const inboundIntake=makeConversationIntake({
+    settleMs,maxGroupMs:Math.max(settleMs,groupSetting('QR_AI_GROUP_MAX_WAIT_MS',1200,5000)),
+    isDuplicate:({messageId})=>seen.has('wa:'+messageId),
+    onRejected:async batch=>{
+      for(const id of batch.messageIds)transport.record('inbound_batch_rejected',id,{category:batch.reason});
+      if(batch.reason==='stale'||!batch.isCurrent()||!intakeCurrent())return;
+      const entries=batch.messageIds.map(id=>inboundMetadata.get(id)).filter(item=>item?.allowed);
+      const phone=entries[0]?.phone;
+      const current=()=>intakeCurrent()&&batch.isCurrent()&&!!phone&&
+        entries.every(item=>item.phone===phone)&&allowAssistantRecipient(phone,connectedStore.settings());
+      if(!current())return;
+      const answer=batch.reason==='needs_clarification'?
+        'Recebi informações demais de uma vez para interpretar com segurança. Pode resumir o pedido e a correção em uma mensagem mais curta?':
+        'Não consegui entender bem esse áudio. Pode mandar novamente, com até dois minutos, ou escrever só o serviço e o horário que procura?';
+      // One explanatory attempt for the complete rejected batch; never replay an operation.
+      await send(phone,answer,{waitForCapacity:true,isCurrent:current});
+    },
+    consume:async batch=>{
+      const entries=batch.messages.map(item=>inboundMetadata.get(item.id));
+      const phone=entries[0]?.phone,traceId=batch.messages[0]?.id;
+      const current=()=>intakeCurrent()&&batch.isCurrent()&&!!phone&&
+        entries.every(item=>item?.allowed&&item.phone===phone)&&
+        allowAssistantRecipient(phone,connectedStore.settings());
+      if(!current())return;
+      transport.record('ai_forward',traceId,{count:batch.messages.length});
+      let answer;
+      try{answer=await forwardAssistant({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
+        messageId:traceId,messageIds:batch.messages.map(item=>item.id),text:batch.text});}
+      catch(error){transport.record('ai_forward_failed',traceId);throw error;}
+      if(!answer){transport.record('ai_silent',traceId);return;}
+      transport.record('ai_answer',traceId);
+      if(!current())return;
+      try{
+        const sent=await send(phone,answer,{waitForCapacity:true,isCurrent:current});
+        transport.record(sent?.accepted?'ai_relay_returned':'ai_send_unconfirmed',traceId);
+      }catch(error){transport.record('ai_send_failed',traceId);throw error;}
+    }
+  });
   client.ev.on("messages.upsert",async ({messages:incoming,type})=>{
     transport.record('upsert_batch',null,{count:incoming?.length||0,type});
-    if(mine!==generation||status!=="connected")return;
+    if(!intakeCurrent())return;
+    const jobs=[];
     for(const message of incoming||[]){
       const traceId=message.key?.id;
       if(!shouldIngestUpsert(type,message.messageTimestamp)){
         transport.record('inbound_filtered_age',traceId,{type});continue;
       }
-      if(message.key?.id && message.message)retryMessages.save(message.key,message.message);
+      if(message.key?.id&&message.message)retryMessages.save(message.key,message.message);
       if(message.key?.fromMe){transport.record('inbound_own',traceId);continue;}
-      if(!message.key?.id||!message.message){transport.record('inbound_no_content',traceId);continue;}
-      const phone=await resolveMessagePhone(message.key,client);
-      if(!phone){transport.record('inbound_unresolved',traceId,{
-        hasPn:!!message.key.senderPn,hasLid:String(message.key.remoteJid||'').endsWith('@lid')});continue;}
-      transport.record('inbound_resolved',traceId);
-      // Count each valid inbound message, including media without a transcript.
-      const at=timestampMs(message.messageTimestamp)||Date.now();
-      try{connectedStore.record("wa:"+message.key.id,at)}catch{}
-      let body=extractText(message.message),assistantText=body;
-       if(!body){
-         try{
-           let txt=null;
-           if(assistantAudioEnabled()&&allowAssistantAudio(phone,connectedStore.settings())){
-             txt=await transcribeAssistantAudio(message,{
-               client,downloadMediaMessage,phone,token:KEY,
-               apiUrl:process.env.QR_AI_API_URL,logger
-             });
-           }
-           if(!txt)txt=await transcribeAudio(message,{
-             client,downloadMediaMessage,settings:connectedStore.settings(),
-             config:transcriberConfig(),logger
-           });
-           if(txt){body="[Áudio transcrito] "+txt;assistantText=txt;}
-         }catch{console.warn("Orion QR: transcrição não concluída (dados omitidos)")}
-       }
-       if(!body || typeof body!=="string"){transport.record('inbound_no_text',traceId);continue;}
-      const id="wa:"+message.key.id;
-      if(seen.has(id)){transport.record('inbound_duplicate',traceId);continue;}
-      pushMessage({id,phone,body:body.slice(0,2000),
-        direction:"in",at});
-      lastInboundAt=Date.now();inboundSinceConnect=true;
-      if(type==="append")recentAppends++;
-      if(allowAssistantRecipient(phone,connectedStore.settings())){
-        transport.record('pilot_allowed',traceId);
-        // Ordena por destinatário sem bloquear outros clientes; nunca recupera histórico.
-        const previous=assistantQueues.get(phone)||Promise.resolve();
-        const job=previous.catch(()=>{}).then(async()=>{
-          if(mine!==generation||socket!==client||status!=="connected"||
-              !allowAssistantRecipient(phone,connectedStore.settings()))return;
-          transport.record('ai_forward',traceId);
-          let answer;
-          try{answer=await forwardAssistant({
-            apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
-            messageId:String(message.key.id),text:assistantText||body,
-          });}catch(error){transport.record('ai_forward_failed',traceId);throw error;}
-          if(!answer){transport.record('ai_silent',traceId);return;}
-          transport.record('ai_answer',traceId);
-          if(mine!==generation||socket!==client||status!=="connected"||
-              !allowAssistantRecipient(phone,connectedStore.settings()))return;
-          try{
-            const sent=await send(phone,answer,{waitForCapacity:true,
-              isCurrent:()=>mine===generation&&socket===client&&status==="connected"&&
-                allowAssistantRecipient(phone,connectedStore.settings())});
-            transport.record(sent?.accepted?'ai_relay_returned':'ai_send_unconfirmed',traceId);
-          }catch(error){transport.record('ai_send_failed',traceId);throw error;}
-          console.info("Orion QR: resposta automática processada (dados omitidos)");
-        }).catch(()=>{
-          console.warn("Orion QR: atendimento IA indisponível (dados omitidos)");
-        }).finally(()=>{
-          if(assistantQueues.get(phone)===job)assistantQueues.delete(phone);
-        });
-        assistantQueues.set(phone,job);
-      }else transport.record('pilot_denied',traceId);
+      if(typeof traceId!=='string'||!/^[a-zA-Z0-9._:-]{1,157}$/.test(traceId)||!message.message){
+        transport.record('inbound_no_content',traceId);continue;
+      }
+      const remote=String(message.key.remoteJid||'').match(/^(\d{8,20})(?::\d+)?@(s\.whatsapp\.net|lid)$/);
+      if(!remote){transport.record('inbound_unresolved',traceId);continue;}
+      // Register synchronously before PN resolution or media work. In the
+      // single-recipient pilot, PN/LID variants share this configured key; a LID
+      // never supplies a telephone number. Authorization still occurs below.
+      const conversationKey=String(mine)+':'+(pilotNumber()||remote[1]+'@'+remote[2]);
+      const metadata={allowed:false,phone:null};
+      const current=()=>intakeCurrent()&&(!metadata.allowed||
+        allowAssistantRecipient(metadata.phone,connectedStore.settings()));
+      const task=inboundIntake.submit({conversationKey,messageId:traceId,isCurrent:current,
+        prepare:async({signal})=>{
+          const phone=await resolveMessagePhone(message.key,client);
+          if(!current()||signal.aborted)return {skip:true};
+          if(!phone){transport.record('inbound_unresolved',traceId);return {skip:true};}
+          metadata.phone=phone;metadata.allowed=allowAssistantRecipient(phone,connectedStore.settings());
+          inboundMetadata.set(traceId,metadata);
+          transport.record('inbound_resolved',traceId);
+          let body=extractText(message.message);
+          const media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
+          if(!body&&!media){transport.record('inbound_no_text',traceId);return {skip:true};}
+          const at=timestampMs(message.messageTimestamp)||Date.now();
+          const row={id:'wa:'+traceId,phone,body:body?String(body).slice(0,2000):'[Áudio recebido]',direction:'in',at};
+          pushMessage(row);
+          lastInboundAt=Date.now();inboundSinceConnect=true;if(type==='append')recentAppends++;
+          if(!metadata.allowed){transport.record('pilot_denied',traceId);return {skip:true};}
+          transport.record('pilot_allowed',traceId);
+          if(!body){
+            if(!assistantAudioEnabled()||!allowAssistantAudio(phone,connectedStore.settings()))return {skip:true};
+            const txt=await transcribeAssistantAudio(message,{client,downloadMediaMessage,phone,token:KEY,
+              apiUrl:process.env.QR_AI_API_URL,logger,signal});
+            if(!current()||signal.aborted)return {skip:true};
+            if(!txt)throw Error('audio_not_understood');
+            row.body='[Áudio transcrito] '+txt;persistInbox();body=txt;
+          }
+          return {text:body};
+        }});
+      const jobKey=String(mine)+':'+traceId;
+      const job=task.then(result=>{
+        if(result.state==='duplicate')transport.record('inbound_duplicate',traceId);
+        else if(result.state==='overloaded')transport.record('inbound_queue_full',traceId);
+        else if(result.state==='consume_failed')console.warn('Orion QR: atendimento IA não concluído (dados omitidos)');
+      }).finally(()=>{
+        if(inboundMetadata.get(traceId)===metadata)inboundMetadata.delete(traceId);
+        if(assistantQueues.get(jobKey)===job)assistantQueues.delete(jobKey);
+      });
+      if(!assistantQueues.has(jobKey))assistantQueues.set(jobKey,job);
+      jobs.push(job);
     }
+    await Promise.all(jobs);
   });
   client.ev.on("connection.update",update=>{
     if(mine!==generation)return;

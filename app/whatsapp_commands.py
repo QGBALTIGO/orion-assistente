@@ -13,9 +13,13 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 from app.booking_service import (
-    acquire_professional_lock, cancel_appointment, reschedule_appointment,
+    acquire_professional_lock, cancel_appointment, reschedule_appointment, preview_reschedule, list_slots,
 )
 from app.database import get_session_factory, tenant_transaction
+from app import qr_presentation as presentation
+from app.qr_dialogue import choose_time
+from app.qr_understanding import build_plan, normalized
+from app.whatsapp_dialogue import checked, consent, summary, owned_booking
 
 UTC = timezone.utc
 
@@ -30,15 +34,7 @@ async def _authorized_staff(tenant: UUID, sender: str):
 
 
 async def _owned_booking(tenant: UUID, sender: str, protocol: str):
-    async with get_session_factory()() as s:
-        async with tenant_transaction(s, tenant):
-            return (await s.execute(text("""
-                SELECT a.id, a.protocol, a.status FROM appointments a
-                JOIN customers c ON c.id=a.customer_id AND c.tenant_id=a.tenant_id
-                WHERE a.tenant_id=:tenant AND c.whatsapp_e164=:sender
-                  AND a.protocol=:protocol AND a.status='confirmed'
-                  AND a.end_at>now()
-            """), {"tenant":tenant,"sender":sender,"protocol":protocol})).mappings().first()
+    return await owned_booking(tenant, sender, protocol=protocol)
 
 
 async def _today_staff_agenda(tenant: UUID, role: str, professional: UUID | None, tomorrow: bool):
@@ -121,7 +117,7 @@ async def _staff_block(tenant: UUID, professional: UUID, daystr: str, left: str,
 
 async def try_command(
     tenant: UUID, channel: UUID, sender: str, user_text: str,
-    state: dict, redis, state_key: str,
+    state: dict, redis, state_key: str, *, message_id: str | None = None, preferences=None,
 ) -> tuple[bool, str | None]:
     """Retorna (tratado, texto). Chamado antes dos menus normais."""
     cmd=user_text.strip().lower()
@@ -155,54 +151,125 @@ async def try_command(
         tz=ZoneInfo(tzname)
         lines=[f"{b['protocol']} — {b['start_at'].astimezone(tz):%d/%m às %H:%M}"
                for b in bookings]
-        return True,("Suas reservas:\n"+"\n".join(lines)+
-                     "\nPara cancelar: CANCELAR AG-XXXXXX.")
+        return True,("*Suas reservas confirmadas*\n\n"+"\n".join(lines)+
+                     "\n\nSe quiser cancelar ou remarcar, indique qual reserva pelo protocolo.")
 
-    if state.get("step")=="customer_cancel" and cmd=="sim cancelar":
-        appt=await _owned_booking(tenant,sender,state["protocol"])
-        await redis.delete(state_key)
-        if not appt:
-            return True,"Reserva indisponível ou já cancelada."
+    async def save(value):
+        value["last_message_id"] = message_id
+        await redis.set(state_key,json.dumps(value,default=str),ex=300)
+
+    async def cancellation_proposal(appt):
+        answer=checked(presentation.render_summary(summary(appt),preferences,operation="cancel"))
+        checked(presentation.render_summary(summary(appt),preferences,operation="cancel",confirmed=True))
+        await save({"step":"customer_cancel","protocol":appt["protocol"],
+                    "expected_snapshot":appt["expected_snapshot"],"summary_message_id":message_id})
+        return True,answer
+
+    async def rescheduling_proposal(appt,start):
         async with get_session_factory()() as s:
-            await cancel_appointment(s,tenant,appt["id"])
-        return True,"Agendamento cancelado. Protocolo "+appt["protocol"]+"."
+            proposal=await preview_reschedule(s,tenant,appt["id"],start,customer_phone=sender)
+        answer=checked(presentation.render_summary(summary(proposal),preferences,operation="reschedule"))
+        checked(presentation.render_summary(summary(proposal),preferences,operation="reschedule",confirmed=True))
+        await save({"step":"customer_reschedule_confirm","protocol":appt["protocol"],
+            "new_start":start.isoformat(),"expected_snapshot":proposal["expected_snapshot"],
+            "summary_message_id":message_id})
+        return True,answer
 
-    if state.get("step")=="customer_reschedule" and re.fullmatch(
-        r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}",cmd,
-    ):
+    pending=state.get("step") in {"customer_cancel","customer_reschedule_confirm"}
+    if pending and not re.search(r"\b(?:remarcar|reagendar|cancelar|desmarcar)\b.*\bag-",cmd):
+        action="cancel" if state["step"]=="customer_cancel" else "booking"
+        decision=await consent(user_text,pending=True,action=action,semantic_allowed=bool(message_id and state.get("summary_message_id")
+            and state.get("last_message_id")==state["summary_message_id"] and message_id!=state["summary_message_id"]))
         appt=await _owned_booking(tenant,sender,state["protocol"])
         if not appt:
-            await redis.delete(state_key)
+            return True,"Essa reserva não está disponível para alteração neste atendimento."
+        if decision.kind=="decline":
+            state.pop("summary_message_id",None)
+            state.pop("expected_snapshot",None)
+            state["step"]="customer_reschedule" if action!="cancel" else "customer_adjustment"
+            await save(state)
+            return True,"Tudo bem, a reserva original permanece. Qual detalhe você gostaria de ajustar?"
+        if decision.kind=="affirm":
+            if not message_id or not state.get("summary_message_id") or message_id==state["summary_message_id"]:
+                return True,"Preciso de uma nova resposta depois do resumo antes de fazer essa alteração."
+            try:
+                if state.get("last_message_id")!=state["summary_message_id"] or not state.get("expected_snapshot"):
+                    return await cancellation_proposal(appt) if action=="cancel" else await rescheduling_proposal(appt,datetime.fromisoformat(state["new_start"]))
+                if action=="cancel":
+                    checked(presentation.render_summary(summary(appt),preferences,operation="cancel",confirmed=True))
+                    async with get_session_factory()() as s:
+                        updated=await cancel_appointment(s,tenant,appt["id"],customer_phone=sender,
+                            expected_snapshot=state["expected_snapshot"])
+                    updated.update(timezone=appt["timezone"],professional=appt["professional"])
+                else:
+                    start=datetime.fromisoformat(state["new_start"])
+                    async with get_session_factory()() as s:
+                        proposal=await preview_reschedule(s,tenant,appt["id"],start,customer_phone=sender)
+                    checked(presentation.render_summary(summary(proposal),preferences,operation="reschedule",confirmed=True))
+                    async with get_session_factory()() as s:
+                        updated=await reschedule_appointment(s,tenant,appt["id"],start,
+                            expected_snapshot=state["expected_snapshot"],customer_phone=sender)
+                    updated.update(timezone=proposal["timezone"],professional=proposal["professional"])
+                await redis.delete(state_key)
+                return True,presentation.render_summary(summary(updated),preferences,
+                    operation="cancel" if action=="cancel" else "reschedule",confirmed=True)
+            except HTTPException:
+                state.pop("summary_message_id",None)
+                await save(state)
+                return True,"A reserva ou o catálogo mudou. A alteração não foi confirmada; vamos conferir um novo resumo."
+        if decision.kind=="amend" and action!="cancel":
+            state["step"]="customer_reschedule"
+            state["new_day"]=datetime.fromisoformat(state["new_start"]).date().isoformat()
+            state.pop("summary_message_id",None)
+        else:
+            await save(state)
+            return True,"A reserva original permanece. Você quer ajustar algum detalhe ou revisar o resumo antes de continuar?"
+
+    if state.get("step")=="customer_reschedule":
+        appt=await _owned_booking(tenant,sender,state["protocol"])
+        if not appt:
             return True,"Reserva indisponível para remarcação."
-        async with get_session_factory()() as s:
-            async with tenant_transaction(s,tenant):
-                tzname=(await s.execute(text("SELECT timezone FROM tenants WHERE id=:t"),
-                                        {"t":tenant})).scalar_one()
-        try:
-            naive=datetime.strptime(cmd,"%Y-%m-%d %H:%M")
-            start=naive.replace(tzinfo=ZoneInfo(tzname))
-        except ValueError:
-            return True,"Data inválida. Use AAAA-MM-DD HH:MM."
+        plan=build_plan(message=user_text,catalog=[],reference_date=datetime.now(ZoneInfo(appt["timezone"])).date())
+        day=plan.requested_date or state.get("new_day")
+        if any(value != "time" for value in plan.ambiguities) or not day:
+            await save(state)
+            return True,"Qual nova data você prefere? Pode dizer o dia e o horário desejado."
+        state["new_day"]=day
         try:
             async with get_session_factory()() as s:
-                updated=await reschedule_appointment(s,tenant,appt["id"],start)
+                available=await list_slots(s,tenant,appt["professional_id"],
+                    [item["service_id"] for item in appt["items"]],date.fromisoformat(day))
+            clock_text="às "+plan.requested_time if plan.requested_time and plan.time_relation=="exact" else user_text
+            choice=choose_time(clock_text,available["slots"],presented_slots=state.get("slots"),timezone=appt["timezone"])
+            if choice.kind=="selected":
+                if not message_id:
+                    return True,"Preciso receber sua escolha em uma nova mensagem para preparar a alteração."
+                return await rescheduling_proposal(appt,datetime.fromisoformat(choice.when))
+            state["slots"]=list(choice.alternatives or available["slots"])[:8]
+            await save(state)
+            return True,checked(presentation.render_slots([x["name_snapshot"] for x in appt["items"]],state["slots"],preferences,
+                timezone=appt["timezone"],day=day,total_cents=available["price_cents"],duration_min=available["duration_min"],professional=appt["professional"]))
         except HTTPException:
-            return True,"Novo horário indisponível. Envie outra data e hora."
-        await redis.delete(state_key)
-        return True,(f"Remarcado! {updated['protocol']} — "
-                     f"{updated['start_at'].astimezone(ZoneInfo(tzname)):%d/%m às %H:%M}.")
+            await save(state)
+            return True,presentation.render_prompt("unavailable",preferences)
 
-    m=re.fullmatch(r"(cancelar|remarcar)\s+(ag-[a-z2-9]{6})",cmd)
+    m=re.search(r"\b(cancelar|cancela|desmarcar|remarcar|reagendar)\b.*\b(ag-[a-z2-9]{6})\b",cmd)
     if m:
         protocol=m.group(2).upper()
         appt=await _owned_booking(tenant,sender,protocol)
         if not appt:
             return True,"Reserva não encontrada para este número ou indisponível."
-        if m.group(1)=="cancelar":
-            await redis.set(state_key,json.dumps({"step":"customer_cancel","protocol":protocol}),ex=120)
-            return True,"Para confirmar o cancelamento, responda SIM CANCELAR."
-        await redis.set(state_key,json.dumps({"step":"customer_reschedule","protocol":protocol}),ex=300)
-        return True,"Informe a nova data e hora: AAAA-MM-DD HH:MM."
+        if re.search(r"\b(?:como|politica|nao|não)\b",cmd):
+            return True,"A reserva permanece. Para solicitar uma alteração, diga qual detalhe deseja mudar."
+        if not message_id:
+            return True,"Preciso receber essa solicitação em uma nova mensagem antes de preparar uma alteração."
+        if m.group(1) in {"cancelar","cancela","desmarcar"}:
+            try:
+                return await cancellation_proposal(appt)
+            except HTTPException:
+                return True,"O resumo completo precisa de revisão da equipe antes de cancelar."
+        await save({"step":"customer_reschedule","protocol":protocol})
+        return True,"Qual nova data e horário você prefere? A reserva original permanece até você conferir e confirmar a remarcação."
 
     staff_cmds={"agenda hoje","agenda amanhã","agenda amanha",
                 "pausar bot","retomar bot","confirmar pausa","confirmar retomada"}

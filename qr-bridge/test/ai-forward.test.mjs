@@ -39,3 +39,26 @@ test("disabled backend gives no outgoing messages",async()=>{
   });
   assert.equal(result,null);
 });
+
+test("ordered grouped WA IDs are forwarded once without inbox prefixes",async()=>{
+  let calls=0;
+  await forwardAssistant({apiUrl:base,token:secret,phone:"5567999999999",messageId:"AUDIO-1",
+    messageIds:["AUDIO-1","TEXT-2"],text:"Quero cabelo\nNão, só barba",fetchImpl:async(_url,opts)=>{
+      calls++;
+      assert.deepEqual(JSON.parse(opts.body),{phone:"5567999999999",message_id:"AUDIO-1",
+        message_ids:["AUDIO-1","TEXT-2"],text:"Quero cabelo\nNão, só barba"});
+      return {ok:true,json:async()=>({answer:null})};
+    }});
+  assert.equal(calls,1);
+});
+
+test("incomplete grouped identities and excessive text fail before API; no partial truncation",async()=>{
+  for(const patch of [{messageIds:[]},{messageIds:["OTHER","M123"]},
+    {messageIds:["M123","M123"]},{messageIds:["M123",null]},
+    {messageIds:["M123",...Array.from({length:6},(_,i)=>'M'+i)]},
+    {text:'x'.repeat(1501)},
+    {apiUrl:'http://user:password@orion-assistente.railway.internal/internal/qr/ai/reply'}]){
+    await assert.rejects(()=>forwardAssistant({apiUrl:base,token:secret,phone:"5567999999999",messageId:"M123",
+      text:"oi",fetchImpl:async()=>{throw Error("should not be called")},...patch}));
+  }
+});

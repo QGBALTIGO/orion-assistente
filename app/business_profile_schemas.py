@@ -9,8 +9,8 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 from app.catalog_schemas import StrictModel
 
 ShortText = Annotated[str, Field(min_length=1, max_length=80)]
-Capability = Literal["catalog_answers", "appointments", "rescheduling", "human_handoff_request"]
-SUPPORTED_CAPABILITIES = ("catalog_answers", "appointments", "rescheduling", "human_handoff_request")
+Capability = Literal["catalog_answers", "appointments", "rescheduling", "human_handoff_request", "product_orders"]
+SUPPORTED_CAPABILITIES = ("catalog_answers", "appointments", "rescheduling", "human_handoff_request", "product_orders")
 
 
 class ProfileModel(StrictModel):
@@ -72,7 +72,7 @@ class BusinessProfile(ProfileModel):
     differentiators: list[Annotated[str, Field(min_length=1, max_length=300)]] = Field(default_factory=list, max_length=15)
     objectives: list[Literal["answer_questions", "help_choose", "offer_relevant_complements", "receive_appointment_requests", "request_human_help"]] = Field(default_factory=list, max_length=5)
     hours: list[BusinessHours] = Field(default_factory=list, max_length=21)
-    capabilities: list[Capability] = Field(default_factory=list, max_length=4)
+    capabilities: list[Capability] = Field(default_factory=list, max_length=5)
     style_rules: StyleRules = Field(default_factory=StyleRules)
     autonomy_rules: AutonomyRules = Field(default_factory=AutonomyRules)
 

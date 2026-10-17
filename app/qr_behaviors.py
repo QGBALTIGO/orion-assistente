@@ -6,11 +6,54 @@ def norm(text: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", text.casefold())
                    if unicodedata.category(c) != "Mn").strip()
 
+def human_control(text: str) -> str | None:
+    """Pause only after an unqualified current request across the whole turn."""
+    human = r"(?:atendente(?: humano)?|humano|pessoa de verdade|falar com uma pessoa)"
+    assistant = r"(?:bot|robo|(?:continuar|seguir|ficar|falar|conversar|quero|prefiro)\s+(?:(?:com|por|o|a)\s+)*(?:voce|aqui))"
+    mentions = [(match.start(), match.end(), "human") for match in re.finditer(r"\b" + human + r"\b", text)]
+    if not mentions:
+        return None
+    if re.search(r"\b(?:se|caso|desde que|a menos que|contanto que|dependendo|"
+                 r"como|quando|quero saber|queria saber|gostaria de saber)\b", text):
+        return "human_clarify"
+    mentions.extend((match.start(), match.end(), "assistant") for match in re.finditer(r"\b" + assistant + r"\b", text))
+    events = []
+    for start, end, target in sorted(mentions):
+        prefix = re.split(r"[,;.!?]|\bmas\b", text[:start])[-1]
+        verbs = list(re.finditer(r"\b(?:nao|nem|sem|dispenso|quero|prefiro|preciso|desejo|gostaria|melhor|continuar|seguir|ficar|falar|conversar)\b", prefix))
+        negative = False
+        if verbs:
+            latest = verbs[-1]
+            negative = latest.group() in {"nao", "nem", "sem", "dispenso"} or bool(re.search(
+                r"\b(?:nao|nem)(?:\s+(?:quero|preciso|desejo|gostaria|vou|prefiro|mais|falar|conversar|continuar|seguir|ficar))*\s*$",
+                prefix[:latest.end()]))
+        events.append((start, end, target, not negative))
+    positive_human = [row for row in events if row[2:] == ("human", True)]
+    positive_assistant = [row for row in events if row[2:] == ("assistant", True)]
+    negative_assistant = [row for row in events if row[2:] == ("assistant", False)]
+    if re.search(r"\bou\b", text) and positive_human:
+        return "human_clarify"
+    if positive_human and positive_assistant:
+        final = max(positive_human + positive_assistant)
+        earlier = min(positive_human + positive_assistant)
+        if not re.search(r"\b(?:melhor|na verdade|quer dizer|prefiro|nao|pera|espera)\b", text[earlier[1]:final[0]]):
+            return "human_clarify"
+        return "human" if final[2] == "human" else "human_declined"
+    if not positive_human:
+        return "human_clarify" if negative_assistant and not positive_assistant else "human_declined"
+    last = positive_human[-1]
+    if re.search(r"(?:[,;.]|\bmas)\s*(?:nao|pera|espera)\b", text[last[1]:]):
+        return "human_clarify"
+    request = re.search(r"\b(?:quero|preciso|desejo|gostaria|prefiro|cham[ae]|pass[ae]|encaminh[ae]|falar|conversar)\b", text)
+    if not request and ("?" in text or re.search(r"\b(?:como|quando|quem|qual|quais)\b", text)):
+        return "human_clarify"
+    return "human"
+
+
 def control_intent(text: str) -> str | None:
     lower = norm(text)
-    if any(s in lower for s in ("quero falar com atendente", "atendente humano",
-                               "pessoa de verdade", "falar com uma pessoa")):
-        return "human"
+    if human := human_control(lower):
+        return human
     if any(s in lower for s in ("remarcar", "trocar meu horario", "mudar meu horario",
                                "adiar meu horario", "reagendar")):
         return "reschedule"

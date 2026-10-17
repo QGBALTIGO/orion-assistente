@@ -31,6 +31,26 @@ class Actor:
     role: str
     tenant_id: UUID | None = None
     account_id: UUID | None = None
+    membership_role: str | None = None
+
+
+async def scoped_account_actor(role: str, account_id: UUID | None, route_tenant) -> Actor:
+    """Bind legacy catalog access to the verified account and this exact route."""
+    actor = Actor(role, account_id=account_id)
+    if role != "member" or account_id is None or os.getenv("BUSINESS_PROFILES_ENABLED", "0") != "1":
+        return actor
+    try:
+        tenant = UUID(str(route_tenant))
+    except (ValueError, TypeError):
+        return actor
+    async with support_session_factory()() as db:
+        membership = (await db.execute(text("""
+            SELECT role FROM tenant_memberships
+            WHERE account_id=:account AND tenant_id=:tenant AND active
+        """), {"account": account_id, "tenant": tenant})).scalar_one_or_none()
+    if membership not in {"owner", "editor", "viewer"}:
+        return actor
+    return Actor(role, tenant, account_id, membership)
 
 
 async def authenticate(request: Request, authorization: str | None = Header(default=None)) -> Actor:
@@ -53,22 +73,34 @@ async def authenticate(request: Request, authorization: str | None = Header(defa
         session = await panel_actor(request)
         account_id = session.get("account_id")
         try:
-            return Actor(session["role"], account_id=UUID(str(account_id)) if account_id else None)
+            verified_account = UUID(str(account_id)) if account_id else None
         except ValueError:
             raise HTTPException(401, "Sessão inválida") from None
+        return await scoped_account_actor(session["role"], verified_account,
+                                          request.path_params.get("tenant_id"))
     raise HTTPException(401, "Credenciais de operador inválidas", headers={"WWW-Authenticate": "Bearer"})
 
 
 def authorize(actor: Actor, tenant_id: UUID, *, write: bool = False) -> None:
     if actor.role in {"support","admin"}:
         return
-    if write or actor.tenant_id != tenant_id:
+    if (actor.role == "member" and actor.account_id is not None and actor.tenant_id == tenant_id
+            and actor.membership_role in ({"owner", "editor"} if write else {"owner", "editor", "viewer"})):
+        return
+    if actor.role != "viewer" or write or actor.tenant_id != tenant_id:
         raise HTTPException(403, "Operação não autorizada para este estabelecimento")
 
 
 def support_only(actor: Actor) -> None:
     if actor.role not in {"support","admin"}:
         raise HTTPException(403, "Ação reservada à equipe de suporte")
+
+
+def authorize_resource(actor: Actor, tenant_id: UUID, resource: str, *, write: bool = False) -> None:
+    authorize(actor, tenant_id, write=write)
+    if (write and resource == "authorized_staff" and actor.role == "member"
+            and actor.membership_role != "owner"):
+        raise HTTPException(403, "Somente o proprietário pode alterar acessos da equipe")
 
 
 @lru_cache(maxsize=1)
@@ -193,7 +225,7 @@ async def list_audit(tenant_id: UUID, actor: Actor = Depends(authenticate)):
 
 @router.get("/tenants/{tenant_id}/{resource}")
 async def list_items(tenant_id: UUID, resource: str, actor: Actor = Depends(authenticate)):
-    authorize(actor, tenant_id)
+    authorize_resource(actor, tenant_id, resource)
     resource_model(resource)
     factory = get_session_factory()
     async with factory() as session:
@@ -211,7 +243,7 @@ async def create_item(
     tenant_id: UUID, resource: str, payload: dict[str, Any],
     actor: Actor = Depends(authenticate),
 ):
-    authorize(actor, tenant_id, write=True)
+    authorize_resource(actor, tenant_id, resource, write=True)
     values = validation(resource_model(resource), payload).model_dump()
     check_resource_values(resource, values)
     item_id = uuid4()
@@ -240,7 +272,7 @@ async def replace_item(
     tenant_id: UUID, resource: str, item_id: UUID,
     payload: dict[str, Any], actor: Actor = Depends(authenticate),
 ):
-    authorize(actor, tenant_id, write=True)
+    authorize_resource(actor, tenant_id, resource, write=True)
     values = validation(resource_model(resource), payload).model_dump()
     check_resource_values(resource, values)
     assignments = ", ".join(f"{field} = :{field}" for field in values)
@@ -268,7 +300,7 @@ async def delete_item(
     tenant_id: UUID, resource: str, item_id: UUID,
     actor: Actor = Depends(authenticate),
 ):
-    authorize(actor, tenant_id, write=True)
+    authorize_resource(actor, tenant_id, resource, write=True)
     resource_model(resource)
     try:
         factory = get_session_factory()
