@@ -327,6 +327,42 @@ def render_summary(summary: BookingSummary, preferences=None, *, confirmed: bool
     return "\n".join(lines)
 
 
+def render_summary_review(summary: str, preferences=None) -> str:
+    """Re-present the complete stored proposal, with one confirmation prompt."""
+    if not isinstance(summary, str) or not summary.strip():
+        raise ValueError("Complete stored summary required")
+    body = summary.strip()
+    embedded_question = re.search(r"\b(?:posso|podemos)\s+confirmar[^?\n]*\?|"
+        r"\b(?:confirmar|confirma|remarcar|cancelar)\b[^?\n]*\?\s*$", body, re.IGNORECASE)
+    if not embedded_question:
+        body += "\n\n" + render_prompt("confirmation", preferences)
+    answer = "Este é o pedido anterior, sem incluir os serviços apenas consultados:\n\n" + body
+    return answer if fits_message(answer) else body
+
+
+def render_booking_history(records: Sequence[Mapping], preferences=None, *, timezone: str) -> str:
+    """Compact customer-facing history, from scoped backend rows only."""
+    _preferences(preferences)
+    zone = ZoneInfo(timezone)
+    labels = {"confirmed": "confirmado", "cancelled": "cancelado", "hold": "aguardando confirmação",
+              "completed": "concluído", "no_show": "não compareceu"}
+    lines = []
+    for row in records:
+        when = row["start_at"]
+        if isinstance(when, str):
+            when = datetime.fromisoformat(when)
+        if not isinstance(when, datetime) or when.tzinfo is None or when.utcoffset() is None:
+            raise ValueError("Verified timezone-aware booking time required")
+        local = when.astimezone(zone)
+        protocol = _label(_text(row["protocol"], 80))
+        status = labels.get(row.get("status"), "a conferir")
+        lines.append(f"• {local:%d/%m/%Y} às {_clock(local)} · {status} · Protocolo {protocol}")
+    answer = "*Seus agendamentos*\n\n" + "\n".join(lines)
+    if not fits_message(answer):
+        return "O histórico completo precisa ser consultado por partes. Qual data ou protocolo você quer conferir?"
+    return answer
+
+
 _WEEKDAYS = ("segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo")
 
 

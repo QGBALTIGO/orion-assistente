@@ -432,7 +432,8 @@ async def verify_customer_snapshot(s, tenant, row, phone, expected):
 
 
 async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
-                             customer_phone: str | None = None, expected_snapshot: str | None = None):
+                             customer_phone: str | None = None, expected_snapshot: str | None = None,
+                             future_only: bool = False):
     async with tenant_transaction(s, tenant):
         row = (await s.execute(text("""
             SELECT professional_id FROM appointments WHERE tenant_id=:tenant AND id=:id
@@ -452,8 +453,10 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
         changed = (await s.execute(text("""
             UPDATE appointments SET status='cancelled', hold_expires_at=NULL,
                 updated_at=now() WHERE tenant_id=:tenant AND id=:id
+                AND (:future_only=false OR start_at>clock_timestamp())
                 AND """ + CUSTOMER_MATCH_SQL + " RETURNING id"),
-            {"tenant": tenant, "id": item_id, "customer_phone": customer_phone})).scalar_one_or_none()
+            {"tenant": tenant, "id": item_id, "customer_phone": customer_phone,
+             "future_only": future_only})).scalar_one_or_none()
         if changed is None:
             fail(409, "A reserva mudou. Confira um novo resumo antes de cancelar")
         await history(s, tenant, item_id, "cancelled")

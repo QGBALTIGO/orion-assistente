@@ -9,6 +9,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
+from fastapi import HTTPException
 
 from app import qr_ai, qr_profile
 from app.business_profile_schemas import BusinessProfile
@@ -153,7 +154,7 @@ async def test_price_question_during_confirmation_preserves_selection_and_requir
     assert "R$ 20" in reply["answer"] and h.state()["services"] == original["services"]
     assert h.state()["hold"] == original["hold"] and h.state()["confirmation_requires_review"]
     blocked = await h.turn("SIM", preview=False)
-    assert "RETOMAR RESUMO" in blocked["answer"] and not h.calls["writes"]
+    assert original["confirmation_summary"] in blocked["answer"] and "RETOMAR RESUMO" not in blocked["answer"] and not h.calls["writes"]
     await h.turn("RETOMAR RESUMO", preview=False);confirmed = await h.turn("SIM", preview=False)
     assert confirmed["step"] == "confirmed" and [x[0] for x in h.calls["writes"]] == ["confirm"]
 
@@ -382,7 +383,7 @@ async def test_price_during_pending_availability_does_not_change_the_inquiry_or_
     await h.turn("NÃO", preview=False)
     assert "availability_query" not in h.state() and h.state()["hold"] == original["hold"]
     blocked = await h.turn("SIM", preview=False)
-    assert "RETOMAR RESUMO" in blocked["answer"] and not h.calls["writes"]
+    assert "Corte original" in blocked["answer"] and "RETOMAR RESUMO" not in blocked["answer"] and not h.calls["writes"]
 
 
 @pytest.mark.asyncio
@@ -392,7 +393,7 @@ async def test_failed_interpretation_or_long_new_request_requires_review_before_
     h.proposal["error"] = True
     await h.turn("Muda tudo, não, só a barba amanhã", preview=False)
     reply = await h.turn("SIM", preview=False)
-    assert "RETOMAR RESUMO" in reply["answer"] and not h.calls["writes"]
+    assert "Pedido anterior" in reply["answer"] and "RETOMAR RESUMO" not in reply["answer"] and not h.calls["writes"]
 
 
 @pytest.mark.asyncio
@@ -419,6 +420,10 @@ async def test_choosing_one_of_multiple_appointments_keeps_the_date_and_clock_al
         return [{"id": h.appointment, "status": "confirmed", "start_at": datetime.combine(h.tomorrow, datetime.min.time(), h.zone).replace(hour=14), "protocol": "ONE"},
                 {"id": uuid4(), "status": "confirmed", "start_at": datetime.combine(h.tomorrow + timedelta(days=1), datetime.min.time(), h.zone).replace(hour=14), "protocol": "TWO"}]
     monkeypatch.setattr(qr_ai, "customer_appointments", records)
+    async def candidates(*args):
+        return [{"id": str(row["id"]), "protocol": row["protocol"], "start_at": row["start_at"].isoformat(), "professional": "Bruno"}
+                for row in await records()]
+    monkeypatch.setattr(qr_ai.qr_cancellation, "owned_candidates", candidates)
     first = await h.turn("Quero remarcar amanhã às 15:00", preview=False)
     assert first["step"] == "reschedule_pick" and not h.calls["writes"]
     second = await h.turn("1", preview=False)
@@ -534,7 +539,7 @@ async def test_conditional_provider_confirmation_cannot_reach_confirm_hold(flow,
     assert result["step"] != "confirmed" and h.state()["hold"] == old["hold"]
     assert h.state()["confirmation_requires_review"] and not h.calls["writes"]
     again = await h.turn("SIM", preview=False)
-    assert "RETOMAR RESUMO" in again["answer"] and not h.calls["writes"]
+    assert "Corte com Bruno" in again["answer"] and "RETOMAR RESUMO" not in again["answer"] and not h.calls["writes"]
 
 
 @pytest.mark.asyncio
@@ -643,3 +648,104 @@ async def test_real_oi_is_a_greeting_in_every_stage_in_both_engines(flow, monkey
     assert result["answer"].startswith("Olá") and "dias livres" in result["answer"]
     assert "Informe o dia" not in result["answer"] and h.state()["hold"] == original["hold"]
     assert not h.calls["plans"] and not h.calls["reads"] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_natural_acceptance_of_review_offer_only_shows_original_summary_then_requires_new_consent(flow):
+    h = flow
+    original = h.seed("confirm", hold=str(uuid4()), price=3500, duration=40,
+        confirmation_summary="Corte original com Bruno, R$ 35,00", confirmation_message_id="old-summary",
+        confirmation_expires_at=datetime.now().timestamp()+40)
+    async def trusted(body, identity):
+        token = qr_ai._message_identity.set(identity)
+        try:
+            return await h.turn(body, preview=False)
+        finally:
+            qr_ai._message_identity.reset(token)
+    answer = await trusted("Quanto custa a barba?", "question")
+    assert "Quer conferir o resumo" in answer["answer"] and "RETOMAR RESUMO" not in answer["answer"]
+    h.proposal["value"] = UnderstandingPlan(intents=["confirm"])
+    review = await trusted("Do jeito que você mostrou, podemos continuar", "natural-review")
+    assert original["confirmation_summary"] in review["answer"] and not h.calls["writes"]
+    assert h.state()["confirmation_message_id"] == "natural-review"
+    assert h.state()["confirmation_expires_at"] == original["confirmation_expires_at"]
+    same = await trusted("Pode confirmar", "natural-review")
+    assert same["step"] == "confirm" and not h.calls["writes"]
+    await trusted("Quero conferir o resumo de novo", "review-again")
+    done = await trusted("Pode confirmar", "final-fresh")
+    assert done["step"] == "confirmed" and [row[0] for row in h.calls["writes"]] == ["confirm"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("selector,choice", [("com Bruno", 0), ("o último", 1), ("TWO", 1)])
+async def test_reschedule_pick_accepts_unambiguous_natural_reference_without_model(flow, selector, choice):
+    h = flow; second = uuid4()
+    details = [{"id": str(h.appointment), "protocol": "ONE", "professional": "Bruno", "start_at": f"{h.tomorrow}T14:00:00-04:00"},
+        {"id": str(second), "protocol": "TWO", "professional": "Breno", "start_at": f"{h.tomorrow}T16:00:00-04:00"}]
+    h.seed("reschedule_pick", candidate_ids=[str(h.appointment), str(second)], candidate_details=details)
+    reply = await h.turn(selector, preview=False)
+    assert reply["step"] == "reschedule_day" and h.state()["appointment"] == details[choice]["id"]
+    assert not h.calls["plans"] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("selector", ["com Bruno e Breno", "com Jorge", "amanhã"])
+async def test_reschedule_pick_ambiguity_keeps_concrete_owned_choices_and_never_picks_first(flow, selector):
+    h = flow; second = uuid4()
+    details = [{"id": str(h.appointment), "protocol": "ONE", "professional": "Bruno", "start_at": f"{h.tomorrow}T14:00:00-04:00"},
+        {"id": str(second), "protocol": "TWO", "professional": "Breno", "start_at": f"{h.tomorrow}T16:00:00-04:00"}]
+    h.seed("reschedule_pick", candidate_ids=[str(h.appointment), str(second)], candidate_details=details)
+    reply = await h.turn(selector, preview=False)
+    assert reply["step"] == "reschedule_pick" and "ONE" in reply["answer"] and "TWO" in reply["answer"]
+    assert "Bruno" in reply["answer"] and "Breno" in reply["answer"]
+    assert not h.calls["plans"] and not h.calls["writes"] and "appointment" not in h.state()
+
+
+@pytest.mark.asyncio
+async def test_reschedule_conflict_preserves_original_and_only_new_message_reads_other_slots(flow, monkeypatch):
+    h = flow; attempts = []
+    async def conflict(*args, **kwargs):
+        attempts.append(1)
+        raise HTTPException(409, "Synthetic unavailable")
+    monkeypatch.setattr(qr_ai, "reschedule_appointment", conflict)
+    h.seed("reschedule_confirm", appointment=str(h.appointment), new_start=f"{h.tomorrow}T15:00:00-04:00",
+        confirmation_summary="Remarcação proposta", confirmation_expires_at=datetime.now().timestamp()+40,
+        confirmation_message_id="old-summary", expected_snapshot="synthetic-snapshot",
+        reschedule_facts={"services": ["Corte"], "professional": "Bruno", "total_cents": 3500,
+            "duration_min": 40, "timezone": str(h.zone)})
+    failed = await h.turn("Pode confirmar", preview=False)
+    assert failed["step"] == "reschedule_conflict" and "Escreva REMARCAR" not in failed["answer"]
+    assert attempts == [1] and not h.calls["reads"] and not h.calls["writes"]
+    assert h.state()["appointment"] == str(h.appointment) and "expected_snapshot" not in h.state()
+    queried = await h.turn("Quero consultar outros horários", preview=False)
+    assert queried["step"] == "reschedule_time" and "08h" in queried["answer"]
+    assert len(h.calls["reads"]) == 1 and attempts == [1] and not h.calls["writes"]
+    proposed = await h.turn("às 16h", preview=False)
+    assert proposed["step"] == "reschedule_confirm" and "16h" in proposed["answer"]
+    assert h.state()["appointment"] == str(h.appointment) and attempts == [1] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_typo_then_review_of_typed_summary_sends_one_question_with_new_id_and_same_deadline(flow):
+    h = flow
+    stored = qr_ai.presentation.render_summary(qr_ai.presentation.BookingSummary(("Corte", "Barba"),
+        datetime.combine(h.tomorrow, datetime.min.time(), h.zone).replace(hour=14), str(h.zone), 5500,
+        professional="Alex — Demonstração", duration_min=60), h.profile["style_rules"])
+    deadline = datetime.now().timestamp()+40
+    h.seed("confirm", hold=str(uuid4()), services=[str(h.cut), str(h.beard)], price=5500, duration=60,
+        confirmation_summary=stored, confirmation_message_id="synthetic-original", confirmation_expires_at=deadline)
+    token = qr_ai._message_identity.set("synthetic-typo")
+    try:
+        await h.turn("Sm", preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    assert h.state()["confirmation_requires_review"] and not h.calls["writes"]
+    token = qr_ai._message_identity.set("synthetic-review")
+    try:
+        result = await h.turn("Retomar resumo", preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    assert stored in result["answer"] and result["answer"].count("Posso confirmar") == 1
+    assert h.state()["confirmation_message_id"] == "synthetic-review"
+    assert h.state()["confirmation_expires_at"] == deadline and 1 <= h.redis.ttls[h.key] <= 40
+    assert not h.calls["writes"]

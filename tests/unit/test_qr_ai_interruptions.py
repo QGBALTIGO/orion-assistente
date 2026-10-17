@@ -247,7 +247,7 @@ async def test_cancel_pending_flow_does_not_cancel_existing_reservations(convers
     assert "Reservas já confirmadas permanecem" in reply["answer"]
     assert not h.calls["writes"]
     reply = await h.turn("cancelar minha reserva")
-    assert reply["step"] == "cancel_request" and not h.calls["writes"]
+    assert reply["step"] == "preview_cancel" and not h.calls["writes"]
 
 
 @pytest.mark.asyncio
@@ -434,7 +434,7 @@ async def test_availability_question_collects_missing_fields_then_reads_real_slo
         raise AssertionError("Availability routing must not depend on the LLM picking a price intent")
     monkeypatch.setattr(qr_ai, "interpret", forbidden_classifier)
     reply = await h.turn("Quais são os dias que tem disponíveis para agendamento?")
-    assert "Para qual serviço" in reply["answer"]
+    assert "Qual serviço" in reply["answer"]
     assert "R$" not in reply["answer"] and not seen
     reply = await h.turn("Quero consultar corte de cabelo")
     assert "qual profissional" in reply["answer"] and "Corte de cabelo" in reply["answer"]
@@ -526,7 +526,7 @@ async def test_a_query_about_b_requires_explicit_review_before_confirming_origin
     assert h.state()["confirmation_expires_at"] == deadline
     assert 1 <= h.redis.ttls[h.key] <= 40
     blocked = await h.turn("sim", preview=False)
-    assert "RETOMAR RESUMO" in blocked["answer"] and not confirmed
+    assert summary in blocked["answer"] and "RETOMAR RESUMO" not in blocked["answer"] and not confirmed
     review = await h.turn("retomar resumo", preview=False)
     assert summary in review["answer"]
     assert "Barba" not in review["answer"]
@@ -561,12 +561,31 @@ async def test_rescheduling_review_keeps_original_proposal_and_deadline(conversa
     await h.turn("Quanto custa a barba?")
     assert h.state()["confirmation_requires_review"]
     blocked = await h.turn("sim", preview=False)
-    assert "RETOMAR RESUMO" in blocked["answer"] and not h.calls["writes"]
+    assert summary in blocked["answer"] and "RETOMAR RESUMO" not in blocked["answer"] and not h.calls["writes"]
     reply = await h.turn("retomar resumo", preview=False)
     assert summary in reply["answer"] and h.state()["appointment"] == appointment
     assert h.state()["new_start"] == "2026-11-20T14:00:00-04:00"
     assert h.state()["confirmation_expires_at"] == deadline and 1 <= h.redis.ttls[h.key] <= 40
     assert not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_active_customer_history_uses_portuguese_status_and_local_time_without_technical_ids_or_price(conversation, monkeypatch):
+    h = conversation; calls = []
+    rows = [{"id": uuid4(), "start_at": qr_ai.datetime.fromisoformat("2026-10-19T15:00:00Z"),
+             "status": status, "protocol": "AG-SYNTHETIC-"+str(index)} for index, status in enumerate(("confirmed", "cancelled"))]
+    async def records(tenant, phone):
+        assert tenant == h.tenant and phone == "5567999999999"
+        calls.append((tenant, phone))
+        return rows
+    monkeypatch.setattr(qr_ai, "customer_appointments", records)
+    result = await h.turn("Quais meus agendamentos", preview=False)
+    assert result["step"] == "history" and len(calls) == 1
+    assert "confirmado" in result["answer"] and "cancelado" in result["answer"]
+    assert "19/10/2026 às 11h" in result["answer"] and "11:00" not in result["answer"]
+    assert all(row["protocol"] in result["answer"] and str(row["id"]) not in result["answer"] for row in rows)
+    assert "confirmed" not in result["answer"] and "cancelled" not in result["answer"] and "R$" not in result["answer"]
+    assert qr_ai.presentation.fits_message(result["answer"]) and not h.calls["writes"]
 
 
 @pytest.mark.asyncio
