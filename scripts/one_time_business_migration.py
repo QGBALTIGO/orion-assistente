@@ -6,6 +6,7 @@ The only database this module can DROP is its own UUID restore-test database.
 """
 from __future__ import annotations
 
+from copy import deepcopy
 import hashlib
 import importlib.util
 import json
@@ -321,13 +322,23 @@ def canonical_expression(value):
 
 
 def canonical_catalog(value):
-    if isinstance(value, str):
-        return canonical_expression(value)
-    if isinstance(value, (list, tuple)):
-        return [canonical_catalog(item) for item in value]
-    if isinstance(value, dict):
-        return {key: canonical_catalog(item) for key, item in value.items()}
-    return value
+    """Apply the two aliases to SQL-expression fields only, never identifiers."""
+    rows = deepcopy(value)
+    for row in rows:
+        # catalog_structure: name, RLS, FORCE, columns, constraints, indexes, policies.
+        # column: name, type, not-null, default-expression.
+        for column in row[3] or []:
+            if isinstance(column[3], str):
+                column[3] = canonical_expression(column[3])
+        for section in (4, 5):
+            if row[section] is not None:
+                row[section] = [canonical_expression(expression) for expression in row[section]]
+        # policy: name, permissive, roles, command, qual-expression, check-expression.
+        for policy in row[6] or []:
+            for section in (4, 5):
+                if isinstance(policy[section], str):
+                    policy[section] = canonical_expression(policy[section])
+    return rows
 
 
 def owner_preflight(conn, settings):

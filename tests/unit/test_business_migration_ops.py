@@ -44,6 +44,20 @@ def test_pg16_only_the_exact_existing_buffer_check_can_flatten_and_grouping():
         assert ops.canonical_expression(changed) == changed
 
 
+def test_catalog_aliases_apply_only_to_sql_expression_fields_without_mutating_input():
+    expression = ops._BUFFER_CHECK_SOURCE
+    original = [[expression, True, True, [[expression, expression, True, expression]],
+                 [expression], [expression], [[expression, expression, [expression], expression, expression, expression]]]]
+    result = ops.canonical_catalog(original)
+    assert result[0][0] == expression
+    assert result[0][3][0][:3] == [expression, expression, True]
+    assert result[0][3][0][3] == ops._BUFFER_CHECK_RESTORED
+    assert result[0][4] == result[0][5] == [ops._BUFFER_CHECK_RESTORED]
+    assert result[0][6][0][:4] == [expression, expression, [expression], expression]
+    assert result[0][6][0][4:] == [ops._BUFFER_CHECK_RESTORED] * 2
+    assert original[0][3][0][3] == expression
+
+
 @pytest.fixture
 def settings():
     return ops.Settings(make_url("postgresql+psycopg://owner:synthetic-only@db.railway.internal:5432/orion_test"),
