@@ -34,6 +34,7 @@ export function makeMessageRetryStore({max=1000,ttlMs=24*60*60*1000,clock=Date.n
 
 /** A Baileys retorna no sendMessage após aceitação, não entrega no aparelho. */
 export function deliveryFromAck(status){
+  if(status===null||status===undefined)return null;
   switch(Number(status)){
     case 0:return "failed";
     case 1:return "pending";
@@ -41,12 +42,12 @@ export function deliveryFromAck(status){
     case 3:return "delivered";
     case 4:return "read";
     case 5:return "played";
-    default:return "pending";
+    default:return null;
   }
 }
 export function advanceDelivery(previous,next){
   const rank={pending:0,server_accepted:1,delivered:2,read:3,played:4};
-  if(next==="failed")return previous==="pending"?"failed":previous;
+  if(next==="failed")return ["pending","server_accepted"].includes(previous)?"failed":previous;
   if(!(next in rank))return previous;
   return (rank[next]>= (rank[previous]??0))?next:previous;
 }
