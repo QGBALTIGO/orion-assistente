@@ -30,6 +30,7 @@ router = APIRouter(prefix="/api/v1", tags=["Operação interna"])
 class Actor:
     role: str
     tenant_id: UUID | None = None
+    account_id: UUID | None = None
 
 
 async def authenticate(request: Request, authorization: str | None = Header(default=None)) -> Actor:
@@ -50,7 +51,11 @@ async def authenticate(request: Request, authorization: str | None = Header(defa
     if request.cookies.get("__Host-orion_session"):
         from app.panel_auth import panel_actor
         session = await panel_actor(request)
-        return Actor(session["role"])
+        account_id = session.get("account_id")
+        try:
+            return Actor(session["role"], account_id=UUID(str(account_id)) if account_id else None)
+        except ValueError:
+            raise HTTPException(401, "Sessão inválida") from None
     raise HTTPException(401, "Credenciais de operador inválidas", headers={"WWW-Authenticate": "Bearer"})
 
 
