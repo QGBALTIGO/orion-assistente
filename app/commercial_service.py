@@ -283,6 +283,17 @@ async def get_order(db, tenant, order_id):
         return {**row, "quote": await _quote(db, tenant, row["quote_id"])}
 
 
+async def get_order_by_quote(db, tenant, quote_id):
+    """Read-only recovery after an uncertain create-order response."""
+    async with tenant_transaction(db, tenant):
+        order_id = (await db.execute(text("SELECT id FROM commercial_orders WHERE tenant_id=:t AND quote_id=:q"),
+            {"t": tenant, "q": quote_id})).scalar_one_or_none()
+        if order_id is None:
+            raise HTTPException(404, "Nenhum pedido encontrado para este orçamento")
+        row = await _order(db, tenant, order_id)
+        return {**row, "quote": await _quote(db, tenant, quote_id)}
+
+
 async def create_order(db, tenant, payload, access):
     check_access(access.role, "draft")
     async with tenant_transaction(db, tenant):

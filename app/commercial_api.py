@@ -122,6 +122,12 @@ async def order_detail(tenant_id: UUID, order_id: UUID, actor: Actor = Depends(a
     return await run(service.get_order, tenant_id, order_id)
 
 
+@router.get("/orders/by-quote/{quote_id}")
+async def order_for_quote(tenant_id: UUID, quote_id: UUID, actor: Actor = Depends(authenticate)):
+    await resolve_tenant_access(actor, tenant_id)
+    return await run(service.get_order_by_quote, tenant_id, quote_id)
+
+
 @router.post("/orders/{order_id}/confirm")
 async def confirm(tenant_id: UUID, order_id: UUID, payload: ConfirmOrder, actor: Actor = Depends(authenticate)):
     access = await resolve_tenant_access(actor, tenant_id, "draft")
