@@ -78,3 +78,22 @@ def test_login_desktop_has_readable_non_flat_hero():
     assert "#loginView .auth-hero li{" in html
     assert "rgba(0,35,47,.19)" in html
     assert "prefers-reduced-motion:reduce" in html
+
+
+def test_desktop_login_occupies_exactly_two_viewport_halves():
+    """Regression: left gradient must start at viewport x=0; form must not be clipped."""
+    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
+    anchor=html.split("/* Desktop auth: the split is anchored to the viewport",1)
+    assert len(anchor)==2, "Explicit viewport layout guard absent"
+    rules=anchor[1].split("</style>",1)[0]
+    assert "@media (min-width:901px)" in rules
+    assert "position:fixed;inset:0" in rules
+    assert "width:100vw;max-width:none" in rules
+    assert "margin:0;padding:0;overflow-x:hidden;overflow-y:auto" in rules
+    assert "grid-template-columns:50% 50%" in rules
+    assert "width:100%;max-width:100%" in rules
+    assert "min-width:0" in rules
+    assert "max-width:466px" in rules
+    # Up to 900px the mobile design remains a single column, without the visual band.
+    assert '#loginView .auth-visual{display:none}' in html
+    assert "@media(max-width:900px)" in html
