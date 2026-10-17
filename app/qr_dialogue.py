@@ -260,7 +260,8 @@ def _slots(values: Sequence[datetime | str], zone: ZoneInfo) -> list[tuple[datet
 
 
 def choose_time(message: str, full_slots: Sequence[datetime | str], *,
-                presented_slots: Sequence[datetime | str] | None = None, timezone: str) -> TimeChoice:
+                presented_slots: Sequence[datetime | str] | None = None, timezone: str,
+                business_hours: Sequence[dict] | None = None, numbered_menu: bool = True) -> TimeChoice:
     """Select only from a fresh complete backend result; never manufacture slots.
 
 Bare first/last refers to the displayed subset. First/last *of a period* refers
@@ -278,6 +279,7 @@ An unqualified clock matching AM and PM, or multiple days, stays uncertain.
     if not isinstance(message, str) or not message.strip() or len(message) > 250:
         return TimeChoice("uncertain")
     text = _norm(message).strip(" .!,;")
+    text = re.sub(r"\b(as|das|pras|pelas)(?=\d)", r"\1 ", text)
     if "?" in text or re.search(r"\b(?:se|talvez|quanto|quais|qual|quando|amanha|hoje|segunda|terca|quarta|quinta|sexta|sabado|domingo)\b", text):
         return TimeChoice("uncertain")
     period = None
@@ -307,10 +309,13 @@ An unqualified clock matching AM and PM, or multiple days, stays uncertain.
             return TimeChoice("uncertain")
         selected = candidates[-1] if ordinal.group(1).startswith("ultim") else candidates[0]
         return TimeChoice("selected", selected[1])
-    if text.isdigit() and shown is not None and 1 <= int(text) <= len(shown):
+    if numbered_menu and text.isdigit() and shown is not None and 1 <= int(text) <= len(shown):
         return TimeChoice("selected", shown[int(text) - 1][1])
     # Use the final explicit clock only after an actual correction marker.
-    clocks = list(re.finditer(r"(?<!\w)([01]?\d|2[0-3])(?::([0-5]\d)|h([0-5]\d)?)?(?!\w)", text))
+    from app.qr_understanding import _NUMBERS
+    numbers = "|".join(sorted(_NUMBERS, key=len, reverse=True))
+    clocks = list(re.finditer(r"(?<!\w)([01]?\d|2[0-3]|" + numbers +
+        r")(?::([0-5]\d)|h([0-5]\d)?)?(\s+e\s+mei[ao])?(?!\w)", text))
     if not clocks:
         if period and re.fullmatch(r"(?:(?:quero|queria|prefiro|pode ser)\s+)?(?:de|pela|da|a)\s+(?:manha|tarde|noite)", text):
             values = tuple(x[1] for x in full if period[0] <= x[0].hour < period[1])
@@ -327,7 +332,8 @@ An unqualified clock matching AM and PM, or multiple days, stays uncertain.
     if len(clocks) > 1 and (re.search(r"\bou\b", text) or not re.search(r"\b(?:melhor|na verdade|quer dizer)\b", text[clocks[-2].end():clocks[-1].start()])):
         return TimeChoice("uncertain")
     clock = clocks[-1]
-    hour, minute = int(clock.group(1)), int(clock.group(2) or clock.group(3) or 0)
+    hour = int(clock.group(1)) if clock.group(1).isdigit() else _NUMBERS[clock.group(1)]
+    minute = int(clock.group(2) or clock.group(3) or (30 if clock.group(4) else 0))
     hour_choices = {hour}
     if period:
         if hour < 12 and period[0] >= 12:
@@ -335,6 +341,14 @@ An unqualified clock matching AM and PM, or multiple days, stays uncertain.
         hour_choices = {h for h in hour_choices if period[0] <= h < period[1]}
     elif hour < 12 and not clock.group(2) and clock.group(3) is None:
         hour_choices.add(hour + 12)
+    if business_hours is not None:
+        compatible = {h for h in hour_choices if any(row.get("opens", "99:99") <= f"{h:02d}:{minute:02d}" <
+            row.get("closes", "00:00") for row in business_hours)}
+        if not compatible:
+            return TimeChoice("unavailable")
+        if len(compatible) != 1:
+            return TimeChoice("uncertain")  # Occupied slots never resolve AM/PM.
+        hour_choices = compatible
     remaining = text
     for item in reversed(clocks):
         remaining = remaining[:item.start()] + " " + remaining[item.end():]

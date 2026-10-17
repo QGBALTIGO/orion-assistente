@@ -189,18 +189,23 @@ _NUMBERS = {"uma": 1, "um": 1, "duas": 2, "dois": 2, "tres": 3, "quatro": 4, "ci
             "treze": 13, "catorze": 14, "quatorze": 14, "quinze": 15, "dezesseis": 16,
             "dezessete": 17, "dezoito": 18, "dezenove": 19, "vinte": 20}
 _NUMBER = "(?:" + "|".join(sorted(_NUMBERS, key=len, reverse=True)) + r"|\d{1,2})"
-_HOUR = re.compile(r"(?:(?P<relation>depois das?|antes das?|por volta das?|pelas?|as)\s+(?:umas?\s+)?)"
-                   r"(?P<hour>" + _NUMBER + r")(?:(?:[:h](?P<minute>\d{2}))|(?P<half> e meia))?"
+_HOUR = re.compile(r"(?<!\w)(?:(?P<relation>depois das?|antes das?|por volta das?|pelas?|as|das|pras)\s*(?:umas?\s+)?)"
+                   r"(?P<hour>" + _NUMBER + r")(?:(?:[:h](?P<minute>\d{2}))|(?P<half>\s+e\s+mei[ao]))?"
                    r"(?:\s*(?:horas?|h))?(?:\s*(?P<period>da manha|da tarde|da noite))?\b|"
                    r"(?<![\d/-])(?P<clock>[01]?\d|2[0-3])[:h](?P<clockmin>[0-5]\d)(?!\d)")
 
 
 def _times(message: str, context: dict):
     lower = normalized(message)
-    if re.fullmatch(_NUMBER + r"(?:\s+horas?)?(?:\s+da (?:manha|tarde|noite))?[.!?\s]*", lower) and (
+    # An explicit final correction can omit the repeated preposition. Preserve
+    # the correction marker outside the clock span so last-choice checks apply.
+    lower = re.sub(r"\b(melhor|quer dizer|na verdade)(?:\s+|(?=\d))(?=" + _NUMBER +
+        r"(?:\s+e\s+mei[ao]\b|[:h]|\s+horas?\b|\s*mil\b))", r"\1 as ", lower)
+    noisy = list(re.finditer(r"\b(?:as|pelas)\s*" + _NUMBER + r"\s*mil\b", lower))
+    if re.fullmatch(_NUMBER + r"(?:\s+e\s+mei[ao])?(?:\s+horas?)?(?:\s+da (?:manha|tarde|noite))?[.!?\s]*", lower) and (
             context.get("step") in {"time", "reschedule_time"} or re.search(r"\bda (?:manha|tarde|noite)\b", lower)):
         lower = "as " + lower
-    values, errors = [], []
+    values, errors = [], [match.start() for match in noisy if not _negative(lower[:match.start()])]
     matches = list(_HOUR.finditer(lower))
     for match in matches:
         if _negative(lower[:match.start()]):
@@ -241,13 +246,13 @@ def _times(message: str, context: dict):
         invalid = True
     if matches and re.search(r"\bou\s+(?:" + _NUMBER + r"|cinquenta)\b", lower):
         invalid = True
-    return (values[-1][2:] if values and not invalid else (None, "none")), bool(matches), invalid
+    return (values[-1][2:] if values and not invalid else (None, "none")), bool(matches or noisy), invalid
 
 
 def clarification_for(plan: UnderstandingPlan) -> str | None:
     """Targeted questions contain no model-provided facts or operational promises."""
     questions = {"service": "Qual serviço você quer? Preciso distinguir as opções do catálogo.",
-                 "date": "Qual é o dia que você prefere?", "time": "Qual horário você prefere? Pode dizer no formato de 24 horas?",
+                 "date": "Qual é o dia que você prefere?", "time": "Qual horário você prefere? Pode dizer, por exemplo, três e meia da tarde.",
                  "professional": "Qual profissional você prefere? Não consegui distinguir o nome com segurança.",
                  "customer_name": "Como você prefere que eu te chame?",
                  "faq": "Pode especificar qual informação você procura?",
