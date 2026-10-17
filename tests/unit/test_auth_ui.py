@@ -46,3 +46,35 @@ async def test_assets_are_allowlisted_and_svg(monkeypatch):
             assert b"<svg" in r.content
         assert (await client.get("/brand/../panel.html")).status_code in (404,405)
         assert (await client.get("/brand/untrusted.svg")).status_code==404
+
+
+def test_login_mobile_does_not_show_turquoise_header_block():
+    """Mobile/tablet uses a single clean auth layout without the marketing strip."""
+    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
+    assert re.search(r"@media\(max-width:900px\)\s*\{\s*#loginView \.auth-shell\{display:flex",html)
+    assert re.search(r"#loginView \.auth-visual\{display:none\}",html)
+    assert "#loginView .auth-right" in html
+    assert "min-height:100svh" in html
+    assert "auth-mobile-brand" in html
+
+
+def test_login_checkbox_has_real_unchecked_and_checked_appearance():
+    """Custom checkbox avoids native browser black fill for unchecked light theme."""
+    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
+    assert 'id="rememberMe" type="checkbox"' in html
+    assert '#loginView .auth-form .auth-check input[type="checkbox"]{' in html
+    assert "appearance:none;-webkit-appearance:none" in html
+    assert '#loginView .auth-form .auth-check input[type="checkbox"]:checked{' in html
+    assert "background-image:url(" in html
+    assert 'input[type="checkbox"]:focus-visible' in html
+    assert "#loginView{color-scheme:light}" in html
+
+
+def test_login_desktop_has_readable_non_flat_hero():
+    """Retains desktop split with higher contrast and composition."""
+    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
+    assert "#loginView .auth-shell{grid-template-columns:minmax(0,.92fr)" in html
+    assert "linear-gradient(144deg,#063642" in html
+    assert "#loginView .auth-hero li{" in html
+    assert "rgba(0,35,47,.19)" in html
+    assert "prefers-reduced-motion:reduce" in html

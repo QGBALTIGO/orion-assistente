@@ -350,6 +350,99 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
  .auth-primary{transition:none}
 }
 
+
+/* Auth refinement: stronger contrast, intentional desktop depth, no mobile color slab. */
+#loginView{color-scheme:dark}
+#loginView .auth-shell{grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr)}
+#loginView .auth-visual{
+ background:linear-gradient(144deg,#063642 0%,#075666 33%,#086e78 59%,#0c9c91 100%);
+ padding-inline:clamp(36px,5.7vw,105px);
+}
+#loginView .auth-visual::before{
+ inset:0;background:
+ radial-gradient(circle at 93% 19%,rgba(99,242,224,.22),transparent 30%),
+ radial-gradient(circle at -6% 90%,rgba(4,30,54,.5),transparent 47%),
+ repeating-linear-gradient(145deg,transparent 0 110px,rgba(255,255,255,.015) 111px 112px);
+}
+#loginView .auth-visual::after{
+ content:"";position:absolute;right:-140px;top:22%;width:min(38vw,540px);
+ aspect-ratio:1;border:1px solid rgba(218,255,250,.2);
+ border-radius:50%;box-shadow:0 0 0 48px rgba(216,255,249,.028),
+ 0 0 0 105px rgba(216,255,249,.018);pointer-events:none;z-index:-1
+}
+#loginView .auth-visual-logo{left:clamp(36px,5.7vw,105px)}
+#loginView .auth-visual-bottom{left:clamp(36px,5.7vw,105px);color:#e8fffa;opacity:.9}
+#loginView .auth-visual-logo img{width:205px;filter:drop-shadow(0 5px 20px rgba(2,27,41,.24))}
+#loginView .auth-hero{width:100%;max-width:560px;margin:0 auto}
+#loginView .auth-hero-kicker{color:#bdf8eb;letter-spacing:.15em;font-size:.76rem}
+#loginView .auth-hero h1{
+ font-size:clamp(2.15rem,3.25vw,3.65rem);line-height:1.12;letter-spacing:-.045em;
+ font-weight:820;text-shadow:0 2px 14px rgba(0,29,38,.15);margin-bottom:20px
+}
+#loginView .auth-hero p{font-size:clamp(1rem,1.28vw,1.15rem);line-height:1.6;color:#f3fffd;max-width:510px}
+#loginView .auth-hero ul{gap:11px;margin-top:28px;max-width:500px}
+#loginView .auth-hero li{
+ color:#f9fffd;background:rgba(0,35,47,.19);border:1px solid rgba(198,255,241,.19);
+ border-radius:12px;padding:11px 15px;font-size:.92rem;backdrop-filter:blur(5px);
+}
+#loginView .auth-hero li span{display:grid;place-items:center;width:22px;height:22px;
+ flex:none;border-radius:50%;background:rgba(168,255,225,.24);font-weight:850;color:#e8fff6}
+#loginView .auth-orbit{right:-115px;bottom:-135px;opacity:.6}
+#loginView .auth-right{padding-inline:clamp(24px,3.3vw,60px)}
+#loginView .auth-card{width:min(100%,466px)}
+#loginView .auth-form .auth-check input[type="checkbox"]{
+ appearance:none;-webkit-appearance:none;box-sizing:border-box;
+ width:18px;height:18px;min-width:18px;flex:0 0 18px;
+ padding:0;margin:0;border:1.5px solid #7593ae;border-radius:5px;
+ background:#16263b;box-shadow:none;cursor:pointer;
+ transition:background-color .16s,border-color .16s;
+}
+#loginView .auth-form .auth-check input[type="checkbox"]:checked{
+ background-color:#1ad0af;border-color:#1ad0af;
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m5 12 4 4 10-10' fill='none' stroke='%23062b2b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+ background-repeat:no-repeat;background-position:center;background-size:100%;
+}
+#loginView .auth-form .auth-check input[type="checkbox"]:focus-visible{
+ outline:3px solid #5cf2d8;outline-offset:3px;
+}
+#loginView .auth-privacy{margin-top:20px}
+#loginView #loginError:empty{display:none}
+@media(max-width:900px){
+ #loginView .auth-shell{display:flex;flex-direction:column;min-height:100svh}
+ #loginView .auth-visual{display:none}
+ #loginView .auth-right{
+   flex:1;min-height:100svh;padding:clamp(22px,5vh,48px) 22px 24px;
+   justify-content:center
+ }
+ #loginView .auth-card{width:min(100%,490px)}
+}
+@media(max-width:560px){
+ #loginView .auth-right{padding:22px 14px 22px;justify-content:center}
+ #loginView .auth-card{padding:22px 19px;border-radius:17px}
+ #loginView .auth-mobile-brand{margin:0 0 15px}
+ #loginView .auth-card-top{margin-bottom:17px}
+ #loginView .auth-privacy{margin-top:18px}
+}
+@media(prefers-color-scheme:light){
+ #loginView{color-scheme:light}
+ #loginView .auth-form .auth-check input[type="checkbox"]{
+   background:#fff;border-color:#8da0b7;
+ }
+ #loginView .auth-form .auth-check input[type="checkbox"]:checked{
+   background-color:#11b8a0;border-color:#11b8a0
+ }
+ #loginView .auth-visual{
+   background:linear-gradient(144deg,#064450 0%,#0a6b74 50%,#079c8e 100%);
+ }
+ #loginView .auth-visual-logo{
+   padding:6px 12px 6px 8px;border-radius:13px;
+   background:rgba(255,255,255,.96);box-shadow:0 8px 32px rgba(0,24,40,.15);
+ }
+}
+@media(prefers-reduced-motion:reduce){
+ #loginView .auth-form .auth-check input[type="checkbox"]{transition:none}
+}
+
 </style>
 </head>
 <body>
