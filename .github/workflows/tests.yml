@@ -78,6 +78,25 @@ jobs:
           docker compose up -d api worker
           curl --fail --silent --show-error --retry 15 --retry-all-errors --retry-delay 1 http://127.0.0.1:8000/health
 
+
+  faster_whisper:
+    name: ASR faster-whisper - CPU, Docker e testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ASR dependencies
+        run: python -m pip install -r qr-transcriber/requirements.txt pytest httpx pytest-asyncio
+      - name: Unit and API tests
+        run: cd qr-transcriber && python -m pytest -q test_app.py
+      - name: Build real inference image
+        run: docker build -t orion-faster-whisper:ci qr-transcriber
+      - name: Synthetic speech smoke test
+        run: bash qr-transcriber/ci-smoke.sh
+
   qr_bridge:
     name: QR bridge — Node, IPv6, segurança e Docker
     runs-on: ubuntu-latest
