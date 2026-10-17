@@ -240,46 +240,31 @@ async def _consume_code(session,email,purpose,code):
 
 @router.get("/features")
 async def features():
-    return {"registration":mail_ready() and (
-                os.getenv("PANEL_REGISTRATION_ENABLED")=="1" or _test_mode()),
+    # Sign-up is separate from email delivery: no code is needed at registration.
+    return {"registration":os.getenv("PANEL_REGISTRATION_ENABLED")=="1",
             "passwordRecovery":mail_ready(),
             "testMode":_test_mode()}
 
 
-@router.post("/register",status_code=202)
+@router.post("/register",status_code=201)
 async def register(payload:Register,request:Request):
     _same_origin(request)
-    url=_require_mail()
-    if not _allowed_recipient(payload.email):
-        raise HTTPException(403,"O cadastro está limitado ao e-mail autorizado nos testes")
-    if os.getenv("PANEL_REGISTRATION_ENABLED")!="1" and not _test_mode():
+    if os.getenv("PANEL_REGISTRATION_ENABLED")!="1":
         raise HTTPException(503,"Cadastro ainda não habilitado")
+    # No SMTP or possession of the email address is required to create
+    # a *member* account. In particular an email alone never grants admin.
     await _throttle(request,"register",payload.email,count=3,window=3600)
-    token=None
     async with _storage()() as session:
-        async with session.begin():
-            row=(await session.execute(text("""
-                SELECT id,verified_at FROM panel_accounts WHERE email=:email FOR UPDATE
-            """),{"email":payload.email})).mappings().first()
-            if row and row["verified_at"] is not None:
-                return {"ok":True,"message":"Se necessário, verifique sua caixa de entrada."}
-            if row:
-                account_id=row["id"]
-                # Never replace a pending user's password using an unauthenticated request.
-            else:
-                try:
-                    account_id=(await session.execute(text("""
-                        INSERT INTO panel_accounts(name,email,password_hash,role)
-                        VALUES (:name,:email,:password,'member') RETURNING id
-                    """),{"name":payload.name,"email":payload.email,
-                          "password":_hasher.hash(payload.password)})).scalar_one()
-                except IntegrityError:
-                    raise HTTPException(409,"Tente novamente em instantes") from None
-            token=await _issue_token(session,account_id,"verify",payload.email)
-    try:await asyncio.to_thread(_send_email,payload.email,"verify",token,url)
-    except (OSError,smtplib.SMTPException,httpx.HTTPError,EmailTransportError,ValueError,TimeoutError):
-        raise HTTPException(503,"Não foi possível enviar o e-mail. Tente novamente mais tarde") from None
-    return {"ok":True,"message":"Digite o código de 6 dígitos enviado ao seu e-mail."}
+        try:
+            async with session.begin():
+                await session.execute(text("""
+                    INSERT INTO panel_accounts(name,email,password_hash,role)
+                    VALUES (:name,:email,:password,'member')
+                """),{"name":payload.name,"email":payload.email,
+                      "password":_hasher.hash(payload.password)})
+        except IntegrityError:
+            raise HTTPException(409,"Já existe uma conta com este e-mail. Entre ou recupere a senha.") from None
+    return {"ok":True,"message":"Conta criada! Já pode entrar com seu e-mail e senha."}
 
 
 @router.post("/verify")
@@ -338,7 +323,7 @@ async def forgot(payload:RecoveryStart,request:Request):
     async with _storage()() as session:
         async with session.begin():
             account=(await session.execute(text("""
-                SELECT id FROM panel_accounts WHERE email=:email AND verified_at IS NOT NULL
+                SELECT id FROM panel_accounts WHERE email=:email
             """),{"email":payload.email})).mappings().first()
             if account:
                 token=await _issue_token(session,account["id"],"reset",payload.email)
@@ -364,6 +349,7 @@ async def reset(payload:ResetPassword,request:Request):
             if account_id:
                 await session.execute(text("""
                     UPDATE panel_accounts SET password_hash=:hashed,
+                    verified_at=coalesce(verified_at,now()),
                     auth_version=auth_version+1 WHERE id=:id
                 """),{"hashed":_hasher.hash(payload.password),"id":account_id})
                 await session.execute(text("""
@@ -385,7 +371,7 @@ async def authenticate_account(email,password):
         accepted=_hasher.verify(row["password_hash"] if row else _FAKE,password)
     except (argon2_errors.VerificationError,argon2_errors.InvalidHashError):
         accepted=False
-    if not row or not accepted or row["verified_at"] is None:return None
+    if not row or not accepted:return None
     return {"id":str(row["id"]),"name":row["name"],"email":row["email"],
             "role":row["role"],"version":row["auth_version"]}
 
@@ -395,7 +381,7 @@ async def current_account(account_id,version):
         row=(await session.execute(text("""
             SELECT role,auth_version,verified_at,name,email FROM panel_accounts WHERE id=:id
         """),{"id":UUID(account_id)})).mappings().first()
-    if not row or row["verified_at"] is None or row["auth_version"]!=version:
+    if not row or row["auth_version"]!=version:
         raise HTTPException(401,"Sua sessão expirou. Entre novamente")
     return row
 
