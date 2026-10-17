@@ -24,6 +24,7 @@ import {makeConnectedStore} from "./connected-store.mjs";
 import {transcriberConfig,cleanPictureUrl,transcribeAudio,handleCallOffers} from "./connected-features.mjs";
 import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
 import {forwardAssistant} from "./ai-forward.mjs";
+import {transcribeAssistantAudio} from "./ai-audio.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
 const SESSION_DIR=process.env.QR_SESSION_DIR || "/data/auth";
@@ -59,6 +60,7 @@ const repliedToCallers=new Map();
 const recentCallOffers=new Map();
 const assistantQueues=new Map();
 const assistantEnabled=()=>process.env.QR_AI_ENABLED==="1"&&!!process.env.QR_AI_API_URL;
+const assistantAudioEnabled=()=>assistantEnabled()&&process.env.QR_AI_AUDIO_ENABLED==="1";
 const callDiagnostics={
   eventsObserved:0,offersSeen:0,rejected:0,rejectFailed:0,replied:0,replyFailed:0,
   replyNoPhone:0,unresolvedWithAllowlist:0,duplicatesSkipped:0,
@@ -149,7 +151,7 @@ function stats(){
     profile:status==="connected"?connectedProfile:null,
     messageStats:connectedStore.stats(),
     featureSettings:status==="connected"?connectedStore.settings():null,
-    featureCapabilities:{chatbot:assistantEnabled(),transcription:!!transcriberConfig(),
+    featureCapabilities:{chatbot:assistantEnabled(),transcription:!!transcriberConfig()||assistantAudioEnabled(),
       callBlocking:typeof socket?.rejectCall==="function"},
     callDiagnostics:{...callDiagnostics},
     controlStorage:connectedStore.health()};
@@ -235,7 +237,15 @@ function installListeners(client,mine,saveCreds){
       let body=extractText(message.message);
        if(!body){
          try{
-           const txt=await transcribeAudio(message,{
+           let txt=null;
+           if(assistantAudioEnabled()&&connectedStore.settings().chatbot&&
+              connectedStore.settings().transcription){
+             txt=await transcribeAssistantAudio(message,{
+               client,downloadMediaMessage,phone,token:KEY,
+               apiUrl:process.env.QR_AI_API_URL,logger
+             });
+           }
+           if(!txt)txt=await transcribeAudio(message,{
              client,downloadMediaMessage,settings:connectedStore.settings(),
              config:transcriberConfig(),logger
            });
@@ -531,7 +541,7 @@ const server=http.createServer(async(req,res)=>{
     if(path==="/internal/settings"&&req.method==="POST"){
       if(status!=="connected"||!socket)return reply(res,409,{error:"not_connected"});
       const settings=connectedStore.update(await collectBody(req),{
-        chatbot:assistantEnabled(),transcription:!!transcriberConfig(),
+        chatbot:assistantEnabled(),transcription:!!transcriberConfig()||assistantAudioEnabled(),
         callBlocking:typeof socket.rejectCall==="function"
       });
       return reply(res,200,{settings});

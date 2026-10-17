@@ -100,6 +100,9 @@ async def interpret(
                 if response.status_code == 429:
                     raise GroqServiceError(503, "Limite temporário da Groq atingido")
                 if response.status_code != 200:
+                    import logging
+                    logging.getLogger("orion.groq").warning(
+                        "provider_rejected status=%s", response.status_code)
                     raise GroqServiceError(502, "Groq não aceitou a solicitação")
                 try:
                     body = response.json()
