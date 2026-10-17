@@ -12,6 +12,7 @@ import re
 import secrets
 from contextvars import ContextVar
 from datetime import date, datetime, timedelta
+from time import monotonic
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -1603,6 +1604,51 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
             "step": "menu", **({"degraded": True} if degraded else {})}
 
 
+_STATE_SNAPSHOT_SCRIPT = """
+local result={}
+for _,key in ipairs(KEYS) do
+ table.insert(result,redis.call('GET',key) or false)
+ table.insert(result,redis.call('PTTL',key))
+end
+return result
+"""
+_STATE_RESTORE_SCRIPT = """
+for i,key in ipairs(KEYS) do
+ local offset=(i-1)*3
+ local present=tonumber(ARGV[offset+1])
+ local ttl=tonumber(ARGV[offset+3])
+ if present==1 and ttl==-1 then redis.call('SET',key,ARGV[offset+2])
+ elseif present==1 and ttl>0 then redis.call('SET',key,ARGV[offset+2],'PX',ttl)
+ else redis.call('DEL',key) end
+end
+return 1
+"""
+
+
+def _provisional_keys(key: str):
+    return key, key + ":commerce", key + ":catalog-context"
+
+
+async def _snapshot_provisional_state(redis, key: str):
+    started = monotonic()
+    rows = await redis.eval(_STATE_SNAPSHOT_SCRIPT, 3, *_provisional_keys(key))
+    if not isinstance(rows, (list, tuple)) or len(rows) != 6 or any(type(rows[i]) is not int for i in (1, 3, 5)):
+        raise RuntimeError("Unable to snapshot provisional conversation state")
+    return started, rows
+
+
+async def _restore_provisional_state(redis, key: str, snapshot):
+    if snapshot is None:
+        return
+    started, rows = snapshot
+    elapsed = max(0, math.ceil((monotonic() - started) * 1000))
+    args = []
+    for index in (0, 2, 4):
+        value, ttl = rows[index:index+2]
+        args.extend((int(value is not None), value if value is not None else "", ttl - elapsed if ttl >= 0 else ttl))
+    await redis.eval(_STATE_RESTORE_SCRIPT, 3, *_provisional_keys(key), *args)
+
+
 async def _require_pending_review(redis, key: str):
     """A summary that was not delivered cannot authorize the next acceptance."""
     try:
@@ -1637,6 +1683,8 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                      socket_connect_timeout=3, socket_timeout=20)
     lock = redis.lock(f"orion:qr:ai:lock:{tenant}:{namespace}", timeout=90, blocking_timeout=4)
     revision_token = None
+    provisional_snapshot = None
+    state_key = f"orion:qr:ai:{tenant}:{namespace}"
     try:
         async with lock:
             ids = message_ids or ([message_id] if message_id else [])
@@ -1648,6 +1696,8 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                 revision_token = qr_intake_revision.bind(tenant, phone, ids, intake_revision, redis)
             try:
                 await qr_intake_revision.assert_current()
+                if revision_token is not None:
+                    provisional_snapshot = await _snapshot_provisional_state(redis, state_key)
                 if require_summary_review and not preview:
                     await _require_pending_review(redis, f"orion:qr:ai:{tenant}:{namespace}")
                 if reset:
@@ -1671,6 +1721,7 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
             except qr_intake_revision.Superseded as superseded:
                 result = superseded.result()
                 if superseded.not_committed:
+                    await _restore_provisional_state(redis, state_key, provisional_snapshot)
                     return result
                 await _require_pending_review(redis, f"orion:qr:ai:{tenant}:{namespace}")
             if keys:

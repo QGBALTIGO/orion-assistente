@@ -1,5 +1,6 @@
 """Revision fence at QR admission and real turn write boundaries; no live Redis."""
 from datetime import datetime
+import json
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -13,8 +14,32 @@ from test_qr_multi_flow import flow
 
 class RevisionRedis(MemoryRedis):
     def __init__(self):
-        super().__init__();self.current=1;self.seen={"synthetic-message":1};self.evaluations=0
+        super().__init__();self.current=1;self.seen={"synthetic-message":1};self.evaluations=0;self.deadlines={};self.restored=[]
+    async def set(self,key,value,ex=None,nx=False,px=None):
+        result=await super().set(key,value,ex=ex,nx=nx)
+        if result:
+            ttl=px if px is not None else ex*1000 if ex is not None else None
+            self.deadlines[key]=qr_ai.monotonic()+ttl/1000 if ttl is not None else None
+        return result
     async def eval(self, script, nkeys, *args):
+        if script == qr_ai._STATE_SNAPSHOT_SCRIPT:
+            assert nkeys == 3
+            rows=[]
+            for key in args:
+                deadline=self.deadlines.get(key)
+                ttl=max(0,int((deadline-qr_ai.monotonic())*1000)) if deadline is not None else -1
+                rows.extend((self.values.get(key),ttl if key in self.values else -2))
+            return rows
+        if script == qr_ai._STATE_RESTORE_SCRIPT:
+            assert nkeys == 3
+            self.restored.append(args[:3])
+            for i,key in enumerate(args[:3]):
+                present,value,ttl=args[3+i*3:6+i*3]
+                if present and (ttl==-1 or ttl>0):
+                    await self.set(key,value,px=ttl if ttl>0 else None)
+                else:
+                    await self.delete(key)
+            return 1
         assert script == revision.VALIDATE_SCRIPT and nkeys == 2
         self.evaluations += 1
         expected, ids = args[2], args[3:]
@@ -51,6 +76,74 @@ async def test_run_locked_acknowledges_zero_write_only_and_consumes_uncertain_wr
     assert bool(redis.transactions) == done and redis.closed == 1 and revision._turn.get() is None
     if stage == "entry": assert turns == []
     if stage != "current": assert result["not_committed"] is (not done)
+    if stage == "after_write": assert redis.restored == []
+
+
+@pytest.mark.asyncio
+async def test_superseded_handoff_restores_provisional_state_then_combined_correction_keeps_bot_responding(flow,monkeypatch):
+    import redis.asyncio as redis_asyncio
+    h=flow;monkeypatch.setenv("QR_AI_INTAKE_REVISION_ENABLED","1")
+    client=RevisionRedis();client.values=h.redis.data
+    monkeypatch.setattr(redis_asyncio,"from_url",lambda *a,**k:client)
+    original=client.set;changed=False
+    async def pause_then_new_notice(key,value,*args,**kwargs):
+        nonlocal changed
+        result=await original(key,value,*args,**kwargs)
+        if key==h.key and json.loads(value).get("step")=="human" and not changed:
+            changed=True;client.current=2;client.seen["correction"]=2
+        return result
+    monkeypatch.setattr(client,"set",pause_then_new_notice)
+    first=await qr_ai.run_locked(h.tenant,"5567999999999","Quero atendente humano",h.namespace,
+        "synthetic-message",intake_revision=1)
+    assert first == {"answer":None,"step":"superseded","not_committed":True}
+    assert h.state()=={} and h.key+":catalog-context" not in client.values
+    combined=await qr_ai.run_locked(h.tenant,"5567999999999",
+        "Quero atendente humano\nNão, melhor continuar com você",h.namespace,"synthetic-message",
+        message_ids=["synthetic-message","correction"],intake_revision=2,require_summary_review=True)
+    assert combined["answer"] and "continuo por aqui" in combined["answer"]
+    assert combined["step"]!="human" and h.state().get("step")!="human" and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_superseded_service_selection_restores_old_selection_and_catalog_context(flow,monkeypatch):
+    import redis.asyncio as redis_asyncio
+    h=flow;monkeypatch.setenv("QR_AI_INTAKE_REVISION_ENABLED","1")
+    before=h.seed("date");before_context=h.redis.data[h.key+":catalog-context"]
+    client=RevisionRedis();client.values=h.redis.data
+    monkeypatch.setattr(redis_asyncio,"from_url",lambda *a,**k:client)
+    original=client.set
+    async def select_then_new_notice(key,value,*args,**kwargs):
+        result=await original(key,value,*args,**kwargs)
+        if key==h.key and json.loads(value).get("services")==[str(h.beard)]:
+            client.current=2
+        return result
+    monkeypatch.setattr(client,"set",select_then_new_notice)
+    result=await qr_ai.run_locked(h.tenant,"5567999999999","Quero barba",h.namespace,
+        "synthetic-message",intake_revision=1)
+    assert result["step"]=="superseded" and result["not_committed"]
+    assert h.state()==before and client.values[h.key+":catalog-context"]==before_context
+    assert not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_provisional_restore_subtracts_elapsed_ttl_and_never_revives_expired_or_touches_other_keys(monkeypatch):
+    clock=[100.0];monkeypatch.setattr(qr_ai,"monotonic",lambda:clock[0])
+    client=RevisionRedis();key="orion:qr:ai:synthetic-tenant:synthetic-contact"
+    fixed=qr_ai._provisional_keys(key)
+    for target,ttl in zip(fixed,(2000,1000,500)):
+        await client.set(target,"old-"+target,px=ttl)
+    unrelated={key+":receipt":"verified",key+":notice":"new-ingress",key+":done":"consumed"}
+    client.values.update(unrelated)
+    snapshot=await qr_ai._snapshot_provisional_state(client,key)
+    for target in fixed:
+        await client.set(target,"provisional",ex=999)
+    clock[0]=101.2
+    await qr_ai._restore_provisional_state(client,key,snapshot)
+    assert client.values[fixed[0]]=="old-"+fixed[0]
+    assert 0 < (client.deadlines[fixed[0]]-clock[0])*1000 <= 800
+    assert fixed[1] not in client.values and fixed[2] not in client.values
+    assert all(client.values[target]==value for target,value in unrelated.items())
+    assert client.restored==[fixed]
 
 
 @pytest.mark.asyncio

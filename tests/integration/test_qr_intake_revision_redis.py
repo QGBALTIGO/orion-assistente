@@ -103,3 +103,42 @@ async def test_real_lua_history_is_bounded_and_foreign_scope_cannot_supply_revis
             await revision.check_before_write()
     finally:
         revision.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_real_lua_restores_only_provisional_state_without_extending_original_deadlines(redis_case, monkeypatch):
+    from app import qr_ai
+
+    redis, tenant, _ = redis_case
+    base = f"orion:qr:ai:{tenant}:synthetic-rollback"
+    state, commerce, catalog = qr_ai._provisional_keys(base)
+    receipt = base + ":unrelated-receipt"
+    own = (state, commerce, catalog, receipt)
+    try:
+        await redis.set(state, "before", ex=10)
+        await redis.set(commerce, "", ex=15)
+        await redis.set(receipt, "verified-completion", ex=20)
+        monkeypatch.setattr(qr_ai, "monotonic", lambda: 100.0)
+        snapshot = await qr_ai._snapshot_provisional_state(redis, base)
+        assert snapshot[1][4] is None and snapshot[1][5] == -2
+        for target in (state, commerce, catalog):
+            await redis.set(target, "superseded", ex=300)
+        monkeypatch.setattr(qr_ai, "monotonic", lambda: 102.0)
+        await qr_ai._restore_provisional_state(redis, base, snapshot)
+        assert await redis.get(state) == b"before"
+        assert 0 < await redis.pttl(state) <= 8000
+        assert await redis.get(commerce) == b""
+        assert 0 < await redis.pttl(commerce) <= 13000
+        assert await redis.get(catalog) is None
+        assert await redis.get(receipt) == b"verified-completion"
+
+        await redis.set(state, "about-to-expire", ex=1)
+        monkeypatch.setattr(qr_ai, "monotonic", lambda: 200.0)
+        expired = await qr_ai._snapshot_provisional_state(redis, base)
+        await redis.set(state, "superseded", ex=300)
+        monkeypatch.setattr(qr_ai, "monotonic", lambda: 202.0)
+        await qr_ai._restore_provisional_state(redis, base, expired)
+        assert await redis.get(state) is None
+        assert await redis.get(receipt) == b"verified-completion"
+    finally:
+        await redis.delete(*own)
