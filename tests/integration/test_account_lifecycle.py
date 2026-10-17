@@ -55,7 +55,7 @@ async def test_verified_account_separation_recovery_owner_claim(monkeypatch):
     h={"Origin":"https://test"}
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url="https://test") as c:
         feature=await c.get("/auth/features")
-        assert feature.json()=={"registration":True,"passwordRecovery":True}
+        assert feature.json()=={"registration":True,"passwordRecovery":True,"testMode":False}
         registration={"name":"Pessoa Teste","email":address,"password":"Correct#Secret123"}
         created=await c.post("/auth/register",json=registration,headers=h)
         assert created.status_code==202,created.text
