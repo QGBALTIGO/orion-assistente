@@ -87,6 +87,23 @@ async def interpret(
         "model": model, "messages": messages, "temperature": 0,
         "max_tokens": 300, "response_format": {"type": "json_object"},
     }
+    if model in {"openai/gpt-oss-20b", "openai/gpt-oss-120b"}:
+        # These reasoning models need room for both reasoning and the final JSON.
+        # Groq supports strict decoding for GPT-OSS; local validation remains mandatory.
+        payload.pop("max_tokens")
+        payload.update(max_completion_tokens=1024, reasoning_effort="low",
+            response_format={"type": "json_schema", "json_schema": {
+                "name": "orion_intention", "strict": True, "schema": {
+                    "type": "object", "additionalProperties": False,
+                    "required": ["intent", "service_ids", "requested_when"],
+                    "properties": {
+                        "intent": {"type": "string", "enum": ["agendar", "perguntar", "humano", "outro"]},
+                        "service_ids": {"type": "array", "items": {"type": "string",
+                            **({"enum": [item["id"] for item in clean_catalog]} if clean_catalog else {})}},
+                        "requested_when": {"type": ["string", "null"]},
+                    },
+                },
+            }})
     try:
         async with httpx.AsyncClient(timeout=12, transport=transport) as client:
             for attempt in range(2):
@@ -127,6 +144,16 @@ async def interpret(
                             matched.append(service_id)
                     return decision.model_copy(update={"service_ids": matched})
                 except (KeyError, IndexError, TypeError, ValueError, ValidationError):
+                    # Allowlisted metadata only: never log provider content or reasoning.
+                    import logging
+                    reason = "unknown"
+                    try:
+                        reported = body["choices"][0].get("finish_reason")
+                        if reported in {"stop", "length", "content_filter"}:
+                            reason = reported
+                    except (KeyError, IndexError, TypeError, AttributeError, UnboundLocalError):
+                        pass
+                    logging.getLogger("orion.groq").warning("classification_invalid finish=%s", reason)
                     raise GroqServiceError(502, "Groq retornou uma classificação inválida") from None
     except GroqServiceError:
         raise

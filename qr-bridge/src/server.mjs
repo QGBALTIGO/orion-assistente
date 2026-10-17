@@ -284,7 +284,7 @@ function installListeners(client,mine,saveCreds){
       // Count each valid inbound message, including media without a transcript.
       const at=timestampMs(message.messageTimestamp)||Date.now();
       try{connectedStore.record("wa:"+message.key.id,at)}catch{}
-      let body=extractText(message.message);
+      let body=extractText(message.message),assistantText=body;
        if(!body){
          try{
            let txt=null;
@@ -298,7 +298,7 @@ function installListeners(client,mine,saveCreds){
              client,downloadMediaMessage,settings:connectedStore.settings(),
              config:transcriberConfig(),logger
            });
-           if(txt)body="[Áudio transcrito] "+txt;
+           if(txt){body="[Áudio transcrito] "+txt;assistantText=txt;}
          }catch{console.warn("Orion QR: transcrição não concluída (dados omitidos)")}
        }
        if(!body || typeof body!=="string"){transport.record('inbound_no_text',traceId);continue;}
@@ -319,7 +319,7 @@ function installListeners(client,mine,saveCreds){
           let answer;
           try{answer=await forwardAssistant({
             apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
-            messageId:String(message.key.id),text:body,
+            messageId:String(message.key.id),text:assistantText||body,
           });}catch(error){transport.record('ai_forward_failed',traceId);throw error;}
           if(!answer){transport.record('ai_silent',traceId);return;}
           transport.record('ai_answer',traceId);
