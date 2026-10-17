@@ -89,7 +89,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install ASR dependencies
-        run: python -m pip install -r qr-transcriber/requirements.txt pytest httpx
+        run: python -m pip install -r qr-transcriber/requirements.txt pytest httpx pytest-asyncio
       - name: Unit and API tests
         run: cd qr-transcriber && python -m pytest -q test_app.py
       - name: Build real inference image
