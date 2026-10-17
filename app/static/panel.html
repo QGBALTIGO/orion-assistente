@@ -443,6 +443,43 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
  #loginView .auth-form .auth-check input[type="checkbox"]{transition:none}
 }
 
+
+/* Desktop auth: the split is anchored to the viewport, not an inherited page width. */
+@media (min-width:901px){
+  #loginView{
+    position:fixed;inset:0;
+    display:block;width:100vw;max-width:none;
+    height:100vh;height:100dvh;min-height:0;
+    margin:0;padding:0;overflow-x:hidden;overflow-y:auto;
+  }
+  #loginView .auth-shell{
+    display:grid;grid-template-columns:50% 50%;
+    grid-template-rows:minmax(100%,auto);
+    width:100%;max-width:100%;min-width:0;min-height:100%;
+    margin:0;padding:0;gap:0;box-sizing:border-box;
+  }
+  #loginView .auth-shell > .auth-visual,
+  #loginView .auth-shell > .auth-right{
+    width:100%;max-width:100%;min-width:0;
+    margin:0;box-sizing:border-box;
+  }
+  #loginView .auth-visual{
+    padding-inline:clamp(32px,4.2vw,80px);
+  }
+  #loginView .auth-visual-logo,
+  #loginView .auth-visual-bottom{left:clamp(32px,4.2vw,80px);}
+  #loginView .auth-hero{min-width:0;max-width:560px;}
+  #loginView .auth-hero h1{font-size:clamp(2.2rem,3.05vw,3.55rem);}
+  #loginView .auth-right{
+    min-height:100vh;min-height:100dvh;
+    justify-content:safe center;align-items:center;
+    padding:44px clamp(26px,4vw,64px) 24px;
+    overflow-wrap:anywhere;
+  }
+  #loginView .auth-card{width:100%;max-width:466px;min-width:0;margin-inline:auto;}
+  #loginView .auth-copyright{max-width:100%;}
+}
+
 </style>
 </head>
 <body>
