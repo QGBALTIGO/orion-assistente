@@ -73,6 +73,7 @@ test("incoming LID calls use the original LID for reject and mapped PN only for 
   assert.equal(diagnostics.rejected,1);
   assert.equal(diagnostics.replied,1);
   assert.equal(await resolveCallPhone({from:jid,callerPn:pn},socket),"5567999912345");
+  assert.equal(await resolveCallPhone({from:jid,callerPn:"5567999912345"},socket),"5567999912345");
 });
 
 test("no guessing LID numbers; allowlist protects unresolved identities",async()=>{
