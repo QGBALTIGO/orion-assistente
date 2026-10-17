@@ -146,7 +146,7 @@ def projection_fixture(monkeypatch):
     old_constraint = ["commercial_quotes", "ck_quote_amount", "c", True, False, False, False, "CHECK ((total_cents >= 0))"]
     constraints = [old_constraint,
         ["commercial_quotes", "ck_quote_fulfillment", "c", True, False, False, False, "CHECK (synthetic_reviewed_predicate)"],
-        ["commercial_quotes", "fk_quote_pickup_appointment", "f", True, False, False, False,
+        ["commercial_quotes", "fk_quote_pickup_appointment", "f", True, False, False, True,
          "FOREIGN KEY (tenant_id, pickup_appointment_id) REFERENCES appointments(tenant_id, id) ON DELETE RESTRICT"]]
     rows = [[name, True, True, [["id", "uuid", True, None]], [], [], []] for name in sorted(ops.TABLES)]
     quote = next(row for row in rows if row[0] == "commercial_quotes")
@@ -178,7 +178,7 @@ def test_projection_preserves_all_old_fields_and_constraint_names_without_mutati
     assert [row for row in projected if row[0] != "commercial_quotes"] == [row for row in original if row[0] != "commercial_quotes"]
 
 
-@pytest.mark.parametrize("tamper", ["column_type", "column_default", "column_not_null", "constraint_alias", "foreign_target", "index_predicate", "index_duplicate"])
+@pytest.mark.parametrize("tamper", ["column_type", "column_default", "column_not_null", "constraint_alias", "foreign_target", "index_predicate", "index_duplicate", "inheritable_fk", "noninheritable_check", "unvalidated_fk", "deferred_fk"])
 def test_projection_never_hides_unverified_additions(monkeypatch, tamper):
     conn, rows, quote, constraints = projection_fixture(monkeypatch)
     if tamper == "column_type":
@@ -193,6 +193,14 @@ def test_projection_never_hides_unverified_additions(monkeypatch, tamper):
         constraints[2][7] = constraints[2][7].replace("appointments(", "other_appointments(")
     elif tamper == "index_predicate":
         quote[5][1] = quote[5][1].replace("IS NOT NULL", "IS NULL")
+    elif tamper == "inheritable_fk":
+        constraints[2][6] = False
+    elif tamper == "noninheritable_check":
+        constraints[1][6] = True
+    elif tamper == "unvalidated_fk":
+        constraints[2][3] = False
+    elif tamper == "deferred_fk":
+        constraints[2][4] = True
     else:
         quote[5].append(quote[5][1])
     with pytest.raises(backup.Stop):

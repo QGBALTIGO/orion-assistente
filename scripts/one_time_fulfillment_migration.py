@@ -133,7 +133,10 @@ def projected_catalog(conn):
     require(len(additions) == 2, "fulfillment_constraints_mismatch")
     for row in additions:
         expected_kind = "f" if row[1] == "fk_quote_pickup_appointment" else "c"
-        require(row[2:7] == [expected_kind, True, False, False, False], "fulfillment_constraints_mismatch")
+        # PG16 addFkConstraint marks a top-level FK on an ordinary table
+        # connoinherit=true. The independently inheritable CHECK remains false.
+        require(row[2:7] == [expected_kind, True, False, False, expected_kind == "f"],
+                "fulfillment_constraints_mismatch")
         if row[1] == "fk_quote_pickup_appointment":
             require(row[7] == "FOREIGN KEY (tenant_id, pickup_appointment_id) REFERENCES appointments(tenant_id, id) ON DELETE RESTRICT",
                     "fulfillment_fk_mismatch")

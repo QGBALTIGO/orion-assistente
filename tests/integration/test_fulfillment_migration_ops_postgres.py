@@ -59,7 +59,28 @@ def test_full_0011_backup_restore_and_0012_upgrade_preserves_existing_commerce(f
     with engine.begin() as conn:
         before = ops.row_fingerprints(conn)
         security = ops.security_structure(conn)
-    result = ops.execute(settings)
+    structures = []
+    original_fingerprint = backup.catalog_fingerprint
+    def record_fingerprint(conn, tables=backup.LEGACY_TABLES):
+        structures.append(backup.canonical_catalog(backup.catalog_structure(conn, tables)))
+        return original_fingerprint(conn, tables)
+    monkeypatch.setattr(backup, "catalog_fingerprint", record_fingerprint)
+    try:
+        result = ops.execute(settings)
+    except backup.Stop as error:
+        if str(error) == "restored_catalog_mismatch" and len(structures) >= 2:
+            # Only this fixture's freshly created, loopback synthetic database.
+            # No runtime logging or source row values are added to the executor.
+            left = {row[0]: row[1:] for row in structures[-2]}
+            right = {row[0]: row[1:] for row in structures[-1]}
+            assert set(left) == set(right) == ops.TABLES
+            fields = ("rls", "force_rls", "columns", "constraints", "indexes", "policies")
+            differences = {table: {field: {"source": a, "restored": b}
+                for field, a, b in zip(fields, left[table], right[table]) if a != b}
+                for table in sorted(ops.TABLES) if left[table] != right[table]}
+            print("SYNTHETIC_0011_SCHEMA_DIFFERENCE=" + json.dumps(differences, sort_keys=True, ensure_ascii=True))
+            assert not differences, "Full restored schema differs; see synthetic table/field diagnostics"
+        raise
     assert requests == ["POST", "GET"]
     assert stored["body"].startswith(backup.MAGIC) and not stored["body"].startswith(b"PGDMP")
     assert result["revision"] == ops.TARGET and result["restore_verified"] is True
@@ -142,3 +163,13 @@ def test_already_0012_cannot_be_backed_up_or_migrated_by_this_executor(fulfillme
     monkeypatch.setattr(backup, "capture_dump", forbidden)
     with pytest.raises(backup.Stop, match="unexpected_source_schema"):
         ops.execute(settings)
+
+
+def test_pg16_new_fk_and_check_have_distinct_inheritance_metadata(fulfillment_source):
+    engine, settings = fulfillment_source
+    ops.apply_exact_migration(engine, settings, **evidence(engine))
+    with engine.begin() as conn:
+        metadata = {row[1]: row[2:7] for row in ops.named_constraints(conn)
+                    if row[0] == "commercial_quotes" and row[1] in ops.CONSTRAINTS}
+        assert metadata == {"fk_quote_pickup_appointment": ["f", True, False, False, True],
+                            "ck_quote_fulfillment": ["c", True, False, False, False]}
