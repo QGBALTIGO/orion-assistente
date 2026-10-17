@@ -57,7 +57,7 @@ let connectedProfile={name:null,photoUrl:null,updatedAt:null},profileFetchedAt=0
 const repliedToCallers=new Map();
 const recentCallOffers=new Map();
 const callDiagnostics={
-  offersSeen:0,rejected:0,rejectFailed:0,replied:0,replyFailed:0,
+  eventsObserved:0,offersSeen:0,rejected:0,rejectFailed:0,replied:0,replyFailed:0,
   replyNoPhone:0,unresolvedWithAllowlist:0,duplicatesSkipped:0,
   allowedSkipped:0,replyCooldown:0
 };
@@ -206,6 +206,8 @@ function installListeners(client,mine,saveCreds){
   });
   client.ev.on("call",async calls=>{
     if(mine!==generation||status!=="connected")return;
+    // Distinguishes missing Baileys call events from disabled/restricted blocking.
+    callDiagnostics.eventsObserved+=(Array.isArray(calls)?calls.length:0);
     try{
       const actions=await handleCallOffers(calls,{
         socket:client,settings:connectedStore.settings(),replySent:repliedToCallers,
