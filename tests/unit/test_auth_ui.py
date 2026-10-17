@@ -127,3 +127,28 @@ def test_otp_requires_server_secret_and_is_validated():
     good=account_auth.OneTimeCode(email="TeSt@Example.com",code="001289")
     assert good.email=="test@example.com"
     assert good.code=="001289"
+
+
+def test_registration_and_password_recovery_require_eight_characters():
+    from app.account_auth import Register, ResetPassword
+    from pydantic import ValidationError
+
+    # Eight characters are accepted on both routes.
+    registration=Register(name="Pessoa Teste",email="test@example.com",password="Abc12345")
+    reset=ResetPassword(email="test@example.com",code="123456",password="Abc12345")
+    assert len(registration.password)==8 and len(reset.password)==8
+    # Shorter passwords remain invalid on server models.
+    with pytest.raises(ValidationError):
+        Register(name="Pessoa Teste",email="test@example.com",password="Abc1234")
+    with pytest.raises(ValidationError):
+        ResetPassword(email="test@example.com",code="123456",password="Abc1234")
+
+
+def test_signup_has_no_redundant_notice_and_matches_password_minimum():
+    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
+    assert 'registrationHint' not in html
+    assert "A conta é criada imediatamente. Recuperação de senha em teste" not in html
+    assert "mínimo de 8 caracteres" in html
+    assert 'Mínimo de 8 caracteres' in html
+    for name in ("registerPassword","registerConfirm","resetPassword","resetConfirm"):
+        assert re.search(r'id="'+name+r'"[^>]*minlength="8"',html),name
