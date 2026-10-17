@@ -63,8 +63,13 @@ async def test_verified_account_separation_recovery_owner_claim(monkeypatch):
         assert mail[-1][2].isdigit() and len(mail[-1][2])==6
         assert (await c.post("/auth/login",json={
             "username":address,"password":registration["password"]},headers=h)).status_code==401
+        wrong="000000" if mail[-1][2]!="000000" else "000001"
+        bad_verify=await c.post("/auth/verify",json={
+            "email":address,"code":wrong},headers=h)
+        assert bad_verify.status_code==400
         verified=await c.post("/auth/verify",json={"email":address,"code":mail[-1][2]},headers=h)
         assert verified.status_code==200,verified.text
+        assert (await c.post("/auth/verify/resend",json={"email":address},headers=h)).status_code==200
         assert (await c.post("/auth/verify",json={"email":address,"code":mail[-1][2]},headers=h)).status_code==400
         signin=await c.post("/auth/login",json={
             "username":address,"password":registration["password"],"remember":True},headers=h)
@@ -89,6 +94,7 @@ async def test_verified_account_separation_recovery_owner_claim(monkeypatch):
         forgot=await c.post("/auth/password/forgot",json={"email":address},headers=h)
         assert forgot.status_code==200,forgot.text
         assert mail[-1][1]=="reset"
+        assert len(mail[-1][2])==6 and mail[-1][2].isdigit()
         assert (await c.post("/auth/password/reset",json={
             "email":address,"code":"123456","password":"New#Pass123456"},headers=h)).status_code==400
         reset=await c.post("/auth/password/reset",json={
