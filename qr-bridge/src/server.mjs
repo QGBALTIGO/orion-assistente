@@ -8,7 +8,7 @@ import http from "node:http";
 import path from "node:path";
 import fs from "node:fs";
 import {timingSafeEqual,randomUUID} from "node:crypto";
-import makeWASocket,{DisconnectReason,Browsers,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
+import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import NodeCache from "@cacheable/node-cache";
 import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode,connectionPhase,reconnectPlan} from "./core.mjs";
@@ -26,7 +26,7 @@ import {forwardAssistant} from "./ai-forward.mjs";
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
 import {deliveryPolicy} from "./pilot-send-policy.mjs";
 import {transcribeAssistantAudio} from "./ai-audio.mjs";
-import {makeTransportDiagnostics,receiptDiagnosticDetails,usyncDeviceDomainCounts} from "./transport-diagnostics.mjs";
+import {makeTransportDiagnostics,receiptDiagnosticDetails,usyncDeviceDomainCounts,encryptionTargetDetails,observeSignalRepository} from "./transport-diagnostics.mjs";
 import {backupAuth} from "./auth-backup.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
@@ -148,7 +148,7 @@ function stats(){
     connectionNotice:process.env.ORION_NOTIFY_SELF_ON_LINK==="1" ? noticeState(authDir) : "disabled",
     deliveryDiagnostics:{...retryDiagnostics},
     transportDiagnostics:transport.snapshot(),
-    transportVersion:"diagnostics-v2",
+    transportVersion:"diagnostics-v3",
     buildCommit:/^[a-f0-9]{40}$/.test(process.env.RAILWAY_GIT_COMMIT_SHA||'')?
       process.env.RAILWAY_GIT_COMMIT_SHA:null,
     authBackup,
@@ -212,7 +212,7 @@ function installListeners(client,mine,saveCreds){
   });
   client.ws.on('CB:iq,,usync',node=>{
     if(mine!==generation)return;
-    const domains=usyncDeviceDomainCounts(node);
+    const domains=usyncDeviceDomainCounts(node,client.user);
     if(domains)transport.record('usync_device_domains',node.attrs?.id,domains);
   });
   // WhatsApp often requests reconnect right after a successful pair (515).
@@ -450,6 +450,9 @@ async function connect(){
     }
     const client=makeWASocket({
       auth:{creds:state.creds,keys:makeCacheableSignalKeyStore(state.keys,logger)},
+      makeSignalRepository:observeSignalRepository(DEFAULT_CONNECTION_CONFIG.makeSignalRepository,jid=>{
+        if(mine===generation)transport.record('signal_encrypt_target',null,encryptionTargetDetails(jid,state.creds.me));
+      }),
       msgRetryCounterCache,
       maxMsgRetryCount:5,
       getMessage:async key=>{
