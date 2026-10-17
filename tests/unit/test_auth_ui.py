@@ -186,3 +186,40 @@ def test_account_profile_endpoint_keeps_only_its_own_identity():
     assert 'data["email"] = row["email"]' in code
     assert 'data["role"]' in code
     assert 'data.get("name","Administrador")' in endpoint
+
+
+def test_orion_dashboard_themes_share_login_brand_and_svg_navigation():
+    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
+    for value in ("auto","light","dark"):
+        assert f'data-theme-choice="{value}"' in html
+    for section in ("page-member","page-dispositivo","page-conversas","page-cadastros"):
+        assert f'id="{section}"' in html
+    assert 'localStorage.setItem("orion-theme",safe)' in html
+    assert 'window.matchMedia("(prefers-color-scheme: dark)")' in html
+    assert 'data-orion-logo' in html
+    assert '/brand/orion-brand-light.svg' in html
+    assert '/brand/orion-brand-dark.svg' in html
+    assert 'html[data-theme="dark"]' in html
+    assert 'html[data-theme="light"]' in html
+    assert "--sidebar-bg:" in html and "--control-bg:" in html
+    assert "html[data-theme=\"light\"] .device-stat strong" in html
+    assert "prefers-reduced-motion:reduce" in html
+    assert '<div class="logo">O</div>' not in html
+    for icon in ("⌂","▦","✉","⚙"):
+        assert f'<span class="nav-icon">{icon}</span>' not in html
+    for image in ("orion-brand-dark.svg","orion-brand-light.svg"):
+        assert image in html
+
+
+def test_orion_theme_ui_is_accessible_and_mobile_usable():
+    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
+    for label in ("Tema Automático, seguir o dispositivo","Tema Claro","Tema Escuro"):
+        assert f'aria-label="{label}"' in html
+    assert "role=\"group\" aria-label=\"Escolher aparência\"" in html
+    assert html.count('data-theme-choice="')==3
+    assert 'button.setAttribute("aria-pressed",String(button.dataset.themeChoice===safe))' in html
+    assert "@media(max-width:790px)" in html
+    assert ".sidebar-bottom{display:flex" in html
+    assert ".sidebar-bottom{display:grid" in html
+    assert '.theme-choice:focus-visible' in html or 'button:focus-visible' in html
+    assert "document.documentElement.dataset.themePreference" in html
