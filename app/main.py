@@ -16,6 +16,7 @@ from app.panel_auth import router as panel_auth_router
 from app.account_auth import router as account_auth_router
 from app.groq_api import router as groq_router
 from app.groq_audio import router as groq_audio_router
+from app.groq_probe import probe_groq_provider
 from app.qr_ai import router as qr_ai_router
 
 app = FastAPI(
@@ -23,6 +24,11 @@ app = FastAPI(
     description="Agenda SaaS multiempresa — desenvolvimento controlado",
     version="0.8.0",
 )
+
+
+@app.on_event("startup")
+async def startup_provider_probe():
+    await probe_groq_provider()
 
 
 @app.get("/health", include_in_schema=False)
