@@ -33,7 +33,9 @@ test("clear elimina conteúdo da sessão encerrada",()=>{
   store.clear();assert.equal(store.size(),0);
 });
 test("sendMessage não equivale a confirmação de leitura ou entrega",()=>{
-  assert.equal(deliveryFromAck(undefined),"pending");
+  assert.equal(deliveryFromAck(undefined),null);
+  assert.equal(deliveryFromAck(null),null);
+  assert.equal(deliveryFromAck(99),null);
   assert.equal(deliveryFromAck(1),"pending");
   assert.equal(deliveryFromAck(2),"server_accepted");
   assert.equal(deliveryFromAck(3),"delivered");
@@ -45,4 +47,7 @@ test("status não regride quando chega recibo fora de ordem",()=>{
   assert.equal(advanceDelivery("server_accepted","delivered"),"delivered");
   assert.equal(advanceDelivery("read","delivered"),"read");
   assert.equal(advanceDelivery("pending","failed"),"failed");
+  assert.equal(advanceDelivery("server_accepted","failed"),"failed");
+  assert.equal(advanceDelivery("delivered","failed"),"delivered");
+  assert.equal(advanceDelivery("server_accepted",null),"server_accepted");
 });

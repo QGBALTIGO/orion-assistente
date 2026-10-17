@@ -138,7 +138,7 @@ test("recibo no volume não guarda número, conteúdo, sessão ou credenciais",a
     const data=fs.readFileSync(noticePath(t.dir),"utf8");
     assert.deepEqual(JSON.parse(data),{schema:1,state:"sent"});
     assert.doesNotMatch(data,/5521997557364|Dispositivo Conectado|auth|jid|token/);
-    assert.equal(fs.statSync(noticePath(t.dir)).mode&0o777,0o600);
+    if(process.platform!=='win32')assert.equal(fs.statSync(noticePath(t.dir)).mode&0o777,0o600);
   }finally{t.remove()}
 });
 

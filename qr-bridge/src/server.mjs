@@ -10,7 +10,6 @@ import fs from "node:fs";
 import {timingSafeEqual,randomUUID} from "node:crypto";
 import makeWASocket,{DisconnectReason,Browsers,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
-import pino from "pino";
 import NodeCache from "@cacheable/node-cache";
 import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode,connectionPhase,reconnectPlan} from "./core.mjs";
 import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
@@ -27,11 +26,15 @@ import {forwardAssistant} from "./ai-forward.mjs";
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
 import {deliveryPolicy} from "./pilot-send-policy.mjs";
 import {transcribeAssistantAudio} from "./ai-audio.mjs";
+import {makeTransportDiagnostics} from "./transport-diagnostics.mjs";
+import {backupAuth} from "./auth-backup.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
 const SESSION_DIR=process.env.QR_SESSION_DIR || "/data/auth";
 const KEY=process.env.QR_BRIDGE_TOKEN || "";
-const logger=pino({level:"silent"});
+const transport=makeTransportDiagnostics({secret:KEY,
+  emit:event=>console.info('Orion transport '+JSON.stringify(event))});
+const logger=transport.logger;
 // libsignal-node 6.x logs full SessionEntry objects including ratchet keys.
 // Redact those exact calls before any socket/session operation; keep normal logs.
 protectSignalSessionLogs();
@@ -50,6 +53,9 @@ try {
   const candidate=fs.readFileSync(ACTIVE_MARKER,"utf8").trim();
   if(candidate.startsWith(SESSION_DIR+"-renew-")&&candidate.startsWith("/data/"))authDir=candidate;
 } catch {}
+const authBackup=backupAuth({directory:authDir,backupDirectory:'/data/orion-auth-backups',
+  secret:KEY,label:'before-transport-diagnostics-v1'});
+console.info('Orion auth backup '+JSON.stringify(authBackup));
 let socket=null,generation=0,timer=null,attempts=0,status="starting",
   connectStartedAt=Date.now(),lastQrAt=0,lastDisconnectCode=null,everConnected=false,
   pairingRequestedForGeneration=-1, pairPhone="",saveQueue=Promise.resolve(),
@@ -141,6 +147,13 @@ function stats(){
     retainedMessages:messages.length,paired:!!pairingCode,
     connectionNotice:process.env.ORION_NOTIFY_SELF_ON_LINK==="1" ? noticeState(authDir) : "disabled",
     deliveryDiagnostics:{...retryDiagnostics},
+    transportDiagnostics:transport.snapshot(),
+    transportVersion:"diagnostics-v1",
+    authBackup,
+    transportConfig:{reliable:process.env.QR_RELIABLE_SEND_V2==="1",
+      freshDevices:process.env.QR_FORCE_FRESH_DEVICES==="1",
+      autoVersion:process.env.QR_WA_VERSION_AUTO!=="0",pilotConfigured:!!pilotNumber(),
+      audio:assistantAudioEnabled(),generation},
     reliableSendEnabled:process.env.QR_RELIABLE_SEND_V2==="1",
     primaryPhoneOnlineRequired:false,automaticRepliesEnabled:assistantEnabled()&&
       (connectedStore.settings().chatbot||Boolean(pilotNumber())),
@@ -183,19 +196,34 @@ function collectBody(req){
   });
 }
 function installListeners(client,mine,saveCreds){
+  client.ws.on('CB:message',node=>{
+    if(mine!==generation)return;
+    transport.record('socket_message',node.attrs?.id,{
+      kind:String(node.attrs?.from||'').endsWith('@lid')?'lid':'other',
+      hasPn:!!node.attrs?.sender_pn,hasLid:!!node.attrs?.sender_lid});
+  });
+  client.ws.on('CB:receipt',node=>{
+    if(mine!==generation)return;
+    transport.record('socket_receipt',node.attrs?.id,{type:node.attrs?.type||'delivery'});
+    if(node.attrs?.type==='retry'&&node.attrs?.id)countRetryRequest(node.attrs.id);
+  });
   // WhatsApp often requests reconnect right after a successful pair (515).
   // Persist auth state before starting the replacement socket.
   client.ev.on("creds.update",()=>{
+    transport.record('creds_update');
     saveQueue=saveQueue.then(()=>saveCreds()).catch(()=>{
       lastError="Falha ao salvar sessão WhatsApp. Não tente novo vínculo sem verificar o volume.";
       console.warn("Orion QR: falha ao salvar credenciais (dados omitidos)");
     });
   });
   client.ev.on("messages.update",updates=>{
+    if(mine!==generation)return;
     for(const item of updates||[]){
       const id=item?.key?.id;
       if(!id || !item?.key?.fromMe)continue;
       const next=deliveryFromAck(item.update?.status);
+      if(!next)continue;
+      transport.record('receipt_update',id,{status:next});
       if(!deliveryReceipts.has(id))continue;
       const prev=deliveryReceipts.get(id);
       const after=advanceDelivery(prev,next);
@@ -227,13 +255,20 @@ function installListeners(client,mine,saveCreds){
     }catch{console.warn("Orion QR: falha ao processar controle de chamada (dados omitidos)")}
   });
   client.ev.on("messages.upsert",async ({messages:incoming,type})=>{
+    transport.record('upsert_batch',null,{count:incoming?.length||0,type});
     if(mine!==generation||status!=="connected")return;
     for(const message of incoming||[]){
-      if(!shouldIngestUpsert(type,message.messageTimestamp))continue;
+      const traceId=message.key?.id;
+      if(!shouldIngestUpsert(type,message.messageTimestamp)){
+        transport.record('inbound_filtered_age',traceId,{type});continue;
+      }
       if(message.key?.id && message.message)retryMessages.save(message.key,message.message);
-      if(message.key?.fromMe)continue;
+      if(message.key?.fromMe){transport.record('inbound_own',traceId);continue;}
+      if(!message.key?.id||!message.message){transport.record('inbound_no_content',traceId);continue;}
       const phone=await resolveMessagePhone(message.key,client);
-      if(!phone||!message.key?.id||!message.message)continue;
+      if(!phone){transport.record('inbound_unresolved',traceId,{
+        hasPn:!!message.key.senderPn,hasLid:String(message.key.remoteJid||'').endsWith('@lid')});continue;}
+      transport.record('inbound_resolved',traceId);
       // Count each valid inbound message, including media without a transcript.
       const at=timestampMs(message.messageTimestamp)||Date.now();
       try{connectedStore.record("wa:"+message.key.id,at)}catch{}
@@ -254,27 +289,34 @@ function installListeners(client,mine,saveCreds){
            if(txt)body="[Áudio transcrito] "+txt;
          }catch{console.warn("Orion QR: transcrição não concluída (dados omitidos)")}
        }
-       if(!body || typeof body!=="string")continue;
+       if(!body || typeof body!=="string"){transport.record('inbound_no_text',traceId);continue;}
       const id="wa:"+message.key.id;
-      if(seen.has(id))continue;
+      if(seen.has(id)){transport.record('inbound_duplicate',traceId);continue;}
       pushMessage({id,phone,body:body.slice(0,2000),
         direction:"in",at});
       lastInboundAt=Date.now();inboundSinceConnect=true;
       if(type==="append")recentAppends++;
       if(allowAssistantRecipient(phone,connectedStore.settings())){
+        transport.record('pilot_allowed',traceId);
         // Ordena por destinatário sem bloquear outros clientes; nunca recupera histórico.
         const previous=assistantQueues.get(phone)||Promise.resolve();
         const job=previous.catch(()=>{}).then(async()=>{
           if(mine!==generation||socket!==client||status!=="connected"||
               !allowAssistantRecipient(phone,connectedStore.settings()))return;
-          const answer=await forwardAssistant({
+          transport.record('ai_forward',traceId);
+          let answer;
+          try{answer=await forwardAssistant({
             apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
             messageId:String(message.key.id),text:body,
-          });
-          if(!answer)return;
+          });}catch(error){transport.record('ai_forward_failed',traceId);throw error;}
+          if(!answer){transport.record('ai_silent',traceId);return;}
+          transport.record('ai_answer',traceId);
           if(mine!==generation||socket!==client||status!=="connected"||
               !allowAssistantRecipient(phone,connectedStore.settings()))return;
-          await send(phone,answer);
+          try{
+            const sent=await send(phone,answer);
+            transport.record(sent?.accepted?'ai_relay_returned':'ai_send_unconfirmed',traceId);
+          }catch(error){transport.record('ai_send_failed',traceId);throw error;}
           console.info("Orion QR: resposta automática processada (dados omitidos)");
         }).catch(()=>{
           console.warn("Orion QR: atendimento IA indisponível (dados omitidos)");
@@ -282,7 +324,7 @@ function installListeners(client,mine,saveCreds){
           if(assistantQueues.get(phone)===job)assistantQueues.delete(phone);
         });
         assistantQueues.set(phone,job);
-      }
+      }else transport.record('pilot_denied',traceId);
     }
   });
   client.ev.on("connection.update",update=>{
@@ -379,6 +421,13 @@ async function connect(){
   pendingNotificationsReceived=false;inboundSinceConnect=false;
   try{
     const {state,saveCreds}=await useMultiFileAuthState(authDir);
+    const originalSet=state.keys.set;
+    state.keys.set=async data=>{
+      try{
+        await originalSet(data);
+        for(const category of Object.keys(data))transport.record('auth_keys_saved',null,{category,count:Object.keys(data[category]||{}).length});
+      }catch(error){transport.record('auth_write_failed');throw error;}
+    };
     // Prefer the WhatsApp Web client revision instead of a months-old
     // bundled default. Official fetch may fail; in that case use bundled
     // Baileys version rather than blocking the QR forever.
@@ -396,8 +445,8 @@ async function connect(){
       msgRetryCounterCache,
       maxMsgRetryCount:5,
       getMessage:async key=>{
-        if(key?.id)countRetryRequest(String(key.id));
         const content=retryStore.get(key);
+        transport.record('get_message',key?.id,{cached:!!content});
         if(content)retryDiagnostics.cacheHits++;
         else retryDiagnostics.cacheMisses++;
         return content;
@@ -506,6 +555,8 @@ async function send(phone,text){
         retryDiagnostics.prepared++;
         deliveryReceipts.set(msg.key.id,"pending");
         deliveryStart.set(msg.key.id,Date.now());
+        transport.record('send_prepared',msg.key.id);
+        pushMessage({id:'out:'+msg.key.id,phone:target,body:text.trim(),direction:'out',at:Date.now(),delivery:'pending'});
       }
     });
   }else{
@@ -516,6 +567,7 @@ async function send(phone,text){
     return {accepted:false,delivery:"unconfirmed",error:"Sem comprovante do servidor WhatsApp"};
   }
   retryDiagnostics.relayAccepted++;
+  transport.record('relay_returned',result.key.id);
   if(!deliveryReceipts.has(result.key.id))deliveryReceipts.set(result.key.id,"pending");
   if(!deliveryStart.has(result.key.id))deliveryStart.set(result.key.id,Date.now());
   const id="out:"+result.key.id;
@@ -523,7 +575,7 @@ async function send(phone,text){
     delivery:deliveryReceipts.get(result.key.id)||"pending"});
   // sendMessage resolve quando a biblioteca entrega ao transporte, não
   // quando o iPhone consegue descriptografar. Apenas receipts validam isso.
-  return {accepted:true,delivery:"pending",id};
+  return {accepted:true,delivery:deliveryReceipts.get(result.key.id)||"pending",id,trace:transport.tag(result.key.id)};
 }
 
 const server=http.createServer(async(req,res)=>{

@@ -24,11 +24,16 @@ export function extractText(message) {
 export async function resolveMessagePhone(key, client) {
   // PN do servidor é confiável; LID é um identificador opaco e jamais
   // pode ser confundido com número de telefone de um destinatário.
-  const direct=normalizeFromJid(key?.remoteJid)||
-    normalizeFromJid(key?.remoteJidAlt);
+  const remote=String(key?.remoteJid||'');
+  // Only private chats may resolve to a person. A group participant PN is not
+  // authorization to forward a group message to the private assistant.
+  if(!/^\d{8,20}(?::\d+)?@(s\.whatsapp\.net|lid)$/.test(remote))return null;
+  const direct=normalizeFromJid(remote)||normalizeFromJid(key?.remoteJidAlt);
   if(direct) return direct;
-  const lid=String(key?.remoteJid||"");
-  if(!/^\d{8,20}@lid$/.test(lid)) return null;
+  const alias=normalizeFromJid(key?.senderPn)||normalizeFromJid(key?.participantPn);
+  if(alias)return alias;
+  const lid=remote;
+  if(!/^\d{8,20}(?::\d+)?@lid$/.test(lid)) return null;
   try {
     const mapping=client?.signalRepository?.lidMapping;
     if(typeof mapping?.getPNForLID!=="function")return null;

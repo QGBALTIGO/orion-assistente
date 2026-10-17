@@ -22,7 +22,7 @@ test("inbox keeps encrypted messages through process restart, no phone involved"
     assert.equal(first.save([row("wa:1")]),true);
     const bytes=fs.readFileSync(first.file,"utf8");
     assert.doesNotMatch(bytes,/5521997557364|celular offline|wa:1/);
-    assert.equal(fs.statSync(first.file).mode&0o777,0o600);
+    if(process.platform!=='win32')assert.equal(fs.statSync(first.file).mode&0o777,0o600);
     const afterRestart=makeDurableInbox({directory:t.directory,secret});
     assert.deepEqual(afterRestart.load(),[row("wa:1",afterRestart.load()[0].at)]);
     assert.equal(afterRestart.health(),"ready");
@@ -105,7 +105,7 @@ test("do not fetch/import chat history or auto reply on inbound callbacks",()=>{
   const ending=src.indexOf('client.ev.on("connection.update"',beginning);
   const handler=src.slice(beginning,ending);
   assert.ok(handler.includes('shouldIngestUpsert(type,message.messageTimestamp)'));
-  assert.ok(handler.includes('if(message.key?.fromMe)continue'));
+  assert.match(handler,/if\(message\.key\?\.fromMe\)\{[^}]*continue;/);
   assert.ok(!handler.includes('sendMessage('));
   assert.ok(!handler.includes('sendStoredText('));
   assert.ok(!handler.includes('relayMessage('));
