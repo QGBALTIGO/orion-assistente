@@ -41,6 +41,7 @@ async def test_verified_account_separation_recovery_owner_claim(monkeypatch):
     monkeypatch.setenv("PANEL_SMTP_FROM","Orion <no-reply@example.test>")
     monkeypatch.setenv("PANEL_PUBLIC_URL","https://test")
     monkeypatch.setenv("PANEL_REGISTRATION_ENABLED","1")
+    monkeypatch.setenv("PANEL_OTP_SECRET","otp-tests-only-secure-key-never-in-production-456")
     address="test-"+secrets.token_hex(10)+"@example.test"
     monkeypatch.setenv("PANEL_OWNER_EMAIL",address)
     mail=[]
@@ -59,11 +60,24 @@ async def test_verified_account_separation_recovery_owner_claim(monkeypatch):
         created=await c.post("/auth/register",json=registration,headers=h)
         assert created.status_code==202,created.text
         assert len(mail)==1 and mail[-1][1]=="verify"
+        assert mail[-1][2].isdigit() and len(mail[-1][2])==6
         assert (await c.post("/auth/login",json={
             "username":address,"password":registration["password"]},headers=h)).status_code==401
-        verified=await c.post("/auth/verify",json={"token":mail[-1][2]},headers=h)
+        wrong="000000" if mail[-1][2]!="000000" else "000001"
+        first_code=mail[-1][2]
+        for _ in range(5):
+            bad_verify=await c.post("/auth/verify",json={
+                "email":address,"code":wrong},headers=h)
+            assert bad_verify.status_code==400
+        assert (await c.post("/auth/verify",json={
+            "email":address,"code":first_code},headers=h)).status_code==400
+        resent=await c.post("/auth/verify/resend",json={"email":address},headers=h)
+        assert resent.status_code==200
+        assert mail[-1][2]!=first_code
+        verified=await c.post("/auth/verify",json={"email":address,"code":mail[-1][2]},headers=h)
         assert verified.status_code==200,verified.text
-        assert (await c.post("/auth/verify",json={"token":mail[-1][2]},headers=h)).status_code==400
+        assert (await c.post("/auth/verify/resend",json={"email":address},headers=h)).status_code==200
+        assert (await c.post("/auth/verify",json={"email":address,"code":mail[-1][2]},headers=h)).status_code==400
         signin=await c.post("/auth/login",json={
             "username":address,"password":registration["password"],"remember":True},headers=h)
         assert signin.status_code==200,signin.text
@@ -87,13 +101,14 @@ async def test_verified_account_separation_recovery_owner_claim(monkeypatch):
         forgot=await c.post("/auth/password/forgot",json={"email":address},headers=h)
         assert forgot.status_code==200,forgot.text
         assert mail[-1][1]=="reset"
+        assert len(mail[-1][2])==6 and mail[-1][2].isdigit()
         assert (await c.post("/auth/password/reset",json={
-            "token":"fake-token-thats-really-long-but-incorrect-123","password":"New#Pass123456"},headers=h)).status_code==400
+            "email":address,"code":"123456","password":"New#Pass123456"},headers=h)).status_code==400
         reset=await c.post("/auth/password/reset",json={
-            "token":mail[-1][2],"password":"New#Pass123456"},headers=h)
+            "email":address,"code":mail[-1][2],"password":"New#Pass123456"},headers=h)
         assert reset.status_code==200,reset.text
         assert (await c.post("/auth/password/reset",json={
-            "token":mail[-1][2],"password":"Another#Pass123"},headers=h)).status_code==400
+            "email":address,"code":mail[-1][2],"password":"Another#Pass123"},headers=h)).status_code==400
         assert (await c.get("/auth/me")).status_code==401
         assert (await c.post("/auth/login",json={
             "username":address,"password":registration["password"]},headers=h)).status_code==401

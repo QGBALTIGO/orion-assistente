@@ -97,3 +97,32 @@ def test_desktop_login_occupies_exactly_two_viewport_halves():
     # Up to 900px the mobile design remains a single column, without the visual band.
     assert '#loginView .auth-visual{display:none}' in html
     assert "@media(max-width:900px)" in html
+
+
+def test_email_code_confirmation_and_recovery_forms():
+    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
+    for identity in ("verifyForm","verifyCode","verifyEmail","authResendCode",
+                     "resetEmail","resetCode","authSubmitVerify"):
+        assert f'id="{identity}"' in html
+    for route in ('"/auth/verify"','"/auth/verify/resend"',
+                  '"/auth/password/forgot"','"/auth/password/reset"'):
+        assert route in html
+    assert 'autocomplete="one-time-code"' in html
+    assert 'pattern="[0-9]{6}"' in html
+    assert "Digite o código" in html
+    assert 'token:resetToken' not in html
+    assert 'Enviaremos um link seguro' not in html
+
+
+def test_otp_requires_server_secret_and_is_validated():
+    from app import account_auth
+    from pydantic import ValidationError
+    import os
+    import pytest
+    assert not account_auth.mail_ready() or len(os.getenv("PANEL_OTP_SECRET",""))>=32
+    for wrong in ("123", "12345a", "1234567", ""):
+        with pytest.raises(ValidationError):
+            account_auth.OneTimeCode(email="test@example.com",code=wrong)
+    good=account_auth.OneTimeCode(email="TeSt@Example.com",code="001289")
+    assert good.email=="test@example.com"
+    assert good.code=="001289"

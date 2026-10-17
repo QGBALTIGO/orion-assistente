@@ -480,6 +480,20 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
   #loginView .auth-copyright{max-width:100%;}
 }
 
+
+/* One-time e-mail code: readable, autofill-friendly and responsive. */
+#loginView .auth-form .auth-otp-input{
+ text-align:center;letter-spacing:.42em;font-size:clamp(1.4rem,4vw,1.8rem);
+ font-weight:800;font-variant-numeric:tabular-nums;height:58px;
+ border-color:#238e80;background:#102a33;
+}
+#loginView #verifyEmail[readonly]{opacity:.84;cursor:default}
+#loginView #authResendCode:disabled{opacity:.55;cursor:not-allowed}
+@media(prefers-color-scheme:light){
+ #loginView .auth-form .auth-otp-input{
+  background:#eafaf5;color:#0d6457;border-color:#50bbaa;
+ }
+}
 </style>
 </head>
 <body>
@@ -555,18 +569,36 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
           <p id="registerError" class="auth-error" role="alert" aria-live="polite"></p>
           <p class="auth-hint" id="registrationHint">Um e-mail de confirmação será enviado para ativar sua conta.</p>
         </form>
+        <form id="verifyForm" class="auth-form hidden">
+          <h3>Confirme seu e-mail</h3>
+          <p>Enviamos um código de seis dígitos. Ele vale por 10 minutos.</p>
+          <label for="verifyEmail">E-mail cadastrado</label>
+          <input id="verifyEmail" type="email" autocomplete="email" required readonly>
+          <label for="verifyCode">Código de confirmação</label>
+          <input id="verifyCode" class="auth-otp-input" type="text" inputmode="numeric" autocomplete="one-time-code"
+            pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="000000" required>
+          <button id="authSubmitVerify" class="auth-primary" type="submit">Confirmar meu e-mail</button>
+          <button id="authResendCode" class="auth-text-link auth-back" type="button">Reenviar código</button>
+          <button class="auth-text-link auth-back" type="button" data-back-login>Voltar para entrar</button>
+          <p id="verifyError" class="auth-error" role="alert" aria-live="polite"></p>
+        </form>
         <form id="forgotForm" class="auth-form hidden">
           <h3>Recuperar senha</h3>
-          <p>Enviaremos um link seguro para seu e-mail cadastrado.</p>
+          <p>Enviaremos um código de seis dígitos para seu e-mail cadastrado.</p>
           <label for="forgotEmail">E-mail cadastrado</label>
           <input id="forgotEmail" type="email" autocomplete="email" required placeholder="seu@email.com">
-          <button id="authSubmitForgot" class="auth-primary" type="submit">Enviar link de recuperação</button>
+          <button id="authSubmitForgot" class="auth-primary" type="submit">Enviar código de recuperação</button>
           <button class="auth-text-link auth-back" type="button" data-back-login>Voltar para entrar</button>
           <p id="forgotError" class="auth-error" role="alert" aria-live="polite"></p>
         </form>
         <form id="resetForm" class="auth-form hidden">
           <h3>Criar nova senha</h3>
-          <p>Escolha uma senha nova e segura para sua conta.</p>
+          <p>Digite o código enviado ao seu e-mail e escolha uma nova senha.</p>
+          <label for="resetEmail">E-mail cadastrado</label>
+          <input id="resetEmail" type="email" autocomplete="email" required maxlength="254" placeholder="seu@email.com">
+          <label for="resetCode">Código de recuperação</label>
+          <input id="resetCode" class="auth-otp-input" type="text" inputmode="numeric" autocomplete="one-time-code"
+            pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="000000" required>
           <label for="resetPassword">Nova senha</label>
           <input id="resetPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="Mínimo de 12 caracteres">
           <label for="resetConfirm">Confirmar nova senha</label>
@@ -956,22 +988,22 @@ async function api(url,method="GET",data){
  }
  return response.json();
 }
-let authScreen="login",loginRole="support",resetToken="";
+let authScreen="login",loginRole="support",lastVerificationEmail="";
 function messageAuth(text){
  const element=$("authGlobalMessage");
  element.textContent=text||"";element.classList.toggle("hidden",!text);
 }
 function authScreenShow(screen){
- if(!["login","register","forgot","reset"].includes(screen))return;
+ if(!["login","register","verify","forgot","reset"].includes(screen))return;
  authScreen=screen;
- const formIds={login:"loginForm",register:"registerForm",forgot:"forgotForm",reset:"resetForm"};
+ const formIds={login:"loginForm",register:"registerForm",verify:"verifyForm",forgot:"forgotForm",reset:"resetForm"};
  for(const [key,id] of Object.entries(formIds))$(id).classList.toggle("hidden",screen!==key);
- $("authTabs").classList.toggle("hidden",screen==="forgot"||screen==="reset");
+ $("authTabs").classList.toggle("hidden",screen==="verify"||screen==="forgot"||screen==="reset");
  for(const [button,selected] of [["authTabLogin",screen==="login"],["authTabRegister",screen==="register"]]){
    $(button).classList.toggle("active",selected);
    $(button).setAttribute("aria-selected",String(selected));
  }
- for(const id of ["loginError","registerError","forgotError","resetError"]){$(id).textContent=""}
+ for(const id of ["loginError","registerError","verifyError","forgotError","resetError"]){$(id).textContent=""}
  messageAuth("");
 }
 function showLogin(){
@@ -1010,7 +1042,7 @@ async function authFeatures(){
   const available=await result.json();
   $("authSubmitRegister").disabled=!available.registration;
   $("registrationHint").textContent=available.registration?
-    "Você receberá um e-mail de confirmação para ativar sua conta.":
+    "Enviaremos um código de 6 dígitos válido por 10 minutos.":
     "Novos cadastros estarão disponíveis após configurar o envio de e-mails.";
   $("authSubmitForgot").disabled=!available.passwordRecovery;
   if(!available.passwordRecovery)
@@ -1059,17 +1091,48 @@ $("registerForm").addEventListener("submit",async event=>{
     password:$("registerPassword").value
   });
   $("registerPassword").value="";$("registerConfirm").value="";
-  authScreenShow("login");
-  messageAuth(result.message||"Confira sua caixa de entrada para confirmar a conta.");
+  lastVerificationEmail=$("registerEmail").value.trim().toLowerCase();
+  authScreenShow("verify");
+  $("verifyEmail").value=lastVerificationEmail;
+  $("verifyCode").focus();
+  messageAuth(result.message||"Digite o código enviado ao seu e-mail.");
  }catch(error){$("registerError").textContent=error.message}
  finally{button.disabled=false;await authFeatures()}
+});
+$("verifyForm").addEventListener("submit",async event=>{
+ event.preventDefault();$("verifyError").textContent="";
+ const button=$("authSubmitVerify");button.disabled=true;
+ try{
+  const result=await publicAuth("/auth/verify",{
+   email:$("verifyEmail").value,code:$("verifyCode").value
+  });
+  $("verifyCode").value="";
+  authScreenShow("login");$("username").value=lastVerificationEmail;
+  messageAuth(result.message);
+ }catch(error){$("verifyError").textContent=error.message}
+ finally{button.disabled=false}
+});
+$("authResendCode").addEventListener("click",async()=>{
+ const button=$("authResendCode");button.disabled=true;
+ try{
+  const result=await publicAuth("/auth/verify/resend",{email:$("verifyEmail").value});
+  $("verifyCode").value="";
+  $("verifyError").textContent=result.message;
+ }catch(error){$("verifyError").textContent=error.message}
+ finally{
+  // A fresh code cannot be requested repeatedly; backend also rate limits.
+  setTimeout(()=>{button.disabled=false},60000);
+ }
 });
 $("forgotForm").addEventListener("submit",async event=>{
  event.preventDefault();$("forgotError").textContent="";
  const button=$("authSubmitForgot");button.disabled=true;
  try{
   const result=await publicAuth("/auth/password/forgot",{email:$("forgotEmail").value});
-  authScreenShow("login");messageAuth(result.message);
+  authScreenShow("reset");
+  $("resetEmail").value=$("forgotEmail").value.trim().toLowerCase();
+  $("resetCode").focus();
+  messageAuth(result.message);
  }catch(error){$("forgotError").textContent=error.message}
  finally{button.disabled=false;await authFeatures()}
 });
@@ -1081,9 +1144,10 @@ $("resetForm").addEventListener("submit",async event=>{
  const button=$("authSubmitReset");button.disabled=true;
  try{
   const result=await publicAuth("/auth/password/reset",{
-    token:resetToken,password:$("resetPassword").value
+    email:$("resetEmail").value,code:$("resetCode").value,
+    password:$("resetPassword").value
   });
-  resetToken="";
+  $("resetCode").value="";
   $("resetPassword").value="";$("resetConfirm").value="";
   authScreenShow("login");messageAuth(result.message);
  }catch(error){$("resetError").textContent=error.message}
@@ -1109,18 +1173,6 @@ $("memberLogout").addEventListener("click",async()=>{
 });
 (async()=>{
  const epoch=authEpoch;
- const params=new URLSearchParams(location.search);
- const verify=params.get("verify"),reset=params.get("reset");
- if(verify||reset){
-   history.replaceState({}, "", "/panel");
-   showLogin();
-   if(reset){resetToken=reset;authScreenShow("reset");return}
-   try{
-     const result=await publicAuth("/auth/verify",{token:verify});
-     authScreenShow("login");messageAuth(result.message);
-   }catch(error){authScreenShow("login");messageAuth(error.message)}
-   return;
- }
  try{
    const result=await api("/auth/me");
    if(epoch!==authEpoch)return;
