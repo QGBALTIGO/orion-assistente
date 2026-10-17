@@ -59,9 +59,37 @@ async def test_existence_has_no_quantity_total_or_stock_promise(factual_catalog,
 
 @pytest.mark.asyncio
 async def test_unknown_existence_does_not_fabricate_or_answer_yes(factual_catalog):
-    scope, _, _ = factual_catalog
+    scope, _, reads = factual_catalog
     answer = await information.readonly_information(scope, "Vocês vendem bolo?", kind="catalog", profile=profile())
-    assert answer is None
+    assert answer == information.UNKNOWN_PRODUCT
+    assert "não vende" not in answer and "estoque" not in answer and "R$" not in answer
+    assert reads == ["catalog"]
+
+
+@pytest.mark.asyncio
+async def test_empty_catalog_answers_independent_existence_honestly(factual_catalog):
+    scope, data, reads = factual_catalog
+    data.clear()
+    answer = await information.readonly_information(scope, "E vocês vendem pomada?", kind="catalog", profile=profile())
+    assert answer == information.UNKNOWN_PRODUCT and reads == ["catalog"]
+    assert "não vende" not in answer and "estoque" not in answer
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("query", ["Vocês vendem isso?", "Vocês vendem?", "Vocês vendem pomada ou isso?"])
+async def test_genuine_existence_ambiguity_still_blocks_compound_consent(factual_catalog, query):
+    scope, _, _ = factual_catalog
+    assert await information.readonly_information(scope, query, kind="catalog", profile=profile()) is None
+
+
+@pytest.mark.asyncio
+async def test_catalog_read_failure_is_not_reported_as_missing_registration(factual_catalog, monkeypatch):
+    scope, _, _ = factual_catalog
+    async def unavailable(_):
+        raise RuntimeError("Synthetic read failure")
+    monkeypatch.setattr(store, "active_catalog", unavailable)
+    with pytest.raises(RuntimeError):
+        await information.readonly_information(scope, "Vendem pomada?", kind="catalog", profile=profile())
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,7 @@ from app.qr_presentation import InteractionContext, QuoteItem, escape_label, fit
 
 KINDS = frozenset({"catalog", "faq", "price", "stock"})
 NARROW_QUERY = "Há várias informações nesse catálogo. Qual produto ou variante você quer consultar primeiro?"
+UNKNOWN_PRODUCT = "Não encontrei esse produto cadastrado neste atendimento; a equipe pode confirmar."
 
 
 def existence_query(query):
@@ -40,14 +41,21 @@ def _selection(query, catalog):
 
 def catalog_answer(query, catalog):
     """Pure catalog presence; no unit, total, stock promise or sales suggestion."""
+    # The compound-turn caller already established that this question is
+    # independent of consent. A catalog miss is a known lack of registration,
+    # not evidence that the business does not sell it or has zero stock.
+    existence = existence_query(query)
+    if existence and (re.search(r"\bou\b", norm(query)) or re.search(
+            r"\b(?:vendem|vende|comercializam|trabalham com)\s*(?:isso|aquilo|esse|este|aquele|essa|esta|aquela)?\s*[?!.]*$", norm(query))):
+        return None
     if not catalog:
-        return "Ainda não há produtos ativos cadastrados neste catálogo."
+        return UNKNOWN_PRODUCT if existence else "Ainda não há produtos ativos cadastrados neste catálogo."
     products, _ = _selection(query, catalog)
     generic = bool(re.fullmatch(r"(?:(?:mostre|mostrar|ver|quero ver|me mande|mande|pode mostrar) (?:o |a )?)?"
         r"(?:catalogo|catalogo de produtos|lista de produtos|produtos|quais produtos(?: voces (?:vendem|tem))?)",
         norm(query).strip(" ?!.,")))
     if not products and not generic:
-        return None
+        return UNKNOWN_PRODUCT if existence else None
     chosen = products or catalog
     if len(chosen) > 12:
         return None
@@ -58,10 +66,10 @@ def catalog_answer(query, catalog):
 
 
 async def readonly_information(scope, query, *, kind, profile, preferences=None):
-    """Return complete resolved facts, or None: ambiguity must block compound consent.
+    """Return complete facts or honest catalog absence; ambiguity returns None.
 
     The caller must budget the text together with the operation reply. A short
-    clarification is never substituted for missing or overlong factual content.
+    clarification is never substituted for ambiguous or overlong factual content.
     """
     if not isinstance(scope, store.CustomerScope) or not isinstance(query, str) or not query.strip() or len(query) > 1500:
         raise ValueError("Authenticated scope and complete bounded query required")

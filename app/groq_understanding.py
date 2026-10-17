@@ -17,11 +17,14 @@ from app.groq_ai import GROQ_URL, GroqServiceError
 from app.qr_understanding import AMBIGUITIES, INTENTS, UnderstandingPlan, build_plan
 
 STRICT_MODELS = frozenset({"openai/gpt-oss-20b", "openai/gpt-oss-120b"})
+SCHEMA_VERSION = "understanding_v2"
+_SAFE_ERROR_TYPES = frozenset({"uuid_type", "uuid_parsing", "uuid_version", "string_type", "string_too_short",
+    "string_too_long", "string_pattern_mismatch", "literal_error", "extra_forbidden", "missing", "list_type",
+    "too_long", "too_short", "bool_type", "bool_parsing", "value_error", "model_type"})
 
 
 def _id_schema(ids: list[str], *, nullable=False) -> dict:
-    # An empty catalog has no legal identifier. Null items remain invalid in
-    # local validation; an array must consequently be empty, with no fake ID.
+    # Empty-domain properties are removed by plan_schema before transmission.
     if not ids:
         return {"type": "null"}
     return {"type": ["string", "null"] if nullable else "string",
@@ -46,8 +49,49 @@ def plan_schema(catalog: list[dict], professionals: list[dict], faqs: list[dict]
         "sales_optional": {"type": "boolean"},
         "ambiguities": {"type": "array", "items": {"type": "string", "enum": AMBIGUITIES}},
     }
+    # items:{type:null} would permit [null], which list[UUID]/list[str] rejects.
+    # No identifier exists in these domains, so expose no such property at all.
+    # Backend defaults remain []/None. Do not strip or normalize bad model IDs.
+    if not catalog:
+        for name in ("service_ids", "query_service_ids", "declined_service_ids"):
+            properties.pop(name)
+    if not professionals:
+        properties.pop("professional_id")
+    if not faqs:
+        properties.pop("faq_ids")
     return {"type": "object", "additionalProperties": False,
             "required": list(properties), "properties": properties}
+
+
+def _value_shape(value):
+    """Structural metadata only: never log text, identifiers, dates or values."""
+    if value is None:
+        return "null"
+    if isinstance(value, str):
+        return "empty_string" if not value else "blank_string" if not value.strip() else "string"
+    if isinstance(value, list):
+        return "array_with_null" if any(item is None for item in value) else "array"
+    return {dict: "object", bool: "boolean", int: "number", float: "number"}.get(type(value), "other")
+
+
+def _invalid_metadata(error, phase, raw, schema):
+    """Allowlist every diagnostic component; exception strings contain PII."""
+    known_fields = set(UnderstandingPlan.model_fields)
+    errors = []
+    if isinstance(error, ValidationError):
+        for detail in error.errors(include_url=False, include_context=False, include_input=False)[:8]:
+            location = [part if isinstance(part, str) and part in known_fields
+                        else "item" if type(part) is int else "unknown_field"
+                        for part in detail.get("loc", ())[:3]]
+            errors.append({"type": detail["type"] if detail["type"] in _SAFE_ERROR_TYPES else "other",
+                           "loc": ".".join(location) or "root"})
+    error_class = type(error).__name__
+    if error_class not in {"ValidationError", "JSONDecodeError", "KeyError", "IndexError", "TypeError", "ValueError", "AttributeError"}:
+        error_class = "OtherError"
+    return {"schema": SCHEMA_VERSION, "phase": phase, "error": error_class, "errors": errors,
+            "root_shape": _value_shape(raw),
+            "fields": {name: _value_shape(raw[name]) for name in UnderstandingPlan.model_fields if isinstance(raw, dict) and name in raw},
+            "omitted": sorted(known_fields - set(schema["properties"]))}
 
 
 PROMPT = """Você interpreta a MENSAGEM ATUAL completa de uma recepcionista brasileira.
@@ -80,6 +124,9 @@ time_relation exact/after/before/around preserva 'depois das quatro' como limite
 Profissional só ID que corresponda com segurança ao nome atual; Bruno ou Breno => professional.
 customer_name só nome AUTODECLARADO agora ('me chamo...', 'meu nome é...'), nunca nome do profissional.
 faq_ids só perguntas publicadas pertinentes. A resposta factual será consultada pelo backend.
+Quando requested_date, requested_time ou customer_name não estiverem informados, use null,
+nunca string vazia. Use [] nas listas sem seleção. Campos ausentes do schema não existem
+neste contexto e não devem aparecer no JSON; não produza [null] nem invente identificadores.
 Se cliente recusar produto/adicional/agendamento, declined_offers e sales_optional false;
 nunca ofereça novamente por insistência. Handoff humano interrompe pedidos operacionais.
 Uma intenção confirm NÃO autoriza operação: validação e resumo vigente cabem ao backend.
@@ -158,11 +205,12 @@ async def interpret_plan(*, message: str, catalog: list[dict], professionals: li
     messages.extend({"role": x["role"], "content": str(x["content"])[:1500]} for x in history
                     if x.get("role") in {"user", "assistant"} and isinstance(x.get("content"), str))
     messages.append({"role": "user", "content": message})
+    schema = plan_schema(clean_catalog, clean_pros, clean_faqs)
     payload = {"model": model, "messages": messages, "temperature": 0,
                "max_completion_tokens": 2048, "reasoning_effort": "low",
                "response_format": {"type": "json_schema", "json_schema": {
                    "name": "orion_understanding_plan", "strict": True,
-                   "schema": plan_schema(clean_catalog, clean_pros, clean_faqs)}}}
+                   "schema": schema}}}
     try:
         async with httpx.AsyncClient(timeout=12, transport=transport) as client:
             response = await client.post(GROQ_URL, json=payload, headers={"Authorization": "Bearer " + key})
@@ -174,15 +222,21 @@ async def interpret_plan(*, message: str, catalog: list[dict], professionals: li
         logging.getLogger("orion.groq").warning("understanding_rejected status=%s", response.status_code)
         raise GroqServiceError(503 if response.status_code == 429 else 502, "Interpretação temporariamente indisponível")
     reason = "unknown"
+    phase, raw = "envelope", None
     try:
         result = response.json()["choices"][0]
         if result.get("finish_reason") in {"stop", "length", "content_filter"}:
             reason = result["finish_reason"]
         if reason != "stop" or result["message"].get("tool_calls"):
             raise ValueError
-        proposal = UnderstandingPlan.model_validate(json.loads(result["message"]["content"]))
+        phase = "json"
+        raw = json.loads(result["message"]["content"])
+        phase = "validation"
+        proposal = UnderstandingPlan.model_validate(raw)
+        phase = "catalog_guard"
         return build_plan(message=message, catalog=clean_catalog, professionals=clean_pros, faqs=clean_faqs,
                           context=safe_context, reference_date=reference_date, proposal=proposal)
-    except (KeyError, IndexError, TypeError, ValueError, ValidationError):
-        logging.getLogger("orion.groq").warning("understanding_invalid finish=%s", reason)
+    except (KeyError, IndexError, TypeError, ValueError, ValidationError, AttributeError) as error:
+        logging.getLogger("orion.groq").warning("understanding_invalid finish=%s diagnostic=%s", reason,
+            json.dumps(_invalid_metadata(error, phase, raw, schema), sort_keys=True, separators=(",", ":")))
         raise GroqServiceError(502, "A interpretação não ficou segura; preciso esclarecer o pedido") from None

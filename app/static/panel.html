@@ -25,6 +25,10 @@ a{color:var(--bright)}h1,h2,h3,p{margin-top:0}
 h1{font-size:clamp(1.8rem,3.8vw,2.65rem);line-height:1.14;letter-spacing:-.035em;margin-bottom:9px}h2{font-size:1.23rem;letter-spacing:-.015em}h3{font-size:1rem}
 p{color:var(--muted)}small{color:var(--muted);font-size:.77rem}
 .hidden{display:none!important}
+.action-confirm{width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;padding:26px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:0 24px 90px #0009;overflow-wrap:anywhere}
+.action-confirm::backdrop{background:#000b}
+.confirm-actions{display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-top:24px}
+.confirm-actions .btn{min-width:110px}
 #loginView{min-height:100vh;display:grid;place-items:center;padding:24px}
 .login-card{width:min(100%,420px);border:1px solid var(--border);background:var(--surface);box-shadow:0 20px 80px #0006;padding:36px;border-radius:22px}
 .logo{display:inline-grid;place-items:center;width:43px;height:43px;border-radius:13px;background:var(--accent);color:#06291e;font-weight:900;font-size:1.2rem;letter-spacing:-.07em}
@@ -1325,6 +1329,10 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
     </section>
   </main>
 </div>
+<dialog id="actionConfirm" class="action-confirm" aria-modal="true" aria-labelledby="actionConfirmTitle" aria-describedby="actionConfirmText">
+  <h2 id="actionConfirmTitle">Confirmar ação</h2><p id="actionConfirmText"></p>
+  <div class="confirm-actions"><button id="actionConfirmCancel" class="btn secondary" type="button">Cancelar</button><button id="actionConfirmAccept" class="btn" type="button">Aceitar</button></div>
+</dialog>
 <script>
 (()=>{
 "use strict";
@@ -1355,7 +1363,7 @@ const $=id=>document.getElementById(id);
 let authEpoch=0;
 let csrf="",page="dispositivo",method="code",showQr=false,deviceStatus="starting",lastDeviceStatus="starting",pairExpiresAt=0,
     statusTimer=null,chatTimer=null,selectedPhone="",chatsBusy=false;
-let messageSequence=0,lastPanelSend=null;
+let messageSequence=0,lastPanelSend=null,manualSendRequest=null,manualSendSequence=0;
 let wizardStep="tutorial",wizardAttempted=false,wizardSuccessUntil=0,
     wizardSuccessDone=false,wizardQrDeadline=0,wizardClocks=null,statusSequence=0;
 const steps={
@@ -1406,6 +1414,32 @@ async function api(url,method="GET",data){
  return response.json();
 }
 let authScreen="login",loginRole="support";
+let actionConfirmation=null;
+function finishActionConfirmation(accepted){
+ const pending=actionConfirmation;if(!pending)return;actionConfirmation=null;
+ if($("actionConfirm").open)$("actionConfirm").close();
+ if(pending.authEpoch===authEpoch&&pending.trigger?.isConnected!==false&&!pending.trigger?.disabled)pending.trigger?.focus?.();
+ pending.resolve(accepted===true);
+}
+function confirmAction(message){
+ if(actionConfirmation)return Promise.resolve(false);
+ return new Promise(resolve=>{
+   actionConfirmation={resolve,trigger:document.activeElement,authEpoch};$("actionConfirmText").textContent=message;
+   try{$("actionConfirm").showModal();$("actionConfirmCancel").focus();}
+   catch{actionConfirmation=null;resolve(false);}
+ });
+}
+$("actionConfirmAccept").addEventListener("click",()=>finishActionConfirmation(true));
+$("actionConfirmCancel").addEventListener("click",()=>finishActionConfirmation(false));
+$("actionConfirm").addEventListener("cancel",event=>{event.preventDefault();finishActionConfirmation(false)});
+$("actionConfirm").addEventListener("keydown",event=>{
+ if(event.key==="Escape"){event.preventDefault();finishActionConfirmation(false);return;}
+ if(event.key==="Tab"){
+   const cancel=$("actionConfirmCancel"),accept=$("actionConfirmAccept"),active=document.activeElement;
+   if(event.shiftKey&&active===cancel){event.preventDefault();accept.focus();}
+   else if(!event.shiftKey&&active===accept){event.preventDefault();cancel.focus();}
+ }
+});
 function messageAuth(text){
  const element=$("authGlobalMessage");
  element.textContent=text||"";element.classList.toggle("hidden",!text);
@@ -1425,6 +1459,7 @@ function authScreenShow(screen){
 }
 function showLogin(){
  ++authEpoch;
+ finishActionConfirmation(false);manualSendRequest=null;++manualSendSequence;$("sendButton").disabled=false;
  csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);
  resetAiConversation("");
  clearAiProfileState();$("aiTenant").replaceChildren(new Option("Escolha o estabelecimento",""));
@@ -2162,20 +2197,26 @@ $("inspectRecipient").addEventListener("click",async()=>{
 });
 $("sendForm").addEventListener("submit",async ev=>{
  ev.preventDefault();
+ if(manualSendRequest!==null)return;
  const phone=normalize($("chatPhone").value),text=$("chatText").value.trim();
  if(!/^[1-9]\d{7,14}$/.test(phone)){$("chatNotice").textContent="Informe número com DDI e DDD.";return}
  if(!text||text.length>1200){$("chatNotice").textContent="Escreva uma mensagem de até 1200 caracteres.";return}
  if(deviceStatus!=="connected"){$("chatNotice").textContent="Conecte seu WhatsApp antes de enviar.";return}
- if(!confirm("Enviar esta mensagem para +"+phone+" pelo WhatsApp conectado?"))return;
- $("sendButton").disabled=true;$("chatNotice").textContent="Enviando...";
+ const request=++manualSendSequence,epoch=authEpoch,conversation=selectedPhone;
+ manualSendRequest=request;$("sendButton").disabled=true;
+ const active=()=>manualSendRequest===request&&epoch===authEpoch;
+ const current=()=>active()&&deviceStatus==="connected"&&conversation===selectedPhone&&phone===normalize($("chatPhone").value)&&text===$("chatText").value.trim();
  try{
+  if(!await confirmAction("Enviar esta mensagem para +"+phone+" pelo WhatsApp conectado?")||!current())return;
+  $("chatNotice").textContent="Enviando...";
   const result=await api("/api/v1/qr/send","POST",{phone,text});
+  if(!current())return;
   if(!result.accepted)throw Error("O WhatsApp não confirmou a aceitação. Aguarde antes de tentar novamente.");
   lastPanelSend={phone,id:result.id,delivery:result.delivery};
   selectChat(phone);$("chatText").value="";
   await refreshMessages();await loadChats();
- }catch(ex){$("chatNotice").textContent=ex.message}
- finally{$("sendButton").disabled=false}
+ }catch(ex){if(active())$("chatNotice").textContent=ex.message}
+ finally{if(active()){manualSendRequest=null;$("sendButton").disabled=false}}
 });
 let catalogRows=[],catalogSequence=0,catalogReadSequence=0,catalogWriteSequence=0,catalogLoading=false,catalogWriting=false,catalogUncertain=false;
 function catalogCanWrite(){const row=catalogRows.find(row=>row.id===$("tenant").value);return !!row&&(["support","admin"].includes(loginRole)||row.role==="owner"||row.role==="editor"&&$("resource").value!=="authorized_staff")}
@@ -2356,7 +2397,12 @@ async function loadBusinessStyleExamples(){
    const box=$("businessStyleExamples");box.replaceChildren();
    for(const example of result.examples||[]){
      const card=document.createElement("div");card.className="business-style"+(example.style===$("bizStyle").value?" current":"");
-     const heading=document.createElement("h3");heading.textContent=example.label;const body=document.createElement("p");appendWhatsAppText(body,example.answer);card.append(heading,body);box.append(card);
+     const heading=document.createElement("h3");heading.textContent=example.label;card.append(heading);
+     for(const [key,label] of [["answer","Valores"],["confirmation_example","Exemplo de confirmação"],["cancellation_example","Exemplo de cancelamento"]]){
+       if(typeof example[key]!=="string"||!example[key].trim())continue;
+       const block=document.createElement("div"),title=document.createElement("h4"),body=document.createElement("p");title.textContent=label;appendWhatsAppText(body,example[key]);block.append(title,body);card.append(block);
+     }
+     box.append(card);
    }
    businessStep(2);$("businessFeedback").textContent="Exemplos com o catálogo real e o estilo deste formulário. As outras informações não salvas não foram aplicadas ao atendimento.";
  }catch(error){if(current())$("businessFeedback").textContent=error.message}
@@ -2420,16 +2466,19 @@ async function businessMutation(kind){
    const version=businessHistory.find(x=>x.id===$("businessVersion").value);
    if(!version?.published_before||version.id===businessSnapshot.published?.id||businessReviewed?.id!==version.id)return;
  }
- const tenant=businessLoadedTenant,epoch=businessEpoch,generation=businessSnapshot.generation;
+ const tenant=businessLoadedTenant,epoch=businessEpoch,generation=businessSnapshot.generation,accountEpoch=authEpoch,role=loginRole;
+ const current=()=>epoch===businessEpoch&&tenant===businessLoadedTenant&&tenant===$("businessTenant").value&&accountEpoch===authEpoch&&role===loginRole;
  let payload={expected_generation:generation};
  if(kind==="draft"){
    if(!$("businessForm").reportValidity())return;payload.profile=collectBusinessProfile();
  }else{
    payload.version_id=kind==="publish"?businessSnapshot.draft?.id:businessReviewed?.id;
    if(!payload.version_id)return;
-   if(!confirm(kind==="publish"?"Publicar o rascunho revisado desta empresa? Catálogo e agenda não serão alterados.":"Restaurar a versão revisada desta empresa? O rascunho atual será preservado."))return;
+   if(!await confirmAction(kind==="publish"?"Publicar o rascunho revisado desta empresa? Catálogo e agenda não serão alterados.":"Restaurar a versão revisada desta empresa? O rascunho atual será preservado."))return;
+   if(!current()||businessBusy||businessDirty||!businessCan("can_publish")||businessSnapshot?.generation!==generation)return;
+   if(kind==="publish"?businessSnapshot.draft?.id!==payload.version_id:businessReviewed?.id!==payload.version_id||$("businessVersion").value!==payload.version_id)return;
  }
- const current=()=>epoch===businessEpoch&&tenant===$("businessTenant").value;
+ if(!current())return;
  businessBusy=true;updateBusinessControls();$("businessFeedback").textContent="Gravando configuração...";
  try{
    const result=await api(businessUrl(tenant,"/"+(kind==="draft"?"draft":kind)),kind==="draft"?"PUT":"POST",payload);
@@ -2465,10 +2514,21 @@ for(let i=1;i<=3;i++)$("businessStep"+i).addEventListener("click",()=>businessSt
 for(const [id,step] of [["businessNext1",2],["businessNext2",3],["businessBack2",1],["businessBack3",2]])$(id).addEventListener("click",()=>businessStep(step));
 for(const [id,key] of [["businessAddHours","hours"],["businessAddFaq","faqs"],["businessAddPolicy","policies"],["businessAddDifferentiator","differentiators"]])$(id).addEventListener("click",()=>addBusinessRow(key));
 $("businessTenant").addEventListener("change",async()=>{
- if(businessDirty&&!confirm("Há alterações não salvas. Deseja trocar de empresa e descartá-las?")){$("businessTenant").value=businessLoadedTenant;return;}
+ const origin=businessLoadedTenant,target=$("businessTenant").value,epoch=businessEpoch,accountEpoch=authEpoch,editing=businessExampleSequence;
+ const current=()=>epoch===businessEpoch&&accountEpoch===authEpoch&&origin===businessLoadedTenant&&target===$("businessTenant").value;
+ if(businessDirty){
+   const accepted=await confirmAction("Há alterações não salvas. Deseja trocar de empresa e descartá-las?");if(!current())return;
+   if(!accepted||businessBusy||editing!==businessExampleSequence){$("businessTenant").value=origin;return;}
+ }
+ if(!current())return;
  $("businessFeedback").textContent="";businessStep(1);await loadBusinessProfile();
 });
-$("businessReload").addEventListener("click",async()=>{if(businessDirty&&!confirm("Descartar as alterações não salvas e consultar a versão do servidor?"))return;$("businessFeedback").textContent="";await loadBusinessProfile()});
+$("businessReload").addEventListener("click",async()=>{
+ const tenant=businessLoadedTenant,epoch=businessEpoch,accountEpoch=authEpoch,editing=businessExampleSequence;
+ if(businessDirty&&!await confirmAction("Descartar as alterações não salvas e consultar a versão do servidor?"))return;
+ if(epoch!==businessEpoch||accountEpoch!==authEpoch||tenant!==businessLoadedTenant||tenant!==$("businessTenant").value||businessBusy||editing!==businessExampleSequence)return;
+ $("businessFeedback").textContent="";await loadBusinessProfile();
+});
 $("businessSave").addEventListener("click",()=>businessMutation("draft"));$("businessPublish").addEventListener("click",()=>businessMutation("publish"));$("businessRollback").addEventListener("click",()=>businessMutation("rollback"));
 $("businessVersion").addEventListener("change",()=>{++businessReviewSequence;businessReviewed=null;$("businessVersionReview").classList.add("hidden");updateBusinessControls()});$("businessReviewVersion").addEventListener("click",reviewBusinessVersion);
 function openBusinessPreview(draft=false){

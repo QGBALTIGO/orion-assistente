@@ -229,7 +229,7 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
             if pending["action"] == "cancel":
                 order = await store.cancel_order(scope, UUID(pending["order_id"]), revision=pending["revision"], summary_message_id=pending["summary_message_id"], validate_summary=validate)
                 state.pop("pending", None)
-                return finish(order_summary(order["quote"], preferences, kind="cancelled", order_id=str(order["id"])), "commerce_cancelled", state, scope)
+                return {**finish(order_summary(order["quote"], preferences, kind="cancelled", order_id=str(order["id"])), "commerce_cancelled", state, scope), "_verified_operation": True}
             try:
                 order = await store.confirm_order(scope, UUID(pending["order_id"]), revision=pending["revision"],
                     token=pending["token"], summary_message_id=pending["summary_message_id"], validate_summary=validate)
@@ -240,7 +240,7 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
                 return await prepare(scope, state["cart"], state, kind="order", preview=False, customer_name=customer_name,
                     preferences=preferences, prefix="Os dados precisam de uma nova revisão; o pedido anterior não foi confirmado.\n\n")
             state.pop("pending", None)
-            return finish(order_summary(order["quote"], preferences, kind="confirmed", order_id=str(order["id"])), "commerce_confirmed", state, scope)
+            return {**finish(order_summary(order["quote"], preferences, kind="confirmed", order_id=str(order["id"])), "commerce_confirmed", state, scope), "_verified_operation": True}
         if plan.intent in {"cancel", "status"}:
             if preview:
                 return finish("A simulação não consulta nem modifica pedidos reais de clientes.", "commerce_preview", state, scope)

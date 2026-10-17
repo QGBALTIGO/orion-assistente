@@ -332,7 +332,8 @@ async def continue_reschedule(tenant: UUID, phone: str, body: str, state: dict,
         facts = state["reschedule_facts"]
         summary = presentation.BookingSummary(tuple(facts["services"]), when, facts["timezone"], facts["total_cents"],
             professional=facts["professional"], duration_min=facts["duration_min"], protocol=updated["protocol"])
-        return {"answer": presentation.render_summary(summary, _preferences(business), confirmed=True, operation="reschedule"), "step": "rescheduled"}
+        return {"answer": presentation.render_summary(summary, _preferences(business), confirmed=True, operation="reschedule"),
+                "step": "rescheduled", "_verified_operation": True}
     return {"answer": "Escreva REMARCAR para escolher um novo horário.", "step": "unknown"}
 
 
@@ -660,7 +661,8 @@ async def _commerce_turn(tenant: UUID, phone: str, body: str, state: dict, busin
     private_state = result.get("state")
     if isinstance(private_state, dict):
         await redis.set(commerce_key, json.dumps(private_state), ex=STATE_TTL)
-    return {"answer": result.get("answer"), "step": result.get("step", "commerce_information")}
+    return {"answer": result.get("answer"), "step": result.get("step", "commerce_information"),
+            **({"_verified_operation": True} if result.get("_verified_operation") is True else {})}
 
 
 async def _independent_information(tenant: UUID, phone: str, query: str, kind: str,
@@ -740,7 +742,10 @@ async def _compound_booking_turn(tenant: UUID, phone: str, body: str, state: dic
     # No preceding information/review mutation: recurse only through the normal
     # summary/tenant/revision/backend confirmation gates, with commerce skipped.
     result = await _turn(tenant, phone, "SIM", redis, key.removeprefix(f"orion:qr:ai:{tenant}:"), preview, _confirm_scoped=True)
-    return _bounded_reply(result.get("answer") or "", factual, result["step"])
+    composed = _bounded_reply(result.get("answer") or "", factual, result["step"])
+    if result.get("_verified_operation") is True:
+        composed["_verified_operation"] = True
+    return composed
 
 
 async def _review_after_inquiry(state: dict, redis, key: str):
@@ -1128,7 +1133,10 @@ async def _multi_turn(tenant: UUID, phone: str, body: str, state: dict, business
         if presentation.message_units(factual) + 350 > 1200:
             return _bounded_reply(factual, "x" * 1201, "confirm")
         result = await _turn(tenant, phone, "SIM", redis, key.removeprefix(f"orion:qr:ai:{tenant}:"), preview)
-        return _bounded_reply(factual, result["answer"] or "", result["step"])
+        composed = _bounded_reply(factual, result["answer"] or "", result["step"])
+        if result.get("_verified_operation") is True:
+            composed["_verified_operation"] = True
+        return composed
     if "cancel" in operations and "reschedule" not in operations:
         answer = "Encerrei somente esta solicitação. Reservas já confirmadas permanecem; para cancelar uma delas, é preciso atendimento humano."
         result = _bounded_reply(factual, answer, "cancelled")
@@ -1518,7 +1526,7 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
         when = reserved["start_at"].astimezone(ZoneInfo(business["timezone"]))
         return {"answer": presentation.render_summary(_summary(state, when, business, catalog,
                     protocol=reserved["protocol"], total_cents=reserved["total_cents"]), _preferences(business), confirmed=True),
-                "step": "confirmed", "protocol": reserved["protocol"]}
+                "step": "confirmed", "protocol": reserved["protocol"], "_verified_operation": True}
     if state.get("step") == "time":
         options = state.get("slots", [])
         when = None
@@ -1624,6 +1632,7 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                      prepare=None, reset: bool = False, message_ids: list[str] | None = None,
                      intake_revision: int | None = None, require_summary_review: bool = False):
     from redis.asyncio import from_url
+    from app import qr_operation_receipt
     redis = from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"),
                      socket_connect_timeout=3, socket_timeout=20)
     lock = redis.lock(f"orion:qr:ai:lock:{tenant}:{namespace}", timeout=90, blocking_timeout=4)
@@ -1648,7 +1657,12 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                     body = transcript["text"]
                 identity_token = _message_identity.set(message_id)
                 try:
-                    result = await turn(tenant, phone, body, redis, namespace, preview=preview)
+                    result = await qr_operation_receipt.pending(redis, tenant, phone, require_summary_review, preview=preview)
+                    if result is None:
+                        result = await turn(tenant, phone, body, redis, namespace, preview=preview)
+                    verified_operation = result.pop("_verified_operation", False) is True
+                    await qr_operation_receipt.save(redis, tenant, phone, message_id, result,
+                        verified_operation=verified_operation, preview=preview)
                     await qr_intake_revision.assert_current()
                 finally:
                     _message_identity.reset(identity_token)
@@ -1744,18 +1758,97 @@ async def style_examples(tenant_id: UUID, payload: StyleExamples,
                          actor: Actor = Depends(authenticate)):
     from app.tenant_access import resolve_tenant_access
     from app.qr_presentation import STYLE_LABELS
-    await resolve_tenant_access(actor, tenant_id)
-    snapshot = await qr_profile.resolve_preview(tenant_id, payload.profile_version, payload.style_rules)
-    token = qr_profile.preview_snapshot.set(snapshot)
+    token, business, catalog, professionals, summary = None, None, [], [], None
+    notice = "Não há dados de agenda suficientes para mostrar estes modelos com informações reais."
+    chosen = []
     try:
-        business, catalog, professionals = await tenant_data(tenant_id)
+        try:
+            async with asyncio.timeout(12):
+                await resolve_tenant_access(actor, tenant_id)
+                snapshot = await qr_profile.resolve_preview(tenant_id, payload.profile_version, payload.style_rules)
+                token = qr_profile.preview_snapshot.set(snapshot)
+                business, catalog, professionals = await tenant_data(tenant_id)
+                profile = business.get("profile") or {}
+                if "appointments" not in profile.get("capabilities", []):
+                    notice = "O agendamento não está habilitado neste perfil. Os exemplos de confirmação e cancelamento de agenda não se aplicam."
+                elif not catalog or not professionals:
+                    notice = "Não há serviços e profissionais ativos suficientes para consultar um exemplo real de agenda."
+                else:
+                    chosen = catalog[:2]
+                    candidates = await professionals_for(tenant_id, [UUID(str(item["id"])) for item in chosen])
+                    if not candidates and len(chosen) > 1:
+                        chosen = catalog[:1]
+                        candidates = await professionals_for(tenant_id, [UUID(str(item["id"])) for item in chosen])
+                    valid_pros = {str(person["id"]) for person in professionals}
+                    professional = next((person for person in candidates if str(person["id"]) in valid_pros), None)
+                    if professional is None:
+                        notice = "Não encontrei um profissional habilitado para os serviços consultados. Nenhum horário foi inventado."
+                    else:
+                        async with get_session_factory()() as db:
+                            async with tenant_transaction(db, tenant_id):
+                                rows = (await db.execute(text("""
+                                    SELECT t.timezone,t.booking_horizon_days,t.min_notice_minutes,h.weekday,h.end_time
+                                    FROM tenants t LEFT JOIN working_hours h
+                                      ON h.tenant_id=t.id AND h.professional_id=:professional
+                                    WHERE t.id=:tenant AND t.status='active' ORDER BY h.weekday
+                                """), {"tenant": tenant_id, "professional": UUID(str(professional["id"]))})).mappings().all()
+                            target = None
+                            if rows and rows[0]["timezone"] == business["timezone"]:
+                                horizon, minimum = rows[0]["booking_horizon_days"], rows[0]["min_notice_minutes"]
+                                if type(horizon) is int and 1 <= horizon <= 365 and type(minimum) is int and minimum >= 0:
+                                    zone = ZoneInfo(business["timezone"])
+                                    now = datetime.now(zone)
+                                    earliest = now + timedelta(minutes=minimum)
+                                    first = max(0, (earliest.date() - now.date()).days)
+                                    for offset in range(first, min(horizon, first + 7) + 1):
+                                        day = now.date() + timedelta(days=offset)
+                                        if any(row["weekday"] == day.weekday() and row["end_time"] is not None and
+                                               datetime.combine(day, row["end_time"], zone) > earliest for row in rows):
+                                            target = day
+                                            break
+                            if target is None:
+                                notice = "Não identifiquei expediente dentro do horizonte de agendamento para esta consulta. Não há um horário real para ilustrar os modelos."
+                            else:
+                                # One complete grid, shared by all four visual styles.
+                                grid = await list_slots(db, tenant_id, UUID(str(professional["id"])),
+                                    [UUID(str(item["id"])) for item in chosen], target)
+                                if grid["slots"]:
+                                    when = datetime.fromisoformat(grid["slots"][0])
+                                    if when.utcoffset() is None or when.astimezone(ZoneInfo(business["timezone"])).date() != target:
+                                        raise ValueError("Invalid factual example time")
+                                    summary = presentation.BookingSummary(tuple(item["name"] for item in chosen), when,
+                                        business["timezone"], grid["price_cents"], professional=professional["name"],
+                                        duration_min=grid["duration_min"], protocol="EXEMPLO-VISUAL-SEM-VALIDADE")
+                                else:
+                                    notice = "Não encontrei horário livre na grade real consultada. Os modelos de agenda não serão preenchidos com datas ou profissionais inventados."
+        except TimeoutError:
+            if business is None:
+                raise HTTPException(503, "Não consegui carregar os dados autorizados no prazo de 12 segundos") from None
+            notice = "A consulta de agenda ultrapassou o prazo de 12 segundos. Nenhum exemplo operacional foi preenchido com dados inventados."
+        except (ValueError, KeyError, TypeError):
+            if business is None:
+                raise HTTPException(503, "Não consegui validar os dados autorizados para os exemplos") from None
+            notice = "Não consegui validar os dados reais de agenda nesta consulta. Os exemplos operacionais não serão preenchidos por suposição."
+        except HTTPException as exc:
+            if business is None or exc.status_code in {401, 403}:
+                raise
+            notice = "Não consegui consultar a agenda real agora. Nenhuma confirmação ou cancelamento foi realizado."
         base = business.get("profile") or {"style_rules": StyleRules().model_dump()}
         examples = []
+        marker = "*Exemplo visual — nenhuma operação realizada*\n\n"
         for style, label in STYLE_LABELS.items():
             prefs = {**base["style_rules"], "style": style}
-            answer = qr_profile.quote(catalog[:2], {"style_rules": prefs}, "Quero apenas saber o preço") if catalog else "Ainda não há serviços ativos cadastrados."
-            examples.append({"style": style, "label": label, "answer": answer})
+            answer = qr_profile.quote(chosen or catalog[:2], {"style_rules": prefs}, "Quero apenas saber o preço") if catalog else "Ainda não há serviços ativos cadastrados."
+            if summary:
+                suffix = "\n\n_Protocolo de exemplo, sem validade. Não existe reserva ou cancelamento associado a esta demonstração._"
+                confirmation = marker + presentation.render_summary(summary, prefs, confirmed=True) + suffix
+                cancellation = marker + presentation.render_summary(summary, prefs, confirmed=True, operation="cancel") + suffix
+            else:
+                confirmation = cancellation = marker + notice
+            examples.append({"style": style, "label": label, "answer": answer,
+                             "confirmation_example": confirmation, "cancellation_example": cancellation})
         return {"examples": examples, "catalog_revision": qr_profile.catalog_revision(business, catalog, professionals),
                 "profile_version": business.get("profile_id")}
     finally:
-        qr_profile.preview_snapshot.reset(token)
+        if token is not None:
+            qr_profile.preview_snapshot.reset(token)

@@ -38,11 +38,12 @@ test("a página requer cookie autenticado e não expõe tokens",()=>{
 // Execute the real inline controller with deferred HTTP responses. No network,
 // WhatsApp messages, browser cookies or production credentials are used.
 function panelHarness(){
+  let activeElement=null;
   class Element{
     constructor(tag="div"){
       this.children=[];this.listeners={};this.options=[];this.value="";
       this.tagName=tag.toUpperCase();this.focusCount=0;this.files=[];this.checked=false;this.disabled=false;
-      this.textContent="";this.dataset={};this.hiddenClasses=new Set();
+      this.textContent="";this.dataset={};this.hiddenClasses=new Set();this.open=false;this.isConnected=true;
       this.classList={
         add:name=>this.hiddenClasses.add(name),
         remove:name=>this.hiddenClasses.delete(name),
@@ -62,7 +63,9 @@ function panelHarness(){
     remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this)}
     setAttribute(){}
     removeAttribute(){}
-    focus(){this.focusCount++}
+    focus(){this.focusCount++;activeElement=this}
+    showModal(){this.open=true;this.modalCalls=(this.modalCalls||0)+1}
+    close(){this.open=false}
     reportValidity(){return true}
     querySelector(){return new Element()}
     add(option){this.options.push(option);if(this.options.length===1)this.value=option.value}
@@ -75,7 +78,7 @@ function panelHarness(){
   };
   const context={
     document:{getElementById:node,createElement:tag=>new Element(tag),
-      querySelectorAll:()=>[],documentElement:{dataset:{}}},
+      querySelectorAll:()=>[],documentElement:{dataset:{}},get activeElement(){return activeElement}},
     window:{matchMedia:()=>({matches:false,addEventListener(){}})},
     Option:function(text,value){this.textContent=text;this.value=value},
     fetch:(url,options={})=>new Promise((resolve,reject)=>requests.push({
@@ -93,7 +96,7 @@ function panelHarness(){
       loadBusinessProfile,loadBusinesses,collectBusinessProfile,businessMutation,reviewBusinessVersion,businessChanged,loadBusinessStyleExamples,openBusinessPreview,
       loadCommerceTenant,loadCommerceTenants,commerceSelectProduct,commerceSelectVariant,commerceSave,commerceProductPayload,commerceVariantPayload,commerceStockPayload,commerceAddFields,commerceAddBasket,commerceCalculate,commerceCreateOrder,commerceConfirmOrder,commerceRead,commerceCatalogChanged,commercePlanningChanged,
       commerceReadComplements,commerceSaveComplement,commerceFillComplement,
-      loadTenants,loadRecords,submitRecord,openPage,
+      loadTenants,loadRecords,submitRecord,openPage,confirmAction,
       setRole:value=>{loginRole=value},
       authenticate:()=>{csrf="synthetic-csrf"},
       deviceStatus:()=>deviceStatus};
@@ -104,9 +107,11 @@ function panelHarness(){
     assert.ok(request,"missing "+method+" "+url);
     request.taken=true;return request;
   };
-  return {ui:context.panelTest,node,take,requests,advanceTime:ms=>{fakeNow=(fakeNow??Date.now())+ms}};
+  return {ui:context.panelTest,node,take,requests,activeElement:()=>activeElement,advanceTime:ms=>{fakeNow=(fakeNow??Date.now())+ms}};
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
+async function acceptAction(h){h.node('actionConfirmAccept').listeners.click[0]();await tick()}
+async function cancelAction(h){h.node('actionConfirmCancel').listeners.click[0]();await tick()}
 const phoneA="5511999990001",phoneB="5511999990002";
 const messageUrl=phone=>"/api/v1/qr/messages?phone="+phone;
 const row=(body,id="out:synthetic-1",delivery="server_accepted")=>({
@@ -158,6 +163,7 @@ async function sendOnce(h){
   await connect(h);
   h.node("chatPhone").value=phoneA;h.node("chatText").value="mensagem sintética";
   const submitted=h.node("sendForm").listeners.submit[0]({preventDefault(){}});
+  await acceptAction(h);
   h.take("/api/v1/qr/send","POST").respond({accepted:true,id:"out:synthetic-1",delivery:"server_accepted"});
   await tick();
   h.take(messageUrl(phoneA)).respond({items:[row("mensagem sintética")]});
@@ -460,7 +466,7 @@ test('conflito 409 mantém edição local, exige atualizar e nunca repete a grav
 
 test('publicar envia somente a versão salva e relê o estado confirmado',async()=>{
   const h=panelHarness();await loadBusiness(h);
-  const publishing=h.ui.businessMutation('publish'),request=h.take(businessUrl('tenant-a','/publish'),'POST');
+  const publishing=h.ui.businessMutation('publish');await acceptAction(h);const request=h.take(businessUrl('tenant-a','/publish'),'POST');
   assert.deepEqual(JSON.parse(request.options.body),{expected_generation:7,version_id:draftId});
   request.respond({version_id:draftId,revision:3,generation:8,status:'published'});await tick();
   h.take(businessUrl('tenant-a')).respond(snapshot('Empresa A',{generation:8,published:{id:draftId,revision:3,profile:profile()}}));
@@ -503,7 +509,7 @@ test('comparação usa catálogo real e DOM seguro; edição invalida exemplo pe
   assert.deepEqual(JSON.parse(request.options.body),{style_rules:profile().style_rules});
   request.respond({examples:['warm','professional','relaxed','direct'].map(style=>({style,label:style,answer:'Corte: *R$ 35,00* <img src=x>'}))});await comparison;
   assert.equal(h.node('businessStyleExamples').children.length,4);assert.match(contentOf(h.node('businessStyleExamples')),/R\$ 35,00/);
-  assert.equal(h.node('businessStyleExamples').children[0].children[1].children.filter(x=>x.tagName==='STRONG').length,1);
+  assert.equal(h.node('businessStyleExamples').children[0].children[1].children[1].children.filter(x=>x.tagName==='STRONG').length,1);
   const second=h.ui.loadBusinessStyleExamples(),old=h.take('/api/v1/tenants/tenant-a/ai/style-examples','POST');
   h.node('bizStyle').value='direct';h.ui.businessChanged();old.respond({examples:[{label:'VELHO',answer:'DADO ANTIGO'}]});await second;
   assert.doesNotMatch(contentOf(h.node('businessStyleExamples')),/DADO ANTIGO/);assert.equal(h.node('businessExamples').disabled,false);
@@ -920,4 +926,98 @@ test('capacidade de pedidos comerciais só aparece habilitada quando servidor of
   assert.equal(h.node('bizCapProductOrders').checked,false);assert.equal(h.node('bizCapProductOrders').disabled,false);
   const profile=h.ui.collectBusinessProfile();assert.equal(profile.capabilities.includes('product_orders'),false);
   h.node('bizCapProductOrders').checked=true;assert.equal(h.ui.collectBusinessProfile().capabilities.includes('product_orders'),true);
+});
+
+test('diálogo HTML exige escolha, usa texto seguro, prende foco e Escape cancela restaurando o foco',async()=>{
+  const h=panelHarness(),trigger=h.node('businessPublish');trigger.focus();
+  const answer=h.ui.confirmAction('Confirma <img src=x> esta ação?');assert.equal(h.node('actionConfirm').open,true);assert.equal(h.activeElement(),h.node('actionConfirmCancel'));
+  assert.equal(h.node('actionConfirmText').textContent,'Confirma <img src=x> esta ação?');assert.ok(!Object.hasOwn(h.node('actionConfirmText'),'innerHTML'));
+  assert.equal(await h.ui.confirmAction('Não pode substituir a confirmação aberta'),false);assert.match(h.node('actionConfirmText').textContent,/Confirma <img/);
+  let prevented=0;h.node('actionConfirm').listeners.keydown[0]({key:'Tab',shiftKey:true,preventDefault(){prevented++}});assert.equal(h.activeElement(),h.node('actionConfirmAccept'));
+  h.node('actionConfirm').listeners.keydown[0]({key:'Tab',shiftKey:false,preventDefault(){prevented++}});assert.equal(h.activeElement(),h.node('actionConfirmCancel'));
+  h.node('actionConfirm').listeners.keydown[0]({key:'Escape',preventDefault(){prevented++}});assert.equal(await answer,false);assert.equal(h.node('actionConfirm').open,false);assert.equal(h.activeElement(),trigger);assert.equal(prevented,3);
+  assert.match(panel,/<dialog id="actionConfirm"[^>]*aria-modal="true"[^>]*aria-labelledby="actionConfirmTitle"/);assert.match(panel,/\.action-confirm::backdrop/);
+});
+
+test('Aceitar resolve somente uma vez e cancelamento nativo não vira aceite',async()=>{
+  const h=panelHarness();const accepted=h.ui.confirmAction('Aceitar esta ação específica?');h.node('actionConfirmAccept').listeners.click[0]();h.node('actionConfirmAccept').listeners.click[0]();assert.equal(await accepted,true);assert.equal(h.node('actionConfirm').open,false);
+  const cancelled=h.ui.confirmAction('Outra decisão');h.node('actionConfirm').listeners.cancel[0]({preventDefault(){}});assert.equal(await cancelled,false);
+});
+
+test('publicação cancelada ou com empresa/sessão alterada durante await não faz POST',async()=>{
+  for(const mode of ['cancel','tenant','logout','edit']){
+    const h=panelHarness();await loadBusiness(h);const before=h.requests.length,publishing=h.ui.businessMutation('publish');
+    assert.equal(h.node('actionConfirm').open,true);assert.match(h.node('actionConfirmText').textContent,/Publicar o rascunho revisado/);
+    if(mode==='cancel')await cancelAction(h);else{
+      if(mode==='tenant')h.node('businessTenant').value='tenant-b';
+      if(mode==='logout')h.ui.showLogin();
+      if(mode==='edit'){h.node('bizName').value='Nova edição';h.ui.businessChanged();}
+      await acceptAction(h);
+    }
+    await publishing;assert.equal(h.requests.length,before,mode+' deve preservar zero requisições');
+  }
+});
+
+test('restauração revisada aguarda aceite e envia uma única versão com geração capturada',async()=>{
+  const h=panelHarness();await loadBusiness(h);h.node('businessVersion').value=olderId;const review=h.ui.reviewBusinessVersion();
+  h.take(businessUrl('tenant-a','/versions/'+olderId)).respond({id:olderId,revision:1,profile:profile('Versão anterior')});await review;
+  const restoring=h.ui.businessMutation('rollback');assert.equal(h.requests.filter(x=>x.url.endsWith('/rollback')).length,0);await h.ui.businessMutation('rollback');
+  await acceptAction(h);const post=h.take(businessUrl('tenant-a','/rollback'),'POST');assert.deepEqual(JSON.parse(post.options.body),{expected_generation:7,version_id:olderId});
+  post.respond({revision:1,generation:8,status:'published'});await tick();h.take(businessUrl('tenant-a')).respond(snapshot('Versão anterior',{generation:8}));h.take(businessUrl('tenant-a','/history')).respond(history());await restoring;
+  assert.equal(h.requests.filter(x=>x.url.endsWith('/rollback')).length,1);
+});
+
+test('troca de empresa com edição exige aceite; cancelar preserva formulário e logout não restaura tenant antigo',async()=>{
+  const h=panelHarness();await loadBusiness(h);h.node('bizDescription').value='Edição a preservar';h.ui.businessChanged();h.node('businessTenant').value='tenant-b';
+  let before=h.requests.length;const cancelled=h.node('businessTenant').listeners.change[0]();await cancelAction(h);await cancelled;
+  assert.equal(h.node('businessTenant').value,'tenant-a');assert.equal(h.node('bizDescription').value,'Edição a preservar');assert.equal(h.requests.length,before);
+  h.node('businessTenant').value='tenant-b';const changed=h.node('businessTenant').listeners.change[0]();await acceptAction(h);
+  h.take(businessUrl('tenant-b')).respond(snapshot('Empresa B'));h.take(businessUrl('tenant-b','/history')).respond(history());await changed;assert.equal(h.node('bizName').value,'Empresa B');
+  h.ui.businessChanged();h.node('businessTenant').value='tenant-a';before=h.requests.length;const loggedOut=h.node('businessTenant').listeners.change[0]();h.ui.showLogin();await acceptAction(h);await loggedOut;
+  assert.equal(h.node('businessTenant').value,'');assert.equal(h.requests.length,before);
+});
+
+test('atualização com edição espera escolha e contexto fresco; cancelar ou mudar contexto não consulta dados',async()=>{
+  for(const mode of ['cancel','tenant','logout','edit']){
+    const h=panelHarness();await loadBusiness(h);h.node('bizDescription').value='Preservar';h.ui.businessChanged();const before=h.requests.length,reload=h.node('businessReload').listeners.click[0]();
+    if(mode==='cancel')await cancelAction(h);else{
+      if(mode==='tenant')h.node('businessTenant').value='tenant-b';
+      if(mode==='logout')h.ui.showLogin();
+      if(mode==='edit'){h.node('bizDescription').value='Edição mais recente';h.ui.businessChanged();}
+      await acceptAction(h);
+    }
+    await reload;assert.equal(h.requests.length,before);
+    if(mode==='cancel')assert.equal(h.node('bizDescription').value,'Preservar');
+  }
+  const h=panelHarness();await loadBusiness(h);h.ui.businessChanged();const reload=h.node('businessReload').listeners.click[0]();await acceptAction(h);
+  h.take(businessUrl('tenant-a')).respond(snapshot('Estado do servidor'));h.take(businessUrl('tenant-a','/history')).respond(history());await reload;assert.equal(h.node('bizName').value,'Estado do servidor');
+});
+
+test('envio manual cancelado ou com destinatário/texto/contato/sessão alterado durante confirmação não envia',async()=>{
+  for(const mode of ['cancel','phone','text','conversation','logout','connection']){
+    const h=panelHarness();await connect(h);h.node('chatPhone').value=phoneA;h.node('chatText').value='Mensagem revisada';const sending=h.node('sendForm').listeners.submit[0]({preventDefault(){}});
+    assert.equal(h.node('actionConfirm').open,true);assert.match(h.node('actionConfirmText').textContent,new RegExp(phoneA));
+    if(mode==='cancel')await cancelAction(h);else{
+      if(mode==='phone')h.node('chatPhone').value=phoneB;
+      if(mode==='text')h.node('chatText').value='Outra mensagem';
+      if(mode==='conversation')h.ui.selectChat(phoneB);
+      if(mode==='logout')h.ui.showLogin();
+      if(mode==='connection'){const status=h.ui.updateStatus();h.take('/api/v1/qr/status').respond({status:'reconnecting'});await status;}
+      await acceptAction(h);
+    }
+    await sending;assert.equal(h.requests.filter(x=>x.options.method==='POST').length,0,mode);
+  }
+});
+
+test('duplo submit e duplo Aceitar do envio manual produzem uma única tentativa de transporte',async()=>{
+  const h=panelHarness();await connect(h);h.node('chatPhone').value=phoneA;h.node('chatText').value='Uma tentativa';
+  const send=()=>h.node('sendForm').listeners.submit[0]({preventDefault(){}}),sending=send();await send();assert.equal(h.node('actionConfirm').modalCalls,1);
+  h.node('actionConfirmAccept').listeners.click[0]();h.node('actionConfirmAccept').listeners.click[0]();await tick();const post=h.take('/api/v1/qr/send','POST');assert.deepEqual(JSON.parse(post.options.body),{phone:phoneA,text:'Uma tentativa'});
+  await send();post.reject(Error('Resultado incerto'));await sending;assert.equal(h.requests.filter(x=>x.url==='/api/v1/qr/send').length,1);assert.equal(h.node('sendButton').disabled,false);
+});
+
+test('cada estilo mostra valores, confirmação e cancelamento com renderer seguro e campos aditivos opcionais',async()=>{
+  const h=panelHarness();await loadBusiness(h);const loading=h.ui.loadBusinessStyleExamples();h.take('/api/v1/tenants/tenant-a/ai/style-examples','POST').respond({examples:[{style:'warm',label:'Acolhedor',answer:'*R$ 55,00*',confirmation_example:'Exemplo visual — nenhuma operação realizada. *Resumo* _<img src=x>_',cancellation_example:'Exemplo visual — nenhuma operação realizada. _Cancelamento_ <script>alert(1)</script>'}]});await loading;
+  const card=h.node('businessStyleExamples').children[0];assert.equal(card.children.length,4);assert.deepEqual(card.children.slice(1).map(block=>block.children[0].textContent),['Valores','Exemplo de confirmação','Exemplo de cancelamento']);
+  assert.match(contentOf(card),/<img src=x>/);assert.match(contentOf(card),/<script>/);for(const block of card.children.slice(1))assert.ok(block.children[1].children.every(node=>typeof node==='string'||['STRONG','EM'].includes(node.tagName)&&!Object.hasOwn(node,'innerHTML')));
 });

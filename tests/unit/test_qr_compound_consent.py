@@ -91,11 +91,33 @@ async def test_other_scope_cannot_fall_through_to_an_implicit_product_order(comp
 
 
 @pytest.mark.asyncio
-async def test_unknown_product_or_faq_does_not_authorize_operation(compound):
-    h = compound;text="Pode confirmar. Vocês vendem produto inexistente?"
-    h.compound_value.update(information_clause="Vocês vendem produto inexistente?")
+@pytest.mark.parametrize("empty",[True,False])
+async def test_known_catalog_absence_keeps_independent_confirmation_without_commerce_writes(compound,catalog,empty):
+    h = compound
+    if empty:
+        catalog.clear();text="Pode confirmar. E vocês vendem pomada?"
+    else:
+        text="Pode confirmar. Vocês vendem produto inexistente?"
+        h.compound_value.update(information_clause="Vocês vendem produto inexistente?")
     result = await h.message(text)
+    assert result["step"] == "confirmed" and "Não encontrei esse produto cadastrado neste atendimento; a equipe pode confirmar." in result["answer"]
+    assert [x[0] for x in h.calls["writes"]] == ["confirm"] and not h.events
+    assert h.private_key not in h.redis.data
+
+
+@pytest.mark.asyncio
+async def test_unknown_independent_faq_still_requires_review_without_confirmation(compound):
+    h=compound;text="Pode confirmar. Tem garantia especial?"
+    h.compound_value.update(information_clause="Tem garantia especial?",information_kind="faq")
+    result=await h.message(text)
     assert result["step"] == "confirm" and not h.calls["writes"] and not h.events
+
+
+@pytest.mark.asyncio
+async def test_independent_catalog_question_cannot_bypass_profile_capability(compound):
+    h=compound;h.business["profile"]["capabilities"].remove("catalog_answers");h.pending()
+    result=await h.message("Pode confirmar. E vocês vendem pomada?")
+    assert result["step"] == "capability_unavailable" and not h.calls["writes"] and not h.events
 
 
 @pytest.mark.asyncio

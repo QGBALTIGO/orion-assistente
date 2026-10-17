@@ -176,7 +176,7 @@ async def test_independent_information_reads_are_scoped_and_never_create_commerc
     stock = await readonly_information(scope, "Tem pomada em estoque?", kind="stock", profile=profile)
     assert "5 unidade(s) livre(s)" in stock and "não reserva" in stock
     stranger = store.CustomerScope(other, scope.phone, "other-tenant-read")
-    assert "não há produtos ativos" in await readonly_information(stranger, "Vendem pomada?", kind="catalog", profile=profile)
+    assert "Não encontrei esse produto cadastrado" in await readonly_information(stranger, "Vendem pomada?", kind="catalog", profile=profile)
     assert await store.stock_information(stranger, [variant["id"]]) == {}
     async with factory() as db:
         async with tenant_transaction(db, tenant):

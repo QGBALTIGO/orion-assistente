@@ -142,3 +142,50 @@ async def test_bridge_delivery_failure_signal_blocks_previously_prepared_summary
     result=await qr_ai.run_locked(h.tenant,"5567999999999","SIM",h.namespace,"synthetic-message",
         intake_revision=1,require_summary_review=True)
     assert result["step"] == "confirm" and h.state()["confirmation_requires_review"] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_verified_confirmation_superseded_before_reply_is_reported_without_executing_correction(flow,monkeypatch):
+    import redis.asyncio as redis_asyncio
+    from app import qr_operation_receipt as receipt
+    h=flow;monkeypatch.setenv("QR_AI_INTAKE_REVISION_ENABLED","1")
+    h.seed("confirm",hold=str(uuid4()),price=3500,duration=40,selected_start=f"{h.tomorrow}T15:00:00-04:00",
+        confirmation_summary="synthetic-current",confirmation_message_id="synthetic-old",
+        confirmation_expires_at=datetime.now().timestamp()+240)
+    client=RevisionRedis();client.values=h.redis.data
+    monkeypatch.setattr(redis_asyncio,"from_url",lambda *a,**k:client)
+    original=h.confirm
+    async def confirmed_then_late(*args,**kwargs):
+        result=await original(*args,**kwargs)
+        client.current=2
+        return result
+    monkeypatch.setattr(qr_ai,"confirm_hold",confirmed_then_late)
+    lost=await qr_ai.run_locked(h.tenant,"5567999999999","SIM",h.namespace,"synthetic-message",intake_revision=1)
+    assert lost == {"answer":None,"step":"superseded_after_write","not_committed":False}
+    assert h.key not in client.values and receipt.key(h.tenant,"5567999999999") in client.values
+    client.seen["synthetic-correction"]=2
+    result=await qr_ai.run_locked(h.tenant,"5567999999999","Pera, é sexta",h.namespace,"synthetic-correction",
+        intake_revision=2,require_summary_review=True)
+    assert result["step"] == "completed_operation_review" and "SYNTHETIC" in result["answer"]
+    assert "ainda não foi aplicada" in result["answer"] and "_verified_operation" not in result
+    assert [x[0] for x in h.calls["writes"]] == ["confirm"] and not h.calls["plans"]
+    client.current=3;client.seen["synthetic-accepted"]=3
+    await qr_ai.run_locked(h.tenant,"5567999999999","Oi",h.namespace,"synthetic-accepted",intake_revision=3)
+    assert receipt.key(h.tenant,"5567999999999") not in client.values
+    assert [x[0] for x in h.calls["writes"]] == ["confirm"]
+
+
+@pytest.mark.asyncio
+async def test_request_stopped_or_preview_never_becomes_a_verified_operation_receipt(fenced,monkeypatch):
+    from app import qr_operation_receipt as receipt
+    tenant,client,*_=fenced
+    async def stopped(*a,**k):
+        return {"answer":"Solicitação encerrada; reservas confirmadas permanecem.","step":"cancelled"}
+    monkeypatch.setattr(qr_ai,"turn",stopped)
+    result=await qr_ai.run_locked(tenant,"5567999999999","Cancelar","5567999999999","synthetic-message",intake_revision=1)
+    assert result["step"] == "cancelled" and receipt.key(tenant,"5567999999999") not in client.values
+    async def preview(*a,**k):
+        return {"answer":"synthetic-only","step":"confirmed","_verified_operation":True}
+    monkeypatch.setattr(qr_ai,"turn",preview)
+    result=await qr_ai.run_locked(tenant,"5567999999999","x","preview:synthetic","synthetic-preview",preview=True)
+    assert "_verified_operation" not in result and receipt.key(tenant,"5567999999999") not in client.values
