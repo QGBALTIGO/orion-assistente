@@ -965,7 +965,7 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
             <legend>Bloqueio de ligações</legend>
             <label class="checkrow"><input id="settingsBlockCalls" type="checkbox"> Rejeitar chamadas recebidas</label>
             <label class="checkrow"><input id="settingsCallReply" type="checkbox"> Enviar resposta automática após chamada rejeitada</label>
-            <small>Ative somente após informar os contatos. Evita repetir mensagens para um mesmo número nesta sessão.</small>
+            <small>Para enviar resposta, marque esta opção e confirme ao salvar. Uma mensagem por contato a cada 15 minutos; não enviaremos se o número não for identificado.</small>
             <label for="settingsReplyText">Mensagem após rejeição</label>
             <textarea id="settingsReplyText" maxlength="240"></textarea>
             <label for="settingsAllowedCallers">Sempre permitir ligações destes números (DDI + DDD, um por linha)</label>
@@ -1601,7 +1601,15 @@ async function showDeviceDiagnostics(){
      recibos:d.deliveryDiagnostics?.receiptUpdates??0,
      recuperacoesComCache:d.deliveryDiagnostics?.cacheHits??0,
      recuperacoesSemCache:d.deliveryDiagnostics?.cacheMisses??0,
-     cacheMensagens:d.retainedMessages??0
+     cacheMensagens:d.retainedMessages??0,
+     chamadasRecebidas:d.callDiagnostics?.offersSeen??0,
+     chamadasRejeitadas:d.callDiagnostics?.rejected??0,
+     falhasNaRejeicao:d.callDiagnostics?.rejectFailed??0,
+     respostasAceitasPeloWhatsApp:d.callDiagnostics?.replied??0,
+     falhasDeResposta:d.callDiagnostics?.replyFailed??0,
+     chamadasComIdentificacaoIncompleta:d.callDiagnostics?.unresolvedWithAllowlist??0,
+     respostasSemTelefoneIdentificado:d.callDiagnostics?.replyNoPhone??0,
+     chamadasDuplicadasIgnoradas:d.callDiagnostics?.duplicatesSkipped??0
    };
    $("deviceDiagnosticsText").textContent=Object.entries(values)
      .map(([key,value])=>key+": "+String(value)).join("\n");
