@@ -89,6 +89,20 @@ async def inventory(factory, tenant, variant_id):
 
 
 @pytest.mark.asyncio
+async def test_order_recovery_by_quote_is_read_only_and_tenant_scoped(commerce):
+    a, b, factory, _ = commerce
+    _, variant = await setup_item(factory, a)
+    quote, order = await quote_order(factory, a, variant)
+    recovered = await call(factory, service.get_order_by_quote, a, quote["id"])
+    assert recovered["id"] == order["id"] and recovered["status"] == "draft"
+    assert "confirmation_token" not in recovered["quote"] and "confirmation_digest" not in recovered["quote"]
+    with pytest.raises(HTTPException) as denied:
+        await call(factory, service.get_order_by_quote, b, quote["id"])
+    assert denied.value.status_code == 404
+    assert (await inventory(factory, a, variant["id"]))["reserved_quantity"] == 0
+
+
+@pytest.mark.asyncio
 async def test_estimate_quote_draft_confirmation_and_cancellation_are_distinct(commerce):
     a, _, factory, _ = commerce
     _, variant = await setup_item(factory, a)
