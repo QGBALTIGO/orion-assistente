@@ -273,8 +273,9 @@ def owner_preflight(conn, settings):
     require(conn.exec_driver_sql("""SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
         WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND NOT EXISTS
         (SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')""").scalar_one() == 0, "unreviewed_database_functions")
-    require(conn.exec_driver_sql("""SELECT count(*) FROM pg_namespace WHERE nspname NOT IN ('public','pg_catalog','information_schema')
-        AND nspname NOT LIKE 'pg_toast%' AND nspname NOT LIKE 'pg_temp_%'""").scalar_one() == 0, "unreviewed_database_schema")
+    require(conn.execute(text("""SELECT count(*) FROM pg_namespace WHERE nspname NOT IN ('public','pg_catalog','information_schema')
+        AND nspname NOT LIKE :toast AND nspname NOT LIKE :temporary"""),
+        {"toast": "pg_toast%", "temporary": "pg_temp_%"}).scalar_one() == 0, "unreviewed_database_schema")
     require(conn.exec_driver_sql("""SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname='public' AND c.relkind NOT IN ('r','i')""").scalar_one() == 0, "unreviewed_database_relations")
     conn.exec_driver_sql("SET LOCAL ROLE app_migrator")
