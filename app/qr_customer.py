@@ -14,16 +14,20 @@ from app.database import get_session_factory, tenant_transaction
 def supplied_name(value: str) -> str | None:
     # O cliente deve declarar explicitamente o nome, nunca inferido pela IA.
     match = re.search(
-        r"(?:\bmeu nome é|\bme chamo|\bpode me chamar de|\bsou o |\bsou a )\s+"
-        r"([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ '.-]{1,58})",
+        r"(?:^|[,!.;\n]\s*)(?:(?:oi+|ol[áa]+|bom dia|boa tarde|boa noite)\s+)?"
+        r"(?:meu nome [ée]|me chamo|pode me chamar de|(?:eu\s+)?sou [oa])\s+"
+        r"([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ '.-]{1,120})",
         value.strip(), re.IGNORECASE
     )
     if not match:
         return None
-    name = re.split(r"[,!?;\n]|\s+(?:e quero|e gostaria|quero|preciso|para|porque)\b",
+    name = re.split(r"[,!?;\n]|(?<=[A-Za-zÀ-ÖØ-öø-ÿ]{2})\.\s+|"
+                    r"\s+(?:(?:e\s+)?(?:quero|queria|gostaria|preciso|desejo|vou)|para|porque|que)\b",
                     match.group(1), maxsplit=1, flags=re.IGNORECASE)[0].strip(" .-'")
     name = " ".join(name.split())
-    return name[:60] if 2 <= len(name) <= 60 else None
+    if re.match(r"(?:cliente|barbeiro|dono|responsável|atendente|profissional|administrador)\b", name, re.IGNORECASE):
+        return None
+    return name if 2 <= len(name) <= 60 else None
 
 
 async def customer_name(tenant: UUID, phone: str) -> str | None:

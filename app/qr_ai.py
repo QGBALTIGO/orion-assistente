@@ -20,9 +20,9 @@ from app.booking_service import book_appointment, confirm_hold, list_slots, resc
 from app.catalog_api import Actor, authenticate, authorize, support_only
 from app.catalog_schemas import StrictModel
 from app.database import get_session_factory, tenant_transaction
-from app.groq_ai import GroqServiceError, interpret
+from app.groq_ai import GroqServiceError, Intention, interpret
 from app.qr_customer import supplied_name, customer_name, remember_name, customer_appointments, appointment_services
-from app.qr_behaviors import control_intent, catalog_match
+from app.qr_behaviors import control_intent, catalog_match, norm
 
 router = APIRouter(tags=["Orion IA conversacional"])
 STATE_TTL = 7 * 24 * 3600  # contexto temporário até 7 dias; agendamentos ficam no PostgreSQL
@@ -207,7 +207,8 @@ async def continue_reschedule(tenant: UUID, phone: str, body: str, state: dict,
                              datetime.fromisoformat(x).strftime("%H:%M") == selection), None))
         if not chosen:
             return {"answer": "Escolha um horário listado, pelo número ou pelo horário (ex.: 14:00).", "step": step}
-        state.update(step="reschedule_confirm", new_start=chosen)
+        state.update(step="reschedule_confirm", new_start=chosen,
+                     confirmation_expires_at=datetime.now().timestamp() + 300)
         await redis.set(key, json.dumps(state), ex=300)
         return {"answer": (f"Remarcar para {datetime.fromisoformat(chosen):%d/%m às %H:%M}? "
                            "Responda SIM ou NÃO."), "step": "reschedule_confirm"}
@@ -249,7 +250,136 @@ def is_service_request(value: str) -> bool:
     return any(word in value.lower() for word in ("quero", "agendar", "preciso", "gostaria", "reservar"))
 
 
+def catalog_question(value: str) -> bool:
+    return bool(re.search(
+        r"\b(?:quanto\s+(?:custa|custam|fica|ficam|e|sai|tempo)|precos?|valores?|"
+        r"duracao|demora|quais\s+(?:os\s+)?servicos|quais\s+servicos\s+tem)\b", norm(value)))
+
+
+def professional_choice(value: str, candidates: list[dict]) -> dict | None:
+    clean = norm(value)
+    if clean.isdigit():
+        index = int(clean) - 1
+        return candidates[index] if 0 <= index < len(candidates) else None
+    words = set(re.findall(r"\w+", clean)) - {
+        "o", "a", "os", "as", "com", "quero", "prefiro", "pode", "ser", "por", "favor", "profissional"}
+    matches = [p for p in candidates if words and words <= set(re.findall(r"\w+", norm(p["name"])))]
+    return matches[0] if len(matches) == 1 else None
+
+
+def resume_prompt(state: dict) -> str:
+    step = state.get("step", "")
+    if step == "professional":
+        listing = "\n".join(f"{i}. {p['name']}" for i, p in enumerate(state.get("professionals", []), 1))
+        return "Quando quiser continuar, escolha o profissional pelo nome ou número:\n" + listing
+    return {
+        "date": "Quando quiser continuar, informe o dia desejado.",
+        "time": "Quando quiser continuar, escolha um dos horários que listei.",
+        "confirm": "O pedido ainda não foi confirmado. Para concluir, responda SIM; para desistir, NÃO.",
+        "reschedule_day": "A reserva original permanece. Para continuar a remarcação, informe a nova data.",
+        "reschedule_time": "A reserva original permanece. Para continuar, escolha um horário listado.",
+        "reschedule_confirm": "A reserva original permanece. Confirme a remarcação com SIM ou desista com NÃO.",
+    }.get(step, "Se quiser agendar, diga qual serviço deseja.")
+
+
+def conversation_context(state: dict, catalog: list[dict]) -> dict:
+    selected = set(state.get("services", []))
+    return {"etapa": state.get("step", "menu"), "data": state.get("day"),
+            "servicos_selecionados": [item["name"] for item in catalog if str(item["id"]) in selected]}
+
+
+def asks_current_price(body: str) -> bool:
+    value = norm(body).strip(" ?!.,")
+    return bool(re.fullmatch(r"(?:e )?(?:quanto (?:custa|fica|e|sai)|qual (?:e )?(?:o )?(?:valor|preco))", value)
+                or re.search(r"\b(?:isso|esse|esses|este|estes|total)\b", value))
+
+
+def simple_schedule_reply(body: str, kind: str) -> bool:
+    value = norm(body).strip(" ?!.,")
+    prefix = r"(?:(?:pode ser|para|no dia|dia|as|pelas)\s+)?"
+    if kind == "date":
+        return bool(re.fullmatch(prefix + r"(?:hoje|amanha|depois de amanha|\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}(?:/\d{4})?)", value))
+    return bool(re.fullmatch(prefix + r"(?:(?:[01]?\d|2[0-3])(?::[0-5]\d|h(?:[0-5]\d)?)|duas(?: horas)? da tarde)", value))
+
+
+async def start_booking(tenant: UUID, body: str, decision: Intention, state: dict,
+                        business: dict, catalog: list[dict], redis, key: str, preview: bool):
+    chosen = [item for item in catalog if item["id"] in decision.service_ids]
+    # Drop stale slots, totals and confirmation tokens whenever services change.
+    next_state = {"services": [str(item["id"]) for item in chosen], "step": "date",
+                  "customer_name": state.get("customer_name")}
+    chosen_day = requested_day(" ".join(filter(None, [body, decision.requested_when])), business["timezone"])
+    day = chosen_day.isoformat() if chosen_day else state.get("day")
+    total = sum(item["price_cents"] for item in chosen)
+    duration = sum(item["duration_min"] for item in chosen)
+    names = " e ".join(item["name"] for item in chosen)
+    summary = f"{names}: {format_money(total)}, {duration} minutos."
+    if not day and not state.get("professional") and not re.search(r"\bcom\s+", body, re.IGNORECASE):
+        await redis.set(key, json.dumps(next_state), ex=STATE_TTL)
+        return {"answer": summary + " Para qual dia gostaria de agendar?", "step": "date"}
+    pros = await professionals_for(tenant, [item["id"] for item in chosen])
+    if not pros:
+        await redis.set(key, json.dumps(next_state), ex=STATE_TTL)
+        return {"answer": summary + " Não há profissional habilitado para essa combinação. Pode escolher outro serviço.",
+                "step": "date"}
+    previous = next((p for p in pros if str(p["id"]) == state.get("professional")), None)
+    mention = re.split(r"\bcom\s+", body, maxsplit=1, flags=re.IGNORECASE)
+    named = re.split(r"\b(?:amanha|hoje|depois|no dia|dia\s+\d|as\s+\d|pelas\s+\d)\b|(?<!\w)\d{1,4}[-/]\d",
+                     norm(mention[-1]), maxsplit=1)[0].strip(" ,.!?")
+    explicit = len(mention) == 2
+    selected = professional_choice(named, pros)
+    if not explicit:
+        selected = selected or previous or (pros[0] if len(pros) == 1 else None)
+    if selected:
+        next_state["professional"] = str(selected["id"])
+        next_state["professional_name"] = selected["name"]
+    if not day and (selected or not explicit):
+        await redis.set(key, json.dumps(next_state), ex=STATE_TTL)
+        return {"answer": summary + " Para qual dia gostaria de agendar?", "step": "date"}
+    if day:
+        next_state["day"] = day
+    if selected:
+        answer, next_state = await offer_slots(tenant, next_state, preview)
+    else:
+        next_state.update(step="professional", professionals=[{"id": str(p["id"]), "name": p["name"]} for p in pros])
+        answer = ("Não identifiquei esse profissional com segurança. " if explicit else "") + \
+            "Qual profissional prefere?\n" + "\n".join(f"{i}. {p['name']}" for i, p in enumerate(pros, 1))
+    await redis.set(key, json.dumps(next_state), ex=STATE_TTL)
+    return {"answer": summary + "\n" + answer, "step": next_state["step"]}
+
+
 async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, preview: bool = False):
+    """Keep only recent exchanges in this tenant/session; never resurrect completed holds."""
+    key = f"orion:qr:ai:{tenant}:{namespace}"
+    try:
+        before = json.loads(await redis.get(key) or "{}")
+    except (TypeError, ValueError):
+        before = {}
+    history = before.get("history", []) if isinstance(before, dict) else []
+    if body.strip().lower() in RESET:
+        history = []
+    result = await _turn(tenant, phone, body, redis, namespace, preview)
+    if result.get("answer"):
+        try:
+            current = json.loads(await redis.get(key) or "null")
+        except (TypeError, ValueError):
+            current = None
+        if isinstance(current, dict):
+            history = [item for item in history if isinstance(item, dict) and
+                       item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str)]
+            current["history"] = (history + [{"role": "user", "content": body[:1500]},
+                {"role": "assistant", "content": result["answer"][:1500]}])[-8:]
+            if current.get("step") in {"confirm", "reschedule_confirm"}:
+                now = datetime.now().timestamp()
+                deadline = current.setdefault("confirmation_expires_at", now + 300)
+                ttl = max(1, min(300, int(deadline - now)))
+            else:
+                ttl = 1800 if current.get("step") == "human" else STATE_TTL
+            await redis.set(key, json.dumps(current), ex=ttl)
+    return result
+
+
+async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, preview: bool = False):
     state_key = f"orion:qr:ai:{tenant}:{namespace}"
     text_clean = body.strip().lower()
     if text_clean in RESET:
@@ -260,10 +390,25 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
             state = json.loads(await redis.get(state_key) or "{}")
         except (TypeError, ValueError):
             state = {}
+    if not isinstance(state, dict):
+        state = {}
     business, catalog, _ = await tenant_data(tenant)
+    intent = control_intent(body)
+    if state.get("step") == "human":
+        return {"answer": None, "step": "human"}
+    if intent == "human":
+        await redis.set(state_key, json.dumps({"step": "human"}), ex=1800)
+        return {"answer": "Vou deixar esta conversa para atendimento humano. Para retomar o bot, envie MENU.", "step": "human"}
+    cancel = not catalog_question(body) and bool(re.search(
+        r"\b(?:cancelar|cancele|desistir|desisto|nao quero mais agendar)\b", norm(body)))
+    if cancel:
+        active = state.get("step") in {"date", "professional", "time", "confirm"} or state.get("step", "").startswith("reschedule_")
+        if active:
+            await redis.delete(state_key)
+            return {"answer": "Tudo bem, encerrei esta solicitação sem confirmar alterações. Reservas já confirmadas permanecem; para cancelar uma delas, peça atendimento humano.", "step": "cancelled"}
+        return {"answer": "Para cancelar uma reserva já confirmada, posso encaminhar ao atendimento humano para conferir os dados. Nenhuma reserva foi alterada.", "step": "cancel_request"}
     if not catalog:
         return {"answer": "Ainda não há serviços ativos cadastrados neste estabelecimento.", "step": "no_catalog"}
-    intent = control_intent(body)
     supplied = supplied_name(body)
     if supplied:
         if not preview:
@@ -272,9 +417,6 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
         await redis.set(state_key, json.dumps(state), ex=STATE_TTL)
         if not is_service_request(body):
             return {"answer": f"Prazer, {supplied}! Posso ajudar com serviços ou agendamentos?", "step": "named"}
-    if intent == "human":
-        await redis.set(state_key, json.dumps({"step": "human"}), ex=1800)
-        return {"answer": "Vou deixar esta conversa para atendimento humano. Para retomar o bot, envie MENU.", "step": "human"}
     if intent == "hostile":
         return {"answer": "Posso ajudar com horários, valores ou um atendente humano. Como prefere continuar?", "step": "courtesy"}
     if intent == "cancel_request":
@@ -292,6 +434,71 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
         return {"answer": "Agendamentos deste número:\n" + lines, "step": "history"}
     if intent == "reschedule":
         return await begin_reschedule(tenant, phone, business, redis, state_key, preview)
+    step = state.get("step", "")
+    question = catalog_question(body)
+    numeric = text_clean.isdigit()
+    direct = (
+        intent == "greeting" or
+        (step in {"menu", "time", "reschedule_pick", "reschedule_time"} and numeric) or
+        (step in {"confirm", "reschedule_confirm"} and text_clean in YES | NO) or
+        (step in {"date", "reschedule_day"} and simple_schedule_reply(body, "date")) or
+        (step == "professional" and professional_choice(body, state.get("professionals", [])) is not None) or
+        (step in {"time", "reschedule_time"} and simple_schedule_reply(body, "time"))
+    )
+    decision = None
+    degraded = False
+    if question or not direct:
+        try:
+            decision = await interpret(
+                message=body, history=state.get("history", []), catalog=catalog,
+                context=conversation_context(state, catalog),
+                key=os.getenv("GROQ_API_KEY", ""),
+                model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+            )
+        except GroqServiceError as exc:
+            import logging
+            logging.getLogger("orion.groq").warning("classification_failed status=%s", exc.status)
+            degraded = True
+            matched = catalog_match(body, catalog)
+            if not question and re.search(r"\b(?:nao|nem|sem|menos)\b", norm(body)):
+                matched = []  # A negated service is never a safe fallback selection.
+            decision = Intention(intent="perguntar" if question else "agendar" if is_service_request(body) else "outro",
+                                 service_ids=matched, requested_when=body[:120])
+        # Validate again at the state-machine boundary, including alternative classifiers.
+        valid_ids = {str(item["id"]) for item in catalog}
+        decision = decision.model_copy(update={"service_ids": [item for item in decision.service_ids if str(item) in valid_ids]})
+        if decision.intent == "humano":
+            await redis.set(state_key, json.dumps({"step": "human"}), ex=1800)
+            return {"answer": "Certo! Vou deixar esta conversa para atendimento humano. Para retomar o bot, envie MENU.", "step": "human"}
+        if question or decision.intent == "perguntar":
+            ids = {str(item) for item in decision.service_ids}
+            if degraded and question:
+                # Exact-name fallback may match only "Barba" in "cabelo e barba".
+                # Show trusted individual prices rather than a misleading partial total.
+                ids = set()
+            if not ids and asks_current_price(body):
+                ids = set(state.get("services", []))
+            chosen = [item for item in catalog if str(item["id"]) in ids]
+            if chosen:
+                lines = "\n".join(f"• {item['name']}: {format_money(item['price_cents'])} ({item['duration_min']} min)" for item in chosen)
+                total = sum(item["price_cents"] for item in chosen)
+                duration = sum(item["duration_min"] for item in chosen)
+                answer = f"{lines}\nTotal desses serviços: {format_money(total)}, cerca de {duration} minutos."
+            else:
+                answer = "Estes são os serviços e valores cadastrados:\n" + "\n".join(
+                    f"• {item['name']}: {format_money(item['price_cents'])} ({item['duration_min']} min)" for item in catalog[:12])
+            if not state:
+                state = {"step": "menu", "menu_ids": [str(item["id"]) for item in catalog[:12]]}
+                await redis.set(state_key, json.dumps(state), ex=STATE_TTL)
+            return {"answer": answer + "\n\n" + resume_prompt(state), "step": state.get("step", "catalog"),
+                    **({"degraded": True} if degraded else {})}
+        if decision.intent == "agendar" and decision.service_ids:
+            if step.startswith("reschedule_"):
+                return {"answer": "A remarcação preserva os serviços da reserva original. Para mudar esses serviços, peça atendimento humano.\n" + resume_prompt(state), "step": step}
+            return await start_booking(tenant, body, decision, state, business, catalog, redis, state_key, preview)
+        if step in {"date", "professional", "time", "confirm"} or step.startswith("reschedule_"):
+            return {"answer": "Não consegui identificar essa escolha com segurança. Posso informar preços, mudar o serviço ou chamar um atendente.\n" + resume_prompt(state),
+                    "step": step, **({"degraded": True} if degraded else {})}
     if state.get("step", "").startswith("reschedule_"):
         return await continue_reschedule(tenant, phone, body, state, business, redis, state_key, preview)
     if state.get("step") == "human":
@@ -329,7 +536,11 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
                     break
         if not when:
             return {"answer": "Escolha um dos horários disponíveis pelo número ou horário (ex.: 14:00).", "step": "time"}
-        summary = (f"Resumo: {datetime.fromisoformat(when):%d/%m às %H:%M}, "
+        chosen_names = " e ".join(item["name"] for item in catalog if str(item["id"]) in state["services"])
+        professional_name = state.get("professional_name") or next((p["name"] for p in state.get("professionals", [])
+            if p["id"] == state.get("professional")), None)
+        who = f" com {professional_name}" if professional_name else ""
+        summary = (f"Resumo: {chosen_names}{who}, {datetime.fromisoformat(when):%d/%m às %H:%M}, "
                    f"{state['duration']} minutos, {format_money(state['price'])}.")
         if preview:
             state.update(step="confirm", hold="preview")
@@ -349,16 +560,16 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
                 await redis.delete(state_key)
                 return {"answer": "O horário não está mais disponível. Escreva MENU para tentar novamente.", "step": "conflict"}
             state.update(step="confirm", hold=str(hold["id"]))
+        state["confirmation_expires_at"] = datetime.now().timestamp() + 300
         await redis.set(state_key, json.dumps(state), ex=300)
         return {"answer": summary + "\nPosso confirmar? Responda SIM ou NÃO.", "step": "confirm"}
     if state.get("step") == "professional":
         candidates = state.get("professionals", [])
-        index = int(text_clean) - 1 if text_clean.isdigit() else -1
-        if not (0 <= index < len(candidates)):
-            index = next((i for i, p in enumerate(candidates) if p["name"].lower() == text_clean), -1)
-        if index == -1:
-            return {"answer": "Qual profissional prefere? Responda com o número indicado.", "step": "professional"}
-        state["professional"] = candidates[index]["id"]
+        selected = professional_choice(body, candidates)
+        if selected is None:
+            return {"answer": "Qual profissional prefere? Pode responder pelo nome ou número indicado.", "step": "professional"}
+        state["professional"] = selected["id"]
+        state["professional_name"] = selected["name"]
         if not state.get("day"):
             state["step"] = "date"
             await redis.set(state_key, json.dumps(state), ex=STATE_TTL)
@@ -383,6 +594,7 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
                 return {"answer": "Qual profissional prefere?\n" + "\n".join(
                     f"{i}. {p['name']}" for i, p in enumerate(pros, 1)), "step": "professional"}
             state["professional"] = str(pros[0]["id"])
+            state["professional_name"] = pros[0]["name"]
         answer, state = await offer_slots(tenant, state, preview)
         await redis.set(state_key, json.dumps(state), ex=STATE_TTL)
         return {"answer": answer, "step": state["step"]}
@@ -403,63 +615,12 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
             await redis.set(state_key, json.dumps(state), ex=STATE_TTL)
             return {"answer": "Para qual dia deseja agendar? Ex.: amanhã ou 20/10.", "step": "date"}
         return {"answer": "Escolha o número de um serviço listado.", "step": "menu"}
-    decision = None
-    try:
-        decision = await interpret(
-            message=body, history=state.get("history", []),
-            catalog=catalog, key=os.getenv("GROQ_API_KEY", ""),
-            model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
-        )
-    except GroqServiceError as exc:
-        import logging
-        logging.getLogger("orion.groq").warning("classification_failed status=%s", exc.status)
-        matched = catalog_match(body, catalog)
-        if matched:
-            from app.groq_ai import Intention
-            decision = Intention(intent="agendar", service_ids=matched, requested_when=body[:120])
-        else:
-            await redis.set(state_key, json.dumps({"step": "menu",
-                "menu_ids": [str(item["id"]) for item in catalog[:12]]}), ex=STATE_TTL)
-            return {"answer": catalog_menu(business, catalog,
-                    "A IA está temporariamente indisponível; vou usar o menu. "),
-                    "step": "menu", "degraded": True}
-    if decision.intent == "humano":
-        await redis.set(state_key, json.dumps({"step": "human"}), ex=STATE_TTL)
-        return {"answer": "Certo! Vou deixar esta conversa para atendimento humano. Nossa equipe poderá responder por aqui.", "step": "human"}
-    if decision.service_ids:
-        state = {"services": [str(x) for x in decision.service_ids], "step": "date",
-                 "customer_name": state.get("customer_name")}
-        total = sum(item["price_cents"] for item in catalog if item["id"] in decision.service_ids)
-        duration = sum(item["duration_min"] for item in catalog if item["id"] in decision.service_ids)
-        names = " e ".join(item["name"] for item in catalog if item["id"] in decision.service_ids)
-        state["history"] = [{"role": "user", "content": body}]
-        chosen_day = requested_day(
-            " ".join(filter(None, [body, decision.requested_when or ""])), business["timezone"]
-        )
-        if decision.intent == "agendar":
-            if chosen_day:
-                state["day"] = chosen_day.isoformat()
-                pros = await professionals_for(tenant, decision.service_ids)
-                if not pros:
-                    return {"answer": "Não há profissional habilitado para esses serviços.", "step": "not_available"}
-                if len(pros) == 1:
-                    state["professional"] = str(pros[0]["id"])
-                    answer, state = await offer_slots(tenant, state, preview)
-                    await redis.set(state_key, json.dumps(state), ex=STATE_TTL)
-                    return {"answer": (f"{names}: {format_money(total)} e {duration} minutos.\n" + answer),
-                            "step": state["step"]}
-                state["professionals"] = [{"id": str(p["id"]), "name": p["name"]} for p in pros]
-                state["step"] = "professional"
-                await redis.set(state_key, json.dumps(state), ex=STATE_TTL)
-                return {"answer": f"{names}: {format_money(total)} e {duration} minutos.\nQual profissional prefere?\n" +
-                        "\n".join(f"{i}. {p['name']}" for i, p in enumerate(pros, 1)), "step": "professional"}
-            await redis.set(state_key, json.dumps(state), ex=STATE_TTL)
-            return {"answer": f"{names}: {format_money(total)}, {duration} minutos. Para qual dia gostaria de agendar?", "step": "date"}
-        await redis.set(state_key, json.dumps(state), ex=STATE_TTL)
-        return {"answer": f"{names}: {format_money(total)}, duração aproximada {duration} minutos. Para agendar, informe o dia desejado.", "step": "date"}
     await redis.set(state_key, json.dumps({"step": "menu",
-        "menu_ids": [str(item["id"]) for item in catalog[:12]]}), ex=STATE_TTL)
-    return {"answer": catalog_menu(business, catalog), "step": "menu"}
+        "menu_ids": [str(item["id"]) for item in catalog[:12]],
+        "customer_name": state.get("customer_name")}), ex=STATE_TTL)
+    return {"answer": catalog_menu(business, catalog,
+            "A IA está temporariamente indisponível; vou usar o menu. " if degraded else ""),
+            "step": "menu", **({"degraded": True} if degraded else {})}
 
 
 async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,

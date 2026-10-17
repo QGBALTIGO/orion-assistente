@@ -114,6 +114,9 @@ jobs:
       - name: Build da imagem real Node Baileys
         run: docker build -f qr-bridge/Dockerfile -t orion-qr:ci qr-bridge
 
+      - name: Provar contratos de domínios com a biblioteca instalada, sem rede
+        run: docker run --rm -v "$PWD/qr-bridge/scripts:/srv/qr/scripts:ro" orion-qr:ci node scripts/probe-domain-contract.mjs
+
       - name: Smoke test real Baileys + mensagem gerada e cache cifrado no contêiner
         run: |
           docker run --rm orion-qr:ci node --input-type=module -e '
@@ -122,6 +125,7 @@ jobs:
             import {generateWAMessage,generateMessageIDV2,BufferJSON} from "@whiskeysockets/baileys";
             import {makeEncryptedRetryStore} from "./src/encrypted-retry-store.mjs";
             import {sendStoredText} from "./src/reliable-send.mjs";
+            import {resolvePilotRecipient,makePilotDeviceCache} from "./src/pilot-recipient.mjs";
             const from="5521999999999@s.whatsapp.net";
             const to="5521888888888@s.whatsapp.net";
             const logger=pino({level:"silent"});
@@ -144,6 +148,17 @@ jobs:
               }});
             assert.equal(relays,1);
             assert.equal(JSON.stringify(cache.get({id:message.key.id}),BufferJSON.replacer),JSON.stringify(message.message,BufferJSON.replacer));
+            const pilotPhone=to.split("@")[0],lid="100000000000002@lid";
+            const proof=await resolvePilotRecipient({phone:pilotPhone,pilotPhone,enabled:true,deviceCache:makePilotDeviceCache(),socket:{
+              user:{id:from.replace("@",":4@"),lid:"100000000000001:4@lid"},
+              onWhatsApp:async()=>[{jid:to,exists:true,lid}],getUSyncDevices:async()=>[]}});
+            const lidMessage=await generateWAMessage(lid,{text:"Synthetic verified LID"},{userJid:from,logger,messageId:generateMessageIDV2(from)});
+            await sendStoredText({jid:lid,recipientProof:proof,text:"Synthetic verified LID",store:cache,freshDevices:true,
+              makeMessage:async()=>lidMessage,relay:async(dest,msg,opts)=>{
+                relays++;assert.equal(dest,lid);assert.equal(opts.useUserDevicesCache,true);
+                assert.equal(JSON.stringify(cache.get({id:opts.messageId}),BufferJSON.replacer),JSON.stringify(msg,BufferJSON.replacer));
+              }});
+            assert.equal(relays,2);
             console.log("ORION_BAILEYS_REAL_PACKAGE_DRY_RUN_OK");
           '
 
