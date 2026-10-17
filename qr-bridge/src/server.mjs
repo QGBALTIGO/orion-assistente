@@ -25,6 +25,7 @@ import {transcriberConfig,cleanPictureUrl,transcribeAudio,handleCallOffers} from
 import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
 import {forwardAssistant} from "./ai-forward.mjs";
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
+import {deliveryPolicy} from "./pilot-send-policy.mjs";
 import {transcribeAssistantAudio} from "./ai-audio.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
@@ -491,8 +492,8 @@ async function send(phone,text){
   const jid=target+"@s.whatsapp.net";
   const selectedSocket=socket;
   let result;
-  const freshDevices=process.env.QR_FORCE_FRESH_DEVICES==="1";
-  if(process.env.QR_RELIABLE_SEND_V2==="1"){
+  const {reliable,freshDevices}=deliveryPolicy(target);
+  if(reliable){
     result=await sendStoredText({
       jid,text:text.trim(),store:retryStore,freshDevices,
       makeMessage:async (recipient,messageText)=>generateWAMessage(
