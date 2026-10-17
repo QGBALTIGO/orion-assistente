@@ -5,6 +5,7 @@
  * Mensagens recentes ficam apenas na RAM; sessão Baileys cifrada no volume.
  */
 import http from "node:http";
+import {databaseBackup} from './database-backup-store.mjs';
 import path from "node:path";
 import fs from "node:fs";
 import {timingSafeEqual,randomUUID} from "node:crypto";
@@ -611,6 +612,9 @@ const server=http.createServer(async(req,res)=>{
     return reply(res,200,{status:"ok",bridge:"linked-device"});
   if(!auth(req))return reply(res,401,{error:"unauthorized"});
   try{
+    if(path.startsWith('/internal/ops/database-backups/'))
+      return await databaseBackup(req,res,{root:'/data/orion-db-backups',id:path.slice('/internal/ops/database-backups/'.length),
+        enabled:process.env.QR_DATABASE_BACKUP_ENABLED==='1',secret:KEY});
     if(path==="/internal/status"&&req.method==="GET")
       return reply(res,200,stats());
     if(path==="/internal/profile/refresh"&&req.method==="POST"){
