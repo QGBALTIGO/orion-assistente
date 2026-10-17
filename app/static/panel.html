@@ -1186,6 +1186,7 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
         <div id="businessPane3" class="card hidden"><h2>O que o atendimento pode fazer?</h2><p class="business-muted">Habilite apenas atividades que fazem sentido para esta empresa.</p>
           <div class="business-checks">
             <label><input id="bizCapCatalog" type="checkbox"> Responder sobre o catálogo cadastrado</label><label><input id="bizCapAppointments" type="checkbox"> Receber solicitações de agendamento</label><label><input id="bizCapReschedule" type="checkbox"> Ajudar com remarcações</label><label><input id="bizCapHuman" type="checkbox"> Pausar o bot para atendimento humano</label><label><input id="bizCapProductOrders" type="checkbox"> Receber e confirmar pedidos de produtos com preço e estoque verificados (sem pagamentos)</label>
+            <fieldset class="business-fields" aria-describedby="bizFulfillmentHelp"><legend>Recebimento de produtos permitido</legend><label><input id="bizFulfillmentPickup" type="checkbox" disabled> Retirada no estabelecimento</label><label><input id="bizFulfillmentDelivery" type="checkbox" disabled> Solicitação de entrega para análise da equipe</label><p id="bizFulfillmentHelp" class="business-muted">Nenhum modo é habilitado automaticamente. Salve e publique o perfil para aplicar estas escolhas; a disponibilidade também depende de pedidos de produtos e da habilitação pelo servidor. Retirada pode acontecer sem agendamento. Entrega exige análise da equipe: frete, prazo e cobrança não estão configurados.</p></fieldset>
             <p class="business-muted">Produtos, estoque e pedidos são configurados separadamente em Catálogo e pedidos. A ativação do atendimento comercial automático é informada nessa página.</p><label><input type="checkbox" disabled> Processar pagamentos — indisponível nesta etapa</label><label><input type="checkbox" disabled> Responder com voz — indisponível nesta etapa</label>
           </div>
           <h3>Objetivos do atendimento</h3><div class="business-checks"><label><input id="bizObjQuestions" type="checkbox"> Responder dúvidas</label><label><input id="bizObjChoose" type="checkbox"> Ajudar na escolha</label><label><input id="bizObjComplements" type="checkbox"> Sugerir complementos previamente autorizados</label><label><input id="bizObjBooking" type="checkbox"> Receber pedidos de agendamento</label><label><input id="bizObjHuman" type="checkbox"> Encaminhar assuntos à equipe</label></div>
@@ -1252,6 +1253,9 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
             <form id="comPlanForm"><fieldset id="comPlanFields" class="business-fields" disabled><div class="business-grid"><div><label for="comBasketVariant">Produto e variante ativos</label><select id="comBasketVariant"><option value="">Escolha um item</option></select></div><div><label for="comBasketQuantity">Quantidade para adicionar</label><input id="comBasketQuantity" type="number" min="1" max="1000" step="1" value="1"></div></div>
               <button id="comBasketAdd" class="btn secondary" type="button">Adicionar item à proposta</button><div id="comBasket" class="commerce-items"></div>
               <div class="business-grid"><div><label for="comCustomer">Nome do cliente (opcional para consulta)</label><input id="comCustomer" maxlength="120"></div><div><label for="comContact">Telefone do cliente com DDI</label><input id="comContact" type="tel" maxlength="16" placeholder="+5567999999999"></div><div><label for="comValidity">Validade do orçamento, em minutos</label><input id="comValidity" type="number" min="1" max="60" value="15"></div></div>
+              <label for="comFulfillmentMode">Como o cliente pretende receber os produtos?</label><select id="comFulfillmentMode" aria-describedby="comFulfillmentStatus" disabled><option value="">Sem modo informado</option></select>
+              <p id="comFulfillmentStatus" class="business-muted" role="status">Nenhum modo de recebimento foi consultado.</p>
+              <div id="comPickupFields" class="hidden"><label for="comPickupAppointment">Aproveitar um agendamento deste cliente (opcional)</label><select id="comPickupAppointment" aria-describedby="comPickupStatus"><option value="">Sem agendamento associado</option></select><button id="comPickupLoad" class="btn secondary" type="button">Consultar agendamentos do cliente</button><p id="comPickupStatus" class="business-muted" role="status">A retirada pode ser combinada sem agendamento. Produtos não exigem horário nem profissional.</p></div>
               <p class="business-muted">O telefone é necessário para confirmar um pedido. Este formulário não envia mensagens ao cliente.</p><div class="business-actions"><button id="comEstimate" class="btn secondary" type="submit">Consultar valores e disponibilidade</button><button id="comQuoteCreate" class="btn" type="button">Salvar orçamento para revisão</button></div>
             </fieldset></form>
           </div>
@@ -2312,6 +2316,7 @@ $("recordForm").addEventListener("submit",submitRecord);
 
 const businessTextFields={business_name:"bizName",unit_name:"bizUnit",description:"bizDescription",address:"bizAddress",timezone:"bizTimezone",contact_phone:"bizContact",assistant_name:"bizAssistant"};
 const businessCaps={catalog_answers:"bizCapCatalog",appointments:"bizCapAppointments",rescheduling:"bizCapReschedule",human_handoff_request:"bizCapHuman",product_orders:"bizCapProductOrders"};
+const businessFulfillment={pickup:"bizFulfillmentPickup",delivery:"bizFulfillmentDelivery"};
 const businessObjectives={answer_questions:"bizObjQuestions",help_choose:"bizObjChoose",offer_relevant_complements:"bizObjComplements",receive_appointment_requests:"bizObjBooking",request_human_help:"bizObjHuman"};
 const businessStyles={warm:"Acolhedor e próximo",professional:"Elegante e profissional",relaxed:"Descontraído",direct:"Direto e cordial"};
 const businessRepeatConfig={hours:{box:"businessHours",max:21,fields:[["weekday","Dia","day"],["opens","Abre às","time"],["closes","Fecha às","time"]]},
@@ -2325,7 +2330,7 @@ function resetBusinessState(){
  ++businessEpoch;++businessExampleSequence;++businessReviewSequence;businessSnapshot=null;businessBase=null;businessHistory=[];businessLoadedTenant="";businessDirty=false;businessBusy=false;businessStale=false;businessReviewed=null;businessExamplesPending=false;
  for(const id of Object.values(businessTextFields))$(id).value="";
  $("bizCategories").value="";$("bizAvoid").value="";
- for(const id of [...Object.values(businessCaps),...Object.values(businessObjectives)])$(id).checked=false;
+ for(const id of [...Object.values(businessCaps),...Object.values(businessObjectives),...Object.values(businessFulfillment)])$(id).checked=false;
  for(const [key,config] of Object.entries(businessRepeatConfig)){businessRepeaters[key]=[];$(config.box).replaceChildren()}
  $("businessFields").disabled=true;$("businessVersionReview").replaceChildren();$("businessVersionReview").classList.add("hidden");
  $("businessVersion").replaceChildren(new Option("Nenhuma versão carregada",""));
@@ -2345,6 +2350,7 @@ function updateBusinessControls(){
  $("businessTestDraft").disabled=!businessSnapshot?.runtime_connected||!businessSnapshot?.draft||businessDirty||businessBusy;
  $("businessExamples").disabled=!businessSnapshot?.runtime_connected||businessBusy||businessExamplesPending;
  for(const [key,id] of Object.entries(businessCaps))$(id).disabled=!businessSnapshot?.supported_capabilities?.includes(key);
+ for(const [key,id] of Object.entries(businessFulfillment))$(id).disabled=!businessSnapshot?.supported_fulfillment_modes?.includes(key);
 }
 function businessChanged(){
  if(!businessSnapshot||!businessCan("can_edit_draft"))return;
@@ -2376,6 +2382,7 @@ function collectBusinessProfile(){
  for(const [field,id] of Object.entries(businessTextFields))profile[field]=$(id).value.trim()||null;
  profile.categories=$("bizCategories").value.split(",").map(x=>x.trim()).filter(Boolean);
  profile.capabilities=Object.entries(businessCaps).filter(([,id])=>$(id).checked).map(([key])=>key);
+ if(Array.isArray(businessSnapshot?.supported_fulfillment_modes))profile.fulfillment={...profile.fulfillment,enabled_modes:Object.entries(businessFulfillment).filter(([key,id])=>businessSnapshot.supported_fulfillment_modes.includes(key)&&$(id).checked).map(([key])=>key)};
  profile.objectives=Object.entries(businessObjectives).filter(([,id])=>$(id).checked).map(([key])=>key);
  profile.style_rules={...profile.style_rules,style:$("bizStyle").value,emoji:$("bizEmoji").value,length:$("bizLength").value,
    formality:$("bizFormality").value,commercial_intensity:$("bizCommercial").value,avoid_phrases:$("bizAvoid").value.split(/\n/).map(x=>x.trim()).filter(Boolean)};
@@ -2425,6 +2432,7 @@ function fillBusinessProfile(data,history){
  for(const [field,id,fallback] of [["style","bizStyle","warm"],["emoji","bizEmoji","none"],["length","bizLength","balanced"],["formality","bizFormality","neutral"],["commercial_intensity","bizCommercial","none"]])$(id).value=style[field]||fallback;
  $("bizAvoid").value=(style.avoid_phrases||[]).join("\n");
  for(const [key,id] of Object.entries(businessCaps))$(id).checked=(businessBase.capabilities||[]).includes(key);
+ for(const [key,id] of Object.entries(businessFulfillment))$(id).checked=(businessBase.fulfillment?.enabled_modes||[]).includes(key);
  for(const [key,id] of Object.entries(businessObjectives))$(id).checked=(businessBase.objectives||[]).includes(key);
  for(const [key,config] of Object.entries(businessRepeatConfig)){
    businessRepeaters[key]=[];$(config.box).replaceChildren();for(const value of businessBase[key]||[])addBusinessRow(key,key==="differentiators"?{text:value}:value,false);
@@ -2441,6 +2449,7 @@ function fillBusinessProfile(data,history){
  $("businessVersion").replaceChildren(new Option("Escolha uma versão para revisar",""));
  for(const version of history)$("businessVersion").add(new Option("Versão "+version.revision+(version.id===data.published?.id?" · publicada agora":version.published_before?" · já publicada":" · rascunho"),version.id));
  businessDirty=false;businessStale=false;businessReviewed=null;renderBusinessStyleExamples();updateBusinessControls();
+ if(commerceTenant===businessLoadedTenant&&commerceState?.fulfillment?.enabled===true&&(commerceState.fulfillment.profile_version_id!==(data.published?.id||null)||commerceState.fulfillment.profile_revision!==(data.published?.revision||0)))commerceInvalidateFulfillment();
 }
 async function loadBusinessProfile(){
  const tenant=$("businessTenant").value;resetBusinessState();const epoch=businessEpoch;
@@ -2510,6 +2519,7 @@ async function reviewBusinessVersion(){
    businessReviewed=version;
    const p=version.profile,lines=["Versão "+version.revision,"Empresa: "+(p.business_name||"não informado"),"Unidade: "+(p.unit_name||"não informada"),"Assistente: "+(p.assistant_name||"não informada"),"Descrição: "+(p.description||"não informada"),"Endereço: "+(p.address||"não informado"),"Contato: "+(p.contact_phone||"não informado"),"Fuso: "+(p.timezone||"não informado"),"Áreas: "+(p.categories||[]).join(", "),"Estilo: "+(businessStyles[p.style_rules?.style]||"padrão")];
    lines.push("Preferências: emojis "+p.style_rules?.emoji+", tamanho "+p.style_rules?.length+", formalidade "+p.style_rules?.formality+", sugestões "+p.style_rules?.commercial_intensity,"Expressões evitadas: "+(p.style_rules?.avoid_phrases||[]).join(", "),"Atividades: "+(p.capabilities||[]).join(", "),"Objetivos: "+(p.objectives||[]).join(", "));
+   lines.push("Recebimento de produtos: "+((p.fulfillment?.enabled_modes||[]).map(mode=>({pickup:"retirada",delivery:"solicitação de entrega para análise da equipe"}[mode]||"modo não reconhecido")).join(", ")||"nenhum modo habilitado")+". Entrega não define frete, prazo ou cobrança.");
    for(const hour of p.hours||[])lines.push("Horário: dia "+hour.weekday+", "+hour.opens+"–"+hour.closes);
    for(const faq of p.faqs||[])lines.push("Pergunta: "+faq.question+"\nResposta: "+faq.answer);
    for(const policy of p.policies||[])lines.push("Política: "+policy.topic+" — "+policy.description);
@@ -2551,6 +2561,7 @@ let commerceEpoch=0,commerceListSequence=0,commerceOperationSequence=0,commerceP
     commerceBusy=false,commerceStale=false,commerceActiveRequest=null,commerceProductDirty=false,commerceVariantDirty=false,commerceStockDirty=false,
     commerceFaqRows=[],commerceAttributeRows=[],commerceBasket=[],commerceEstimate=null,commerceQuote=null,commerceOrder=null,
     commerceToken=null,commerceOrderKey=null,commerceExpiryTimer=null,commerceComplements=[],commerceComplementDirty=false,commerceComplementSelected="";
+let commercePickupSequence=0,commercePickupBusy=false,commercePickupCandidates=[],commercePickupScope=null;
 const commerceUuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 function commerceUrl(suffix,tenant=commerceTenant){return "/api/v1/tenants/"+encodeURIComponent(tenant)+"/commerce"+suffix}
 function commerceContext(){return {epoch:commerceEpoch,tenant:commerceTenant}}
@@ -2566,9 +2577,9 @@ function commerceLocalDate(value){
  const pad=n=>String(n).padStart(2,"0");return date.getFullYear()+"-"+pad(date.getMonth()+1)+"-"+pad(date.getDate())+"T"+pad(date.getHours())+":"+pad(date.getMinutes());
 }
 function commerceFindVariant(id){for(const product of commerceProducts){const variant=product.variants?.find(v=>v.id===id);if(variant)return {product,variant}}return null}
-function commerceHasCurrentToken(){return !!commerceQuote&&commerceToken?.quoteId===commerceQuote.id&&typeof commerceToken.value==="string"}
+function commerceHasCurrentToken(){return !!commerceQuote&&commerceToken?.quoteId===commerceQuote.id&&typeof commerceToken.value==="string"&&commerceToken.scope===commercePlanScope()}
 function commerceQuoteFresh(){const expires=Date.parse(commerceQuote?.expires_at);return Number.isFinite(expires)&&expires>Date.now()}
-function commerceConfirmationReady(){return commerceCan("can_create_orders")&&!commerceBusy&&!commerceDirty()&&commerceOrder?.status==="draft"&&commerceOrder.quote_id===commerceQuote?.id&&commerceHasCurrentToken()&&commerceQuoteFresh()&&commerceQuote.confirmation_requirements_met===true&&!!commerceQuote.contact_e164}
+function commerceConfirmationReady(){return commerceCan("can_create_orders")&&!commerceBusy&&!commerceDirty()&&commerceOrder?.status==="draft"&&commerceOrder.quote_id===commerceQuote?.id&&commerceHasCurrentToken()&&commerceQuoteFresh()&&commerceQuote.confirmation_requirements_met===true&&commerceQuote.fulfillment_mode!=="delivery"&&!!commerceQuote.contact_e164}
 function updateCommerceControls(){
  const ready=commerceReady(),edit=commerceCan("can_edit_catalog"),orders=commerceCan("can_create_orders"),blocked=commerceBusy||commerceStale;
  $("comProductFields").disabled=!edit||commerceBusy||commerceVariantDirty||commerceStockDirty||commerceComplementDirty;$("comVariantFields").disabled=!edit||!commerceProduct||commerceBusy||commerceProductDirty||commerceStockDirty||commerceComplementDirty;$("comStockFields").disabled=!edit||!commerceVariant||commerceBusy||commerceProductDirty||commerceVariantDirty||commerceComplementDirty;
@@ -2577,11 +2588,59 @@ function updateCommerceControls(){
  $("comProductNew").disabled=!edit||commerceBusy;$("comVariantNew").disabled=!edit||!commerceProduct||commerceBusy||commerceProductDirty;
  $("comPlanFields").disabled=!ready||blocked||commerceDirty();$("comQuoteCreate").disabled=!orders||blocked||commerceDirty()||!commerceBasket.length;
  $("comEstimate").disabled=!ready||blocked||commerceDirty()||!commerceBasket.length;
- $("comOrderCreate").disabled=!orders||blocked||commerceDirty()||!commerceQuote||!commerceHasCurrentToken()||!commerceQuoteFresh()||!!commerceOrder;
+ $("comOrderCreate").disabled=!orders||blocked||commerceDirty()||!commerceQuote||!commerceHasCurrentToken()||!commerceQuoteFresh()||!!commerceOrder||commerceQuote.fulfillment_mode==="delivery";
  const confirmable=commerceConfirmationReady();$("comAccept").disabled=!confirmable;$("comOrderConfirm").disabled=!confirmable||!$("comAccept").checked;
  $("comReadQuote").disabled=!ready||commerceBusy;$("comReadOrder").disabled=!ready||commerceBusy;$("comReadOrderByQuote").disabled=!ready||commerceBusy;
  const numeric=["fixed","from"].includes($("comPriceKind").value);$("comPrice").disabled=!numeric;$("comPrice").required=numeric;
  const tracked=$("comStockMode").value==="tracked";for(const id of ["comStockQuantity","comStockSource","comStockObserved","comStockUntil"]){$(id).disabled=!tracked;$(id).required=tracked;}
+ const modes=commerceFulfillmentModes(),mode=$("comFulfillmentMode").value,pickup=mode==="pickup"&&modes.includes(mode);
+ $("comFulfillmentMode").disabled=!ready||blocked||!modes.length;$("comPickupFields").classList.toggle("hidden",!pickup);
+ $("comPickupAppointment").disabled=!pickup||blocked||commercePickupBusy||!commercePickupCandidates.length;
+ $("comPickupLoad").disabled=!pickup||!orders||blocked||commercePickupBusy||!/^\+[1-9]\d{7,14}$/.test($("comContact").value.trim());
+ $("comFulfillmentStatus").textContent=!modes.length?"Recebimento de produtos não habilitado no perfil publicado e no servidor.":mode==="delivery"?"Solicitação de entrega para análise da equipe. Frete e prazo não estão configurados; este resumo não confirma entrega, não reserva estoque e não cobra.":mode==="pickup"?"Retirada no estabelecimento. Agendamento é opcional e precisa pertencer a este cliente. Cancelar um pedido não cancela o agendamento, nem o contrário.":"Escolha somente o modo combinado com o cliente. Nenhum modo é selecionado automaticamente.";
+}
+function commerceFulfillmentModes(){const f=commerceState?.fulfillment;return f?.enabled===true?(f.enabled_modes||[]).filter(mode=>["pickup","delivery"].includes(mode)&&f.supported_modes?.includes(mode)):[]}
+function commerceFulfillmentKey(f=commerceState?.fulfillment){return JSON.stringify([f?.enabled===true,f?.profile_version_id||null,f?.profile_revision||0,[...(f?.enabled_modes||[])].sort(),[...(f?.supported_modes||[])].sort()])}
+function commercePlanScope(){return JSON.stringify([$("comContact").value.trim(),$("comFulfillmentMode").value,$("comPickupAppointment").value,commerceFulfillmentKey()])}
+function commerceResetPickup(notice="A retirada pode ser combinada sem agendamento. Produtos não exigem horário nem profissional."){
+ ++commercePickupSequence;commercePickupBusy=false;commercePickupCandidates=[];commercePickupScope=null;$("comPickupAppointment").replaceChildren(new Option("Sem agendamento associado",""));$("comPickupStatus").textContent=notice;
+}
+function commercePopulateFulfillment(){
+ $("comFulfillmentMode").replaceChildren(new Option("Sem modo informado",""));for(const mode of commerceFulfillmentModes())$("comFulfillmentMode").add(new Option(mode==="pickup"?"Retirada no estabelecimento":"Solicitação de entrega — análise da equipe",mode));commerceResetPickup();
+}
+function commerceInvalidateFulfillment(){
+ commerceStale=true;$("comFulfillmentMode").value="";commerceResetPickup();commerceClearProposal("O perfil publicado ou as opções de recebimento mudaram. Atualize o catálogo e revise uma nova proposta.");$("comFeedback").textContent="Atualize o catálogo antes de continuar. Nenhuma nova operação será repetida automaticamente.";
+}
+function commerceAppointmentLabel(item){
+ let date="horário não informado";if(item.start_at&&Number.isFinite(Date.parse(item.start_at)))try{date=new Intl.DateTimeFormat("pt-BR",{dateStyle:"short",timeStyle:"short",timeZone:item.timezone||commerceState?.fulfillment?.timezone||"UTC"}).format(new Date(item.start_at))+" ("+(item.timezone||commerceState?.fulfillment?.timezone||"UTC")+")"}catch{date="fuso não reconhecido; horário a revisar"}
+ return [item.protocol||"Sem protocolo",date,item.professional_name||item.professional,(item.services||[]).join(", ")].filter(Boolean).join(" · ");
+}
+async function commerceLoadPickup(){
+ const phone=$("comContact").value.trim();if(!commerceCan("can_create_orders")||commerceBusy||commercePickupBusy||$("comFulfillmentMode").value!=="pickup"||!commerceFulfillmentModes().includes("pickup")||!/^\+[1-9]\d{7,14}$/.test(phone))return;
+ commerceResetPickup("Consultando agendamentos confirmados e futuros deste cliente...");commerceClearProposal("Revise o recebimento após consultar os agendamentos.");const context=commerceContext(),sequence=commercePickupSequence,key=commerceFulfillmentKey();commercePickupBusy=true;updateCommerceControls();
+ const current=()=>commerceCurrent(context)&&sequence===commercePickupSequence&&phone===$("comContact").value.trim()&&$("comFulfillmentMode").value==="pickup"&&key===commerceFulfillmentKey();
+ try{
+   const result=await api(commerceUrl("/pickup-appointments?"+new URLSearchParams({contact_e164:phone})));if(!current())return;
+   if(result.profile_version_id!==commerceState.fulfillment.profile_version_id||result.profile_revision!==commerceState.fulfillment.profile_revision){commerceInvalidateFulfillment();return;}
+   commercePickupCandidates=(result.items||[]).filter(item=>commerceUuid.test(item.id)).slice(0,15);commercePickupScope={phone,key};
+   for(const item of commercePickupCandidates)$("comPickupAppointment").add(new Option(commerceAppointmentLabel(item),item.id));
+   $("comPickupStatus").textContent=commercePickupCandidates.length?"Selecione um agendamento somente se o cliente quiser aproveitar essa visita. O vínculo será revalidado ao confirmar.":"Nenhum agendamento elegível encontrado. A retirada continua possível sem agendamento associado.";
+ }catch(error){if(current())$("comPickupStatus").textContent="Não foi possível consultar os agendamentos. Nenhum vínculo foi escolhido. "+error.message}
+ finally{if(current()){commercePickupBusy=false;updateCommerceControls()}}
+}
+function commerceFulfillmentPayload(){
+ const mode=$("comFulfillmentMode").value;if(!mode)return null;
+ if(!commerceFulfillmentModes().includes(mode))throw Error("Este modo não está habilitado. Atualize o catálogo.");
+ const id=mode==="pickup"?$("comPickupAppointment").value:"";
+ if(id&&(!commercePickupCandidates.some(item=>item.id===id)||commercePickupScope?.phone!==$("comContact").value.trim()||commercePickupScope?.key!==commerceFulfillmentKey()))throw Error("Consulte novamente os agendamentos deste cliente antes de escolher o vínculo.");
+ return {mode,pickup_appointment_id:id||null};
+}
+async function commerceRecheckFulfillment(current,mode){
+ if(!mode)return current();let status;
+ try{status=await api(commerceUrl("/status"))}catch(error){if(!current())return false;error.status=422;throw error}
+ if(!current())return false;
+ if(status.enabled!==true||commerceFulfillmentKey(status.fulfillment)!==commerceFulfillmentKey()||status.fulfillment?.enabled!==true||!status.fulfillment.enabled_modes?.includes(mode)){commerceInvalidateFulfillment();return false;}
+ return true;
 }
 function commerceClearProposal(notice="Nenhuma consulta calculada."){
  ++commercePlanSequence;clearTimeout(commerceExpiryTimer);commerceExpiryTimer=null;commerceEstimate=null;commerceQuote=null;commerceOrder=null;commerceToken=null;commerceOrderKey=null;$("comAccept").checked=false;
@@ -2589,6 +2648,7 @@ function commerceClearProposal(notice="Nenhuma consulta calculada."){
 }
 function resetCommerceState(){
  ++commerceEpoch;commerceTenant="";commerceState=null;commerceProducts=[];commerceProduct=null;commerceVariant=null;commerceBusy=false;commerceStale=false;commerceActiveRequest=null;
+ commercePopulateFulfillment();
  commerceProductDirty=false;commerceVariantDirty=false;commerceStockDirty=false;commerceComplementDirty=false;commerceComplements=[];commerceBasket=[];commerceFaqRows=[];commerceAttributeRows=[];
  commerceResetComplements();
  for(const id of ["comProductName","comDescription","comSynonyms","comBenefits","comVariantName","comSku","comPrice","comStockQuantity","comStockSource","comStockObserved","comStockUntil","comCustomer","comContact","comLookupQuote","comLookupOrder"])$(id).value="";
@@ -2617,7 +2677,7 @@ async function loadCommerceTenant({preserveLookups=false}={}){
  try{
    const status=await api(commerceUrl("/status"));if(!commerceCurrent(context))return;
    if(status.enabled!==true){$("comStatus").textContent="Catálogo comercial desativado";return;}
-   commerceState=status;$("comAccess").textContent="Seu acesso: "+({owner:"proprietário",editor:"editor",viewer:"somente leitura",admin:"administrador",support:"suporte"}[status.access?.role]||"limitado")+". "+(status.access?.can_edit_catalog?"Você pode editar o catálogo.":"Você pode consultar o catálogo e estimativas.");
+   commerceState=status;commercePopulateFulfillment();$("comAccess").textContent="Seu acesso: "+({owner:"proprietário",editor:"editor",viewer:"somente leitura",admin:"administrador",support:"suporte"}[status.access?.role]||"limitado")+". "+(status.access?.can_edit_catalog?"Você pode editar o catálogo.":"Você pode consultar o catálogo e estimativas.");
    $("comAssistant").textContent=status.assistant_connected?"O atendimento comercial automático está ativado no servidor.":"Catálogo e pedidos disponíveis para operação no painel. O atendimento comercial automático ainda está desativado.";
    const products=await api(commerceUrl("/products"));if(!commerceCurrent(context))return;
    commerceProducts=products;commerceRenderCatalog();
@@ -2723,9 +2783,9 @@ function commerceStockPayload(){
 }
 async function commerceRun(action,operation,{planning=false,mutation=false}={}){
  if(!commerceReady()||commerceBusy)return;
- const context=commerceContext(),request=++commerceOperationSequence,plan=commercePlanSequence;commerceActiveRequest=request;commerceBusy=true;updateCommerceControls();$("comFeedback").textContent=action;
+ const context=commerceContext(),request=++commerceOperationSequence,plan=commercePlanSequence,scope=commercePlanScope();commerceActiveRequest=request;commerceBusy=true;updateCommerceControls();$("comFeedback").textContent=action;
  const current=()=>commerceCurrent(context)&&commerceActiveRequest===request;
- try{await operation(()=>current()&&(!planning||plan===commercePlanSequence),context)}
+ try{await operation(()=>current()&&(!planning||plan===commercePlanSequence&&scope===commercePlanScope()),context)}
  catch(error){if(current()){if(mutation&&error.status!==422){commerceStale=true;$("comStatus").textContent="Revise o estado antes de gravar novamente";$("comAccept").checked=false;}
    $("comFeedback").textContent=error.message+(mutation&&error.status!==422?" Nenhuma nova tentativa será feita automaticamente. Consulte o registro ou atualize o catálogo antes de continuar.":"");}}
  finally{if(current()){commerceActiveRequest=null;commerceBusy=false;updateCommerceControls()}}
@@ -2768,6 +2828,26 @@ function commerceItems(){
  if(!commerceBasket.length)throw Error("Adicione pelo menos um item à proposta.");
  return commerceBasket.map(item=>{const quantity=String(item.quantity);if(!/^\d+$/.test(quantity)||Number(quantity)<1||Number(quantity)>1000)throw Error("Cada item deve ter quantidade inteira de 1 a 1000.");return {variant_id:item.variant_id,quantity:Number(quantity)}});
 }
+function commerceRenderFulfillment(box,value){
+ if(!value.fulfillment_mode){const p=document.createElement("p");p.textContent="Recebimento não informado neste contrato.";box.append(p);return;}
+ const section=document.createElement("section"),title=document.createElement("h3");title.textContent="Recebimento revisado neste resumo";section.append(title);
+ const line=text=>{const p=document.createElement("p");p.textContent=text;section.append(p)},snapshot=value.fulfillment_snapshot,mode=value.fulfillment_mode;
+ if(mode==="delivery")line("Solicitação de entrega para análise da equipe. Frete e prazo não configurados. Este resumo não confirma entrega, não reserva estoque e não realiza cobrança.");
+ else if(mode==="pickup"){
+   line("Retirada no estabelecimento"+(snapshot?.pickup_location?" · local revisado: "+snapshot.pickup_location:" · local a combinar com a equipe")+".");
+   if(snapshot?.pickup_appointment)line("Visita vinculada no momento da revisão: "+commerceAppointmentLabel(snapshot.pickup_appointment)+".");
+   else line("Sem agendamento associado. A compra de produtos não exige horário nem profissional.");
+ }else line("Modo de recebimento não reconhecido; consulte a equipe.");
+ if(value.pickup_appointment_id){
+   const heading=document.createElement("h4");heading.textContent="Situação atual do agendamento";section.append(heading);const current=value.pickup_appointment_current;
+   if(current?.available===true){
+     const state={confirmed:"confirmado",cancelled:"cancelado",completed:"concluído",expired:"expirado",held:"reserva temporária"}[current.status]||"estado a consultar";
+     line((current.protocol?current.protocol+" · ":"")+state+(current.start_at?" · "+commerceAppointmentLabel({...current,timezone:current.timezone||snapshot?.pickup_appointment?.timezone}):"")+(current.future===false?" · horário já iniciado ou passado":"")+".");
+   }else line(current?.available===false?"O vínculo não está disponível para consulta. Revise com a equipe antes de combinar a retirada.":"O estado atual ainda não foi consultado. Consulte o registro salvo para atualizar.");
+   line("O contrato acima preserva o que foi revisado; mudanças na agenda precisam de nova revisão. Cancelamentos de pedido e agendamento são independentes.");
+ }
+ box.append(section);
+}
 function commerceRenderProposal(value){
  const box=$("comQuoteSummary");box.replaceChildren();const heading=document.createElement("strong");heading.textContent=value.kind==="quote"?"Orçamento salvo · "+value.id:"Consulta sem gravação de pedido";box.append(heading);
  for(const item of value.items||[]){const row=document.createElement("p");row.textContent=item.product_name+" / "+item.variant_name+" · quantidade "+item.quantity+" · "+commercePrice(item)+(Number.isSafeInteger(item.total_cents)?" · valor da linha: "+commerceMoney(item.total_cents):"");
@@ -2775,12 +2855,13 @@ function commerceRenderProposal(value){
    const stock=item.stock||{};row.textContent+="\nDisponibilidade na consulta: "+(Number.isSafeInteger(stock.available_quantity)?stock.available_quantity+" unidade(s) informadas":"precisa de confirmação")+". Validade da contagem: "+commerceDate(stock.valid_until)+".";box.append(row);
  }
  const total=document.createElement("p");total.textContent=Number.isSafeInteger(value.total_cents)?"Valor dos itens: "+commerceMoney(value.total_cents):Number.isSafeInteger(value.minimum_total_cents)?"Valor mínimo dos itens: "+commerceMoney(value.minimum_total_cents)+". O total final exige análise.":"Total sob consulta. Nenhum valor final foi definido.";box.append(total);
- const limitations={non_fixed_price:"Há preço a partir de, sob consulta ou personalizado.",unknown_stock:"Há estoque desconhecido.",stale_stock:"Há contagem de estoque vencida ou ainda não válida.",insufficient_stock:"A quantidade disponível é insuficiente."};
+ commerceRenderFulfillment(box,value);
+ const limitations={non_fixed_price:"Há preço a partir de, sob consulta ou personalizado.",unknown_stock:"Há estoque desconhecido.",stale_stock:"Há contagem de estoque vencida ou ainda não válida.",insufficient_stock:"A quantidade disponível é insuficiente.",delivery_requires_team_review:"A entrega exige análise da equipe; frete e prazo não estão configurados."};
  const warning=document.createElement("p");warning.textContent=(value.limitations||[]).map(code=>limitations[code]||"Há informação que exige revisão humana.").join(" ")+(value.confirmation_requirements_met===true?" A disponibilidade será revalidada ao confirmar o pedido.":" A confirmação automática não está disponível para este resumo.");box.append(warning);
  $("comQuoteValidity").textContent=value.expires_at?"Validade do orçamento: "+commerceDate(value.expires_at)+(Date.parse(value.expires_at)<=Date.now()?" · expirado":"")+". Cliente: "+(value.customer_name||"não informado")+" · telefone: "+(value.contact_e164||"não informado")+".":"Valores e disponibilidade retornados pelo servidor nesta consulta.";
 }
 function commerceRenderOrder(){
- const order=commerceOrder;$("comOrderSummary").textContent=!order?"Nenhum pedido selecionado.":"Pedido "+order.id+" · "+({draft:"rascunho, ainda não confirmado",confirmed:"confirmado pelo servidor",cancelled:"cancelado"}[order.status]||"estado não reconhecido")+" · revisão "+order.revision+".\nOrçamento vinculado: "+order.quote_id+".\nPagamento não verificado. Nenhuma cobrança foi realizada por este painel.";
+ const order=commerceOrder,box=$("comOrderSummary");box.replaceChildren();const summary=document.createElement("p");summary.textContent=!order?"Nenhum pedido selecionado.":"Pedido "+order.id+" · "+({draft:"rascunho, ainda não confirmado",confirmed:"confirmado pelo servidor",cancelled:"cancelado"}[order.status]||"estado não reconhecido")+" · revisão "+order.revision+".\nOrçamento vinculado: "+order.quote_id+".\nPagamento não verificado. Nenhuma cobrança foi realizada por este painel.";box.append(summary);if(order)commerceRenderFulfillment(box,order.quote||commerceQuote||{});
 }
 function commerceArmExpiry(){
  clearTimeout(commerceExpiryTimer);const context=commerceContext(),id=commerceQuote?.id,remaining=Date.parse(commerceQuote?.expires_at)-Date.now();
@@ -2789,26 +2870,27 @@ function commerceArmExpiry(){
 }
 async function commerceCalculate(save=false){
  if(!commerceReady()||commerceBusy||commerceStale||commerceDirty()||save&&!commerceCan("can_create_orders"))return;
- let payload;try{payload={items:commerceItems()};if(save){const validity=$("comValidity").value.trim(),contact=$("comContact").value.trim();if(!/^\d+$/.test(validity)||Number(validity)<1||Number(validity)>60||contact&&!/^\+[1-9]\d{7,14}$/.test(contact))throw Error("Informe validade de 1 a 60 minutos e telefone com DDI, ou deixe o telefone vazio apenas para consulta.");payload={...payload,customer_name:$("comCustomer").value.trim()||null,contact_e164:contact||null,validity_minutes:Number(validity)};}}
+ let payload;try{payload={items:commerceItems()};const fulfillment=commerceFulfillmentPayload(),contact=$("comContact").value.trim();if(fulfillment){payload.fulfillment=fulfillment;if(contact&&!/^\+[1-9]\d{7,14}$/.test(contact))throw Error("Informe o telefone do cliente com DDI para consultar o recebimento.");if(contact)payload.contact_e164=contact;}if(save){const validity=$("comValidity").value.trim();if(!/^\d+$/.test(validity)||Number(validity)<1||Number(validity)>60||contact&&!/^\+[1-9]\d{7,14}$/.test(contact))throw Error("Informe validade de 1 a 60 minutos e telefone com DDI, ou deixe o telefone vazio apenas para consulta.");payload={...payload,customer_name:$("comCustomer").value.trim()||null,contact_e164:contact||null,validity_minutes:Number(validity)};}}
  catch(error){$("comFeedback").textContent=error.message;return;}
  return commerceRun(save?"Salvando orçamento para revisão...":"Consultando valores e disponibilidade...",async current=>{
+   if(payload.fulfillment&&!await commerceRecheckFulfillment(current,payload.fulfillment.mode))return;
    const result=await api(commerceUrl(save?"/quotes":"/estimate"),"POST",payload);if(!current())return;
    commerceEstimate=save?null:result;commerceOrder=null;commerceOrderKey=null;$("comAccept").checked=false;
-   if(save){const {confirmation_token,...quote}=result;commerceQuote=quote;commerceToken=typeof confirmation_token==="string"?{quoteId:quote.id,value:confirmation_token}:null;$("comLookupQuote").value=quote.id;commerceArmExpiry();}
+   if(save){const {confirmation_token,...quote}=result;commerceQuote=quote;commerceToken=typeof confirmation_token==="string"?{quoteId:quote.id,value:confirmation_token,scope:commercePlanScope()}:null;$("comLookupQuote").value=quote.id;commerceArmExpiry();}
    else{commerceQuote=null;commerceToken=null;clearTimeout(commerceExpiryTimer);}
    commerceRenderProposal(save?commerceQuote:result);commerceRenderOrder();$("comFeedback").textContent=save?"Orçamento salvo. Revise este resumo antes de criar ou confirmar um pedido.":"Consulta concluída. Nenhum pedido foi criado.";
  },{planning:true,mutation:save});
 }
 async function commerceCreateOrder(){
- if(!commerceCan("can_create_orders")||commerceBusy||commerceDirty()||!commerceQuote||!commerceHasCurrentToken()||!commerceQuoteFresh()||commerceOrder)return;
+ if(!commerceCan("can_create_orders")||commerceBusy||commerceDirty()||!commerceQuote||!commerceHasCurrentToken()||!commerceQuoteFresh()||commerceOrder||commerceQuote.fulfillment_mode==="delivery")return;
  const quote=commerceQuote;commerceOrderKey=commerceOrderKey||crypto.randomUUID();const payload={quote_id:quote.id,idempotency_key:commerceOrderKey};
- return commerceRun("Criando pedido em rascunho...",async current=>{const result=await api(commerceUrl("/orders"),"POST",payload);if(!current())return;if(result.quote_id!==quote.id)throw Error("O pedido retornado não corresponde ao orçamento revisado.");commerceOrder=result;$("comAccept").checked=false;$("comLookupOrder").value=result.id;commerceRenderOrder();$("comFeedback").textContent="Pedido em rascunho confirmado pelo servidor. Revise os itens e marque a confirmação explícita antes de reservar estoque.";},{planning:true,mutation:true});
+ return commerceRun("Criando pedido em rascunho...",async current=>{if(quote.fulfillment_mode&&!await commerceRecheckFulfillment(current,quote.fulfillment_mode))return;const result=await api(commerceUrl("/orders"),"POST",payload);if(!current())return;if(result.quote_id!==quote.id)throw Error("O pedido retornado não corresponde ao orçamento revisado.");commerceOrder=result;$("comAccept").checked=false;$("comLookupOrder").value=result.id;commerceRenderOrder();$("comFeedback").textContent="Pedido em rascunho confirmado pelo servidor. Revise os itens e marque a confirmação explícita antes de reservar estoque.";},{planning:true,mutation:true});
 }
 async function commerceConfirmOrder(){
  if(!commerceConfirmationReady()||!$("comAccept").checked){$("comFeedback").textContent="Revise um orçamento vigente e um pedido em rascunho, com preço e estoque confirmáveis, e marque a confirmação explícita.";return;}
  const quote=commerceQuote,order=commerceOrder,payload={expected_revision:order.revision,confirmation_token:commerceToken.value};
  if(!confirm("Confirmar o pedido "+order.id+" deste resumo por "+commerceMoney(quote.total_cents)+" para "+quote.contact_e164+"? O estoque será reservado. O pagamento continuará não verificado."))return;
- return commerceRun("Confirmando o pedido revisado...",async current=>{const result=await api(commerceUrl("/orders/"+encodeURIComponent(order.id)+"/confirm"),"POST",payload);if(!current())return;if(result.id!==order.id||result.quote_id!==quote.id||result.status!=="confirmed")throw Error("Não foi possível confirmar o estado deste pedido. Consulte o registro antes de continuar.");commerceOrder=result;commerceToken=null;$("comAccept").checked=false;clearTimeout(commerceExpiryTimer);commerceRenderOrder();$("comFeedback").textContent="Pedido confirmado pelo servidor. Pagamento continua não verificado.";},{planning:true,mutation:true});
+ return commerceRun("Confirmando o pedido revisado...",async current=>{if(quote.fulfillment_mode&&!await commerceRecheckFulfillment(current,quote.fulfillment_mode))return;const result=await api(commerceUrl("/orders/"+encodeURIComponent(order.id)+"/confirm"),"POST",payload);if(!current())return;if(result.id!==order.id||result.quote_id!==quote.id||result.status!=="confirmed")throw Error("Não foi possível confirmar o estado deste pedido. Consulte o registro antes de continuar.");commerceOrder=result;commerceToken=null;$("comAccept").checked=false;clearTimeout(commerceExpiryTimer);commerceRenderOrder();$("comFeedback").textContent="Pedido confirmado pelo servidor. Pagamento continua não verificado.";},{planning:true,mutation:true});
 }
 async function commerceRead(kind){
  if(!["quote","order","by-quote"].includes(kind))return;
@@ -2817,7 +2899,7 @@ async function commerceRead(kind){
  return commerceRun("Consultando registro salvo...",async current=>{const result=await api(commerceUrl(path+encodeURIComponent(id)));if(!current())return;
    const quote=kind==="quote"?result:result.quote;if(!quote||kind!=="quote"&&result.quote_id!==quote.id||(kind==="order"?result.id!==id:quote.id!==id))throw Error("O resumo retornado não corresponde ao registro consultado.");
    commerceToken=null;commerceQuote=quote;commerceEstimate=null;commerceOrder=kind==="quote"?null:result;$("comLookupQuote").value=quote.id;if(commerceOrder)$("comLookupOrder").value=commerceOrder.id;$("comAccept").checked=false;commerceOrderKey=null;commerceRenderProposal(quote);commerceRenderOrder();commerceArmExpiry();$("comFeedback").textContent="Registro consultado sem repetir a operação anterior. Pagamento não verificado.";
- });
+ },{planning:true});
 }
 for(const [id,kind] of [["comProductForm","product"],["comVariantForm","variant"],["comStockForm","stock"]]){
  $(id).addEventListener("submit",event=>{event.preventDefault();return commerceSave(kind)});$(id).addEventListener("input",()=>commerceCatalogChanged(kind));$(id).addEventListener("change",()=>commerceCatalogChanged(kind));
@@ -2834,7 +2916,9 @@ $("comComplementReason").addEventListener("input",()=>commerceCatalogChanged("co
 $("comTenant").addEventListener("change",async()=>{if((commerceDirty()||commerceBasket.length)&&!confirm("Trocar de empresa e descartar a edição local? Os registros salvos permanecem no servidor.")){$("comTenant").value=commerceTenant;return;}commercePane(false);await loadCommerceTenant()});
 $("comReload").addEventListener("click",()=>{if((commerceDirty()||commerceBasket.length)&&!confirm("Atualizar o catálogo e descartar a edição local? Registros salvos continuarão disponíveis para consulta."))return;return loadCommerceTenant({preserveLookups:true})});
 $("comCatalogTab").addEventListener("click",()=>commercePane(false));$("comOrdersTab").addEventListener("click",()=>commercePane(true));$("comBasketAdd").addEventListener("click",commerceAddBasket);
-$("comPlanForm").addEventListener("submit",event=>{event.preventDefault();return commerceCalculate()});for(const id of ["comCustomer","comContact","comValidity"])$(id).addEventListener("input",commercePlanningChanged);
+$("comPlanForm").addEventListener("submit",event=>{event.preventDefault();return commerceCalculate()});for(const id of ["comCustomer","comValidity"])$(id).addEventListener("input",commercePlanningChanged);
+$("comContact").addEventListener("input",()=>{commerceResetPickup();commercePlanningChanged()});$("comFulfillmentMode").addEventListener("change",()=>{commerceResetPickup();commercePlanningChanged()});
+$("comPickupAppointment").addEventListener("change",commercePlanningChanged);$("comPickupLoad").addEventListener("click",commerceLoadPickup);
 $("comQuoteCreate").addEventListener("click",()=>commerceCalculate(true));$("comOrderCreate").addEventListener("click",commerceCreateOrder);$("comOrderConfirm").addEventListener("click",commerceConfirmOrder);$("comAccept").addEventListener("change",updateCommerceControls);
 $("comReadQuote").addEventListener("click",()=>commerceRead("quote"));$("comReadOrder").addEventListener("click",()=>commerceRead("order"));$("comReadOrderByQuote").addEventListener("click",()=>commerceRead("by-quote"));
 

@@ -5,6 +5,7 @@ answer/step to the external bridge/UI. Preview uses estimates and no write path.
 """
 from copy import deepcopy
 from dataclasses import replace
+import hashlib
 import os
 import re
 from uuid import UUID
@@ -19,6 +20,7 @@ from app.qr_presentation import (render_commerce_order, render_commerce_summary,
     ApprovedSuggestion, render_approved_suggestion)
 from app.qr_presentation import escape_label, fits_message
 from app.qr_commerce_information import catalog_answer, existence_query
+from app import qr_commerce_fulfillment as receiving
 
 
 def enabled():
@@ -40,11 +42,15 @@ def bounded(answer):
 
 
 def summary(estimate, preferences=None):
-    return bounded(render_commerce_summary(estimate, preferences))
+    details = receiving.render_receiving(estimate)
+    return bounded(render_commerce_summary(estimate, preferences) + ("\n\n" + details if details else ""))
 
 
 def order_summary(estimate, preferences=None, *, kind="proposal", order_id=None):
     answer = render_commerce_order(estimate, preferences, state=kind, order_id=order_id)
+    details = receiving.render_receiving(estimate)
+    if details:
+        answer += "\n\n" + details
     if kind == "proposal":
         answer += "\n\n_Resumo válido por 15 minutos._"
     return bounded(answer)
@@ -76,8 +82,18 @@ def fresh_state(scope, state):
     return deepcopy(state)
 
 
-async def prepare(scope, items, state, *, kind, preview, customer_name, preferences=None, prefix=""):
-    facts = await store.estimate(scope, items)
+async def prepare(scope, items, state, *, kind, preview, customer_name, preferences=None, prefix="", body=""):
+    fulfillment = None
+    if receiving.enabled():
+        state["cart"] = items
+        state["requested_kind"] = kind
+        options = await store.fulfillment_options(scope)
+        fulfillment, prompt = await receiving.select(scope, body, state, options, store)
+        if prompt:
+            facts = await store.estimate(scope, items)
+            return finish(prefix + summary(facts, preferences) + "\n\n" + prompt,
+                "commerce_fulfillment" if options.get("enabled") else "commerce_review_required", state, scope)
+    facts = await store.estimate(scope, items, **({"fulfillment": fulfillment} if fulfillment else {}))
     state["cart"] = items
     state.pop("pending", None)
     validate = lambda value: preflight(value, preferences, str(scope.identity("order")), prefix=prefix)
@@ -85,7 +101,8 @@ async def prepare(scope, items, state, *, kind, preview, customer_name, preferen
     if preview:
         state["preview_pending"] = kind == "order"
         return finish(order_summary(facts, preferences, kind="preview"), "commerce_preview", state, scope)
-    quote = await store.create_quote(scope, items, customer_name=customer_name, validate_summary=validate)
+    quote = await store.create_quote(scope, items, customer_name=customer_name, validate_summary=validate,
+        **({"fulfillment": fulfillment} if fulfillment else {}))
     state["last_quote_id"] = str(quote["id"])
     state["requested_kind"] = kind
     if kind == "quote":
@@ -110,7 +127,8 @@ async def probe(tenant, phone, body, *, message_id, state=None):
     scope = store.CustomerScope(tenant, phone, message_id)
     current = fresh_state(scope, state)
     plan = interpret(body, await store.active_catalog(scope), current.get("cart", []), current.get("choices", {}))
-    return plan.relevant or bool(current.get("kind")=="commerce" and (
+    return plan.relevant or bool(receiving.enabled() and receiving.receiving_reference(body, current) and
+        (current.get("cart") or receiving.interpret_receiving(body).query)) or bool(current.get("kind")=="commerce" and (
         plan.intent in {"confirm", "cancel", "status", "adjust", "decline"} or
         re.search(r"\b(?:nao quero|sem|dispenso)\b.*\b(?:complementos?|adicionais?|extras?)\b",norm(body))))
 
@@ -147,10 +165,24 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
         return None
     scope = store.CustomerScope(tenant, phone, message_id)
     state = fresh_state(scope, state)
+    message_digest = hashlib.sha256(body.encode()).hexdigest() if receiving.enabled() else None
     if state.get("last_message_id") == message_id:
+        if message_digest and state.get("last_input_digest") not in {None, message_digest}:
+            raise HTTPException(409, "Esta mensagem já apresentou outro contrato; envie a alteração em uma nova mensagem")
         return {"answer": state["last_answer"], "step": state["last_step"], "state": state}
+    if message_digest:
+        state["last_input_digest"] = message_digest
     catalog = await store.active_catalog(scope)
     plan = interpret(body, catalog, state.get("cart", []), state.get("choices", {}))
+    receiving_turn = receiving.enabled() and receiving.receiving_reference(body, state)
+    receiving_intent = receiving.interpret_receiving(body)
+    if receiving_turn and receiving_intent.query:
+        plan = replace(plan, relevant=True, intent="faq")
+    if receiving_turn and not receiving_intent.query and plan.intent not in {"cancel", "status"} and (state.get("cart") or plan.items):
+        if (not receiving_intent.relevant and not plan.items and receiving.target_reference(body)
+                and (state.get("fulfillment") or {}).get("pickup_appointment_id")):
+            state["fulfillment_waiting_for"] = "appointment"
+        plan = replace(plan, intent="adjust" if state.get("cart") else plan.intent, relevant=True, correction=True)
     decision = contextual_response(body, awaiting_confirmation=bool(state.get("pending")), semantic_kind=semantic_kind,
         confirmation_action="cancel" if state.get("pending", {}).get("action") == "cancel" else "order")
     pending = state.get("pending", {})
@@ -159,7 +191,7 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
         decision = await interpret_contextual_response(message=body,awaiting_confirmation=True,
             confirmation_action="cancel" if pending.get("action") == "cancel" else "order",
             key=os.getenv("GROQ_API_KEY", ""),model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"))
-    if decision.kind == "affirm":
+    if decision.kind == "affirm" and not receiving_turn:
         plan = replace(plan, intent="confirm")
     if plan.intent == "confirm" and "cancel" in norm(body) and state.get("pending", {}).get("action") != "cancel":
         plan = replace(plan, intent="cancel")
@@ -180,9 +212,9 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
         return None
     exact_faqs = [faq["answer"] for p in catalog for faq in p.get("faqs", [])
                   if norm(faq["question"]).strip(" ?!.") == norm(body).strip(" ?!.")]
-    if len(set(exact_faqs)) == 1:
+    if len(set(exact_faqs)) == 1 and not receiving_turn:
         return finish(exact_faqs[0], "commerce_information", state, scope)
-    if existence_query(body):
+    if existence_query(body) and not receiving_turn:
         return finish(catalog_answer(body, catalog) or
             "Não consegui identificar uma resposta completa no catálogo ativo. Qual produto ou variante você quer consultar?",
             "commerce_information", state, scope)
@@ -208,6 +240,8 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
         state.pop("pending", None)
         return finish("Informe uma quantidade inteira de 1 a 1000 por variante.", "commerce_quantity", state, scope)
     try:
+        if receiving_turn and receiving_intent.query:
+            return finish(receiving.options_answer(await store.fulfillment_options(scope)), "commerce_information", state, scope)
         if plan.intent == "confirm":
             pending = state.get("pending")
             if preview:
@@ -215,6 +249,13 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
                 return finish("Simulação concluída. Nenhum pedido, pagamento ou estoque foi alterado.", "commerce_preview_complete", state, scope)
             if not allow_orders or not pending or decision.kind != "affirm":
                 return finish("Não há um resumo de pedido aguardando confirmação. Solicite o pedido para conferir os itens primeiro.", "commerce_no_confirmation", state, scope)
+            if receiving.enabled() and pending["action"] != "cancel":
+                options = await store.fulfillment_options(scope)
+                if (options.get("enabled") is not True or state.get("fulfillment_context") != receiving.context_revision(options)):
+                    receiving.clear_selection(state)
+                    state["fulfillment_context"] = receiving.context_revision(options)
+                    return finish("As opções de recebimento precisam de uma nova revisão.\n\n" + receiving.mode_question(options),
+                        "commerce_new_confirmation_required", state, scope)
             if pending["action"] == "cancel" and norm(body).strip(" .!") in {"confirmo o pedido", "confirmo esse pedido", "pode confirmar meu pedido"}:
                 state.pop("pending", None)
                 return finish("Você deseja manter o pedido ou solicitar o cancelamento? Nenhuma alteração foi feita.", "commerce_clarify_action", state, scope)
@@ -249,7 +290,9 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
             order = await store.get_order(scope, UUID(state["last_order_id"]))
             if plan.intent == "status":
                 labels = {"draft": "aguardando confirmação", "confirmed": "confirmado", "cancelled": "cancelado"}
-                return finish("Seu pedido está " + labels[order["status"]] + ". Pagamento não verificado.", "commerce_status", state, scope)
+                details = receiving.render_receiving(order["quote"])
+                return finish("Seu pedido está " + labels[order["status"]] + ". Pagamento não verificado." +
+                    ("\n\n" + details if details else ""), "commerce_status", state, scope)
             if not allow_orders:
                 return finish("O cancelamento precisa ser solicitado à equipe deste estabelecimento.", "commerce_review_required", state, scope)
             if order["status"] == "cancelled":
@@ -313,7 +356,7 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
             if not allow_orders:
                 return finish(summary(await store.estimate(scope, items), preferences) + "\nPara registrar um orçamento ou pedido, fale com a equipe.", "commerce_information", state, scope)
             kind = state.get("requested_kind", "order") if plan.intent == "adjust" else plan.intent
-            return await prepare(scope, items, state, kind=kind, preview=preview, customer_name=customer_name, preferences=preferences)
+            return await prepare(scope, items, state, kind=kind, preview=preview, customer_name=customer_name, preferences=preferences, body=body)
     except SummaryTooLong:
         state.pop("pending", None)
         return finish(TOO_LONG, "commerce_split_review", state, scope)
@@ -324,7 +367,7 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
         state.pop("pending", None)
         if error.status_code == 404:
             return finish("Não encontrei esse pedido ou orçamento para o contato deste atendimento.", "commerce_not_found", state, scope)
-        if error.status_code in {403, 409, 422, 503}:
+        if error.status_code in {403, 409, 422, 423, 503}:
             return finish("Não confirmei nenhuma nova operação. Os itens ou a disponibilidade precisam de revisão; solicite um novo resumo ou fale com a equipe.", "commerce_review_required", state, scope)
         raise
     return None

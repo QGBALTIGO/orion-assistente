@@ -75,6 +75,7 @@ async def get_profile(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     return jsonable_encoder({**result, "draft_template": BusinessProfile().model_dump(mode="json"),
                              "runtime_connected": True,
                              "supported_capabilities": SUPPORTED_CAPABILITIES,
+                             "supported_fulfillment_modes": ["pickup", "delivery"],
                              "changes_booking_settings": False, "access": {
                                  "role": access.role,
                                  "can_edit_draft": access.role in {"owner", "editor", "admin", "support"},

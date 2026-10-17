@@ -266,6 +266,10 @@ _TEXT_ARRAY_CAST = re.compile(r"\(ARRAY\[(" + _VARCHAR_LITERAL + r"(?:, " + _VAR
 _DOLLAR_QUOTE = re.compile(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$")
 _BUFFER_CHECK_SOURCE = "CHECK ((((prep_min >= 0) AND (prep_min <= 240)) AND ((cleanup_min >= 0) AND (cleanup_min <= 240))))"
 _BUFFER_CHECK_RESTORED = "CHECK (((prep_min >= 0) AND (prep_min <= 240) AND ((cleanup_min >= 0) AND (cleanup_min <= 240))))"
+# Exact PG16 source/restore pair observed in the full 0011 synthetic restore.
+# Applied only to commercial_quote_items.constraints, never arbitrary expressions.
+_QUOTE_ITEM_CHECK_SOURCE = "CHECK ((((quantity >= 1) AND (quantity <= 1000)) AND (item_order >= 0) AND (product_revision > 0) AND (variant_revision > 0) AND (inventory_revision > 0) AND (jsonb_typeof(snapshot) = 'object'::text)))"
+_QUOTE_ITEM_CHECK_RESTORED = "CHECK (((quantity >= 1) AND (quantity <= 1000) AND (item_order >= 0) AND (product_revision > 0) AND (variant_revision > 0) AND (inventory_revision > 0) AND (jsonb_typeof(snapshot) = 'object'::text)))"
 
 
 def canonical_expression(value):
@@ -322,7 +326,7 @@ def canonical_expression(value):
 
 
 def canonical_catalog(value):
-    """Apply the two aliases to SQL-expression fields only, never identifiers."""
+    """Apply reviewed SQL aliases only in their approved expression fields."""
     rows = deepcopy(value)
     for row in rows:
         # catalog_structure: name, RLS, FORCE, columns, constraints, indexes, policies.
@@ -332,7 +336,12 @@ def canonical_catalog(value):
                 column[3] = canonical_expression(column[3])
         for section in (4, 5):
             if row[section] is not None:
-                row[section] = [canonical_expression(expression) for expression in row[section]]
+                row[section] = [
+                    _QUOTE_ITEM_CHECK_RESTORED
+                    if row[0] == "commercial_quote_items" and section == 4 and expression == _QUOTE_ITEM_CHECK_SOURCE
+                    else canonical_expression(expression)
+                    for expression in row[section]
+                ]
         # policy: name, permissive, roles, command, qual-expression, check-expression.
         for policy in row[6] or []:
             for section in (4, 5):
@@ -341,7 +350,14 @@ def canonical_catalog(value):
     return rows
 
 
-def owner_preflight(conn, settings):
+def approved_source_contract(source, tables):
+    """Only the two reviewed complete schemas; never a partial-table backup."""
+    require((source == SOURCE and tables == LEGACY_TABLES) or
+            (source == TARGET and tables == LEGACY_TABLES | NEW_TABLES), "unapproved_source_contract")
+
+
+def owner_preflight(conn, settings, *, source=SOURCE, tables=LEGACY_TABLES):
+    approved_source_contract(source, tables)
     set_timeouts(conn)
     row = conn.execute(text("""SELECT current_database() AS name, d.oid, d.datdba,
         r.oid AS role_oid, r.rolsuper, r.rolbypassrls, r.rolcreatedb,
@@ -349,7 +365,7 @@ def owner_preflight(conn, settings):
         FROM pg_database d JOIN pg_roles r ON r.rolname=current_user WHERE d.datname=current_database()""")).mappings().one()
     require(row["name"] == settings.url.database and row["datdba"] == row["role_oid"], "database_owner_required")
     require((row["rolsuper"] or row["rolbypassrls"]) and (row["rolsuper"] or row["rolcreatedb"]), "owner_backup_privileges_required")
-    require(revision(conn) == SOURCE and table_names(conn) == LEGACY_TABLES, "unexpected_source_schema")
+    require(revision(conn) == source and table_names(conn) == tables, "unexpected_source_schema")
     roles = conn.execute(text("SELECT rolname,rolsuper,rolbypassrls FROM pg_roles WHERE rolname IN ('app_runtime','app_support','app_migrator')")).all()
     require(len(roles) == 3 and all(not row.rolsuper and not row.rolbypassrls for row in roles), "unsafe_application_roles")
     extensions = set(conn.execute(text("SELECT extname FROM pg_extension")).scalars())
@@ -377,15 +393,16 @@ def private_write(path, data):
         os.fsync(stream.fileno())
 
 
-def capture_dump(engine, settings, path):
+def capture_dump(engine, settings, path, *, source=SOURCE, tables=LEGACY_TABLES):
+    approved_source_contract(source, tables)
     with engine.connect().execution_options(isolation_level="REPEATABLE READ") as conn:
         with conn.begin():
             set_timeouts(conn)
             conn.exec_driver_sql("SET TRANSACTION READ ONLY")
-            require(revision(conn) == SOURCE and table_names(conn) == LEGACY_TABLES, "source_changed_before_backup")
+            require(revision(conn) == source and table_names(conn) == tables, "source_changed_before_backup")
             snapshot = conn.exec_driver_sql("SELECT pg_export_snapshot()").scalar_one()
-            before = counts(conn)
-            fingerprint = catalog_fingerprint(conn)
+            before = counts(conn, tables)
+            fingerprint = catalog_fingerprint(conn, tables)
             # Reserve the file with private permissions before pg_dump opens it.
             private_write(path, b"")
             run_client("pg_dump", ["--format=custom", "--no-password", "--snapshot=" + snapshot,
@@ -408,7 +425,9 @@ def safe_drop_created(conn, name, created_oid, owner_oid, source_oid):
     conn.exec_driver_sql('DROP DATABASE "' + name + '"')
 
 
-def verify_restore(engine, settings, source_identity, dump_path, expected_counts, fingerprint):
+def verify_restore(engine, settings, source_identity, dump_path, expected_counts, fingerprint,
+                   *, source=SOURCE, tables=LEGACY_TABLES):
+    approved_source_contract(source, tables)
     name = restore_name(settings.run_id)
     require(name != settings.url.database, "restore_source_collision")
     created_oid = None
@@ -426,9 +445,9 @@ def verify_restore(engine, settings, source_identity, dump_path, expected_counts
             try:
                 with restored.begin() as check:
                     set_timeouts(check)
-                    require(revision(check) == SOURCE and table_names(check) == LEGACY_TABLES, "restored_revision_mismatch")
-                    require(counts(check) == expected_counts, "restored_count_mismatch")
-                    require(catalog_fingerprint(check) == fingerprint, "restored_catalog_mismatch")
+                    require(revision(check) == source and table_names(check) == tables, "restored_revision_mismatch")
+                    require(counts(check, tables) == expected_counts, "restored_count_mismatch")
+                    require(catalog_fingerprint(check, tables) == fingerprint, "restored_catalog_mismatch")
             finally:
                 restored.dispose()
         finally:

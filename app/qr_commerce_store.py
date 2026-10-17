@@ -22,6 +22,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import text
 
 from app import commercial_service as commercial
+from app import commercial_fulfillment as fulfillment_service
 from app.commercial_schemas import EstimateRequest, QuoteLineRequest
 from app.database import get_session_factory, tenant_transaction
 from app.qr_intake_revision import check_before_write
@@ -95,10 +96,22 @@ async def active_catalog(scope):
                     for p in products if any(v["product_id"] == p["id"] for v in variants)]
 
 
-async def estimate(scope, items):
-    payload = EstimateRequest(items=items)
+async def estimate(scope, items, *, fulfillment=None):
+    payload = EstimateRequest(items=items, contact_e164=scope.contact, fulfillment=fulfillment)
     async with get_session_factory()() as db:
         return await commercial.estimate(db, scope.tenant, payload)
+
+
+async def fulfillment_options(scope):
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db, scope.tenant):
+            return fulfillment_service.public_options(await fulfillment_service.options(db, scope.tenant))
+
+
+async def pickup_appointments(scope):
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db, scope.tenant):
+            return await fulfillment_service.pickup_appointments(db, scope.tenant, scope.contact)
 
 
 async def stock_information(scope, variant_ids):
@@ -127,8 +140,8 @@ async def approved_complements(scope, product_id):
         return await commercial.approved_complements(db,scope.tenant,UUID(str(product_id)))
 
 
-async def create_quote(scope, items, *, customer_name=None, validate_summary=None):
-    payload = EstimateRequest(items=items)
+async def create_quote(scope, items, *, customer_name=None, validate_summary=None, fulfillment=None):
+    payload = EstimateRequest(items=items, contact_e164=scope.contact, fulfillment=fulfillment)
     quote_id = scope.identity("quote")
     token = confirmation_token(scope, quote_id)
     async with get_session_factory()() as db:
@@ -140,27 +153,36 @@ async def create_quote(scope, items, *, customer_name=None, validate_summary=Non
             if existing:
                 quote = await owned_quote(db, scope, quote_id)
                 previous = [(UUID(item["variant_id"]), item["quantity"]) for item in quote["items"]]
-                if previous != [(item.variant_id, item.quantity) for item in payload.items]:
+                if previous != [(item.variant_id, item.quantity) for item in payload.items] or not fulfillment_service.same_selection(quote, payload.fulfillment):
                     commercial.conflict("Esta mensagem já originou outro orçamento; envie a alteração em uma nova mensagem")
                 current = commercial.calculate(await commercial._load_lines(db, scope.tenant, payload.items), commercial.now_utc())
                 if quote["expires_at"] <= commercial.now_utc() or any(
                     old[key] != new[key] for old, new in zip(quote["items"], current["items"])
                     for key in ("product_revision", "variant_revision", "inventory_revision")):
                     commercial.conflict("O resumo anterior mudou ou expirou; solicite outro em nova mensagem")
-                return {**quote, **current, "confirmation_token": token}
+                contract = await fulfillment_service.validate(db, scope.tenant, quote)
+                return {**quote, **fulfillment_service.apply(current, contract), "confirmation_token": token}
             now = commercial.now_utc()
             calculated = commercial.calculate(await commercial._load_lines(db, scope.tenant, payload.items), now)
+            contract = await fulfillment_service.resolve(db, scope.tenant, scope.contact, payload.fulfillment, lock=True)
+            calculated = fulfillment_service.apply(calculated, contract)
             if validate_summary is not None:
                 validate_summary(calculated)
             expires = now + timedelta(minutes=15)
             await check_before_write()
-            await db.execute(text("""INSERT INTO commercial_quotes
-                (id,tenant_id,contact_e164,customer_name,total_cents,minimum_total_cents,confirmation_digest,expires_at)
-                VALUES (:id,:t,:contact,:name,:total,:minimum,:digest,:expires)"""),
+            inserted = (await db.execute(text("""INSERT INTO commercial_quotes
+                (id,tenant_id,contact_e164,customer_name,total_cents,minimum_total_cents,confirmation_digest,expires_at,
+                    fulfillment_mode,pickup_appointment_id,fulfillment_snapshot)
+                SELECT :id,:t,:contact,:name,:total,:minimum,:digest,:expires,
+                    :fulfillment_mode,:pickup_appointment_id,CAST(:fulfillment_snapshot AS jsonb)
+                WHERE """ + fulfillment_service.WRITE_GUARD + " RETURNING id"),
                 {"id": quote_id, "t": scope.tenant, "contact": scope.contact,
                  "name": customer_name[:120] if customer_name else None,
                  "total": calculated["total_cents"], "minimum": calculated["minimum_total_cents"],
-                 "digest": hashlib.sha256(token.encode()).hexdigest(), "expires": expires})
+                 "digest": hashlib.sha256(token.encode()).hexdigest(), "expires": expires,
+                 **fulfillment_service.insert_params(contract), **fulfillment_service.guard_params(contract, scope.contact)})).scalar_one_or_none()
+            if inserted is None:
+                fulfillment_service.conflict()
             for index, item in enumerate(calculated["items"]):
                 await db.execute(text("""INSERT INTO commercial_quote_items
                     (tenant_id,quote_id,variant_id,product_id,item_order,quantity,product_revision,variant_revision,inventory_revision,snapshot)
@@ -203,9 +225,13 @@ async def create_order(scope, quote_id, *, validate_summary=None):
                 commercial.conflict("Orçamento expirado. Um novo resumo é necessário")
             order_id = scope.identity("order")
             key = "qr:" + str(scope.identity("order-key"))
+            contract = await fulfillment_service.validate(db, scope.tenant, quote)
             await check_before_write()
-            await db.execute(text("INSERT INTO commercial_orders(id,tenant_id,quote_id,idempotency_key) VALUES (:id,:t,:q,:key)"),
-                {"id": order_id, "t": scope.tenant, "q": quote_id, "key": key})
+            inserted = (await db.execute(text("INSERT INTO commercial_orders(id,tenant_id,quote_id,idempotency_key) SELECT :id,:t,:q,:key WHERE " +
+                fulfillment_service.WRITE_GUARD + " RETURNING id"), {"id": order_id, "t": scope.tenant, "q": quote_id, "key": key,
+                **fulfillment_service.guard_params(contract, scope.contact)})).scalar_one_or_none()
+            if inserted is None:
+                fulfillment_service.conflict()
             await commercial.audit(db, scope.tenant, scope, "order", order_id, "customer_draft_requested")
             return await owned_order(db, scope, order_id)
 
@@ -230,23 +256,30 @@ async def confirm_order(scope, order_id, *, revision, token, summary_message_id,
                 return {**order, "quote": quote}
             if order["status"] != "draft" or order["revision"] != revision or quote["expires_at"] <= commercial.now_utc():
                 commercial.conflict("O pedido mudou ou o resumo expirou. Revise um novo resumo")
+            contract = await fulfillment_service.validate(db, scope.tenant, quote, confirming=True)
             requests = [QuoteLineRequest(variant_id=item["variant_id"], quantity=item["quantity"]) for item in quote["items"]]
             lines = await commercial._load_lines(db, scope.tenant, requests, lock=True)
             for old, current in zip(quote["items"], lines):
                 if any(old[key] != current[key] for key in ("product_revision", "variant_revision", "inventory_revision")):
                     commercial.conflict("O preço, catálogo ou estoque mudou. Revise um novo resumo")
             calculated = commercial.calculate(lines, commercial.now_utc())
+            calculated = fulfillment_service.apply(calculated, contract)
             if not calculated["confirmation_requirements_met"] or calculated["total_cents"] != quote["total_cents"]:
                 commercial.conflict("Preço ou estoque exige verificação humana; pedido não confirmado")
             if validate_summary is not None:
                 validate_summary(calculated)
+            await fulfillment_service.fence(db, scope.tenant, scope.contact, contract)
             await check_before_write()
             for item in sorted(lines, key=lambda item: item["variant_id"]):
                 await db.execute(text("""UPDATE commercial_inventory SET reserved_quantity=reserved_quantity+:qty,
                     revision=revision+1,updated_at=now() WHERE tenant_id=:t AND variant_id=:v"""),
                     {"t": scope.tenant, "v": item["variant_id"], "qty": item["quantity"]})
                 await commercial.audit(db, scope.tenant, scope, "stock", item["variant_id"], "customer_reserved", {"order_id": order_id, "quantity": item["quantity"]})
-            await db.execute(text("UPDATE commercial_orders SET status='confirmed',revision=revision+1,updated_at=now() WHERE tenant_id=:t AND id=:id"), {"t": scope.tenant, "id": order_id})
+            changed = (await db.execute(text("UPDATE commercial_orders SET status='confirmed',revision=revision+1,updated_at=now() WHERE tenant_id=:t AND id=:id AND " +
+                fulfillment_service.WRITE_GUARD + " RETURNING id"), {"t": scope.tenant, "id": order_id,
+                **fulfillment_service.guard_params(contract, scope.contact)})).scalar_one_or_none()
+            if changed is None:
+                fulfillment_service.conflict()
             await commercial.audit(db, scope.tenant, scope, "order", order_id, "customer_confirmed", {"summary_message_digest": hashlib.sha256(summary_message_id.encode()).hexdigest(), "message_digest": str(scope.identity("message"))})
             return {**await owned_order(db, scope, order_id), "quote": calculated}
 

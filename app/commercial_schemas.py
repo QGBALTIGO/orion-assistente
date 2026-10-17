@@ -85,8 +85,21 @@ class QuoteLineRequest(ProfileModel):
     quantity: int = Field(ge=1, le=1000)
 
 
+class FulfillmentSelection(ProfileModel):
+    mode: Literal["pickup", "delivery"]
+    pickup_appointment_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def pickup_only(self):
+        if self.mode != "pickup" and self.pickup_appointment_id is not None:
+            raise ValueError("A associação ao agendamento só pode ser usada na retirada")
+        return self
+
+
 class EstimateRequest(ProfileModel):
     items: list[QuoteLineRequest] = Field(min_length=1, max_length=30)
+    contact_e164: str | None = Field(default=None, pattern=r"^\+[1-9][0-9]{7,14}$")
+    fulfillment: FulfillmentSelection | None = None
 
     @model_validator(mode="after")
     def no_duplicate_variants(self):
@@ -97,7 +110,6 @@ class EstimateRequest(ProfileModel):
 
 
 class CreateQuote(EstimateRequest):
-    contact_e164: str | None = Field(default=None, pattern=r"^\+[1-9][0-9]{7,14}$")
     customer_name: str | None = Field(default=None, min_length=1, max_length=120)
     validity_minutes: int = Field(default=15, ge=1, le=60)
 

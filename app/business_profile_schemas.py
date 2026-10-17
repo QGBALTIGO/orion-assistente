@@ -57,6 +57,17 @@ class BusinessPolicy(ProfileModel):
     description: str = Field(min_length=1, max_length=1200)
 
 
+class FulfillmentRules(ProfileModel):
+    enabled_modes: list[Literal["pickup", "delivery"]] = Field(default_factory=list, max_length=2)
+
+    @field_validator("enabled_modes")
+    @classmethod
+    def unique_modes(cls, value):
+        if len(value) != len(set(value)):
+            raise ValueError("Formas de recebimento duplicadas")
+        return value
+
+
 class BusinessProfile(ProfileModel):
     business_name: str | None = Field(default=None, min_length=1, max_length=160)
     unit_name: str | None = Field(default=None, min_length=1, max_length=120)
@@ -75,6 +86,7 @@ class BusinessProfile(ProfileModel):
     capabilities: list[Capability] = Field(default_factory=list, max_length=5)
     style_rules: StyleRules = Field(default_factory=StyleRules)
     autonomy_rules: AutonomyRules = Field(default_factory=AutonomyRules)
+    fulfillment: FulfillmentRules = Field(default_factory=FulfillmentRules)
 
     @field_validator("timezone")
     @classmethod

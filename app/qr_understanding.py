@@ -90,6 +90,12 @@ def _service_mentions(message: str, catalog: list[dict]):
         candidates = {UUID(str(x["id"])) for x in catalog if re.fullmatch(pattern, normalized(x["name"]))}
         if candidates:
             aliases.setdefault(alias, set()).update(candidates)
+    # Here "corte" describes the operation on the beard, not a second service.
+    # An owner's complete name/alias wins; ambiguous or missing beard IDs never
+    # fall back to the separate haircut that happens to share the first word.
+    for alias in _unique([*[term for term in aliases if re.match(r"barba\b", term)], "barba"]):
+        for operation in ("corte de ", "corte da ", "cortar ", "cortar a "):
+            aliases.setdefault(operation + alias, set(aliases.get(alias, ())))
     for alias in sorted(aliases, key=len, reverse=True):
         for match in re.finditer(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", lower):
             if any(a <= match.start() and b >= match.end() for a, b, *_ in spans):
@@ -97,6 +103,37 @@ def _service_mentions(message: str, catalog: list[dict]):
             spans.append((match.start(), match.end(), aliases[alias], _negative(lower[:match.start()])))
     spans.sort(key=lambda x: x[0])
     return spans
+
+
+def _literal_service_subject(message: str, spans: list, professionals: list[dict]) -> bool:
+    """Whether a complete literal subject can correct a model's extra service.
+
+    Unknown semantic descriptions remain for the provider/clarification path.
+    Recognizing date/time/name syntax here grants no availability or consent.
+    """
+    if not spans or any(negative or len(ids) != 1 for _, _, ids, negative in spans):
+        return False
+    text = normalized(message)
+    prefix = text[:spans[0][0]]
+    if not re.fullmatch(r"\s*(?:(?:quanto(?: que)?\s+(?:custa|custam|fica|ficam)|"
+        r"(?:quero|queria|prefiro)(?:\s+(?:fazer|agendar|marcar|reservar))?|"
+        r"gostaria de(?:\s+(?:fazer|agendar|marcar|reservar))?)\s+)?"
+        r"(?:(?:so|apenas|somente)\s+)?(?:(?:o|a|os|as|um|uma)\s+)?", prefix):
+        return False
+    for previous, current in zip(spans, spans[1:]):
+        if not re.fullmatch(r"\s*(?:e|\+|&|,)\s*(?:(?:o|a|um|uma)\s+)?", text[previous[1]:current[0]]):
+            return False
+    suffix = text[spans[-1][1]:]
+    # Only explicit, registered names and already-supported calendar/clock
+    # syntax may follow the literal subject; no free-form clause is discarded.
+    for person in professionals:
+        name = normalized(person["name"])
+        for term in (name, name.split()[0]):
+            suffix = re.sub(r"\bcom\s+(?:[oa]\s+)?" + re.escape(term) + r"\b", "", suffix)
+    suffix = re.sub(r"\b(?:no|na|para|pra|pro)\s+(?=" + _DAY.pattern + ")", "", suffix)
+    suffix = _DAY.sub("", suffix)
+    suffix = _HOUR.sub("", suffix)
+    return bool(re.fullmatch(r"[\s,.!?]*(?:quanto(?: que)?\s+(?:custa|custam|fica|ficam)[\s,.!?]*)?", suffix))
 
 
 def unique_service_reply(message: str, catalog: list[dict], *, context_step: str) -> list[UUID] | None:
@@ -331,6 +368,8 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
         intents = [x for x in intents if x not in {"booking", "confirm"}]
         data.update(service_ids=[], selection_mode="none")
     mentions = _service_mentions(message, catalog)
+    composed_subject = any(re.match(r"(?:corte d[ae]|cortar(?: a)?) barba\b", lower[start:end]) for start, end, *_ in mentions)
+    literal_composition = composed_subject and _literal_service_subject(message, mentions, professionals)
     if mentions and not price and not available and re.search(r"\b(?:quero|queria|gostaria|prefiro|deixa|inclua|tirar|retirar)\b", lower):
         if not set(intents) & {"reschedule", "cancel"}:
             intents.append("booking")
@@ -357,9 +396,14 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
         previous_end = _end
     if local_service_ambiguity:
         ambiguities.append("service")
-    elif replaced:
+    elif replaced or literal_composition:
         ambiguities = [x for x in ambiguities if x != "service"]
     chosen, declined = _unique(chosen), _unique(declined)
+    if composed_subject and proposal and not literal_composition and not replaced and not declined:
+        # A second semantic service may live in an uncovered clause. Ask rather
+        # than either erase it or sum the word "corte" inside "corte de barba".
+        if (set(data["service_ids"]) | set(data["query_service_ids"])) - set(chosen):
+            ambiguities.append("service")
     base = [UUID(str(x)) for x in context.get("service_ids", []) if UUID(str(x)) in valid_services]
     if declined and not chosen:
         if price or available:
@@ -380,10 +424,10 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
         # Local aliases must not discard a semantic match the provider found
         # (e.g. 'dar um tapa no visual' plus an exact 'barba'). Explicit final
         # replacement/negation remains authoritative over the provider.
-        if not (proposal and data["query_service_ids"] and not declined and not replaced):
+        if not (proposal and data["query_service_ids"] and not declined and not replaced and not literal_composition):
             data["query_service_ids"] = chosen
-    elif chosen and (not proposal or not data["service_ids"] or replaced or declined) and (
-            not (price and "booking" in intents and proposal) or replaced or declined):
+    elif chosen and (not proposal or not data["service_ids"] or replaced or declined or literal_composition) and (
+            not (price and "booking" in intents and proposal) or replaced or declined or literal_composition):
         data["service_ids"] = chosen
         if "booking" in intents or "reschedule" in intents:
             data["selection_mode"] = "replace"
