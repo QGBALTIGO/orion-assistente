@@ -8,6 +8,9 @@ def norm(text: str) -> str:
 
 def control_intent(text: str) -> str | None:
     lower = norm(text)
+    if any(s in lower for s in ("quero falar com atendente", "atendente humano",
+                               "pessoa de verdade", "falar com uma pessoa")):
+        return "human"
     if any(s in lower for s in ("remarcar", "trocar meu horario", "mudar meu horario",
                                "adiar meu horario", "reagendar")):
         return "reschedule"
@@ -15,9 +18,6 @@ def control_intent(text: str) -> str | None:
                                "minha reserva", "meu horario marcado",
                                "quando esta meu horario", "historico de agendamentos")):
         return "my_bookings"
-    if any(s in lower for s in ("quero falar com atendente", "atendente humano",
-                               "pessoa de verdade", "falar com uma pessoa")):
-        return "human"
     if any(s in lower for s in ("quero cancelar", "cancelar minha reserva",
                                "desmarcar meu horario")):
         return "cancel_request"

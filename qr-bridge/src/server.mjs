@@ -25,6 +25,7 @@ import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
 import {forwardAssistant} from "./ai-forward.mjs";
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
 import {deliveryPolicy} from "./pilot-send-policy.mjs";
+import {resolvePilotRecipient,makePilotDeviceCache} from "./pilot-recipient.mjs";
 import {transcribeAssistantAudio} from "./ai-audio.mjs";
 import {makeTransportDiagnostics,receiptDiagnosticDetails,usyncDeviceDomainCounts,encryptionTargetDetails,observeSignalRepository} from "./transport-diagnostics.mjs";
 import {backupAuth} from "./auth-backup.mjs";
@@ -56,6 +57,7 @@ try {
 const authBackup=backupAuth({directory:authDir,backupDirectory:'/data/orion-auth-backups',
   secret:KEY,label:'before-transport-diagnostics-v1'});
 console.info('Orion auth backup '+JSON.stringify(authBackup));
+const socketDeviceCaches=new WeakMap();
 let socket=null,generation=0,timer=null,attempts=0,status="starting",
   connectStartedAt=Date.now(),lastQrAt=0,lastDisconnectCode=null,everConnected=false,
   pairingRequestedForGeneration=-1, pairPhone="",saveQueue=Promise.resolve(),
@@ -148,11 +150,12 @@ function stats(){
     connectionNotice:process.env.ORION_NOTIFY_SELF_ON_LINK==="1" ? noticeState(authDir) : "disabled",
     deliveryDiagnostics:{...retryDiagnostics},
     transportDiagnostics:transport.snapshot(),
-    transportVersion:"diagnostics-v3",
+    transportVersion:"verified-lid-pilot-v1",
     buildCommit:/^[a-f0-9]{40}$/.test(process.env.RAILWAY_GIT_COMMIT_SHA||'')?
       process.env.RAILWAY_GIT_COMMIT_SHA:null,
     authBackup,
     transportConfig:{reliable:process.env.QR_RELIABLE_SEND_V2==="1",
+      pilotAddressing:process.env.QR_PILOT_USE_VERIFIED_LID==='1'?'verified_lid':'pn',
       freshDevices:process.env.QR_FORCE_FRESH_DEVICES==="1",
       autoVersion:process.env.QR_WA_VERSION_AUTO!=="0",pilotConfigured:!!pilotNumber(),
       audio:assistantAudioEnabled(),generation},
@@ -448,7 +451,9 @@ async function connect(){
           v.every(x=>Number.isSafeInteger(x)&&x>0))currentVersion=v;
       }catch{}
     }
+    const deviceCache=makePilotDeviceCache(new NodeCache({stdTTL:300,useClones:false}));
     const client=makeWASocket({
+      userDevicesCache:deviceCache,
       auth:{creds:state.creds,keys:makeCacheableSignalKeyStore(state.keys,logger)},
       makeSignalRepository:observeSignalRepository(DEFAULT_CONNECTION_CONFIG.makeSignalRepository,jid=>{
         if(mine===generation)transport.record('signal_encrypt_target',null,encryptionTargetDetails(jid,state.creds.me));
@@ -465,6 +470,7 @@ async function connect(){
       browser:Browsers.windows("Chrome"),
       ...(currentVersion?{version:currentVersion}:{}),
       printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,logger});
+    socketDeviceCaches.set(client,deviceCache);
     socket=client;installListeners(client,mine,saveCreds);
   }catch{
     status="error";lastError="Não foi possível iniciar o serviço do WhatsApp.";
@@ -549,13 +555,20 @@ async function send(phone,text){
   while(sendTimes.length&&now-sendTimes[0]>60000)sendTimes.shift();
   if(sendTimes.length>=5)throw Error("Aguarde um minuto antes de enviar mais mensagens");
   sendTimes.push(now);
-  const jid=target+"@s.whatsapp.net";
   const selectedSocket=socket;
+  const selectedGeneration=generation;
   let result;
   const {reliable,freshDevices}=deliveryPolicy(target);
+  const recipientProof=await resolvePilotRecipient({phone:target,pilotPhone:pilotNumber(process.env),
+    enabled:reliable&&process.env.QR_PILOT_USE_VERIFIED_LID==='1',socket:selectedSocket,deviceCache:socketDeviceCaches.get(selectedSocket),
+    isCurrent:()=>socket===selectedSocket&&generation===selectedGeneration&&status==='connected'});
+  if(socket!==selectedSocket||generation!==selectedGeneration||status!=='connected')
+    throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
+  const {jid,kind}=recipientProof;
   if(reliable){
     result=await sendStoredText({
-      jid,text:text.trim(),store:retryStore,freshDevices,
+      jid,recipientProof,text:text.trim(),store:retryStore,freshDevices,
+      isCurrent:()=>socket===selectedSocket&&generation===selectedGeneration&&status==='connected',
       makeMessage:async (recipient,messageText)=>generateWAMessage(
         recipient,{text:messageText},{
           userJid:selectedSocket.user?.id,logger,
@@ -566,7 +579,7 @@ async function send(phone,text){
         retryDiagnostics.prepared++;
         deliveryReceipts.set(msg.key.id,"pending");
         deliveryStart.set(msg.key.id,Date.now());
-        transport.record('send_prepared',msg.key.id);
+        transport.record('send_prepared',msg.key.id,{kind});
         pushMessage({id:'out:'+msg.key.id,phone:target,body:text.trim(),direction:'out',at:Date.now(),delivery:'pending'});
       }
     });

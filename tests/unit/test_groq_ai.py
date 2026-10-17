@@ -87,3 +87,29 @@ async def test_handoff_intention_does_not_execute_any_tool():
     )
     assert result.intent == "humano"
     assert result.service_ids == []
+
+
+@pytest.mark.asyncio
+async def test_current_context_and_recent_exchanges_are_sent_as_classification_only():
+    cut, beard = uuid4(), uuid4()
+    context = {"etapa": "professional", "data": "2026-11-20",
+               "servicos_selecionados": ["Corte de cabelo"]}
+    history = [{"role": "user", "content": "Quero corte de cabelo"},
+               {"role": "assistant", "content": "Qual profissional prefere? Bruno ou Carlos?"}]
+    def provider(request):
+        payload = json.loads(request.content)
+        assert "tools" not in payload
+        messages = payload["messages"]
+        assert "Uma pergunta de preço" in messages[0]["content"]
+        contextual = next(m for m in messages if m["content"].startswith("CONTEXTO ATUAL"))
+        assert json.loads(contextual["content"].split(": ", 1)[1]) == context
+        assert messages[-3:-1] == history
+        assert messages[-1] == {"role": "user", "content": "Quanto custa cabelo e barba?"}
+        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps({
+            "intent": "perguntar", "service_ids": [str(cut), str(beard)], "requested_when": None
+        })}}]})
+    result = await interpret(message="Quanto custa cabelo e barba?", history=history,
+        catalog=[{"id": cut, "name": "Corte de cabelo"}, {"id": beard, "name": "Barba"}],
+        context=context, key="synthetic-key", model="openai/gpt-oss-120b",
+        transport=httpx.MockTransport(provider))
+    assert result.intent == "perguntar" and result.service_ids == [cut, beard]
