@@ -583,7 +583,7 @@ async def test_weekday_replaces_old_date_and_hold_before_consulting(conversation
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("phrase", ["Que dia tem livre", "Qual dia tem horário livre?", "Quais dias estão disponíveis?"])
+@pytest.mark.parametrize("phrase", ["Que dia tem livre", "Qual dia tem horário livre?", "Quais dias estão disponíveis?", "Quando tem livre", "Livre quando?", "Tem algum livre?"])
 async def test_next_days_query_ignores_old_day_preserves_booking_and_has_bounded_reads(conversation, monkeypatch, phrase):
     h = conversation
     original = h.seed("confirm", professional=str(h.bruno), day="2026-01-01", hold=str(uuid4()))
@@ -622,4 +622,16 @@ async def test_identity_question_has_a_truthful_answer_without_catalog_or_bookin
     reply = await h.turn("Qual o seu nome?", preview=False)
     assert "Orion, assistente virtual" in reply["answer"] and "R$" not in reply["answer"]
     assert h.state()["services"] == original["services"]
+    assert not h.calls["classify"] and not h.calls["slots"] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("step", ["date", "professional", "time", "confirm", "reschedule_day"])
+async def test_greeting_interrupts_every_stage_naturally_without_losing_order(conversation, step):
+    h = conversation
+    original = h.seed(step, hold=str(uuid4()))
+    reply = await h.turn("Oi", preview=False)
+    assert reply["answer"].startswith("Olá") and "dias livres" in reply["answer"]
+    assert "Informe o dia" not in reply["answer"] and "R$" not in reply["answer"]
+    assert h.state()["services"] == original["services"] and h.state()["hold"] == original["hold"]
     assert not h.calls["classify"] and not h.calls["slots"] and not h.calls["writes"]
