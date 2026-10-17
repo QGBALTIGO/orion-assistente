@@ -48,12 +48,15 @@ def verify(conn):
         row=conn.execute(text("""
             SELECT c.relrowsecurity, c.relforcerowsecurity,
               has_table_privilege('app_runtime',c.oid,'SELECT') AS runtime_select,
-              has_table_privilege('app_support',c.oid,'SELECT,INSERT,UPDATE') AS support_access
+              has_table_privilege('app_support',c.oid,'SELECT') AS support_select,
+              has_table_privilege('app_support',c.oid,'INSERT') AS support_insert,
+              has_table_privilege('app_support',c.oid,'UPDATE') AS support_update
             FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
             WHERE n.nspname='public' AND c.relname=:table
         """),{"table":table}).mappings().one()
         if not (row["relrowsecurity"] and row["relforcerowsecurity"] and
-                not row["runtime_select"] and row["support_access"]):
+                not row["runtime_select"] and row["support_select"] and
+                row["support_insert"] and row["support_update"]):
             raise RuntimeError("Account table is missing the expected RLS/grants")
     attempts=conn.execute(text("""
         SELECT EXISTS(SELECT 1 FROM pg_attribute WHERE
