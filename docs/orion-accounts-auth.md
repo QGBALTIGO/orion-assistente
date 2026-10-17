@@ -1,3 +1,24 @@
+## Cadastro imediato sem confirmação de e-mail (revisão)
+
+O cadastro cria uma conta `member` imediatamente no PostgreSQL com
+nome, e-mail e hash Argon2id da senha, retornando ao formulário Entrar.
+Não envia código nem requer SMTP; a recuperação de senha é o único
+fluxo novo que envia código de 6 dígitos. Configuração do cadastro:
+`PANEL_REGISTRATION_ENABLED=1`, **somente depois** das migrations.
+
+Como o endereço não foi comprovado no cadastro, uma conta criada
+com endereço de outra pessoa não representa comprovação de posse do
+e-mail. Ela não recebe papel `admin` e não acessa WhatsApp/recursos
+privilegiados. A prova por e-mail ocorre apenas se o usuário solicitar
+recuperação e efetivamente inserir o código recebido; essa operação
+também invalida sessões antigas.
+
+Em modo de teste do Resend (`PANEL_TEST_MODE=1`), qualquer pessoa
+pode criar uma conta comum se o cadastro estiver habilitado, mas
+recuperação de senha só envia código a `PANEL_TEST_EMAIL`.
+**Não prometer recuperação aos demais usuários antes de verificar
+o domínio remetente.** A interface informa a restrição do piloto.
+
 # Autenticação Orion 2.0 — cadastro, e-mail, senha e permissões
 
 ## Experiência visual
@@ -19,14 +40,14 @@ A mudança Entrar/Criar conta/Esqueci senha usa animação leve; usuários com
   Não concede acesso ao WhatsApp, cadastros de clientes ou ferramentas internas.
 - **Confirmação de e-mail**: código randômico criptograficamente forte;
   grava apenas HMAC-SHA256 no PostgreSQL; expira em 10 minutos e pode ser usado uma vez.
-  A conta só pode logar depois dessa confirmação.
+  A conta pode logar imediatamente, sem essa confirmação.
 - **Senha**: hash Argon2id; redefinição com código expirando em 10 min e
   uso único. Um reset invalida todas as sessões da conta pela versão no banco.
 - **Lembrar de mim**: 30 dias quando marcado; 12h caso contrário.
   Cookies `__Host-`, `Secure`, `HttpOnly` e `SameSite=Strict`.
 - **Administrador proprietário**: o e-mail reservado é configurado apenas na
   variável `PANEL_OWNER_EMAIL`. O cadastro inicial **nunca** promove ninguém
-  automaticamente. Após provar posse do e-mail com link de confirmação,
+  automaticamente. Após provar posse do e-mail com o código de recuperação,
   a pessoa deve entrar e comprovar também a senha administrativa legada
   na tela de vinculação de permissões. A sessão anterior é invalidada após
   a promoção; é necessário login novamente.
