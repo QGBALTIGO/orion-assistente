@@ -2,6 +2,7 @@
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
+from app.groq_probe import probe_groq_provider
 from app.catalog_api import router as catalog_router
 from app.booking_api import router as bookings_router
 from app.whatsapp_api import router as whatsapp_router
@@ -22,6 +23,11 @@ app = FastAPI(
     description="Agenda SaaS multiempresa — desenvolvimento controlado",
     version="0.8.0",
 )
+
+
+@app.on_event("startup")
+async def startup_provider_probe():
+    await probe_groq_provider()
 
 
 @app.get("/health", include_in_schema=False)
