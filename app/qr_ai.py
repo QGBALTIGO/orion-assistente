@@ -533,6 +533,8 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
     if intent == "human":
         await redis.set(state_key, json.dumps({"step": "human"}), ex=1800)
         return {"answer": "Vou deixar esta conversa para atendimento humano. Para retomar o bot, envie MENU.", "step": "human"}
+    if intent == "identity":
+        return {"answer": "Sou o Orion, assistente virtual deste atendimento.", "step": state.get("step", "information")}
     if state.get("confirmation_requires_review") and state.get("step") in {"confirm", "reschedule_confirm"}:
         resume = norm(body) in {"retomar resumo", "ver resumo", "rever resumo", "resumo original"}
         if resume:

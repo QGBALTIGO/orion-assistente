@@ -613,3 +613,13 @@ async def test_quero_fazer_tudo_requires_service_clarification_without_changing_
     reply = await h.turn("Quero fazer tudo", preview=False)
     assert "quais serviços" in reply["answer"] and h.state()["services"] == original["services"]
     assert not h.calls["classify"] and not h.calls["slots"] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_identity_question_has_a_truthful_answer_without_catalog_or_booking(conversation):
+    h = conversation
+    original = h.seed("date")
+    reply = await h.turn("Qual o seu nome?", preview=False)
+    assert "Orion, assistente virtual" in reply["answer"] and "R$" not in reply["answer"]
+    assert h.state()["services"] == original["services"]
+    assert not h.calls["classify"] and not h.calls["slots"] and not h.calls["writes"]

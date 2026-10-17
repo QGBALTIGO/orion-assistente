@@ -23,6 +23,8 @@ def control_intent(text: str) -> str | None:
         return "cancel_request"
     if re.fullmatch(r"(oi+|ola+|bom dia|boa tarde|boa noite|e ai|eae|opa)[!.,\s]*", lower):
         return "greeting"
+    if lower.strip(" ?!.,") in {"qual o seu nome", "qual seu nome", "como voce se chama", "quem e voce"}:
+        return "identity"
     if re.search(r"\b(idiota|burro|imbecil|vai se foder|porra|merda)\b",lower):
         return "hostile"
     return None
