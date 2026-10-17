@@ -23,4 +23,15 @@ def test_database_account_schema_matches_restricted_migration(monkeypatch):
     # CI applies Alembic upgrade head under app_migrator before running tests.
     monkeypatch.setenv("ORION_RUN_ACCOUNT_MIGRATION","1")
     monkeypatch.setenv("ORION_MIGRATION_SWITCH_ROLE","1")
-    migration.main()
+    engine = migration.create_engine(migration.migration_dsn())
+    try:
+        with engine.connect() as connection:
+            current = connection.execute(migration.text("SELECT version_num FROM alembic_version")).scalar_one()
+        if current == migration.TARGET:
+            migration.main()
+        else:
+            # Future additive schema work must not silently reuse this older operation.
+            with pytest.raises(RuntimeError, match="Unexpected Alembic revision"):
+                migration.main()
+    finally:
+        engine.dispose()

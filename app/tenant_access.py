@@ -1,0 +1,46 @@
+"""Resolve account membership on the server; a customer/model never selects authority."""
+from dataclasses import dataclass
+import os
+from uuid import UUID
+
+from fastapi import HTTPException
+from sqlalchemy import text
+
+
+@dataclass(frozen=True)
+class TenantAccess:
+    role: str
+    account_id: UUID | None = None
+
+
+def check_access(role: str | None, operation: str) -> None:
+    allowed = {
+        "read": {"owner", "editor", "viewer", "support", "admin"},
+        "draft": {"owner", "editor", "support", "admin"},
+        "publish": {"owner", "support", "admin"},
+    }
+    if operation not in allowed or role not in allowed[operation]:
+        raise HTTPException(403, "Operação não autorizada para este estabelecimento")
+
+
+async def resolve_tenant_access(actor, tenant_id: UUID, operation: str = "read") -> TenantAccess:
+    account_id = getattr(actor, "account_id", None)
+    if actor.role in {"support", "admin"}:
+        check_access(actor.role, operation)
+        return TenantAccess(actor.role, account_id)
+    # The old API viewer remains read-only in its fixed, server-configured scope.
+    if actor.role == "viewer" and getattr(actor, "tenant_id", None) == tenant_id:
+        check_access("viewer", operation)
+        return TenantAccess("viewer")
+    if actor.role != "member" or not isinstance(account_id, UUID):
+        raise HTTPException(403, "Conta sem acesso a este estabelecimento")
+    if os.getenv("BUSINESS_PROFILES_ENABLED", "0") != "1":
+        raise HTTPException(423, "O acesso por estabelecimento ainda não está habilitado")
+    from app.catalog_api import support_session_factory
+    async with support_session_factory()() as session:
+        row = (await session.execute(text("""
+            SELECT role FROM tenant_memberships
+            WHERE account_id=:account AND tenant_id=:tenant AND active
+        """), {"account": account_id, "tenant": tenant_id})).scalar_one_or_none()
+    check_access(row, operation)
+    return TenantAccess(row, account_id)

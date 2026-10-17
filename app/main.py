@@ -18,6 +18,8 @@ from app.groq_api import router as groq_router
 from app.groq_audio import router as groq_audio_router
 from app.groq_probe import probe_groq_provider
 from app.qr_ai import router as qr_ai_router
+from app.business_profile_api import router as business_profile_router
+from app.commercial_api import router as commercial_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -52,6 +54,8 @@ app.include_router(catalog_router)
 app.include_router(groq_router)
 app.include_router(groq_audio_router)
 app.include_router(qr_ai_router)
+app.include_router(business_profile_router)
+app.include_router(commercial_router)
 
 
 @app.get("/brand/{asset}", include_in_schema=False)

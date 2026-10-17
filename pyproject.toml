@@ -32,6 +32,7 @@ include = ["app*", "scripts*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 asyncio_mode = "auto"
 markers = ["integration: precisa de PostgreSQL real e migrations aplicadas"]
 
