@@ -4,7 +4,7 @@ import fs from "node:fs";
 import vm from "node:vm";
 
 const html=fs.readFileSync(new URL("../../app/static/panel.html",import.meta.url),"utf8");
-const script=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)][0]?.[1];
+const script=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)?.[1];
 assert.ok(script,"O painel deve incluir seu controlador JavaScript");
 const ids=new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]));
 const required=["disconnectedWizard","wizardTutorial","guideSteps",
@@ -62,10 +62,21 @@ function harness(){
     return elements.get(id);
   }
   const tabs=["qr","code"].map(m=>{const e=new Element("method-"+m);e.dataset.method=m;return e});
+  const themeButtons=["auto","light","dark"].map(choice=>{
+    const e=new Element("theme-"+choice);e.dataset.themeChoice=choice;return e;
+  });
+  const brandImages=[new Element("logo-sidebar"),new Element("logo-auth")];
+  const htmlRoot={dataset:{theme:"dark",themePreference:"auto"}};
+  let systemListener=null;
+  const preferred={matches:true,addEventListener:(event,fn)=>{if(event==="change")systemListener=fn}};
+  const storage=new Map();
   byId("settingsWeekdays").options=[0,1,2,3,4,5,6].map(value=>({value:String(value),selected:value>=1&&value<=5}));
   const document={
     getElementById:byId,
-    querySelectorAll:query=>query==="[data-method]"?tabs:[],
+    documentElement:htmlRoot,
+    querySelectorAll:query=>query==="[data-method]"?tabs:
+      query==="[data-theme-choice]"?themeButtons:
+      query==="[data-orion-logo]"?brandImages:[],
     querySelector:()=>new Element("query"),
     createElement:tag=>new Element(tag)
   };
@@ -85,6 +96,11 @@ function harness(){
     return {ok:status<400,status,json:async()=>payload};
   }
   const context={
+    window:{matchMedia:()=>preferred},
+    localStorage:{
+      getItem:key=>storage.get(key)??null,
+      setItem:(key,value)=>storage.set(key,value)
+    },
     document,fetch,history:{replaceState(){}},
     location:{search:"",hostname:"localhost",protocol:"https:"},
     navigator:{clipboard:{writeText:async x=>copied.push(x)}},
@@ -97,7 +113,9 @@ function harness(){
     alert:()=>{},console:{log(){},warn(){},error(){}}
   };
   vm.runInNewContext(script,context,{filename:"orion-connected-panel.js"});
-  return {byId,tabs,calls,copied,connect:()=>{connectionStatus="connected"},
+  return {byId,tabs,calls,copied,themeButtons,brandImages,root:htmlRoot,storage,
+    changeSystem:async matches=>{preferred.matches=matches;systemListener?.({matches})},
+    connect:()=>{connectionStatus="connected"},
     advance:ms=>{currentTime+=ms;timerCallback?.()},
     flush:()=>new Promise(resolve=>setImmediate(resolve))};
 }
@@ -233,4 +251,43 @@ test("CSS garante dispositivos móveis, tablets e redução de movimento",()=>{
  assert.doesNotMatch(html,/wizardPrevious|wizardTutorialClose|wizardStepCount/);
  assert.equal([...html.matchAll(/id="wizardNext"/g)].length,1);
  assert.match(html,/aria-pressed=/);
+});
+
+test("theme switch respects automatic system preference, explicit choice and logo",async()=>{
+ const h=harness();
+ assert.equal(h.root.dataset.themePreference,"auto");
+ assert.equal(h.root.dataset.theme,"dark");
+ assert.equal(h.themeButtons[0].attributes["aria-pressed"],"true");
+ await h.themeButtons[1].click();
+ assert.equal(h.root.dataset.theme,"light");
+ assert.equal(h.root.dataset.themePreference,"light");
+ assert.equal(h.storage.get("orion-theme"),"light");
+ assert.equal(h.themeButtons[1].attributes["aria-pressed"],"true");
+ assert.equal(h.themeButtons[0].attributes["aria-pressed"],"false");
+ assert.ok(h.brandImages.every(i=>i.getAttribute("src")==="/brand/orion-brand-light.svg"));
+ await h.changeSystem(true); // explicit light stays light even when OS toggles dark.
+ assert.equal(h.root.dataset.theme,"light");
+ await h.themeButtons[0].click();
+ await h.changeSystem(false);
+ assert.equal(h.root.dataset.theme,"light");
+ await h.changeSystem(true);
+ assert.equal(h.root.dataset.theme,"dark");
+ assert.ok(h.brandImages.every(i=>i.getAttribute("src")==="/brand/orion-brand-dark.svg"));
+ await h.themeButtons[2].click();
+ await h.changeSystem(false);
+ assert.equal(h.root.dataset.theme,"dark");
+ assert.equal(h.storage.get("orion-theme"),"dark");
+});
+
+test("theme choices have unique accessible icon buttons, panel uses official logos",()=>{
+ for(const item of ["auto","light","dark"])
+   assert.match(html,new RegExp('data-theme-choice="'+item+'"[^>]*aria-label="Tema [^"]+"'));
+ assert.equal([...html.matchAll(/data-theme-choice="/g)].length,3);
+ assert.match(html,/--sidebar-bg:/);
+ assert.match(html,/html\[data-theme="light"\]/);
+ assert.match(html,/\.device-hero\{background:linear-gradient/);
+ assert.match(html,/\.bubbles\{background:var\(--panel-low\)/);
+ assert.match(html,/\[data-orion-logo\]/);
+ assert.doesNotMatch(html,/<div class="logo">O<\/div>/);
+ assert.doesNotMatch(html,/<span class="nav-icon"[^>]*>[⌂▦✉⚙]/);
 });
