@@ -672,6 +672,12 @@ input[type="checkbox"]{accent-color:var(--accent)}
 .bubble{background:var(--panel-raised);border:1px solid var(--border)}
 .bubble.out{background:var(--selected-bg);border-color:var(--accent2)}
 .bubble time,.footer-hint{color:var(--muted)}
+.ai-evaluation{border:0;border-top:1px solid var(--border);margin:12px 0 0;padding:10px 0 0;min-width:0}
+.ai-evaluation legend{font-size:12px;color:var(--muted);padding:0 4px 0 0}
+.ai-evaluation-options{display:flex;flex-wrap:wrap;gap:6px}
+.ai-evaluation button{border:1px solid var(--border);border-radius:8px;background:var(--panel-low);color:var(--text);padding:6px 9px;font:inherit;font-size:12px;cursor:pointer}
+.ai-evaluation button[aria-pressed="true"]{background:var(--selected-bg);border-color:var(--accent);font-weight:700}
+.ai-evaluation button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .note{border-color:var(--accent);color:var(--muted)}
 table{color:var(--text)}td,th{border-color:var(--border)}
 th{background:var(--table-head);color:var(--text)}
@@ -1281,6 +1287,9 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
         <p id="aiMode" class="business-muted" role="status">Atendimento atual. Nenhum rascunho selecionado.</p>
         <p class="note" style="margin-top:12px">O modelo identifica intenções; valores e disponibilidade são consultados no Orion. A confirmação da simulação nunca grava no calendário.</p>
         <div id="aiMessages" class="bubbles" aria-live="polite" style="min-height:250px;max-height:480px;overflow-y:auto;margin-top:12px"></div>
+        <p id="aiEvaluationHelp" class="business-muted">Marque o que precisa melhorar em cada resposta de teste. Clique novamente para remover. As avaliações ficam só nesta conversa, para revisão; não alteram preços, políticas nem o atendimento publicado.</p>
+        <div class="row" style="gap:12px;flex-wrap:wrap"><button id="aiExportEvaluation" type="button" class="btn secondary" disabled aria-describedby="aiEvaluationHelp aiEvaluationExportHelp">Exportar avaliação JSON</button><small id="aiEvaluationStatus" role="status" aria-live="polite">Nenhuma resposta marcada.</small></div>
+        <p id="aiEvaluationExportHelp" class="business-muted">O arquivo inclui somente as respostas marcadas e a empresa, versão e estilo do teste. Revise o conteúdo antes de compartilhar. Nova conversa, mudança de empresa, versão ou estilo e saída da conta apagam as avaliações desta tela.</p>
         <form id="aiForm" style="margin-top:18px">
           <label for="aiInput">Mensagem do cliente</label>
           <textarea id="aiInput" rows="2" minlength="1" maxlength="1500" required placeholder="Ex.: Quero cortar o cabelo e fazer a barba amanhã"></textarea>
@@ -2831,6 +2840,61 @@ $("comReadQuote").addEventListener("click",()=>commerceRead("quote"));$("comRead
 
 let aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)),aiPreferredTenant="",aiPreferredVersion="",
     aiEpoch=0,aiRequestSequence=0,aiActiveRequest=null,aiStatusSequence=0,aiTenantSequence=0,aiProfileSequence=0,aiProfileData=null,aiProfileLoading=false,aiProfileSelectionRequired=false,aiReadiness=null,aiStatusLoading=false;
+let aiEvaluations=[],aiEvaluationUrl=null,aiEvaluationTimer=null;
+const aiEvaluationLabels=[["dry","Seca"],["insistent","Insistente"],["incorrect","Incorreta"],["confusing","Confusa"],["off_context","Fora do contexto"]];
+function aiEvaluationScope(){
+ const selected=$("aiProfile").value,profile=selected?aiProfileData?.draft:aiProfileData?.published;
+ return {simulation_id:aiSession,tenant_id:$("aiTenant").value,profile_selection:selected||"published",
+   profile_version_id:profile?.id||null,profile_revision:profile?.revision||null,
+   style:$("aiStyle").value||profile?.profile?.style_rules?.style||null};
+}
+function currentAiEvaluation(entry){
+ const scope=aiEvaluationScope();
+ return entry.epoch===aiEpoch&&entry.account===authEpoch&&aiEvaluations.includes(entry)&&
+   Object.keys(scope).every(key=>entry.scope[key]===scope[key]);
+}
+function updateAiEvaluationControls(){
+ const count=aiEvaluations.filter(entry=>currentAiEvaluation(entry)&&entry.labels.size).length;
+ $("aiExportEvaluation").disabled=count===0;
+ $("aiEvaluationStatus").textContent=count?count+" resposta(s) marcada(s) para revisão.":"Nenhuma resposta marcada.";
+}
+function releaseAiEvaluationDownload(){
+ clearTimeout(aiEvaluationTimer);aiEvaluationTimer=null;
+ if(aiEvaluationUrl){URL.revokeObjectURL(aiEvaluationUrl);aiEvaluationUrl=null;}
+}
+function attachAiEvaluation(wrapper,answer,stage,scope){
+ const entry={scope,epoch:aiEpoch,account:authEpoch,number:aiEvaluations.length+1,answer:String(answer),stage:String(stage||""),labels:new Set()};
+ aiEvaluations.push(entry);
+ const group=document.createElement("fieldset"),legend=document.createElement("legend"),options=document.createElement("div");
+ group.className="ai-evaluation";group.setAttribute("aria-describedby","aiEvaluationHelp");
+ legend.textContent="Avaliar resposta de teste "+entry.number;options.className="ai-evaluation-options";
+ for(const [key,label] of aiEvaluationLabels){
+   const button=document.createElement("button");button.type="button";button.textContent=label;
+   button.setAttribute("aria-label",label+" · resposta de teste "+entry.number);button.setAttribute("aria-pressed","false");
+   button.addEventListener("click",()=>{
+     if(!currentAiEvaluation(entry))return;
+     entry.labels.has(key)?entry.labels.delete(key):entry.labels.add(key);
+     button.setAttribute("aria-pressed",String(entry.labels.has(key)));updateAiEvaluationControls();
+   });options.append(button);
+ }
+ group.append(legend,options);wrapper.append(group);
+}
+$("aiExportEvaluation").addEventListener("click",()=>{
+ const marked=aiEvaluations.filter(entry=>currentAiEvaluation(entry)&&entry.labels.size);if(!marked.length)return;
+ // Export only explicitly marked assistant responses, never inputs, audio or credentials.
+ const report={schema_version:1,kind:"orion_simulation_feedback",simulation:true,production_changed:false,
+   exported_at:new Date().toISOString(),scope:marked[0].scope,
+   evaluations:marked.map(entry=>({response_number:entry.number,answer:entry.answer,stage:entry.stage,labels:[...entry.labels]}))};
+ let link;
+ try{
+   releaseAiEvaluationDownload();aiEvaluationUrl=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:"application/json"}));
+   link=document.createElement("a");link.href=aiEvaluationUrl;link.download="orion-avaliacao-simulada.json";
+   document.body.append(link);link.click();
+   aiEvaluationTimer=setTimeout(releaseAiEvaluationDownload,1000);
+   $("aiEvaluationStatus").textContent="Arquivo de avaliação preparado neste navegador. Nenhuma avaliação foi enviada ao servidor.";
+ }catch{releaseAiEvaluationDownload();$("aiEvaluationStatus").textContent="Não foi possível preparar o arquivo. Suas marcações continuam nesta conversa.";}
+ finally{link?.remove();$("aiExportEvaluation").focus();}
+});
 function aiCurrentReadiness(){return aiReadiness?.epoch===aiEpoch&&aiReadiness.authEpoch===authEpoch&&aiReadiness.tenant===$("aiTenant").value?aiReadiness:null}
 function aiReady(audio=false){const status=aiCurrentReadiness();return !!status&&status.configured===true&&status.preview_enabled===true&&(!audio||status.audio_preview_enabled===true)}
 function updateAiControls(){
@@ -2844,6 +2908,7 @@ function updateAiControls(){
 function resetAiConversation(notice="Nova conversa simulada."){
  const readiness=aiCurrentReadiness();
  ++aiEpoch;aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+ aiEvaluations=[];releaseAiEvaluationDownload();updateAiEvaluationControls();
  aiReadiness=readiness?{...readiness,epoch:aiEpoch}:null;aiStatusLoading=false;
  aiActiveRequest=null;$("aiAudioFile").value="";updateAiControls();
  $("aiMessages").replaceChildren();$("aiDiagnostics").textContent=notice;
@@ -2871,6 +2936,7 @@ function aiBubble(content,direction){
  appendWhatsAppText(wrapper,content);
  $("aiMessages").append(wrapper);
  $("aiMessages").scrollTop=$("aiMessages").scrollHeight;
+ return wrapper;
 }
 async function aiLoadTenants(){
  const sequence=++aiTenantSequence,role=loginRole,preferredTenant=aiPreferredTenant,preferredVersion=aiPreferredVersion,last=$("aiTenant").value;
@@ -2960,6 +3026,7 @@ async function sendAiPreview(message,file=null){
  const correlation=crypto.randomUUID(),version=$("aiProfile").value;
  const baseProfile=version?aiProfileData?.draft?.profile:aiProfileData?.published?.profile;
  const style=$("aiStyle").value&&aiProfileData?.runtime_connected?{...(baseProfile?.style_rules||{}),style:$("aiStyle").value}:null;
+ const evaluationScope=aiEvaluationScope();
  aiActiveRequest=requestId;
  const current=()=>epoch===aiEpoch&&session===aiSession&&tenant===$("aiTenant").value&&aiActiveRequest===requestId;
  updateAiControls();
@@ -2975,7 +3042,9 @@ async function sendAiPreview(message,file=null){
   }else data=await api(url,"POST",{text:message,session,request_id:correlation,profile_version:version||null,style_rules:style});
   if(!current())return;
   if(file&&data.transcript)aiBubble("Transcrição: "+data.transcript,"out");
-  aiBubble(data.answer||"Nenhuma resposta nesta etapa.","in");
+  const answer=data.answer||"Nenhuma resposta nesta etapa.";
+  const answerBubble=aiBubble(answer,"in");attachAiEvaluation(answerBubble,answer,data.step,evaluationScope);
+  $("aiMessages").scrollTop=$("aiMessages").scrollHeight;
   $("aiDiagnostics").textContent="Intenção/etapa: "+(data.step||"—")+
      " · "+(file?"Áudio transcrito; ":"")+"modo simulado, nenhum envio para WhatsApp.";
  }catch(ex){if(current())$("aiDiagnostics").textContent=ex.message}
