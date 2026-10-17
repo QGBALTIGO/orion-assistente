@@ -1,4 +1,4 @@
-"""Regress�es do motor Orion IA: data, contexto, confirma��o e isolamento."""
+"""Regressões do motor Orion IA: data, contexto, confirmação e isolamento."""
 import json
 from datetime import date, datetime
 from uuid import uuid4
@@ -28,24 +28,24 @@ class FakeRedis:
 
 def test_relative_dates_and_time_are_independent_of_llm():
     now = datetime(2026, 10, 17, 10, 0, tzinfo=ZoneInfo("America/Campo_Grande"))
-    assert qr_ai.requested_day("amanh�", "America/Campo_Grande", now) == date(2026, 10, 18)
-    assert qr_ai.requested_day("depois de amanh�", "America/Campo_Grande", now) == date(2026, 10, 19)
+    assert qr_ai.requested_day("amanhã", "America/Campo_Grande", now) == date(2026, 10, 18)
+    assert qr_ai.requested_day("depois de amanhã", "America/Campo_Grande", now) == date(2026, 10, 19)
     assert qr_ai.requested_day("18/10", "America/Campo_Grande", now) == date(2026, 10, 18)
     assert qr_ai.requested_day("31/02", "America/Campo_Grande", now) is None
-    assert qr_ai.requested_time("Pode ser �s duas da tarde") == "14:00"
+    assert qr_ai.requested_time("Pode ser às duas da tarde") == "14:00"
     assert qr_ai.requested_time("14:30") == "14:30"
     assert qr_ai.format_money(5500) == "R$ 55,00"
 
 
 @pytest.mark.parametrize("phrase, expected", [
     ("Quero pra segunda", date(2026, 10, 19)),
-    ("ter�a-feira", date(2026, 10, 20)),
+    ("terça-feira", date(2026, 10, 20)),
     ("Quero na quarta", date(2026, 10, 21)),
     ("quinta", date(2026, 10, 22)), ("sexta", date(2026, 10, 23)),
-    ("s�bado", date(2026, 10, 17)), ("domingo", date(2026, 10, 18)),
-    ("pr�ximo s�bado", date(2026, 10, 24)),
-    ("segunda ou ter�a", None), ("segunda op��o", None),
-    ("segunda, 20/10", None), ("segunda ou amanh�", None), ("segunda ou hoje", None),
+    ("sábado", date(2026, 10, 17)), ("domingo", date(2026, 10, 18)),
+    ("próximo sábado", date(2026, 10, 24)),
+    ("segunda ou terça", None), ("segunda opção", None),
+    ("segunda, 20/10", None), ("segunda ou amanhã", None), ("segunda ou hoje", None),
 ])
 def test_weekdays_use_business_timezone_and_ambiguity_is_not_first_match(phrase, expected):
     now = datetime(2026, 10, 17, 10, 0, tzinfo=ZoneInfo("America/Campo_Grande"))
@@ -60,22 +60,22 @@ async def test_preview_from_natural_language_to_confirm_never_writes(monkeypatch
     redis = FakeRedis()
     async def data(_):
         return (
-            {"name": "Barbearia do Jo�o", "timezone": "America/Campo_Grande"},
+            {"name": "Barbearia do João", "timezone": "America/Campo_Grande"},
             [{"id": corte, "name": "Corte", "duration_min": 40, "price_cents": 3500},
              {"id": barba, "name": "Barba", "duration_min": 20, "price_cents": 2000}],
-            [{"id": professional, "name": "Jo�o"}],
+            [{"id": professional, "name": "João"}],
         )
     async def classify(**_):
         return Intention(intent="agendar", service_ids=[corte, barba],
-                         requested_when="amanh�")
+                         requested_when="amanhã")
     async def pros(*_):
-        return [{"id": professional, "name": "Jo�o"}]
+        return [{"id": professional, "name": "João"}]
     async def slots(_tenant, state, _preview):
         state.update(step="time", duration=60, price=5500,
                      slots=["2026-10-18T14:00:00-04:00"])
         return "1. 14:00", state
     async def forbid(*args, **kwargs):
-        raise AssertionError("Preview n�o deve chamar motor de escrita")
+        raise AssertionError("Preview não deve chamar motor de escrita")
     monkeypatch.setattr(qr_ai, "tenant_data", data)
     monkeypatch.setattr(qr_ai, "interpret", classify)
     monkeypatch.setattr(qr_ai, "professionals_for", pros)
@@ -84,12 +84,12 @@ async def test_preview_from_natural_language_to_confirm_never_writes(monkeypatch
     monkeypatch.setattr(qr_ai, "confirm_hold", forbid)
     key = "preview:session-unique"
     first = await qr_ai.turn(tenant, "5567999999999",
-                             "Quero corte e barba amanh�", redis, key, preview=True)
+                             "Quero corte e barba amanhã", redis, key, preview=True)
     assert first["step"] == "time"
     assert "55,00" in first["answer"]
     second = await qr_ai.turn(tenant, "5567999999999", "14:00", redis, key, preview=True)
     assert second["step"] == "confirm"
-    assert "SIM ou N�O" in second["answer"]
+    assert "SIM ou NÃO" in second["answer"]
     third = await qr_ai.turn(tenant, "5567999999999", "sim", redis, key, preview=True)
     assert third["step"] == "preview_complete"
     assert "Nenhum agendamento real" in third["answer"]

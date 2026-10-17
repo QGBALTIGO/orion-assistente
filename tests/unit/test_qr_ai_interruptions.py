@@ -40,7 +40,7 @@ def conversation(monkeypatch):
     calls = {"classify": [], "pros": [], "slots": [], "writes": []}
     async def data(t):
         assert t == tenant
-        return {"name": "Sal�o Exemplo", "timezone": "America/Campo_Grande"}, catalog, pros
+        return {"name": "Salão Exemplo", "timezone": "America/Campo_Grande"}, catalog, pros
     async def classify(**kwargs):
         calls["classify"].append(kwargs)
         message = kwargs["message"].lower()
@@ -90,14 +90,14 @@ def conversation(monkeypatch):
 async def test_capture_price_interruptions_preserve_booking_and_accept_o_bruno(conversation):
     h = conversation
     await h.turn("Quero cortar o cabelo")
-    await h.turn("amanh�")
+    await h.turn("amanhã")
     before = h.state()
     assert before["step"] == "professional"
     for question in ("Quanto custa um cabelo e uma barba?",
-                     "N�o, quero saber quanto custa o corte de cabelo e a barba"):
+                     "Não, quero saber quanto custa o corte de cabelo e a barba"):
         reply = await h.turn(question)
         assert "R$ 35,00" in reply["answer"] and "R$ 20,00" in reply["answer"]
-        assert "Total desses servi�os: R$ 55,00" in reply["answer"]
+        assert "Total desses serviços: R$ 55,00" in reply["answer"]
         assert reply["step"] == "professional"
         assert h.state()["services"] == before["services"]
         assert h.state()["day"] == before["day"]
@@ -129,7 +129,7 @@ async def test_only_beard_replaces_services_and_drops_old_confirmation(conversat
     h = conversation
     h.seed(step, professional=str(h.bruno), hold=str(uuid4()), price=3500,
            duration=30, slots=["2026-11-20T15:00:00-04:00"])
-    reply = await h.turn("Quero s� fazer a barba")
+    reply = await h.turn("Quero só fazer a barba")
     after = h.state()
     assert after["services"] == [str(h.beard)]
     assert after["day"] == "2026-11-20" and after["professional"] == str(h.bruno)
@@ -145,8 +145,8 @@ async def test_only_beard_replaces_services_and_drops_old_confirmation(conversat
 async def test_date_in_change_of_service_is_not_consumed_as_plain_date(conversation):
     h = conversation
     h.seed("date", services=[str(h.beard)])
-    reply = await h.turn("s� o cabelo amanh�")
-    assert h.calls["classify"][-1]["message"] == "s� o cabelo amanh�"
+    reply = await h.turn("só o cabelo amanhã")
+    assert h.calls["classify"][-1]["message"] == "só o cabelo amanhã"
     assert h.state()["services"] == [str(h.cut)]
     assert reply["step"] == "professional"
 
@@ -171,7 +171,7 @@ async def test_named_professional_before_day_is_preserved(conversation):
     reply = await h.turn("Quero barba com Bruno")
     assert reply["step"] == "date"
     assert h.state()["professional"] == str(h.bruno)
-    await h.turn("amanh�")
+    await h.turn("amanhã")
     assert h.state()["professional"] == str(h.bruno)
     assert h.state()["step"] == "time"
 
@@ -180,7 +180,7 @@ async def test_named_professional_before_day_is_preserved(conversation):
 async def test_explicit_professional_replaces_previous_even_with_day_in_phrase(conversation):
     h = conversation
     h.seed("time", professional=str(h.carlos))
-    reply = await h.turn("Quero barba com Bruno amanh�")
+    reply = await h.turn("Quero barba com Bruno amanhã")
     assert reply["step"] == "time"
     assert h.state()["professional"] == str(h.bruno)
     assert h.state()["professional_name"] == "Bruno Souza"
@@ -194,10 +194,10 @@ async def test_explicit_unknown_or_ambiguous_professional_never_falls_back_to_pr
     h = conversation
     h.pros.append({"id": uuid4(), "name": "Bruno Lima"})
     h.seed("time", professional=str(h.carlos))
-    reply = await h.turn(f"Quero barba com {requested} amanh�")
+    reply = await h.turn(f"Quero barba com {requested} amanhã")
     assert reply["step"] == "professional"
     assert "professional" not in h.state()
-    assert "N�o identifiquei" in reply["answer"]
+    assert "Não identifiquei" in reply["answer"]
     assert not h.calls["slots"]
 
 
@@ -208,7 +208,7 @@ async def test_fallback_never_selects_negated_service_or_loses_current_flow(conv
         raise GroqServiceError(503, "offline")
     monkeypatch.setattr(qr_ai, "interpret", fail)
     original = h.seed()
-    reply = await h.turn("N�o quero corte de cabelo, quero s� barba")
+    reply = await h.turn("Não quero corte de cabelo, quero só barba")
     assert reply["degraded"] and reply["step"] == "professional"
     assert h.state()["services"] == original["services"]
     assert not h.calls["slots"] and not h.calls["writes"]
@@ -217,7 +217,7 @@ async def test_fallback_never_selects_negated_service_or_loses_current_flow(conv
     assert h.state()["services"] == original["services"]
     partial = await h.turn("Quanto custa um cabelo e uma barba?")
     assert "R$ 35,00" in partial["answer"] and "R$ 20,00" in partial["answer"]
-    assert "Total desses servi�os: R$ 55,00" in partial["answer"]
+    assert "Total desses serviços: R$ 55,00" in partial["answer"]
 
 
 @pytest.mark.asyncio
@@ -228,7 +228,7 @@ async def test_human_pauses_every_state_until_menu(conversation, step):
     reply = await h.turn("Quero falar com atendente humano")
     assert reply["step"] == "human"
     called = len(h.calls["classify"])
-    for message in ("Quanto custa a barba?", "sim", "Quero cortar amanh�", "oi"):
+    for message in ("Quanto custa a barba?", "sim", "Quero cortar amanhã", "oi"):
         assert (await h.turn(message))["answer"] is None
     assert len(h.calls["classify"]) == called and not h.calls["writes"]
     resumed = await h.turn("MENU")
@@ -242,7 +242,7 @@ async def test_cancel_pending_flow_does_not_cancel_existing_reservations(convers
     h.seed("confirm", hold=str(uuid4()))
     reply = await h.turn("quero cancelar")
     assert reply["step"] == "cancelled" and not h.state()
-    assert "Reservas j� confirmadas permanecem" in reply["answer"]
+    assert "Reservas já confirmadas permanecem" in reply["answer"]
     assert not h.calls["writes"]
     reply = await h.turn("cancelar minha reserva")
     assert reply["step"] == "cancel_request" and not h.calls["writes"]
@@ -274,7 +274,7 @@ async def test_other_tenant_and_unknown_service_ids_never_enter_selection(conver
         assert "PRIVATE OTHER TENANT" not in json.dumps(kwargs, default=str)
         return Intention(intent="agendar", service_ids=[other_service])
     monkeypatch.setattr(qr_ai, "interpret", foreign)
-    reply = await h.turn("Quero o servi�o do outro estabelecimento")
+    reply = await h.turn("Quero o serviço do outro estabelecimento")
     assert reply["step"] == "menu"
     assert "services" not in h.state() and not h.calls["pros"] and not h.calls["writes"]
 
@@ -295,7 +295,7 @@ async def test_booking_conflict_still_fails_closed_and_never_confirms(conversati
     monkeypatch.setattr(qr_ai, "book_appointment", conflict)
     reply = await h.turn("1", preview=False)
     assert reply["step"] == "conflict" and not h.state()
-    assert "n�o est� mais dispon�vel" in reply["answer"]
+    assert "não está mais disponível" in reply["answer"]
     assert not h.calls["writes"]
 
 
@@ -306,7 +306,7 @@ async def test_price_question_overrides_adverse_booking_classification(conversat
     async def adverse(**_):
         return Intention(intent="agendar", service_ids=[h.cut, h.beard])
     monkeypatch.setattr(qr_ai, "interpret", adverse)
-    reply = await h.turn("N�o, quero saber quanto custa corte de cabelo e barba")
+    reply = await h.turn("Não, quero saber quanto custa corte de cabelo e barba")
     assert "R$ 55,00" in reply["answer"] and reply["step"] == "confirm"
     assert h.state()["hold"] == original["hold"]
     assert h.state()["services"] == original["services"]
@@ -338,12 +338,12 @@ async def test_disfluent_audio_price_subject_resolves_empty_model_selection(conv
     async def empty(**_):
         return Intention(intent="perguntar", service_ids=[])
     monkeypatch.setattr(qr_ai, "interpret", empty)
-    question = "Cara, eu tava querendo cortar o cabelo, mas eu n�o sei o valor. Quanto custa o cabelo e a barba?"
-    for message in (question, "[�udio transcrito] " + question,
+    question = "Cara, eu tava querendo cortar o cabelo, mas eu não sei o valor. Quanto custa o cabelo e a barba?"
+    for message in (question, "[Áudio transcrito] " + question,
                     "Quanto custa cortar o cabelo e fazer a barba?",
                     "Quanto que custa cabelo e barba?", "Cabelo e barba ficam quanto?"):
         reply = await h.turn(message)
-        assert "Total desses servi�os: R$ 55,00" in reply["answer"]
+        assert "Total desses serviços: R$ 55,00" in reply["answer"]
         assert "Corte de cabelo" in reply["answer"] and "Barba" in reply["answer"]
         assert "Sobrancelha" not in reply["answer"]
         assert "services" not in h.state() and not h.calls["writes"]
@@ -361,14 +361,14 @@ async def test_ambiguous_unknown_or_negated_price_subject_cannot_produce_false_t
     monkeypatch.setattr(qr_ai, "interpret", partial)
     h.seed()
     reply = await h.turn("Quanto custa " + subject + "?")
-    assert "Total desses servi�os" not in reply["answer"]
+    assert "Total desses serviços" not in reply["answer"]
     if subject != "tatuagem no total":
-        assert "confirme quais servi�os" in reply["answer"]
+        assert "confirme quais serviços" in reply["answer"]
     assert not h.calls["writes"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("message", ["n�o quero corte, s� barba, quanto fica?", "cabelo e barba, quanto custa?"])
+@pytest.mark.parametrize("message", ["não quero corte, só barba, quanto fica?", "cabelo e barba, quanto custa?"])
 async def test_price_question_after_subject_cannot_hide_negation_or_ambiguity(conversation, monkeypatch, message):
     h = conversation
     if message.startswith("cabelo"):
@@ -377,8 +377,8 @@ async def test_price_question_after_subject_cannot_hide_negation_or_ambiguity(co
         return Intention(intent="perguntar", service_ids=[h.cut, h.beard])
     monkeypatch.setattr(qr_ai, "interpret", adverse)
     reply = await h.turn(message)
-    assert "Total desses servi�os" not in reply["answer"]
-    assert "confirme quais servi�os" in reply["answer"]
+    assert "Total desses serviços" not in reply["answer"]
+    assert "confirme quais serviços" in reply["answer"]
 
 
 @pytest.mark.asyncio
@@ -390,8 +390,8 @@ async def test_addition_or_withdrawal_after_price_question_requires_clarificatio
         return Intention(intent="perguntar", service_ids=[h.cut, h.beard])
     monkeypatch.setattr(qr_ai, "interpret", adverse)
     reply = await h.turn("Quanto custa cabelo e barba? " + suffix)
-    assert "Total desses servi�os" not in reply["answer"]
-    assert "confirme quais servi�os" in reply["answer"]
+    assert "Total desses serviços" not in reply["answer"]
+    assert "confirme quais serviços" in reply["answer"]
 
 
 @pytest.mark.asyncio
@@ -403,7 +403,7 @@ async def test_exact_combo_price_is_not_counted_twice(conversation, monkeypatch)
         return Intention(intent="perguntar")
     monkeypatch.setattr(qr_ai, "interpret", empty)
     reply = await h.turn("Quanto custa Corte e Barba?")
-    assert "Total desses servi�os: R$ 49,00" in reply["answer"]
+    assert "Total desses serviços: R$ 49,00" in reply["answer"]
     assert "R$ 35,00" not in reply["answer"] and "R$ 20,00" not in reply["answer"]
 
 
@@ -431,8 +431,8 @@ async def test_availability_question_collects_missing_fields_then_reads_real_slo
     async def forbidden_classifier(**_):
         raise AssertionError("Availability routing must not depend on the LLM picking a price intent")
     monkeypatch.setattr(qr_ai, "interpret", forbidden_classifier)
-    reply = await h.turn("Quais s�o os dias que tem dispon�veis para agendamento?")
-    assert "Para qual servi�o" in reply["answer"]
+    reply = await h.turn("Quais são os dias que tem disponíveis para agendamento?")
+    assert "Para qual serviço" in reply["answer"]
     assert "R$" not in reply["answer"] and not seen
     reply = await h.turn("Quero consultar corte de cabelo")
     assert "qual profissional" in reply["answer"] and "Corte de cabelo" in reply["answer"]
@@ -454,7 +454,7 @@ async def test_availability_reads_backend_without_altering_booking_or_confirmati
     original = h.seed(step, professional=str(h.bruno), hold=str(uuid4()), slots=["2026-11-20T15:00:00-04:00"],
                       price=3500, duration=30)
     seen = readonly_slots(monkeypatch, h)
-    reply = await h.turn("Tem hor�rios dispon�veis para barba amanh�?", preview=False)
+    reply = await h.turn("Tem horários disponíveis para barba amanhã?", preview=False)
     assert "Barba com Bruno Souza" in reply["answer"] and "14:30" in reply["answer"]
     assert reply["step"] == step and len(seen) == 1
     assert {k: v for k, v in h.state().items() if k not in {"history", "confirmation_expires_at", "confirmation_requires_review"}} == original
@@ -468,14 +468,14 @@ async def test_empty_availability_never_invents_times_or_uses_another_tenant(con
     h = conversation
     h.seed("confirm", professional=str(h.bruno), hold=str(uuid4()))
     seen = readonly_slots(monkeypatch, h, slots=[])
-    reply = await h.turn("Quais hor�rios est�o dispon�veis?", preview=False)
-    assert "n�o encontrei hor�rios livres" in reply["answer"]
+    reply = await h.turn("Quais horários estão disponíveis?", preview=False)
+    assert "não encontrei horários livres" in reply["answer"]
     assert "14:" not in reply["answer"] and "R$" not in reply["answer"]
     assert seen[0][0] == h.tenant and not h.calls["writes"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("answer", ["sim", "n�o", "cancelar"])
+@pytest.mark.parametrize("answer", ["sim", "não", "cancelar"])
 async def test_yes_no_during_availability_inquiry_cannot_confirm_or_cancel_old_booking(conversation, answer):
     h = conversation
     hold = str(uuid4())
@@ -503,12 +503,12 @@ async def test_price_reply_during_availability_asks_for_inquiry_field_not_bookin
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("question", ["Quanto custa a barba?", "Tem hor�rios dispon�veis para barba amanh�?"])
+@pytest.mark.parametrize("question", ["Quanto custa a barba?", "Tem horários disponíveis para barba amanhã?"])
 async def test_a_query_about_b_requires_explicit_review_before_confirming_original_a(conversation, monkeypatch, question):
     h = conversation
     hold = str(uuid4())
     deadline = qr_ai.datetime.now().timestamp() + 40
-    summary = "Resumo: Corte de cabelo com Bruno Souza, 20/11 �s 14:00, 30 minutos, R$ 35,00."
+    summary = "Resumo: Corte de cabelo com Bruno Souza, 20/11 às 14:00, 30 minutos, R$ 35,00."
     h.seed("confirm", hold=hold, professional=str(h.bruno), confirmation_summary=summary,
            confirmation_expires_at=deadline)
     readonly_slots(monkeypatch, h)
@@ -553,7 +553,7 @@ async def test_rescheduling_review_keeps_original_proposal_and_deadline(conversa
     h = conversation
     appointment = str(uuid4())
     deadline = qr_ai.datetime.now().timestamp() + 40
-    summary = "Remarcar para 20/11 �s 14:00?"
+    summary = "Remarcar para 20/11 às 14:00?"
     h.seed("reschedule_confirm", appointment=appointment, new_start="2026-11-20T14:00:00-04:00",
            confirmation_summary=summary, confirmation_expires_at=deadline)
     await h.turn("Quanto custa a barba?")
@@ -583,13 +583,13 @@ async def test_weekday_replaces_old_date_and_hold_before_consulting(conversation
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("phrase", ["Que dia tem livre", "Qual dia tem hor�rio livre?", "Quais dias est�o dispon�veis?"])
+@pytest.mark.parametrize("phrase", ["Que dia tem livre", "Qual dia tem horário livre?", "Quais dias estão disponíveis?"])
 async def test_next_days_query_ignores_old_day_preserves_booking_and_has_bounded_reads(conversation, monkeypatch, phrase):
     h = conversation
     original = h.seed("confirm", professional=str(h.bruno), day="2026-01-01", hold=str(uuid4()))
     seen = readonly_slots(monkeypatch, h)
     reply = await h.turn(phrase, preview=False)
-    assert "pr�ximos sete dias" in reply["answer"] and "14:30" in reply["answer"]
+    assert "próximos sete dias" in reply["answer"] and "14:30" in reply["answer"]
     assert "R$" not in reply["answer"] and len(seen) == 3
     assert all(row[3].isoformat() != "2026-01-01" for row in seen)
     assert h.state()["day"] == original["day"] and h.state()["hold"] == original["hold"]
@@ -602,7 +602,7 @@ async def test_empty_next_week_is_exactly_seven_reads_and_no_invented_slots(conv
     h.seed("time", professional=str(h.bruno))
     seen = readonly_slots(monkeypatch, h, slots=[])
     reply = await h.turn("Que dia tem livre", preview=False)
-    assert len(seen) == 7 and "N�o encontrei hor�rios livres nesse per�odo" in reply["answer"]
+    assert len(seen) == 7 and "Não encontrei horários livres nesse período" in reply["answer"]
     assert "14:" not in reply["answer"] and not h.calls["writes"]
 
 
@@ -611,5 +611,5 @@ async def test_quero_fazer_tudo_requires_service_clarification_without_changing_
     h = conversation
     original = h.seed("date")
     reply = await h.turn("Quero fazer tudo", preview=False)
-    assert "quais servi�os" in reply["answer"] and h.state()["services"] == original["services"]
+    assert "quais serviços" in reply["answer"] and h.state()["services"] == original["services"]
     assert not h.calls["classify"] and not h.calls["slots"] and not h.calls["writes"]
