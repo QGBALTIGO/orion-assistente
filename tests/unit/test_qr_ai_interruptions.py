@@ -247,7 +247,7 @@ async def test_cancel_pending_flow_does_not_cancel_existing_reservations(convers
     assert "Reservas já confirmadas permanecem" in reply["answer"]
     assert not h.calls["writes"]
     reply = await h.turn("cancelar minha reserva")
-    assert reply["step"] == "cancel_request" and not h.calls["writes"]
+    assert reply["step"] == "preview_cancel" and not h.calls["writes"]
 
 
 @pytest.mark.asyncio
@@ -434,7 +434,7 @@ async def test_availability_question_collects_missing_fields_then_reads_real_slo
         raise AssertionError("Availability routing must not depend on the LLM picking a price intent")
     monkeypatch.setattr(qr_ai, "interpret", forbidden_classifier)
     reply = await h.turn("Quais são os dias que tem disponíveis para agendamento?")
-    assert "Para qual serviço" in reply["answer"]
+    assert "Qual serviço" in reply["answer"]
     assert "R$" not in reply["answer"] and not seen
     reply = await h.turn("Quero consultar corte de cabelo")
     assert "qual profissional" in reply["answer"] and "Corte de cabelo" in reply["answer"]
@@ -526,7 +526,7 @@ async def test_a_query_about_b_requires_explicit_review_before_confirming_origin
     assert h.state()["confirmation_expires_at"] == deadline
     assert 1 <= h.redis.ttls[h.key] <= 40
     blocked = await h.turn("sim", preview=False)
-    assert "RETOMAR RESUMO" in blocked["answer"] and not confirmed
+    assert summary in blocked["answer"] and "RETOMAR RESUMO" not in blocked["answer"] and not confirmed
     review = await h.turn("retomar resumo", preview=False)
     assert summary in review["answer"]
     assert "Barba" not in review["answer"]
@@ -561,7 +561,7 @@ async def test_rescheduling_review_keeps_original_proposal_and_deadline(conversa
     await h.turn("Quanto custa a barba?")
     assert h.state()["confirmation_requires_review"]
     blocked = await h.turn("sim", preview=False)
-    assert "RETOMAR RESUMO" in blocked["answer"] and not h.calls["writes"]
+    assert summary in blocked["answer"] and "RETOMAR RESUMO" not in blocked["answer"] and not h.calls["writes"]
     reply = await h.turn("retomar resumo", preview=False)
     assert summary in reply["answer"] and h.state()["appointment"] == appointment
     assert h.state()["new_start"] == "2026-11-20T14:00:00-04:00"

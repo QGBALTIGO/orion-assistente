@@ -204,8 +204,9 @@ def command_flow(monkeypatch,meta):
         events.append("reschedule")
         record["start_at"]=new_start
         return dict(record)
-    async def cancel(_db,t,item_id,*,expected_snapshot,customer_phone):
+    async def cancel(_db,t,item_id,*,expected_snapshot,customer_phone,future_only=False):
         assert t==tenant and item_id==record["id"] and customer_phone==phone
+        assert future_only is True
         if expected_snapshot!=record["expected_snapshot"]: raise HTTPException(409,"changed")
         events.append("cancel")
         return dict(record)
