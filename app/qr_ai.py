@@ -408,7 +408,7 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
         decision = await interpret(
             message=body, history=state.get("history", []),
             catalog=catalog, key=os.getenv("GROQ_API_KEY", ""),
-            model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
         )
     except GroqServiceError as exc:
         import logging
