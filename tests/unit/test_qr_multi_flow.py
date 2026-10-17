@@ -723,3 +723,29 @@ async def test_reschedule_conflict_preserves_original_and_only_new_message_reads
     proposed = await h.turn("às 16h", preview=False)
     assert proposed["step"] == "reschedule_confirm" and "16h" in proposed["answer"]
     assert h.state()["appointment"] == str(h.appointment) and attempts == [1] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_typo_then_review_of_typed_summary_sends_one_question_with_new_id_and_same_deadline(flow):
+    h = flow
+    stored = qr_ai.presentation.render_summary(qr_ai.presentation.BookingSummary(("Corte", "Barba"),
+        datetime.combine(h.tomorrow, datetime.min.time(), h.zone).replace(hour=14), str(h.zone), 5500,
+        professional="Alex — Demonstração", duration_min=60), h.profile["style_rules"])
+    deadline = datetime.now().timestamp()+40
+    h.seed("confirm", hold=str(uuid4()), services=[str(h.cut), str(h.beard)], price=5500, duration=60,
+        confirmation_summary=stored, confirmation_message_id="synthetic-original", confirmation_expires_at=deadline)
+    token = qr_ai._message_identity.set("synthetic-typo")
+    try:
+        await h.turn("Sm", preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    assert h.state()["confirmation_requires_review"] and not h.calls["writes"]
+    token = qr_ai._message_identity.set("synthetic-review")
+    try:
+        result = await h.turn("Retomar resumo", preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    assert stored in result["answer"] and result["answer"].count("Posso confirmar") == 1
+    assert h.state()["confirmation_message_id"] == "synthetic-review"
+    assert h.state()["confirmation_expires_at"] == deadline and 1 <= h.redis.ttls[h.key] <= 40
+    assert not h.calls["writes"]

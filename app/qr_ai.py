@@ -1446,8 +1446,7 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
             state.pop("confirmation_requires_review", None)
             state["confirmation_message_id"] = _message_identity.get()
             await redis.set(state_key, json.dumps(state), ex=max(1, min(300, int(remaining))))
-            return {"answer": "Este é o pedido anterior, sem incluir os serviços apenas consultados:\n" + summary +
-                    "\n\n" + presentation.render_prompt("confirmation", _preferences(business)), "step": state["step"]}
+            return {"answer": presentation.render_summary_review(summary, _preferences(business)), "step": state["step"]}
         if text_clean in YES and not state.get("availability_query"):
             return {"answer": resume_prompt(state), "step": state["step"]}
     if state.get("availability_query") and text_clean in NO:
@@ -1488,11 +1487,7 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
         records = await customer_appointments(tenant, phone)
         if not records:
             return {"answer": "Não encontrei reservas vinculadas a este número neste estabelecimento.", "step": "no_history"}
-        lines = "\n".join(
-            f"• {row['start_at'].astimezone(ZoneInfo(business['timezone'])):%d/%m/%Y às %H:%M}"
-            f" · {row['status']} · protocolo {row['protocol']}"
-            for row in records)
-        return {"answer": "Agendamentos deste número:\n" + lines, "step": "history"}
+        return {"answer": presentation.render_booking_history(records, _preferences(business), timezone=business["timezone"]), "step": "history"}
     if intent == "reschedule":
         if denial := capability_denial(business, "rescheduling"):
             return denial

@@ -153,6 +153,8 @@ dos dois serviços, selection_mode replace, requested_date null, requested_time 
 query_service_ids dos dois, service_ids [], selection_mode none.
 'Quero cabelo e barba... não, apenas o preço' => primary_intent price,
 query_service_ids dos dois, service_ids [], selection_mode none: vale a última correção.
+No contexto step menu após 'Qual serviço?', resposta curta como 'Cabelo' que corresponda com segurança a nome/alias de serviço fornecido (ex.: Corte) => primary_intent booking, service_ids desse serviço, selection_mode replace, datas/horas null.
+Fora desse contexto, se o nome/apelido não identificar com segurança um serviço e a intenção atual, marque a ambiguidade para esclarecer; não invente serviço, data, horário ou operação.
 service_ids: conjunto final de serviços que o cliente explicitamente pede selecionar.
 query_service_ids: serviços apenas consultados/simulados. Pergunta de preço, 'e com barba?',
 'se colocar junto?' e 'só estou pesquisando' NÃO adicionam serviços nem criam booking.

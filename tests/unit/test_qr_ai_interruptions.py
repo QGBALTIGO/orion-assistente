@@ -570,6 +570,25 @@ async def test_rescheduling_review_keeps_original_proposal_and_deadline(conversa
 
 
 @pytest.mark.asyncio
+async def test_active_customer_history_uses_portuguese_status_and_local_time_without_technical_ids_or_price(conversation, monkeypatch):
+    h = conversation; calls = []
+    rows = [{"id": uuid4(), "start_at": qr_ai.datetime.fromisoformat("2026-10-19T15:00:00Z"),
+             "status": status, "protocol": "AG-SYNTHETIC-"+str(index)} for index, status in enumerate(("confirmed", "cancelled"))]
+    async def records(tenant, phone):
+        assert tenant == h.tenant and phone == "5567999999999"
+        calls.append((tenant, phone))
+        return rows
+    monkeypatch.setattr(qr_ai, "customer_appointments", records)
+    result = await h.turn("Quais meus agendamentos", preview=False)
+    assert result["step"] == "history" and len(calls) == 1
+    assert "confirmado" in result["answer"] and "cancelado" in result["answer"]
+    assert "19/10/2026 às 11h" in result["answer"] and "11:00" not in result["answer"]
+    assert all(row["protocol"] in result["answer"] and str(row["id"]) not in result["answer"] for row in rows)
+    assert "confirmed" not in result["answer"] and "cancelled" not in result["answer"] and "R$" not in result["answer"]
+    assert qr_ai.presentation.fits_message(result["answer"]) and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("step", ["date", "professional", "time", "confirm"])
 async def test_weekday_replaces_old_date_and_hold_before_consulting(conversation, monkeypatch, step):
     h = conversation

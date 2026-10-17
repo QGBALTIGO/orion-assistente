@@ -10,6 +10,7 @@ from app.qr_presentation import (
     PresentationPreferences, QuoteItem, duration, money, render_cancel,
     render_error, render_handoff, render_quote, render_summary, render_slots, render_prompt,
     render_commerce_summary, render_commerce_order, render_message, render_approved_suggestion,
+    render_summary_review, render_booking_history, fits_message,
 )
 
 
@@ -465,3 +466,44 @@ def test_light_slot_icons_are_not_repeated_per_day_and_do_not_imply_a_missing_pr
     assert light == plain and "09h15 • 09h30" in plain and "21/11/2026" in plain
     unknown_price = render_slots(("Consulta",), slots, {"emoji": "light"}, timezone="UTC")
     assert "💰" not in unknown_price and "R$" not in unknown_price
+
+
+@pytest.mark.parametrize("style", STYLE_LABELS)
+def test_review_of_typed_summary_preserves_all_facts_and_contains_one_confirmation_question(style):
+    stored = render_summary(summary(professional="Alex — Demonstração"), {"style": style})
+    answer = render_summary_review(stored, {"style": style})
+    assert stored in answer and answer.count("Posso confirmar") == 1
+    for fact in ("Corte", "Barba", "Alex — Demonstração", "20/11/2026", "14h", "R$ 55,00"):
+        assert fact in answer
+    assert fits_message(answer)
+
+
+def test_review_legacy_summary_without_embedded_confirmation_adds_one_prompt():
+    stored = "Resumo: Corte, 19/10 às 14h, 40 minutos, R$ 35,00."
+    answer = render_summary_review(stored)
+    assert stored in answer and answer.count("Posso confirmar") == 1
+
+
+def test_customer_history_translates_verified_statuses_uses_local_clock_and_never_invents_price():
+    records = [{"id": "technical-private-id", "start_at": datetime.fromisoformat("2026-10-19T15:00:00Z"),
+                "status": status, "protocol": f"AG-SYNTHETIC-{index}"}
+               for index, status in enumerate(("confirmed", "cancelled", "hold", "completed", "no_show", "unknown_internal_state"))]
+    answer = render_booking_history(records, timezone="America/Campo_Grande")
+    for word in ("confirmado", "cancelado", "aguardando confirmação", "concluído", "não compareceu", "a conferir"):
+        assert word in answer
+    assert answer.count("19/10/2026 às 11h") == len(records)
+    assert all(row["protocol"] in answer for row in records)
+    assert not any(word in answer for word in ("confirmed", "cancelled", "unknown_internal_state", "technical-private-id", "11:00", "R$"))
+    assert fits_message(answer)
+
+
+def test_customer_history_keeps_eight_long_protocols_inside_transport_budget():
+    records = [{"start_at": datetime.fromisoformat("2026-10-19T15:15:00Z"), "status": "confirmed",
+                "protocol": "AG-" + str(index) + "X"*76} for index in range(8)]
+    answer = render_booking_history(records, timezone="America/Campo_Grande")
+    assert all(row["protocol"] in answer for row in records) and "11h15" in answer and fits_message(answer)
+
+
+def test_customer_history_never_displays_an_unverified_floating_timezone():
+    with pytest.raises(ValueError):
+        render_booking_history([{"start_at": datetime(2026, 10, 19, 11), "status": "confirmed", "protocol": "AG-SYNTHETIC"}], timezone="UTC")
