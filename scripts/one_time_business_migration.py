@@ -263,16 +263,23 @@ def catalog_fingerprint(conn, tables=LEGACY_TABLES):
 _VARCHAR_LITERAL = r"'(?:[^']|'')*'::character varying"
 _TEXT_ARRAY_CAST = re.compile(r"\(ARRAY\[(" + _VARCHAR_LITERAL + r"(?:, " + _VARCHAR_LITERAL + r")*)\]\)::text\[\]")
 _DOLLAR_QUOTE = re.compile(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$")
+_BUFFER_CHECK_SOURCE = "CHECK ((((prep_min >= 0) AND (prep_min <= 240)) AND ((cleanup_min >= 0) AND (cleanup_min <= 240))))"
+_BUFFER_CHECK_RESTORED = "CHECK (((prep_min >= 0) AND (prep_min <= 240) AND ((cleanup_min >= 0) AND (cleanup_min <= 240))))"
 
 
 def canonical_expression(value):
-    """Normalize PG16's one verified dump/restore literal-array cast rewrite.
+    """Normalize two exact, verified PG16 dump/restore deparse rewrites.
 
     PostgreSQL reparses ARRAY[varchar literals]::text[] into an array of
     individually cast text literals. Keep every literal/type/operator, and do
     not rewrite quoted SQL text, quoted identifiers or dollar-quoted strings.
+    The existing services buffer CHECK also loses one redundant AND grouping.
+    That alias matches the complete, exact constraint with all four original
+    bounds; arbitrary boolean expressions or modified bounds never match.
     No other cast, predicate, whitespace, policy or schema difference is ignored.
     """
+    if value == _BUFFER_CHECK_SOURCE:
+        return _BUFFER_CHECK_RESTORED
     result = []
     index = 0
     while index < len(value):

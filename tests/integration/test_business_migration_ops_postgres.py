@@ -112,6 +112,15 @@ def test_full_backup_restore_and_restricted_migration_preserves_real_rows(migrat
             equivalent = conn.execute(text("SELECT (" + original + ") IS NOT DISTINCT FROM (" + canonical + ")"),
                                       {"value": value}).scalar_one()
             assert equivalent, "The only allowed cast rewrite must preserve PG16 predicate semantics"
+        source_buffer = ops._BUFFER_CHECK_SOURCE.removeprefix("CHECK ")
+        restored_buffer = ops._BUFFER_CHECK_RESTORED.removeprefix("CHECK ")
+        for prep in (None, -1, 0, 240, 241):
+            for cleanup in (None, -1, 0, 240, 241):
+                equivalent = conn.execute(text("SELECT (" + source_buffer + ") IS NOT DISTINCT FROM (" +
+                    restored_buffer + ") FROM (SELECT CAST(:prep AS integer) AS prep_min, "
+                    "CAST(:cleanup AS integer) AS cleanup_min) AS sample"),
+                    {"prep": prep, "cleanup": cleanup}).scalar_one()
+                assert equivalent, "The exact buffer CHECK alias must preserve PG16 truth and NULL semantics"
     structures = []
     original_fingerprint = ops.catalog_fingerprint
     def record_fingerprint(conn, tables=ops.LEGACY_TABLES):

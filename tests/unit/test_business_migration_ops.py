@@ -35,6 +35,15 @@ def test_pg16_canonicalization_leaves_other_array_expressions_exact():
         assert ops.canonical_expression(expression) == expression
 
 
+def test_pg16_only_the_exact_existing_buffer_check_can_flatten_and_grouping():
+    assert ops.canonical_expression(ops._BUFFER_CHECK_SOURCE) == ops._BUFFER_CHECK_RESTORED
+    for changed in (ops._BUFFER_CHECK_SOURCE.replace("240", "241", 1),
+                    ops._BUFFER_CHECK_SOURCE.replace("AND", "OR", 1),
+                    ops._BUFFER_CHECK_SOURCE.replace("prep_min", "duration_min"),
+                    "'" + ops._BUFFER_CHECK_SOURCE + "'"):
+        assert ops.canonical_expression(changed) == changed
+
+
 @pytest.fixture
 def settings():
     return ops.Settings(make_url("postgresql+psycopg://owner:synthetic-only@db.railway.internal:5432/orion_test"),
