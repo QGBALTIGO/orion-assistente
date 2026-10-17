@@ -1602,6 +1602,7 @@ async function showDeviceDiagnostics(){
      recuperacoesComCache:d.deliveryDiagnostics?.cacheHits??0,
      recuperacoesSemCache:d.deliveryDiagnostics?.cacheMisses??0,
      cacheMensagens:d.retainedMessages??0,
+     eventosDeChamadaRecebidos:d.callDiagnostics?.eventsObserved??0,
      chamadasRecebidas:d.callDiagnostics?.offersSeen??0,
      chamadasRejeitadas:d.callDiagnostics?.rejected??0,
      falhasNaRejeicao:d.callDiagnostics?.rejectFailed??0,
