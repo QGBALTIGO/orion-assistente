@@ -556,18 +556,18 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
           <input id="registerName" autocomplete="name" maxlength="120" required placeholder="Seu nome completo">
           <label for="registerEmail">E-mail</label>
           <input id="registerEmail" type="email" autocomplete="email" maxlength="254" required placeholder="seu@email.com">
-          <label for="registerPassword">Senha <small>mínimo de 12 caracteres</small></label>
+          <label for="registerPassword">Senha <small>mínimo de 8 caracteres</small></label>
           <div class="auth-secret-field">
-            <input id="registerPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="Crie uma senha forte">
+            <input id="registerPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required placeholder="Crie uma senha forte">
             <button class="auth-eye" type="button" data-password-toggle="registerPassword" aria-label="Mostrar senha">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
           <label for="registerConfirm">Confirmar senha</label>
-          <input id="registerConfirm" type="password" autocomplete="new-password" minlength="12" required placeholder="Digite a senha novamente">
+          <input id="registerConfirm" type="password" autocomplete="new-password" minlength="8" required placeholder="Digite a senha novamente">
           <button id="authSubmitRegister" class="auth-primary" type="submit">Criar minha conta <span aria-hidden="true">→</span></button>
           <p id="registerError" class="auth-error" role="alert" aria-live="polite"></p>
-          <p class="auth-hint" id="registrationHint">Sua conta fica pronta assim que concluir o cadastro.</p>
+          
         </form>
         <form id="forgotForm" class="auth-form hidden">
           <h3>Recuperar senha</h3>
@@ -587,9 +587,9 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
           <input id="resetCode" class="auth-otp-input" type="text" inputmode="numeric" autocomplete="one-time-code"
             pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="000000" required>
           <label for="resetPassword">Nova senha</label>
-          <input id="resetPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="Mínimo de 12 caracteres">
+          <input id="resetPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required placeholder="Mínimo de 8 caracteres">
           <label for="resetConfirm">Confirmar nova senha</label>
-          <input id="resetConfirm" type="password" autocomplete="new-password" minlength="12" required placeholder="Repita a nova senha">
+          <input id="resetConfirm" type="password" autocomplete="new-password" minlength="8" required placeholder="Repita a nova senha">
           <button id="authSubmitReset" class="auth-primary" type="submit">Atualizar senha</button>
           <button class="auth-text-link auth-back" type="button" data-back-login>Voltar para entrar</button>
           <p id="resetError" class="auth-error" role="alert" aria-live="polite"></p>
@@ -1028,18 +1028,14 @@ async function authFeatures(){
   const result=await fetch("/auth/features",{cache:"no-store",credentials:"same-origin"});
   const available=await result.json();
   $("authSubmitRegister").disabled=!available.registration;
-  $("registrationHint").textContent=available.registration?
-    (available.testMode?
-      "A conta é criada imediatamente. Recuperação de senha em teste somente para o e-mail autorizado.":
-      "A conta fica disponível imediatamente, sem confirmação por e-mail.") :
-    "Cadastro temporariamente indisponível.";
+  $("registerError").textContent=available.registration ? "" : "Cadastro temporariamente indisponível.";
   $("authSubmitForgot").disabled=!available.passwordRecovery;
   if(!available.passwordRecovery)
     $("forgotError").textContent="Recuperação indisponível até configurar o envio de e-mails.";
  }catch{
   $("authSubmitRegister").disabled=true;
   $("authSubmitForgot").disabled=true;
-  $("registrationHint").textContent="Não foi possível verificar a disponibilidade do cadastro.";
+  $("registerError").textContent="Não foi possível verificar a disponibilidade do cadastro.";
  }
 }
 $("authTabLogin").addEventListener("click",()=>authScreenShow("login"));
