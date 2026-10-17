@@ -257,7 +257,7 @@ async def test_meta_cancel_full_summary_rejected_on_missing_id_or_other_phone(co
     answer=await f["turn"]("cancelar AG-ABCDEF","foreign",sender="+5567999999902")
     assert "não encontrada" in answer
     proposal=await f["turn"]("cancelar AG-ABCDEF","request")
-    assert "*Serviços:* Barba" in proposal and "*Horário:* 10h" in proposal and "R$ 20,00" in proposal
+    assert "*Serviço:* Barba" in proposal and "*Horário:* 10h" in proposal and "R$ 20,00" in proposal
     await f["turn"]("pode cancelar","request")
     assert f["events"]==[]
     done=await f["turn"]("pode cancelar","fresh")

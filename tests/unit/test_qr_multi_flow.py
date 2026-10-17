@@ -266,15 +266,15 @@ async def test_unlisted_natural_affirmation_uses_existing_whole_plan_once(flow):
 
 
 @pytest.mark.asyncio
-async def test_no_preserves_pending_request_and_deadline_and_asks_adjustment(flow):
+async def test_no_closes_unconfirmed_request_and_a_later_affirmation_cannot_reuse_it(flow):
     h = flow;deadline = datetime.now().timestamp()+240
     original = h.seed("confirm", hold=str(uuid4()), confirmation_summary="Corte com Bruno", confirmation_expires_at=deadline)
     reply = await h.turn("Não", preview=False)
-    assert reply["step"] == "confirm" and "ajustar" in reply["answer"]
-    assert h.state()["hold"] == original["hold"] and h.state()["services"] == original["services"]
-    assert h.state()["confirmation_expires_at"] == deadline and not h.calls["writes"] and not h.calls["plans"]
+    assert reply["step"] == "request_closed" and "encerrei" in reply["answer"]
+    assert not h.state().get("hold") and not h.state().get("confirmation_message_id")
+    assert not h.calls["writes"] and not h.calls["plans"]
     blocked = await h.turn("fechou", preview=False)
-    assert blocked["step"] == "confirm" and not h.calls["writes"]
+    assert blocked["step"] not in {"confirmed", "cancelled", "rescheduled"} and not h.calls["writes"]
 
 
 @pytest.mark.asyncio
@@ -309,11 +309,11 @@ async def test_greeting_in_menu_preserves_active_availability_inquiry(flow):
 async def test_completed_availability_subject_is_retained_separately_from_booking(flow):
     h = flow;h.seed("menu", services=[], availability_query={"services": [str(h.beard)], "waiting_for": "professional", "search_next": True})
     first = await h.turn("Com Bruno")
-    assert "Disponibilidade real" in first["answer"] and not h.state()["services"]
+    assert "Barba" in first["answer"] and "Bruno" in first["answer"] and not h.state()["services"]
     assert h.state()["last_availability"]["services"] == [str(h.beard)]
     h.calls["reads"].clear()
     again = await h.turn("Quando tem livre")
-    assert "Disponibilidade real" in again["answer"] and not h.state()["services"]
+    assert "Barba" in again["answer"] and "Bruno" in again["answer"] and not h.state()["services"]
     assert h.calls["reads"] and all(x[1] == [h.beard] for x in h.calls["reads"])
     assert not h.calls["writes"]
 
@@ -726,7 +726,7 @@ async def test_reschedule_conflict_preserves_original_and_only_new_message_reads
 
 
 @pytest.mark.asyncio
-async def test_typo_then_review_of_typed_summary_sends_one_question_with_new_id_and_same_deadline(flow):
+async def test_doubt_then_review_of_typed_summary_sends_one_question_with_new_id_and_same_deadline(flow):
     h = flow
     stored = qr_ai.presentation.render_summary(qr_ai.presentation.BookingSummary(("Corte", "Barba"),
         datetime.combine(h.tomorrow, datetime.min.time(), h.zone).replace(hour=14), str(h.zone), 5500,
@@ -736,7 +736,7 @@ async def test_typo_then_review_of_typed_summary_sends_one_question_with_new_id_
         confirmation_summary=stored, confirmation_message_id="synthetic-original", confirmation_expires_at=deadline)
     token = qr_ai._message_identity.set("synthetic-typo")
     try:
-        await h.turn("Sm", preview=False)
+        await h.turn("Ainda estou decidindo", preview=False)
     finally:
         qr_ai._message_identity.reset(token)
     assert h.state()["confirmation_requires_review"] and not h.calls["writes"]
@@ -784,7 +784,7 @@ async def test_service_menu_ambiguous_alias_still_requires_disambiguation_and_do
     h.catalog.append({"id": uuid4(), "name": "Corte Infantil", "price_cents": 2500, "duration_min": 30})
     await h.turn("Oi", preview=False)
     answer = await h.turn("Cabelo", preview=False)
-    assert h.calls["plans"] == ["Cabelo"] and "Preciso distinguir" in answer["answer"]
+    assert "Corte" in answer["answer"] and "Corte Infantil" in answer["answer"] and "?" in answer["answer"]
     assert not h.state().get("services") and not h.calls["writes"]
 
 
@@ -808,12 +808,13 @@ async def test_unique_menu_service_reply_still_obeys_published_capabilities(flow
 
 
 @pytest.mark.asyncio
-async def test_catalog_revision_change_invalidates_the_old_service_question_shortcut(flow):
+async def test_catalog_revision_change_reloads_current_price_without_preserving_operation_authority(flow):
     h = flow
     await h.turn("Oi", preview=False)
     h.catalog[0]["price_cents"] = 3600
-    await h.turn("Cabelo", preview=False)
-    assert h.calls["plans"] == ["Cabelo"] and not h.calls["writes"] and not h.state().get("services")
+    result = await h.turn("Cabelo", preview=False)
+    assert "R$ 36,00" in result["answer"] and "R$ 35,00" not in result["answer"]
+    assert not h.calls["writes"] and not h.state().get("hold") and not h.state().get("confirmation_message_id")
 
 
 @pytest.mark.asyncio

@@ -126,12 +126,13 @@ async def test_remarking_uses_a_fresh_summary_and_cannot_write_in_preview(monkey
     assert a["step"] == "reschedule_time"
     b = await qr_ai.turn(tenant, "5567999999999", "14:00", redis, "preview:fake", True)
     assert b["step"] == "reschedule_confirm"
+    proposal_identity = json.loads(redis.values[k])["confirmation_message_id"]
     c = await qr_ai.turn(tenant, "5567999999999", "não", redis, "preview:fake", True)
-    assert "horário original permanece" in c["answer"]
+    assert c["step"] == "request_closed" and k not in redis.values
     redis.values[k] = json.dumps({**state, "step": "reschedule_confirm",
                                    "new_start": "2026-11-20T14:00:00-04:00",
                                    "confirmation_summary": b["answer"],
-                                   "confirmation_message_id": json.loads(redis.values[k])["confirmation_message_id"],
+                                   "confirmation_message_id": proposal_identity,
                                    "confirmation_expires_at": datetime.now().timestamp() + 240})
     done = await qr_ai.turn(tenant, "5567999999999", "sim", redis, "preview:fake", True)
     assert done["step"] == "preview_complete"

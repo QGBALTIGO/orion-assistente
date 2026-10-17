@@ -187,7 +187,7 @@ async def test_explicit_professional_replaces_previous_even_with_day_in_phrase(c
     assert h.state()["professional"] == str(h.bruno)
     assert h.state()["professional_name"] == "Bruno Souza"
     confirmation = await h.turn("1")
-    assert "*Serviços:* Barba" in confirmation["answer"] and "*Profissional:* Bruno Souza" in confirmation["answer"]
+    assert "*Serviço:* Barba" in confirmation["answer"] and "*Profissional:* Bruno Souza" in confirmation["answer"]
 
 
 @pytest.mark.asyncio
@@ -489,7 +489,7 @@ async def test_yes_no_during_availability_inquiry_cannot_confirm_or_cancel_old_b
     if answer == "sim":
         assert "qual profissional" in reply["answer"]
     else:
-        assert "Encerrei somente a consulta" in reply["answer"]
+        assert "encerrei essa consulta" in reply["answer"]
         assert "availability_query" not in h.state()
 
 

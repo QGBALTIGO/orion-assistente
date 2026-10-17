@@ -19,7 +19,7 @@ from app import qr_intake_revision as revision, qr_presentation as presentation
 from app.booking_service import cancel_appointment
 from app.database import get_session_factory
 from app.qr_customer import customer_appointments
-from app.qr_dialogue import contextual_response, interpret_contextual_response
+from app.qr_dialogue import contextual_response, interpret_contextual_response, summary_review_requested
 from app.qr_understanding import build_plan, normalized
 from app.whatsapp_dialogue import owned_booking, summary as booking_summary
 
@@ -62,6 +62,20 @@ def _deadline(state):
 
 def _valid_id(value):
     return isinstance(value, str) and re.fullmatch(ID_PATTERN, value) is not None
+
+
+def declines_cancellation(body):
+    """A whole withdrawal closes only the pending request, never a reservation."""
+    text = normalized(body).strip(" .!,;")
+    return bool(re.fullmatch(
+        r"nao(?:\s+(?:obrigad[oa]|quero(?:\s+mais)?(?:\s+(?:cancelar|desmarcar))?|"
+        r"cancel(?:a|e|ar)|desmarc(?:a|ar)|desmarque))?|n|negativo|"
+        r"(?:(?:quero|prefiro|pode)\s+)?(?:manter|mantenha)"
+        r"(?:\s+(?:(?:a|minha|essa|esta)\s+reserva|(?:o|meu|esse|este)\s+agendamento))?|"
+        r"(?:desist[oi]|desistir)(?:\s+(?:do cancelamento|de (?:cancelar|desmarcar)))?|"
+        r"(?:deixa|deixe)\s+como\s+esta|"
+        r"(?:cancel(?:a|e|ar)|desmarc(?:a|ar)|desmarque)\s*(?:[,;]|\.{3}|…)\s*"
+        r"nao\s*[,;]?\s*(?:deixa|deixe)\s+como\s+esta", text))
 
 
 def _future(record):
@@ -182,7 +196,8 @@ async def _proposal(tenant, phone, appointment_id, business, redis, key, message
         return {"answer": "Preciso conferir um novo resumo completo com a equipe antes do cancelamento. Nenhuma reserva foi alterada.", "step": "cancel_review"}
     try:
         summary = booking_summary(record)
-        answer = prefix + presentation.render_summary(summary, (business.get("profile") or {}).get("style_rules"), operation="cancel")
+        composition = presentation.compose_summary(summary, (business.get("profile") or {}).get("style_rules"), operation="cancel")
+        answer = prefix + composition.render()
         completed = presentation.render_summary(summary, (business.get("profile") or {}).get("style_rules"), operation="cancel", confirmed=True)
     except (KeyError, TypeError, ValueError):
         return {"answer": "Não consegui conferir os dados completos da reserva. O cancelamento precisa ser revisado pela equipe.", "step": "cancel_review"}
@@ -192,6 +207,7 @@ async def _proposal(tenant, phone, appointment_id, business, redis, key, message
         return {"answer": "Preciso apresentar o resumo em uma nova mensagem identificada antes de aceitar o cancelamento. Nenhuma reserva foi alterada.", "step": "cancel_review"}
     state = {"step": "cancel_confirm", "appointment": str(record["id"]), "expected_snapshot": record["expected_snapshot"],
         "confirmation_summary": answer, "confirmation_message_id": message_id,
+        "confirmation_presentation": composition.as_dict(),
         "confirmation_expires_at": deadline if deadline is not None else _now().timestamp()+TTL,
         "cancellation_scope": _scope(tenant, phone), "cancellation_context": _context(business),
         "cancellation_target_names": [(record.get("professional") or "").split(" ")[0], *summary.services]}
@@ -217,6 +233,10 @@ async def handle(tenant, phone, body, *, business, state, redis, key, message_id
         return None
     if preview:
         return {"answer": "Prévia de cancelamento: nenhuma reserva real é consultada ou alterada nesta simulação.", "step": "preview_cancel"}
+    if step in STEPS and state.get("cancellation_scope") == scope and declines_cancellation(body):
+        await redis.delete(key)
+        return {"answer": "Tudo bem, encerrei a solicitação de cancelamento. Quando precisar de algo, é só me chamar.",
+                "step": "cancel_declined"}
     if denial := _policy_denial(business):
         return denial
     text = normalized(body)
@@ -238,24 +258,26 @@ async def handle(tenant, phone, body, *, business, state, redis, key, message_id
         await _save(redis, key, {"step": "cancel_pick", "candidates": records,
             "confirmation_expires_at": now.timestamp()+TTL, "cancellation_scope": scope, "cancellation_context": _context(business)})
         return {"answer": prompt, "step": "cancel_pick"}
-    if state.get("cancellation_scope") != scope or _deadline(state) <= _now().timestamp():
+    if state.get("cancellation_scope") != scope:
         return {"answer": "O resumo de cancelamento expirou ou precisa ser conferido novamente. Nenhuma reserva foi alterada; diga qual reserva deseja revisar.", "step": "cancel_expired"}
+    if _deadline(state) <= _now().timestamp():
+        await redis.delete(key)
+        return {"answer": "O resumo de cancelamento expirou. Se quiser cancelar, vamos conferir a reserva de novo.", "step": "cancel_expired"}
     if step == "cancel_pick":
         records = state.get("candidates", [])
         kind, selected = _selection(body, records, business["timezone"])
         if kind != "selected":
-            return {"answer": _listing(records, business["timezone"]), "step": "cancel_pick"}
+            prefix = "Vamos revisar uma reserva por vez. " if re.fullmatch(r"(?:tod[oa]s|amb[oa]s|os dois|as duas)[.!?\s]*", text) else ""
+            return {"answer": prefix + _listing(records, business["timezone"]), "step": "cancel_pick"}
         return await _proposal(tenant, phone, UUID(selected), business, redis, key, message_id)
     if not isinstance(state.get("confirmation_summary"), str) or not state["confirmation_summary"].strip():
         return {"answer": "Preciso apresentar o resumo completo novamente antes do cancelamento. Nenhuma reserva foi alterada.", "step": "cancel_review"}
     if not _valid_id(message_id) or not _valid_id(state.get("confirmation_message_id")) or message_id == state["confirmation_message_id"]:
         return {"answer": "O cancelamento ainda não foi feito. Preciso de uma nova resposta depois do resumo para continuar.", "step": "cancel_confirm"}
-    if re.fullmatch(r"(?:(?:quero|pode|poderia|vamos|me)\s+)*(?:ver|rever|retomar|mostrar|mostra|conferir)\s+(?:(?:o|esse|meu)\s+)?resumo(?:\s+(?:de novo|novamente|original))?[.!?]*", text):
+    if summary_review_requested(body):
         return await _proposal(tenant, phone, UUID(state["appointment"]), business, redis, key, message_id,
             deadline=_deadline(state))
     decision = contextual_response(body, awaiting_confirmation=True, semantic_kind=semantic_kind, confirmation_action="cancel")
-    if re.search(r"\b(?:desist\w*|manter|mantenha)\b", text):
-        decision = contextual_response("nao", awaiting_confirmation=True, confirmation_action="cancel")
     if (_target_reference(body, state.get("cancellation_target_names", [])) or
             re.search(r"\b(?:agendar|agende|reservar|reserve|marcar|marque|remarc\w*|reagend\w*|compr\w*|adicion\w*|orcamento|pedido)\b", text)):
         decision = contextual_response("mudar o pedido", awaiting_confirmation=True, confirmation_action="cancel")
@@ -265,8 +287,7 @@ async def handle(tenant, phone, body, *, business, state, redis, key, message_id
     if decision.kind != "affirm":
         state = {**state, "confirmation_requires_review": True}
         await _save(redis, key, state)
-        answer = ("Tudo bem, não realizei nenhum cancelamento nesta resposta. Você quer ajustar algum detalhe?" if decision.kind == "decline" else
-            "Não confirmei nenhum cancelamento nesta resposta. Quer revisar o resumo ou esclarecer o que deseja fazer antes de continuar?")
+        answer = "Quer conferir de novo o agendamento que você pediu para cancelar?"
         return {"answer": answer, "step": "cancel_confirm"}
     if state.get("confirmation_requires_review") or state.get("cancellation_context") != _context(business):
         return await _proposal(tenant, phone, UUID(state["appointment"]), business, redis, key, message_id,

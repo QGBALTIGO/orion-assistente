@@ -76,20 +76,41 @@ Unknown text never becomes agreement merely because a summary is pending.
         return DialogueDecision("uncertain", "question_or_doubt")
     if clean in {"nao", "n", "nao obrigado", "nao obrigada", "nao quero", "nao pode", "negativo"}:
         return DialogueDecision("decline", "explicit_decline")
+    if confirmation_action in {"booking", "order"} and clean in {
+            "nao confirma", "nao confirmar", "nao pode confirmar"}:
+        return DialogueDecision("decline", "explicit_decline")
     if re.search(r"\b(?:nao|nem|nunca)\b", text) or (confirmation_action != "cancel" and
             re.search(r"\b(?:cancela\w*|desmarca\w*)\b", text)):
         return DialogueDecision("uncertain", "negation_or_cancellation")
-    if semantic_kind in {"amend", "uncertain", "decline"}:
-        return DialogueDecision(semantic_kind, "semantic")
-    if clean in {"sim", "s", "confirmo", "confirmar", "pode confirmar", "ok pode confirmar",
+    # An entire imperative answers the authenticated cancellation question. It
+    # cannot authorize a booking/order, and all whole-message guards above win.
+    if confirmation_action == "cancel" and clean in {
+            "cancela", "cancele", "cancelar", "desmarca", "desmarque", "desmarcar"}:
+        return DialogueDecision("affirm", "explicit_cancellation_consent")
+    if confirmation_action == "cancel" and clean in {"pode marcar", "pode agendar"}:
+        return DialogueDecision("amend", "change_in_message")
+    if clean in {"sim", "sm", "s", "confirmo", "confirmar", "pode confirmar", "ok pode confirmar",
                  "pode marcar", "pode agendar", "fechou", "isso mesmo", "pode ser", "de acordo",
                  "confirmado", "esta certo", "ta certo", "tudo certo", "combinado"}:
         return DialogueDecision("affirm", "explicit_affirm")
-    if semantic_kind == "affirm":
-        return DialogueDecision("affirm", "semantic")
     if confirmation_action == "cancel" and clean in {"pode cancelar", "confirmo o cancelamento", "sim pode cancelar", "pode desmarcar"}:
         return DialogueDecision("affirm", "explicit_cancellation_consent")
+    if semantic_kind in {"amend", "uncertain", "decline"}:
+        return DialogueDecision(semantic_kind, "semantic")
+    if semantic_kind == "affirm":
+        return DialogueDecision("affirm", "semantic")
     return DialogueDecision("uncertain")
+
+
+def summary_review_requested(message: str) -> bool:
+    """A complete request to see the current proposal again, never consent."""
+    text = _norm(message).strip(" ?!.,;")
+    text = re.sub(r"^sim(?:\s*[,;.!]\s*|\s+)", "", text)
+    return text in {"retomar resumo", "ver resumo", "rever resumo", "resumo original", "como ficou"} or bool(re.fullmatch(
+        r"(?:(?:quero|pode|poderia|vamos|me)\s+)*(?:ver|rever|retomar|mostrar|mostra|conferir)\s+"
+        r"(?:(?:o|esse|meu)\s+)?resumo(?:\s+(?:de novo|novamente|original))?|"
+        r"(?:mostra|mostre|mostrar)\s+(?:de novo|novamente)|"
+        r"(?:retoma|retome|retomar)\s+(?:(?:o|meu|esse)\s+)?agendamento", text))
 
 
 async def interpret_contextual_response(*, message: str, awaiting_confirmation: bool,

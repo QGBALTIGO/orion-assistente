@@ -26,7 +26,7 @@ def summary(**changes):
 @pytest.mark.parametrize(("style", "emoji", "length"), list(product(STYLE_LABELS, ("none", "light"), ("short", "balanced", "detailed"))))
 def test_every_style_keeps_catalog_facts_without_inventing_a_sale(style, emoji, length):
     answer = render_quote(ITEMS, {"style": style, "emoji": emoji, "length": length})
-    for fact in ("Corte", "Barba", "*R$ 35,00*", "*R$ 20,00*", "*R$ 55,00*", "1 hora"):
+    for fact in ("Corte", "Barba", "*R$ 35,00*", "*R$ 20,00*", "*Total:* R$ 55,00", "1 hora"):
         assert fact in answer
     assert "minutos" not in answer or length == "detailed"
     assert answer.count("😊") <= (1 if emoji == "light" else 0)
@@ -166,7 +166,7 @@ def test_money_duration_and_invalid_facts_fail_without_guessing():
 def test_aggregation_of_valid_quote_lines_stays_within_formatter_bounds():
     largest = QuoteItem("Item", 100_000_000, quantity=1000, duration_min=1440)
     answer = render_quote((largest,) * 12, {"length": "short"})
-    assert "Total: *R$ 12.000.000.000,00*" in answer
+    assert "*Total:* R$ 12.000.000.000,00" in answer
     assert "288000 horas" in answer
 
 
@@ -183,8 +183,8 @@ def test_summary_has_readable_blocks_and_natural_confirmation_without_claiming_a
     assert "\n\n" in answer and "*Serviços:* Corte e Barba" in answer
     assert "*Profissional:* Bruno" in answer and "*Total:* R$ 55,00" in answer
     assert "sexta-feira" in answer and "*Horário:* 14h" in answer
-    assert "Posso confirmar" in answer and any(word in answer for word in ("ajust", "mudar"))
-    assert not any(text in answer for text in ("SIM", "NÃO", "reservado", "está confirmado", "✂", "💈"))
+    assert answer.endswith("Posso confirmar esse agendamento?") and answer.count("?") == 1
+    assert not any(text in answer for text in ("SIM", "NÃO", "reservado", "está confirmado", "💈"))
     assert answer.count("Posso confirmar") == 1
 
 
@@ -319,11 +319,11 @@ def test_commerce_operation_copy_distinguishes_proposal_and_actual_outcome_and_n
     if state == "proposal":
         assert "ainda não confirmado" in answer and "Posso confirmar" in answer
     elif state == "confirmed":
-        assert "*Pedido confirmado ✅*" in answer and "Posso confirmar" not in answer
+        assert "✅ *Pedido confirmado*" in answer and "Posso confirmar" not in answer
     elif state == "cancel_proposal":
-        assert "ainda não cancelado" in answer and "Você quer cancelar" in answer
+        assert "ainda não cancelado" in answer and "Posso cancelar" in answer
     elif state == "cancelled":
-        assert "Cancelamento do pedido confirmado" in answer and "Você quer cancelar" not in answer
+        assert "Cancelamento do pedido confirmado" in answer and "Posso cancelar" not in answer
     else:
         assert "nenhuma operação foi realizada" in answer and "Posso confirmar" not in answer
 
@@ -335,7 +335,7 @@ def test_real_commerce_outcome_requires_a_verified_order_identifier(state):
 
 
 @pytest.mark.parametrize(("kind", "command", "natural"), [
-    ("confirm", "Posso confirmar? Responda SIM ou NÃO.", "Posso confirmar este resumo"),
+    ("confirm", "Posso confirmar? Responda SIM ou NÃO.", "Posso confirmar esse agendamento"),
     ("reschedule_confirm", "A reserva original permanece. Confirme a remarcação com SIM ou desista com NÃO.", "A reserva original permanece."),
     ("reschedule_pick", "Responda com o número do agendamento que deseja remarcar.", "Qual agendamento"),
     ("professional", "Qual profissional prefere? Pode responder pelo nome ou número indicado.", "preferência"),
@@ -380,12 +380,12 @@ def test_rescheduling_and_cancellation_summaries_do_not_claim_booking_success_be
     reschedule = render_summary(summary(), operation="reschedule")
     cancellation = render_summary(summary(), operation="cancel")
     assert "*Proposta de remarcação*" in reschedule and "original permanece" in reschedule
-    assert "*Agendamento selecionado para cancelamento*" in cancellation and "Você quer cancelar" in cancellation
+    assert "*Agendamento selecionado para cancelamento*" in cancellation and "Posso cancelar esse agendamento?" in cancellation
     assert "confirmada." not in reschedule and "Cancelamento confirmado." not in cancellation
     actual = render_summary(summary(protocol="REAL-123"), operation="reschedule", confirmed=True)
     assert "*Remarcação confirmada.*" in actual and "REAL-123" in actual and "Posso confirmar" not in actual
     preview = render_summary(summary(), operation="cancel", simulation=True)
-    assert "nenhuma alteração foi realizada" in preview and "Você quer cancelar" not in preview
+    assert "nenhuma alteração foi realizada" in preview and "Posso cancelar" not in preview
 
 
 def test_technical_order_ids_are_used_as_evidence_but_never_dumped_in_customer_copy():
@@ -448,7 +448,7 @@ def test_standalone_suggestion_respects_context_and_never_invents_a_sale(context
 def test_light_icons_identify_date_time_and_price_once_without_changing_summary_or_questions(style):
     plain = render_summary(summary(), {"style": style, "emoji": "none"})
     light = render_summary(summary(), {"style": style, "emoji": "light"})
-    for icon in ("📅", "🕒", "💰"):
+    for icon in ("✂️", "👤", "📅", "🕒", "⏳", "💰"):
         assert light.count(icon) == 1 and icon not in plain
         light = light.replace(icon + " ", "")
     assert light == plain
@@ -460,7 +460,7 @@ def test_light_slot_icons_are_not_repeated_per_day_and_do_not_imply_a_missing_pr
     kwargs = {"timezone": "UTC", "total_cents": 5500, "duration_min": 60, "ask_selection": False}
     plain = render_slots(("Consulta",), slots, {"emoji": "none"}, **kwargs)
     light = render_slots(("Consulta",), slots, {"emoji": "light"}, **kwargs)
-    for icon in ("📅", "🕒", "💰"):
+    for icon in ("📋", "📅", "🕒", "⏳", "💰"):
         assert light.count(icon) == 1 and icon not in plain
         light = light.replace(icon + " ", "")
     assert light == plain and "09h15 • 09h30" in plain and "21/11/2026" in plain
@@ -478,10 +478,10 @@ def test_review_of_typed_summary_preserves_all_facts_and_contains_one_confirmati
     assert fits_message(answer)
 
 
-def test_review_legacy_summary_without_embedded_confirmation_adds_one_prompt():
+def test_review_legacy_summary_without_confirmation_never_invents_authorization():
     stored = "Resumo: Corte, 19/10 às 14h, 40 minutos, R$ 35,00."
     answer = render_summary_review(stored)
-    assert stored in answer and answer.count("Posso confirmar") == 1
+    assert stored in answer and "Posso confirmar" not in answer
 
 
 def test_customer_history_translates_verified_statuses_uses_local_clock_and_never_invents_price():
