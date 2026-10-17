@@ -54,7 +54,13 @@ let socket=null,generation=0,timer=null,attempts=0,status="starting",
 let durableInbox=makeDurableInbox({directory:authDir,secret:KEY});
 let connectedStore=makeConnectedStore({directory:authDir,secret:KEY});
 let connectedProfile={name:null,photoUrl:null,updatedAt:null},profileFetchedAt=0,lastRestartAt=0;
-const repliedToCallers=new Set();
+const repliedToCallers=new Map();
+const recentCallOffers=new Map();
+const callDiagnostics={
+  offersSeen:0,rejected:0,rejectFailed:0,replied:0,replyFailed:0,
+  replyNoPhone:0,unresolvedWithAllowlist:0,duplicatesSkipped:0,
+  allowedSkipped:0,replyCooldown:0
+};
 async function refreshConnectedProfile(client){
   if(!client?.user?.id || Date.now()-profileFetchedAt<60000)return;
   profileFetchedAt=Date.now();
@@ -142,6 +148,7 @@ function stats(){
     featureSettings:status==="connected"?connectedStore.settings():null,
     featureCapabilities:{chatbot:false,transcription:!!transcriberConfig(),
       callBlocking:typeof socket?.rejectCall==="function"},
+    callDiagnostics:{...callDiagnostics},
     controlStorage:connectedStore.health()};
 }
 function auth(req){
@@ -200,10 +207,13 @@ function installListeners(client,mine,saveCreds){
   client.ev.on("call",async calls=>{
     if(mine!==generation||status!=="connected")return;
     try{
-      await handleCallOffers(calls,{
+      const actions=await handleCallOffers(calls,{
         socket:client,settings:connectedStore.settings(),replySent:repliedToCallers,
-        sendReply:async(jid,body)=>{const phone=normalizeFromJid(jid);if(phone)await send(phone,body)}
+        recentCalls:recentCallOffers,diagnostics:callDiagnostics,
+        sendReply:(phone,body)=>send(phone,body)
       });
+      if(actions.length)console.info("Orion QR: tratamento de chamadas: "+
+        actions.join(",")+" (números e identificadores omitidos)");
     }catch{console.warn("Orion QR: falha ao processar controle de chamada (dados omitidos)")}
   });
   client.ev.on("messages.upsert",async ({messages:incoming,type})=>{
