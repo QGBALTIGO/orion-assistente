@@ -266,6 +266,10 @@ _TEXT_ARRAY_CAST = re.compile(r"\(ARRAY\[(" + _VARCHAR_LITERAL + r"(?:, " + _VAR
 _DOLLAR_QUOTE = re.compile(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$")
 _BUFFER_CHECK_SOURCE = "CHECK ((((prep_min >= 0) AND (prep_min <= 240)) AND ((cleanup_min >= 0) AND (cleanup_min <= 240))))"
 _BUFFER_CHECK_RESTORED = "CHECK (((prep_min >= 0) AND (prep_min <= 240) AND ((cleanup_min >= 0) AND (cleanup_min <= 240))))"
+# Exact PG16 source/restore pair observed in the full 0011 synthetic restore.
+# Applied only to commercial_quote_items.constraints, never arbitrary expressions.
+_QUOTE_ITEM_CHECK_SOURCE = "CHECK ((((quantity >= 1) AND (quantity <= 1000)) AND (item_order >= 0) AND (product_revision > 0) AND (variant_revision > 0) AND (inventory_revision > 0) AND (jsonb_typeof(snapshot) = 'object'::text)))"
+_QUOTE_ITEM_CHECK_RESTORED = "CHECK (((quantity >= 1) AND (quantity <= 1000) AND (item_order >= 0) AND (product_revision > 0) AND (variant_revision > 0) AND (inventory_revision > 0) AND (jsonb_typeof(snapshot) = 'object'::text)))"
 
 
 def canonical_expression(value):
@@ -322,7 +326,7 @@ def canonical_expression(value):
 
 
 def canonical_catalog(value):
-    """Apply the two aliases to SQL-expression fields only, never identifiers."""
+    """Apply reviewed SQL aliases only in their approved expression fields."""
     rows = deepcopy(value)
     for row in rows:
         # catalog_structure: name, RLS, FORCE, columns, constraints, indexes, policies.
@@ -332,7 +336,12 @@ def canonical_catalog(value):
                 column[3] = canonical_expression(column[3])
         for section in (4, 5):
             if row[section] is not None:
-                row[section] = [canonical_expression(expression) for expression in row[section]]
+                row[section] = [
+                    _QUOTE_ITEM_CHECK_RESTORED
+                    if row[0] == "commercial_quote_items" and section == 4 and expression == _QUOTE_ITEM_CHECK_SOURCE
+                    else canonical_expression(expression)
+                    for expression in row[section]
+                ]
         # policy: name, permissive, roles, command, qual-expression, check-expression.
         for policy in row[6] or []:
             for section in (4, 5):

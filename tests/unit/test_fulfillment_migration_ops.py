@@ -205,3 +205,36 @@ def test_projection_never_hides_unverified_additions(monkeypatch, tamper):
         quote[5].append(quote[5][1])
     with pytest.raises(backup.Stop):
         ops.projected_catalog(conn)
+
+
+def test_quote_item_restore_alias_is_exact_and_scoped_to_its_constraint_field():
+    source, restored = backup._QUOTE_ITEM_CHECK_SOURCE, backup._QUOTE_ITEM_CHECK_RESTORED
+    row = ["commercial_quote_items", True, True,
+           [[source, "text", False, source]], [source], [source],
+           [[source, "PERMISSIVE", [source], "ALL", source, source]]]
+    original = deepcopy(row)
+    result = backup.canonical_catalog([row])[0]
+    assert result[4] == [restored]
+    assert result[:4] == original[:4] and result[5:] == original[5:]
+    assert row == original
+    assert backup.canonical_expression(source) == source
+    assert backup.canonical_catalog([result])[0] == result
+    for table in ("commercial_quotes", "commercial_quote_items_unreviewed", source):
+        other = deepcopy(original)
+        other[0] = table
+        assert backup.canonical_catalog([other]) == [other]
+
+
+@pytest.mark.parametrize("old,new", [
+    ("quantity >= 1", "quantity >= 0"), ("quantity <= 1000", "quantity <= 1001"),
+    ("item_order >= 0", "item_order > 0"), ("product_revision > 0", "product_revision >= 0"),
+    ("variant_revision > 0", "variant_revision > 1"), ("inventory_revision > 0", "inventory_revision < 0"),
+    ("'object'", "'array'"), ("'object'::text", "'object'::character varying"),
+    ("jsonb_typeof(snapshot)", "jsonb_typeof(other_snapshot)"),
+    (" AND ", " OR "), ("CHECK (", "CHECK ( "), ("CHECK (", "CHECK (("),
+])
+def test_quote_item_alias_does_not_hide_nearby_predicate_or_format_changes(old, new):
+    changed = backup._QUOTE_ITEM_CHECK_SOURCE.replace(old, new, 1)
+    assert changed != backup._QUOTE_ITEM_CHECK_SOURCE
+    row = ["commercial_quote_items", True, True, [], [changed], [], []]
+    assert backup.canonical_catalog([row]) == [row]

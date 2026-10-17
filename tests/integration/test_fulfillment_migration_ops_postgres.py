@@ -59,6 +59,24 @@ def test_full_0011_backup_restore_and_0012_upgrade_preserves_existing_commerce(f
     with engine.begin() as conn:
         before = ops.row_fingerprints(conn)
         security = ops.security_structure(conn)
+        # Prove the single observed PG16 grouping alias preserves TRUE/FALSE/NULL
+        # over both quantity boundaries, negative/zero revisions and JSON types.
+        source = backup._QUOTE_ITEM_CHECK_SOURCE.removeprefix("CHECK ")
+        restored = backup._QUOTE_ITEM_CHECK_RESTORED.removeprefix("CHECK ")
+        proof = conn.execute(text("""WITH samples AS (
+            SELECT """ + source + " AS original, " + restored + """ AS restored
+            FROM (VALUES(NULL::integer),(0),(1),(1000),(1001)) q(quantity)
+            CROSS JOIN (VALUES(NULL::integer),(-1),(0)) o(item_order)
+            CROSS JOIN (VALUES(NULL::integer),(0),(1)) p(product_revision)
+            CROSS JOIN (VALUES(NULL::integer),(0),(1)) v(variant_revision)
+            CROSS JOIN (VALUES(NULL::integer),(0),(1)) i(inventory_revision)
+            CROSS JOIN (VALUES(NULL::jsonb),('{}'::jsonb),('[]'::jsonb),('null'::jsonb),('true'::jsonb)) s(snapshot)
+        ) SELECT count(*) AS cases, bool_and(original IS NOT DISTINCT FROM restored) AS equivalent,
+            count(*) FILTER (WHERE original IS NULL) AS null_cases,
+            count(*) FILTER (WHERE original IS TRUE) AS true_cases,
+            count(*) FILTER (WHERE original IS FALSE) AS false_cases FROM samples""")).mappings().one()
+        assert proof["cases"] == 2025 and proof["equivalent"] is True
+        assert proof["null_cases"] > 0 and proof["true_cases"] > 0 and proof["false_cases"] > 0
     structures = []
     original_fingerprint = backup.catalog_fingerprint
     def record_fingerprint(conn, tables=backup.LEGACY_TABLES):
