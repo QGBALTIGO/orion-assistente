@@ -103,7 +103,7 @@ async def test_summary_uses_original_backend_deadline_without_renewing_short_liv
     monkeypatch.setattr(qr_ai, "book_appointment", book)
     reply = await identified(h, "Quero agendar corte amanhã às15h30 com Bruno")
     assert reply["step"] == "confirm" and h.state()["confirmation_expires_at"] == expires.timestamp()
-    assert 1 <= h.redis.ttls[h.key] <= 21
+    assert h.redis.ttls[h.key] == qr_ai.STATE_TTL
 
 
 @pytest.mark.asyncio
@@ -243,3 +243,120 @@ async def test_incomplete_clock_query_still_checks_appointment_capability_before
     h.seed("menu", services=[], professional=None, availability_query={"services": [str(h.cut)], "day": h.tomorrow.isoformat(), "waiting_for": "professional"})
     reply = await identified(h, "Melhor às quatro da tarde, só corte. Quanto fica?")
     assert reply["step"] == "capability_unavailable" and not h.calls["reads"] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("writer", ["summary", "price", "review", "undelivered"])
+async def test_real_redis_ttl_keeps_booking_facts_after_hold_deadline_without_renewing_authority(flow, monkeypatch, writer):
+    h = flow
+    now = [datetime.now().timestamp()]
+    deadlines = {}
+    original_set = h.redis.set
+    original_get = h.redis.get
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls.fromtimestamp(now[0], tz)
+    async def set_value(key, value, ex=None):
+        await original_set(key, value, ex=ex)
+        deadlines[key] = now[0] + ex if ex is not None else float("inf")
+    async def get_value(key):
+        if deadlines.get(key, float("inf")) <= now[0]:
+            h.redis.data.pop(key, None)
+        return await original_get(key)
+    original_book = h.book
+    async def book(*args, **kwargs):
+        result = await original_book(*args, **kwargs)
+        result["hold_expires_at"] = Clock.fromtimestamp(result["hold_expires_at"].timestamp(), h.zone)
+        return result
+    monkeypatch.setattr(h.redis, "set", set_value); monkeypatch.setattr(h.redis, "get", get_value)
+    monkeypatch.setattr(qr_ai, "datetime", Clock)
+    monkeypatch.setattr(qr_ai, "book_appointment", book)
+    await identified(h, "Quero corte amanhã às15h30 com Bruno", identity="ttl-summary")
+    initial = h.state(); expiry = initial["confirmation_expires_at"]
+    h.calls["writes"].clear()
+    now[0] += 15
+    if writer == "price":
+        await identified(h, "Quanto custa só a barba?", identity="ttl-price")
+    elif writer == "review":
+        await identified(h, "Pode mostrar o resumo?", identity="ttl-review")
+    elif writer == "undelivered":
+        await qr_ai._require_pending_review(h.redis, h.key)
+    assert h.state()["confirmation_expires_at"] == expiry
+    now[0] = expiry + 2
+    assert await h.redis.get(h.key), "Redis must retain factual context after the hold authority expires"
+    result = await identified(h, "SIM", identity="ttl-expired-yes")
+    assert result["step"] == "time" and h.state()["booking_recovery"]
+    assert h.state()["services"] == initial["services"] and h.state()["professional"] == initial["professional"]
+    assert h.state()["day"] == initial["day"] and not h.state().get("hold")
+    assert not h.calls["writes"] and not h.state().get("confirmation_summary")
+
+
+@pytest.mark.asyncio
+async def test_ttl_preserving_wrapper_never_invents_a_missing_confirmation_deadline(flow):
+    h = flow; h.seed("confirm", hold=str(uuid4()), confirmation_summary="Synthetic prior")
+    await identified(h, "Quanto custa a barba?", identity="missing-deadline-question")
+    assert "confirmation_expires_at" not in h.state()
+    result = await identified(h, "SIM", identity="missing-deadline-consent")
+    assert result["step"] != "confirmed" and not h.calls["writes"] and not h.state().get("hold")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("step", ["confirm", "reschedule_confirm"])
+@pytest.mark.parametrize("identity", [None, "prior-summary", "new-consent"])
+async def test_current_valid_summary_requires_fresh_trusted_identity_for_booking_and_reschedule(flow, step, identity):
+    h = flow
+    h.seed(step, hold=str(uuid4()), appointment=str(h.appointment), price=3500, duration=40,
+        selected_start=f"{h.tomorrow}T15:00:00-04:00", new_start=f"{h.tomorrow}T15:00:00-04:00",
+        confirmation_summary="Synthetic current summary", confirmation_message_id="prior-summary",
+        confirmation_expires_at=datetime.now().timestamp()+120, expected_snapshot="synthetic-snapshot",
+        reschedule_facts={"services": ["Corte"], "professional": "Bruno", "timezone": str(h.zone), "total_cents": 3500, "duration_min": 40})
+    token = qr_ai._message_identity.set(identity)
+    try:
+        reply = await qr_ai.turn(h.tenant, "5567999999999", "SIM", h.redis, h.namespace, preview=False)
+    finally:
+        qr_ai._message_identity.reset(token)
+    if identity == "new-consent":
+        assert reply["step"] == ("confirmed" if step == "confirm" else "rescheduled")
+        assert [item[0] for item in h.calls["writes"]] == (["confirm"] if step == "confirm" else ["reschedule"])
+    else:
+        assert reply["step"] == step and h.state()["confirmation_requires_review"] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("metadata", [True, False])
+async def test_generic_availability_renderer_keeps_real_professional_day_price_duration_only_if_provided(flow, monkeypatch, metadata):
+    from app.qr_understanding import UnderstandingPlan
+    h = flow; before = h.seed("time")
+    original = h.slots
+    async def slots(*args, **kwargs):
+        result = await original(*args, **kwargs)
+        return result if metadata else {"slots": result["slots"]}
+    monkeypatch.setattr(qr_ai, "list_slots", slots)
+    reply = await qr_ai._planned_slots(h.tenant, "5567999999999", UnderstandingPlan(intents=["availability"]), before,
+        h.business, h.catalog, h.redis, h.key, False, "", query=True)
+    assert "*Profissional:* Bruno" in reply["answer"] and h.tomorrow.strftime("%d/%m/%Y") in reply["answer"]
+    assert ("R$ 35,00" in reply["answer"]) is metadata and ("40 min" in reply["answer"]) is metadata
+    assert "\n\n_Consulta sem reserva" in reply["answer"] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("metadata", ["equal", "missing", "mismatch"])
+async def test_next_days_professional_reply_only_displays_consistent_verified_grid_metadata(flow, monkeypatch, metadata):
+    h = flow; reads = []
+    h.seed("menu", services=[], professional=None, availability_query={"services": [str(h.cut)], "search_next": True, "waiting_for": "professional"})
+    async def slots(db, tenant, pro, ids, day):
+        assert tenant == h.tenant and pro == h.bruno and ids == [h.cut]
+        reads.append(day)
+        result = {"slots": [f"{day}T14:00:00-04:00"], "price_cents": 3500, "duration_min": 40}
+        if len(reads) == 2 and metadata == "missing":
+            return {"slots": result["slots"]}
+        if len(reads) == 2 and metadata == "mismatch":
+            result["price_cents"] = 4500
+        return result
+    monkeypatch.setattr(qr_ai, "list_slots", slots)
+    reply = await identified(h, "Bruno", identity="next-days-professional")
+    assert len(reads) == 3 and "*Profissional:* Bruno" in reply["answer"]
+    assert ("R$ 35,00" in reply["answer"]) is (metadata == "equal")
+    assert ("40 min" in reply["answer"]) is (metadata == "equal")
+    assert not h.calls["writes"] and h.state()["services"] == [] and not h.state().get("hold")

@@ -74,7 +74,11 @@ def conversation(monkeypatch):
     for name in ("book_appointment", "confirm_hold", "reschedule_appointment"):
         monkeypatch.setattr(qr_ai, name, forbidden)
     async def turn(message, preview=True):
-        return await qr_ai.turn(tenant, "5567999999999", message, redis, namespace, preview)
+        token = qr_ai._message_identity.set(qr_ai._message_identity.get() or "synthetic-"+str(uuid4()))
+        try:
+            return await qr_ai.turn(tenant, "5567999999999", message, redis, namespace, preview)
+        finally:
+            qr_ai._message_identity.reset(token)
     def state():
         return json.loads(redis.values.get(key, "{}"))
     def seed(step="professional", **extra):
@@ -83,6 +87,8 @@ def conversation(monkeypatch):
                  "customer_name": "Cliente Teste", **extra}
         if step == "confirm":
             value.setdefault("hold_snapshot", "a"*64)
+        if step in qr_ai.REVIEW_STEPS:
+            value.setdefault("confirmation_message_id", "synthetic-prior-summary")
         redis.values[key] = json.dumps(value)
         redis.values[key + ":catalog-context"] = qr_ai.qr_profile.catalog_revision(
             {"name": "Salão Exemplo", "timezone": "America/Campo_Grande"}, catalog, pros)
@@ -327,7 +333,7 @@ async def test_price_question_does_not_renew_confirmation_window(conversation):
     h = conversation
     h.seed("confirm", hold=str(uuid4()), confirmation_expires_at=qr_ai.datetime.now().timestamp() + 40)
     await h.turn("Quanto custa corte de cabelo e barba?")
-    assert 1 <= h.redis.ttls[h.key] <= 40
+    assert h.redis.ttls[h.key] == qr_ai.STATE_TTL
 
 
 @pytest.mark.asyncio
@@ -532,14 +538,14 @@ async def test_a_query_about_b_requires_explicit_review_before_confirming_origin
     await h.turn(question, preview=False)
     assert h.state()["hold"] == hold and h.state()["confirmation_requires_review"]
     assert h.state()["confirmation_expires_at"] == deadline
-    assert 1 <= h.redis.ttls[h.key] <= 40
+    assert h.redis.ttls[h.key] == qr_ai.STATE_TTL
     blocked = await h.turn("sim", preview=False)
     assert summary in blocked["answer"] and "RETOMAR RESUMO" not in blocked["answer"] and not confirmed
     review = await h.turn("retomar resumo", preview=False)
     assert summary in review["answer"]
     assert "Barba" not in review["answer"]
     assert h.state()["services"] == [str(h.cut)] and h.state()["hold"] == hold
-    assert h.state()["confirmation_expires_at"] == deadline and 1 <= h.redis.ttls[h.key] <= 40
+    assert h.state()["confirmation_expires_at"] == deadline and h.redis.ttls[h.key] == qr_ai.STATE_TTL
     assert not confirmed
     done = await h.turn("sim", preview=False)
     assert done["step"] == "confirmed" and confirmed == [hold]
@@ -573,7 +579,7 @@ async def test_rescheduling_review_keeps_original_proposal_and_deadline(conversa
     reply = await h.turn("retomar resumo", preview=False)
     assert summary in reply["answer"] and h.state()["appointment"] == appointment
     assert h.state()["new_start"] == "2026-11-20T14:00:00-04:00"
-    assert h.state()["confirmation_expires_at"] == deadline and 1 <= h.redis.ttls[h.key] <= 40
+    assert h.state()["confirmation_expires_at"] == deadline and h.redis.ttls[h.key] == qr_ai.STATE_TTL
     assert not h.calls["writes"]
 
 

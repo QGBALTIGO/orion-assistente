@@ -242,7 +242,7 @@ async def test_later_professional_choice_preserves_original_requested_clock_with
 async def test_when_free_queries_real_next_days_without_reusing_old_date_or_price_menu(flow, phrase):
     h = flow;old = h.seed("date", day="2026-01-01")
     reply = await h.turn(phrase, preview=False)
-    assert "Disponibilidade real" in reply["answer"] and "R$" not in reply["answer"]
+    assert "*Profissional:* Bruno" in reply["answer"] and "R$ 35,00" in reply["answer"]
     assert len(h.calls["reads"]) == 3 and all(x[2] >= h.today for x in h.calls["reads"])
     assert h.state()["day"] == old["day"] and not h.calls["writes"]
 
@@ -542,7 +542,7 @@ async def test_price_without_the_only_selected_service_asks_instead_of_listing_d
 async def test_availability_without_selected_service_uses_remaining_subject_without_selection_write(flow):
     h = flow;old = h.seed("date", services=[str(h.cut), str(h.beard)])
     result = await h.turn("Tem livre sem o corte?", preview=False)
-    assert "Disponibilidade real" in result["answer"] and h.state()["services"] == old["services"]
+    assert "*Profissional:* Bruno" in result["answer"] and "R$ 20,00" in result["answer"] and h.state()["services"] == old["services"]
     assert h.calls["reads"] and all(x[1] == [h.beard] for x in h.calls["reads"])
     assert not h.calls["writes"]
 
@@ -771,7 +771,7 @@ async def test_doubt_then_review_of_typed_summary_sends_one_question_with_new_id
         qr_ai._message_identity.reset(token)
     assert stored in result["answer"] and result["answer"].count("Posso confirmar") == 1
     assert h.state()["confirmation_message_id"] == "synthetic-review"
-    assert h.state()["confirmation_expires_at"] == deadline and 1 <= h.redis.ttls[h.key] <= 40
+    assert h.state()["confirmation_expires_at"] == deadline and h.redis.ttls[h.key] == qr_ai.STATE_TTL
     assert not h.calls["writes"]
 
 
@@ -862,7 +862,7 @@ async def test_exact_real_read_request_reopens_summary_without_provider_or_opera
         qr_ai._message_identity.reset(token)
     assert summary in result["answer"] and result["answer"].count("Posso confirmar") == 1 and not h.calls["writes"]
     assert h.state()["confirmation_message_id"] == "synthetic-read" and h.state()["confirmation_expires_at"] == deadline
-    assert 1 <= h.redis.ttls[h.key] <= 40
+    assert h.redis.ttls[h.key] == qr_ai.STATE_TTL
     token = qr_ai._message_identity.set("synthetic-new-consent")
     try:
         done = await h.turn("Pode confirmar", preview=False)
