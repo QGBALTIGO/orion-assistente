@@ -14,6 +14,7 @@ from app.advanced_api import router as advanced_router
 from app.qr_api import router as qr_router
 from app.panel_auth import router as panel_auth_router
 from app.account_auth import router as account_auth_router
+from app.groq_api import router as groq_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -40,6 +41,7 @@ app.include_router(qr_router)
 app.include_router(panel_auth_router)
 app.include_router(account_auth_router)
 app.include_router(catalog_router)
+app.include_router(groq_router)
 
 
 @app.get("/brand/{asset}", include_in_schema=False)
