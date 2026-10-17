@@ -73,6 +73,52 @@ def escape_label(value: str) -> str:
     return _label(value)
 
 
+def display_name(value: str, *, simulation: bool = False, verified_suffix: str | None = None) -> str:
+    """Only an explicit simulation marker may be separated from a display name.
+
+    The caller must still label the whole response as a simulation. Names in a
+    real booking are preserved, including words that resemble internal metadata.
+    """
+    name = _text(value)
+    if type(simulation) is not bool:
+        raise ValueError("Explicit simulation choice required")
+    if verified_suffix is not None:
+        suffix = _text(verified_suffix)
+        if simulation and name.endswith(suffix):
+            candidate = name[:-len(suffix)].rstrip()
+            if candidate:
+                return candidate
+    return name
+
+
+def service_icon(services: Sequence[str]) -> str:
+    """Decorate explicit catalog labels, without classifying the whole tenant."""
+    names = {"".join(c for c in unicodedata.normalize("NFD", name.casefold())
+                     if unicodedata.category(c) != "Mn") for name in _labels(services, 12)}
+    if names and names <= {"barba", "corte de barba", "aparar barba"}:
+        return "🪒"
+    if names and names <= {"corte", "corte de cabelo", "cabelo", "barba", "corte de barba"} and (
+            "barba" in names or "corte de cabelo" in names or "cabelo" in names):
+        return "✂️"
+    if names and all("manicure" in name or "pedicure" in name for name in names):
+        return "💅"
+    if names and all("veterin" in name or "banho e tosa" in name for name in names):
+        return "🐾"
+    if names and all("odontolog" in name or "limpeza dental" in name for name in names):
+        return "🦷"
+    return "📋"
+
+
+_FIELD_ICONS = {"Profissional": "👤", "Data": "📅", "Dia consultado": "📅",
+                "Horário": "🕒", "Duração": "⏳", "Duração estimada": "⏳",
+                "Total": "💰", "Protocolo": "🔖"}
+
+
+def _field(label: str, value: str, *, light: bool = False, icon: str | None = None) -> str:
+    marker = icon or _FIELD_ICONS.get(label, "")
+    return (marker + " " if light and marker else "") + f"*{label}:* {value}"
+
+
 @dataclass(frozen=True)
 class PresentationPreferences:
     style: Style = "warm"
@@ -227,7 +273,7 @@ def _intro(prefs: PresentationPreferences) -> str:
     if prefs.formality == "formal" and prefs.style == "relaxed":
         text = "Valores consultados"
     text = _optional(text, prefs)
-    if text and prefs.emoji == "light" and prefs.style in {"warm", "relaxed"}:
+    if text and prefs.emoji == "light":
         text = "💬 " + text
     return f"*{text}*" if text else ""
 
@@ -276,14 +322,18 @@ def render_quote(items: Sequence[QuoteItem], preferences=None, *, context: Inter
             if item.price_kind == "from":
                 price = "a partir de " + price
         detail = f" · {duration(item.duration_min * item.quantity)}" if prefs.length == "detailed" and item.duration_min else ""
-        lines.append(f"*{name}* — {price}{detail}")
+        icon = service_icon((item.name,)) + " " if prefs.emoji == "light" else ""
+        lines.append(f"{icon}*{name}* — {price}{detail}")
     parts = [_intro(prefs), "\n".join(lines)]
+    totals = []
     if show_total and all(x.price_kind == "fixed" for x in items) and (len(items) > 1 or items[0].quantity > 1):
         total = sum(x.unit_price_cents * x.quantity for x in items)
-        parts.append(f"Total: *{money(total)}*")
+        totals.append(_field("Total", money(total), light=prefs.emoji == "light"))
     if show_total and all(x.duration_min is not None for x in items):
         minutes = sum(x.duration_min * x.quantity for x in items)
-        parts.append(f"_Duração estimada: {duration(minutes)}._")
+        totals.append(_field("Duração estimada", duration(minutes), light=prefs.emoji == "light"))
+    if totals:
+        parts.append("\n".join(totals))
     if not context.suppress_follow_up:
         if suggestion is not None and prefs.commercial_intensity == "contextual":
             parts.append(render_approved_suggestion(suggestion, prefs, context=context))
@@ -292,8 +342,34 @@ def render_quote(items: Sequence[QuoteItem], preferences=None, *, context: Inter
     return separator.join(part for part in parts if part)
 
 
-def render_summary(summary: BookingSummary, preferences=None, *, confirmed: bool = False,
-                   simulation: bool = False, operation: str = "booking") -> str:
+@dataclass(frozen=True)
+class SummaryComposition:
+    """A prepared body and its single core-owned decision, never a consent token."""
+    body: str
+    prompt: str = ""
+
+    def __post_init__(self):
+        if not isinstance(self.body, str) or not self.body.strip() or message_units(self.body) > 12000:
+            raise ValueError("Complete prepared summary required")
+        if not isinstance(self.prompt, str) or self.prompt not in {"", "Posso confirmar esse agendamento?", "Posso confirmar essa remarcação?",
+                               "Posso cancelar esse agendamento?"}:
+            raise ValueError("Unknown structured confirmation question")
+
+    def render(self) -> str:
+        return self.body + ("\n\n" + self.prompt if self.prompt else "")
+
+    def as_dict(self) -> dict:
+        return {"schema_version": 1, "body": self.body, "prompt": self.prompt}
+
+    @classmethod
+    def from_mapping(cls, value: Mapping):
+        if set(value) != {"schema_version", "body", "prompt"} or type(value["schema_version"]) is not int or value["schema_version"] != 1:
+            raise ValueError("Unknown summary composition schema")
+        return cls(value["body"], value["prompt"])
+
+
+def compose_summary(summary: BookingSummary, preferences=None, *, confirmed: bool = False,
+                    simulation: bool = False, operation: str = "booking") -> SummaryComposition:
     prefs = _preferences(preferences)
     if type(confirmed) is not bool or type(simulation) is not bool:
         raise ValueError("Explicit operation outcome required")
@@ -303,7 +379,7 @@ def render_summary(summary: BookingSummary, preferences=None, *, confirmed: bool
         raise ValueError("Simulation cannot claim an actual confirmation")
     if operation not in {"booking", "reschedule", "cancel"}:
         raise ValueError("Unknown verified booking operation")
-    headings = {"warm": "Vamos conferir seu agendamento?", "professional": "Proposta de agendamento",
+    headings = {"warm": "Confira seu agendamento", "professional": "Proposta de agendamento",
                 "relaxed": "Seu agendamento, antes de confirmar", "direct": "Resumo para confirmação"}
     confirmations = {"warm": "Seu agendamento está confirmado.", "professional": "Agendamento confirmado.",
                      "relaxed": "Tudo certo, agendamento confirmado.", "direct": "Agendamento confirmado."}
@@ -314,40 +390,51 @@ def render_summary(summary: BookingSummary, preferences=None, *, confirmed: bool
         heading = "Cancelamento confirmado." if confirmed else "Agendamento selecionado para cancelamento"
     if simulation:
         heading = "Prévia do resumo — nenhum agendamento foi criado." if operation == "booking" else "Prévia do resumo — nenhuma alteração foi realizada."
-    if confirmed and prefs.emoji == "light":
-        heading += " ✅"
-    lines = [f"*{heading}*", "", *_booking_lines(summary, light=prefs.emoji == "light")]
+    light = prefs.emoji == "light"
+    lines = [("✅ " if confirmed and light else "") + f"*{heading}*", "", *_booking_lines(summary, light=light)]
+    prompt = ""
     if confirmed:
-        lines.extend(["", "*Protocolo:* " + _label(summary.protocol)])
+        lines.append(_field("Protocolo", _label(summary.protocol), light=light))
     elif not simulation:
         if operation == "reschedule":
             lines.extend(["", "_O agendamento original permanece até a confirmação da remarcação._"])
-        prompt = "Você quer cancelar este agendamento ou prefere mantê-lo?" if operation == "cancel" else render_prompt("confirmation", prefs)
-        lines.extend(["", prompt])
-    return "\n".join(lines)
+        prompt = {"booking": "Posso confirmar esse agendamento?", "reschedule": "Posso confirmar essa remarcação?",
+                  "cancel": "Posso cancelar esse agendamento?"}[operation]
+    return SummaryComposition("\n".join(lines), prompt)
 
 
-def render_summary_review(summary: str, preferences=None) -> str:
-    """Re-present the complete stored proposal, with one confirmation prompt."""
-    if not isinstance(summary, str) or not summary.strip():
+def render_summary(summary: BookingSummary, preferences=None, *, confirmed: bool = False,
+                   simulation: bool = False, operation: str = "booking") -> str:
+    return compose_summary(summary, preferences, confirmed=confirmed, simulation=simulation, operation=operation).render()
+
+
+def render_summary_review(summary: SummaryComposition | Mapping | str, preferences=None) -> str:
+    """Replay prepared structure; never infer/append a question from prose.
+
+    Legacy complete strings are preserved verbatim. The core can revalidate and
+    rebuild old proposals from facts, but presentation must not invent consent.
+    """
+    _preferences(preferences)
+    if isinstance(summary, Mapping):
+        summary = SummaryComposition.from_mapping(summary)
+    if isinstance(summary, SummaryComposition):
+        body = summary.render()
+    elif isinstance(summary, str) and summary.strip():
+        body = summary.strip()
+    else:
         raise ValueError("Complete stored summary required")
-    body = summary.strip()
-    embedded_question = re.search(r"\b(?:posso|podemos)\s+confirmar[^?\n]*\?|"
-        r"\b(?:confirmar|confirma|remarcar|cancelar)\b[^?\n]*\?\s*$", body, re.IGNORECASE)
-    if not embedded_question:
-        body += "\n\n" + render_prompt("confirmation", preferences)
-    answer = "Este é o pedido anterior, sem incluir os serviços apenas consultados:\n\n" + body
+    answer = "Este é o resumo atual:\n\n" + body
     return answer if fits_message(answer) else body
 
 
 def render_booking_history(records: Sequence[Mapping], preferences=None, *, timezone: str) -> str:
     """Compact customer-facing history, from scoped backend rows only."""
-    _preferences(preferences)
+    prefs = _preferences(preferences)
     zone = ZoneInfo(timezone)
     labels = {"confirmed": "confirmado", "cancelled": "cancelado", "hold": "aguardando confirmação",
               "completed": "concluído", "no_show": "não compareceu"}
     lines = []
-    for row in records:
+    for index, row in enumerate(records, 1):
         when = row["start_at"]
         if isinstance(when, str):
             when = datetime.fromisoformat(when)
@@ -356,8 +443,10 @@ def render_booking_history(records: Sequence[Mapping], preferences=None, *, time
         local = when.astimezone(zone)
         protocol = _label(_text(row["protocol"], 80))
         status = labels.get(row.get("status"), "a conferir")
-        lines.append(f"• {local:%d/%m/%Y} às {_clock(local)} · {status} · Protocolo {protocol}")
-    answer = "*Seus agendamentos*\n\n" + "\n".join(lines)
+        lines.append(f"{index}. " + ("📅 " if prefs.emoji == "light" else "") +
+                     f"{local:%d/%m/%Y} às {_clock(local)} · {status}\n" +
+                     _field("Protocolo", protocol, light=prefs.emoji == "light"))
+    answer = "*Seus agendamentos*\n\n" + "\n\n".join(lines)
     if not fits_message(answer):
         return "O histórico completo precisa ser consultado por partes. Qual data ou protocolo você quer conferir?"
     return answer
@@ -372,14 +461,16 @@ def _clock(value: datetime) -> str:
 
 def _booking_lines(summary: BookingSummary, *, light: bool = False) -> list[str]:
     when = summary.starts_at.astimezone(ZoneInfo(summary.timezone))
-    lines = ["*Serviços:* " + " e ".join(_label(value) for value in summary.services)]
+    label = "Serviço" if len(summary.services) == 1 else "Serviços"
+    lines = [_field(label, " e ".join(_label(value) for value in summary.services), light=light,
+                    icon=service_icon(summary.services))]
     if summary.professional:
-        lines.append("*Profissional:* " + _label(summary.professional))
-    lines.extend([("📅 " if light else "") + f"*Data:* {_WEEKDAYS[when.weekday()]}, {when:%d/%m/%Y}",
-                  ("🕒 " if light else "") + f"*Horário:* {_clock(when)}"])
+        lines.append(_field("Profissional", _label(summary.professional), light=light))
+    lines.extend(["", _field("Data", f"{_WEEKDAYS[when.weekday()]}, {when:%d/%m/%Y}", light=light),
+                  _field("Horário", _clock(when), light=light)])
     if summary.duration_min:
-        lines.append("*Duração:* " + duration(summary.duration_min))
-    lines.append(("💰 " if light else "") + f"*Total:* {money(summary.total_cents)}")
+        lines.append(_field("Duração", duration(summary.duration_min), light=light))
+    lines.extend(["", _field("Total", money(summary.total_cents), light=light)])
     return lines
 
 
@@ -415,11 +506,15 @@ def render_slots(services: Sequence[str], slots: Sequence[datetime | str], prefe
     heading = {"warm": "Horários para você", "professional": "Horários disponíveis na consulta",
                "relaxed": "Veja os horários disponíveis", "direct": "Horários disponíveis"}[prefs.style]
     light = prefs.emoji == "light"
-    parts = [("🕒 " if light else "") + f"*{heading}*", "Para *" + " e ".join(_label(value) for value in names) + "*" +
-             (f" · {duration(duration_min)}" if duration_min else "") +
-             (f" · {'💰 ' if light else ''}{money(total_cents)}" if total_cents is not None else "")]
+    facts = [_field("Serviço" if len(names) == 1 else "Serviços", " e ".join(_label(value) for value in names),
+                    light=light, icon=service_icon(names))]
     if professional is not None:
-        parts.append("*Profissional:* " + _label(_text(professional)))
+        facts.append(_field("Profissional", _label(_text(professional)), light=light))
+    if duration_min is not None:
+        facts.append(_field("Duração", duration(duration_min), light=light))
+    if total_cents is not None:
+        facts.append(_field("Total", money(total_cents), light=light))
+    parts = [("🕒 " if light else "") + f"*{heading}*", "\n".join(facts)]
     count = 6 if prefs.length == "short" else 4
     for index, (on_day, values) in enumerate(sorted(grouped.items())):
         clocks = [_clock(value) for value in sorted(values)]
@@ -432,6 +527,69 @@ def render_slots(services: Sequence[str], slots: Sequence[datetime | str], prefe
     if ask_selection:
         parts.append(render_prompt("time", prefs))
     return "\n\n".join(parts)
+
+
+def render_professional_availability(services: Sequence[str], candidates: Sequence[Mapping], preferences=None, *,
+                                     timezone: str, day: date | str, simulation: bool = False) -> str:
+    """Display queried candidates in the exact ordinal order provided by the core.
+
+    Reject an oversized answer, rather than silently changing selectable rows.
+    Prices/durations are supplied per professional; no catalog arithmetic here.
+    """
+    prefs, zone = _preferences(preferences), ZoneInfo(timezone)
+    names = _labels(services, 12)
+    target = date.fromisoformat(day) if isinstance(day, str) else day
+    if not names or type(target) is not date or type(simulation) is not bool:
+        raise ValueError("Verified services, local day and simulation state required")
+    if not isinstance(candidates, (tuple, list)) or any(not isinstance(row, Mapping) for row in candidates):
+        raise ValueError("Verified professional candidates required")
+    if any(not isinstance(row.get("slots"), (tuple, list)) for row in candidates):
+        raise ValueError("Missing slot results cannot be presented as no availability")
+    shown = [row for row in candidates if row.get("slots")]
+    if len(shown) > 4:
+        raise ValueError("Narrow the query before presenting more than four professionals")
+    if not shown:
+        return render_prompt("unavailable", prefs)
+    light = prefs.emoji == "light"
+    parts = ["*Profissionais com horários nesta consulta*",
+             _field("Serviço" if len(names) == 1 else "Serviços", " e ".join(_label(x) for x in names),
+                    light=light, icon=service_icon(names)),
+             _field("Data", f"{_WEEKDAYS[target.weekday()]}, {target:%d/%m/%Y}", light=light)]
+    seen = set()
+    for index, row in enumerate(shown, 1):
+        identity = str(row["id"]) if row.get("id") is not None and type(row["id"]) is not bool else ""
+        if not identity or identity in seen:
+            raise ValueError("Distinct verified professional IDs required")
+        seen.add(identity)
+        name = _label(_text(row.get("name")))
+        slots = row["slots"]
+        if not isinstance(slots, (tuple, list)) or len(slots) > 8:
+            raise ValueError("Bounded verified slots required")
+        clocks = []
+        for raw in slots:
+            value = datetime.fromisoformat(raw.replace("Z", "+00:00")) if isinstance(raw, str) else raw
+            if not isinstance(value, datetime) or value.utcoffset() is None or value.second or value.microsecond:
+                raise ValueError("Aware minute-precision slots required")
+            local = value.astimezone(zone)
+            if local.date() != target:
+                raise ValueError("Slot outside queried local day")
+            clocks.append(_clock(local))
+        total = _integer(row.get("price_cents"), 0, 100_000_000)
+        minutes = _integer(row.get("duration_min"), 1, 1440)
+        block = [f"{index}. " + _field("Profissional", name, light=light),
+                 _field("Horário", " • ".join(clocks[:4]), light=light)]
+        if len(clocks) > 4:
+            block.append(" • ".join(clocks[4:]))
+        block.extend([_field("Duração", duration(minutes), light=light),
+                      _field("Total", money(total), light=light)])
+        parts.append("\n".join(block))
+    if simulation:
+        parts.append("_Simulação: nenhum agendamento foi criado._")
+    parts.append("Qual horário e profissional você prefere?" if len(shown) > 1 else "Qual horário você prefere?")
+    answer = "\n\n".join(parts)
+    if not fits_message(answer):
+        raise ValueError("Narrow the query before displaying an oversized choice list")
+    return answer
 
 
 def _labels(values: Sequence[str], maximum: int = 30, size: int = 120) -> tuple[str, ...]:
@@ -452,7 +610,7 @@ def render_prompt(kind: str, preferences=None, *, services: Sequence[str] = (), 
         "name": "Como você prefere ser chamado?",
         "adjustment": "O que você quer ajustar no pedido?",
         "ask_adjustment": "O que você quer ajustar no pedido?",
-        "confirmation": "Posso confirmar este resumo ou você quer ajustar algum detalhe?",
+        "confirmation": "Posso confirmar esse agendamento?",
         "confirmation_review": "Vamos conferir o resumo vigente antes de confirmar?",
         "context_changed": "As informações do catálogo mudaram. Vamos conferir sua escolha e os valores atuais antes de continuar?",
         "human_paused": "As respostas automáticas estão pausadas para atendimento da equipe.",
@@ -476,7 +634,7 @@ def render_prompt(kind: str, preferences=None, *, services: Sequence[str] = (), 
         "name": ("Como prefere que eu me dirija a você?", "Como posso chamar você?", "Como prefere ser chamado?"),
         "adjustment": ("Qual detalhe deseja ajustar no pedido?", "O que você quer mudar no pedido?", "O que deseja ajustar?"),
         "ask_adjustment": ("Qual detalhe deseja ajustar no pedido?", "O que você quer mudar no pedido?", "O que deseja ajustar?"),
-        "confirmation": ("Posso confirmar este resumo ou deseja algum ajuste?", "Posso confirmar assim ou você quer mudar algum detalhe?", "Posso confirmar este resumo? Se quiser, indique um ajuste."),
+        "confirmation": ("Posso confirmar esse agendamento?", "Posso confirmar esse agendamento?", "Posso confirmar esse agendamento?"),
         "confirmation_review": ("Podemos revisar o resumo vigente antes da confirmação?", "Vamos olhar o resumo atual antes de confirmar?", "Vamos revisar o resumo atual antes de confirmar?"),
         "availability_service": ("Para qual serviço deseja consultar a disponibilidade?", "Para qual serviço você quer ver os horários?", "Qual serviço deseja consultar?"),
         "availability_professional": ("Com qual profissional deseja consultar os horários?", "Com quem você quer ver os horários?", "Qual profissional deseja consultar?"),
@@ -491,14 +649,15 @@ def render_prompt(kind: str, preferences=None, *, services: Sequence[str] = (), 
     names, facts = _labels(services, 12), list(_labels(details, 30, 1200))
     context = []
     if names:
-        context.append("*Serviços:* " + " e ".join(_label(value) for value in names))
+        context.append(_field("Serviço" if len(names) == 1 else "Serviços", " e ".join(_label(value) for value in names),
+                              light=prefs.emoji == "light", icon=service_icon(names)))
     if professional is not None:
-        context.append("*Profissional:* " + _label(_text(professional)))
+        context.append(_field("Profissional", _label(_text(professional)), light=prefs.emoji == "light"))
     if day is not None:
-        context.append("*Dia consultado:* " + _label(_text(day)))
+        context.append(_field("Dia consultado", _label(_text(day)), light=prefs.emoji == "light"))
     if facts:
         context.append("\n".join("• " + _label(fact) for fact in facts))
-    return "\n\n".join([*context, text])
+    return "\n\n".join(part for part in ("\n".join(context), text) if part)
 
 
 def render_message(text: str, preferences=None, *, kind: str = "message") -> str:
@@ -544,8 +703,23 @@ def render_message(text: str, preferences=None, *, kind: str = "message") -> str
             text = re.sub(re.escape(old).replace(r"\ ", r"\s+"), lambda _: replacement, text)
         if kind in {"professional", "menu", "service", "reschedule_pick"}:
             text = re.sub(r"(?m)^\s*\d{1,2}[.)]\s+(?=\S)", "• ", text)
-    # Labels gain emphasis, but no factual text, number, URL or date is rewritten.
-    text = re.sub(r"(?m)^(Serviços|Profissional|Data e horário|Data|Horário|Duração|Total|Protocolo):(?=\s)", r"*\1:*", text)
+    # Known field layout is shared by typed and legacy paths. Never inspect prose
+    # to infer an outcome or append/deduplicate a confirmation decision.
+    label_pattern = r"(?m)^(?:(📋|✂️|🪒|💅|🐾|🦷|👤|📅|🕒|⏳|💰|🔖) )?\*?(Serviços?|Profissional|Data e horário|Data|Dia consultado|Horário|Duração(?: estimada)?|Total|Protocolo):\*?[ \t]+([^\n]+)$"
+    def field(match):
+        existing_icon, label, value = match.groups()
+        icon = existing_icon
+        if not icon and label in {"Serviço", "Serviços"}:
+            icon = service_icon((value,)) if len(value) <= 120 else "📋"
+        return _field(label, value, light=prefs.emoji == "light", icon=icon)
+    if kind not in {"information", "commerce_information", "faq", "price"}:
+        text = re.sub(label_pattern, field, text)
+    headings = {"audio_error": ("🎙️", "Sobre o áudio"), "audio": ("🎙️", "Sobre o áudio"),
+                "error": ("ℹ️", "Não consegui concluir a consulta"), "temporary": ("ℹ️", "Consulta indisponível agora"),
+                "human": ("👤", "Atendimento da equipe"), "reminder": ("📅", "Lembrete do agendamento")}
+    if kind in headings and text and not re.match(r"^[^\n*]{0,8}\*", text):
+        icon, heading = headings[kind]
+        text = (icon + " " if prefs.emoji == "light" else "") + f"*{heading}*\n\n" + text
     return re.sub(r"\n{3,}", "\n\n", "\n".join(line.rstrip() for line in text.split("\n"))).strip()
 
 
@@ -561,7 +735,7 @@ def render_error(kind: str, preferences=None) -> str:
     if kind not in messages:
         raise ValueError("Unknown verified error kind")
     prefix = _optional("Sinto muito. ", prefs) if prefs.style == "warm" and kind == "temporary" else ""
-    return prefix + messages[kind]
+    return ("ℹ️ " if prefs.emoji == "light" else "") + prefix + messages[kind]
 
 
 def render_cancel(kind: str = "request_stopped", preferences=None, *, protocol: str | None = None,
@@ -578,12 +752,12 @@ def render_cancel(kind: str = "request_stopped", preferences=None, *, protocol: 
     if kind == "booking_cancelled" and protocol:
         if summary is not None and not isinstance(summary, BookingSummary):
             raise ValueError("Cancellation details require a verified summary")
-        parts = ["*Cancelamento confirmado.*"]
+        parts = [("✅ " if prefs.emoji == "light" else "") + "*Cancelamento confirmado.*"]
         if summary is not None:
             if summary.protocol and summary.protocol != protocol:
                 raise ValueError("Cancellation protocol differs from its summary")
             parts.append("\n".join(_booking_lines(summary, light=prefs.emoji == "light")))
-        parts.append("*Protocolo:* " + _label(_text(protocol, 80)))
+        parts.append(_field("Protocolo", _label(_text(protocol, 80)), light=prefs.emoji == "light"))
         return "\n\n".join(parts)
     raise ValueError("An actual cancellation requires its verified protocol")
 
@@ -655,7 +829,7 @@ def _commerce_lines(estimate: Mapping, prefs: PresentationPreferences) -> tuple[
         _integer(total, 0, 3_000_000_000_000)
         if not fixed or any(value is None for value in exact_lines) or total != sum(exact_lines):
             raise ValueError("An exact total requires consistent fixed server line totals")
-        lines.append("*Total:* " + money(total))
+        lines.append(_field("Total", money(total), light=prefs.emoji == "light"))
     elif minimum is not None:
         _integer(minimum, 0, 3_000_000_000_000)
         if not numeric or any(value is None for value in minimum_lines) or minimum != sum(minimum_lines):
@@ -715,15 +889,13 @@ def render_commerce_order(estimate: Mapping, preferences=None, *, state: str = "
         "preview": "Prévia do pedido — nenhuma operação foi realizada",
     }
     heading = headings[state]
-    if prefs.emoji == "light" and state in {"confirmed", "cancelled"}:
-        heading += " ✅"
-    parts = [f"*{heading}*", *lines]
+    parts = [("✅ " if prefs.emoji == "light" and state in {"confirmed", "cancelled"} else "") + f"*{heading}*", *lines]
     if order_id and not re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", order_id):
         parts.append("*Pedido:* " + _label(order_id))
     if state == "proposal":
-        parts.append("Posso confirmar este pedido ou você quer ajustar algum detalhe?" if confirmable
+        parts.append("Posso confirmar esse pedido?" if confirmable
                      else "_A equipe precisa conferir preço e disponibilidade antes da confirmação._")
     elif state == "cancel_proposal":
-        parts.append("Você quer cancelar este pedido ou prefere mantê-lo?")
+        parts.append("Posso cancelar esse pedido?")
     parts.append("_Pagamento não verificado. Nenhuma cobrança foi realizada por este atendimento._")
     return "\n\n".join(parts)

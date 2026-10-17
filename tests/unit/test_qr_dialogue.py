@@ -62,6 +62,60 @@ def test_cancellation_consent_is_scoped_to_an_existing_cancellation_summary(text
     assert contextual_response("pode cancelar mas troca às 15h", awaiting_confirmation=True, confirmation_action="cancel").kind == "amend"
 
 
+@pytest.mark.parametrize("text", ["Cancela", "Desmarca"])
+def test_exact_cancel_imperative_answers_only_pending_cancel_even_if_provider_declines(text):
+    for action in ("booking", "order"):
+        assert contextual_response(text, awaiting_confirmation=True, confirmation_action=action,
+            semantic_kind="affirm").kind != "affirm"
+    assert contextual_response(text, awaiting_confirmation=False, confirmation_action="cancel").kind == "uncertain"
+    result = contextual_response(text, awaiting_confirmation=True, confirmation_action="cancel", semantic_kind="decline")
+    assert result.kind == "affirm" and result.reason == "explicit_cancellation_consent"
+
+
+@pytest.mark.parametrize("text", ["Cancela?", "Cancela, não", "Cancela se não tiver multa", "Desmarca, mas muda para amanhã"])
+def test_cancel_imperative_does_not_bypass_whole_utterance_guards(text):
+    assert contextual_response(text, awaiting_confirmation=True, confirmation_action="cancel", semantic_kind="affirm").kind != "affirm"
+
+
+def test_sm_is_a_contextual_brief_agreement_and_not_an_operation_without_a_proposal():
+    assert contextual_response("Sm", awaiting_confirmation=True).kind == "affirm"
+    assert contextual_response("Sm", awaiting_confirmation=False).kind == "uncertain"
+    assert contextual_response("Sm, mas troca para as 15h", awaiting_confirmation=True).kind == "amend"
+    assert contextual_response("Sm?", awaiting_confirmation=True).kind == "uncertain"
+
+
+@pytest.mark.parametrize("text", ["Não confirma", "Não confirmar", "Não pode confirmar"])
+def test_whole_negative_confirmation_closes_booking_or_order_but_never_authorizes_cancellation(text):
+    for action in ("booking", "order"):
+        assert contextual_response(text, awaiting_confirmation=True, confirmation_action=action,
+            semantic_kind="affirm").kind == "decline"
+    assert contextual_response(text, awaiting_confirmation=True, confirmation_action="cancel",
+        semantic_kind="affirm").kind != "affirm"
+
+
+def test_complete_canonical_reply_beats_provider_confusion_but_not_a_changed_utterance():
+    for semantic in ("decline", "uncertain"):
+        assert contextual_response("Sm", awaiting_confirmation=True, semantic_kind=semantic).kind == "affirm"
+        assert contextual_response("Pode cancelar", awaiting_confirmation=True, confirmation_action="cancel",
+            semantic_kind=semantic).kind == "affirm"
+        assert contextual_response("Sm, mas muda para amanhã", awaiting_confirmation=True,
+            semantic_kind=semantic).kind == "amend"
+
+
+def test_request_to_book_is_not_confirmation_of_a_pending_cancellation():
+    for text in ("Pode marcar", "Pode agendar"):
+        assert contextual_response(text, awaiting_confirmation=True, confirmation_action="cancel",
+            semantic_kind="affirm").kind == "amend"
+
+
+def test_natural_summary_review_is_a_whole_read_request_without_hidden_operation():
+    from app.qr_dialogue import summary_review_requested
+    for text in ("Mostra de novo", "Como ficou?", "Retoma o agendamento", "Mostra o resumo de novo"):
+        assert summary_review_requested(text)
+    for text in ("Mostra de novo e cancela", "Como ficou, pode cancelar", "Retoma outro agendamento", "Não mostra de novo"):
+        assert not summary_review_requested(text)
+
+
 @pytest.mark.asyncio
 async def test_semantic_call_has_closed_schema_no_tools_no_context_and_one_request():
     seen = []

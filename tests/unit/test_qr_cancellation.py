@@ -86,6 +86,10 @@ async def test_new_summary_then_natural_consent_cancels_only_owned_confirmed_rec
     h = cancellation
     result = await h.propose()
     assert result["step"] == "cancel_confirm" and "selecionado para cancelamento" in result["answer"]
+    composition = h.state()["confirmation_presentation"]
+    assert composition["schema_version"] == 1 and composition["prompt"] == "Posso cancelar esse agendamento?"
+    assert composition["body"] + "\n\n" + composition["prompt"] == h.state()["confirmation_summary"]
+    assert result["answer"].count(composition["prompt"]) == 1
     assert "Bruno — Demonstração" in result["answer"] and "R$ 35,00" in result["answer"]
     assert "cancel" not in h.events and "_verified_operation" not in result
     assert 1 <= h.redis.ttls[h.key] <= 300
@@ -107,18 +111,21 @@ async def test_nonwhitelisted_semantic_consent_keeps_local_guards(cancellation):
 async def test_conditions_changes_questions_and_negation_override_model_affirm(cancellation, body):
     h = cancellation; await h.propose()
     result = await h.message(body, semantic_kind="affirm")
-    assert result["step"] == "cancel_confirm" and "cancel" not in h.events
-    assert h.state()["confirmation_requires_review"] is True and "_verified_operation" not in result
+    assert result["step"] == ("cancel_declined" if body == "Não cancela" else "cancel_confirm") and "cancel" not in h.events
+    assert "_verified_operation" not in result
+    assert h.state() == {} if body == "Não cancela" else h.state()["confirmation_requires_review"] is True
 
 
 @pytest.mark.asyncio
-async def test_decline_preserves_reservation_and_review_requires_another_fresh_consent(cancellation):
-    h = cancellation; await h.propose(); deadline = h.state()["confirmation_expires_at"]
+async def test_decline_closes_proposal_without_cancelling_or_reusing_later_consent(cancellation):
+    h = cancellation; await h.propose()
     result = await h.message("Não")
-    assert "não realizei nenhum cancelamento" in result["answer"] and h.record["status"] == "confirmed"
-    result = await h.message("Pode cancelar", message_id="synthetic-review")
+    assert result["step"] == "cancel_declined" and h.record["status"] == "confirmed" and h.state() == {}
+    assert await h.message("Sim", message_id="synthetic-unrelated-yes") is None
+    assert await h.message("Pode cancelar", message_id="synthetic-old-consent") is None
+    assert "cancel" not in h.events
+    result = await h.message("Quero cancelar minha reserva", requested=True, message_id="synthetic-new-summary")
     assert result["step"] == "cancel_confirm" and "cancel" not in h.events
-    assert h.state()["confirmation_expires_at"] == deadline
     result = await h.message("Confirmo o cancelamento", message_id="synthetic-final")
     assert result["step"] == "cancelled" and h.events.count("cancel") == 1
 
@@ -497,3 +504,154 @@ async def test_explicit_natural_resume_clears_old_plan_and_only_acknowledges_no_
     result = await h.turn(body)
     assert result["step"] == "menu" and "Voltei ao atendimento automático" in result["answer"]
     assert h.state() == {} and h.key+":commerce" not in h.redis.data and not h.events
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", ["Cancela", "Desmarca"])
+async def test_exact_current_cancel_reply_needs_no_provider_even_after_semantic_decline(cancellation, monkeypatch, body):
+    h = cancellation
+    async def forbidden(**_):
+        raise AssertionError("The complete explicit reply is resolved locally")
+    monkeypatch.setattr(flow, "interpret_contextual_response", forbidden)
+    await h.propose()
+    result = await h.message(body, semantic_kind="decline")
+    assert result["step"] == "cancelled" and h.events.count("cancel") == 1 and h.state() == {}
+    assert await h.message(body, message_id="synthetic-after-completion") is None
+    assert h.events.count("cancel") == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_pick_explains_single_reservation_then_exact_reply_cancels_only_displayed_first(cancellation):
+    h = cancellation
+    second = {**deepcopy(h.record), "id": uuid4(), "protocol": "AG-SYNTHETIC-002", "start_at": h.record["start_at"]+timedelta(hours=2)}
+    h.records.append(second)
+    assert (await h.propose())["step"] == "cancel_pick"
+    result = await h.message("Todos")
+    assert "uma reserva por vez" in result["answer"] and "appointment" not in h.state()
+    await h.message("O primeiro", message_id="synthetic-selected-summary")
+    result = await h.message("Cancela", message_id="synthetic-selected-consent")
+    assert result["step"] == "cancelled" and h.record["status"] == "cancelled" and second["status"] == "confirmed"
+    assert h.events.count("cancel") == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage,body", [("pick", "Não"), ("confirm", "Não cancela"),
+    ("confirm", "Prefiro manter a reserva"), ("confirm", "Desisto do cancelamento"),
+    ("confirm", "Cancela… não, deixa como está")])
+async def test_whole_withdrawal_revokes_only_request_and_unrelated_yes_cannot_resurrect_it(cancellation, stage, body):
+    h = cancellation
+    if stage == "pick":
+        h.records.append({**deepcopy(h.record), "id": uuid4(), "protocol": "AG-SYNTHETIC-002"})
+    await h.propose()
+    before = deepcopy(h.records); reads = h.events[:]
+    result = await h.message(body)
+    assert result["step"] == "cancel_declined" and "_verified_operation" not in result and h.state() == {}
+    assert "Quando precisar" in result["answer"] and "ajustar" not in result["answer"]
+    assert h.records == before and h.events == reads
+    assert await h.message("Não", message_id="synthetic-repeated-no") is None
+    assert await h.message("Sim", message_id="synthetic-unrelated-yes") is None
+    assert h.records == before and "cancel" not in h.events
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["policy", "capability", "expired"])
+async def test_withdrawal_still_clears_request_when_operation_is_no_longer_permitted(cancellation, monkeypatch, change):
+    h = cancellation; await h.propose()
+    if change == "policy":
+        h.business["profile"]["policies"] = [{"topic": "Cancelamento", "description": "Conferir com a equipe."}]
+    elif change == "capability":
+        h.business["profile"]["capabilities"] = []
+    else:
+        monkeypatch.setattr(flow, "_now", lambda: h.now+timedelta(minutes=6))
+    result = await h.message("Mantenha")
+    assert result["step"] == "cancel_declined" and h.state() == {} and h.record["status"] == "confirmed"
+    assert "cancel" not in h.events
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", ["Como manter a reserva?", "Não cancela se tiver multa", "Não cancela hoje, melhor amanhã", "Não, cancela"])
+async def test_question_condition_or_correction_is_not_an_unequivocal_withdrawal_or_consent(cancellation, body):
+    h = cancellation; await h.propose()
+    result = await h.message(body, semantic_kind="affirm")
+    assert result["step"] == "cancel_confirm" and h.state()["confirmation_requires_review"]
+    assert h.record["status"] == "confirmed" and "cancel" not in h.events
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", ["Cancela?", "Cancela se não tiver multa", "Cancela o segundo", "Cancela ambos"])
+async def test_exact_imperative_guard_does_not_accept_question_condition_or_changed_target(cancellation, body):
+    h = cancellation; await h.propose()
+    result = await h.message(body, semantic_kind="affirm")
+    assert result["step"] == "cancel_confirm" and h.state()["confirmation_requires_review"]
+    assert h.record["status"] == "confirmed" and "cancel" not in h.events
+
+
+@pytest.mark.asyncio
+async def test_exact_cancel_reply_still_requires_another_trusted_message_id(cancellation):
+    h = cancellation; await h.propose()
+    result = await h.message("Cancela", message_id="synthetic-summary")
+    assert result["step"] == "cancel_confirm" and "cancel" not in h.events
+    result = await h.message("Cancela", message_id="synthetic-later-consent")
+    assert result["step"] == "cancelled" and h.events.count("cancel") == 1
+
+
+@pytest.mark.asyncio
+async def test_exact_cancel_reply_after_expiry_cannot_write(cancellation, monkeypatch):
+    h = cancellation; await h.propose()
+    monkeypatch.setattr(flow, "_now", lambda: h.now+timedelta(minutes=6))
+    result = await h.message("Cancela")
+    assert result["step"] == "cancel_expired" and "cancel" not in h.events and h.state() == {}
+    assert await h.message("Sm", message_id="synthetic-after-expiry") is None
+
+
+@pytest.mark.asyncio
+async def test_context_change_requires_reproposal_before_exact_cancel_reply_can_write(cancellation):
+    h = cancellation; await h.propose(); deadline = h.state()["confirmation_expires_at"]
+    h.business["profile_revision"] += 1
+    result = await h.message("Cancela", message_id="synthetic-context-review")
+    assert result["step"] == "cancel_confirm" and "cancel" not in h.events
+    assert h.state()["confirmation_expires_at"] == deadline
+    result = await h.message("Cancela", message_id="synthetic-after-context-review")
+    assert result["step"] == "cancelled" and h.events.count("cancel") == 1
+
+
+@pytest.mark.asyncio
+async def test_uncertain_interruption_then_natural_review_needs_new_exact_cancel_consent(cancellation):
+    h = cancellation; await h.propose(); deadline = h.state()["confirmation_expires_at"]
+    await h.message("Ainda estou decidindo", message_id="synthetic-interruption")
+    result = await h.message("Mostra de novo", message_id="synthetic-natural-review")
+    assert result["step"] == "cancel_confirm" and "Corte" in result["answer"]
+    assert h.state()["appointment"] == str(h.record["id"])
+    assert h.state()["confirmation_expires_at"] == deadline and "cancel" not in h.events
+    same = await h.message("Cancela", message_id="synthetic-natural-review")
+    assert same["step"] == "cancel_confirm" and "cancel" not in h.events
+    result = await h.message("Cancela", message_id="synthetic-after-natural-review")
+    assert result["step"] == "cancelled" and h.events.count("cancel") == 1
+
+
+@pytest.mark.asyncio
+async def test_cross_contact_state_cannot_be_used_or_erased_by_a_short_reply(cancellation):
+    h = cancellation; await h.propose(); before = deepcopy(h.state())
+    for body in ("Cancela", "Não"):
+        result = await flow.handle(h.tenant, "5567999999901", body, business=h.business, state=deepcopy(before),
+            redis=h.redis, key=h.key, message_id="synthetic-foreign")
+        assert result["step"] == "cancel_expired" and h.state() == before
+    assert "cancel" not in h.events and h.record["status"] == "confirmed"
+
+
+@pytest.mark.asyncio
+async def test_preview_does_not_cancel_or_erase_a_real_pending_request(cancellation):
+    h = cancellation; await h.propose(); before = deepcopy(h.state()); events = h.events[:]
+    for body in ("Cancela", "Não"):
+        assert (await h.message(body, preview=True))["step"] == "preview_cancel"
+    assert h.state() == before and h.events == events
+
+
+@pytest.mark.asyncio
+async def test_exact_reply_after_record_revocation_cannot_cancel_another_record(cancellation):
+    h = cancellation; await h.propose()
+    h.record["status"] = "cancelled"
+    h.records.append({**deepcopy(h.record), "id": uuid4(), "status": "confirmed", "protocol": "AG-SYNTHETIC-OTHER"})
+    result = await h.message("Cancela")
+    assert result["step"] == "no_reservation" and "cancel" not in h.events
+    assert h.records[-1]["status"] == "confirmed"

@@ -78,6 +78,36 @@ async def test_actual_qr_proposal_new_message_cancel_and_terminal_marker(custome
 
 
 @pytest.mark.asyncio
+async def test_cancela_after_actual_owned_summary_is_deterministic_and_writes_once(customer_cancellation, monkeypatch):
+    h = customer_cancellation
+    async def forbidden(**_):
+        raise AssertionError("An exact reply to the current cancellation summary needs no provider")
+    monkeypatch.setattr(flow, "interpret_contextual_response", forbidden)
+    await h.message("Quero cancelar minha reserva", requested=True, message_id="synthetic-summary")
+    same = await h.message("Cancela", message_id="synthetic-summary")
+    assert same["step"] == "cancel_confirm" and (await h.persisted())[1] == 0
+    result = await h.message("Cancela", message_id="synthetic-cancel-consent")
+    assert result["step"] == "cancelled" and result["_verified_operation"] is True
+    row, count, outbox = await h.persisted()
+    assert row["status"] == "cancelled" and count == 1 and outbox == "delete"
+    assert await h.message("Cancela", message_id="synthetic-after-completion") is None
+    assert (await h.persisted())[1] == 1
+
+
+@pytest.mark.asyncio
+async def test_declined_actual_cancellation_leaves_pg_identical_and_later_yes_has_no_authority(customer_cancellation):
+    h = customer_cancellation
+    await h.message("Quero cancelar minha reserva", requested=True, message_id="synthetic-summary")
+    before = await _persisted_cancellation_contract(h)
+    result = await h.message("Não cancela", message_id="synthetic-withdrawal")
+    assert result["step"] == "cancel_declined" and "_verified_operation" not in result
+    assert h.key not in h.redis.data
+    assert await h.message("Sim", message_id="synthetic-unrelated-yes") is None
+    assert await h.message("Cancela", message_id="synthetic-old-cancel") is None
+    assert await _persisted_cancellation_contract(h) == before
+
+
+@pytest.mark.asyncio
 async def test_real_owned_records_are_not_visible_to_other_contact_or_tenant(customer_cancellation):
     h = customer_cancellation
     for params in ({"contact": phone(846)[1:]}, {"tenant": h.d["b"]}):
