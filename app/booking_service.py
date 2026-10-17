@@ -31,32 +31,64 @@ async def acquire_professional_lock(s: AsyncSession, tenant: UUID, professional:
                     {"scope": str(tenant) + ":" + str(professional)})
 
 
-async def load_bundle(s: AsyncSession, tenant: UUID, professional: UUID, ids: list[UUID], *, lock=False):
+# tenants intentionally grants runtime SELECT only. Read the whole contract in
+# one statement snapshot; recheck this exact query in the final UPDATE instead
+# of using FOR SHARE (which would require UPDATE privilege on tenants).
+BUNDLE_SQL = """
+    SELECT jsonb_build_object(
+        'timezone', t.timezone, 'slot_step_minutes', t.slot_step_minutes,
+        'min_notice_minutes', t.min_notice_minutes,
+        'booking_horizon_days', t.booking_horizon_days, 'status', t.status,
+        'professional_name', (SELECT p.name FROM professionals p
+            WHERE p.tenant_id=t.id AND p.id=:bundle_professional AND p.active)
+    ) AS shop,
+    EXISTS (SELECT 1 FROM professionals p
+        WHERE p.tenant_id=t.id AND p.id=:bundle_professional AND p.active
+    ) AS professional_available,
+    COALESCE((SELECT jsonb_agg(jsonb_build_object(
+        'id', s.id, 'name', s.name, 'duration_min', s.duration_min,
+        'price_cents', s.price_cents, 'prep_min', s.prep_min,
+        'cleanup_min', s.cleanup_min
+    ) ORDER BY array_position(CAST(:bundle_ids AS uuid[]), s.id))
+        FROM services s JOIN professional_services ps
+          ON ps.tenant_id=s.tenant_id AND ps.service_id=s.id
+        WHERE s.tenant_id=t.id AND ps.professional_id=:bundle_professional
+          AND s.active AND s.id=ANY(CAST(:bundle_ids AS uuid[]))
+    ), '[]'::jsonb) AS items
+    FROM tenants t WHERE t.id=:bundle_tenant
+"""
+BUNDLE_MATCH_SQL = """EXISTS (SELECT 1 FROM (""" + BUNDLE_SQL + """) AS catalog_contract
+    WHERE catalog_contract.professional_available
+      AND catalog_contract.shop=CAST(:expected_shop AS jsonb)
+      AND catalog_contract.items=CAST(:expected_items AS jsonb))"""
+CUSTOMER_MATCH_SQL = """(CAST(:customer_phone AS text) IS NULL OR EXISTS (
+    SELECT 1 FROM customers c WHERE c.tenant_id=appointments.tenant_id
+      AND c.id=appointments.customer_id AND c.whatsapp_e164=CAST(:customer_phone AS text)))"""
+
+
+def bundle_parameters(tenant, professional, ids):
+    return {"bundle_tenant": tenant, "bundle_professional": professional, "bundle_ids": ids}
+
+
+def bundle_guard_parameters(tenant, professional, ids, shop, items, customer_phone):
+    return {**bundle_parameters(tenant, professional, ids),
+            "expected_shop": json.dumps(shop), "expected_items": json.dumps(items, default=str),
+            "customer_phone": customer_phone}
+
+
+async def load_bundle(s: AsyncSession, tenant: UUID, professional: UUID, ids: list[UUID]):
     if not ids or len(ids) > 6 or len(set(ids)) != len(ids):
         fail(422, "Escolha de 1 a 6 serviços diferentes")
-    shop = (await s.execute(text("""
-        SELECT timezone, slot_step_minutes, min_notice_minutes, booking_horizon_days, status
-        FROM tenants WHERE id=:tenant
-    """ + (" FOR SHARE" if lock else "")), {"tenant": tenant})).mappings().first()
-    if shop is None or shop["status"] != "active":
+    contract = (await s.execute(text(BUNDLE_SQL), bundle_parameters(tenant, professional, ids))).mappings().first()
+    if contract is None or contract["shop"]["status"] != "active":
         fail(404, "Estabelecimento indisponível")
-    person = (await s.execute(text("""
-        SELECT id FROM professionals WHERE tenant_id=:tenant AND id=:professional AND active
-    """ + (" FOR SHARE" if lock else "")), {"tenant": tenant, "professional": professional})).scalar_one_or_none()
-    if person is None:
+    if not contract["professional_available"]:
         fail(422, "Profissional indisponível")
-    rows = (await s.execute(text("""
-        SELECT s.id, s.name, s.duration_min, s.price_cents, s.prep_min, s.cleanup_min
-        FROM services s
-        JOIN professional_services ps ON ps.tenant_id=s.tenant_id
-          AND ps.service_id=s.id AND ps.professional_id=:professional
-        WHERE s.tenant_id=:tenant AND s.active AND s.id = ANY(:ids)
-    """ + (" FOR SHARE OF s,ps" if lock else "")), {"tenant": tenant, "professional": professional, "ids": ids})).mappings().all()
-    found = {r["id"]: dict(r) for r in rows}
+    found = {UUID(r["id"]): {**r, "id": UUID(r["id"])} for r in contract["items"]}
     if len(found) != len(ids):
         fail(422, "Serviço inativo ou não realizado pelo profissional")
     ordered = [found[x] for x in ids]
-    return dict(shop), ordered
+    return dict(contract["shop"]), ordered
 
 
 def amounts(items: list[dict]):
@@ -340,17 +372,20 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
             fail(409, "Esta reserva não pode mais ser confirmada")
         if hold["hold_expires_at"] <= now:
             expired = True
-            await s.execute(text("""
+            changed = (await s.execute(text("""
                 UPDATE appointments SET status='cancelled',updated_at=:now
                 WHERE id=:id AND tenant_id=:tenant
-            """), {"tenant": tenant, "id": item_id, "now": now})
+                  AND """ + CUSTOMER_MATCH_SQL + " RETURNING id"),
+                {"tenant": tenant, "id": item_id, "now": now, "customer_phone": customer_phone})).scalar_one_or_none()
+            if changed is None:
+                fail(409, "A reserva mudou. Confira um novo resumo antes de continuar")
             await history(s, tenant, item_id, "hold_expired")
         else:
             ids = (await s.execute(text("""
                 SELECT service_id FROM appointment_items WHERE tenant_id=:tenant
                 AND appointment_id=:id ORDER BY item_order
             """), {"tenant": tenant, "id": item_id})).scalars().all()
-            shop, items = await load_bundle(s, tenant, hold["professional_id"], list(ids), lock=expected_snapshot is not None)
+            shop, items = await load_bundle(s, tenant, hold["professional_id"], list(ids))
             fresh = bounds(hold["start_at"], items)
             # Evitar confirmação usando preço/tempo antigo se catálogo mudou
             if (fresh["end_at"] != hold["end_at"] or
@@ -360,10 +395,17 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
                 fail(409, "O serviço mudou; escolha o horário novamente")
             await check_slot(s, tenant, hold["professional_id"], shop, items,
                              hold["start_at"].astimezone(ZoneInfo(shop["timezone"])), now, ignore_appointment=item_id)
-            await s.execute(text("""
+            # READ COMMITTED takes a fresh snapshot for this statement. A
+            # catalog edit committed after validation but before UPDATE rejects
+            # the operation; no history/outbox is emitted for a rejected write.
+            changed = (await s.execute(text("""
                 UPDATE appointments SET status='confirmed',hold_expires_at=NULL,updated_at=:now
                 WHERE id=:id AND tenant_id=:tenant
-            """), {"tenant": tenant, "id": item_id, "now": now})
+                  AND """ + BUNDLE_MATCH_SQL + " AND " + CUSTOMER_MATCH_SQL + " RETURNING id"),
+                {"tenant": tenant, "id": item_id, "now": now,
+                 **bundle_guard_parameters(tenant, hold["professional_id"], list(ids), shop, items, customer_phone)})).scalar_one_or_none()
+            if changed is None:
+                fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de confirmar")
             await history(s, tenant, item_id, "confirmed")
             result = await read_appointment(s, tenant, item_id)
     if expired:
@@ -407,10 +449,13 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
             return await read_appointment(s, tenant, item_id)
         if entry["status"] not in ("confirmed", "hold"):
             fail(409, "Agendamento não pode ser cancelado neste estado")
-        await s.execute(text("""
+        changed = (await s.execute(text("""
             UPDATE appointments SET status='cancelled', hold_expires_at=NULL,
                 updated_at=now() WHERE tenant_id=:tenant AND id=:id
-        """), {"tenant": tenant, "id": item_id})
+                AND """ + CUSTOMER_MATCH_SQL + " RETURNING id"),
+            {"tenant": tenant, "id": item_id, "customer_phone": customer_phone})).scalar_one_or_none()
+        if changed is None:
+            fail(409, "A reserva mudou. Confira um novo resumo antes de cancelar")
         await history(s, tenant, item_id, "cancelled")
         return await read_appointment(s, tenant, item_id)
 
@@ -439,11 +484,9 @@ async def preview_reschedule(s: AsyncSession, tenant: UUID, item_id: UUID, new_s
         shop, items = await load_bundle(s, tenant, current["professional_id"], ids)
         contract = await check_slot(s, tenant, current["professional_id"], shop, items, new_start,
                                    datetime.now(UTC), ignore_appointment=item_id)
-        name = (await s.execute(text("SELECT name FROM professionals WHERE tenant_id=:t AND id=:id"),
-            {"t": tenant, "id": current["professional_id"]})).scalar_one()
         return {"id": item_id, "protocol": current["protocol"], "start_at": contract["start_at"],
                 "timezone": shop["timezone"], "total_cents": contract["total_cents"],
-                "duration_min": amounts(items)[0], "professional": name, "services": [item["name"] for item in items],
+                "duration_min": amounts(items)[0], "professional": shop["professional_name"], "services": [item["name"] for item in items],
                 "expected_snapshot": reschedule_snapshot(current, items, new_start, shop)}
 
 
@@ -467,7 +510,7 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
             SELECT service_id FROM appointment_items WHERE tenant_id=:tenant
             AND appointment_id=:id ORDER BY item_order
         """), {"tenant": tenant, "id": item_id})).scalars().all())
-        shop, items = await load_bundle(s, tenant, row["professional_id"], ids, lock=expected_snapshot is not None)
+        shop, items = await load_bundle(s, tenant, row["professional_id"], ids)
         if expected_snapshot is not None:
             if not customer_phone:
                 fail(403, "Confirmação exige o contato autenticado")
@@ -480,12 +523,16 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
                 fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de remarcar")
         b = await check_slot(s, tenant, row["professional_id"], shop, items, new_start,
                              now, ignore_appointment=item_id)
-        await s.execute(text("""
+        changed = (await s.execute(text("""
             UPDATE appointments SET start_at=:start_at,end_at=:end_at,
                 occupied_from=:occupied_from,occupied_until=:occupied_until,
                 total_cents=:total_cents,updated_at=:now
             WHERE tenant_id=:tenant AND id=:id
-        """), {"tenant": tenant, "id": item_id, "now": now, **b})
+              AND """ + BUNDLE_MATCH_SQL + " AND " + CUSTOMER_MATCH_SQL + " RETURNING id"),
+            {"tenant": tenant, "id": item_id, "now": now, **b,
+             **bundle_guard_parameters(tenant, row["professional_id"], ids, shop, items, customer_phone)})).scalar_one_or_none()
+        if changed is None:
+            fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de remarcar")
         # Snapshot acompanha o novo contrato da remarcação.
         for order, item in enumerate(items):
             await s.execute(text("""

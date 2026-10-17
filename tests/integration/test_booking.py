@@ -413,6 +413,141 @@ async def test_customer_confirmation_and_cancel_verify_contact_and_unchanged_sum
 
 
 @pytest.mark.asyncio
+async def test_catalog_bundle_preserves_existing_privileges_and_input_order(booking_db):
+    from app.booking_service import load_bundle
+    from app.database import tenant_transaction
+
+    d = booking_db
+    async with d["factory"]() as s:
+        async with tenant_transaction(s, d["a"]):
+            for table in ("tenants", "professionals", "services", "professional_services"):
+                grants = (await s.execute(text("""SELECT
+                    has_table_privilege(current_user, :table, 'SELECT') AS can_read,
+                    has_any_column_privilege(current_user, :table, 'UPDATE') AS can_update
+                """), {"table": table})).one()
+                assert grants.can_read
+                # Existing migrations give catalog DML to runtime, but tenants
+                # remains SELECT-only. This fix must not widen that privilege.
+                assert grants.can_update == (table != "tenants")
+            shop, items = await load_bundle(s, d["a"], d["pro"], [d["beard"], d["cut"]])
+            assert shop["timezone"] == "America/Campo_Grande"
+            assert [item["id"] for item in items] == [d["beard"], d["cut"]]
+            assert [(item["price_cents"], item["duration_min"], item["prep_min"], item["cleanup_min"])
+                    for item in items] == [(2000, 20, 0, 0), (3500, 40, 5, 10)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["confirm", "reschedule"])
+@pytest.mark.parametrize("change", ["price", "duration", "buffer", "name", "service_active",
+                                  "professional_active", "professional_name", "assignment", "shop", "contact"])
+async def test_atomic_booking_write_rechecks_changes_after_slot_validation(booking_db, monkeypatch, operation, change):
+    """A real second connection commits in the gap before the final UPDATE."""
+    from app import booking_service
+    from app.whatsapp_dialogue import owned_booking
+
+    d = booking_db
+    sender = phone(750)
+    async with d["factory"]() as s:
+        reservation = await book_appointment(s, d["a"], d["pro"], [d["beard"]], sender,
+            "Synthetic atomic contract", start_at(d["day"], 10), "atomic-contract")
+        if operation == "reschedule":
+            await confirm_hold(s, d["a"], reservation["id"])
+            proposal = await preview_reschedule(s, d["a"], reservation["id"], start_at(d["day"], 14), customer_phone=sender)
+        else:
+            proposal = await owned_booking(d["a"], sender, item_id=reservation["id"], statuses=("hold",))
+
+    async def persisted_state():
+        async with d["migrator"].connect() as connection:
+            appointment = (await connection.execute(text("SELECT row_to_json(a) FROM appointments a WHERE id=:id"),
+                {"id": reservation["id"]})).scalar_one()
+            events = (await connection.execute(text("SELECT count(*) FROM appointment_history WHERE appointment_id=:id"),
+                {"id": reservation["id"]})).scalar_one()
+            outbox = (await connection.execute(text("SELECT row_to_json(o) FROM calendar_outbox o WHERE appointment_id=:id"),
+                {"id": reservation["id"]})).scalar_one_or_none()
+            items = (await connection.execute(text("SELECT row_to_json(i) FROM appointment_items i WHERE appointment_id=:id ORDER BY item_order"),
+                {"id": reservation["id"]})).scalars().all()
+            return appointment, events, outbox, items
+
+    before = await persisted_state()
+    original_check = booking_service.check_slot
+    changed = False
+
+    async def check_then_change(*args, **kwargs):
+        nonlocal changed
+        result = await original_check(*args, **kwargs)
+        assert not changed
+        changed = True
+        statements = {
+            "price": "UPDATE services SET price_cents=price_cents+100 WHERE tenant_id=:tenant AND id=:service",
+            "duration": "UPDATE services SET duration_min=duration_min+5 WHERE tenant_id=:tenant AND id=:service",
+            "buffer": "UPDATE services SET cleanup_min=cleanup_min+5 WHERE tenant_id=:tenant AND id=:service",
+            "name": "UPDATE services SET name='Nome revisado' WHERE tenant_id=:tenant AND id=:service",
+            "service_active": "UPDATE services SET active=false WHERE tenant_id=:tenant AND id=:service",
+            "professional_active": "UPDATE professionals SET active=false WHERE tenant_id=:tenant AND id=:professional",
+            "professional_name": "UPDATE professionals SET name='Nome revisado' WHERE tenant_id=:tenant AND id=:professional",
+            "assignment": "DELETE FROM professional_services WHERE tenant_id=:tenant AND professional_id=:professional AND service_id=:service",
+            "shop": "UPDATE tenants SET min_notice_minutes=min_notice_minutes+5 WHERE id=:tenant",
+            "contact": "UPDATE customers SET whatsapp_e164=:other WHERE tenant_id=:tenant AND whatsapp_e164=:sender",
+        }
+        async with d["migrator"].begin() as connection:
+            await connection.execute(text(statements[change]), {"tenant": d["a"], "service": d["beard"],
+                "professional": d["pro"], "sender": sender, "other": phone(751)})
+        return result
+
+    monkeypatch.setattr(booking_service, "check_slot", check_then_change)
+    async with d["factory"]() as s:
+        with pytest.raises(HTTPException) as conflict:
+            if operation == "confirm":
+                await confirm_hold(s, d["a"], reservation["id"], customer_phone=sender,
+                    expected_snapshot=proposal["expected_snapshot"])
+            else:
+                await reschedule_appointment(s, d["a"], reservation["id"], start_at(d["day"], 14),
+                    customer_phone=sender, expected_snapshot=proposal["expected_snapshot"])
+        assert conflict.value.status_code == 409
+    assert changed
+    assert await persisted_state() == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["cancel", "expire"])
+async def test_atomic_cancel_rechecks_contact_after_snapshot_validation(booking_db, monkeypatch, operation):
+    from app import booking_service
+    from app.whatsapp_dialogue import owned_booking
+
+    d = booking_db
+    sender = phone(760)
+    async with d["factory"]() as s:
+        reservation = await book_appointment(s, d["a"], d["pro"], [d["beard"]], sender,
+            "Synthetic cancel contract", start_at(d["day"], 10), "atomic-cancel")
+        if operation == "cancel":
+            await confirm_hold(s, d["a"], reservation["id"])
+    status = "confirmed" if operation == "cancel" else "hold"
+    proposal = await owned_booking(d["a"], sender, item_id=reservation["id"], statuses=(status,))
+    original_verify = booking_service.verify_customer_snapshot
+
+    async def verify_then_change(*args, **kwargs):
+        await original_verify(*args, **kwargs)
+        async with d["migrator"].begin() as connection:
+            await connection.execute(text("UPDATE customers SET whatsapp_e164=:other WHERE tenant_id=:tenant AND whatsapp_e164=:sender"),
+                {"tenant": d["a"], "sender": sender, "other": phone(761)})
+
+    monkeypatch.setattr(booking_service, "verify_customer_snapshot", verify_then_change)
+    async with d["factory"]() as s:
+        with pytest.raises(HTTPException) as conflict:
+            if operation == "cancel":
+                await cancel_appointment(s, d["a"], reservation["id"], customer_phone=sender,
+                    expected_snapshot=proposal["expected_snapshot"])
+            else:
+                await confirm_hold(s, d["a"], reservation["id"], customer_phone=sender,
+                    expected_snapshot=proposal["expected_snapshot"], now=datetime.now(UTC)+timedelta(minutes=6))
+        assert conflict.value.status_code == 409
+    async with d["migrator"].connect() as connection:
+        assert (await connection.execute(text("SELECT status FROM appointments WHERE id=:id"), {"id": reservation["id"]})).scalar_one() == status
+        assert (await connection.execute(text("SELECT count(*) FROM appointment_history WHERE appointment_id=:id AND event IN ('cancelled','hold_expired')"), {"id": reservation["id"]})).scalar_one() == 0
+        assert (await connection.execute(text("SELECT action FROM calendar_outbox WHERE appointment_id=:id"), {"id": reservation["id"]})).scalar_one_or_none() == ("create" if operation == "cancel" else None)
+
+
+@pytest.mark.asyncio
 async def test_signed_phone_scopes_customer_cancel_and_reschedule(booking_db):
     """Número autorizado pela Meta (argumento assinado) precisa ser dono da reserva."""
     import json
