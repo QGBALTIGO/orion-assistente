@@ -58,6 +58,8 @@ export function validateSettings(input,capabilities={}){
      new Set(h.weekdays).size!==h.weekdays.length)
     throw Error("Janela de chamadas inválida");
   if(out.callReply && !out.callBlocking)throw Error("A resposta exige bloqueio de chamadas");
+  if(out.callReply && !out.callReplyText.trim())
+    throw Error("Informe uma mensagem para responder às chamadas rejeitadas");
   return out;
 }
 export function shouldRejectCall(settings,phone,when=new Date(),timezone="America/Campo_Grande"){
