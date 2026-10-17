@@ -131,11 +131,12 @@ async def test_long_complete_facts_fail_preflight_before_confirmation(compound):
 @pytest.mark.asyncio
 async def test_backend_failure_does_not_report_success_but_keeps_independent_facts(compound, monkeypatch):
     h = compound
-    async def expired(*_):
+    async def expired(*_, **scope):
+        assert scope["customer_phone"] == "+5567999999999"
         raise HTTPException(409, "synthetic-expired")
     monkeypatch.setattr(qr_ai,"confirm_hold",expired)
     result = await h.message("Pode confirmar. E vocês vendem pomada?")
-    assert result["step"] == "expired" and "Agendamento confirmado" not in result["answer"]
+    assert result["step"] != "confirmed" and not h.state().get("hold") and "Agendamento confirmado" not in result["answer"]
     assert "Pomada" in result["answer"] and not h.events
 
 

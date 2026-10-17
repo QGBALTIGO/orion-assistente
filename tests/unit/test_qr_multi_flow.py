@@ -64,7 +64,7 @@ def flow(monkeypatch):
     async def eligible(t, ids):
         assert t == tenant and set(ids) <= {cut, beard}
         return professionals
-    async def slots(db, t, pro, ids, day):
+    async def slots(db, t, pro, ids, day, **replacement):
         assert t == tenant and pro in {bruno, breno} and set(ids) <= {cut, beard}
         calls["reads"].append((pro, list(ids), day))
         values = [datetime.combine(day, datetime.min.time(), zone).replace(hour=hour, minute=minute).isoformat()
@@ -72,10 +72,19 @@ def flow(monkeypatch):
         items = [x for x in catalog if x["id"] in ids]
         return {"slots": values, "price_cents": sum(x["price_cents"] for x in items),
                 "duration_min": sum(x["duration_min"] for x in items)}
-    async def book(db, t, pro, ids, phone, name, when, idem):
+    def hold_result(pro, ids, when, identity=None):
+        selected = [next(row for row in catalog if row["id"] == sid) for sid in ids]
+        return {"id": identity or uuid4(), "status": "hold", "hold_expires_at": datetime.now(zone)+timedelta(minutes=5),
+            "expected_snapshot": "a"*64, "professional_id": pro, "start_at": when,
+            "end_at": when+timedelta(minutes=sum(row["duration_min"] for row in selected)),
+            "total_cents": sum(row["price_cents"] for row in selected),
+            "items": [{"service_id": row["id"], "name_snapshot": row["name"],
+                "price_snapshot_cents": row["price_cents"], "duration_snapshot_min": row["duration_min"]} for row in selected]}
+    async def book(db, t, pro, ids, phone, name, when, idem, **replacement):
         calls["writes"].append(("hold", list(ids), when, pro))
-        return {"id": uuid4()}
-    async def confirm(db, t, hold):
+        return hold_result(pro, ids, when)
+    async def confirm(db, t, hold, **scope):
+        assert scope == {"customer_phone": "+5567999999999", "expected_snapshot": "a"*64}
         calls["writes"].append(("confirm", hold))
         return {"start_at": datetime.combine(tomorrow, datetime.min.time(), zone).replace(hour=15),
                 "total_cents": 3500, "protocol": "SYNTHETIC"}
@@ -110,11 +119,19 @@ def flow(monkeypatch):
     def seed(step="date", **extra):
         value = {"step": step, "services": [str(cut)], "day": tomorrow.isoformat(), "professional": str(bruno),
                  "professional_name": "Bruno", **extra}
+        if step == "confirm":
+            value.setdefault("hold_snapshot", "a"*64)
+        if step in qr_ai.REVIEW_STEPS:
+            value.setdefault("confirmation_message_id", "synthetic-prior-summary")
         redis.data[key] = json.dumps(value)
         redis.data[key + ":catalog-context"] = qr_profile.catalog_revision(business, catalog, professionals)
         return value
     async def turn(message, preview=True):
-        return await qr_ai.turn(tenant, "5567999999999", message, redis, namespace, preview=preview)
+        token = qr_ai._message_identity.set(qr_ai._message_identity.get() or "synthetic-"+str(uuid4()))
+        try:
+            return await qr_ai.turn(tenant, "5567999999999", message, redis, namespace, preview=preview)
+        finally:
+            qr_ai._message_identity.reset(token)
     return SimpleNamespace(**locals())
 
 
@@ -225,7 +242,7 @@ async def test_later_professional_choice_preserves_original_requested_clock_with
 async def test_when_free_queries_real_next_days_without_reusing_old_date_or_price_menu(flow, phrase):
     h = flow;old = h.seed("date", day="2026-01-01")
     reply = await h.turn(phrase, preview=False)
-    assert "Disponibilidade real" in reply["answer"] and "R$" not in reply["answer"]
+    assert "*Profissional:* Bruno" in reply["answer"] and "R$ 35,00" in reply["answer"]
     assert len(h.calls["reads"]) == 3 and all(x[2] >= h.today for x in h.calls["reads"])
     assert h.state()["day"] == old["day"] and not h.calls["writes"]
 
@@ -242,9 +259,12 @@ async def test_price_faq_availability_are_read_only_and_do_not_replace_booking_s
 
 
 @pytest.mark.asyncio
-async def test_confirmation_plus_question_requires_review_before_consent(flow):
+async def test_confirmation_plus_question_requires_review_before_consent(flow, monkeypatch):
     h = flow;h.seed("confirm", hold=str(uuid4()), confirmation_summary="Corte com Bruno",
         confirmation_expires_at=datetime.now().timestamp()+240)
+    async def compound(**kwargs):
+        return SimpleNamespace(kind="other")
+    monkeypatch.setattr(qr_ai, "interpret_compound_response", compound)
     h.proposal["value"] = UnderstandingPlan(intents=["confirm", "faq"], faq_ids=["faq-0"])
     reply = await h.turn("Pode confirmar esse resumo. Aceitam Pix?", preview=False)
     assert reply["step"] == "confirm" and "Aceitamos Pix" in reply["answer"]
@@ -293,7 +313,7 @@ async def test_any_affirmation_requires_fresh_visible_summary_before_backend(flo
     h = flow;h.seed("confirm", hold=str(uuid4()), confirmation_summary=summary,
         confirmation_expires_at=datetime.now().timestamp()+deadline)
     reply = await h.turn("pode marcar", preview=False)
-    assert reply["step"] == "expired" and not h.calls["writes"]
+    assert reply["step"] != "confirmed" and not h.calls["writes"] and not h.state().get("hold")
 
 
 @pytest.mark.asyncio
@@ -522,7 +542,7 @@ async def test_price_without_the_only_selected_service_asks_instead_of_listing_d
 async def test_availability_without_selected_service_uses_remaining_subject_without_selection_write(flow):
     h = flow;old = h.seed("date", services=[str(h.cut), str(h.beard)])
     result = await h.turn("Tem livre sem o corte?", preview=False)
-    assert "Disponibilidade real" in result["answer"] and h.state()["services"] == old["services"]
+    assert "*Profissional:* Bruno" in result["answer"] and "R$ 20,00" in result["answer"] and h.state()["services"] == old["services"]
     assert h.calls["reads"] and all(x[1] == [h.beard] for x in h.calls["reads"])
     assert not h.calls["writes"]
 
@@ -585,26 +605,26 @@ async def test_utf16_factual_budget_prevents_hold_before_bridge_rejects_emoji_pa
 
 
 @pytest.mark.asyncio
-async def test_same_professional_reuses_request_identity_but_professional_correction_replaces_private_hold(flow, monkeypatch):
+async def test_new_proposal_messages_have_separate_scoped_hold_identities(flow, monkeypatch):
     h = flow;seen = [];holds = {}
-    async def book(db, tenant, professional, ids, phone, name, when, idempotency_key):
+    async def book(db, tenant, professional, ids, phone, name, when, idempotency_key, **replacement):
         fingerprint = qr_ai.booking_fingerprint(professional, ids, when, phone)
         if idempotency_key in holds:
             assert holds[idempotency_key][0] == fingerprint
         else:
             holds[idempotency_key] = (fingerprint, uuid4())
         seen.append((professional, idempotency_key, holds[idempotency_key][1]))
-        return {"id": holds[idempotency_key][1]}
+        return h.hold_result(professional, ids, when, holds[idempotency_key][1])
     monkeypatch.setattr(qr_ai, "book_appointment", book)
     first = await h.turn("Quero agendar corte amanhã às 15:00 com Bruno", preview=False)
     assert first["step"] == "confirm"
     old_hold = h.state()["hold"]
     repeated = await h.turn("Prefiro Bruno às 15:00", preview=False)
-    assert repeated["step"] == "confirm" and h.state()["hold"] == old_hold
+    assert repeated["step"] == "confirm" and h.state()["hold"] != old_hold
     corrected = await h.turn("Prefiro Breno às 15:00", preview=False)
     assert corrected["step"] == "confirm" and h.state()["professional"] == str(h.breno)
     assert h.state()["hold"] != old_hold and "Breno" in h.state()["confirmation_summary"]
-    assert seen[0][1] == seen[1][1] and seen[2][1] != seen[0][1]
+    assert seen[0][1] != seen[1][1] and seen[2][1] != seen[0][1]
     assert seen[0][0] == h.bruno and seen[2][0] == h.breno
     assert not h.calls["writes"]  # No confirmed appointment is changed or cancelled.
 
@@ -614,15 +634,19 @@ async def test_hold_request_identity_uses_backend_normalized_instant_and_service
     h = flow;seen = []
     async def book(db, tenant, professional, ids, phone, name, when, idempotency_key):
         seen.append(idempotency_key)
-        return {"id": uuid4()}
+        return h.hold_result(professional, ids, when)
     monkeypatch.setattr(qr_ai, "book_appointment", book)
     base = h.seed("time", price=5500, duration=60, services=[str(h.cut), str(h.beard)])
     local = f"{h.tomorrow}T15:00:00-04:00";utc = f"{h.tomorrow}T19:00:00+00:00"
     for when, services in [(local, base["services"]), (utc, base["services"]),
                            (local, list(reversed(base["services"])) )]:
         state = {**base, "services": services}
-        result = await qr_ai.prepare_booking_summary(h.tenant, "5567999999999", state, when,
-            h.business, h.catalog, h.redis, h.key, False)
+        token = qr_ai._message_identity.set("same-synthetic-message")
+        try:
+            result = await qr_ai.prepare_booking_summary(h.tenant, "5567999999999", state, when,
+                h.business, h.catalog, h.redis, h.key, False)
+        finally:
+            qr_ai._message_identity.reset(token)
         assert result["step"] == "confirm"
     assert seen[0] == seen[1] and seen[0] != seen[2]
 
@@ -747,7 +771,7 @@ async def test_doubt_then_review_of_typed_summary_sends_one_question_with_new_id
         qr_ai._message_identity.reset(token)
     assert stored in result["answer"] and result["answer"].count("Posso confirmar") == 1
     assert h.state()["confirmation_message_id"] == "synthetic-review"
-    assert h.state()["confirmation_expires_at"] == deadline and 1 <= h.redis.ttls[h.key] <= 40
+    assert h.state()["confirmation_expires_at"] == deadline and h.redis.ttls[h.key] == qr_ai.STATE_TTL
     assert not h.calls["writes"]
 
 
@@ -838,7 +862,7 @@ async def test_exact_real_read_request_reopens_summary_without_provider_or_opera
         qr_ai._message_identity.reset(token)
     assert summary in result["answer"] and result["answer"].count("Posso confirmar") == 1 and not h.calls["writes"]
     assert h.state()["confirmation_message_id"] == "synthetic-read" and h.state()["confirmation_expires_at"] == deadline
-    assert 1 <= h.redis.ttls[h.key] <= 40
+    assert h.redis.ttls[h.key] == qr_ai.STATE_TTL
     token = qr_ai._message_identity.set("synthetic-new-consent")
     try:
         done = await h.turn("Pode confirmar", preview=False)
