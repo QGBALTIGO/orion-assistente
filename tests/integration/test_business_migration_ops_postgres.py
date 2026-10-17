@@ -105,7 +105,24 @@ def test_full_backup_restore_and_restricted_migration_preserves_real_rows(migrat
     with engine.begin() as conn:
         assert ops.revision(conn) == ops.SOURCE
         original_rows = conn.exec_driver_sql("SELECT row_to_json(c)::text FROM customers c").scalars().all()
-    result = ops.execute(settings)
+    structures = []
+    original_fingerprint = ops.catalog_fingerprint
+    def record_fingerprint(conn, tables=ops.LEGACY_TABLES):
+        structures.append(ops.catalog_structure(conn, tables))
+        return original_fingerprint(conn, tables)
+    monkeypatch.setattr(ops, "catalog_fingerprint", record_fingerprint)
+    try:
+        result = ops.execute(settings)
+    except ops.Stop as error:
+        if str(error) == "restored_catalog_mismatch" and len(structures) >= 2:
+            # These are schema definitions from this synthetic database only.
+            # No customer values or production credentials enter the assertion.
+            before = {row[0]: row[1:] for row in structures[-2]}
+            after = {row[0]: row[1:] for row in structures[-1]}
+            differences = {name: {"before": before.get(name), "restored": after.get(name)}
+                           for name in before.keys() | after.keys() if before.get(name) != after.get(name)}
+            assert not differences, differences
+        raise
     assert requests == ["POST", "GET"] and stored["body"].startswith(b"ORIONDB1")
     assert result["restore_verified"] is True and result["revision"] == ops.TARGET
     assert result["backup_counts"]["customers"] == result["preserved_counts"]["customers"] == 1

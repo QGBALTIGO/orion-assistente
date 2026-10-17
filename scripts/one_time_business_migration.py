@@ -235,7 +235,7 @@ def counts(conn, tables=LEGACY_TABLES):
             for name in sorted(tables)}
 
 
-def catalog_fingerprint(conn, tables=LEGACY_TABLES):
+def catalog_structure(conn, tables=LEGACY_TABLES):
     """No row values, names of customers, owners or ACLs are included."""
     query = text("""
         SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity,
@@ -252,7 +252,11 @@ def catalog_fingerprint(conn, tables=LEGACY_TABLES):
         FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname='public' AND c.relkind='r' ORDER BY c.relname
     """)
-    rows = [list(row) for row in conn.execute(query) if row[0] in tables]
+    return [list(row) for row in conn.execute(query) if row[0] in tables]
+
+
+def catalog_fingerprint(conn, tables=LEGACY_TABLES):
+    rows = catalog_structure(conn, tables)
     return hashlib.sha256(json.dumps(rows, sort_keys=True, default=str).encode()).hexdigest()
 
 
