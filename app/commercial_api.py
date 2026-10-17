@@ -2,7 +2,7 @@
 from uuid import UUID
 import os
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.exc import IntegrityError
 
@@ -30,7 +30,8 @@ async def status(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     editable = access.role in {"owner", "editor", "support", "admin"}
     return {"enabled": True, "access": {"role": access.role, "can_edit_catalog": editable,
             "can_create_orders": editable}, "payments_enabled": False,
-            "assistant_connected": os.getenv("QR_AI_COMMERCE_ENABLED", "0") == "1"}
+            "assistant_connected": os.getenv("QR_AI_COMMERCE_ENABLED", "0") == "1",
+            "fulfillment": await run(service.receiving_options, tenant_id)}
 
 
 async def run(operation, *args, **kwargs):
@@ -45,6 +46,13 @@ async def run(operation, *args, **kwargs):
 async def products(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     await resolve_tenant_access(actor, tenant_id)
     return await run(service.catalog, tenant_id)
+
+
+@router.get("/pickup-appointments")
+async def pickup_appointments(tenant_id: UUID,
+        contact_e164: str = Query(pattern=r"^\+[1-9][0-9]{7,14}$"), actor: Actor = Depends(authenticate)):
+    await resolve_tenant_access(actor, tenant_id, "draft")
+    return await run(service.pickup_candidates, tenant_id, contact_e164)
 
 
 @router.post("/products", status_code=201)

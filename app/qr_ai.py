@@ -724,6 +724,9 @@ async def _commerce_turn(tenant: UUID, phone: str, body: str, state: dict, busin
     lower = norm(body)
     booking_subject = bool(catalog_match(body, catalog)) or bool(re.search(
         r"\b(?:agendar|agendamento|agenda|remarcar|reagendar|horarios?|dias? livres|marcar|reservar|cabelo|corte|barba)\b", lower))
+    if (qr_commerce.receiving.enabled() and qr_commerce.receiving.receiving_reference(body, commerce_state)
+            and not catalog_match(body, catalog)):
+        booking_subject = False  # A product's receiving link never creates a new appointment.
     relevant = await qr_commerce.probe(tenant, phone, body, message_id=message_id, state=commerce_state)
     semantic = None
     if (not relevant and commerce_state and commerce_state.get("pending") and not booking_subject
@@ -772,7 +775,8 @@ async def _commerce_turn(tenant: UUID, phone: str, body: str, state: dict, busin
         scope = qr_commerce.store.CustomerScope(tenant, phone, message_id)
         product_plan = qr_commerce.interpret(body, await qr_commerce.store.active_catalog(scope),
             (commerce_state or {}).get("cart", []), (commerce_state or {}).get("choices", {}))
-        if product_plan.intent in {"price", "catalog", "stock", "faq"}:
+        if (product_plan.intent in {"price", "catalog", "stock", "faq"} or
+                (qr_commerce.receiving.enabled() and qr_commerce.receiving.interpret_receiving(body).query)):
             return denial
     result = await qr_commerce.handle(tenant, phone, body, message_id=message_id, state=commerce_state, preview=preview,
         customer_name=state.get("customer_name"), allow_orders="product_orders" in (business.get("profile") or {}).get("capabilities", []),

@@ -10,6 +10,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import text
 
 from app.commercial_schemas import QuoteLineRequest
+from app import commercial_fulfillment as fulfillment
 from app.database import tenant_transaction
 from app.tenant_access import check_access
 
@@ -217,7 +218,21 @@ def calculate(lines, now):
 async def estimate(db, tenant, payload):
     async with tenant_transaction(db, tenant):
         await tenant_exists(db, tenant, active=True)
-        return {"kind": "estimate", **calculate(await _load_lines(db, tenant, payload.items), now_utc())}
+        contract = await fulfillment.resolve(db, tenant, payload.contact_e164, payload.fulfillment)
+        return {"kind": "estimate", **fulfillment.apply(calculate(await _load_lines(db, tenant, payload.items), now_utc()), contract)}
+
+
+async def receiving_options(db, tenant):
+    async with tenant_transaction(db, tenant):
+        return fulfillment.public_options(await fulfillment.options(db, tenant))
+
+
+async def pickup_candidates(db, tenant, contact):
+    async with tenant_transaction(db, tenant):
+        policy = await fulfillment.options(db, tenant, lock=True)
+        items = await fulfillment.pickup_appointments(db, tenant, contact)
+        return {"items": items, "profile_version_id": policy["profile_version_id"],
+                "profile_revision": policy["profile_revision"]}
 
 
 async def create_quote(db, tenant, payload, access):
@@ -228,14 +243,21 @@ async def create_quote(db, tenant, payload, access):
         lines = await _load_lines(db, tenant, payload.items)
         now = now_utc()
         result = calculate(lines, now)
+        contract = await fulfillment.resolve(db, tenant, payload.contact_e164, payload.fulfillment, lock=True)
+        result = fulfillment.apply(result, contract)
         expires = now + timedelta(minutes=payload.validity_minutes)
-        await db.execute(text("""
+        inserted = (await db.execute(text("""
             INSERT INTO commercial_quotes (id,tenant_id,contact_e164,customer_name,total_cents,minimum_total_cents,
-                confirmation_digest,expires_at,created_by)
-            VALUES (:id,:t,:contact,:name,:total,:minimum,:digest,:expires,:actor)
-        """), {"id": quote_id, "t": tenant, "contact": payload.contact_e164, "name": payload.customer_name,
+                confirmation_digest,expires_at,created_by,fulfillment_mode,pickup_appointment_id,fulfillment_snapshot)
+            SELECT :id,:t,:contact,:name,:total,:minimum,:digest,:expires,:actor,
+                :fulfillment_mode,:pickup_appointment_id,CAST(:fulfillment_snapshot AS jsonb)
+            WHERE """ + fulfillment.WRITE_GUARD + " RETURNING id"),
+            {"id": quote_id, "t": tenant, "contact": payload.contact_e164, "name": payload.customer_name,
                "total": result["total_cents"], "minimum": result["minimum_total_cents"],
-               "digest": hashlib.sha256(token.encode()).hexdigest(), "expires": expires, "actor": access.account_id})
+               "digest": hashlib.sha256(token.encode()).hexdigest(), "expires": expires, "actor": access.account_id,
+               **fulfillment.insert_params(contract), **fulfillment.guard_params(contract, payload.contact_e164)})).scalar_one_or_none()
+        if inserted is None:
+            fulfillment.conflict()
         for index, line in enumerate(result["items"]):
             await db.execute(text("""
                 INSERT INTO commercial_quote_items (tenant_id,quote_id,variant_id,product_id,item_order,quantity,
@@ -251,7 +273,8 @@ async def create_quote(db, tenant, payload, access):
 
 async def _quote(db, tenant, quote_id):
     row = (await db.execute(text("""
-        SELECT id,contact_e164,customer_name,currency,total_cents,minimum_total_cents,expires_at,created_at
+        SELECT id,contact_e164,customer_name,currency,total_cents,minimum_total_cents,expires_at,created_at,
+            fulfillment_mode,pickup_appointment_id,fulfillment_snapshot
         FROM commercial_quotes WHERE tenant_id=:t AND id=:id
     """), {"t": tenant, "id": quote_id})).mappings().first()
     if row is None:
@@ -259,7 +282,11 @@ async def _quote(db, tenant, quote_id):
     items = (await db.execute(text("""
         SELECT snapshot FROM commercial_quote_items WHERE tenant_id=:t AND quote_id=:id ORDER BY item_order
     """), {"t": tenant, "id": quote_id})).scalars().all()
-    return {**dict(row), "kind": "quote", "items": items}
+    result = {**dict(row), "kind": "quote", "items": items}
+    for name, value in fulfillment.EMPTY.items():
+        result.setdefault(name, value)
+    result["pickup_appointment_current"] = await fulfillment.current_appointment(db, tenant, result)
+    return fulfillment.apply(result, {name: result[name] for name in fulfillment.EMPTY})
 
 
 async def get_quote(db, tenant, quote_id):
@@ -313,8 +340,12 @@ async def create_order(db, tenant, payload, access):
                              {"t": tenant, "q": payload.quote_id})).scalar_one_or_none():
             conflict("Este orçamento já está vinculado a um pedido")
         order_id = uuid4()
-        await db.execute(text("INSERT INTO commercial_orders (id,tenant_id,quote_id,idempotency_key) VALUES (:id,:t,:q,:key)"),
-                         {"id": order_id, "t": tenant, "q": payload.quote_id, "key": payload.idempotency_key})
+        contract = await fulfillment.validate(db, tenant, quote)
+        inserted = (await db.execute(text("INSERT INTO commercial_orders (id,tenant_id,quote_id,idempotency_key) SELECT :id,:t,:q,:key WHERE " +
+            fulfillment.WRITE_GUARD + " RETURNING id"), {"id": order_id, "t": tenant, "q": payload.quote_id,
+            "key": payload.idempotency_key, **fulfillment.guard_params(contract, quote["contact_e164"])})).scalar_one_or_none()
+        if inserted is None:
+            fulfillment.conflict()
         await audit(db, tenant, access, "order", order_id, "draft_created")
         return await _order(db, tenant, order_id)
 
@@ -338,6 +369,7 @@ async def confirm_order(db, tenant, order_id, payload, access):
             conflict("Pedido alterado ou encerrado. Revise antes de confirmar")
         if not quote["contact_e164"]:
             conflict("Identifique o cliente em uma nova proposta antes de confirmar")
+        contract = await fulfillment.validate(db, tenant, quote, confirming=True)
         requests = [QuoteLineRequest(variant_id=item["variant_id"], quantity=item["quantity"]) for item in quote["items"]]
         if not requests:
             conflict("Orçamento sem itens válidos")
@@ -351,13 +383,18 @@ async def confirm_order(db, tenant, order_id, payload, access):
         result = calculate(lines, now)
         if not result["confirmation_requirements_met"] or result["total_cents"] != quote["total_cents"]:
             conflict("Preço ou disponibilidade exige revisão humana; nenhum pedido foi confirmado")
+        await fulfillment.fence(db, tenant, quote["contact_e164"], contract)
         for line in sorted(lines, key=lambda item: item["variant_id"]):
             await db.execute(text("""
                 UPDATE commercial_inventory SET reserved_quantity=reserved_quantity+:quantity,
                     revision=revision+1,updated_at=now() WHERE tenant_id=:t AND variant_id=:v
             """), {"t": tenant, "v": line["variant_id"], "quantity": line["quantity"]})
             await audit(db, tenant, access, "stock", line["variant_id"], "reserved", {"order_id": order_id, "quantity": line["quantity"]})
-        await db.execute(text("UPDATE commercial_orders SET status='confirmed',revision=revision+1,updated_at=now() WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": order_id})
+        changed = (await db.execute(text("UPDATE commercial_orders SET status='confirmed',revision=revision+1,updated_at=now() WHERE tenant_id=:t AND id=:id AND " +
+            fulfillment.WRITE_GUARD + " RETURNING id"), {"t": tenant, "id": order_id,
+            **fulfillment.guard_params(contract, quote["contact_e164"])})).scalar_one_or_none()
+        if changed is None:
+            fulfillment.conflict()
         await audit(db, tenant, access, "order", order_id, "confirmed", {"total_cents": result["total_cents"]})
         return await _order(db, tenant, order_id)
 
