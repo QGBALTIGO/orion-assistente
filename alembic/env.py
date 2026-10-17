@@ -44,7 +44,13 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        # Um ambiente pré-existente deve reprovar se não usa app_migrator.
+        # ONE-TIME Railway migration. A database owner can assume the restricted
+        # migrator role for Alembic; the DDL still executes as app_migrator.
+        # Never relax the checked current_user and never enable for regular API.
+        if os.getenv("ORION_MIGRATION_SWITCH_ROLE") == "1":
+            if connection.exec_driver_sql("SELECT current_user").scalar_one() != "app_migrator":
+                connection.exec_driver_sql("SET ROLE app_migrator")
+                connection.commit()
         if connection.exec_driver_sql("SELECT current_user").scalar_one() != "app_migrator":
             raise RuntimeError("Migrations exigem exclusivamente o usuário app_migrator")
         # SQLAlchemy 2.x: até SELECT inicia transação implícita.
