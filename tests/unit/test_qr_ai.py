@@ -37,6 +37,21 @@ def test_relative_dates_and_time_are_independent_of_llm():
     assert qr_ai.format_money(5500) == "R$ 55,00"
 
 
+@pytest.mark.parametrize("phrase, expected", [
+    ("Quero pra segunda", date(2026, 10, 19)),
+    ("terça-feira", date(2026, 10, 20)),
+    ("Quero na quarta", date(2026, 10, 21)),
+    ("quinta", date(2026, 10, 22)), ("sexta", date(2026, 10, 23)),
+    ("sábado", date(2026, 10, 17)), ("domingo", date(2026, 10, 18)),
+    ("próximo sábado", date(2026, 10, 24)),
+    ("segunda ou terça", None), ("segunda opção", None),
+    ("segunda, 20/10", None), ("segunda ou amanhã", None), ("segunda ou hoje", None),
+])
+def test_weekdays_use_business_timezone_and_ambiguity_is_not_first_match(phrase, expected):
+    now = datetime(2026, 10, 17, 10, 0, tzinfo=ZoneInfo("America/Campo_Grande"))
+    assert qr_ai.requested_day(phrase, "America/Campo_Grande", now) == expected
+
+
 @pytest.mark.asyncio
 async def test_preview_from_natural_language_to_confirm_never_writes(monkeypatch):
     tenant = uuid4()

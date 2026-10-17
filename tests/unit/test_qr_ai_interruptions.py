@@ -435,7 +435,7 @@ async def test_availability_question_collects_missing_fields_then_reads_real_slo
     assert "Para qual serviço" in reply["answer"]
     assert "R$" not in reply["answer"] and not seen
     reply = await h.turn("Quero consultar corte de cabelo")
-    assert "qual dia" in reply["answer"] and "Corte de cabelo" in reply["answer"]
+    assert "qual profissional" in reply["answer"] and "Corte de cabelo" in reply["answer"]
     reply = await h.turn("20/11/2026")
     assert "qual profissional" in reply["answer"] and not seen
     reply = await h.turn("O Bruno")
@@ -565,3 +565,61 @@ async def test_rescheduling_review_keeps_original_proposal_and_deadline(conversa
     assert h.state()["new_start"] == "2026-11-20T14:00:00-04:00"
     assert h.state()["confirmation_expires_at"] == deadline and 1 <= h.redis.ttls[h.key] <= 40
     assert not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("step", ["date", "professional", "time", "confirm"])
+async def test_weekday_replaces_old_date_and_hold_before_consulting(conversation, monkeypatch, step):
+    h = conversation
+    h.seed(step, professional=str(h.bruno), hold=str(uuid4()), day="2026-01-01")
+    async def forbidden_classifier(**_):
+        raise AssertionError("A simple weekday correction needs no classifier")
+    monkeypatch.setattr(qr_ai, "interpret", forbidden_classifier)
+    reply = await h.turn("Quero pra segunda", preview=False)
+    assert reply["step"] == "time" and h.state()["day"] != "2026-01-01"
+    assert qr_ai.date.fromisoformat(h.state()["day"]).weekday() == 0
+    assert "hold" not in h.state() and not h.calls["writes"]
+    assert h.calls["slots"][-1]["day"] == h.state()["day"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phrase", ["Que dia tem livre", "Qual dia tem horário livre?", "Quais dias estão disponíveis?"])
+async def test_next_days_query_ignores_old_day_preserves_booking_and_has_bounded_reads(conversation, monkeypatch, phrase):
+    h = conversation
+    original = h.seed("confirm", professional=str(h.bruno), day="2026-01-01", hold=str(uuid4()))
+    seen = readonly_slots(monkeypatch, h)
+    reply = await h.turn(phrase, preview=False)
+    assert "próximos sete dias" in reply["answer"] and "14:30" in reply["answer"]
+    assert "R$" not in reply["answer"] and len(seen) == 3
+    assert all(row[3].isoformat() != "2026-01-01" for row in seen)
+    assert h.state()["day"] == original["day"] and h.state()["hold"] == original["hold"]
+    assert h.state()["confirmation_requires_review"] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_empty_next_week_is_exactly_seven_reads_and_no_invented_slots(conversation, monkeypatch):
+    h = conversation
+    h.seed("time", professional=str(h.bruno))
+    seen = readonly_slots(monkeypatch, h, slots=[])
+    reply = await h.turn("Que dia tem livre", preview=False)
+    assert len(seen) == 7 and "Não encontrei horários livres nesse período" in reply["answer"]
+    assert "14:" not in reply["answer"] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_quero_fazer_tudo_requires_service_clarification_without_changing_selection(conversation):
+    h = conversation
+    original = h.seed("date")
+    reply = await h.turn("Quero fazer tudo", preview=False)
+    assert "quais serviços" in reply["answer"] and h.state()["services"] == original["services"]
+    assert not h.calls["classify"] and not h.calls["slots"] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_identity_question_has_a_truthful_answer_without_catalog_or_booking(conversation):
+    h = conversation
+    original = h.seed("date")
+    reply = await h.turn("Qual o seu nome?", preview=False)
+    assert "Orion, assistente virtual" in reply["answer"] and "R$" not in reply["answer"]
+    assert h.state()["services"] == original["services"]
+    assert not h.calls["classify"] and not h.calls["slots"] and not h.calls["writes"]

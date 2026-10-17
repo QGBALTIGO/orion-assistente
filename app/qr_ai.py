@@ -3,6 +3,7 @@
 O LLM apenas classifica; agenda, preço, profissional e confirmação vêm do Orion.
 O preview usa estado isolado e nunca grava reserva nem envia mensagens externas.
 """
+import asyncio
 import hashlib
 import json
 import math
@@ -49,6 +50,19 @@ class Simulate(StrictModel):
 def requested_day(value: str, tz_name: str, now: datetime | None = None) -> date | None:
     today = (now or datetime.now(ZoneInfo(tz_name))).astimezone(ZoneInfo(tz_name)).date()
     lower = value.strip().lower()
+    normalized = norm(value)
+    weekdays = {"segunda": 0, "terca": 1, "quarta": 2, "quinta": 3,
+                "sexta": 4, "sabado": 5, "domingo": 6}
+    matches = list(re.finditer(r"\b(segunda|terca|quarta|quinta|sexta|sabado|domingo)(?:[ -]feira)?\b", normalized))
+    matches = [m for m in matches if not re.match(r"\s+(?:opcao|vez|pessoa|alternativa|parcela|unidade)\b", normalized[m.end():])]
+    if matches:
+        if (len({m.group(1) for m in matches}) != 1
+                or re.search(r"\b\d{1,4}[-/]\d{1,2}\b|\b(?:hoje|amanha)\b", normalized)):
+            return None  # Never silently select the first of competing days.
+        delta = (weekdays[matches[-1].group(1)] - today.weekday()) % 7
+        if delta == 0 and re.search(r"\bproxim[ao]\b", normalized):
+            delta = 7
+        return today + timedelta(days=delta)
     if "depois de amanhã" in lower or "depois de amanha" in lower:
         return today + timedelta(days=2)
     if "amanhã" in lower or "amanha" in lower:
@@ -311,7 +325,9 @@ def simple_schedule_reply(body: str, kind: str) -> bool:
     value = norm(body).strip(" ?!.,")
     prefix = r"(?:(?:pode ser|para|no dia|dia|as|pelas)\s+)?"
     if kind == "date":
-        return bool(re.fullmatch(prefix + r"(?:hoje|amanha|depois de amanha|\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}(?:/\d{4})?)", value))
+        weekday = r"(?:(?:quero|prefiro|pode ser)\s+)?(?:(?:para|pra|na|no|para a|para o)\s+)?(?:proxima?\s+)?(?:segunda|terca|quarta|quinta|sexta|sabado|domingo)(?:[ -]feira)?"
+        return bool(re.fullmatch(prefix + r"(?:hoje|amanha|depois de amanha|\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}(?:/\d{4})?)", value)
+                    or re.fullmatch(weekday, value))
     return bool(re.fullmatch(prefix + r"(?:(?:[01]?\d|2[0-3])(?::[0-5]\d|h(?:[0-5]\d)?)|duas(?: horas)? da tarde)", value))
 
 
@@ -334,7 +350,11 @@ async def answer_availability(tenant: UUID, body: str, state: dict, business: di
     day = requested_day(body, business["timezone"])
     if day:
         inquiry["day"] = day.isoformat()
-    chosen_day = inquiry.get("day") or state.get("day")
+        inquiry.pop("search_next", None)
+    elif re.search(r"\b(?:que|qual|quais|proximos?)(?: sao)?(?: os?)?\s+dias?\b", norm(body)):
+        inquiry["search_next"] = True
+        inquiry.pop("day", None)
+    chosen_day = None if inquiry.get("search_next") else inquiry.get("day") or state.get("day")
 
     async def ask(answer, field):
         inquiry["waiting_for"] = field
@@ -349,9 +369,10 @@ async def answer_availability(tenant: UUID, body: str, state: dict, business: di
         return await ask("Posso consultar a agenda real. Para qual serviço? Pode dizer o nome ou número:\n" + listing, "service")
     inquiry["services"] = ids
     names = " e ".join(item["name"] for item in catalog if str(item["id"]) in ids)
-    if not chosen_day:
+    if not chosen_day and not inquiry.get("search_next"):
         return await ask(f"Para consultar {names}, qual dia deseja? Pode dizer amanhã ou uma data, como 20/11. Nenhuma reserva será criada.", "date")
-    inquiry["day"] = chosen_day
+    if chosen_day:
+        inquiry["day"] = chosen_day
     pros = await professionals_for(tenant, [UUID(item) for item in ids])
     if not pros:
         state.pop("availability_query", None)
@@ -365,9 +386,33 @@ async def answer_availability(tenant: UUID, body: str, state: dict, business: di
         selected = next((p for p in pros if str(p["id"]) == previous), None)
         selected = selected or (pros[0] if len(pros) == 1 else None)
     if selected is None:
-        return await ask(f"Para consultar {names} em {date.fromisoformat(chosen_day):%d/%m}, qual profissional prefere?\n" + "\n".join(
+        period = f"em {date.fromisoformat(chosen_day):%d/%m}" if chosen_day else "nos próximos sete dias"
+        return await ask(f"Para consultar {names} {period}, qual profissional prefere?\n" + "\n".join(
             f"{i}. {p['name']}" for i, p in enumerate(pros, 1)), "professional")
     inquiry["professional"] = str(selected["id"])
+    if inquiry.get("search_next"):
+        today = datetime.now(ZoneInfo(business["timezone"])).date()
+        found = []
+        try:
+            async with asyncio.timeout(12), get_session_factory()() as db:
+                for offset in range(7):
+                    candidate_day = today + timedelta(days=offset)
+                    result = await list_slots(db, tenant, UUID(inquiry["professional"]),
+                                              [UUID(item) for item in ids], candidate_day)
+                    times = [datetime.fromisoformat(item).strftime("%H:%M") for item in result["slots"][:6]]
+                    if times:
+                        found.append(f"• {candidate_day:%d/%m}: " + ", ".join(times))
+                    if len(found) == 3:
+                        break
+        except (HTTPException, TimeoutError):
+            return await ask("Não consegui verificar a agenda completa agora. Qual data deseja consultar?", "date")
+        state.pop("availability_query", None)
+        await redis.set(key, json.dumps(state), ex=300 if state.get("step") in {"confirm", "reschedule_confirm"} else STATE_TTL)
+        heading = f"Consultei {names} com {selected['name']} nos próximos sete dias."
+        answer = heading + ("\n" + "\n".join(found) if found else " Não encontrei horários livres nesse período.")
+        review = "\n" + resume_prompt(state) if state.get("confirmation_requires_review") else ""
+        return {"answer": answer + "\nConsulta sem reserva; nenhum agendamento foi criado ou alterado." + review,
+                "step": state.get("step", "menu")}
     try:
         async with get_session_factory()() as db:
             result = await list_slots(db, tenant, UUID(inquiry["professional"]),
@@ -391,6 +436,13 @@ async def start_booking(tenant: UUID, body: str, decision: Intention, state: dic
     next_state = {"services": [str(item["id"]) for item in chosen], "step": "date",
                   "customer_name": state.get("customer_name")}
     chosen_day = requested_day(" ".join(filter(None, [body, decision.requested_when])), business["timezone"])
+    mentions_weekday = bool(re.search(r"\b(?:segunda|terca|quarta|quinta|sexta|sabado|domingo)(?:[ -]feira)?\b", norm(body)))
+    if mentions_weekday:
+        # The utterance is authoritative; a classifier cannot override its calendar reference.
+        chosen_day = requested_day(body, business["timezone"])
+        if chosen_day is None:
+            await redis.set(key, json.dumps(next_state), ex=STATE_TTL)
+            return {"answer": "Qual dia você prefere? Recebi mais de uma referência de data e preciso confirmar antes de consultar a agenda.", "step": "date"}
     day = chosen_day.isoformat() if chosen_day else state.get("day")
     total = sum(item["price_cents"] for item in chosen)
     duration = sum(item["duration_min"] for item in chosen)
@@ -481,6 +533,8 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
     if intent == "human":
         await redis.set(state_key, json.dumps({"step": "human"}), ex=1800)
         return {"answer": "Vou deixar esta conversa para atendimento humano. Para retomar o bot, envie MENU.", "step": "human"}
+    if intent == "identity":
+        return {"answer": "Sou o Orion, assistente virtual deste atendimento.", "step": state.get("step", "information")}
     if state.get("confirmation_requires_review") and state.get("step") in {"confirm", "reschedule_confirm"}:
         resume = norm(body) in {"retomar resumo", "ver resumo", "rever resumo", "resumo original"}
         if resume:
@@ -514,6 +568,9 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
         return {"answer": "Para cancelar uma reserva já confirmada, posso encaminhar ao atendimento humano para conferir os dados. Nenhuma reserva foi alterada.", "step": "cancel_request"}
     if not catalog:
         return {"answer": "Ainda não há serviços ativos cadastrados neste estabelecimento.", "step": "no_catalog"}
+    if re.fullmatch(r"(?:quero|queria|pode ser|vou querer)(?: fazer)?\s+tudo[.!?\s]*", norm(body)):
+        return {"answer": "Quando você diz tudo, quais serviços quer incluir? Pode dizer os nomes:\n" + "\n".join(
+            f"• {item['name']}" for item in catalog[:12]), "step": state.get("step", "menu")}
     supplied = supplied_name(body)
     if supplied:
         if not preview:
@@ -546,6 +603,12 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
     if querying or inquiry_reply:
         return await answer_availability(tenant, body, state, business, catalog, redis, state_key)
     step = state.get("step", "")
+    if step in {"date", "professional", "time", "confirm"} and state.get("services") and simple_schedule_reply(body, "date"):
+        valid = {str(item["id"]) for item in catalog}
+        chosen_ids = [UUID(item) for item in state["services"] if item in valid]
+        if chosen_ids:
+            return await start_booking(tenant, body, Intention(intent="agendar", service_ids=chosen_ids,
+                requested_when=body), state, business, catalog, redis, state_key, preview)
     question = catalog_question(body)
     numeric = text_clean.isdigit()
     direct = (
