@@ -16,6 +16,7 @@ import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
 import {makeMessageRetryStore,deliveryFromAck,advanceDelivery} from "./message-retry-store.mjs";
 import {makeEncryptedRetryStore} from "./encrypted-retry-store.mjs";
 import {sendStoredText} from "./reliable-send.mjs";
+import {makeSendCapacity} from "./send-capacity.mjs";
 import {inspectLookup,inspectDelivery} from "./recipient-diagnostics.mjs";
 import {makeDurableInbox} from "./durable-inbox.mjs";
 import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-health.mjs";
@@ -86,7 +87,7 @@ async function refreshConnectedProfile(client){
     connectedProfile={name:display||null,photoUrl,updatedAt:Date.now()};
 }
 const messages=durableInbox.load();
-const seen=new Set(messages.map(x=>x.id)),sendTimes=[],MAX=500;
+const seen=new Set(messages.map(x=>x.id)),sendCapacity=makeSendCapacity(),MAX=500;
 let connectedSince=0,lastInboundAt=0,pendingNotificationsReceived=false,inboundSinceConnect=false,
   recentAppends=0;
 function persistInbox(){
@@ -325,7 +326,9 @@ function installListeners(client,mine,saveCreds){
           if(mine!==generation||socket!==client||status!=="connected"||
               !allowAssistantRecipient(phone,connectedStore.settings()))return;
           try{
-            const sent=await send(phone,answer);
+            const sent=await send(phone,answer,{waitForCapacity:true,
+              isCurrent:()=>mine===generation&&socket===client&&status==="connected"&&
+                allowAssistantRecipient(phone,connectedStore.settings())});
             transport.record(sent?.accepted?'ai_relay_returned':'ai_send_unconfirmed',traceId);
           }catch(error){transport.record('ai_send_failed',traceId);throw error;}
           console.info("Orion QR: resposta automática processada (dados omitidos)");
@@ -546,29 +549,28 @@ async function recipientInspection(value){
   recipientInspections.set(phone,{data,expires:now+90000});
   return data;
 }
-async function send(phone,text){
+async function send(phone,text,{waitForCapacity=false,isCurrent=()=>true}={}){
   const target=validPhone(phone);
   if(status!=="connected"||!socket)throw Error("O WhatsApp não está conectado");
   if(typeof text!=="string"||!text.trim()||text.length>1200)
     throw Error("Mensagem deve ter entre 1 e 1200 caracteres");
-  const now=Date.now();
-  while(sendTimes.length&&now-sendTimes[0]>60000)sendTimes.shift();
-  if(sendTimes.length>=5)throw Error("Aguarde um minuto antes de enviar mais mensagens");
-  sendTimes.push(now);
   const selectedSocket=socket;
   const selectedGeneration=generation;
+  const current=()=>socket===selectedSocket&&generation===selectedGeneration&&status==='connected'&&isCurrent();
+  await sendCapacity.acquire({wait:waitForCapacity,isCurrent:current});
+  if(!current())throw Error('A conexão ou autorização mudou antes do envio. Nenhuma mensagem foi enviada.');
   let result;
   const {reliable,freshDevices}=deliveryPolicy(target);
   const recipientProof=await resolvePilotRecipient({phone:target,pilotPhone:pilotNumber(process.env),
     enabled:reliable&&process.env.QR_PILOT_USE_VERIFIED_LID==='1',socket:selectedSocket,deviceCache:socketDeviceCaches.get(selectedSocket),
-    isCurrent:()=>socket===selectedSocket&&generation===selectedGeneration&&status==='connected'});
-  if(socket!==selectedSocket||generation!==selectedGeneration||status!=='connected')
+    isCurrent:current});
+  if(!current())
     throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
   const {jid,kind}=recipientProof;
   if(reliable){
     result=await sendStoredText({
       jid,recipientProof,text:text.trim(),store:retryStore,freshDevices,
-      isCurrent:()=>socket===selectedSocket&&generation===selectedGeneration&&status==='connected',
+      isCurrent:current,
       makeMessage:async (recipient,messageText)=>generateWAMessage(
         recipient,{text:messageText},{
           userJid:selectedSocket.user?.id,logger,
@@ -675,7 +677,7 @@ const server=http.createServer(async(req,res)=>{
       fs.mkdirSync(authDir,{recursive:true,mode:0o700});
       fs.writeFileSync(ACTIVE_MARKER,authDir,{mode:0o600});
       qr="";qrAt=0;pairingCode="";pairAt=0;pairedNumber="";
-      messages.splice(0);seen.clear();sendTimes.splice(0);
+      messages.splice(0);seen.clear();sendCapacity.clear();
       retryMessages.clear();deliveryReceipts.clear();deliveryStart.clear();
       durableInbox=makeDurableInbox({directory:authDir,secret:KEY});
       connectedStore=makeConnectedStore({directory:authDir,secret:KEY});
