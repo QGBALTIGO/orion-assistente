@@ -113,3 +113,42 @@ async def test_current_context_and_recent_exchanges_are_sent_as_classification_o
         context=context, key="synthetic-key", model="openai/gpt-oss-120b",
         transport=httpx.MockTransport(provider))
     assert result.intent == "perguntar" and result.service_ids == [cut, beard]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", ["openai/gpt-oss-20b", "openai/gpt-oss-120b"])
+@pytest.mark.parametrize("has_catalog", [False, True])
+async def test_reasoning_models_use_strict_output_and_sufficient_completion_budget(model, has_catalog):
+    service_id = uuid4()
+    def provider(request):
+        payload = json.loads(request.content)
+        assert "max_tokens" not in payload
+        assert payload["max_completion_tokens"] == 1024
+        assert payload["reasoning_effort"] == "low"
+        schema = payload["response_format"]["json_schema"]
+        assert schema["strict"] is True and schema["schema"]["additionalProperties"] is False
+        assert set(schema["schema"]["required"]) == {"intent", "service_ids", "requested_when"}
+        ids = schema["schema"]["properties"]["service_ids"]["items"]
+        assert ids.get("enum") == ([str(service_id)] if has_catalog else None)
+        assert "tools" not in payload
+        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps({
+            "intent": "perguntar", "service_ids": [str(service_id)] if has_catalog else [],
+            "requested_when": None})}, "finish_reason": "stop"}]})
+    result = await interpret(message="Cara, quanto custa o cabelo e a barba?", history=[],
+        catalog=[{"id": service_id, "name": "Corte"}] if has_catalog else [], key="synthetic", model=model,
+        transport=httpx.MockTransport(provider))
+    assert result.service_ids == ([service_id] if has_catalog else [])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reason, expected", [("length", "length"), ("stop", "stop"),
+                                              ("PRIVATE_PROVIDER_VALUE", "unknown")])
+async def test_invalid_classification_logs_only_allowlisted_finish_metadata(reason, expected, caplog):
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, json={"choices": [{
+        "message": {"content": "PRIVATE_RESPONSE_CONTENT", "reasoning": "PRIVATE_REASONING"},
+        "finish_reason": reason}]}))
+    with pytest.raises(GroqServiceError):
+        await interpret(message="Quanto custa?", history=[], catalog=[], key="synthetic",
+                        model="openai/gpt-oss-120b", transport=transport)
+    assert "classification_invalid finish=" + expected in caplog.text
+    assert "PRIVATE" not in caplog.text

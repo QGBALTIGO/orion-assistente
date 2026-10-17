@@ -118,7 +118,8 @@ async def test_catalog_questions_at_every_stage_never_select_or_confirm(conversa
     reply = await h.turn("Quanto custa corte de cabelo e barba?", preview=False)
     assert "R$ 55,00" in reply["answer"]
     assert reply["step"] == step
-    assert {k: v for k, v in h.state().items() if k not in {"history", "confirmation_expires_at"}} == original
+    assert {k: v for k, v in h.state().items() if k not in {"history", "confirmation_expires_at", "confirmation_requires_review"}} == original
+    assert bool(h.state().get("confirmation_requires_review")) == (step in {"confirm", "reschedule_confirm"})
     assert not h.calls["writes"] and not h.calls["slots"]
 
 
@@ -216,7 +217,7 @@ async def test_fallback_never_selects_negated_service_or_loses_current_flow(conv
     assert h.state()["services"] == original["services"]
     partial = await h.turn("Quanto custa um cabelo e uma barba?")
     assert "R$ 35,00" in partial["answer"] and "R$ 20,00" in partial["answer"]
-    assert "Total desses serviços" not in partial["answer"]
+    assert "Total desses serviços: R$ 55,00" in partial["answer"]
 
 
 @pytest.mark.asyncio
@@ -328,3 +329,239 @@ async def test_human_request_precedes_reschedule_or_history(conversation, messag
     h.seed("confirm")
     reply = await h.turn(message)
     assert reply["step"] == "human" and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_disfluent_audio_price_subject_resolves_empty_model_selection(conversation, monkeypatch):
+    h = conversation
+    h.catalog.append({"id": uuid4(), "name": "Sobrancelha", "price_cents": 1200, "duration_min": 10})
+    async def empty(**_):
+        return Intention(intent="perguntar", service_ids=[])
+    monkeypatch.setattr(qr_ai, "interpret", empty)
+    question = "Cara, eu tava querendo cortar o cabelo, mas eu não sei o valor. Quanto custa o cabelo e a barba?"
+    for message in (question, "[Áudio transcrito] " + question,
+                    "Quanto custa cortar o cabelo e fazer a barba?",
+                    "Quanto que custa cabelo e barba?", "Cabelo e barba ficam quanto?"):
+        reply = await h.turn(message)
+        assert "Total desses serviços: R$ 55,00" in reply["answer"]
+        assert "Corte de cabelo" in reply["answer"] and "Barba" in reply["answer"]
+        assert "Sobrancelha" not in reply["answer"]
+        assert "services" not in h.state() and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("subject", ["cabelo e barba", "cabelo e barba e tatuagem", "barba sem corte de cabelo",
+                                     "cabelo e barba e tatuagem no total", "tatuagem no total"])
+async def test_ambiguous_unknown_or_negated_price_subject_cannot_produce_false_total(conversation, monkeypatch, subject):
+    h = conversation
+    if subject == "cabelo e barba":
+        h.catalog.append({"id": uuid4(), "name": "Corte infantil", "price_cents": 2200, "duration_min": 25})
+    async def partial(**_):
+        return Intention(intent="perguntar", service_ids=[h.cut, h.beard])
+    monkeypatch.setattr(qr_ai, "interpret", partial)
+    h.seed()
+    reply = await h.turn("Quanto custa " + subject + "?")
+    assert "Total desses serviços" not in reply["answer"]
+    if subject != "tatuagem no total":
+        assert "confirme quais serviços" in reply["answer"]
+    assert not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message", ["não quero corte, só barba, quanto fica?", "cabelo e barba, quanto custa?"])
+async def test_price_question_after_subject_cannot_hide_negation_or_ambiguity(conversation, monkeypatch, message):
+    h = conversation
+    if message.startswith("cabelo"):
+        h.catalog.append({"id": uuid4(), "name": "Corte infantil", "price_cents": 2200, "duration_min": 25})
+    async def adverse(**_):
+        return Intention(intent="perguntar", service_ids=[h.cut, h.beard])
+    monkeypatch.setattr(qr_ai, "interpret", adverse)
+    reply = await h.turn(message)
+    assert "Total desses serviços" not in reply["answer"]
+    assert "confirme quais serviços" in reply["answer"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("suffix", ["Mas sem barba.", "E sobrancelha?", "E tatuagem?"])
+async def test_addition_or_withdrawal_after_price_question_requires_clarification(conversation, monkeypatch, suffix):
+    h = conversation
+    h.catalog.append({"id": uuid4(), "name": "Sobrancelha", "price_cents": 1200, "duration_min": 10})
+    async def adverse(**_):
+        return Intention(intent="perguntar", service_ids=[h.cut, h.beard])
+    monkeypatch.setattr(qr_ai, "interpret", adverse)
+    reply = await h.turn("Quanto custa cabelo e barba? " + suffix)
+    assert "Total desses serviços" not in reply["answer"]
+    assert "confirme quais serviços" in reply["answer"]
+
+
+@pytest.mark.asyncio
+async def test_exact_combo_price_is_not_counted_twice(conversation, monkeypatch):
+    h = conversation
+    combo = uuid4()
+    h.catalog.append({"id": combo, "name": "Corte e Barba", "price_cents": 4900, "duration_min": 50})
+    async def empty(**_):
+        return Intention(intent="perguntar")
+    monkeypatch.setattr(qr_ai, "interpret", empty)
+    reply = await h.turn("Quanto custa Corte e Barba?")
+    assert "Total desses serviços: R$ 49,00" in reply["answer"]
+    assert "R$ 35,00" not in reply["answer"] and "R$ 20,00" not in reply["answer"]
+
+
+def readonly_slots(monkeypatch, h, slots=None):
+    seen = []
+    class Session:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_):
+            pass
+    monkeypatch.setattr(qr_ai, "get_session_factory", lambda: Session)
+    async def listing(db, tenant, professional, services, day):
+        assert tenant == h.tenant
+        assert all(item in {h.cut, h.beard} for item in services)
+        seen.append((tenant, professional, services, day))
+        return {"slots": slots if slots is not None else [day.isoformat() + "T14:30:00-04:00"]}
+    monkeypatch.setattr(qr_ai, "list_slots", listing)
+    return seen
+
+
+@pytest.mark.asyncio
+async def test_availability_question_collects_missing_fields_then_reads_real_slots(conversation, monkeypatch):
+    h = conversation
+    seen = readonly_slots(monkeypatch, h)
+    async def forbidden_classifier(**_):
+        raise AssertionError("Availability routing must not depend on the LLM picking a price intent")
+    monkeypatch.setattr(qr_ai, "interpret", forbidden_classifier)
+    reply = await h.turn("Quais são os dias que tem disponíveis para agendamento?")
+    assert "Para qual serviço" in reply["answer"]
+    assert "R$" not in reply["answer"] and not seen
+    reply = await h.turn("Quero consultar corte de cabelo")
+    assert "qual dia" in reply["answer"] and "Corte de cabelo" in reply["answer"]
+    reply = await h.turn("20/11/2026")
+    assert "qual profissional" in reply["answer"] and not seen
+    reply = await h.turn("O Bruno")
+    assert "14:30" in reply["answer"] and "20/11" in reply["answer"]
+    assert "Corte de cabelo com Bruno Souza" in reply["answer"]
+    assert "1." not in reply["answer"] and "R$" not in reply["answer"]
+    assert "Consulta sem reserva" in reply["answer"]
+    assert seen[0][1:3] == (h.bruno, [h.cut])
+    assert not h.calls["writes"] and not h.calls["slots"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("step", ["professional", "time", "confirm", "reschedule_confirm"])
+async def test_availability_reads_backend_without_altering_booking_or_confirmation(conversation, monkeypatch, step):
+    h = conversation
+    original = h.seed(step, professional=str(h.bruno), hold=str(uuid4()), slots=["2026-11-20T15:00:00-04:00"],
+                      price=3500, duration=30)
+    seen = readonly_slots(monkeypatch, h)
+    reply = await h.turn("Tem horários disponíveis para barba amanhã?", preview=False)
+    assert "Barba com Bruno Souza" in reply["answer"] and "14:30" in reply["answer"]
+    assert reply["step"] == step and len(seen) == 1
+    assert {k: v for k, v in h.state().items() if k not in {"history", "confirmation_expires_at", "confirmation_requires_review"}} == original
+    assert bool(h.state().get("confirmation_requires_review")) == (step in {"confirm", "reschedule_confirm"})
+    assert seen[0][2] == [h.beard]
+    assert not h.calls["writes"] and not h.calls["slots"]
+
+
+@pytest.mark.asyncio
+async def test_empty_availability_never_invents_times_or_uses_another_tenant(conversation, monkeypatch):
+    h = conversation
+    h.seed("confirm", professional=str(h.bruno), hold=str(uuid4()))
+    seen = readonly_slots(monkeypatch, h, slots=[])
+    reply = await h.turn("Quais horários estão disponíveis?", preview=False)
+    assert "não encontrei horários livres" in reply["answer"]
+    assert "14:" not in reply["answer"] and "R$" not in reply["answer"]
+    assert seen[0][0] == h.tenant and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("answer", ["sim", "não", "cancelar"])
+async def test_yes_no_during_availability_inquiry_cannot_confirm_or_cancel_old_booking(conversation, answer):
+    h = conversation
+    hold = str(uuid4())
+    h.seed("confirm", hold=hold, availability_query={"services": [str(h.beard)], "waiting_for": "professional"})
+    reply = await h.turn(answer, preview=False)
+    assert reply["step"] == "confirm" and h.state()["hold"] == hold
+    assert h.state()["services"] == [str(h.cut)]
+    assert not h.calls["writes"]
+    if answer == "sim":
+        assert "qual profissional" in reply["answer"]
+    else:
+        assert "Encerrei somente a consulta" in reply["answer"]
+        assert "availability_query" not in h.state()
+
+
+@pytest.mark.asyncio
+async def test_price_reply_during_availability_asks_for_inquiry_field_not_booking_confirmation(conversation):
+    h = conversation
+    h.seed("confirm", hold=str(uuid4()), availability_query={"services": [str(h.beard)], "waiting_for": "professional"})
+    reply = await h.turn("Quanto custa cabelo e barba?")
+    assert "R$ 55,00" in reply["answer"]
+    assert "consulta de disponibilidade" in reply["answer"] and "qual profissional" in reply["answer"]
+    assert "responda SIM" not in reply["answer"]
+    assert not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("question", ["Quanto custa a barba?", "Tem horários disponíveis para barba amanhã?"])
+async def test_a_query_about_b_requires_explicit_review_before_confirming_original_a(conversation, monkeypatch, question):
+    h = conversation
+    hold = str(uuid4())
+    deadline = qr_ai.datetime.now().timestamp() + 40
+    summary = "Resumo: Corte de cabelo com Bruno Souza, 20/11 às 14:00, 30 minutos, R$ 35,00."
+    h.seed("confirm", hold=hold, professional=str(h.bruno), confirmation_summary=summary,
+           confirmation_expires_at=deadline)
+    readonly_slots(monkeypatch, h)
+    confirmed = []
+    async def confirm(db, tenant, item_id):
+        assert tenant == h.tenant
+        confirmed.append(str(item_id))
+        return {"start_at": qr_ai.datetime.fromisoformat("2026-11-20T14:00:00-04:00"),
+                "total_cents": 3500, "protocol": "SYNTHETIC-A"}
+    monkeypatch.setattr(qr_ai, "confirm_hold", confirm)
+    await h.turn(question, preview=False)
+    assert h.state()["hold"] == hold and h.state()["confirmation_requires_review"]
+    assert h.state()["confirmation_expires_at"] == deadline
+    assert 1 <= h.redis.ttls[h.key] <= 40
+    blocked = await h.turn("sim", preview=False)
+    assert "RETOMAR RESUMO" in blocked["answer"] and not confirmed
+    review = await h.turn("retomar resumo", preview=False)
+    assert summary in review["answer"]
+    assert "Barba" not in review["answer"]
+    assert h.state()["services"] == [str(h.cut)] and h.state()["hold"] == hold
+    assert h.state()["confirmation_expires_at"] == deadline and 1 <= h.redis.ttls[h.key] <= 40
+    assert not confirmed
+    done = await h.turn("sim", preview=False)
+    assert done["step"] == "confirmed" and confirmed == [hold]
+    assert not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expired, missing", [(True, False), (False, True)])
+async def test_query_cannot_restore_an_expired_or_missing_confirmation_summary(conversation, expired, missing):
+    h = conversation
+    h.seed("confirm", hold=str(uuid4()), confirmation_requires_review=True,
+           confirmation_summary=None if missing else "Original summary",
+           confirmation_expires_at=qr_ai.datetime.now().timestamp() + (-1 if expired else 40))
+    reply = await h.turn("retomar resumo", preview=False)
+    assert reply["step"] == "expired" and not h.state()
+    assert not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_rescheduling_review_keeps_original_proposal_and_deadline(conversation):
+    h = conversation
+    appointment = str(uuid4())
+    deadline = qr_ai.datetime.now().timestamp() + 40
+    summary = "Remarcar para 20/11 às 14:00?"
+    h.seed("reschedule_confirm", appointment=appointment, new_start="2026-11-20T14:00:00-04:00",
+           confirmation_summary=summary, confirmation_expires_at=deadline)
+    await h.turn("Quanto custa a barba?")
+    assert h.state()["confirmation_requires_review"]
+    blocked = await h.turn("sim", preview=False)
+    assert "RETOMAR RESUMO" in blocked["answer"] and not h.calls["writes"]
+    reply = await h.turn("retomar resumo", preview=False)
+    assert summary in reply["answer"] and h.state()["appointment"] == appointment
+    assert h.state()["new_start"] == "2026-11-20T14:00:00-04:00"
+    assert h.state()["confirmation_expires_at"] == deadline and 1 <= h.redis.ttls[h.key] <= 40
+    assert not h.calls["writes"]
