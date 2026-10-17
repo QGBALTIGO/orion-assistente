@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "sh -c 'exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}'",
+    "startCommand": "python -m scripts.start_api",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE",
