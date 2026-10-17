@@ -841,6 +841,7 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
       <button class="nav-item hidden" data-page="member" data-member-only> <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M9 21v-7h6v7"/></svg></span>Início</button>
       <button class="nav-item" data-page="dispositivo" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg></span>Conectar dispositivo</button>
       <button class="nav-item" data-page="conversas" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.5c-1.4 0-2.7-.9-3.9l-5.1 1.9 1.9-5.1A8.5 8.5 0 1 1 21 11.5Z"/><path d="M8 10h8m-8 4h5"/></svg></span>Conversas</button>
+      <button class="nav-item" data-page="ai" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="7" width="18" height="14" rx="3"/><path d="M12 3v4m-5 6h.01M17 13h.01M8 17h8"/></svg></span>Assistente IA</button>
       <button class="nav-item" data-page="cadastros" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Cadastros</button>
     </nav>
     <div class="sidebar-bottom">
@@ -1126,6 +1127,27 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
       </div>
       <p class="note">Somente conversas privadas de texto. Arquivos e histórico anterior não são importados. Este modo é experimental e não substitui o WhatsApp oficial.</p>
     </section>
+    <section id="page-ai" class="page hidden">
+      <div class="header"><div><div class="eyebrow">Orion / Automação inteligente</div>
+        <h1>Assistente com Groq</h1><p class="subhead">Teste a interpretação, os serviços e os horários reais do estabelecimento. Esta simulação não envia mensagens nem cria reservas.</p></div>
+      </div>
+      <div class="card">
+        <div class="row" style="align-items:end;gap:14px;flex-wrap:wrap">
+          <label style="flex:1;min-width:220px" for="aiTenant">Estabelecimento
+            <select id="aiTenant"><option value="">Escolha o estabelecimento</option></select></label>
+          <button type="button" id="aiReset" class="btn secondary">Nova conversa</button>
+          <span id="aiStatus" class="pill">Aguardando teste</span>
+        </div>
+        <p class="note" style="margin-top:12px">O modelo identifica intenções; valores e disponibilidade são consultados no Orion. A confirmação da simulação nunca grava no calendário.</p>
+        <div id="aiMessages" class="bubbles" aria-live="polite" style="min-height:250px;max-height:480px;overflow-y:auto;margin-top:12px"></div>
+        <form id="aiForm" style="margin-top:18px">
+          <label for="aiInput">Mensagem do cliente</label>
+          <textarea id="aiInput" rows="2" minlength="1" maxlength="1500" required placeholder="Ex.: Quero cortar o cabelo e fazer a barba amanhã"></textarea>
+          <div class="row"><button id="aiSend" class="btn" type="submit">Enviar para o simulador</button><small>Somente operador autorizado · dados de teste</small></div>
+        </form>
+        <p id="aiDiagnostics" class="feedback" role="status" aria-live="polite"></p>
+      </div>
+    </section>
     <section id="page-cadastros" class="page hidden">
       <div class="header"><div><div class="eyebrow">Orion / Configurações</div><h1>Gerenciar barbearias</h1>
         <p class="subhead">Serviços, profissionais, agenda e permissões de acesso.</p></div></div>
@@ -1289,7 +1311,7 @@ function showApp(role="support",name="",email=""){
  wizardClocks=setInterval(updateWizardClocks,1000);
  updateStatus();loadTenants();
  const desired=new URLSearchParams(location.search).get("aba");
- openPage(["conversas","cadastros"].includes(desired)?desired:"dispositivo");
+ openPage(["conversas","cadastros","ai"].includes(desired)?desired:"dispositivo");
 }
 async function publicAuth(path,payload){
  const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},
@@ -1406,6 +1428,7 @@ function openPage(target){
  if(target==="conversas"){loadChats();refreshMessages();startChats();}
  else{clearInterval(chatTimer);chatTimer=null;}
  if(target==="dispositivo"){renderGuide();updateStatus();}
+ if(target==="ai")void aiLoadTenants();
  history.replaceState({}, "", "/panel?aba="+encodeURIComponent(target));
 }
 document.querySelectorAll("[data-page]").forEach(x=>x.addEventListener("click",()=>openPage(x.dataset.page)));
@@ -2016,6 +2039,55 @@ $("recordForm").addEventListener("submit",async ev=>{
  ev.target.reset();await loadRecords();}
  catch(ex){$("notice").textContent=ex.message}
 });
+
+let aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+function aiBubble(content,direction){
+ const wrapper=document.createElement("div");
+ wrapper.className="bubble "+(direction==="in"?"incoming":"outgoing");
+ wrapper.textContent=content;
+ $("aiMessages").append(wrapper);
+ $("aiMessages").scrollTop=$("aiMessages").scrollHeight;
+}
+async function aiLoadTenants(){
+ try{
+   const tenants=await api("/api/v1/tenants");
+   const last=$("aiTenant").value;
+   $("aiTenant").replaceChildren(new Option("Escolha o estabelecimento",""));
+   for(const tenant of tenants)$("aiTenant").add(new Option(tenant.name,tenant.id));
+   if([...$("aiTenant").options].some(x=>x.value===last))$("aiTenant").value=last;
+   else if(tenants.length)$("aiTenant").value=tenants[0].id;
+   await aiCheckStatus();
+ }catch(ex){$("aiStatus").textContent=ex.message;}
+}
+async function aiCheckStatus(){
+ const tenant=$("aiTenant").value;if(!tenant)return;
+ try{
+  const result=await api("/api/v1/tenants/"+encodeURIComponent(tenant)+"/ai/status");
+  $("aiStatus").textContent=result.configured&&result.preview_enabled?"Prévia disponível":"Prévia ainda não configurada";
+ }catch(ex){$("aiStatus").textContent=ex.message;}
+}
+$("aiTenant").addEventListener("change",async()=>{aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));$("aiMessages").replaceChildren();await aiCheckStatus()});
+$("aiReset").addEventListener("click",()=>{
+ aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));$("aiMessages").replaceChildren();
+ $("aiDiagnostics").textContent="Nova conversa simulada.";
+});
+$("aiForm").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const tenant=$("aiTenant").value;
+ if(!tenant){$("aiDiagnostics").textContent="Selecione um estabelecimento.";return}
+ const message=$("aiInput").value.trim();if(!message)return;
+ $("aiSend").disabled=true;
+ aiBubble(message,"out");$("aiInput").value="";
+ try{
+  const data=await api("/api/v1/tenants/"+encodeURIComponent(tenant)+"/ai/conversation-preview",
+    "POST",{text:message,session:aiSession});
+  aiBubble(data.answer||"Nenhuma resposta nesta etapa.","in");
+  $("aiDiagnostics").textContent="Intenção/etapa: "+(data.step||"—")+
+     " · Modo simulado; nenhum envio para WhatsApp.";
+ }catch(ex){$("aiDiagnostics").textContent=ex.message}
+ finally{$("aiSend").disabled=false;$("aiInput").focus()}
+});
+
 renderForm();renderGuide();
 })();
 </script>
