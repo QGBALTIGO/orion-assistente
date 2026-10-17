@@ -24,6 +24,7 @@ from sqlalchemy import text
 from app import commercial_service as commercial
 from app.commercial_schemas import EstimateRequest, QuoteLineRequest
 from app.database import get_session_factory, tenant_transaction
+from app.qr_intake_revision import check_before_write
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,27 @@ async def estimate(scope, items):
         return await commercial.estimate(db, scope.tenant, payload)
 
 
+async def stock_information(scope, variant_ids):
+    """Current observed inventory only; never infer a requested quantity."""
+    ids = [UUID(str(value)) for value in variant_ids]
+    if not ids or len(ids) > 12 or len(set(ids)) != len(ids):
+        raise ValueError("A bounded unique active-variant selection is required")
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db, scope.tenant):
+            await commercial.tenant_exists(db, scope.tenant, active=True)
+            rows = (await db.execute(text("""SELECT v.id,i.mode,i.quantity_on_hand,i.reserved_quantity,
+                i.observed_at,i.valid_until FROM commercial_variants v
+                JOIN commercial_products p ON p.tenant_id=v.tenant_id AND p.id=v.product_id
+                JOIN commercial_inventory i ON i.tenant_id=v.tenant_id AND i.variant_id=v.id
+                WHERE v.tenant_id=:t AND v.id=ANY(:ids) AND v.active AND p.active"""),
+                {"t": scope.tenant, "ids": ids})).mappings().all()
+            now = commercial.now_utc()
+            return {str(row["id"]): {"available_quantity":
+                max(0, row["quantity_on_hand"] - row["reserved_quantity"])
+                if row["mode"] == "tracked" and row["observed_at"] <= now < row["valid_until"] else None}
+                for row in rows}
+
+
 async def approved_complements(scope, product_id):
     async with get_session_factory()() as db:
         return await commercial.approved_complements(db,scope.tenant,UUID(str(product_id)))
@@ -131,6 +153,7 @@ async def create_quote(scope, items, *, customer_name=None, validate_summary=Non
             if validate_summary is not None:
                 validate_summary(calculated)
             expires = now + timedelta(minutes=15)
+            await check_before_write()
             await db.execute(text("""INSERT INTO commercial_quotes
                 (id,tenant_id,contact_e164,customer_name,total_cents,minimum_total_cents,confirmation_digest,expires_at)
                 VALUES (:id,:t,:contact,:name,:total,:minimum,:digest,:expires)"""),
@@ -180,6 +203,7 @@ async def create_order(scope, quote_id, *, validate_summary=None):
                 commercial.conflict("Orçamento expirado. Um novo resumo é necessário")
             order_id = scope.identity("order")
             key = "qr:" + str(scope.identity("order-key"))
+            await check_before_write()
             await db.execute(text("INSERT INTO commercial_orders(id,tenant_id,quote_id,idempotency_key) VALUES (:id,:t,:q,:key)"),
                 {"id": order_id, "t": scope.tenant, "q": quote_id, "key": key})
             await commercial.audit(db, scope.tenant, scope, "order", order_id, "customer_draft_requested")
@@ -216,6 +240,7 @@ async def confirm_order(scope, order_id, *, revision, token, summary_message_id,
                 commercial.conflict("Preço ou estoque exige verificação humana; pedido não confirmado")
             if validate_summary is not None:
                 validate_summary(calculated)
+            await check_before_write()
             for item in sorted(lines, key=lambda item: item["variant_id"]):
                 await db.execute(text("""UPDATE commercial_inventory SET reserved_quantity=reserved_quantity+:qty,
                     revision=revision+1,updated_at=now() WHERE tenant_id=:t AND variant_id=:v"""),
@@ -239,6 +264,7 @@ async def cancel_order(scope, order_id, *, revision, summary_message_id, validat
                 return {**order, "quote": quote}
             if order["revision"] != revision:
                 commercial.conflict("O pedido mudou; confira o estado atual antes de cancelar")
+            await check_before_write()
             if order["status"] == "confirmed":
                 for item in sorted(quote["items"], key=lambda item: item["variant_id"]):
                     changed = (await db.execute(text("""UPDATE commercial_inventory SET reserved_quantity=reserved_quantity-:qty,

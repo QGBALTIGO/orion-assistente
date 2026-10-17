@@ -107,8 +107,11 @@ services:
       VIEWER_API_TOKEN: ${VIEWER_API_TOKEN:-}
       VIEWER_TENANT_ID: ${VIEWER_TENANT_ID:-}
       REQUIRE_POSTGRES_TESTS: "1"
+      ORION_INTAKE_TEST_REDIS_URL: redis://redis:6379/15
+      ORION_REQUIRE_INTAKE_REDIS_TEST: "1"
     depends_on:
       postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
     networks: [private]
 
   caddy:

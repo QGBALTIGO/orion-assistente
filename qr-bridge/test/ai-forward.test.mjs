@@ -1,8 +1,28 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {forwardAssistant} from "../src/ai-forward.mjs";
+import {forwardAssistant,registerAssistantIngress} from "../src/ai-forward.mjs";
 const secret="synthetic-bridge-key-for-node-test-12345678";
 const base="http://orion-assistente.railway.internal:8080/internal/qr/ai/reply";
+
+test('private notice is scoped to the exact validated PN and has no text or business action',async()=>{
+  let calls=0;
+  const result=await registerAssistantIngress({apiUrl:base,token:secret,phone:'5567999999999',messageId:'NOTICE',
+    fetchImpl:async(url,options)=>{calls++;assert.equal(new URL(url).pathname,'/internal/qr/ai/notice');
+      assert.deepEqual(JSON.parse(options.body),{phone:'5567999999999',message_id:'NOTICE'});
+      assert.equal(options.headers['X-Orion-Bridge-Key'],secret);
+      return {ok:true,json:async()=>({revision:12})};}});
+  assert.deepEqual(result,{revision:12});assert.equal(calls,1);
+});
+
+test('only an explicit zero-write API acknowledgment permits internal superseded carry',async()=>{
+  for(const [body,expected] of [[{answer:null,step:'superseded',not_committed:true},{state:'superseded',not_committed:true}],
+    [{answer:null,step:'superseded_after_write',not_committed:false},null],[{answer:null,step:'unknown'},null]]){
+    const result=await forwardAssistant({apiUrl:base,token:secret,phone:'5567999999999',messageId:'ONE',
+      text:'SIM',intakeRevision:4,fetchImpl:async(_url,options)=>{
+        assert.equal(JSON.parse(options.body).intake_revision,4);return {ok:true,json:async()=>body};}});
+    assert.deepEqual(result,expected);
+  }
+});
 test("forward private-only, sanitized message to Orion",async()=>{
   let calls=0;
   const answer=await forwardAssistant({

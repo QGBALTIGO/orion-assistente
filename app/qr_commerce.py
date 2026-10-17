@@ -18,6 +18,7 @@ from app.qr_dialogue import contextual_response, interpret_contextual_response
 from app.qr_presentation import (render_commerce_order, render_commerce_summary, InteractionContext,
     ApprovedSuggestion, render_approved_suggestion)
 from app.qr_presentation import escape_label, fits_message
+from app.qr_commerce_information import catalog_answer, existence_query
 
 
 def enabled():
@@ -181,6 +182,10 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
                   if norm(faq["question"]).strip(" ?!.") == norm(body).strip(" ?!.")]
     if len(set(exact_faqs)) == 1:
         return finish(exact_faqs[0], "commerce_information", state, scope)
+    if existence_query(body):
+        return finish(catalog_answer(body, catalog) or
+            "Não consegui identificar uma resposta completa no catálogo ativo. Qual produto ou variante você quer consultar?",
+            "commerce_information", state, scope)
     if plan.intent == "decline" or norm(body).strip(" .!?") in {"nao", "nao quero", "deixa pra la"}:
         state.pop("pending", None)
         state.pop("requested_kind", None)

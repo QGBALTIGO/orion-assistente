@@ -28,6 +28,13 @@ export function makeConversationIntake({consume,onRejected=async()=>{},settleMs=
   function current(entry){try{return entry.isCurrent()===true;}catch{return false;}}
   async function prepare(entry){
     if(!current(entry))return {state:'stale'};
+    if(entry.preparedResult)return entry.preparedResult;
+    if(entry.notice){
+      const notice=await entry.notice;
+      if(notice?.failed)return {state:'revision_failed'};
+      if(notice?.skip)return {state:'skipped'};
+      if(!current(entry))return {state:'stale'};
+    }
     const controller=new AbortController();
     let timer;
     try{
@@ -42,11 +49,11 @@ export function makeConversationIntake({consume,onRejected=async()=>{},settleMs=
       if(result?.timeout)return {state:'prepare_failed'};
       if(typeof result?.text!=='string'||!result.text.trim())return {state:'prepare_failed'};
       if(result.text.length>maxTextChars)return {state:'needs_clarification'};
-      return {state:'ready',text:result.text.trim()};
+      return entry.preparedResult={state:'ready',text:result.text.trim()};
     }catch{return {state:current(entry)?'prepare_failed':'stale'};}
     finally{clearTimeout(timer);}
   }
-  function finish(entries,state){for(const entry of entries){active.delete(entry.dedupe);entry.resolve({state});}}
+  function finish(entries,state){for(const entry of entries){active.delete(entry.dedupe);delete entry.preparedResult;entry.resolve({state});}}
   async function settle(state,started){
     // Debounce short bursts, but a continuous stream cannot extend this window.
     for(;;){
@@ -87,9 +94,18 @@ export function makeConversationIntake({consume,onRejected=async()=>{},settleMs=
         else if(!prepared.length)finish(batch,'skipped');
         else{
           try{
-            await consume(Object.freeze({conversationKey:key,text,
+            const revision=Math.max(0,...batch.map(entry=>entry.revision||0));
+            const outcome=await consume(Object.freeze({conversationKey:key,text,
               messages:Object.freeze(prepared.map(item=>Object.freeze(item))),
-              isCurrent:()=>!state.incomplete&&batch.every(current)}));
+              ...(revision?{intakeRevision:revision}:{}),
+              isCurrent:()=>!state.incomplete&&batch.every(current)&&(!revision||revision===state.revision)}));
+            if(outcome?.state==='superseded'&&outcome?.not_committed===true&&state.queue.length&&batch.every(current)){
+              // Only the API's explicit zero-write acknowledgment authorizes
+              // carrying prepared text. No ASR or uncertain operation is replayed.
+              for(const entry of batch)if(!entry.preparedResult)entry.preparedResult={state:'skipped'};
+              state.queue.unshift(...batch);
+              continue;
+            }
             finish(batch,'processed');
           }catch{
             // A consumer may have committed before throwing: never replay it.
@@ -103,10 +119,10 @@ export function makeConversationIntake({consume,onRejected=async()=>{},settleMs=
     }
   }
   return {
-    submit({conversationKey,messageId,prepare:prepareMessage,isCurrent=()=>true}={}){
+    submit({conversationKey,messageId,prepare:prepareMessage,isCurrent=()=>true,notice}={}){
       if(typeof conversationKey!=='string'||!conversationKey||conversationKey.length>240||
           typeof messageId!=='string'||!messageId||messageId.length>160||
-          typeof prepareMessage!=='function'||typeof isCurrent!=='function')
+          typeof prepareMessage!=='function'||typeof isCurrent!=='function'||(notice!==undefined&&typeof notice!=='function'))
         return Promise.resolve({state:'invalid'});
       prune();
       const dedupe=JSON.stringify([conversationKey,messageId]);
@@ -124,10 +140,16 @@ export function makeConversationIntake({consume,onRejected=async()=>{},settleMs=
         return Promise.resolve({state:'overloaded'});
       // Claim synchronously before starting any asynchronous media work.
       active.add(dedupe);seen.set(dedupe,now()+seenTtlMs);prune();
-      if(!state){state={queue:[],lastAt:now(),pending:0};conversations.set(conversationKey,state);}
+      if(!state){state={queue:[],lastAt:now(),pending:0,revision:0};conversations.set(conversationKey,state);}
       state.lastAt=now();state.pending++;
-      const promise=new Promise(resolve=>state.queue.push({messageId,dedupe,prepare:prepareMessage,isCurrent,
-        at:state.lastAt,resolve}));
+      const entry={messageId,dedupe,prepare:prepareMessage,isCurrent,at:state.lastAt};
+      if(notice)entry.notice=Promise.resolve().then(notice).then(result=>{
+        if(result?.skip===true)return {skip:true};
+        if(!Number.isSafeInteger(result?.revision)||result.revision<1)return {failed:true};
+        entry.revision=result.revision;state.revision=Math.max(state.revision,result.revision);
+        return result;
+      },()=>({failed:true}));
+      const promise=new Promise(resolve=>{entry.resolve=resolve;state.queue.push(entry);});
       if(!state.running){state.running=true;void drain(conversationKey,state);}
       return promise;
     },

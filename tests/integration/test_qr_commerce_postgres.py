@@ -163,3 +163,71 @@ async def test_summary_validation_inside_transaction_blocks_all_mutation_kinds(c
             assert (await db.execute(text("SELECT status FROM commercial_orders"))).scalar_one()=="draft"
             assert (await db.execute(text("SELECT reserved_quantity FROM commercial_inventory WHERE variant_id=:id"),{"id":variant["id"]})).scalar_one()==0
             assert (await db.execute(text("SELECT count(*) FROM commercial_events WHERE action IN ('customer_confirmed','customer_cancelled')"))).scalar_one()==0
+
+
+@pytest.mark.asyncio
+async def test_independent_information_reads_are_scoped_and_never_create_commerce(customer_commerce):
+    from app.qr_commerce_information import readonly_information
+
+    tenant, other, factory, _, scope, _, variant = customer_commerce
+    profile = {"capabilities": ["catalog_answers"]}
+    answer = await readonly_information(scope, "Vocês vendem pomada?", kind="catalog", profile=profile)
+    assert "Pomada" in answer and "R$" not in answer
+    stock = await readonly_information(scope, "Tem pomada em estoque?", kind="stock", profile=profile)
+    assert "5 unidade(s) livre(s)" in stock and "não reserva" in stock
+    stranger = store.CustomerScope(other, scope.phone, "other-tenant-read")
+    assert "não há produtos ativos" in await readonly_information(stranger, "Vendem pomada?", kind="catalog", profile=profile)
+    assert await store.stock_information(stranger, [variant["id"]]) == {}
+    async with factory() as db:
+        async with tenant_transaction(db, tenant):
+            for table in ("commercial_quotes", "commercial_orders"):
+                assert (await db.execute(text(f"SELECT count(*) FROM {table}"))).scalar_one() == 0
+            assert (await db.execute(text("SELECT count(*) FROM commercial_events WHERE actor_role='customer'"))).scalar_one() == 0
+            assert (await db.execute(text("SELECT reserved_quantity FROM commercial_inventory WHERE variant_id=:id"), {"id": variant["id"]})).scalar_one() == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["quote", "order", "confirm", "cancel"])
+async def test_newer_ingress_blocks_commerce_before_first_write(customer_commerce, monkeypatch, operation):
+    from app import qr_intake_revision as intake
+
+    tenant, _, factory, _, scope, _, variant = customer_commerce
+    items = [{"variant_id": variant["id"], "quantity": 2}]
+    quote = await store.create_quote(scope, items) if operation != "quote" else None
+    order = await store.create_order(scope, quote["id"]) if operation in {"confirm", "cancel"} else None
+    current = store.CustomerScope(tenant, scope.phone, "new-confirmation")
+    if operation == "cancel":
+        order = await store.confirm_order(current, order["id"], revision=1, token=quote["confirmation_token"], summary_message_id=scope.message_id)
+    current = store.CustomerScope(tenant, scope.phone, "interrupted-message")
+
+    async def counts():
+        async with factory() as db:
+            async with tenant_transaction(db, tenant):
+                return tuple([(await db.execute(text(f"SELECT count(*) FROM {table}"))).scalar_one()
+                    for table in ("commercial_quotes", "commercial_quote_items", "commercial_orders", "commercial_events")]) + (
+                    (await db.execute(text("SELECT reserved_quantity FROM commercial_inventory WHERE variant_id=:id"), {"id": variant["id"]})).scalar_one(),
+                    (await db.execute(text("SELECT status FROM commercial_orders WHERE tenant_id=:t"), {"t": tenant})).scalar_one_or_none())
+
+    before = await counts()
+    calls = []
+    class NewerRevision:
+        async def eval(self, *args):
+            calls.append(args)
+            return 0
+    monkeypatch.setenv("QR_AI_INTAKE_REVISION_ENABLED", "1")
+    token = intake.bind(tenant, scope.phone, [current.message_id], 1, NewerRevision())
+    try:
+        with pytest.raises(intake.Superseded) as superseded:
+            if operation == "quote":
+                await store.create_quote(current, items)
+            elif operation == "order":
+                await store.create_order(current, quote["id"])
+            elif operation == "confirm":
+                await store.confirm_order(current, order["id"], revision=order["revision"], token=quote["confirmation_token"], summary_message_id=scope.message_id)
+            else:
+                await store.cancel_order(current, order["id"], revision=order["revision"], summary_message_id=scope.message_id)
+        assert superseded.value.not_committed is True
+    finally:
+        intake.reset(token)
+    assert len(calls) == 1
+    assert await counts() == before

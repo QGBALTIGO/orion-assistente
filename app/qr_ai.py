@@ -30,12 +30,15 @@ from app.business_profile_schemas import StyleRules
 from app import qr_profile
 from app import qr_presentation as presentation
 from app import qr_commerce
+from app import qr_intake_revision
 from app.groq_understanding import interpret_plan
 from app.qr_understanding import UnderstandingPlan, build_plan, clarification_for
 from app.qr_information import info as compose_information, faq_catalog
-from app.qr_dialogue import contextual_response, interpret_contextual_response, choose_time, choose_professional
+from app.qr_dialogue import (contextual_response, interpret_contextual_response, choose_time, choose_professional,
+    compound_candidate, interpret_compound_response)
 
 router = APIRouter(tags=["Orion IA conversacional"])
+router.include_router(qr_intake_revision.router)
 STATE_TTL = 7 * 24 * 3600  # contexto temporário até 7 dias; agendamentos ficam no PostgreSQL
 PHONE_RE = re.compile(r"^55[1-9][0-9]{9,10}$")
 TIME_RE = re.compile(r"(?<!\d)([01]?\d|2[0-3])(?:[:h]([0-5]\d))?(?!\d)")
@@ -71,6 +74,8 @@ class Incoming(StrictModel):
     message_id: str = Field(min_length=1, max_length=160, pattern=r"^[a-zA-Z0-9._:-]+$")
     text: str = Field(min_length=1, max_length=1500)
     message_ids: list[str] | None = Field(default=None, min_length=1, max_length=6)
+    intake_revision: int | None = Field(default=None, ge=1, le=9007199254740991, strict=True)
+    require_summary_review: bool = Field(default=False, strict=True)
 
     @model_validator(mode="after")
     def ordered_ids(self):
@@ -315,6 +320,7 @@ async def continue_reschedule(tenant: UUID, phone: str, body: str, state: dict,
             return await prepare_reschedule_summary(tenant, phone, state, state["new_start"], business, catalog, redis, key, preview)
         try:
             async with get_session_factory()() as s:
+                await qr_intake_revision.check_before_write()
                 updated = await reschedule_appointment(
                     s, tenant, UUID(state["appointment"]),
                     datetime.fromisoformat(state["new_start"]), expected_snapshot=state["expected_snapshot"], customer_phone="+" + phone)
@@ -616,6 +622,13 @@ async def _commerce_turn(tenant: UUID, phone: str, body: str, state: dict, busin
             commerce_state["last_message_id"] = message_id
             await redis.set(commerce_key, json.dumps(commerce_state), ex=STATE_TTL)
         return None
+    if state.get("step") in {"confirm", "reschedule_confirm"} and compound_candidate(body):
+        scope = qr_commerce.store.CustomerScope(tenant, phone, message_id)
+        product_plan = qr_commerce.interpret(body, await qr_commerce.store.active_catalog(scope),
+            (commerce_state or {}).get("cart", []), (commerce_state or {}).get("choices", {}))
+        if product_plan.intent in {"order", "quote", "adjust", "cancel", "confirm"}:
+            await _review_after_inquiry(state, redis, key)
+            return {"answer": "Recebi uma confirmação e outro pedido. Qual resumo você quer conferir primeiro? Nenhuma nova operação foi confirmada.", "step": "choose_priority"}
     if booking_subject:
         await _review_after_inquiry(state, redis, key)
         if commerce_state and commerce_state.get("pending"):
@@ -626,6 +639,13 @@ async def _commerce_turn(tenant: UUID, phone: str, body: str, state: dict, busin
         await _review_after_inquiry(state, redis, key)
         return {"answer": "Há um resumo de agendamento e uma conversa de produtos. Qual resumo você quer conferir antes de confirmar?", "step": "choose_priority"}
     await _review_after_inquiry(state, redis, key)
+    if (re.search(r"\b(?:vendem|vende|voces tem)\b", lower) and not re.search(
+            r"\b(?:comprar|compra|quero|pedido|orcamento|quanto|preco|valor|estoque|quantidade)\b", lower)):
+        if denial := capability_denial(business, "catalog_answers"):
+            return denial
+        factual = await _independent_information(tenant, phone, body, "catalog", business, catalog)
+        return {"answer": factual or "Não consegui confirmar esse produto no catálogo atual. A equipe pode conferir essa informação.",
+                "step": "commerce_information"}
     if denial := capability_denial(business, "catalog_answers"):
         scope = qr_commerce.store.CustomerScope(tenant, phone, message_id)
         product_plan = qr_commerce.interpret(body, await qr_commerce.store.active_catalog(scope),
@@ -641,6 +661,86 @@ async def _commerce_turn(tenant: UUID, phone: str, body: str, state: dict, busin
     if isinstance(private_state, dict):
         await redis.set(commerce_key, json.dumps(private_state), ex=STATE_TTL)
     return {"answer": result.get("answer"), "step": result.get("step", "commerce_information")}
+
+
+async def _independent_information(tenant: UUID, phone: str, query: str, kind: str,
+                                   business: dict, catalog: list[dict]):
+    """Read factual information without retaining a product selection or cart."""
+    if catalog_match(query, catalog):
+        return None  # It may be a question about the proposed booking's facts.
+    if re.search(r"\b(?:comprar|compra|pedido|orcamento|adicion\w*|inclu\w*|retira\w*|troca\w*)\b", norm(query)):
+        return None
+    if qr_commerce.enabled():
+        from app.qr_commerce_information import readonly_information
+        scope = qr_commerce.store.CustomerScope(tenant, phone, _message_identity.get())
+        factual = await readonly_information(scope, query, kind=kind,
+            profile=business.get("profile"), preferences=_preferences(business))
+        if factual:
+            return factual
+        if kind != "faq":
+            return None
+    plan = build_plan(message=query, catalog=catalog, faqs=faq_catalog(business),
+        proposal=UnderstandingPlan(intents=["faq"]))
+    reply = compose_information(plan, business, catalog, message=query)
+    return reply.answer if reply.answer and not reply.unresolved else None
+
+
+async def _compound_booking_turn(tenant: UUID, phone: str, body: str, state: dict, business: dict,
+                                  catalog: list[dict], redis, key: str, preview: bool):
+    """One unchanged-summary consent plus independent read-only facts (section10)."""
+    if state.get("step") not in {"confirm", "reschedule_confirm"} or not compound_candidate(body):
+        return None
+    incoming_id, summary_id = _message_identity.get(), state.get("confirmation_message_id")
+    try:
+        fresh = math.isfinite(float(state.get("confirmation_expires_at", 0))) and float(state.get("confirmation_expires_at", 0)) > datetime.now().timestamp()
+    except (TypeError, ValueError):
+        fresh = False
+    if (not fresh or state.get("confirmation_requires_review") or state.get("availability_query") or
+            not incoming_id or not summary_id or incoming_id == summary_id or not state.get("confirmation_summary")):
+        return None
+    decision = await interpret_compound_response(message=body, key=os.getenv("GROQ_API_KEY", ""),
+        model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"))
+    if decision.kind == "other":
+        return None
+    async def clarify(facts=""):
+        await _review_after_inquiry(state, redis, key)
+        return _bounded_reply(facts, presentation.render_prompt("confirmation_review", _preferences(business)), state["step"])
+    if decision.kind != "independent_information":
+        return await clarify()
+    if denial := capability_denial(business, "catalog_answers"):
+        await _review_after_inquiry(state, redis, key)
+        return denial
+    try:
+        private = json.loads(await redis.get(key + ":commerce") or "null")
+    except (TypeError, ValueError):
+        private = None
+    if isinstance(private, dict) and private.get("pending"):
+        return await clarify()
+    try:
+        factual = await _independent_information(tenant, phone, decision.information_clause, decision.information_kind, business, catalog)
+    except (HTTPException, GroqServiceError, ValueError):
+        return await clarify()
+    if not factual:
+        return await clarify()
+    try:
+        if state["step"] == "reschedule_confirm":
+            facts = state["reschedule_facts"]
+            if not state.get("expected_snapshot"):
+                return await clarify(factual)
+            summary = presentation.BookingSummary(tuple(facts["services"]), datetime.fromisoformat(state["new_start"]),
+                facts["timezone"], facts["total_cents"], professional=facts["professional"], duration_min=facts["duration_min"], protocol="X" * 80)
+            maximum = presentation.render_summary(summary, _preferences(business), confirmed=True, operation="reschedule")
+        else:
+            maximum = presentation.render_summary(_summary(state, state["selected_start"], business, catalog, protocol="X" * 80),
+                                                  _preferences(business), confirmed=True)
+    except (KeyError, TypeError, ValueError):
+        return await clarify(factual)
+    if not presentation.fits_message(maximum + "\n\n" + factual):
+        return await clarify()
+    # No preceding information/review mutation: recurse only through the normal
+    # summary/tenant/revision/backend confirmation gates, with commerce skipped.
+    result = await _turn(tenant, phone, "SIM", redis, key.removeprefix(f"orion:qr:ai:{tenant}:"), preview, _confirm_scoped=True)
+    return _bounded_reply(result.get("answer") or "", factual, result["step"])
 
 
 async def _review_after_inquiry(state: dict, redis, key: str):
@@ -671,9 +771,11 @@ async def prepare_booking_summary(tenant: UUID, phone: str, state: dict, when: s
         idem = hashlib.sha256(f"qr:{tenant}:{request_fingerprint}".encode()).hexdigest()
         try:
             if state.get("new_customer_name"):
+                await qr_intake_revision.check_before_write()
                 await remember_name(tenant, phone, state["new_customer_name"])
             selected_name = state.get("customer_name") or await customer_name(tenant, phone) or "Cliente WhatsApp"
             async with get_session_factory()() as db:
+                await qr_intake_revision.check_before_write()
                 hold = await book_appointment(db, tenant, UUID(state["professional"]),
                     [UUID(x) for x in state["services"]], "+" + phone, selected_name,
                     datetime.fromisoformat(when), "qr-" + idem)
@@ -1062,6 +1164,7 @@ async def _multi_turn(tenant: UUID, phone: str, body: str, state: dict, business
         reply = {"answer": factual, "step": state.get("step", "information")}
     if plan.customer_name and reply["step"] != "choose_priority":
         if not preview:
+            await qr_intake_revision.check_before_write()
             await remember_name(tenant, phone, plan.customer_name)
         state["customer_name"] = plan.customer_name
         await redis.set(key, json.dumps(state), ex=300 if state.get("step") in {"confirm", "reschedule_confirm"} else STATE_TTL)
@@ -1125,7 +1228,7 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
     return result
 
 
-async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, preview: bool = False):
+async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, preview: bool = False, *, _confirm_scoped: bool = False):
     state_key = f"orion:qr:ai:{tenant}:{namespace}"
     text_clean = body.strip().lower()
     if text_clean in RESET:
@@ -1176,9 +1279,13 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
         context = " Seu pedido atual é " + " e ".join(presentation.escape_label(name) for name in selected) + "." if selected else ""
         return {"answer": greeting + context + " Posso ajudar com valores, consultar dias livres ou continuar seu pedido.",
                 "step": state["step"]}
-    commerce = await _commerce_turn(tenant, phone, body, state, business, catalog, redis, state_key, preview)
-    if commerce is not None:
-        return commerce
+    if not _confirm_scoped:
+        compound = await _compound_booking_turn(tenant, phone, body, state, business, catalog, redis, state_key, preview)
+        if compound is not None:
+            return compound
+        commerce = await _commerce_turn(tenant, phone, body, state, business, catalog, redis, state_key, preview)
+        if commerce is not None:
+            return commerce
     if state.get("step") in {"confirm", "reschedule_confirm"} and not state.get("availability_query"):
         consent = contextual_response(body, awaiting_confirmation=True)
         if consent.kind == "decline":
@@ -1271,6 +1378,7 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
     supplied = supplied_name(body)
     if supplied:
         if not preview:
+            await qr_intake_revision.check_before_write()
             await remember_name(tenant, phone, supplied)
         state["customer_name"] = supplied
         await redis.set(state_key, json.dumps(state), ex=STATE_TTL)
@@ -1401,6 +1509,7 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
             return {"answer": "Simulação concluída. Nenhum agendamento real foi criado.", "step": "preview_complete"}
         try:
             async with get_session_factory()() as db:
+                await qr_intake_revision.check_before_write()
                 reserved = await confirm_hold(db, tenant, UUID(state["hold"]))
         except HTTPException:
             await redis.delete(state_key)
@@ -1486,13 +1595,39 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
             "step": "menu", **({"degraded": True} if degraded else {})}
 
 
+async def _require_pending_review(redis, key: str):
+    """A summary that was not delivered cannot authorize the next acceptance."""
+    try:
+        state = json.loads(await redis.get(key) or "null")
+    except (TypeError, ValueError):
+        state = None
+    if isinstance(state, dict) and state.get("step") in {"confirm", "reschedule_confirm", "cancel_confirm"}:
+        state["confirmation_requires_review"] = True
+        state["confirmation_message_id"] = None
+        try:
+            remaining = float(state.get("confirmation_expires_at", 0)) - datetime.now().timestamp()
+        except (TypeError, ValueError):
+            remaining = 0
+        ttl = max(1, min(300, int(remaining))) if math.isfinite(remaining) else 1
+        await redis.set(key, json.dumps(state), ex=ttl)
+    try:
+        commerce = json.loads(await redis.get(key + ":commerce") or "null")
+    except (TypeError, ValueError):
+        commerce = None
+    if isinstance(commerce, dict) and commerce.get("pending"):
+        commerce["last_message_id"] = None
+        await redis.set(key + ":commerce", json.dumps(commerce), ex=STATE_TTL)
+
+
 async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                      message_id: str | None = None, preview: bool = False,
-                     prepare=None, reset: bool = False, message_ids: list[str] | None = None):
+                     prepare=None, reset: bool = False, message_ids: list[str] | None = None,
+                     intake_revision: int | None = None, require_summary_review: bool = False):
     from redis.asyncio import from_url
     redis = from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"),
                      socket_connect_timeout=3, socket_timeout=20)
     lock = redis.lock(f"orion:qr:ai:lock:{tenant}:{namespace}", timeout=90, blocking_timeout=4)
+    revision_token = None
     try:
         async with lock:
             ids = message_ids or ([message_id] if message_id else [])
@@ -1500,18 +1635,30 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
             legacy_keys = [] if preview else [f"orion:qr:ai:done:{tenant}:{item}" for item in ids]
             if any([await redis.exists(key) for key in keys + legacy_keys]):
                 return {"answer": None, "step": "duplicate"}
-            if reset:
-                await redis.delete(f"orion:qr:ai:{tenant}:{namespace}")
-            transcript = await prepare() if prepare else None
-            if transcript is not None:
-                body = transcript["text"]
-            identity_token = _message_identity.set(message_id)
+            if not preview and qr_intake_revision.enabled():
+                revision_token = qr_intake_revision.bind(tenant, phone, ids, intake_revision, redis)
             try:
-                result = await turn(tenant, phone, body, redis, namespace, preview=preview)
-            finally:
-                _message_identity.reset(identity_token)
-            if transcript is not None:
-                result = {**result, "transcript": body, "input_kind": "audio"}
+                await qr_intake_revision.assert_current()
+                if require_summary_review and not preview:
+                    await _require_pending_review(redis, f"orion:qr:ai:{tenant}:{namespace}")
+                if reset:
+                    await redis.delete(f"orion:qr:ai:{tenant}:{namespace}")
+                transcript = await prepare() if prepare else None
+                if transcript is not None:
+                    body = transcript["text"]
+                identity_token = _message_identity.set(message_id)
+                try:
+                    result = await turn(tenant, phone, body, redis, namespace, preview=preview)
+                    await qr_intake_revision.assert_current()
+                finally:
+                    _message_identity.reset(identity_token)
+                if transcript is not None:
+                    result = {**result, "transcript": body, "input_kind": "audio"}
+            except qr_intake_revision.Superseded as superseded:
+                result = superseded.result()
+                if superseded.not_committed:
+                    return result
+                await _require_pending_review(redis, f"orion:qr:ai:{tenant}:{namespace}")
             if keys:
                 async with redis.pipeline(transaction=True) as pipe:
                     for key in keys + legacy_keys:
@@ -1519,6 +1666,8 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                     await pipe.execute()
             return result
     finally:
+        if revision_token is not None:
+            qr_intake_revision.reset(revision_token)
         await redis.aclose()
 
 
@@ -1538,7 +1687,8 @@ async def qr_reply(payload: Incoming, request: Request):
     except (KeyError, ValueError):
         raise HTTPException(503, "Estabelecimento de atendimento não configurado") from None
     return await run_locked(tenant, payload.phone, payload.text, payload.phone, payload.message_id,
-                            message_ids=payload.message_ids)
+                            message_ids=payload.message_ids, intake_revision=payload.intake_revision,
+                            require_summary_review=payload.require_summary_review)
 
 
 @router.post("/api/v1/tenants/{tenant_id}/ai/conversation-preview")

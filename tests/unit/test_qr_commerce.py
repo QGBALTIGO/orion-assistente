@@ -257,6 +257,31 @@ async def test_price_research_has_no_quote_or_order_or_call_to_action(backend):
 
 
 @pytest.mark.asyncio
+async def test_catalog_existence_does_not_assume_one_unit_or_change_cart(backend, catalog):
+    events, _ = backend
+    first = await turn("Vocês vendem pomada?")
+    assert "Pomada" in first["answer"] and "R$" not in first["answer"]
+    assert "não confirma disponibilidade" in first["answer"]
+    first["state"]["cart"] = [{"variant_id": str(catalog[0]["variants"][0]["id"]), "quantity": 3}]
+    again = await turn("Vendem camiseta?", state=first["state"], message="existence-next")
+    assert again["state"]["cart"] == first["state"]["cart"]
+    assert "Camiseta" in again["answer"] and "R$" not in again["answer"] and events == []
+
+
+@pytest.mark.asyncio
+async def test_superseded_write_is_not_caught_as_price_change_or_retried(backend, monkeypatch):
+    from app.qr_intake_revision import Superseded
+    calls = []
+    async def superseded(*args, **kwargs):
+        calls.append("quote")
+        raise Superseded(not_committed=True)
+    monkeypatch.setattr(store, "create_quote", superseded)
+    with pytest.raises(Superseded) as stale:
+        await turn("Quero comprar duas pomadas")
+    assert stale.value.not_committed and calls == ["quote"]
+
+
+@pytest.mark.asyncio
 async def test_order_summary_then_new_confirmation_and_duplicate_message(backend):
     events, _ = backend
     prepared = await turn("Quero comprar duas pomada")
