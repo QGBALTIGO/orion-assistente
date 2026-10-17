@@ -23,6 +23,7 @@ import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-h
 import {makeConnectedStore} from "./connected-store.mjs";
 import {transcriberConfig,cleanPictureUrl,transcribeAudio,handleCallOffers} from "./connected-features.mjs";
 import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
+import {forwardAssistant} from "./ai-forward.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
 const SESSION_DIR=process.env.QR_SESSION_DIR || "/data/auth";
@@ -56,6 +57,8 @@ let connectedStore=makeConnectedStore({directory:authDir,secret:KEY});
 let connectedProfile={name:null,photoUrl:null,updatedAt:null},profileFetchedAt=0,lastRestartAt=0;
 const repliedToCallers=new Map();
 const recentCallOffers=new Map();
+const assistantQueues=new Map();
+const assistantEnabled=()=>process.env.QR_AI_ENABLED==="1"&&!!process.env.QR_AI_API_URL;
 const callDiagnostics={
   eventsObserved:0,offersSeen:0,rejected:0,rejectFailed:0,replied:0,replyFailed:0,
   replyNoPhone:0,unresolvedWithAllowlist:0,duplicatesSkipped:0,
@@ -135,7 +138,7 @@ function stats(){
     connectionNotice:process.env.ORION_NOTIFY_SELF_ON_LINK==="1" ? noticeState(authDir) : "disabled",
     deliveryDiagnostics:{...retryDiagnostics},
     reliableSendEnabled:process.env.QR_RELIABLE_SEND_V2==="1",
-    primaryPhoneOnlineRequired:false,automaticRepliesEnabled:false,
+    primaryPhoneOnlineRequired:false,automaticRepliesEnabled:assistantEnabled()&&connectedStore.settings().chatbot,
     inboxPersistence:durableInbox.health(),
     retainedMessages:messages.length,
     ingestion:ingestionHealth({connected:status==="connected",openAt:connectedSince,
@@ -146,7 +149,7 @@ function stats(){
     profile:status==="connected"?connectedProfile:null,
     messageStats:connectedStore.stats(),
     featureSettings:status==="connected"?connectedStore.settings():null,
-    featureCapabilities:{chatbot:false,transcription:!!transcriberConfig(),
+    featureCapabilities:{chatbot:assistantEnabled(),transcription:!!transcriberConfig(),
       callBlocking:typeof socket?.rejectCall==="function"},
     callDiagnostics:{...callDiagnostics},
     controlStorage:connectedStore.health()};
@@ -246,6 +249,28 @@ function installListeners(client,mine,saveCreds){
         direction:"in",at});
       lastInboundAt=Date.now();inboundSinceConnect=true;
       if(type==="append")recentAppends++;
+      if(assistantEnabled()&&connectedStore.settings().chatbot){
+        // Ordena por destinatário sem bloquear outros clientes; nunca recupera histórico.
+        const previous=assistantQueues.get(phone)||Promise.resolve();
+        const job=previous.catch(()=>{}).then(async()=>{
+          if(mine!==generation||socket!==client||status!=="connected"||
+              !connectedStore.settings().chatbot)return;
+          const answer=await forwardAssistant({
+            apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
+            messageId:String(message.key.id),text:body,
+          });
+          if(!answer)return;
+          if(mine!==generation||socket!==client||status!=="connected"||
+              !connectedStore.settings().chatbot)return;
+          await send(phone,answer);
+          console.info("Orion QR: resposta automática processada (dados omitidos)");
+        }).catch(()=>{
+          console.warn("Orion QR: atendimento IA indisponível (dados omitidos)");
+        }).finally(()=>{
+          if(assistantQueues.get(phone)===job)assistantQueues.delete(phone);
+        });
+        assistantQueues.set(phone,job);
+      }
     }
   });
   client.ev.on("connection.update",update=>{
@@ -506,7 +531,7 @@ const server=http.createServer(async(req,res)=>{
     if(path==="/internal/settings"&&req.method==="POST"){
       if(status!=="connected"||!socket)return reply(res,409,{error:"not_connected"});
       const settings=connectedStore.update(await collectBody(req),{
-        chatbot:false,transcription:!!transcriberConfig(),
+        chatbot:assistantEnabled(),transcription:!!transcriberConfig(),
         callBlocking:typeof socket.rejectCall==="function"
       });
       return reply(res,200,{settings});

@@ -37,3 +37,36 @@ até oito mensagens anteriores para contextualizar a classificação.
 Esta entrega inicial nunca substitui o menu determinístico do WhatsApp;
 mensagens reais continuam no fluxo anterior. `GROQ_API_KEY` sem
 `GROQ_PREVIEW_ENABLED=1` não ativa chamadas externas.
+
+
+## WhatsApp vinculado — fluxo real
+
+Após CI e homologação, configure o serviço API com:
+- GROQ_API_KEY (segredo privado), GROQ_PREVIEW_ENABLED=1;
+- QR_AI_TENANT_ID com o UUID do estabelecimento REAL vinculado ao número;
+- QR_AI_ENABLED=1 e QR_AI_ALLOWED_SENDERS com telefones completos 55... dos testadores, separados por vírgulas (recomendado antes de abrir ao público).
+- A API já possui QR_BRIDGE_TOKEN compartilhado com o bridge.
+
+Configure no serviço QR:
+- QR_AI_ENABLED=1;
+- QR_AI_API_URL=http://orion-assistente.railway.internal:8080/internal/qr/ai/reply.
+
+No painel, abra o dispositivo conectado > Configurações > Chatbot e ative o
+toggle. A ativação é uma opção cifrada persistida no volume; por padrão, continua
+desligada. O bridge encaminha apenas mensagens privadas recebidas agora. Não
+processa conversas anteriores, grupos, mensagens próprias ou campanhas.
+
+A API registra estado conversacional temporário no Redis (30 minutos), busca
+serviços e profissionais do tenant com RLS, verifica disponibilidade pelo motor
+único de reservas, cria hold de cinco minutos e confirma **somente com SIM**.
+Handoff suspende respostas automáticas por 30 minutos, permitindo atendimento
+manual na aba Conversas. A prévia usa namespace de Redis separado, e não cria
+reservas, eventos ou mensagens reais.
+
+**Limites:** via WhatsApp vinculado não oficial (Baileys) e pode sofrer
+dessincronização Signal; aceitação pelo servidor não equivale a entrega.
+A sincronização Google Calendar real exige OAuth do estabelecimento e
+GOOGLE_LIVE_SYNC=1, validado separadamente. Sem OAuth, a confirmação refere-se
+apenas à reserva gravada no Orion, não a evento confirmado pelo Google.
+A opção de conversas "pergunta" responde dados do catálogo disponível; FAQs e
+políticas comerciais mais amplas requerem cadastro e suporte adicional.
