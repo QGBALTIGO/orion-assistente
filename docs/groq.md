@@ -70,3 +70,6 @@ GOOGLE_LIVE_SYNC=1, validado separadamente. Sem OAuth, a confirmação refere-se
 apenas à reserva gravada no Orion, não a evento confirmado pelo Google.
 A opção de conversas "pergunta" responde dados do catálogo disponível; FAQs e
 políticas comerciais mais amplas requerem cadastro e suporte adicional.
+
+
+Veja [Homologação avançada de IA](ai-validation.md) para áudio, nomes, histórico e remarcação.
