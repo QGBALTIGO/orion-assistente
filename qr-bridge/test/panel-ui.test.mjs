@@ -7,8 +7,9 @@ const panel=fs.readFileSync(new URL("../../app/static/panel.html",import.meta.ur
 const sections=[...panel.matchAll(/<script>([\s\S]*?)<\/script>/g)];
 
 test("painel tem script válido em JavaScript",()=>{
-  assert.equal(sections.length,1);
-  assert.doesNotThrow(()=>new vm.Script(sections[0][1],{filename:"panel-inline.js"}));
+  assert.equal(sections.length,2,"bootstrap de tema e controlador do painel devem existir");
+  for(const [index,section] of sections.entries())
+    assert.doesNotThrow(()=>new vm.Script(section[1],{filename:"panel-inline-"+index+".js"}));
 });
 
 test("QR indica atraso de 25 segundos, expiração e falha",()=>{

@@ -3,6 +3,17 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0b1527" id="orionThemeColor">
+<script>
+(function(){
+  var preference="auto";
+  try{var saved=localStorage.getItem("orion-theme");if(["auto","light","dark"].includes(saved))preference=saved;}catch(_){}
+  var dark=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches;
+  var effective=preference==="auto"?(dark?"dark":"light"):preference;
+  document.documentElement.dataset.theme=effective;
+  document.documentElement.dataset.themePreference=preference;
+})();
+</script>
 <title>Orion | Painel administrativo</title>
 <style>
 :root{color-scheme:dark;--bg:#091210;--surface:#111e1b;--surface2:#172722;--border:#304741;--accent:#16a17e;--accent2:#0e725c;--bright:#67e0b5;--text:#f3f9f6;--muted:#a2bbb1;--danger:#ef9987;--gold:#e1c78d;--radius:17px}
@@ -333,18 +344,26 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
  .auth-login-options{gap:8px}.auth-text-link{font-size:.78rem}
  .auth-copyright{margin-top:12px}
 }
-@media(prefers-color-scheme:light){
- #loginView,.auth-right{background:#f4f8fc;color:#142139}
- .auth-card{background:#fff;border-color:#e0e7f1;box-shadow:0 14px 55px #0d233620}
- .auth-card-top h2{color:#098d85}.auth-card-top p{color:#516078}
- .auth-tabs{background:#ecf1f8}.auth-tab{color:#52627a}.auth-tab.active{background:white;color:#14233e;box-shadow:0 2px 7px #09142a19}
- .auth-form label{color:#1d2c42}.auth-form input:not([type=checkbox]){background:#f9fbff;border-color:#cbd6e4;color:#15213a}
- .auth-form input::placeholder{color:#8090a6}.auth-form .auth-check{color:#52637c}
- .auth-privacy,.auth-copyright{color:#6e7e91}.auth-form h3{color:#15233c}
- .auth-visual{background:radial-gradient(ellipse at 0% 0%,#0f9d9a,#18bea9 67%,#42d5c3)}
- .auth-member{background:#f4f8fc;color:#16243c}.auth-member-card{background:white;border-color:#d9e4ee}
- .auth-hint{color:#5e6f86}
-}
+/* Manual/system light theme */
+
+html[data-theme="light"] #loginView, html[data-theme="light"] .auth-right{background:#f4f8fc;color:#142139}
+html[data-theme="light"] .auth-card{background:#fff;border-color:#e0e7f1;box-shadow:0 14px 55px #0d233620}
+html[data-theme="light"] .auth-card-top h2{color:#098d85}
+html[data-theme="light"] .auth-card-top p{color:#516078}
+html[data-theme="light"] .auth-tabs{background:#ecf1f8}
+html[data-theme="light"] .auth-tab{color:#52627a}
+html[data-theme="light"] .auth-tab.active{background:white;color:#14233e;box-shadow:0 2px 7px #09142a19}
+html[data-theme="light"] .auth-form label{color:#1d2c42}
+html[data-theme="light"] .auth-form input:not([type=checkbox]){background:#f9fbff;border-color:#cbd6e4;color:#15213a}
+html[data-theme="light"] .auth-form input::placeholder{color:#8090a6}
+html[data-theme="light"] .auth-form .auth-check{color:#52637c}
+html[data-theme="light"] .auth-privacy, html[data-theme="light"] .auth-copyright{color:#6e7e91}
+html[data-theme="light"] .auth-form h3{color:#15233c}
+html[data-theme="light"] .auth-visual{background:radial-gradient(ellipse at 0% 0%,#0f9d9a,#18bea9 67%,#42d5c3)}
+html[data-theme="light"] .auth-member{background:#f4f8fc;color:#16243c}
+html[data-theme="light"] .auth-member-card{background:white;border-color:#d9e4ee}
+html[data-theme="light"] .auth-hint{color:#5e6f86}
+
 @media(prefers-reduced-motion:reduce){
  .auth-form:not(.hidden),.auth-orbit{animation:none!important}
  .auth-primary{transition:none}
@@ -423,22 +442,23 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
  #loginView .auth-card-top{margin-bottom:17px}
  #loginView .auth-privacy{margin-top:18px}
 }
-@media(prefers-color-scheme:light){
- #loginView{color-scheme:light}
- #loginView .auth-form .auth-check input[type="checkbox"]{
+/* Manual/system light theme */
+
+html[data-theme="light"] #loginView{color-scheme:light}
+html[data-theme="light"] #loginView .auth-form .auth-check input[type="checkbox"]{
    background:#fff;border-color:#8da0b7;
  }
- #loginView .auth-form .auth-check input[type="checkbox"]:checked{
+html[data-theme="light"] #loginView .auth-form .auth-check input[type="checkbox"]:checked{
    background-color:#11b8a0;border-color:#11b8a0
  }
- #loginView .auth-visual{
+html[data-theme="light"] #loginView .auth-visual{
    background:linear-gradient(144deg,#064450 0%,#0a6b74 50%,#079c8e 100%);
  }
- #loginView .auth-visual-logo{
+html[data-theme="light"] #loginView .auth-visual-logo{
    padding:6px 12px 6px 8px;border-radius:13px;
    background:rgba(255,255,255,.96);box-shadow:0 8px 32px rgba(0,24,40,.15);
  }
-}
+
 @media(prefers-reduced-motion:reduce){
  #loginView .auth-form .auth-check input[type="checkbox"]{transition:none}
 }
@@ -489,11 +509,12 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 }
 #loginView #verifyEmail[readonly]{opacity:.84;cursor:default}
 #loginView #authResendCode:disabled{opacity:.55;cursor:not-allowed}
-@media(prefers-color-scheme:light){
- #loginView .auth-form .auth-otp-input{
+/* Manual/system light theme */
+
+html[data-theme="light"] #loginView .auth-form .auth-otp-input{
   background:#eafaf5;color:#0d6457;border-color:#50bbaa;
  }
-}
+
 
 /* Dedicated non-privileged member dashboard inside the main Orion shell. */
 .member-overview{width:min(100%,690px);background:linear-gradient(140deg,#122923,#101e1a);
@@ -506,6 +527,208 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 .member-detail strong{font-size:1rem;color:var(--text);overflow-wrap:anywhere}
 .member-next{margin-top:20px;font-size:.87rem}
 @media(max-width:760px){.member-overview{padding:22px}.member-detail{padding:13px 0}}
+
+/* ===== ORION unified design system: login, navigation and all functional pages ===== */
+:root,html[data-theme="dark"]{
+ color-scheme:dark;
+ --bg:#080f1d;--surface:#111c2f;--surface2:#18263b;
+ --border:#2b3d56;--accent:#20bfae;--accent2:#0b8f8a;
+ --bright:#43ddc7;--text:#eff6ff;--muted:#a4b6cf;
+ --danger:#f3a39e;--gold:#dfc27d;--radius:17px;
+ --sidebar-bg:#0b1526;--panel:#101b2c;--panel-raised:#15243a;
+ --panel-low:#0d1728;--control-bg:#101c30;--hover-bg:#1d3449;
+ --selected-bg:#173e49;--accent-contrast:#052b2c;
+ --shadow:0 16px 45px rgba(1,8,22,.24);--input-border:#324660;
+ --soft-accent:rgba(32,191,174,.14);--table-head:#14243b;
+ --safe-success:#52dfad;--muted-on-accent:#defbf3;
+}
+html[data-theme="light"]{
+ color-scheme:light;
+ --bg:#f4f9fb;--surface:#ffffff;--surface2:#ebf5f7;
+ --border:#d3e2e9;--accent:#0da998;--accent2:#07887e;
+ --bright:#078c81;--text:#17283d;--muted:#60748b;
+ --danger:#b23c42;--gold:#8a641e;--radius:17px;
+ --sidebar-bg:#ffffff;--panel:#ffffff;--panel-raised:#f7fbfd;
+ --panel-low:#eff7f9;--control-bg:#ffffff;--hover-bg:#edf7f8;
+ --selected-bg:#ddf6f2;--accent-contrast:#ffffff;
+ --shadow:0 16px 43px rgba(26,61,80,.075);--input-border:#bed3df;
+ --soft-accent:rgba(13,169,152,.10);--table-head:#e9f5f7;
+ --safe-success:#087963;--muted-on-accent:#ffffff;
+}
+html,body{min-width:0}
+body{background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ transition:background-color .18s ease,color .18s ease}
+h1,h2,h3,.brand,.nav-item,.btn{font-family:inherit}
+h1{font-weight:790;letter-spacing:-.045em}
+h2,h3{color:var(--text)}
+p,small{color:var(--muted)}
+label{color:var(--text)}
+a{color:var(--bright)}
+input,select,textarea{background:var(--control-bg);border:1px solid var(--input-border);color:var(--text);
+ border-radius:10px;min-width:0}
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:.7}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--soft-accent)}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,a:focus-visible,
+summary:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+input[type="checkbox"]{accent-color:var(--accent)}
+.btn{background:var(--accent);border-color:var(--accent);color:var(--accent-contrast);
+ box-shadow:0 2px 0 rgba(0,0,0,.04);font-weight:750}
+.btn.secondary{background:var(--soft-accent);border-color:var(--border);color:var(--bright)}
+.btn.ghost{background:transparent;color:var(--text);border-color:var(--border)}
+.btn.danger{background:rgba(189,61,66,.13);color:var(--danger);border-color:rgba(183,79,86,.35)}
+.btn.secondary:hover:not(:disabled),.btn.ghost:hover:not(:disabled){background:var(--hover-bg)}
+.card,.device-stats,.device-features,.wizard-card,.member-overview{
+ background:var(--panel);color:var(--text);border:1px solid var(--border);box-shadow:var(--shadow)}
+.card{border-radius:var(--radius)}
+.app{grid-template-columns:248px minmax(0,1fr);background:var(--bg)}
+.sidebar{background:var(--sidebar-bg);border-right:1px solid var(--border);
+ box-shadow:4px 0 24px rgba(0,18,29,.035);padding:25px 15px 16px;gap:17px}
+.sidebar .brand{padding:4px 9px 10px;min-height:59px}
+.orion-brand-image{display:block;object-fit:contain;object-position:left center;width:180px;height:63px;max-width:100%}
+.sidebar .brand .orion-brand-image{width:162px;height:57px}
+.side-label{color:var(--muted);font-size:.66rem;letter-spacing:.15em;padding:0 12px;margin:0 0 1px}
+.nav{gap:6px}
+.nav-item{width:100%;gap:12px;padding:12px 13px;font-weight:640;color:var(--muted);
+ border-radius:11px;min-height:47px}
+.nav-item.selected{background:var(--selected-bg);border-color:var(--border);color:var(--bright)}
+.nav-item:hover{background:var(--hover-bg);color:var(--text)}
+.nav-icon{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:21px;height:21px}
+.nav-icon svg,.orion-ui-icon{width:20px;height:20px;display:inline-block;stroke:currentColor;fill:none;
+ stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round}
+.nav-item svg{width:19px;height:19px}
+.sidebar-bottom{padding:16px 5px 0;border-top:1px solid var(--border)}
+.sidebar-bottom .avatar{color:var(--text);margin:0 0 14px;align-items:center}
+.avatar-dot{background:var(--soft-accent);color:var(--bright)}
+.sidebar-bottom .btn{width:100%;padding:10px}
+.theme-control{padding:0;margin-bottom:18px}
+.theme-control-label{display:block;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;
+ color:var(--muted);font-weight:700;margin:0 0 9px 5px}
+.theme-switch{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.theme-choice{min-height:39px;border:1px solid var(--border);border-radius:10px;
+ display:grid;place-items:center;background:var(--panel-low);color:var(--muted);
+ transition:background-color .18s,color .18s,border-color .18s,transform .18s}
+.theme-choice:hover{background:var(--hover-bg);color:var(--text);transform:translateY(-1px)}
+.theme-choice[aria-pressed="true"]{background:var(--selected-bg);border-color:var(--accent);
+ color:var(--bright);box-shadow:0 0 0 1px var(--soft-accent) inset}
+.theme-choice svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.8;
+ stroke-linecap:round;stroke-linejoin:round}
+.content{max-width:1400px;padding-top:36px}
+.header .subhead,.device-muted{color:var(--muted)}
+.eyebrow{color:var(--bright)}
+.pill{background:var(--panel-raised);border:1px solid var(--border);color:var(--muted)}
+.badge,.device-online{background:var(--soft-accent);color:var(--safe-success);border:1px solid var(--border)}
+.device-hero{background:linear-gradient(150deg,var(--panel-raised),var(--panel));
+ border:1px solid var(--border);box-shadow:var(--shadow)}
+.device-name,.device-number{color:var(--text)}
+.device-photo{background:var(--panel-low);border-color:var(--border);color:var(--bright)}
+.device-menu nav{background:var(--panel);border-color:var(--border);box-shadow:var(--shadow)}
+.device-menu nav button{color:var(--text)}
+.device-menu nav button:hover,.chat-item:hover,.chat-item.current{background:var(--hover-bg)}
+.device-menu nav button.danger-link{color:var(--danger)}
+.device-info-row{border-color:var(--border)}
+.device-stat{background:var(--panel-low);border:1px solid var(--border)}
+.device-stat strong{color:var(--text)}
+.device-stat-hint{color:var(--muted)}
+.device-feature{border-color:var(--border)}
+.device-feature .feature-state{background:var(--soft-accent);color:var(--bright);border-color:var(--border)}
+.device-feature .feature-state.off{background:var(--panel-low);color:var(--muted);border-color:var(--border)}
+.device-dialog{background:var(--panel);border-color:var(--border);color:var(--text);box-shadow:var(--shadow)}
+.device-dialog::backdrop{background:rgba(3,10,22,.72)}
+.device-dialog fieldset,.device-dialog pre{border-color:var(--border)}
+.device-dialog pre{background:var(--panel-low);color:var(--muted)}
+.device-dialog small{color:var(--muted)}
+.wizard-shell{--wizard-green:var(--accent);--wizard-dark:var(--panel-low);color:var(--text)}
+.wizard-card h3,.wizard-timeline-copy strong{color:var(--text)}
+.wizard-heading p,.wizard-card p,.wizard-timeline-copy p{color:var(--muted)}
+.wizard-number,.wizard-eyebrow,.wizard-timeline-copy small{color:var(--bright)}
+.wizard-method{background:var(--panel-low);color:var(--text);border-color:var(--border)}
+.wizard-method strong{color:var(--text)}
+.wizard-method span:last-child{color:var(--muted)}
+.wizard-method:hover,.wizard-method.active{border-color:var(--accent)}
+.wizard-method.active{background:var(--selected-bg);box-shadow:0 0 0 1px var(--soft-accent)}
+.wizard-method-icon,.wizard-welcome-symbol{color:var(--bright)}
+.wizard-phone-input{background:var(--control-bg);border-color:var(--input-border)}
+.wizard-phone-input span,.wizard-status,.wizard-qr-time strong{color:var(--bright)}
+.wizard-primary{background:var(--accent);border:1px solid var(--accent);color:var(--accent-contrast)}
+.wizard-primary:hover{background:var(--accent2);color:#ffffff}
+.wizard-qr-time{color:var(--muted)}
+.wizard-footer{color:var(--muted)}
+.wizard-timeline-step:not(:last-child)::before{border-color:var(--accent)}
+.wizard-timeline-dot,.wizard-timeline-dot.edge{background:var(--accent2);border-color:var(--accent)}
+.step p,.step small{color:var(--muted)}
+.step-mark{background:var(--soft-accent);color:var(--bright);border-color:var(--border)}
+.step:not(:last-child)::before{border-color:var(--accent)}
+.method{background:var(--panel-low);border-color:var(--border);color:var(--muted)}
+.method.active{background:var(--selected-bg);border-color:var(--accent)}
+.qr-wrap,.illustration{background:var(--panel-low);border-color:var(--border)}
+.connected-banner{background:var(--selected-bg);border-color:var(--border);color:var(--text)}
+.connected-banner strong{color:var(--bright)}
+.chat-item{color:var(--text);border-color:var(--border)}
+.bubbles{background:var(--panel-low)}
+.bubble{background:var(--panel-raised);border:1px solid var(--border)}
+.bubble.out{background:var(--selected-bg);border-color:var(--accent2)}
+.bubble time,.footer-hint{color:var(--muted)}
+.note{border-color:var(--accent);color:var(--muted)}
+table{color:var(--text)}td,th{border-color:var(--border)}
+th{background:var(--table-head);color:var(--text)}
+.member-overview{background:var(--panel)}
+.member-overview h2,.member-detail strong{color:var(--text)}
+.member-detail{border-color:var(--border)}
+.member-next{color:var(--muted)}
+.device-feature strong svg,.device-actions svg{color:var(--bright)}
+html[data-theme="light"] .dot.green{background:#00a56d;box-shadow:0 0 0 3px #d6f8e5}
+html[data-theme="light"] .device-stat strong,html[data-theme="light"] .device-name{color:var(--text)}
+html[data-theme="light"] .wizard-timeline-dot{color:#ffffff}
+html[data-theme="light"] .wizard-timeline-copy strong{color:var(--text)}
+html[data-theme="light"] .wizard-method-icon{color:var(--bright)}
+html[data-theme="light"] .auth-hero li{color:#fff}
+html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
+/* Login colors also obey manual theme switches, not solely device preference. */
+html[data-theme="dark"] #loginView,
+html[data-theme="dark"] .auth-right{background:#0e172a;color:#f5f7ff}
+html[data-theme="dark"] .auth-card{background:#101b31;border-color:#29364f}
+html[data-theme="dark"] .auth-card-top h2{color:#2fd1c1}
+html[data-theme="dark"] .auth-card-top p{color:#bbc7d9}
+html[data-theme="dark"] .auth-tabs{background:#182542}
+html[data-theme="dark"] .auth-tab{color:#b9cbe0}
+html[data-theme="dark"] .auth-tab.active{background:#0c1429;color:#fff}
+html[data-theme="dark"] .auth-form label{color:#f0f5ff}
+html[data-theme="dark"] .auth-form input:not([type="checkbox"]){background:#0e172a;color:#f3f6ff;border-color:#2c4064}
+html[data-theme="dark"] .auth-form .auth-check{color:#c4d5e6}
+html[data-theme="dark"] .auth-form h3{color:#f4f7ff}
+html[data-theme="dark"] .auth-privacy,html[data-theme="dark"] .auth-copyright{color:#a9bdd2}
+html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]{background:#16263b;border-color:#7593ae}
+html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]:checked{background-color:#1ad0af;border-color:#1ad0af}
+@media(max-width:790px){
+ .sidebar{position:relative;top:auto;height:auto;gap:12px;padding:12px 16px}
+ .sidebar .brand{padding:0}
+ .sidebar-bottom{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0 0;margin:0}
+ .sidebar-bottom .avatar{flex:1 1 180px;margin:0}
+ .sidebar-bottom .theme-control{flex:1 1 150px;margin:0}
+ .sidebar-bottom .btn{flex:1 1 130px;width:auto}
+ .theme-control-label{margin-bottom:6px}
+ .theme-switch{max-width:270px}
+ .content{padding-top:22px}
+ .nav{flex-direction:row;gap:6px}
+ .nav-item{width:auto;flex-shrink:0}
+}
+@media(max-width:460px){
+ .sidebar-bottom{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+ .sidebar-bottom .avatar{grid-column:1/-1}
+ .sidebar-bottom .theme-control{margin:0}
+ .sidebar-bottom .btn{align-self:end;min-height:39px}
+ .nav-item{font-size:.81rem}
+ .theme-choice{min-height:38px}
+ .auth-card{max-width:100%}
+}
+@media(prefers-reduced-motion:reduce){
+ body,.theme-choice,.nav-item,.card{transition:none!important}
+}
+
+.sidebar-bottom .btn svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.orion-list-check svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.wizard-code-check{display:grid;place-items:center;width:50px;height:50px;margin:0 auto 12px;border-radius:50%;background:var(--soft-accent)}
+.wizard-code-check svg{width:26px;height:26px;stroke:var(--bright);stroke-width:2.5;fill:none;stroke-linecap:round;stroke-linejoin:round}
 </style>
 </head>
 <body>
@@ -513,17 +736,16 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
   <div class="auth-shell">
     <aside class="auth-visual">
       <picture class="auth-visual-logo">
-        <source media="(prefers-color-scheme: light)" srcset="/brand/orion-brand-light.svg">
-        <img src="/brand/orion-brand-dark.svg" alt="ORION — Recepcionista Digital" width="240" height="84">
+        <img data-orion-logo src="/brand/orion-brand-dark.svg" alt="ORION — Recepcionista Digital" width="240" height="84">
       </picture>
       <div class="auth-hero">
         <span class="auth-hero-kicker">O seu atendimento, em outra órbita.</span>
         <h1>Um novo jeito de cuidar do seu tempo.</h1>
         <p>Agenda, conversas e automações reunidas em um único lugar.</p>
         <ul>
-          <li><span aria-hidden="true">✓</span> Mais praticidade no atendimento</li>
-          <li><span aria-hidden="true">✓</span> Sua rotina organizada, sempre</li>
-          <li><span aria-hidden="true">✓</span> Experiência simples e inteligente</li>
+          <li><span aria-hidden="true" class="orion-list-check"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg></span> Mais praticidade no atendimento</li>
+          <li><span aria-hidden="true" class="orion-list-check"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg></span> Sua rotina organizada, sempre</li>
+          <li><span aria-hidden="true" class="orion-list-check"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg></span> Experiência simples e inteligente</li>
         </ul>
       </div>
       <div class="auth-orbit" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -533,8 +755,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
       <div class="auth-card">
         <div class="auth-mobile-brand">
           <picture>
-            <source media="(prefers-color-scheme: light)" srcset="/brand/orion-brand-light.svg">
-            <img src="/brand/orion-brand-dark.svg" alt="Orion" width="166" height="58">
+            <img data-orion-logo src="/brand/orion-brand-dark.svg" alt="Orion" width="166" height="58">
           </picture>
         </div>
         <div class="auth-card-top">
@@ -614,17 +835,25 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 </section>
 <div id="appView" class="app hidden">
   <aside class="sidebar">
-    <div class="brand"><div class="logo">O</div> ORION.</div>
+    <div class="brand"><img class="orion-brand-image" data-orion-logo src="/brand/orion-brand-dark.svg" alt="Orion — Recepcionista Digital" width="180" height="63"></div>
     <div id="sidebarLabel" class="side-label">Gerenciamento</div>
     <nav class="nav" aria-label="Páginas do painel">
-      <button class="nav-item hidden" data-page="member" data-member-only> <span class="nav-icon" aria-hidden="true">⌂</span>Início</button>
-      <button class="nav-item" data-page="dispositivo" data-admin-only><span class="nav-icon">▦</span>Conectar dispositivo</button>
-      <button class="nav-item" data-page="conversas" data-admin-only><span class="nav-icon">✉</span>Conversas</button>
-      <button class="nav-item" data-page="cadastros" data-admin-only><span class="nav-icon">⚙</span>Cadastros</button>
+      <button class="nav-item hidden" data-page="member" data-member-only> <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M9 21v-7h6v7"/></svg></span>Início</button>
+      <button class="nav-item" data-page="dispositivo" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg></span>Conectar dispositivo</button>
+      <button class="nav-item" data-page="conversas" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.5c-1.4 0-2.7-.9-3.9l-5.1 1.9 1.9-5.1A8.5 8.5 0 1 1 21 11.5Z"/><path d="M8 10h8m-8 4h5"/></svg></span>Conversas</button>
+      <button class="nav-item" data-page="cadastros" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Cadastros</button>
     </nav>
     <div class="sidebar-bottom">
       <div class="avatar"><div class="avatar-dot" id="sidebarAvatarInitial">A</div><div><strong id="sidebarAccountName">Administrador</strong><br><small id="sidebarAccountType">Painel Orion</small></div></div>
-      <button id="logout" class="btn ghost full">Sair com segurança</button>
+      <div class="theme-control" aria-label="Aparência do Orion">
+        <span class="theme-control-label">Tema</span>
+        <div class="theme-switch" role="group" aria-label="Escolher aparência">
+          <button type="button" class="theme-choice" data-theme-choice="auto" aria-label="Tema Automático, seguir o dispositivo" title="Automático, seguir o dispositivo" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></svg></button>
+          <button type="button" class="theme-choice" data-theme-choice="light" aria-label="Tema Claro" title="Claro" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></button>
+          <button type="button" class="theme-choice" data-theme-choice="dark" aria-label="Tema Escuro" title="Escuro" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.5 14.3A9 9 0 0 1 9.7 3.5 9 9 0 1 0 20.5 14.3Z"/></svg></button>
+        </div>
+      </div>
+      <button id="logout" class="btn ghost full" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14 5-5-5-5m5 5H9"/></svg> Sair com segurança</button>
     </div>
   </aside>
   <main class="content">
@@ -636,8 +865,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
       <section class="member-overview" aria-labelledby="memberProfileHeading">
         <div class="member-overview-top">
           <picture>
-            <source media="(prefers-color-scheme: light)" srcset="/brand/orion-brand-light.svg">
-            <img src="/brand/orion-brand-dark.svg" alt="Orion Recepcionista Digital" width="178" height="63">
+            <img data-orion-logo src="/brand/orion-brand-dark.svg" alt="Orion Recepcionista Digital" width="178" height="63">
           </picture>
         </div>
         <h2 id="memberProfileHeading">Minha conta</h2>
@@ -834,7 +1062,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
               </form>
             </div>
             <div id="codeResult" class="hidden wizard-code-result">
-              <div class="wizard-code-check" aria-hidden="true">✓</div>
+              <div class="wizard-code-check" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg></div>
               <h3>Digite este código no WhatsApp</h3>
               <p>Em Dispositivos conectados, escolha <strong>Conectar com número de telefone</strong>.</p>
               <div class="code-box" id="pairCode" aria-live="polite"></div>
@@ -936,6 +1164,29 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 (()=>{
 "use strict";
 const $=id=>document.getElementById(id);
+ const preferenceQuery=window.matchMedia("(prefers-color-scheme: dark)");
+ const choices=document.querySelectorAll("[data-theme-choice]");
+ function applyTheme(preference,store=false){
+   const safe=["light","dark","auto"].includes(preference)?preference:"auto";
+   if(store){try{localStorage.setItem("orion-theme",safe)}catch(_){/* storage blocked */}}
+   const effective=safe==="auto"?(preferenceQuery.matches?"dark":"light"):safe;
+   document.documentElement.dataset.theme=effective;
+   document.documentElement.dataset.themePreference=safe;
+   document.querySelectorAll("[data-orion-logo]").forEach(image=>{
+      const url=effective==="light"?"/brand/orion-brand-light.svg":"/brand/orion-brand-dark.svg";
+      if(image.getAttribute("src")!==url)image.setAttribute("src",url);
+   });
+   const meta=$("orionThemeColor");if(meta)meta.content=effective==="dark"?"#0b1527":"#f4f9fb";
+   choices.forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.themeChoice===safe)));
+ }
+ choices.forEach(button=>button.addEventListener("click",()=>applyTheme(button.dataset.themeChoice,true)));
+ applyTheme(document.documentElement.dataset.themePreference||"auto");
+ const onSystemTheme=()=>{
+   if(document.documentElement.dataset.themePreference==="auto")applyTheme("auto");
+ };
+ if(preferenceQuery.addEventListener)preferenceQuery.addEventListener("change",onSystemTheme);
+ else if(preferenceQuery.addListener)preferenceQuery.addListener(onSystemTheme);
+
 let authEpoch=0;
 let csrf="",page="dispositivo",method="code",showQr=false,deviceStatus="starting",lastDeviceStatus="starting",pairExpiresAt=0,
     statusTimer=null,chatTimer=null,selectedPhone="",chatsBusy=false;
