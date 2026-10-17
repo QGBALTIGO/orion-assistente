@@ -122,11 +122,11 @@ def _require_mail():
 
 def _send_email(recipient, purpose, secret, public_url):
     """SMTP TLS message; only the 6-digit code is revealed to the mailbox owner."""
-    host=os.environ["PANEL_SMTP_HOST"]
+    host=os.getenv("PANEL_SMTP_HOST","")
     port=int(os.getenv("PANEL_SMTP_PORT","465"))
     if port not in (465,587):raise ValueError("SMTP port not allowed")
     sender=os.environ["PANEL_SMTP_FROM"]
-    username=os.environ["PANEL_SMTP_USERNAME"]
+    username=os.getenv("PANEL_SMTP_USERNAME","")
     password=os.environ["PANEL_SMTP_PASSWORD"]
     if purpose=="verify":
         subject="Seu código de confirmação — Orion"
