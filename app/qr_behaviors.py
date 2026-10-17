@@ -92,6 +92,7 @@ def catalog_question_services(value: str, catalog: list[dict], *, strict: bool =
         filler |= {"quais", "qual", "sao", "dias", "dia", "que", "tem", "ha", "disponivel", "disponiveis",
                    "para", "agendamento", "agendamentos", "horario", "horarios", "livre", "livres",
                    "amanha", "hoje", "depois", "consultar", "consulta", "quero", "queria", "estao", "esta"}
+        filler |= {"segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo", "feira", "na", "no", "pra", "proxima", "proximo"}
         remaining = re.sub(r"\b\d{1,4}\b", " ", remaining)
     if set(re.findall(r"\w+", remaining)) - filler:
         return []
@@ -101,4 +102,5 @@ def catalog_question_services(value: str, catalog: list[dict], *, strict: bool =
 def availability_question(value: str) -> bool:
     lower = norm(value)
     return bool(re.search(r"\b(?:disponive(?:l|is)|vagas?|horarios? livres|dias? livres)\b", lower)
-                or re.search(r"\b(?:quais?|tem|ha)\b.*\bhorarios?\b", lower))
+                or re.search(r"\b(?:quais?|tem|ha)\b.*\bhorarios?\b", lower)
+                or re.search(r"\bdias?\b.*\b(?:livres?|vagos?|disponiveis?)\b", lower))
