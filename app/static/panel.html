@@ -2040,7 +2040,7 @@ $("recordForm").addEventListener("submit",async ev=>{
  catch(ex){$("notice").textContent=ex.message}
 });
 
-let aiSession=crypto.randomUUID();
+let aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
 function aiBubble(content,direction){
  const wrapper=document.createElement("div");
  wrapper.className="bubble "+(direction==="in"?"incoming":"outgoing");
@@ -2066,9 +2066,9 @@ async function aiCheckStatus(){
   $("aiStatus").textContent=result.configured&&result.preview_enabled?"Prévia disponível":"Prévia ainda não configurada";
  }catch(ex){$("aiStatus").textContent=ex.message;}
 }
-$("aiTenant").addEventListener("change",async()=>{aiSession=crypto.randomUUID();$("aiMessages").replaceChildren();await aiCheckStatus()});
+$("aiTenant").addEventListener("change",async()=>{aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));$("aiMessages").replaceChildren();await aiCheckStatus()});
 $("aiReset").addEventListener("click",()=>{
- aiSession=crypto.randomUUID();$("aiMessages").replaceChildren();
+ aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));$("aiMessages").replaceChildren();
  $("aiDiagnostics").textContent="Nova conversa simulada.";
 });
 $("aiForm").addEventListener("submit",async event=>{
