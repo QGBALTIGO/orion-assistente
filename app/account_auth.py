@@ -48,7 +48,7 @@ class EmailMixin(BaseModel):
 
 class Register(EmailMixin):
     name: str = Field(min_length=2, max_length=120)
-    password: str = Field(min_length=12, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
 
     @field_validator("name")
     @classmethod
@@ -67,7 +67,7 @@ class OneTimeCode(EmailMixin):
 
 
 class ResetPassword(OneTimeCode):
-    password: str = Field(min_length=12, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
 
 
 class ClaimOwner(BaseModel):
