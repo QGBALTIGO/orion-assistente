@@ -13,3 +13,16 @@ Fluxo do WhatsApp conectado (Baileys) com consentimento de teste:
 - A chave Groq compartilhada em conversa deve ser rotacionada antes de abertura para clientes, mesmo estando em variável de ambiente.
 
 **Plano de testes:** sintaxe Python/Node, CI PostgreSQL/RLS, Docker Compose, smoke do Baileys e ASR, diálogos simulados de múltiplos turnos, teste de voz mockado e, após número válido e opt-in, fluxo real de dispositivo autorizado. Verificar preços, nomes, remarcação, múltiplos clientes e idempotência. Não declarar funcionamento perfeito sem medir entrega real.
+
+
+## Piloto de destinatário único
+Opcionalmente, configurar no *bridge* `QR_AI_PILOT_NUMBER=5521997557364` (somente número com consentimento explícito).
+Quando presente, substitui o toggle geral do chatbot **apenas para esse número**,
+mesmo que o toggle global esteja desligado. Para qualquer outro número, o bridge
+nem encaminha mensagens à IA. Configurar, adicionalmente, em **ambos** os serviços
+`QR_AI_ENABLED=1` e na **API** `QR_AI_ALLOWED_SENDERS=5521997557364`.
+O backend mantém a segunda verificação da allowlist. Para áudio, o piloto precisa
+também de `QR_AI_AUDIO_ENABLED=1` nos dois serviços; as demais
+configurações de chamada continuam intactas. **Não ativar sem antes verificar que
+o número pertence ao participante, o ambiente é demonstrativo e a CI passou.**
+O piloto somente responde depois que o participante enviar uma mensagem recente.
