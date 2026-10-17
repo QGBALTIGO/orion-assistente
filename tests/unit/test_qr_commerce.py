@@ -236,8 +236,10 @@ async def test_cancel_requires_its_own_fresh_summary_and_new_consent(backend):
     first = await turn("Quero comprar pomada")
     proposal = await turn("cancelar meu pedido", state=first["state"], message="cancel-request")
     assert proposal["step"] == "commerce_cancel_confirm" and "cancel" not in events
+    assert "_verified_operation" not in proposal
     done = await turn("pode cancelar", state=proposal["state"], message="cancel-consent")
     assert done["step"] == "commerce_cancelled" and events.count("cancel") == 1
+    assert done["_verified_operation"] is True and "_verified_operation" not in done["state"]
     assert "*Pomada*" in done["answer"] and "Pagamento não verificado" in done["answer"]
 
 
@@ -257,16 +259,44 @@ async def test_price_research_has_no_quote_or_order_or_call_to_action(backend):
 
 
 @pytest.mark.asyncio
+async def test_catalog_existence_does_not_assume_one_unit_or_change_cart(backend, catalog):
+    events, _ = backend
+    first = await turn("Vocês vendem pomada?")
+    assert "Pomada" in first["answer"] and "R$" not in first["answer"]
+    assert "não confirma disponibilidade" in first["answer"]
+    first["state"]["cart"] = [{"variant_id": str(catalog[0]["variants"][0]["id"]), "quantity": 3}]
+    again = await turn("Vendem camiseta?", state=first["state"], message="existence-next")
+    assert again["state"]["cart"] == first["state"]["cart"]
+    assert "Camiseta" in again["answer"] and "R$" not in again["answer"] and events == []
+
+
+@pytest.mark.asyncio
+async def test_superseded_write_is_not_caught_as_price_change_or_retried(backend, monkeypatch):
+    from app.qr_intake_revision import Superseded
+    calls = []
+    async def superseded(*args, **kwargs):
+        calls.append("quote")
+        raise Superseded(not_committed=True)
+    monkeypatch.setattr(store, "create_quote", superseded)
+    with pytest.raises(Superseded) as stale:
+        await turn("Quero comprar duas pomadas")
+    assert stale.value.not_committed and calls == ["quote"]
+
+
+@pytest.mark.asyncio
 async def test_order_summary_then_new_confirmation_and_duplicate_message(backend):
     events, _ = backend
     prepared = await turn("Quero comprar duas pomada")
     assert prepared["step"] == "commerce_confirm" and "confirm" not in events
+    assert "_verified_operation" not in prepared
     duplicate = await turn("CONFIRMO", state=prepared["state"], message="message-1")
     assert duplicate["answer"] == prepared["answer"] and "confirm" not in events
     done = await turn("CONFIRMO", state=prepared["state"], message="message-2")
     assert done["step"] == "commerce_confirmed" and events.count("confirm") == 1
+    assert done["_verified_operation"] is True and "_verified_operation" not in done["state"]
     duplicate_done = await turn("CONFIRMO", state=done["state"], message="message-2")
     assert duplicate_done["answer"] == done["answer"] and events.count("confirm") == 1
+    assert "_verified_operation" not in duplicate_done
 
 
 @pytest.mark.asyncio
@@ -277,6 +307,7 @@ async def test_preview_runs_estimator_but_no_persistent_actions(backend):
     assert events == ["estimate"]
     assert prepared["step"] == "commerce_preview" and done["step"] == "commerce_preview_complete"
     assert "confirmation_token" not in str(prepared["state"])
+    assert "_verified_operation" not in prepared and "_verified_operation" not in done
 
 
 @pytest.mark.asyncio

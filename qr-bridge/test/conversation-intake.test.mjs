@@ -8,6 +8,53 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function deferred(){let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};}
 function plain(id,text,extra={}){return {conversationKey:key,messageId:id,prepare:async()=>({text}),...extra};}
 
+test('notice during inference revokes the old batch and explicit zero-write ack carries text once without ASR replay',async()=>{
+  const inference=deferred(),batches=[],applied=[];let counter=0,asr=0;
+  const intake=makeConversationIntake({settleMs:0,consume:async batch=>{
+    batches.push(batch);
+    if(batches.length===1){await inference.promise;assert.equal(batch.isCurrent(),false);
+      return {state:'superseded',not_committed:true};}
+    applied.push(batch.text);
+  }});
+  const first=intake.submit({conversationKey:key,messageId:'AUDIO',notice:async()=>({revision:++counter}),
+    prepare:async()=>{asr++;return {text:'Pode confirmar quinta.'};}});
+  await tick();assert.equal(batches.length,1);
+  const second=intake.submit(plain('CORRECTION','Não confirme, melhor sexta.',{notice:async()=>({revision:++counter})}));
+  await tick();assert.equal(counter,2);assert.equal(batches[0].isCurrent(),false);
+  inference.resolve();await Promise.all([first,second]);
+  assert.deepEqual(applied,['Pode confirmar quinta.\nNão confirme, melhor sexta.']);
+  assert.deepEqual(batches[1].messages.map(x=>x.id),['AUDIO','CORRECTION']);
+  assert.equal(batches[1].intakeRevision,2);assert.equal(asr,1);assert.equal(intake.pending(),0);
+  assert.deepEqual(await intake.submit(plain('AUDIO','duplicate',{notice:async()=>{throw Error('duplicate notice');}})),{state:'duplicate'});
+});
+
+test('unknown timeout and a write-started acknowledgment never replay the old operation',async()=>{
+  for(const unknown of [true,false]){
+    const inference=deferred(),batches=[];let counter=0;
+    const intake=makeConversationIntake({settleMs:0,consume:async batch=>{
+      batches.push(batch.text);
+      if(batches.length===1){await inference.promise;if(unknown)throw Error('unknown timeout');
+        return {state:'superseded_after_write',not_committed:false};}
+    }});
+    const first=intake.submit(plain('OLD','SIM',{notice:async()=>({revision:++counter})}));
+    await tick();const second=intake.submit(plain('NEW','Melhor sexta',{notice:async()=>({revision:++counter})}));
+    await tick();inference.resolve();
+    const outcomes=await Promise.all([first,second]);
+    assert.equal(outcomes[0].state,unknown?'consume_failed':'processed');
+    assert.deepEqual(batches,['SIM','Melhor sexta']);
+  }
+});
+
+test('failed notice prevents media work and business execution; claims remain deduplicated',async()=>{
+  let notices=0,media=0,consumed=0;const rejected=[];
+  const intake=makeConversationIntake({settleMs:0,consume:async()=>{consumed++;},onRejected:async batch=>rejected.push(batch.reason)});
+  const message=plain('NOTICE-FAIL','private',{notice:async()=>{notices++;throw Error('unavailable');},
+    prepare:async()=>{media++;return {text:'speech'};}});
+  assert.deepEqual(await intake.submit(message),{state:'revision_failed'});
+  assert.deepEqual(await intake.submit(message),{state:'duplicate'});
+  assert.equal(notices,1);assert.equal(media,0);assert.equal(consumed,0);assert.deepEqual(rejected,['revision_failed']);
+});
+
 test('a correction typed during a slow audio transcript joins it before any conversation execution',async()=>{
   const speech=deferred(),calls=[],intake=makeConversationIntake({settleMs:0,consume:async batch=>calls.push(batch)});
   const first=intake.submit({conversationKey:key,messageId:'AUDIO',prepare:()=>speech.promise});

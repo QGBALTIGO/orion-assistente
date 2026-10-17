@@ -18,6 +18,7 @@ from app.qr_dialogue import contextual_response, interpret_contextual_response
 from app.qr_presentation import (render_commerce_order, render_commerce_summary, InteractionContext,
     ApprovedSuggestion, render_approved_suggestion)
 from app.qr_presentation import escape_label, fits_message
+from app.qr_commerce_information import catalog_answer, existence_query
 
 
 def enabled():
@@ -181,6 +182,10 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
                   if norm(faq["question"]).strip(" ?!.") == norm(body).strip(" ?!.")]
     if len(set(exact_faqs)) == 1:
         return finish(exact_faqs[0], "commerce_information", state, scope)
+    if existence_query(body):
+        return finish(catalog_answer(body, catalog) or
+            "Não consegui identificar uma resposta completa no catálogo ativo. Qual produto ou variante você quer consultar?",
+            "commerce_information", state, scope)
     if plan.intent == "decline" or norm(body).strip(" .!?") in {"nao", "nao quero", "deixa pra la"}:
         state.pop("pending", None)
         state.pop("requested_kind", None)
@@ -224,7 +229,7 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
             if pending["action"] == "cancel":
                 order = await store.cancel_order(scope, UUID(pending["order_id"]), revision=pending["revision"], summary_message_id=pending["summary_message_id"], validate_summary=validate)
                 state.pop("pending", None)
-                return finish(order_summary(order["quote"], preferences, kind="cancelled", order_id=str(order["id"])), "commerce_cancelled", state, scope)
+                return {**finish(order_summary(order["quote"], preferences, kind="cancelled", order_id=str(order["id"])), "commerce_cancelled", state, scope), "_verified_operation": True}
             try:
                 order = await store.confirm_order(scope, UUID(pending["order_id"]), revision=pending["revision"],
                     token=pending["token"], summary_message_id=pending["summary_message_id"], validate_summary=validate)
@@ -235,7 +240,7 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
                 return await prepare(scope, state["cart"], state, kind="order", preview=False, customer_name=customer_name,
                     preferences=preferences, prefix="Os dados precisam de uma nova revisão; o pedido anterior não foi confirmado.\n\n")
             state.pop("pending", None)
-            return finish(order_summary(order["quote"], preferences, kind="confirmed", order_id=str(order["id"])), "commerce_confirmed", state, scope)
+            return {**finish(order_summary(order["quote"], preferences, kind="confirmed", order_id=str(order["id"])), "commerce_confirmed", state, scope), "_verified_operation": True}
         if plan.intent in {"cancel", "status"}:
             if preview:
                 return finish("A simulação não consulta nem modifica pedidos reais de clientes.", "commerce_preview", state, scope)

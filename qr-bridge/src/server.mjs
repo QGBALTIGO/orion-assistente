@@ -25,7 +25,7 @@ import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-h
 import {makeConnectedStore} from "./connected-store.mjs";
 import {transcriberConfig,cleanPictureUrl,transcribeAudio,handleCallOffers} from "./connected-features.mjs";
 import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
-import {forwardAssistant} from "./ai-forward.mjs";
+import {forwardAssistant,registerAssistantIngress} from "./ai-forward.mjs";
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
 import {deliveryPolicy} from "./pilot-send-policy.mjs";
 import {resolvePilotRecipient,makePilotDeviceCache} from "./pilot-recipient.mjs";
@@ -275,6 +275,8 @@ function installListeners(client,mine,saveCreds){
     return raw!==undefined&&Number.isSafeInteger(value)&&value>=0&&value<=max?value:fallback;
   };
   const settleMs=groupSetting('QR_AI_GROUP_WAIT_MS',350,2000);
+  const revisionEnabled=process.env.QR_AI_INTAKE_REVISION_ENABLED==='1';
+  const summaryReviewRequired=new Map();
   const inboundIntake=makeConversationIntake({
     settleMs,maxGroupMs:Math.max(settleMs,groupSetting('QR_AI_GROUP_MAX_WAIT_MS',1200,5000)),
     isDuplicate:({messageId})=>seen.has('wa:'+messageId),
@@ -286,7 +288,8 @@ function installListeners(client,mine,saveCreds){
       const current=()=>intakeCurrent()&&batch.isCurrent()&&!!phone&&
         entries.every(item=>item.phone===phone)&&allowAssistantRecipient(phone,connectedStore.settings());
       if(!current())return;
-      const answer=batch.reason==='needs_clarification'?
+      const answer=batch.reason==='revision_failed'?
+        'Não consegui validar a sequência das mensagens agora. Pode reenviar o pedido completo com a correção em uma mensagem?':batch.reason==='needs_clarification'?
         'Recebi informações demais de uma vez para interpretar com segurança. Pode resumir o pedido e a correção em uma mensagem mais curta?':
         'Não consegui entender bem esse áudio. Pode mandar novamente, com até dois minutos, ou escrever só o serviço e o horário que procura?';
       // One explanatory attempt for the complete rejected batch; never replay an operation.
@@ -302,15 +305,22 @@ function installListeners(client,mine,saveCreds){
       transport.record('ai_forward',traceId,{count:batch.messages.length});
       let answer;
       try{answer=await forwardAssistant({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
-        messageId:traceId,messageIds:batch.messages.map(item=>item.id),text:batch.text});}
-      catch(error){transport.record('ai_forward_failed',traceId);throw error;}
+        messageId:traceId,messageIds:batch.messages.map(item=>item.id),text:batch.text,intakeRevision:batch.intakeRevision,
+        requireSummaryReview:revisionEnabled?summaryReviewRequired.get(phone)!==false:undefined});}
+      catch(error){if(revisionEnabled)summaryReviewRequired.set(phone,true);transport.record('ai_forward_failed',traceId);throw error;}
+      if(answer?.state==='superseded'&&answer?.not_committed===true){
+        if(revisionEnabled)summaryReviewRequired.set(phone,true);return answer;
+      }
+      if(!current()){
+        if(revisionEnabled)summaryReviewRequired.set(phone,true);return;
+      }
       if(!answer){transport.record('ai_silent',traceId);return;}
       transport.record('ai_answer',traceId);
-      if(!current())return;
       try{
         const sent=await send(phone,answer,{waitForCapacity:true,isCurrent:current});
+        if(revisionEnabled)summaryReviewRequired.set(phone,!sent?.accepted||!current());
         transport.record(sent?.accepted?'ai_relay_returned':'ai_send_unconfirmed',traceId);
-      }catch(error){transport.record('ai_send_failed',traceId);throw error;}
+      }catch(error){if(revisionEnabled)summaryReviewRequired.set(phone,true);transport.record('ai_send_failed',traceId);throw error;}
     }
   });
   client.ev.on("messages.upsert",async ({messages:incoming,type})=>{
@@ -336,14 +346,28 @@ function installListeners(client,mine,saveCreds){
       const metadata={allowed:false,phone:null};
       const current=()=>intakeCurrent()&&(!metadata.allowed||
         allowAssistantRecipient(metadata.phone,connectedStore.settings()));
+      let identityTask;
+      const resolveIdentity=()=>identityTask||=(async()=>{
+        const phone=await resolveMessagePhone(message.key,client);
+        if(!current())return null;
+        if(!phone){transport.record('inbound_unresolved',traceId);return null;}
+        metadata.phone=phone;metadata.allowed=allowAssistantRecipient(phone,connectedStore.settings());
+        inboundMetadata.set(traceId,metadata);
+        transport.record('inbound_resolved',traceId);
+        return phone;
+      })();
       const task=inboundIntake.submit({conversationKey,messageId:traceId,isCurrent:current,
+        ...(revisionEnabled?{notice:async()=>{
+          const phone=await resolveIdentity();
+          if(!phone||!current()||!metadata.allowed)return {skip:true};
+          const body=extractText(message.message),media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
+          if(!body&&(!media||!assistantAudioEnabled()||!allowAssistantAudio(phone,connectedStore.settings())))return {skip:true};
+          return registerAssistantIngress({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,messageId:traceId});
+        }}:{}),
         prepare:async({signal})=>{
-          const phone=await resolveMessagePhone(message.key,client);
+          const phone=await resolveIdentity();
           if(!current()||signal.aborted)return {skip:true};
-          if(!phone){transport.record('inbound_unresolved',traceId);return {skip:true};}
-          metadata.phone=phone;metadata.allowed=allowAssistantRecipient(phone,connectedStore.settings());
-          inboundMetadata.set(traceId,metadata);
-          transport.record('inbound_resolved',traceId);
+          if(!phone)return {skip:true};
           let body=extractText(message.message);
           const media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
           if(!body&&!media){transport.record('inbound_no_text',traceId);return {skip:true};}

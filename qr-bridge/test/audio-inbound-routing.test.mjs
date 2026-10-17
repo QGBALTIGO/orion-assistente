@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {extractText,resolveMessagePhone} from '../src/core.mjs';
 import {shouldIngestUpsert,timestampMs} from '../src/linked-session-health.mjs';
-import {forwardAssistant} from '../src/ai-forward.mjs';
+import {forwardAssistant,registerAssistantIngress} from '../src/ai-forward.mjs';
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from '../src/ai-pilot.mjs';
 import {makeConversationIntake} from '../src/conversation-intake.mjs';
 import {transcribeAssistantAudio} from '../src/ai-audio.mjs';
@@ -20,11 +20,13 @@ const phone='5511999999999';
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 
-function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answer=null,realAudio=false}={}){
+function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answer=null,realAudio=false,
+  revisionEnabled=false,forwardResponse,sendResponse}={}){
   let listener,transcriptions=0,downloads=0;
-  const forwarded=[],inbox=[],sent=[],events=[],queues=new Map(),seen=new Set();
+  const forwarded=[],inbox=[],sent=[],events=[],queues=new Map(),seen=new Set(),notices=[];
   const env={QR_AI_ENABLED:'1',QR_AI_AUDIO_ENABLED:audioEnabled?'1':'0',QR_AI_GROUP_WAIT_MS:'0',
     QR_AI_PILOT_NUMBER:phone,QR_AI_API_URL:'http://orion-assistente.railway.internal/internal/qr/ai/reply'};
+  if(revisionEnabled)env.QR_AI_INTAKE_REVISION_ENABLED='1';
   const client={ev:{on(event,callback){assert.equal(event,'messages.upsert');listener=callback;}}};
   const context=vm.createContext({client,socket:client,mine:1,generation:1,status:'connected',
     extractText,resolveMessagePhone,shouldIngestUpsert,timestampMs,makeConversationIntake,
@@ -46,10 +48,16 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     pushMessage:row=>{inbox.push(row);seen.add(row.id);},lastInboundAt:0,inboundSinceConnect:false,recentAppends:0,
     assistantQueues:queues,KEY:'x'.repeat(32),process:{env},Date,
     send:async(p,text,options)=>{
-      assert.equal(p,phone);assert.equal(options.isCurrent(),true);sent.push(text);return {accepted:true};
+      assert.equal(p,phone);assert.equal(options.isCurrent(),true);
+      const result=sendResponse?await sendResponse(text,options):{accepted:true};
+      if(result?.accepted)sent.push(text);return result;
     },
+    registerAssistantIngress:args=>registerAssistantIngress({...args,fetchImpl:async(_url,options)=>{
+      notices.push(JSON.parse(options.body));return {ok:true,json:async()=>({revision:notices.length})};
+    }}),
     forwardAssistant:args=>forwardAssistant({...args,fetchImpl:async(_url,options)=>{
-      forwarded.push(JSON.parse(options.body));return {ok:true,json:async()=>({answer})};
+      const payload=JSON.parse(options.body);forwarded.push(payload);
+      return {ok:true,json:async()=>forwardResponse?forwardResponse(payload,forwarded.length):({answer})};
     }}),console:{info(){},warn(){}}
   });
   vm.runInContext(handlerSource,context);
@@ -57,7 +65,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     key:{id,remoteJid:remote,...(senderPn?{senderPn}:{})},messageTimestamp:Math.floor(Date.now()/1000),
     message:text===undefined?{audioMessage:{fileLength,seconds}}:{conversation:text}
   });
-  return {context,env,forwarded,inbox,sent,events,message,
+  return {context,env,forwarded,inbox,sent,events,message,notices,
     emit:messages=>listener({type:'notify',messages}),
     get transcriptions(){return transcriptions;},get downloads(){return downloads;}};
 }
@@ -70,6 +78,54 @@ test('voice transcript marker stays in inbox; AI receives only actual words',asy
   assert.equal(h.inbox[0].body,'[Áudio transcrito] '+transcript);
   assert.equal(h.forwarded.length,1);assert.equal(h.forwarded[0].text,transcript);
   assert.equal(h.forwarded[0].phone,phone);assert.equal(h.forwarded[0].message_ids,undefined);
+});
+
+test('real handler registers correction during inference and carries it once after explicit non-commit',async()=>{
+  const gate=deferred();
+  const h=harness({revisionEnabled:true,transcribe:async()=> 'Quero corte quinta às 15h',
+    forwardResponse:async(_payload,number)=>{
+      if(number===1){await gate.promise;return {answer:null,step:'superseded',not_committed:true};}
+      return {answer:'Resumo corrigido para sexta, ainda não confirmado.'};
+    }});
+  const first=h.emit([h.message('VOICE')]);await tick();
+  assert.equal(h.forwarded.length,1);assert.equal(h.notices.length,1);
+  const second=h.emit([h.message('LATE',{text:'Não quinta, melhor sexta.'})]);await tick();
+  assert.equal(h.notices.length,2);assert.equal(h.forwarded.length,1);
+  gate.resolve();await Promise.all([first,second]);
+  assert.equal(h.transcriptions,1);assert.equal(h.forwarded.length,2);
+  assert.equal(h.forwarded[1].text,'Quero corte quinta às 15h\nNão quinta, melhor sexta.');
+  assert.deepEqual(h.forwarded[1].message_ids,['VOICE','LATE']);assert.equal(h.forwarded[1].intake_revision,2);
+  assert.equal(h.forwarded[1].require_summary_review,true);
+  assert.deepEqual(h.sent,['Resumo corrigido para sexta, ainda não confirmado.']);
+  await h.emit([h.message('AFTER',{text:'Pode confirmar'})]);
+  assert.equal(h.forwarded[2].require_summary_review,false);
+});
+
+test('suppressed summary requires review on next turn, with no replay after a known write',async()=>{
+  const gate=deferred();
+  const h=harness({revisionEnabled:true,forwardResponse:async(_payload,number)=>{
+    if(number===1){await gate.promise;return {answer:'Resumo que não foi enviado'};}
+    return {answer:'Preciso reapresentar o resumo antes de confirmar.'};
+  }});
+  const first=h.emit([h.message('OLD-SUMMARY',{text:'Quero corte'})]);await tick();
+  const second=h.emit([h.message('EARLY-SIM',{text:'SIM'})]);await tick();
+  gate.resolve();await Promise.all([first,second]);
+  assert.deepEqual(h.forwarded.map(x=>x.text),['Quero corte','SIM']);
+  assert.equal(h.forwarded[1].require_summary_review,true);
+  assert.deepEqual(h.sent,['Preciso reapresentar o resumo antes de confirmar.']);
+});
+
+test('unknown forward and unaccepted relay keep review sticky and never repeat the request',async()=>{
+  for(const failForward of [true,false]){
+    let sends=0;
+    const h=harness({revisionEnabled:true,forwardResponse:async(_body,number)=>{
+      if(number===1&&failForward)throw Error('unknown response');return {answer:'Resumo'};
+    },sendResponse:async()=>({accepted:++sends>1})});
+    await h.emit([h.message('UNCERTAIN',{text:'Quero corte'})]);
+    await h.emit([h.message('NEW-TURN',{text:'SIM'})]);
+    assert.deepEqual(h.forwarded.map(x=>x.message_id),['UNCERTAIN','NEW-TURN']);
+    assert.equal(h.forwarded[1].require_summary_review,true);
+  }
 });
 
 test('typed marker is preserved and disabled audio never reaches ASR or AI',async()=>{

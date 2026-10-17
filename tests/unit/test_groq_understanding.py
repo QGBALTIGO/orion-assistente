@@ -54,10 +54,48 @@ async def test_strict_plan_constrains_all_ids_and_forwards_no_facts_credentials_
 def test_empty_catalog_schema_has_no_permitted_identifier_and_all_fields_remain_required():
     schema = plan_schema([], [], [])
     props = schema["properties"]
-    assert props["service_ids"]["items"] == {"type": "null"}
-    assert props["professional_id"] == {"type": "null"}
-    assert props["faq_ids"]["items"] == {"type": "null"}
-    assert set(schema["required"]) == set(UnderstandingPlan.model_fields)
+    unavailable = {"service_ids", "query_service_ids", "declined_service_ids", "professional_id", "faq_ids"}
+    assert not unavailable & set(props)
+    assert set(schema["required"]) == set(props) == set(UnderstandingPlan.model_fields) - unavailable
+    assert schema["additionalProperties"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model", ["openai/gpt-oss-20b", "openai/gpt-oss-120b"])
+async def test_booking_with_no_faqs_uses_backend_empty_default_and_valid_service_ids(model):
+    cut, beard, pro = uuid4(), uuid4(), uuid4()
+    expected = UnderstandingPlan(intents=["booking"], selection_mode="replace", service_ids=[cut, beard])
+    calls = []
+    def provider(request):
+        payload = json.loads(request.content)
+        contract = payload["response_format"]["json_schema"]
+        schema = contract["schema"]
+        assert contract["strict"] is True
+        assert "faq_ids" not in schema["properties"] and "faq_ids" not in schema["required"]
+        assert schema["properties"]["service_ids"]["items"]["enum"] == [str(cut), str(beard)]
+        assert schema["properties"]["professional_id"]["enum"] == [str(pro), None]
+        assert set(schema["required"]) == set(schema["properties"])
+        result = {name: value for name, value in expected.model_dump(mode="json").items() if name in schema["properties"]}
+        assert set(result) == set(schema["required"])
+        calls.append(True)
+        return reply(result)
+    result = await interpret_plan(message="Quero cabelo e barba.", catalog=[{"id": cut, "name": "Corte"}, {"id": beard, "name": "Barba"}],
+        professionals=[{"id": pro, "name": "Alex"}], faqs=[], key="synthetic", model=model,
+        transport=httpx.MockTransport(provider))
+    assert result.service_ids == [cut, beard] and result.faq_ids == []
+    assert result.selection_mode == "replace" and result.intents == ["booking"]
+    assert calls == [True]
+
+
+def test_only_unavailable_identifier_properties_are_omitted():
+    sid, pid = uuid4(), uuid4()
+    schema = plan_schema([{"id": sid}], [], [{"id": "faq-0"}])
+    assert "professional_id" not in schema["properties"]
+    assert schema["properties"]["faq_ids"]["items"]["enum"] == ["faq-0"]
+    assert schema["properties"]["service_ids"]["items"]["enum"] == [str(sid)]
+    schema = plan_schema([], [{"id": pid}], [])
+    assert schema["properties"]["professional_id"]["enum"] == [str(pid), None]
+    assert all(name not in schema["properties"] for name in ("service_ids", "query_service_ids", "declined_service_ids", "faq_ids"))
 
 
 @pytest.mark.asyncio
@@ -122,3 +160,53 @@ async def test_unstructured_or_foreign_context_is_rejected_before_provider(conte
         await interpret_plan(message="Quero barba", catalog=[], context=context,
             key="synthetic", model="openai/gpt-oss-120b", transport=httpx.MockTransport(never))
     assert error.value.status == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("patch,location,shape", [
+    ({"faq_ids": [None]}, "faq_ids.item", "array_with_null"),
+    ({"service_ids": [None]}, "service_ids.item", "array_with_null"),
+    ({"requested_date": ""}, "requested_date", "empty_string"),
+    ({"requested_time": ""}, "requested_time", "empty_string"),
+    ({"customer_name": ""}, "customer_name", "empty_string"),
+    ({"PRIVATE_EXTRA_FIELD": "PRIVATE_CONTENT"}, "unknown_field", None),
+])
+async def test_invalid_payloads_remain_fail_closed_with_sanitized_field_metadata(patch, location, shape, caplog):
+    data = UnderstandingPlan(intents=["booking"]).model_dump(mode="json")
+    data.update(patch)
+    calls = []
+    def provider(_):
+        calls.append(True)
+        return reply(data)
+    with pytest.raises(GroqServiceError) as error:
+        await interpret_plan(message="PRIVATE_CUSTOMER_MESSAGE", catalog=[], key="PRIVATE_TOKEN", model="openai/gpt-oss-120b",
+            transport=httpx.MockTransport(provider))
+    assert error.value.status == 502 and calls == [True]
+    assert '"schema":"understanding_v2"' in caplog.text
+    assert '"phase":"validation"' in caplog.text
+    assert f'"loc":"{location}"' in caplog.text
+    if shape:
+        assert shape in caplog.text
+    assert "PRIVATE" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_out_of_catalog_ids_fail_guard_without_logging_identifier_or_message(caplog):
+    outside = str(uuid4())
+    data = UnderstandingPlan(intents=["booking"]).model_dump(mode="json")
+    data["service_ids"] = [outside]
+    with pytest.raises(GroqServiceError):
+        await interpret_plan(message="PRIVATE_OPERATION", catalog=[], key="PRIVATE_TOKEN", model="openai/gpt-oss-120b",
+            transport=httpx.MockTransport(lambda _: reply(data)))
+    assert '"phase":"catalog_guard"' in caplog.text and '"error":"ValueError"' in caplog.text
+    assert outside not in caplog.text and "PRIVATE" not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", ["PRIVATE_BROKEN_JSON", json.dumps("PRIVATE_STRING_ROOT")])
+async def test_json_or_root_shape_failure_logs_no_model_content(body, caplog):
+    with pytest.raises(GroqServiceError):
+        await interpret_plan(message="PRIVATE_INPUT", catalog=[], key="PRIVATE_KEY", model="openai/gpt-oss-120b",
+            transport=httpx.MockTransport(lambda _: httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": body}}]})))
+    assert "understanding_invalid finish=stop" in caplog.text
+    assert "PRIVATE" not in caplog.text
