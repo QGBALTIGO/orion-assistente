@@ -26,7 +26,7 @@ import {forwardAssistant} from "./ai-forward.mjs";
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
 import {deliveryPolicy} from "./pilot-send-policy.mjs";
 import {transcribeAssistantAudio} from "./ai-audio.mjs";
-import {makeTransportDiagnostics} from "./transport-diagnostics.mjs";
+import {makeTransportDiagnostics,receiptDiagnosticDetails,usyncDeviceDomainCounts} from "./transport-diagnostics.mjs";
 import {backupAuth} from "./auth-backup.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
@@ -148,7 +148,9 @@ function stats(){
     connectionNotice:process.env.ORION_NOTIFY_SELF_ON_LINK==="1" ? noticeState(authDir) : "disabled",
     deliveryDiagnostics:{...retryDiagnostics},
     transportDiagnostics:transport.snapshot(),
-    transportVersion:"diagnostics-v1",
+    transportVersion:"diagnostics-v2",
+    buildCommit:/^[a-f0-9]{40}$/.test(process.env.RAILWAY_GIT_COMMIT_SHA||'')?
+      process.env.RAILWAY_GIT_COMMIT_SHA:null,
     authBackup,
     transportConfig:{reliable:process.env.QR_RELIABLE_SEND_V2==="1",
       freshDevices:process.env.QR_FORCE_FRESH_DEVICES==="1",
@@ -204,8 +206,14 @@ function installListeners(client,mine,saveCreds){
   });
   client.ws.on('CB:receipt',node=>{
     if(mine!==generation)return;
-    transport.record('socket_receipt',node.attrs?.id,{type:node.attrs?.type||'delivery'});
+    transport.record('socket_receipt',node.attrs?.id,{
+      type:node.attrs?.type||'delivery',...receiptDiagnosticDetails(node,client.user)});
     if(node.attrs?.type==='retry'&&node.attrs?.id)countRetryRequest(node.attrs.id);
+  });
+  client.ws.on('CB:iq,,usync',node=>{
+    if(mine!==generation)return;
+    const domains=usyncDeviceDomainCounts(node);
+    if(domains)transport.record('usync_device_domains',node.attrs?.id,domains);
   });
   // WhatsApp often requests reconnect right after a successful pair (515).
   // Persist auth state before starting the replacement socket.
