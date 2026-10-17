@@ -64,9 +64,16 @@ async def test_verified_account_separation_recovery_owner_claim(monkeypatch):
         assert (await c.post("/auth/login",json={
             "username":address,"password":registration["password"]},headers=h)).status_code==401
         wrong="000000" if mail[-1][2]!="000000" else "000001"
-        bad_verify=await c.post("/auth/verify",json={
-            "email":address,"code":wrong},headers=h)
-        assert bad_verify.status_code==400
+        first_code=mail[-1][2]
+        for _ in range(5):
+            bad_verify=await c.post("/auth/verify",json={
+                "email":address,"code":wrong},headers=h)
+            assert bad_verify.status_code==400
+        assert (await c.post("/auth/verify",json={
+            "email":address,"code":first_code},headers=h)).status_code==400
+        resent=await c.post("/auth/verify/resend",json={"email":address},headers=h)
+        assert resent.status_code==200
+        assert mail[-1][2]!=first_code
         verified=await c.post("/auth/verify",json={"email":address,"code":mail[-1][2]},headers=h)
         assert verified.status_code==200,verified.text
         assert (await c.post("/auth/verify/resend",json={"email":address},headers=h)).status_code==200
