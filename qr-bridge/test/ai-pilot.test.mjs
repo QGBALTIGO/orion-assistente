@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import {test} from "node:test";
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "../src/ai-pilot.mjs";
 
-const phone="5521997557364";
-const other="5567999999999";
+const phone="5567999999999";
+const other="5511999999999";
 const env={QR_AI_ENABLED:"1",QR_AI_AUDIO_ENABLED:"1",
   QR_AI_PILOT_NUMBER:phone,
   QR_AI_API_URL:"http://orion-assistente.railway.internal:8080/internal/qr/ai/reply"};
@@ -20,7 +20,7 @@ test("pilot cannot run without explicit opt-in and endpoint",()=>{
   assert.equal(allowAssistantAudio(phone,{chatbot:true},{...env,QR_AI_AUDIO_ENABLED:"0"}),false);
 });
 test("invalid pilot number fails closed, even with global chatbot enabled",()=>{
-  const invalid={...env,QR_AI_PILOT_NUMBER:"552199755364"};
+  const invalid={...env,QR_AI_PILOT_NUMBER:"556799999999"};
   assert.equal(pilotNumber(invalid),null);
   assert.equal(allowAssistantRecipient(phone,{chatbot:true},invalid),false);
   assert.equal(allowAssistantAudio(phone,{chatbot:true,transcription:true},invalid),false);

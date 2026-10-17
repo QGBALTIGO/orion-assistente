@@ -16,11 +16,11 @@ Fluxo do WhatsApp conectado (Baileys) com consentimento de teste:
 
 
 ## Piloto de destinatário único
-Opcionalmente, configurar no *bridge* `QR_AI_PILOT_NUMBER=5521997557364` (somente número com consentimento explícito).
+Opcionalmente, configurar no *bridge* `QR_AI_PILOT_NUMBER=55DD9XXXXXXXX` (somente número com consentimento explícito).
 Quando presente, substitui o toggle geral do chatbot **apenas para esse número**,
 mesmo que o toggle global esteja desligado. Para qualquer outro número, o bridge
 nem encaminha mensagens à IA. Configurar, adicionalmente, em **ambos** os serviços
-`QR_AI_ENABLED=1` e na **API** `QR_AI_ALLOWED_SENDERS=5521997557364`.
+`QR_AI_ENABLED=1` e na **API** `QR_AI_ALLOWED_SENDERS=55DD9XXXXXXXX`.
 O backend mantém a segunda verificação da allowlist. Para áudio, o piloto precisa
 também de `QR_AI_AUDIO_ENABLED=1` nos dois serviços; as demais
 configurações de chamada continuam intactas. **Não ativar sem antes verificar que
