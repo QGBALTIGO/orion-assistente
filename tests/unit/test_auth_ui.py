@@ -99,17 +99,18 @@ def test_desktop_login_occupies_exactly_two_viewport_halves():
     assert "@media(max-width:900px)" in html
 
 
-def test_email_code_confirmation_and_recovery_forms():
+def test_signup_is_immediate_and_otp_is_only_for_recovery():
     html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
-    for identity in ("verifyForm","verifyCode","verifyEmail","authResendCode",
-                     "resetEmail","resetCode","authSubmitVerify"):
+    for identity in ("registerForm","resetEmail","resetCode","forgotForm"):
         assert f'id="{identity}"' in html
-    for route in ('"/auth/verify"','"/auth/verify/resend"',
-                  '"/auth/password/forgot"','"/auth/password/reset"'):
+    for identity in ("verifyForm","authSubmitVerify","authResendCode"):
+        assert f'id="{identity}"' not in html
+    for route in ('"/auth/register"','"/auth/password/forgot"','"/auth/password/reset"'):
         assert route in html
     assert 'autocomplete="one-time-code"' in html
     assert 'pattern="[0-9]{6}"' in html
-    assert "Digite o código" in html
+    assert 'Conta criada' in html
+    assert 'authScreenShow("verify")' not in html
     assert 'token:resetToken' not in html
     assert 'Enviaremos um link seguro' not in html
 

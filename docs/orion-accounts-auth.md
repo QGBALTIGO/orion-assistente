@@ -1,3 +1,24 @@
+## Cadastro imediato sem confirmação de e-mail (revisão)
+
+O cadastro cria uma conta `member` imediatamente no PostgreSQL com
+nome, e-mail e hash Argon2id da senha, retornando ao formulário Entrar.
+Não envia código nem requer SMTP; a recuperação de senha é o único
+fluxo novo que envia código de 6 dígitos. Configuração do cadastro:
+`PANEL_REGISTRATION_ENABLED=1`, **somente depois** das migrations.
+
+Como o endereço não foi comprovado no cadastro, uma conta criada
+com endereço de outra pessoa não representa comprovação de posse do
+e-mail. Ela não recebe papel `admin` e não acessa WhatsApp/recursos
+privilegiados. A prova por e-mail ocorre apenas se o usuário solicitar
+recuperação e efetivamente inserir o código recebido; essa operação
+também invalida sessões antigas.
+
+Em modo de teste do Resend (`PANEL_TEST_MODE=1`), qualquer pessoa
+pode criar uma conta comum se o cadastro estiver habilitado, mas
+recuperação de senha só envia código a `PANEL_TEST_EMAIL`.
+**Não prometer recuperação aos demais usuários antes de verificar
+o domínio remetente.** A interface informa a restrição do piloto.
+
 # Autenticação Orion 2.0 — cadastro, e-mail, senha e permissões
 
 ## Experiência visual
@@ -19,14 +40,14 @@ A mudança Entrar/Criar conta/Esqueci senha usa animação leve; usuários com
   Não concede acesso ao WhatsApp, cadastros de clientes ou ferramentas internas.
 - **Confirmação de e-mail**: código randômico criptograficamente forte;
   grava apenas HMAC-SHA256 no PostgreSQL; expira em 10 minutos e pode ser usado uma vez.
-  A conta só pode logar depois dessa confirmação.
+  A conta pode logar imediatamente, sem essa confirmação.
 - **Senha**: hash Argon2id; redefinição com código expirando em 10 min e
   uso único. Um reset invalida todas as sessões da conta pela versão no banco.
 - **Lembrar de mim**: 30 dias quando marcado; 12h caso contrário.
   Cookies `__Host-`, `Secure`, `HttpOnly` e `SameSite=Strict`.
 - **Administrador proprietário**: o e-mail reservado é configurado apenas na
   variável `PANEL_OWNER_EMAIL`. O cadastro inicial **nunca** promove ninguém
-  automaticamente. Após provar posse do e-mail com link de confirmação,
+  automaticamente. Após provar posse do e-mail com o código de recuperação,
   a pessoa deve entrar e comprovar também a senha administrativa legada
   na tela de vinculação de permissões. A sessão anterior é invalidada após
   a promoção; é necessário login novamente.
@@ -146,3 +167,42 @@ Enquanto as variáveis não estiverem configuradas, os endpoints
 `/auth/features` reportam `registration=false` e
 `passwordRecovery=false`; nada é enviado e o acesso de suporte
 existente é preservado.
+
+
+## Railway Free/Hobby: envio somente por HTTPS
+
+Conforme a documentação oficial da Railway, SMTP de saída nas portas
+25/465/587 não está disponível nos planos Free, Trial e Hobby. Portanto,
+a implementação mais recente suporta Resend diretamente pela API HTTPS
+(porta 443), que não depende de upgrade da Railway.
+
+```text
+PANEL_EMAIL_TRANSPORT=resend_https
+PANEL_SMTP_PASSWORD=<chave Resend já armazenada na Railway>
+PANEL_SMTP_FROM=Orion <onboarding@resend.dev>
+PANEL_EMAIL_ENABLED=1
+PANEL_TEST_MODE=1
+PANEL_TEST_EMAIL=<o endereço do proprietário da conta Resend>
+PANEL_REGISTRATION_ENABLED=0
+PANEL_OTP_SECRET=<segredo criptográfico estável>
+```
+
+A variável antiga `PANEL_SMTP_PASSWORD` contém a chave da API Resend e
+é reaproveitada para a chamada HTTPS. Não é necessário criar, duplicar
+ou divulgar essa chave. O modo de testes restringe cadastro, reenvio e
+recuperação ao destinatário autorizado, **mesmo se** uma flag de cadastro
+público for habilitada acidentalmente. Usuários comuns continuam bloqueados
+até haver domínio verificado.
+
+O script `python -m scripts.preflight_account_email` confere a
+presença das tabelas e do contador de tentativas sem expor conteúdo,
+dados de usuário ou senhas. `ORION_EMAIL_DELIVERY_PROBE=1` autoriza,
+somente na implantação que a flag estiver ativa, uma mensagem de
+diagnóstico sem código para `PANEL_TEST_EMAIL`, via HTTPS. Resposta
+HTTP 200 confirma que o Resend aceitou a mensagem, não que o Gmail a
+entregou. Desabilite a flag depois de um único teste e confirme caixa
+de entrada ou eventos do Resend.
+
+A migração de banco ainda deve ser realizada por credenciais de
+`app_migrator` e verificada antes da ativação da interface. Nenhum
+teste de SMTP é equivalente a uma migração de esquema.

@@ -567,20 +567,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
           <input id="registerConfirm" type="password" autocomplete="new-password" minlength="12" required placeholder="Digite a senha novamente">
           <button id="authSubmitRegister" class="auth-primary" type="submit">Criar minha conta <span aria-hidden="true">→</span></button>
           <p id="registerError" class="auth-error" role="alert" aria-live="polite"></p>
-          <p class="auth-hint" id="registrationHint">Um e-mail de confirmação será enviado para ativar sua conta.</p>
-        </form>
-        <form id="verifyForm" class="auth-form hidden">
-          <h3>Confirme seu e-mail</h3>
-          <p>Enviamos um código de seis dígitos. Ele vale por 10 minutos.</p>
-          <label for="verifyEmail">E-mail cadastrado</label>
-          <input id="verifyEmail" type="email" autocomplete="email" required readonly>
-          <label for="verifyCode">Código de confirmação</label>
-          <input id="verifyCode" class="auth-otp-input" type="text" inputmode="numeric" autocomplete="one-time-code"
-            pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="000000" required>
-          <button id="authSubmitVerify" class="auth-primary" type="submit">Confirmar meu e-mail</button>
-          <button id="authResendCode" class="auth-text-link auth-back" type="button">Reenviar código</button>
-          <button class="auth-text-link auth-back" type="button" data-back-login>Voltar para entrar</button>
-          <p id="verifyError" class="auth-error" role="alert" aria-live="polite"></p>
+          <p class="auth-hint" id="registrationHint">Sua conta fica pronta assim que concluir o cadastro.</p>
         </form>
         <form id="forgotForm" class="auth-form hidden">
           <h3>Recuperar senha</h3>
@@ -619,8 +606,8 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
       <source media="(prefers-color-scheme: light)" srcset="/brand/orion-brand-light.svg">
       <img src="/brand/orion-brand-dark.svg" width="195" height="70" alt="Orion">
     </picture>
-    <h1>Conta confirmada</h1>
-    <p>Seu acesso foi criado. Os recursos operacionais são liberados de acordo com as permissões da conta.</p>
+    <h1>Conta criada</h1>
+    <p>Seu acesso está pronto. Os recursos disponíveis dependem das permissões da sua conta.</p>
     <form id="ownerClaimForm" class="auth-form">
       <h2>Já administra o Orion?</h2>
       <p>Use a senha administrativa anterior para vincular seu perfil verificado.</p>
@@ -988,22 +975,22 @@ async function api(url,method="GET",data){
  }
  return response.json();
 }
-let authScreen="login",loginRole="support",lastVerificationEmail="";
+let authScreen="login",loginRole="support";
 function messageAuth(text){
  const element=$("authGlobalMessage");
  element.textContent=text||"";element.classList.toggle("hidden",!text);
 }
 function authScreenShow(screen){
- if(!["login","register","verify","forgot","reset"].includes(screen))return;
+ if(!["login","register","forgot","reset"].includes(screen))return;
  authScreen=screen;
- const formIds={login:"loginForm",register:"registerForm",verify:"verifyForm",forgot:"forgotForm",reset:"resetForm"};
+ const formIds={login:"loginForm",register:"registerForm",forgot:"forgotForm",reset:"resetForm"};
  for(const [key,id] of Object.entries(formIds))$(id).classList.toggle("hidden",screen!==key);
- $("authTabs").classList.toggle("hidden",screen==="verify"||screen==="forgot"||screen==="reset");
+ $("authTabs").classList.toggle("hidden",screen==="forgot"||screen==="reset");
  for(const [button,selected] of [["authTabLogin",screen==="login"],["authTabRegister",screen==="register"]]){
    $(button).classList.toggle("active",selected);
    $(button).setAttribute("aria-selected",String(selected));
  }
- for(const id of ["loginError","registerError","verifyError","forgotError","resetError"]){$(id).textContent=""}
+ for(const id of ["loginError","registerError","forgotError","resetError"]){$(id).textContent=""}
  messageAuth("");
 }
 function showLogin(){
@@ -1042,8 +1029,10 @@ async function authFeatures(){
   const available=await result.json();
   $("authSubmitRegister").disabled=!available.registration;
   $("registrationHint").textContent=available.registration?
-    "Enviaremos um código de 6 dígitos válido por 10 minutos.":
-    "Novos cadastros estarão disponíveis após configurar o envio de e-mails.";
+    (available.testMode?
+      "A conta é criada imediatamente. Recuperação de senha em teste somente para o e-mail autorizado.":
+      "A conta fica disponível imediatamente, sem confirmação por e-mail.") :
+    "Cadastro temporariamente indisponível.";
   $("authSubmitForgot").disabled=!available.passwordRecovery;
   if(!available.passwordRecovery)
     $("forgotError").textContent="Recuperação indisponível até configurar o envio de e-mails.";
@@ -1091,38 +1080,13 @@ $("registerForm").addEventListener("submit",async event=>{
     password:$("registerPassword").value
   });
   $("registerPassword").value="";$("registerConfirm").value="";
-  lastVerificationEmail=$("registerEmail").value.trim().toLowerCase();
-  authScreenShow("verify");
-  $("verifyEmail").value=lastVerificationEmail;
-  $("verifyCode").focus();
-  messageAuth(result.message||"Digite o código enviado ao seu e-mail.");
+  const registeredEmail=$("registerEmail").value.trim().toLowerCase();
+  authScreenShow("login");
+  $("username").value=registeredEmail;
+  $("password").focus();
+  messageAuth(result.message||"Conta criada. Faça login com seu e-mail e senha.");
  }catch(error){$("registerError").textContent=error.message}
  finally{button.disabled=false;await authFeatures()}
-});
-$("verifyForm").addEventListener("submit",async event=>{
- event.preventDefault();$("verifyError").textContent="";
- const button=$("authSubmitVerify");button.disabled=true;
- try{
-  const result=await publicAuth("/auth/verify",{
-   email:$("verifyEmail").value,code:$("verifyCode").value
-  });
-  $("verifyCode").value="";
-  authScreenShow("login");$("username").value=lastVerificationEmail;
-  messageAuth(result.message);
- }catch(error){$("verifyError").textContent=error.message}
- finally{button.disabled=false}
-});
-$("authResendCode").addEventListener("click",async()=>{
- const button=$("authResendCode");button.disabled=true;
- try{
-  const result=await publicAuth("/auth/verify/resend",{email:$("verifyEmail").value});
-  $("verifyCode").value="";
-  $("verifyError").textContent=result.message;
- }catch(error){$("verifyError").textContent=error.message}
- finally{
-  // A fresh code cannot be requested repeatedly; backend also rate limits.
-  setTimeout(()=>{button.disabled=false},60000);
- }
 });
 $("forgotForm").addEventListener("submit",async event=>{
  event.preventDefault();$("forgotError").textContent="";
