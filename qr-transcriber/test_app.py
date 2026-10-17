@@ -75,8 +75,9 @@ async def test_reject_corrupt_and_oversized_duration(monkeypatch):
     ) as client:
         response=await client.post("/transcribe",content=b"not a sound file",headers=headers)
         assert response.status_code==422
+    monkeypatch.setattr(svc,"MAX_AUDIO_SECONDS",0.1)
     with pytest.raises(ValueError):
-        svc._audio_duration(wave_bytes(seconds=121))
+        svc._audio_duration(wave_bytes(seconds=0.25))
 
 
 @pytest.mark.asyncio
