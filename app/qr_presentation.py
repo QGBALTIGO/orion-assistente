@@ -342,6 +342,44 @@ def render_quote(items: Sequence[QuoteItem], preferences=None, *, context: Inter
     return separator.join(part for part in parts if part)
 
 
+def render_service_menu(business_name: str, catalog: Sequence[Mapping], preferences=None, *,
+                        greeting: str = "") -> str:
+    """Present the first 12 catalog alternatives in the caller's exact order.
+
+    The core retains menu_ids and conversation state. A menu is not a selection:
+    never total its prices/durations or imply availability, a hold or a booking.
+    Names (including explicit demonstration labels) are preserved, not inferred.
+    The existing final message boundary owns oversized-menu handling.
+    """
+    prefs = _preferences(preferences)
+    name = _label(_text(business_name, 160))
+    if not isinstance(catalog, (tuple, list)) or not isinstance(greeting, str):
+        raise ValueError("A verified catalog and textual greeting are required")
+    opening = _label(_text(greeting, 400)) + " " if greeting.strip() else ""
+    opening += f"Bem-vindo à *{name}*!"
+    headings = {"warm": "Conheça nossos serviços", "professional": "Serviços e valores",
+                "relaxed": "Veja nossos serviços", "direct": "Serviços"}
+    heading = headings[prefs.style]
+    if prefs.style == "relaxed" and prefs.formality == "formal":
+        heading = "Serviços para consulta"
+    heading = _optional(heading, prefs)
+    blocks = []
+    for row in catalog[:12]:
+        if not isinstance(row, Mapping):
+            raise ValueError("Expected a verified service mapping")
+        item = QuoteItem(row["name"], row["price_cents"], duration_min=row["duration_min"])
+        if item.duration_min is None:
+            raise ValueError("A catalog service requires its registered duration")
+        marker = service_icon((item.name,)) + " " if prefs.emoji == "light" else "• "
+        blocks.append(f"{marker}*{_label(item.name)}* — *{money(item.unit_price_cents)}*\n"
+                      + _field("Duração", duration(item.duration_min), light=prefs.emoji == "light"))
+    if not blocks:
+        return opening + "\n\nNão há serviços no catálogo para exibir.\n\nComo posso ajudar?"
+    separator = "\n" if prefs.length == "short" else "\n\n"
+    parts = [opening, f"*{heading}*" if heading else "", separator.join(blocks), render_prompt("service", prefs)]
+    return "\n\n".join(part for part in parts if part)
+
+
 @dataclass(frozen=True)
 class SummaryComposition:
     """A prepared body and its single core-owned decision, never a consent token."""

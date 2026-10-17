@@ -261,6 +261,46 @@ async def test_quote_is_not_repeated_after_the_client_supplies_the_day(flow, mon
 
 
 @pytest.mark.asyncio
+async def test_combo_quote_is_not_repeated_when_catalog_order_differs_from_requested_order(flow, monkeypatch):
+    from app.qr_understanding import UnderstandingPlan
+    h = flow
+    # The live catalog is ordered Barba/Corte while the customer says Corte/Barba.
+    h.catalog[:] = list(reversed(h.catalog))
+    await ask_service(h)
+    first = await identified(h, "Cabelo", "synthetic-original-haircut")
+    assert "R$ 35,00" in first["answer"]
+    h.proposal["value"] = UnderstandingPlan(intents=["booking"], service_ids=[h.cut, h.beard], selection_mode="replace")
+    combo = await identified(h, "Corte de cabelo e barba", "synthetic-changed-combo")
+    assert "R$ 55,00" in combo["answer"] and "1 hora" in combo["answer"]
+    assert h.state()["services"] == [str(h.cut), str(h.beard)]
+    h.proposal["value"] = None
+    forbid_provider(monkeypatch)
+    day = await identified(h, "Segunda", "synthetic-combo-day")
+    assert day["step"] == "professional" and "Bruno" in day["answer"] and "Breno" in day["answer"]
+    assert "R$" not in day["answer"] and "Duração" not in day["answer"]
+    assert set(h.state()["services"]) == {str(h.cut), str(h.beard)}
+    assert date.fromisoformat(h.state()["day"]).weekday() == 0
+    assert not h.calls["reads"]
+    no_mutation(h)
+
+
+@pytest.mark.asyncio
+async def test_reordering_the_same_services_avoids_quote_but_a_real_selection_change_quotes_again(flow, monkeypatch):
+    from app.qr_understanding import UnderstandingPlan
+    h = flow; await ask_service(h)
+    first = await identified(h, "Corte e barba", "synthetic-first-combo")
+    assert "R$ 55,00" in first["answer"]
+    h.proposal["value"] = UnderstandingPlan(intents=["booking"], service_ids=[h.beard, h.cut], selection_mode="replace")
+    same = await identified(h, "Quero o mesmo conjunto", "synthetic-reordered-combo")
+    assert "R$" not in same["answer"]
+    forbid_provider(monkeypatch)
+    changed = await identified(h, "Quero só barba", "synthetic-beard-only")
+    assert "R$ 20,00" in changed["answer"] and "20 minutos" in changed["answer"]
+    assert h.state()["services"] == [str(h.beard)]
+    no_mutation(h)
+
+
+@pytest.mark.asyncio
 async def test_complete_customer_sequence_moves_from_readonly_quote_to_new_summary_then_sm_once(flow, monkeypatch):
     h = flow; one_available(h, monkeypatch)
     await identified(h, "Quem está disponível segunda?", "synthetic-acceptance-query")
