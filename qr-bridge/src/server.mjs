@@ -19,6 +19,7 @@ import {makeEncryptedRetryStore} from "./encrypted-retry-store.mjs";
 import {sendStoredText} from "./reliable-send.mjs";
 import {makeSendCapacity} from "./send-capacity.mjs";
 import {makeConversationIntake} from "./conversation-intake.mjs";
+import {makeAssistantTyping} from "./assistant-typing.mjs";
 import {inspectLookup,inspectDelivery} from "./recipient-diagnostics.mjs";
 import {makeDurableInbox} from "./durable-inbox.mjs";
 import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-health.mjs";
@@ -270,6 +271,8 @@ function installListeners(client,mine,saveCreds){
   });
   const inboundMetadata=new Map();
   const intakeCurrent=()=>mine===generation&&socket===client&&status==='connected';
+  const typingPresence=makeAssistantTyping({socket:client,pilotPhone:pilotNumber,isConnected:intakeCurrent,
+    isAllowed:phone=>allowAssistantRecipient(phone,connectedStore.settings())});
   const groupSetting=(name,fallback,max)=>{
     const raw=process.env[name],value=Number(raw);
     return raw!==undefined&&Number.isSafeInteger(value)&&value>=0&&value<=max?value:fallback;
@@ -302,6 +305,7 @@ function installListeners(client,mine,saveCreds){
         entries.every(item=>item?.allowed&&item.phone===phone)&&
         allowAssistantRecipient(phone,connectedStore.settings());
       if(!current())return;
+      return typingPresence.run({phone,chatJid:entries[0]?.jid,isCurrent:current},async typing=>{
       transport.record('ai_forward',traceId,{count:batch.messages.length});
       let answer;
       try{answer=await forwardAssistant({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
@@ -315,12 +319,17 @@ function installListeners(client,mine,saveCreds){
         if(revisionEnabled)summaryReviewRequired.set(phone,true);return;
       }
       if(!answer){transport.record('ai_silent',traceId);return;}
+      await typing.beforeReply(answer);
+      if(!current()){
+        if(revisionEnabled)summaryReviewRequired.set(phone,true);return;
+      }
       transport.record('ai_answer',traceId);
       try{
         const sent=await send(phone,answer,{waitForCapacity:true,isCurrent:current});
         if(revisionEnabled)summaryReviewRequired.set(phone,!sent?.accepted||!current());
         transport.record(sent?.accepted?'ai_relay_returned':'ai_send_unconfirmed',traceId);
       }catch(error){if(revisionEnabled)summaryReviewRequired.set(phone,true);transport.record('ai_send_failed',traceId);throw error;}
+      });
     }
   });
   client.ev.on("messages.upsert",async ({messages:incoming,type})=>{
@@ -343,7 +352,7 @@ function installListeners(client,mine,saveCreds){
       // single-recipient pilot, PN/LID variants share this configured key; a LID
       // never supplies a telephone number. Authorization still occurs below.
       const conversationKey=String(mine)+':'+(pilotNumber()||remote[1]+'@'+remote[2]);
-      const metadata={allowed:false,phone:null};
+      const metadata={allowed:false,phone:null,jid:message.key.remoteJid};
       const current=()=>intakeCurrent()&&(!metadata.allowed||
         allowAssistantRecipient(metadata.phone,connectedStore.settings()));
       let identityTask;

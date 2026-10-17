@@ -7,6 +7,7 @@ import {shouldIngestUpsert,timestampMs} from '../src/linked-session-health.mjs';
 import {forwardAssistant,registerAssistantIngress} from '../src/ai-forward.mjs';
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from '../src/ai-pilot.mjs';
 import {makeConversationIntake} from '../src/conversation-intake.mjs';
+import {makeAssistantTyping} from '../src/assistant-typing.mjs';
 import {transcribeAssistantAudio} from '../src/ai-audio.mjs';
 
 // Real inbound handler, intake and private forwarder. Network and speech
@@ -21,15 +22,19 @@ const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});retur
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 
 function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answer=null,realAudio=false,
-  revisionEnabled=false,forwardResponse,sendResponse}={}){
+  revisionEnabled=false,forwardResponse,sendResponse,presence,typingConfig={maxPauseMs:0}}={}){
   let listener,transcriptions=0,downloads=0;
-  const forwarded=[],inbox=[],sent=[],events=[],queues=new Map(),seen=new Set(),notices=[];
+  const forwarded=[],inbox=[],sent=[],events=[],queues=new Map(),seen=new Set(),notices=[],presenceCalls=[];
   const env={QR_AI_ENABLED:'1',QR_AI_AUDIO_ENABLED:audioEnabled?'1':'0',QR_AI_GROUP_WAIT_MS:'0',
     QR_AI_PILOT_NUMBER:phone,QR_AI_API_URL:'http://orion-assistente.railway.internal/internal/qr/ai/reply'};
   if(revisionEnabled)env.QR_AI_INTAKE_REVISION_ENABLED='1';
   const client={ev:{on(event,callback){assert.equal(event,'messages.upsert');listener=callback;}}};
+  if(presence)client.sendPresenceUpdate=(type,jid)=>{
+    presenceCalls.push({type,jid});events.push(['typing',type,jid]);return presence(type,jid);
+  };
   const context=vm.createContext({client,socket:client,mine:1,generation:1,status:'connected',
     extractText,resolveMessagePhone,shouldIngestUpsert,timestampMs,makeConversationIntake,
+    makeAssistantTyping:options=>makeAssistantTyping({...options,...typingConfig}),
     pilotNumber:()=>pilotNumber(env),transport:{record:(...args)=>events.push(args)},retryMessages:{save(){}},seen,
     connectedStore:{record(){},settings:()=>({chatbot:false,transcription:false})},
     assistantAudioEnabled:()=>audioEnabled,
@@ -65,7 +70,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     key:{id,remoteJid:remote,...(senderPn?{senderPn}:{})},messageTimestamp:Math.floor(Date.now()/1000),
     message:text===undefined?{audioMessage:{fileLength,seconds}}:{conversation:text}
   });
-  return {context,env,forwarded,inbox,sent,events,message,notices,
+  return {context,env,forwarded,inbox,sent,events,message,notices,presenceCalls,
     emit:messages=>listener({type:'notify',messages}),
     get transcriptions(){return transcriptions;},get downloads(){return downloads;}};
 }
@@ -198,4 +203,74 @@ test('audio above duration or byte limit fails before download and explains once
     const h=harness({realAudio:true});await h.emit([h.message('TOO-LARGE',options)]);
     assert.equal(h.downloads,0);assert.deepEqual(h.forwarded,[]);assert.equal(h.sent.length,1);
   }
+});
+
+test('real authorized handler starts targeted typing before one API call and pauses after one reply',async()=>{
+  const h=harness({answer:'Resumo sintético para revisão.',presence:async()=>{}});
+  await h.emit([h.message('TYPING-REPLY',{text:'Quero um horário'})]);
+  assert.deepEqual(h.presenceCalls.map(x=>x.type),['composing','paused']);
+  assert.ok(h.presenceCalls.every(x=>x.jid===phone+'@s.whatsapp.net'));
+  assert.equal(h.forwarded.length,1);assert.deepEqual(h.sent,['Resumo sintético para revisão.']);
+  assert.ok(h.events.findIndex(x=>x[0]==='typing'&&x[1]==='composing')<h.events.findIndex(x=>x[0]==='ai_forward'));
+  assert.ok(h.events.findIndex(x=>x[0]==='typing'&&x[1]==='paused')>h.events.findIndex(x=>x[0]==='ai_relay_returned'));
+});
+
+test('real handler ignores presence failures or a pending presence and sends exactly once',async()=>{
+  for(const presence of [()=>{throw Error('presence failed');},()=>Promise.reject(Error('presence failed')),
+    ()=>new Promise(()=>{})]){
+    const h=harness({answer:'Uma resposta.',presence});
+    await h.emit([h.message('PRESENCE-FAIL',{text:'Mensagem sintética'})]);
+    assert.equal(h.forwarded.length,1);assert.deepEqual(h.sent,['Uma resposta.']);
+    assert.ok(h.presenceCalls.every(x=>x.jid===phone+'@s.whatsapp.net'));
+  }
+});
+
+test('real API silence or forward failure pauses typing with zero message attempts or retries',async()=>{
+  for(const fails of [false,true]){
+    const h=harness({presence:async()=>{},forwardResponse:()=>{if(fails)throw Error('synthetic timeout');return {answer:null,step:'human'};}});
+    await h.emit([h.message('SILENT-OR-ERROR',{text:'Mensagem sintética'})]);
+    assert.equal(h.forwarded.length,1);assert.deepEqual(h.sent,[]);
+    assert.deepEqual(h.presenceCalls.map(x=>x.type),['composing','paused']);
+  }
+});
+
+test('real stale socket or revoked pilot after inference never sends a response or presence on the replacement',async()=>{
+  for(const revoke of [h=>{h.context.generation=2;},h=>{h.context.status='disconnected';},h=>{h.env.QR_AI_ENABLED='0';}]){
+    const gate=deferred(),h=harness({presence:async()=>{},forwardResponse:async()=>{await gate.promise;return {answer:'Não enviar'};}});
+    const task=h.emit([h.message('BECOMES-STALE',{text:'Mensagem sintética'})]);await tick();
+    assert.deepEqual(h.presenceCalls.map(x=>x.type),['composing']);revoke(h);gate.resolve();await task;
+    assert.deepEqual(h.sent,[]);assert.equal(h.forwarded.length,1);
+    assert.deepEqual(h.presenceCalls.map(x=>x.type),['composing']);
+  }
+});
+
+test('real groups, unrelated contacts, disabled AI and stale audio never start typing',async()=>{
+  const h=harness({answer:'Não enviar',presence:async()=>{}});
+  await h.emit([h.message('GROUP',{text:'Oi',remote:'5511999999999@g.us'}),
+    h.message('OTHER-CONTACT',{text:'Oi',remote:'5511888888888@s.whatsapp.net'}),
+    h.message('UNRESOLVED',{text:'Oi',remote:'123456789012345@lid'})]);
+  h.env.QR_AI_ENABLED='0';await h.emit([h.message('AI-DISABLED',{text:'Oi'})]);
+  assert.deepEqual(h.presenceCalls,[]);assert.deepEqual(h.forwarded,[]);assert.deepEqual(h.sent,[]);
+  const gate=deferred(),audio=harness({presence:async()=>{},transcribe:()=>gate.promise});
+  const pending=audio.emit([audio.message('STALE-ASR')]);await tick();audio.context.generation=2;gate.resolve('Oi');await pending;
+  assert.deepEqual(audio.presenceCalls,[]);assert.deepEqual(audio.forwarded,[]);
+});
+
+test('real revised batch stops the old typing lease then shows only the single corrected reply',async()=>{
+  let time=0,id=0;const timers=new Map(),gate=deferred();
+  const schedule=(fn,ms)=>{const key=++id;timers.set(key,{fn,at:time+ms});return key;};
+  const h=harness({revisionEnabled:true,presence:async()=>{},
+    typingConfig:{maxPauseMs:0,now:()=>time,schedule,cancel:key=>timers.delete(key)},
+    forwardResponse:async(_body,number)=>{
+      if(number===1){await gate.promise;return {answer:null,step:'superseded',not_committed:true};}
+      return {answer:'Resumo final corrigido.'};
+    }});
+  const first=h.emit([h.message('OLD-TYPING',{text:'Quinta às três'})]);await tick();
+  const correction=h.emit([h.message('NEW-TYPING',{text:'Não quinta, sexta'})]);await tick();
+  time=100;for(const [key,timer] of [...timers])if(timer.at<=time){timers.delete(key);timer.fn();}
+  assert.deepEqual(h.presenceCalls.map(x=>x.type),['composing','paused']);
+  gate.resolve();await Promise.all([first,correction]);
+  assert.deepEqual(h.presenceCalls.map(x=>x.type),['composing','paused','composing','paused']);
+  assert.deepEqual(h.sent,['Resumo final corrigido.']);assert.equal(h.forwarded.length,2);
+  assert.deepEqual(h.forwarded[1].message_ids,['OLD-TYPING','NEW-TYPING']);assert.equal(timers.size,0);
 });
