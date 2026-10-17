@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {makeTransportDiagnostics,receiptDiagnosticDetails,sessionDomainCounts,usyncDeviceDomainCounts} from '../src/transport-diagnostics.mjs';
+import {makeTransportDiagnostics,receiptDiagnosticDetails,sessionDomainCounts,usyncDeviceDomainCounts,
+  encryptionTargetDetails,observeSignalRepository} from '../src/transport-diagnostics.mjs';
 import {resolveMessagePhone} from '../src/core.mjs';
 
 test('Baileys 6 explicit sender PN resolves private LID without nonexistent mapping API',async()=>{
@@ -56,10 +57,81 @@ test('device USync results classify domains before library extraction and omit c
     {tag:'user',attrs:{jid:'unrelated@hosted'},content:[{tag:'contact'}]}
   ]}]}]};
   const counts=usyncDeviceDomainCounts(node);
-  assert.deepEqual(counts,{count:2,pnCount:1,lidCount:1,otherCount:0});
+  assert.deepEqual(counts,{count:2,pnCount:1,lidCount:1,otherCount:0,
+    pnPrimaryCount:0,lidPrimaryCount:0,otherPrimaryCount:0,
+    pnCompanionCount:0,lidCompanionCount:0,otherCompanionCount:0,
+    pnEligibleCompanionCount:0,lidEligibleCompanionCount:0,otherEligibleCompanionCount:0});
   assert.equal(usyncDeviceDomainCounts({content:[]}),null);
   for(const value of ['5511999999999','123456789012345','PRIVATE_SIGNED_BYTES','PRIVATE_IQ_ID'])
     assert.ok(!JSON.stringify(counts).includes(value));
+});
+
+test('USync distinguishes primary-only LID rows from eligible companions using the pinned extractor rules',()=>{
+  const user=(jid,devices)=>({tag:'user',attrs:{jid},content:[{tag:'devices',content:[
+    {tag:'device-list',content:devices.map(attrs=>({tag:'device',attrs}))},
+    {tag:'key-index-list',content:Buffer.from('PRIVATE_INDEX_BYTES')}
+  ]}]});
+  const node={content:[{tag:'usync',content:[{tag:'list',content:[
+    user('5511999999999@s.whatsapp.net',[{id:'0'},{id:'4','key-index':'1'},{id:'2','key-index':'1'},{id:'3'},{id:'bad'}]),
+    user('123456789012345@lid',[{id:'0'},{id:'4','key-index':'1'},{id:'5','key-index':'0'}])
+  ]}]}]};
+  const own={id:'5511999999999:4@s.whatsapp.net',lid:'123456789012345:4@lid'};
+  const counts=usyncDeviceDomainCounts(node,own);
+  assert.equal(counts.pnPrimaryCount,1);assert.equal(counts.lidPrimaryCount,1);
+  assert.equal(counts.pnCompanionCount,3);assert.equal(counts.lidCompanionCount,2);
+  assert.equal(counts.pnEligibleCompanionCount,1);
+  // The installed extractor only compares me.id (PN), so this LID remains
+  // eligible even though the matching LID device is the current connection.
+  assert.equal(counts.lidEligibleCompanionCount,1);
+  const output=[],diagnostics=makeTransportDiagnostics({secret:'test',emit:x=>output.push(x)});
+  diagnostics.record('usync_device_domains',null,counts);
+  assert.equal(output[0].pnEligibleCompanionCount,1);
+  assert.equal(output[0].lidPrimaryCount,1);
+  for(const value of ['5511999999999','123456789012345','PRIVATE_INDEX_BYTES'])
+    assert.ok(!JSON.stringify(output).includes(value));
+});
+
+test('actual encryption target classification distinguishes own PN/LID from recipient without inferring aliases',()=>{
+  const own={id:'5511999999999:4@s.whatsapp.net',lid:'123456789012345:4@lid'};
+  assert.deepEqual(encryptionTargetDetails('123456789012345@lid',own),{kind:'lid',deviceClass:'primary',isSelf:true,ownDomainMismatch:false});
+  assert.deepEqual(encryptionTargetDetails('123456789012345:2@s.whatsapp.net',own),{kind:'pn',deviceClass:'companion',isSelf:false,ownDomainMismatch:true});
+  assert.deepEqual(encryptionTargetDetails('5511888888888@s.whatsapp.net',own),{kind:'pn',deviceClass:'primary',isSelf:false,ownDomainMismatch:false});
+  assert.deepEqual(encryptionTargetDetails('123@g.us',own),{kind:'other',deviceClass:'unknown',isSelf:false,ownDomainMismatch:false});
+  assert.equal(encryptionTargetDetails('5511999999999@s.whatsapp.net',own).ownDomainMismatch,false);
+  assert.equal(encryptionTargetDetails('123456789012345@s.whatsapp.net',{id:'123456789012345@s.whatsapp.net',lid:own.lid}).ownDomainMismatch,false);
+  assert.equal(encryptionTargetDetails('123456789012345@s.whatsapp.net',{lid:'123456789012345@s.whatsapp.net'}).ownDomainMismatch,false);
+  const output=[],diagnostics=makeTransportDiagnostics({secret:'test',emit:x=>output.push(x)});
+  diagnostics.record('signal_encrypt_target',null,encryptionTargetDetails('123456789012345@s.whatsapp.net',own));
+  assert.equal(output[0].ownDomainMismatch,true);
+  for(const value of ['5511999999999','123456789012345'])assert.ok(!JSON.stringify(output).includes(value));
+});
+
+test('repository observer preserves this, arguments, repository identity and exact Promise without reading payload',async()=>{
+  const pending=Promise.resolve({ciphertext:Buffer.from('PRIVATE_CIPHERTEXT')});
+  let observed,calledThis,calledArgs,factoryThis,factoryArgs;
+  const repository={encryptMessage(...args){calledThis=this;calledArgs=args;return pending;},other:'untouched'};
+  const factory=function(...args){factoryThis=this;factoryArgs=args;return repository;};
+  const context={},auth={creds:{private:'PRIVATE_AUTH'}};
+  const make=observeSignalRepository(factory,jid=>{observed=jid;});
+  const result=make.call(context,auth);
+  assert.equal(result,repository);assert.equal(factoryThis,context);assert.deepEqual(factoryArgs,[auth]);
+  const request={jid:'123456789012345@lid',get data(){throw Error('Payload must never be read by observer');}};
+  const returned=result.encryptMessage(request,'extra');
+  assert.equal(returned,pending);assert.equal(calledThis,repository);
+  assert.equal(calledArgs[0],request);assert.equal(calledArgs[1],'extra');
+  assert.equal(observed,request.jid);assert.equal(result.other,'untouched');
+  await returned;
+});
+
+test('repository observer cannot mask original throws or rejections and never interrupts encryption',async()=>{
+  const originalError=Error('PRIVATE_ORIGINAL_ERROR');
+  const repository={encryptMessage(){throw originalError;}};
+  observeSignalRepository(()=>repository,()=>{throw Error('PRIVATE_OBSERVER_ERROR');})();
+  assert.throws(()=>repository.encryptMessage({jid:'123@lid'}),error=>error===originalError);
+  const rejected=Promise.reject(originalError),asyncRepository={encryptMessage(){return rejected;}};
+  observeSignalRepository(()=>asyncRepository,()=>{throw Error('PRIVATE_OBSERVER_ERROR');})();
+  const returned=asyncRepository.encryptMessage({jid:'123@lid'});
+  assert.equal(returned,rejected);await assert.rejects(returned,error=>error===originalError);
 });
 
 test('actual Baileys retry failure shape retains each trace and hides stack',()=>{

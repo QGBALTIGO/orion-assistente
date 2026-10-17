@@ -1098,7 +1098,7 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
     </section>
     <section id="page-conversas" class="page hidden">
       <div class="header"><div><div class="eyebrow">Orion / Atendimento</div><h1>Conversas do WhatsApp</h1>
-        <p class="subhead">Leia mensagens recebidas após a conexão e responda manualmente. Sem respostas automáticas.</p></div>
+        <p class="subhead" id="chatMode">Leia mensagens recebidas após a conexão e responda manualmente. Verificando respostas automáticas...</p></div>
         <div class="pill"><span id="chatDot" class="dot amber"></span><span id="chatConnection">Verificando...</span></div>
       </div>
       <div class="card"><div class="row" style="justify-content:space-between">
@@ -1212,6 +1212,7 @@ const $=id=>document.getElementById(id);
 let authEpoch=0;
 let csrf="",page="dispositivo",method="code",showQr=false,deviceStatus="starting",lastDeviceStatus="starting",pairExpiresAt=0,
     statusTimer=null,chatTimer=null,selectedPhone="",chatsBusy=false;
+let messageSequence=0,lastPanelSend=null;
 let wizardStep="tutorial",wizardAttempted=false,wizardSuccessUntil=0,
     wizardSuccessDone=false,wizardQrDeadline=0,wizardClocks=null,statusSequence=0;
 const steps={
@@ -1755,6 +1756,7 @@ async function updateStatus(){
     :"Atenção: armazenamento de conversas precisa de verificação antes de confiar na persistência.";
   $("chatDot").className="dot "+(active?"green":"amber");
   $("chatConnection").textContent=active?"Conectado":"Desconectado";
+  renderConversationMode(result);
   $("connectedBanner").classList.toggle("hidden",!active);
   $("repairConnection").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
   $("wizardRecover").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
@@ -1778,11 +1780,25 @@ async function updateStatus(){
   }else if(showQr&&page==="dispositivo"&&method==="qr")await updateQr();
  }catch(ex){
   if(requestId!==statusSequence)return;
+  deviceStatus="error";lastDeviceStatus="error";
   renderConnectedCenter({status:"error"});
   $("globalStatus").textContent="Serviço indisponível";
   $("deviceState").textContent=ex.message;
   $("statusDot").className="dot red";
+  $("chatDot").className="dot red";
+  $("chatConnection").textContent="Conexão não confirmada";
+  $("connectedBanner").classList.add("hidden");
+  renderConversationMode({});
  }
+}
+function renderConversationMode(result){
+ const mode=result.automaticRepliesEnabled===true?
+   (result.transportConfig?.pilotConfigured?
+     "Respostas automáticas de IA restritas ao contato autorizado do piloto.":
+     "Respostas automáticas de IA ativadas conforme as configurações do canal."):
+   result.automaticRepliesEnabled===false?"Respostas automáticas desativadas.":
+     "Estado das respostas automáticas indisponível.";
+ $("chatMode").textContent="Leia mensagens recebidas após a conexão e responda manualmente. "+mode;
 }
 async function updateQr(){
  try{
@@ -1910,18 +1926,43 @@ async function loadChats(){
    const name=document.createElement("strong"),desc=document.createElement("small");
    name.textContent="+"+row.phone;desc.textContent=row.preview;
    b.append(name,desc);b.addEventListener("click",()=>{
-    selectedPhone=row.phone;$("chatPhone").value=row.phone;
-    $("chatTitle").textContent="Conversa com +"+row.phone;
+    selectChat(row.phone);
     refreshMessages();loadChats();
    });box.append(b);
   }
  }catch(ex){$("chatNotice").textContent=ex.message}
  finally{chatsBusy=false}
 }
+function selectChat(phone){
+ if(phone!==selectedPhone){
+  selectedPhone=phone;++messageSequence;
+  const loading=document.createElement("p");loading.textContent="Carregando mensagens...";
+  $("chatBubbles").replaceChildren(loading);
+  $("chatNotice").textContent="";
+ }
+ $("chatPhone").value=phone;$("chatTitle").textContent="Conversa com +"+phone;
+ renderSendNotice();
+}
+function renderSendNotice(items=[]){
+ if(!lastPanelSend||lastPanelSend.phone!==selectedPhone)return;
+ const receipt=items.find(item=>item.id===lastPanelSend.id&&item.direction==="out");
+ if(receipt)lastPanelSend.delivery=receipt.delivery;
+ const notices={
+  delivered:"O WhatsApp confirmou a entrega ao aparelho. Confirme no celular se o texto está legível.",
+  read:"O WhatsApp confirmou a leitura. Confirme no celular se o texto está legível.",
+  played:"O WhatsApp confirmou a reprodução. Confirme no celular se a mensagem está legível.",
+  failed:"O WhatsApp informou falha neste envio. Verifique no celular antes de tentar novamente."
+ };
+ $("chatNotice").textContent=notices[lastPanelSend.delivery]||
+   "O WhatsApp aceitou o envio. Aguardando confirmação de entrega no celular.";
+}
 async function refreshMessages(){
  if(!selectedPhone)return;
+ const phone=selectedPhone,requestId=++messageSequence;
  try{
-  const data=await api("/api/v1/qr/messages?phone="+encodeURIComponent(selectedPhone));
+  const data=await api("/api/v1/qr/messages?phone="+encodeURIComponent(phone));
+  if(requestId!==messageSequence||phone!==selectedPhone)return;
+  renderSendNotice(data.items||[]);
   const area=$("chatBubbles");area.replaceChildren();
   if(!data.items?.length){const p=document.createElement("p");p.textContent="Sem mensagens recentes.";area.append(p);return}
   for(const item of data.items){
@@ -1932,7 +1973,9 @@ async function refreshMessages(){
    bubble.append(text,time);area.append(bubble);
   }
   area.scrollTop=area.scrollHeight;
- }catch(ex){$("chatNotice").textContent=ex.message}
+ }catch(ex){
+  if(requestId===messageSequence&&phone===selectedPhone)$("chatNotice").textContent=ex.message;
+ }
 }
 $("inspectRecipient").addEventListener("click",async()=>{
  const phone=normalize($("chatPhone").value),info=$("recipientInspection");
@@ -1972,8 +2015,8 @@ $("sendForm").addEventListener("submit",async ev=>{
  try{
   const result=await api("/api/v1/qr/send","POST",{phone,text});
   if(!result.accepted)throw Error("O WhatsApp não confirmou a aceitação. Aguarde antes de tentar novamente.");
-  selectedPhone=phone;$("chatTitle").textContent="Conversa com +"+phone;
-  $("chatText").value="";$("chatNotice").textContent="O WhatsApp aceitou o envio. Aguardando confirmação de entrega no celular.";
+  lastPanelSend={phone,id:result.id,delivery:result.delivery};
+  selectChat(phone);$("chatText").value="";
   await refreshMessages();await loadChats();
  }catch(ex){$("chatNotice").textContent=ex.message}
  finally{$("sendButton").disabled=false}

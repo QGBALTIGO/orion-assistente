@@ -27,16 +27,65 @@ export function sessionDomainCounts(jids){
   return result;
 }
 
+export function encryptionTargetDetails(jid,ownIdentity={}){
+  const address=privateAddress(jid);
+  const own=[privateAddress(ownIdentity?.id),privateAddress(ownIdentity?.lid)].filter(Boolean);
+  const ownPn=privateAddress(ownIdentity?.id),ownLid=privateAddress(ownIdentity?.lid);
+  return {kind:address?.kind||'other',deviceClass:address?.deviceClass||'unknown',
+    isSelf:!!address&&own.some(x=>x.kind===address.kind&&x.user===address.user),
+    // Compare only explicit own identities. A known LID user placed in the PN
+    // domain is suspicious unless it is also the explicit own PN user. This
+    // reports a mismatch; it never resolves a LID into a phone number.
+    ownDomainMismatch:address?.kind==='pn'&&ownLid?.kind==='lid'&&address.user===ownLid.user&&
+      !(ownPn?.kind==='pn'&&address.user===ownPn.user)};
+}
+
+// Use Baileys' public repository-factory hook. Observe only the actual target
+// address, never data/ciphertext, while preserving the original call/Promise.
+// An observer failure must not turn an accepted send into an ambiguous error.
+export function observeSignalRepository(factory,observe){
+  return function(...factoryArgs){
+    const repository=Reflect.apply(factory,this,factoryArgs);
+    const original=repository.encryptMessage;
+    repository.encryptMessage=function(...args){
+      try{observe(args[0]?.jid);}catch{}
+      return Reflect.apply(original,this,args);
+    };
+    return repository;
+  };
+}
+
 // Observe the actual device-list result before Baileys drops the domain.
 // Never retain a user node, device list, phone, LID, or signed key-index bytes.
-export function usyncDeviceDomainCounts(node){
+export function usyncDeviceDomainCounts(node,ownIdentity={}){
   const child=(parent,tag)=>Array.isArray(parent?.content)?parent.content.find(x=>x?.tag===tag):null;
   const list=child(child(node,'usync'),'list');
   const users=(Array.isArray(list?.content)?list.content:[])
     .filter(x=>x?.tag==='user'&&child(x,'devices')).slice(0,1000);
   if(!users.length)return null;
   const {count,pnCount,lidCount,otherCount}=sessionDomainCounts(users.map(x=>x.attrs?.jid));
-  return {count,pnCount,lidCount,otherCount};
+  const result={count,pnCount,lidCount,otherCount,
+    pnPrimaryCount:0,lidPrimaryCount:0,otherPrimaryCount:0,
+    pnCompanionCount:0,lidCompanionCount:0,otherCompanionCount:0,
+    pnEligibleCompanionCount:0,lidEligibleCompanionCount:0,otherEligibleCompanionCount:0};
+  const own=privateAddress(ownIdentity?.id),ownDevice=ownIdentity?.id?.match(/:(\d+)@/)?.[1];
+  for(const user of users){
+    const address=privateAddress(user.attrs?.jid),prefix=address?.kind||'other';
+    const deviceList=child(child(user,'devices'),'device-list');
+    const devices=(Array.isArray(deviceList?.content)?deviceList.content:[]).slice(0,1000);
+    for(const device of devices){
+      if(device?.tag!=='device')continue;
+      const id=Number(device.attrs?.id);
+      if(!Number.isSafeInteger(id)||id<0)continue;
+      if(id===0){result[prefix+'PrimaryCount']++;continue;}
+      result[prefix+'CompanionCount']++;
+      // Exactly the installed 6.7.24 excludeZeroDevices=true extraction rule:
+      // it compares me.id user/device, and requires a nonzero key-index.
+      const isCurrent=!!own&&!!address&&own.user===address.user&&Number(ownDevice)===id;
+      if(!isCurrent&&Number(device.attrs?.['key-index']))result[prefix+'EligibleCompanionCount']++;
+    }
+  }
+  return result;
 }
 
 // An allowlist, not a serializer: never forward Baileys objects/errors to logs.
@@ -48,7 +97,9 @@ export function makeTransportDiagnostics({secret,now=Date.now,emit=()=>{}}){
     counts[stage]=(counts[stage]||0)+1;
     const safe={};
     for(const name of ['kind','status','type','error','category','count','fromMe','hasPn','hasLid','cached','generation',
-      'participantKind','hasParticipant','isSelf','deviceClass','sendToAll','pnCount','lidCount','otherCount','primaryCount','companionCount']){
+      'participantKind','hasParticipant','isSelf','ownDomainMismatch','deviceClass','sendToAll','pnCount','lidCount','otherCount','primaryCount','companionCount',
+      'pnPrimaryCount','lidPrimaryCount','otherPrimaryCount','pnCompanionCount','lidCompanionCount','otherCompanionCount',
+      'pnEligibleCompanionCount','lidEligibleCompanionCount','otherEligibleCompanionCount']){
       const value=details[name];
       if(typeof value==='boolean'||(typeof value==='number'&&Number.isFinite(value)))safe[name]=value;
       else if(typeof value==='string'&&/^[a-zA-Z0-9_-]{1,40}$/.test(value))safe[name]=value;
