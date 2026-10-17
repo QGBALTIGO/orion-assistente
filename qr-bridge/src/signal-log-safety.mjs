@@ -18,11 +18,19 @@ const SESSION_OBJECT_PREFIXES = new Set([
 
 export function protectSignalSessionLogs(target=console) {
   const originals = new Map();
-  for(const level of ["info","warn"]) {
+  for(const level of ["info","warn","error"]) {
     const original=target?.[level];
     if(typeof original!=="function")continue;
     originals.set(level,original);
     target[level]=function(...args) {
+      if(level==='error'&&typeof args[0]==='string'&&args[0].startsWith('Session error:')){
+        // libsignal names async functions after Signal addresses; the stack
+        // therefore contains recipient identifiers even for a plain Bad MAC.
+        // Baileys' structured diagnostic records the correlated failure safely.
+        const category=args[0].includes('Bad MAC')?'bad_mac':
+          args[0].includes('Key used already or never filled')?'counter':'other';
+        return original.call(target,'Orion QR: erro de sessão Signal ('+category+'; dados omitidos)');
+      }
       if(typeof args[0]==="string" &&
           SESSION_OBJECT_PREFIXES.has(args[0]) && args.length>1) {
         // Never pass args[1]: libsignal may include private ratchet keys.

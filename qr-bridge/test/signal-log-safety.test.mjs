@@ -45,3 +45,17 @@ test("session prefixes without object and unrelated warnings remain unchanged",(
   ]);
   restore();
 });
+
+test('Signal session error stacks never reveal private queue addresses',()=>{
+  const lines=[],target={error:(...args)=>lines.push(args)};
+  const original=target.error,restore=protectSignalSessionLogs(target);
+  target.error('Session error:Error: Bad MAC','at async PRIVATE_PHONE.0');
+  target.error('Session error:MessageCounterError: Key used already or never filled','PRIVATE_STACK');
+  target.error('Session error:Other PRIVATE_DETAIL','PRIVATE_STACK');
+  assert.equal(lines.length,3);
+  for(const line of lines){assert.equal(line.length,1);assert.ok(!line[0].includes('PRIVATE'));}
+  assert.ok(lines[0][0].includes('bad_mac'));assert.ok(lines[1][0].includes('counter'));
+  target.error('Unrelated error','visible');
+  assert.deepEqual(lines[3],['Unrelated error','visible']);
+  restore();assert.equal(target.error,original);
+});
