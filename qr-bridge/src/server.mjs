@@ -24,6 +24,7 @@ import {makeConnectedStore} from "./connected-store.mjs";
 import {transcriberConfig,cleanPictureUrl,transcribeAudio,handleCallOffers} from "./connected-features.mjs";
 import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
 import {forwardAssistant} from "./ai-forward.mjs";
+import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
 import {transcribeAssistantAudio} from "./ai-audio.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
@@ -140,7 +141,8 @@ function stats(){
     connectionNotice:process.env.ORION_NOTIFY_SELF_ON_LINK==="1" ? noticeState(authDir) : "disabled",
     deliveryDiagnostics:{...retryDiagnostics},
     reliableSendEnabled:process.env.QR_RELIABLE_SEND_V2==="1",
-    primaryPhoneOnlineRequired:false,automaticRepliesEnabled:assistantEnabled()&&connectedStore.settings().chatbot,
+    primaryPhoneOnlineRequired:false,automaticRepliesEnabled:assistantEnabled()&&
+      (connectedStore.settings().chatbot||Boolean(pilotNumber())),
     inboxPersistence:durableInbox.health(),
     retainedMessages:messages.length,
     ingestion:ingestionHealth({connected:status==="connected",openAt:connectedSince,
@@ -238,8 +240,7 @@ function installListeners(client,mine,saveCreds){
        if(!body){
          try{
            let txt=null;
-           if(assistantAudioEnabled()&&connectedStore.settings().chatbot&&
-              connectedStore.settings().transcription){
+           if(assistantAudioEnabled()&&allowAssistantAudio(phone,connectedStore.settings())){
              txt=await transcribeAssistantAudio(message,{
                client,downloadMediaMessage,phone,token:KEY,
                apiUrl:process.env.QR_AI_API_URL,logger
@@ -259,19 +260,19 @@ function installListeners(client,mine,saveCreds){
         direction:"in",at});
       lastInboundAt=Date.now();inboundSinceConnect=true;
       if(type==="append")recentAppends++;
-      if(assistantEnabled()&&connectedStore.settings().chatbot){
+      if(allowAssistantRecipient(phone,connectedStore.settings())){
         // Ordena por destinatário sem bloquear outros clientes; nunca recupera histórico.
         const previous=assistantQueues.get(phone)||Promise.resolve();
         const job=previous.catch(()=>{}).then(async()=>{
           if(mine!==generation||socket!==client||status!=="connected"||
-              !connectedStore.settings().chatbot)return;
+              !allowAssistantRecipient(phone,connectedStore.settings()))return;
           const answer=await forwardAssistant({
             apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
             messageId:String(message.key.id),text:body,
           });
           if(!answer)return;
           if(mine!==generation||socket!==client||status!=="connected"||
-              !connectedStore.settings().chatbot)return;
+              !allowAssistantRecipient(phone,connectedStore.settings()))return;
           await send(phone,answer);
           console.info("Orion QR: resposta automática processada (dados omitidos)");
         }).catch(()=>{
