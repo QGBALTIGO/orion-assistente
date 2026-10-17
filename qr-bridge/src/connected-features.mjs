@@ -71,7 +71,7 @@ export async function resolveCallPhone(call,socket){
   // A few Baileys events expose callerPn as digits without a JID domain.
   // Trust this explicit PN field, never digits extracted from an opaque LID.
   for(const direct of [call?.callerPn,call?.senderPn]){
-    if(typeof direct==="string" && /^[1-9]\\d{7,14}$/.test(direct))return direct;
+    if(typeof direct==="string" && /^[1-9]\d{7,14}$/.test(direct))return direct;
   }
   for(const candidate of [call?.callerPn,call?.senderPn,call?.chatId,call?.from]){
     const phone=phoneFromPn(candidate);
