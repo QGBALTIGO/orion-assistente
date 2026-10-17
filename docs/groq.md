@@ -7,7 +7,7 @@ com o WhatsApp e sem conexão Google Calendar disparada pela IA.**
 ## Configuração
 
 Definir como segredo no backend `GROQ_API_KEY` (nunca no frontend e nunca em Git).
-O modelo padrão é `llama-3.3-70b-versatile`, ajustável por `GROQ_MODEL` para um dos
+O modelo padrão é `openai/gpt-oss-120b`, ajustável por `GROQ_MODEL` para um dos
 modelos permitidos em `app/groq_ai.py`. `GROQ_PREVIEW_ENABLED=0` mantém o preview
 desativado; habilitar com valor `1` somente em homologação supervisionada.
 Jamais colar credenciais em prints, tickets ou commits; rotacionar credenciais expostas.

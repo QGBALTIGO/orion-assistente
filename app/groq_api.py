@@ -29,7 +29,7 @@ class PreviewRequest(StrictModel):
 async def status(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     authorize(actor, tenant_id)
     support_only(actor)
-    model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     return {
         "provider": "groq",
         "model": model if model in MODELS else None,
@@ -67,7 +67,7 @@ async def preview(tenant_id: UUID, payload: PreviewRequest,
             message=payload.message,
             history=[item.model_dump() for item in payload.history],
             catalog=catalog, key=key,
-            model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
         )
     except GroqServiceError as exc:
         raise HTTPException(exc.status, exc.message) from None
