@@ -12,6 +12,29 @@ from sqlalchemy.engine import make_url
 from scripts import one_time_business_migration as ops
 
 
+def test_pg16_literal_array_cast_canonicalization_preserves_values_and_types():
+    source = "CHECK (status = ANY ((ARRAY['hold'::character varying, 'it''s confirmed'::character varying])::text[]))"
+    restored = "CHECK (status = ANY (ARRAY[('hold'::character varying)::text, ('it''s confirmed'::character varying)::text]))"
+    assert ops.canonical_expression(source) == restored
+    assert ops.canonical_expression(restored) == restored
+    assert ops.canonical_expression(source.replace("'hold'", "'cancelled'")) != restored
+    assert ops.canonical_expression(source.replace("::text[]", "::varchar[]")) != restored
+    assert ops.canonical_expression(source.replace("= ANY", "<> ALL")) != restored
+
+
+@pytest.mark.parametrize("quote", ["'", '"', "$$", "$example$"])
+def test_pg16_canonicalization_never_changes_quoted_sql_content(quote):
+    fragment = "(ARRAY['hold'::character varying])::text[]"
+    quoted = quote + fragment.replace(quote, quote + quote) + quote if quote in {"'", '"'} else quote + fragment + quote
+    assert ops.canonical_expression("SELECT " + quoted) == "SELECT " + quoted
+
+
+def test_pg16_canonicalization_leaves_other_array_expressions_exact():
+    for expression in ("(ARRAY[1::integer, 2::integer])::text[]", "(ARRAY[current_user])::text[]",
+                       "(ARRAY['a'::varchar])::text[]", "(ARRAY['a'::character varying])::integer[]"):
+        assert ops.canonical_expression(expression) == expression
+
+
 @pytest.fixture
 def settings():
     return ops.Settings(make_url("postgresql+psycopg://owner:synthetic-only@db.railway.internal:5432/orion_test"),

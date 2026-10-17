@@ -257,7 +257,70 @@ def catalog_structure(conn, tables=LEGACY_TABLES):
 
 def catalog_fingerprint(conn, tables=LEGACY_TABLES):
     rows = catalog_structure(conn, tables)
-    return hashlib.sha256(json.dumps(rows, sort_keys=True, default=str).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(canonical_catalog(rows), sort_keys=True, default=str).encode()).hexdigest()
+
+
+_VARCHAR_LITERAL = r"'(?:[^']|'')*'::character varying"
+_TEXT_ARRAY_CAST = re.compile(r"\(ARRAY\[(" + _VARCHAR_LITERAL + r"(?:, " + _VARCHAR_LITERAL + r")*)\]\)::text\[\]")
+_DOLLAR_QUOTE = re.compile(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$")
+
+
+def canonical_expression(value):
+    """Normalize PG16's one verified dump/restore literal-array cast rewrite.
+
+    PostgreSQL reparses ARRAY[varchar literals]::text[] into an array of
+    individually cast text literals. Keep every literal/type/operator, and do
+    not rewrite quoted SQL text, quoted identifiers or dollar-quoted strings.
+    No other cast, predicate, whitespace, policy or schema difference is ignored.
+    """
+    result = []
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if char in {"'", '"'}:
+            start = index
+            escaped = char == "'" and index > 0 and value[index - 1] in "Ee" and (
+                index < 2 or not (value[index - 2].isalnum() or value[index - 2] == "_"))
+            index += 1
+            while index < len(value):
+                if escaped and value[index] == "\\":
+                    index = min(len(value), index + 2)
+                    continue
+                if value[index] == char:
+                    index += 1
+                    if index < len(value) and value[index] == char:
+                        index += 1
+                        continue
+                    break
+                index += 1
+            result.append(value[start:index])
+            continue
+        tag = _DOLLAR_QUOTE.match(value, index) if char == "$" else None
+        if tag:
+            end = value.find(tag[0], tag.end())
+            end = len(value) if end < 0 else end + len(tag[0])
+            result.append(value[index:end])
+            index = end
+            continue
+        match = _TEXT_ARRAY_CAST.match(value, index) if char == "(" else None
+        if match:
+            literals = re.findall(_VARCHAR_LITERAL, match[1])
+            result.append("ARRAY[" + ", ".join("(" + item + ")::text" for item in literals) + "]")
+            index = match.end()
+            continue
+        result.append(char)
+        index += 1
+    return "".join(result)
+
+
+def canonical_catalog(value):
+    if isinstance(value, str):
+        return canonical_expression(value)
+    if isinstance(value, (list, tuple)):
+        return [canonical_catalog(item) for item in value]
+    if isinstance(value, dict):
+        return {key: canonical_catalog(item) for key, item in value.items()}
+    return value
 
 
 def owner_preflight(conn, settings):

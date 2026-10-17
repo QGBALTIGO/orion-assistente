@@ -106,6 +106,12 @@ def test_full_backup_restore_and_restricted_migration_preserves_real_rows(migrat
     with engine.begin() as conn:
         assert ops.revision(conn) == ops.SOURCE
         original_rows = conn.exec_driver_sql("SELECT row_to_json(c)::text FROM customers c").scalars().all()
+        original = "(CAST(:value AS text) = ANY ((ARRAY['hold'::character varying, 'it''s confirmed'::character varying])::text[]))"
+        canonical = ops.canonical_expression(original)
+        for value in (None, "hold", "it's confirmed", "cancelled", "", "confirmação"):
+            equivalent = conn.execute(text("SELECT (" + original + ") IS NOT DISTINCT FROM (" + canonical + ")"),
+                                      {"value": value}).scalar_one()
+            assert equivalent, "The only allowed cast rewrite must preserve PG16 predicate semantics"
     structures = []
     original_fingerprint = ops.catalog_fingerprint
     def record_fingerprint(conn, tables=ops.LEGACY_TABLES):
