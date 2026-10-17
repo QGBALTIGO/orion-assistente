@@ -21,6 +21,15 @@ async def main():
                 print("Orion QR: resposta inválida do bridge")
                 sys.exit(2)
             print(f"Orion QR: CONNECTED_TO_PRIVATE_BRIDGE, state={state}")
+            # Aggregate-only counters: no PN, LID, message text or identifiers.
+            diag=result.get("aiIngestion",{}).get("counters",{})
+            safe=("upserts","notify","append","ignoredTypeOrAge",
+                  "unresolvedIdentity","unresolvedLid","processedText",
+                  "pilotAccepted","notAllowed","aiForwardAttempted",
+                  "aiForwardFailed","aiReplySent","aiSendFailed")
+            if isinstance(diag,dict):
+                print("Orion QR inbound metrics: "+", ".join(
+                    f"{name}={int(diag.get(name,0))}" for name in safe))
             return
         except HTTPException as exc:
             if attempt in (1,4,8,12):

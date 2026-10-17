@@ -25,6 +25,7 @@ import {transcriberConfig,cleanPictureUrl,transcribeAudio,handleCallOffers} from
 import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
 import {forwardAssistant} from "./ai-forward.mjs";
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
+import {makeIngestionCounters} from "./ai-ingestion-counters.mjs";
 import {transcribeAssistantAudio} from "./ai-audio.mjs";
 
 const PORT=Number(process.env.PORT || 3000);
@@ -60,6 +61,7 @@ let connectedProfile={name:null,photoUrl:null,updatedAt:null},profileFetchedAt=0
 const repliedToCallers=new Map();
 const recentCallOffers=new Map();
 const assistantQueues=new Map();
+const ingestionCounters=makeIngestionCounters();
 const assistantEnabled=()=>process.env.QR_AI_ENABLED==="1"&&!!process.env.QR_AI_API_URL;
 const assistantAudioEnabled=()=>assistantEnabled()&&process.env.QR_AI_AUDIO_ENABLED==="1";
 const callDiagnostics={
@@ -156,6 +158,7 @@ function stats(){
     featureCapabilities:{chatbot:assistantEnabled(),transcription:!!transcriberConfig()||assistantAudioEnabled(),
       callBlocking:typeof socket?.rejectCall==="function"},
     callDiagnostics:{...callDiagnostics},
+    aiIngestion:ingestionCounters.snapshot(),
     controlStorage:connectedStore.health()};
 }
 function auth(req){
@@ -228,11 +231,22 @@ function installListeners(client,mine,saveCreds){
   client.ev.on("messages.upsert",async ({messages:incoming,type})=>{
     if(mine!==generation||status!=="connected")return;
     for(const message of incoming||[]){
-      if(!shouldIngestUpsert(type,message.messageTimestamp))continue;
+      ingestionCounters.tick("upserts");
+      if(type==="notify")ingestionCounters.tick("notify");
+      else if(type==="append")ingestionCounters.tick("append");
+      if(!shouldIngestUpsert(type,message.messageTimestamp)){
+        ingestionCounters.tick("ignoredTypeOrAge");continue;
+      }
       if(message.key?.id && message.message)retryMessages.save(message.key,message.message);
-      if(message.key?.fromMe)continue;
+      if(message.key?.fromMe){ingestionCounters.tick("ownMessages");continue;}
+      if(!message.key?.id||!message.message){ingestionCounters.tick("noMessageOrId");continue;}
       const phone=await resolveMessagePhone(message.key,client);
-      if(!phone||!message.key?.id||!message.message)continue;
+      if(!phone){
+        ingestionCounters.tick("unresolvedIdentity");
+        if(String(message.key.remoteJid||"").endsWith("@lid"))
+          ingestionCounters.tick("unresolvedLid");
+        continue;
+      }
       // Count each valid inbound message, including media without a transcript.
       const at=timestampMs(message.messageTimestamp)||Date.now();
       try{connectedStore.record("wa:"+message.key.id,at)}catch{}
@@ -253,35 +267,42 @@ function installListeners(client,mine,saveCreds){
            if(txt)body="[Áudio transcrito] "+txt;
          }catch{console.warn("Orion QR: transcrição não concluída (dados omitidos)")}
        }
-       if(!body || typeof body!=="string")continue;
+       if(!body || typeof body!=="string"){
+         ingestionCounters.tick("unreadableMedia");continue;
+       }
+       ingestionCounters.tick("processedText");
       const id="wa:"+message.key.id;
-      if(seen.has(id))continue;
+      if(seen.has(id)){ingestionCounters.tick("duplicates");continue;}
       pushMessage({id,phone,body:body.slice(0,2000),
         direction:"in",at});
       lastInboundAt=Date.now();inboundSinceConnect=true;
       if(type==="append")recentAppends++;
       if(allowAssistantRecipient(phone,connectedStore.settings())){
+        ingestionCounters.tick("pilotAccepted");
         // Ordena por destinatário sem bloquear outros clientes; nunca recupera histórico.
         const previous=assistantQueues.get(phone)||Promise.resolve();
         const job=previous.catch(()=>{}).then(async()=>{
           if(mine!==generation||socket!==client||status!=="connected"||
               !allowAssistantRecipient(phone,connectedStore.settings()))return;
+          ingestionCounters.tick("aiForwardAttempted");
           const answer=await forwardAssistant({
             apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
             messageId:String(message.key.id),text:body,
           });
-          if(!answer)return;
+          if(!answer){ingestionCounters.tick("aiSilent");return;}
           if(mine!==generation||socket!==client||status!=="connected"||
               !allowAssistantRecipient(phone,connectedStore.settings()))return;
-          await send(phone,answer);
+          try{await send(phone,answer);ingestionCounters.tick("aiReplySent");}
+          catch(error){ingestionCounters.tick("aiSendFailed");throw error;}
           console.info("Orion QR: resposta automática processada (dados omitidos)");
         }).catch(()=>{
+          ingestionCounters.tick("aiForwardFailed");
           console.warn("Orion QR: atendimento IA indisponível (dados omitidos)");
         }).finally(()=>{
           if(assistantQueues.get(phone)===job)assistantQueues.delete(phone);
         });
         assistantQueues.set(phone,job);
-      }
+      }else ingestionCounters.tick("notAllowed");
     }
   });
   client.ev.on("connection.update",update=>{
