@@ -140,7 +140,7 @@ for(const ambiguous of [false,true])test('an empty checked snapshot overrides st
   assert.equal(cache.get(recipientUser),staleRecipient);
 });
 
-test('concurrent verified relays and a normal PN relay keep their device contexts isolated',async()=>{
+test('concurrent verified relays and a normal PN relay keep their device contexts isolated',{timeout:3000},async()=>{
   function deferred(){let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};}
   const recipientUser=lid.split('@')[0],baseline=[{user:ownPhone,device:9}];
   const cache=makePilotDeviceCache(new Map([[ownPhone,baseline]]));
