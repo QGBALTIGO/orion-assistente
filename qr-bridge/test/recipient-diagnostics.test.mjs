@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {inspectLookup,inspectDelivery} from "../src/recipient-diagnostics.mjs";
+import {inspectLookup,inspectDelivery,attachDeliveryDiagnostics} from "../src/recipient-diagnostics.mjs";
 const p="5521997557364",me=p+":4@s.whatsapp.net";
 
 test("lookup validates PN and detects connected own account",()=>{
@@ -68,4 +68,25 @@ test("retry requests are counted by sent message ID for this recipient only",()=
  assert.equal(result.retryRequests,3);
  assert.equal(result.messagesWithRetry,2);
  assert.equal(result.count,2);
+});
+
+
+test("first lookup, cached lookup, and failed lookup all report live retry counts",()=>{
+  const rows=[{id:"out:MSG1",phone:p,direction:"out",delivery:"pending"},
+    {id:"out:MSG2",phone:p,direction:"out",delivery:"delivered"},
+    {id:"out:OTHER",phone:"5521888888888",direction:"out",delivery:"pending"}];
+  const retries=new Map([["MSG1",2],["MSG2",1],["OTHER",9]]);
+  const summary={registered:true,identity:"pn_confirmed",lookupMs:25};
+  const first=attachDeliveryDiagnostics(summary,rows,p,retries);
+  const cached=attachDeliveryDiagnostics(summary,rows,p,retries);
+  const failed=attachDeliveryDiagnostics({identity:"lookup_failed"},rows,p,retries);
+  for(const report of [first,cached,failed]){
+    assert.equal(report.delivery.retryRequests,3);
+    assert.equal(report.delivery.messagesWithRetry,2);
+    assert.equal(report.delivery.count,2);
+  }
+  assert.deepEqual(first,cached);
+  assert.equal(summary.delivery,undefined);
+  retries.set("MSG1",4);
+  assert.equal(attachDeliveryDiagnostics(summary,rows,p,retries).delivery.retryRequests,5);
 });
