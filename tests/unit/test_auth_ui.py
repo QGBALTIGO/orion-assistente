@@ -19,7 +19,7 @@ def test_auth_panel_has_all_screens_without_google_or_hardcoded_owner():
     assert "Continuar com o Google" not in html
     assert "kaykys468@gmail.com" not in html
     assert "prefers-reduced-motion" in html
-    assert "prefers-color-scheme:light" in html
+    assert 'html[data-theme="light"]' in html\n    assert 'prefers-color-scheme: dark' in html
     assert "max-width:900px" in html and "max-width:560px" in html
     assert "orion-brand-dark.svg" in html and "orion-brand-light.svg" in html
 
