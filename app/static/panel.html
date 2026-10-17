@@ -725,6 +725,9 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
  body,.theme-choice,.nav-item,.card{transition:none!important}
 }
 
+.orion-list-check svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.wizard-code-check{display:grid;place-items:center;width:50px;height:50px;margin:0 auto 12px;border-radius:50%;background:var(--soft-accent)}
+.wizard-code-check svg{width:26px;height:26px;stroke:var(--bright);stroke-width:2.5;fill:none;stroke-linecap:round;stroke-linejoin:round}
 </style>
 </head>
 <body>
@@ -732,17 +735,16 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
   <div class="auth-shell">
     <aside class="auth-visual">
       <picture class="auth-visual-logo">
-        <source media="(prefers-color-scheme: light)" srcset="/brand/orion-brand-light.svg">
-        <img src="/brand/orion-brand-dark.svg" alt="ORION — Recepcionista Digital" width="240" height="84">
+        <img data-orion-logo src="/brand/orion-brand-dark.svg" alt="ORION — Recepcionista Digital" width="240" height="84">
       </picture>
       <div class="auth-hero">
         <span class="auth-hero-kicker">O seu atendimento, em outra órbita.</span>
         <h1>Um novo jeito de cuidar do seu tempo.</h1>
         <p>Agenda, conversas e automações reunidas em um único lugar.</p>
         <ul>
-          <li><span aria-hidden="true">✓</span> Mais praticidade no atendimento</li>
-          <li><span aria-hidden="true">✓</span> Sua rotina organizada, sempre</li>
-          <li><span aria-hidden="true">✓</span> Experiência simples e inteligente</li>
+          <li><span aria-hidden="true" class="orion-list-check"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg></span> Mais praticidade no atendimento</li>
+          <li><span aria-hidden="true" class="orion-list-check"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg></span> Sua rotina organizada, sempre</li>
+          <li><span aria-hidden="true" class="orion-list-check"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg></span> Experiência simples e inteligente</li>
         </ul>
       </div>
       <div class="auth-orbit" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -752,8 +754,7 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
       <div class="auth-card">
         <div class="auth-mobile-brand">
           <picture>
-            <source media="(prefers-color-scheme: light)" srcset="/brand/orion-brand-light.svg">
-            <img src="/brand/orion-brand-dark.svg" alt="Orion" width="166" height="58">
+            <img data-orion-logo src="/brand/orion-brand-dark.svg" alt="Orion" width="166" height="58">
           </picture>
         </div>
         <div class="auth-card-top">
@@ -833,17 +834,25 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
 </section>
 <div id="appView" class="app hidden">
   <aside class="sidebar">
-    <div class="brand"><div class="logo">O</div> ORION.</div>
+    <div class="brand"><img class="orion-brand-image" data-orion-logo src="/brand/orion-brand-dark.svg" alt="Orion — Recepcionista Digital" width="180" height="63"></div>
     <div id="sidebarLabel" class="side-label">Gerenciamento</div>
     <nav class="nav" aria-label="Páginas do painel">
-      <button class="nav-item hidden" data-page="member" data-member-only> <span class="nav-icon" aria-hidden="true">⌂</span>Início</button>
-      <button class="nav-item" data-page="dispositivo" data-admin-only><span class="nav-icon">▦</span>Conectar dispositivo</button>
-      <button class="nav-item" data-page="conversas" data-admin-only><span class="nav-icon">✉</span>Conversas</button>
-      <button class="nav-item" data-page="cadastros" data-admin-only><span class="nav-icon">⚙</span>Cadastros</button>
+      <button class="nav-item hidden" data-page="member" data-member-only> <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M9 21v-7h6v7"/></svg></span>Início</button>
+      <button class="nav-item" data-page="dispositivo" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg></span>Conectar dispositivo</button>
+      <button class="nav-item" data-page="conversas" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.5c-1.4 0-2.7-.9-3.9l-5.1 1.9 1.9-5.1A8.5 8.5 0 1 1 21 11.5Z"/><path d="M8 10h8m-8 4h5"/></svg></span>Conversas</button>
+      <button class="nav-item" data-page="cadastros" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Cadastros</button>
     </nav>
     <div class="sidebar-bottom">
       <div class="avatar"><div class="avatar-dot" id="sidebarAvatarInitial">A</div><div><strong id="sidebarAccountName">Administrador</strong><br><small id="sidebarAccountType">Painel Orion</small></div></div>
-      <button id="logout" class="btn ghost full">Sair com segurança</button>
+      <div class="theme-control" aria-label="Aparência do Orion">
+        <span class="theme-control-label">Tema</span>
+        <div class="theme-switch" role="group" aria-label="Escolher aparência">
+          <button type="button" class="theme-choice" data-theme-choice="auto" aria-label="Tema Automático, seguir o dispositivo" title="Automático, seguir o dispositivo" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></svg></button>
+          <button type="button" class="theme-choice" data-theme-choice="light" aria-label="Tema Claro" title="Claro" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></button>
+          <button type="button" class="theme-choice" data-theme-choice="dark" aria-label="Tema Escuro" title="Escuro" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.5 14.3A9 9 0 0 1 9.7 3.5 9 9 0 1 0 20.5 14.3Z"/></svg></button>
+        </div>
+      </div>
+      <button id="logout" class="btn ghost full" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14 5-5-5-5m5 5H9"/></svg> Sair com segurança</button>
     </div>
   </aside>
   <main class="content">
@@ -855,8 +864,7 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
       <section class="member-overview" aria-labelledby="memberProfileHeading">
         <div class="member-overview-top">
           <picture>
-            <source media="(prefers-color-scheme: light)" srcset="/brand/orion-brand-light.svg">
-            <img src="/brand/orion-brand-dark.svg" alt="Orion Recepcionista Digital" width="178" height="63">
+            <img data-orion-logo src="/brand/orion-brand-dark.svg" alt="Orion Recepcionista Digital" width="178" height="63">
           </picture>
         </div>
         <h2 id="memberProfileHeading">Minha conta</h2>
@@ -1053,7 +1061,7 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
               </form>
             </div>
             <div id="codeResult" class="hidden wizard-code-result">
-              <div class="wizard-code-check" aria-hidden="true">✓</div>
+              <div class="wizard-code-check" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg></div>
               <h3>Digite este código no WhatsApp</h3>
               <p>Em Dispositivos conectados, escolha <strong>Conectar com número de telefone</strong>.</p>
               <div class="code-box" id="pairCode" aria-live="polite"></div>
@@ -1155,6 +1163,29 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
 (()=>{
 "use strict";
 const $=id=>document.getElementById(id);
+ const preferenceQuery=window.matchMedia("(prefers-color-scheme: dark)");
+ const choices=document.querySelectorAll("[data-theme-choice]");
+ function applyTheme(preference,store=false){
+   const safe=["light","dark","auto"].includes(preference)?preference:"auto";
+   if(store){try{localStorage.setItem("orion-theme",safe)}catch(_){/* storage blocked */}}
+   const effective=safe==="auto"?(preferenceQuery.matches?"dark":"light"):safe;
+   document.documentElement.dataset.theme=effective;
+   document.documentElement.dataset.themePreference=safe;
+   document.querySelectorAll("[data-orion-logo]").forEach(image=>{
+      const url=effective==="light"?"/brand/orion-brand-light.svg":"/brand/orion-brand-dark.svg";
+      if(image.getAttribute("src")!==url)image.setAttribute("src",url);
+   });
+   const meta=$("orionThemeColor");if(meta)meta.content=effective==="dark"?"#0b1527":"#f4f9fb";
+   choices.forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.themeChoice===safe)));
+ }
+ choices.forEach(button=>button.addEventListener("click",()=>applyTheme(button.dataset.themeChoice,true)));
+ applyTheme(document.documentElement.dataset.themePreference||"auto");
+ const onSystemTheme=()=>{
+   if(document.documentElement.dataset.themePreference==="auto")applyTheme("auto");
+ };
+ if(preferenceQuery.addEventListener)preferenceQuery.addEventListener("change",onSystemTheme);
+ else if(preferenceQuery.addListener)preferenceQuery.addListener(onSystemTheme);
+
 let authEpoch=0;
 let csrf="",page="dispositivo",method="code",showQr=false,deviceStatus="starting",lastDeviceStatus="starting",pairExpiresAt=0,
     statusTimer=null,chatTimer=null,selectedPhone="",chatsBusy=false;
