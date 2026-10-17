@@ -124,8 +124,8 @@ def test_full_backup_restore_and_restricted_migration_preserves_real_rows(migrat
         if str(error) == "restored_catalog_mismatch" and len(structures) >= 2:
             # These are schema definitions from this synthetic database only.
             # No customer values or production credentials enter the assertion.
-            before = {row[0]: row[1:] for row in structures[-2]}
-            after = {row[0]: row[1:] for row in structures[-1]}
+            before = {row[0]: row[1:] for row in ops.canonical_catalog(structures[-2])}
+            after = {row[0]: row[1:] for row in ops.canonical_catalog(structures[-1])}
             differences = {name: {"before": before.get(name), "restored": after.get(name)}
                            for name in before.keys() | after.keys() if before.get(name) != after.get(name)}
             if differences:
