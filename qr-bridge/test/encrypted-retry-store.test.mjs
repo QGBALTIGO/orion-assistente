@@ -21,7 +21,7 @@ test("stored messages remain encrypted at rest and recover after restart",()=>{
   assert.equal(files.length,1);
   const bytes=fs.readFileSync(path.join(d,files[0]),"utf8");
   assert.doesNotMatch(bytes,/Confidential text|ABC-1/);
-  assert.equal(fs.statSync(path.join(d,files[0])).mode&0o777,0o600);
+  if(process.platform!=='win32')assert.equal(fs.statSync(path.join(d,files[0])).mode&0o777,0o600);
   const restarted=makeEncryptedRetryStore({directory:d,secret});
   assert.deepEqual(restarted.get({id:"ABC-1"}),message);
  }finally{clean()}
