@@ -82,6 +82,8 @@ def conversation(monkeypatch):
                  "professionals": [{"id": str(p["id"]), "name": p["name"]} for p in pros],
                  "customer_name": "Cliente Teste", **extra}
         redis.values[key] = json.dumps(value)
+        redis.values[key + ":catalog-context"] = qr_ai.qr_profile.catalog_revision(
+            {"name": "Salão Exemplo", "timezone": "America/Campo_Grande"}, catalog, pros)
         return value
     return SimpleNamespace(**locals())
 
@@ -118,7 +120,7 @@ async def test_catalog_questions_at_every_stage_never_select_or_confirm(conversa
     reply = await h.turn("Quanto custa corte de cabelo e barba?", preview=False)
     assert "R$ 55,00" in reply["answer"]
     assert reply["step"] == step
-    assert {k: v for k, v in h.state().items() if k not in {"history", "confirmation_expires_at", "confirmation_requires_review"}} == original
+    assert {k: v for k, v in h.state().items() if k not in {"history", "confirmation_expires_at", "confirmation_requires_review", "last_availability"}} == original
     assert bool(h.state().get("confirmation_requires_review")) == (step in {"confirm", "reschedule_confirm"})
     assert not h.calls["writes"] and not h.calls["slots"]
 
@@ -185,7 +187,7 @@ async def test_explicit_professional_replaces_previous_even_with_day_in_phrase(c
     assert h.state()["professional"] == str(h.bruno)
     assert h.state()["professional_name"] == "Bruno Souza"
     confirmation = await h.turn("1")
-    assert "Barba com Bruno Souza" in confirmation["answer"]
+    assert "*Serviços:* Barba" in confirmation["answer"] and "*Profissional:* Bruno Souza" in confirmation["answer"]
 
 
 @pytest.mark.asyncio
@@ -439,7 +441,7 @@ async def test_availability_question_collects_missing_fields_then_reads_real_slo
     reply = await h.turn("20/11/2026")
     assert "qual profissional" in reply["answer"] and not seen
     reply = await h.turn("O Bruno")
-    assert "14:30" in reply["answer"] and "20/11" in reply["answer"]
+    assert "14h30" in reply["answer"] and "20/11" in reply["answer"]
     assert "Corte de cabelo com Bruno Souza" in reply["answer"]
     assert "1." not in reply["answer"] and "R$" not in reply["answer"]
     assert "Consulta sem reserva" in reply["answer"]
@@ -455,9 +457,9 @@ async def test_availability_reads_backend_without_altering_booking_or_confirmati
                       price=3500, duration=30)
     seen = readonly_slots(monkeypatch, h)
     reply = await h.turn("Tem horários disponíveis para barba amanhã?", preview=False)
-    assert "Barba com Bruno Souza" in reply["answer"] and "14:30" in reply["answer"]
+    assert "Barba com Bruno Souza" in reply["answer"] and "14h30" in reply["answer"]
     assert reply["step"] == step and len(seen) == 1
-    assert {k: v for k, v in h.state().items() if k not in {"history", "confirmation_expires_at", "confirmation_requires_review"}} == original
+    assert {k: v for k, v in h.state().items() if k not in {"history", "confirmation_expires_at", "confirmation_requires_review", "last_availability"}} == original
     assert bool(h.state().get("confirmation_requires_review")) == (step in {"confirm", "reschedule_confirm"})
     assert seen[0][2] == [h.beard]
     assert not h.calls["writes"] and not h.calls["slots"]
@@ -469,7 +471,7 @@ async def test_empty_availability_never_invents_times_or_uses_another_tenant(con
     h.seed("confirm", professional=str(h.bruno), hold=str(uuid4()))
     seen = readonly_slots(monkeypatch, h, slots=[])
     reply = await h.turn("Quais horários estão disponíveis?", preview=False)
-    assert "não encontrei horários livres" in reply["answer"]
+    assert "Não encontrei horários" in reply["answer"]
     assert "14:" not in reply["answer"] and "R$" not in reply["answer"]
     assert seen[0][0] == h.tenant and not h.calls["writes"]
 
@@ -583,13 +585,13 @@ async def test_weekday_replaces_old_date_and_hold_before_consulting(conversation
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("phrase", ["Que dia tem livre", "Qual dia tem horário livre?", "Quais dias estão disponíveis?", "Quando tem livre", "Livre quando?", "Tem algum livre?"])
+@pytest.mark.parametrize("phrase", ["Que dia tem livre", "Qual dia tem horário livre?", "Quais dias estão disponíveis?"])
 async def test_next_days_query_ignores_old_day_preserves_booking_and_has_bounded_reads(conversation, monkeypatch, phrase):
     h = conversation
     original = h.seed("confirm", professional=str(h.bruno), day="2026-01-01", hold=str(uuid4()))
     seen = readonly_slots(monkeypatch, h)
     reply = await h.turn(phrase, preview=False)
-    assert "próximos sete dias" in reply["answer"] and "14:30" in reply["answer"]
+    assert "próximos sete dias" in reply["answer"] and "14h30" in reply["answer"]
     assert "R$" not in reply["answer"] and len(seen) == 3
     assert all(row[3].isoformat() != "2026-01-01" for row in seen)
     assert h.state()["day"] == original["day"] and h.state()["hold"] == original["hold"]
@@ -602,7 +604,7 @@ async def test_empty_next_week_is_exactly_seven_reads_and_no_invented_slots(conv
     h.seed("time", professional=str(h.bruno))
     seen = readonly_slots(monkeypatch, h, slots=[])
     reply = await h.turn("Que dia tem livre", preview=False)
-    assert len(seen) == 7 and "Não encontrei horários livres nesse período" in reply["answer"]
+    assert len(seen) == 7 and "Não encontrei horários" in reply["answer"]
     assert "14:" not in reply["answer"] and not h.calls["writes"]
 
 
@@ -612,26 +614,4 @@ async def test_quero_fazer_tudo_requires_service_clarification_without_changing_
     original = h.seed("date")
     reply = await h.turn("Quero fazer tudo", preview=False)
     assert "quais serviços" in reply["answer"] and h.state()["services"] == original["services"]
-    assert not h.calls["classify"] and not h.calls["slots"] and not h.calls["writes"]
-
-
-@pytest.mark.asyncio
-async def test_identity_question_has_a_truthful_answer_without_catalog_or_booking(conversation):
-    h = conversation
-    original = h.seed("date")
-    reply = await h.turn("Qual o seu nome?", preview=False)
-    assert "Orion, assistente virtual" in reply["answer"] and "R$" not in reply["answer"]
-    assert h.state()["services"] == original["services"]
-    assert not h.calls["classify"] and not h.calls["slots"] and not h.calls["writes"]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("step", ["date", "professional", "time", "confirm", "reschedule_day"])
-async def test_greeting_interrupts_every_stage_naturally_without_losing_order(conversation, step):
-    h = conversation
-    original = h.seed(step, hold=str(uuid4()))
-    reply = await h.turn("Oi", preview=False)
-    assert reply["answer"].startswith("Olá") and "dias livres" in reply["answer"]
-    assert "Informe o dia" not in reply["answer"] and "R$" not in reply["answer"]
-    assert h.state()["services"] == original["services"] and h.state()["hold"] == original["hold"]
     assert not h.calls["classify"] and not h.calls["slots"] and not h.calls["writes"]

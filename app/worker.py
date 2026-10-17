@@ -39,7 +39,7 @@ async def process_inbound_event(ctx: dict, tenant_id: str, event_id: str):
         return "already_processed_or_processing"
     try:
         answer = await reply(tenant, claim["channel_id"], claim["sender_e164"],
-                             claim["message_text"], ctx["redis"])
+                             claim["message_text"], ctx["redis"], message_id=str(claim["id"]))
         async with factory() as session:
             async with tenant_transaction(session, tenant):
                 if answer:

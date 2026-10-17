@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.booking_service import (
     book_appointment, cancel_appointment, confirm_hold, list_slots,
-    reschedule_appointment,
+    reschedule_appointment, preview_reschedule,
 )
 from app.main import app
 
@@ -342,6 +342,77 @@ class MemoryRedis:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["price", "duration", "original"])
+async def test_reschedule_requires_same_snapshot_under_write_lock(booking_db, change):
+    d = booking_db
+    sender = phone(730)
+    async with d["factory"]() as s:
+        reservation = await book_appointment(s, d["a"], d["pro"], [d["beard"]], sender,
+            "Synthetic snapshot", start_at(d["day"], 10), "snapshot-booking")
+        await confirm_hold(s, d["a"], reservation["id"])
+        proposal = await preview_reschedule(s, d["a"], reservation["id"], start_at(d["day"], 14), customer_phone=sender)
+    async with d["migrator"].begin() as s:
+        if change == "price":
+            await s.execute(text("UPDATE services SET price_cents=price_cents+100 WHERE tenant_id=:t AND id=:id"), {"t": d["a"], "id": d["beard"]})
+        elif change == "duration":
+            await s.execute(text("UPDATE services SET duration_min=duration_min+5 WHERE tenant_id=:t AND id=:id"), {"t": d["a"], "id": d["beard"]})
+        else:
+            await s.execute(text("UPDATE appointments SET updated_at=updated_at+interval '1 second' WHERE tenant_id=:t AND id=:id"), {"t": d["a"], "id": reservation["id"]})
+    async with d["factory"]() as s:
+        with pytest.raises(HTTPException) as stale:
+            await reschedule_appointment(s, d["a"], reservation["id"], start_at(d["day"], 14),
+                expected_snapshot=proposal["expected_snapshot"], customer_phone=sender)
+        assert stale.value.status_code == 409
+    async with d["migrator"].connect() as s:
+        original = (await s.execute(text("SELECT start_at,total_cents FROM appointments WHERE id=:id"), {"id": reservation["id"]})).one()
+        assert original.start_at == start_at(d["day"], 10) and original.total_cents == 2000
+
+
+@pytest.mark.asyncio
+async def test_reschedule_preview_is_contact_bound_and_verified_snapshot_moves_once(booking_db):
+    d = booking_db
+    sender = phone(731)
+    async with d["factory"]() as s:
+        reservation = await book_appointment(s, d["a"], d["pro"], [d["beard"]], sender,
+            "Synthetic snapshot", start_at(d["day"], 10), "snapshot-success")
+        await confirm_hold(s, d["a"], reservation["id"])
+        with pytest.raises(HTTPException) as denied:
+            await preview_reschedule(s, d["a"], reservation["id"], start_at(d["day"], 14), customer_phone=phone(732))
+        assert denied.value.status_code == 404
+        proposal = await preview_reschedule(s, d["a"], reservation["id"], start_at(d["day"], 14), customer_phone=sender)
+        moved = await reschedule_appointment(s, d["a"], reservation["id"], start_at(d["day"], 14),
+            expected_snapshot=proposal["expected_snapshot"], customer_phone=sender)
+        assert moved["start_at"] == start_at(d["day"], 14) and moved["protocol"] == reservation["protocol"]
+
+
+@pytest.mark.asyncio
+async def test_customer_confirmation_and_cancel_verify_contact_and_unchanged_summary(booking_db):
+    from app.whatsapp_dialogue import owned_booking
+    d=booking_db
+    sender=phone(740)
+    async with d["factory"]() as s:
+        reservation=await book_appointment(s,d["a"],d["pro"],[d["beard"]],sender,
+            "Synthetic consent",start_at(d["day"],10),"customer-confirm-snapshot")
+    hold=await owned_booking(d["a"],sender,item_id=reservation["id"],statuses=("hold",))
+    assert hold and hold["expected_snapshot"]
+    assert await owned_booking(d["b"],sender,item_id=reservation["id"],statuses=("hold",)) is None
+    async with d["factory"]() as s:
+        with pytest.raises(HTTPException) as denied:
+            await confirm_hold(s,d["a"],reservation["id"],customer_phone=phone(741),expected_snapshot=hold["expected_snapshot"])
+        assert denied.value.status_code==404
+        await confirm_hold(s,d["a"],reservation["id"],customer_phone=sender,expected_snapshot=hold["expected_snapshot"])
+    current=await owned_booking(d["a"],sender,item_id=reservation["id"])
+    async with d["factory"]() as s:
+        await reschedule_appointment(s,d["a"],reservation["id"],start_at(d["day"],14))
+        with pytest.raises(HTTPException) as stale:
+            await cancel_appointment(s,d["a"],reservation["id"],customer_phone=sender,expected_snapshot=current["expected_snapshot"])
+        assert stale.value.status_code==409
+    async with d["migrator"].connect() as s:
+        persisted=(await s.execute(text("SELECT status,start_at FROM appointments WHERE id=:id"),{"id":reservation["id"]})).one()
+        assert persisted.status=="confirmed" and persisted.start_at==start_at(d["day"],14)
+
+
+@pytest.mark.asyncio
 async def test_signed_phone_scopes_customer_cancel_and_reschedule(booking_db):
     """Número autorizado pela Meta (argumento assinado) precisa ser dono da reserva."""
     import json
@@ -364,19 +435,25 @@ async def test_signed_phone_scopes_customer_cancel_and_reschedule(booking_db):
           "cancelar "+protocol.lower(),{},redis,"other-key")
     assert ignored and "não encontrada" in warning.lower()
     ignored,prompt=await try_command(d["a"],channel,sender,
-          "remarcar "+protocol.lower(),{},redis,key)
+          "remarcar "+protocol.lower(),{},redis,key,message_id="request-reschedule")
     assert ignored and "nova data" in prompt.lower()
     saved=json.loads(redis.data[key])
+    ignored,proposal=await try_command(d["a"],channel,sender,
+          start_at(d["day"],14).strftime("%Y-%m-%d %H:%M"),saved,redis,key,message_id="choose-reschedule")
+    assert ignored and "Proposta de remarcação" in proposal
+    async with d["migrator"].connect() as s:
+        assert (await s.execute(text("SELECT start_at FROM appointments WHERE id=:id"),{"id":reservation["id"]})).scalar_one()==start_at(d["day"],10)
+    saved=json.loads(redis.data[key])
     ignored,moved=await try_command(d["a"],channel,sender,
-          start_at(d["day"],14).strftime("%Y-%m-%d %H:%M"),saved,redis,key)
-    assert ignored and "Remarcado" in moved
+          "pode confirmar",saved,redis,key,message_id="confirm-reschedule")
+    assert ignored and "Remarcação confirmada" in moved
     assert protocol in moved
     ignored,_=await try_command(d["a"],channel,sender,
-          "cancelar "+protocol.lower(),{},redis,key)
+          "cancelar "+protocol.lower(),{},redis,key,message_id="request-cancel")
     saved=json.loads(redis.data[key])
     ignored,cancelled=await try_command(d["a"],channel,sender,
-          "sim cancelar",saved,redis,key)
-    assert ignored and "cancelado" in cancelled
+          "pode cancelar",saved,redis,key,message_id="confirm-cancel")
+    assert ignored and "Cancelamento confirmado" in cancelled
     async with d["migrator"].connect() as s:
         state=(await s.execute(text("SELECT status FROM appointments WHERE id=:id"),
                                {"id":reservation["id"]})).scalar_one()

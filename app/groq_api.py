@@ -27,14 +27,16 @@ class PreviewRequest(StrictModel):
 
 @router.get("/status")
 async def status(tenant_id: UUID, actor: Actor = Depends(authenticate)):
-    authorize(actor, tenant_id)
-    support_only(actor)
+    from app.tenant_access import resolve_tenant_access
+    await resolve_tenant_access(actor, tenant_id)
     model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     return {
         "provider": "groq",
         "model": model if model in MODELS else None,
         "configured": bool(os.getenv("GROQ_API_KEY")),
         "preview_enabled": os.getenv("GROQ_PREVIEW_ENABLED", "0") == "1",
+        "audio_preview_enabled": os.getenv("GROQ_PREVIEW_ENABLED", "0") == "1" and os.getenv("QR_AI_AUDIO_ENABLED", "0") == "1",
+        "runtime_connected": os.getenv("BUSINESS_PROFILES_ENABLED", "0") == "1",
         "whatsapp_automation_enabled": False,
     }
 

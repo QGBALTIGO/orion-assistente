@@ -55,8 +55,9 @@ async def test_audio_groq_mock_produces_text_without_real_request(monkeypatch):
         assert req.url.path == "/openai/v1/audio/transcriptions"
         assert req.headers["authorization"] == "Bearer test-only-key"
         assert b"whisper-large-v3-turbo" in req.content
-        assert b"audio-synthetic" in req.content
-        return httpx.Response(200, json={"text": " Quero corte e barba "})
+        assert b"OggS-audio-synthetic" in req.content
+        assert b"verbose_json" in req.content
+        return httpx.Response(200, json={"text": " Quero corte e barba ", "duration": 4.5})
 
     monkeypatch.setattr(groq_audio.httpx, "AsyncClient",
                         lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
@@ -64,7 +65,7 @@ async def test_audio_groq_mock_produces_text_without_real_request(monkeypatch):
                         base_url="http://test") as client:
         r = await client.post(URL, headers={
             "X-Orion-Bridge-Key": KEY, "X-Orion-Phone": PHONE,
-            "Content-Type": "audio/ogg"}, content=b"audio-synthetic")
+            "Content-Type": "audio/ogg"}, content=b"OggS-audio-synthetic")
     assert r.status_code == 200, r.text
     assert r.json() == {"text": "Quero corte e barba"}
     assert len(calls) == 1
@@ -86,3 +87,73 @@ async def test_audio_rejects_malformed_media(monkeypatch):
             "Content-Type": "audio/ogg"}, content=b"")
     assert invalid.status_code == 415
     assert empty.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload,status", [
+    ({"text": "sim", "duration": 121}, 413),
+    ({"text": "sim", "duration": True}, 502),
+    ({"text": "sim", "duration": None}, 502),
+    ({"text": "sim"}, 502),
+    ({"text": "sim", "duration": 0}, 502),
+    ({"text": "sim, mas não confirme. " * 100, "duration": 60}, 422),
+    ({"text": "", "duration": 3}, 502),
+])
+async def test_no_partial_transcription_or_unverified_duration(monkeypatch, payload, status):
+    monkeypatch.setenv("GROQ_API_KEY", "synthetic")
+    original = httpx.AsyncClient
+    monkeypatch.setattr(groq_audio.httpx, "AsyncClient", lambda **kwargs: original(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=payload)), **kwargs))
+    class Request:
+        headers = {"content-type": "audio/ogg"}
+        async def stream(self):
+            yield b"OggS-synthetic-no-real-audio"
+    with pytest.raises(Exception) as error:
+        await groq_audio.transcribe_request(Request())
+    assert error.value.status_code == status
+
+
+@pytest.mark.asyncio
+async def test_audio_buffer_is_wiped_even_if_key_missing(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    captured = []
+    original = groq_audio.validate_audio
+    def validation(body, kind):
+        captured.append(body)
+        original(body, kind)
+    monkeypatch.setattr(groq_audio, "validate_audio", validation)
+    class Request:
+        headers = {"content-type": "audio/ogg"}
+        async def stream(self):
+            yield b"OggS-synthetic"
+    with pytest.raises(Exception) as error:
+        await groq_audio.transcribe_request(Request())
+    assert error.value.status_code == 503 and captured
+    assert set(captured[0]) == {0}
+
+
+@pytest.mark.asyncio
+async def test_mime_mismatch_is_not_sent_to_provider(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "synthetic")
+    def forbid(**_):
+        raise AssertionError("Invalid audio cannot leave the server")
+    monkeypatch.setattr(groq_audio.httpx, "AsyncClient", forbid)
+    class Request:
+        headers = {"content-type": "audio/ogg"}
+        async def stream(self):
+            yield b"<html>not audio</html>"
+    with pytest.raises(Exception) as error:
+        await groq_audio.transcribe_request(Request())
+    assert error.value.status_code == 415
+
+
+def test_synthetic_wav_fixtures_are_valid_and_truncation_is_rejected():
+    from pathlib import Path
+    files = list((Path(__file__).parents[1] / "fixtures" / "audio").glob("*.wav"))
+    assert {path.name for path in files} == {"synthetic-price-pt.wav", "synthetic-correction-pt.wav"}
+    for path in files:
+        body = bytearray(path.read_bytes())
+        groq_audio.validate_audio(body, "audio/wav")
+        with pytest.raises(Exception) as error:
+            groq_audio.validate_audio(body[:100], "audio/wav")
+        assert error.value.status_code == 415

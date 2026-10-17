@@ -89,7 +89,7 @@ async def test_preview_from_natural_language_to_confirm_never_writes(monkeypatch
     assert "55,00" in first["answer"]
     second = await qr_ai.turn(tenant, "5567999999999", "14:00", redis, key, preview=True)
     assert second["step"] == "confirm"
-    assert "SIM ou NÃO" in second["answer"]
+    assert "SIM ou NÃO" not in second["answer"] and "Simulação" not in second["answer"] and "Prévia" in second["answer"]
     third = await qr_ai.turn(tenant, "5567999999999", "sim", redis, key, preview=True)
     assert third["step"] == "preview_complete"
     assert "Nenhum agendamento real" in third["answer"]

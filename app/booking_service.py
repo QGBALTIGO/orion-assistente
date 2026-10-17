@@ -31,18 +31,18 @@ async def acquire_professional_lock(s: AsyncSession, tenant: UUID, professional:
                     {"scope": str(tenant) + ":" + str(professional)})
 
 
-async def load_bundle(s: AsyncSession, tenant: UUID, professional: UUID, ids: list[UUID]):
+async def load_bundle(s: AsyncSession, tenant: UUID, professional: UUID, ids: list[UUID], *, lock=False):
     if not ids or len(ids) > 6 or len(set(ids)) != len(ids):
         fail(422, "Escolha de 1 a 6 serviços diferentes")
     shop = (await s.execute(text("""
         SELECT timezone, slot_step_minutes, min_notice_minutes, booking_horizon_days, status
         FROM tenants WHERE id=:tenant
-    """), {"tenant": tenant})).mappings().first()
+    """ + (" FOR SHARE" if lock else "")), {"tenant": tenant})).mappings().first()
     if shop is None or shop["status"] != "active":
         fail(404, "Estabelecimento indisponível")
     person = (await s.execute(text("""
         SELECT id FROM professionals WHERE tenant_id=:tenant AND id=:professional AND active
-    """), {"tenant": tenant, "professional": professional})).scalar_one_or_none()
+    """ + (" FOR SHARE" if lock else "")), {"tenant": tenant, "professional": professional})).scalar_one_or_none()
     if person is None:
         fail(422, "Profissional indisponível")
     rows = (await s.execute(text("""
@@ -51,7 +51,7 @@ async def load_bundle(s: AsyncSession, tenant: UUID, professional: UUID, ids: li
         JOIN professional_services ps ON ps.tenant_id=s.tenant_id
           AND ps.service_id=s.id AND ps.professional_id=:professional
         WHERE s.tenant_id=:tenant AND s.active AND s.id = ANY(:ids)
-    """), {"tenant": tenant, "professional": professional, "ids": ids})).mappings().all()
+    """ + (" FOR SHARE OF s,ps" if lock else "")), {"tenant": tenant, "professional": professional, "ids": ids})).mappings().all()
     found = {r["id"]: dict(r) for r in rows}
     if len(found) != len(ids):
         fail(422, "Serviço inativo ou não realizado pelo profissional")
@@ -316,7 +316,8 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
 
 
 async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
-                       now: datetime | None = None):
+                       now: datetime | None = None, *, customer_phone: str | None = None,
+                       expected_snapshot: str | None = None):
     now = now or datetime.now(UTC)
     expired = False
     result = None
@@ -331,6 +332,8 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
         hold = (await s.execute(text("""
             SELECT * FROM appointments WHERE tenant_id=:tenant AND id=:id FOR UPDATE
         """), {"tenant": tenant, "id": item_id})).mappings().one()
+        if customer_phone is not None or expected_snapshot is not None:
+            await verify_customer_snapshot(s, tenant, hold, customer_phone, expected_snapshot)
         if hold["status"] == "confirmed":
             return await read_appointment(s, tenant, item_id)  # replay sem duplicação
         if hold["status"] != "hold":
@@ -347,7 +350,7 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
                 SELECT service_id FROM appointment_items WHERE tenant_id=:tenant
                 AND appointment_id=:id ORDER BY item_order
             """), {"tenant": tenant, "id": item_id})).scalars().all()
-            shop, items = await load_bundle(s, tenant, hold["professional_id"], list(ids))
+            shop, items = await load_bundle(s, tenant, hold["professional_id"], list(ids), lock=expected_snapshot is not None)
             fresh = bounds(hold["start_at"], items)
             # Evitar confirmação usando preço/tempo antigo se catálogo mudou
             if (fresh["end_at"] != hold["end_at"] or
@@ -368,7 +371,26 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
     return result
 
 
-async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID):
+def appointment_snapshot(appointment):
+    fields = {key: appointment[key] for key in ("id", "customer_id", "professional_id", "status",
+              "start_at", "end_at", "total_cents", "updated_at", "items")}
+    return hashlib.sha256(json.dumps(fields, sort_keys=True, default=str).encode()).hexdigest()
+
+
+async def verify_customer_snapshot(s, tenant, row, phone, expected):
+    owns = (await s.execute(text("SELECT 1 FROM customers WHERE tenant_id=:t AND id=:id AND whatsapp_e164=:phone"),
+        {"t": tenant, "id": row["customer_id"], "phone": phone})).scalar_one_or_none()
+    if not owns:
+        fail(404, "Reserva indisponível para este contato")
+    if expected is not None:
+        detail = await read_appointment(s, tenant, row["id"])
+        actual = appointment_snapshot({**detail, "updated_at": row["updated_at"]})
+        if not isinstance(expected, str) or not secrets.compare_digest(actual, expected):
+            fail(409, "A reserva mudou. Confira um novo resumo antes de continuar")
+
+
+async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
+                             customer_phone: str | None = None, expected_snapshot: str | None = None):
     async with tenant_transaction(s, tenant):
         row = (await s.execute(text("""
             SELECT professional_id FROM appointments WHERE tenant_id=:tenant AND id=:id
@@ -377,11 +399,13 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID):
             fail(404, "Agendamento não encontrado")
         await acquire_professional_lock(s, tenant, row["professional_id"])
         entry = (await s.execute(text("""
-            SELECT status FROM appointments WHERE tenant_id=:tenant AND id=:id FOR UPDATE
-        """), {"tenant": tenant, "id": item_id})).scalar_one()
-        if entry == "cancelled":
+            SELECT * FROM appointments WHERE tenant_id=:tenant AND id=:id FOR UPDATE
+        """), {"tenant": tenant, "id": item_id})).mappings().one()
+        if customer_phone is not None or expected_snapshot is not None:
+            await verify_customer_snapshot(s, tenant, entry, customer_phone, expected_snapshot)
+        if entry["status"] == "cancelled":
             return await read_appointment(s, tenant, item_id)
-        if entry not in ("confirmed", "hold"):
+        if entry["status"] not in ("confirmed", "hold"):
             fail(409, "Agendamento não pode ser cancelado neste estado")
         await s.execute(text("""
             UPDATE appointments SET status='cancelled', hold_expires_at=NULL,
@@ -391,8 +415,41 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID):
         return await read_appointment(s, tenant, item_id)
 
 
+def reschedule_snapshot(current, items, new_start, shop):
+    """Bind consent to both the original booking and the factual new contract."""
+    original = {key: current[key] for key in ("id", "customer_id", "professional_id", "status",
+                "start_at", "end_at", "total_cents", "updated_at")}
+    payload = {"original": original, "items": items, "start": new_start.astimezone(UTC), "shop": shop}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+
+async def preview_reschedule(s: AsyncSession, tenant: UUID, item_id: UUID, new_start: datetime,
+                             *, customer_phone: str):
+    """Read-only customer proposal; no hold, cancellation or movement occurs."""
+    async with tenant_transaction(s, tenant):
+        current = (await s.execute(text("""SELECT a.* FROM appointments a JOIN customers c
+            ON c.tenant_id=a.tenant_id AND c.id=a.customer_id
+            WHERE a.tenant_id=:t AND a.id=:id AND c.whatsapp_e164=:phone
+              AND a.status='confirmed' AND a.end_at>now()"""),
+            {"t": tenant, "id": item_id, "phone": customer_phone})).mappings().first()
+        if current is None:
+            fail(404, "Reserva indisponível para este contato")
+        ids = list((await s.execute(text("SELECT service_id FROM appointment_items WHERE tenant_id=:t AND appointment_id=:id ORDER BY item_order"),
+            {"t": tenant, "id": item_id})).scalars())
+        shop, items = await load_bundle(s, tenant, current["professional_id"], ids)
+        contract = await check_slot(s, tenant, current["professional_id"], shop, items, new_start,
+                                   datetime.now(UTC), ignore_appointment=item_id)
+        name = (await s.execute(text("SELECT name FROM professionals WHERE tenant_id=:t AND id=:id"),
+            {"t": tenant, "id": current["professional_id"]})).scalar_one()
+        return {"id": item_id, "protocol": current["protocol"], "start_at": contract["start_at"],
+                "timezone": shop["timezone"], "total_cents": contract["total_cents"],
+                "duration_min": amounts(items)[0], "professional": name, "services": [item["name"] for item in items],
+                "expected_snapshot": reschedule_snapshot(current, items, new_start, shop)}
+
+
 async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
-                                 new_start: datetime, now: datetime | None = None):
+                                 new_start: datetime, now: datetime | None = None, *,
+                                 expected_snapshot: str | None = None, customer_phone: str | None = None):
     now = now or datetime.now(UTC)
     async with tenant_transaction(s, tenant):
         current = (await s.execute(text("""
@@ -410,7 +467,17 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
             SELECT service_id FROM appointment_items WHERE tenant_id=:tenant
             AND appointment_id=:id ORDER BY item_order
         """), {"tenant": tenant, "id": item_id})).scalars().all())
-        shop, items = await load_bundle(s, tenant, row["professional_id"], ids)
+        shop, items = await load_bundle(s, tenant, row["professional_id"], ids, lock=expected_snapshot is not None)
+        if expected_snapshot is not None:
+            if not customer_phone:
+                fail(403, "Confirmação exige o contato autenticado")
+            owns = (await s.execute(text("SELECT 1 FROM customers WHERE tenant_id=:t AND id=:id AND whatsapp_e164=:phone"),
+                {"t": tenant, "id": row["customer_id"], "phone": customer_phone})).scalar_one_or_none()
+            actual = reschedule_snapshot(row, items, new_start, shop)
+            if not owns:
+                fail(404, "Reserva indisponível para este contato")
+            if not isinstance(expected_snapshot, str) or not secrets.compare_digest(actual, expected_snapshot):
+                fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de remarcar")
         b = await check_slot(s, tenant, row["professional_id"], shop, items, new_start,
                              now, ignore_appointment=item_id)
         await s.execute(text("""

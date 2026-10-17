@@ -101,7 +101,7 @@ async def test_history_lookup_does_not_cross_phone_scope(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_remarking_requires_explicit_sim_and_cannot_write_in_preview(monkeypatch):
+async def test_remarking_uses_a_fresh_summary_and_cannot_write_in_preview(monkeypatch):
     tenant, service, pro, appointment = uuid4(), uuid4(), uuid4(), uuid4()
     redis = MemoryRedis()
     async def data(_):
@@ -120,6 +120,8 @@ async def test_remarking_requires_explicit_sim_and_cannot_write_in_preview(monke
              "professional": str(pro), "appointment": str(appointment)}
     k = f"orion:qr:ai:{tenant}:preview:fake"
     redis.values[k] = json.dumps(state)
+    business, catalog, professionals = await data(tenant)
+    redis.values[k + ":catalog-context"] = qr_ai.qr_profile.catalog_revision(business, catalog, professionals)
     a = await qr_ai.turn(tenant, "5567999999999", "20/11", redis, "preview:fake", True)
     assert a["step"] == "reschedule_time"
     b = await qr_ai.turn(tenant, "5567999999999", "14:00", redis, "preview:fake", True)
@@ -127,7 +129,10 @@ async def test_remarking_requires_explicit_sim_and_cannot_write_in_preview(monke
     c = await qr_ai.turn(tenant, "5567999999999", "não", redis, "preview:fake", True)
     assert "horário original permanece" in c["answer"]
     redis.values[k] = json.dumps({**state, "step": "reschedule_confirm",
-                                   "new_start": "2026-11-20T14:00:00-04:00"})
+                                   "new_start": "2026-11-20T14:00:00-04:00",
+                                   "confirmation_summary": b["answer"],
+                                   "confirmation_message_id": json.loads(redis.values[k])["confirmation_message_id"],
+                                   "confirmation_expires_at": datetime.now().timestamp() + 240})
     done = await qr_ai.turn(tenant, "5567999999999", "sim", redis, "preview:fake", True)
     assert done["step"] == "preview_complete"
 
