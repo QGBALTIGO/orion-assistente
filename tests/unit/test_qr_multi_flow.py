@@ -84,7 +84,7 @@ def flow(monkeypatch):
         calls["writes"].append(("hold", list(ids), when, pro))
         return hold_result(pro, ids, when)
     async def confirm(db, t, hold, **scope):
-        assert scope == {"customer_phone": "+5567999999999", "expected_snapshot": "a"*64}
+        assert scope == {"customer_phone": "+5567999999999", "expected_snapshot": "a"*64, "source": "whatsapp_qr"}
         calls["writes"].append(("confirm", hold))
         return {"start_at": datetime.combine(tomorrow, datetime.min.time(), zone).replace(hour=15),
                 "total_cents": 3500, "protocol": "SYNTHETIC"}
@@ -95,7 +95,7 @@ def flow(monkeypatch):
         calls["names"].append(customer)
     async def reschedule(db, t, appointment_id, when, **kwargs):
         assert t == tenant and appointment_id == appointment
-        assert kwargs == {"expected_snapshot": "synthetic-snapshot", "customer_phone": "+5567999999999"}
+        assert kwargs == {"expected_snapshot": "synthetic-snapshot", "customer_phone": "+5567999999999", "source": "whatsapp_qr"}
         calls["writes"].append(("reschedule", when))
         return {"start_at": when, "protocol": "SYNTHETIC"}
     async def preview_move(db, t, appointment_id, when, *, customer_phone):
@@ -632,7 +632,8 @@ async def test_new_proposal_messages_have_separate_scoped_hold_identities(flow, 
 @pytest.mark.asyncio
 async def test_hold_request_identity_uses_backend_normalized_instant_and_service_order(flow, monkeypatch):
     h = flow;seen = []
-    async def book(db, tenant, professional, ids, phone, name, when, idempotency_key):
+    async def book(db, tenant, professional, ids, phone, name, when, idempotency_key, *, source):
+        assert source == "whatsapp_qr"
         seen.append(idempotency_key)
         return h.hold_result(professional, ids, when)
     monkeypatch.setattr(qr_ai, "book_appointment", book)

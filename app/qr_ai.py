@@ -525,7 +525,8 @@ async def continue_reschedule(tenant: UUID, phone: str, body: str, state: dict,
                 await qr_intake_revision.check_before_write()
                 updated = await reschedule_appointment(
                     s, tenant, UUID(state["appointment"]),
-                    datetime.fromisoformat(state["new_start"]), expected_snapshot=state["expected_snapshot"], customer_phone="+" + phone)
+                    datetime.fromisoformat(state["new_start"]), expected_snapshot=state["expected_snapshot"], customer_phone="+" + phone,
+                    source="whatsapp_qr")
         except HTTPException:
             for field in ("new_start", "expected_snapshot", "reschedule_facts", "confirmation_summary", "confirmation_presentation",
                           "confirmation_message_id", "confirmation_expires_at", "confirmation_requires_review", "slots"):
@@ -1540,7 +1541,7 @@ async def prepare_booking_summary(tenant: UUID, phone: str, state: dict, when: s
                 await qr_intake_revision.check_before_write()
                 hold = await book_appointment(db, tenant, UUID(state["professional"]),
                     [UUID(x) for x in state["services"]], "+" + phone, selected_name,
-                    datetime.fromisoformat(when), "qr-" + idem,
+                    datetime.fromisoformat(when), "qr-" + idem, source="whatsapp_qr",
                     **({"replace_hold_id": UUID(replacement["id"]), "expected_snapshot": replacement["expected_snapshot"]} if replacement else {}))
         except HTTPException:
             return await _recover_booking(tenant, phone, state, business, catalog, redis, key,
@@ -2474,7 +2475,7 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
             async with get_session_factory()() as db:
                 await qr_intake_revision.check_before_write()
                 reserved = await confirm_hold(db, tenant, UUID(state["hold"]), customer_phone="+"+phone,
-                    expected_snapshot=state["hold_snapshot"])
+                    expected_snapshot=state["hold_snapshot"], source="whatsapp_qr")
         except HTTPException:
             return await _recover_booking(tenant, phone, state, business, catalog, redis, state_key,
                 reason="Não foi possível confirmar esse horário. Mantive o serviço, o profissional e o dia para conferir alternativas; nenhuma nova confirmação foi feita.")

@@ -317,6 +317,7 @@ class MarketingPatch(VersionedOperation):
 class AppointmentTransition(CreateOperation):
     expected_status: Literal["confirmed"] = "confirmed"
     coupon_id: UUID | None = None
+    expected_updated_at: AwareDatetime | None = None
 
 
 class CouponIssue(CreateOperation):

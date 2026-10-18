@@ -298,7 +298,8 @@ async def test_completion_snapshot_history_idempotency_and_future_guard(manageme
                                    {"tenant": d["a"], "id": UUID(visit)})).all()
         assert history == [("completed", "support")]
         assert (await db.execute(text("SELECT count(*) FROM financial_entries WHERE tenant_id=:tenant"), {"tenant": d["a"]})).scalar_one() == 0
-        assert (await db.execute(text("SELECT count(*) FROM calendar_outbox WHERE tenant_id=:tenant"), {"tenant": d["a"]})).scalar_one() == 0
+        assert (await db.execute(text("SELECT appointment_id,action,status FROM calendar_outbox WHERE tenant_id=:tenant"),
+                                {"tenant": d["a"]})).all() == [(UUID(visit), "update", "pending")]
         await db.execute(text("UPDATE professionals SET commission_percent=50 WHERE id=:id"), {"id": d["pro"]})
     report = (await d["client"].get(d["base"] + "/finance/commissions", params=d["period"])).json()
     assert report["items"][0]["earned_cents"] == 2500 and report["items"][0]["legacy_rate_estimates"] == 0

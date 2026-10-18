@@ -14,7 +14,7 @@ def test_api_exec_has_runtime_roles_but_no_owner_migration_environment(monkeypat
         "MIGRATION_DATABASE_URL", "ORION_RUN_BUSINESS_MIGRATION", "ORION_RUN_ACCOUNT_MIGRATION",
         "ORION_MIGRATION_SWITCH_ROLE", "ORION_BUSINESS_MIGRATION_RUN_ID",
         "ORION_RUN_MANAGEMENT_MIGRATION", "ORION_MANAGEMENT_MIGRATION_RUN_ID",
-        "ORION_RUN_SALES_REQUESTS_MIGRATION",
+        "ORION_RUN_SALES_REQUESTS_MIGRATION", "ORION_RUN_AGENDA_MIGRATION",
         "ORION_EXPECTED_DATABASE_HOST", "ORION_EXPECTED_DATABASE_NAME",
     }
     source = {name: "synthetic-only" for name in start_api.ONE_TIME_KEYS | migration_keys}
@@ -27,6 +27,9 @@ def test_api_exec_has_runtime_roles_but_no_owner_migration_environment(monkeypat
     executable, args, environment = executed[0]
     assert executable == start_api.sys.executable
     assert args[1:4] == ["-m", "uvicorn", "app.main:app"] and args[-1] == "8080"
+    # A Google callback includes code/state in its query. The production child
+    # must disable Uvicorn's complete-target access log, while retaining errors.
+    assert "--no-access-log" in args and "--log-level" not in args
     assert not set(environment) & start_api.ONE_TIME_KEYS
     assert not set(environment) & migration_keys
     assert environment["APP_DATABASE_URL"] == "runtime-only"

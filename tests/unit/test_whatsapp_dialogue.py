@@ -67,8 +67,9 @@ def meta(monkeypatch):
         selected=[x for x in catalog if x["id"] in ids]
         return {"slots":[datetime.combine(on_day,datetime.min.time(),tzinfo=now.tzinfo).replace(hour=h).isoformat() for h in (9,11,14,17)],
                 "price_cents":sum(x["price_cents"] for x in selected),"duration_min":sum(x["duration_min"] for x in selected),"timezone":"America/Campo_Grande"}
-    async def create(_db,t,pro,ids,sender,name,start,key):
+    async def create(_db,t,pro,ids,sender,name,start,key,*,source):
         assert t==tenant and sender==phone
+        assert source=="whatsapp_meta"
         events.append("hold")
         selected=[x for x in catalog if x["id"] in ids]
         row={"id":uuid4(),"protocol":"AG-ABCDEF","status":"hold","start_at":start,"timezone":"America/Campo_Grande",
@@ -80,8 +81,9 @@ def meta(monkeypatch):
     async def owned(t,sender,*,item_id=None,**_):
         assert t==tenant and sender==phone
         return records.get(uuid4() if item_id is None else __import__("uuid").UUID(str(item_id)))
-    async def confirm(_db,t,item_id,*,customer_phone,expected_snapshot):
+    async def confirm(_db,t,item_id,*,customer_phone,expected_snapshot,source):
         assert t==tenant and customer_phone==phone and expected_snapshot==records[item_id]["expected_snapshot"]
+        assert source=="whatsapp_meta"
         events.append("confirm")
         records[item_id]["status"]="confirmed"
         return records[item_id]
@@ -198,14 +200,16 @@ def command_flow(monkeypatch,meta):
     async def preview(_db,t,item_id,new_start,*,customer_phone):
         assert t==tenant and customer_phone==phone and item_id==record["id"]
         return {**record,"start_at":new_start,"expected_snapshot":"proposal-"+str(revision["value"])}
-    async def reschedule(_db,t,item_id,new_start,*,expected_snapshot,customer_phone):
+    async def reschedule(_db,t,item_id,new_start,*,expected_snapshot,customer_phone,source):
         assert t==tenant and item_id==record["id"] and customer_phone==phone
+        assert source=="whatsapp_meta"
         if expected_snapshot!="proposal-"+str(revision["value"]): raise HTTPException(409,"changed")
         events.append("reschedule")
         record["start_at"]=new_start
         return dict(record)
-    async def cancel(_db,t,item_id,*,expected_snapshot,customer_phone,future_only=False):
+    async def cancel(_db,t,item_id,*,expected_snapshot,customer_phone,future_only=False,source):
         assert t==tenant and item_id==record["id"] and customer_phone==phone
+        assert source=="whatsapp_meta"
         assert future_only is True
         if expected_snapshot!=record["expected_snapshot"]: raise HTTPException(409,"changed")
         events.append("cancel")

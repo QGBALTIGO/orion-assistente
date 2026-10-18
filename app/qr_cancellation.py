@@ -315,7 +315,7 @@ async def handle(tenant, phone, body, *, business, state, redis, key, message_id
         async with get_session_factory()() as db:
             await revision.check_before_write()
             updated = await cancel_appointment(db, tenant, UUID(state["appointment"]), customer_phone="+"+phone,
-                expected_snapshot=state["expected_snapshot"], future_only=True)
+                expected_snapshot=state["expected_snapshot"], future_only=True, source="whatsapp_qr")
     except HTTPException:
         state = {**state, "confirmation_requires_review": True}
         await _save(redis, key, state)

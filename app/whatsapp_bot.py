@@ -162,7 +162,8 @@ async def _reply(tenant, channel, sender, body, redis, key, state, prefs, messag
             try:
                 checked(presentation.render_summary(summary(hold),prefs,confirmed=True))
                 async with get_session_factory()() as db:
-                    confirmed=await confirm_hold(db,tenant,hold["id"],customer_phone=sender,expected_snapshot=state["expected_snapshot"])
+                    confirmed=await confirm_hold(db,tenant,hold["id"],customer_phone=sender,
+                        expected_snapshot=state["expected_snapshot"],source="whatsapp_meta")
             except HTTPException:
                 state.update(step="date")
                 state.pop("summary_message_id",None)
@@ -236,7 +237,8 @@ async def _reply(tenant, channel, sender, body, redis, key, state, prefs, messag
             checked(presentation.render_summary(summary({**candidate,"protocol":"AG-XXXXXX"}),prefs,confirmed=True))
             async with get_session_factory()() as db:
                 hold=await book_appointment(db,tenant,UUID(state["professional"]),[UUID(x) for x in state["services"]],sender,
-                    "Cliente WhatsApp",datetime.fromisoformat(choice.when),"meta-"+hashlib.sha256((str(channel)+sender+message_id).encode()).hexdigest())
+                    "Cliente WhatsApp",datetime.fromisoformat(choice.when),"meta-"+hashlib.sha256((str(channel)+sender+message_id).encode()).hexdigest(),
+                    source="whatsapp_meta")
             current=await owned_booking(tenant,sender,item_id=hold["id"],statuses=("hold","confirmed"))
             if not current:
                 raise HTTPException(409,"Hold unavailable")
