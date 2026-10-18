@@ -266,6 +266,8 @@ async def publish_site(tenant_id:UUID,payload:Publication,actor:Actor=Depends(au
             existing=(await db.execute(text('SELECT * FROM management_site_preferences WHERE tenant_id=:tenant FOR UPDATE'),{'tenant':tenant_id})).mappings().one_or_none()
             if not existing or existing['version']!=payload.expected_version:raise HTTPException(409,'As preferências mudaram. Salve e atualize antes de publicar')
             if payload.enabled:
+                from app.onboarding_service import require_operational_ready
+                await require_operational_ready(db,tenant_id,'public_site')
                 if not existing['slug'] or not existing['title'].strip():raise HTTPException(422,'Defina o nome público e o endereço do site antes de publicar')
                 content=await catalogue(db,tenant_id,preview=True)
                 hours=(await db.execute(text("""SELECT 1 FROM working_hours h JOIN professionals p ON p.tenant_id=h.tenant_id AND p.id=h.professional_id

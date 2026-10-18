@@ -18,6 +18,7 @@ from app.messaging import CloudApiProvider
 from app.whatsapp_bot import reply
 from app.calendar_worker import scan_calendar_outbox,process_calendar_outbox
 from app.billing_worker import reconcile_asaas_job,scan_pending_billing
+from app.automation_runtime import interaction,process_automation_job,reconcile_automation_job,scan_automations
 
 
 async def infrastructure_ping(ctx: dict) -> str:
@@ -38,6 +39,7 @@ async def process_inbound_event(ctx: dict, tenant_id: str, event_id: str):
     if claim is None:
         return "already_processed_or_processing"
     try:
+        await interaction(tenant, claim["sender_e164"])
         answer = await reply(tenant, claim["channel_id"], claim["sender_e164"],
                              claim["message_text"], ctx["redis"], message_id=str(claim["id"]))
         async with factory() as session:
@@ -148,8 +150,9 @@ async def recover_events(ctx: dict):
 
 
 class WorkerSettings:
-    functions = [infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,reconcile_asaas_job]
+    functions = [infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,reconcile_asaas_job,process_automation_job,reconcile_automation_job]
     cron_jobs = [cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
                  cron(scan_calendar_outbox, minute={2,7,12,17,22,27,32,37,42,47,52,57}, second=0),
-                 cron(scan_pending_billing, minute={3,13,23,33,43,53}, second=0)]
+                 cron(scan_pending_billing, minute={3,13,23,33,43,53}, second=0),
+                 cron(scan_automations, minute=set(range(60)), second=20)]
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379/0"))

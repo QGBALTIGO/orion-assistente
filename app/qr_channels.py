@@ -1,0 +1,419 @@
+"""Opt-in channel registry/broker. A channel credential never selects a tenant.
+
+Register ``router`` explicitly in the API. New ingress handlers must call
+``authenticated_channel(request, phone=...)`` and revalidate the identity after
+long work, immediately before a domain mutation. Legacy QR routes are unchanged.
+"""
+from dataclasses import dataclass
+import hashlib
+import json
+import os
+import re
+import secrets
+from typing import Literal
+from uuid import UUID
+from urllib.parse import urlsplit
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.encoders import jsonable_encoder
+from pydantic import Field, field_validator, model_validator
+from cryptography.fernet import Fernet, InvalidToken
+from sqlalchemy import text
+
+from app.catalog_api import Actor, authenticate, support_session_factory
+from app.catalog_schemas import StrictModel
+from app.tenant_access import resolve_tenant_access
+
+LEASE_SECONDS = 30
+BASE = "/api/v1/tenants/{tenant_id}/qr-channels"
+INTERNAL = "/internal/qr/channels/{channel_id}"
+SAFE_FIELDS = ("id", "tenant_id", "owner_account_id", "provider", "label", "enabled", "assistant_enabled", "revision")
+
+
+def enabled():
+    if os.getenv("QR_CHANNELS_ENABLED", "0") != "1":
+        raise HTTPException(423, "Canais QR adicionais não habilitados")
+
+
+router = APIRouter(tags=["Canais QR"], dependencies=[Depends(enabled)])
+
+
+def normalize_sender(value: str) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"\+?55[1-9]\d(?:9\d{8}|[2-5]\d{7})", value):
+        raise ValueError("Destinatário autorizado inválido")
+    return value.lstrip("+")
+
+
+class CreateChannel(StrictModel):
+    label: str = Field(min_length=1, max_length=100)
+    provider: Literal["baileys"] = "baileys"
+    allowed_senders: list[str] = Field(min_length=1, max_length=10)
+    idempotency_key: UUID
+
+    @field_validator("label")
+    @classmethod
+    def clean_label(cls, value):
+        value = value.strip()
+        if not value or any(ord(c) < 32 for c in value):
+            raise ValueError("Nome inválido")
+        return value
+
+    @field_validator("allowed_senders")
+    @classmethod
+    def senders(cls, value):
+        normalized = [normalize_sender(item) for item in value]
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("Destinatário repetido")
+        return sorted(normalized)
+
+
+class ChannelState(StrictModel):
+    expected_revision: int = Field(strict=True, ge=1)
+    enabled: bool | None = Field(default=None, strict=True)
+    assistant_enabled: bool | None = Field(default=None, strict=True)
+
+    @model_validator(mode="after")
+    def explicit_change(self):
+        if self.enabled is None and self.assistant_enabled is None:
+            raise ValueError("Informe a alteração explícita do canal ou assistente")
+        return self
+
+
+class LeaseRequest(StrictModel):
+    owner: UUID
+    fence: int | None = Field(default=None, strict=True, ge=1)
+
+
+class ChannelCommand(StrictModel):
+    expected_revision: int = Field(strict=True, ge=1)
+
+
+@dataclass(frozen=True)
+class ChannelIdentity:
+    channel_id: UUID
+    tenant_id: UUID
+    owner_account_id: UUID
+    provider: str
+    fence: int
+    lease_owner: UUID
+    allowed_sender: bool
+    assistant_enabled: bool = False
+
+    @property
+    def context_namespace(self):
+        return f"qr:{self.tenant_id}:{self.channel_id}"
+
+
+def credential_hash(value):
+    if not isinstance(value, str) or not 32 <= len(value) <= 256:
+        raise HTTPException(401, "Canal não autorizado")
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def _cipher():
+    try:
+        return Fernet(os.environ["INTEGRATION_FERNET_KEY"].encode())
+    except (KeyError, ValueError, TypeError):
+        raise HTTPException(503, "Proteção de credenciais ainda não configurada") from None
+
+
+async def _owner(db, tenant_id, actor):
+    # Lock the current membership until the channel write commits. An earlier
+    # panel/session role cannot authorize a revoked owner's operation.
+    if actor.role != "member" or not isinstance(actor.account_id, UUID):
+        raise HTTPException(403, "Somente o proprietário autenticado")
+    role = (await db.execute(text("""SELECT role FROM tenant_memberships
+        WHERE tenant_id=:tenant AND account_id=:account AND active FOR UPDATE"""),
+        {"tenant": tenant_id, "account": actor.account_id})).scalar_one_or_none()
+    if role != "owner":
+        raise HTTPException(403, "Somente o proprietário autenticado")
+
+
+async def create_channel(db, tenant_id, payload, actor):
+    fingerprint = hashlib.sha256(json.dumps(payload.model_dump(mode="json"), sort_keys=True).encode()).hexdigest()
+    async with db.begin():
+        await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:scope,0))"),
+                         {"scope": f"qr-channel-create:{tenant_id}:{payload.idempotency_key}"})
+        await _owner(db, tenant_id, actor)
+        # The owner row serializes retries for this tenant/account.
+        existing = (await db.execute(text("""SELECT * FROM qr_channels
+            WHERE tenant_id=:tenant AND idempotency_key=:key"""),
+            {"tenant": tenant_id, "key": payload.idempotency_key})).mappings().one_or_none()
+        if existing:
+            if existing["request_fingerprint"] != fingerprint or existing["owner_account_id"] != actor.account_id:
+                raise HTTPException(409, "Chave de operação já usada")
+            return {**{k: existing[k] for k in SAFE_FIELDS}, "allowed_senders": existing["allowed_senders"],
+                    "can_manage": True, "credential": None, "credential_issued": False}
+        credential = secrets.token_urlsafe(48)
+        encrypted = _cipher().encrypt(credential.encode()).decode()
+        row = (await db.execute(text("""INSERT INTO qr_channels
+            (tenant_id,owner_account_id,provider,label,credential_hash,credential_encrypted,allowed_senders,idempotency_key,request_fingerprint)
+            VALUES (:tenant,:account,:provider,:label,:digest,:encrypted,CAST(:senders AS jsonb),:key,:fingerprint)
+            RETURNING *"""), {"tenant": tenant_id, "account": actor.account_id, "provider": payload.provider,
+            "label": payload.label, "digest": credential_hash(credential), "encrypted": encrypted, "senders": json.dumps(payload.allowed_senders),
+            "key": payload.idempotency_key, "fingerprint": fingerprint})).mappings().one()
+        return {**{k: row[k] for k in SAFE_FIELDS}, "allowed_senders": row["allowed_senders"],
+                "can_manage": True, "credential": credential, "credential_issued": True}
+
+
+@router.post(BASE, status_code=201)
+async def register(tenant_id: UUID, payload: CreateChannel, response: Response, actor: Actor = Depends(authenticate)):
+    response.headers["Cache-Control"] = "no-store"
+    async with support_session_factory()() as db:
+        return jsonable_encoder(await create_channel(db, tenant_id, payload, actor))
+
+
+@router.get(BASE)
+async def list_channels(tenant_id: UUID, response: Response, actor: Actor = Depends(authenticate)):
+    response.headers["Cache-Control"] = "no-store"
+    access = await resolve_tenant_access(actor, tenant_id)
+    can_manage = access.role == "owner" and actor.role == "member" and isinstance(actor.account_id, UUID)
+    async with support_session_factory()() as db:
+        rows = (await db.execute(text("""SELECT id,tenant_id,owner_account_id,provider,label,enabled,assistant_enabled,revision,allowed_senders
+            FROM qr_channels WHERE tenant_id=:tenant ORDER BY created_at,id LIMIT 100"""), {"tenant": tenant_id})).mappings().all()
+    items = []
+    for row in rows:
+        own = can_manage and row["owner_account_id"] == actor.account_id
+        item = {k: row[k] for k in SAFE_FIELDS}
+        item["can_manage"] = own
+        if own:
+            item["allowed_senders"] = row["allowed_senders"]
+        items.append(item)
+    return jsonable_encoder({"items": items, "access": {"can_manage": can_manage},
+        "capabilities": {"start": can_manage, "stop": can_manage, "qr": can_manage,
+            "change_state": can_manage, "edit_label": False, "edit_allowlist": False}})
+
+
+@router.patch(BASE + "/{channel_id}")
+async def change_state(tenant_id: UUID, channel_id: UUID, payload: ChannelState, actor: Actor = Depends(authenticate)):
+    async with support_session_factory()() as db:
+        async with db.begin():
+            await _owner(db, tenant_id, actor)
+            row = (await db.execute(text("""UPDATE qr_channels SET enabled=COALESCE(:enabled,enabled),
+                assistant_enabled=COALESCE(:assistant,assistant_enabled),revision=revision+1,
+                fence=fence+1,lease_owner=NULL,lease_expires_at=NULL,updated_at=clock_timestamp()
+                WHERE tenant_id=:tenant AND id=:id AND owner_account_id=:account AND revision=:revision
+                RETURNING id,tenant_id,owner_account_id,provider,label,enabled,assistant_enabled,revision,allowed_senders"""),
+                {"tenant": tenant_id, "id": channel_id, "account": actor.account_id,
+                 "revision": payload.expected_revision, "enabled": payload.enabled,
+                 "assistant": payload.assistant_enabled})).mappings().one_or_none()
+            if not row:
+                raise HTTPException(409, "Canal alterado ou indisponível")
+    return jsonable_encoder({**dict(row), "can_manage": True})
+
+
+async def _channel(db, channel_id, credential):
+    digest = credential_hash(credential)
+    await _lock_membership(db, channel_id)
+    row = (await db.execute(text("""SELECT c.*,clock_timestamp() AS server_now
+        FROM qr_channels c JOIN tenant_memberships m ON m.tenant_id=c.tenant_id AND m.account_id=c.owner_account_id
+        JOIN tenants t ON t.id=c.tenant_id
+        WHERE c.id=:id AND c.enabled AND m.active AND m.role='owner' AND t.status='active'
+        FOR UPDATE OF c"""), {"id": channel_id})).mappings().one_or_none()
+    if not row or not secrets.compare_digest(row["credential_hash"], digest):
+        raise HTTPException(401, "Canal não autorizado")
+    return row
+
+
+async def _lock_membership(db, channel_id):
+    # Same order as owner configuration: membership before channel. Never hold
+    # these locks while waiting on a provider or a WhatsApp socket.
+    await db.execute(text("""SELECT m.account_id FROM tenant_memberships m
+        JOIN qr_channels c ON c.tenant_id=m.tenant_id AND c.owner_account_id=m.account_id
+        WHERE c.id=:id FOR UPDATE OF m"""), {"id": channel_id})
+
+
+def _current(row, owner, fence):
+    if (row["lease_owner"] != owner or row["fence"] != fence or not row["lease_expires_at"]
+            or row["lease_expires_at"] <= row["server_now"]):
+        raise HTTPException(409, "Posse do canal expirada")
+
+
+async def lease_operation(db, channel_id, credential, payload, operation):
+    if operation not in {"claim", "renew", "release", "check", "inspect"}:
+        raise HTTPException(404)
+    async with db.begin():
+        row = await _channel(db, channel_id, credential)
+        live = row["lease_expires_at"] and row["lease_expires_at"] > row["server_now"]
+        if operation == "claim":
+            if live:
+                if row["lease_owner"] != payload.owner:
+                    raise HTTPException(409, "Canal em uso")
+            else:
+                row = (await db.execute(text("""UPDATE qr_channels SET lease_owner=:owner,fence=fence+1,
+                    lease_expires_at=clock_timestamp()+interval '30 seconds',updated_at=clock_timestamp()
+                    WHERE id=:id RETURNING *,clock_timestamp() AS server_now"""),
+                    {"owner": payload.owner, "id": channel_id})).mappings().one()
+        elif operation != "inspect":
+            _current(row, payload.owner, payload.fence)
+            if operation in {"renew", "release"}:
+                row = (await db.execute(text("""UPDATE qr_channels SET
+                    lease_owner=CASE WHEN :release THEN NULL ELSE lease_owner END,
+                    lease_expires_at=CASE WHEN :release THEN NULL ELSE clock_timestamp()+interval '30 seconds' END,
+                    updated_at=clock_timestamp() WHERE id=:id RETURNING *,clock_timestamp() AS server_now"""),
+                    {"id": channel_id, "release": operation == "release"})).mappings().one()
+        remaining = max(0, int((row["lease_expires_at"]-row["server_now"]).total_seconds()*1000)) if row["lease_expires_at"] else 0
+        return {"channel_id": str(row["id"]), "tenant_id": str(row["tenant_id"]),
+                "owner_account_id": str(row["owner_account_id"]), "provider": row["provider"],
+                "owner": str(payload.owner), "fence": row["fence"], "expires_in_ms": remaining,
+                "allowed_senders": row["allowed_senders"], "assistant_enabled": row["assistant_enabled"]}
+
+
+@router.post(INTERNAL + "/lease/{operation}")
+async def channel_lease(channel_id: UUID, operation: str, payload: LeaseRequest, request: Request):
+    async with support_session_factory()() as db:
+        return await lease_operation(db, channel_id, request.headers.get("x-orion-channel-key"), payload, operation)
+
+
+async def authenticated_channel(request: Request, *, phone: str | None = None) -> ChannelIdentity:
+    enabled()
+    try:
+        channel_id = UUID(str(request.path_params["channel_id"]))
+        owner = UUID(request.headers["x-orion-channel-owner"])
+        fence = int(request.headers["x-orion-channel-fence"])
+        if fence < 1 or fence > 2**63-1:
+            raise ValueError()
+        sender = normalize_sender(phone) if phone is not None else None
+    except (KeyError, ValueError, TypeError):
+        raise HTTPException(401, "Canal não autorizado") from None
+    async with support_session_factory()() as db:
+        async with db.begin():
+            row = await _channel(db, channel_id, request.headers.get("x-orion-channel-key"))
+            _current(row, owner, fence)
+            allowed = sender is not None and sender in row["allowed_senders"]
+            if sender is not None and not allowed:
+                raise HTTPException(403, "Remetente não autorizado neste canal")
+            return ChannelIdentity(row["id"], row["tenant_id"], row["owner_account_id"], row["provider"],
+                                   fence, owner, allowed, row["assistant_enabled"])
+
+
+async def outbound_channel_credentials(tenant_id: UUID, channel_id: UUID) -> dict:
+    """Server-only; caller must separately prove consent and intent before send.
+
+    No HTTP endpoint exposes this result. The bridge checks the credential,
+    allowlist and current lease again; this lookup alone is never send consent.
+    """
+    enabled()
+    async with support_session_factory()() as db:
+        async with db.begin():
+            await _lock_membership(db, channel_id)
+            row = (await db.execute(text("""SELECT c.* FROM qr_channels c
+                JOIN tenant_memberships m ON m.tenant_id=c.tenant_id AND m.account_id=c.owner_account_id
+                JOIN tenants t ON t.id=c.tenant_id WHERE c.id=:id AND c.tenant_id=:tenant
+                AND c.enabled AND m.active AND m.role='owner' AND t.status='active'
+                FOR UPDATE OF c"""), {"id": channel_id, "tenant": tenant_id})).mappings().one_or_none()
+            if not row:
+                raise HTTPException(403, "Canal não autorizado")
+            try:
+                credential = _cipher().decrypt(row["credential_encrypted"].encode()).decode()
+            except (InvalidToken, UnicodeError):
+                raise HTTPException(503, "Credencial indisponível") from None
+            if not secrets.compare_digest(credential_hash(credential), row["credential_hash"]):
+                raise HTTPException(503, "Credencial indisponível")
+            return {"channel_id": str(channel_id), "tenant_id": str(tenant_id),
+                    "provider": row["provider"], "key": credential,
+                    "path": f"/internal/channels/{channel_id}/send"}
+
+
+async def _owned_channel(tenant_id, channel_id, actor, expected_revision=None):
+    async with support_session_factory()() as db:
+        async with db.begin():
+            await _owner(db, tenant_id, actor)
+            row = (await db.execute(text("""SELECT c.* FROM qr_channels c JOIN tenants t ON t.id=c.tenant_id
+                WHERE c.tenant_id=:tenant AND c.id=:id AND c.owner_account_id=:account AND t.status='active'
+                FOR UPDATE OF c"""), {"tenant": tenant_id, "id": channel_id, "account": actor.account_id})).mappings().one_or_none()
+            if not row:
+                raise HTTPException(404, "Canal indisponível")
+            if expected_revision is not None and row["revision"] != expected_revision:
+                raise HTTPException(409, "Canal alterado; atualize a lista")
+            return dict(row)
+
+
+async def _bridge_control(row, action, method):
+    """Private fixed destination; no browser credential, URL or redirect input."""
+    raw_url = os.getenv("QR_BRIDGE_URL", "").rstrip("/")
+    try:
+        parsed = urlsplit(raw_url)
+        valid = (parsed.scheme == "http" and re.fullmatch(r"[a-z0-9-]+\.railway\.internal", parsed.hostname or "")
+                 and parsed.port == 3000 and not parsed.username and not parsed.password
+                 and not parsed.path and not parsed.query and not parsed.fragment)
+    except ValueError:
+        valid = False
+    if not valid:
+        raise HTTPException(503, "Integração WhatsApp ainda não configurada")
+    try:
+        key = _cipher().decrypt(row["credential_encrypted"].encode()).decode()
+        if not secrets.compare_digest(credential_hash(key), row["credential_hash"]):
+            raise ValueError()
+    except (InvalidToken, UnicodeError, ValueError):
+        raise HTTPException(503, "Credencial indisponível") from None
+    try:
+        async with httpx.AsyncClient(timeout=18, trust_env=False, follow_redirects=False) as client:
+            result = await client.request(method, f"{raw_url}/internal/channels/{row['id']}/{action}",
+                headers={"X-Orion-Channel-Key": key}, json={} if method == "POST" else None)
+        if result.status_code != 200:
+            raise HTTPException(409, "Operação do canal indisponível; atualize o estado")
+        if len(result.content) > 256000:
+            raise ValueError()
+        data = result.json()
+        if not isinstance(data, dict):
+            raise ValueError()
+        return data
+    except (httpx.RequestError, ValueError):
+        raise HTTPException(503, "Serviço WhatsApp temporariamente inacessível") from None
+
+
+def _control_result(row, data, action):
+    result = {"channel_id": str(row["id"]), "revision": row["revision"],
+              "enabled": row["enabled"], "assistant_enabled": row["assistant_enabled"]}
+    if action == "qr":
+        image, expires = data.get("image"), data.get("expires_in_ms", 0)
+        if image is not None and (not isinstance(image, str) or len(image) > 240000
+                or not re.fullmatch(r"data:image/png;base64,[A-Za-z0-9+/]+=*", image)):
+            raise HTTPException(503, "QR temporariamente indisponível")
+        if type(expires) is not int or not 0 <= expires <= 45000 or (image is not None and expires == 0):
+            raise HTTPException(503, "QR temporariamente indisponível")
+        return {**result, "image": image, "expires_in_ms": expires if image else 0}
+    status = data.get("status")
+    if status not in {"stopped", "connecting", "qr_ready", "connected", "disabled"}:
+        raise HTTPException(503, "Estado do canal indisponível")
+    return {**result, "status": status}
+
+
+async def _control(tenant_id, channel_id, actor, action, expected_revision=None):
+    row = await _owned_channel(tenant_id, channel_id, actor, expected_revision)
+    if not row["enabled"]:
+        if action == "start":
+            raise HTTPException(409, "Habilite a conexão deste canal antes de iniciar")
+        # Disabled is configuration, not a fabricated socket status. Existing
+        # sockets are fenced immediately and closed by the bounded lease guard.
+        data = {"image": None, "expires_in_ms": 0} if action == "qr" else {"status": "disabled"}
+    else:
+        data = await _bridge_control(row, action, "GET" if action in {"status", "qr"} else "POST")
+    # Never return a QR obtained for an account/configuration revoked in flight.
+    await _owned_channel(tenant_id, channel_id, actor, row["revision"])
+    return _control_result(row, data, action)
+
+
+@router.get(BASE + "/{channel_id}/{action}")
+async def read_control(tenant_id: UUID, channel_id: UUID, action: str, response: Response, actor: Actor = Depends(authenticate)):
+    response.headers["Cache-Control"] = "no-store"
+    if action not in {"status", "qr"}:
+        raise HTTPException(404)
+    return await _control(tenant_id, channel_id, actor, action)
+
+
+@router.post(BASE + "/{channel_id}/{action}")
+async def command_control(tenant_id: UUID, channel_id: UUID, action: str, payload: ChannelCommand,
+                          response: Response, actor: Actor = Depends(authenticate)):
+    response.headers["Cache-Control"] = "no-store"
+    if action not in {"start", "stop"}:
+        raise HTTPException(404)
+    return await _control(tenant_id, channel_id, actor, action, payload.expected_revision)
+
+
+@router.get(INTERNAL + "/identity")
+async def channel_identity(request: Request):
+    identity = await authenticated_channel(request)
+    return jsonable_encoder(identity)

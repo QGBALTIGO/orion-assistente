@@ -28,6 +28,9 @@ from app.management_team import router as management_team_router, invitation_rou
 from app.management_preferences import router as management_preferences_router
 from app.public_site_api import router as public_site_router
 from app.service_packages_api import router as service_packages_router
+from app.onboarding_api import router as onboarding_router
+from app.qr_channels import router as qr_channels_router
+from app.automation_api import router as automation_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -72,6 +75,9 @@ app.include_router(invitation_router)
 app.include_router(management_preferences_router)
 app.include_router(public_site_router)
 app.include_router(service_packages_router)
+app.include_router(onboarding_router)
+app.include_router(qr_channels_router)
+app.include_router(automation_router)
 # Specific management paths must precede the legacy two-segment catalog path.
 app.include_router(catalog_router)
 
@@ -98,7 +104,10 @@ async def branding(asset: str) -> FileResponse:
 async def panel_asset(asset: str) -> FileResponse:
     """Only the public suite assets; never expose arbitrary application files."""
     allowed = {"orion-suite.css": "text/css", "orion-suite.js": "text/javascript",
-               "orion-invite.css": "text/css", "orion-invite.js": "text/javascript"}
+               "orion-invite.css": "text/css", "orion-invite.js": "text/javascript",
+               "orion-onboarding.css": "text/css", "orion-onboarding.js": "text/javascript",
+               "orion-channels.css": "text/css", "orion-channels.js": "text/javascript",
+               "orion-automations.js": "text/javascript"}
     if asset not in allowed:
         from fastapi import HTTPException
         raise HTTPException(404)

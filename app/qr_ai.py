@@ -34,6 +34,7 @@ from app import qr_profile
 from app import qr_presentation as presentation
 from app import qr_commerce
 from app import qr_intake_revision
+from app import qr_channel_scope
 from app import qr_cancellation
 from app.qr_service_context import resolve_service_reply
 from app.groq_understanding import interpret_plan
@@ -2630,6 +2631,11 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                      intake_revision: int | None = None, require_summary_review: bool = False):
     from redis.asyncio import from_url
     from app import qr_operation_receipt
+    channel = qr_channel_scope.current()
+    if channel is not None:
+        if preview or tenant != channel.tenant_id or namespace != f"{channel.context_namespace}:{phone}":
+            raise HTTPException(403, "Contexto de canal inválido")
+        await qr_channel_scope.assert_current()
     redis = from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"),
                      socket_connect_timeout=3, socket_timeout=20)
     lock = redis.lock(f"orion:qr:ai:lock:{tenant}:{namespace}", timeout=90, blocking_timeout=4)
@@ -2640,13 +2646,18 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
         async with lock:
             ids = message_ids or ([message_id] if message_id else [])
             keys = [f"orion:qr:ai:done:{tenant}:{namespace}:{item}" for item in ids]
-            legacy_keys = [] if preview else [f"orion:qr:ai:done:{tenant}:{item}" for item in ids]
+            legacy_keys = [] if preview or channel is not None else [f"orion:qr:ai:done:{tenant}:{item}" for item in ids]
             if any([await redis.exists(key) for key in keys + legacy_keys]):
                 return {"answer": None, "step": "duplicate"}
             if not preview and qr_intake_revision.enabled():
                 revision_token = qr_intake_revision.bind(tenant, phone, ids, intake_revision, redis)
             try:
                 await qr_intake_revision.assert_current()
+                if not preview and message_id:
+                    # A newly accepted customer interaction withdraws pending
+                    # marketing jobs. Failure must not silently allow a send.
+                    await _record_customer_interaction(tenant, phone, message_id, redis,
+                        channel=channel, guard=qr_channel_scope.assert_current if channel else None)
                 if revision_token is not None:
                     provisional_snapshot = await _snapshot_provisional_state(redis, state_key)
                 if require_summary_review and not preview:
@@ -2656,7 +2667,8 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                 transcript = await prepare() if prepare else None
                 if transcript is not None:
                     body = transcript["text"]
-                identity_token = _message_identity.set(message_id)
+                domain_message_id = qr_channel_scope.message_identity(message_id)
+                identity_token = _message_identity.set(domain_message_id)
                 recent_token = _recent_operation.set(None)
                 try:
                     # A delivered receipt is acknowledged below. Keep its
@@ -2667,8 +2679,20 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                     result = await qr_operation_receipt.pending(redis, tenant, phone, require_summary_review, preview=preview)
                     if result is None:
                         result = await turn(tenant, phone, body, redis, namespace, preview=preview)
+                    if not preview and result.get("step") == "human":
+                        # Every QR handoff path converges here. Redis's short
+                        # conversational pause must not let new marketing jobs
+                        # resume after it expires. Only the owner's explicit
+                        # contact-pause action clears the durable pause.
+                        await qr_intake_revision.assert_current()
+                        from app.automation_runtime import interaction
+                        try:
+                            async with asyncio.timeout(3):
+                                await interaction(tenant, "+" + phone, human=True)
+                        except Exception:
+                            raise HTTPException(503, "Não consegui registrar a pausa de atendimento agora") from None
                     verified_operation = result.pop("_verified_operation", False) is True
-                    await qr_operation_receipt.save(redis, tenant, phone, message_id, result,
+                    await qr_operation_receipt.save(redis, tenant, phone, domain_message_id, result,
                         verified_operation=verified_operation, preview=preview)
                     await qr_intake_revision.assert_current()
                 finally:
@@ -2682,6 +2706,19 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                     await _restore_provisional_state(redis, state_key, provisional_snapshot)
                     return result
                 await _require_pending_review(redis, f"orion:qr:ai:{tenant}:{namespace}")
+            except HTTPException:
+                if channel is not None:
+                    if not qr_intake_revision.write_started():
+                        await _restore_provisional_state(redis, state_key, provisional_snapshot)
+                    else:
+                        # Lease loss after a write began is uncertain, never a
+                        # permission to replay that message's domain operation.
+                        await _require_pending_review(redis, state_key)
+                        async with redis.pipeline(transaction=True) as pipe:
+                            for key in keys:
+                                pipe.set(key, "1", ex=604800, nx=True)
+                            await pipe.execute()
+                raise
             if keys:
                 async with redis.pipeline(transaction=True) as pipe:
                     for key in keys + legacy_keys:
@@ -2727,6 +2764,97 @@ async def qr_reply(payload: Incoming, request: Request):
                             message_ids=payload.message_ids, intake_revision=payload.intake_revision,
                             require_summary_review=payload.require_summary_review,
                             prepare=remember_profile if payload.profile else None)
+
+
+async def _managed_assistant_ready(identity):
+    from app.onboarding_service import require_operational_ready
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db, identity.tenant_id):
+            active = (await db.execute(text("SELECT bot_enabled AND status='active' FROM tenants WHERE id=:tenant"),
+                                      {"tenant": identity.tenant_id})).scalar_one_or_none()
+            if active is not True:
+                return False
+            await require_operational_ready(db, identity.tenant_id, "assistant")
+    return True
+
+
+async def _record_customer_interaction(tenant, phone, message_id, redis, *, channel=None, guard=None):
+    from app.automation_runtime import interaction
+    async def record():
+        async with asyncio.timeout(3):
+            await interaction(tenant, "+" + phone)
+    try:
+        if channel is None:
+            await record()
+            return
+        # Shared by notice-only and AI ingress. The flag does not grant AI
+        # authority; it only prevents duplicate cancellation/revision updates.
+        target = f"orion:qr:interaction:{tenant}:{channel.channel_id}:{phone}:{message_id}"
+        async with redis.lock(target + ":lock", timeout=8, blocking_timeout=2):
+            await guard()
+            if await redis.exists(target):
+                return
+            await record()
+            await redis.set(target, "1", ex=604800, nx=True)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(503, "Não consegui registrar a interação agora") from None
+
+
+@router.post("/internal/qr/channels/{channel_id}/interaction", include_in_schema=False)
+async def managed_qr_interaction(channel_id: UUID, payload: qr_intake_revision.Notice, request: Request):
+    from app.qr_channels import authenticated_channel
+    from redis.asyncio import from_url
+    identity = await authenticated_channel(request, phone=payload.phone)
+    async def revalidate():
+        fresh = await authenticated_channel(request, phone=payload.phone)
+        if fresh != identity or not fresh.allowed_sender:
+            raise HTTPException(409, "Autorização do canal mudou")
+    redis = from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), socket_connect_timeout=3, socket_timeout=3)
+    try:
+        await _record_customer_interaction(identity.tenant_id, payload.phone, payload.message_id, redis,
+                                           channel=identity, guard=revalidate)
+        return {"recorded": True}
+    finally:
+        await redis.aclose()
+
+
+@router.post("/internal/qr/channels/{channel_id}/ai/reply", include_in_schema=False)
+async def managed_qr_reply(channel_id: UUID, payload: Incoming, request: Request):
+    from app.qr_channels import authenticated_channel
+    from redis.asyncio import from_url
+    identity = await authenticated_channel(request, phone=payload.phone)
+    if not identity.assistant_enabled or not await _managed_assistant_ready(identity):
+        return {"answer": None, "step": "disabled"}
+
+    async def revalidate():
+        fresh = await authenticated_channel(request, phone=payload.phone)
+        if not fresh.assistant_enabled or not await _managed_assistant_ready(fresh):
+            raise HTTPException(423, "Assistente do canal desativado")
+        return fresh
+
+    token = qr_channel_scope.bind(identity, revalidate)
+    try:
+        await qr_channel_scope.assert_current()
+        # This endpoint is also the managed notice boundary. IDs are registered
+        # before waiting for the conversation lock, without trusting a caller's
+        # revision or the legacy tenant/allowlist/dedup configuration.
+        redis = from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+                         socket_connect_timeout=3, socket_timeout=3)
+        ids = payload.message_ids or [payload.message_id]
+        try:
+            revisions = [await qr_intake_revision.register(redis, identity.tenant_id, payload.phone, item) for item in ids]
+        except Exception:
+            raise HTTPException(503, "Não consegui registrar esta mensagem agora") from None
+        finally:
+            await redis.aclose()
+        return await run_locked(identity.tenant_id, payload.phone, payload.text,
+            f"{identity.context_namespace}:{payload.phone}", payload.message_id,
+            message_ids=ids, intake_revision=max(revisions),
+            require_summary_review=payload.require_summary_review)
+    finally:
+        qr_channel_scope.reset(token)
 
 
 @router.post("/api/v1/tenants/{tenant_id}/ai/conversation-preview")

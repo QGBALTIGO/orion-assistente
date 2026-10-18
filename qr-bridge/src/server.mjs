@@ -35,6 +35,9 @@ import {resolvePilotRecipient,makePilotDeviceCache} from "./pilot-recipient.mjs"
 import {transcribeAssistantAudio} from "./ai-audio.mjs";
 import {makeTransportDiagnostics,receiptDiagnosticDetails,usyncDeviceDomainCounts,encryptionTargetDetails,observeSignalRepository} from "./transport-diagnostics.mjs";
 import {backupAuth} from "./auth-backup.mjs";
+import {createChannelRoutes} from './channel-routes.mjs';
+
+const channelRoutes=createChannelRoutes();
 
 const PORT=Number(process.env.PORT || 3000);
 const SESSION_DIR=process.env.QR_SESSION_DIR || "/data/auth";
@@ -706,6 +709,9 @@ const server=http.createServer(async(req,res)=>{
   const path=uri.pathname;
   if(path==="/health"&&req.method==="GET")
     return reply(res,200,{status:"ok",bridge:"linked-device"});
+  // Additional channels authenticate their own credential at the SQL broker;
+  // the shared legacy pilot token never grants access to these routes.
+  if(path.startsWith('/internal/channels/')&&await channelRoutes(req,res))return;
   if(!auth(req))return reply(res,401,{error:"unauthorized"});
   try{
     if(path.startsWith('/internal/ops/database-backups/'))

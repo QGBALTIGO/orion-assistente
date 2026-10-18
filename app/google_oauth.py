@@ -52,6 +52,38 @@ def google_configured():
     return True
 
 
+def configuration_checklist(*, worker=False):
+    """Safe local readiness facts. Presence is not authorization or delivery."""
+    checks = []
+    for name, label in (("GOOGLE_CLIENT_ID", "Identificação do aplicativo Google"),
+                        ("GOOGLE_CLIENT_SECRET", "Credencial privada do aplicativo"),
+                        ("INTEGRATION_FERNET_KEY", "Proteção das autorizações salvas")):
+        ready = bool(os.getenv(name, "").strip())
+        if name == "INTEGRATION_FERNET_KEY" and ready:
+            try:
+                Fernet(os.environ[name].encode())
+            except (ValueError, TypeError):
+                ready = False
+        checks.append({"id": name, "label": label, "ready": ready})
+    if not worker:
+        valid_redirect = False
+        try:
+            redirect = urlsplit(os.getenv("GOOGLE_REDIRECT_URI", ""))
+            origin = urlsplit(os.getenv("PANEL_PUBLIC_URL", ""))
+            valid_redirect = bool(redirect.scheme == "https" and redirect.hostname and not redirect.username
+                and not redirect.password and redirect.path == OAUTH_PATH and not redirect.query and not redirect.fragment
+                and (not origin.netloc or origin.scheme == "https" and origin.netloc == redirect.netloc))
+        except ValueError:
+            pass
+        checks.append({"id": "GOOGLE_REDIRECT_URI", "label": "Endereço seguro de retorno ao Orion", "ready": valid_redirect})
+    configured = all(item["ready"] for item in checks)
+    return {"checks": checks, "configured": configured,
+            "sync_enabled": os.getenv("GOOGLE_LIVE_SYNC") == "1",
+            "external_authorization_verified": False,
+            "next_step": "authorize_account" if configured else "prepare_server",
+            "direction": "orion_to_google"}
+
+
 def oauth_redis():
     return from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"),
                     decode_responses=True, socket_timeout=3, socket_connect_timeout=3)

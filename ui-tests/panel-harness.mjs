@@ -18,7 +18,7 @@ export async function makePanel({ role = 'support', tenantRole = 'owner',
   const virtualConsole = new VirtualConsole(), errors = [], calls = [], intervals = new Map();
   virtualConsole.on('jsdomError', error => errors.push(error));
   const dom = new JSDOM(html, { url: 'https://orion.test/panel?aba=' + initialRoute,
-    runScripts: 'outside-only', virtualConsole });
+    runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole });
   const { window } = dom, { document } = window;
   window.scrollTo = () => {};
   window.HTMLElement.prototype.scrollTo = () => {};
@@ -49,6 +49,8 @@ export async function makePanel({ role = 'support', tenantRole = 'owner',
       name: 'Conta sintética', email: 'mobile-test@example.invalid' };
     if (path === '/auth/features') return { registration_enabled: false, password_reset_enabled: false };
     if (path === '/auth/logout') return { ok: true };
+    if (path.startsWith('/api/v1/onboarding/entry')) return { enabled: false, kind: 'dashboard' };
+    if (path.endsWith('/management/marketing/execution')) return { available: false };
     if (path === '/api/v1/tenants' || path === '/api/v1/account/businesses') return businesses;
     if (path.endsWith('/business/profile')) return { generation: 0, draft: null, published: null,
       draft_template: profile, supported_capabilities: [], scheduling_timezone: profile.timezone,
@@ -80,6 +82,8 @@ export async function makePanel({ role = 'support', tenantRole = 'owner',
   const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
   assert.equal(inline.length, 2, 'theme bootstrap and the existing panel controller must remain present');
   window.eval(inline[0][1]);
+  for (const file of ['orion-onboarding.js','orion-channels.js','orion-automations.js'])
+    window.eval(await readFile(new URL('../app/static/'+file, import.meta.url), 'utf8'));
   window.eval(suite);
   window.eval(inline[1][1]);
   await flush();
@@ -93,6 +97,6 @@ export async function makePanel({ role = 'support', tenantRole = 'owner',
     async tickClocks(milliseconds) { now += milliseconds;
       for (const { callback, delay } of [...intervals.values()]) if (delay <= milliseconds) await callback();
       await flush(); },
-    close() { window.OrionSuite.destroy(); intervals.clear(); dom.window.close(); },
+    close() { window.OrionOnboarding?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionSuite.destroy(); intervals.clear(); dom.window.close(); },
   };
 }

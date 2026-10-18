@@ -410,6 +410,8 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
             if existing["request_fingerprint"] != fp:
                 fail(409, "Chave de idempotência já usada em outra solicitação")
             return await _hold_proposal(s, tenant, existing["id"])
+        from app.onboarding_service import require_operational_ready
+        await require_operational_ready(s, tenant, "appointments")
         if replace_hold_id is not None:
             previous = await _replacement_hold(s, tenant, professional, replace_hold_id, phone,
                                                expected_snapshot, now, lock=True)
@@ -545,6 +547,8 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
                 fail(409, "A reserva mudou. Confira um novo resumo antes de continuar")
             await history(s, tenant, item_id, "hold_expired", context=SYSTEM_ACTOR, previous=hold)
         else:
+            from app.onboarding_service import require_operational_ready
+            await require_operational_ready(s, tenant, "appointments")
             ids = (await s.execute(text("""
                 SELECT service_id FROM appointment_items WHERE tenant_id=:tenant
                 AND appointment_id=:id ORDER BY item_order
@@ -710,6 +714,8 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
         check_expected_updated_at(row, expected_updated_at)
         if row["status"] != "confirmed":
             fail(409, "Somente reservas confirmadas podem ser remarcadas")
+        from app.onboarding_service import require_operational_ready
+        await require_operational_ready(s, tenant, "rescheduling")
         ids = list((await s.execute(text("""
             SELECT service_id FROM appointment_items WHERE tenant_id=:tenant
             AND appointment_id=:id ORDER BY item_order

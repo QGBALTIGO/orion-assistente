@@ -12,6 +12,7 @@ from time import time
 from uuid import UUID
 
 from app import qr_intake_revision as revision
+from app import qr_channel_scope
 from app.qr_presentation import fits_message
 
 TTL = 300
@@ -23,7 +24,7 @@ PHONE_PATTERN = r"55[1-9][0-9]{9,10}"
 def key(tenant, phone):
     if not isinstance(tenant, UUID) or not isinstance(phone, str) or not re.fullmatch(PHONE_PATTERN, phone):
         raise ValueError("Authenticated tenant and contact required")
-    return f"orion:qr:operation-receipt:{tenant}:{phone}"
+    return f"orion:qr:operation-receipt:{qr_channel_scope.tenant_scope(tenant)}:{phone}"
 
 
 def _factual_result(result):
@@ -43,6 +44,9 @@ async def save(redis, tenant, phone, message_id, result, *, verified_operation=F
         return False
     receipt = {"tenant": str(tenant), "phone": phone, "message_id": message_id,
         "step": result["step"], "answer": result["answer"], "saved_at": time()}
+    identity = qr_channel_scope.current()
+    if identity is not None:
+        receipt["channel_id"] = str(identity.channel_id)
     protocol = result.get("protocol")
     if isinstance(protocol, str) and re.fullmatch(r"[a-zA-Z0-9._:-]{1,80}", protocol):
         receipt["protocol"] = protocol
@@ -52,9 +56,12 @@ async def save(redis, tenant, phone, message_id, result, *, verified_operation=F
 
 def _read(raw, tenant, phone):
     try:
+        qr_channel_scope.tenant_scope(tenant)
+        identity = qr_channel_scope.current()
         value = json.loads(raw)
         age = time() - value["saved_at"] if type(value.get("saved_at")) in {int, float} else math.inf
         if (not _factual_result(value) or value.get("tenant") != str(tenant) or value.get("phone") != phone or
+                value.get("channel_id") != (str(identity.channel_id) if identity else None) or
                 not isinstance(value.get("message_id"), str) or not re.fullmatch(ID_PATTERN, value["message_id"]) or
                 not math.isfinite(age) or not 0 <= age < TTL):
             return None

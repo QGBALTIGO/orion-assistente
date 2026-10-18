@@ -496,7 +496,9 @@ async def marketing(db, tenant_id, limit=50, offset=0):
     total = (await db.execute(text("SELECT count(*) FROM campaigns WHERE tenant_id=:tenant"), {"tenant": tenant_id})).scalar_one()
     rows = (await db.execute(text("SELECT * FROM campaigns WHERE tenant_id=:tenant ORDER BY created_at DESC,id LIMIT :limit OFFSET :offset"),
                             {"tenant": tenant_id, "limit": limit, "offset": offset})).mappings().all()
-    return {"items": [clean_row(row) for row in rows], "total": total, "limit": limit, "offset": offset, "delivery_enabled": False}
+    from app.automation_runtime import execution_enabled, execution_approved, settings_for
+    active = execution_enabled() and execution_approved(await settings_for(db, tenant_id))
+    return {"items": [clean_row(row) for row in rows], "total": total, "limit": limit, "offset": offset, "delivery_enabled": active}
 
 
 async def transition_appointment(db, tenant_id, appointment_id, target, payload, operator):

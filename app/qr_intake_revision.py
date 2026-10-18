@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import Field
 
 from app.catalog_schemas import StrictModel
+from app import qr_channel_scope
 
 router = APIRouter()
 TTL = 604800
@@ -53,13 +54,13 @@ return 1
 
 
 def enabled():
-    return os.getenv("QR_AI_INTAKE_REVISION_ENABLED", "0") == "1"
+    return qr_channel_scope.current() is not None or os.getenv("QR_AI_INTAKE_REVISION_ENABLED", "0") == "1"
 
 
 def keys(tenant: UUID, phone: str):
     if not isinstance(tenant, UUID) or not re.fullmatch(PHONE_PATTERN, phone):
         raise ValueError("Authenticated conversation required")
-    base = f"orion:qr:intake:{tenant}:{phone}"
+    base = f"orion:qr:intake:{qr_channel_scope.tenant_scope(tenant)}:{phone}"
     return base + ":revision", base + ":seen", base + ":order"
 
 
@@ -142,7 +143,15 @@ def reset(token):
     _turn.reset(token)
 
 
+def write_started():
+    context = _turn.get()
+    return context is not None and context.write_started
+
+
 async def assert_current():
+    # Managed authority is mandatory even outside a revision-bound turn and
+    # regardless of the legacy pilot's optional revision flag.
+    await qr_channel_scope.assert_current()
     context = _turn.get()
     if context is None or not enabled():
         return

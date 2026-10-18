@@ -137,6 +137,9 @@ def apply(facts, contract):
 
 
 async def validate(db, tenant, quote, *, confirming=False):
+    # Called by actual order creation/confirmation, never a catalog consultation.
+    from app.onboarding_service import require_operational_ready
+    await require_operational_ready(db, tenant, "product_orders")
     if quote.get("fulfillment_mode") is None:
         return dict(EMPTY)
     current = await resolve(db, tenant, quote.get("contact_e164"), selection_from(quote), lock=True)
