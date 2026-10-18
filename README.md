@@ -91,6 +91,9 @@ Nenhuma credencial real de integrações externas está ativa.
 Referência histórica: [docs/railway.md](docs/railway.md). foi conectado por esta mudança.
 
 ## Documentação
+- [Gestão Orion: referência BarberPilot, medidas e implementação](docs/barberpilot-orion.md)
+- [Cobertura funcional por módulo](docs/barberpilot-functional-coverage.md)
+- [Migrations, testes e implantação da suíte de gestão](docs/management-suite-runbook.md)
 - [Arquitetura](docs/architecture.md)
 - [Segurança e isolamento](docs/security.md)
 - [Operação](docs/runbook.md)

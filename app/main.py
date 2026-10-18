@@ -20,6 +20,13 @@ from app.groq_probe import probe_groq_provider
 from app.qr_ai import router as qr_ai_router
 from app.business_profile_api import router as business_profile_router
 from app.commercial_api import router as commercial_router
+from app.management_api import router as management_router
+from app.management_blocks import router as management_blocks_router
+from app.management_ai import router as management_ai_router
+from app.management_team import router as management_team_router, invitation_router
+from app.management_preferences import router as management_preferences_router
+from app.public_site_api import router as public_site_router
+from app.service_packages_api import router as service_packages_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -50,23 +57,54 @@ app.include_router(advanced_router)
 app.include_router(qr_router)
 app.include_router(panel_auth_router)
 app.include_router(account_auth_router)
-app.include_router(catalog_router)
 app.include_router(groq_router)
 app.include_router(groq_audio_router)
 app.include_router(qr_ai_router)
 app.include_router(business_profile_router)
 app.include_router(commercial_router)
+app.include_router(management_router)
+app.include_router(management_blocks_router)
+app.include_router(management_ai_router)
+app.include_router(management_team_router)
+app.include_router(invitation_router)
+app.include_router(management_preferences_router)
+app.include_router(public_site_router)
+app.include_router(service_packages_router)
+# Specific management paths must precede the legacy two-segment catalog path.
+app.include_router(catalog_router)
 
 
 @app.get("/brand/{asset}", include_in_schema=False)
 async def branding(asset: str) -> FileResponse:
-    if asset not in {"orion-brand-dark.svg","orion-brand-light.svg","orion-symbol.svg"}:
+    allowed = {
+        "orion-brand-dark.svg": "image/svg+xml",
+        "orion-brand-light.svg": "image/svg+xml",
+        "orion-symbol.svg": "image/svg+xml",
+        "figtree-latin.woff2": "font/woff2",
+        "outfit-latin.woff2": "font/woff2",
+    }
+    if asset not in allowed:
         from fastapi import HTTPException
         raise HTTPException(404)
     return FileResponse(Path(__file__).parent / "static" / asset,
-                        media_type="image/svg+xml",
+                        media_type=allowed[asset],
                         headers={"Cache-Control":"public, max-age=3600",
                                  "X-Content-Type-Options":"nosniff"})
+
+
+@app.get("/panel-assets/{asset}", include_in_schema=False)
+async def panel_asset(asset: str) -> FileResponse:
+    """Only the public suite assets; never expose arbitrary application files."""
+    allowed = {"orion-suite.css": "text/css", "orion-suite.js": "text/javascript",
+               "orion-invite.css": "text/css", "orion-invite.js": "text/javascript"}
+    if asset not in allowed:
+        from fastapi import HTTPException
+        raise HTTPException(404)
+    return FileResponse(
+        Path(__file__).parent / "static" / asset,
+        media_type=allowed[asset],
+        headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @app.get("/panel", include_in_schema=False)
@@ -76,3 +114,10 @@ async def panel() -> FileResponse:
         Path(__file__).parent / "static" / "panel.html",
         headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
     )
+
+
+@app.get("/convite", include_in_schema=False)
+async def invitation_page() -> FileResponse:
+    return FileResponse(Path(__file__).parent / "static" / "orion-invite.html",
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
+                 "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})

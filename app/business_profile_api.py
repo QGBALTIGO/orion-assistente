@@ -32,7 +32,7 @@ async def my_businesses(actor: Actor = Depends(authenticate)):
         return []
     async with support_session_factory()() as session:
         rows = (await session.execute(text("""
-            SELECT t.id,t.name,t.slug,t.status,m.role FROM tenant_memberships m
+            SELECT t.id,t.name,t.slug,t.status,t.timezone,m.role FROM tenant_memberships m
             JOIN tenants t ON t.id=m.tenant_id
             WHERE m.account_id=:account AND m.active ORDER BY t.name LIMIT 200
         """), {"account": account_id})).mappings().all()

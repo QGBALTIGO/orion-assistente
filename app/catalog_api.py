@@ -174,6 +174,28 @@ async def audit(session, tenant_id: UUID, action: str, resource: str, item_id: U
     """), dict(tenant_id=tenant_id, action=action, entity=resource, entity_id=item_id))
 
 
+async def guard_generated_service(session, tenant_id: UUID, resource: str, item_id=None, values=None):
+    """Derived package prices and eligibility are maintained by the package API."""
+    if resource not in {"services", "professional_services"}:
+        return
+    identities = []
+    if resource == "services" and item_id is not None:
+        identities.append(item_id)
+    if resource == "professional_services":
+        if item_id is not None:
+            current = (await session.execute(text("SELECT service_id FROM professional_services WHERE tenant_id=:tenant AND id=:id"),
+                                             {"tenant": tenant_id, "id": item_id})).scalar_one_or_none()
+            if current is not None:
+                identities.append(current)
+        if values and values.get("service_id") is not None:
+            identities.append(values["service_id"])
+    for identity in identities:
+        kind = (await session.execute(text("SELECT catalog_kind FROM services WHERE tenant_id=:tenant AND id=:id"),
+                                      {"tenant": tenant_id, "id": identity})).scalar_one_or_none()
+        if kind is not None and kind != "base":
+            raise HTTPException(409, "Edite este serviço e seus profissionais pelo cadastro de combos ou adicionais")
+
+
 @router.get("/tenants")
 async def list_tenants(actor: Actor = Depends(authenticate)):
     support_only(actor)
@@ -231,8 +253,10 @@ async def list_items(tenant_id: UUID, resource: str, actor: Actor = Depends(auth
     async with factory() as session:
         async with tenant_transaction(session, tenant_id):
             await ensure_tenant(session, tenant_id)
+            ordering = "sort_order,name,id" if resource == "services" else "id"
+            scope = " AND catalog_kind <> 'variant'" if resource == "services" else ""
             rows = (await session.execute(
-                text(f"SELECT * FROM {resource} WHERE tenant_id = :t ORDER BY id LIMIT 200"),
+                text(f"SELECT * FROM {resource} WHERE tenant_id = :t{scope} ORDER BY {ordering} LIMIT 200"),
                 {"t": tenant_id}
             )).mappings().all()
             return jsonable_encoder(rows)
@@ -258,6 +282,9 @@ async def create_item(
         async with factory() as session:
             async with tenant_transaction(session, tenant_id):
                 await ensure_tenant(session, tenant_id)
+                await guard_generated_service(session, tenant_id, resource, values=values)
+                from app.management_blocks import guard_catalog_block
+                await guard_catalog_block(session, tenant_id, resource, values=values)
                 if resource == "working_breaks":
                     await validate_break(session, bind)
                 await session.execute(statement, bind)
@@ -282,6 +309,9 @@ async def replace_item(
         async with factory() as session:
             async with tenant_transaction(session, tenant_id):
                 await ensure_tenant(session, tenant_id)
+                await guard_generated_service(session, tenant_id, resource, item_id, values)
+                from app.management_blocks import guard_catalog_block
+                await guard_catalog_block(session, tenant_id, resource, values=values, item_id=item_id)
                 if resource == "working_breaks":
                     await validate_break(session, bind, item_id)
                 result = await session.execute(text(
@@ -307,6 +337,9 @@ async def delete_item(
         async with factory() as session:
             async with tenant_transaction(session, tenant_id):
                 await ensure_tenant(session, tenant_id)
+                await guard_generated_service(session, tenant_id, resource, item_id)
+                from app.management_blocks import guard_catalog_block
+                await guard_catalog_block(session, tenant_id, resource, item_id=item_id, deleting=True)
                 result = await session.execute(
                     text(f"DELETE FROM {resource} WHERE id = :id AND tenant_id = :t RETURNING id"),
                     {"id": item_id, "t": tenant_id},
