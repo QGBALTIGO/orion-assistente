@@ -471,6 +471,11 @@ def api_command(args, port):
         "--timeout-graceful-shutdown", "15", "--no-access-log"]
 
 
+def api_pool_environment(args):
+    return {"ORION_DB_POOL_SIZE": str(args.db_pool_size),
+            "ORION_DB_MAX_OVERFLOW": str(args.db_max_overflow)}
+
+
 def configure_api_profile(args, environment):
     if not args.profile_api:
         return None
@@ -512,6 +517,7 @@ async def execute(args, sandbox, report):
         env = sandbox.environment(); env.update({"REDIS_URL": cache_url.render_as_string(hide_password=False),
             "SUPPORT_API_TOKEN": secrets.token_urlsafe(48), "BUSINESS_PROFILES_ENABLED": "1", "ONBOARDING_ENABLED": "1",
             "COMMERCIAL_CATALOG_ENABLED": "1", "MARKETING_EXECUTION_ENABLED": "0", "QR_CHANNELS_ENABLED": "0", "QR_AI_ENABLED": "0", "GROQ_PROBE_ON_START": "0"})
+        env.update(api_pool_environment(args))
         profile_directory = configure_api_profile(args, env)
         with socket.socket() as probe: probe.bind(("127.0.0.1",0)); port = probe.getsockname()[1]
         with args.output.with_suffix(".api.log").open("wb") as log:
@@ -605,6 +611,8 @@ def parser():
     result.add_argument("--warmup-seconds",type=int,default=30)
     result.add_argument("--period-seconds",type=float,default=10)
     result.add_argument("--api-workers",type=int,choices=(1,2,3,4),default=2)
+    result.add_argument("--db-pool-size",type=int,choices=range(1,21),default=5)
+    result.add_argument("--db-max-overflow",type=int,choices=range(21),default=10)
     result.add_argument("--profile-api",action="store_true",help="Collect per-worker CPU profiles; diagnostic only, never capacity qualification")
     result.add_argument("--max-memory-mb",type=int,default=1536)
     result.add_argument("--seed",type=int,default=20261018)
@@ -626,6 +634,9 @@ def main(argv=None):
         "arrival_model":"open-loop fixed virtual-user cadence; busy/queue arrivals are counted as dropped errors",
         "offered_journey_rate_per_second":{n:n/args.period_seconds for n in LEVELS},
         "period_seconds":args.period_seconds,"api_workers":args.api_workers,"pass":False,
+        "database_pools":{"size_per_role_per_worker":args.db_pool_size,
+            "max_overflow_per_role_per_worker":args.db_max_overflow,"roles_per_worker":2,
+            "theoretical_api_connection_ceiling":args.api_workers*2*(args.db_pool_size+args.db_max_overflow)},
         "planned_stage_seconds":args.stage_seconds,"planned_sustain_seconds":args.sustain_seconds,
         "run_kind":"cpu_profile_diagnostic" if args.profile_api else "finite_qualification" if args.sustain_seconds>=600 and args.stage_seconds>=60 else "short_smoke_only",
         "profile_api":args.profile_api,

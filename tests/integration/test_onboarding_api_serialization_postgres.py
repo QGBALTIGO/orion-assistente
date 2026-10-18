@@ -47,9 +47,11 @@ async def authenticated_http(onboarding_db, monkeypatch):
             await cache.aclose()
 
 
-def same_response(response, content, status=200):
+def same_response(response, content, status=200, *, exact_body=True):
     legacy = JSONResponse(jsonable_encoder(content), status_code=status)
-    assert response.status_code == status and response.content == legacy.body
+    assert response.status_code == status
+    if exact_body:
+        assert response.content == legacy.body
     assert response.json() == jsonable_encoder(content)
     assert sorted(response.headers.raw) == sorted(legacy.raw_headers)
 
@@ -84,9 +86,12 @@ async def test_actual_http_create_all_steps_replay_and_complete_keep_state_and_d
                 {"t": tenant, "k": body["idempotency_key"]})).scalar_one()
         # save_step adds result after _state's encoder: all seven real mutation
         # families must still return native JSON here, not Decimal/UUID objects.
-        same_response(response, {**current, "result": result})
+        # JSONB does not preserve Python insertion order. Compare its content,
+        # retaining strict bytes for unchanged service-to-HTTP states elsewhere.
+        same_response(response, {**current, "result": result}, exact_body=False)
         replay = await client.put(base + "/steps/" + step, json=body)
-        assert replay.content == response.content and replay.status_code == 200
+        assert replay.json() == response.json() and replay.status_code == 200
+        assert sorted(replay.headers.raw) == sorted(response.headers.raw)
         same_response(await client.get(base), current)
         state = current
         return result

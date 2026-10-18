@@ -251,6 +251,24 @@ def _snapshot(configuration, managed, facts):
     return digest({"configuration": {"private_address": None, **configuration}, "managed_ids": managed, "facts": facts})
 
 
+def _state_jsonable(value):
+    """Normalize ordinary database values without a second Python tree walk.
+
+    The shared guard admits only exact builtins and registered scalar types.
+    Unusual objects, aliases and iterators retain the original whole encoder;
+    a failed native conversion therefore cannot consume user-defined input.
+    """
+    if not _digest_needs_legacy(value):
+        try:
+            return json.loads(json.dumps(value, default=lambda item: ENCODERS_BY_TYPE[type(item)](item),
+                ensure_ascii=False, separators=(",", ":"), sort_keys=False, allow_nan=False))
+        except (TypeError, ValueError, OverflowError, RecursionError):
+            # Preserve original values/errors, including nonfinite floats and
+            # integers too large for JSON, rather than changing HTTP behavior.
+            pass
+    return jsonable_encoder(value)
+
+
 async def _profile(db, tenant):
     row = (await db.execute(text("""SELECT s.generation,s.draft_version_id,s.published_version_id,
           d.profile AS draft,p.profile AS published FROM business_profile_state s
@@ -316,7 +334,7 @@ async def _state(db, tenant, access):
                            "google": {"status": google or "not_configured"},
                            "whatsapp": {"status": "connected" if whatsapp else "not_configured"}},
               "operations": operations, "last_operation_key": operations[0]["key"] if operations else None}
-    return jsonable_encoder(result)
+    return _state_jsonable(result)
 
 
 async def get_state(actor, tenant):

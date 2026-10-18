@@ -129,7 +129,8 @@ jobs:
         run: |
           mkdir -p artifacts
           python scripts/qualification_load.py --confirm-disposable-local --profile ${{ matrix.profile }} \
-            --stage-seconds 60 --sustain-seconds 600 --output artifacts/load-${{ matrix.profile }}.json
+            --stage-seconds 60 --sustain-seconds 600 --api-workers 3 --db-pool-size 5 --db-max-overflow 5 \
+            --output artifacts/load-${{ matrix.profile }}.json
       - name: Guardar metricas e falhas
         if: always()
         uses: actions/upload-artifact@v4
@@ -192,7 +193,7 @@ jobs:
           mkdir -p artifacts
           set +e
           python scripts/qualification_load.py --confirm-disposable-local --profile ${{ matrix.profile }} --profile-api \
-            --stage-seconds 5 --sustain-seconds 30 --warmup-seconds 5 --api-workers 2 \
+            --stage-seconds 5 --sustain-seconds 30 --warmup-seconds 5 --api-workers 3 --db-pool-size 5 --db-max-overflow 5 \
             --output artifacts/cpu-profile-${{ matrix.profile }}.json
           runner_status=$?
           printf 'runner_exit_code=%s\n' "$runner_status" > artifacts/cpu-profile-exit.txt

@@ -19,7 +19,7 @@ ativado. Os registros de canal são simulados, desabilitados e não abrem socket
 | Mistura de jornadas | 10% produtos, 20% catálogo de serviços, 20% disponibilidade, 15% agenda paginada, 10% leitura de configuração, 10% edição de configuração com CAS/replay, 15% hold/replay/confirmação/cancelamento |
 | Jornada versus HTTP | Uma jornada de escrita tem vários requests; o relatório separa oferta de jornadas e RPS HTTP realmente observado |
 | Histórico | 10 agendamentos concluídos por empresa, catálogo de produtos e serviços, profissionais e expediente reais no PostgreSQL |
-| Processos | Duas APIs uvicorn; pools reais da aplicação; nenhuma conexão permanente por usuário |
+| Processos | Três workers uvicorn; por papel/worker, pool 5 + overflow 5; teto teórico 60 conexões de API; nenhuma conexão permanente por usuário |
 | Disputa | 20 solicitações concorrentes pela mesma vaga, três sementes independentes 17/29/43; um vencedor, demais conflitos explícitos |
 | Isolamento | Todos os 1.500 operadores fazem uma leitura própria (200) e uma de outra empresa (403), por HTTP autenticado com Redis |
 
@@ -62,11 +62,13 @@ Variáveis obrigatórias:
 # Ensaio finito principal: ~15 min de medição, mais seed/migração/preflight.
 python scripts/qualification_load.py --confirm-disposable-local \
   --profile concentrated --stage-seconds 60 --sustain-seconds 600 \
+  --api-workers 3 --db-pool-size 5 --db-max-overflow 5 \
   --output artifacts/load-concentrated.json
 
 # Ensaio amplo principal em OUTRO job/serviço Redis, também completo.
 python scripts/qualification_load.py --confirm-disposable-local \
   --profile wide --stage-seconds 60 --sustain-seconds 600 \
+  --api-workers 3 --db-pool-size 5 --db-max-overflow 5 \
   --output artifacts/load-wide.json
 
 # Harness sem serviços: testes de guardas, métricas e scheduler.
@@ -136,6 +138,20 @@ após execução com serviços reais. Testes unitários do harness não substitu
 execução; PG indisponível localmente é registrado como skip, nunca como PASS.
 
 ## Diagnóstico após a primeira carga real
+
+As primeiras cargas completas com dois workers reprovaram em 1.000 e 1.500
+sessões. Os resultados permanecem preservados. O próximo candidato usa três
+workers, com `ORION_DB_POOL_SIZE=5` e `ORION_DB_MAX_OVERFLOW=5` tanto no engine
+runtime quanto no support: o teto teórico da API permanece em 60 conexões, como
+nos dois workers anteriores com defaults 5 + 10. Worker de tarefas, migrador e
+monitoramento usam conexões adicionais; o limite medido global continua em 80.
+O gerador passa esses valores
+explicitamente ao servidor e os registra antes da medição. Sua configuração
+ambiente não é herdada. A publicação precisa usar o mesmo `WEB_CONCURRENCY=3`
+e os dois limites de pool; aumentar processos não comprova aprovação.
+Continuam iguais a oferta, os timeouts, as metas, a contagem dos descartes e
+os limites medidos de 80 conexões PostgreSQL e 1.536 MiB. O custo adicional de
+memória da normalização do estado será observado nessa mesma carga completa.
 
 A coleta opcional `--profile-api` inicia a mesma aplicação em um wrapper de
 lifespan exclusivo do ensaio local descartável. Cada worker salva seus próprios

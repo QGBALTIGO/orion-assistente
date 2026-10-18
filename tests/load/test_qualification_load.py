@@ -28,8 +28,44 @@ def test_private_environment_excludes_providers_and_production_settings(monkeypa
     monkeypatch.setenv("GOOGLE_CLIENT_SECRET","do-not-copy")
     monkeypatch.setenv("APP_DATABASE_URL","do-not-copy")
     monkeypatch.setenv("HTTP_PROXY","do-not-copy")
+    monkeypatch.setenv("ORION_DB_POOL_SIZE","20")
+    monkeypatch.setenv("ORION_DB_MAX_OVERFLOW","20")
     result = load.clean_environment()
     assert not {"GROQ_API_KEY","GOOGLE_CLIENT_SECRET","APP_DATABASE_URL","HTTP_PROXY"}&result.keys()
+    assert not {"ORION_DB_POOL_SIZE", "ORION_DB_MAX_OVERFLOW"}&result.keys()
+
+
+@pytest.mark.parametrize("flag,value", [("--db-pool-size", "0"), ("--db-pool-size", "21"),
+    ("--db-max-overflow", "-1"), ("--db-max-overflow", "21")])
+def test_pool_bounds_reject_before_any_disposable_database(flag,value,tmp_path):
+    with pytest.raises(SystemExit):
+        load.main(["--output",str(tmp_path/"result.json"),flag,value])
+    assert not list(tmp_path.iterdir())
+
+
+def test_pool_declaration_precedes_database_and_matches_explicit_api_environment(monkeypatch,tmp_path):
+    monkeypatch.setenv("ORION_QUALIFICATION_DISPOSABLE", "1")
+    monkeypatch.setenv("ORION_QUALIFICATION_OWNER_URL", "postgresql://postgres:synthetic@127.0.0.1/postgres")
+    monkeypatch.setenv("ORION_DB_POOL_SIZE", "20")
+    monkeypatch.setenv("ORION_DB_MAX_OVERFLOW", "20")
+    path = tmp_path/"result.json"; declarations = []
+    class NoDatabase:
+        def __init__(self,*_):
+            declarations.append(json.loads(path.read_text()))
+            raise RuntimeError("No connection permitted by this harness test")
+    monkeypatch.setattr(load, "DisposableDatabase", NoDatabase)
+    arguments = ["--confirm-disposable-local", "--output",str(path),"--api-workers","3",
+        "--db-pool-size","5","--db-max-overflow","5"]
+    assert load.main(arguments) == 1
+    declaration = declarations[0]
+    assert declaration["database_pools"] == {"size_per_role_per_worker":5,
+        "max_overflow_per_role_per_worker":5,"roles_per_worker":2,"theoretical_api_connection_ceiling":60}
+    assert declaration["api_workers"] == 3 and declaration["targets_before_run"] == load.TARGETS
+    assert declaration["offered_journey_rate_per_second"]["1500"] == 150
+    args = load.parser().parse_args(arguments)
+    assert load.api_pool_environment(args) == {"ORION_DB_POOL_SIZE":"5", "ORION_DB_MAX_OVERFLOW":"5"}
+    defaults = load.parser().parse_args(["--output", "synthetic.json"])
+    assert (defaults.api_workers,defaults.db_pool_size,defaults.db_max_overflow) == (2,5,10)
 
 
 def test_start_requires_two_explicit_disposable_confirmations(monkeypatch,tmp_path):

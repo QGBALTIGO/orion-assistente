@@ -14,14 +14,13 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
-from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from fastapi.encoders import jsonable_encoder
 from functools import lru_cache
 
 from app.catalog_schemas import Business, RESOURCE_MODELS
-from app.database import get_session_factory, tenant_transaction
+from app.database import engine_pool_options, get_session_factory, tenant_transaction
 
 router = APIRouter(prefix="/api/v1", tags=["Operação interna"])
 
@@ -112,10 +111,7 @@ def support_session_factory():
     url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
     if make_url(url).drivername != "postgresql+asyncpg" or make_url(url).username != "app_support":
         raise RuntimeError("Conexão de suporte exige papel app_support")
-    options = {"pool_pre_ping": True}
-    if os.getenv("PYTEST_CURRENT_TEST"):
-        options["poolclass"] = NullPool
-    return async_sessionmaker(create_async_engine(url, **options), expire_on_commit=False)
+    return async_sessionmaker(create_async_engine(url, **engine_pool_options()), expire_on_commit=False)
 
 
 async def ensure_tenant(session, tenant_id: UUID):
