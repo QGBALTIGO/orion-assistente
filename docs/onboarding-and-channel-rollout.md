@@ -1,8 +1,9 @@
 # Configuração inicial e conexões independentes
 
 Base: `dee6aaac4382bb12e5f8660b092ee09812125a87`. Trabalho em branch isolada.
-Produção, migrations reais, publicação e mensagens reais ficam fora da execução
-automática desta tarefa, conforme o documento de implementação.
+Uma publicação exige autorização explícita do operador e aprovação da bateria
+da revisão exata a publicar. A autorização posterior de publicação não ativa
+campanhas, integrações ou sessões individuais sem a revisão de seus responsáveis.
 
 ## Fontes de dados e permissões
 
@@ -28,8 +29,10 @@ a invalidação inteira volta atrás e a API não confirma o registro do aviso. 
 guarda não ativa o assistente nem permite reservas ou pedidos.
 Não apagar `/data/auth`, sessões, filas ou reservas no retorno de versão.
 
-O suporte inicial gerenciado é texto privado e allowlist restrita. Não representa
-homologação de áudio, grupos ou paridade de toda recuperação do conector legado.
+O suporte gerenciado inclui texto e áudio privados com allowlist restrita,
+anúncio de revisão antes de transcrição e retry store cifrado por canal.
+Isso não representa homologação física de áudio, grupos ou paridade de todas
+as funcionalidades do conector legado.
 Abrir a página ou reiniciar processo não inicia sessões. Ver [CHANNELS.md](../qr-bridge/CHANNELS.md).
 
 ## Google Agenda
@@ -99,6 +102,24 @@ para retornar. Manter leitores compatíveis e reconciliação de tentativas em c
 As migrations recusam retorno destrutivo quando há dados novos.
 
 Separar unidade, DOM simulado, PostgreSQL/Redis reais, navegador, aparelho, Google
-e carga sustentada. Os perfis de 1.500 usuários, 500 casos conversacionais, 10.000
-sequências e janelas longas do documento mestre não são comprovados por esta
-implementação inicial.
+e carga sustentada. Ver os contratos e limites em
+[navegador](qualification-e2e.md), [conversas](qualification-conversation-manifest.md)
+e [carga](qualification-load.md). A existência dos runners não comprova aprovação:
+guardar commit, árvore, durações, percentis, erros e invariantes de cada execução.
+Falhas de carga impedem o aceite, mesmo com unidade e navegador aprovados.
+Janelas de 12 horas, sockets WhatsApp e entrega externa exigem evidências próprias.
+
+## Publicação com preservação de dados
+
+Usar `scripts.one_time_onboarding_migration` no predeploy da API com um único
+run ID estável. O runner confere a cadeia selada 0019–0023, salva backup cifrado
+fora do container, verifica sua leitura e restaura uma cópia em outro banco.
+Somente após ensaiar o upgrade dessa cópia e comparar os dados/ACLs da origem
+ele aplica as migrations. Não restaura sobre a origem nem executa seed.
+Repetir uma execução já concluída faz conferência somente de leitura.
+
+O worker aguarda `scripts.wait_for_onboarding_schema`, com prazo limitado e
+papel runtime; não migra por conta própria. Publicar API, worker e bridge com
+contratos compatíveis, preservando `/data/auth` e a chave Fernet. Revalidar
+saúde, configuração Google e sessões depois da publicação. Resultado aceito
+por transporte não substitui a leitura no aparelho autorizado.

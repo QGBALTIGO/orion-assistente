@@ -18,6 +18,7 @@ from sqlalchemy import text
 
 from scripts.qualification_load import DisposableDatabase, ROOT, seed_database
 from scripts import one_time_business_migration as backup
+from scripts import one_time_onboarding_migration as op
 
 pytestmark = pytest.mark.integration
 
@@ -85,7 +86,7 @@ def test_populated_0019_head_backup_restore_and_legacy_contract(populated_source
         before_columns = columns(db)
         before = row_digests(db,before_columns)
         old_privileges = privileges(db,before_columns)
-        old_catalog = backup.canonical_catalog(backup.catalog_structure(db,frozenset(before_columns)))
+        old_catalog = op.canonical_catalog(backup.catalog_structure(db,frozenset(before_columns)))
     dump = tmp_path/"synthetic-0019.dump"
     dump.touch(mode=0o600,exist_ok=False)
     client("pg_dump",["--format=custom","--no-password","--file="+str(dump)],source)
@@ -104,7 +105,7 @@ def test_populated_0019_head_backup_restore_and_legacy_contract(populated_source
         with restored.engine.connect() as db:
             assert row_digests(db,before_columns) == before
             assert privileges(db,before_columns) == old_privileges
-            assert backup.canonical_catalog(backup.catalog_structure(db,frozenset(before_columns))) == old_catalog
+            assert op.canonical_catalog(backup.catalog_structure(db,frozenset(before_columns))) == old_catalog
             assert db.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()=="0019_appointment_lifecycle"
         source.migrate("head")
         with source.engine.begin() as db:

@@ -16,6 +16,7 @@ def test_api_exec_has_runtime_roles_but_no_owner_migration_environment(monkeypat
         "ORION_RUN_MANAGEMENT_MIGRATION", "ORION_MANAGEMENT_MIGRATION_RUN_ID",
         "ORION_RUN_SALES_REQUESTS_MIGRATION", "ORION_RUN_AGENDA_MIGRATION",
         "ORION_EXPECTED_DATABASE_HOST", "ORION_EXPECTED_DATABASE_NAME",
+        "ORION_RUN_ONBOARDING_MIGRATION", "ORION_ONBOARDING_MIGRATION_RUN_ID",
     }
     source = {name: "synthetic-only" for name in start_api.ONE_TIME_KEYS | migration_keys}
     source.update(APP_DATABASE_URL="runtime-only", SUPPORT_DATABASE_URL="support-only",

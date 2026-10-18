@@ -60,8 +60,25 @@ def enabled():
 def keys(tenant: UUID, phone: str):
     if not isinstance(tenant, UUID) or not re.fullmatch(PHONE_PATTERN, phone):
         raise ValueError("Authenticated conversation required")
-    base = f"orion:qr:intake:{qr_channel_scope.tenant_scope(tenant)}:{phone}"
+    return _storage_keys(qr_channel_scope.tenant_scope(tenant), phone)
+
+
+def _storage_keys(namespace, phone):
+    base = f"orion:qr:intake:{namespace}:{phone}"
     return base + ":revision", base + ":seen", base + ":order"
+
+
+def channel_keys(identity, phone):
+    """Server-authenticated notice scope, including when the assistant is off.
+
+    This selects storage only. It never binds assistant/domain permission.
+    """
+    from app.qr_channels import ChannelIdentity
+    if (not isinstance(identity, ChannelIdentity) or not identity.allowed_sender or identity.provider != "baileys"
+            or not isinstance(identity.tenant_id, UUID) or not isinstance(identity.channel_id, UUID)
+            or not isinstance(phone, str) or not re.fullmatch(PHONE_PATTERN, phone)):
+        raise ValueError("Authenticated channel conversation required")
+    return _storage_keys(f"{identity.tenant_id}:{identity.channel_id}", phone)
 
 
 class Notice(StrictModel):
@@ -85,9 +102,17 @@ def authorized_tenant(request: Request, phone: str):
 
 
 async def register(redis, tenant, phone, message_id):
+    return await _register(redis, keys(tenant, phone), message_id)
+
+
+async def register_channel(redis, identity, phone, message_id):
+    return await _register(redis, channel_keys(identity, phone), message_id)
+
+
+async def _register(redis, storage_keys, message_id):
     if not re.fullmatch(ID_PATTERN, message_id):
         raise ValueError("Validated message identity required")
-    value = await redis.eval(NOTICE_SCRIPT, 3, *keys(tenant, phone), message_id, TTL, MAX_SEEN)
+    value = await redis.eval(NOTICE_SCRIPT, 3, *storage_keys, message_id, TTL, MAX_SEEN)
     if type(value) is not int or not 1 <= value <= 9007199254740991:
         raise RuntimeError("Invalid ingress revision")
     return value

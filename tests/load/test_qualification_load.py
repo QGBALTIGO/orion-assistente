@@ -1,6 +1,8 @@
 """Harness correctness only: these mocks are never labelled real load evidence."""
 import asyncio
 import os
+import json
+import subprocess
 
 import httpx
 import pytest
@@ -79,7 +81,7 @@ def test_profile_distribution_is_not_users_equal_to_rps():
 @pytest.mark.asyncio
 async def test_open_loop_keeps_offering_while_responses_stall(monkeypatch):
     calls=[]
-    async def slow(*args): calls.append(1); await asyncio.sleep(.11)
+    async def slow(*args, **kwargs): calls.append(1); await asyncio.sleep(.11)
     monkeypatch.setattr(load,"journey",slow)
     metrics=load.Measurements()
     await load.run_stage(None,metrics,[{}],1,.10,.01,17,300)
@@ -89,7 +91,7 @@ async def test_open_loop_keeps_offering_while_responses_stall(monkeypatch):
 @pytest.mark.asyncio
 async def test_cancellation_drains_children_instead_of_leaving_load_running(monkeypatch):
     entered=asyncio.Event(); stopped=asyncio.Event()
-    async def slow(*args):
+    async def slow(*args, **kwargs):
         entered.set()
         try: await asyncio.sleep(30)
         finally: stopped.set()
@@ -124,3 +126,84 @@ async def test_duplicate_response_id_is_an_invariant_failure():
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler),base_url="http://127.0.0.1") as client:
         await load.booking_journey(client,metrics,10,p,"synthetic-key")
     assert metrics.violations["duplicate_hold"]==1 and not metrics.report({10:1})["pass"]
+
+
+@pytest.mark.asyncio
+async def test_warmup_measurement_and_recovery_have_distinct_operation_keys_but_replay_within_each():
+    records, seen = {}, []
+    async def handler(request):
+        body = json.loads(request.content)
+        if request.url.path.endswith("/hold"):
+            key = body["idempotency_key"]; seen.append(key)
+            records.setdefault(key, {"id": str(len(records)), "status": "hold"})
+            return httpx.Response(201, json=records[key])
+        identity = request.url.path.split("/")[-2]
+        record = next(row for row in records.values() if row["id"] == identity)
+        if request.url.path.endswith("/confirm") and record["status"] == "hold": record["status"] = "confirmed"
+        if request.url.path.endswith("/cancel"): record["status"] = "cancelled"
+        # A replay returns its current persisted state, including cancelled.
+        return httpx.Response(200, json=record)
+    person = {"tenant":"synthetic", "token":"private", "csrf":"private", "professional":"p",
+        "service":"s", "phone":"synthetic", "day":"2030-01-01"}
+    metrics = load.Measurements()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://127.0.0.1") as client:
+        for phase in ("warmup", "measured", "recovery"):
+            await load.journey(client, metrics, 10, person, 0, 17, None, phase=phase)
+    assert len(records) == 3 and len(metrics.verified_cancellations) == 3
+    assert not metrics.violations and len(metrics.hold_attempts) == 3
+    assert len(seen) == 6 and all(seen[i] == seen[i+1] for i in (0,2,4))
+    assert len({seen[i] for i in (0,2,4)}) == 3
+
+
+def test_lost_hold_response_is_uncertain_not_a_proven_duplicate_and_still_fails():
+    metrics = load.Measurements(); metrics.hold_attempts.add(("tenant", "attempt"))
+    metrics.record(1500, "hold", 10, "transport_error", (201,))
+    integrity, uncertainty = load.reconcile_booking_observations([
+        {"id":"committed", "tenant_id":"tenant", "idempotency_key":"attempt", "status":"hold"}], metrics)
+    assert not any(integrity.values())
+    assert uncertainty == {"committed_hold_without_observed_response":1, "unfinished_booking_journeys":1,
+        "cancellation_response_not_observed":0}
+    metrics.observation_uncertainty.update({k:v for k,v in uncertainty.items() if v})
+    report = metrics.report({1500:10})
+    assert not report["pass"] and report["unexpected_error_rate"] == 1
+    assert report["http_requests"] == 1 and report["operations"][0]["p99_ms"] == 10000
+
+
+def test_reconciliation_keeps_missing_rows_unrequested_rows_and_false_cancellation_as_data_failures():
+    metrics = load.Measurements(); metrics.committed.update({"missing", "cancel-ack"})
+    metrics.verified_cancellations.add("cancel-ack"); metrics.hold_attempts.add(("tenant", "known"))
+    integrity, uncertainty = load.reconcile_booking_observations([
+        {"id":"cancel-ack", "tenant_id":"tenant", "idempotency_key":"known", "status":"confirmed"},
+        {"id":"unrequested", "tenant_id":"tenant", "idempotency_key":"never-attempted", "status":"cancelled"}], metrics)
+    assert integrity == {"appointment_without_recorded_attempt":1, "observed_hold_missing_from_database":1,
+        "verified_cancellation_not_persisted":1}
+    assert uncertainty["unfinished_booking_journeys"] == 1
+
+
+@pytest.mark.parametrize("workers", [2,3,4])
+def test_diagnostic_worker_count_preserves_offer_timeout_and_declared_targets(workers):
+    args = load.parser().parse_args(["--output","synthetic.json","--api-workers",str(workers)])
+    assert args.api_workers == workers and args.period_seconds == 10
+    assert args.max_memory_mb == 1536
+    assert load.TARGETS == {"read":{"p95_ms":800,"p99_ms":1500},
+        "write":{"p95_ms":2000,"p99_ms":4000},"unexpected_error_rate":.001}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", [0, 1, "timeout"])
+async def test_final_snapshot_requires_owned_api_to_finish_inflight_writes_before_read(outcome):
+    class Api:
+        def __init__(self): self.events = []
+        def poll(self): self.events.append("poll"); return None
+        def terminate(self): self.events.append("terminate")
+        def wait(self, timeout):
+            assert timeout == 30; self.events.append("wait")
+            if outcome == "timeout": raise subprocess.TimeoutExpired("synthetic", timeout)
+            return outcome
+    api = Api()
+    if outcome == 0:
+        result = await load.stop_api_for_reconciliation(api)
+        assert result["clean_shutdown"] and result["final_database_read_after_shutdown"]
+    else:
+        with pytest.raises(RuntimeError): await load.stop_api_for_reconciliation(api)
+    assert api.events == ["poll", "terminate", "wait"]

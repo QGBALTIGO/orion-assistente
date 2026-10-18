@@ -102,3 +102,14 @@ def test_sql_identifiers_cannot_come_from_database_or_user_input():
     assert op.TARGET_TABLES==op.SOURCE_TABLES|op.NEW_TABLES
     assert not op.SOURCE_TABLES.intersection(op.NEW_TABLES)
     assert "alembic_version" in op.SOURCE_TABLES
+
+def test_only_reviewed_associative_financial_check_alias_is_normalized():
+    nested = "CHECK ((((amount_cents >= 1) AND (amount_cents <= 1000000000)) AND ((currency)::text = 'BRL'::text)))"
+    flat = "CHECK (((amount_cents >= 1) AND (amount_cents <= 1000000000) AND ((currency)::text = 'BRL'::text)))"
+    def catalog(expression, name="financial_entries"):
+        return [[name, True, True, [], [expression], [], []]]
+    assert op.canonical_catalog(catalog(nested)) == op.canonical_catalog(catalog(flat))
+    for altered in (nested.replace("1000000000", "999999999"), nested.replace(" AND ", " OR ", 1),
+                    nested.replace("'BRL'", "'USD'"), nested.replace(">= 1", "> 1")):
+        assert op.canonical_catalog(catalog(altered)) != op.canonical_catalog(catalog(flat))
+    assert op.canonical_catalog(catalog(nested, "unrelated")) != op.canonical_catalog(catalog(flat, "unrelated"))

@@ -6,6 +6,7 @@ recebem tenant já autenticado pelo operador (futuramente por webhook assinado).
 import hashlib
 import json
 import secrets
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -133,9 +134,54 @@ def validate_local(start: datetime, tz: ZoneInfo):
     return local
 
 
+@dataclass(frozen=True)
+class _SlotConstraints:
+    tenant: UUID
+    professional: UUID
+    day: date
+    hours: dict | None
+    pauses: tuple
+    blocks: tuple
+    reservations: tuple
+
+
+async def _read_slot_constraints(s, tenant, professional, target, tz, now, ignored):
+    """Request-local inputs for a read-only grid; never reused by a mutation."""
+    hours = (await s.execute(text("""
+        SELECT id, start_time, end_time FROM working_hours
+        WHERE tenant_id=:tenant AND professional_id=:professional AND weekday=:weekday
+    """), {"tenant": tenant, "professional": professional, "weekday": target.weekday()})).mappings().first()
+    if hours is None:
+        return _SlotConstraints(tenant, professional, target, None, (), (), ())
+    pauses = (await s.execute(text("""
+        SELECT start_time, end_time FROM working_breaks
+        WHERE tenant_id=:tenant AND working_hour_id=:working_hour
+    """), {"tenant": tenant, "working_hour": hours["id"]})).mappings().all()
+    # A valid candidate's complete occupied interval must fit inside this
+    # shift, so intervals outside it cannot reject any candidate in the grid.
+    begin = datetime.combine(target, hours["start_time"], tzinfo=tz).astimezone(UTC)
+    stop = datetime.combine(target, hours["end_time"], tzinfo=tz).astimezone(UTC)
+    parameters = {"tenant": tenant, "professional": professional, "begin": begin, "stop": stop}
+    blocks = []
+    for table in ("time_off", "schedule_blocks"):
+        blocks.extend((await s.execute(text(f"""
+            SELECT starts_at, ends_at FROM {table}
+            WHERE tenant_id=:tenant AND professional_id=:professional
+              AND starts_at < :stop AND ends_at > :begin
+        """), parameters)).mappings().all())
+    reservations = (await s.execute(text("""
+        SELECT occupied_from AS starts_at, occupied_until AS ends_at FROM appointments
+        WHERE tenant_id=:tenant AND professional_id=:professional
+          AND id != :ignored AND status IN ('hold','confirmed')
+          AND occupied_from < :stop AND occupied_until > :begin
+          AND (status <> 'hold' OR hold_expires_at > :now)
+    """), {**parameters, "ignored": ignored or UUID(int=0), "now": now})).mappings().all()
+    return _SlotConstraints(tenant, professional, target, dict(hours), tuple(pauses), tuple(blocks), tuple(reservations))
+
+
 async def check_slot(s: AsyncSession, tenant: UUID, professional: UUID,
                      shop: dict, items: list[dict], start: datetime, now: datetime,
-                     ignore_appointment: UUID | None = None):
+                     ignore_appointment: UUID | None = None, *, _constraints: _SlotConstraints | None = None):
     tz = ZoneInfo(shop["timezone"])
     local = validate_local(start, tz)
     if start.astimezone(UTC) < now + timedelta(minutes=shop["min_notice_minutes"]):
@@ -148,7 +194,9 @@ async def check_slot(s: AsyncSession, tenant: UUID, professional: UUID,
     if local.second or local.microsecond or minute % shop["slot_step_minutes"]:
         fail(422, "Horário fora da grade configurada")
     b = bounds(start, items)
-    hours = (await s.execute(text("""
+    if _constraints is not None and (_constraints.tenant != tenant or _constraints.professional != professional or _constraints.day != local.date()):
+        raise ValueError("Slot constraints belong to another request scope")
+    hours = _constraints.hours if _constraints is not None else (await s.execute(text("""
         SELECT id, start_time, end_time FROM working_hours
         WHERE tenant_id=:tenant AND professional_id=:professional AND weekday=:weekday
     """), {"tenant": tenant, "professional": professional, "weekday": local.weekday()})).mappings().first()
@@ -158,7 +206,7 @@ async def check_slot(s: AsyncSession, tenant: UUID, professional: UUID,
     work_end = datetime.combine(local.date(), hours["end_time"], tzinfo=tz).astimezone(UTC)
     if b["occupied_from"] < work_start or b["occupied_until"] > work_end:
         fail(409, "Atendimento completo e buffers não cabem no expediente")
-    pauses = (await s.execute(text("""
+    pauses = _constraints.pauses if _constraints is not None else (await s.execute(text("""
         SELECT start_time, end_time FROM working_breaks
         WHERE tenant_id=:tenant AND working_hour_id=:working_hour
     """), {"tenant": tenant, "working_hour": hours["id"]})).mappings().all()
@@ -167,6 +215,14 @@ async def check_slot(s: AsyncSession, tenant: UUID, professional: UUID,
         hi = datetime.combine(local.date(), pause["end_time"], tzinfo=tz).astimezone(UTC)
         if lo < b["occupied_until"] and hi > b["occupied_from"]:
             fail(409, "Horário conflita com pausa do profissional")
+    if _constraints is not None:
+        for entry in _constraints.blocks:
+            if entry["starts_at"] < b["occupied_until"] and entry["ends_at"] > b["occupied_from"]:
+                fail(409, "Horário bloqueado ou em folga")
+        for entry in _constraints.reservations:
+            if entry["starts_at"] < b["occupied_until"] and entry["ends_at"] > b["occupied_from"]:
+                fail(409, "Horário já reservado")
+        return b
     for table in ("time_off", "schedule_blocks"):
         conflict = (await s.execute(text(f"""
             SELECT 1 FROM {table} WHERE tenant_id=:tenant AND professional_id=:professional
@@ -362,6 +418,8 @@ async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
         local_now = now.astimezone(ZoneInfo(shop["timezone"]))
         if target < local_now.date() or target > local_now.date() + timedelta(days=shop["booking_horizon_days"]):
             fail(422, "Data fora do horizonte de agendamento")
+        constraints = await _read_slot_constraints(s, tenant, professional, target,
+            ZoneInfo(shop["timezone"]), now, appointment_id or replace_hold_id)
         result = []
         for minute in range(0, 24 * 60, shop["slot_step_minutes"]):
             naive = datetime.combine(target, time.min) + timedelta(minutes=minute)
@@ -372,7 +430,7 @@ async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
                 if start.replace(tzinfo=None) != naive:
                     continue  # horário inexistente por mudança de fuso
                 await check_slot(s, tenant, professional, shop, items, start, now,
-                                 ignore_appointment=appointment_id or replace_hold_id)
+                                 ignore_appointment=appointment_id or replace_hold_id, _constraints=constraints)
                 result.append(start.isoformat())
             except HTTPException:
                 continue

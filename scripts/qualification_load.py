@@ -128,6 +128,7 @@ class Measurements:
         self.latencies = defaultdict(list); self.statuses = defaultdict(Counter)
         self.failures = Counter(); self.offered = Counter(); self.dropped = Counter()
         self.violations = Counter(); self.committed = set(); self.verified_cancellations = set()
+        self.hold_attempts = set(); self.observation_uncertainty = Counter()
 
     def record(self, stage, operation, elapsed, status, expected):
         key = (stage, operation)
@@ -153,7 +154,8 @@ class Measurements:
         return {"operations": groups, "offered_journeys": dict(self.offered), "dropped_arrivals": dict(self.dropped),
             "unexpected": dict(self.failures), "unexpected_error_rate": rate,
             "http_requests": total, "violations": dict(self.violations),
-            "pass": bool(total) and not self.violations and rate < TARGETS["unexpected_error_rate"]
+            "observation_uncertainty": dict(self.observation_uncertainty),
+            "pass": bool(total) and not self.violations and not self.observation_uncertainty and rate < TARGETS["unexpected_error_rate"]
                     and all(g["latency_target_pass"] for g in groups)}
 
 
@@ -249,6 +251,7 @@ async def booking_journey(client, m, stage, p, key, *, due=None, conflict=False)
     payload = {"professional_id": p["professional"], "service_ids": [p["service"]],
         "customer_name": "Synthetic qualification customer", "customer_phone": p["phone"],
         "start_at": p["day"]+"T09:00:00+00:00", "idempotency_key": key}
+    m.hold_attempts.add((p["tenant"], key))
     status, result = await request(client, m, stage, p, "hold", "POST", base+"/appointments/hold", body=payload,
                                    expected=(201, 409) if conflict else (201,), due=due)
     if status != 201: return
@@ -263,7 +266,7 @@ async def booking_journey(client, m, stage, p, key, *, due=None, conflict=False)
         else: m.verified_cancellations.add(appointment)
 
 
-async def journey(client, m, stage, p, seq, index, due):
+async def journey(client, m, stage, p, seq, index, due, *, phase="measured"):
     base = "/api/v1/tenants/"+p["tenant"]
     choice = (seq*7+index) % 20
     if choice < 2:
@@ -277,22 +280,22 @@ async def journey(client, m, stage, p, seq, index, due):
     elif choice < 17:
         status, state = await request(client, m, stage, p, "setup_read", "GET", base+"/onboarding", due=due)
         if choice >= 15 and status == 200:
-            body = {"expected_version": state["version"], "idempotency_key": f"qualification-{index}-{stage}-{seq}", "data": {"modality": "online"}}
+            body = {"expected_version": state["version"], "idempotency_key": f"qualification-{phase}-{index}-{stage}-{seq}", "data": {"modality": "online"}}
             status, updated = await request(client, m, stage, p, "setup_save", "PUT", base+"/onboarding/steps/location", body=body, expected=(200,409))
             if status == 200:
                 status, replay = await request(client, m, stage, p, "setup_save_replay", "PUT", base+"/onboarding/steps/location", body=body)
                 # Other operators may legitimately advance the visible version.
                 if status == 200 and replay["version"] < updated["version"]: m.violations["setup_version_regression"] += 1
     else:
-        await booking_journey(client, m, stage, p, f"qualification-{index}-{stage}-{seq}", due=due)
+        await booking_journey(client, m, stage, p, f"qualification-{phase}-{index}-{stage}-{seq}", due=due)
 
 
-async def run_stage(client, metrics, people, active, duration, period, seed, max_pending):
+async def run_stage(client, metrics, people, active, duration, period, seed, max_pending, *, phase="measured"):
     rng = random.Random(seed + active); start = time.monotonic(); stop = start+duration
     arrivals = [(start+rng.random()*period, i, 0) for i in range(active)]
     heapq.heapify(arrivals); pending = set(); busy = set()
     async def run(index, seq, due):
-        try: await journey(client, metrics, active, people[index], seq, index, due)
+        try: await journey(client, metrics, active, people[index], seq, index, due, phase=phase)
         except Exception as exc: metrics.failures[f"{active}/journey/{type(exc).__name__}"] += 1
         finally: busy.discard(index)
     try:
@@ -315,6 +318,28 @@ async def run_stage(client, metrics, people, active, duration, period, seed, max
     return time.monotonic()-start
 
 
+def reconcile_booking_observations(rows, metrics):
+    """Separate persisted contradictions from a response lost after a commit.
+
+    Both classes still fail qualification. No retry, cleanup mutation or error
+    denominator adjustment is performed by this read-only reconciliation.
+    """
+    by_id = {str(row["id"]): row for row in rows}
+    known = set(by_id)
+    integrity = {
+        "appointment_without_recorded_attempt": sum((str(row["tenant_id"]), row["idempotency_key"]) not in metrics.hold_attempts for row in rows),
+        "observed_hold_missing_from_database": len(metrics.committed - known),
+        "verified_cancellation_not_persisted": sum(identifier not in by_id or by_id[identifier]["status"] != "cancelled"
+            for identifier in metrics.verified_cancellations),
+    }
+    uncertainty = {
+        "committed_hold_without_observed_response": len(known - metrics.committed),
+        "unfinished_booking_journeys": sum(row["status"] in {"hold", "confirmed"} for row in rows),
+        "cancellation_response_not_observed": len(metrics.committed - metrics.verified_cancellations),
+    }
+    return integrity, uncertainty
+
+
 def invariants(sandbox, metrics, expected):
     with sandbox.engine.connect() as db:
         checks = {
@@ -324,17 +349,19 @@ def invariants(sandbox, metrics, expected):
             "duplicate_idempotency_keys": "SELECT count(*) FROM (SELECT tenant_id,idempotency_key FROM appointments GROUP BY 1,2 HAVING count(*)>1) x",
             "cross_tenant_customers": "SELECT count(*) FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.tenant_id<>c.tenant_id",
             "cross_tenant_professionals": "SELECT count(*) FROM appointments a JOIN professionals p ON p.id=a.professional_id WHERE a.tenant_id<>p.tenant_id",
-            "unexpected_live_appointments": "SELECT count(*) FROM appointments WHERE status IN ('hold','confirmed')",
             "unexpected_delivery_jobs": "SELECT count(*) FROM automation_jobs",
         }
         result = {name: db.exec_driver_sql(sql).scalar_one() for name, sql in checks.items()}
         result["historical_rows_lost"] = abs(db.exec_driver_sql("SELECT count(*) FROM appointments WHERE status='completed'").scalar_one()-expected["historical_appointments"])
-        result["unexpected_new_appointments"] = abs(db.exec_driver_sql("SELECT count(*) FROM appointments WHERE status<>'completed'").scalar_one()-len(metrics.committed))
-        result["unverified_cancellations"] = len(metrics.committed-metrics.verified_cancellations)
+        rows = db.exec_driver_sql("SELECT id,tenant_id,idempotency_key,status FROM appointments WHERE status<>'completed'").mappings().all()
+        integrity, uncertainty = reconcile_booking_observations(rows, metrics)
+        result.update(integrity)
         result["unsafe_runtime_role"] = db.exec_driver_sql("SELECT count(*) FROM pg_roles WHERE rolname IN ('app_runtime','app_support','app_migrator') AND (rolsuper OR rolbypassrls)").scalar_one()
         for name, count in result.items():
             if count: metrics.violations[name] += count
-        return result
+        for name, count in uncertainty.items():
+            if count: metrics.observation_uncertainty[name] += count
+        return {"data_integrity": result, "observation_uncertainty": uncertainty}
 
 
 async def contention(client, people, seed):
@@ -345,6 +372,7 @@ async def contention(client, people, seed):
     # Keep the winner's hold until every competing request has completed.
     base = "/api/v1/tenants/"+p["tenant"]
     async def hold(i, candidate):
+        m.hold_attempts.add((p["tenant"], f"qualification-race-{seed}-{i}"))
         return await request(client, m, 20, candidate, "hold", "POST", base+"/appointments/hold", expected=(201,409),
             body={"professional_id": p["professional"], "service_ids": [p["service"]], "customer_name": "Synthetic contender",
                   "customer_phone": candidate["phone"], "start_at": p["day"]+"T11:00:00+00:00", "idempotency_key": f"qualification-race-{seed}-{i}"})
@@ -411,6 +439,27 @@ async def monitor(sandbox, cache, pid, samples, stop, max_memory_mb):
         except asyncio.TimeoutError: pass
 
 
+async def stop_api_for_reconciliation(api):
+    """Wait for the owned synthetic server before taking the final DB snapshot.
+
+    A timed-out HTTP client does not cancel a committed/in-flight server write.
+    Uvicorn gets 15 seconds for graceful request shutdown and its supervisor
+    must exit cleanly within 30. A failed drain cannot yield an integrity PASS.
+    """
+    started = time.monotonic()
+    if api.poll() is not None:
+        raise RuntimeError("Synthetic API exited before final drain")
+    api.terminate()
+    try:
+        code = await asyncio.to_thread(api.wait, 30)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Synthetic API did not quiesce before reconciliation") from None
+    if code != 0:
+        raise RuntimeError("Synthetic API did not exit cleanly before reconciliation")
+    return {"clean_shutdown": True, "elapsed_seconds": round(time.monotonic()-started,3),
+        "final_database_read_after_shutdown": True}
+
+
 async def execute(args, sandbox, report):
     cache_url = local_url(os.environ["REDIS_URL"], database="15", redis_url=True)
     cache = redis.from_url(cache_url.render_as_string(hide_password=False), decode_responses=True)
@@ -435,7 +484,7 @@ async def execute(args, sandbox, report):
         with args.output.with_suffix(".api.log").open("wb") as log:
             report["phase"] = "local_api_start"
             api = subprocess.Popen([sys.executable,"-m","uvicorn","app.main:app","--host","127.0.0.1","--port",str(port),
-                "--workers",str(args.api_workers),"--no-access-log"],cwd=ROOT,env=env,stdout=log,stderr=log)
+                "--workers",str(args.api_workers),"--timeout-graceful-shutdown","15","--no-access-log"],cwd=ROOT,env=env,stdout=log,stderr=log)
             async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}",timeout=10,
                 limits=httpx.Limits(max_connections=300,max_keepalive_connections=150),trust_env=False) as client:
                 for _ in range(90):
@@ -453,6 +502,7 @@ async def execute(args, sandbox, report):
                 for seed in (17,29,43):
                     race, result = await contention(client, people, seed); reports.append(result)
                     metrics.committed.update(race.committed); metrics.verified_cancellations.update(race.verified_cancellations)
+                    metrics.hold_attempts.update(race.hold_attempts)
                     metrics.violations.update(race.violations)
                 report["contention"] = reports
                 for p in people[:2]:
@@ -460,8 +510,9 @@ async def execute(args, sandbox, report):
                     if code != 403: metrics.violations["cross_tenant_http_access"] += 1
                 # Warmup is reported separately, excluded explicitly from measured percentiles.
                 warmup = Measurements()
-                await run_stage(client,warmup,people,10,args.warmup_seconds,args.period_seconds,7,300)
+                await run_stage(client,warmup,people,10,args.warmup_seconds,args.period_seconds,7,300,phase="warmup")
                 metrics.committed.update(warmup.committed); metrics.verified_cancellations.update(warmup.verified_cancellations)
+                metrics.hold_attempts.update(warmup.hold_attempts)
                 report["warmup_unexpected"] = dict(warmup.failures); metrics.violations.update(warmup.violations)
                 monitor_task = asyncio.create_task(monitor(sandbox,cache,api.pid,report["resource_samples"],stop,args.max_memory_mb))
                 durations = {}
@@ -476,14 +527,23 @@ async def execute(args, sandbox, report):
                         raise RuntimeError("Resource monitor stopped unexpectedly")
                     durations[active] = await stage_task
                 recovery = Measurements()
-                recovery_elapsed = await run_stage(client,recovery,people,10,30,args.period_seconds,args.seed,300)
+                recovery_elapsed = await run_stage(client,recovery,people,10,30,args.period_seconds,args.seed,300,phase="recovery")
                 metrics.committed.update(recovery.committed); metrics.verified_cancellations.update(recovery.verified_cancellations)
+                metrics.hold_attempts.update(recovery.hold_attempts)
                 metrics.violations.update(recovery.violations)
                 report["recovery"] = recovery.report({10: recovery_elapsed})
-                report["invariants"] = await asyncio.to_thread(invariants,sandbox,metrics,inventory)
+                # Retain actual measurements even if shutdown/reconciliation
+                # fails. No more HTTP is offered after the recovery stage.
                 report["measurements"] = metrics.report(durations)
                 report["actual_stage_seconds"] = durations
-                if monitor_task.done(): await monitor_task
+                stop.set()
+                await monitor_task
+                monitor_task = None
+                report["phase"] = "api_drain_before_reconciliation"
+                report["final_drain"] = await stop_api_for_reconciliation(api)
+                report["phase"] = "final_reconciliation"
+                report["invariants"] = await asyncio.to_thread(invariants,sandbox,metrics,inventory)
+                report["measurements"] = metrics.report(durations)
                 report["pass"] = report["measurements"]["pass"] and all(r["pass"] for r in reports) and not warmup.failures and report["recovery"]["pass"]
                 report["phase"] = "completed"
     finally:
@@ -509,7 +569,7 @@ def parser():
     result.add_argument("--sustain-seconds",type=int,default=600)
     result.add_argument("--warmup-seconds",type=int,default=30)
     result.add_argument("--period-seconds",type=float,default=10)
-    result.add_argument("--api-workers",type=int,choices=(1,2),default=2)
+    result.add_argument("--api-workers",type=int,choices=(1,2,3,4),default=2)
     result.add_argument("--max-memory-mb",type=int,default=1536)
     result.add_argument("--seed",type=int,default=20261018)
     return result
@@ -526,7 +586,7 @@ def main(argv=None):
     args.companies = 1000 if args.profile=="wide" else 100
     args.output.parent.mkdir(parents=True,exist_ok=True)
     started = time.monotonic()
-    report = {"schema":1,"synthetic_only":True,"profile":args.profile,"levels":LEVELS,"targets_before_run":TARGETS,
+    report = {"schema":2,"synthetic_only":True,"profile":args.profile,"levels":LEVELS,"targets_before_run":TARGETS,
         "arrival_model":"open-loop fixed virtual-user cadence; busy/queue arrivals are counted as dropped errors",
         "offered_journey_rate_per_second":{n:n/args.period_seconds for n in LEVELS},
         "period_seconds":args.period_seconds,"api_workers":args.api_workers,"pass":False,

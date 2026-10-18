@@ -174,8 +174,23 @@ def rows(conn, *, projected=False):
         result[table] = digest.hexdigest()
     return result
 
+def canonical_catalog(catalog):
+    """Only the two reviewed PostgreSQL 16 spellings of this legacy AND check.
+
+    pg_dump text roundtrip may flatten associative AND. Never strip arbitrary
+    parentheses or rewrite OR/NOT/operands, owners, RLS or any other constraint.
+    """
+    value = backup.canonical_catalog(catalog)
+    nested = "CHECK ((((amount_cents >= 1) AND (amount_cents <= 1000000000)) AND ((currency)::text = 'BRL'::text)))"
+    flat = "CHECK (((amount_cents >= 1) AND (amount_cents <= 1000000000) AND ((currency)::text = 'BRL'::text)))"
+    for row in value:
+        if row[0] == "financial_entries":
+            row[4] = [flat if expression == nested else expression for expression in row[4] or []] or None
+    return value
+
+
 def old_catalog(conn, *, projected=False):
-    catalog = backup.canonical_catalog(backup.catalog_structure(conn, SOURCE_TABLES))
+    catalog = canonical_catalog(backup.catalog_structure(conn, SOURCE_TABLES))
     if projected:
         consent = next(row for row in catalog if row[0] == "contact_consents")
         added = [col for col in consent[3] if col[0] == "operational_opt_in"]
@@ -213,7 +228,7 @@ def verify_new_schema(conn, *, pristine=False):
             WHERE operational_opt_in IS DISTINCT FROM false)""").scalar_one(), "unexpected_consent_backfill")
 
 def manifest(conn):
-    return {"revision": backup.revision(conn), "catalog": backup.canonical_catalog(
+    return {"revision": backup.revision(conn), "catalog": canonical_catalog(
         backup.catalog_structure(conn, TARGET_TABLES)), "security": proof.without_database_identity(
         proof.security_structure(conn)), "programs": proof.programs(conn)}
 

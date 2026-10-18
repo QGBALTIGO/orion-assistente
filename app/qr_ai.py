@@ -2818,7 +2818,15 @@ async def managed_qr_interaction(channel_id: UUID, payload: qr_intake_revision.N
     try:
         await _record_customer_interaction(identity.tenant_id, payload.phone, payload.message_id, redis,
                                            channel=identity, guard=revalidate)
-        return {"recorded": True}
+        await revalidate()
+        # Announce before the bridge queues/transcribes this message. The
+        # assistant-off notice chooses storage without granting AI authority.
+        try:
+            revision = await qr_intake_revision.register_channel(redis, identity, payload.phone, payload.message_id)
+        except Exception:
+            raise HTTPException(503, "Não consegui registrar esta mensagem agora") from None
+        await revalidate()
+        return {"recorded": True, "revision": revision}
     finally:
         await redis.aclose()
 
@@ -2826,10 +2834,11 @@ async def managed_qr_interaction(channel_id: UUID, payload: qr_intake_revision.N
 @router.post("/internal/qr/channels/{channel_id}/ai/reply", include_in_schema=False)
 async def managed_qr_reply(channel_id: UUID, payload: Incoming, request: Request):
     from app.qr_channels import authenticated_channel
-    from redis.asyncio import from_url
     identity = await authenticated_channel(request, phone=payload.phone)
     if not identity.assistant_enabled or not await _managed_assistant_ready(identity):
         return {"answer": None, "step": "disabled"}
+    if payload.intake_revision is None:
+        raise HTTPException(422, "Registre a mensagem antes de iniciar o atendimento")
 
     async def revalidate():
         fresh = await authenticated_channel(request, phone=payload.phone)
@@ -2840,21 +2849,13 @@ async def managed_qr_reply(channel_id: UUID, payload: Incoming, request: Request
     token = qr_channel_scope.bind(identity, revalidate)
     try:
         await qr_channel_scope.assert_current()
-        # This endpoint is also the managed notice boundary. IDs are registered
-        # before waiting for the conversation lock, without trusting a caller's
-        # revision or the legacy tenant/allowlist/dedup configuration.
-        redis = from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-                         socket_connect_timeout=3, socket_timeout=3)
+        # Never give a stale/unannounced message a fresh revision here. The
+        # pre-ASR notice assigned it; run_locked validates that receipt against
+        # current channel-scoped Redis state before interpretation and writes.
         ids = payload.message_ids or [payload.message_id]
-        try:
-            revisions = [await qr_intake_revision.register(redis, identity.tenant_id, payload.phone, item) for item in ids]
-        except Exception:
-            raise HTTPException(503, "Não consegui registrar esta mensagem agora") from None
-        finally:
-            await redis.aclose()
         return await run_locked(identity.tenant_id, payload.phone, payload.text,
             f"{identity.context_namespace}:{payload.phone}", payload.message_id,
-            message_ids=ids, intake_revision=max(revisions),
+            message_ids=ids, intake_revision=payload.intake_revision,
             require_summary_review=payload.require_summary_review)
     finally:
         qr_channel_scope.reset(token)

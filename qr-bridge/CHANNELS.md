@@ -37,13 +37,17 @@ interpretar/responder; desativação invalida imediatamente o fence anterior.
 - Contexto, intake, dedup e recibos são separados por canal UUID. A identidade
   interna de mensagens também inclui o canal para não compartilhar idempotência
   de domínio. Chaves e identidade legadas permanecem exatamente como antes.
-- O payload encaminhado contém somente `phone`, `message_id` e `text`.
+- A interação anuncia `phone` e `message_id` antes da fila por contato ou de
+  qualquer transcrição. O broker devolve a revisão autenticada; o reply exige
+  essa revisão e os IDs previamente anunciados, além de `text`.
   Tenant e autoridade nunca são escolhidos pelo texto, modelo ou payload.
 - `POST /internal/qr/channels/{channel_id}/interaction` recebe somente
   `{phone,message_id}`, inclusive com IA desligada. Autentica allowlist e lease
   e cancela marketing pendente quando a funcionalidade está habilitada; não
-  interpreta texto. Falha nesse aviso bloqueia a resposta. Notice e reply usam
-  uma deduplicação compartilhada. O piloto legado cancela após admissão de um
+  interpreta texto. A capability `automation_notice_guard` mantém os locks e
+  revalida o lease até o commit, inclusive com a IA desligada. Não concede
+  autoridade de atendimento ou reserva. Falha nesse aviso bloqueia a resposta.
+  Notice e reply usam uma deduplicação compartilhada. O piloto legado cancela após admissão de um
   turno, mas não ganhou aviso quando sua IA está desligada nesta fatia.
 - O painel usa proxies autenticados de proprietário em
   `/api/v1/tenants/{tenant_id}/qr-channels/{id}/{status|qr|start|stop}`.
@@ -98,15 +102,31 @@ o suporte FOR UPDATE enquanto detém esses locks. Os locks não envolvem espera
 do provedor de IA. Sem contexto gerenciado, não existe consulta adicional ou
 dependência da nova função, preservando o caminho legado.
 
+## Áudio e correções durante o processamento
+
+O endpoint `/internal/qr/channels/{channel_id}/audio` exige os mesmos headers,
+allowlist e lease, assistente e empresa ativos, cadastro concluído e
+`QR_AI_AUDIO_ENABLED=1`. Aceita no máximo 2 MB e 120 segundos, com prazo total
+de 30 segundos. Revalida a autorização após a transcrição. Arquivos temporários
+são apagados pelo caminho compartilhado com o piloto, sem transportar a chave
+legada para os canais novos.
+
+Uma correção recebida enquanto o áudio está sendo transcrito anuncia uma revisão
+nova imediatamente. O turno antigo perde autoridade antes de escrever; os fatos
+do áudio podem acompanhar a correção somente após resposta explícita de que o
+turno substituído não gravou nada. Resultado incerto ou com gravação não autoriza
+reenvio. O resumo atualizado exige confirmação nova.
+
+O retry store cifrado é próprio de cada canal. O proto enviado fica salvo antes
+do relay, e `getMessage` atende somente esse canal. A presença de digitação
+acompanha a resposta. Esses contratos têm testes de regressão; entrega legível
+e pareamento de um canal novo ainda exigem validação no aparelho.
+
 ## Limites explícitos
 
-O adapter inicial suporta texto privado recente de piloto, QR, envio e recibos.
-Áudio, chamadas, perfil/contatos e o retry store completo do fluxo legado ainda
-não foram integrados a esses novos contextos. Não há fallback ao singleton.
-O aviso `interaction` com IA desligada autentica o fence, mas ainda não vincula
-a guarda transacional de IA: sua gravação conservadora de pausa de marketing
-não tem esta proteção atômica até o commit. Isso não concede atendimento nem
-autoridade de reserva; exige uma capability própria para fechar essa janela.
+O adapter suporta texto e áudio privados recentes de piloto, QR, envio e recibos.
+Chamadas, sincronização de perfil/contatos e importação de histórico não fazem
+parte deste contrato. Não há fallback ao singleton.
 O host atual continua mantendo a sessão legada existente, além dos contextos
 adicionais abertos explicitamente. A interface de seleção tem contrato público
 independente; esta documentação não comprova teste físico de pareamento.
@@ -115,5 +135,5 @@ Limites iniciais: dez contextos locais por manager, cinco admissões de envio
 por minuto por contexto e 32 processamentos de entrada pendentes por contexto.
 São limites de proteção, **não evidência de capacidade** para mil sessões.
 API, migração, ingressos e transporte precisam de testes PostgreSQL/integração
-e validação autorizada antes de qualquer ativação. Nenhuma ativação de produção
-faz parte da criação destes arquivos.
+e validação autorizada antes de qualquer ativação. A publicação deve preservar
+o volume existente e não habilita automaticamente os canais cadastrados.

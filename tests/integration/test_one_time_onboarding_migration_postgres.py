@@ -5,6 +5,7 @@ is simulated; encrypted envelopes, pg_dump/pg_restore, roles, DDL and RLS are no
 """
 from types import SimpleNamespace
 from uuid import uuid4
+import json
 
 from alembic import command
 from alembic.config import Config
@@ -32,8 +33,10 @@ def onboarding_source(management_source):
         account = db.exec_driver_sql("SELECT id FROM panel_accounts").scalar_one()
         assert db.execute(text("SELECT role FROM tenant_memberships WHERE tenant_id=:t AND account_id=:a AND active"),
                           {"t": previous.tenant, "a": account}).scalar_one() == "owner"
-        db.execute(text("""INSERT INTO management_preferences(tenant_id,preferences) VALUES(:t,
-            '{"business":{"trade_name":"Synthetic preserved settings"},"automations":{"vacancy_requested":true}}'::jsonb)"""), {"t": previous.tenant})
+        db.execute(text("""INSERT INTO management_preferences(tenant_id,preferences)
+            VALUES(:t,CAST(:settings AS jsonb))"""), {"t": previous.tenant, "settings": json.dumps({
+                "business": {"trade_name": "Synthetic preserved settings"},
+                "automations": {"vacancy_requested": True}})})
         db.execute(text("INSERT INTO contact_consents(tenant_id,contact_e164,marketing_opt_in) VALUES(:t,'+5567999999901',true)"), {"t": previous.tenant})
         assert ops.backup.revision(db) == ops.SOURCE
     return SimpleNamespace(engine=previous.engine, settings=settings, tenant=previous.tenant,
@@ -91,7 +94,8 @@ def test_target_replay_is_readonly_and_does_not_repeat_backup(onboarding_source,
     ops.execute(case.settings)
     with case.engine.begin() as db:
         db.execute(text("""INSERT INTO business_onboarding(tenant_id,is_new,configuration)
-            VALUES(:t,false,'{"activity":"services"}'::jsonb)"""), {"t": case.tenant})
+            VALUES(:t,false,CAST(:configuration AS jsonb))"""),
+            {"t": case.tenant, "configuration": json.dumps({"activity": "services"})})
         columns = {row[0]: [c[0] for c in row[3] if c[0] != "operational_opt_in"]
                    for row in ops.backup.catalog_structure(db, ops.SOURCE_TABLES)}
     before = evidence(case, old_columns=columns)

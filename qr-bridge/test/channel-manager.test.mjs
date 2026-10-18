@@ -40,7 +40,7 @@ function fixture(t){
       }
       return {...row,owner,expires_in_ms:Math.max(0,row.expires-now)};
     },
-    async interaction(id,key,lease,payload){interactions.push({id,key,lease,payload});return {recorded:true};},
+    async interaction(id,key,lease,payload){interactions.push({id,key,lease,payload});return {recorded:true,revision:interactions.length};},
     async forward(id,key,lease,payload){forwards.push({id,key,lease,payload});return {answer:null};}
   };
   const createSession=async ctx=>{const session={ctx,closed:false,sends:[],close(){this.closed=true;},status:()=> 'connected',qr:()=>null,
@@ -58,7 +58,7 @@ test('two channels bind their actual tenant, directory, queues and credential in
   const contexts=new Map(f.made.map(s=>[s.ctx.channelId,s.ctx]));
   assert.equal(contexts.get(a.id).tenantId,a.tenant);assert.equal(contexts.get(b.id).tenantId,b.tenant);
   await contexts.get(a.id).onMessage({phone,message_id:'synthetic-1',text:'same contact',tenant_id:b.tenant});
-  assert.equal(f.forwards[0].id,a.id);assert.deepEqual(Object.keys(f.forwards[0].payload).sort(),['message_id','phone','text']);
+  assert.equal(f.forwards[0].id,a.id);assert.deepEqual(Object.keys(f.forwards[0].payload).sort(),['intake_revision','message_id','message_ids','phone','require_summary_review','text']);
 });
 
 test('concurrent starts coalesce; another credential cannot read or stop the existing session',async t=>{
@@ -300,4 +300,97 @@ test('broker forbids external URLs and redirects and keeps tenant out of authori
   let sent;const broker=createChannelBroker({apiUrl:'http://api.railway.internal/',fetchImpl:async(url,options)=>{sent={url:String(url),options};return {ok:true,json:async()=>({})};}});
   await broker.lease(randomUUID(),'synthetic-'.repeat(6),'claim',randomUUID());
   assert.equal(sent.options.redirect,'error');assert.equal('tenant_id' in JSON.parse(sent.options.body),false);
+});
+
+test('managed audio transport uses only its fixed channel path and fenced raw-body headers',async()=>{
+  const id=randomUUID(),owner=randomUUID(),key='synthetic-channel-secret-'.repeat(2),bytes=Buffer.from('OggS synthetic');let sent;
+  const broker=createChannelBroker({apiUrl:'http://api.railway.internal/',env:{QR_AI_AUDIO_ENABLED:'1'},fetchImpl:async(url,options)=>{
+    sent={url:String(url),options};return {ok:true,json:async()=>({text:'Corte',truncated:false})};}});
+  assert.deepEqual(await broker.transcribe(id,key,{owner,fence:7},{phone,buffer:bytes,mediaType:'audio/ogg'}),{text:'Corte',truncated:false});
+  assert.equal(sent.url,`http://api.railway.internal/internal/qr/channels/${id}/audio`);
+  assert.equal(sent.options.body,bytes);assert.equal(sent.options.redirect,'error');
+  assert.deepEqual(sent.options.headers,{'Content-Type':'audio/ogg','X-Orion-Channel-Key':key,'X-Orion-Channel-Owner':owner,'X-Orion-Channel-Fence':'7','X-Orion-Phone':phone});
+  assert.equal('X-Orion-Bridge-Key' in sent.options.headers,false);
+});
+
+test('disabled, foreign or malformed managed audio never starts an HTTP request',async()=>{
+  const id=randomUUID(),owner=randomUUID(),key='synthetic-channel-secret-'.repeat(2),bytes=Buffer.from('OggS synthetic');
+  for(const patch of [{env:{}},{phone:'1234'},{fence:0},{owner:'foreign'},{mediaType:'audio/mp3'},{buffer:Buffer.alloc(2_000_001)}]){
+    let calls=0;const broker=createChannelBroker({apiUrl:'http://api.railway.internal/',env:patch.env||{QR_AI_AUDIO_ENABLED:'1'},fetchImpl:async()=>{calls++;assert.fail('must not fetch');}});
+    await assert.rejects(broker.transcribe(id,key,{owner:patch.owner||owner,fence:patch.fence??1},{phone:patch.phone||phone,buffer:patch.buffer||bytes,mediaType:patch.mediaType||'audio/ogg'}));
+    assert.equal(calls,0);
+  }
+});
+
+test('audio cancellation reaches the one HTTP attempt and never retries transcription',async()=>{
+  const controller=new AbortController();let calls=0,observed;
+  const broker=createChannelBroker({apiUrl:'http://api.railway.internal/',env:{QR_AI_AUDIO_ENABLED:'1'},fetchImpl:async(_url,options)=>{
+    calls++;observed=options.signal;return new Promise((_resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Error('aborted')),{once:true}));}});
+  const pending=broker.transcribe(randomUUID(),'synthetic-channel-secret-'.repeat(2),{owner:randomUUID(),fence:1},{phone,buffer:Buffer.from('OggS synthetic'),mediaType:'audio/ogg',signal:controller.signal});
+  controller.abort();await assert.rejects(pending,/aborted/);assert.equal(calls,1);assert.equal(observed.aborted,true);
+});
+
+test('one successful notice authorizes only its own message and is not duplicated before inference',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager({audioEnabled:()=>true});await m.start(a.id,a.key);
+  const context=f.made[0].ctx,payload={phone,message_id:'audio-notice',text:'Corte'};
+  const proof=await context.onInbound(payload);await context.onMessage(payload,{noticeProof:proof});assert.equal(f.interactions.length,1);assert.equal(f.forwards.length,1);
+  await context.onMessage({...payload,message_id:'different-message'},{noticeProof:proof});assert.equal(f.interactions.length,2);
+  assert.deepEqual(Object.keys(f.forwards[0].payload).sort(),['intake_revision','message_id','message_ids','phone','require_summary_review','text']);
+});
+
+test('managed transcription checks live allowlist, assistant and lease both before and after ASR',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager({audioEnabled:()=>true});await m.start(a.id,a.key);
+  const context=f.made[0].ctx;let calls=0;
+  f.broker.transcribe=async(id,key,lease,payload)=>{calls++;assert.equal(id,a.id);assert.equal(key,a.key);assert.equal(payload.phone,phone);return {text:'Quero corte',truncated:false};};
+  assert.equal(await context.transcribe({phone,buffer:Buffer.from('OggS synthetic'),mediaType:'audio/ogg'}),'Quero corte');
+  await assert.rejects(context.transcribe({phone:other}));assert.equal(calls,1);
+  f.broker.transcribe=async()=>{calls++;f.rows.get(a.id).assistant_enabled=false;return {text:'late',truncated:false};};
+  await assert.rejects(context.transcribe({phone}));assert.equal(calls,2);assert.equal(f.forwards.length,0);assert.equal(f.made[0].sends.length,0);
+});
+
+test('disabled audio exposes no capability and never invokes the transcription transport',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager({audioEnabled:()=>false});await m.start(a.id,a.key);
+  f.broker.transcribe=async()=>assert.fail('must not transcribe');
+  await assert.rejects(f.made[0].ctx.transcribe({phone}));
+  assert.equal((await m.status(a.id,a.key)).capabilities.audio,false);
+  const payload={phone,message_id:'audio-disabled'};await f.made[0].ctx.onInbound(payload);assert.equal(f.interactions.length,1);
+});
+
+test('revocation during the typing pause blocks the reply before any send reservation',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);f.broker.forward=async()=>({answer:'Synthetic response'});let pauses=0;
+  await assert.rejects(f.made[0].ctx.onMessage({phone,message_id:'typing-revoked',text:'hello'},{beforeReply:async()=>{pauses++;f.rows.get(a.id).revoked=true;}}));
+  assert.equal(pauses,1);assert.equal(f.made[0].sends.length,0);assert.equal(fs.readdirSync(path.join(f.made[0].ctx.directory,'send-ledger')).length,0);
+});
+
+test('interaction success without a strict server revision never authorizes processing',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);
+  for(const revision of [undefined,0,true,1.5,'1',Number.MAX_SAFE_INTEGER+1]){
+    f.broker.interaction=async()=>({recorded:true,revision});
+    await assert.rejects(f.made[0].ctx.onMessage({phone,message_id:'invalid-revision',text:'Pode confirmar'}));
+  }
+  assert.equal(f.forwards.length,0);assert.equal(f.made[0].sends.length,0);
+});
+
+test('batch proofs cannot adopt another message or substitute a caller revision',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);const context=f.made[0].ctx;
+  const proof=await context.onInbound({phone,message_id:'announced'});
+  for(const payload of [
+    {phone,message_id:'unknown',message_ids:['unknown'],text:'Sim',intake_revision:1},
+    {phone,message_id:'announced',message_ids:['announced'],text:'Sim',intake_revision:999},
+    {phone,message_id:'announced',message_ids:['announced','unknown'],text:'Sim',intake_revision:1}
+  ])await assert.rejects(context.onMessage(payload,{noticeProofs:[proof]}));
+  assert.equal(f.forwards.length,0);assert.equal(f.interactions.length,1);
+});
+
+test('only an accepted current response clears summary review; an uncertain send preserves it',async t=>{
+  for(const accepted of [true,false]){
+    const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);
+    f.broker.forward=async(_id,_key,_lease,payload)=>{f.forwards.push({payload});return {answer:'Novo resumo para revisão'};};
+    if(!accepted)f.made[0].send=async()=>{throw Error('Unknown relay outcome');};
+    const context=f.made[0].ctx;
+    await context.onMessage({phone,message_id:'summary',text:'Quero corte'});
+    await context.onMessage({phone,message_id:'next',text:'Sim'});
+    assert.equal(f.forwards[0].payload.require_summary_review,true);
+    assert.equal(f.forwards[1].payload.require_summary_review,!accepted);
+  }
 });

@@ -78,10 +78,20 @@ def ingress(monkeypatch):
     return a, b, identities, redis, calls, interactions, auth_calls, api
 
 
-async def request(api, channel, **extra):
+async def request(api, channel, *, announce=True, **extra):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api), base_url="https://test") as client:
+        payload = {"phone": PHONE, "message_id": "synthetic-id", "text": "Confirmar", **extra}
+        if announce:
+            revisions = []
+            for identity in payload.get("message_ids") or [payload["message_id"]]:
+                notice = await client.post(f"/internal/qr/channels/{channel.channel_id}/interaction",
+                                          json={"phone": PHONE, "message_id": identity})
+                if notice.status_code != 200:
+                    return notice
+                revisions.append(notice.json()["revision"])
+            payload.setdefault("intake_revision", max(revisions))
         return await client.post(f"/internal/qr/channels/{channel.channel_id}/ai/reply",
-            json={"phone": PHONE, "message_id": "synthetic-id", "text": "Confirmar", **extra})
+                                 json=payload)
 
 
 @pytest.mark.asyncio
@@ -123,15 +133,16 @@ async def test_same_contact_message_tenant_is_independent_between_channels_and_l
 
 @pytest.mark.asyncio
 async def test_registration_precedes_actual_lock_and_caller_revision_is_not_authority(ingress, monkeypatch):
-    a, _, _, redis, _, _, _, api = ingress
+    a, _, _, redis, calls, _, _, api = ingress
     original = qr_ai.run_locked
     async def locked(*args, **kwargs):
         assert len(redis.events) == 2
-        assert kwargs["intake_revision"] == 2 and revision.enabled()
+        assert kwargs["intake_revision"] == 99999 and revision.enabled()
         return await original(*args, **kwargs)
     monkeypatch.setattr(qr_ai, "run_locked", locked)
     result = await request(api, a, message_ids=["synthetic-id", "synthetic-next"], intake_revision=99999)
-    assert result.json()["step"] == "confirmed"
+    assert result.json() == {"answer": None, "step": "superseded", "not_committed": True}
+    assert not calls and not redis.transactions
 
 
 @pytest.mark.asyncio
@@ -146,7 +157,7 @@ async def test_disabled_or_unready_ingress_never_registers_or_calls_turn(ingress
                 raise HTTPException(409, "Configuração pendente")
             return False
         monkeypatch.setattr(qr_ai, "_managed_assistant_ready", ready)
-    result = await request(api, a)
+    result = await request(api, a, announce=False)
     assert result.status_code == (409 if gate == "onboarding" else 200)
     if result.status_code == 200:
         assert result.json() == {"answer": None, "step": "disabled"}
@@ -223,9 +234,9 @@ async def test_notice_only_cancels_marketing_with_assistant_off_and_shared_dedup
         url = f"/internal/qr/channels/{a.channel_id}/interaction"
         body = {"phone": PHONE, "message_id": "synthetic-id"}
         for _ in range(2):
-            assert (await client.post(url, json=body)).json() == {"recorded": True}
+            assert (await client.post(url, json=body)).json() == {"recorded": True, "revision": 1}
         assert (await client.post(url, json={**body, "text": "not processed"})).status_code == 422
-    assert interactions == [(a.tenant_id, "+" + PHONE)] and not calls and not redis.events
+    assert interactions == [(a.tenant_id, "+" + PHONE)] and not calls and len(redis.events) == 2
     identities[str(a.channel_id)] = a
     assert (await request(api, a)).json()["step"] == "confirmed"
     assert len(calls) == 1 and len(interactions) == 1
@@ -250,7 +261,7 @@ async def test_notice_only_rechecks_fence_inside_contact_lock_before_cancelling(
 @pytest.mark.parametrize("extra", [{"tenant_id": str(uuid4())}, {"channel_id": str(uuid4())}, {"phone": "123456@lid"}])
 async def test_untrusted_authority_fields_never_enter_ingress(ingress, extra):
     a, _, _, redis, calls, _, auth, api = ingress
-    assert (await request(api, a, **extra)).status_code == 422
+    assert (await request(api, a, announce=False, **extra)).status_code == 422
     assert not auth and not redis.events and not calls
 
 

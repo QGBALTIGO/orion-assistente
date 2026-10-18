@@ -31,6 +31,7 @@ from app.service_packages_api import router as service_packages_router
 from app.onboarding_api import router as onboarding_router
 from app.qr_channels import router as qr_channels_router
 from app.automation_api import router as automation_router
+from app.qr_channel_audio import router as qr_channel_audio_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -78,6 +79,7 @@ app.include_router(service_packages_router)
 app.include_router(onboarding_router)
 app.include_router(qr_channels_router)
 app.include_router(automation_router)
+app.include_router(qr_channel_audio_router)
 # Specific management paths must precede the legacy two-segment catalog path.
 app.include_router(catalog_router)
 

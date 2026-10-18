@@ -64,21 +64,22 @@ python scripts/qualification_load.py --confirm-disposable-local \
   --profile concentrated --stage-seconds 60 --sustain-seconds 600 \
   --output artifacts/load-concentrated.json
 
-# Verificação ampla curta em OUTRO job/serviço Redis, sem alegar sustentação.
+# Ensaio amplo principal em OUTRO job/serviço Redis, também completo.
 python scripts/qualification_load.py --confirm-disposable-local \
-  --profile wide --stage-seconds 5 --sustain-seconds 10 \
-  --output artifacts/load-wide-smoke.json
+  --profile wide --stage-seconds 60 --sustain-seconds 600 \
+  --output artifacts/load-wide.json
 
 # Harness sem serviços: testes de guardas, métricas e scheduler.
 pytest -q tests/load/test_qualification_load.py
 ```
 
-O primeiro comando faz 30 s de aquecimento, quatro estágios de 60 s, 600 s
+Cada perfil principal faz 30 s de aquecimento, quatro estágios de 60 s, 600 s
 sustentados em 1.500 sessões e 30 s de recuperação em dez sessões. Recomenda-se
 timeout de job de 30 min. São possíveis `--sustain-seconds 1800` e `3600` para
 preparar 30/60 minutos; sua existência **não significa execução concluída**.
 A janela de 12 horas não foi cumprida e sempre aparece como pendente no JSON.
-O comando curto se identifica como `short_smoke_only`.
+Execuções curtas ficam restritas ao diagnóstico descrito adiante e se
+identificam como `short_smoke_only`; não substituem esses dois perfis completos.
 
 O processo termina com código diferente de zero se uma meta, invariante,
 preflight ou execução falhar. Não ajustar metas após observar o resultado.
@@ -129,7 +130,54 @@ sincronização externa nesse teste.
 
 Não se qualifica capacidade de produção, mil sockets WhatsApp, áudio, modelos,
 pagamentos, entrega externa, reinício/drenagem de worker, exportação pesada ou
-12 horas de estabilidade. O perfil amplo curto qualifica montagem e isolamento,
-não sustentação por 10 minutos. Os valores observados de p95/p99/erros só existem
+12 horas de estabilidade. Perfis curtos de diagnóstico verificam montagem e
+isolamento, não sustentação por 10 minutos. Os valores observados de p95/p99/erros só existem
 após execução com serviços reais. Testes unitários do harness não substituem essa
 execução; PG indisponível localmente é registrado como skip, nunca como PASS.
+
+## Diagnóstico após a primeira carga real
+
+O relatório versão 2 separa `invariants.data_integrity` de
+`invariants.observation_uncertainty`. Uma resposta de hold perdida pode deixar
+uma linha válida no banco: isso não prova duplicação. A reconciliação consulta
+as linhas sintéticas e compara as chaves registradas **antes** da tentativa,
+os IDs realmente recebidos e os cancelamentos efetivamente reconhecidos.
+Linhas sem tentativa registrada, IDs recebidos ausentes e cancelamentos
+reconhecidos que não persistiram continuam sendo violações de integridade.
+Hold gravado sem resposta, jornada não encerrada e cancelamento não observado
+são incerteza de observação. **Ambas as categorias bloqueiam o aceite.**
+Nenhuma reconciliação reenvia ou cancela operações, nem remove timeouts,
+conflitos inesperados ou chegadas descartadas do denominador.
+
+Após a recuperação, o processo sintético da API é encerrado graciosamente
+antes da consulta final: 15 segundos para concluir requisições em andamento e
+até 30 segundos para o supervisor terminar. Falha nessa drenagem bloqueia o
+resultado. Isso evita ler o banco enquanto uma escrita cuja resposta expirou
+ainda pode concluir. O timeout HTTP de 10 segundos durante a carga permanece.
+Cada usuário possui um profissional próprio, mas repete o mesmo horário após
+cancelar; se uma operação ficar incerta, eventual conflito na jornada seguinte
+continua sendo falha, não é reclassificado como contenção esperada.
+
+As fases `warmup`, `measured` e `recovery` agora têm namespaces idempotentes
+distintos. O replay deliberado dentro da mesma jornada mantém a mesma chave.
+Isso evita pedir na recuperação o replay de uma reserva já cancelada no
+aquecimento. Os relatórios anteriores são preservados; seus problemas de
+latência e descarte não são anulados por essa correção do oráculo.
+
+Para comparar o processo da API com 2, 3 ou 4 workers, em jobs isolados com os
+mesmos serviços/flags e credenciais sintéticas descritos acima:
+
+```sh
+python scripts/qualification_load.py --confirm-disposable-local \
+  --profile wide --stage-seconds 60 --sustain-seconds 120 \
+  --api-workers 3 --output artifacts/load-wide-workers3-probe.json
+```
+
+Repetir com `--api-workers 2` e `4`, mudando apenas o nome do artefato. Esse
+perfil é `short_smoke_only`: serve para diagnóstico comparável, não substitui
+a sustentação de 600 segundos. A cadência continua 10 segundos por usuário
+(150 jornadas/s em 1.500), timeout HTTP continua 10 segundos, fila máxima 300,
+metas continuam leituras 800/1.500 ms e escritas 2.000/4.000 ms p95/p99. O
+limite de 80 conexões PostgreSQL e 1.536 MiB também não foi aumentado; se mais
+workers ultrapassarem esses limites, o diagnóstico deve falhar e registrar o
+motivo. Mais workers não representam, por si só, correção do gargalo.
