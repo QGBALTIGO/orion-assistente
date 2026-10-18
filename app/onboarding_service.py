@@ -44,14 +44,16 @@ def _digest_needs_legacy(value):
     """Inspect containers only; unusual values retain the original whole walk.
 
     JSON bypasses default encoders for primitive/container subclasses, while
-    FastAPI can interpret them differently. Shared containers also take the
-    original path, which preserves both alias and recursive-input behavior.
+    FastAPI can interpret them differently. Shared or deeply nested containers
+    take the original path, preserving alias and recursion-error behavior.
     """
-    pending, seen = [value], set()
+    pending, seen = [(value, 1)], set()
     while pending:
-        current = pending.pop()
+        current, depth = pending.pop()
         kind = type(current)
         if kind in (dict, list, tuple):
+            if depth > 64:
+                return True
             identity = id(current)
             if identity in seen:
                 return True
@@ -62,14 +64,14 @@ def _digest_needs_legacy(value):
                         return True
                     child_kind = type(child)
                     if child_kind in (dict, list, tuple):
-                        pending.append(child)
+                        pending.append((child, depth + 1))
                     elif child_kind not in _DIGEST_SCALARS:
                         return True
             else:
                 for child in current:
                     child_kind = type(child)
                     if child_kind in (dict, list, tuple):
-                        pending.append(child)
+                        pending.append((child, depth + 1))
                     elif child_kind not in _DIGEST_SCALARS:
                         return True
         elif kind not in _DIGEST_SCALARS:

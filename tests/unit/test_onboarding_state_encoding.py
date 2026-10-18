@@ -6,8 +6,11 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from enum import Enum, IntEnum
 from pathlib import Path
+import os
 import random
 import struct
+import subprocess
+import sys
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -203,6 +206,57 @@ def test_cycles_preserve_original_recursion_failure():
         jsonable_encoder(value)
     with pytest.raises(RecursionError):
         service._state_jsonable(value)
+
+
+@pytest.mark.parametrize("kind", ["dict", "list", "mixed"])
+@pytest.mark.parametrize("depth,legacy", [(64, False), (65, True), (500, True), (1000, True)])
+def test_container_depth_guard_is_bounded_without_recursing(kind, depth, legacy):
+    value = 1
+    for index in range(depth):
+        value = {"x": value} if kind == "dict" or kind == "mixed" and index % 2 else [value]
+    assert service._digest_needs_legacy(value) is legacy
+
+
+@pytest.mark.parametrize("kind", ["dict", "list", "mixed"])
+def test_deep_state_and_digest_preserve_legacy_outcomes_in_default_recursion_process(kind):
+    # No pytest/plugin recursion settings and no global setrecursionlimit.
+    script = r'''
+import hashlib, json, sys
+from fastapi.encoders import jsonable_encoder
+from app import onboarding_service as service
+assert sys.getrecursionlimit() == 1000
+def outcome(function, value):
+    try:
+        result = function(value)
+        if not isinstance(result, bytes):
+            result = json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode()
+        return "ok", hashlib.sha256(result).hexdigest()
+    except RecursionError:
+        return "error", "RecursionError"
+def original_digest(value):
+    return json.dumps(jsonable_encoder(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+results = []
+for depth in (64, 65, 500, 1000):
+    value = 1
+    for index in range(depth):
+        value = {"x": value} if sys.argv[1] == "dict" or sys.argv[1] == "mixed" and index % 2 else [value]
+    state_before, state_after = outcome(jsonable_encoder, value), outcome(service._state_jsonable, value)
+    digest_before, digest_after = outcome(original_digest, value), outcome(service._digest_bytes, value)
+    assert state_before == state_after, (depth, state_before, state_after)
+    assert digest_before == digest_after, (depth, digest_before, digest_after)
+    if depth == 1000:
+        assert state_before == ("error", "RecursionError")
+    results.append({"depth": depth, "state": state_after[0], "digest": digest_after[0]})
+print(json.dumps(results))
+'''
+    allowed = {"PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "LANG", "LC_ALL",
+        "LD_LIBRARY_PATH", "VIRTUAL_ENV", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "OS", "PATHEXT"}
+    env = {key: value for key, value in os.environ.items() if key.upper() in allowed}
+    env.update(PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTHONDONTWRITEBYTECODE="1")
+    result = subprocess.run([sys.executable, "-c", script, kind], cwd=Path(__file__).resolve().parents[2],
+        env=env, capture_output=True, text=True, encoding="utf-8", timeout=45)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert '"depth": 1000, "state": "error", "digest": "error"' in result.stdout
 
 
 @pytest.mark.parametrize("fails", [False, True])
