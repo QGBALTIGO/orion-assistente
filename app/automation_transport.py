@@ -22,10 +22,11 @@ def bridge_origin():
 async def _request(tenant, channel_id, operation_id, *, message=None):
     from app.qr_channels import outbound_channel_credentials
     operation = str(UUID(str(operation_id)))
-    credentials = await outbound_channel_credentials(tenant, channel_id)
-    path = credentials["path"] if message else f"/internal/channels/{channel_id}/operations/{operation}"
+    sending = message is not None
+    credentials = await outbound_channel_credentials(tenant, channel_id, read_only=not sending)
+    path = credentials["path"] if sending else f"/internal/channels/{channel_id}/operations/{operation}"
     async with httpx.AsyncClient(timeout=httpx.Timeout(15, connect=4), trust_env=False, follow_redirects=False) as client:
-        response = await client.request("POST" if message else "GET", bridge_origin() + path,
+        response = await client.request("POST" if sending else "GET", bridge_origin() + path,
           headers={"X-Orion-Channel-Key": credentials["key"]}, json=message)
     if response.status_code != 200:
         raise ValueError("delivery_unverified")

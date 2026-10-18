@@ -67,6 +67,12 @@ operação UUID. Não existe fallback para o token compartilhado do piloto.
 `GET /internal/channels/{id}/operations/{operation_id}` consulta somente o
 ledger, inclusive após reinício, sem iniciar socket ou criar diretórios. Uma
 operação `unrecorded` tem entrega `unknown`, não autorização de reenvio.
+Essa leitura usa a concessão distinta `/lease/receipt`: permite consultar
+histórico com canal desabilitado ou empresa pausada, mantendo credencial e
+membership atual do proprietário. Não concede fence, lease ou permissão de
+start/send/IA. O helper servidor exige `read_only=True` somente na reconciliação;
+o padrão continua exigindo conexão habilitada e empresa ativa. A flag global
+`QR_CHANNELS_ENABLED=0` continua bloqueando ambos, sem abrir o esquema novo.
 
 Cada canal tem auth cifrada e ledger em
 `/data/orion-channels/<tenant>/<channel>/`. Esse caminho precisa estar em
@@ -83,11 +89,24 @@ Antes de encaminhar ou enviar, validar novamente. Callbacks do socket antigo
 não podem escrever ou operar como o novo. Reconexões têm jitter e backoff até
 30 segundos, no máximo oito tentativas consecutivas; logout exige ação nova.
 
+No ingresso de IA gerenciado, cada transação runtime de domínio mantém locks
+SHARE de membership, canal e empresa até o commit, por uma função SECURITY
+DEFINER restrita. Revogação e takeover ficam ordenados com o commit; lease
+expirado na revalidação final causa rollback. A guarda local pertence à tarefa,
+sessão e transação exatas, não pode ser herdada por tarefas filhas e não chama
+o suporte FOR UPDATE enquanto detém esses locks. Os locks não envolvem espera
+do provedor de IA. Sem contexto gerenciado, não existe consulta adicional ou
+dependência da nova função, preservando o caminho legado.
+
 ## Limites explícitos
 
 O adapter inicial suporta texto privado recente de piloto, QR, envio e recibos.
 Áudio, chamadas, perfil/contatos e o retry store completo do fluxo legado ainda
 não foram integrados a esses novos contextos. Não há fallback ao singleton.
+O aviso `interaction` com IA desligada autentica o fence, mas ainda não vincula
+a guarda transacional de IA: sua gravação conservadora de pausa de marketing
+não tem esta proteção atômica até o commit. Isso não concede atendimento nem
+autoridade de reserva; exige uma capability própria para fechar essa janela.
 O host atual continua mantendo a sessão legada existente, além dos contextos
 adicionais abertos explicitamente. A interface de seleção tem contrato público
 independente; esta documentação não comprova teste físico de pareamento.

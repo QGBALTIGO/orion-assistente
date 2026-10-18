@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 from cryptography.fernet import Fernet
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from starlette.requests import Request
@@ -159,7 +159,7 @@ async def test_outbound_credentials_are_server_only_and_scope_checked(channel_ca
     assert value["key"] == row["credential"] and value["path"].endswith('/send')
     with pytest.raises(HTTPException):
         await channels.outbound_channel_credentials(c.b, row["id"])
-    listing = await channels.list_channels(c.a, c.actor)
+    listing = await channels.list_channels(c.a, Response(), c.actor)
     assert row["credential"] not in str(listing)
     assert "credential_encrypted" not in str(listing) and "credential_hash" not in str(listing)
 
@@ -175,3 +175,38 @@ async def test_assistant_activation_is_separate_and_invalidates_old_fence(channe
         await lease(c, row, owner, "check", held["fence"])
     fresh = await lease(c, row, owner)
     assert (await channels.authenticated_channel(request(row, owner, fresh["fence"]), phone="5567999999901")).assistant_enabled is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pause", ["channel", "tenant", "both"])
+async def test_receipts_survive_pause_without_restoring_live_permissions(channel_case, pause):
+    c = channel_case; row, _ = await create(c); owner = uuid4(); held = await lease(c, row, owner)
+    if pause in {"channel", "both"}:
+        await channels.change_state(c.a, row["id"], channels.ChannelState(expected_revision=2, enabled=False), c.actor)
+    if pause in {"tenant", "both"}:
+        async with c.migration.begin() as db:
+            await db.execute(text("UPDATE tenants SET status='paused' WHERE id=:id"), {"id": c.a})
+    async with c.migration.connect() as db:
+        before = (await db.execute(text("SELECT enabled,fence,lease_owner,lease_expires_at,updated_at FROM qr_channels WHERE id=:id"), {"id": row["id"]})).mappings().one()
+    result = await lease(c, row, owner, "receipt")
+    assert result == {"channel_id": str(row["id"]), "tenant_id": str(c.a), "provider": "baileys", "read_only": True}
+    credentials = await channels.outbound_channel_credentials(c.a, row["id"], read_only=True)
+    assert credentials["key"] == row["credential"] and credentials["path"].endswith("/operations")
+    for operation in ("claim", "renew", "check", "inspect"):
+        with pytest.raises(HTTPException): await lease(c, row, owner, operation, held["fence"])
+    with pytest.raises(HTTPException): await channels.outbound_channel_credentials(c.a, row["id"])
+    with pytest.raises(HTTPException): await channels.authenticated_channel(request(row, owner, held["fence"]), phone="5567999999901")
+    with pytest.raises(HTTPException): await channels.outbound_channel_credentials(c.b, row["id"], read_only=True)
+    async with c.migration.connect() as db:
+        after = (await db.execute(text("SELECT enabled,fence,lease_owner,lease_expires_at,updated_at FROM qr_channels WHERE id=:id"), {"id": row["id"]})).mappings().one()
+    assert before == after
+
+
+@pytest.mark.asyncio
+async def test_receipt_grant_still_requires_current_membership_and_channel_credential(channel_case):
+    c = channel_case; row, _ = await create(c, activate=False)
+    with pytest.raises(HTTPException): await lease(c, row, uuid4(), "receipt", key="wrong-credential-"*4)
+    async with c.migration.begin() as db:
+        await db.execute(text("UPDATE tenant_memberships SET active=false WHERE tenant_id=:t AND account_id=:a"), {"t": c.a, "a": c.account})
+    with pytest.raises(HTTPException): await lease(c, row, uuid4(), "receipt")
+    with pytest.raises(HTTPException): await channels.outbound_channel_credentials(c.a, row["id"], read_only=True)

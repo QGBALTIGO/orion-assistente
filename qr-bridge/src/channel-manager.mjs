@@ -151,18 +151,14 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
   }
   async function operation(id,key,operationId){
     if(!channelId(id)||!channelId(operationId))throw Error('invalid_operation_id');
-    const c=contexts.get(id);let record;
-    if(c){await validate(c,key);record=c.ledger.get(operationId);}
-    else {
-      // Reconcile after a process restart without claiming a lease, opening a
-      // socket, creating directories, or reserving/sending another operation.
-      const identity=await broker.lease(id,key,'inspect',owner);
-      if(identity?.channel_id!==id||!channelId(identity.tenant_id)||identity.provider!=='baileys')throw Error('invalid_channel_identity');
-      try{
-        const directory=channelDirectory(root,identity.tenant_id,id,{create:false});
-        record=sendLedger(directory,key,{readOnly:true}).get(operationId);
-      }catch(error){if(error.code!=='ENOENT')throw error;}
-    }
+    // A paused channel/company can reconcile history under its current owner's
+    // credential. This distinct broker grant never authorizes a live socket.
+    const identity=await broker.lease(id,key,'receipt',owner);let record;
+    if(identity?.channel_id!==id||!channelId(identity.tenant_id)||identity.provider!=='baileys'||identity.read_only!==true)throw Error('invalid_receipt_identity');
+    try{
+      const directory=channelDirectory(root,identity.tenant_id,id,{create:false});
+      record=sendLedger(directory,key,{readOnly:true}).get(operationId);
+    }catch(error){if(error.code!=='ENOENT')throw error;}
     return publicSend(operationId,record||{state:'unrecorded',accepted:false,delivery:'unknown'});
   }
   return {start,status,send,operation,

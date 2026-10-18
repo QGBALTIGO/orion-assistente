@@ -82,6 +82,7 @@ async def test_disabled_routes_never_request_database_or_external_services(monke
         for method, url, body in [
             ("GET", f"/api/v1/tenants/{uuid4()}/qr-channels", None),
             ("POST", f"/internal/qr/channels/{uuid4()}/lease/claim", {"owner": str(uuid4())}),
+            ("POST", f"/internal/qr/channels/{uuid4()}/lease/receipt", {"owner": str(uuid4())}),
             ("GET", f"/internal/qr/channels/{uuid4()}/identity", None),
         ]:
             result = await client.request(method, url, json=body)
@@ -102,3 +103,43 @@ async def test_non_account_support_identity_cannot_create_channel():
     with pytest.raises(HTTPException) as exc:
         await channels._owner(Database(), uuid4(), SimpleNamespace(role="support", account_id=None))
     assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_receipt_grant_has_no_lease_authority_and_never_updates_database(monkeypatch):
+    monkeypatch.setenv("QR_CHANNELS_ENABLED", "1")
+    channel, tenant = uuid4(), uuid4(); seen = []
+    class DB:
+        def begin(self): return self
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def execute(self, *args): raise AssertionError("receipt cannot mutate lease")
+    async def lookup(db, identity, credential, *, receipt_only=False):
+        assert identity == channel and credential == "synthetic-private-key"
+        seen.append(receipt_only)
+        return {"id": channel, "tenant_id": tenant, "provider": "baileys"}
+    monkeypatch.setattr(channels, "_channel", lookup)
+    result = await channels.lease_operation(DB(), channel, "synthetic-private-key", channels.LeaseRequest(owner=uuid4()), "receipt")
+    assert seen == [True]
+    assert result == {"channel_id": str(channel), "tenant_id": str(tenant), "provider": "baileys", "read_only": True}
+    assert not {"fence", "expires_in_ms", "allowed_senders", "assistant_enabled"} & result.keys()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("read_only", [False, True])
+async def test_global_disabled_receipt_helper_does_not_open_schema(monkeypatch, read_only):
+    monkeypatch.delenv("QR_CHANNELS_ENABLED", raising=False)
+    def unexpected(): raise AssertionError("disabled schema")
+    monkeypatch.setattr(channels, "support_session_factory", unexpected)
+    with pytest.raises(HTTPException) as exc:
+        await channels.outbound_channel_credentials(uuid4(), uuid4(), read_only=read_only)
+    assert exc.value.status_code == 423
+
+
+@pytest.mark.asyncio
+async def test_read_only_credentials_cannot_be_enabled_by_string_coercion(monkeypatch):
+    monkeypatch.setenv("QR_CHANNELS_ENABLED", "1")
+    def unexpected(): raise AssertionError("invalid request must not query")
+    monkeypatch.setattr(channels, "support_session_factory", unexpected)
+    with pytest.raises(ValueError):
+        await channels.outbound_channel_credentials(uuid4(), uuid4(), read_only="false")

@@ -32,8 +32,9 @@ async def test_one_authenticated_request_no_redirect_retry_or_autostart(mode, mo
     monkeypatch.setenv("QR_BRIDGE_URL", "http://qr.railway.internal:3000")
     tenant, channel, operation = uuid4(), uuid4(), uuid4()
     requests = []
-    async def credentials(t, c):
+    async def credentials(t, c, *, read_only=False):
         assert (t, c) == (tenant, channel)
+        assert read_only is (mode == "inspect")
         return {"key": "synthetic-private-channel-key", "path": f"/internal/channels/{channel}/send"}
     monkeypatch.setattr(qr_channels, "outbound_channel_credentials", credentials)
     def handler(request):

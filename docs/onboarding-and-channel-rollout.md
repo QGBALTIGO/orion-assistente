@@ -20,7 +20,9 @@ de proprietário.
 O registro `qr_channels` vincula empresa, proprietário e provedor. Credenciais são
 cifradas, com valor mostrado uma vez. Proxies autenticados evitam devolver chaves
 salvas ao navegador. Cada canal tem sessão, diretório, contexto, intake, recibos,
-deduplicação e lease separados. Perder lease ou permissão impede trabalho atrasado.
+deduplicação e lease separados. A autorização acompanha a transação de reservas e
+pedidos até a gravação final. O aviso de interação com IA desligada ainda não usa
+essa guarda; sua pausa conservadora de marketing está documentada no conector.
 Não apagar `/data/auth`, sessões, filas ou reservas no retorno de versão.
 
 O suporte inicial gerenciado é texto privado e allowlist restrita. Não representa

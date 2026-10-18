@@ -53,6 +53,39 @@ def upgrade():
             USING (true) WITH CHECK (true);
         CREATE POLICY qr_channels_migrator ON public.qr_channels FOR ALL TO app_migrator
             USING (true) WITH CHECK (true);
+
+        CREATE FUNCTION public.qr_channel_transaction_guard(
+            p_tenant uuid, p_channel uuid, p_account uuid, p_owner uuid, p_fence bigint)
+        RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path=pg_catalog,public AS $$
+        DECLARE membership record; channel record; company record;
+        BEGIN
+            IF p_tenant IS DISTINCT FROM NULLIF(current_setting('app.tenant_id',true),'')::uuid
+                OR p_tenant IS NULL OR p_channel IS NULL OR p_account IS NULL
+                OR p_owner IS NULL OR p_fence IS NULL THEN
+                RETURN false;
+            END IF;
+            -- Same order as owner configuration and lease acquisition. SHARE
+            -- (not KEY SHARE) blocks revocation and non-key fence updates.
+            SELECT m.active,m.role INTO membership FROM public.tenant_memberships m
+                WHERE m.tenant_id=p_tenant AND m.account_id=p_account FOR SHARE;
+            IF NOT FOUND OR NOT membership.active OR membership.role<>'owner' THEN
+                RETURN false;
+            END IF;
+            SELECT c.enabled,c.assistant_enabled,c.provider,c.fence,c.lease_owner,c.lease_expires_at
+                INTO channel FROM public.qr_channels c WHERE c.id=p_channel
+                AND c.tenant_id=p_tenant AND c.owner_account_id=p_account FOR SHARE;
+            IF NOT FOUND THEN RETURN false; END IF;
+            SELECT t.status,t.bot_enabled INTO company FROM public.tenants t
+                WHERE t.id=p_tenant FOR SHARE;
+            IF NOT FOUND THEN RETURN false; END IF;
+            RETURN channel.enabled AND channel.assistant_enabled AND channel.provider='baileys'
+                AND company.status='active' AND company.bot_enabled
+                AND channel.lease_owner=p_owner AND channel.fence=p_fence
+                AND channel.lease_expires_at>clock_timestamp();
+        END $$;
+        REVOKE ALL ON FUNCTION public.qr_channel_transaction_guard(uuid,uuid,uuid,uuid,bigint) FROM PUBLIC;
+        GRANT EXECUTE ON FUNCTION public.qr_channel_transaction_guard(uuid,uuid,uuid,uuid,bigint) TO app_runtime;
     """)
 
 
@@ -62,4 +95,5 @@ def downgrade():
             RAISE EXCEPTION 'QR channel records must be preserved; downgrade refused';
         END IF;
     END $$""")
+    op.execute("DROP FUNCTION public.qr_channel_transaction_guard(uuid,uuid,uuid,uuid,bigint)")
     op.drop_table("qr_channels", schema="public")

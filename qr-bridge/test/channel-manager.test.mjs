@@ -28,6 +28,8 @@ function fixture(t){
   const broker={
     async lease(id,key,op,owner,fence){
       const row=rows.get(id);if(!row||row.key!==key||row.revoked)throw Error('denied');
+      if(op==='receipt')return {channel_id:id,tenant_id:row.tenant_id,provider:row.provider,read_only:true};
+      if(row.disabled||row.paused)throw Error('disabled');
       if(op==='claim'){
         if(row.expires>now&&row.owner!==owner)throw Error('busy');
         if(row.expires<=now){row.owner=owner;row.fence++;row.expires=now+30000;}
@@ -147,7 +149,7 @@ test('operation observation reads durable acceptance after restart without claim
   const original=f.broker.lease,operations=[];
   f.broker.lease=async(...args)=>{operations.push(args[2]);return original(...args);};
   assert.deepEqual(await restarted.operation(a.id,a.key,id),first);
-  assert.deepEqual(operations,['inspect']);assert.equal(f.made.length,1);assert.equal(restarted.size,0);
+  assert.deepEqual(operations,['receipt']);assert.equal(f.made.length,1);assert.equal(restarted.size,0);
   assert.deepEqual(fs.readdirSync(f.root,{recursive:true}),before);assert.equal(f.made[0].sends.length,1);
 });
 
@@ -168,6 +170,26 @@ test('operation status cannot cross channel or credential; provider IDs never le
   assert.equal(JSON.stringify(await m.operation(a.id,a.key,id)).includes('provider'),false);
   assert.equal((await m.operation(b.id,b.key,id)).state,'unrecorded');
   await assert.rejects(m.operation(a.id,b.key,id));
+});
+
+test('receipt lookup survives disabled connection and paused company but cannot send or start',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager(),id=randomUUID();await m.start(a.id,a.key);
+  const first=await m.send(a.id,a.key,{to:phone,text:'before pause',operation_id:id});
+  f.rows.get(a.id).disabled=true;f.rows.get(a.id).paused=true;
+  assert.deepEqual(await m.operation(a.id,a.key,id),first);
+  await assert.rejects(m.send(a.id,a.key,{to:phone,text:'forbidden',operation_id:randomUUID()}));
+  await assert.rejects(m.start(a.id,a.key));
+  assert.deepEqual(await m.operation(a.id,a.key,id),first);
+  assert.equal(f.made.length,1);assert.equal(f.made[0].sends.length,1);
+  f.rows.get(a.id).revoked=true;await assert.rejects(m.operation(a.id,a.key,id));
+});
+
+test('a normal lease grant cannot masquerade as receipt-only authorization',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();
+  const original=f.broker.lease;
+  f.broker.lease=(id,key,_op,owner)=>original(id,key,'inspect',owner);
+  await assert.rejects(m.operation(a.id,a.key,randomUUID()));
+  assert.equal(f.made.length,0);assert.deepEqual(fs.readdirSync(f.root),[]);
 });
 
 test('pilot rate admission is per channel and a refused operation never later sends',async t=>{

@@ -4,6 +4,65 @@ import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import { makeSuite, flush, deferred, defaultResponse, customer, customerId, tenantA, tenantB } from './harness.mjs';
 
+async function marketingRules(active) {
+  let version=5,configuration={rules:[{event:'booking_confirmed',template:'Olá, {cliente}. Confira seu agendamento na {empresa}.',requested_enabled:true}],recovery_days:60,vacancy_requested:true};
+  const h=await makeSuite({initialRoute:'marketing',respond(path,method,payload){
+    if(path.endsWith('/marketing/automations')){
+      if(method==='PUT'){assert.equal(payload.expected_version,version);configuration=payload.configuration;version++;active=false;}
+      return {configuration,version,execution_enabled:active,mode:active?'reviewed_execution':'draft'};
+    }
+    return defaultResponse(path);
+  }});
+  await flush();h.click('[data-os-marketing-tab=automations]');await flush();return h;
+}
+
+test('authorized marketing rules display their real review state and a save requires new authorization',async t=>{
+  const h=await marketingRules(true);t.after(()=>h.close());h.click('[data-os-automation-tab=recovery]');await flush();
+  const form=h.document.querySelector('[data-os-form=automations]');assert.match(h.document.querySelector('#osPageBody').textContent,/A execução destas regras foi autorizada pelo proprietário/);assert.match(form.textContent,/Execução autorizada/);assert.match(form.textContent,/Salvar alterações para nova revisão/);assert.doesNotMatch(form.textContent,/O envio automático ainda não está habilitado/);
+  assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);h.submit('[data-os-form=automations]');await flush();
+  assert.equal(h.calls.filter(c=>c.method==='PUT').length,1);assert.match(h.document.querySelector('#osPageBody').textContent,/As configurações abaixo são rascunhos/);assert.doesNotMatch(h.document.querySelector('[data-os-form=automations]').textContent,/Execução autorizada/);
+});
+
+test('unapproved marketing rules stay draft and loading does not authorize or send them',async t=>{
+  const h=await marketingRules(false);t.after(()=>h.close());h.click('[data-os-automation-tab=recovery]');await flush();
+  const body=h.document.querySelector('#osPageBody');assert.match(body.textContent,/As configurações abaixo são rascunhos/);assert.match(body.textContent,/Revise e autorize os envios separadamente/);assert.match(body.querySelector('[data-os-form=automations]').textContent,/Rascunho/);assert.doesNotMatch(body.textContent,/Execução autorizada/);assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
+});
+
+test('vacancy preference stays an explicit draft even when other marketing rules are authorized',async t=>{
+  const h=await marketingRules(true);t.after(()=>h.close());h.click('[data-os-automation-tab=vacancy]');await flush();
+  const body=h.document.querySelector('#osPageBody');assert.match(body.textContent,/preenchimento automático de vagas continua em rascunho e não envia convites/);assert.match(body.textContent,/mesmo quando outras rotinas estão autorizadas/);assert.equal(body.querySelector('[name=vacancy_requested]').checked,true);assert.match(body.querySelector('[data-os-form=automations]').textContent,/Rascunho/);assert.doesNotMatch(body.textContent,/Execução autorizada/);assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
+});
+
+async function executionIntegration(uncertain=false) {
+  let enabled=false;
+  const channel='30000000-0000-4000-8000-000000000003';
+  const h=await makeSuite({initialRoute:'marketing',respond(path,method,payload){
+    if(path.endsWith('/marketing/automations'))return {configuration:{rules:[],recovery_days:60,vacancy_requested:false},version:5,execution_enabled:enabled};
+    if(path.endsWith('/marketing/execution')){
+      if(method==='PUT'){if(uncertain)throw Error('Resposta incerta');assert.equal(payload.expected_preferences_version,5);enabled=payload.enabled;return {recorded:true};}
+      return {available:true,enabled,version:2,preferences_version:5,daily_limit:20};
+    }
+    if(path.endsWith('/marketing/jobs'))return {items:[]};
+    if(path.endsWith('/qr-channels'))return {items:[{id:channel,label:'Conexão sintética',enabled:true}]};
+    return defaultResponse(path);
+  }});
+  h.window.eval(await readFile(new URL('../app/static/orion-automations.js',import.meta.url),'utf8'));
+  await flush();h.click('[data-os-marketing-tab=automations]');await flush();
+  const form=h.document.querySelector('[data-oa-form=execution]');form.elements.channel_id.value=channel;form.elements.enabled.checked=true;form.elements.acknowledged.checked=true;
+  h.submit('[data-oa-form=execution]');await flush();await flush();return h;
+}
+
+test('known execution authorization refreshes the rules indicator without manual route navigation',async t=>{
+  const h=await executionIntegration();t.after(()=>h.close());
+  assert.match(h.document.querySelector('#osPageBody').textContent,/A execução destas regras foi autorizada pelo proprietário/);assert.match(h.document.querySelector('#osAutomationExecution').textContent,/Envios autorizados/);
+  assert.equal(h.calls.filter(c=>c.method==='PUT').length,1);assert.equal(h.calls.filter(c=>c.path.endsWith('/marketing/automations')).length,2);
+});
+
+test('uncertain execution authorization keeps the same pending request without rerendering the rules',async t=>{
+  const h=await executionIntegration(true);t.after(()=>h.close());
+  assert.match(h.document.querySelector('#osPageBody').textContent,/As configurações abaixo são rascunhos/);assert.ok(h.document.querySelector('[data-oa-action=retry]'));assert.equal(h.calls.filter(c=>c.method==='PUT').length,1);assert.equal(h.calls.filter(c=>c.path.endsWith('/marketing/automations')).length,1);
+});
+
 test('mount preserves original sections, escapes customer content, and is idempotent', async t => {
   let created = false;
   const h = await makeSuite({ respond: (path, method) => {

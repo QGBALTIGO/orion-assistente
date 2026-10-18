@@ -4,7 +4,7 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const list=v=>Array.isArray(v)?v:[];
   let active;
-  function mount({host,request,tenantId,canManage=false,campaigns=[]}){
+  function mount({host,request,tenantId,canManage=false,campaigns=[],onExecutionChange}){
     unmount();if(!host||!tenantId||typeof request!=='function')return;
     let alive=true,read=0,busy=false,pending=null,execution=null,jobs=null,channels=[],review=null,consent=null,feedback='',failed=false;
     let readReady=false,loaded=false,phoneDraft='',pauseReview=null;
@@ -59,12 +59,12 @@
       if(data?.available!==true||typeof data.marketing_opt_in!=='boolean'||typeof data.operational_opt_in!=='boolean'||!(data.updated_at===null||typeof data.updated_at==='string'))throw Error('Não foi possível conferir os consentimentos atuais deste contato.');
       consent={...data,phone};
     }catch(error){if(current(epoch)){feedback=error.message||'Não foi possível consultar este contato.';failed=true;}}finally{if(current(epoch)){busy=false;render();}}}
-    async function mutate(operation){if(!alive||busy)return;const epoch=read;pending=operation;busy=true;feedback='Salvando sua revisão…';failed=false;render();try{
+    async function mutate(operation){if(!alive||busy)return;const epoch=read;let executionChanged=false;pending=operation;busy=true;feedback='Salvando sua revisão…';failed=false;render();try{
       const data=await request(operation.path,operation.method,operation.payload);if(!current(epoch))return;
-      pending=null;feedback=operation.kind==='contact-pause'?'Solicitação registrada. Confira a pausa atual; mensagens antigas não são recriadas.':operation.kind==='reconcile'?'Consulta registrada. Confira o acompanhamento atualizado.':'Alteração registrada. Confira a situação atual.';
+      pending=null;executionChanged=operation.kind==='execution';feedback=operation.kind==='contact-pause'?'Solicitação registrada. Confira a pausa atual; mensagens antigas não são recriadas.':operation.kind==='reconcile'?'Consulta registrada. Confira o acompanhamento atualizado.':'Alteração registrada. Confira a situação atual.';
       if(operation.kind==='consent')consent=null;if(operation.kind==='approve'||operation.kind==='pause')review=null;
     }catch(error){if(!current(epoch))return;failed=true;feedback=error.message||'Não foi possível confirmar a alteração.';if(error.status&&error.status<500)pending=null;
-    }finally{if(current(epoch)){const reloadContact=!pending&&!failed&&['consent','contact-pause'].includes(operation.kind);busy=false;await refresh();if(alive&&reloadContact&&writable())await loadConsent(operation.payload.contact_e164,feedback);}}}
+    }finally{if(current(epoch)){const reloadContact=!pending&&!failed&&['consent','contact-pause'].includes(operation.kind);busy=false;await refresh();if(alive&&reloadContact&&writable())await loadConsent(operation.payload.contact_e164,feedback);if(alive&&executionChanged)try{await onExecutionChange?.();}catch{if(alive){feedback='Autorização registrada. Atualize as regras para conferir a situação atual.';failed=true;render();}}}}}
     async function submit(event){const form=event.target.closest('[data-oa-form]');if(!form||!host.contains(form))return;event.preventDefault();if(busy||pending||!canManage||!form.reportValidity())return;
       if(!writable())return;
       const value=Object.fromEntries(new FormData(form)),kind=form.dataset.oaForm;

@@ -267,7 +267,7 @@ async def entry(actor, tenant_id=None):
             raise HTTPException(401, "Conta indisponível")
         invitations = await _invitations(db, account)
         rows = [dict(r) for r in (await db.execute(text("""SELECT t.id,t.name,m.role,
-            (o.is_new AND o.completed_at IS NULL) AS required,coalesce(o.version,0) AS version,o.current_step
+            coalesce(o.is_new AND o.completed_at IS NULL,false) AS required,coalesce(o.version,0) AS version,o.current_step
             FROM tenant_memberships m JOIN tenants t ON t.id=m.tenant_id
             LEFT JOIN business_onboarding o ON o.tenant_id=t.id WHERE m.account_id=:a AND m.active ORDER BY t.name,t.id"""),
             {"a": actor.account_id})).mappings().all()]

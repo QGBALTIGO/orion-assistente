@@ -203,14 +203,15 @@ async def change_state(tenant_id: UUID, channel_id: UUID, payload: ChannelState,
     return jsonable_encoder({**dict(row), "can_manage": True})
 
 
-async def _channel(db, channel_id, credential):
+async def _channel(db, channel_id, credential, *, receipt_only=False):
     digest = credential_hash(credential)
     await _lock_membership(db, channel_id)
     row = (await db.execute(text("""SELECT c.*,clock_timestamp() AS server_now
         FROM qr_channels c JOIN tenant_memberships m ON m.tenant_id=c.tenant_id AND m.account_id=c.owner_account_id
         JOIN tenants t ON t.id=c.tenant_id
-        WHERE c.id=:id AND c.enabled AND m.active AND m.role='owner' AND t.status='active'
-        FOR UPDATE OF c"""), {"id": channel_id})).mappings().one_or_none()
+        WHERE c.id=:id AND m.active AND m.role='owner'
+          AND (:receipt OR (c.enabled AND t.status='active'))
+        FOR UPDATE OF c"""), {"id": channel_id, "receipt": receipt_only})).mappings().one_or_none()
     if not row or not secrets.compare_digest(row["credential_hash"], digest):
         raise HTTPException(401, "Canal não autorizado")
     return row
@@ -231,10 +232,16 @@ def _current(row, owner, fence):
 
 
 async def lease_operation(db, channel_id, credential, payload, operation):
-    if operation not in {"claim", "renew", "release", "check", "inspect"}:
+    enabled()
+    if operation not in {"claim", "renew", "release", "check", "inspect", "receipt"}:
         raise HTTPException(404)
     async with db.begin():
-        row = await _channel(db, channel_id, credential)
+        row = await _channel(db, channel_id, credential, receipt_only=operation == "receipt")
+        if operation == "receipt":
+            # Historical receipt lookup grants no lease, current AI identity,
+            # sender policy, start permission or send permission.
+            return {"channel_id": str(row["id"]), "tenant_id": str(row["tenant_id"]),
+                    "provider": row["provider"], "read_only": True}
         live = row["lease_expires_at"] and row["lease_expires_at"] > row["server_now"]
         if operation == "claim":
             if live:
@@ -288,21 +295,23 @@ async def authenticated_channel(request: Request, *, phone: str | None = None) -
                                    fence, owner, allowed, row["assistant_enabled"])
 
 
-async def outbound_channel_credentials(tenant_id: UUID, channel_id: UUID) -> dict:
+async def outbound_channel_credentials(tenant_id: UUID, channel_id: UUID, *, read_only: bool = False) -> dict:
     """Server-only; caller must separately prove consent and intent before send.
 
     No HTTP endpoint exposes this result. The bridge checks the credential,
     allowlist and current lease again; this lookup alone is never send consent.
     """
     enabled()
+    if type(read_only) is not bool:
+        raise ValueError("Explicit receipt-only mode required")
     async with support_session_factory()() as db:
         async with db.begin():
             await _lock_membership(db, channel_id)
             row = (await db.execute(text("""SELECT c.* FROM qr_channels c
                 JOIN tenant_memberships m ON m.tenant_id=c.tenant_id AND m.account_id=c.owner_account_id
                 JOIN tenants t ON t.id=c.tenant_id WHERE c.id=:id AND c.tenant_id=:tenant
-                AND c.enabled AND m.active AND m.role='owner' AND t.status='active'
-                FOR UPDATE OF c"""), {"id": channel_id, "tenant": tenant_id})).mappings().one_or_none()
+                AND m.active AND m.role='owner' AND (:receipt OR (c.enabled AND t.status='active'))
+                FOR UPDATE OF c"""), {"id": channel_id, "tenant": tenant_id, "receipt": read_only})).mappings().one_or_none()
             if not row:
                 raise HTTPException(403, "Canal não autorizado")
             try:
@@ -313,7 +322,8 @@ async def outbound_channel_credentials(tenant_id: UUID, channel_id: UUID) -> dic
                 raise HTTPException(503, "Credencial indisponível")
             return {"channel_id": str(channel_id), "tenant_id": str(tenant_id),
                     "provider": row["provider"], "key": credential,
-                    "path": f"/internal/channels/{channel_id}/send"}
+                    "read_only": read_only,
+                    "path": f"/internal/channels/{channel_id}/" + ("operations" if read_only else "send")}
 
 
 async def _owned_channel(tenant_id, channel_id, actor, expected_revision=None):

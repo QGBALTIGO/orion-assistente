@@ -57,4 +57,8 @@ async def tenant_transaction(
             text("SELECT set_config('app.tenant_id', :tenant, true)"),
             {"tenant": str(tenant_id)},
         )
-        yield session
+        # Import lazily: channel registry imports the session factory. Unbound
+        # legacy/owner calls execute no channel SQL and need no new schema.
+        from app.qr_channel_scope import transaction_guard
+        async with transaction_guard(session, tenant_id):
+            yield session
