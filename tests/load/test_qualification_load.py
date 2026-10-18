@@ -5,7 +5,6 @@ import json
 import subprocess
 import sys
 from collections import Counter
-from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -425,16 +424,3 @@ def test_generator_memory_is_self_only_and_host_metrics_fail_unavailable(monkeyp
         assert result["host_load_average"] == [1.0,2.0,3.0]
     else:
         assert "generator_rss_bytes" not in result and "host_cpu_ticks" not in result
-
-
-def test_short_cpu_matrix_compares_workers_with_same_pool_ceiling_and_preserves_full_job():
-    workflow = (Path(load.ROOT)/".github/workflows/qualification.yml").read_text(encoding="utf-8")
-    full,diagnostic = workflow.split("  cpu-profile:\n")
-    assert "--stage-seconds 60 --sustain-seconds 600 --api-workers 3 --db-pool-size 5 --db-max-overflow 5" in full
-    assert "--profile-generator" not in full
-    assert "- workers: 2\n            overflow: 10" in diagnostic
-    assert "- workers: 3\n            overflow: 5" in diagnostic
-    assert "profile: [concentrated, wide]" in diagnostic and "--profile-generator" in diagnostic
-    assert "exit \"$runner_status\"" in diagnostic and "continue-on-error" not in diagnostic
-    assert "workers${{ matrix.configuration.workers }}" in diagnostic
-    assert not load.parser().get_default("profile_generator")

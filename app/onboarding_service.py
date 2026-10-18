@@ -11,6 +11,7 @@ import json
 import os
 from uuid import UUID, uuid4
 
+from asyncpg.pgproto.pgproto import UUID as DriverUUID
 from fastapi import HTTPException
 from fastapi.encoders import ENCODERS_BY_TYPE, jsonable_encoder
 from sqlalchemy import text
@@ -37,7 +38,17 @@ def require_enabled():
         raise HTTPException(423, "A configuração inicial ainda não está habilitada")
 
 
-_DIGEST_SCALARS = frozenset((str, int, float, bool, type(None), bytes, date, datetime, time, timedelta, Decimal, UUID))
+_DIGEST_SCALARS = frozenset((str, int, float, bool, type(None), bytes, date, datetime, time, timedelta, Decimal, UUID, DriverUUID))
+_LOCAL_JSON_ENCODERS = {DriverUUID: str}
+
+
+def _onboarding_json_default(item):
+    # SQL text results retain asyncpg's exact UUID class. Keep this override
+    # local: subclasses and all other unusual values still take the old walk.
+    encoder = _LOCAL_JSON_ENCODERS.get(type(item))
+    if encoder is None:
+        encoder = ENCODERS_BY_TYPE[type(item)]
+    return encoder(item)
 
 
 def _digest_needs_legacy(value):
@@ -82,7 +93,7 @@ def _digest_needs_legacy(value):
 def _digest_bytes(value):
     if not _digest_needs_legacy(value):
         try:
-            return json.dumps(value, default=lambda item: ENCODERS_BY_TYPE[type(item)](item),
+            return json.dumps(value, default=_onboarding_json_default,
                 sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
         except TypeError:
             # Preserve the original exception/representation for unusual input;
@@ -262,7 +273,7 @@ def _state_jsonable(value):
     """
     if not _digest_needs_legacy(value):
         try:
-            return json.loads(json.dumps(value, default=lambda item: ENCODERS_BY_TYPE[type(item)](item),
+            return json.loads(json.dumps(value, default=_onboarding_json_default,
                 ensure_ascii=False, separators=(",", ":"), sort_keys=False, allow_nan=False))
         except (TypeError, ValueError, OverflowError, RecursionError):
             # Preserve original values/errors, including nonfinite floats and
