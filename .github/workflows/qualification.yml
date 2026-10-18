@@ -129,7 +129,7 @@ jobs:
         run: |
           mkdir -p artifacts
           python scripts/qualification_load.py --confirm-disposable-local --profile ${{ matrix.profile }} \
-            --stage-seconds 60 --sustain-seconds 600 --api-workers 3 --db-pool-size 5 --db-max-overflow 5 \
+            --stage-seconds 60 --sustain-seconds 600 --api-workers 3 --db-pool-size 5 --db-max-overflow 5 --timing-diagnostics \
             --output artifacts/load-${{ matrix.profile }}.json
       - name: Guardar metricas e falhas
         if: always()

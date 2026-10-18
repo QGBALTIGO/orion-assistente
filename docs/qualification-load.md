@@ -40,6 +40,13 @@ Há limite de uma jornada simultânea por operador e de 300 jornadas em execuç�
 a oferta excedente permanece no denominador como erro. Timeout de request é
 10 s. Não há retry automático de uma mutação de resultado desconhecido.
 
+O cliente HTTP do gerador usa doze pools independentes de 25 conexões cada,
+com teto agregado de 300 conexões e 150 conexões persistentes. A sessão escolhe
+sempre o mesmo pool por hash, sem alterar cookies, cabeçalhos ou identidade.
+Essa divisão reduz o trabalho de procurar conexões em um único pool grande;
+não aumenta a oferta, a fila permitida ou o teto de conexões. A contenção de
+vinte solicitações com a mesma sessão continua cabendo no mesmo pool.
+
 ## Execução em CI isolado
 
 Requisitos: Ubuntu, Python 3.12 com `pip install '.[test]'`, PostgreSQL 16,
@@ -62,13 +69,13 @@ Variáveis obrigatórias:
 # Ensaio finito principal: ~15 min de medição, mais seed/migração/preflight.
 python scripts/qualification_load.py --confirm-disposable-local \
   --profile concentrated --stage-seconds 60 --sustain-seconds 600 \
-  --api-workers 3 --db-pool-size 5 --db-max-overflow 5 \
+  --api-workers 3 --db-pool-size 5 --db-max-overflow 5 --timing-diagnostics \
   --output artifacts/load-concentrated.json
 
 # Ensaio amplo principal em OUTRO job/serviço Redis, também completo.
 python scripts/qualification_load.py --confirm-disposable-local \
   --profile wide --stage-seconds 60 --sustain-seconds 600 \
-  --api-workers 3 --db-pool-size 5 --db-max-overflow 5 \
+  --api-workers 3 --db-pool-size 5 --db-max-overflow 5 --timing-diagnostics \
   --output artifacts/load-wide.json
 
 # Harness sem serviços: testes de guardas, métricas e scheduler.
@@ -97,6 +104,15 @@ no Linux e disco livre. Hardware, Python, configuração e duração ficam no JS
 O ensaio aborta se APIs excederem 1.536 MiB de RSS (configurável dentro de limite
 fixo), conexões do banco excederem 80 ou disco livre ficar abaixo de 512 MiB.
 CPU é medida; este ensaio não modifica quotas nem escala a infraestrutura.
+
+`--timing-diagnostics` acrescenta CPU/RSS do próprio gerador, CPU do host,
+atraso da oferta/tarefa, tempo da chamada HTTP e decodificação, além do total de
+bytes. Guarda somente agregados, sem corpos, cookies ou identificadores dos
+pedidos. Não ativa cProfile nem modifica a pontuação. A latência oficial do
+primeiro pedido continua incluindo o atraso desde a oferta planejada e a
+decodificação; o tempo da chamada também inclui espera no cliente e não mede
+isoladamente o servidor. A cadência, os descartes e os critérios de aceite
+permanecem iguais.
 
 A limpeza termina apenas os processos iniciados pelo runner, remove apenas suas
 chaves Redis (nunca `FLUSH`) e exige que nome, OID e proprietário do banco ainda
@@ -164,7 +180,12 @@ de saída da carga continuam preservados.
 O workflow oferece essa coleta somente por execução manual, com a opção
 `cpu_profile`; as cargas principais 60/600 e as vinte jornadas de navegador
 continuam obrigatórias nas PRs. Os perfis curtos servem para escolher uma
-correção, e seus artefatos não substituem a carga completa sem instrumentação.
+correção, e seus artefatos não substituem a carga completa sem perfil de funções.
+`--profile-generator` coleta separadamente o perfil de funções do gerador;
+também marca a execução como diagnóstico e não qualifica capacidade. O relógio
+de processo inclui suas threads auxiliares, enquanto os registros de chamadas
+cobrem a thread principal. O custo do profiler pode atrasar o próprio gerador;
+não interpretar esses percentis como resultado da carga sem profiler.
 
 O gerador versão 2 distribui 40% dos operadores adicionais pelas cinco empresas
 mais movimentadas, com contagem por empresa no relatório. A versão anterior

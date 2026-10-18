@@ -43,6 +43,74 @@ TARGETS = {"read": {"p95_ms": 800, "p99_ms": 1500},
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 ROLE_ENV = {"APP_DATABASE_URL": "app_runtime", "MIGRATION_DATABASE_URL": "app_migrator",
             "SUPPORT_DATABASE_URL": "app_support"}
+HTTP_POOL_COUNT = 12
+HTTP_POOL_CONNECTIONS = 25
+HTTP_POOL_KEEPALIVE = (13,) * 6 + (12,) * 6
+
+
+def http_pool_configuration():
+    return {"pools": HTTP_POOL_COUNT, "max_connections_per_pool": HTTP_POOL_CONNECTIONS,
+        "max_connections_total": HTTP_POOL_COUNT * HTTP_POOL_CONNECTIONS,
+        "max_keepalive_per_pool": list(HTTP_POOL_KEEPALIVE),
+        "max_keepalive_total": sum(HTTP_POOL_KEEPALIVE), "timeout_seconds": 10,
+        "routing": "sha256_session_cookie_mod_12", "no_cookie_pool": 0,
+        "trust_env": False, "tls_verification": True, "automatic_retries": 0}
+
+
+class QualificationHttpClient:
+    """Bounded client-side pools; sessions stay on one pool, without retries."""
+    def __init__(self, base_url, *, client_factory=None):
+        self.base_url = base_url
+        self._factory = client_factory or httpx.AsyncClient
+        self._clients = []
+        self._entered = self._closed = False
+
+    async def __aenter__(self):
+        if self._entered or self._closed:
+            raise RuntimeError("Qualification HTTP client cannot be reopened")
+        self._entered = True
+        context = httpx.create_ssl_context(trust_env=False)
+        try:
+            for keepalive in HTTP_POOL_KEEPALIVE:
+                self._clients.append(self._factory(base_url=self.base_url, timeout=10,
+                    limits=httpx.Limits(max_connections=HTTP_POOL_CONNECTIONS,
+                        max_keepalive_connections=keepalive), trust_env=False, verify=context))
+        except BaseException:
+            await self._close_clients()
+            raise
+        return self
+
+    async def _close_clients(self):
+        if self._closed:
+            return []
+        self._closed = True
+        results = await asyncio.gather(*(client.aclose() for client in self._clients), return_exceptions=True)
+        return [result for result in results if isinstance(result, BaseException)]
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        errors = await self._close_clients()
+        if exc is None and errors:
+            raise errors[0]
+        return False
+
+    @staticmethod
+    def _pool_index(headers):
+        items = headers.items() if hasattr(headers, "items") else headers or ()
+        cookie = next((value for name, value in items if name.lower() == "cookie"), "")
+        token = next((part.strip().partition("=")[2] for part in cookie.split(";")
+            if part.strip().partition("=")[0] == "__Host-orion_session"), "")
+        if not token:
+            return 0
+        return int.from_bytes(hashlib.sha256(token.encode()).digest()[:8], "big") % HTTP_POOL_COUNT
+
+    async def request(self, method, path, **kwargs):
+        if not self._entered or self._closed:
+            raise RuntimeError("Qualification HTTP client is not open")
+        client = self._clients[self._pool_index(kwargs.get("headers"))]
+        return await client.request(method, path, **kwargs)
+
+    async def get(self, path, **kwargs):
+        return await self.request("GET", path, **kwargs)
 
 
 def local_url(value, *, role=None, database=None, redis_url=False):
@@ -648,8 +716,8 @@ async def execute(args, sandbox, report):
         with args.output.with_suffix(".api.log").open("wb") as log:
             report["phase"] = "local_api_start"
             api = subprocess.Popen(api_command(args, port),cwd=ROOT,env=env,stdout=log,stderr=log)
-            async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}",timeout=10,
-                limits=httpx.Limits(max_connections=300,max_keepalive_connections=150),trust_env=False) as client:
+            diagnostics = args.profile_generator or args.timing_diagnostics
+            async with QualificationHttpClient(base_url=f"http://127.0.0.1:{port}") as client:
                 for _ in range(90):
                     if api.poll() is not None: raise RuntimeError("Qualification API exited before readiness")
                     try:
@@ -657,7 +725,7 @@ async def execute(args, sandbox, report):
                     except httpx.HTTPError: pass
                     await asyncio.sleep(.5)
                 else: raise RuntimeError("Qualification API readiness timeout")
-                metrics = Measurements(diagnostics=args.profile_generator); reports = []
+                metrics = Measurements(diagnostics=diagnostics); reports = []
                 report["phase"] = "all_sessions_isolation"
                 report["isolation"] = await isolation_preflight(client,people)
                 if not report["isolation"]["pass"]: raise RuntimeError("Synthetic session isolation preflight failed")
@@ -672,14 +740,14 @@ async def execute(args, sandbox, report):
                     code, _ = await request(client, metrics, 10, p, "cross_tenant_rejected", "GET", f'/api/v1/tenants/{p["other"]}/services', expected=(403,))
                     if code != 403: metrics.violations["cross_tenant_http_access"] += 1
                 # Warmup is reported separately, excluded explicitly from measured percentiles.
-                warmup = Measurements(diagnostics=args.profile_generator)
+                warmup = Measurements(diagnostics=diagnostics)
                 await run_stage(client,warmup,people,10,args.warmup_seconds,args.period_seconds,7,300,phase="warmup")
                 metrics.committed.update(warmup.committed); metrics.verified_cancellations.update(warmup.verified_cancellations)
                 metrics.hold_attempts.update(warmup.hold_attempts)
                 report["warmup_unexpected"] = dict(warmup.failures); metrics.violations.update(warmup.violations)
-                if args.profile_generator: report["warmup_diagnostics"] = warmup.diagnostic_report()
+                if diagnostics: report["warmup_diagnostics"] = warmup.diagnostic_report()
                 monitor_task = asyncio.create_task(monitor(sandbox,cache,api.pid,report["resource_samples"],stop,args.max_memory_mb,
-                    diagnostics=args.profile_generator,phase=lambda:report.get("phase")))
+                    diagnostics=diagnostics,phase=lambda:report.get("phase")))
                 durations = {}
                 for active in LEVELS:
                     report["phase"] = f"load_{active}"
@@ -692,7 +760,7 @@ async def execute(args, sandbox, report):
                         raise RuntimeError("Resource monitor stopped unexpectedly")
                     durations[active] = await stage_task
                 report["phase"] = "recovery"
-                recovery = Measurements(diagnostics=args.profile_generator)
+                recovery = Measurements(diagnostics=diagnostics)
                 recovery_elapsed = await run_stage(client,recovery,people,10,30,args.period_seconds,args.seed,300,phase="recovery")
                 metrics.committed.update(recovery.committed); metrics.verified_cancellations.update(recovery.verified_cancellations)
                 metrics.hold_attempts.update(recovery.hold_attempts)
@@ -743,6 +811,7 @@ def parser():
     result.add_argument("--db-max-overflow",type=int,choices=range(21),default=10)
     result.add_argument("--profile-api",action="store_true",help="Collect per-worker CPU profiles; diagnostic only, never capacity qualification")
     result.add_argument("--profile-generator",action="store_true",help="Collect generator CPU and scheduling/request timing metadata; diagnostic only")
+    result.add_argument("--timing-diagnostics",action="store_true",help="Collect timing/resource metadata without cProfile or changes to qualification criteria")
     result.add_argument("--max-memory-mb",type=int,default=1536)
     result.add_argument("--seed",type=int,default=20261018)
     return result
@@ -763,12 +832,13 @@ def main(argv=None):
         "arrival_model":"open-loop fixed virtual-user cadence; busy/queue arrivals are counted as dropped errors",
         "offered_journey_rate_per_second":{n:n/args.period_seconds for n in LEVELS},
         "period_seconds":args.period_seconds,"api_workers":args.api_workers,"pass":False,
+        "http_client_pools":http_pool_configuration(),
         "database_pools":{"size_per_role_per_worker":args.db_pool_size,
             "max_overflow_per_role_per_worker":args.db_max_overflow,"roles_per_worker":2,
             "theoretical_api_connection_ceiling":args.api_workers*2*(args.db_pool_size+args.db_max_overflow)},
         "planned_stage_seconds":args.stage_seconds,"planned_sustain_seconds":args.sustain_seconds,
         "run_kind":"cpu_profile_diagnostic" if args.profile_api or args.profile_generator else "finite_qualification" if args.sustain_seconds>=600 and args.stage_seconds>=60 else "short_smoke_only",
-        "profile_api":args.profile_api,"profile_generator":args.profile_generator,
+        "profile_api":args.profile_api,"profile_generator":args.profile_generator,"timing_diagnostics":args.timing_diagnostics,
         "twelve_hour_window_completed":False,"external_delivery_qualified":False,
         "limits":["No real WhatsApp, audio, model provider, worker recovery or financial integration",
                   "No production capacity claim; API workers and PostgreSQL pools are real",
