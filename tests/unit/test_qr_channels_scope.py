@@ -61,7 +61,8 @@ def ingress(monkeypatch):
     async def ready(current):
         return True
 
-    async def interaction(tenant, phone):
+    async def interaction(tenant, phone, *, channel_identity=None):
+        assert channel_identity == next(x for x in identities.values() if x.tenant_id == tenant and x == channel_identity)
         interactions.append((tenant, phone))
 
     async def turn(tenant, phone, body, redis, namespace, **kwargs):
@@ -190,7 +191,7 @@ async def test_fresh_authentication_failure_is_not_replaced_with_cached_identity
 async def test_marketing_interaction_failure_stops_new_turn_and_no_done_marker(ingress, monkeypatch):
     from app import automation_runtime
     a, _, _, redis, calls, _, _, api = ingress
-    async def unavailable(*args):
+    async def unavailable(*args, **kwargs):
         raise ConnectionError("synthetic unavailable")
     monkeypatch.setattr(automation_runtime, "interaction", unavailable)
     assert (await request(api, a)).status_code == 503

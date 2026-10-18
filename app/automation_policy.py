@@ -7,6 +7,20 @@ from zoneinfo import ZoneInfo
 OPERATIONAL_EVENTS = frozenset({"booking_confirmed", "reminder_24h", "reminder_2h", "reminder_1h", "rescheduled"})
 MARKETING_EVENTS = frozenset({"inactive_60d", "cancelled_7d", "birthday_7d", "birthday_2d", "loyalty_reward", "after_service", "campaign"})
 FIELDS = frozenset({"cliente", "empresa", "data", "horario", "profissional", "servico", "valor", "cupom", "link_agendar", "link_review"})
+UNAVAILABLE_AUTOMATIONS = {"vacancy": "waitlist_contract_missing"}
+
+
+def feature_status():
+    """This rollout has no waitlist/preferences/offer-acceptance contract."""
+    return {name: {"available": False, "enabled": False, "mode": "draft", "reason": reason}
+            for name, reason in UNAVAILABLE_AUTOMATIONS.items()}
+
+
+def unavailable_requested(preferences):
+    rules = (preferences or {}).get("automations", {})
+    return bool(isinstance(rules, dict) and rules.get("vacancy_requested") is True)
+
+
 # Server-owned predicates share the c(customer)/t(tenant) aliases in review and
 # the final eligibility check. No fragment is accepted from the caller/model.
 AUDIENCE_SQL = {
@@ -46,6 +60,8 @@ def delivery_reason(job, consent, contact, settings, *, now, preferences_version
     """Return a finite stop reason. Facts are loaded again immediately before claim."""
     if now.tzinfo is None:
         raise ValueError("aware_clock_required")
+    if job["event"] in UNAVAILABLE_AUTOMATIONS:
+        return "waitlist_contract_missing"
     if job["event"] not in OPERATIONAL_EVENTS | MARKETING_EVENTS:
         return "unknown_event"
     if not settings or not settings.get("enabled"):

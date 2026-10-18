@@ -10,9 +10,10 @@ import os
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
+from fastapi import HTTPException
 from sqlalchemy import text
 
-from app.automation_policy import AUDIENCE_SQL, OPERATIONAL_EVENTS, delivery_reason, render_template, schedule_for, send_window
+from app.automation_policy import AUDIENCE_SQL, MARKETING_EVENTS, OPERATIONAL_EVENTS, delivery_reason, render_template, schedule_for, send_window
 from app.catalog_api import support_session_factory
 from app.database import get_session_factory, tenant_transaction
 
@@ -27,20 +28,46 @@ def reconciliation_enabled():
 
 def execution_authorized(settings):
     return bool(settings and settings.get("enabled") and settings.get("owner_active")
-                and settings.get("tenant_status") == "active" and settings.get("preferences_approved"))
+                and settings.get("tenant_status") == "active" and settings.get("preferences_approved")
+                and not settings.get("vacancy_requested"))
 
 
 # Both consumers refer to one predicate; no separate approval implementation.
 execution_approved = execution_authorized
 
 
-async def interaction(tenant, phone, *, human=None):
+def _notice_identity(tenant, phone, identity):
+    """Validate a server identity without granting assistant/domain authority."""
+    from app.qr_channels import ChannelIdentity, normalize_sender
+    try:
+        sender = normalize_sender(phone)
+    except ValueError:
+        raise HTTPException(403, "Remetente não autorizado neste canal") from None
+    if (os.getenv("QR_CHANNELS_ENABLED", "0") != "1" or not isinstance(identity, ChannelIdentity)
+            or identity.tenant_id != tenant or identity.provider != "baileys" or identity.allowed_sender is not True
+            or type(identity.fence) is not int or not 1 <= identity.fence <= 2**63-1):
+        raise HTTPException(409, "Autorização do canal mudou")
+    return {"tenant": tenant, "channel": identity.channel_id, "account": identity.owner_account_id,
+            "owner": identity.lease_owner, "fence": identity.fence, "sender": sender}
+
+
+async def _notice_guard(db, values):
+    if os.getenv("QR_CHANNELS_ENABLED", "0") != "1" or (await db.execute(text("""SELECT public.automation_notice_guard(
+        CAST(:tenant AS uuid),CAST(:channel AS uuid),CAST(:account AS uuid),
+        CAST(:owner AS uuid),CAST(:fence AS bigint),CAST(:sender AS text))"""), values)).scalar_one() is not True:
+        raise HTTPException(409, "Autorização do canal mudou")
+
+
+async def interaction(tenant, phone, *, human=None, channel_identity=None):
     if not execution_enabled():
         return
+    notice = _notice_identity(tenant, phone, channel_identity) if channel_identity is not None else None
     if not phone.startswith("+"):
         phone = "+" + phone
     async with get_session_factory()() as db:
         async with tenant_transaction(db, tenant):
+            if notice is not None:
+                await _notice_guard(db, notice)
             await db.execute(text("""INSERT INTO automation_contact_state(tenant_id,contact_e164,human_paused)
               VALUES(:t,:phone,COALESCE(:human,false)) ON CONFLICT(tenant_id,contact_e164) DO UPDATE
               SET revision=automation_contact_state.revision+1,last_interaction_at=now(),
@@ -48,12 +75,17 @@ async def interaction(tenant, phone, *, human=None):
               {"t": tenant, "phone": phone, "human": human})
             await db.execute(text("""UPDATE automation_jobs SET status='cancelled',last_error='conversation_changed',updated_at=now()
               WHERE tenant_id=:t AND contact_e164=:phone AND status='pending'"""), {"t": tenant, "phone": phone})
+            if notice is not None:
+                # Membership/channel/tenant SHARE locks stay on this same
+                # transaction. Expiry while waiting/writing rolls it all back.
+                await _notice_guard(db, notice)
 
 
 async def settings_for(db, tenant, *, lock=False):
     row = (await db.execute(text("""SELECT x.*,t.timezone,t.name AS business_name,t.status AS tenant_status,
       public.automation_owner_active(x.tenant_id,x.approved_by,x.approved_auth_version) AS owner_active,
-      p.version AS preferences_version,coalesce(p.version=x.reviewed_preferences_version,false) AS preferences_approved
+      p.version AS preferences_version,coalesce(p.version=x.reviewed_preferences_version,false) AS preferences_approved,
+      coalesce((p.preferences->'automations'->>'vacancy_requested')='true',false) AS vacancy_requested
       FROM automation_execution x JOIN tenants t ON t.id=x.tenant_id
       LEFT JOIN management_preferences p ON p.tenant_id=x.tenant_id WHERE x.tenant_id=:t""" +
       (" FOR UPDATE OF x" if lock else "")), {"t": tenant})).mappings().one_or_none()
@@ -74,6 +106,8 @@ async def contact_facts(db, tenant, phone):
 
 async def queue_notification(db, tenant, settings, preference, customer, event, event_key, facts, labels, *, campaign_id=None):
     if not execution_enabled() or not execution_authorized(settings):
+        return False
+    if event not in OPERATIONAL_EVENTS | MARKETING_EVENTS:
         return False
     now = datetime.now(timezone.utc)
     rules = (preference.get("preferences") or {}).get("automations", {})
@@ -210,6 +244,8 @@ async def job_reason(db, tenant, job, settings):
         campaign = (await db.execute(text("SELECT status,version,audience FROM campaigns WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": job["campaign_id"]})).mappings().one_or_none()
     if not settings or not settings.get("owner_active") or settings.get("tenant_status") != "active":
         return "approval_revoked"
+    if settings.get("vacancy_requested"):
+        return "waitlist_contract_missing"
     if not settings.get("preferences_approved"):
         return "configuration_changed"
     customer = (await db.execute(text("SELECT id,version FROM customers WHERE tenant_id=:t AND whatsapp_e164=:phone AND active AND deleted_at IS NULL"), {"t": tenant, "phone": job["contact_e164"]})).mappings().one_or_none()

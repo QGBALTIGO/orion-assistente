@@ -21,8 +21,11 @@ O registro `qr_channels` vincula empresa, proprietário e provedor. Credenciais 
 cifradas, com valor mostrado uma vez. Proxies autenticados evitam devolver chaves
 salvas ao navegador. Cada canal tem sessão, diretório, contexto, intake, recibos,
 deduplicação e lease separados. A autorização acompanha a transação de reservas e
-pedidos até a gravação final. O aviso de interação com IA desligada ainda não usa
-essa guarda; sua pausa conservadora de marketing está documentada no conector.
+pedidos até a gravação final. O aviso de interação com IA desligada usa uma guarda
+própria, limitada a invalidar automações: proprietário, canal, empresa, remetente e
+lease são revalidados na mesma transação, com locks até o commit. Se o lease vence,
+a invalidação inteira volta atrás e a API não confirma o registro do aviso. Essa
+guarda não ativa o assistente nem permite reservas ou pedidos.
 Não apagar `/data/auth`, sessões, filas ou reservas no retorno de versão.
 
 O suporte inicial gerenciado é texto privado e allowlist restrita. Não representa
@@ -57,10 +60,20 @@ envio. Timeout e queda ficam incertos: consultar a operação original não reen
 Aceitação pelo conector, entrega e leitura informadas são estados distintos.
 Legibilidade física exige teste no aparelho.
 
+Reposição de vagas permanece **indisponível, em rascunho**. O banco atual não tem
+fila de espera com preferências, consentimento específico, oferta com validade e
+aceitação concorrente. `vacancy_requested` conserva somente uma preferência de
+configuração. A API declara `features.vacancy.available=false` e `enabled=false`;
+não cria contatos, convites, retenções ou reservas para esse pedido. Enquanto ele
+estiver marcado, habilitar execução retorna conflito e a autorização anterior não
+permite planejar novos envios. O proprietário pode pausar, desmarcar a intenção e
+revisar as demais rotinas. Jobs com evento não implementado nunca são produzidos
+nem enviados. Uma campanha manual não se transforma em lista de espera.
+
 ## Homologação isolada
 
 1. Preparar backup, banco, Redis e volumes exclusivos de teste. Aplicar Alembic até
-   `0022_marketing_execution` com migrador e verificar RLS. Scripts antigos fixados
+   `0023_automation_notice_guard` com migrador e verificar RLS. Scripts antigos fixados
    em outra revisão não aplicam esta cadeia automaticamente.
 2. Na API de teste: `BUSINESS_PROFILES_ENABLED=1`, `ONBOARDING_ENABLED=1`.
    Verificar conta nova, convite, legado e múltiplas empresas.
@@ -73,6 +86,11 @@ Legibilidade física exige teste no aparelho.
    envios. Começar com transporte simulado e dados sintéticos.
 5. Revisar consentimentos, regras e campanha. WhatsApp, OAuth/evento Google e
    carga externos reais pertencem a uma etapa própria, sem ativação automática.
+
+Os testes `test_automation_notice_postgres.py` exercitam o papel runtime e disputas
+reais de revogação/fence/expiração, com contatos sintéticos e sem transporte.
+Coleção ou execução pulada localmente não equivale a aprovação PostgreSQL; a CI
+deve executar a cadeia inteira e esses casos antes da publicação.
 
 ## Retorno e evidências
 

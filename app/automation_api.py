@@ -15,7 +15,7 @@ from app.management_api import management_session
 from app.management_models import request_identity
 from app.tenant_access import resolve_tenant_access
 from app.automation_runtime import base_labels, contact_facts, execution_enabled, execution_authorized, reconciliation_enabled, queue_notification, settings_for
-from app.automation_policy import AUDIENCE_SQL
+from app.automation_policy import AUDIENCE_SQL, feature_status, unavailable_requested
 
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}/management/marketing", tags=["Execução revisada de automações"])
 
@@ -102,18 +102,20 @@ async def checked_channel(tenant, channel_id):
 async def get_execution(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     async with management_session(tenant_id, actor) as db:
         if not execution_enabled() and not reconciliation_enabled():
-            return {"available": False, "enabled": False, "version": 0, "mode": "draft", "reason": "server_activation_pending"}
+            return {"available": False, "enabled": False, "version": 0, "mode": "draft", "reason": "server_activation_pending", "features": feature_status()}
         settings = await settings_for(db, tenant_id)
         counts = (await db.execute(text("SELECT status,count(*) AS count FROM automation_jobs WHERE tenant_id=:t GROUP BY status"), {"t": tenant_id})).mappings().all()
         preferences_version = settings.get("preferences_version") if settings else (await db.execute(text("SELECT version FROM management_preferences WHERE tenant_id=:t"), {"t": tenant_id})).scalar_one_or_none()
         return {"available": True, "enabled": bool(execution_enabled() and execution_authorized(settings)),
                 "requested_enabled": bool(settings and settings["enabled"]), "reconciliation_only": not execution_enabled(),
                 "preferences_version": preferences_version, "reviewed_preferences_version": settings.get("reviewed_preferences_version") if settings else None,
-                "reason": "review_required" if settings and settings["enabled"] and not execution_authorized(settings) else None,
+                "reason": "waitlist_contract_missing" if settings and settings.get("vacancy_requested") else
+                          "review_required" if settings and settings["enabled"] and not execution_authorized(settings) else None,
                 "version": settings["version"] if settings else 0, "channel_id": settings["channel_id"] if settings else None,
                 "daily_limit": settings["daily_limit"] if settings else 20, "mode": "reviewed_execution",
                 "window": "09:00–18:00", "timezone": settings["timezone"] if settings else None,
                 "counts": {r["status"]: r["count"] for r in counts}, "transport": "qr_managed",
+                "features": feature_status(),
                 "uncertain_policy": "manual_reconciliation_no_automatic_retry"}
 
 
@@ -134,12 +136,16 @@ async def save_execution(tenant_id: UUID, payload: ExecutionSave, actor: Actor =
         if replay:
             if current is None:
                 raise HTTPException(409, "A configuração registrada não está disponível; revise antes de autorizar novamente")
-            return {"recorded": True, "version": current["version"], "enabled": current["enabled"]}
+            return {"recorded": True, "version": current["version"], "enabled": execution_authorized(current)}
         if payload.expected_version != (current["version"] if current else 0):
             raise HTTPException(409, "A autorização mudou. Consulte a configuração atual")
         preference_version = (await db.execute(text("SELECT version FROM management_preferences WHERE tenant_id=:t FOR SHARE"), {"t": tenant_id})).scalar_one_or_none()
         if payload.enabled and (preference_version is None or payload.expected_preferences_version != preference_version):
             raise HTTPException(409, "As rotinas mudaram ou ainda não foram configuradas. Revise a versão atual antes de autorizar")
+        if payload.enabled:
+            preferences = (await db.execute(text("SELECT preferences FROM management_preferences WHERE tenant_id=:t"), {"t": tenant_id})).scalar_one_or_none()
+            if unavailable_requested(preferences):
+                raise HTTPException(409, "A reposição de vagas está em rascunho e indisponível: ainda não existe lista de espera com preferências e consentimento próprios. Desmarque esse pedido e revise as demais rotinas antes de habilitar")
         await db.execute(text("""INSERT INTO automation_execution(tenant_id,enabled,channel_id,approved_by,approved_auth_version,approved_at,daily_limit,reviewed_preferences_version)
           VALUES(:t,:enabled,:channel,:account,:auth,now(),:limit,:prefs) ON CONFLICT(tenant_id) DO UPDATE
           SET enabled=EXCLUDED.enabled,channel_id=EXCLUDED.channel_id,approved_by=EXCLUDED.approved_by,
@@ -150,7 +156,7 @@ async def save_execution(tenant_id: UUID, payload: ExecutionSave, actor: Actor =
         await db.execute(text("UPDATE automation_jobs SET status='cancelled',last_error='configuration_changed',updated_at=now() WHERE tenant_id=:t AND status='pending'"), {"t": tenant_id})
         await audit(db, tenant_id, "automation_execution_reviewed", "automation_execution", tenant_id)
         result = await settings_for(db, tenant_id)
-        return {"recorded": True, "version": result["version"], "enabled": result["enabled"]}
+        return {"recorded": True, "version": result["version"], "enabled": execution_authorized(result)}
 
 
 @router.put("/consent")

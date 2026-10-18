@@ -2782,7 +2782,10 @@ async def _record_customer_interaction(tenant, phone, message_id, redis, *, chan
     from app.automation_runtime import interaction
     async def record():
         async with asyncio.timeout(3):
-            await interaction(tenant, "+" + phone)
+            if channel is None:
+                await interaction(tenant, "+" + phone)
+            else:
+                await interaction(tenant, "+" + phone, channel_identity=channel)
     try:
         if channel is None:
             await record()
