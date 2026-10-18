@@ -11,7 +11,8 @@ não significa que tenham sido executados na Railway ou em uma conta real.
 | Verificação | Resultado local |
 |---|---|
 | Instalação em banco vazio, Alembic 0001 → 0017 | Aprovada em PostgreSQL 16.15 |
-| Regressão Python completa, com PostgreSQL e Redis reais | **2.096 passaram; 1 ignorado; 0 falhas** em 54,32 s |
+| Regressão Python completa, com PostgreSQL e Redis reais, na rodada anterior ao executor operacional | **2.096 passaram; 1 ignorado; 0 falhas** em 55,38 s |
+| Executor operacional 0012 → 0017 e inicialização, versão final | **54 passaram; 0 falhas; 0 ignorados**, incluindo 22 casos com PostgreSQL real e restauração, em 36,70 s |
 | Teste ignorado | Caso exclusivo de Windows, executando a suíte em Linux |
 | Suíte existente Node do conector e painel | **304 passaram; 0 falhas** |
 | Testes DOM da nova suíte e do site público | **25 passaram; 0 falhas**, com HTML/JavaScript reais e APIs sintéticas |
@@ -55,6 +56,59 @@ As migrations devem ser aplicadas **antes** de colocar a nova API e o worker
 em execução: consultas do motor passam a usar, por exemplo,
 `professionals.accepts_appointments` e os snapshots de descontos/comissões.
 Não há preenchimento de empresas, clientes, vendas ou agendamentos de demonstração.
+
+### Atualização operacional de 0012 para 0017
+
+O executor dedicado é [`scripts/one_time_management_migration.py`](../scripts/one_time_management_migration.py).
+Ele aceita exclusivamente `0012_commercial_fulfillment` como origem e verifica
+os hashes dos cinco arquivos de migration antes de usar a conexão operacional.
+Os executores antigos de 0009/0011/0012 conservam seus contratos anteriores.
+
+A operação usa `MIGRATION_DATABASE_URL`, `ORION_EXPECTED_DATABASE_HOST`,
+`ORION_EXPECTED_DATABASE_NAME`, `QR_BRIDGE_URL` e `QR_BRIDGE_TOKEN` já configurados
+no ambiente de implantação. O preflight deve comprovar a identidade do banco,
+o proprietário da conexão, os privilégios de backup/restauração, a possibilidade
+de assumir `app_migrator` e o esquema de origem. O nome de uma variável, sozinho,
+não comprova esses privilégios. Não execute bootstrap nem redefina senhas para
+contornar uma recusa do preflight.
+
+Use um UUIDv4 inédito em `ORION_MANAGEMENT_MIGRATION_RUN_ID` e habilite apenas
+nessa execução `ORION_RUN_MANAGEMENT_MIGRATION=1` e
+`ORION_MIGRATION_SWITCH_ROLE=1`:
+
+```sh
+python -m scripts.one_time_management_migration
+```
+
+O procedimento gera um dump completo com PostgreSQL 16, cifra o arquivo, grava
+no armazenamento privado de backups do QR bridge e confere a leitura de volta.
+O serviço de backup deve estar habilitado e ter espaço disponível. Uma recusa,
+resposta incerta não resolvida ou divergência impede qualquer DDL na origem.
+A restauração de ensaio preserva proprietários e ACLs em um banco com nome UUID
+próprio; os papéis da aplicação não recebem acesso a esse banco. A sequência
+0013–0017 é ensaiada nele antes da transação que atualiza a origem.
+
+Execute o comando como etapa temporária de pré-implantação da API, antes de
+`python -m scripts.probe_qr_bridge`, com tempo suficiente para backup,
+restauração e ensaio. A publicação desta versão prevê 600 segundos de limite.
+Após o resultado `complete`, confira `revision`, `restore_verified`,
+`rehearsal_verified`, o
+identificador e o SHA-256 do backup, e retire o executor da configuração das
+próximas implantações. Um banco já em 0017 não deve ser submetido novamente ao
+executor de origem 0012. Se a API falhar após a conclusão da migration, examine
+o resultado registrado e retome a aplicação sem repetir a operação de banco.
+
+O snapshot da origem deve continuar idêntico até a transação final. Se API,
+worker ou outro escritor alterar dados nesse intervalo, o executor interrompe
+com `source_changed_after_backup`. Investigue a concorrência e use uma janela
+sem gravações; não desabilite a comparação nem reutilize automaticamente uma
+operação incerta. Os bloqueios de tabela da transação final têm timeout.
+
+O processo normal da API descarta a URL operacional e os controles de migration
+antes de iniciar o servidor. O worker usa sua configuração própria
+`railway.worker.json`, comando `arq app.worker.WorkerSettings`, e só deve ser
+atualizado depois da conclusão do banco. `railway.bootstrap.json` não é um
+procedimento de atualização de uma produção já provisionada.
 
 ### Desenvolvimento local
 
@@ -186,18 +240,21 @@ São complementares aos testes PostgreSQL, e não um teste de navegador real.
 
 ## Implantação revisável na Railway
 
-A leitura da configuração em 18/10/2026 encontrou API, worker e QR bridge
-vinculados à branch `main`, com PostgreSQL e Redis existentes. Não havia
-alterações de ambiente pendentes nessa leitura. Nenhum serviço, variável,
-volume ou domínio foi alterado por este trabalho.
+A leitura preparatória da configuração em 18/10/2026 encontrou API, worker e
+QR bridge vinculados à branch `main` e fixados em commits específicos, com
+PostgreSQL e Redis existentes. Não havia alterações de ambiente pendentes
+nessa leitura. Essa fotografia antecede a publicação; integrar a branch,
+sozinho, não atualiza um serviço fixado em outro commit. Os resultados da
+publicação são registrados na [PR #54](https://github.com/QGBALTIGO/orion-assistente/pull/54).
 
 Antes de integrar e implantar:
 
 1. Revise o PR e os resultados dos jobs Python/PostgreSQL, Node/Docker e ASR.
 2. Confirme a revisão atual do banco e as credenciais de migration separadas.
-3. Faça e confira backup/restauração pelo procedimento operacional existente.
-4. Aplique `alembic upgrade head` com `app_migrator` em uma execução operacional
-   explícita; confira `0017_financial_settlements` e as políticas RLS.
+3. Prepare o executor específico de 0012 para 0017 descrito acima; ele faz
+   backup, leitura de volta, restauração real e ensaio antes de alterar a origem.
+4. Execute a operação explícita com as credenciais separadas e confira
+   `0017_financial_settlements`, a preservação dos dados e as políticas RLS.
 5. Publique a API e o worker do commit aprovado e confira `/health`.
 6. Entre no `/panel` com uma conta de teste já autorizada e valide os fluxos
    de gestão, sem acionar clientes, pagamentos ou canais reais.
