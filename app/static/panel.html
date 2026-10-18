@@ -749,6 +749,7 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
 .commerce-summary{white-space:pre-wrap;line-height:1.7;overflow-wrap:anywhere}.commerce-items{display:grid;gap:12px;margin:16px 0}.commerce-item{border:1px solid var(--border);border-radius:10px;padding:14px;display:grid;gap:9px}.commerce-item .row{gap:10px;align-items:center}.commerce-item input{max-width:130px}.commerce-warning{border-left:3px solid var(--accent2);padding-left:12px;line-height:1.65}.commerce-accept{display:flex;gap:10px;align-items:flex-start;margin:18px 0}.commerce-accept input{width:auto;margin-top:5px}.commerce-accept span{line-height:1.6}.commerce-lookup{border-top:1px solid var(--border);padding-top:20px;margin-top:24px}
 @media(max-width:700px){.business-grid,.business-styles{grid-template-columns:1fr}.business-grid .wide{grid-column:auto}.business-steps button{flex:1 1 120px}.business-actions .btn{flex:1 1 170px}}
 </style>
+<link rel="stylesheet" href="/panel-assets/orion-suite.css">
 </head>
 <body>
 <section id="loginView" aria-label="Acesso à conta Orion">
@@ -1346,6 +1347,7 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
   <h2 id="actionConfirmTitle">Confirmar ação</h2><p id="actionConfirmText"></p>
   <div class="confirm-actions"><button id="actionConfirmCancel" class="btn secondary" type="button">Cancelar</button><button id="actionConfirmAccept" class="btn" type="button">Aceitar</button></div>
 </dialog>
+<script src="/panel-assets/orion-suite.js"></script>
 <script>
 (()=>{
 "use strict";
@@ -1374,6 +1376,30 @@ const $=id=>document.getElementById(id);
  else if(preferenceQuery.addListener)preferenceQuery.addListener(onSystemTheme);
 
 let authEpoch=0;
+let suiteUser=null,suiteTenantId="";
+function syncSuiteTenant(id){
+ if(!id||!businessRows.some(row=>String(row.id)===String(id)))return;
+ suiteTenantId=String(id);
+ window.OrionSuite?.sync({tenantId:suiteTenantId});
+}
+async function beforeSuiteTenantChange(){
+ if(businessBusy||commerceBusy||catalogWriting)return false;
+ const epoch=authEpoch;
+ if((businessDirty||commerceDirty()||commerceBasket.length)&&
+    !await confirmAction("Há alterações não salvas nesta empresa. Deseja descartá-las e trocar de empresa?"))return false;
+ if(epoch!==authEpoch||businessBusy||commerceBusy||catalogWriting)return false;
+ resetBusinessState();resetCommerceState();resetAiConversation();
+ return true;
+}
+function suiteBridge(initialRoute){
+ return {request:api,user:suiteUser,tenants:businessRows,tenantId:suiteTenantId,
+  initialRoute:initialRoute||"dashboard",
+  beforeTenantChange:beforeSuiteTenantChange,
+  setTenant(id){suiteTenantId=String(id)},
+  openLegacy(target){if(target==="ai"&&suiteTenantId)aiPreferredTenant=suiteTenantId;openPage(target)},
+  onRouteChange(){page="suite";clearInterval(chatTimer);chatTimer=null},
+ };
+}
 let csrf="",page="dispositivo",method="code",showQr=false,deviceStatus="starting",lastDeviceStatus="starting",pairExpiresAt=0,
     statusTimer=null,chatTimer=null,selectedPhone="",chatsBusy=false;
 let messageSequence=0,lastPanelSend=null,manualSendRequest=null,manualSendSequence=0;
@@ -1424,7 +1450,7 @@ async function api(url,method="GET",data){
    if(response.status===401&&requestAuthEpoch===authEpoch&&requestCsrf===csrf&&url!=="/auth/login"&&url!=="/auth/me")showLogin();
    const error=Error(errorMessage(json,response.status));error.status=response.status;throw error;
  }
- return response.json();
+ return response.status===204?null:response.json();
 }
 let authScreen="login",loginRole="support";
 let actionConfirmation=null;
@@ -1472,6 +1498,7 @@ function authScreenShow(screen){
 }
 function showLogin(){
  ++authEpoch;
+ window.OrionSuite?.destroy();suiteUser=null;suiteTenantId="";
  finishActionConfirmation(false);manualSendRequest=null;++manualSendSequence;$("sendButton").disabled=false;
  csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);
  resetAiConversation("");
@@ -1484,6 +1511,10 @@ function showLogin(){
  authScreenShow("login");
 }
 function showApp(role="support",name="",email=""){
+ try{const pendingInvite=sessionStorage.getItem("orion_pending_invitation");if(pendingInvite&&/^[A-Za-z0-9_-]{43}$/.test(pendingInvite)){sessionStorage.removeItem("orion_pending_invitation");location.assign("/convite#token="+encodeURIComponent(pendingInvite));return}}catch{}
+ const desired=new URLSearchParams(location.search).get("aba");
+ suiteTenantId=new URLSearchParams(location.search).get("empresa")||"";
+ suiteUser={role,name,email};
  loginRole=role;
  const isAdmin=role==="support"||role==="admin";
  // Member accounts get their own normal dashboard, never an admin-password prompt.
@@ -1504,14 +1535,15 @@ function showApp(role="support",name="",email=""){
    $("memberProfileName").textContent=name||"—";
    $("memberProfileEmail").textContent=email||"—";
    openPage("member");
+   window.OrionSuite?.mount(suiteBridge(desired));
    return;
  }
  statusTimer&&clearInterval(statusTimer);statusTimer=setInterval(updateStatus,4500);
  wizardClocks&&clearInterval(wizardClocks);
  wizardClocks=setInterval(updateWizardClocks,1000);
  updateStatus();
- const desired=new URLSearchParams(location.search).get("aba");
  openPage(["conversas","cadastros","ai","empresa","catalogo"].includes(desired)?desired:"dispositivo");
+ window.OrionSuite?.mount(suiteBridge(desired));
 }
 async function publicAuth(path,payload){
  const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},
@@ -1635,6 +1667,7 @@ function openPage(target){
  if(target==="catalogo")void loadCommerceTenants();
  if(target==="cadastros")void loadTenants();
  history.replaceState({}, "", "/panel?aba="+encodeURIComponent(target));
+ window.OrionSuite?.legacyOpened(target);
 }
 document.querySelectorAll("[data-page]").forEach(x=>x.addEventListener("click",()=>openPage(x.dataset.page)));
 $("openChats").addEventListener("click",()=>openPage("conversas"));
@@ -2243,7 +2276,7 @@ function resetCatalogState(){
 }
 async function loadTenants(){
  if(catalogWriting)return;
- const sequence=++catalogSequence,epoch=authEpoch,role=loginRole,selected=$("tenant").value;
+ const sequence=++catalogSequence,epoch=authEpoch,role=loginRole,selected=suiteTenantId||$("tenant").value;
  catalogLoading=true;++catalogReadSequence;$("records").replaceChildren();updateCatalogControls();
  const current=()=>sequence===catalogSequence&&epoch===authEpoch&&role===loginRole;
  try{
@@ -2287,7 +2320,7 @@ async function loadRecords(){
 }
 $("loadTenants").addEventListener("click",loadTenants);
 $("refresh").addEventListener("click",loadRecords);
-$("tenant").addEventListener("change",loadRecords);
+$("tenant").addEventListener("change",()=>{syncSuiteTenant($("tenant").value);return loadRecords()});
 $("resource").addEventListener("change",()=>{renderForm();loadRecords()});
 $("tenantForm").addEventListener("submit",async ev=>{
  ev.preventDefault();
@@ -2470,9 +2503,11 @@ async function loadBusinesses(){
    const rows=await api(["support","admin"].includes(role)?"/api/v1/tenants":"/api/v1/account/businesses");
    if(requestId!==businessListSequence||epoch!==businessEpoch||role!==loginRole)return;
    businessRows=rows;$("businessNav").classList.toggle("hidden",!rows.length);$("aiNav").classList.toggle("hidden",!rows.length);$("commerceNav").classList.toggle("hidden",!rows.length);$("catalogNav").classList.toggle("hidden",!["support","admin"].includes(role)&&!rows.length);
-   const selected=$("businessTenant").value;$("businessTenant").replaceChildren(new Option("Escolha um estabelecimento",""));
+   const selected=suiteTenantId||$("businessTenant").value;$("businessTenant").replaceChildren(new Option("Escolha um estabelecimento",""));
    for(const row of rows)$("businessTenant").add(new Option(row.name,row.id));
    $("businessTenant").value=rows.some(x=>x.id===selected)?selected:(rows[0]?.id||"");
+   suiteTenantId=$("businessTenant").value;
+   window.OrionSuite?.sync({user:suiteUser,tenants:rows,tenantId:suiteTenantId});
    if($("businessTenant").value&&(!businessSnapshot||businessLoadedTenant!==$("businessTenant").value))await loadBusinessProfile();
  }catch(error){if(requestId===businessListSequence&&epoch===businessEpoch)$("businessFeedback").textContent=error.message}
 }
@@ -2540,6 +2575,7 @@ $("businessTenant").addEventListener("change",async()=>{
    if(!accepted||businessBusy||editing!==businessExampleSequence){$("businessTenant").value=origin;return;}
  }
  if(!current())return;
+ syncSuiteTenant(target);
  $("businessFeedback").textContent="";businessStep(1);await loadBusinessProfile();
 });
 $("businessReload").addEventListener("click",async()=>{
@@ -2665,7 +2701,7 @@ async function loadCommerceTenants(){
  try{
    const rows=await api(["support","admin"].includes(role)?"/api/v1/tenants":"/api/v1/account/businesses");
    if(sequence!==commerceListSequence||epoch!==commerceEpoch||role!==loginRole)return;
-   const selected=$("comTenant").value;$("comTenant").replaceChildren(new Option("Escolha uma empresa",""));for(const row of rows)$("comTenant").add(new Option(row.name,row.id));
+   const selected=suiteTenantId||$("comTenant").value;$("comTenant").replaceChildren(new Option("Escolha uma empresa",""));for(const row of rows)$("comTenant").add(new Option(row.name,row.id));
    $("comTenant").value=rows.some(row=>row.id===selected)?selected:(rows[0]?.id||"");
    if($("comTenant").value&&commerceTenant!==$("comTenant").value)await loadCommerceTenant();
  }catch(error){if(sequence===commerceListSequence&&epoch===commerceEpoch)$("comFeedback").textContent=error.message}
@@ -2913,7 +2949,7 @@ $("comPriceKind").addEventListener("change",updateCommerceControls);$("comStockM
 $("comComplementRead").addEventListener("click",commerceReadComplements);$("comComplementForm").addEventListener("submit",event=>{event.preventDefault();return commerceSaveComplement()});
 $("comComplementTarget").addEventListener("change",()=>{const target=$("comComplementTarget").value;if(commerceComplementDirty&&!confirm("Descartar a edição local e escolher outra relação?")){$("comComplementTarget").value=commerceComplementSelected;return;}commerceFillComplement(target);commerceCatalogChanged("complement")});
 $("comComplementReason").addEventListener("input",()=>commerceCatalogChanged("complement"));$("comComplementApproved").addEventListener("change",()=>commerceCatalogChanged("complement"));
-$("comTenant").addEventListener("change",async()=>{if((commerceDirty()||commerceBasket.length)&&!confirm("Trocar de empresa e descartar a edição local? Os registros salvos permanecem no servidor.")){$("comTenant").value=commerceTenant;return;}commercePane(false);await loadCommerceTenant()});
+$("comTenant").addEventListener("change",async()=>{if((commerceDirty()||commerceBasket.length)&&!confirm("Trocar de empresa e descartar a edição local? Os registros salvos permanecem no servidor.")){$("comTenant").value=commerceTenant;return;}syncSuiteTenant($("comTenant").value);commercePane(false);await loadCommerceTenant()});
 $("comReload").addEventListener("click",()=>{if((commerceDirty()||commerceBasket.length)&&!confirm("Atualizar o catálogo e descartar a edição local? Registros salvos continuarão disponíveis para consulta."))return;return loadCommerceTenant({preserveLookups:true})});
 $("comCatalogTab").addEventListener("click",()=>commercePane(false));$("comOrdersTab").addEventListener("click",()=>commercePane(true));$("comBasketAdd").addEventListener("click",commerceAddBasket);
 $("comPlanForm").addEventListener("submit",event=>{event.preventDefault();return commerceCalculate()});for(const id of ["comCustomer","comValidity"])$(id).addEventListener("input",commercePlanningChanged);
@@ -3023,7 +3059,7 @@ function aiBubble(content,direction){
  return wrapper;
 }
 async function aiLoadTenants(){
- const sequence=++aiTenantSequence,role=loginRole,preferredTenant=aiPreferredTenant,preferredVersion=aiPreferredVersion,last=$("aiTenant").value;
+ const sequence=++aiTenantSequence,role=loginRole,preferredTenant=aiPreferredTenant,preferredVersion=aiPreferredVersion,last=suiteTenantId||$("aiTenant").value;
  resetAiConversation("Consultando a empresa e a versão para iniciar o teste...");clearAiProfileState();
  $("aiTenant").replaceChildren(new Option("Consultando estabelecimentos...",""));aiProfileLoading=true;updateAiControls();
  const epoch=aiEpoch;
@@ -3086,6 +3122,7 @@ async function aiCheckStatus(){
 }
 $("aiStatusRefresh").addEventListener("click",aiCheckStatus);
 $("aiTenant").addEventListener("change",async()=>{
+ syncSuiteTenant($("aiTenant").value);
  resetAiConversation("Conversa reiniciada para o estabelecimento selecionado.");void aiLoadProfiles();await aiCheckStatus();
 });
 $("aiReset").addEventListener("click",()=>{

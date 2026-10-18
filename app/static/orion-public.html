@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2e7bf6">
+  <meta name="description" content="Conheça os serviços, escolha seu profissional e agende seu próximo atendimento.">
+  <title>Agendamento • Orion</title>
+  <link rel="stylesheet" href="/public-assets/orion-public.css">
+  <script src="/public-assets/orion-public.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#servicos">Ir para serviços</a>
+  <aside id="preview-banner" class="preview-banner" hidden>Prévia do seu site · As alterações aparecem aqui antes da publicação. Agendamentos estão desativados nesta prévia.</aside>
+  <div id="page-message" class="page-message" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span> Carregando o site…</div>
+  <div id="site-content" hidden>
+    <header class="hero">
+      <div id="cover" class="cover" aria-hidden="true"></div>
+      <div class="container identity-wrap">
+        <div class="identity-card">
+          <div class="identity-row">
+            <div id="site-logo" class="site-logo" aria-hidden="true"></div>
+            <div class="identity-text"><h1 id="site-title"></h1><p id="hero-address" class="muted"></p><p class="online-label"><span></span> Agendamento online</p></div>
+          </div>
+          <div class="hero-actions"><button class="primary pill" type="button" id="hero-book">Agendar horário <span aria-hidden="true">→</span></button><a id="hero-map" class="icon-button" aria-label="Traçar rota" title="Traçar rota" hidden>↗</a><button id="share-site" class="icon-button" type="button" aria-label="Compartilhar site" title="Compartilhar site">↥</button></div>
+          <p id="share-message" class="small muted" role="status" hidden></p>
+        </div>
+      </div>
+    </header>
+    <main class="container public-main">
+      <section id="servicos" aria-labelledby="services-title">
+        <div class="section-heading"><div><h2 id="services-title">Nossos serviços</h2><p class="muted">Escolha o cuidado para o seu próximo atendimento.</p></div><span id="services-count" class="count"></span></div>
+        <label class="search-wrap"><span aria-hidden="true">⌕</span><input id="service-search" type="search" placeholder="Buscar serviço" aria-label="Buscar serviço" autocomplete="off"></label>
+        <div id="categories" class="categories" aria-label="Categorias de serviços"></div>
+        <div id="services-grid" class="services-grid"></div>
+      </section>
+      <section id="equipe" aria-labelledby="team-title"><div class="section-heading"><div><h2 id="team-title">Nossa equipe</h2><p class="muted">Conheça quem vai cuidar de você.</p></div></div><div id="team-grid" class="team-grid"></div></section>
+      <section class="info-grid" aria-label="Informações da barbearia"><article id="about-card" class="info-card" hidden><h2>Sobre nós</h2><p id="about-text" class="preserve-lines"></p></article><article id="address-card" class="info-card" hidden><div class="location-mark" aria-hidden="true">⌖</div><h2>Onde estamos</h2><p id="full-address" class="preserve-lines"></p><a id="maps-link" class="outline" hidden>Abrir no mapa <span aria-hidden="true">↗</span></a></article></section>
+      <section id="contact-section" class="contact-card" aria-labelledby="contact-title" hidden><div><h2 id="contact-title">Fale com a gente</h2><p class="muted">Tire suas dúvidas antes do atendimento.</p></div><div id="contact-links" class="contact-links"></div></section>
+    </main>
+    <footer class="container public-footer"><span id="footer-title"></span><span id="orion-credit">Agendamento com <a href="/" aria-label="Orion">Orion</a></span></footer>
+  </div>
+  <dialog id="booking-dialog" class="booking-dialog" aria-labelledby="booking-title">
+    <div class="booking-header"><div><p class="eyebrow" id="booking-shop"></p><h2 id="booking-title">Agendar horário</h2></div><button id="close-booking" class="icon-button" type="button" aria-label="Fechar agendamento">×</button></div>
+    <ol id="booking-steps" class="booking-steps" aria-label="Etapas do agendamento"><li data-step="1"><span>1</span> Serviço</li><li data-step="2"><span>2</span> Horário</li><li data-step="3"><span>3</span> Confirmar</li></ol>
+    <div id="booking-body" class="booking-body"></div>
+    <p id="booking-error" class="error-message" role="alert" hidden></p>
+    <div class="booking-footer"><button id="booking-back" class="outline" type="button">Voltar</button><div id="booking-total" class="booking-total"></div><button id="booking-next" class="primary" type="button">Continuar <span aria-hidden="true">→</span></button></div>
+  </dialog>
+  <noscript><p class="page-message">Ative o JavaScript para consultar os serviços e os horários disponíveis.</p></noscript>
+</body>
+</html>

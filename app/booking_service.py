@@ -40,10 +40,12 @@ BUNDLE_SQL = """
         'min_notice_minutes', t.min_notice_minutes,
         'booking_horizon_days', t.booking_horizon_days, 'status', t.status,
         'professional_name', (SELECT p.name FROM professionals p
-            WHERE p.tenant_id=t.id AND p.id=:bundle_professional AND p.active)
+            WHERE p.tenant_id=t.id AND p.id=:bundle_professional
+              AND p.active AND p.accepts_appointments)
     ) AS shop,
     EXISTS (SELECT 1 FROM professionals p
-        WHERE p.tenant_id=t.id AND p.id=:bundle_professional AND p.active
+        WHERE p.tenant_id=t.id AND p.id=:bundle_professional
+          AND p.active AND p.accepts_appointments
     ) AS professional_available,
     COALESCE((SELECT jsonb_agg(jsonb_build_object(
         'id', s.id, 'name', s.name, 'duration_min', s.duration_min,
@@ -225,6 +227,8 @@ async def read_appointment(s: AsyncSession, tenant: UUID, item_id: UUID):
     row = (await s.execute(text("""
         SELECT a.id, a.tenant_id, a.customer_id, a.professional_id, a.protocol,
                a.start_at, a.end_at, a.status, a.total_cents, a.hold_expires_at, a.updated_at,
+               a.original_total_cents, a.discount_cents,
+               a.commission_percent_snapshot, a.commission_cents,
                c.name AS customer_name
         FROM appointments a JOIN customers c ON c.id=a.customer_id AND c.tenant_id=a.tenant_id
         WHERE a.tenant_id=:tenant AND a.id=:id

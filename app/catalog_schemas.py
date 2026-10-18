@@ -1,6 +1,8 @@
 """Schemas da FATIA 1. Nunca aceitar tenant_id, id ou preços arbitrários sem validação."""
 from datetime import datetime, time
+from decimal import Decimal
 from typing import Literal
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from uuid import UUID
 
@@ -35,6 +37,21 @@ class Staff(StrictModel):
 class Professional(StrictModel):
     name: str = Field(min_length=1, max_length=120)
     active: bool = True
+    specialty: str | None = Field(default=None, max_length=120)
+    color: str = Field(default="#31ad52", pattern=r"^#[0-9a-fA-F]{6}$")
+    commission_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100, max_digits=5, decimal_places=2)
+    accepts_appointments: bool = True
+    image_url: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("image_url")
+    @classmethod
+    def safe_image_url(cls, value):
+        if value in (None, ""):
+            return None
+        parsed = urlsplit(value)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("Use uma URL HTTPS válida para a imagem")
+        return value
 
 
 class Service(StrictModel):
@@ -45,6 +62,12 @@ class Service(StrictModel):
     prep_min: int = Field(default=0, ge=0, le=240)
     cleanup_min: int = Field(default=0, ge=0, le=240)
     active: bool = True
+    category: str | None = Field(default=None, max_length=80)
+    color: str = Field(default="#8b5cf6", pattern=r"^#[0-9a-fA-F]{6}$")
+    image_url: str | None = Field(default=None, max_length=2048)
+    sort_order: int = Field(default=0, ge=0, le=1_000_000)
+
+    _image = field_validator("image_url")(Professional.safe_image_url.__func__)
 
 
 class ProfessionalService(StrictModel):

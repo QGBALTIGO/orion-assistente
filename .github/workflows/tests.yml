@@ -37,6 +37,8 @@ jobs:
       REQUIRE_POSTGRES_TESTS: "1"
       ORION_INTAKE_TEST_REDIS_URL: redis://localhost:6379/15
       ORION_REQUIRE_INTAKE_REDIS_TEST: "1"
+      REDIS_URL: redis://localhost:6379/15
+      REQUIRE_REDIS_TESTS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -131,6 +133,10 @@ jobs:
           node --check qr-bridge/src/core.mjs
       - name: Suite de telefone, pareamento, LID e IPv6
         run: node --test qr-bridge/test/*.test.mjs
+      - name: Instalar dependências isoladas dos testes de interface
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Fluxos DOM da gestão e do agendamento público
+        run: npm run test:details --prefix ui-tests
       - name: Build da imagem real Node Baileys
         run: docker build -f qr-bridge/Dockerfile -t orion-qr:ci qr-bridge
 

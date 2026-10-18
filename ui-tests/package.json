@@ -1,0 +1,9 @@
+{
+  "name": "orion-ui-dom-tests",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Isolated DOM tests for the existing Orion panel, without browser automation.",
+  "scripts": { "test": "node --test *.test.mjs", "test:details": "node --test --test-isolation=none *.test.mjs" },
+  "devDependencies": { "jsdom": "26.1.0" }
+}
