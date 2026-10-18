@@ -329,7 +329,7 @@ function installListeners(client,mine,saveCreds){
       let answer;
       try{answer=await forwardAssistant({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
         messageId:traceId,messageIds:batch.messages.map(item=>item.id),text:batch.text,intakeRevision:batch.intakeRevision,
-        profile:namesStore.profile(phone),
+        profile:namesStore.profile(phone),isCurrent:current,
         requireSummaryReview:revisionEnabled?summaryReviewRequired.get(phone)!==false:undefined});}
       catch(error){if(revisionEnabled)summaryReviewRequired.set(phone,true);transport.record('ai_forward_failed',traceId);throw error;}
       if(answer?.state==='superseded'&&answer?.not_committed===true){
