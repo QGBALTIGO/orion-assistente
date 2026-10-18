@@ -140,14 +140,19 @@ jobs:
           retention-days: 7
 
   cpu-profile:
-    name: Diagnostico CPU - ${{ matrix.profile }} curto (nao qualifica capacidade)
-    if: github.event_name == 'workflow_dispatch' && inputs.cpu_profile
+    name: Diagnostico CPU - ${{ matrix.profile }} - ${{ matrix.configuration.workers }} workers (nao qualifica capacidade)
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.cpu_profile)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         profile: [concentrated, wide]
+        configuration:
+          - workers: 2
+            overflow: 10
+          - workers: 3
+            overflow: 5
     services:
       postgres:
         image: postgres:16
@@ -193,8 +198,9 @@ jobs:
           mkdir -p artifacts
           set +e
           python scripts/qualification_load.py --confirm-disposable-local --profile ${{ matrix.profile }} --profile-api \
-            --stage-seconds 5 --sustain-seconds 30 --warmup-seconds 5 --api-workers 3 --db-pool-size 5 --db-max-overflow 5 \
-            --output artifacts/cpu-profile-${{ matrix.profile }}.json
+            --profile-generator --stage-seconds 5 --sustain-seconds 30 --warmup-seconds 5 \
+            --api-workers ${{ matrix.configuration.workers }} --db-pool-size 5 --db-max-overflow ${{ matrix.configuration.overflow }} \
+            --output artifacts/cpu-profile-${{ matrix.profile }}-workers${{ matrix.configuration.workers }}.json
           runner_status=$?
           printf 'runner_exit_code=%s\n' "$runner_status" > artifacts/cpu-profile-exit.txt
           exit "$runner_status"
@@ -202,6 +208,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cpu-profile-diagnostic-${{ matrix.profile }}-${{ github.sha }}
+          name: cpu-profile-diagnostic-${{ matrix.profile }}-workers${{ matrix.configuration.workers }}-${{ github.sha }}
           path: artifacts/
           retention-days: 7

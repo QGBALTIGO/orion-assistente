@@ -4,6 +4,8 @@ import os
 import json
 import subprocess
 from collections import Counter
+from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -49,6 +51,10 @@ def test_pool_declaration_precedes_database_and_matches_explicit_api_environment
     monkeypatch.setenv("ORION_DB_POOL_SIZE", "20")
     monkeypatch.setenv("ORION_DB_MAX_OVERFLOW", "20")
     path = tmp_path/"result.json"; declarations = []
+    def source_metadata(command,**_):
+        assert command == ["git", "rev-parse", "HEAD"]
+        return subprocess.CompletedProcess(command, 0, stdout="0"*40+"\n", stderr="")
+    monkeypatch.setattr(load.subprocess, "run", source_metadata)
     class NoDatabase:
         def __init__(self,*_):
             declarations.append(json.loads(path.read_text()))
@@ -58,6 +64,7 @@ def test_pool_declaration_precedes_database_and_matches_explicit_api_environment
         "--db-pool-size","5","--db-max-overflow","5"]
     assert load.main(arguments) == 1
     declaration = declarations[0]
+    assert declaration["source_commit"] == "0"*40
     assert declaration["database_pools"] == {"size_per_role_per_worker":5,
         "max_overflow_per_role_per_worker":5,"roles_per_worker":2,"theoretical_api_connection_ceiling":60}
     assert declaration["api_workers"] == 3 and declaration["targets_before_run"] == load.TARGETS
@@ -256,3 +263,166 @@ async def test_final_snapshot_requires_owned_api_to_finish_inflight_writes_befor
     else:
         with pytest.raises(RuntimeError): await load.stop_api_for_reconciliation(api)
     assert api.events == ["poll", "terminate", "wait"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["success", "timeout", "decode_error"])
+async def test_diagnostics_split_planned_lag_http_and_decode_without_changing_official_latency(monkeypatch,outcome):
+    clock = SimpleNamespace(wall=120.0,cpu=3.0)
+    monkeypatch.setattr(load.time,"monotonic",lambda:clock.wall)
+    monkeypatch.setattr(load.time,"process_time",lambda:clock.cpu)
+    class Response:
+        status_code = 200
+        headers = {"content-type":"application/json"}
+        content = b'{"private":"not-for-report"}'
+        num_bytes_downloaded = 12
+        def json(self):
+            clock.wall += .05; clock.cpu += .04
+            if outcome == "decode_error": raise ValueError("private-value")
+            return {"private":"not-for-report"}
+    class Client:
+        def __init__(self): self.calls = 0
+        async def request(self,*args,**kwargs):
+            self.calls += 1; clock.wall += 2; clock.cpu += .3
+            if outcome == "timeout": raise httpx.ReadTimeout("private-value")
+            return Response()
+    results = []
+    for enabled in (False,True):
+        clock.wall,clock.cpu = 120.0,3.0
+        metrics = load.Measurements(diagnostics=enabled); client = Client()
+        status,data = await load.request(client,metrics,1500,{"token":"private-token","csrf":"private-csrf"},
+            "setup_read","GET","/private-path",due=0)
+        results.append((status,data,metrics.report({1500:130})))
+        assert client.calls == 1
+    before,after = results
+    assert before[:2] == after[:2]
+    assert before[2] == {key:value for key,value in after[2].items() if key != "diagnostics"}
+    assert after[2]["operations"][0]["maximum_ms"] == (122000 if outcome == "timeout" else 122050)
+    diagnostic = after[2]["diagnostics"]
+    timings = {row["metric"]:row for row in diagnostic["requests"]}
+    assert timings["planned_to_request_ms"]["maximum_ms"] == 120000
+    assert timings["client_await_wall_ms"]["maximum_ms"] == 2000
+    if outcome == "timeout":
+        assert "decode_wall_ms" not in timings and not diagnostic["response_bytes"]
+    else:
+        assert timings["decode_wall_ms"]["maximum_ms"] == 50
+        assert timings["decode_cpu_ms"]["maximum_ms"] == 40
+        assert diagnostic["response_bytes"][0] == {"stage_users":1500,"operation":"setup_read",
+            "responses":1,"decoded_body_bytes":len(Response.content),"downloaded_body_bytes":12}
+    encoded = json.dumps(diagnostic)
+    assert not any(secret in encoded for secret in ("private-token","private-csrf","private-path","private-value","not-for-report"))
+
+
+@pytest.mark.asyncio
+async def test_scheduling_diagnostics_include_dropped_offers_and_task_start_delay(monkeypatch):
+    clock = SimpleNamespace(wall=0.0)
+    original_sleep, original_task = asyncio.sleep, asyncio.create_task
+    monkeypatch.setattr(load.time,"monotonic",lambda:clock.wall)
+    async def sleep(delay):
+        clock.wall += delay
+        await original_sleep(0)
+    def task(coro):
+        clock.wall += .02
+        return original_task(coro)
+    monkeypatch.setattr(load.asyncio,"sleep",sleep)
+    monkeypatch.setattr(load.asyncio,"create_task",task)
+    calls = []
+    async def journey(*args,**kwargs):
+        calls.append(1)
+        await original_sleep(0)
+    monkeypatch.setattr(load,"journey",journey)
+    metrics = load.Measurements(diagnostics=True)
+    await load.run_stage(None,metrics,[{}],1,.10,.01,17,300)
+    diagnostics = metrics.diagnostic_report()
+    scheduling = {row["metric"]:row for row in diagnostics["scheduling"]}
+    assert scheduling["offer_lag_ms"]["count"] == metrics.offered[1]
+    assert scheduling["task_start_lag_ms"]["count"] == len(calls)
+    assert scheduling["task_start_lag_ms"]["maximum_ms"] >= 20
+    assert metrics.offered[1] == len(calls)+metrics.dropped[1]
+    assert metrics.dropped[1] > 0
+    assert diagnostics["generator_windows"][0]["offered"] == metrics.offered[1]
+    assert diagnostics["generator_windows"][0]["dropped"] == metrics.dropped[1]
+
+
+@pytest.mark.parametrize("enabled", [False,True])
+@pytest.mark.parametrize("fails", [False,True])
+def test_generator_profile_is_opt_in_flushes_after_failure_and_saves_no_arguments(tmp_path,enabled,fails):
+    args = load.parser().parse_args(["--output",str(tmp_path/"run.json")]+(["--profile-generator"] if enabled else []))
+    report = {}
+    def work(secret):
+        return sum(range(50))
+    def execute_window():
+        with load.profile_generator(args,report):
+            assert work("private-argument-value") == 1225
+            if fails: raise RuntimeError("synthetic-window-failure")
+    if fails:
+        with pytest.raises(RuntimeError,match="synthetic-window-failure"): execute_window()
+    else: execute_window()
+    directory = tmp_path/"run.generator-profiles"
+    if not enabled:
+        assert not directory.exists() and not report
+        return
+    assert report["generator_profile"]["complete"] and report["generator_profile"]["diagnostic_only"]
+    assert report["generator_profile"]["clock"] == "time.process_time"
+    assert sorted(item.name for item in directory.iterdir()) == ["generator.json","generator.prof"]
+    metadata = json.loads((directory/"generator.json").read_text())
+    assert metadata["functions"] and metadata["process_cpu_seconds"] >= 0
+    assert "private-argument-value" not in json.dumps(metadata)
+    assert all(set(row)=={"function","primitive_calls","calls","tottime","cumtime"} for row in metadata["functions"])
+
+
+@pytest.mark.parametrize("passed", [False,True])
+def test_generator_diagnostic_never_claims_capacity_and_preserves_original_exit(monkeypatch,tmp_path,passed):
+    monkeypatch.setenv("ORION_QUALIFICATION_DISPOSABLE","1")
+    monkeypatch.setenv("ORION_QUALIFICATION_OWNER_URL","synthetic-not-used")
+    class Sandbox:
+        def __init__(self,*args): self.engine = self
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+        def migrate(self): pass
+        def connect(self): return self
+        def exec_driver_sql(self,*args): return self
+        def scalar_one(self): return "synthetic"
+    async def execute(args,sandbox,report): report["pass"] = passed
+    monkeypatch.setattr(load,"DisposableDatabase",Sandbox)
+    monkeypatch.setattr(load,"execute",execute)
+    monkeypatch.setattr(load.subprocess,"run",lambda *a,**k:SimpleNamespace(returncode=0,stdout="synthetic-source"))
+    target = tmp_path/"run.json"
+    code = load.main(["--confirm-disposable-local","--profile-generator","--output",str(target)])
+    report = json.loads(target.read_text())
+    assert report["run_kind"] == "cpu_profile_diagnostic" and report["capacity_qualified"] is False
+    assert report["targets_before_run"] == load.TARGETS and report["pass"] is passed
+    assert report["generator_profile"]["complete"] and code == (0 if passed else 1)
+
+
+@pytest.mark.parametrize("readable", [False,True])
+def test_generator_memory_is_self_only_and_host_metrics_fail_unavailable(monkeypatch,readable):
+    class Proc:
+        def __init__(self,name): self.name = name
+        def read_text(self):
+            if not readable: raise OSError("not available")
+            return "100 20 0 0\n" if self.name == "/proc/self/statm" else "cpu 10 2 4 50 3 1 2 1 99 98\n"
+    monkeypatch.setattr(load,"Path",Proc)
+    monkeypatch.setattr(load.os,"sysconf",lambda key:4096,raising=False)
+    monkeypatch.setattr(load.os,"getloadavg",lambda:(1.0,2.0,3.0),raising=False)
+    result = load.generator_host_metrics()
+    assert result["generator_resource_available"] is readable and result["host_resource_available"] is readable
+    if readable:
+        assert result["generator_rss_bytes"] == 20*4096
+        assert result["host_cpu_ticks"] == 73 and result["host_idle_ticks"] == 53
+        assert result["host_load_average"] == [1.0,2.0,3.0]
+    else:
+        assert "generator_rss_bytes" not in result and "host_cpu_ticks" not in result
+
+
+def test_short_cpu_matrix_compares_workers_with_same_pool_ceiling_and_preserves_full_job():
+    workflow = (Path(load.ROOT)/".github/workflows/qualification.yml").read_text(encoding="utf-8")
+    full,diagnostic = workflow.split("  cpu-profile:\n")
+    assert "--stage-seconds 60 --sustain-seconds 600 --api-workers 3 --db-pool-size 5 --db-max-overflow 5" in full
+    assert "--profile-generator" not in full
+    assert "- workers: 2\n            overflow: 10" in diagnostic
+    assert "- workers: 3\n            overflow: 5" in diagnostic
+    assert "profile: [concentrated, wide]" in diagnostic and "--profile-generator" in diagnostic
+    assert "exit \"$runner_status\"" in diagnostic and "continue-on-error" not in diagnostic
+    assert "workers${{ matrix.configuration.workers }}" in diagnostic
+    assert not load.parser().get_default("profile_generator")

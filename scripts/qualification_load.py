@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import cProfile
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -17,6 +18,7 @@ import math
 import os
 from pathlib import Path
 import platform
+import pstats
 import random
 import re
 import secrets
@@ -124,11 +126,30 @@ def percentile(values, p):
 
 
 class Measurements:
-    def __init__(self):
+    def __init__(self, *, diagnostics=False):
         self.latencies = defaultdict(list); self.statuses = defaultdict(Counter)
         self.failures = Counter(); self.offered = Counter(); self.dropped = Counter()
         self.violations = Counter(); self.committed = set(); self.verified_cancellations = set()
         self.hold_attempts = set(); self.observation_uncertainty = Counter()
+        self.diagnostics = diagnostics
+        self.request_timings = defaultdict(list); self.scheduling = defaultdict(list)
+        self.response_bytes = defaultdict(Counter); self.generator_windows = []
+
+    def diagnostic_report(self):
+        def summary(values):
+            return {"count":len(values), "p95_ms":percentile(values,.95), "p99_ms":percentile(values,.99),
+                "maximum_ms":round(max(values),3), "total_ms":round(sum(values),3)}
+        return {"diagnostic_only":True,
+            "official_latency":"first request: planned arrival through HTTP and JSON decode; later requests: actual start through decode",
+            "request_wall_scope":"HTTPX await includes client pool, network, API, body transfer and event-loop scheduling; not server-only latency",
+            "decode_cpu_scope":"process_time around synchronous JSON decode; includes concurrent generator threads, excludes API child",
+            "scheduling":[{"stage_users":stage,"metric":kind,**summary(values)}
+                for (stage,kind),values in sorted(self.scheduling.items())],
+            "requests":[{"stage_users":stage,"operation":operation,"metric":kind,**summary(values)}
+                for (stage,operation,kind),values in sorted(self.request_timings.items())],
+            "response_bytes":[{"stage_users":stage,"operation":operation,**dict(values)}
+                for (stage,operation),values in sorted(self.response_bytes.items())],
+            "generator_windows":self.generator_windows}
 
     def record(self, stage, operation, elapsed, status, expected):
         key = (stage, operation)
@@ -151,12 +172,14 @@ class Measurements:
         errors = sum(self.failures.values()) + sum(self.dropped.values())
         denominator = total + sum(self.dropped.values())
         rate = errors / max(1, denominator)
-        return {"operations": groups, "offered_journeys": dict(self.offered), "dropped_arrivals": dict(self.dropped),
+        result = {"operations": groups, "offered_journeys": dict(self.offered), "dropped_arrivals": dict(self.dropped),
             "unexpected": dict(self.failures), "unexpected_error_rate": rate,
             "http_requests": total, "violations": dict(self.violations),
             "observation_uncertainty": dict(self.observation_uncertainty),
             "pass": bool(total) and not self.violations and not self.observation_uncertainty and rate < TARGETS["unexpected_error_rate"]
                     and all(g["latency_target_pass"] for g in groups)}
+        if self.diagnostics: result["diagnostics"] = self.diagnostic_report()
+        return result
 
 
 def distribute(index, companies, wide=False):
@@ -238,14 +261,34 @@ def seed_database(sandbox, users, companies, wide=False, *, simulated_channels=F
 async def request(client, metrics, stage, person, operation, method, path, *, body=None, expected=(200,), due=None):
     started = time.monotonic() if due is None else due
     status = "transport_error"; data = None
+    diagnostic = metrics.diagnostics
+    if diagnostic: request_started = time.monotonic(); http_finished = None
     try:
         response = await client.request(method, path, json=body,
             headers={"Cookie": "__Host-orion_session="+person["token"], "x-orion-csrf": person["csrf"]})
+        if diagnostic:
+            http_finished = time.monotonic()
+            sizes = metrics.response_bytes[(stage,operation)]
+            sizes["responses"] += 1; sizes["decoded_body_bytes"] += len(response.content)
+            sizes["downloaded_body_bytes"] += response.num_bytes_downloaded
         status = response.status_code
-        if response.headers.get("content-type", "").startswith("application/json"): data = response.json()
+        if response.headers.get("content-type", "").startswith("application/json"):
+            if diagnostic: decode_started = time.monotonic(); decode_cpu = time.process_time()
+            try:
+                data = response.json()
+            finally:
+                if diagnostic:
+                    metrics.request_timings[(stage,operation,"decode_cpu_ms")].append((time.process_time()-decode_cpu)*1000)
+                    metrics.request_timings[(stage,operation,"decode_wall_ms")].append((time.monotonic()-decode_started)*1000)
     except (httpx.HTTPError, ValueError):
         pass
-    metrics.record(stage, operation, time.monotonic()-started, status, expected)
+    finished = time.monotonic()
+    metrics.record(stage, operation, finished-started, status, expected)
+    if diagnostic:
+        metrics.request_timings[(stage,operation,"client_await_wall_ms")].append(((http_finished or finished)-request_started)*1000)
+        metrics.request_timings[(stage,operation,"actual_request_wall_ms")].append((finished-request_started)*1000)
+        if due is not None:
+            metrics.request_timings[(stage,operation,"planned_to_request_ms")].append(max(0,request_started-due)*1000)
     return status, data
 
 
@@ -295,9 +338,16 @@ async def journey(client, m, stage, p, seq, index, due, *, phase="measured"):
 
 async def run_stage(client, metrics, people, active, duration, period, seed, max_pending, *, phase="measured"):
     rng = random.Random(seed + active); start = time.monotonic(); stop = start+duration
+    if metrics.diagnostics:
+        cpu_started = time.process_time(); thread_started = time.thread_time()
+        offered_before, dropped_before = metrics.offered[active], metrics.dropped[active]
     arrivals = [(start+rng.random()*period, i, 0) for i in range(active)]
     heapq.heapify(arrivals); pending = set(); busy = set()
-    async def run(index, seq, due):
+    async def run(index, seq, due, dispatched):
+        if metrics.diagnostics:
+            now = time.monotonic()
+            metrics.scheduling[(active,"task_start_lag_ms")].append(max(0,now-dispatched)*1000)
+            metrics.scheduling[(active,"planned_to_task_ms")].append(max(0,now-due)*1000)
         try: await journey(client, metrics, active, people[index], seq, index, due, phase=phase)
         except Exception as exc: metrics.failures[f"{active}/journey/{type(exc).__name__}"] += 1
         finally: busy.discard(index)
@@ -307,10 +357,13 @@ async def run_stage(client, metrics, people, active, duration, period, seed, max
             if due >= stop: break
             await asyncio.sleep(max(0, due-time.monotonic()))
             metrics.offered[active] += 1
+            if metrics.diagnostics:
+                metrics.scheduling[(active,"offer_lag_ms")].append(max(0,time.monotonic()-due)*1000)
             if index in busy or len(pending) >= max_pending:
                 metrics.dropped[active] += 1
             else:
-                busy.add(index); task = asyncio.create_task(run(index, seq, due)); pending.add(task)
+                busy.add(index); dispatched = time.monotonic() if metrics.diagnostics else None
+                task = asyncio.create_task(run(index, seq, due, dispatched)); pending.add(task)
                 task.add_done_callback(pending.discard)
             heapq.heappush(arrivals, (due+period, index, seq+1))
         await asyncio.sleep(max(0, stop-time.monotonic()))
@@ -318,6 +371,12 @@ async def run_stage(client, metrics, people, active, duration, period, seed, max
     finally:
         for task in pending: task.cancel()
         if pending: await asyncio.gather(*pending,return_exceptions=True)
+        if metrics.diagnostics:
+            metrics.generator_windows.append({"stage_users":active,"phase":phase,
+                "wall_seconds":round(time.monotonic()-start,6),
+                "process_cpu_seconds":round(time.process_time()-cpu_started,6),
+                "main_thread_cpu_seconds":round(time.thread_time()-thread_started,6),
+                "offered":metrics.offered[active]-offered_before,"dropped":metrics.dropped[active]-dropped_before})
     return time.monotonic()-start
 
 
@@ -420,7 +479,25 @@ def process_metrics(parent_pid):
         "open_fds": sum(len(list((r[3]/"fd").iterdir())) for r in records)}
 
 
-async def monitor(sandbox, cache, pid, samples, stop, max_memory_mb):
+def generator_host_metrics():
+    result = {"generator_cpu_seconds":time.process_time(),
+        "generator_main_thread_cpu_seconds":time.thread_time(),
+        "generator_resource_available":False,"host_resource_available":False}
+    try:
+        result["generator_rss_bytes"] = int(Path("/proc/self/statm").read_text().split()[1])*os.sysconf("SC_PAGE_SIZE")
+        result["generator_resource_available"] = True
+    except (OSError, ValueError, IndexError, AttributeError): pass
+    try:
+        fields = Path("/proc/stat").read_text().splitlines()[0].split()
+        if fields[0] != "cpu" or len(fields) < 9: raise ValueError("CPU counters unavailable")
+        counters = [int(value) for value in fields[1:9]]  # guest is already included in user/nice
+        result.update(host_cpu_ticks=sum(counters),host_idle_ticks=counters[3]+counters[4],
+            host_load_average=list(os.getloadavg()),host_resource_available=True)
+    except (OSError, ValueError, IndexError, AttributeError): pass
+    return result
+
+
+async def monitor(sandbox, cache, pid, samples, stop, max_memory_mb, *, diagnostics=False, phase=None):
     previous = None
     while not stop.is_set():
         def database():
@@ -431,10 +508,21 @@ async def monitor(sandbox, cache, pid, samples, stop, max_memory_mb):
                 row["calendar_pending"] = db.exec_driver_sql("SELECT count(*) FROM calendar_outbox WHERE status='pending'").scalar_one()
                 return row
         row = await asyncio.to_thread(database); row.update(process_metrics(pid)); row["at_monotonic"] = time.monotonic()
+        if diagnostics:
+            row.update(generator_host_metrics())
+            row["phase"] = phase() if phase is not None else None
         info = await cache.info("memory"); row["redis_used_memory"] = info["used_memory"]
         row["disk_free_bytes"] = shutil.disk_usage(ROOT).free
         if previous and row.get("available"):
             row["api_cpu_percent_one_core"] = max(0, (row["cpu_seconds"]-previous["cpu_seconds"])/(row["at_monotonic"]-previous["at_monotonic"])*100)
+        if diagnostics and previous:
+            elapsed = row["at_monotonic"]-previous["at_monotonic"]
+            row["generator_cpu_percent_one_core"] = max(0,(row["generator_cpu_seconds"]-previous["generator_cpu_seconds"])/elapsed*100)
+            row["generator_main_thread_cpu_percent_one_core"] = max(0,(row["generator_main_thread_cpu_seconds"]-previous["generator_main_thread_cpu_seconds"])/elapsed*100)
+            if row["host_resource_available"] and previous.get("host_resource_available"):
+                ticks = row["host_cpu_ticks"]-previous["host_cpu_ticks"]
+                idle = row["host_idle_ticks"]-previous["host_idle_ticks"]
+                if ticks > 0: row["host_cpu_percent_all_cores"] = max(0,min(100,(ticks-idle)/ticks*100))
         samples.append(row); previous = row
         if row.get("rss_bytes",0) > max_memory_mb*1024**2 or row["connections"] > 80 or row["disk_free_bytes"] < 512*1024**2:
             raise RuntimeError("Qualification resource stop: memory, connections or free disk")
@@ -497,6 +585,43 @@ def collect_api_profiles(directory, expected_workers):
         "files": sorted(item.name for item in directory.iterdir() if item.suffix in {".prof", ".json"})}
 
 
+@contextmanager
+def profile_generator(args, report):
+    """Opt-in main-thread call metadata; process clock also counts helper threads.
+
+    This window is execute only, excluding migrations and final report encoding.
+    It includes fixture seeding, API startup, preflight, HTTP stages and cleanup.
+    No arguments, locals, bodies, credentials or request identifiers are saved.
+    """
+    if not args.profile_generator:
+        yield
+        return
+    directory = args.output.resolve().with_suffix(".generator-profiles")
+    if directory.exists(): raise ValueError("Generator profiling requires a new owned artifact directory")
+    directory.mkdir(mode=0o700)
+    profile = cProfile.Profile(timer=time.process_time)
+    started, cpu_started = time.monotonic(), time.process_time()
+    profile.enable()
+    try:
+        yield
+    finally:
+        profile.disable()
+        window = {"diagnostic_only":True,"clock":"time.process_time",
+            "scope":"execute only: seed, API startup/preflight, warmup, measured stages, recovery, drain and cleanup",
+            "cpu_scope":"generator process including helper threads; call records cover main thread; excludes API child",
+            "wall_seconds":round(time.monotonic()-started,6),
+            "process_cpu_seconds":round(time.process_time()-cpu_started,6)}
+        functions = [{"function":Path(filename).name+":"+str(line)+":"+name,
+            "primitive_calls":primitive,"calls":calls,"tottime":own,"cumtime":cumulative}
+            for (filename,line,name),(primitive,calls,own,cumulative,_callers) in pstats.Stats(profile).stats.items()]
+        functions.sort(key=lambda item:item["cumtime"],reverse=True)
+        profile.dump_stats(str(directory/"generator.prof.tmp"))
+        os.replace(directory/"generator.prof.tmp",directory/"generator.prof")
+        (directory/"generator.json.tmp").write_text(json.dumps({**window,"functions":functions},indent=2),encoding="utf-8")
+        os.replace(directory/"generator.json.tmp",directory/"generator.json")
+        report["generator_profile"] = {**window,"complete":True,"files":["generator.prof","generator.json"]}
+
+
 async def execute(args, sandbox, report):
     cache_url = local_url(os.environ["REDIS_URL"], database="15", redis_url=True)
     cache = redis.from_url(cache_url.render_as_string(hide_password=False), decode_responses=True)
@@ -532,7 +657,7 @@ async def execute(args, sandbox, report):
                     except httpx.HTTPError: pass
                     await asyncio.sleep(.5)
                 else: raise RuntimeError("Qualification API readiness timeout")
-                metrics = Measurements(); reports = []
+                metrics = Measurements(diagnostics=args.profile_generator); reports = []
                 report["phase"] = "all_sessions_isolation"
                 report["isolation"] = await isolation_preflight(client,people)
                 if not report["isolation"]["pass"]: raise RuntimeError("Synthetic session isolation preflight failed")
@@ -547,12 +672,14 @@ async def execute(args, sandbox, report):
                     code, _ = await request(client, metrics, 10, p, "cross_tenant_rejected", "GET", f'/api/v1/tenants/{p["other"]}/services', expected=(403,))
                     if code != 403: metrics.violations["cross_tenant_http_access"] += 1
                 # Warmup is reported separately, excluded explicitly from measured percentiles.
-                warmup = Measurements()
+                warmup = Measurements(diagnostics=args.profile_generator)
                 await run_stage(client,warmup,people,10,args.warmup_seconds,args.period_seconds,7,300,phase="warmup")
                 metrics.committed.update(warmup.committed); metrics.verified_cancellations.update(warmup.verified_cancellations)
                 metrics.hold_attempts.update(warmup.hold_attempts)
                 report["warmup_unexpected"] = dict(warmup.failures); metrics.violations.update(warmup.violations)
-                monitor_task = asyncio.create_task(monitor(sandbox,cache,api.pid,report["resource_samples"],stop,args.max_memory_mb))
+                if args.profile_generator: report["warmup_diagnostics"] = warmup.diagnostic_report()
+                monitor_task = asyncio.create_task(monitor(sandbox,cache,api.pid,report["resource_samples"],stop,args.max_memory_mb,
+                    diagnostics=args.profile_generator,phase=lambda:report.get("phase")))
                 durations = {}
                 for active in LEVELS:
                     report["phase"] = f"load_{active}"
@@ -564,7 +691,8 @@ async def execute(args, sandbox, report):
                         await monitor_task
                         raise RuntimeError("Resource monitor stopped unexpectedly")
                     durations[active] = await stage_task
-                recovery = Measurements()
+                report["phase"] = "recovery"
+                recovery = Measurements(diagnostics=args.profile_generator)
                 recovery_elapsed = await run_stage(client,recovery,people,10,30,args.period_seconds,args.seed,300,phase="recovery")
                 metrics.committed.update(recovery.committed); metrics.verified_cancellations.update(recovery.verified_cancellations)
                 metrics.hold_attempts.update(recovery.hold_attempts)
@@ -614,6 +742,7 @@ def parser():
     result.add_argument("--db-pool-size",type=int,choices=range(1,21),default=5)
     result.add_argument("--db-max-overflow",type=int,choices=range(21),default=10)
     result.add_argument("--profile-api",action="store_true",help="Collect per-worker CPU profiles; diagnostic only, never capacity qualification")
+    result.add_argument("--profile-generator",action="store_true",help="Collect generator CPU and scheduling/request timing metadata; diagnostic only")
     result.add_argument("--max-memory-mb",type=int,default=1536)
     result.add_argument("--seed",type=int,default=20261018)
     return result
@@ -638,14 +767,14 @@ def main(argv=None):
             "max_overflow_per_role_per_worker":args.db_max_overflow,"roles_per_worker":2,
             "theoretical_api_connection_ceiling":args.api_workers*2*(args.db_pool_size+args.db_max_overflow)},
         "planned_stage_seconds":args.stage_seconds,"planned_sustain_seconds":args.sustain_seconds,
-        "run_kind":"cpu_profile_diagnostic" if args.profile_api else "finite_qualification" if args.sustain_seconds>=600 and args.stage_seconds>=60 else "short_smoke_only",
-        "profile_api":args.profile_api,
+        "run_kind":"cpu_profile_diagnostic" if args.profile_api or args.profile_generator else "finite_qualification" if args.sustain_seconds>=600 and args.stage_seconds>=60 else "short_smoke_only",
+        "profile_api":args.profile_api,"profile_generator":args.profile_generator,
         "twelve_hour_window_completed":False,"external_delivery_qualified":False,
         "limits":["No real WhatsApp, audio, model provider, worker recovery or financial integration",
                   "No production capacity claim; API workers and PostgreSQL pools are real",
                   "No 12-hour endurance test; 30/60-minute profiles require separate execution"],
         "machine":{"platform":platform.platform(),"python":platform.python_version(),"logical_cpus":os.cpu_count()}}
-    if args.profile_api: report["capacity_qualified"] = False
+    if args.profile_api or args.profile_generator: report["capacity_qualified"] = False
     source = subprocess.run(["git","rev-parse","HEAD"],cwd=ROOT,capture_output=True,text=True,timeout=5)
     report["source_commit"] = source.stdout.strip() if source.returncode==0 else None
     # Persist the immutable target declaration before any measurement.
@@ -656,7 +785,8 @@ def main(argv=None):
             report["phase"] = "migration_to_head"
             sandbox.migrate()
             with sandbox.engine.connect() as db: report["migration_revision"] = db.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-            asyncio.run(execute(args,sandbox,report))
+            with profile_generator(args,report):
+                asyncio.run(execute(args,sandbox,report))
     except Exception as exc:
         report["pass"] = False; report["stopped_error_class"] = type(exc).__name__
         original = getattr(exc,"orig",None)
