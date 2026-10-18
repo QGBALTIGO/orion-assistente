@@ -163,7 +163,7 @@ def distribute(index, companies, wide=False):
     # Every company is represented; then 40% of the additional users concentrate
     # on five companies. Wide distribution has 1–2 operators per company.
     if index < companies or wide: return index % companies
-    return index % min(5, companies) if index % 5 < 2 else index % companies
+    return (index // 5) % min(5, companies) if index % 5 < 2 else index % companies
 
 
 def seed_database(sandbox, users, companies, wide=False, *, simulated_channels=False):
@@ -226,8 +226,11 @@ def seed_database(sandbox, users, companies, wide=False, *, simulated_channels=F
                     price_snapshot_cents,prep_snapshot_min,cleanup_snapshot_min,item_order)
                     VALUES(:t,:a,:s,'Synthetic appointment',30,3500,0,0,0)"""), {"t": tenant, "a": appointment, "s": services[n]})
                 db.execute(text("INSERT INTO appointment_history(tenant_id,appointment_id,event,operator) VALUES(:t,:a,'confirmed','system')"), {"t": tenant, "a": appointment})
+    distribution = Counter(distribute(n, companies, wide) for n in range(users))
     return people, {"companies": companies, "operators": users, "professionals": users,
                     "services": companies, "products": companies, "historical_appointments": companies*10,
+                    "distribution_version": 2, "concentrated_additional_companies": None if wide else min(5, companies),
+                    "operators_per_company": [distribution[index] for index in range(companies)],
                     "simulated_disabled_channel_records":companies*2 if simulated_channels else 0,
                     "actual_whatsapp_sessions": 0, "audio_percent": 0, "external_provider_requests": 0}
 
@@ -460,11 +463,40 @@ async def stop_api_for_reconciliation(api):
         "final_database_read_after_shutdown": True}
 
 
+def api_command(args, port):
+    target = "scripts.qualification_profile_api:create_app" if args.profile_api else "app.main:app"
+    command = [sys.executable, "-m", "uvicorn", target]
+    if args.profile_api: command.append("--factory")
+    return command + ["--host", "127.0.0.1", "--port", str(port), "--workers", str(args.api_workers),
+        "--timeout-graceful-shutdown", "15", "--no-access-log"]
+
+
+def configure_api_profile(args, environment):
+    if not args.profile_api:
+        return None
+    directory = args.output.resolve().with_suffix(".profiles")
+    if directory.exists():
+        raise ValueError("Profiling requires a new owned artifact directory")
+    directory.mkdir(mode=0o700)
+    environment.update({"ORION_QUALIFICATION_PROFILE_API": "1", "ORION_QUALIFICATION_DISPOSABLE": "1",
+        "ORION_QUALIFICATION_PROFILE_DIRECTORY": str(directory)})
+    return directory
+
+
+def collect_api_profiles(directory, expected_workers):
+    binaries = {item.stem for item in directory.glob("worker-*.prof")}
+    summaries = {item.stem for item in directory.glob("worker-*.json")}
+    return {"enabled": True, "diagnostic_only": True, "clock": "time.process_time",
+        "expected_workers": expected_workers, "complete_workers": len(binaries & summaries),
+        "complete": len(binaries) == len(summaries) == len(binaries & summaries) == expected_workers,
+        "files": sorted(item.name for item in directory.iterdir() if item.suffix in {".prof", ".json"})}
+
+
 async def execute(args, sandbox, report):
     cache_url = local_url(os.environ["REDIS_URL"], database="15", redis_url=True)
     cache = redis.from_url(cache_url.render_as_string(hide_password=False), decode_responses=True)
     lock = "orion:qualification:exclusive"; owner = secrets.token_urlsafe(32); keys = []; api = None; monitor_task = None
-    stop = asyncio.Event(); report["resource_samples"] = []
+    stop = asyncio.Event(); report["resource_samples"] = []; profile_directory = None
     try:
         if await cache.dbsize() != 0 or not await cache.set(lock, owner, nx=True, ex=7200):
             raise RuntimeError("Qualification requires an empty, dedicated Redis database 15")
@@ -480,11 +512,11 @@ async def execute(args, sandbox, report):
         env = sandbox.environment(); env.update({"REDIS_URL": cache_url.render_as_string(hide_password=False),
             "SUPPORT_API_TOKEN": secrets.token_urlsafe(48), "BUSINESS_PROFILES_ENABLED": "1", "ONBOARDING_ENABLED": "1",
             "COMMERCIAL_CATALOG_ENABLED": "1", "MARKETING_EXECUTION_ENABLED": "0", "QR_CHANNELS_ENABLED": "0", "QR_AI_ENABLED": "0", "GROQ_PROBE_ON_START": "0"})
+        profile_directory = configure_api_profile(args, env)
         with socket.socket() as probe: probe.bind(("127.0.0.1",0)); port = probe.getsockname()[1]
         with args.output.with_suffix(".api.log").open("wb") as log:
             report["phase"] = "local_api_start"
-            api = subprocess.Popen([sys.executable,"-m","uvicorn","app.main:app","--host","127.0.0.1","--port",str(port),
-                "--workers",str(args.api_workers),"--timeout-graceful-shutdown","15","--no-access-log"],cwd=ROOT,env=env,stdout=log,stderr=log)
+            api = subprocess.Popen(api_command(args, port),cwd=ROOT,env=env,stdout=log,stderr=log)
             async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}",timeout=10,
                 limits=httpx.Limits(max_connections=300,max_keepalive_connections=150),trust_env=False) as client:
                 for _ in range(90):
@@ -555,6 +587,9 @@ async def execute(args, sandbox, report):
             try: await asyncio.to_thread(api.wait,15)
             except subprocess.TimeoutExpired:
                 api.kill(); await asyncio.to_thread(api.wait,5)
+        if profile_directory is not None:
+            report["cpu_profiles"] = collect_api_profiles(profile_directory, args.api_workers)
+            if not report["cpu_profiles"]["complete"]: report["pass"] = False
         if keys and await cache.get(lock)==owner:
             for offset in range(0,len(keys),100): await cache.delete(*keys[offset:offset+100])
         await cache.aclose()
@@ -570,6 +605,7 @@ def parser():
     result.add_argument("--warmup-seconds",type=int,default=30)
     result.add_argument("--period-seconds",type=float,default=10)
     result.add_argument("--api-workers",type=int,choices=(1,2,3,4),default=2)
+    result.add_argument("--profile-api",action="store_true",help="Collect per-worker CPU profiles; diagnostic only, never capacity qualification")
     result.add_argument("--max-memory-mb",type=int,default=1536)
     result.add_argument("--seed",type=int,default=20261018)
     return result
@@ -591,12 +627,14 @@ def main(argv=None):
         "offered_journey_rate_per_second":{n:n/args.period_seconds for n in LEVELS},
         "period_seconds":args.period_seconds,"api_workers":args.api_workers,"pass":False,
         "planned_stage_seconds":args.stage_seconds,"planned_sustain_seconds":args.sustain_seconds,
-        "run_kind":"finite_qualification" if args.sustain_seconds>=600 and args.stage_seconds>=60 else "short_smoke_only",
+        "run_kind":"cpu_profile_diagnostic" if args.profile_api else "finite_qualification" if args.sustain_seconds>=600 and args.stage_seconds>=60 else "short_smoke_only",
+        "profile_api":args.profile_api,
         "twelve_hour_window_completed":False,"external_delivery_qualified":False,
         "limits":["No real WhatsApp, audio, model provider, worker recovery or financial integration",
                   "No production capacity claim; API workers and PostgreSQL pools are real",
                   "No 12-hour endurance test; 30/60-minute profiles require separate execution"],
         "machine":{"platform":platform.platform(),"python":platform.python_version(),"logical_cpus":os.cpu_count()}}
+    if args.profile_api: report["capacity_qualified"] = False
     source = subprocess.run(["git","rev-parse","HEAD"],cwd=ROOT,capture_output=True,text=True,timeout=5)
     report["source_commit"] = source.stdout.strip() if source.returncode==0 else None
     # Persist the immutable target declaration before any measurement.

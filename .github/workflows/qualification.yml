@@ -132,3 +132,69 @@ jobs:
           name: load-${{ matrix.profile }}-${{ github.sha }}
           path: artifacts/
           retention-days: 7
+
+  cpu-profile:
+    name: Diagnostico CPU - ${{ matrix.profile }} curto (nao qualifica capacidade)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [concentrated, wide]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: qualification-owner-only
+          POSTGRES_DB: qualification_seed
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d qualification_seed"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:qualification-runtime-only@127.0.0.1:5432/qualification_seed
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:qualification-migrator-only@127.0.0.1:5432/qualification_seed
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:qualification-support-only@127.0.0.1:5432/qualification_seed
+      ORION_QUALIFICATION_OWNER_URL: postgresql+psycopg://postgres:qualification-owner-only@127.0.0.1:5432/postgres
+      ORION_QUALIFICATION_DISPOSABLE: '1'
+      REDIS_URL: redis://127.0.0.1:6379/15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar aplicacao real e testar guardas do diagnostico
+        run: |
+          python -m pip install '.[test]'
+          python -m pytest tests/load/test_qualification_load.py tests/load/test_qualification_profile_api.py -q
+      - name: Preparar papeis no PostgreSQL exclusivo deste job
+        env:
+          PGPASSWORD: qualification-owner-only
+        run: |
+          psql -h 127.0.0.1 -U postgres -d qualification_seed -v ON_ERROR_STOP=1 \
+            -v db_name=qualification_seed -v runtime_password=qualification-runtime-only \
+            -v migrator_password=qualification-migrator-only -v support_password=qualification-support-only \
+            -f infra/postgres/init/001-roles.sql
+      - name: Perfilar CPU real - 10,100,500,1000,1500 usuarios
+        run: |
+          mkdir -p artifacts
+          set +e
+          python scripts/qualification_load.py --confirm-disposable-local --profile ${{ matrix.profile }} --profile-api \
+            --stage-seconds 5 --sustain-seconds 30 --warmup-seconds 5 --api-workers 2 \
+            --output artifacts/cpu-profile-${{ matrix.profile }}.json
+          runner_status=$?
+          printf 'runner_exit_code=%s\n' "$runner_status" > artifacts/cpu-profile-exit.txt
+          exit "$runner_status"
+      - name: Guardar perfis por worker, metricas e codigo de falha
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-profile-diagnostic-${{ matrix.profile }}-${{ github.sha }}
+          path: artifacts/
+          retention-days: 7

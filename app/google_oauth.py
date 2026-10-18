@@ -21,22 +21,27 @@ OAUTH_COOKIE = "__Secure-orion_google_oauth"
 OAUTH_PATH = "/integrations/google/callback"
 
 
+def _valid_callback(redirect, public_value):
+    """One callback/origin contract for runtime and the local checklist."""
+    try:
+        parsed = urlsplit(redirect)
+        public = urlsplit(public_value)
+        return bool(parsed.scheme == "https" and parsed.hostname and parsed.netloc
+            and not parsed.username and not parsed.password and parsed.path == OAUTH_PATH
+            and not parsed.query and not parsed.fragment
+            and (not public_value or public.scheme == "https" and public.netloc == parsed.netloc))
+    except ValueError:
+        return False
+
+
 def oauth_config():
     cid = os.getenv("GOOGLE_CLIENT_ID", "")
     secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
     redirect = os.getenv("GOOGLE_REDIRECT_URI", "")
     key = os.getenv("INTEGRATION_FERNET_KEY", "")
     public_value = os.getenv("PANEL_PUBLIC_URL", "")
-    try:
-        parsed = urlsplit(redirect)
-        public = urlsplit(public_value)
-    except ValueError:
-        raise HTTPException(503, "O endereço de retorno do Google precisa ser configurado pela equipe Orion") from None
-    if not all((cid, secret, redirect, key)) or parsed.scheme != "https" or not parsed.netloc or \
-            parsed.username or parsed.password or parsed.path != OAUTH_PATH or parsed.query or parsed.fragment:
+    if not all((cid, secret, redirect, key)) or not _valid_callback(redirect, public_value):
         raise HTTPException(503, "A conexão com o Google ainda precisa ser configurada pela equipe Orion")
-    if public_value and (public.scheme != "https" or public.netloc != parsed.netloc):
-        raise HTTPException(503, "O endereço de retorno do Google precisa ser configurado pela equipe Orion")
     try:
         Fernet(key.encode())
     except (ValueError, TypeError):
@@ -66,15 +71,7 @@ def configuration_checklist(*, worker=False):
                 ready = False
         checks.append({"id": name, "label": label, "ready": ready})
     if not worker:
-        valid_redirect = False
-        try:
-            redirect = urlsplit(os.getenv("GOOGLE_REDIRECT_URI", ""))
-            origin = urlsplit(os.getenv("PANEL_PUBLIC_URL", ""))
-            valid_redirect = bool(redirect.scheme == "https" and redirect.hostname and not redirect.username
-                and not redirect.password and redirect.path == OAUTH_PATH and not redirect.query and not redirect.fragment
-                and (not origin.netloc or origin.scheme == "https" and origin.netloc == redirect.netloc))
-        except ValueError:
-            pass
+        valid_redirect = _valid_callback(os.getenv("GOOGLE_REDIRECT_URI", ""), os.getenv("PANEL_PUBLIC_URL", ""))
         checks.append({"id": "GOOGLE_REDIRECT_URI", "label": "Endereço seguro de retorno ao Orion", "ready": valid_redirect})
     configured = all(item["ready"] for item in checks)
     return {"checks": checks, "configured": configured,

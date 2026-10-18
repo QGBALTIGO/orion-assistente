@@ -52,6 +52,23 @@ def privileges(db, names):
         WHERE n.nspname='public' AND c.relname=ANY(:names) ORDER BY c.relname"""), {"names":list(names)}).all()
 
 
+def assert_same_catalog(actual, expected):
+    """Compare every catalog field, reporting only the mismatched structure."""
+    expected_by_table = {row[0]: row for row in expected}
+    actual_by_table = {row[0]: row for row in actual}
+    assert len(actual_by_table) == len(actual)
+    assert len(expected_by_table) == len(expected)
+    assert set(actual_by_table) == set(expected_by_table)
+    sections = ("table", "rls", "force_rls", "columns", "constraints", "indexes", "policies")
+    for name, wanted in expected_by_table.items():
+        observed = actual_by_table[name]
+        assert len(observed) == len(wanted) == len(sections), name
+        for section, current, previous in zip(sections, observed, wanted):
+            assert current == previous, f"Restored catalog differs: {name}.{section}"
+    # Keep the original full equality, including the stable catalog ordering.
+    assert actual == expected
+
+
 def client(program, args, sandbox):
     env = backup.pg_environment(sandbox.owner.set(database=sandbox.name))
     result = subprocess.run([program,*args],env=env,capture_output=True,timeout=120)
@@ -105,7 +122,7 @@ def test_populated_0019_head_backup_restore_and_legacy_contract(populated_source
         with restored.engine.connect() as db:
             assert row_digests(db,before_columns) == before
             assert privileges(db,before_columns) == old_privileges
-            assert op.canonical_catalog(backup.catalog_structure(db,frozenset(before_columns))) == old_catalog
+            assert_same_catalog(op.canonical_catalog(backup.catalog_structure(db,frozenset(before_columns))), old_catalog)
             assert db.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()=="0019_appointment_lifecycle"
         source.migrate("head")
         with source.engine.begin() as db:

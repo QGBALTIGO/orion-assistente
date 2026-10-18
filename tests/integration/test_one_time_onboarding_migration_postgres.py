@@ -5,6 +5,7 @@ is simulated; encrypted envelopes, pg_dump/pg_restore, roles, DDL and RLS are no
 """
 from types import SimpleNamespace
 from uuid import uuid4
+import hashlib
 import json
 
 from alembic import command
@@ -12,13 +13,35 @@ from alembic.config import Config
 import pytest
 from sqlalchemy import event, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import DBAPIError
 
 from scripts import one_time_onboarding_migration as ops
 from test_business_migration_ops_postgres import migration_source, install_mock_private_store  # noqa: F401
 from test_fulfillment_migration_ops_postgres import fulfillment_source  # noqa: F401
-from test_one_time_management_migration import management_source, independently_hash_old_rows  # noqa: F401
+from test_one_time_management_migration import management_source  # noqa: F401
 
 pytestmark = pytest.mark.integration
+
+
+def independently_hash_0019_rows(db, columns):
+    """Project every captured 0019 column, independent of the runner's hash.
+
+    Explicit SQL columns fail if a legacy column disappears; filtering JSON
+    keys could silently omit it. Sorting row hashes preserves duplicate rows
+    while making the comparison independent of physical/restore row order.
+    """
+    result = {}
+    for table, names in sorted(columns.items()):
+        assert table in ops.SOURCE_TABLES - {"alembic_version"}
+        assert names and len(names) == len(set(names))
+        selected = ",".join('"' + name.replace('"', '""') + '"' for name in names)
+        query = text("SELECT encode(sha256(convert_to(to_jsonb(old_row)::text,'UTF8')),'hex') "
+                     'FROM (SELECT ' + selected + ' FROM public."' + table + '") old_row ORDER BY 1')
+        digest = hashlib.sha256()
+        for row in db.execute(query):
+            digest.update(row[0].encode("ascii") + b"\n")
+        result[table] = digest.hexdigest()
+    return result
 
 
 @pytest.fixture
@@ -48,9 +71,10 @@ def evidence(case, *, old_columns=None):
         ops.proof.set_timeouts(db)
         columns = old_columns or {row[0]: [c[0] for c in row[3]]
             for row in ops.backup.catalog_structure(db, ops.SOURCE_TABLES)}
+        assert set(columns) == ops.SOURCE_TABLES
         return {"columns": columns, "revision": ops.backup.revision(db),
                 "tables": ops.backup.table_names(db), "counts": ops.counts(db),
-                "rows": independently_hash_old_rows(db, {name: fields for name, fields in columns.items() if name != "alembic_version"}),
+                "rows": independently_hash_0019_rows(db, {name: fields for name, fields in columns.items() if name != "alembic_version"}),
                 "catalog": ops.old_catalog(db, projected=old_columns is not None),
                 "security": ops.proof.security_structure(db), "programs": ops.proof.programs(db)}
 
@@ -59,6 +83,25 @@ def assert_restore_removed(case):
     with case.engine.begin() as db:
         assert not db.execute(text("SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname=:name)"),
                               {"name": ops.backup.restore_name(case.settings.run_id)}).scalar_one()
+
+
+def test_0019_row_hash_preserves_projection_and_rejects_missing_columns(onboarding_source):
+    case = onboarding_source
+    with case.engine.begin() as db:
+        projection = {row[0]: [column[0] for column in row[3]]
+                      for row in ops.backup.catalog_structure(
+                          db, {"customers", "commission_advance_allocations"})}
+        assert set(projection) == {"customers", "commission_advance_allocations"}
+        before = independently_hash_0019_rows(db, projection)
+        # An additive target field must not change the captured source values.
+        db.exec_driver_sql("ALTER TABLE customers ADD COLUMN qualification_extra text DEFAULT 'synthetic'")
+        assert independently_hash_0019_rows(db, projection) == before
+        db.execute(text("UPDATE customers SET name='Synthetic changed original value' WHERE id=:id"),
+                   {"id": case.customer})
+        assert independently_hash_0019_rows(db, projection)["customers"] != before["customers"]
+        # Missing fields must fail SQL, not disappear from a JSON-key filter.
+        with pytest.raises(DBAPIError), db.begin_nested():
+            independently_hash_0019_rows(db, {"customers": [*projection["customers"], "missing_0019_field"]})
 
 
 def test_sealed_execute_real_backup_restore_and_rehearsal_preserve_0019_rows_and_security(onboarding_source, monkeypatch):
@@ -152,4 +195,67 @@ def test_failure_in_real_rehearsal_rolls_back_and_preserves_populated_source(onb
     with pytest.raises(RuntimeError, match="synthetic rehearsal failure"):
         ops.execute(case.settings)
     assert evidence(case) == before
+    assert_restore_removed(case)
+
+
+@pytest.mark.parametrize("tamper", ["drop", "rename"])
+def test_restored_check_removed_blocks_before_any_source_schema_change(onboarding_source, monkeypatch, tamper):
+    case = onboarding_source
+    before = evidence(case)
+    stored, requests = install_mock_private_store(monkeypatch, case.settings)
+    original = ops.backup.run_client
+    restore_database = ops.backup.restore_name(case.settings.run_id)
+    changed = []
+    source_ddl = []
+
+    def corrupt_restored_check(program, args, url=None, max_file=None):
+        result = original(program, args, url=url, max_file=max_file)
+        if program == "pg_restore" and url is not None:
+            assert url.database == restore_database != case.settings.url.database
+            assert "--dbname=" + restore_database in args
+            restored = ops.backup.engine_for(url)
+            try:
+                with restored.begin() as db:
+                    assert ops.backup.revision(db) == ops.SOURCE
+                    definition = db.exec_driver_sql("""SELECT pg_get_constraintdef(oid) FROM pg_constraint
+                        WHERE conrelid='public.loyalty_rules'::regclass
+                        AND conname='ck_loyalty_thresholds' AND contype='c'""").scalar_one()
+                    if tamper == "drop":
+                        db.exec_driver_sql("ALTER TABLE public.loyalty_rules DROP CONSTRAINT ck_loyalty_thresholds")
+                    else:
+                        db.exec_driver_sql("ALTER TABLE public.loyalty_rules RENAME CONSTRAINT ck_loyalty_thresholds TO synthetic_renamed_thresholds")
+                        # Definitions alone cannot detect this: only the name
+                        # changed, with the original bound expression intact.
+                        assert db.exec_driver_sql("""SELECT pg_get_constraintdef(oid) FROM pg_constraint
+                            WHERE conrelid='public.loyalty_rules'::regclass
+                            AND conname='synthetic_renamed_thresholds' AND contype='c'""").scalar_one() == definition
+                    assert db.exec_driver_sql("""SELECT count(*) FROM pg_constraint
+                        WHERE conrelid='public.loyalty_rules'::regclass
+                        AND conname='ck_loyalty_thresholds'""").scalar_one() == 0
+                    changed.append(restore_database)
+            finally:
+                restored.dispose()
+        return result
+
+    def watch_source_schema(conn, cursor, statement, parameters, context, many):
+        sql = statement.lstrip().upper()
+        if conn.engine.url.database != case.settings.url.database:
+            return
+        # Creating/removing the isolated restore DB is expected; changing any
+        # relation/function/policy in the original source is not.
+        if sql.startswith(("CREATE ", "ALTER ", "DROP ", "TRUNCATE ")) and not sql.startswith(
+                ("CREATE DATABASE ", "ALTER DATABASE ", "DROP DATABASE ")):
+            source_ddl.append(sql.splitlines()[0])
+
+    monkeypatch.setattr(ops.backup, "run_client", corrupt_restored_check)
+    event.listen(Engine, "before_cursor_execute", watch_source_schema)
+    try:
+        with pytest.raises(ops.Stop, match="^restored_snapshot_mismatch$"):
+            ops.execute(case.settings)
+    finally:
+        event.remove(Engine, "before_cursor_execute", watch_source_schema)
+    assert changed == [restore_database]
+    assert requests == ["POST", "GET"] and stored["body"]
+    assert source_ddl == []
+    assert evidence(case) == before and before["revision"] == ops.SOURCE
     assert_restore_removed(case)

@@ -116,10 +116,14 @@ def verify_legacy_programs(conn, *, target=False):
         all(r[0] == "public" and r[3] == "O" for r in legacy["triggers"]), "legacy_triggers_mismatch")
     return legacy
 
-def source_only(conn):
+def source_only(conn, *, restored=False):
     require(backup.revision(conn) == SOURCE and backup.table_names(conn) == SOURCE_TABLES,
             "unexpected_source_schema")
-    agenda.verify_target(conn)
+    # The original source must match the previously sealed agenda fingerprint.
+    # pg_dump reparses CHECK trees (including varchar-array casts), so the
+    # restored copy instead has to match that source's full canonical snapshot,
+    # rows, ACLs and programs in verify_restore, before it receives a proof.
+    if not restored: agenda.verify_target(conn)
     verify_legacy_programs(conn)
     require(all(row[0] != "operational_opt_in" for row in conn.exec_driver_sql(
         "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='contact_consents'")),
@@ -174,18 +178,26 @@ def rows(conn, *, projected=False):
         result[table] = digest.hexdigest()
     return result
 
-def canonical_catalog(catalog):
-    """Only the two reviewed PostgreSQL 16 spellings of this legacy AND check.
+# Exact table-scoped PG16 source/restore pairs observed in real 0019 dumps.
+# Only redundant grouping of the first associative AND is removed. All bounds,
+# nested OR/NOT, casts, literals and every other catalog/security field remain.
+RESTORE_CHECK_ALIASES = (
+    ["loyalty_rules","CHECK ((((points_per_visit >= 0) AND (points_per_visit <= 10000)) AND ((points_per_step >= 0) AND (points_per_step <= 10000)) AND ((NOT active) OR (((earning_mode)::text = ANY (ARRAY[('visit'::character varying)::text, ('both'::character varying)::text])) AND (points_per_visit > 0)) OR (((earning_mode)::text = ANY (ARRAY[('spend'::character varying)::text, ('both'::character varying)::text])) AND (points_per_step > 0)))))","CHECK (((points_per_visit >= 0) AND (points_per_visit <= 10000) AND ((points_per_step >= 0) AND (points_per_step <= 10000)) AND ((NOT active) OR (((earning_mode)::text = ANY (ARRAY[('visit'::character varying)::text, ('both'::character varying)::text])) AND (points_per_visit > 0)) OR (((earning_mode)::text = ANY (ARRAY[('spend'::character varying)::text, ('both'::character varying)::text])) AND (points_per_step > 0)))))"],
+    ["loyalty_rules","CHECK ((((reward_valid_days >= 1) AND (reward_valid_days <= 3650)) AND ((reward_type)::text = ANY (ARRAY[('manual'::character varying)::text, ('percent'::character varying)::text, ('fixed'::character varying)::text, ('free_service'::character varying)::text])) AND (((reward_type)::text = 'manual'::text) OR (((reward_type)::text = 'percent'::text) AND (reward_percent IS NOT NULL) AND (reward_percent > (0)::numeric) AND (reward_percent <= (100)::numeric)) OR (((reward_type)::text = 'fixed'::text) AND (reward_value_cents IS NOT NULL) AND ((reward_value_cents >= 1) AND (reward_value_cents <= 1000000000))) OR (((reward_type)::text = 'free_service'::text) AND (reward_service_id IS NOT NULL)))))","CHECK (((reward_valid_days >= 1) AND (reward_valid_days <= 3650) AND ((reward_type)::text = ANY (ARRAY[('manual'::character varying)::text, ('percent'::character varying)::text, ('fixed'::character varying)::text, ('free_service'::character varying)::text])) AND (((reward_type)::text = 'manual'::text) OR (((reward_type)::text = 'percent'::text) AND (reward_percent IS NOT NULL) AND (reward_percent > (0)::numeric) AND (reward_percent <= (100)::numeric)) OR (((reward_type)::text = 'fixed'::text) AND (reward_value_cents IS NOT NULL) AND ((reward_value_cents >= 1) AND (reward_value_cents <= 1000000000))) OR (((reward_type)::text = 'free_service'::text) AND (reward_service_id IS NOT NULL)))))"],
+    ["loyalty_rules","CHECK ((((spend_step_cents >= 1) AND (spend_step_cents <= 1000000000)) AND ((reward_points >= 1) AND (reward_points <= 1000000))))","CHECK (((spend_step_cents >= 1) AND (spend_step_cents <= 1000000000) AND ((reward_points >= 1) AND (reward_points <= 1000000))))"],
+    ["loyalty_transactions","CHECK ((((points_delta >= '-10000000000000'::bigint) AND (points_delta <= '10000000000000'::bigint)) AND (points_delta <> 0)))","CHECK (((points_delta >= '-10000000000000'::bigint) AND (points_delta <= '10000000000000'::bigint) AND (points_delta <> 0)))"],
+    ["professional_goals","CHECK ((((target_value >= 1) AND (target_value <= 1000000000)) AND (version >= 1)))","CHECK (((target_value >= 1) AND (target_value <= 1000000000) AND (version >= 1)))"],
+    ["sales_requests","CHECK ((((length((email)::text) >= 5) AND (length((email)::text) <= 254)) AND ((email)::text = lower((email)::text))))","CHECK (((length((email)::text) >= 5) AND (length((email)::text) <= 254) AND ((email)::text = lower((email)::text))))"],
+    ["sales_requests","CHECK ((((length((name)::text) >= 2) AND (length((name)::text) <= 120)) AND ((name)::text = btrim((name)::text))))","CHECK (((length((name)::text) >= 2) AND (length((name)::text) <= 120) AND ((name)::text = btrim((name)::text))))"],
+    ["service_packages","CHECK ((((price_cents >= 0) AND (price_cents <= 100000000)) AND (version >= 1) AND ((sort_order >= 0) AND (sort_order <= 1000000)) AND ((color)::text ~ '^#[0-9a-fA-F]{6}$'::text)))","CHECK (((price_cents >= 0) AND (price_cents <= 100000000) AND (version >= 1) AND ((sort_order >= 0) AND (sort_order <= 1000000)) AND ((color)::text ~ '^#[0-9a-fA-F]{6}$'::text)))"],
+    ["financial_entries","CHECK ((((amount_cents >= 1) AND (amount_cents <= 1000000000)) AND ((currency)::text = 'BRL'::text)))","CHECK (((amount_cents >= 1) AND (amount_cents <= 1000000000) AND ((currency)::text = 'BRL'::text)))"],
+)
 
-    pg_dump text roundtrip may flatten associative AND. Never strip arbitrary
-    parentheses or rewrite OR/NOT/operands, owners, RLS or any other constraint.
-    """
+def canonical_catalog(catalog):
     value = backup.canonical_catalog(catalog)
-    nested = "CHECK ((((amount_cents >= 1) AND (amount_cents <= 1000000000)) AND ((currency)::text = 'BRL'::text)))"
-    flat = "CHECK (((amount_cents >= 1) AND (amount_cents <= 1000000000) AND ((currency)::text = 'BRL'::text)))"
+    aliases = {(table, source): restored for table, source, restored in RESTORE_CHECK_ALIASES}
     for row in value:
-        if row[0] == "financial_entries":
-            row[4] = [flat if expression == nested else expression for expression in row[4] or []] or None
+        row[4] = [aliases.get((row[0], expression), expression) for expression in row[4] or []] or None
     return value
 
 
@@ -198,10 +210,27 @@ def old_catalog(conn, *, projected=False):
         consent[3] = [col for col in consent[3] if col[0] != "operational_opt_in"]
     return catalog
 
+
+def named_constraints(conn, tables=SOURCE_TABLES):
+    # Keep names, validation/deferral flags and every definition. The older
+    # catalog's definition-only list cannot detect a renamed constraint.
+    result = [list(row) for row in proof.fulfillment.named_constraints(conn) if row[0] in tables]
+    for row in result:
+        row[7] = canonical_catalog([[row[0], False, False, [], [row[7]], [], []]])[0][4][0]
+    return result
+
+
 def snapshot(conn):
     return {"revision": backup.revision(conn), "counts": counts(conn), "rows": rows(conn),
         "catalog": old_catalog(conn), "security": proof.security_structure(conn),
-        "programs": proof.programs(conn)}
+        "constraints": named_constraints(conn), "programs": proof.programs(conn)}
+
+
+@dataclass(frozen=True, repr=False)
+class _RestoredSourceProof:
+    run_id: str
+    database: str
+    snapshot: dict
 
 def verify_new_schema(conn, *, pristine=False):
     require(backup.table_names(conn) == TARGET_TABLES, "target_table_mismatch")
@@ -230,7 +259,8 @@ def verify_new_schema(conn, *, pristine=False):
 def manifest(conn):
     return {"revision": backup.revision(conn), "catalog": canonical_catalog(
         backup.catalog_structure(conn, TARGET_TABLES)), "security": proof.without_database_identity(
-        proof.security_structure(conn)), "programs": proof.programs(conn)}
+        proof.security_structure(conn)), "constraints": named_constraints(conn, TARGET_TABLES),
+        "programs": proof.programs(conn)}
 
 def capture_dump(engine, settings, path):
     with engine.connect().execution_options(isolation_level="REPEATABLE READ") as conn:
@@ -247,13 +277,19 @@ def capture_dump(engine, settings, path):
             require(5 <= path.stat().st_size <= backup.MAX_BYTES - 36, "dump_size_invalid")
             return before
 
-def apply_exact_migrations(engine, settings, expected, rehearsed=None):
+def apply_exact_migrations(engine, settings, expected, rehearsed=None, *, restored_proof=None):
     modules = reviewed_migrations()
-    require(rehearsed is not None or settings.url.database == backup.restore_name(settings.run_id),
+    restored = isinstance(restored_proof, _RestoredSourceProof)
+    require(rehearsed is not None or restored,
         "rehearsal_proof_required")
+    if restored:
+        require(settings.url.database == backup.restore_name(settings.run_id) == restored_proof.database
+            and settings.run_id == restored_proof.run_id and expected == restored_proof.snapshot,
+            "restored_source_proof_mismatch")
     with engine.connect().execution_options(isolation_level="READ COMMITTED") as conn:
         with conn.begin():
-            owner_preflight(conn, settings)
+            owner_preflight(conn, settings, source=not restored)
+            if restored: source_only(conn, restored=True)
             require(conn.exec_driver_sql("SELECT pg_try_advisory_xact_lock(681692820123)").scalar_one(),
                 "migration_already_running")
             conn.exec_driver_sql("LOCK TABLE " + ",".join('public."' + n + '"' for n in sorted(SOURCE_TABLES)) +
@@ -265,6 +301,7 @@ def apply_exact_migrations(engine, settings, expected, rehearsed=None):
                 for module in modules: module.upgrade()
             conn.exec_driver_sql("RESET ROLE")
             require(old_catalog(conn, projected=True) == expected["catalog"], "existing_catalog_changed")
+            require(named_constraints(conn) == expected["constraints"], "existing_constraints_changed")
             require(proof.projected_security(proof.security_structure(conn), expected["security"]) ==
                 expected["security"], "existing_security_changed")
             require(counts(conn) == expected["counts"] and rows(conn, projected=True) == expected["rows"],
@@ -298,7 +335,8 @@ def verify_restore(engine, settings, identity, path, expected):
             restored = backup.engine_for(temp.url)
             try:
                 with restored.begin() as conn:
-                    found = owner_preflight(conn, temp)
+                    found = owner_preflight(conn, temp, source=False)
+                    source_only(conn, restored=True)
                     require(found["oid"] == oid and found["role_oid"] == identity["role_oid"],
                         "restore_database_identity_changed")
                     require(not conn.execute(text("""SELECT EXISTS(SELECT 1 FROM pg_roles WHERE
@@ -310,7 +348,8 @@ def verify_restore(engine, settings, identity, path, expected):
                         {k: v for k, v in expected.items() if k != "security"}, "restored_snapshot_mismatch")
                     require(proof.without_database_identity(actual["security"]) ==
                         proof.without_database_identity(expected["security"]), "restored_security_mismatch")
-                return apply_exact_migrations(restored, temp, actual)
+                receipt = _RestoredSourceProof(settings.run_id, name, actual)
+                return apply_exact_migrations(restored, temp, actual, restored_proof=receipt)
             finally: restored.dispose()
         finally:
             if oid is not None: backup.safe_drop_created(admin, name, oid, identity["role_oid"], identity["oid"])

@@ -113,3 +113,27 @@ def test_only_reviewed_associative_financial_check_alias_is_normalized():
                     nested.replace("'BRL'", "'USD'"), nested.replace(">= 1", "> 1")):
         assert op.canonical_catalog(catalog(altered)) != op.canonical_catalog(catalog(flat))
     assert op.canonical_catalog(catalog(nested, "unrelated")) != op.canonical_catalog(catalog(flat, "unrelated"))
+
+
+@pytest.mark.parametrize("table,source,restored", op.RESTORE_CHECK_ALIASES)
+def test_every_observed_restore_alias_preserves_bounds_boolean_operators_and_scope(table, source, restored):
+    def catalog(name, expression): return [[name, True, True, [], [expression], [], []]]
+    expected = op.canonical_catalog(catalog(table, restored))
+    assert op.canonical_catalog(catalog(table, source)) == expected
+    for changed in (source.replace(" AND ", " OR ", 1), source.replace(">=", ">", 1), source + " "):
+        assert changed != source
+        assert op.canonical_catalog(catalog(table, changed)) != expected
+    assert op.canonical_catalog(catalog("unrelated", source)) != op.canonical_catalog(catalog("unrelated", restored))
+
+
+@pytest.mark.parametrize("change", ["run", "database", "snapshot"])
+def test_restored_proof_cannot_authorize_another_database_run_or_snapshot(monkeypatch, change):
+    monkeypatch.setattr(op, "reviewed_migrations", lambda: [])
+    run_id = str(uuid4()); database = op.backup.restore_name(run_id); expected = {"synthetic": "sealed-source"}
+    receipt = op._RestoredSourceProof(run_id, database, expected)
+    settings = type("Settings", (), {"run_id": run_id, "url": type("URL", (), {"database": database})()})()
+    if change == "run": receipt = replace(receipt, run_id=str(uuid4()))
+    if change == "database": receipt = replace(receipt, database="production")
+    if change == "snapshot": receipt = replace(receipt, snapshot={"synthetic": "changed"})
+    with pytest.raises(op.Stop, match="restored_source_proof_mismatch"):
+        op.apply_exact_migrations(None, settings, expected, restored_proof=receipt)

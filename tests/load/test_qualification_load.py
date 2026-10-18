@@ -3,6 +3,7 @@ import asyncio
 import os
 import json
 import subprocess
+from collections import Counter
 
 import httpx
 import pytest
@@ -76,6 +77,18 @@ def test_profile_distribution_is_not_users_equal_to_rps():
         company=load.distribute(user,1000,True); wide[company]=wide.get(company,0)+1
     assert len(wide)==1000 and set(wide.values())=={1,2}
     assert 1500/load.parser().get_default("period_seconds")==150
+
+
+def test_forty_percent_additional_concentration_covers_five_balanced_companies():
+    additional = range(100, 1500)
+    hot = Counter(load.distribute(index, 100) for index in additional if index % 5 < 2)
+    assert set(hot) == set(range(5))
+    assert set(hot.values()) == {112} and sum(hot.values()) == 560
+    counts = Counter(load.distribute(index, 100) for index in range(1500))
+    assert len(counts) == 100 and sum(counts.values()) == 1500
+    assert min(counts[index] for index in range(5)) > 100
+    assert max(counts[index] for index in range(5, 100)) <= 15
+    assert max(counts[index] for index in range(5)) - min(counts[index] for index in range(5)) <= 15
 
 
 @pytest.mark.asyncio
