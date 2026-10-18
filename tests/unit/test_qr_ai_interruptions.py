@@ -300,7 +300,8 @@ async def test_booking_conflict_still_fails_closed_and_never_confirms(conversati
         async def __aexit__(self, *_):
             pass
     monkeypatch.setattr(qr_ai, "get_session_factory", lambda: Session)
-    async def conflict(*args):
+    async def conflict(*args, source):
+        assert source == "whatsapp_qr"
         raise HTTPException(409, "occupied")
     monkeypatch.setattr(qr_ai, "book_appointment", conflict)
     readonly_slots(monkeypatch, h)
@@ -530,7 +531,7 @@ async def test_a_query_about_b_requires_explicit_review_before_confirming_origin
     confirmed = []
     async def confirm(db, tenant, item_id, **scope):
         assert tenant == h.tenant
-        assert scope == {"customer_phone": "+5567999999999", "expected_snapshot": "a"*64}
+        assert scope == {"customer_phone": "+5567999999999", "expected_snapshot": "a"*64, "source": "whatsapp_qr"}
         confirmed.append(str(item_id))
         return {"start_at": qr_ai.datetime.fromisoformat("2026-11-20T14:00:00-04:00"),
                 "total_cents": 3500, "protocol": "SYNTHETIC-A"}

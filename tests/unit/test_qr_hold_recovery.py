@@ -135,7 +135,7 @@ async def test_failed_confirmation_keeps_facts_requeries_and_cannot_reuse_old_si
     await identified(h, "Quero agendar corte amanhã às15h30 com Bruno", identity="first-summary")
     prior = h.state(); h.calls["writes"].clear(); h.calls["reads"].clear()
     async def conflict(*args, **kwargs):
-        assert kwargs == {"customer_phone": "+5567999999999", "expected_snapshot": "a"*64}
+        assert kwargs == {"customer_phone": "+5567999999999", "expected_snapshot": "a"*64, "source": "whatsapp_qr"}
         raise HTTPException(409, "Hold expirado")
     monkeypatch.setattr(qr_ai, "confirm_hold", conflict)
     reply = await identified(h, "SIM", identity="first-consent")

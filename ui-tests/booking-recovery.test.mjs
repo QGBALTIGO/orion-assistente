@@ -31,7 +31,7 @@ function bookingResponse(override, { addons = false } = {}) {
     if (path.endsWith(`/management/services/${addonId}/addons`)) return { service_id: addonId, version: 0, items: [] };
     if (path.endsWith('/management/booking-selection')) return { engine_service_id: variantId, price_cents: 7200, duration_min: 30, prep_min: 0, cleanup_min: 0, timezone: 'America/Sao_Paulo', items: [] };
     if (path.includes('/availability?')) return { slots: [startAt], timezone: 'America/Sao_Paulo' };
-    if (path.endsWith('/appointments/hold')) return { id: appointmentId, status: 'hold', protocol: 'ORION-TEST' };
+    if (path.endsWith('/appointments/hold')) return { id: appointmentId, status: 'hold', protocol: 'ORION-TEST', updated_at: '2030-04-05T11:59:00.123456Z' };
     if (path.endsWith(`/appointments/${appointmentId}/confirm`)) return { id: appointmentId, status: 'confirmed' };
     if (path.endsWith('/management/block-series') && method === 'POST') return { id: 'series-test', count: 3, blocks: [] };
     return defaultResponse(path);
@@ -84,6 +84,9 @@ test('confirmation retry preserves the original hold and updates the selected cu
   h.submit('[data-os-form=appointment]'); await flush();
   assert.equal(h.calls.filter(call => call.path.endsWith('/appointments/hold')).length, 1);
   assert.equal(h.calls.filter(call => call.path.endsWith(`/appointments/${appointmentId}/confirm`)).length, 2);
+  const confirms = h.calls.filter(call => call.path.endsWith(`/appointments/${appointmentId}/confirm`));
+  assert.equal(confirms[0].data.expected_updated_at, '2030-04-05T11:59:00.123456Z');
+  assert.deepEqual(plain(confirms[0].data), plain(confirms[1].data));
   assert.equal(h.calls.filter(call => call.method === 'PATCH').length, 1);
   assert.equal(h.document.getElementById('osDialog').open, false);
   assert.equal(h.errors.length, 0);

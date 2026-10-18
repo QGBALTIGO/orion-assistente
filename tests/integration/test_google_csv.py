@@ -104,7 +104,7 @@ async def test_transactional_calendar_outbox_and_rls(monkeypatch):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url="http://test") as client:
             key=os.getenv("SUPPORT_API_TOKEN")
             if key:
-                response=await client.get(f"/api/v1/tenants/{tenant}/google/connect",
+                response=await client.post(f"/api/v1/tenants/{tenant}/google/connect",
                                           headers={"Authorization":"Bearer "+key})
                 assert response.status_code==503
                 response=await client.get(f"/api/v1/tenants/{other}/export/appointments.csv",

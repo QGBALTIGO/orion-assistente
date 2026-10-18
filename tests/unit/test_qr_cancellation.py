@@ -56,8 +56,9 @@ def cancellation(monkeypatch):
     @asynccontextmanager
     async def session():
         yield object()
-    async def cancel(db, t, item_id, *, customer_phone, expected_snapshot, future_only):
+    async def cancel(db, t, item_id, *, customer_phone, expected_snapshot, future_only, source):
         assert t == tenant and customer_phone == "+" + phone and expected_snapshot == record["expected_snapshot"] and future_only is True
+        assert source == "whatsapp_qr"
         events.append("cancel")
         value = next(row for row in records if row["id"] == item_id)
         value["status"] = "cancelled"

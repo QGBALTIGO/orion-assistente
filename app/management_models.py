@@ -500,7 +500,8 @@ async def marketing(db, tenant_id, limit=50, offset=0):
 
 
 async def transition_appointment(db, tenant_id, appointment_id, target, payload, operator):
-    from app.booking_service import acquire_professional_lock
+    from app.booking_service import acquire_professional_lock, history, read_appointment
+    from app.appointment_lifecycle import CAS_SQL, LifecycleActor, allowed_actions, check_expected_updated_at, operation_payload
     if target not in ("completed", "no_show"):
         raise ValueError("Unsupported management appointment transition")
     if target == "no_show" and payload.coupon_id is not None:
@@ -515,10 +516,18 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
     row = (await db.execute(text("SELECT * FROM appointments WHERE tenant_id=:tenant AND id=:id FOR UPDATE"), params)).mappings().one()
     if row["professional_id"] != professional:
         raise HTTPException(409, "O profissional mudou. Atualize o agendamento")
+    context = LifecycleActor(role=operator, source="panel", account_id=db.info.get("management_actor_account_id"))
+    identity_payload = {"appointment_id": appointment_id, "expected_status": payload.expected_status,
+                        "target": target, "coupon_id": payload.coupon_id}
+    if payload.expected_updated_at is not None:
+        identity_payload = operation_payload(appointment_id, payload.expected_updated_at, context,
+            expected_status=payload.expected_status, target=target, coupon_id=payload.coupon_id)
     _, replay = await request_identity(db, tenant_id, "appointment_" + target, payload.idempotency_key,
-        {"appointment_id": appointment_id, "expected_status": payload.expected_status, "target": target, "coupon_id": payload.coupon_id}, entity_id=appointment_id)
+                                      identity_payload, entity_id=appointment_id)
     if replay:
-        return clean_row(row)
+        result = await read_appointment(db, tenant_id, appointment_id)
+        return {**clean_row(result), "allowed_actions": allowed_actions(result, can_write=True)}
+    check_expected_updated_at(row, payload.expected_updated_at)
     now = datetime.now(timezone.utc)
     if row["status"] != payload.expected_status:
         raise HTTPException(409, "Somente agendamentos confirmados podem receber este resultado")
@@ -534,17 +543,22 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
             SELECT commission_percent FROM professionals WHERE tenant_id=:tenant AND id=:professional FOR SHARE
         """), {"tenant": tenant_id, "professional": professional})).scalar_one()
     changed = (await db.execute(text("""
-        UPDATE appointments SET status=CAST(:target AS varchar),updated_at=:now,hold_expires_at=NULL,
+        UPDATE appointments SET status=CAST(:target AS varchar),
+            updated_at=GREATEST(:now,updated_at+interval '1 microsecond'),hold_expires_at=NULL,
             commission_percent_snapshot=:percent,
             commission_cents=CASE WHEN CAST(:target AS varchar)='completed' THEN round(CAST(:net AS numeric) * CAST(:percent AS numeric) / 100)::bigint ELSE NULL END,
             total_cents=CAST(:net AS integer),original_total_cents=:gross,discount_cents=:discount
-        WHERE tenant_id=:tenant AND id=:id AND status=:expected RETURNING *
-    """), {**params, "target": target, "now": now, "percent": percent, "expected": payload.expected_status,
-           "net": gross-discount, "gross": gross if target == "completed" else None, "discount": discount})).mappings().one()
-    await db.execute(text("""INSERT INTO appointment_history (tenant_id,appointment_id,event,operator)
-        VALUES (:tenant,:id,:event,:operator)"""), {**params, "event": target, "operator": operator})
+        WHERE tenant_id=:tenant AND id=:id AND status=:expected AND start_at<=clock_timestamp()
+          AND """ + CAS_SQL + " RETURNING *"),
+        {**params, "target": target, "now": now, "percent": percent, "expected": payload.expected_status,
+         "expected_updated_at": payload.expected_updated_at, "net": gross-discount,
+         "gross": gross if target == "completed" else None, "discount": discount})).mappings().one_or_none()
+    if changed is None:
+        raise HTTPException(409, "O agendamento mudou. Atualize os detalhes antes de continuar")
+    await history(db, tenant_id, appointment_id, target, context=context, previous=row)
     await audit(db, tenant_id, "appointment_" + target, "appointments", appointment_id)
-    result = clean_row(changed)
+    result = clean_row(await read_appointment(db, tenant_id, appointment_id))
+    result["allowed_actions"] = allowed_actions(result, can_write=True)
     if target == "completed":
         from app.loyalty_rewards import award_completion
         result["loyalty"] = await award_completion(db, tenant_id, changed, now)

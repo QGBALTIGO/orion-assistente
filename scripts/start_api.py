@@ -6,7 +6,7 @@ ONE_TIME_KEYS = frozenset({
     "MIGRATION_DATABASE_URL", "ORION_RUN_BUSINESS_MIGRATION", "ORION_RUN_ACCOUNT_MIGRATION",
     "ORION_MIGRATION_SWITCH_ROLE", "ORION_BUSINESS_MIGRATION_RUN_ID",
     "ORION_RUN_MANAGEMENT_MIGRATION", "ORION_MANAGEMENT_MIGRATION_RUN_ID",
-    "ORION_RUN_SALES_REQUESTS_MIGRATION",
+    "ORION_RUN_SALES_REQUESTS_MIGRATION", "ORION_RUN_AGENDA_MIGRATION",
     "ORION_EXPECTED_DATABASE_HOST", "ORION_EXPECTED_DATABASE_NAME",
 })
 
@@ -20,8 +20,11 @@ def main():
     port = environment.get("PORT", "8000")
     if not port.isdigit() or not 1 <= int(port) <= 65535:
         raise RuntimeError("Invalid API port")
+    # The OAuth callback carries a one-use authorization code and state in its
+    # query string. Uvicorn's ordinary access log records the complete target.
+    # Keep application/error logging, without persisting request credentials.
     os.execve(sys.executable, [sys.executable, "-m", "uvicorn", "app.main:app",
-                            "--host", "0.0.0.0", "--port", port], environment)
+                            "--no-access-log", "--host", "0.0.0.0", "--port", port], environment)
 
 
 if __name__ == "__main__":

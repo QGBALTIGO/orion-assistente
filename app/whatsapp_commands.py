@@ -205,7 +205,7 @@ async def try_command(
                     checked(presentation.render_summary(summary(appt),preferences,operation="cancel",confirmed=True))
                     async with get_session_factory()() as s:
                         updated=await cancel_appointment(s,tenant,appt["id"],customer_phone=sender,
-                            expected_snapshot=state["expected_snapshot"],future_only=True)
+                            expected_snapshot=state["expected_snapshot"],future_only=True,source="whatsapp_meta")
                     updated.update(timezone=appt["timezone"],professional=appt["professional"])
                 else:
                     start=datetime.fromisoformat(state["new_start"])
@@ -214,7 +214,7 @@ async def try_command(
                     checked(presentation.render_summary(summary(proposal),preferences,operation="reschedule",confirmed=True))
                     async with get_session_factory()() as s:
                         updated=await reschedule_appointment(s,tenant,appt["id"],start,
-                            expected_snapshot=state["expected_snapshot"],customer_phone=sender)
+                            expected_snapshot=state["expected_snapshot"],customer_phone=sender,source="whatsapp_meta")
                     updated.update(timezone=proposal["timezone"],professional=proposal["professional"])
                 await redis.delete(state_key)
                 return True,presentation.render_summary(summary(updated),preferences,

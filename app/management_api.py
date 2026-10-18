@@ -44,6 +44,7 @@ async def management_session(tenant_id, actor, *, write=False):
             async with tenant_transaction(db, tenant_id):
                 await ensure_tenant(db, tenant_id)
                 db.info["management_actor_role"] = access.role
+                db.info["management_actor_account_id"] = access.account_id
                 yield db
     except IntegrityError as exc:
         raise HTTPException(409, "Conflito de cadastro ou vínculo. Atualize os dados e tente novamente") from exc

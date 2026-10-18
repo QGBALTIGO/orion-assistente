@@ -67,9 +67,10 @@ def flow(monkeypatch):
         return next((dict(row) for row in records if row["tenant_id"] == actual_tenant and row["phone"] == sender
                      and row["protocol"] == protocol and row["status"] == "confirmed"), None)
 
-    async def cancel(_db, actual_tenant, item_id, *, customer_phone, expected_snapshot, future_only=False):
+    async def cancel(_db, actual_tenant, item_id, *, customer_phone, expected_snapshot, future_only=False, source):
         row = next(row for row in records if row["id"] == item_id)
         assert row["tenant_id"] == actual_tenant and row["phone"] == customer_phone and future_only is True
+        assert source == "whatsapp_meta"
         if expected_snapshot != row["expected_snapshot"] or row["start_at"] <= datetime.now(timezone.utc):
             raise HTTPException(409, "changed")
         events.append(("cancel", item_id))
