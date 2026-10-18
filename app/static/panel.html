@@ -748,6 +748,196 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
 .business-version-review{white-space:pre-wrap;max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:15px;margin-top:12px}
 .commerce-summary{white-space:pre-wrap;line-height:1.7;overflow-wrap:anywhere}.commerce-items{display:grid;gap:12px;margin:16px 0}.commerce-item{border:1px solid var(--border);border-radius:10px;padding:14px;display:grid;gap:9px}.commerce-item .row{gap:10px;align-items:center}.commerce-item input{max-width:130px}.commerce-warning{border-left:3px solid var(--accent2);padding-left:12px;line-height:1.65}.commerce-accept{display:flex;gap:10px;align-items:flex-start;margin:18px 0}.commerce-accept input{width:auto;margin-top:5px}.commerce-accept span{line-height:1.6}.commerce-lookup{border-top:1px solid var(--border);padding-top:20px;margin-top:24px}
 @media(max-width:700px){.business-grid,.business-styles{grid-template-columns:1fr}.business-grid .wide{grid-column:auto}.business-steps button{flex:1 1 120px}.business-actions .btn{flex:1 1 170px}}
+
+/* Atendimento uses the same surfaces and type scale as the management pages. */
+#appView.orion-suite-enabled>.content>.page.orion-workspace{
+ width:100%;max-width:1152px;min-width:0;padding:32px 40px 64px;
+ --panel:var(--os-card);--panel-raised:var(--os-card);--panel-low:var(--os-bg);
+ --control-bg:var(--os-card);--input-border:var(--os-border);--soft-accent:var(--os-tint);
+ --safe-success:var(--os-success);--accent-contrast:#fff;--shadow:var(--os-shadow);
+}
+#appView .orion-workspace :where(form,fieldset,.card,.row,.header,.columns,.chat-grid,.business-grid,.business-styles){min-width:0;max-width:100%}
+#appView .orion-workspace :where(.row,.header,.columns,.chat-grid,.business-grid,.business-styles)>*{min-width:0}
+#appView .orion-workspace .header{gap:16px;margin-bottom:24px;align-items:flex-start}
+#appView .orion-workspace .header>div:first-child{flex:1}
+#appView .orion-workspace h1{font:600 30px/36px var(--os-display);letter-spacing:.01em;margin:0 0 8px}
+#appView .orion-workspace h2{font:600 20px/28px var(--os-display);letter-spacing:.01em;margin:0 0 8px}
+#appView .orion-workspace h3{font:600 16px/24px var(--os-display);letter-spacing:0}
+#appView .orion-workspace .eyebrow{font-size:11px;line-height:16px;letter-spacing:.09em;margin-bottom:8px}
+#appView .orion-workspace :where(p,small,.feedback){overflow-wrap:anywhere;word-break:normal}
+#appView .orion-workspace .subhead{font-size:14px;line-height:22px;margin:0;max-width:680px}
+#appView .orion-workspace .card{background:var(--os-card);border-color:var(--os-border);border-radius:16px;padding:24px;box-shadow:var(--os-shadow)}
+#appView .orion-workspace label{font-size:14px;line-height:20px;font-weight:500;margin:16px 0 8px}
+#appView .orion-workspace :where(input,select,textarea){max-width:100%;font-size:16px;line-height:24px;padding:10px 12px;background:var(--os-card);border-radius:10px}
+#appView .orion-workspace input:not([type=checkbox]),#appView .orion-workspace select{min-height:44px}
+#appView .orion-workspace input[type=checkbox]{width:18px;height:18px;flex:0 0 18px;padding:0;min-height:0;accent-color:var(--os-primary)}
+#appView .orion-workspace textarea{min-height:88px}
+#appView .orion-workspace .btn{min-height:44px;max-width:100%;padding:10px 16px;white-space:normal;overflow-wrap:anywhere;line-height:20px;box-shadow:none}
+#appView .orion-workspace .btn :where(svg,.device-icon){flex-shrink:0}
+#appView .orion-workspace .pill{min-height:32px;max-width:100%;padding:6px 10px;font-size:12px;line-height:18px;white-space:normal}
+#appView .orion-workspace .dot{flex-shrink:0}
+#appView .orion-workspace .feedback:empty{display:none}
+#appView .orion-workspace .feedback:not(:empty){font-size:13px;line-height:20px;margin:12px 0 0}
+#appView .orion-workspace .business-muted{font-size:13px;line-height:20px}
+#appView .orion-workspace .note{font-size:12px;line-height:20px;margin:20px 0 0;padding:0 0 0 12px}
+#appView .orion-workspace .business-steps{gap:6px;flex-wrap:nowrap;max-width:100%;overflow-x:auto;margin:20px 0;padding:4px;border:1px solid var(--os-border);border-radius:12px;background:var(--os-soft);scrollbar-width:thin}
+#appView .orion-workspace .business-steps .btn{flex:1 0 auto;background:transparent;border-color:transparent;min-height:40px;padding:8px 14px;font-size:13px}
+#appView .orion-workspace .business-steps .btn[aria-current=step]{background:var(--os-card);border-color:var(--os-border);color:var(--os-primary);box-shadow:var(--os-shadow)}
+#appView .orion-workspace .business-grid{gap:16px}
+#appView .orion-workspace .business-checks label{margin:0;line-height:22px}
+#appView .orion-workspace .business-checks input{margin-top:2px}
+#appView .orion-workspace :where(.business-style,.business-repeat-row,.commerce-item){padding:16px;background:var(--os-bg);border-color:var(--os-border);border-radius:12px;min-width:0}
+#appView .orion-workspace .business-actions{gap:10px;margin-top:16px}
+#appView .orion-workspace :where(.business-version-review,.commerce-summary,.table-wrap){max-width:100%;min-width:0}
+#appView .orion-workspace :where(.commerce-accept,.device-dialog .checkrow){align-items:flex-start;line-height:22px}
+#appView .orion-workspace .commerce-accept span{min-width:0}
+#appView .orion-workspace .workspace-details{border:1px solid var(--os-border);border-radius:12px;background:var(--os-card);padding:0 16px;margin:16px 0}
+#appView .orion-workspace .workspace-details>summary{min-height:44px;padding:12px 0;font-size:13px;font-weight:600;color:var(--os-muted);cursor:pointer;overflow-wrap:anywhere}
+#appView .orion-workspace .workspace-details[open]>summary{color:var(--os-text)}
+#appView .orion-workspace .workspace-details>p{font-size:13px;line-height:20px;margin:0 0 16px}
+#appView .orion-workspace .workspace-details>.business-actions{margin:0 0 16px}
+#appView .orion-workspace .workspace-details>form{padding-bottom:16px}
+#appView .orion-workspace .workspace-back{margin-bottom:16px}
+
+/* Connected and pairing states share the Orion cards, including mobile dialogs. */
+#appView .orion-workspace .device-hub{max-width:none;margin:0}
+#appView .orion-workspace :where(.device-hero,.device-stats,.device-features){background:var(--os-card);border:1px solid var(--os-border);border-radius:16px;box-shadow:var(--os-shadow);margin-bottom:20px}
+#appView .orion-workspace :where(.device-hero,.device-stats){padding:24px}
+#appView .orion-workspace .device-id{flex:1;gap:14px}
+#appView .orion-workspace .device-id>div:last-child{min-width:0}
+#appView .orion-workspace .device-photo{width:56px;height:56px;min-width:56px;background:var(--os-tint);border:1px solid var(--os-border)}
+#appView .orion-workspace .device-name{font:600 20px/28px var(--os-display)}
+#appView .orion-workspace .device-number{font-size:16px;line-height:24px;flex-wrap:wrap;margin-top:20px}
+#appView .orion-workspace .device-info-row{gap:16px;margin-top:20px;padding-top:16px;font-size:13px}
+#appView .orion-workspace .device-info-row>*{min-width:0;overflow-wrap:anywhere}
+#appView .orion-workspace .device-online{background:var(--os-success-bg);color:var(--os-success);border-color:transparent;font-size:12px}
+#appView .orion-workspace .device-stat-grid{gap:12px}
+#appView .orion-workspace .device-stat{padding:16px 8px;background:var(--os-bg);border-color:var(--os-border)}
+#appView .orion-workspace .device-stat strong{font-family:var(--os-display);font-size:28px}
+#appView .orion-workspace .device-stat small{font-size:10px;line-height:16px;letter-spacing:.04em}
+#appView .orion-workspace .device-feature{gap:12px;padding:18px 20px}
+#appView .orion-workspace .device-feature>div{min-width:0}
+#appView .orion-workspace .device-feature strong{font-size:14px;line-height:20px}
+#appView .orion-workspace .device-feature small{font-size:12px;line-height:18px}
+#appView .orion-workspace .device-feature button{gap:12px;min-width:0}
+#appView .orion-workspace .device-feature button>div{min-width:0}
+#appView .orion-workspace .feature-state{font-size:11px;line-height:16px;flex-shrink:0}
+#appView .orion-workspace .device-menu nav{max-width:calc(100vw - 48px);border-radius:12px;box-shadow:0 12px 40px #0f1b3320}
+#appView .orion-workspace .device-menu nav button{min-height:44px;font-size:14px}
+#appView .orion-workspace .device-dialog{width:min(640px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);padding:24px;border-radius:16px;font-family:var(--os-font)}
+#appView .orion-workspace .wizard-shell{width:100%;max-width:760px;margin:0 auto 24px}
+#appView .orion-workspace .wizard-heading{text-align:left;margin:0 0 16px}
+#appView .orion-workspace .wizard-heading h2{font-size:20px;line-height:28px}
+#appView .orion-workspace .wizard-heading p{font-size:13px;line-height:20px}
+#appView .orion-workspace .wizard-eyebrow{display:none}
+#appView .orion-workspace .wizard-methods{gap:12px;margin-bottom:16px}
+#appView .orion-workspace .wizard-method{min-width:0;min-height:116px;padding:16px 12px;gap:6px;border-radius:14px;background:var(--os-card)}
+#appView .orion-workspace .wizard-method.active{background:var(--os-tint);border-color:var(--os-primary);box-shadow:0 0 0 1px var(--os-primary)}
+#appView .orion-workspace .wizard-method strong{font-family:var(--os-display);font-size:15px}
+#appView .orion-workspace .wizard-method span:last-child{font-size:12px;line-height:18px;white-space:normal}
+#appView .orion-workspace .wizard-card{padding:24px;min-height:0;border-color:var(--os-border);border-radius:16px;background:var(--os-card);box-shadow:var(--os-shadow)}
+#appView .orion-workspace .wizard-card h3{color:var(--os-text);font-size:20px;line-height:28px}
+#appView .orion-workspace .wizard-card p{font-size:14px;line-height:22px;color:var(--os-muted)}
+#appView .orion-workspace .wizard-timeline{margin:20px 0 0}
+#appView .orion-workspace .wizard-timeline-step{grid-template-columns:36px minmax(0,1fr);gap:12px;min-height:0;padding-bottom:20px}
+#appView .orion-workspace .wizard-timeline-dot{width:36px;height:36px;background:var(--os-tint);color:var(--os-primary);border:1px solid var(--os-border);box-shadow:none}
+#appView .orion-workspace .wizard-timeline-dot.edge{background:var(--os-primary);color:#fff;border-color:var(--os-primary);box-shadow:none}
+#appView .orion-workspace .wizard-timeline-step:not(:last-child)::before{left:17px;top:36px;border-color:var(--os-border)}
+#appView .orion-workspace .wizard-timeline-copy strong{font-size:14px;line-height:20px;color:var(--os-text)}
+#appView .orion-workspace .wizard-timeline-copy p{font-size:13px;line-height:20px}
+#appView .orion-workspace .wizard-timeline-copy small{font-size:10px;line-height:15px;color:var(--os-primary);margin-bottom:4px}
+#appView .orion-workspace .wizard-qr-wrap{max-width:100%;min-height:240px;background:#fff;border:1px solid var(--os-border);border-radius:14px}
+#appView .orion-workspace .wizard-qr-wrap img{max-width:100%;height:auto}
+#appView .orion-workspace .wizard-qr-placeholder{color:#4e5a72}
+#appView .orion-workspace .wizard-phone-input{background:var(--os-card);border-color:var(--os-border)}
+#appView .orion-workspace .wizard-phone-input input{min-width:0;box-shadow:none}
+#appView .orion-workspace .code-box{background:var(--os-tint);border-color:var(--os-border);color:var(--os-primary);padding:18px 12px;letter-spacing:.12em;font-size:clamp(24px,5vw,36px)}
+#appView .orion-workspace .wizard-status{overflow-wrap:anywhere;font-size:13px;line-height:20px}
+
+/* Conversation columns have a zero minimum: previews never resize the viewport. */
+#appView .orion-workspace .chat-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+#appView .orion-workspace .chat-grid{display:grid;grid-template-columns:minmax(220px,.85fr) minmax(0,1.65fr);gap:20px;align-items:start}
+#appView .orion-workspace .chat-grid>.card{min-width:0;width:100%;margin:0;padding:20px}
+#appView .orion-workspace .chat-card-heading{display:flex;align-items:center;gap:10px;min-width:0;margin-bottom:16px}
+#appView .orion-workspace .chat-card-heading h2{min-width:0;flex:1;margin:0;font-size:18px;line-height:26px;overflow-wrap:anywhere}
+#appView .orion-workspace .chat-count{padding:2px 8px;border-radius:20px;background:var(--os-soft);color:var(--os-muted);font-size:12px;line-height:20px}
+#appView .orion-workspace .chat-search-label{margin:0 0 8px;font-size:12px;color:var(--os-muted)}
+#appView .orion-workspace .chat-list{min-width:0;max-width:100%;max-height:560px;overflow-y:auto;overscroll-behavior:contain;margin-top:12px}
+#appView .orion-workspace .chat-list>p{font-size:13px;line-height:20px;padding:12px 0;margin:0}
+#appView .orion-workspace .chat-item{min-width:0;max-width:100%;padding:14px 10px;border-radius:10px;border:0;margin-bottom:4px}
+#appView .orion-workspace .chat-item.current{background:var(--os-tint)}
+#appView .orion-workspace .chat-item strong{display:block;font-size:14px;font-weight:600;line-height:20px;overflow-wrap:anywhere}
+#appView .orion-workspace .chat-item small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;max-width:100%;overflow:hidden;white-space:normal;overflow-wrap:anywhere;font-size:12px;line-height:18px;margin-top:4px}
+#appView .orion-workspace .chat-back{display:none;padding:0;width:40px;min-width:40px;min-height:40px;flex-shrink:0}
+#appView .orion-workspace .chat-back svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#appView .orion-workspace .bubbles{min-width:0;max-width:100%;height:clamp(260px,43dvh,480px);padding:16px;background:var(--os-bg);border:1px solid var(--os-border);overscroll-behavior:contain}
+#appView .orion-workspace .bubbles>p{margin:auto;text-align:center;max-width:260px;font-size:14px;line-height:22px}
+#appView .orion-workspace .bubble{min-width:0;max-width:88%;font-size:14px;line-height:21px;border-radius:12px 12px 12px 4px}
+#appView .orion-workspace .bubble.out{background:var(--os-tint);border-color:var(--os-border);border-radius:12px 12px 4px 12px}
+#appView .orion-workspace .bubble time{font-size:10px;line-height:16px;margin-top:6px}
+#appView .orion-workspace #chatText{min-height:84px;max-height:200px}
+#appView .orion-workspace .chat-send-actions{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-top:12px}
+#appView .orion-workspace .chat-send-actions small{font-size:11px;line-height:17px;max-width:200px}
+#appView .orion-workspace .chat-thread .workspace-details{background:var(--os-bg);margin-bottom:0}
+#appView .orion-workspace .chat-help{margin-top:20px}
+#appView .orion-workspace .workspace-toolbar{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+#appView .orion-workspace .workspace-toolbar .workspace-select{flex:1 1 240px;min-width:0;margin:0}
+#appView .orion-workspace .workspace-toolbar .workspace-select select{display:block;margin-top:8px}
+#appView .orion-workspace .workspace-toolbar .pill{align-self:center}
+#appView .orion-workspace .simulator-review{margin-top:20px}
+#appView .orion-workspace .simulator-review .business-actions{margin:0 0 16px}
+#actionConfirm{background:var(--os-card,var(--panel));color:var(--os-text,var(--text));border-color:var(--os-border,var(--border));border-radius:16px;font-family:var(--os-font,inherit);max-height:calc(100dvh - 32px)}
+#actionConfirm h2{color:var(--os-text,var(--text));font-family:var(--os-display,inherit)}
+#actionConfirm p{color:var(--os-muted,var(--muted));font-size:14px;line-height:22px}
+#actionConfirm .btn{min-height:44px;background:var(--os-primary,var(--accent));border-color:var(--os-primary,var(--accent));color:#fff;font-size:14px}
+#actionConfirm .btn.secondary{background:var(--os-card,var(--panel));border-color:var(--os-border,var(--border));color:var(--os-text,var(--text))}
+@media(max-width:1100px){
+ #appView .orion-workspace .chat-grid{grid-template-columns:minmax(0,1fr)}
+ #appView .orion-workspace .device-actions{grid-template-columns:minmax(0,1fr)}
+ #appView .orion-workspace[data-chat-view=list] .chat-thread{display:none}
+ #appView .orion-workspace[data-chat-view=thread] .chat-contacts{display:none}
+ #appView .orion-workspace .chat-back{display:inline-flex}
+ #appView .orion-workspace .chat-list{max-height:none}
+ #appView .orion-workspace .bubbles{height:clamp(240px,40dvh,440px)}
+}
+@media(max-width:900px){
+ #appView.orion-suite-enabled>.content>.page.orion-workspace{padding:24px 24px 56px}
+ #appView .orion-workspace :where(.business-grid,.business-styles,.columns){grid-template-columns:minmax(0,1fr)}
+ #appView .orion-workspace .business-grid .wide{grid-column:auto}
+}
+@media(max-width:768px){
+ #appView.orion-suite-enabled>.content>.page.orion-workspace{padding:24px 16px calc(32px + env(safe-area-inset-bottom,0px))}
+ #appView .orion-workspace h1{font-size:24px;line-height:30px}
+ #appView .orion-workspace .header{display:flex;flex-wrap:wrap;margin-bottom:20px;gap:12px}
+ #appView .orion-workspace .header>div:first-child{flex-basis:100%}
+ #appView .orion-workspace .header .pill{margin:0}
+ #appView .orion-workspace :where(.card,.device-hero,.device-stats,.wizard-card){padding:16px}
+ #appView .orion-workspace .chat-grid>.card{padding:16px}
+ #appView .orion-workspace .chat-toolbar .btn{flex:1 1 140px}
+ #appView .orion-workspace .chat-send-actions .btn{width:100%}
+ #appView .orion-workspace .chat-send-actions small{max-width:none}
+ #appView .orion-workspace .chat-card-heading h2{font-size:17px;line-height:24px}
+ #appView .orion-workspace .business-actions{align-items:stretch}
+ #appView .orion-workspace .business-actions .btn{flex:1 1 100%}
+ #appView .orion-workspace .workspace-toolbar>.btn{flex:1 1 140px}
+ #appView .orion-workspace .device-name{font-size:18px;line-height:24px}
+ #appView .orion-workspace .device-photo{width:48px;height:48px;min-width:48px}
+ #appView .orion-workspace .device-hero-top{gap:16px}
+ #appView .orion-workspace .device-menu{margin-left:auto}
+ #appView .orion-workspace .device-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ #appView .orion-workspace .device-stat strong{font-size:24px}
+ #appView .orion-workspace .device-actions{grid-template-columns:minmax(0,1fr);gap:10px}
+ #appView .orion-workspace .device-feature{padding:16px;align-items:flex-start;flex-wrap:wrap}
+ #appView .orion-workspace .device-feature button{align-items:flex-start;flex-wrap:wrap}
+ #appView .orion-workspace .device-dialog{padding:20px}
+ #appView .orion-workspace .device-dialog .form-grid{grid-template-columns:minmax(0,1fr)}
+ #appView .orion-workspace .device-dialog .modal-actions .btn{flex:1 1 140px}
+ #appView .orion-workspace .wizard-card h3{font-size:18px;line-height:25px}
+ #appView .orion-workspace .wizard-timeline-step{padding-bottom:18px}
+ #appView .orion-workspace .wizard-methods{gap:10px}
+ #appView .orion-workspace .wizard-method{padding:14px 8px;min-height:110px}
+ #appView .orion-workspace .wizard-method span:last-child{font-size:11px;line-height:16px}
+}
 </style>
 <link rel="stylesheet" href="/panel-assets/orion-suite.css">
 </head>
@@ -897,9 +1087,9 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
       </section>
       <p class="member-next">Os recursos da sua conta aparecerão aqui quando estiverem disponíveis.</p>
     </section>
-    <section id="page-dispositivo" class="page">
+    <section id="page-dispositivo" class="page orion-workspace">
       <div class="header">
-        <div><div class="eyebrow">Orion / Dispositivos</div><h1>Conectar WhatsApp</h1><p class="subhead">Vincule seu número em poucos passos. Escolha como deseja conectar.</p></div>
+        <div><div class="eyebrow">Atendimento Orion</div><h1>Conectar WhatsApp</h1><p class="subhead">Conecte seu número e acompanhe o atendimento em um só lugar.</p></div>
         <div class="pill"><span id="statusDot" class="dot amber"></span><span id="globalStatus">Verificando conexão</span></div>
       </div>
 
@@ -915,7 +1105,7 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
                 <div class="device-name" id="realWhatsAppName">Carregando perfil…</div>
                 <div class="row" style="gap:8px;margin-top:6px">
                   <span class="device-online"><span class="dot green"></span> Conectado</span>
-                  <small>WhatsApp vinculado · Baileys</small>
+                  <small>Seu número está vinculado ao Orion</small>
                 </div>
               </div>
             </div>
@@ -1029,8 +1219,8 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
       <div id="disconnectedWizard" class="wizard-shell">
         <div class="wizard-heading">
           <span class="wizard-eyebrow">VINCULAR DISPOSITIVO</span>
-          <h2>Conecte seu WhatsApp</h2>
-          <p>Um passo de cada vez. Sem complicação.</p>
+          <h2>Escolha como conectar</h2>
+          <p>No próprio celular, use o código. Se estiver em outro aparelho, escaneie o QR Code.</p>
         </div>
         <div class="method-selector wizard-methods" role="group" aria-label="Escolha a forma de conexão">
           <button type="button" class="method wizard-method" data-method="qr" aria-pressed="false">
@@ -1045,8 +1235,8 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
         <div class="wizard-card" id="wizardCard" aria-live="polite" aria-atomic="false">
           <div id="wizardTutorial" class="wizard-pane">
             <div class="wizard-tutorial-heading">
-              <h3>Leia todos os passos abaixo e clique no botão no final desta página</h3>
-              <p>Conecte seu WhatsApp em poucos passos.</p>
+              <h3>Prepare o WhatsApp no seu celular</h3>
+              <p>Siga as orientações e continue quando estiver pronto.</p>
             </div>
             <div id="guideSteps" class="wizard-timeline" role="list" aria-label="Todos os passos para conectar o WhatsApp"></div>
             <button id="wizardNext" type="button" class="btn wizard-primary full wizard-continue">Concluí os passos e estou pronto para prosseguir</button>
@@ -1118,38 +1308,52 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
         </div>
       </div>
     </section>
-    <section id="page-conversas" class="page hidden">
-      <div class="header"><div><div class="eyebrow">Orion / Atendimento</div><h1>Conversas do WhatsApp</h1>
-        <p class="subhead" id="chatMode">Leia mensagens recebidas após a conexão e responda manualmente. Verificando respostas automáticas...</p></div>
+    <section id="page-conversas" class="page orion-workspace hidden" data-chat-view="list">
+      <div class="header"><div><div class="eyebrow">Atendimento Orion</div><h1>Conversas do WhatsApp</h1>
+        <p class="subhead">Leia e responda às conversas do seu número conectado.</p></div>
         <div class="pill"><span id="chatDot" class="dot amber"></span><span id="chatConnection">Verificando...</span></div>
       </div>
-      <div class="card"><div class="row" style="justify-content:space-between">
-        <div><strong>Conversas recentes</strong><p style="margin-bottom:0">Mensagens privadas recentes, mantidas por até sete dias no armazenamento criptografado da Railway. Não importa o histórico antigo.</p></div>
-        <button class="btn secondary" id="reloadChats">Atualizar conversas</button>
-      </div></div>
+      <div class="chat-toolbar">
+        <button class="btn" id="chatNew" type="button">Nova conversa</button>
+        <button class="btn secondary" id="reloadChats" type="button">Atualizar conversas</button>
+      </div>
+      <p id="chatListNotice" class="feedback" role="status" aria-live="polite"></p>
       <div class="chat-grid">
-        <div class="card"><h2>Contatos</h2><div class="chat-list" id="chatList"><p>Nenhuma conversa registrada ainda.</p></div></div>
-        <div class="card">
-          <h2 id="chatTitle">Selecione um contato</h2>
-          <div id="chatBubbles" class="bubbles" aria-live="polite"><p>As mensagens novas aparecerão aqui após o vínculo.</p></div>
+        <div class="card chat-contacts">
+          <div class="chat-card-heading"><h2>Conversas recentes</h2><span id="chatCount" class="chat-count" aria-live="polite">0</span></div>
+          <label class="chat-search-label" for="chatSearch">Buscar por número ou mensagem</label>
+          <input id="chatSearch" type="search" placeholder="Buscar conversa" autocomplete="off">
+          <div class="chat-list" id="chatList" aria-label="Contatos com mensagens recentes"><p>Nenhuma conversa registrada ainda.</p></div>
+        </div>
+        <div class="card chat-thread" id="chatThread" aria-labelledby="chatTitle">
+          <div class="chat-card-heading">
+            <button id="chatBack" class="btn secondary chat-back" type="button" aria-label="Voltar para as conversas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button>
+            <h2 id="chatTitle" tabindex="-1">Selecione um contato</h2>
+          </div>
+          <div id="chatBubbles" class="bubbles" aria-live="polite"><p>Escolha uma conversa ou inicie uma nova mensagem.</p></div>
           <form id="sendForm">
             <label for="chatPhone">Número do destinatário (DDI + DDD)</label>
-            <input type="tel" id="chatPhone" placeholder="5567999999999" required>
+            <input type="tel" id="chatPhone" inputmode="tel" autocomplete="tel" maxlength="26" placeholder="55 67 99999-9999" required>
             <label for="chatText">Mensagem</label>
-            <textarea id="chatText" maxlength="1200" required placeholder="Escreva sua mensagem..."></textarea>
-            <div class="row"><button class="btn" type="submit" id="sendButton">Enviar mensagem →</button><small>Máximo: 5 envios por minuto. Sem campanhas.</small></div>
+            <textarea id="chatText" rows="3" maxlength="1200" required placeholder="Escreva sua mensagem..."></textarea>
+            <div class="chat-send-actions"><button class="btn" type="submit" id="sendButton">Enviar mensagem</button><small>Até 5 envios por minuto. Cada envio pede sua confirmação.</small></div>
           </form>
-          <div class="row" style="align-items:center;gap:12px;margin-top:13px;flex-wrap:wrap">
-            <button type="button" class="btn secondary" id="inspectRecipient">Verificar destinatário sem enviar mensagem</button>
-            <small>Consulta a identidade do número e o estado dos recibos recentes.</small>
-          </div>
-          <p id="recipientInspection" class="feedback" role="status" aria-live="polite"></p>
           <p id="chatNotice" class="feedback" role="status" aria-live="polite"></p>
+          <details class="workspace-details" id="chatDeliveryDetails">
+            <summary>Verificação do destinatário e da entrega</summary>
+            <p>Consulte a identidade do número e os recibos recentes sem enviar uma mensagem.</p>
+            <div class="business-actions"><button type="button" class="btn secondary" id="inspectRecipient">Verificar destinatário</button></div>
+            <p id="recipientInspection" class="feedback" role="status" aria-live="polite"></p>
+          </details>
         </div>
       </div>
-      <p class="note">Somente conversas privadas de texto. Arquivos e histórico anterior não são importados. Este modo é experimental e não substitui o WhatsApp oficial.</p>
+      <details class="workspace-details chat-help">
+        <summary>Sobre as conversas e respostas automáticas</summary>
+        <p id="chatMode">Leia mensagens recebidas após a conexão e responda manualmente. Verificando respostas automáticas...</p>
+        <p>As mensagens privadas de texto ficam disponíveis por até sete dias. Arquivos e histórico anterior à conexão não são importados. Este modo é experimental e não substitui o WhatsApp oficial.</p>
+      </details>
     </section>
-    <section id="page-empresa" class="page hidden" aria-labelledby="businessHeading">
+    <section id="page-empresa" class="page orion-workspace hidden" aria-labelledby="businessHeading">
       <div class="header"><div><div class="eyebrow">Orion / Sua empresa</div><h1 id="businessHeading">Configure seu atendimento</h1><p class="subhead">Apresente sua empresa, escolha a forma de conversar e revise o que o assistente poderá fazer.</p></div></div>
       <div class="card"><label for="businessTenant">Empresa ou unidade</label><select id="businessTenant"><option value="">Escolha um estabelecimento</option></select>
         <div class="business-actions"><button id="businessReload" class="btn secondary" type="button">Atualizar configuração</button><span id="businessStatus" class="pill">Escolha uma empresa</span></div>
@@ -1204,7 +1408,7 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
         <div id="businessVersionReview" class="business-version-review hidden" aria-live="polite"></div>
       </div>
     </section>
-    <section id="page-catalogo" class="page hidden" aria-labelledby="commerceHeading">
+    <section id="page-catalogo" class="page orion-workspace hidden" aria-labelledby="commerceHeading">
       <div class="header"><div><div class="eyebrow">Orion / Produtos e pedidos</div><h1 id="commerceHeading">Catálogo e pedidos</h1><p class="subhead">Cadastre produtos e consulte propostas calculadas pelo servidor. Criar ou confirmar um pedido não confirma pagamento.</p></div></div>
       <div class="card"><label for="comTenant">Empresa do catálogo</label><select id="comTenant"><option value="">Escolha uma empresa</option></select>
         <div class="business-actions"><button id="comReload" class="btn secondary" type="button">Atualizar catálogo</button><span id="comStatus" class="pill">Escolha uma empresa</span></div>
@@ -1273,13 +1477,13 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
         </div>
       </div>
     </section>
-    <section id="page-ai" class="page hidden">
-      <div class="header"><div><div class="eyebrow">Orion / Automação inteligente</div>
+    <section id="page-ai" class="page orion-workspace hidden">
+      <div class="header"><div><div class="eyebrow">Atendimento Orion</div>
         <h1>Teste seu atendimento</h1><p class="subhead">Converse por texto ou envie um arquivo de áudio. Valores e horários vêm do estabelecimento selecionado. Esta simulação não envia mensagens nem cria reservas.</p></div>
       </div>
       <div class="card">
-        <div class="row" style="align-items:end;gap:14px;flex-wrap:wrap">
-          <label style="flex:1;min-width:220px" for="aiTenant">Estabelecimento
+        <div class="workspace-toolbar">
+          <label class="workspace-select" for="aiTenant">Estabelecimento
             <select id="aiTenant"><option value="">Escolha o estabelecimento</option></select></label>
           <button type="button" id="aiReset" class="btn secondary">Nova conversa</button>
           <button type="button" id="aiStatusRefresh" class="btn secondary">Atualizar disponibilidade</button>
@@ -1290,28 +1494,34 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
           <div><label for="aiStyle">Estilo para este teste de texto</label><select id="aiStyle"><option value="">Usar o estilo da versão</option><option value="warm">Acolhedor e próximo</option><option value="professional">Elegante e profissional</option><option value="relaxed">Descontraído</option><option value="direct">Direto e cordial</option></select></div>
         </div>
         <p id="aiMode" class="business-muted" role="status">Atendimento atual. Nenhum rascunho selecionado.</p>
-        <p class="note" style="margin-top:12px">O modelo identifica intenções; valores e disponibilidade são consultados no Orion. A confirmação da simulação nunca grava no calendário.</p>
         <div id="aiMessages" class="bubbles" aria-live="polite" style="min-height:250px;max-height:480px;overflow-y:auto;margin-top:12px"></div>
-        <p id="aiEvaluationHelp" class="business-muted">Marque o que precisa melhorar em cada resposta de teste. Clique novamente para remover. As avaliações ficam só nesta conversa, para revisão; não alteram preços, políticas nem o atendimento publicado.</p>
-        <div class="row" style="gap:12px;flex-wrap:wrap"><button id="aiExportEvaluation" type="button" class="btn secondary" disabled aria-describedby="aiEvaluationHelp aiEvaluationExportHelp">Exportar avaliação JSON</button><small id="aiEvaluationStatus" role="status" aria-live="polite">Nenhuma resposta marcada.</small></div>
-        <p id="aiEvaluationExportHelp" class="business-muted">O arquivo inclui somente as respostas marcadas e a empresa, versão e estilo do teste. Revise o conteúdo antes de compartilhar. Nova conversa, mudança de empresa, versão ou estilo e saída da conta apagam as avaliações desta tela.</p>
         <form id="aiForm" style="margin-top:18px">
           <label for="aiInput">Mensagem do cliente</label>
           <textarea id="aiInput" rows="2" minlength="1" maxlength="1500" required placeholder="Ex.: Quero cortar o cabelo e fazer a barba amanhã"></textarea>
-          <div class="row"><button id="aiSend" class="btn" type="submit">Enviar para o simulador</button><small>Conversa de teste isolada desta empresa</small></div>
+          <div class="chat-send-actions"><button id="aiSend" class="btn" type="submit">Enviar para o simulador</button><small>Conversa de teste isolada desta empresa</small></div>
         </form>
-        <form id="aiAudioForm" style="margin-top:20px">
+        <p id="aiDiagnostics" class="feedback" role="status" aria-live="polite"></p>
+        <details class="workspace-details">
+          <summary>Testar com arquivo de áudio</summary>
+          <form id="aiAudioForm">
           <label for="aiAudioFile">Testar com arquivo de áudio</label><input id="aiAudioFile" type="file" accept="audio/ogg,audio/webm,audio/wav,audio/mpeg,audio/mp4" aria-describedby="aiAudioNote">
           <p id="aiAudioNote" class="business-muted">Até 2 MB e 120 segundos, nos formatos OGG, WebM, WAV, MP3 ou M4A. O arquivo é enviado para transcrição; este painel não guarda a mídia. Áudio usa o estilo da versão selecionada, sem gerar voz.</p>
           <p id="aiAudioAvailability" class="business-muted" role="status">Consulte a disponibilidade do teste antes de enviar um arquivo.</p>
           <button id="aiAudioSend" class="btn secondary" type="submit">Transcrever e testar áudio</button>
-        </form>
-        <p id="aiDiagnostics" class="feedback" role="status" aria-live="polite"></p>
+          </form>
+        </details>
+        <details class="workspace-details simulator-review">
+          <summary>Revisar e exportar avaliações</summary>
+          <p id="aiEvaluationHelp" class="business-muted">Marque o que precisa melhorar em cada resposta de teste. Clique novamente para remover. As avaliações ficam só nesta conversa, para revisão; não alteram preços, políticas nem o atendimento publicado.</p>
+          <div class="business-actions"><button id="aiExportEvaluation" type="button" class="btn secondary" disabled aria-describedby="aiEvaluationHelp aiEvaluationExportHelp">Exportar avaliação JSON</button><small id="aiEvaluationStatus" role="status" aria-live="polite">Nenhuma resposta marcada.</small></div>
+          <p id="aiEvaluationExportHelp" class="business-muted">O arquivo inclui somente as respostas marcadas e a empresa, versão e estilo do teste. Revise o conteúdo antes de compartilhar. Nova conversa, mudança de empresa, versão ou estilo e saída da conta apagam as avaliações desta tela.</p>
+        </details>
       </div>
     </section>
-    <section id="page-cadastros" class="page hidden">
-      <div class="header"><div><div class="eyebrow">Orion / Configurações</div><h1>Cadastros da empresa</h1>
-        <p class="subhead">Serviços, profissionais, agenda e permissões de acesso.</p></div></div>
+    <section id="page-cadastros" class="page orion-workspace hidden">
+      <button type="button" class="btn secondary workspace-back" data-os-route="configuracoes">Voltar para Configurações</button>
+      <div class="header"><div><div class="eyebrow">Configurações</div><h1>Administração do atendimento</h1>
+        <p class="subhead">Gerencie telefones autorizados, folgas e empresas. Serviços, profissionais e expediente ficam nas abas de gestão.</p></div></div>
       <div class="columns">
         <div>
           <div class="card">
@@ -1331,8 +1541,8 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
           </div>
         </div>
         <div class="card">
-          <h2>Equipe e serviços</h2>
-          <label for="resource">Categoria</label>
+          <h2>Acessos e folgas</h2>
+          <label for="resource">O que deseja administrar?</label>
           <select id="resource"></select>
           <p id="catalogAccess" class="business-muted"></p><form id="recordForm" style="margin-top:18px"><fieldset id="recordFields" class="business-fields grid-form" disabled></fieldset></form>
           <div class="row" style="margin-top:15px;justify-content:space-between"><h3>Registros</h3>
@@ -1403,6 +1613,8 @@ function suiteBridge(initialRoute){
 let csrf="",page="dispositivo",method="code",showQr=false,deviceStatus="starting",lastDeviceStatus="starting",pairExpiresAt=0,
     statusTimer=null,chatTimer=null,selectedPhone="",chatsBusy=false;
 let messageSequence=0,lastPanelSend=null,manualSendRequest=null,manualSendSequence=0;
+let chatRows=[],chatLoadSequence=0,recipientSequence=0,chatSending=false,chatSavedScroll=0;
+const chatDrafts=new Map();
 let wizardStep="tutorial",wizardAttempted=false,wizardSuccessUntil=0,
     wizardSuccessDone=false,wizardQrDeadline=0,wizardClocks=null,statusSequence=0;
 const steps={
@@ -1437,7 +1649,7 @@ const fields={
 };
 const descriptions={authorized_staff:"Telefones autorizados",professionals:"Profissionais",services:"Serviços",
  professional_services:"Serviços por profissional",working_hours:"Expediente",working_breaks:"Pausas",time_off:"Folgas",schedule_blocks:"Bloqueios"};
-for(const [key,val] of Object.entries(descriptions))$("resource").add(new Option(val,key));
+for(const key of ["authorized_staff","time_off"])$("resource").add(new Option(descriptions[key],key));
 function errorMessage(data,code){return typeof data?.detail==="string"?data.detail:(typeof data?.error==="string"?data.error:
   "O servidor retornou HTTP "+code+".")}
 async function api(url,method="GET",data){
@@ -1501,6 +1713,9 @@ function showLogin(){
  window.OrionSuite?.destroy();suiteUser=null;suiteTenantId="";
  finishActionConfirmation(false);manualSendRequest=null;++manualSendSequence;$("sendButton").disabled=false;
  csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);
+ ++statusSequence;connectedSnapshot=null;wizardSuccessUntil=0;
+ $("realWhatsAppPhoto").removeAttribute("src");$("realWhatsAppName").textContent="";$("realWhatsAppPhone").textContent="";$("connectedPhone").textContent="";
+ resetChatState();
  resetAiConversation("");
  clearAiProfileState();$("aiTenant").replaceChildren(new Option("Escolha o estabelecimento",""));
  resetBusinessState();businessRows=[];$("businessTenant").replaceChildren(new Option("Escolha um estabelecimento",""));$("businessNav").classList.add("hidden");$("aiNav").classList.add("hidden");aiPreferredTenant="";aiPreferredVersion="";
@@ -1956,10 +2171,10 @@ $("deviceSettingsForm").addEventListener("submit",async event=>{
 
 async function updateStatus(){
  if(!csrf)return;
- const requestId=++statusSequence;
+ const requestId=++statusSequence,epoch=authEpoch;
  try{
   const result=await api("/api/v1/qr/status");
-  if(requestId!==statusSequence)return; // Older requests cannot overwrite newer state.
+  if(requestId!==statusSequence||epoch!==authEpoch)return; // Ignore another session or an older response.
   const previous=deviceStatus;
   deviceStatus=result.status;lastDeviceStatus=result.status;
   const active=result.status==="connected";
@@ -1967,7 +2182,7 @@ async function updateStatus(){
     wizardAttempted=false;wizardStep="success";wizardSuccessUntil=Date.now()+2200;
     renderGuide();
     setTimeout(()=>{
-      if(deviceStatus==="connected"&&Date.now()>=wizardSuccessUntil){
+      if(epoch===authEpoch&&deviceStatus==="connected"&&Date.now()>=wizardSuccessUntil){
         wizardSuccessDone=true;renderConnectedCenter(connectedSnapshot||result)
       }
     },2300);
@@ -2016,7 +2231,7 @@ async function updateStatus(){
     $("codeStatus").textContent="Código expirado. Solicite outro código para continuar.";
   }else if(showQr&&page==="dispositivo"&&method==="qr")await updateQr();
  }catch(ex){
-  if(requestId!==statusSequence)return;
+  if(requestId!==statusSequence||epoch!==authEpoch)return;
   deviceStatus="error";lastDeviceStatus="error";
   renderConnectedCenter({status:"error"});
   $("globalStatus").textContent="Serviço indisponível";
@@ -2149,36 +2364,93 @@ $("repairConnection").addEventListener("click",async()=>{
   finally{$("repairConnection").disabled=false;}
 });
 $("reloadChats").addEventListener("click",loadChats);
+$("chatSearch").addEventListener("input",renderChatList);
+$("chatBack").addEventListener("click",()=>{
+ if(chatSending)return;
+ saveChatDraft();chatSavedScroll=$("chatBubbles").scrollTop||0;setChatView("list");$("chatNew").focus();
+});
+$("chatNew").addEventListener("click",()=>{
+ if(chatSending)return;
+ saveChatDraft();selectedPhone="";++messageSequence;
+ const draft=chatDrafts.get("");
+ $("chatPhone").readOnly=false;$("chatPhone").value=draft?.phone||"";$("chatText").value=draft?.text||"";
+ $("chatTitle").textContent="Nova conversa";$("chatNotice").textContent="";
+ clearRecipientInspection();
+ const hint=document.createElement("p");hint.textContent="Informe o número e escreva sua mensagem para iniciar uma conversa.";
+ $("chatBubbles").replaceChildren(hint);renderChatList();setChatView("thread");$("chatPhone").focus();
+});
+$("chatPhone").addEventListener("input",clearRecipientInspection);
+function setChatView(view){$("page-conversas").dataset.chatView=view;}
+function chatThreadHidden(){return $("page-conversas").dataset.chatView==="list"&&window.matchMedia("(max-width:1100px)").matches;}
+function setChatSending(busy){
+ chatSending=busy;
+ for(const id of ["chatPhone","chatText","chatNew","chatBack","chatSearch"])$(id).disabled=busy;
+ renderChatList();
+}
+function saveChatDraft(){
+ chatDrafts.set(selectedPhone,{phone:$("chatPhone").value,text:$("chatText").value});
+}
+function clearRecipientInspection(){
+ ++recipientSequence;$("recipientInspection").textContent="";$("inspectRecipient").disabled=false;
+ $("chatDeliveryDetails").open=false;
+}
+function resetChatState(){
+ ++messageSequence;++chatLoadSequence;selectedPhone="";chatRows=[];chatsBusy=false;lastPanelSend=null;chatDrafts.clear();
+ chatSavedScroll=0;setChatSending(false);$("chatPhone").readOnly=false;
+ deviceStatus="starting";lastDeviceStatus="starting";
+ for(const id of ["chatPhone","chatText","chatSearch"])$(id).value="";
+ $("chatTitle").textContent="Mensagens";$("chatNotice").textContent="";$("chatListNotice").textContent="";
+ $("chatList").replaceChildren();$("chatBubbles").replaceChildren();$("chatCount").textContent="0";
+ clearRecipientInspection();setChatView("list");
+}
 function startChats(){
  clearInterval(chatTimer);chatTimer=setInterval(async()=>{await loadChats();await refreshMessages()},6500);
 }
+function renderChatList(){
+ const box=$("chatList"),term=$("chatSearch").value.trim().toLocaleLowerCase("pt-BR");
+ const phoneQuery=/^[+\d\s().-]+$/.test(term)?term.replace(/\D/g,""):"";
+ const rows=chatRows.filter(row=>!term||("+"+row.phone+" "+(row.preview||"")).toLocaleLowerCase("pt-BR").includes(term)||(phoneQuery&&String(row.phone).includes(phoneQuery)));
+ const focusedPhone=document.activeElement?.dataset?.chatPhone;
+ box.replaceChildren();$("chatCount").textContent=term?rows.length+" de "+chatRows.length:String(rows.length);
+ if(!rows.length){
+  const hint=document.createElement("p");hint.textContent=term?"Nenhuma conversa encontrada. Tente outro número ou texto.":"Nenhuma mensagem recebida ainda. Você pode iniciar uma nova conversa.";
+  box.append(hint);return;
+ }
+ for(const row of rows){
+  const phone=String(row.phone),button=document.createElement("button");
+  button.type="button";button.id="chat-contact-"+phone;button.dataset.chatPhone=phone;
+  button.disabled=chatSending;
+  button.className="chat-item"+(phone===selectedPhone?" current":"");button.setAttribute("aria-pressed",String(phone===selectedPhone));
+  const name=document.createElement("strong"),preview=document.createElement("small");
+  name.textContent="+"+phone;preview.textContent=row.preview||"Sem prévia de mensagem";button.append(name,preview);
+  button.addEventListener("click",()=>{selectChat(phone);void refreshMessages();});box.append(button);
+ }
+ if(focusedPhone)$("chat-contact-"+focusedPhone)?.focus();
+}
 async function loadChats(){
  if(chatsBusy)return;chatsBusy=true;
+ const request=++chatLoadSequence,epoch=authEpoch,current=()=>request===chatLoadSequence&&epoch===authEpoch;
  try{
   const data=await api("/api/v1/qr/chats");
-  const box=$("chatList");box.replaceChildren();
-  if(!data.items?.length){const p=document.createElement("p");p.textContent="Nenhuma mensagem recebida ainda.";box.append(p);return}
-  for(const row of data.items){
-   const b=document.createElement("button");b.className="chat-item"+(row.phone===selectedPhone?" current":"");
-   const name=document.createElement("strong"),desc=document.createElement("small");
-   name.textContent="+"+row.phone;desc.textContent=row.preview;
-   b.append(name,desc);b.addEventListener("click",()=>{
-    selectChat(row.phone);
-    refreshMessages();loadChats();
-   });box.append(b);
-  }
- }catch(ex){$("chatNotice").textContent=ex.message}
- finally{chatsBusy=false}
+  if(!current())return;
+  chatRows=Array.isArray(data.items)?data.items:[];$("chatListNotice").textContent="";renderChatList();
+ }catch(ex){if(current())$("chatListNotice").textContent=ex.message}
+ finally{if(current())chatsBusy=false}
 }
 function selectChat(phone){
+ if(chatSending)return;
+ const returning=phone===selectedPhone&&chatThreadHidden();
  if(phone!==selectedPhone){
+  saveChatDraft();
   selectedPhone=phone;++messageSequence;
+  $("chatText").value=chatDrafts.get(phone)?.text||"";
   const loading=document.createElement("p");loading.textContent="Carregando mensagens...";
-  $("chatBubbles").replaceChildren(loading);
-  $("chatNotice").textContent="";
+  $("chatBubbles").replaceChildren(loading);$("chatBubbles").scrollTop=0;
+  $("chatNotice").textContent="";clearRecipientInspection();
  }
- $("chatPhone").value=phone;$("chatTitle").textContent="Conversa com +"+phone;
- renderSendNotice();
+ $("chatPhone").readOnly=true;$("chatPhone").value=phone;$("chatTitle").textContent="Conversa com +"+phone;
+ renderSendNotice();renderChatList();setChatView("thread");$("chatTitle").focus();
+ if(returning)$("chatBubbles").scrollTop=chatSavedScroll;
 }
 function renderSendNotice(items=[]){
  if(!lastPanelSend||lastPanelSend.phone!==selectedPhone)return;
@@ -2194,13 +2466,15 @@ function renderSendNotice(items=[]){
    "O WhatsApp aceitou o envio. Aguardando confirmação de entrega no celular.";
 }
 async function refreshMessages(){
- if(!selectedPhone)return;
- const phone=selectedPhone,requestId=++messageSequence;
+ if(!selectedPhone||chatThreadHidden())return;
+ const phone=selectedPhone,requestId=++messageSequence,epoch=authEpoch;
  try{
   const data=await api("/api/v1/qr/messages?phone="+encodeURIComponent(phone));
-  if(requestId!==messageSequence||phone!==selectedPhone)return;
+  if(requestId!==messageSequence||phone!==selectedPhone||epoch!==authEpoch||chatThreadHidden())return;
   renderSendNotice(data.items||[]);
-  const area=$("chatBubbles");area.replaceChildren();
+  const area=$("chatBubbles"),scrollTop=area.scrollTop||0;
+  const followLatest=(area.scrollHeight||0)-(area.clientHeight||0)-scrollTop<64;
+  area.replaceChildren();
   if(!data.items?.length){const p=document.createElement("p");p.textContent="Sem mensagens recentes.";area.append(p);return}
   for(const item of data.items){
    const bubble=document.createElement("div");bubble.className="bubble "+(item.direction==="out"?"out":"in");
@@ -2209,9 +2483,9 @@ async function refreshMessages(){
    time.textContent=new Date(item.at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})+(item.direction==="out"?" · "+({pending:"aguardando",server_accepted:"servidor aceitou",delivered:"entregue",read:"lida",played:"reproduzida",failed:"falhou"}[item.delivery]||"não confirmada"):"");
    bubble.append(text,time);area.append(bubble);
   }
-  area.scrollTop=area.scrollHeight;
+  area.scrollTop=followLatest?area.scrollHeight:scrollTop;
  }catch(ex){
-  if(requestId===messageSequence&&phone===selectedPhone)$("chatNotice").textContent=ex.message;
+  if(requestId===messageSequence&&phone===selectedPhone&&epoch===authEpoch)$("chatNotice").textContent=ex.message;
  }
 }
 $("inspectRecipient").addEventListener("click",async()=>{
@@ -2219,9 +2493,11 @@ $("inspectRecipient").addEventListener("click",async()=>{
  if(!/^[1-9]\d{7,14}$/.test(phone)){info.textContent="Informe DDI + DDD + número válido.";return;}
  if(deviceStatus!=="connected"){info.textContent="Conecte o WhatsApp antes da verificação.";return;}
  const button=$("inspectRecipient");button.disabled=true;
+ const sequence=++recipientSequence,epoch=authEpoch,current=()=>sequence===recipientSequence&&epoch===authEpoch&&phone===normalize($("chatPhone").value);
  info.textContent="Consultando o WhatsApp. Nenhuma mensagem será enviada...";
  try{
   const r=await api("/api/v1/qr/recipient?phone="+encodeURIComponent(phone));
+  if(!current())return;
   const exists=r.registered===true?"WhatsApp confirmou o número":
     r.registered===false?"Número não confirmado pelo WhatsApp":
     "Consulta indisponível";
@@ -2238,8 +2514,8 @@ $("inspectRecipient").addEventListener("click",async()=>{
     ((d.delivered||0)+(d.read||0))+"). Pedidos de recuperação criptográfica nesta execução: "+(d.retryRequests||0)+
     " em "+(d.messagesWithRetry||0)+" mensagens. "+
     "Importante: 'pendente' não prova falha de descriptografia no celular.";
- }catch(ex){info.textContent="Não foi possível verificar: "+ex.message}
- finally{button.disabled=false;}
+ }catch(ex){if(current())info.textContent="Não foi possível verificar: "+ex.message}
+ finally{if(current())button.disabled=false;}
 });
 $("sendForm").addEventListener("submit",async ev=>{
  ev.preventDefault();
@@ -2254,15 +2530,16 @@ $("sendForm").addEventListener("submit",async ev=>{
  const current=()=>active()&&deviceStatus==="connected"&&conversation===selectedPhone&&phone===normalize($("chatPhone").value)&&text===$("chatText").value.trim();
  try{
   if(!await confirmAction("Enviar esta mensagem para +"+phone+" pelo WhatsApp conectado?")||!current())return;
-  $("chatNotice").textContent="Enviando...";
+  $("chatNotice").textContent="Enviando...";setChatSending(true);
   const result=await api("/api/v1/qr/send","POST",{phone,text});
-  if(!current())return;
+  if(!active())return;
   if(!result.accepted)throw Error("O WhatsApp não confirmou a aceitação. Aguarde antes de tentar novamente.");
   lastPanelSend={phone,id:result.id,delivery:result.delivery};
-  selectChat(phone);$("chatText").value="";
+  setChatSending(false);
+  selectChat(phone);if(conversation===phone)$("chatText").value="";chatDrafts.delete(conversation);
   await refreshMessages();await loadChats();
  }catch(ex){if(active())$("chatNotice").textContent=ex.message}
- finally{if(active()){manualSendRequest=null;$("sendButton").disabled=false}}
+ finally{if(active()){manualSendRequest=null;$("sendButton").disabled=false;setChatSending(false)}}
 });
 let catalogRows=[],catalogSequence=0,catalogReadSequence=0,catalogWriteSequence=0,catalogLoading=false,catalogWriting=false,catalogUncertain=false;
 function catalogCanWrite(){const row=catalogRows.find(row=>row.id===$("tenant").value);return !!row&&(["support","admin"].includes(loginRole)||row.role==="owner"||row.role==="editor"&&$("resource").value!=="authorized_staff")}
@@ -2297,7 +2574,7 @@ function renderForm(){
   else if(!["description","reason","prep_min","cleanup_min"].includes(name))input.required=true;
   label.append(input);form.append(label);
  }
- const b=document.createElement("button");b.className="btn";b.textContent="Cadastrar registro";form.append(b);
+ const b=document.createElement("button");b.className="btn";b.textContent=$("resource").value==="authorized_staff"?"Autorizar telefone":$("resource").value==="time_off"?"Registrar folga":"Cadastrar registro";form.append(b);
  updateCatalogControls();
 }
 async function loadRecords(){
