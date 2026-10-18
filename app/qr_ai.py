@@ -35,7 +35,7 @@ from app import qr_commerce
 from app import qr_intake_revision
 from app import qr_cancellation
 from app.qr_service_context import resolve_service_reply
-from app.qr_reschedule_request import split_request as scoped_reschedule_request, explicit_day_numbers, source_service_subject
+from app.qr_reschedule_request import ScopedReschedule, split_request as scoped_reschedule_request, explicit_day_numbers, source_service_subject
 from app.groq_understanding import interpret_plan
 from app.qr_understanding import UnderstandingPlan, build_plan, clarification_for, unique_service_reply
 from app.qr_information import info as compose_information, faq_catalog
@@ -387,24 +387,44 @@ async def selected_reschedule(tenant: UUID, phone: str, appointment_id: UUID, re
 
 
 async def _scoped_reschedule_turn(tenant, phone, request, plan, business, catalog, professionals,
-                                  redis, key, preview, factual):
+                                  redis, key, preview, factual, *, source_override=None, source_query=None, source_subject=None):
     """Identify only the old, owned booking; new wishes never identify the target."""
     if preview:
         return await begin_reschedule(tenant, phone, business, redis, key, preview=True)
     context = await _time_context(tenant, request.source, {}, business, catalog, professionals)
-    source = build_plan(message=request.source, catalog=catalog, professionals=professionals, context=context,
+    source = source_override or build_plan(message=request.source, catalog=catalog, professionals=professionals, context=context,
         reference_date=datetime.now(ZoneInfo(business["timezone"])).date())
     day_numbers = explicit_day_numbers(request.source)
-    subject = source_service_subject(request.source)
+    subject = source_service_subject(request.source) if source_subject is None else source_subject
     literal_services = unique_service_reply(subject, catalog, context_step="menu") if subject else None
-    invalid_source = (source.requires_clarification or source.time_relation not in {"none", "exact"}
-        or subject and (not literal_services or set(literal_services) != set(source.service_ids))
-        or len(day_numbers) > 1 or any(not 1 <= value <= 31 for value in day_numbers)
+    bad_date = ("date" in source.ambiguities or len(day_numbers) > 1 or any(not 1 <= value <= 31 for value in day_numbers)
         or source.requested_date and day_numbers and date.fromisoformat(source.requested_date).day != day_numbers[0])
+    required = set(source_query.get("required", [])) if source_query else set(source.ambiguities)
+    if bad_date:
+        required.add("date")
+    if subject and (not literal_services or set(literal_services) != set(source.service_ids)):
+        required.add("service")
+    source_fields = {field: getattr(source, field) for field in
+        ("service_ids", "professional_id", "requested_date", "requested_time", "time_relation")}
+    if bad_date:
+        source_fields["requested_date"] = None
+    source_fields = UnderstandingPlan(intents=["reschedule"], **source_fields).model_dump(mode="json")
+    if source_query is None:
+        destination = build_plan(message=request.destination, catalog=catalog, professionals=professionals, context=context,
+            reference_date=datetime.now(ZoneInfo(business["timezone"])).date())
+        desired = plan.model_copy(update={"intents": ["reschedule"], "service_ids": destination.service_ids,
+            "professional_id": destination.professional_id, "faq_ids": [], "query_service_ids": []})
+        source_query = {"expires_at": datetime.now().timestamp()+300,
+            "revision": qr_profile.catalog_revision(business, catalog, professionals),
+            "destination": desired.model_dump(mode="json"), "destination_clause": request.destination}
+    source_query = {**source_query, "source": source_fields, "required": sorted(required)}
+    invalid_source = source.requires_clarification or source.time_relation not in {"none", "exact"} or bool(required)
     if invalid_source:
         # Discard any older target/summary, without changing a registered booking.
-        await redis.set(key, json.dumps({"step": "reschedule_pick", "candidate_ids": [], "candidate_details": []}), ex=STATE_TTL)
-        return _bounded_reply(factual, "Preciso identificar a reserva original sem dúvida. Qual é a data e o horário atuais dela? Nenhum agendamento foi alterado.", "reschedule_pick")
+        await redis.set(key, json.dumps({"step": "reschedule_pick", "candidate_ids": [], "candidate_details": [],
+            "reschedule_source_query": source_query}), ex=STATE_TTL)
+        question = "Qual é o serviço da reserva original?" if "service" in required else "Qual é a data e o horário atuais dela?"
+        return _bounded_reply(factual, "Preciso identificar a reserva original sem dúvida. " + question + " Nenhum agendamento foi alterado.", "reschedule_pick")
     now = datetime.now(ZoneInfo(business["timezone"]))
     rows = await customer_appointments(tenant, phone, limit=15)
     matches = []
@@ -431,7 +451,7 @@ async def _scoped_reschedule_turn(tenant, phone, request, plan, business, catalo
             "start_at": when.isoformat(), "professional": professional})
     if len(matches) != 1:
         state = {"step": "reschedule_pick", "candidate_ids": [item["id"] for item in matches[:8]],
-            "candidate_details": matches[:8]}
+            "candidate_details": matches[:8], "reschedule_source_query": source_query}
         if matches:
             state["deferred_reschedule"] = plan.model_copy(update={"intents": ["reschedule"],
                 "faq_ids": [], "query_service_ids": []}).model_dump(mode="json")
@@ -449,6 +469,68 @@ async def _scoped_reschedule_turn(tenant, phone, request, plan, business, catalo
     if result["step"] != "reschedule_day" or not state.get("appointment"):
         return result
     return await _planned_slots(tenant, phone, plan, state, business, catalog, redis, key, preview, factual, rescheduling=True)
+
+
+def _fresh_reschedule_source(query, business, catalog, professionals):
+    try:
+        return (isinstance(query, dict) and type(query["expires_at"]) in {int, float}
+            and math.isfinite(query["expires_at"]) and query["expires_at"] > datetime.now().timestamp()
+            and query["revision"] == qr_profile.catalog_revision(business, catalog, professionals))
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+async def _correct_reschedule_source(tenant, phone, body, state, business, catalog, professionals, redis, key, preview):
+    query = state.get("reschedule_source_query")
+    if query is None or scoped_reschedule_request(body):
+        return None
+    if not _fresh_reschedule_source(query, business, catalog, professionals):
+        await redis.set(key, json.dumps({"step": "reschedule_pick", "candidate_ids": [], "candidate_details": []}), ex=STATE_TTL)
+        return {"answer": "O pedido de remarcação precisa ser conferido novamente. Qual reserva quer remarcar e para qual novo dia e horário? Nenhum agendamento foi alterado.", "step": "reschedule_pick"}
+    guard = contextual_response(body, awaiting_confirmation=True)
+    if guard.reason == "condition_or_hypothesis" or re.search(r"\b(?:nao|nem|nunca|sem|cancel\w*|desmarc\w*)\b", norm(body)):
+        await redis.set(key, json.dumps({"step": "reschedule_pick", "candidate_ids": [], "candidate_details": []}), ex=STATE_TTL)
+        return {"answer": "Não alterei nenhuma reserva. Pode esclarecer qual reserva e qual nova data deseja, sem uma condição pendente?", "step": "reschedule_pick"}
+    if catalog_question(body) or availability_question(body) or "?" in body:
+        return None
+    if state.get("candidate_ids"):
+        kind, _ = qr_cancellation.choose_candidate(body, state.get("candidate_details", []), business["timezone"])
+        if kind == "selected":
+            return None
+    previous = UnderstandingPlan.model_validate(query["source"])
+    context = await _time_context(tenant, body, {"professional": str(previous.professional_id) if previous.professional_id else None,
+        "day": previous.requested_date}, business, catalog, professionals)
+    supplied = build_plan(message=body, catalog=catalog, professionals=professionals, context=context,
+        reference_date=datetime.now(ZoneInfo(business["timezone"])).date())
+    if set(supplied.intents) & {"booking", "reschedule", "cancel", "confirm", "human", "catalog", "price", "faq"}:
+        return None
+    update = {};required = set(query.get("required", []))
+    for field, ambiguity in (("service_ids", "service"), ("professional_id", "professional"),
+                             ("requested_date", "date"), ("requested_time", "time")):
+        value = getattr(supplied, field)
+        if value:
+            update[field] = value;required.discard(ambiguity)
+        if ambiguity in supplied.ambiguities:
+            update[field] = [] if field == "service_ids" else None;required.add(ambiguity)
+    if supplied.requested_time:
+        update["time_relation"] = supplied.time_relation
+    if not update:
+        return {"answer": "Qual serviço, data e horário identificam a reserva atual? O novo horário ainda é apenas um pedido; nada foi alterado.", "step": "reschedule_pick"}
+    merged = previous.model_copy(update={**update, "intents": ["reschedule"], "ambiguities": sorted(required)})
+    # The short correction replaces fields; never concatenate it with the old,
+    # contradictory utterance or reuse any previous summary/snapshot/consent.
+    subject = source_service_subject(body)
+    if re.match(r"^(?:é|eh)\s+", body.strip(), re.IGNORECASE):
+        subject = re.sub(r"^(?:e|eh)\s+", "", subject)
+    if subject in {"a", "o", "as", "os"}:
+        subject = ""
+    if subject and unique_service_reply(subject, catalog, context_step="menu") is None:
+        required.add("service")
+    merged = merged.model_copy(update={"ambiguities": sorted(required)})
+    query = {**query, "required": sorted(required)}
+    plan = UnderstandingPlan.model_validate(query["destination"])
+    return await _scoped_reschedule_turn(tenant, phone, ScopedReschedule(body, query["destination_clause"]), plan,
+        business, catalog, professionals, redis, key, preview, "", source_override=merged, source_query=query, source_subject=subject)
 
 
 def _weekday_restriction(body: str) -> str | None:
@@ -525,6 +607,12 @@ async def continue_reschedule(tenant: UUID, phone: str, body: str, state: dict,
     step = state.get("step")
     text_clean = body.strip().lower()
     if step == "reschedule_pick":
+        if state.get("reschedule_source_query"):
+            _, catalog, professionals = await tenant_data(tenant)
+            if not _fresh_reschedule_source(state["reschedule_source_query"], business, catalog, professionals):
+                state.pop("reschedule_source_query", None);state.pop("deferred_reschedule", None)
+                await redis.set(key, json.dumps(state), ex=STATE_TTL)
+                return {"answer": "O pedido anterior precisa ser revisto. Qual é a reserva atual e o novo dia e horário desejados? Nenhum agendamento foi alterado.", "step": step}
         ids = state.get("candidate_ids", [])
         details = state.get("candidate_details")
         if details is None:
@@ -2292,6 +2380,10 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
             field == "professional" and professional_choice(body, professionals) is not None)
         if valid_reply:
             return await answer_availability(tenant, body, state, business, catalog, redis, state_key)
+    if state.get("step") == "reschedule_pick":
+        correction = await _correct_reschedule_source(tenant, phone, body, state, business, catalog, professionals, redis, state_key, preview)
+        if correction is not None:
+            return correction
     if state.get("step") == "reschedule_pick" and not information_request and intent in {None, "reschedule"} and not scoped_reschedule_request(body):
         details = state.get("candidate_details", [])
         kind, _ = qr_cancellation.choose_candidate(body, details, business["timezone"])

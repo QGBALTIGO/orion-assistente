@@ -113,3 +113,25 @@ async def test_actual_two_owned_source_matches_require_selection_before_new_summ
     assert selected["step"] == "reschedule_confirm" and state()["appointment"] == str(source["id"])
     assert state()["day"] == target_day.isoformat() and "16h" in selected["answer"]
     assert await facts(d) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("incorrect", ["date", "unknown_service"])
+async def test_actual_short_source_correction_preserves_desire_but_not_authority_or_other_appointments(booking_db, monkeypatch, incorrect):
+    d = booking_db
+    message, state, body, source, _, target_day = await scenario(d, monkeypatch)
+    wrong = body.replace(str(d["day"]), str(d["day"]+timedelta(days=2)), 1) if incorrect == "date" else body.replace("o corte", "a massagem")
+    before = await facts(d);preserved = await originals_snapshot(d, source["id"])
+    answer = await message(wrong, "pg-source-needs-correction")
+    assert answer["step"] == "reschedule_pick" and state()["reschedule_source_query"]
+    assert not state().get("appointment") and not state().get("expected_snapshot") and await facts(d) == before
+    short = f"{d['day']:%d/%m} às três e meia com Bruno"
+    answer = await message(short, "pg-short-source-correction")
+    if incorrect == "unknown_service":
+        assert answer["step"] == "reschedule_pick" and "serviço" in answer["answer"]
+        assert await facts(d) == before
+        answer = await message("É corte", "pg-explicit-source-service-correction")
+    assert answer["step"] == "reschedule_confirm" and state()["appointment"] == str(source["id"])
+    assert state()["day"] == target_day.isoformat() and "16h" in answer["answer"] and await facts(d) == before
+    done = await message("Sm", "pg-corrected-source-new-consent")
+    assert done["step"] == "rescheduled" and await originals_snapshot(d, source["id"]) == preserved

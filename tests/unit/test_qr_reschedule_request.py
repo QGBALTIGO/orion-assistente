@@ -283,3 +283,98 @@ def test_destination_final_correction_or_contradiction_is_checked_independently(
         context={"hours": [{"opens": "09:00", "closes": "18:00"}]})
     assert (result.requested_date, result.requested_time) == expected
     assert ("date" in result.ambiguities) == (expected[0] is None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("incorrect", ["day", "clock"])
+async def test_incorrect_origin_then_short_correction_keeps_destination_without_authority(scoped_flow, incorrect):
+    s = scoped_flow;h = s.h
+    body = REAL_TRANSCRIPT.replace("dia 20", "dia 21") if incorrect == "day" else REAL_TRANSCRIPT.replace("3 e meia", "2 e meia")
+    first = await h.turn(body, preview=False)
+    assert first["step"] == "reschedule_pick" and not h.calls["writes"]
+    corrected = await h.turn("20/10 às15h30 com Bruno", preview=False)
+    assert corrected["step"] == "reschedule_confirm" and "21/10/2026" in corrected["answer"] and "16h" in corrected["answer"]
+    assert h.state()["appointment"] == str(h.appointment) and not h.calls["writes"]
+    done = await h.turn("Sm", preview=False)
+    assert done["step"] == "rescheduled" and h.calls["writes"] == [("reschedule", s.target_time)]
+
+
+@pytest.mark.asyncio
+async def test_unknown_service_stays_unresolved_until_an_explicit_catalog_correction(scoped_flow):
+    s = scoped_flow;h = s.h
+    await h.turn(REAL_TRANSCRIPT.replace("o corte", "a massagem"), preview=False)
+    before = h.state()["reschedule_source_query"]
+    assert "service" in before["required"] and not h.state().get("appointment")
+    answer = await h.turn("20/10 às15h30 com Bruno", preview=False)
+    assert answer["step"] == "reschedule_pick" and "serviço" in answer["answer"]
+    assert not h.calls["reads"] and not h.calls["writes"]
+    corrected = await h.turn("É corte", preview=False)
+    assert corrected["step"] == "reschedule_confirm" and h.state()["appointment"] == str(h.appointment)
+    assert h.calls["reads"] == [(h.bruno, [h.cut], s.target_day)] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("answer", ["15:30", "às três e meia", "20/10 às três e meia com Bruno"])
+async def test_correction_replaces_only_the_explicit_clock_and_does_not_renew_request_deadline(scoped_flow, answer):
+    s = scoped_flow;h = s.h
+    await h.turn(REAL_TRANSCRIPT.replace("3 e meia", "2 e meia"), preview=False)
+    query = h.state()["reschedule_source_query"]
+    assert not any(name in h.state() for name in ("hold", "appointment", "expected_snapshot", "confirmation_message_id"))
+    result = await h.turn(answer, preview=False)
+    assert result["step"] == "reschedule_confirm" and h.state()["appointment"] == str(h.appointment)
+    assert h.state()["day"] == s.target_day.isoformat() and "16h" in result["answer"]
+    assert not h.calls["writes"] and query["expires_at"] > qr_ai.datetime.now().timestamp()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", ["expired", "revision", "conditional", "negated"])
+async def test_stale_or_conditional_correction_cannot_prepare_or_confirm_stored_destination(scoped_flow, invalid):
+    s = scoped_flow;h = s.h
+    await h.turn(REAL_TRANSCRIPT.replace("dia 20", "dia 21"), preview=False)
+    state = h.state();query = state["reschedule_source_query"]
+    if invalid == "expired": query["expires_at"] = 0
+    if invalid == "revision": query["revision"] = "synthetic-old-revision"
+    h.redis.data[h.key] = json.dumps(state)
+    answer = "20/10 às15h30 com Bruno"
+    if invalid == "conditional": answer += " desde que não cobre multa"
+    if invalid == "negated": answer = "Não, " + answer
+    result = await h.turn(answer, preview=False)
+    assert result["step"] != "reschedule_confirm" and not h.state().get("reschedule_source_query")
+    await h.turn("Sm", preview=False)
+    assert not h.calls["reads"] and not h.calls["writes"] and not h.state().get("appointment")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("answer", ["A das três e meia", "20/10 às três e meia com Bruno"])
+async def test_multiple_origins_accept_natural_clock_against_registered_hours(scoped_flow, answer):
+    s = scoped_flow;h = s.h
+    other = {**s.rows[-1], "id": uuid4(), "protocol": "SYNTHETIC-MORNING", "start_at": s.source_time.replace(hour=10)}
+    s.rows.append(other);s.records_by_id[str(other["id"])] = {**other, "professional_id": h.bruno, "services": [h.cut]}
+    result = await h.turn(REAL_TRANSCRIPT.replace(" às 3 e meia", ""), preview=False)
+    assert result["step"] == "reschedule_pick" and len(h.state()["candidate_ids"]) == 2
+    selected = await h.turn(answer, preview=False)
+    assert selected["step"] == "reschedule_confirm" and h.state()["appointment"] == str(h.appointment)
+    assert "16h" in selected["answer"] and not h.calls["writes"]
+
+
+@pytest.mark.asyncio
+async def test_repeated_nonmatching_correction_does_not_extend_source_or_destination_deadline(scoped_flow):
+    s = scoped_flow;h = s.h
+    await h.turn(REAL_TRANSCRIPT.replace("3 e meia", "2 e meia"), preview=False)
+    old = h.state()["reschedule_source_query"]
+    await h.turn("às14h", preview=False)
+    current = h.state()["reschedule_source_query"]
+    assert current["expires_at"] == old["expires_at"] and current["revision"] == old["revision"]
+    assert current["destination"] == old["destination"] and current["source"]["requested_time"] == "14:00"
+    assert not h.calls["writes"] and not h.state().get("appointment")
+
+
+@pytest.mark.asyncio
+async def test_conditional_protocol_choice_never_releases_a_deferred_destination(scoped_flow):
+    s = scoped_flow;h = s.h
+    other = {**s.rows[-1], "id": uuid4(), "protocol": "SYNTHETIC-MORNING", "start_at": s.source_time.replace(hour=10)}
+    s.rows.append(other);s.records_by_id[str(other["id"])] = {**other, "professional_id": h.bruno, "services": [h.cut]}
+    await h.turn(REAL_TRANSCRIPT.replace(" às 3 e meia", ""), preview=False)
+    result = await h.turn("SYNTHETIC-SOURCE desde que tenha desconto", preview=False)
+    assert result["step"] == "reschedule_pick" and not h.state().get("deferred_reschedule")
+    assert not h.state().get("reschedule_source_query") and not h.calls["reads"] and not h.calls["writes"]
