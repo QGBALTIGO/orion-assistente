@@ -3,6 +3,7 @@ import asyncio
 import os
 import json
 import subprocess
+import sys
 from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
@@ -51,10 +52,15 @@ def test_pool_declaration_precedes_database_and_matches_explicit_api_environment
     monkeypatch.setenv("ORION_DB_POOL_SIZE", "20")
     monkeypatch.setenv("ORION_DB_MAX_OVERFLOW", "20")
     path = tmp_path/"result.json"; declarations = []
-    def source_metadata(command,**_):
-        assert command == ["git", "rev-parse", "HEAD"]
+    original_run = subprocess.run
+    def source_metadata(command,**kwargs):
+        if command != ["git", "rev-parse", "HEAD"]:
+            return original_run(command, **kwargs)
         return subprocess.CompletedProcess(command, 0, stdout="0"*40+"\n", stderr="")
     monkeypatch.setattr(load.subprocess, "run", source_metadata)
+    # platform.platform may invoke uname on Linux; only Git metadata is mocked.
+    monkeypatch.setattr(load.platform, "platform", lambda: subprocess.check_output(
+        [sys.executable, "-c", "print('synthetic-platform')"], text=True).strip())
     class NoDatabase:
         def __init__(self,*_):
             declarations.append(json.loads(path.read_text()))
@@ -65,6 +71,7 @@ def test_pool_declaration_precedes_database_and_matches_explicit_api_environment
     assert load.main(arguments) == 1
     declaration = declarations[0]
     assert declaration["source_commit"] == "0"*40
+    assert declaration["machine"]["platform"] == "synthetic-platform"
     assert declaration["database_pools"] == {"size_per_role_per_worker":5,
         "max_overflow_per_role_per_worker":5,"roles_per_worker":2,"theoretical_api_connection_ceiling":60}
     assert declaration["api_workers"] == 3 and declaration["targets_before_run"] == load.TARGETS
@@ -386,7 +393,12 @@ def test_generator_diagnostic_never_claims_capacity_and_preserves_original_exit(
     async def execute(args,sandbox,report): report["pass"] = passed
     monkeypatch.setattr(load,"DisposableDatabase",Sandbox)
     monkeypatch.setattr(load,"execute",execute)
-    monkeypatch.setattr(load.subprocess,"run",lambda *a,**k:SimpleNamespace(returncode=0,stdout="synthetic-source"))
+    original_run = subprocess.run
+    def source_metadata(command, **kwargs):
+        if command == ["git", "rev-parse", "HEAD"]:
+            return SimpleNamespace(returncode=0, stdout="synthetic-source")
+        return original_run(command, **kwargs)
+    monkeypatch.setattr(load.subprocess,"run",source_metadata)
     target = tmp_path/"run.json"
     code = load.main(["--confirm-disposable-local","--profile-generator","--output",str(target)])
     report = json.loads(target.read_text())
