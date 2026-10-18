@@ -27,6 +27,7 @@ from app.management_schemas import (
 from app.tenant_access import resolve_tenant_access
 from app import loyalty_rewards as rewards
 from app import financial_settlements as settlements
+from app.qr_api import customer_display_names, whatsapp_name_matches
 
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}/management", tags=["Gestão"])
 CustomerStatus = Literal["all", "active", "inactive", "at_risk", "birthday"]
@@ -99,7 +100,10 @@ async def list_customers(tenant_id: UUID, q: str = Query(default="", max_length=
                          limit: int = Query(default=50, ge=1, le=250), offset: int = Query(default=0, ge=0),
                          actor: Actor = Depends(authenticate)):
     async with management_session(tenant_id, actor) as db:
-        return await data.customers(db, tenant_id, q, status, birthday_month, limit, offset, risk_days)
+        phones, account = await whatsapp_name_matches(tenant_id, q)
+        result = await data.customers(db, tenant_id, q, status, birthday_month, limit, offset, risk_days, name_phones=phones)
+    result["items"] = await customer_display_names(tenant_id, result["items"], expected_account=account)
+    return result
 
 
 @router.get("/customers/export.csv")
@@ -108,19 +112,22 @@ async def export_customers(tenant_id: UUID, q: str = Query(default="", max_lengt
                            risk_days: int = Query(default=30, ge=30, le=90),
                            actor: Actor = Depends(authenticate)):
     async with management_session(tenant_id, actor) as db:
-        result = await data.customers(db, tenant_id, q, status, birthday_month, MAX_EXPORT_ROWS, 0, risk_days)
+        phones, account = await whatsapp_name_matches(tenant_id, q)
+        result = await data.customers(db, tenant_id, q, status, birthday_month, MAX_EXPORT_ROWS, 0, risk_days, name_phones=phones)
         if result["total"] > MAX_EXPORT_ROWS:
             raise HTTPException(413, "Refine os filtros para exportar até 20 mil clientes por arquivo")
+    result["items"] = await customer_display_names(tenant_id, result["items"], max_phones=MAX_EXPORT_ROWS, expected_account=account)
     return csv_response("clientes-orion.csv",
         ["Nome", "WhatsApp", "Instagram", "E-mail", "Aniversário", "Bairro", "Cidade", "Observações", "Ativo", "Última visita", "Agendamentos", "Total em centavos", "Pontos"],
-        [[item.get(key) for key in ("name", "phone", "instagram", "email", "birth_date", "neighborhood", "city", "notes", "active", "last_visit_at", "total_appointments", "total_spent_cents", "loyalty_points")]
+        [[item.get(key) for key in ("display_name", "phone", "instagram", "email", "birth_date", "neighborhood", "city", "notes", "active", "last_visit_at", "total_appointments", "total_spent_cents", "loyalty_points")]
          for item in result["items"]])
 
 
 @router.get("/customers/{customer_id}")
 async def get_customer(tenant_id: UUID, customer_id: UUID, actor: Actor = Depends(authenticate)):
     async with management_session(tenant_id, actor) as db:
-        return await data.customer_detail(db, tenant_id, customer_id)
+        result = await data.customer_detail(db, tenant_id, customer_id)
+    return (await customer_display_names(tenant_id, [result]))[0]
 
 
 @router.post("/customers", status_code=201)

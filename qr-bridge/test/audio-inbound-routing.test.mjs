@@ -1,7 +1,10 @@
-import test from 'node:test';
+import test,{after} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import os from 'node:os';
+import path from 'node:path';
+import {makeContactNames} from '../src/contact-names.mjs';
 import {extractText,resolveMessagePhone} from '../src/core.mjs';
 import {shouldIngestUpsert,timestampMs} from '../src/linked-session-health.mjs';
 import {forwardAssistant,registerAssistantIngress} from '../src/ai-forward.mjs';
@@ -20,10 +23,18 @@ const handlerSource=source.slice(start,end);
 const phone='5511999999999';
 const deferred=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
+process.env.ORION_CONTACT_TEST_MODE='1';
+const contactDirectories=[];
+after(()=>{for(const directory of contactDirectories)fs.rmSync(directory,{recursive:true,force:true});});
 
 function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answer=null,realAudio=false,
   revisionEnabled=false,forwardResponse,sendResponse,presence,typingConfig={maxPauseMs:0}}={}){
   let listener,transcriptions=0,downloads=0;
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-inbound-names-'));
+  contactDirectories.push(directory);
+  const namesStore=makeContactNames({directory,secret:'synthetic-local-contact-key-at-least-32-bytes'});
+  namesStore.bindIdentity('5511999990000@s.whatsapp.net');
+  let nameChanges=0;
   const forwarded=[],inbox=[],sent=[],events=[],queues=new Map(),seen=new Set(),notices=[],presenceCalls=[];
   const env={QR_AI_ENABLED:'1',QR_AI_AUDIO_ENABLED:audioEnabled?'1':'0',QR_AI_GROUP_WAIT_MS:'0',
     QR_AI_PILOT_NUMBER:phone,QR_AI_API_URL:'http://orion-assistente.railway.internal/internal/qr/ai/reply'};
@@ -33,6 +44,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     presenceCalls.push({type,jid});events.push(['typing',type,jid]);return presence(type,jid);
   };
   const context=vm.createContext({client,socket:client,mine:1,generation:1,status:'connected',
+    namesStore,namesSync:{changed(){nameChanges++;}},
     extractText,resolveMessagePhone,shouldIngestUpsert,timestampMs,makeConversationIntake,
     makeAssistantTyping:options=>makeAssistantTyping({...options,...typingConfig}),
     pilotNumber:()=>pilotNumber(env),transport:{record:(...args)=>events.push(args)},retryMessages:{save(){}},seen,
@@ -66,14 +78,61 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     }}),console:{info(){},warn(){}}
   });
   vm.runInContext(handlerSource,context);
-  const message=(id,{text,remote=phone+'@s.whatsapp.net',senderPn,seconds=1,fileLength=20}={})=>({
-    key:{id,remoteJid:remote,...(senderPn?{senderPn}:{})},messageTimestamp:Math.floor(Date.now()/1000),
+  const message=(id,{text,remote=phone+'@s.whatsapp.net',senderPn,seconds=1,fileLength=20,pushName,fromMe=false}={})=>({
+    key:{id,remoteJid:remote,fromMe,...(senderPn?{senderPn}:{})},pushName,messageTimestamp:Math.floor(Date.now()/1000),
     message:text===undefined?{audioMessage:{fileLength,seconds}}:{conversation:text}
   });
-  return {context,env,forwarded,inbox,sent,events,message,notices,presenceCalls,
-    emit:messages=>listener({type:'notify',messages}),
+  return {context,env,forwarded,inbox,sent,events,message,notices,presenceCalls,namesStore,
+    get nameChanges(){return nameChanges;},
+    emit:(messages,type='notify')=>listener({type,messages}),
     get transcriptions(){return transcriptions;},get downloads(){return downloads;}};
 }
+
+test('real inbound handler forwards a known WhatsApp profile without deriving a name from message text',async()=>{
+  const h=harness();
+  await h.emit([h.message('CONTACT-NAME',{text:'O texto não é meu nome',pushName:'Joana Exemplo'})]);
+  assert.equal(h.namesStore.lookup(phone).display_name,'Joana Exemplo');
+  assert.deepEqual(h.forwarded[0].profile,{name:'Joana Exemplo',source:'push_name'});
+  assert.equal(h.nameChanges,1);
+  await h.emit([h.message('NO-PROFILE',{text:'Agora sou um texto diferente'})]);
+  assert.deepEqual(h.forwarded[1].profile,{name:'Joana Exemplo',source:'push_name'});
+  assert.equal(h.nameChanges,1);
+});
+
+test('real local signal-repository PN resolution associates an otherwise opaque LID with its received profile',async()=>{
+  const h=harness();let resolutions=0;
+  const lid='123456789012345678@lid';
+  h.context.client.signalRepository={lidMapping:{getPNForLID:async value=>{
+    resolutions++;assert.equal(value,lid);return phone+'@s.whatsapp.net';
+  }}};
+  const message=h.message('MAPPED-NAME',{remote:lid,text:'Olá',pushName:'Cliente Exemplo'});
+  h.namesStore.observeMessages([message]);assert.equal(h.namesStore.lookup(phone),null);
+  await h.emit([message]);
+  assert.equal(resolutions,1);assert.equal(h.namesStore.lookup(phone).display_name,'Cliente Exemplo');
+  assert.deepEqual(h.forwarded[0].profile,{name:'Cliente Exemplo',source:'push_name'});
+  assert.equal(h.inbox[0].phone,phone);
+});
+
+test('a PN mapping awaited by an old generation cannot add a name to the replacement account registry',async()=>{
+  const h=harness(),gate=deferred();
+  h.context.client.signalRepository={lidMapping:{getPNForLID:()=>gate.promise}};
+  const running=h.emit([h.message('LATE-NAME',{remote:'123456789012345678@lid',text:'Olá',pushName:'Nome Antigo'})]);
+  await tick();h.context.generation++;
+  h.namesStore.bindIdentity('5511999990008@s.whatsapp.net');
+  gate.resolve(phone+'@s.whatsapp.net');await running;
+  assert.deepEqual(h.namesStore.entries(),[]);assert.equal(h.nameChanges,0);
+  assert.deepEqual(h.forwarded,[]);assert.deepEqual(h.inbox,[]);
+});
+
+test('outgoing pushName never names the recipient, and an old append cannot replace a current pushName',async()=>{
+  const h=harness();
+  await h.emit([h.message('FROM-ME-NAME',{text:'Enviada',pushName:'Nosso Nome',fromMe:true})]);
+  assert.equal(h.namesStore.lookup(phone),null);assert.deepEqual(h.forwarded,[]);
+  await h.emit([h.message('CURRENT-NAME',{text:'Olá',pushName:'Nome Atual'})]);
+  await h.emit([h.message('OLD-NAME',{text:'Mensagem Pendente',pushName:'Nome Antigo'})],'append');
+  assert.equal(h.namesStore.lookup(phone).display_name,'Nome Atual');
+  assert.equal(h.forwarded.at(-1).profile.name,'Nome Atual');
+});
 
 test('voice transcript marker stays in inbox; AI receives only actual words',async()=>{
   const transcript='Cara, quanto custa o cabelo e a barba?';

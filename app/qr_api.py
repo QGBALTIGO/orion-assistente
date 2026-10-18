@@ -1,15 +1,24 @@
 """API protegida para QR/código e caixa de conversas do dispositivo vinculado."""
+import asyncio
 import os
+import secrets
+import unicodedata
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlencode
+from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.catalog_api import Actor, authenticate, support_only
+from app.catalog_schemas import StrictModel
+from app.customer_names import WhatsAppProfile, contact_phone, display_customer, merge_whatsapp_name, useful_name
+from app.database import get_session_factory, tenant_transaction
 
 router=APIRouter(tags=["WhatsApp: dispositivo vinculado"])
 BACKEND_ERRORS={
@@ -32,6 +41,118 @@ BACKEND_ERRORS={
     "Serviço de transcrição não configurado":"Configure primeiro o serviço privado de transcrição.",
     "Dispositivo ainda indisponível":"O dispositivo ainda não está pronto.",
 }
+CONTACT_NAME_TIMEOUT = 1.5
+CONTACT_NAME_SOURCES = frozenset({"contact_name", "verified_name", "push_name"})
+
+
+def qr_contact_tenant() -> UUID | None:
+    """The existing server-side QR binding is never chosen by a panel request."""
+    try:
+        return UUID(os.environ["QR_AI_TENANT_ID"])
+    except (KeyError, ValueError):
+        return None
+
+
+async def whatsapp_name_matches(tenant_id: UUID, query: str) -> tuple[list[str], str | None]:
+    """Reverse lookup is limited to the existing registry; SQL still owns scope."""
+    if (tenant_id != qr_contact_tenant() or not query or
+            not any(char.isalpha() or unicodedata.category(char) in {"So", "Sk"} for char in query)):
+        return [], None
+    try:
+        async with asyncio.timeout(CONTACT_NAME_TIMEOUT):
+            response = await _bridge("/internal/contact-name-matches", "POST", {"q": query})
+    except (HTTPException, TimeoutError, httpx.RequestError):
+        return [], None
+    account = contact_phone(response.get("account_phone"))
+    phones = response.get("phones")
+    if account is None or not isinstance(phones, list) or len(phones) > 2000:
+        return [], None
+    return sorted({"+" + phone for value in phones if (phone := contact_phone(value)) and phone != account}), account
+
+
+async def whatsapp_names(tenant_id: UUID, phones, *, max_phones=250, expected_account=None) -> dict[str, str]:
+    if tenant_id != qr_contact_tenant():
+        return {}
+    requested = sorted({pn for value in phones if (pn := contact_phone(value))})
+    if not requested:
+        return {}
+    # A page is at most 250 customers; exports have a separate 20k result limit.
+    # Only those result phones are requested, with three in-flight calls and a
+    # single deadline for all chunks. No address-book enumeration is performed.
+    if len(requested) > min(max_phones, 20_000):
+        return {}
+    semaphore = asyncio.Semaphore(3)
+    failed = False
+
+    async def read_chunk(chunk):
+        nonlocal failed
+        async with semaphore:
+            if failed:
+                return None
+            try:
+                return await _bridge("/internal/contact-names", "POST", {"phones": chunk})
+            except (HTTPException, httpx.RequestError):
+                failed = True
+                raise
+
+    try:
+        async with asyncio.timeout(CONTACT_NAME_TIMEOUT):
+            responses = await asyncio.gather(*(
+                read_chunk(requested[index:index + 100])
+                for index in range(0, len(requested), 100)
+            ), return_exceptions=True)
+    except (HTTPException, TimeoutError, httpx.RequestError):
+        # Optional metadata cannot make the customer directory unavailable,
+        # including during a rollout while an older bridge returns 404.
+        return {}
+    if any(not isinstance(response, dict) for response in responses):
+        return {}
+    accounts = {contact_phone(response.get("account_phone")) for response in responses}
+    if len(accounts) != 1 or None in accounts:
+        return {}
+    account_phone = accounts.pop()
+    if expected_account is not None and account_phone != expected_account:
+        return {}
+    names = {}
+    asked = set(requested)
+    for response in responses:
+        items = response.get("items")
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            pn, name = contact_phone(item.get("phone")), useful_name(item.get("display_name"))
+            if pn in asked and pn != account_phone and name and item.get("name_source") in CONTACT_NAME_SOURCES:
+                names[pn] = name
+    return names
+
+
+async def customer_display_names(tenant_id: UUID, rows: list[dict], *, max_phones=250, expected_account=None) -> list[dict]:
+    names = await whatsapp_names(tenant_id, (row.get("phone") for row in rows),
+                                 max_phones=max_phones, expected_account=expected_account)
+    return [display_customer(row, names.get(contact_phone(row.get("phone")))) for row in rows]
+
+
+async def saved_chat_names(tenant_id: UUID | None, phones) -> dict[str, str]:
+    if tenant_id is None:
+        return {}
+    wanted = sorted({"+" + pn for value in phones if (pn := contact_phone(value))})
+    if not wanted or len(wanted) > 100:
+        return {}
+    try:
+        async with asyncio.timeout(CONTACT_NAME_TIMEOUT):
+            async with get_session_factory()() as db:
+                async with tenant_transaction(db, tenant_id):
+                    rows = (await db.execute(text("""
+                        SELECT whatsapp_e164,name FROM customers
+                        WHERE tenant_id=:tenant AND deleted_at IS NULL
+                          AND whatsapp_e164=ANY(CAST(:phones AS text[]))
+                    """), {"tenant": tenant_id, "phones": wanted})).mappings().all()
+        return {contact_phone(row["whatsapp_e164"]): name for row in rows
+                if (name := useful_name(row["name"]))}
+    except (SQLAlchemyError, TimeoutError, ConnectionError, RuntimeError):
+        return {}
 
 
 def _config()->tuple[str,str]:
@@ -101,6 +222,47 @@ class SendPayload(BaseModel):
     text:str=Field(min_length=1,max_length=1200)
 
 
+class ContactName(WhatsAppProfile):
+    phone: str = Field(pattern=r"^[1-9][0-9]{7,14}$")
+
+
+class ContactNames(StrictModel):
+    account_phone: str = Field(pattern=r"^[1-9][0-9]{7,14}$")
+    items: list[ContactName] = Field(min_length=1, max_length=100)
+
+
+@router.post("/internal/qr/contact-names", include_in_schema=False)
+async def receive_contact_names(payload: ContactNames, request: Request):
+    configured = os.getenv("QR_BRIDGE_TOKEN", "")
+    given = request.headers.get("x-orion-bridge-key", "")
+    if len(configured) < 32 or not secrets.compare_digest(configured, given):
+        raise HTTPException(401, "Acesso negado")
+    tenant = qr_contact_tenant()
+    if tenant is None:
+        raise HTTPException(503, "Estabelecimento de atendimento não configurado")
+    # This private ingress is independent of chatbot permissions: it never
+    # sends, books, creates customers from an address book, or activates anyone.
+    # The bridge binds and cancels queued metadata with its current account.
+    names = {}
+    priority = {"push_name": 0, "verified_name": 1, "contact_name": 2}
+    for item in payload.items:
+        if item.phone == payload.account_phone or not useful_name(item.name):
+            continue
+        previous = names.get(item.phone)
+        if previous is None or priority[item.source] >= priority[previous.source]:
+            names[item.phone] = item
+    changed = 0
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db, tenant):
+            active = (await db.execute(text("SELECT id FROM tenants WHERE id=:tenant AND status='active'"),
+                                       {"tenant": tenant})).scalar_one_or_none()
+            if active is None:
+                raise HTTPException(503, "Estabelecimento de atendimento indisponível")
+            for phone, item in sorted(names.items()):
+                changed += await merge_whatsapp_name(db, tenant, phone, item.name, create=False)
+    return {"ok": True, "updated": changed}
+
+
 @router.get("/health/whatsapp",include_in_schema=False)
 async def whatsapp_bridge_health():
     """Liveness de rede API→bridge; nunca revela sessão, QR ou telefone."""
@@ -145,7 +307,22 @@ async def qr_pair(data:PairPayload,actor:Actor=Depends(authenticate)):
 @router.get("/api/v1/qr/chats")
 async def qr_chats(actor:Actor=Depends(authenticate)):
     support_only(actor)
-    return await _bridge("/internal/chats")
+    result = await _bridge("/internal/chats")
+    rows = result.get("items")
+    if not isinstance(rows, list):
+        return result
+    names = await saved_chat_names(qr_contact_tenant(), (row.get("phone") for row in rows if isinstance(row, dict)))
+    items = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        metadata = useful_name(row.get("display_name")) or useful_name(row.get("whatsapp_name"))
+        saved = names.get(contact_phone(row.get("phone")))
+        item = display_customer({**row, "name": saved}, metadata)
+        if saved:
+            item["name_source"] = "customer"
+        items.append(item)
+    return {**result, "items": items}
 
 
 @router.get("/api/v1/qr/messages")

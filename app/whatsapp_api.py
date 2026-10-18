@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from app.catalog_api import support_session_factory
 from app.database import get_session_factory, tenant_transaction
 from app.messaging import extract_messages, verify_meta_signature
+from app.customer_names import merge_whatsapp_name
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp Meta"])
 
@@ -70,6 +71,12 @@ async def receive_meta(request: Request):
                     """), dict(id=event_id, tenant=result["tenant_id"], channel=result["id"],
                                external=item["id"], sender=item["sender_e164"], body=item["text"]))
                     persisted = out.scalar_one_or_none()
+                    if persisted and item.get("whatsapp_name"):
+                        # The Meta signature and channel lookup already chose
+                        # this tenant; persist the profile in the same commit as
+                        # the inbound event, before the worker can book for it.
+                        await merge_whatsapp_name(session, result["tenant_id"],
+                                                  item["sender_e164"], item["whatsapp_name"])
             if persisted:
                 recorded.append((str(result["tenant_id"]), str(persisted)))
         except IntegrityError:

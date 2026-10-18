@@ -7,6 +7,8 @@ from typing import Protocol
 
 import httpx
 
+from app.customer_names import contact_phone, useful_name
+
 
 class MessagingProvider(Protocol):
     async def send_text(self, channel: dict, to_e164: str, text: str) -> str: ...
@@ -33,6 +35,16 @@ def extract_messages(payload: dict) -> list[dict]:
             phone_id = value.get("metadata", {}).get("phone_number_id")
             if not isinstance(phone_id, str) or len(phone_id) > 80:
                 continue
+            names = {}
+            contacts = value.get("contacts", [])
+            for contact in contacts if isinstance(contacts, list) else []:
+                if not isinstance(contact, dict):
+                    continue
+                wa_id = contact_phone(contact.get("wa_id"))
+                profile = contact.get("profile")
+                name = useful_name(profile.get("name")) if isinstance(profile, dict) else None
+                if wa_id and name:
+                    names[wa_id] = name
             for item in value.get("messages", []):
                 sender, msgid = item.get("from"), item.get("id")
                 if not isinstance(sender, str) or not sender.isdigit() or not sender.startswith("55"):
@@ -47,9 +59,12 @@ def extract_messages(payload: dict) -> list[dict]:
                     continue
                 if not body.strip():
                     continue
-                events.append({"phone_number_id": phone_id, "id": msgid,
-                               "sender_e164": "+" + sender,
-                               "text": body.strip()[:1500]})
+                event = {"phone_number_id": phone_id, "id": msgid,
+                         "sender_e164": "+" + sender,
+                         "text": body.strip()[:1500]}
+                if sender in names:
+                    event["whatsapp_name"] = names[sender]
+                events.append(event)
     return events[:100]
 
 

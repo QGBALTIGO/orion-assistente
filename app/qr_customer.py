@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import text
 
 from app.database import get_session_factory, tenant_transaction
+from app.customer_names import useful_name
 
 
 def supplied_name(value: str) -> str | None:
@@ -37,7 +38,7 @@ async def customer_name(tenant: UUID, phone: str) -> str | None:
                 SELECT name FROM customers
                 WHERE tenant_id=:tenant AND whatsapp_e164=:phone
             """), {"tenant": tenant, "phone": "+" + phone})).scalar_one_or_none()
-    return value if value and value != "Cliente WhatsApp" else None
+    return useful_name(value)
 
 
 async def remember_name(tenant: UUID, phone: str, name: str) -> None:
@@ -47,7 +48,8 @@ async def remember_name(tenant: UUID, phone: str, name: str) -> None:
                 INSERT INTO customers (tenant_id,whatsapp_e164,name)
                 VALUES (:tenant,:phone,:name)
                 ON CONFLICT (tenant_id,whatsapp_e164)
-                DO UPDATE SET name=EXCLUDED.name
+                DO UPDATE SET name=EXCLUDED.name,version=customers.version+1,updated_at=now()
+                WHERE customers.name IS DISTINCT FROM EXCLUDED.name AND customers.deleted_at IS NULL
             """), {"tenant": tenant, "phone": "+" + phone, "name": name})
 
 
