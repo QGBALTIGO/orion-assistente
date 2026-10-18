@@ -137,6 +137,24 @@ execução; PG indisponível localmente é registrado como skip, nunca como PASS
 
 ## Diagnóstico após a primeira carga real
 
+A coleta opcional `--profile-api` inicia a mesma aplicação em um wrapper de
+lifespan exclusivo do ensaio local descartável. Cada worker salva seus próprios
+arquivos `.prof` e JSON com funções/chamadas/tempos, sem argumentos ou conteúdo
+das requisições. Usa relógio de CPU do processo; tempo acumulado de corrotinas
+não deve ser somado nem interpretado como CPU exclusiva. O resultado se identifica
+como `cpu_profile_diagnostic` e nunca qualifica capacidade. As metas e o código
+de saída da carga continuam preservados.
+
+O workflow oferece essa coleta somente por execução manual, com a opção
+`cpu_profile`; as cargas principais 60/600 e as vinte jornadas de navegador
+continuam obrigatórias nas PRs. Os perfis curtos servem para escolher uma
+correção, e seus artefatos não substituem a carga completa sem instrumentação.
+
+O gerador versão 2 distribui 40% dos operadores adicionais pelas cinco empresas
+mais movimentadas, com contagem por empresa no relatório. A versão anterior
+escolhia somente duas dessas cinco empresas por um erro no índice. Os relatórios
+anteriores permanecem preservados e identificados; não representam o novo perfil.
+
 O relatório versão 2 separa `invariants.data_integrity` de
 `invariants.observation_uncertainty`. Uma resposta de hold perdida pode deixar
 uma linha válida no banco: isso não prova duplicação. A reconciliação consulta

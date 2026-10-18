@@ -4,14 +4,15 @@ All operational writes use runtime RLS. The support transaction holds the live
 owner membership until the runtime transaction commits, including final activation.
 """
 from contextlib import asynccontextmanager
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
 import hashlib
 import json
 import os
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
+from fastapi.encoders import ENCODERS_BY_TYPE, jsonable_encoder
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
@@ -36,9 +37,60 @@ def require_enabled():
         raise HTTPException(423, "A configuração inicial ainda não está habilitada")
 
 
+_DIGEST_SCALARS = frozenset((str, int, float, bool, type(None), bytes, date, datetime, time, timedelta, Decimal, UUID))
+
+
+def _digest_needs_legacy(value):
+    """Inspect containers only; unusual values retain the original whole walk.
+
+    JSON bypasses default encoders for primitive/container subclasses, while
+    FastAPI can interpret them differently. Shared containers also take the
+    original path, which preserves both alias and recursive-input behavior.
+    """
+    pending, seen = [value], set()
+    while pending:
+        current = pending.pop()
+        kind = type(current)
+        if kind in (dict, list, tuple):
+            identity = id(current)
+            if identity in seen:
+                return True
+            seen.add(identity)
+            if kind is dict:
+                for key, child in current.items():
+                    if type(key) is not str or key.startswith("_sa"):
+                        return True
+                    child_kind = type(child)
+                    if child_kind in (dict, list, tuple):
+                        pending.append(child)
+                    elif child_kind not in _DIGEST_SCALARS:
+                        return True
+            else:
+                for child in current:
+                    child_kind = type(child)
+                    if child_kind in (dict, list, tuple):
+                        pending.append(child)
+                    elif child_kind not in _DIGEST_SCALARS:
+                        return True
+        elif kind not in _DIGEST_SCALARS:
+            return True
+    return False
+
+
+def _digest_bytes(value):
+    if not _digest_needs_legacy(value):
+        try:
+            return json.dumps(value, default=lambda item: ENCODERS_BY_TYPE[type(item)](item),
+                sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+        except TypeError:
+            # Preserve the original exception/representation for unusual input;
+            # no iterable or user-defined object was consumed by the fast path.
+            pass
+    return json.dumps(jsonable_encoder(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
+
 def digest(value):
-    return hashlib.sha256(json.dumps(jsonable_encoder(value), sort_keys=True, separators=(",", ":"),
-                                     ensure_ascii=False).encode()).hexdigest()
+    return hashlib.sha256(_digest_bytes(value)).hexdigest()
 
 
 def conflict(message="A configuração mudou. Atualize antes de salvar"):
@@ -98,6 +150,52 @@ def _usable(row, table, managed, *, staged):
     return bool(row.get("active"))
 
 
+def _fitting_bindings(pros, services, facts):
+    """Index this facts read once; no readiness result survives the request."""
+    valid_services = []
+    for service in services:
+        duration = service.get("duration_min", 0) + service.get("prep_min", 0) + service.get("cleanup_min", 0)
+        if duration > 0 and type(service.get("price_cents")) is int:
+            valid_services.append((str(service["id"]), duration))
+    pro_ids = {str(pro["id"]) for pro in pros}
+    if not pro_ids or not valid_services:
+        return set(), set()
+    service_ids = {identity for identity, _duration in valid_services}
+    links = {}
+    for link in facts.get("links", []):
+        service_id, pro_id = str(link["service_id"]), str(link["professional_id"])
+        if service_id in service_ids and pro_id in pro_ids:
+            links.setdefault(service_id, set()).add(pro_id)
+    linked_pros = {pro for values in links.values() for pro in values}
+    if not linked_pros:
+        return set(), set()
+    hours = [hour for hour in facts.get("hours", []) if str(hour["professional_id"]) in linked_pros]
+    if not hours:
+        return set(), set()
+    hour_ids = {str(hour["id"]) for hour in hours}
+    pauses = {}
+    for pause in facts.get("breaks", []):
+        hour_id = str(pause["working_hour_id"])
+        if hour_id in hour_ids:
+            pauses.setdefault(hour_id, []).append((_minutes(pause["start_time"]), _minutes(pause["end_time"])))
+    capacity = {}
+    for hour in hours:
+        cursor, end = _minutes(hour["start_time"]), _minutes(hour["end_time"])
+        longest = 0
+        for start, stop in sorted(pauses.get(str(hour["id"]), [])) + [(end, end)]:
+            longest = max(longest, start - cursor)
+            cursor = max(cursor, stop)
+        pro_id = str(hour["professional_id"])
+        capacity[pro_id] = max(capacity.get(pro_id, 0), longest)
+    fitting_services, fitting_professionals = set(), set()
+    for service_id, duration in valid_services:
+        for pro_id in links.get(service_id, ()):
+            if capacity.get(pro_id, 0) >= duration:
+                fitting_services.add(service_id)
+                fitting_professionals.add(pro_id)
+    return fitting_services, fitting_professionals
+
+
 def readiness(configuration, facts, managed=None, *, staged=True):
     """Structural readiness uses real bindings/intervals, not today's occupancy."""
     managed = managed or {}
@@ -123,26 +221,7 @@ def readiness(configuration, facts, managed=None, *, staged=True):
             add("professionals", "professional", "Cadastre um profissional que aceite agendamentos")
         if not services:
             add("catalog", "service", "Cadastre um serviço com valor e duração")
-        fitting_services, fitting_professionals = set(), set()
-        for s in services:
-            duration = s.get("duration_min", 0) + s.get("prep_min", 0) + s.get("cleanup_min", 0)
-            if duration <= 0 or type(s.get("price_cents")) is not int:
-                continue
-            for p in pros:
-                if not any(str(link["service_id"]) == str(s["id"]) and str(link["professional_id"]) == str(p["id"])
-                           for link in facts.get("links", [])):
-                    continue
-                for w in facts.get("hours", []):
-                    if str(w["professional_id"]) != str(p["id"]):
-                        continue
-                    blocks = sorted((_minutes(b["start_time"]), _minutes(b["end_time"]))
-                                    for b in facts.get("breaks", []) if str(b["working_hour_id"]) == str(w["id"]))
-                    cursor, end = _minutes(w["start_time"]), _minutes(w["end_time"])
-                    for start, stop in blocks + [(end, end)]:
-                        if start - cursor >= duration:
-                            fitting_services.add(str(s["id"]))
-                            fitting_professionals.add(str(p["id"]))
-                        cursor = max(cursor, stop)
+        fitting_services, fitting_professionals = _fitting_bindings(pros, services, facts)
         if (not fitting_services or any(str(s["id"]) not in fitting_services for s in services)
                 or any(str(p["id"]) not in fitting_professionals for p in pros)):
             add("hours", "scheduling_bindings", "Vincule um serviço ao profissional e a um expediente que comporte sua duração e pausas")
