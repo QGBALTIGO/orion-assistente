@@ -136,7 +136,7 @@ jobs:
       - name: Instalar dependências isoladas dos testes de interface
         run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
       - name: Fluxos DOM da gestão e do agendamento público
-        run: npm run test:details --prefix ui-tests
+        run: npm test --prefix ui-tests
       - name: Build da imagem real Node Baileys
         run: docker build -f qr-bridge/Dockerfile -t orion-qr:ci qr-bridge
 

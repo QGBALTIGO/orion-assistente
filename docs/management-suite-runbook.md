@@ -76,7 +76,7 @@ alembic upgrade head
 pytest -q -ra
 node --test qr-bridge/test/*.test.mjs
 npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
-npm run test:details --prefix ui-tests
+npm test --prefix ui-tests
 ```
 
 As URLs e senhas devem vir do ambiente, não de argumentos públicos ou arquivos
