@@ -8,6 +8,7 @@ from app.whatsapp_api import router as whatsapp_router
 from app.integrations_api import router as integrations_router
 from app.ops_api import router as ops_router
 from app.landing_api import router as landing_router
+from app.sales_requests_api import router as sales_requests_router
 from app.billing_api import router as billing_router
 from app.metrics_api import router as metrics_router
 from app.advanced_api import router as advanced_router
@@ -51,6 +52,7 @@ app.include_router(whatsapp_router)
 app.include_router(integrations_router)
 app.include_router(ops_router)
 app.include_router(landing_router)
+app.include_router(sales_requests_router)
 app.include_router(billing_router)
 app.include_router(metrics_router)
 app.include_router(advanced_router)

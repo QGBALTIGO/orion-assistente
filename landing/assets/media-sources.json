@@ -1,0 +1,470 @@
+{
+  "schema_version": 1,
+  "checked_on": "2026-10-18",
+  "path_base": "landing/",
+  "description_pt": "Cinco fotografias de contextos de trabalho, um vídeo com poster e uma imagem social original para a landing Orion. As pessoas retratadas não são apresentadas como clientes ou endossantes do produto.",
+  "counts": {
+    "photos": 5,
+    "videos": 1,
+    "video_posters": 1,
+    "social_previews": 1
+  },
+  "total_media_bytes": 1601614,
+  "licenses": [
+    {
+      "name": "Unsplash License",
+      "url": "https://unsplash.com/license",
+      "summary_pt": "Permite uso comercial e não comercial gratuito. Atribuição é apreciada. A licença não autoriza vender cópias sem modificação significativa nem reproduzir um serviço concorrente de imagens."
+    },
+    {
+      "name": "Pexels License",
+      "url": "https://www.pexels.com/license/",
+      "summary_pt": "Permite uso gratuito em sites e campanhas, incluindo modificações. Atribuição é apreciada. Não permite sugerir endosso por pessoas ou marcas retratadas, usos ofensivos de pessoas identificáveis, redistribuição como banco de mídia ou uso da imagem como marca."
+    }
+  ],
+  "usage_notes_pt": [
+    "As fotos e o vídeo ilustram setores de atividade; não demonstram uso do Orion pelas pessoas retratadas.",
+    "A demonstração da interface deve ser construída separadamente com dados fictícios e identificada como demonstração.",
+    "Os nomes dos autores e os links das obras são mantidos para atribuição e rastreabilidade.",
+    "As paletas são aproximações por quantização dos pixels para orientar o layout, não cores da marca Orion.",
+    "O enquadramento final das fotografias deve ser feito pelo CSS; as fotografias entregues não foram recortadas nem retocadas."
+  ],
+  "assets": [
+    {
+      "id": "barbearia",
+      "source": "https://unsplash.com/photos/man-in-white-dress-shirt-cutting-hair-of-man-Q82AM6BWBPM",
+      "source_asset_url": "https://images.unsplash.com/photo-1593702275687-f8b402bf1fb5?auto=format&fit=crop&fm=jpg&ixid=NHwxMjA3fDA%3D&ixlib=rb-4.1.0&q=60&w=3000",
+      "photographer": "Michael DeMoya",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "source_published_date": "2020-07-02",
+      "alt_pt": "Barbeiro finaliza um corte com máquina e pente.",
+      "suggested_object_position": "58% 50%",
+      "composition_note_pt": "O corte e as mãos são o ponto de interesse. Preferir 3:2 ou 4:3; o centro indicado preserva a ação em recortes mais estreitos.",
+      "usage_role": "hero_default_and_sector_context",
+      "kind": "photo",
+      "path": "assets/negocio-barbearia.webp",
+      "mime": "image/webp",
+      "width": 1600,
+      "height": 1067,
+      "bytes": 114622,
+      "sha256": "f5e3873a1745be5f87193ce4bbaf53ba96db59acd9933db459684b77574a61ad",
+      "source_dimensions": {
+        "width": 3000,
+        "height": 2000
+      },
+      "source_bytes": 750985,
+      "source_sha256": "6456b005df9d192c06a558a7d01c5dc01d8dea05d0db246f675d81a4c06565f8",
+      "palette_analysis": [
+        {
+          "hex": "#472c17",
+          "share": 0.257
+        },
+        {
+          "hex": "#8d6547",
+          "share": 0.238
+        },
+        {
+          "hex": "#b79d83",
+          "share": 0.228
+        },
+        {
+          "hex": "#cecabb",
+          "share": 0.155
+        },
+        {
+          "hex": "#eff2eb",
+          "share": 0.122
+        }
+      ],
+      "processing": {
+        "tool": "FFmpeg",
+        "operations": [
+          "resize to width 1600 with proportional height",
+          "WebP quality 82, compression level 6",
+          "remove embedded metadata"
+        ],
+        "crop": false,
+        "content_retouch": false
+      }
+    },
+    {
+      "id": "estetica",
+      "source": "https://www.pexels.com/photo/a-dermatologist-checking-the-client-s-face-5659055/",
+      "source_asset_url": "https://images.pexels.com/photos/5659055/pexels-photo-5659055.jpeg?cs=srgb&dl=pexels-ivan-s-5659055.jpg&fm=jpg",
+      "photographer": "Ivan S",
+      "license": "Pexels License",
+      "license_url": "https://www.pexels.com/license/",
+      "source_published_date": "2020-10-21",
+      "alt_pt": "Profissional realiza atendimento facial em uma sala de estética.",
+      "suggested_object_position": "54% 50%",
+      "composition_note_pt": "Luz clara, tons de creme e atendimento ao centro; manter o rosto da profissional e o da pessoa atendida no enquadramento.",
+      "usage_role": "sector_context",
+      "kind": "photo",
+      "path": "assets/negocio-estetica.webp",
+      "mime": "image/webp",
+      "width": 1600,
+      "height": 1067,
+      "bytes": 60734,
+      "sha256": "96c38bf9da30ff91306577a1ac4d33fa3f5232bb4128125901b9274b179ba421",
+      "source_dimensions": {
+        "width": 6720,
+        "height": 4480
+      },
+      "source_bytes": 3202409,
+      "source_sha256": "e7c9e677016f2ab1c14d19b53fc9f6663dc10529a4cbec9b4c28593a8b8fd169",
+      "palette_analysis": [
+        {
+          "hex": "#e0d7d1",
+          "share": 0.299
+        },
+        {
+          "hex": "#ebe6e4",
+          "share": 0.252
+        },
+        {
+          "hex": "#c0aa96",
+          "share": 0.159
+        },
+        {
+          "hex": "#fefdfe",
+          "share": 0.155
+        },
+        {
+          "hex": "#f6f5f5",
+          "share": 0.135
+        }
+      ],
+      "processing": {
+        "tool": "FFmpeg",
+        "operations": [
+          "resize to width 1600 with proportional height",
+          "WebP quality 82, compression level 6",
+          "remove embedded metadata"
+        ],
+        "crop": false,
+        "content_retouch": false
+      }
+    },
+    {
+      "id": "restaurante",
+      "source": "https://www.pexels.com/photo/workers-inside-the-kitchen-of-a-restaurant-6937428/",
+      "source_asset_url": "https://images.pexels.com/photos/6937428/pexels-photo-6937428.jpeg?cs=srgb&dl=pexels-anntarazevich-6937428.jpg&fm=jpg",
+      "photographer": "Anna Tarazevich",
+      "license": "Pexels License",
+      "license_url": "https://www.pexels.com/license/",
+      "source_published_date": "2021-02-24",
+      "alt_pt": "Equipe de cozinha em um restaurante.",
+      "suggested_object_position": "50% 52%",
+      "composition_note_pt": "A pessoa ao centro sustenta recortes 4:3; a composição 3:2 mostra melhor a equipe. Tons quentes de cozinha e aço.",
+      "usage_role": "sector_context",
+      "kind": "photo",
+      "path": "assets/negocio-restaurante.webp",
+      "mime": "image/webp",
+      "width": 1600,
+      "height": 1067,
+      "bytes": 187014,
+      "sha256": "ecda11b934b185b11663e992fe8f32961aaaf21a6e7ff3d895b1d2fd94ba8543",
+      "source_dimensions": {
+        "width": 3500,
+        "height": 2333
+      },
+      "source_bytes": 1431695,
+      "source_sha256": "76782fe585131fe05c793f9042b9394ac87c5dfd526ce6d3e35b72e77bf35cc0",
+      "palette_analysis": [
+        {
+          "hex": "#c0ab92",
+          "share": 0.239
+        },
+        {
+          "hex": "#04080b",
+          "share": 0.237
+        },
+        {
+          "hex": "#5e4c3b",
+          "share": 0.211
+        },
+        {
+          "hex": "#261f18",
+          "share": 0.173
+        },
+        {
+          "hex": "#0f1212",
+          "share": 0.139
+        }
+      ],
+      "processing": {
+        "tool": "FFmpeg",
+        "operations": [
+          "resize to width 1600 with proportional height",
+          "WebP quality 82, compression level 6",
+          "remove embedded metadata"
+        ],
+        "crop": false,
+        "content_retouch": false
+      }
+    },
+    {
+      "id": "fitness",
+      "source": "https://www.pexels.com/photo/supportive-personal-trainer-helping-a-woman-at-the-gym-6551438/",
+      "source_asset_url": "https://images.pexels.com/photos/6551438/pexels-photo-6551438.jpeg?cs=srgb&dl=pexels-andres-ayrton-6551438.jpg&fm=jpg",
+      "photographer": "Andres Ayrton",
+      "license": "Pexels License",
+      "license_url": "https://www.pexels.com/license/",
+      "source_published_date": "2021-01-20",
+      "alt_pt": "Profissional orienta exercício em bicicleta estacionária.",
+      "suggested_object_position": "46% 50%",
+      "composition_note_pt": "Preservar as duas pessoas e as mãos junto ao equipamento. Funciona melhor em 3:2 ou 4:3 que em retrato estreito.",
+      "usage_role": "sector_context",
+      "kind": "photo",
+      "path": "assets/negocio-fitness.webp",
+      "mime": "image/webp",
+      "width": 1600,
+      "height": 1067,
+      "bytes": 90402,
+      "sha256": "be5a01d50f0d997a4d8fcf5a76efab838f9fb363c9ed6cf326dc23f3610a2d48",
+      "source_dimensions": {
+        "width": 5673,
+        "height": 3782
+      },
+      "source_bytes": 2741981,
+      "source_sha256": "7ae0326c9a301153dbf54c75db556f6ddfdef2234347c28dac7c1e66d1c2d329",
+      "palette_analysis": [
+        {
+          "hex": "#584738",
+          "share": 0.25
+        },
+        {
+          "hex": "#191c16",
+          "share": 0.246
+        },
+        {
+          "hex": "#7c6e5f",
+          "share": 0.223
+        },
+        {
+          "hex": "#8b8e8d",
+          "share": 0.185
+        },
+        {
+          "hex": "#aca8a5",
+          "share": 0.096
+        }
+      ],
+      "processing": {
+        "tool": "FFmpeg",
+        "operations": [
+          "resize to width 1600 with proportional height",
+          "WebP quality 82, compression level 6",
+          "remove embedded metadata"
+        ],
+        "crop": false,
+        "content_retouch": false
+      }
+    },
+    {
+      "id": "odontologia",
+      "source": "https://www.pexels.com/photo/female-dentists-working-with-patient-in-modern-clinic-3881417/",
+      "source_asset_url": "https://images.pexels.com/photos/3881417/pexels-photo-3881417.jpeg?cs=srgb&dl=pexels-olly-3881417.jpg&fm=jpg",
+      "photographer": "Andrea Piacquadio",
+      "license": "Pexels License",
+      "license_url": "https://www.pexels.com/license/",
+      "source_published_date": "2020-03-07",
+      "alt_pt": "Equipe odontológica atendendo uma pessoa em consultório.",
+      "suggested_object_position": "53% 57%",
+      "composition_note_pt": "Priorizar a área central e inferior do atendimento; evitar recorte panorâmico muito baixo que elimine as profissionais.",
+      "usage_role": "sector_context",
+      "kind": "photo",
+      "path": "assets/negocio-odontologia.webp",
+      "mime": "image/webp",
+      "width": 1600,
+      "height": 1067,
+      "bytes": 47034,
+      "sha256": "fdf6206a814507fef36244fcf52d23355c570ee835e0844dcb3cbfa370a65801",
+      "source_dimensions": {
+        "width": 7680,
+        "height": 5120
+      },
+      "source_bytes": 1387318,
+      "source_sha256": "4c3211128b4b69cb624ba99e90e541a129594468287b2ec8af9807ae36906d45",
+      "palette_analysis": [
+        {
+          "hex": "#a5a29c",
+          "share": 0.247
+        },
+        {
+          "hex": "#bbbbb9",
+          "share": 0.243
+        },
+        {
+          "hex": "#6a625e",
+          "share": 0.212
+        },
+        {
+          "hex": "#c3c5c5",
+          "share": 0.196
+        },
+        {
+          "hex": "#d4dde3",
+          "share": 0.102
+        }
+      ],
+      "processing": {
+        "tool": "FFmpeg",
+        "operations": [
+          "resize to width 1600 with proportional height",
+          "WebP quality 82, compression level 6",
+          "remove embedded metadata"
+        ],
+        "crop": false,
+        "content_retouch": false
+      }
+    },
+    {
+      "id": "rotina-negocio",
+      "kind": "video",
+      "path": "assets/rotina-negocio.mp4",
+      "mime": "video/mp4",
+      "source": "https://www.pexels.com/video/baristas-working-in-a-coffee-shop-4795016/",
+      "source_asset_url": "https://videos.pexels.com/video-files/4795016/4795016-hd_1366_720_25fps.mp4",
+      "photographer": "cottonbro studio",
+      "license": "Pexels License",
+      "license_url": "https://www.pexels.com/license/",
+      "source_published_date": "2020-07-04",
+      "width": 1366,
+      "height": 720,
+      "duration_seconds": 10.0,
+      "fps": 25,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "audio_tracks": 0,
+      "bytes": 980074,
+      "sha256": "f37708f2b4f8ef0b66ba20df40cb4403998a4158a55f65b1f7320eb1d8f4b451",
+      "poster": "assets/rotina-poster.webp",
+      "source_dimensions": {
+        "width": 1366,
+        "height": 720
+      },
+      "source_duration_seconds": 21.56,
+      "source_bytes": 5414502,
+      "source_sha256": "c8b7f66011f9264a830253e4f3cda235bc4a413bbbef3dbe522ba32d5beedb45",
+      "alt_pt": "Profissionais preparam café no balcão de uma cafeteria.",
+      "suggested_object_position": "45% 50%",
+      "usage_role": "sector_context_video",
+      "processing": {
+        "tool": "FFmpeg",
+        "operations": [
+          "select first 10 seconds",
+          "remove all audio tracks",
+          "encode H.264, CRF 26, max rate 1300k, yuv420p",
+          "move MP4 metadata before media data for progressive playback",
+          "remove embedded metadata"
+        ],
+        "crop": false,
+        "content_retouch": false
+      },
+      "suggested_playback": {
+        "autoplay": false,
+        "playsinline": true,
+        "preload": "none",
+        "controls": true,
+        "loop": false,
+        "replay_requires_user_action": true,
+        "label_pt": "Ver cena de trabalho (10 segundos)"
+      }
+    },
+    {
+      "id": "rotina-poster",
+      "kind": "video_poster",
+      "path": "assets/rotina-poster.webp",
+      "mime": "image/webp",
+      "source": "https://www.pexels.com/video/baristas-working-in-a-coffee-shop-4795016/",
+      "source_asset_url": "https://images.pexels.com/videos/4795016/pexels-photo-4795016.jpeg?auto=compress&dpr=1&h=750&w=1260",
+      "photographer": "cottonbro studio",
+      "license": "Pexels License",
+      "license_url": "https://www.pexels.com/license/",
+      "width": 1260,
+      "height": 664,
+      "bytes": 54780,
+      "sha256": "fd382c00b6021d4e9cab87f5336aa9bb932dbe3da3bb7cfe3b3cad630acc5786",
+      "source_bytes": 95523,
+      "source_sha256": "fea1766408f8c84d7d8260d10d28a97e183583baea41b33965456baeddda8517",
+      "alt_pt": "Profissionais preparam café no balcão de uma cafeteria.",
+      "usage_role": "video_poster",
+      "palette_analysis": [
+        {
+          "hex": "#8c8071",
+          "share": 0.258
+        },
+        {
+          "hex": "#b2aca5",
+          "share": 0.22
+        },
+        {
+          "hex": "#31281f",
+          "share": 0.208
+        },
+        {
+          "hex": "#575044",
+          "share": 0.157
+        },
+        {
+          "hex": "#74614c",
+          "share": 0.156
+        }
+      ],
+      "processing": {
+        "tool": "FFmpeg",
+        "operations": [
+          "WebP quality 82, compression level 6",
+          "remove embedded metadata"
+        ],
+        "crop": false,
+        "content_retouch": false
+      }
+    },
+    {
+      "id": "orion_social",
+      "kind": "social_preview",
+      "path": "assets/orion-social.png",
+      "mime": "image/png",
+      "source": "docs/design/orion-social.svg",
+      "source_base": "repository_root",
+      "source_asset_url": null,
+      "creator": "Projeto Orion",
+      "photographer": null,
+      "license": "Composição original do projeto Orion; marca oficial do projeto e fontes sob OFL",
+      "license_url": null,
+      "font_licenses": [
+        "app/static/outfit-OFL.txt",
+        "app/static/figtree-OFL.txt"
+      ],
+      "brand_source": "app/static/orion-brand-light.svg",
+      "brand_sha256": "06c84991f1ceae4c5c7c4521276b0ea1cbbaa4b3218a5e99a12283031b570381",
+      "alt_pt": "Orion. Um Orion para o seu negócio. Atendimento, agenda e gestão.",
+      "usage_role": "open_graph_and_social_preview",
+      "width": 1200,
+      "height": 630,
+      "bytes": 66954,
+      "sha256": "6e3752ee140884353f77cf52674b3b583ad4e58efa92fcf433e31d5352d02d98",
+      "source_bytes": 58072,
+      "source_sha256": "6f34242f5656445a445fea9259e2fd336be6967986121fefedbe845e58127530",
+      "brand_colors": {
+        "background": "#f5f8fc",
+        "blue": "#2e7bf6",
+        "text": "#0f1b33"
+      },
+      "processing": {
+        "tool": "CairoSVG 2.8.2",
+        "operations": [
+          "Rasterize original SVG to PNG at 1200 x 630",
+          "Render title and subtitle from local Outfit and Figtree glyph outlines",
+          "Embed official logo SVG bytes unchanged"
+        ],
+        "crop": false,
+        "content_retouch": false
+      },
+      "original_artwork_note_pt": "Composição vetorial original, sem fotos, dados pessoais, depoimentos ou métricas. As licenças de banco de imagens listadas acima não se aplicam a esta peça."
+    }
+  ]
+}

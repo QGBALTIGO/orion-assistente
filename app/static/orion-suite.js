@@ -59,7 +59,7 @@
   const mainNav=[['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['servicos','scissors'],['funcionarios','users'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','bot'],['plano','credit'],['configuracoes','settings']];
   const legacyPages=new Set(['dispositivo','conversas','ai','empresa','catalogo','cadastros','member']);
   const appPages=new Set([...Object.keys(routeNames),...routeAliases.keys()]);
-  const defaultFilters=()=>({customerQuery:'',customerStatus:'active',customerRisk:30,customerOffset:0,agendaMode:'list',agendaDay:'',agendaTablet:false,financeKind:'',financeStatus:'',financeTab:'entries',performancePeriod:'month',performanceGroup:'day',staffTab:'professionals',marketingTab:'overview',marketingQueueStatus:'all',loyaltyTab:'ranking',loyaltyOffset:0,couponStatus:'all',periodStart:'',periodEnd:'',settingsTab:'general',siteTab:'dashboard',helpQuery:'',helpCategory:'all',helpArticle:'',newsFilter:'all',notificationsUnread:false});
+  const defaultFilters=()=>({customerQuery:'',customerStatus:'active',customerRisk:30,customerOffset:0,agendaMode:'list',agendaDay:'',agendaTablet:false,financeKind:'',financeStatus:'',financeTab:'entries',performancePeriod:'month',performanceGroup:'day',staffTab:'professionals',marketingTab:'overview',marketingQueueStatus:'all',loyaltyTab:'ranking',loyaltyOffset:0,couponStatus:'all',periodStart:'',periodEnd:'',settingsTab:'general',siteRequestStatus:'all',siteRequestIntent:'all',siteRequestQuery:'',siteRequestOffset:0,siteTab:'dashboard',helpQuery:'',helpCategory:'all',helpArticle:'',newsFilter:'all',notificationsUnread:false});
   const state={bridge:{},mounted:false,epoch:0,load:0,route:'dashboard',tenantId:'',data:{},filters:defaultFilters(),dialog:null,busy:false,searchTimer:null,drawerTrigger:null,observer:null};
   const rows = value => Array.isArray(value)?value:Array.isArray(value?.items)?value.items:[];
   const number = value => Number.isFinite(Number(value))?Number(value):0;
@@ -101,6 +101,7 @@
   function cents(value){const text=String(value??'').trim();const n=Number(text.includes(',')?text.replace(/\./g,'').replace(',','.'):text);if(!Number.isFinite(n)||n<0)throw Error('Informe um valor válido.');return Math.round(n*100);}
   const currencyInput = value => (number(value)/100).toFixed(2).replace('.',',');
   function writable(ownerOnly=false){const role=state.bridge.user?.role;if(role==='support'||role==='admin')return true;const access=tenant()?.role;return ownerOnly?access==='owner':['owner','editor'].includes(access);}
+  const canManageSiteRequests=()=>['support','admin'].includes(state.bridge.user?.role);
   function apiPath(suffix){if(!tenant())throw Error('Escolha uma empresa autorizada.');return '/api/v1/tenants/'+encodeURIComponent(state.tenantId)+suffix;}
   function mgmt(suffix){return apiPath('/management'+suffix);}
   function request(path,method='GET',data){if(typeof state.bridge.request!=='function')return Promise.reject(Error('A conexão com sua conta ainda não está pronta.'));return state.bridge.request(path,method,data);}
@@ -495,8 +496,89 @@
     if(plans.length)html+='<div class="os-cards-grid os-section-gap">'+plans.map(plan=>'<section class="os-card"><div class="os-card-header"><h3>'+esc(plan.name)+'</h3>'+(sub?.plan_id===plan.id?badge('active','Atual'):'')+'</div><div class="os-plan-price">'+money(plan.monthly_cents)+'<small> / mês</small></div><ul class="os-feature-list">'+[[plan.max_professionals,'profissionais'],[plan.max_messages_month,'mensagens por mês']].map(([value,label])=>'<li>'+icon('check')+(value==null?'Limite definido no contrato':number(value)+' '+label)+'</li>').join('')+'</ul></section>').join('')+'</div>';
     if(!data.checkout_enabled)html+='<p class="os-help os-section-gap">A contratação e a mudança de plano ainda não estão disponíveis pelo painel.</p>';bodyHTML(html);
   }
-  const settingsSections=[['general','settings','Negócio','Dados operacionais e fiscais'],['hours','clock','Horários','Jornada de trabalho da equipe'],['administration','shield','Administração','Telefones autorizados, folgas e empresas'],['appearance','sun','Aparência','Tema e visual do painel'],['ai','sparkles','Uso de IA','Gerações e limite diário'],['notifications','bell','Notificações','Avisos de agendamentos'],['calendar','calendar','Google Agenda','Sincronização dos horários'],['account','shield','Minha conta','Dados de acesso ao Orion']];
+  const siteRequestsPath='/api/v1/admin/sales-requests';
+  const siteRequestStatuses={new:'Nova',contacted:'Contatada',closed:'Encerrada'};
+  const siteRequestIntents={trial:'Teste de 3 dias',essencial:'Plano Essencial',profissional:'Plano Profissional',escala:'Plano Escala',contact:'Contato comercial'};
+  const siteRequestSegments={barbearia:'Barbearia',estetica:'Estética e beleza',odontologia:'Odontologia',restaurante:'Restaurante',fitness:'Fitness',outro:'Outro negócio'};
+  function siteRequestDate(value){
+    if(!value)return 'Não informada';
+    try{return new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'}).format(new Date(value));}catch{return 'Não informada';}
+  }
+  async function loadSiteRequests(c){
+    if(!canManageSiteRequests()||!current(c))return;
+    state.data.siteRequestsLoading=true;state.data.siteRequestsError=null;renderSettings();
+    const f=state.filters,fetchPage=()=>request(siteRequestsPath+'?'+query({status:f.siteRequestStatus,intent:f.siteRequestIntent,q:f.siteRequestQuery,limit:25,offset:f.siteRequestOffset}));
+    try{
+      let data=await fetchPage();
+      if(!current(c)||!canManageSiteRequests())return;
+      if(!data||!Array.isArray(data.items)||!Number.isInteger(data.total)||data.total<0)throw Error('A resposta do servidor não contém uma lista de solicitações válida.');
+      if(data.total>0&&number(data.offset)>=data.total&&!data.items.length){
+        f.siteRequestOffset=Math.floor((data.total-1)/25)*25;data=await fetchPage();
+        if(!current(c)||!canManageSiteRequests())return;
+        if(!data||!Array.isArray(data.items)||!Number.isInteger(data.total)||data.total<0)throw Error('A resposta do servidor não contém uma lista de solicitações válida.');
+      }
+      if(data.total===0)f.siteRequestOffset=0;
+      state.data.siteRequests=data;
+    }catch(error){
+      if(!current(c)||!canManageSiteRequests())return;
+      state.data.siteRequests=null;state.data.siteRequestsError=error;
+    }finally{
+      if(current(c)&&canManageSiteRequests()){state.data.siteRequestsLoading=false;renderSettings();}
+    }
+  }
+  function renderSiteRequests(){
+    if(!canManageSiteRequests())return '';
+    const f=state.filters,data=state.data.siteRequests,busy=state.data.siteRequestsLoading,error=state.data.siteRequestsError;
+    const counts=data?.counts,items=rows(data),total=Math.max(0,number(data?.total)),offset=Math.max(0,number(data?.offset)),limit=Math.max(1,number(data?.limit)||25),canUpdate=data?.access?.can_update===true;
+    const totals=!busy&&counts?'<dl class="os-site-request-counts" aria-label="Contagem geral de todas as solicitações">'+[['all','Total'],['new','Novas'],['contacted','Contatadas'],['closed','Encerradas']].map(([key,label])=>'<div><dt>'+label+'</dt><dd>'+number(counts[key]).toLocaleString('pt-BR')+'</dd></div>').join('')+'</dl><p class="os-help">Contagem geral, independente dos filtros abaixo.</p>':'';
+    const filters='<form id="osSiteRequestFilters" class="os-site-request-filters"><div class="os-field os-site-request-search"><label for="osSiteRequestQuery">Buscar solicitações</label><input id="osSiteRequestQuery" name="q" type="search" maxlength="120" placeholder="Nome, e-mail, telefone ou empresa" value="'+esc(f.siteRequestQuery)+'"></div><div class="os-field"><label for="osSiteRequestStatus">Situação</label><select id="osSiteRequestStatus" name="status">'+[['all','Todas'],['new','Novas'],['contacted','Contatadas'],['closed','Encerradas']].map(([value,label])=>'<option value="'+value+'"'+(f.siteRequestStatus===value?' selected':'')+'>'+label+'</option>').join('')+'</select></div><div class="os-field"><label for="osSiteRequestIntent">Interesse</label><select id="osSiteRequestIntent" name="intent">'+[['all','Todos'],...Object.entries(siteRequestIntents)].map(([value,label])=>'<option value="'+value+'"'+(f.siteRequestIntent===value?' selected':'')+'>'+label+'</option>').join('')+'</select></div><button type="submit" class="os-button os-outline">Buscar</button></form>';
+    let results='';
+    if(busy)results=loading('Carregando solicitações do site…');
+    else if(error)results='<div class="os-notice os-error" role="alert">'+icon('info')+'<div><strong>Não foi possível consultar as solicitações.</strong><p>'+esc(error.message||'Tente novamente em instantes.')+'</p></div>'+button('Tentar novamente','site-requests-refresh','os-outline os-small','refresh')+'</div>';
+    else if(data){
+      results='<div class="os-site-request-results"><p role="status">'+total.toLocaleString('pt-BR')+' '+(total===1?'solicitação encontrada':'solicitações encontradas')+'</p><small>Datas e horários de Brasília</small></div>';
+      if(items.length){
+        results+='<div class="os-site-request-list">'+items.map(item=>{
+          const name=typeof item.name==='string'?item.name:'Nome não informado',status=siteRequestStatuses[item.status]||'Não informada',intent=siteRequestIntents[item.intent]||'Não informado',segment=siteRequestSegments[item.segment]||'Não informado';
+          const copyField=(kind,label,value)=>'<div class="os-site-request-contact"><span><small>'+label+'</small><strong>'+esc(typeof value==='string'&&value?value:'Não informado')+'</strong></span>'+(typeof value==='string'&&value?'<button type="button" class="os-icon-button" data-os-site-request-copy="'+kind+'" data-request-id="'+esc(item.id)+'" aria-label="Copiar '+label+' de '+esc(name)+'">'+icon('copy')+'</button>':'')+'</div>';
+          const commandAttributes='data-request-id="'+esc(item.id)+'"'+(state.data.siteRequestSaving?' disabled':'');
+          const commands=canUpdate?'<div class="os-actions">'+(item.status!=='contacted'?button('Marcar como contatada','site-request-status','','check',commandAttributes+' data-status="contacted"'):'')+(item.status!=='closed'?button('Encerrar','site-request-status','os-outline','',commandAttributes+' data-status="closed"'):'')+(item.status!=='new'?button('Voltar para nova','site-request-status','os-ghost','',commandAttributes+' data-status="new"'):'')+'</div>':'';
+          return '<details class="os-site-request" data-site-request="'+esc(item.id)+'"><summary><span class="os-site-request-person"><strong>'+esc(name)+'</strong><small>'+esc(item.business_name||segment)+'</small></span><span class="os-site-request-intent">'+intent+'</span><span class="os-site-request-state">'+badge(item.status==='new'?'pending':item.status==='contacted'?'completed':'archived',status)+'<time datetime="'+esc(item.created_at)+'">'+siteRequestDate(item.created_at)+'</time></span>'+icon('down')+'</summary><div class="os-site-request-details"><div>'+copyField('email','E-mail',item.email)+copyField('phone','WhatsApp',item.phone)+'</div><dl class="os-site-request-interest"><div><dt>Negócio</dt><dd>'+esc(item.business_name||'Não informado')+'</dd></div><div><dt>Segmento</dt><dd>'+segment+'</dd></div><div><dt>Interesse</dt><dd>'+intent+'</dd></div></dl></div><footer class="os-site-request-footer"><div><p>Atualizada em '+siteRequestDate(item.updated_at||item.created_at)+'</p>'+(item.contacted_at?'<p>Contato registrado em '+siteRequestDate(item.contacted_at)+'</p>':'')+'</div>'+commands+'</footer></details>';
+        }).join('')+'</div><div class="os-pagination os-site-request-pagination"><span>'+Math.min(offset+1,total)+' a '+Math.min(offset+items.length,total)+' de '+total.toLocaleString('pt-BR')+'</span><div class="os-actions">'+button('Anterior','site-requests-prev','os-outline os-small','left',offset>0?'':'disabled')+button('Próxima','site-requests-next','os-outline os-small','chevron',offset+limit<total?'':'disabled')+'</div></div>';
+      }else results+=empty('mail',f.siteRequestQuery||f.siteRequestStatus!=='all'||f.siteRequestIntent!=='all'?'Nenhuma solicitação neste filtro':'Nenhuma solicitação recebida',f.siteRequestQuery||f.siteRequestStatus!=='all'||f.siteRequestIntent!=='all'?'Altere a busca, a situação ou o interesse para consultar outros contatos.':'As solicitações enviadas pelo formulário do site Orion aparecerão aqui.');
+    }
+    return '<section class="os-card os-site-requests" aria-label="Solicitações do site"><header class="os-site-requests-heading"><div><h2>Solicitações do site</h2><p>Contatos recebidos pelo site do Orion, disponíveis para a administração.</p></div>'+button('Atualizar','site-requests-refresh','os-outline os-small','refresh',busy?'disabled':'')+'</header>'+totals+filters+'<div aria-busy="'+Boolean(busy)+'">'+results+'</div><p class="os-site-request-note">Alterar a situação registra o acompanhamento interno. O teste é ativado pela equipe após contato com o interessado.</p></section>';
+  }
+  async function applySiteRequestFilters(form){
+    if(!state.mounted||state.busy||!canManageSiteRequests()||state.route!=='configuracoes'||state.filters.settingsTab!=='site-requests'||!form.reportValidity())return;
+    const values=getValues(form);
+    state.filters.siteRequestStatus=Object.hasOwn(siteRequestStatuses,values.status)?values.status:'all';
+    state.filters.siteRequestIntent=Object.hasOwn(siteRequestIntents,values.intent)?values.intent:'all';
+    state.filters.siteRequestQuery=String(values.q||'').trim();state.filters.siteRequestOffset=0;
+    await open('configuracoes',{keepScroll:true});
+  }
+  async function updateSiteRequestStatus(element){
+    if(!canManageSiteRequests()||state.data.siteRequests?.access?.can_update!==true||state.data.siteRequestSaving||state.route!=='configuracoes'||state.filters.settingsTab!=='site-requests')return;
+    const item=rows(state.data.siteRequests).find(item=>item.id===element.dataset.requestId),status=element.dataset.status;
+    if(!item||!Object.hasOwn(siteRequestStatuses,status)||status===item.status)return;
+    const c=context(),data=state.data;data.siteRequestSaving=item.id;
+    document.querySelectorAll('.os-site-requests [data-os-action="site-request-status"]').forEach(button=>button.disabled=true);element.textContent='Salvando…';
+    try{
+      await request(siteRequestsPath+'/'+encodeURIComponent(item.id),'PATCH',{status,expected_version:item.version});
+      if(stillAccount(c))toast('Situação da solicitação atualizada.');
+    }catch(error){
+      if(stillAccount(c))toast(error.message||'Não foi possível atualizar a solicitação.',true);
+    }finally{
+      data.siteRequestSaving=null;
+      if(stillAccount(c)&&state.route==='configuracoes'&&state.filters.settingsTab==='site-requests')await open('configuracoes',{keepScroll:true});
+    }
+  }
+  const settingsSections=[['general','settings','Negócio','Dados operacionais e fiscais'],['hours','clock','Horários','Jornada de trabalho da equipe'],['administration','shield','Administração','Telefones autorizados, folgas e empresas'],['site-requests','mail','Solicitações do site','Contatos e testes solicitados'],['appearance','sun','Aparência','Tema e visual do painel'],['ai','sparkles','Uso de IA','Gerações e limite diário'],['notifications','bell','Notificações','Avisos de agendamentos'],['calendar','calendar','Google Agenda','Sincronização dos horários'],['account','shield','Minha conta','Dados de acesso ao Orion']];
   async function loadSettings(c){
+    if(state.filters.settingsTab==='site-requests'){
+      if(canManageSiteRequests()){await loadSiteRequests(c);return;}
+      state.filters.settingsTab='general';
+    }
     if(!tenant()){renderSettings();return;}
     const tab=state.filters.settingsTab;
     if(tab==='general'){const data=await request(mgmt('/preferences'));if(!current(c))return;state.data.preferences=data;}
@@ -505,7 +587,8 @@
     if(current(c))renderSettings();
   }
   function renderSettings(){
-    const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role),sections=settingsSections.filter(item=>item[0]!=='administration'||t||isAdmin),tab=sections.some(item=>item[0]===state.filters.settingsTab)?state.filters.settingsTab:'general',definition=sections.find(item=>item[0]===tab)||sections[0];let panel='';
+    const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role),sections=settingsSections.filter(item=>(item[0]!=='administration'||t||isAdmin)&&(item[0]!=='site-requests'||isAdmin)),tab=sections.some(item=>item[0]===state.filters.settingsTab)?state.filters.settingsTab:'general',definition=sections.find(item=>item[0]===tab)||sections[0];let panel='';
+    if(tab==='site-requests')panel=renderSiteRequests();
     if(tab==='general')panel=t?businessPreferencesForm(state.data.preferences):'<section class="os-card">'+empty('users','Selecione uma empresa','As preferências ficam vinculadas a cada empresa autorizada.')+'</section>';
     if(tab==='hours')panel=settingsHours();
     if(tab==='administration')panel='<section class="os-card"><div class="os-card-header"><div><h2>Administração do atendimento</h2><p>Configurações específicas do atendimento Orion.</p></div></div><ul class="os-feature-list"><li>'+icon('phone')+'<span><strong>Telefones autorizados</strong><br>Consulte os acessos da equipe ao atendimento. A edição depende da permissão de proprietário ou administração.</span></li><li>'+icon('calendar')+'<span><strong>Folgas</strong><br>Consulte e organize os períodos de ausência dos profissionais, conforme seu acesso à empresa.</span></li>'+(isAdmin?'<li>'+icon('users')+'<span><strong>Empresas</strong><br>Selecione uma empresa autorizada ou cadastre um novo negócio.</span></li>':'')+'</ul><div class="os-form-actions">'+routeButton('Administração do atendimento','cadastros','','shield')+'</div></section>';
@@ -665,6 +748,7 @@
   function deleteResource(kind,record){if(!record||!writable())return;const specs={customer:['Excluir cliente','O cadastro de '+customerDisplayName(record)+' será removido do diretório. O histórico de atendimentos será preservado.','/customers/','Cliente excluído.'],finance:['Cancelar lançamento','Este lançamento será cancelado, mantendo o histórico financeiro.','/finance/','Lançamento cancelado.'],campaign:['Excluir rascunho','O rascunho '+record.name+' será arquivado.','/marketing/','Rascunho excluído.'],loyalty:['Desativar programa','O programa '+record.name+' será desativado. Os pontos já registrados serão preservados.','/loyalty/rules/','Programa desativado.'],goal:['Desativar meta','A meta selecionada deixará de ficar ativa.','/goals/','Meta desativada.']};const spec=specs[kind];if(!spec)return;const path=mgmt(spec[2]+encodeURIComponent(record.id));confirmMutation(spec[0],spec[1],()=>request(path,'DELETE',{expected_version:record.version}),spec[3]);}
   async function submitForm(event){
     const form=event.target.closest('form');if(!form)return;
+    if(form.id==='osSiteRequestFilters'){event.preventDefault();await applySiteRequestFilters(form);return;}
     if(form.id==='osPeriodForm'){event.preventDefault();const f=getValues(form);if(f.start_date>f.end_date){toast('A data final deve ser igual ou posterior à inicial.',true);return;}state.filters.periodStart=f.start_date;state.filters.periodEnd=f.end_date;state.filters.performancePeriod='custom';closeDialog();await open(state.route,{keepScroll:true});return;}
     const kind=form.dataset.osForm;if(!kind)return;event.preventDefault();if(!form.reportValidity())return;if(state.busy||!writable())return;
     const d=state.dialog,f=getValues(form);if(!['site','business-preferences','automations','loyalty-inline','loyalty-ideas','ai-campaign','ai-consultant'].includes(kind)&&(!d||d.epoch!==state.epoch||d.tenantId!==state.tenantId))return;
@@ -754,6 +838,9 @@
     const d=state.dialog,f=state.filters;
     switch(name){
       case 'reload':await open(state.route,{keepScroll:true});break;
+      case 'site-requests-refresh':if(canManageSiteRequests()&&state.filters.settingsTab==='site-requests')await open('configuracoes',{keepScroll:true});break;
+      case 'site-requests-prev':case 'site-requests-next':{if(!canManageSiteRequests()||state.filters.settingsTab!=='site-requests'||!state.data.siteRequests)return;const data=state.data.siteRequests,limit=number(data.limit)||25,offset=number(data.offset),next=Math.max(0,offset+(name==='site-requests-prev'?-limit:limit));if(name==='site-requests-next'&&next>=number(data.total))return;f.siteRequestOffset=next;await open('configuracoes',{keepScroll:true});break;}
+      case 'site-request-status':await updateSiteRequestStatus(element);break;
       case 'new-customer':showCustomer();break;
       case 'new-service':await showService();break;
       case 'toggle-service-models':{const box=$('osServiceModels');box.classList.toggle('hidden');element.setAttribute('aria-expanded',String(!box.classList.contains('hidden')));break;}
@@ -843,6 +930,7 @@
       if(el.dataset.osDay){state.filters.agendaDay=el.dataset.osDay;await open('agenda',{keepScroll:true});return;}
       if(el.dataset.osAgendaMode){state.filters.agendaMode=el.dataset.osAgendaMode;document.querySelectorAll('[data-os-agenda-mode]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.osAgendaMode===state.filters.agendaMode)));renderAgenda();return;}
       if(el.dataset.osSettings){state.filters.settingsTab=el.dataset.osSettings;await open('configuracoes',{keepScroll:true});return;}
+      if(el.dataset.osSiteRequestCopy){if(!canManageSiteRequests()||state.filters.settingsTab!=='site-requests')return;const item=rows(state.data.siteRequests).find(item=>item.id===el.dataset.requestId),key=el.dataset.osSiteRequestCopy;if(!item||!['email','phone'].includes(key)||typeof item[key]!=='string')return;const c=context();await navigator.clipboard.writeText(item[key]);if(current(c))toast(key==='email'?'E-mail copiado.':'WhatsApp copiado.');return;}
       if(el.dataset.osCustomerStatus){state.filters.customerStatus=el.dataset.osCustomerStatus;state.filters.customerOffset=0;await open('clientes',{keepScroll:true});return;}
       if(el.dataset.osCustomerRisk){state.filters.customerRisk=Number(el.dataset.osCustomerRisk);state.filters.customerOffset=0;await open('clientes',{keepScroll:true});return;}
       if(el.dataset.osCustomerToggle){const c=rows(state.data.customers).find(c=>c.id===el.dataset.osCustomerToggle);if(c)await runInline(()=>request(mgmt('/customers/'+encodeURIComponent(c.id)),'PATCH',{active:!c.active,expected_version:c.version}),c.active?'Cliente inativado.':'Cliente ativado.');return;}
@@ -889,6 +977,7 @@
   async function handleChange(event){if(!state.mounted||state.busy)return;const el=event.target;if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';
     if(el.id==='osTenant'){try{await setTenant(el.value);}catch(ex){if($('osTenant'))$('osTenant').value=state.tenantId;toast(ex.message,true);}return;}
     if(el.id==='osSettingsSection'){state.filters.settingsTab=el.value;await open('configuracoes',{keepScroll:true});return;}
+    if(['osSiteRequestStatus','osSiteRequestIntent'].includes(el.id)){await applySiteRequestFilters(el.closest('form'));return;}
     if(el.id==='osHoursProfessional'){state.filters.hoursProfessional=el.value;renderSettings();return;}
     if(el.name==='tax_document_kind'&&el.closest('[data-os-form=business-preferences]')){const input=el.closest('form').elements.tax_document;input.disabled=el.value==='none';if(input.disabled)input.value='';return;}
     if(el.id==='osFinanceMonth'){if(/^\d{4}-\d{2}$/.test(el.value)){setMonth(el.value);await open('financeiro',{keepScroll:true});}return;}

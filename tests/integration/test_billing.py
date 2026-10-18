@@ -12,19 +12,26 @@ from app.main import app
 
 
 @pytest.mark.asyncio
-async def test_landing_without_fake_phone_and_with_configured_sales_number(monkeypatch):
+async def test_landing_uses_first_party_request_form_without_a_sales_phone(monkeypatch):
     monkeypatch.delenv("SALES_WHATSAPP_E164",raising=False)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url="http://test") as c:
         r=await c.get("/")
         assert r.status_code==200
-        assert "Contato comercial em configuração" in r.text
-        assert "DEMONSTRAÇÃO" not in r.text or "demonstração" in r.text.lower()
-        assert "Você cuida do corte" in r.text
+        assert 'id="sales-request-form"' in r.text
+        assert 'action="/api/public/sales-requests"' in r.text
+        assert 'href="/panel"' in r.text
+        assert 'name="consent" required' in r.text
+        assert "após a ativação pela equipe" in r.text
+        assert "Preencher o formulário não cria uma assinatura" in r.text
+        assert "demonstração" in r.text.lower()
+        assert "__SALES_" not in r.text
         assert "https://wa.me/" not in r.text
         monkeypatch.setenv("SALES_WHATSAPP_E164","+5567999999999")
         r=await c.get("/")
-        assert "https://wa.me/5567999999999" in r.text
-        assert "Exemplo ilustrativo" in r.text
+        # The optional contact link is not required in this design. The form
+        # remains the working path regardless of commercial phone configuration.
+        assert r.status_code==200 and 'id="sales-request-form"' in r.text
+        assert "__SALES_" not in r.text
 
 
 @pytest.mark.asyncio
