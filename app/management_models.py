@@ -6,6 +6,7 @@ No function sends messages, creates charges, or contacts an external service.
 from datetime import date, datetime, time, timedelta, timezone
 import hashlib
 import json
+import re
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -15,6 +16,7 @@ from sqlalchemy import text
 
 from app.catalog_api import audit
 from app.management_schemas import MAX_REPORT_DAYS, SitePreferences
+from app.customer_names import display_customer
 
 WRITE_FIELDS = {
     "customers": frozenset({"name", "whatsapp_e164", "instagram", "neighborhood", "city", "email", "birth_date", "notes", "active", "deleted_at"}),
@@ -39,6 +41,7 @@ def clean_row(row):
     data.pop("tenant_id", None)
     if "whatsapp_e164" in data:
         data["phone"] = data.pop("whatsapp_e164")
+        data = display_customer(data)
     return data
 
 
@@ -161,7 +164,7 @@ CUSTOMER_SELECT = """
 """
 
 
-def customer_filter(tenant_id, q="", status="all", birthday_month=None, risk_days=30):
+def customer_filter(tenant_id, q="", status="all", birthday_month=None, risk_days=30, name_phones=None):
     if risk_days not in (30, 60, 90):
         raise HTTPException(422, "O filtro de risco permite 30, 60 ou 90 dias")
     clauses = ["c.tenant_id=:tenant", "c.deleted_at IS NULL"]
@@ -169,7 +172,16 @@ def customer_filter(tenant_id, q="", status="all", birthday_month=None, risk_day
     if q:
         # Treat SQL wildcard characters as literal search text.
         escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        clauses.append("(c.name ILIKE :search OR c.whatsapp_e164 ILIKE :search OR c.email ILIKE :search)")
+        search = "c.name ILIKE :search OR c.whatsapp_e164 ILIKE :search OR c.email ILIKE :search"
+        if re.fullmatch(r"[+0-9\s().-]+", q):
+            digits = re.sub(r"[^0-9]", "", q)
+            if digits:
+                search += " OR c.whatsapp_e164 ILIKE :phone_search"
+                parameters["phone_search"] = "%" + digits + "%"
+        if name_phones:
+            search += " OR c.whatsapp_e164=ANY(CAST(:name_phones AS text[]))"
+            parameters["name_phones"] = name_phones
+        clauses.append("(" + search + ")")
         parameters["search"] = "%" + escaped + "%"
     if status in ("active", "inactive"):
         clauses.append("c.active=:active")
@@ -193,8 +205,8 @@ def customer_filter(tenant_id, q="", status="all", birthday_month=None, risk_day
     return " AND ".join(clauses), parameters
 
 
-async def customers(db, tenant_id, q="", status="all", birthday_month=None, limit=50, offset=0, risk_days=30):
-    where, parameters = customer_filter(tenant_id, q, status, birthday_month, risk_days)
+async def customers(db, tenant_id, q="", status="all", birthday_month=None, limit=50, offset=0, risk_days=30, name_phones=None):
+    where, parameters = customer_filter(tenant_id, q, status, birthday_month, risk_days, name_phones)
     total = (await db.execute(text("SELECT count(*) FROM customers c WHERE " + where), parameters)).scalar_one()
     rows = (await db.execute(text(CUSTOMER_SELECT + " WHERE " + where + " ORDER BY c.name,c.id LIMIT :limit OFFSET :offset"),
                             {**parameters, "limit": limit, "offset": offset})).mappings().all()

@@ -860,6 +860,9 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
 #appView .orion-workspace .chat-grid>.card{min-width:0;width:100%;margin:0;padding:20px}
 #appView .orion-workspace .chat-card-heading{display:flex;align-items:center;gap:10px;min-width:0;margin-bottom:16px}
 #appView .orion-workspace .chat-card-heading h2{min-width:0;flex:1;margin:0;font-size:18px;line-height:26px;overflow-wrap:anywhere}
+#appView .orion-workspace .chat-contact-heading{flex:1;min-width:0}
+#appView .orion-workspace .chat-contact-phone{display:block;max-width:100%;margin:3px 0 0;color:var(--os-muted);font-size:12px;line-height:18px;overflow-wrap:anywhere;unicode-bidi:isolate}
+#appView .orion-workspace .chat-contact-phone[hidden]{display:none}
 #appView .orion-workspace .chat-count{padding:2px 8px;border-radius:20px;background:var(--os-soft);color:var(--os-muted);font-size:12px;line-height:20px}
 #appView .orion-workspace .chat-search-label{margin:0 0 8px;font-size:12px;color:var(--os-muted)}
 #appView .orion-workspace .chat-list{min-width:0;max-width:100%;max-height:560px;overflow-y:auto;overscroll-behavior:contain;margin-top:12px}
@@ -1321,14 +1324,14 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
       <div class="chat-grid">
         <div class="card chat-contacts">
           <div class="chat-card-heading"><h2>Conversas recentes</h2><span id="chatCount" class="chat-count" aria-live="polite">0</span></div>
-          <label class="chat-search-label" for="chatSearch">Buscar por número ou mensagem</label>
+          <label class="chat-search-label" for="chatSearch">Buscar por nome, número ou mensagem</label>
           <input id="chatSearch" type="search" placeholder="Buscar conversa" autocomplete="off">
           <div class="chat-list" id="chatList" aria-label="Contatos com mensagens recentes"><p>Nenhuma conversa registrada ainda.</p></div>
         </div>
         <div class="card chat-thread" id="chatThread" aria-labelledby="chatTitle">
           <div class="chat-card-heading">
             <button id="chatBack" class="btn secondary chat-back" type="button" aria-label="Voltar para as conversas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button>
-            <h2 id="chatTitle" tabindex="-1">Selecione um contato</h2>
+            <div class="chat-contact-heading"><h2 id="chatTitle" tabindex="-1" dir="auto">Selecione um contato</h2><p id="chatContactPhone" class="chat-contact-phone" dir="ltr" hidden></p></div>
           </div>
           <div id="chatBubbles" class="bubbles" aria-live="polite"><p>Escolha uma conversa ou inicie uma nova mensagem.</p></div>
           <form id="sendForm">
@@ -2374,7 +2377,7 @@ $("chatNew").addEventListener("click",()=>{
  saveChatDraft();selectedPhone="";++messageSequence;
  const draft=chatDrafts.get("");
  $("chatPhone").readOnly=false;$("chatPhone").value=draft?.phone||"";$("chatText").value=draft?.text||"";
- $("chatTitle").textContent="Nova conversa";$("chatNotice").textContent="";
+ $("chatTitle").textContent="Nova conversa";$("chatContactPhone").textContent="";$("chatContactPhone").hidden=true;$("chatNotice").textContent="";
  clearRecipientInspection();
  const hint=document.createElement("p");hint.textContent="Informe o número e escreva sua mensagem para iniciar uma conversa.";
  $("chatBubbles").replaceChildren(hint);renderChatList();setChatView("thread");$("chatPhone").focus();
@@ -2399,21 +2402,38 @@ function resetChatState(){
  chatSavedScroll=0;setChatSending(false);$("chatPhone").readOnly=false;
  deviceStatus="starting";lastDeviceStatus="starting";
  for(const id of ["chatPhone","chatText","chatSearch"])$(id).value="";
- $("chatTitle").textContent="Mensagens";$("chatNotice").textContent="";$("chatListNotice").textContent="";
+ $("chatTitle").textContent="Mensagens";$("chatContactPhone").textContent="";$("chatContactPhone").hidden=true;$("chatNotice").textContent="";$("chatListNotice").textContent="";
  $("chatList").replaceChildren();$("chatBubbles").replaceChildren();$("chatCount").textContent="0";
  clearRecipientInspection();setChatView("list");
 }
 function startChats(){
  clearInterval(chatTimer);chatTimer=setInterval(async()=>{await loadChats();await refreshMessages()},6500);
 }
+function chatSearchText(value){return String(value||"").normalize("NFKD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR");}
+const chatPlaceholderNames=new Set(["cliente whatsapp","cliente do whatsapp","contato whatsapp","contato do whatsapp","whatsapp","cliente","contato","sem nome","nome nao informado","desconhecido","unknown","whatsapp customer","whatsapp contact"]);
+function chatContactName(row){
+ for(const value of [row?.display_name,row?.name,row?.whatsapp_name]){
+  if(typeof value!=="string")continue;
+  const name=value.normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g," ").replace(/[\u202a-\u202e\u2066-\u2069]/g,"").replace(/\s+/g," ").trim().slice(0,160);
+  if(!name||/^[+\d\s().-]+$/.test(name)||chatPlaceholderNames.has(chatSearchText(name))||/@(?:lid|s\.whatsapp\.net|g\.us)\b/i.test(name))continue;
+  return name;
+ }
+ return "";
+}
+function updateChatIdentity(){
+ if(!selectedPhone)return;
+ const name=chatContactName(chatRows.find(row=>String(row.phone)===selectedPhone));
+ $("chatTitle").textContent=name||"Conversa com +"+selectedPhone;
+ $("chatContactPhone").textContent=name?"+"+selectedPhone:"";$("chatContactPhone").hidden=!name;
+}
 function renderChatList(){
- const box=$("chatList"),term=$("chatSearch").value.trim().toLocaleLowerCase("pt-BR");
+ const box=$("chatList"),term=chatSearchText($("chatSearch").value.trim());
  const phoneQuery=/^[+\d\s().-]+$/.test(term)?term.replace(/\D/g,""):"";
- const rows=chatRows.filter(row=>!term||("+"+row.phone+" "+(row.preview||"")).toLocaleLowerCase("pt-BR").includes(term)||(phoneQuery&&String(row.phone).includes(phoneQuery)));
+ const rows=chatRows.filter(row=>!term||chatSearchText(chatContactName(row)+" +"+row.phone+" "+(row.preview||"")).includes(term)||(phoneQuery&&String(row.phone).includes(phoneQuery)));
  const focusedPhone=document.activeElement?.dataset?.chatPhone;
  box.replaceChildren();$("chatCount").textContent=term?rows.length+" de "+chatRows.length:String(rows.length);
  if(!rows.length){
-  const hint=document.createElement("p");hint.textContent=term?"Nenhuma conversa encontrada. Tente outro número ou texto.":"Nenhuma mensagem recebida ainda. Você pode iniciar uma nova conversa.";
+  const hint=document.createElement("p");hint.textContent=term?"Nenhuma conversa encontrada. Tente outro nome, número ou texto.":"Nenhuma mensagem recebida ainda. Você pode iniciar uma nova conversa.";
   box.append(hint);return;
  }
  for(const row of rows){
@@ -2421,8 +2441,10 @@ function renderChatList(){
   button.type="button";button.id="chat-contact-"+phone;button.dataset.chatPhone=phone;
   button.disabled=chatSending;
   button.className="chat-item"+(phone===selectedPhone?" current":"");button.setAttribute("aria-pressed",String(phone===selectedPhone));
-  const name=document.createElement("strong"),preview=document.createElement("small");
-  name.textContent="+"+phone;preview.textContent=row.preview||"Sem prévia de mensagem";button.append(name,preview);
+  const name=document.createElement("strong"),preview=document.createElement("small"),contactName=chatContactName(row);
+  name.dir="auto";name.textContent=contactName||"+"+phone;button.append(name);
+  if(contactName){const number=document.createElement("span");number.className="chat-contact-phone";number.dir="ltr";number.textContent="+"+phone;button.append(number);}
+  preview.textContent=row.preview||"Sem prévia de mensagem";button.append(preview);
   button.addEventListener("click",()=>{selectChat(phone);void refreshMessages();});box.append(button);
  }
  if(focusedPhone)$("chat-contact-"+focusedPhone)?.focus();
@@ -2433,7 +2455,7 @@ async function loadChats(){
  try{
   const data=await api("/api/v1/qr/chats");
   if(!current())return;
-  chatRows=Array.isArray(data.items)?data.items:[];$("chatListNotice").textContent="";renderChatList();
+  chatRows=Array.isArray(data.items)?data.items:[];$("chatListNotice").textContent="";renderChatList();updateChatIdentity();
  }catch(ex){if(current())$("chatListNotice").textContent=ex.message}
  finally{if(current())chatsBusy=false}
 }
@@ -2448,7 +2470,7 @@ function selectChat(phone){
   $("chatBubbles").replaceChildren(loading);$("chatBubbles").scrollTop=0;
   $("chatNotice").textContent="";clearRecipientInspection();
  }
- $("chatPhone").readOnly=true;$("chatPhone").value=phone;$("chatTitle").textContent="Conversa com +"+phone;
+ $("chatPhone").readOnly=true;$("chatPhone").value=phone;updateChatIdentity();
  renderSendNotice();renderChatList();setChatView("thread");$("chatTitle").focus();
  if(returning)$("chatBubbles").scrollTop=chatSavedScroll;
 }

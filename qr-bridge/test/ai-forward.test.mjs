@@ -40,6 +40,18 @@ test("forward private-only, sanitized message to Orion",async()=>{
   assert.equal(answer,"Horários reais disponíveis");
   assert.equal(calls,1);
 });
+test('optional observed profile keeps its known source, while unusable metadata is omitted without blocking the message',async()=>{
+  for(const [profile,expected] of [[{name:'  Joana  ',source:'contact_name'},{name:'Joana',source:'contact_name'}],
+    [{name:'👩‍🔧',source:'push_name'},{name:'👩‍🔧',source:'push_name'}],
+    [{name:'Cliente WhatsApp',source:'push_name'},undefined],[{name:'Joana',source:'guessed'},undefined],
+    [{name:'5511999999999',source:'push_name'},undefined]]){
+    await forwardAssistant({apiUrl:base,token:secret,phone:'5567999999999',messageId:'PROFILE',text:'Olá',profile,
+      fetchImpl:async(_url,options)=>{
+        const body=JSON.parse(options.body);assert.deepEqual(body.profile,expected);
+        assert.equal(body.text,'Olá');return {ok:true,json:async()=>({answer:null})};
+      }});
+  }
+});
 test("reject arbitrary endpoint, invalid phone, invalid message id",async()=>{
   for(const patch of [
     {apiUrl:"https://evil.example/internal/qr/ai/reply"},

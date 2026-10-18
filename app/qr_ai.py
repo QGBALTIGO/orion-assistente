@@ -27,6 +27,7 @@ from app.catalog_schemas import StrictModel
 from app.database import get_session_factory, tenant_transaction
 from app.groq_ai import GroqServiceError, Intention, interpret
 from app.qr_customer import supplied_name, customer_name, remember_name, customer_appointments, appointment_services
+from app.customer_names import WhatsAppProfile, remember_whatsapp_name, useful_name
 from app.qr_behaviors import control_intent, catalog_match, norm, catalog_question_services, availability_question
 from app.business_profile_schemas import StyleRules
 from app import qr_profile
@@ -126,6 +127,7 @@ class Incoming(StrictModel):
     message_ids: list[str] | None = Field(default=None, min_length=1, max_length=6)
     intake_revision: int | None = Field(default=None, ge=1, le=9007199254740991, strict=True)
     require_summary_review: bool = Field(default=False, strict=True)
+    profile: WhatsAppProfile | None = None
 
     @model_validator(mode="after")
     def ordered_ids(self):
@@ -2706,9 +2708,24 @@ async def qr_reply(payload: Incoming, request: Request):
         tenant = UUID(os.environ["QR_AI_TENANT_ID"])
     except (KeyError, ValueError):
         raise HTTPException(503, "Estabelecimento de atendimento não configurado") from None
+    # The authenticated bridge supplies a PN-scoped profile. Metadata does not
+    # grant permission, change the allowlist, or replace a manually useful name.
+    async def remember_profile():
+        if payload.profile and useful_name(payload.profile.name):
+            # Metadata enrichment is idempotent and independent of a booking or
+            # its consent. Do not mark it as an irreversible assistant action.
+            await qr_intake_revision.assert_current()
+            try:
+                async with asyncio.timeout(1.5):
+                    await remember_whatsapp_name(tenant, payload.phone, payload.profile.name)
+            except (SQLAlchemyError, TimeoutError, ConnectionError, RuntimeError):
+                # A missing name must not break the normal assistant response.
+                pass
+
     return await run_locked(tenant, payload.phone, payload.text, payload.phone, payload.message_id,
                             message_ids=payload.message_ids, intake_revision=payload.intake_revision,
-                            require_summary_review=payload.require_summary_review)
+                            require_summary_review=payload.require_summary_review,
+                            prepare=remember_profile if payload.profile else None)
 
 
 @router.post("/api/v1/tenants/{tenant_id}/ai/conversation-preview")

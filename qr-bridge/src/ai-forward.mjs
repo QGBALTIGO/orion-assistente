@@ -1,5 +1,6 @@
 /** Encaminha apenas mensagem privada recém-recebida para a API Orion autorizada. */
-export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,text,intakeRevision,requireSummaryReview,fetchImpl=fetch}){
+import {cleanContactProfile} from './contact-names.mjs';
+export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,text,intakeRevision,requireSummaryReview,profile,fetchImpl=fetch}){
   if(typeof token!=="string"||token.length<32)throw Error("bridge_key_missing");
   if(typeof phone!=="string"||!/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(phone))throw Error("invalid_recipient");
   if(typeof messageId!=="string"||! /^[a-zA-Z0-9._:-]{1,160}$/.test(messageId))throw Error("invalid_message_id");
@@ -13,6 +14,7 @@ export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,
     throw Error("invalid_intake_revision");
   if(requireSummaryReview!==undefined&&typeof requireSummaryReview!=='boolean')
     throw Error('invalid_summary_review');
+  const contactProfile=cleanContactProfile(profile);
   const target=new URL(apiUrl);
   if(target.protocol!=="http:"||!target.hostname.endsWith(".railway.internal")||
      target.pathname!=="/internal/qr/ai/reply" || target.search || target.hash || target.username || target.password)
@@ -26,6 +28,7 @@ export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,
         "X-Orion-Bridge-Key":token,
       },
       body:JSON.stringify({phone,message_id:messageId,text,
+        ...(contactProfile?{profile:contactProfile}:{}),
         ...(intakeRevision===undefined?{}:{intake_revision:intakeRevision}),
         ...(requireSummaryReview===undefined?{}:{require_summary_review:requireSummaryReview}),
         ...(messageIds?.length>1?{message_ids:messageIds}:{})}),

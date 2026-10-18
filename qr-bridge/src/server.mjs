@@ -24,6 +24,8 @@ import {inspectLookup,inspectDelivery} from "./recipient-diagnostics.mjs";
 import {makeDurableInbox} from "./durable-inbox.mjs";
 import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-health.mjs";
 import {makeConnectedStore} from "./connected-store.mjs";
+import {makeContactNames,installContactNameEvents,requestedContactPhones,requestedContactQuery} from './contact-names.mjs';
+import {makeContactNameSync} from './contact-name-forward.mjs';
 import {transcriberConfig,cleanPictureUrl,transcribeAudio,handleCallOffers} from "./connected-features.mjs";
 import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
 import {forwardAssistant,registerAssistantIngress} from "./ai-forward.mjs";
@@ -69,6 +71,13 @@ let socket=null,generation=0,timer=null,attempts=0,status="starting",
   qr="",qrAt=0,lastError=null,pairedNumber="",pairingCode="",pairAt=0,requesting=false;
 let durableInbox=makeDurableInbox({directory:authDir,secret:KEY});
 let connectedStore=makeConnectedStore({directory:authDir,secret:KEY});
+let contactNames=makeContactNames({directory:authDir,secret:KEY});
+let contactNameEvents=null,contactNameSync=null;
+function pauseContactNames({purge=false}={}){
+  contactNameEvents?.stop();contactNameEvents=null;
+  contactNameSync?.stop();contactNameSync=null;
+  if(purge)contactNames.purge();else contactNames.suspend();
+}
 let connectedProfile={name:null,photoUrl:null,updatedAt:null},profileFetchedAt=0,lastRestartAt=0;
 const repliedToCallers=new Map();
 const recentCallOffers=new Map();
@@ -179,7 +188,7 @@ function stats(){
     featureCapabilities:{chatbot:assistantEnabled(),transcription:!!transcriberConfig()||assistantAudioEnabled(),
       callBlocking:typeof socket?.rejectCall==="function"},
     callDiagnostics:{...callDiagnostics},
-    controlStorage:connectedStore.health()};
+    controlStorage:connectedStore.health(),contactNameStorage:contactNames.health()};
 }
 function auth(req){
   const input=Buffer.from(String(req.headers["x-orion-bridge-key"]||""));
@@ -205,6 +214,16 @@ function collectBody(req){
   });
 }
 function installListeners(client,mine,saveCreds){
+  // Capture the store for this socket. Old callbacks may never write into a
+  // replacement account's registry, including after async PN resolution.
+  const namesStore=contactNames;
+  const namesCurrent=()=>mine===generation&&socket===client&&
+    !['logged_out','pair_failed','disconnecting'].includes(status);
+  const namesSync=makeContactNameSync({store:namesStore,apiUrl:process.env.QR_AI_API_URL,token:KEY,
+    isCurrent:()=>namesCurrent()&&status==='connected'});
+  const namesEvents=installContactNameEvents({client,store:namesStore,isCurrent:namesCurrent,
+    onChange:()=>namesSync.changed()});
+  contactNameSync=namesSync;contactNameEvents=namesEvents;
   client.ws.on('CB:message',node=>{
     if(mine!==generation)return;
     transport.record('socket_message',node.attrs?.id,{
@@ -310,6 +329,7 @@ function installListeners(client,mine,saveCreds){
       let answer;
       try{answer=await forwardAssistant({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
         messageId:traceId,messageIds:batch.messages.map(item=>item.id),text:batch.text,intakeRevision:batch.intakeRevision,
+        profile:namesStore.profile(phone),
         requireSummaryReview:revisionEnabled?summaryReviewRequired.get(phone)!==false:undefined});}
       catch(error){if(revisionEnabled)summaryReviewRequired.set(phone,true);transport.record('ai_forward_failed',traceId);throw error;}
       if(answer?.state==='superseded'&&answer?.not_committed===true){
@@ -360,6 +380,7 @@ function installListeners(client,mine,saveCreds){
         const phone=await resolveMessagePhone(message.key,client);
         if(!current())return null;
         if(!phone){transport.record('inbound_unresolved',traceId);return null;}
+        if(namesStore.observeResolvedMessage(message,phone,{historical:type==='append'}))namesSync.changed();
         metadata.phone=phone;metadata.allowed=allowAssistantRecipient(phone,connectedStore.settings());
         inboundMetadata.set(traceId,metadata);
         transport.record('inbound_resolved',traceId);
@@ -420,6 +441,7 @@ function installListeners(client,mine,saveCreds){
     }
     if(update.connection==="open"){
       status="connected";everConnected=true;qr="";qrAt=0;pairingCode="";pairAt=0;attempts=0;
+       namesStore.bindIdentity(client.user);namesSync.start();
        try{connectedStore.setIdentity(client.user?.id)}catch{
          console.warn("Orion QR: configuração criptografada indisponível")
        }
@@ -469,6 +491,7 @@ function installListeners(client,mine,saveCreds){
       }
     }
     if(update.connection==="close"){
+      pauseContactNames({purge:Number(update.lastDisconnect?.error?.output?.statusCode)===DisconnectReason.loggedOut});
       qr="";qrAt=0;pairingCode="";pairAt=0;
       connectedSince=0;pendingNotificationsReceived=false;inboundSinceConnect=false;
       const code=Number(update.lastDisconnect?.error?.output?.statusCode);
@@ -499,11 +522,15 @@ function installListeners(client,mine,saveCreds){
 }
 async function connect(){
   const mine=++generation;
+  pauseContactNames();
+  const namesForConnection=contactNames,selectedAuthDir=authDir;
   clearTimeout(timer);timer=null;qr="";qrAt=0;pairingCode="";pairAt=0;
   status="connecting";connectStartedAt=Date.now();pairingRequestedForGeneration=-1;
   pendingNotificationsReceived=false;inboundSinceConnect=false;
   try{
-    const {state,saveCreds}=await useMultiFileAuthState(authDir);
+    const {state,saveCreds}=await useMultiFileAuthState(selectedAuthDir);
+    if(mine!==generation||namesForConnection!==contactNames||selectedAuthDir!==authDir)return;
+    namesForConnection.bindIdentity(state.creds.me);
     const originalSet=state.keys.set;
     state.keys.set=async data=>{
       try{
@@ -523,6 +550,7 @@ async function connect(){
           v.every(x=>Number.isSafeInteger(x)&&x>0))currentVersion=v;
       }catch{}
     }
+    if(mine!==generation||namesForConnection!==contactNames||selectedAuthDir!==authDir)return;
     const deviceCache=makePilotDeviceCache(new NodeCache({stdTTL:300,useClones:false}));
     const client=makeWASocket({
       userDevicesCache:deviceCache,
@@ -704,6 +732,7 @@ const server=http.createServer(async(req,res)=>{
         return reply(res,409,{error:"restart_not_allowed"});
       lastRestartAt=Date.now();
       ++generation;clearTimeout(timer);timer=null;
+      pauseContactNames();
       try{socket?.end(undefined)}catch{}
       await saveQueue;
       await connect();
@@ -715,12 +744,14 @@ const server=http.createServer(async(req,res)=>{
         return reply(res,409,{error:"disconnect_not_allowed"});
       const old=socket;
       ++generation;clearTimeout(timer);timer=null;
+      pauseContactNames();
       status="disconnecting";
       try{await old.logout()}catch{
         status="error";lastError="Não foi possível confirmar a desconexão.";
         return reply(res,503,{error:"disconnect_failed"});
       }
       socket=null;status="logged_out";pairedNumber="";
+      contactNames.purge();
       connectedProfile={name:null,photoUrl:null,updatedAt:null};
       return reply(res,200,{status:"logged_out"});
     }
@@ -740,6 +771,7 @@ const server=http.createServer(async(req,res)=>{
       if(status!=="logged_out"&&status!=="pair_failed")
         return reply(res,409,{error:"not_logged_out"});
       ++generation;
+      pauseContactNames({purge:true});
       clearTimeout(timer);timer=null;
       try{socket?.end(undefined)}catch{}
       socket=null;
@@ -753,6 +785,7 @@ const server=http.createServer(async(req,res)=>{
       retryMessages.clear();deliveryReceipts.clear();deliveryStart.clear();
       durableInbox=makeDurableInbox({directory:authDir,secret:KEY});
       connectedStore=makeConnectedStore({directory:authDir,secret:KEY});
+      contactNames=makeContactNames({directory:authDir,secret:KEY});
       connectedProfile={name:null,photoUrl:null,updatedAt:null};
       profileFetchedAt=0;repliedToCallers.clear();
       const restored=durableInbox.load();
@@ -779,6 +812,7 @@ const server=http.createServer(async(req,res)=>{
       // Invalidate old listeners first; stale connection.update cannot
       // race us and overwrite fresh QR data.
       ++generation;clearTimeout(timer);timer=null;
+      pauseContactNames();
       try{socket?.end(undefined)}catch{}
       await saveQueue;
       await connect();
@@ -788,7 +822,20 @@ const server=http.createServer(async(req,res)=>{
       const grouped=new Map();
       for(const item of messages) grouped.set(item.phone,{phone:item.phone,
         preview:item.body.slice(0,90),at:item.at});
-      return reply(res,200,{items:[...grouped.values()].sort((a,b)=>b.at-a.at).slice(0,80)});
+      return reply(res,200,{items:[...grouped.values()].sort((a,b)=>b.at-a.at).slice(0,80).map(row=>{
+        const name=status==='connected'?contactNames.lookup(row.phone):null;
+        return {...row,display_name:name?.display_name||null,name_source:name?.name_source||null};
+      })});
+    }
+    if(path==="/internal/contact-names"&&req.method==="POST"){
+      const input=await collectBody(req);
+      requestedContactPhones(input);
+      return reply(res,200,status==='connected'?contactNames.requested(input):{account_phone:null,items:[]});
+    }
+    if(path==="/internal/contact-name-matches"&&req.method==="POST"){
+      const input=await collectBody(req);
+      requestedContactQuery(input);
+      return reply(res,200,status==='connected'?contactNames.matches(input):{account_phone:null,phones:[]});
     }
     if(path==="/internal/messages"&&req.method==="GET"){
       const phone=validPhone(uri.searchParams.get("phone"));
