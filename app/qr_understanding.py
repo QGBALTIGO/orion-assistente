@@ -13,6 +13,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.qr_reschedule_request import split_request, explicit_day_numbers
+
 Intent = Literal["price", "availability", "booking", "reschedule", "cancel", "confirm",
                  "catalog", "faq", "human", "other"]
 Ambiguity = Literal["service", "date", "time", "professional", "customer_name", "faq",
@@ -343,7 +345,7 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
         intents = [x for x in intents if x != "cancel"]
     from app.qr_dialogue import contextual_response
     awaiting_confirmation = context.get("step") in {"confirm", "reschedule_confirm"}
-    consent = contextual_response(message, awaiting_confirmation=awaiting_confirmation,
+    consent = contextual_response(message, awaiting_confirmation=awaiting_confirmation or bool(reschedule),
         semantic_kind="affirm" if "confirm" in intents else None)
     if consent.kind == "affirm":
         intents.append("confirm")
@@ -452,7 +454,13 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
     if re.search(r"\b(?:fazer tudo|quero tudo|todos os servicos)\b", lower) and not chosen:
         # 'Everything' does not select an entire catalog or an old menu by guess.
         ambiguities.append("service");data.update(service_ids=[], query_service_ids=[], selection_mode="none")
-    day, mentioned_day, bad_day = _dates(message, reference_date)
+    scoped_reschedule = split_request(message) if "reschedule" in intents else None
+    temporal_message = scoped_reschedule.destination if scoped_reschedule else message
+    day, mentioned_day, bad_day = _dates(temporal_message, reference_date)
+    if scoped_reschedule:
+        numbers = explicit_day_numbers(temporal_message)
+        if numbers and (len(numbers) != 1 or not day or date.fromisoformat(day).day != numbers[0]):
+            day, mentioned_day, bad_day = None, True, True
     if mentioned_day:
         data["requested_date"] = day
         if bad_day:
@@ -463,7 +471,7 @@ def build_plan(*, message: str, catalog: list[dict], professionals: list[dict] |
         data["requested_date"] = None
     if mentioned_day and not set(intents) & {"booking", "reschedule", "cancel"} and context.get("service_ids"):
         intents.append("availability")
-    (clock, relation), mentioned_time, bad_time = _times(message, context)
+    (clock, relation), mentioned_time, bad_time = _times(temporal_message, context)
     if mentioned_time:
         data.update(requested_time=clock, time_relation=relation)
         if bad_time:

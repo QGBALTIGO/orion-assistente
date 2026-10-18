@@ -35,6 +35,7 @@ from app import qr_commerce
 from app import qr_intake_revision
 from app import qr_cancellation
 from app.qr_service_context import resolve_service_reply
+from app.qr_reschedule_request import split_request as scoped_reschedule_request, explicit_day_numbers, source_service_subject
 from app.groq_understanding import interpret_plan
 from app.qr_understanding import UnderstandingPlan, build_plan, clarification_for, unique_service_reply
 from app.qr_information import info as compose_information, faq_catalog
@@ -383,6 +384,71 @@ async def selected_reschedule(tenant: UUID, phone: str, appointment_id: UUID, re
              "services": [str(x) for x in appointment["services"]]}
     await redis.set(key, json.dumps(state), ex=STATE_TTL)
     return {"answer": "Para qual nova data gostaria de remarcar? Ex.: amanhã ou 20/10.", "step": "reschedule_day"}
+
+
+async def _scoped_reschedule_turn(tenant, phone, request, plan, business, catalog, professionals,
+                                  redis, key, preview, factual):
+    """Identify only the old, owned booking; new wishes never identify the target."""
+    if preview:
+        return await begin_reschedule(tenant, phone, business, redis, key, preview=True)
+    context = await _time_context(tenant, request.source, {}, business, catalog, professionals)
+    source = build_plan(message=request.source, catalog=catalog, professionals=professionals, context=context,
+        reference_date=datetime.now(ZoneInfo(business["timezone"])).date())
+    day_numbers = explicit_day_numbers(request.source)
+    subject = source_service_subject(request.source)
+    literal_services = unique_service_reply(subject, catalog, context_step="menu") if subject else None
+    invalid_source = (source.requires_clarification or source.time_relation not in {"none", "exact"}
+        or subject and (not literal_services or set(literal_services) != set(source.service_ids))
+        or len(day_numbers) > 1 or any(not 1 <= value <= 31 for value in day_numbers)
+        or source.requested_date and day_numbers and date.fromisoformat(source.requested_date).day != day_numbers[0])
+    if invalid_source:
+        # Discard any older target/summary, without changing a registered booking.
+        await redis.set(key, json.dumps({"step": "reschedule_pick", "candidate_ids": [], "candidate_details": []}), ex=STATE_TTL)
+        return _bounded_reply(factual, "Preciso identificar a reserva original sem dúvida. Qual é a data e o horário atuais dela? Nenhum agendamento foi alterado.", "reschedule_pick")
+    now = datetime.now(ZoneInfo(business["timezone"]))
+    rows = await customer_appointments(tenant, phone, limit=15)
+    matches = []
+    for row in sorted(rows, key=lambda item: item["start_at"]):
+        when = row["start_at"].astimezone(ZoneInfo(business["timezone"]))
+        if row.get("status") != "confirmed" or when <= now:
+            continue
+        if source.requested_date and when.date().isoformat() != source.requested_date:
+            continue
+        if day_numbers and when.day != day_numbers[0]:
+            continue
+        if source.requested_time and when.strftime("%H:%M") != source.requested_time:
+            continue
+        current = await appointment_services(tenant, row["id"], phone)
+        if (not current or current.get("status") != "confirmed" or not current.get("start_at")
+                or current["start_at"] != row["start_at"] or current["start_at"] <= now):
+            continue
+        if source.professional_id and str(current["professional_id"]) != str(source.professional_id):
+            continue
+        if source.service_ids and set(map(str, current["services"])) != set(map(str, source.service_ids)):
+            continue
+        professional = next((item["name"] for item in professionals if str(item["id"]) == str(current["professional_id"])), None)
+        matches.append({"id": str(row["id"]), "protocol": row["protocol"],
+            "start_at": when.isoformat(), "professional": professional})
+    if len(matches) != 1:
+        state = {"step": "reschedule_pick", "candidate_ids": [item["id"] for item in matches[:8]],
+            "candidate_details": matches[:8]}
+        if matches:
+            state["deferred_reschedule"] = plan.model_copy(update={"intents": ["reschedule"],
+                "faq_ids": [], "query_service_ids": []}).model_dump(mode="json")
+        listing = "\n".join(f"• {datetime.fromisoformat(item['start_at']):%d/%m/%Y às %H:%M}"
+            + (" · " + presentation.escape_label(item["professional"]) if item["professional"] else "")
+            + " · " + presentation.escape_label(item["protocol"]) for item in matches[:8])
+        question = ("Encontrei mais de uma reserva com esses dados. Qual delas você quer remarcar?\n\n" + listing if matches else
+            "Não encontrei uma reserva futura confirmada deste número com esses dados de origem. Pode conferir a data, o horário e o profissional atuais?")
+        result = _bounded_reply(factual, question, "reschedule_pick")
+        if result["step"] != "choose_priority":
+            await redis.set(key, json.dumps(state), ex=STATE_TTL)
+        return result
+    result = await selected_reschedule(tenant, phone, UUID(matches[0]["id"]), redis, key)
+    state = json.loads(await redis.get(key) or "{}")
+    if result["step"] != "reschedule_day" or not state.get("appointment"):
+        return result
+    return await _planned_slots(tenant, phone, plan, state, business, catalog, redis, key, preview, factual, rescheduling=True)
 
 
 def _weekday_restriction(body: str) -> str | None:
@@ -2001,6 +2067,11 @@ async def _multi_turn(tenant: UUID, phone: str, body: str, state: dict, business
             await _require_pending_review(redis, key)
         return result
     if "reschedule" in operations:
+        if request := scoped_reschedule_request(body):
+            if presentation.message_units(factual) + 700 > 1200:
+                return _bounded_reply(factual, "x" * 1201, "reschedule")
+            return await _scoped_reschedule_turn(tenant, phone, request, plan, business, catalog, professionals,
+                redis, key, preview, factual)
         if not state.get("step", "").startswith("reschedule_"):
             if presentation.message_units(factual) + 500 > 1200:
                 return _bounded_reply(factual, "x" * 1201, "reschedule")
@@ -2199,7 +2270,8 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
             return retry_query
     information_request = (catalog_question(body) or availability_question(body) or intent == "identity" or
         bool(profile and qr_profile.factual_answer(profile, body)))
-    if state.get("step") in qr_cancellation.STEPS:
+    if state.get("step") in qr_cancellation.STEPS and not (
+            os.getenv("QR_AI_MULTI_INTENT_ENABLED", "0") == "1" and scoped_reschedule_request(body)):
         if information_request and not _summary_requested(body):
             await _review_after_inquiry(state, redis, state_key)
         else:
@@ -2220,7 +2292,7 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
             field == "professional" and professional_choice(body, professionals) is not None)
         if valid_reply:
             return await answer_availability(tenant, body, state, business, catalog, redis, state_key)
-    if state.get("step") == "reschedule_pick" and not information_request and intent in {None, "reschedule"}:
+    if state.get("step") == "reschedule_pick" and not information_request and intent in {None, "reschedule"} and not scoped_reschedule_request(body):
         details = state.get("candidate_details", [])
         kind, _ = qr_cancellation.choose_candidate(body, details, business["timezone"])
         if kind != "none" or body.strip().isdigit():

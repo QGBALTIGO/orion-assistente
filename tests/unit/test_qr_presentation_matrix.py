@@ -22,10 +22,12 @@ def test_proposal_has_one_decision_and_not_a_question_in_its_heading():
 
 
 def test_verified_fields_have_consistent_icons_and_compact_groups():
-    answer = p.render_summary(facts(protocol="AG-TEST"), {"emoji": "light"}, confirmed=True)
+    summary = facts(protocol="AG-TEST")
+    answer = p.render_summary(summary, {"emoji": "light"}, confirmed=True)
     for label in ("✂️ *Serviços:*", "👤 *Profissional:*", "📅 *Data:*", "🕒 *Horário:*",
-                  "⏳ *Duração:*", "💰 *Total:*", "🔖 *Protocolo:*"):
+                  "⏳ *Duração:*", "💰 *Total:*"):
         assert label in answer
+    assert "Protocolo" not in answer and "AG-TEST" not in answer and summary.protocol == "AG-TEST"
     assert "Alex\n\n📅" in answer and "1 hora\n\n💰" in answer
 
 
@@ -48,7 +50,8 @@ def test_operation_outcome_and_style_survive_composition_storage_and_final_pass(
     assert replay.count(composed.body) == 1
     labels = ["*Serviços:*", "*Profissional:*", "*Data:*", "*Horário:*", "*Duração:*", "*Total:*"]
     assert [replay.index(label) for label in labels] == sorted(replay.index(label) for label in labels)
-    assert ("AG-SYNTHETIC" in replay) is confirmed
+    assert ("AG-SYNTHETIC" in replay) is (confirmed and operation == "cancel")
+    assert summary.protocol == ("AG-SYNTHETIC" if confirmed else None)
     assert replay.count("?") == (0 if confirmed else 1)
     assert "R$ 55,00" in replay and "1 hora" in replay and "14h" in replay
     if not confirmed:

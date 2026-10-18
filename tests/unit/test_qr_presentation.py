@@ -96,13 +96,13 @@ def test_variable_or_custom_prices_never_become_a_fixed_total(items):
     assert "Duração" not in answer
 
 
-def test_avoided_phrases_change_optional_copy_never_names_prices_or_protocol():
+def test_avoided_phrases_change_optional_copy_never_names_or_prices():
     prefs = {"avoid_phrases": ["Claro", "R$", "Bruno", "confirmado", "dia em mente"]}
     quote = render_quote(ITEMS, prefs, next_action="ask_day")
     assert "Claro" not in quote and "dia em mente" not in quote
     assert "R$ 35" in quote and "R$ 55" in quote
     actual = render_summary(summary(protocol="AG-REAL123"), prefs, confirmed=True)
-    assert "Bruno" in actual and "AG-REAL123" in actual and "R$ 55" in actual
+    assert "Bruno" in actual and "AG-REAL123" not in actual and "R$ 55" in actual
 
 
 @pytest.mark.parametrize("style", STYLE_LABELS)
@@ -122,7 +122,7 @@ def test_simulation_and_actual_confirmation_are_distinct_and_require_evidence():
     with pytest.raises(ValueError):
         render_summary(summary(protocol="AG-123"), confirmed=True, simulation=True)
     actual = render_summary(summary(protocol="AG-123"), {"emoji": "light"}, confirmed=True)
-    assert "confirmado" in actual and "AG-123" in actual and actual.count("✅") == 1
+    assert "confirmado" in actual and "AG-123" not in actual and actual.count("✅") == 1
 
 
 def test_cancellation_and_handoff_do_not_invent_an_operation_or_team_notification():
@@ -383,7 +383,7 @@ def test_rescheduling_and_cancellation_summaries_do_not_claim_booking_success_be
     assert "*Agendamento selecionado para cancelamento*" in cancellation and "Posso cancelar esse agendamento?" in cancellation
     assert "confirmada." not in reschedule and "Cancelamento confirmado." not in cancellation
     actual = render_summary(summary(protocol="REAL-123"), operation="reschedule", confirmed=True)
-    assert "*Remarcação confirmada.*" in actual and "REAL-123" in actual and "Posso confirmar" not in actual
+    assert "*Remarcação confirmada.*" in actual and "REAL-123" not in actual and "Posso confirmar" not in actual
     preview = render_summary(summary(), operation="cancel", simulation=True)
     assert "nenhuma alteração foi realizada" in preview and "Posso cancelar" not in preview
 
@@ -403,7 +403,7 @@ def test_factual_labels_escape_delimiters_idempotently_without_rewriting_identif
     quote = render_quote((QuoteItem(raw, 5500),))
     assert "*" + escaped + "*" in quote
     booked = render_summary(summary(services=("Consulta *Especial*",), professional="Ana _Equipe_", protocol="AG_123"), confirmed=True)
-    assert r"Consulta \*Especial\*" in booked and r"Ana \_Equipe\_" in booked and "AG_123" in booked
+    assert r"Consulta \*Especial\*" in booked and r"Ana \_Equipe\_" in booked and "AG_123" not in booked
     facts = estimate();facts["items"][0].update(product_name="Creme *Oficial*",variant_name="Linha _Premium_",attributes={"SKU_250_ML":"Nome *real*"})
     answer = render_commerce_summary(facts,{"length":"detailed"})
     assert r"Creme \*Oficial\*" in answer and r"Linha \_Premium\_" in answer and r"SKU_250_ML: Nome \*real\*" in answer
