@@ -13,6 +13,7 @@ import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,useMult
 import QRCode from "qrcode";
 import NodeCache from "@cacheable/node-cache";
 import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode,connectionPhase,reconnectPlan} from "./core.mjs";
+import {makeAppointmentNotices} from "./appointment-notices.mjs";
 import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
 import {makeMessageRetryStore,deliveryFromAck,advanceDelivery} from "./message-retry-store.mjs";
 import {makeEncryptedRetryStore} from "./encrypted-retry-store.mjs";
@@ -79,6 +80,9 @@ function pauseContactNames({purge=false}={}){
   if(purge)contactNames.purge();else contactNames.suspend();
 }
 let connectedProfile={name:null,photoUrl:null,updatedAt:null},profileFetchedAt=0,lastRestartAt=0;
+const appointmentNotices=makeAppointmentNotices({directory:"/data/orion-appointment-notices",secret:KEY,
+  state:()=>({enabled:process.env.ORION_APPOINTMENT_NOTICES_ENABLED==="1",connected:status==="connected",tenant_id:process.env.QR_AI_TENANT_ID,account_phone:pairedNumber}),
+  send:(phone,text,options)=>send(phone,text,options)});
 const repliedToCallers=new Map();
 const recentCallOffers=new Map();
 const assistantQueues=new Map();
@@ -258,6 +262,7 @@ function installListeners(client,mine,saveCreds){
       const next=deliveryFromAck(item.update?.status);
       if(!next)continue;
       transport.record('receipt_update',id,{status:next});
+      appointmentNotices.observe(id,next);
       if(!deliveryReceipts.has(id))continue;
       const prev=deliveryReceipts.get(id);
       const after=advanceDelivery(prev,next);
@@ -646,7 +651,7 @@ async function recipientInspection(value){
   recipientInspections.set(phone,{data,expires:now+90000});
   return data;
 }
-async function send(phone,text,{waitForCapacity=false,isCurrent=()=>true}={}){
+async function send(phone,text,{waitForCapacity=false,isCurrent=()=>true,forceReliable=false,onNoticePrepared=()=>{}}={}){
   const target=validPhone(phone);
   if(status!=="connected"||!socket)throw Error("O WhatsApp não está conectado");
   if(typeof text!=="string"||!text.trim()||text.length>1200)
@@ -657,7 +662,7 @@ async function send(phone,text,{waitForCapacity=false,isCurrent=()=>true}={}){
   await sendCapacity.acquire({wait:waitForCapacity,isCurrent:current});
   if(!current())throw Error('A conexão ou autorização mudou antes do envio. Nenhuma mensagem foi enviada.');
   let result;
-  const {reliable,freshDevices}=deliveryPolicy(target);
+  const policy=deliveryPolicy(target),reliable=forceReliable||policy.reliable,freshDevices=policy.freshDevices;
   const recipientProof=await resolvePilotRecipient({phone:target,pilotPhone:pilotNumber(process.env),
     enabled:reliable&&process.env.QR_PILOT_USE_VERIFIED_LID==='1',socket:selectedSocket,deviceCache:socketDeviceCaches.get(selectedSocket),
     isCurrent:current});
@@ -675,6 +680,7 @@ async function send(phone,text,{waitForCapacity=false,isCurrent=()=>true}={}){
         }),
       relay:(recipient,message,opts)=>selectedSocket.relayMessage(recipient,message,opts),
       onPrepared:msg=>{
+        onNoticePrepared(msg);
         retryDiagnostics.prepared++;
         deliveryReceipts.set(msg.key.id,"pending");
         deliveryStart.set(msg.key.id,Date.now());
@@ -711,6 +717,12 @@ const server=http.createServer(async(req,res)=>{
     if(path.startsWith('/internal/ops/database-backups/'))
       return await databaseBackup(req,res,{root:'/data/orion-db-backups',id:path.slice('/internal/ops/database-backups/'.length),
         enabled:process.env.QR_DATABASE_BACKUP_ENABLED==='1',secret:KEY});
+    if(path==="/internal/appointment-notices/readiness"&&req.method==="GET")
+      return reply(res,200,appointmentNotices.readiness());
+    if(path==="/internal/appointment-notices/receipt"&&req.method==="POST")
+      return reply(res,200,appointmentNotices.receipt(await collectBody(req)));
+    if(path==="/internal/appointment-notices/send"&&req.method==="POST")
+      return reply(res,200,await appointmentNotices.dispatch(await collectBody(req)));
     if(path==="/internal/status"&&req.method==="GET")
       return reply(res,200,stats());
     if(path==="/internal/profile/refresh"&&req.method==="POST"){

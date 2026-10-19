@@ -211,6 +211,8 @@ async def history(s: AsyncSession, tenant: UUID, appointment: UUID, event: str, 
     if calendar:
         from app.calendar_sync import enqueue_calendar_sync
         await enqueue_calendar_sync(s, tenant, appointment, event)
+    from app.appointment_notices import enqueue_notice
+    await enqueue_notice(s, tenant, appointment, event, details)
 
 
 def protocol():
@@ -291,6 +293,8 @@ async def read_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *, incl
         total = (await s.execute(text("""
             SELECT count(*) FROM appointment_history WHERE tenant_id=:tenant AND appointment_id=:id
         """), {"tenant": tenant, "id": item_id})).scalar_one()
+        from app.appointment_notices import read_notices
+        result["whatsapp_notifications"] = await read_notices(s, tenant, item_id)
         result.update(history=[public_history(entry) for entry in history_rows],
                       history_total=total, history_has_more=total > len(history_rows))
     return result

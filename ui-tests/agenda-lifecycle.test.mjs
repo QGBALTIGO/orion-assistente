@@ -193,3 +193,33 @@ test('Google error codes become bounded Portuguese guidance and never expose an 
 test('Google historical exclusion and absent credentials are honest distinct conditions',async t=>{
   for(const data of [{status:'outside_initial_sync',configured:true,sync_enabled:true,connection_status:'active'},{status:'pending',configured:false,sync_enabled:true,connection_status:'not_connected'}]){const h=await fixture(t,{respond:responder({on:path=>path.includes('/google/appointments/')?data:undefined})});await openDetail(h);const text=h.document.getElementById('osAppointmentGoogle').textContent;if(data.status==='outside_initial_sync')assert.match(text,/Anterior à conexão.*não faz parte da sincronização inicial/s);else assert.match(text,/ainda não está configurada/);assert.equal(posts(h).length,0);}
 });
+
+test('notice panel separates queued, sent, delivered and uncertain outcomes without inventing delivery',async t=>{
+  const labels=[['pending','Aguardando envio'],['sent','Enviado ao WhatsApp'],['delivered','Entregue'],['uncertain','Envio sem confirmação']];
+  const h=await fixture(t,{respond:responder({items:[record({whatsapp_notifications:{enabled:true,items:labels.map(([status,status_label],i)=>({id:'notice-'+i,event:'rescheduled',status,status_label,created_at:version,can_retry:false,error_message:status==='uncertain'?'Não será enviada outra cópia automaticamente.':null}))}})]})});
+  await openDetail(h);
+  for(const [,label] of labels)assert.ok(h.document.querySelector('#osDialog').textContent.includes(label),label);
+  assert.equal(posts(h).length,0);
+  assert.equal(h.document.querySelector('[data-os-action="appointment-notices-retry"]'),null);
+  h.click('[data-os-action="appointment-notices-refresh"]');await flush();
+  assert.equal(posts(h).length,0);
+});
+
+test('only definitively unsent notices offer an explicit retry in their appointment scope',async t=>{
+  const item=record({whatsapp_notifications:{enabled:true,items:[{id:'notice-1',event:'cancelled',status:'blocked',status_label:'Aguardando conexão',created_at:version,can_retry:true}]}});
+  const h=await fixture(t,{respond:responder({items:[item],on:(path,method)=>path.endsWith('/notifications/retry')?{enabled:true,items:[]}:undefined})});
+  await openDetail(h);assert.equal(posts(h).length,0);
+  h.click('[data-os-action="appointment-notices-retry"]');await flush();
+  assert.equal(posts(h).length,1);
+  assert.ok(posts(h)[0].path.endsWith('/appointments/'+appointmentId+'/notifications/retry'));
+  assert.ok(posts(h)[0].path.includes(tenantA));
+});
+
+test('disabled notices never imply a customer was informed',async t=>{
+  const h=await fixture(t,{respond:responder({items:[record({whatsapp_notifications:{enabled:false,items:[]}})]})});
+  await openDetail(h);const text=h.document.querySelector('#osDialog').textContent;
+  assert.ok(text.includes('Avisos no WhatsApp'));
+  assert.ok(text.includes('ativad'));
+  assert.equal(posts(h).length,0);
+  assert.equal(h.document.querySelector('[data-os-action="appointment-notices-retry"]'),null);
+});

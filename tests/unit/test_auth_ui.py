@@ -21,7 +21,8 @@ def test_auth_panel_has_all_screens_without_google_or_hardcoded_owner():
     assert "prefers-reduced-motion" in html
     assert 'html[data-theme="light"]' in html
     assert 'prefers-color-scheme: dark' in html
-    assert "max-width:900px" in html and "max-width:560px" in html
+    css=(Path(__file__).resolve().parents[2]/"app/static/orion-auth.css").read_text()
+    assert "max-width:900px" in css and "max-width:480px" in css
     assert "orion-brand-dark.svg" in html and "orion-brand-light.svg" in html
 
 
@@ -50,54 +51,45 @@ async def test_assets_are_allowlisted_and_svg(monkeypatch):
 
 
 def test_login_mobile_does_not_show_turquoise_header_block():
-    """Mobile/tablet uses a single clean auth layout without the marketing strip."""
-    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
-    assert re.search(r"@media\(max-width:900px\)\s*\{\s*#loginView \.auth-shell\{display:flex",html)
-    assert re.search(r"#loginView \.auth-visual\{display:none\}",html)
-    assert "#loginView .auth-right" in html
-    assert "min-height:100svh" in html
-    assert "auth-mobile-brand" in html
+    css=(Path(__file__).resolve().parents[2]/"app/static/orion-auth.css").read_text()
+    assert "@media(max-width:900px)" in css
+    assert "#loginView .auth-visual{display:none}" in css
+    assert "min-height:100dvh" in css
+    assert "min-width:0" in css
+    assert "auth-mobile-brand" in css
 
 
-def test_login_checkbox_has_real_unchecked_and_checked_appearance():
-    """Custom checkbox avoids native browser black fill for unchecked light theme."""
-    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
+def test_login_checkbox_uses_native_semantics_and_correct_color_scheme():
+    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text()
+    css=(Path(__file__).resolve().parents[2]/"app/static/orion-auth.css").read_text()
     assert 'id="rememberMe" type="checkbox"' in html
-    assert '#loginView .auth-form .auth-check input[type="checkbox"]{' in html
-    assert "appearance:none;-webkit-appearance:none" in html
-    assert '#loginView .auth-form .auth-check input[type="checkbox"]:checked{' in html
-    assert "background-image:url(" in html
-    assert 'input[type="checkbox"]:focus-visible' in html
-    assert "#loginView{color-scheme:light}" in html
+    assert 'accent-color:var(--os-primary)' in css
+    assert 'appearance:auto' in css
+    assert 'color-scheme:light' in css and 'color-scheme:dark' in css
+    assert ':focus-visible' in css
 
 
-def test_login_desktop_has_readable_non_flat_hero():
-    """Retains desktop split with higher contrast and composition."""
-    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
-    assert "#loginView .auth-shell{grid-template-columns:minmax(0,.92fr)" in html
-    assert "linear-gradient(144deg,#063642" in html
-    assert "#loginView .auth-hero li{" in html
-    assert "rgba(0,35,47,.19)" in html
-    assert "prefers-reduced-motion:reduce" in html
+def test_login_uses_the_panel_tokens_fonts_and_not_an_independent_palette():
+    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text()
+    css=(Path(__file__).resolve().parents[2]/"app/static/orion-auth.css").read_text()
+    assert html.index('/panel-assets/orion-auth.css') > html.index('/panel-assets/orion-suite.css')
+    for token in ('--os-bg','--os-card','--os-primary','--os-muted','--os-border','--os-font','--os-display'):
+        assert 'var('+token+')' in css
+    for forbidden in ('linear-gradient','auth-orbit','#063642','#14b8a6','#20c997'):
+        assert forbidden not in css
+    assert 'prefers-reduced-motion:reduce' in css
+    assert 'class="auth-orbit"' not in html
 
 
-def test_desktop_login_occupies_exactly_two_viewport_halves():
-    """Regression: left gradient must start at viewport x=0; form must not be clipped."""
-    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
-    anchor=html.split("/* Desktop auth: the split is anchored to the viewport",1)
-    assert len(anchor)==2, "Explicit viewport layout guard absent"
-    rules=anchor[1].split("</style>",1)[0]
-    assert "@media (min-width:901px)" in rules
-    assert "position:fixed;inset:0" in rules
-    assert "width:100vw;max-width:none" in rules
-    assert "margin:0;padding:0;overflow-x:hidden;overflow-y:auto" in rules
-    assert "grid-template-columns:50% 50%" in rules
-    assert "width:100%;max-width:100%" in rules
-    assert "min-width:0" in rules
-    assert "max-width:466px" in rules
-    # Up to 900px the mobile design remains a single column, without the visual band.
-    assert '#loginView .auth-visual{display:none}' in html
-    assert "@media(max-width:900px)" in html
+def test_desktop_login_has_two_fluid_columns_and_never_fixes_page_height():
+    css=(Path(__file__).resolve().parents[2]/"app/static/orion-auth.css").read_text()
+    assert 'grid-template-columns:minmax(0,1fr) minmax(0,1fr)' in css
+    assert 'max-width:440px' in css
+    assert 'min-width:0' in css
+    assert 'position:fixed' not in css
+    assert not re.search(r'(?:^|[;{])\s*height\s*:\s*100vh\s*[;}]',css)
+    assert '@media(max-width:900px)' in css and '@media(max-width:480px)' in css
+    assert '#loginView .auth-shell{display:block' in css
 
 
 def test_signup_is_immediate_and_otp_is_only_for_recovery():
@@ -217,10 +209,26 @@ def test_orion_theme_ui_is_accessible_and_mobile_usable():
     for label in ("Tema Automático, seguir o dispositivo","Tema Claro","Tema Escuro"):
         assert f'aria-label="{label}"' in html
     assert "role=\"group\" aria-label=\"Escolher aparência\"" in html
-    assert html.count('data-theme-choice="')==3
+    assert html.count('data-theme-choice="')==6
     assert 'button.setAttribute("aria-pressed",String(button.dataset.themeChoice===safe))' in html
     assert "@media(max-width:790px)" in html
     assert ".sidebar-bottom{display:flex" in html
     assert ".sidebar-bottom{display:grid" in html
     assert '.theme-choice:focus-visible' in html or 'button:focus-visible' in html
     assert "document.documentElement.dataset.themePreference" in html
+
+
+@pytest.mark.asyncio
+async def test_auth_stylesheet_is_available_without_login():
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url="https://test") as client:
+        response=await client.get('/panel-assets/orion-auth.css')
+    assert response.status_code==200 and 'text/css' in response.headers['content-type']
+    assert '--os-primary' in response.text
+
+
+def test_auth_keyboard_tabs_caps_lock_and_loading_state_are_accessible():
+    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text()
+    assert 'aria-controls="loginForm"' in html and 'aria-controls="registerForm"' in html
+    assert 'ArrowRight' in html and 'ArrowLeft' in html
+    assert 'getModifierState' in html and 'CapsLock' in html
+    assert 'aria-busy' in html and 'Entrando...' in html
