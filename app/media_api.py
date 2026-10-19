@@ -61,9 +61,10 @@ async def _upload_limit(tenant: UUID) -> None:
     redis = _redis()
     try:
         key = f"orion:media:upload:{tenant}"
-        count = await redis.incr(key)
-        if count == 1:
-            await redis.expire(key, 3600)
+        pipe = redis.pipeline(transaction=True)
+        pipe.incr(key)
+        pipe.expire(key, 3600, nx=True)
+        count, _ = await pipe.execute()
         if count > UPLOAD_PER_TENANT_PER_HOUR:
             raise HTTPException(429, "Muitos envios de imagens. Aguarde antes de tentar novamente.")
     except (RedisError, OSError):
