@@ -4,6 +4,7 @@ from decimal import Decimal
 import re
 from typing import Literal
 from urllib.parse import urlsplit
+from app.media_paths import is_media_url
 from uuid import UUID
 
 from pydantic import AwareDatetime, Field, StrictInt, field_validator, model_validator
@@ -286,6 +287,8 @@ class SitePreferences(CleanModel):
     def https_only(cls, value):
         if value in (None, ""):
             return None
+        if is_media_url(value) and value.startswith("/media/") and cls is SitePreferences:
+            return value
         parsed = urlsplit(value)
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
             raise ValueError("Use um endereço HTTPS válido")

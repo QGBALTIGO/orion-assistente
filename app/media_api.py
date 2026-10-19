@@ -51,7 +51,7 @@ def _storage():
         aws_access_key_id=config["ORION_MEDIA_S3_ACCESS_KEY_ID"],
         aws_secret_access_key=config["ORION_MEDIA_S3_SECRET_ACCESS_KEY"],
         region_name=config["ORION_MEDIA_S3_REGION"],
-        config=Config(signature_version="s3v4", s3={"addressing_style": "path"},
+        config=Config(signature_version="s3v4", s3={"addressing_style": os.getenv("ORION_MEDIA_S3_URL_STYLE", "virtual")},
                       connect_timeout=5, read_timeout=15, retries={"max_attempts": 2}),
     )
     return client, config["ORION_MEDIA_S3_BUCKET"]
@@ -103,7 +103,7 @@ def _put(tenant: UUID, image: UUID, data: bytes) -> None:
     client.put_object(Bucket=bucket, Key=media_key(tenant, image),
                       Body=data, ContentType="image/webp",
                       CacheControl="public, max-age=31536000, immutable",
-                      ServerSideEncryption="AES256")
+                      )
 
 
 def _get(tenant: UUID, image: UUID) -> bytes:
