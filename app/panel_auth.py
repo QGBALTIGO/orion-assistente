@@ -9,7 +9,9 @@ import hmac
 import json
 import os
 import secrets
+from dataclasses import dataclass
 from datetime import timedelta
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
@@ -20,6 +22,16 @@ router = APIRouter(prefix="/auth", tags=["Sessão do painel"])
 COOKIE = "__Host-orion_session"
 TTL = 12 * 3600
 REMEMBER_TTL = 30 * 24 * 3600
+
+
+@dataclass(frozen=True)
+class VerifiedRouteMembership:
+    account_id: UUID
+    tenant_id: UUID
+    role: str | None
+
+
+ROUTE_MEMBERSHIP = "orion.verified_route_membership"
 
 
 def _redis():
@@ -77,6 +89,9 @@ def _same_origin(request: Request) -> None:
 
 async def panel_actor(request: Request) -> dict:
     """Cookie aleatório armazenado somente como hash; CSRF em toda mutação."""
+    # Only this invocation can issue the request-local proof. Redis claims,
+    # prior calls and another request's scope never provide membership authority.
+    request.scope.pop(ROUTE_MEMBERSHIP, None)
     token = request.cookies.get(COOKIE, "")
     if not token or len(token) != 43:
         raise HTTPException(401, "Faça login no painel")
@@ -92,14 +107,25 @@ async def panel_actor(request: Request) -> dict:
         raise HTTPException(401, "Sessão expirada, entre novamente")
     data = json.loads(content)
     if data.get("account_id"):
-        from app.account_auth import current_account
+        from app.account_auth import current_account, current_account_and_membership
+        tenant = None
+        if data.get("role") == "member" and os.getenv("BUSINESS_PROFILES_ENABLED", "0") == "1":
+            try:
+                tenant = UUID(str(request.path_params.get("tenant_id")))
+            except (ValueError, TypeError):
+                pass
         try:
-            row = await current_account(data["account_id"], data["auth_version"])
+            row = (await current_account_and_membership(data["account_id"], data["auth_version"], tenant)
+                   if tenant is not None else
+                   await current_account(data["account_id"], data["auth_version"]))
         except (ValueError,KeyError):
             raise HTTPException(401,"Sessão inválida") from None
         # A changed role/password invalidates prior sessions.
         if row["role"] != data["role"]:
             raise HTTPException(401,"Sessão expirada") from None
+        if tenant is not None:
+            request.scope[ROUTE_MEMBERSHIP] = VerifiedRouteMembership(
+                UUID(data["account_id"]), tenant, row["membership_role"])
         # Return only this account's display identity; never change the privilege role.
         data["name"] = row["name"]
         data["email"] = row["email"]

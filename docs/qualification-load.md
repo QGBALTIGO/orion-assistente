@@ -231,11 +231,23 @@ O workflow oferece essa coleta somente por execução manual, com a opção
 `cpu_profile`; as cargas principais 60/600 e as vinte jornadas de navegador
 continuam obrigatórias nas PRs. Os perfis curtos servem para escolher uma
 correção, e seus artefatos não substituem a carga completa sem perfil de funções.
+O diagnóstico manual atual usa o perfil amplo com três workers e pool 10 + 0.
 `--profile-generator` coleta separadamente o perfil de funções do gerador;
 também marca a execução como diagnóstico e não qualifica capacidade. O relógio
 de processo inclui suas threads auxiliares, enquanto os registros de chamadas
 cobrem a thread principal. O custo do profiler pode atrasar o próprio gerador;
 não interpretar esses percentis como resultado da carga sem profiler.
+
+O candidato seguinte também junta a leitura atual de conta/versão e membership
+ativo em um único SELECT por requisição autenticada com empresa na rota. A
+comprovação fica somente no scope daquele pedido, vinculada à conta e empresa;
+não é guardada no cookie ou Redis e não substitui locks/revalidações de escrita.
+A consulta usa a conexão existente de suporte em AUTOCOMMIT apenas para esse
+SELECT. O PostgreSQL testa retorno ao mesmo backend e rollback de uma escrita
+posterior, inclusive após erro de leitura, para detectar vazamento de isolamento.
+O pre-ping e os limites dos pools permanecem iguais. O GET de serviços usa um
+caminho específico anterior ao catálogo genérico e delega à mesma função, sem
+mudar autorização, SQL ou contrato HTTP. A aceitação ainda depende da carga.
 
 O gerador versão 2 distribui 40% dos operadores adicionais pelas cinco empresas
 mais movimentadas, com contagem por empresa no relatório. A versão anterior

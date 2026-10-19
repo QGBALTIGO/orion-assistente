@@ -34,7 +34,7 @@ class Actor:
     membership_role: str | None = None
 
 
-async def scoped_account_actor(role: str, account_id: UUID | None, route_tenant) -> Actor:
+async def scoped_account_actor(role: str, account_id: UUID | None, route_tenant, *, checked=None) -> Actor:
     """Bind legacy catalog access to the verified account and this exact route."""
     actor = Actor(role, account_id=account_id)
     if role != "member" or account_id is None or os.getenv("BUSINESS_PROFILES_ENABLED", "0") != "1":
@@ -43,11 +43,15 @@ async def scoped_account_actor(role: str, account_id: UUID | None, route_tenant)
         tenant = UUID(str(route_tenant))
     except (ValueError, TypeError):
         return actor
-    async with support_session_factory()() as db:
-        membership = (await db.execute(text("""
-            SELECT role FROM tenant_memberships
-            WHERE account_id=:account AND tenant_id=:tenant AND active
-        """), {"account": account_id, "tenant": tenant})).scalar_one_or_none()
+    from app.panel_auth import VerifiedRouteMembership
+    if type(checked) is VerifiedRouteMembership and checked.account_id == account_id and checked.tenant_id == tenant:
+        membership = checked.role
+    else:
+        async with support_session_factory()() as db:
+            membership = (await db.execute(text("""
+                SELECT role FROM tenant_memberships
+                WHERE account_id=:account AND tenant_id=:tenant AND active
+            """), {"account": account_id, "tenant": tenant})).scalar_one_or_none()
     if membership not in {"owner", "editor", "viewer"}:
         return actor
     return Actor(role, tenant, account_id, membership)
@@ -69,7 +73,7 @@ async def authenticate(request: Request, authorization: str | None = Header(defa
             except ValueError:
                 raise HTTPException(503, "Escopo do leitor não configurado") from None
     if request.cookies.get("__Host-orion_session"):
-        from app.panel_auth import panel_actor
+        from app.panel_auth import panel_actor, ROUTE_MEMBERSHIP
         session = await panel_actor(request)
         account_id = session.get("account_id")
         try:
@@ -77,7 +81,8 @@ async def authenticate(request: Request, authorization: str | None = Header(defa
         except ValueError:
             raise HTTPException(401, "Sessão inválida") from None
         return await scoped_account_actor(session["role"], verified_account,
-                                          request.path_params.get("tenant_id"))
+                                          request.path_params.get("tenant_id"),
+                                          checked=request.scope.get(ROUTE_MEMBERSHIP))
     raise HTTPException(401, "Credenciais de operador inválidas", headers={"WWW-Authenticate": "Bearer"})
 
 
@@ -258,6 +263,11 @@ async def list_items(tenant_id: UUID, resource: str, actor: Actor = Depends(auth
             )).mappings().all()
             content = jsonable_encoder(rows)
     return JSONResponse(content)
+
+
+async def list_services(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    """Specific hot path; all catalog authorization and SQL stay in list_items."""
+    return await list_items(tenant_id, "services", actor)
 
 
 @router.post("/tenants/{tenant_id}/{resource}", status_code=201)

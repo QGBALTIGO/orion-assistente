@@ -2,7 +2,7 @@
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
-from app.catalog_api import router as catalog_router
+from app.catalog_api import router as catalog_router, list_services
 from app.booking_api import router as bookings_router
 from app.whatsapp_api import router as whatsapp_router
 from app.integrations_api import router as integrations_router
@@ -63,6 +63,8 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+app.add_api_route("/api/v1/tenants/{tenant_id}/services", list_services,
+                  methods=["GET"], tags=["Operação interna"])
 app.include_router(bookings_router)
 app.include_router(onboarding_router)
 app.include_router(commercial_router)
