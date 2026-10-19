@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
+import {readFile} from 'node:fs/promises';
 import {makeSuite, flush, deferred, defaultResponse, tenantA, tenantB, customerId} from './harness.mjs';
 
 const professionalId='50000000-0000-4000-8000-000000000005';
@@ -224,4 +225,55 @@ test('CSS diferencia toque de teclado apenas no tabpanel, na contagem e no títu
   assert.match(css,/\.os-agenda-item:focus-visible\{outline:3px solid var\(--os-primary\)/,
     'foco de teclado de cada cartão não pode ser removido');
   assert.match(css,/#osDialogTitle:focus-visible\{outline:3px solid var\(--os-primary\);outline-offset:2px\}/);
+});
+
+test('busca da agenda reserva espaço para a lupa sem sobrepor o texto',async t=>{
+  const h=await fixture(t,{respond:responder()});
+  const input=h.document.getElementById('osAgendaSearch');
+  const lens=input.closest('.os-agenda-search')?.querySelector('.os-icon');
+  assert.ok(lens,'lupa existe');
+  assert.equal(lens.getAttribute('aria-hidden'),'true');
+  assert.equal(input.getAttribute('placeholder'),'Nome, telefone ou protocolo');
+  const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
+  const svgRule=css.match(/\.os-agenda-search>\.os-icon\{([^}]*)\}/)?.[1];
+  const inputRule=css.match(/\.os-main \.os-agenda-search input#osAgendaSearch\{([^}]*)\}/)?.[1];
+  assert.ok(svgRule && inputRule,'estilos específicos da agenda presentes');
+  for(const part of ['top:50%','left:14px','transform:translateY(-50%)','width:20px','height:20px','pointer-events:none'])
+    assert.ok(svgRule.includes(part),'propriedade da lupa: '+part);
+  assert.ok(inputRule.includes('padding-left:46px'),'o ID vence o padding do input genérico');
+  assert.equal(h.errors.length,0);
+});
+
+test('monitor e atualizar têm quadrados 44px, ícones 20px e continuam funcionais',async t=>{
+  const h=await fixture(t,{respond:responder()});
+  const expand=h.document.querySelector('[data-os-action=agenda-tablet]');
+  const refresh=h.document.querySelector('.os-agenda-view-row [data-os-action=agenda-reload]');
+  assert.ok(expand && refresh,'controles principais existem');
+  assert.equal(expand.getAttribute('aria-label'),'Ampliar agenda');
+  assert.equal(refresh.getAttribute('aria-label'),'Atualizar agendamentos');
+  assert.equal(expand.querySelector('svg.os-icon').getAttribute('aria-hidden'),'true');
+  assert.equal(refresh.querySelector('svg.os-icon').getAttribute('aria-hidden'),'true');
+  const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
+  const start=css.indexOf('@container agenda (max-width:520px){');
+  assert.ok(start!==-1,'regras compactas presentes');
+  const compact=css.slice(start,css.indexOf('\n}',start));
+  const buttonRule=compact.match(/\.os-agenda-expand,\.os-agenda-view-row>\.os-button\[data-os-action=agenda-reload\]\{([^}]*)\}/)?.[1];
+  const svgRule=compact.match(/\.os-agenda-expand>\.os-icon,\.os-agenda-view-row>\.os-button\[data-os-action=agenda-reload\]>\.os-icon\{([^}]*)\}/)?.[1];
+  assert.ok(buttonRule && svgRule,'as duas ações compartilham escala');
+  for(const part of ['width:44px','min-width:44px','max-width:44px','height:44px','min-height:44px','max-height:44px','gap:0','padding:0','align-items:center','justify-content:center'])
+    assert.ok(buttonRule.includes(part),'botão compacto: '+part);
+  for(const part of ['width:20px','height:20px','flex:0 0 20px'])
+    assert.ok(svgRule.includes(part),'SVG compacto: '+part);
+  const before=h.calls.length;
+  h.click('.os-agenda-view-row [data-os-action=agenda-reload]');
+  await flush();
+  assert.ok(h.calls.length>before,'atualização consulta novamente a agenda');
+  assert.equal(h.calls.some(call=>call.method!=='GET'),false,'atualizar não altera dados');
+  h.click('[data-os-action=agenda-tablet]');
+  await flush();
+  assert.equal(h.document.querySelector('[data-os-action=agenda-tablet-exit]')?.getAttribute('aria-label'),'Sair da tela ampliada');
+  h.click('[data-os-action=agenda-tablet-exit]');
+  await flush();
+  assert.ok(h.document.querySelector('[data-os-action=agenda-tablet]'),'ampliar e sair permanecem disponíveis');
+  assert.equal(h.errors.length,0);
 });

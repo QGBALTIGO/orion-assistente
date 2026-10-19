@@ -239,8 +239,8 @@
 .os-week-today{width:4px;height:4px;border-radius:50%;background:currentColor;position:absolute;bottom:5px}
 .os-agenda-filters{display:grid;grid-template-columns:minmax(220px,1fr) repeat(2,minmax(150px,.6fr));align-items:end;gap:12px;margin-bottom:20px}
 .os-agenda-search{display:flex;align-items:center;gap:8px;position:relative;min-width:0}
-.os-agenda-search>.os-icon{position:absolute;left:13px;pointer-events:none;width:18px;height:18px;color:var(--os-muted)}
-.os-main .os-agenda-search input{padding-left:39px;min-height:44px;background:var(--os-card);font-size:14px;box-shadow:none}
+.os-agenda-search>.os-icon{position:absolute;top:50%;left:14px;transform:translateY(-50%);pointer-events:none;width:20px;height:20px;color:var(--os-muted)}
+.os-main .os-agenda-search input#osAgendaSearch{padding-left:46px;min-height:44px;background:var(--os-card);font-size:14px;box-shadow:none}
 .os-agenda-filter{min-width:0;display:flex;flex-direction:column;gap:5px;font-size:11px;line-height:16px;color:var(--os-muted)}
 .os-main .os-agenda-filter select{min-height:44px;font-size:14px;background:var(--os-card);box-shadow:none}
 .os-agenda-view-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:16px}
@@ -433,8 +433,8 @@ html:has(.os-appointment-sheet[open]){overflow:hidden}
  .os-agenda-date-picker{flex:1}
  .os-agenda-connection{justify-content:space-between;min-width:0}
  .os-agenda-google{flex:1}
- .os-agenda-expand{font-size:0;width:44px;padding:0;flex:0 0 44px}
- .os-agenda-expand .os-icon{width:19px;height:19px}
+ .os-agenda-expand,.os-agenda-view-row>.os-button[data-os-action=agenda-reload]{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;max-height:44px;padding:0;gap:0;font-size:0;line-height:0}
+ .os-agenda-expand>.os-icon,.os-agenda-view-row>.os-button[data-os-action=agenda-reload]>.os-icon{display:block;flex:0 0 20px;width:20px;height:20px}
  .os-agenda-week{gap:2px;margin-bottom:16px}
  .os-agenda-week>.os-icon-button{flex-basis:22px;width:22px}
  .os-agenda-week .os-week-grid{gap:2px}
@@ -444,8 +444,7 @@ html:has(.os-appointment-sheet[open]){overflow:hidden}
  .os-main .os-agenda-search input,.os-main .os-agenda-filter select{font-size:16px}
  .os-agenda-views{flex:1;justify-content:space-between;gap:2px}
  .os-agenda-views>button{flex:1;padding:8px 7px;gap:5px;font-size:12px}
- .os-agenda-view-row>.os-button{font-size:0;padding:8px;flex:0 0 40px}
- .os-agenda-view-row>.os-button .os-icon{width:18px;height:18px}
+
  .os-agenda-summary{gap:10px 16px;padding:12px 0}
  .os-agenda-summary>.os-agenda-summary-label{width:100%;font-size:10px;line-height:12px}
  .os-agenda-summary>.os-agenda-summary-item{font-size:11px;gap:4px}
