@@ -141,13 +141,13 @@ jobs:
 
   cpu-profile:
     name: Diagnostico CPU - ${{ matrix.profile }} - ${{ matrix.configuration.workers }} workers (nao qualifica capacidade)
-    if: github.event_name == 'workflow_dispatch' && inputs.cpu_profile
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.cpu_profile)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        profile: [wide]
+        profile: [concentrated]
         configuration:
           - workers: 3
             size: 10
