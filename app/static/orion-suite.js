@@ -876,8 +876,41 @@
     finally{if(stillAccount(c)){markBusy(form,false);if(ok){closeDialog();if(current(c))await open(state.route,{keepScroll:true});}}else{state.busy=false;if(d&&state.dialog===d)closeDialog(true);}}
   }
   function getValues(form){return Object.fromEntries(new FormData(form));}
+  // Customer fields reuse the exact original names and IDs; only their presentation changes.
+  function customerInputField(label,name,type,value,symbol='',extra='',help=''){
+    return '<div class="os-field os-client-field">'+
+      '<label for="osField-'+name+'">'+esc(label)+'</label>'+
+      '<div class="os-client-input'+(symbol?'':' os-client-input-plain')+'">'+
+        (symbol?'<span class="os-client-input-icon" aria-hidden="true">'+icon(symbol)+'</span>':'')+
+        '<input id="osField-'+name+'" name="'+name+'" type="'+type+'" value="'+esc(value)+'" '+extra+'>'+
+      '</div>'+(help?'<p class="os-client-hint">'+esc(help)+'</p>':'')+
+    '</div>';
+  }
+  function customerNotesField(value){
+    return '<div class="os-field os-client-field"><label for="osField-notes">Observações</label>'+
+      '<div class="os-client-textarea"><textarea id="osField-notes" name="notes" maxlength="2000" placeholder="Preferências, alergias e informações importantes...">'+esc(value||'')+'</textarea></div></div>';
+  }
   function showCustomer(record=null){
-    const c=record||{};let content='<p class="os-help">Só o nome é obrigatório.</p>'+field('Nome completo *','name','text',c.name||'','required maxlength="120" autocomplete="name" placeholder="Ex.: João Silva"')+field('WhatsApp','phone','tel',c.phone||'','autocomplete="tel" placeholder="(11) 91234-5678"')+'<p class="os-help" style="margin-top:-12px">Usado para identificar o cliente nos agendamentos.</p>'+field('Instagram','instagram','text',c.instagram||'','maxlength="120" placeholder="usuario"')+'<details '+(record?'open':'')+' class="os-more-fields"><summary>Mais dados <span>E-mail, aniversário e endereço</span></summary><div class="os-form" style="margin-top:16px">'+field('E-mail','email','email',c.email||'','autocomplete="email" maxlength="254" placeholder="nome@email.com"')+field('Aniversário','birth_date','date',c.birth_date||'')+'<div class="os-form-grid">'+field('Bairro','neighborhood','text',c.neighborhood||'','maxlength="120"')+field('Cidade','city','text',c.city||'','maxlength="120"')+'</div></div></details>'+textField('Observações','notes',c.notes||'','maxlength="2000" placeholder="Preferências e informações importantes sobre o cliente"')+(record?checkField('Cliente ativo','active',c.active!==false):'');
+    const c=record||{};
+    const hasExtra=!!(record&&(c.email||c.birth_date||c.neighborhood||c.city));
+    const extras='<details class="os-client-more"'+(hasExtra?' open':'')+'>'+
+      '<summary class="os-client-more-toggle"><span class="os-client-more-icon" aria-hidden="true"></span>'+
+      '<span class="os-client-more-text">Mais dados <small>(e-mail, aniversário, endereço)</small></span></summary>'+
+      '<div class="os-client-extra-fields">'+
+        customerInputField('E-mail','email','email',c.email||'','mail','autocomplete="email" maxlength="254" placeholder="nome@email.com"')+
+        customerInputField('Aniversário','birth_date','date',c.birth_date||'','calendar')+
+        '<div class="os-client-grid">'+
+          customerInputField('Bairro','neighborhood','text',c.neighborhood||'','','maxlength="120" placeholder="Ex.: Centro"')+
+          customerInputField('Cidade','city','text',c.city||'','','maxlength="120" placeholder="Ex.: Sua cidade"')+
+        '</div>'+
+      '</div></details>';
+    let content='<div class="os-client-form">'+
+      '<p class="os-client-hint os-client-intro">Somente o nome é obrigatório.</p>'+
+      customerInputField('Nome completo *','name','text',c.name||'','userPlus','required maxlength="120" autocomplete="name" placeholder="Ex.: João Silva"')+
+      customerInputField('WhatsApp','phone','tel',c.phone||'','phone','autocomplete="tel" placeholder="(11) 91234-5678"','Usado para identificar o cliente nos agendamentos.')+
+      customerInputField('Instagram','instagram','text',c.instagram||'','instagram','maxlength="120" placeholder="@usuario"')+
+      extras+customerNotesField(c.notes||'')+'</div>'+
+      (record?checkField('Cliente ativo','active',c.active!==false):'');
     if(record)content+='<div class="os-stats"><div class="os-stat"><strong>'+number(c.total_appointments)+'</strong><small>Agendamentos</small></div><div class="os-stat"><strong>'+money(c.total_spent_cents)+'</strong><small>Total atendido</small></div><div class="os-stat"><strong>'+number(c.loyalty_points)+'</strong><small>Pontos</small></div></div>';
     showDialog('customer',record?(writable()?'Editar cliente':'Cliente'):'Novo cliente',dialogForm('customer',content,record?'Salvar alterações':'Cadastrar cliente',record&&writable()?button('Excluir','delete-customer','os-ghost','trash'):'') ,{record});
   }
