@@ -1,0 +1,342 @@
+/* Authentication shares the management suite's fonts, theme tokens and controls.
+ * Keep these rules inside #loginView so the authenticated workspace is unchanged.
+ */
+#loginView {
+  --bg: var(--os-bg);
+  --surface: var(--os-card);
+  --text: var(--os-text);
+  --muted: var(--os-muted);
+  --border: var(--os-border);
+  --bright: var(--os-primary);
+  --accent: var(--os-primary);
+  --danger: var(--os-danger);
+  display: block;
+  min-height: 100vh;
+  min-height: 100svh;
+  padding: 0;
+  background: var(--os-bg);
+  color: var(--os-text);
+  font: 400 16px/1.5 var(--os-font);
+}
+
+#loginView .auth-shell {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 100vh;
+  min-height: 100svh;
+  width: 100%;
+  min-width: 0;
+}
+
+#loginView .auth-visual {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 48px;
+  min-width: 0;
+  padding: 40px clamp(32px, 4.2vw, 80px) 32px;
+  border-right: 1px solid var(--os-border);
+  /* The dashboard's onboarding card uses this same surface treatment. */
+  background: linear-gradient(130deg, var(--os-tint), var(--os-card) 60%);
+}
+
+#loginView .auth-visual-logo {
+  display: inline-flex;
+  align-self: flex-start;
+  border-radius: 10px;
+}
+
+#loginView .auth-visual-logo img {
+  display: block;
+  width: 190px;
+  max-width: 100%;
+  height: auto;
+}
+
+#loginView .auth-hero { width: 100%; max-width: 560px; margin: auto; }
+#loginView .auth-hero-kicker {
+  display: block;
+  margin-bottom: 20px;
+  color: var(--os-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+#loginView .auth-hero h1 {
+  margin: 0 0 24px;
+  color: var(--os-text);
+  font: 600 clamp(38px, 3.2vw, 58px)/1.1 var(--os-display);
+  letter-spacing: -.035em;
+  text-wrap: balance;
+}
+#loginView .auth-hero h1 span { color: var(--os-primary); }
+#loginView .auth-hero p {
+  max-width: 460px;
+  margin: 0;
+  color: var(--os-muted);
+  font-size: 18px;
+  line-height: 1.6;
+}
+#loginView .auth-hero ul {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 32px 0 0;
+}
+#loginView .auth-hero li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--os-border);
+  border-radius: 20px;
+  background: var(--os-card);
+  box-shadow: var(--os-shadow);
+  color: var(--os-text);
+  font-size: 15px;
+}
+#loginView .auth-hero li > span {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--os-tint);
+  color: var(--os-primary);
+}
+#loginView .auth-visual-bottom {
+  color: var(--os-muted);
+  font-size: 11px;
+  letter-spacing: .1em;
+}
+
+#loginView .auth-right {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  align-items: center;
+  justify-items: center;
+  gap: 24px;
+  min-width: 0;
+  min-height: 100vh;
+  min-height: 100svh;
+  padding: 32px clamp(26px, 4vw, 64px) 24px;
+  background: var(--os-bg);
+}
+#loginView .auth-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  max-width: 466px;
+}
+#loginView .auth-site-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  border-radius: 8px;
+  color: var(--os-muted);
+  font-size: 14px;
+  text-decoration: none;
+  transition: color .2s;
+}
+#loginView .auth-site-link:hover { color: var(--os-primary); }
+#loginView .auth-site-link .os-icon { width: 16px; height: 16px; }
+#loginView .auth-toolbar .os-icon-button { width: 44px; height: 44px; }
+#loginView .os-theme-menu { top: 48px; }
+#loginView .os-theme-menu button { min-height: 44px; }
+#loginView .auth-card {
+  width: 100%;
+  max-width: 466px;
+  min-width: 0;
+  padding: clamp(24px, 3vw, 36px);
+  border: 1px solid var(--os-border);
+  border-radius: 20px;
+  background: var(--os-card);
+  box-shadow: var(--os-shadow);
+}
+#loginView .auth-mobile-brand { display: none; }
+#loginView .auth-card-top { margin-bottom: 24px; text-align: center; }
+#loginView .auth-card-top h2 {
+  margin: 0 0 8px;
+  color: var(--os-text);
+  font: 600 28px/1.2 var(--os-display);
+  letter-spacing: -.02em;
+}
+#loginView .auth-card-top p { margin: 0; color: var(--os-muted); font-size: 14px; }
+#loginView .auth-tabs { display: grid; grid-template-columns: 1fr 1fr; width: 100%; margin-bottom: 24px; }
+#loginView .auth-tab { min-height: 44px; }
+#loginView .auth-form:not(.hidden) { animation: os-toast-in .2s ease; }
+#loginView .auth-form label {
+  display: block;
+  margin: 18px 0 7px;
+  color: var(--os-text);
+  font-size: 14px;
+  font-weight: 500;
+}
+#loginView .auth-form label:first-child { margin-top: 0; }
+#loginView .auth-form label small { color: var(--os-muted); font-size: 12px; font-weight: 400; }
+#loginView .auth-form input:not([type=checkbox]) {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 11px 14px;
+  border: 1px solid var(--os-border);
+  border-radius: 10px;
+  background: var(--os-bg);
+  color: var(--os-text);
+  font: 400 16px/24px var(--os-font);
+  box-shadow: var(--os-shadow);
+  transition: border-color .2s, box-shadow .2s;
+}
+#loginView .auth-form input::placeholder { color: var(--os-muted); opacity: .85; }
+#loginView .auth-form input:not([type=checkbox]):focus {
+  border-color: var(--os-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--os-primary) 20%, transparent);
+}
+#loginView :is(button, a, input):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--os-primary) 55%, transparent);
+  outline-offset: 3px;
+}
+#loginView .auth-secret-field { position: relative; }
+#loginView .auth-form .auth-secret-field input { padding-right: 52px; }
+#loginView .auth-eye { position: absolute; right: 3px; top: 2px; width: 44px; height: 44px; }
+#loginView .auth-eye[aria-pressed=true] { color: var(--os-primary); background: var(--os-tint); }
+#loginView .auth-eye svg { width: 20px; height: 20px; }
+#loginView .auth-login-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 12px 0 4px;
+}
+#loginView .auth-form .auth-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  margin: 0;
+  color: var(--os-muted);
+  font-size: 14px;
+  font-weight: 400;
+  cursor: pointer;
+}
+#loginView .auth-check input[type=checkbox] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid var(--os-muted);
+  border-radius: 5px;
+  background: var(--os-bg);
+  box-shadow: none;
+  cursor: pointer;
+  transition: background .2s, border-color .2s;
+}
+#loginView .auth-check input[type=checkbox]:checked {
+  border-color: var(--os-primary);
+  background-color: var(--os-primary);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m5 12 4 4 10-10' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: center;
+  background-size: 100%;
+  background-repeat: no-repeat;
+}
+#loginView .auth-text-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--os-primary);
+  font: 500 14px/20px var(--os-font);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color .2s;
+}
+#loginView .auth-text-link:hover:not(:disabled) { color: var(--os-primary-hover); }
+#loginView .auth-primary { min-height: 48px; margin-top: 18px; font-size: 16px; font-weight: 600; }
+#loginView .auth-primary[aria-busy=true] { opacity: 1; cursor: wait; }
+#loginView .auth-primary .os-spinner { border-color: #ffffff59; border-top-color: #fff; }
+#loginView .auth-form .auth-otp-input {
+  min-height: 58px;
+  text-align: center;
+  letter-spacing: .42em;
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+#loginView .auth-message, #loginView .auth-availability {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--os-border);
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+#loginView .auth-message { background: var(--os-success-bg); color: var(--os-text); }
+#loginView .auth-availability { background: var(--os-soft); color: var(--os-muted); }
+#loginView .auth-error {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--os-danger) 35%, var(--os-border));
+  border-radius: 10px;
+  color: var(--os-danger);
+  background: var(--os-danger-bg);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+#loginView .auth-error:empty { display: none; }
+#loginView .auth-form h3 { margin: 0 0 8px; color: var(--os-text); font: 600 20px/28px var(--os-display); }
+#loginView .auth-form p:not(.auth-error) { color: var(--os-muted); font-size: 14px; }
+#loginView .auth-back { display: flex; margin: 12px auto 0; }
+#loginView .auth-privacy {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--os-border);
+  color: var(--os-muted);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+#loginView .auth-privacy svg { flex: 0 0 16px; width: 16px; height: 16px; }
+#loginView .auth-copyright { margin: 0; color: var(--os-muted); font-size: 12px; text-align: center; }
+
+@media (min-width: 901px) {
+  #loginView { position: fixed; inset: 0; overflow-x: hidden; overflow-y: auto; }
+}
+@media (max-width: 900px) {
+  #loginView .auth-shell { display: flex; flex-direction: column; }
+  #loginView .auth-visual { display: none; }
+  #loginView .auth-right { flex: 1; padding: 20px 24px 24px; }
+  #loginView .auth-mobile-brand { display: block; margin-bottom: 20px; text-align: center; }
+  #loginView .auth-mobile-brand img { display: block; width: 160px; max-width: 100%; height: auto; margin: auto; }
+}
+@media (max-width: 560px) {
+  #loginView .auth-right { gap: 20px; padding: 12px 16px max(24px, env(safe-area-inset-bottom)); }
+  #loginView .auth-card { padding: 24px 20px; }
+  #loginView .auth-card-top h2 { font-size: 26px; }
+  #loginView .auth-text-link, #loginView .auth-form .auth-check { font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #loginView *, #loginView *::before, #loginView *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
