@@ -1355,7 +1355,9 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 
 
 /* Uploads are deliberately scoped to image fields in Services, Team, Combos and Site. */
-.os-image-upload{min-width:0}
+.os-image-upload{min-width:0;position:relative}
+/* Keep the native file input available to iOS Safari while hiding browser chrome. */
+.os-image-upload .os-image-file{position:absolute!important;width:1px!important;height:1px!important;min-height:1px!important;padding:0!important;margin:0!important;opacity:0!important;clip-path:inset(50%);overflow:hidden;border:0!important;pointer-events:none}
 .os-image-upload>label{display:block;margin:0 0 9px;color:var(--os-text);font:600 13px/20px var(--os-font)}
 .os-image-upload-row{display:flex;align-items:center;gap:14px;min-width:0;padding:14px;border:1px dashed color-mix(in srgb,var(--os-primary) 28%,var(--os-border));background:color-mix(in srgb,var(--os-tint) 26%,var(--os-card));border-radius:16px}
 .os-image-thumb{display:grid;place-items:center;flex:0 0 98px;width:98px;height:90px;overflow:hidden;border:1px solid var(--os-border);border-radius:13px;background:var(--os-card);color:var(--os-muted)}

@@ -948,7 +948,7 @@
           '<small class="os-help">JPG, PNG, WebP ou HEIC · até 8 MB. Otimização automática.</small>'+
         '</div>'+
       '</div>'+
-      '<input class="os-image-file hidden" id="'+esc(id)+'" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" data-os-image-file="'+esc(name)+'">'+
+      '<input class="os-image-file" id="'+esc(id)+'" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" data-os-image-file="'+esc(name)+'">'+
       '<input type="hidden" id="osField-'+esc(name)+'" name="'+esc(name)+'" value="'+esc(value||'')+'">'+
       '<p class="os-image-status" role="status" aria-live="polite"></p>'+
     '</div>';
