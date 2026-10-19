@@ -284,10 +284,10 @@ class SitePreferences(CleanModel):
 
     @field_validator("logo_url", "cover_url", "instagram_url", "maps_url", "facebook_url", "tiktok_url", "external_url")
     @classmethod
-    def https_only(cls, value):
+    def https_only(cls, value, info):
         if value in (None, ""):
             return None
-        if is_media_url(value) and value.startswith("/media/") and cls is SitePreferences:
+        if info.field_name in {"logo_url", "cover_url"} and is_media_url(value):
             return value
         parsed = urlsplit(value)
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
