@@ -16,6 +16,7 @@ from app.catalog_api import support_session_factory
 from app.database import get_session_factory, tenant_transaction
 from app.messaging import CloudApiProvider
 from app.whatsapp_bot import reply
+from app.appointment_notice_worker import scan_appointment_notices,process_appointment_notice
 from app.calendar_worker import scan_calendar_outbox,process_calendar_outbox
 from app.billing_worker import reconcile_asaas_job,scan_pending_billing
 
@@ -148,8 +149,9 @@ async def recover_events(ctx: dict):
 
 
 class WorkerSettings:
-    functions = [infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,reconcile_asaas_job]
-    cron_jobs = [cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
+    functions = [process_appointment_notice,infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,reconcile_asaas_job]
+    cron_jobs = [cron(scan_appointment_notices, second={0,15,30,45}),
+                 cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
                  cron(scan_calendar_outbox, minute={2,7,12,17,22,27,32,37,42,47,52,57}, second=0),
                  cron(scan_pending_billing, minute={3,13,23,33,43,53}, second=0)]
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379/0"))

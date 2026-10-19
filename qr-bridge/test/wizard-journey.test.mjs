@@ -282,7 +282,7 @@ test("theme switch respects automatic system preference, explicit choice and log
 test("theme choices have unique accessible icon buttons, panel uses official logos",()=>{
  for(const item of ["auto","light","dark"])
    assert.match(html,new RegExp('data-theme-choice="'+item+'"[^>]*aria-label="Tema [^"]+"'));
- assert.equal([...html.matchAll(/data-theme-choice="/g)].length,3);
+ assert.equal([...html.matchAll(/data-theme-choice="/g)].length,6); // Three choices in login and three in the authenticated sidebar.
  assert.match(html,/--sidebar-bg:/);
  assert.match(html,/html\[data-theme="light"\]/);
  assert.match(html,/\.device-hero\{background:linear-gradient/);

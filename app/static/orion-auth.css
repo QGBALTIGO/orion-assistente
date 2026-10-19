@@ -1,0 +1,65 @@
+/* Authentication shares the panel's semantic tokens. No separate brand palette. */
+#loginView,.auth-member{--bg:var(--os-bg);--surface:var(--os-card);--text:var(--os-text);--muted:var(--os-muted);--border:var(--os-border);--accent:var(--os-primary);--bright:var(--os-primary);--danger:var(--os-danger);--soft-accent:var(--os-tint);background:var(--os-bg);color:var(--os-text);font:400 16px/1.5 var(--os-font)}
+#loginView{position:relative;min-height:100vh;min-height:100dvh;width:100%;margin:0;padding:0;color-scheme:light}
+html[data-theme=dark] #loginView{color-scheme:dark}
+#loginView .auth-shell{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);min-height:100dvh;width:100%;font:inherit}
+.auth-tools{position:absolute;z-index:2;top:max(16px,env(safe-area-inset-top));right:max(20px,env(safe-area-inset-right));display:flex;align-items:center;gap:8px}
+.auth-tools a{padding:10px 12px;font-size:14px;text-decoration:none;color:var(--os-muted)}
+.auth-tools .theme-choice{width:44px;height:44px;border:1px solid var(--os-border);background:var(--os-card);color:var(--os-muted);border-radius:10px;cursor:pointer}
+.auth-tools .theme-choice[aria-pressed=true]{background:var(--os-tint);border-color:var(--os-primary);color:var(--os-primary)}
+#loginView .auth-visual{position:relative;display:flex;flex-direction:column;justify-content:center;padding:120px clamp(32px,5vw,88px);background:var(--os-tint);border-right:1px solid var(--os-border);overflow:hidden}
+#loginView .auth-visual-logo{position:absolute;top:32px;left:clamp(32px,5vw,88px);padding:0;background:none;box-shadow:none}
+#loginView .auth-visual-logo img{width:180px;height:auto;display:block;filter:none}
+#loginView .auth-hero{max-width:480px}
+#loginView .auth-hero-kicker{display:block;margin-bottom:20px;font-size:12px;line-height:18px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--os-primary)}
+#loginView .auth-hero h1{font:600 clamp(32px,3.4vw,52px)/1.1 var(--os-display);letter-spacing:-.025em;color:var(--os-text);margin:0 0 24px;text-wrap:balance}
+#loginView .auth-hero p{font:400 18px/1.6 var(--os-font);color:var(--os-muted);margin:0}
+#loginView .auth-hero ul{list-style:none;margin:32px 0 0;padding:0;display:grid;gap:16px}
+#loginView .auth-hero li{display:flex;align-items:center;gap:12px;font:400 16px/1.5 var(--os-font);color:var(--os-text)}
+#loginView .auth-hero li span{display:grid;place-items:center;width:24px;height:24px;flex:none;color:var(--os-primary)}
+#loginView .auth-visual-bottom{position:absolute;bottom:32px;left:clamp(32px,5vw,88px);color:var(--os-muted);font-size:11px;letter-spacing:.1em}
+#loginView .auth-right{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:safe center;padding:100px clamp(24px,4vw,60px) 32px;background:var(--os-bg);color:var(--os-text)}
+#loginView .auth-card{width:100%;max-width:440px;border:1px solid var(--os-border);border-radius:20px;background:var(--os-card);box-shadow:var(--os-shadow);padding:32px}
+#loginView .auth-mobile-brand{display:block;text-align:center;margin:0 0 24px}
+#loginView .auth-mobile-brand img{display:block;margin:auto;width:160px;height:56px;object-fit:contain}
+#loginView .auth-card-top{text-align:center;margin-bottom:24px}
+#loginView .auth-card-top h2{font:600 26px/32px var(--os-display);letter-spacing:-.015em;color:var(--os-text);margin:0 0 8px}
+#loginView .auth-card-top p{font:400 15px/22px var(--os-font);color:var(--os-muted);margin:0}
+#loginView .auth-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:12px;background:var(--os-soft);margin-bottom:24px}
+#loginView .auth-tab{min-height:44px;border:0;border-radius:9px;background:transparent;color:var(--os-muted);font:500 15px/20px var(--os-font);cursor:pointer;transition:background .2s ease,color .2s ease}
+#loginView .auth-tab.active{background:var(--os-card);color:var(--os-text);box-shadow:var(--os-shadow)}
+#loginView .auth-form:not(.hidden){animation:auth-reveal .2s ease both}
+@keyframes auth-reveal{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+#loginView .auth-form label{display:block;color:var(--os-text);font:500 14px/20px var(--os-font);margin:18px 0 8px}
+#loginView .auth-form label small{font-weight:400;color:var(--os-muted)}
+#loginView .auth-form input:not([type=checkbox]){box-sizing:border-box;width:100%;height:48px;border:1px solid var(--os-border);border-radius:10px;background:var(--os-bg);color:var(--os-text);font:400 16px/24px var(--os-font);padding:11px 14px;min-width:0}
+#loginView .auth-form input::placeholder{color:var(--os-muted);opacity:.8}
+#loginView .auth-form input:not([type=checkbox]):focus{border-color:var(--os-primary);box-shadow:0 0 0 3px var(--os-tint)}
+#loginView .auth-secret-field{position:relative}
+#loginView .auth-secret-field input{padding-right:52px!important}
+#loginView .auth-eye{position:absolute;right:2px;top:2px;width:44px;height:44px;display:grid;place-items:center;border:0;border-radius:9px;color:var(--os-muted);background:transparent;cursor:pointer}
+#loginView .auth-eye svg{width:20px;height:20px}
+#loginView .auth-eye:hover{color:var(--os-primary);background:var(--os-tint)}
+#loginView .auth-login-options{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;margin:12px 0}
+#loginView .auth-form .auth-check{display:flex;align-items:center;gap:8px;margin:0;min-height:44px;color:var(--os-muted);font:400 14px/20px var(--os-font);cursor:pointer}
+#loginView .auth-check input[type=checkbox]{appearance:auto;-webkit-appearance:auto;width:18px;height:18px;min-width:18px;margin:0;padding:0;accent-color:var(--os-primary)}
+#loginView .auth-text-link{min-height:44px;border:0;background:transparent;color:var(--os-primary);font:500 14px/20px var(--os-font);text-decoration:underline;text-underline-offset:3px;padding:10px 0;cursor:pointer}
+#loginView .auth-primary{width:100%;min-height:48px;display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid var(--os-primary);border-radius:10px;background:var(--os-primary);color:#fff;padding:12px 16px;font:500 16px/22px var(--os-font);margin-top:16px;cursor:pointer;transition:background .2s ease,box-shadow .2s ease}
+#loginView .auth-primary:hover:not(:disabled){background:var(--os-primary-hover);border-color:var(--os-primary-hover)}
+#loginView button:disabled{opacity:.55;cursor:not-allowed}
+#loginView .auth-privacy{display:flex;align-items:center;justify-content:center;gap:8px;color:var(--os-muted);font:400 12px/18px var(--os-font);text-align:center;margin:24px 0 0}
+#loginView .auth-privacy svg{width:16px;height:16px;flex:none}
+#loginView .auth-hint,#loginView .auth-copyright{color:var(--os-muted);font:400 13px/20px var(--os-font);text-align:center;margin:16px 0 0}
+#loginView .auth-error{color:var(--os-danger)!important;font:400 14px/20px var(--os-font)!important;margin:12px 0 0;overflow-wrap:anywhere}
+#loginView .auth-error:empty{display:none}
+#loginView .auth-message{padding:12px;border:1px solid var(--os-border);border-radius:10px;background:var(--os-tint);color:var(--os-text);font-size:14px;margin-bottom:16px}
+#loginView .auth-form h3{color:var(--os-text);font:600 22px/28px var(--os-display);margin:4px 0 8px}
+#loginView .auth-form p{color:var(--os-muted)}
+#loginView .auth-back{display:block;text-align:center;margin:16px auto 0}
+#loginView .auth-form .auth-otp-input{text-align:center;letter-spacing:.35em;font-size:28px;font-weight:600;font-variant-numeric:tabular-nums;height:58px;background:var(--os-bg);color:var(--os-text);border-color:var(--os-border)}
+#loginView :is(button,input,a):focus-visible{outline:2px solid var(--os-primary);outline-offset:3px}
+#loginView .auth-caps{font-size:13px;color:var(--os-warning);margin-top:8px}
+#loginView [hidden]{display:none!important}
+@media(max-width:900px){#loginView .auth-shell{display:block;min-height:100dvh}#loginView .auth-visual{display:none}#loginView .auth-right{min-height:100dvh;padding:88px 24px 32px}.auth-tools{right:max(16px,env(safe-area-inset-right))}}
+@media(max-width:480px){#loginView .auth-right{padding:80px max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom))}#loginView .auth-card{padding:24px 20px;border-radius:20px}#loginView .auth-card-top h2{font-size:24px;line-height:30px}}
+@media(prefers-reduced-motion:reduce){#loginView *,#loginView *::before,#loginView *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
