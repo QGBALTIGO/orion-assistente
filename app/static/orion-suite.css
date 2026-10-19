@@ -163,11 +163,15 @@
 .os-inline-link{display:inline-flex;align-items:center;gap:6px;margin-top:12px;color:var(--os-primary);font-size:14px;line-height:20px;background:transparent;border:0;padding:0;cursor:pointer;text-decoration:none}
 .os-inline-link:hover{text-decoration:underline}
 .os-inline-link .os-icon{width:16px;height:16px}
-.os-fab{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom,0px));right:calc(24px + env(safe-area-inset-right,0px));z-index:35;display:flex;align-items:center;gap:8px;border:1px solid var(--os-border);border-radius:100px;padding:6px;background:color-mix(in srgb,var(--os-card) 95%,transparent);color:var(--os-primary);box-shadow:0 8px 24px #2e7bf626;backdrop-filter:blur(8px);cursor:pointer;transition:transform .2s,box-shadow .2s}
-.os-fab:hover{transform:translateY(-2px);box-shadow:0 10px 28px #2e7bf640}
-.os-fab>span:first-child{display:grid;place-items:center;width:44px;height:44px;background:var(--os-tint);border-radius:100%;color:var(--os-primary)}
-.os-fab-label{max-width:0;overflow:hidden;white-space:nowrap;font:500 14px/20px var(--os-font);transition:max-width .2s}
-.os-fab:hover .os-fab-label,.os-fab:focus-visible .os-fab-label{max-width:130px;padding-right:10px}
+/* The floating consultant remains a true circle. The label is accessible through
+   aria-label; it must not create an invisible flex gap or expand on mobile taps. */
+.os-fab{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom,0px));right:calc(24px + env(safe-area-inset-right,0px));z-index:35;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:0;width:56px;min-width:56px;height:56px;min-height:56px;margin:0;padding:5px;border:1px solid var(--os-border);border-radius:50%;background:var(--os-card);color:var(--os-primary);box-shadow:0 6px 18px #2e7bf626;cursor:pointer;transition:transform .2s ease,box-shadow .2s ease}
+.os-fab>span:first-child{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;background:var(--os-tint);border-radius:50%;color:var(--os-primary)}
+.os-fab>span:first-child .os-icon{display:block;width:22px;height:22px}
+.os-fab-label{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+@media(hover:hover) and (pointer:fine){.os-fab:hover{transform:translateY(-2px);box-shadow:0 10px 28px #2e7bf640}}
+.os-fab:focus-visible{outline:3px solid var(--os-primary);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){.os-fab{transition:none}}
 .os-scrim{display:none}
 .os-loading{padding:48px 20px;display:flex;gap:10px;justify-content:center;align-items:center;color:var(--os-muted);font-size:14px;text-align:center}
 .os-spinner{width:18px;height:18px;border:2px solid var(--os-border);border-top-color:var(--os-primary);border-radius:50%;animation:os-spin .7s linear infinite;flex-shrink:0}
@@ -683,7 +687,7 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
  .os-dashboard-title{margin-bottom:24px}
  .os-title-row{gap:12px;margin-bottom:20px}
  .os-title-row .os-actions{gap:6px}
- .os-fab{bottom:calc(20px + env(safe-area-inset-bottom,0px));right:calc(20px + env(safe-area-inset-right,0px))}
+ .os-fab{width:52px;min-width:52px;height:52px;min-height:52px;bottom:calc(16px + env(safe-area-inset-bottom,0px));right:calc(16px + env(safe-area-inset-right,0px))}.os-fab>span:first-child{flex-basis:40px;width:40px;height:40px}
  .os-toast-region{right:16px;bottom:90px}
  .os-sidebar-context{min-height:112px}
  .orion-suite-enabled .sidebar>.sidebar-bottom{display:block;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
