@@ -98,8 +98,15 @@ test('Pessoas sem permissão não podem abrir o controle de edição de cores',a
 test('CSS mantém roda em círculo, swatch visível e foco, sem estilo retangular antigo',async ()=>{
   const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
   const js=await readFile(new URL('../app/static/orion-suite.js',import.meta.url),'utf8');
-  assert.match(css,/\.os-color-wheel\{[^}]*border-radius:50%;background:conic-gradient\(/);
-  assert.match(css,/\.os-color-selected\{[^}]*background:var\(--os-selected-color/);
+  assert.match(css,/\.os-color-presets>button\[data-os-color\]\{[^}]*width:44px;height:44px/,'preset touch target remains 44px');
+  assert.match(css,/\.os-color-presets>button\[data-os-color\]::before\{[^}]*width:32px;height:32px/,'visible preset reduces to 32px');
+  assert.match(css,/\.os-color-wheel\{[^}]*width:44px;height:44px/,'native picker remains 44px touch area');
+  assert.match(css,/\.os-color-wheel::before\{[^}]*inset:4px;[^}]*background:conic-gradient\(/,'rainbow ring has a 36px diameter');
+  assert.match(css,/\.os-color-selected\{[^}]*width:20px;height:20px;[^}]*background:var\(--os-selected-color/,'selected swatch has a 20px diameter');
+  assert.match(css,/\.os-color-wheel::after\{[^}]*inset:8px;[^}]*background:var\(--os-card\)/,'proper interior gap around selected color');
+  assert.match(css,/@media\(max-width:359px\)\{[^}]*\.os-color-presets\{gap:0\}/,'tighter spacing below 360px');
+  assert.match(css,/\.os-color-presets>button\[data-os-color\]:focus-visible\{outline:3px solid/,'keyboard focus remains visible');
+  assert.match(js,/style="--os-preset-color:'\+color\+'/,'preset colors are painted on their inner disc instead of the entire button');
   assert.match(css,/\.os-color-wheel>input\.os-color-native\{[^}]*opacity:0!important;cursor:pointer!important/);
   assert.match(css,/\.os-color-wheel:focus-within\{outline:3px/);
   assert.match(css,/@media\(max-width:359px\)\{\.os-color-presets/);

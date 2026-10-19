@@ -841,17 +841,21 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-service-card .os-check.os-toggle input:checked:before{transform:translateX(14px)}
 /* The shared circular color control keeps the native picker and the chosen swatch. */
 .os-color-group-label{display:block;margin:0 0 10px;color:var(--os-text);font:500 14px/20px var(--os-font)}
-.os-color-presets{display:flex;flex-wrap:wrap;align-items:center;gap:10px;min-width:0}
-.os-color-presets>button[data-os-color]{box-sizing:border-box;display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;margin:2px;padding:0;border:2px solid var(--os-card);border-radius:50%;outline:1px solid var(--os-border);cursor:pointer;transition:box-shadow .16s ease,outline-color .16s ease}
-.os-color-presets>button[data-os-color][aria-pressed=true]{outline:2px solid var(--os-primary);outline-offset:2px}
-.os-color-presets>button[data-os-color]:focus-visible{outline:3px solid var(--os-primary);outline-offset:3px}
+/* Smaller visible swatches, with a separate 44px tap target for mobile accessibility. */
+.os-color-presets{display:flex;flex-wrap:wrap;align-items:center;gap:2px;min-width:0}
+.os-color-presets>button[data-os-color]{box-sizing:border-box;display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;margin:0;padding:0;border:0;border-radius:50%;background:transparent;outline:none;cursor:pointer}
+.os-color-presets>button[data-os-color]::before{content:"";box-sizing:border-box;width:32px;height:32px;border:2px solid var(--os-card);border-radius:50%;background:var(--os-preset-color);box-shadow:0 0 0 1px var(--os-border);transition:outline-color .16s ease,box-shadow .16s ease}
+.os-color-presets>button[data-os-color][aria-pressed=true]::before{outline:2px solid var(--os-primary);outline-offset:2px}
+.os-color-presets>button[data-os-color]:focus-visible{outline:3px solid var(--os-primary);outline-offset:0}
 .os-color-field{min-width:0}
 .os-color-field>label:not(.os-color-label-hidden){display:block;margin:0 0 9px;color:var(--os-text);font:500 14px/20px var(--os-font)}
 .os-color-label-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 .os-color-control{display:flex;align-items:center;gap:12px;min-width:0}
-.os-color-wheel{position:relative;box-sizing:border-box;display:grid;place-items:center;flex:0 0 46px;width:46px;height:46px;isolation:isolate;border-radius:50%;background:conic-gradient(#f34c63,#ff9e37,#f3d744,#40c96d,#30bfd1,#408afe,#9569ea,#d648bd,#f34c63);box-shadow:0 0 0 1px var(--os-border);cursor:pointer}
-.os-color-wheel::before{content:"";position:absolute;inset:5px;border-radius:50%;background:var(--os-card)}
-.os-color-selected{position:relative;display:block;box-sizing:border-box;width:27px;height:27px;border:2px solid var(--os-card);border-radius:50%;background:var(--os-selected-color,#2e7bf6);box-shadow:0 0 0 1px color-mix(in srgb,var(--os-text) 14%,transparent);pointer-events:none}
+/* The rainbow is 36px across; the native color input still receives 44px taps. */
+.os-color-wheel{position:relative;box-sizing:border-box;display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;isolation:isolate;border-radius:50%;background:transparent;cursor:pointer}
+.os-color-wheel::before{content:"";position:absolute;inset:4px;border-radius:50%;background:conic-gradient(#f34c63,#ff9e37,#f3d744,#40c96d,#30bfd1,#408afe,#9569ea,#d648bd,#f34c63);box-shadow:0 0 0 1px var(--os-border)}
+.os-color-wheel::after{content:"";position:absolute;inset:8px;border-radius:50%;background:var(--os-card)}
+.os-color-selected{position:relative;z-index:1;display:block;box-sizing:border-box;width:20px;height:20px;border:2px solid var(--os-card);border-radius:50%;background:var(--os-selected-color,#2e7bf6);box-shadow:0 0 0 1px color-mix(in srgb,var(--os-text) 14%,transparent);pointer-events:none}
 .os-color-wheel>input.os-color-native{position:absolute!important;inset:0!important;z-index:1;box-sizing:border-box!important;display:block!important;width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;border:0!important;border-radius:50%!important;opacity:0!important;cursor:pointer!important;background:transparent!important;appearance:none;-webkit-appearance:none}
 .os-color-wheel:focus-within{outline:3px solid color-mix(in srgb,var(--os-primary) 65%,transparent);outline-offset:3px}
 .os-color-wheel:has(>input:disabled){cursor:not-allowed;opacity:.55}
@@ -859,8 +863,8 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-color-description>strong{font:600 14px/20px var(--os-font);font-variant-numeric:tabular-nums}
 .os-color-description>small{font:400 12px/18px var(--os-font);color:var(--os-muted)}
 .os-color-compact{flex:1 1 100%;width:100%;margin:2px 0 0}
-.os-color-compact .os-color-control{gap:12px}
-@media(max-width:359px){.os-color-presets{gap:8px}.os-color-presets>button[data-os-color]{flex-basis:34px;width:34px;height:34px}.os-color-compact{margin:0}.os-color-wheel{flex-basis:44px;width:44px;height:44px}}
+.os-color-compact .os-color-control{gap:10px}
+@media(max-width:359px){.os-color-presets{gap:0}.os-color-presets>button[data-os-color]::before{width:30px;height:30px}.os-color-compact{margin:0}.os-color-wheel::before{inset:5px}.os-color-wheel::after{inset:9px}.os-color-selected{width:18px;height:18px}}
 
 .os-checkbox-chips{display:flex;flex-wrap:wrap;gap:8px}
 .os-checkbox-chips .os-check{border:1px solid var(--os-border);padding:7px 10px;border-radius:10px;background:var(--os-card);font-size:12px}
