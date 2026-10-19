@@ -45,7 +45,8 @@ def test_pool_bounds_reject_before_any_disposable_database(flag,value,tmp_path):
     assert not list(tmp_path.iterdir())
 
 
-def test_pool_declaration_precedes_database_and_matches_explicit_api_environment(monkeypatch,tmp_path):
+@pytest.mark.parametrize("size,overflow", [(5, 5), (10, 0)])
+def test_pool_declaration_precedes_database_and_matches_explicit_api_environment(monkeypatch,tmp_path,size,overflow):
     monkeypatch.setenv("ORION_QUALIFICATION_DISPOSABLE", "1")
     monkeypatch.setenv("ORION_QUALIFICATION_OWNER_URL", "postgresql://postgres:synthetic@127.0.0.1/postgres")
     monkeypatch.setenv("ORION_DB_POOL_SIZE", "20")
@@ -66,17 +67,17 @@ def test_pool_declaration_precedes_database_and_matches_explicit_api_environment
             raise RuntimeError("No connection permitted by this harness test")
     monkeypatch.setattr(load, "DisposableDatabase", NoDatabase)
     arguments = ["--confirm-disposable-local", "--output",str(path),"--api-workers","3",
-        "--db-pool-size","5","--db-max-overflow","5"]
+        "--db-pool-size",str(size),"--db-max-overflow",str(overflow)]
     assert load.main(arguments) == 1
     declaration = declarations[0]
     assert declaration["source_commit"] == "0"*40
     assert declaration["machine"]["platform"] == "synthetic-platform"
-    assert declaration["database_pools"] == {"size_per_role_per_worker":5,
-        "max_overflow_per_role_per_worker":5,"roles_per_worker":2,"theoretical_api_connection_ceiling":60}
+    assert declaration["database_pools"] == {"size_per_role_per_worker":size,
+        "max_overflow_per_role_per_worker":overflow,"roles_per_worker":2,"theoretical_api_connection_ceiling":60}
     assert declaration["api_workers"] == 3 and declaration["targets_before_run"] == load.TARGETS
     assert declaration["offered_journey_rate_per_second"]["1500"] == 150
     args = load.parser().parse_args(arguments)
-    assert load.api_pool_environment(args) == {"ORION_DB_POOL_SIZE":"5", "ORION_DB_MAX_OVERFLOW":"5"}
+    assert load.api_pool_environment(args) == {"ORION_DB_POOL_SIZE":str(size), "ORION_DB_MAX_OVERFLOW":str(overflow)}
     defaults = load.parser().parse_args(["--output", "synthetic.json"])
     assert (defaults.api_workers,defaults.db_pool_size,defaults.db_max_overflow) == (2,5,10)
 

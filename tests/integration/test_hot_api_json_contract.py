@@ -5,6 +5,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 import httpx
 import pytest
+import pytest_asyncio
 from sqlalchemy import text
 
 from app import booking_api, booking_service, catalog_api, commercial_api, commercial_service
@@ -17,6 +18,18 @@ from test_commercial_catalog_postgres import commerce, setup_item
 pytestmark = pytest.mark.integration
 
 
+@pytest_asyncio.fixture
+async def wire_booking_db(booking_db):
+    try:
+        yield booking_db
+    finally:
+        # These real HTTP mutations also persist their operation receipts.
+        # Remove only this fixture's rows before its parent deletes the tenant.
+        async with booking_db["migrator"].begin() as db:
+            await db.execute(text("DELETE FROM management_requests WHERE tenant_id IN (:a,:b)"),
+                             {"a": booking_db["a"], "b": booking_db["b"]})
+
+
 def legacy_response(response, payload, status=200):
     # Before this optimization the endpoint encoded its value, then FastAPI
     # encoded it again. Keep that independent reference, including raw headers.
@@ -27,8 +40,8 @@ def legacy_response(response, payload, status=200):
 
 
 @pytest.mark.asyncio
-async def test_real_booking_and_catalog_preserve_entire_wire_contract(booking_db, monkeypatch):
-    d, actor = booking_db, Actor("support")
+async def test_real_booking_and_catalog_preserve_entire_wire_contract(wire_booking_db, monkeypatch):
+    d, actor = wire_booking_db, Actor("support")
     tenant, factory = d["a"], d["factory"]
     monkeypatch.setattr(booking_api, "get_session_factory", lambda: factory)
     monkeypatch.setattr(catalog_api, "get_session_factory", lambda: factory)

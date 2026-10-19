@@ -25,14 +25,14 @@ def test_defaults_preserve_the_existing_pool_limits_and_pre_ping(monkeypatch):
     assert catalog.engine_pool_options is database.engine_pool_options
 
 
-@pytest.mark.parametrize("size,overflow", [(1, 0), (5, 5), (20, 20)])
+@pytest.mark.parametrize("size,overflow", [(1, 0), (5, 5), (10, 0), (20, 20)])
 def test_explicit_configuration_is_bounded_and_shared(monkeypatch, size, overflow):
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setenv("ORION_DB_POOL_SIZE", str(size))
     monkeypatch.setenv("ORION_DB_MAX_OVERFLOW", str(overflow))
     expected = {"pool_pre_ping": True, "pool_size": size, "max_overflow": overflow}
     assert database.engine_pool_options() == catalog.engine_pool_options() == expected
-    if (size, overflow) == (5, 5):
+    if (size, overflow) in {(5, 5), (10, 0)}:
         assert 3 * 2 * (expected["pool_size"] + expected["max_overflow"]) == 60
 
 
@@ -65,7 +65,7 @@ def test_pytest_uses_null_pool_without_queue_pool_only_options(monkeypatch, conf
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("size,overflow,pytest_mode", [(None, None, False), (5, 5, False), (1, 0, False), (20, 20, False), (5, 5, True)])
+@pytest.mark.parametrize("size,overflow,pytest_mode", [(None, None, False), (5, 5, False), (10, 0, False), (1, 0, False), (20, 20, False), (5, 5, True)])
 async def test_both_real_factories_accept_options_and_keep_roles_and_session_contract(monkeypatch, size, overflow, pytest_mode):
     if size is not None:
         monkeypatch.setenv("ORION_DB_POOL_SIZE", str(size))
