@@ -20,7 +20,7 @@ concurrency:
 jobs:
   browser:
     name: Navegador - 20 jornadas com API e banco reais
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
       postgres:
@@ -79,7 +79,7 @@ jobs:
 
   load:
     name: Carga real isolada - ${{ matrix.profile }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -142,7 +142,7 @@ jobs:
   cpu-profile:
     name: Diagnostico CPU - ${{ matrix.profile }} - ${{ matrix.configuration.workers }} workers (nao qualifica capacidade)
     if: github.event_name == 'workflow_dispatch' && inputs.cpu_profile
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
