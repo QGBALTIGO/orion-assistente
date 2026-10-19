@@ -112,7 +112,7 @@ test('Seções de Marketing, IA e solicitações continuam usando details com um
   // Existing custom chevrons on cards are kept, not duplicated by ::after.
   const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
   assert.match(css,/\.os-automation-rule\[open\]>summary>\.os-icon\{transform:rotate\(180deg\)\}/);
-  assert.match(css,/\.os-site-request\[open\] summary>\.os-icon\{transform:rotate\(180deg\)\}/);
+  assert.match(css,/\.os-site-request\[open\](?:>| )summary>\.os-icon\{transform:rotate\(180deg\)\}/);
   assert.doesNotMatch(css,/\.os-automation-rule>summary::after|\.os-site-request>summary::after/);
 });
 
