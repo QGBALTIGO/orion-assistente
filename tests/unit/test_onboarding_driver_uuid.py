@@ -160,19 +160,15 @@ async def test_actual_state_assembly_with_driver_facts_keeps_http_snapshot_and_e
     config = {"niche": "outro", "activity": "both", "modality": "online", "private_address": None}
     meta = {"configuration": config, "managed_ids": {}, "version": 7, "is_new": True,
         "completed_at": None, "current_step": "review"}
-    class Rows:
-        def __init__(self, rows): self.rows = rows
-        def mappings(self): return self
-        def first(self): return self.rows[0] if self.rows else None
-        def all(self): return self.rows
-        def scalar_one_or_none(self): return self.rows[0] if self.rows else None
     class DB:
         async def execute(self, query, _params):
-            return Rows([meta]) if "FROM business_onboarding " in str(query) else Rows([])
+            pytest.fail("State assembly SQL inputs are provided separately")
     async def read_facts(*args): return facts
-    async def profile(*args): return {"generation": 0, "draft": None, "published": None}
+    async def details(*args):
+        return {"meta": meta, "channels": {"generation": 0, "draft": None, "published": None},
+                "site": None, "google": None, "whatsapp": None, "operations": []}
     monkeypatch.setattr(service, "_facts", read_facts)
-    monkeypatch.setattr(service, "_profile", profile)
+    monkeypatch.setattr(service, "_state_details", details)
     monkeypatch.setenv("COMMERCIAL_CATALOG_ENABLED", "1")
     assert service._digest_needs_legacy(facts) is False
     with monkeypatch.context() as isolated:

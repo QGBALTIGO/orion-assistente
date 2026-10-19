@@ -155,6 +155,16 @@ execução; PG indisponível localmente é registrado como skip, nunca como PASS
 
 ## Diagnóstico após a primeira carga real
 
+A montagem do estado do cadastro lê fatos e detalhes em dois comandos SQL,
+em vez dos quatorze anteriores. Os catálogos usam arrays de linhas compostas
+do PostgreSQL, preservando os codecs nativos de UUID, datas, horários e números;
+não há conversão intermediária para JSON no banco. Todos os filtros de empresa,
+políticas RLS, ordenações e o limite das últimas vinte operações permanecem.
+O teste PostgreSQL compara tipos, valores, corpo HTTP, snapshot e fingerprints
+com consultas independentes do caminho anterior, incluindo empresa vazia e
+tentativa de leitura cruzada. A redução de comandos não constitui aprovação
+de capacidade: a mesma bateria completa continua obrigatória.
+
 As primeiras cargas completas com dois workers reprovaram em 1.000 e 1.500
 sessões. Os resultados permanecem preservados. O próximo candidato usa três
 workers, com `ORION_DB_POOL_SIZE=5` e `ORION_DB_MAX_OVERFLOW=5` tanto no engine

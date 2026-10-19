@@ -20,8 +20,6 @@ concurrency:
 jobs:
   browser:
     name: Navegador - 20 jornadas com API e banco reais
-    # Temporary CPU-only investigation after failed full loads; never a release gate.
-    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
@@ -81,8 +79,6 @@ jobs:
 
   load:
     name: Carga real isolada - ${{ matrix.profile }}
-    # Restore the full acceptance jobs before the next release candidate.
-    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -145,7 +141,7 @@ jobs:
 
   cpu-profile:
     name: Diagnostico CPU - ${{ matrix.profile }} - ${{ matrix.configuration.workers }} workers (nao qualifica capacidade)
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.cpu_profile)
+    if: github.event_name == 'workflow_dispatch' && inputs.cpu_profile
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -153,6 +149,8 @@ jobs:
       matrix:
         profile: [concentrated, wide]
         configuration:
+          - workers: 2
+            overflow: 10
           - workers: 3
             overflow: 5
     services:

@@ -314,24 +314,16 @@ async def test_actual_state_values_fingerprints_snapshot_and_http_bytes_are_iden
         "completed_at": None, "current_step": "review"}
     operations = [{"key": "synthetic-operation", "step": "channels", "version": 7,
         "result": {"generation": 2, "version_id": str(UUID(int=5))}}]
-    class Rows:
-        def __init__(self, rows): self.rows = rows
-        def mappings(self): return self
-        def first(self): return self.rows[0] if self.rows else None
-        def all(self): return self.rows
-        def scalar_one_or_none(self): return self.rows[0] if self.rows else None
     class Database:
         async def execute(self, query, _params):
-            sql = str(query)
-            if "FROM business_onboarding_operations" in sql: return Rows(operations)
-            if "FROM business_onboarding " in sql: return Rows([meta])
-            return Rows([])
+            pytest.fail("State assembly SQL inputs are provided separately")
     async def read_facts(*args): return facts
-    async def read_profile(*args):
-        return {"generation": 2, "draft": {"faqs": [{"question": "Preço?", "answer": "Sob consulta."}],
-            "style_rules": {"tone": "warm"}, "capabilities": ["catalog_answers"]}, "published": None}
+    async def read_details(*args):
+        return {"meta": meta, "site": None, "google": None, "whatsapp": None, "operations": operations,
+                "channels": {"generation": 2, "draft": {"faqs": [{"question": "Preço?", "answer": "Sob consulta."}],
+                  "style_rules": {"tone": "warm"}, "capabilities": ["catalog_answers"]}, "published": None}}
     monkeypatch.setattr(service, "_facts", read_facts)
-    monkeypatch.setattr(service, "_profile", read_profile)
+    monkeypatch.setattr(service, "_state_details", read_details)
     monkeypatch.setenv("ONBOARDING_ENABLED", "1")
     monkeypatch.setenv("COMMERCIAL_CATALOG_ENABLED", "1")
     native = service._state_jsonable

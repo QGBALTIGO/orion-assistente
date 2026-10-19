@@ -131,23 +131,27 @@ async def access_session(actor, tenant, *, write=False):
             yield TenantAccess(role, actor.account_id)
 
 
-async def _rows(db, table, tenant):
-    # Only fixed, server-owned table names call this helper.
-    return [dict(r) for r in (await db.execute(text(f"SELECT * FROM {table} WHERE tenant_id=:t ORDER BY id"),
-                                             {"t": tenant})).mappings().all()]
+_FACT_TABLES = (("professionals", "professionals"), ("services", "services"),
+                ("links", "professional_services"), ("hours", "working_hours"),
+                ("breaks", "working_breaks"), ("products", "commercial_products"),
+                ("variants", "commercial_variants"))
+# Whole-row composites preserve asyncpg's native UUID/date/time/Decimal codecs.
+# JSON aggregation would change the historical fingerprint representation.
+# Names are fixed here, never taken from a request. Every subquery retains both
+# the explicit tenant predicate and the runtime connection's RLS policies.
+_FACTS_SQL = text("SELECT business.id,business.name,business.timezone,business.status," + ",".join(
+    f"ARRAY(SELECT item FROM {table} item WHERE item.tenant_id=:t ORDER BY item.id) AS {key}"
+    for key, table in _FACT_TABLES
+) + " FROM tenants business WHERE business.id=:t")
 
 
 async def _facts(db, tenant):
-    business = (await db.execute(text("SELECT id,name,timezone,status FROM tenants WHERE id=:t"),
-                                 {"t": tenant})).mappings().first()
-    if business is None:
+    row = (await db.execute(_FACTS_SQL, {"t": tenant})).mappings().first()
+    if row is None:
         raise HTTPException(404, "Empresa não encontrada")
-    result = {"business": dict(business)}
-    for key, table in (("professionals", "professionals"), ("services", "services"),
-                       ("links", "professional_services"), ("hours", "working_hours"),
-                       ("breaks", "working_breaks"), ("products", "commercial_products"),
-                       ("variants", "commercial_variants")):
-        result[key] = await _rows(db, table, tenant)
+    result = {"business": {key: row[key] for key in ("id", "name", "timezone", "status")}}
+    for key, _table in _FACT_TABLES:
+        result[key] = [dict(item) for item in row[key]]
     return result
 
 
@@ -282,21 +286,43 @@ def _state_jsonable(value):
     return jsonable_encoder(value)
 
 
-async def _profile(db, tenant):
-    row = (await db.execute(text("""SELECT s.generation,s.draft_version_id,s.published_version_id,
-          d.profile AS draft,p.profile AS published FROM business_profile_state s
-          LEFT JOIN business_profile_versions d ON d.tenant_id=s.tenant_id AND d.id=s.draft_version_id
-          LEFT JOIN business_profile_versions p ON p.tenant_id=s.tenant_id AND p.id=s.published_version_id
-          WHERE s.tenant_id=:t"""), {"t": tenant})).mappings().first()
-    return dict(row) if row else {"generation": 0, "draft": None, "published": None}
+_STATE_DETAILS_SQL = text("""SELECT
+    CASE WHEN meta.tenant_id IS NULL THEN NULL ELSE meta END AS metadata,
+    s.generation,s.draft_version_id,s.published_version_id,
+    d.profile AS draft,p.profile AS published,site.public_enabled,
+    google.status AS google_status,
+    (SELECT bool_or(status='connected') FROM whatsapp_channels WHERE tenant_id=:t) AS whatsapp_connected,
+    ARRAY(SELECT operation FROM business_onboarding_operations operation
+      WHERE operation.tenant_id=:t ORDER BY operation.created_at DESC,operation.idempotency_key DESC LIMIT 20) AS operations
+  FROM (VALUES (1)) AS anchor(value)
+  LEFT JOIN business_onboarding meta ON meta.tenant_id=:t
+  LEFT JOIN business_profile_state s ON s.tenant_id=:t
+  LEFT JOIN business_profile_versions d ON d.tenant_id=s.tenant_id AND d.id=s.draft_version_id
+  LEFT JOIN business_profile_versions p ON p.tenant_id=s.tenant_id AND p.id=s.published_version_id
+  LEFT JOIN management_site_preferences site ON site.tenant_id=:t
+  LEFT JOIN google_connections google ON google.tenant_id=:t""")
+
+
+async def _state_details(db, tenant):
+    row = (await db.execute(_STATE_DETAILS_SQL, {"t": tenant})).mappings().one()
+    channels = ({"generation": 0, "draft": None, "published": None} if row["generation"] is None
+                else {key: row[key] for key in ("generation", "draft_version_id", "published_version_id", "draft", "published")})
+    return {"meta": dict(row["metadata"]) if row["metadata"] is not None else None,
+            "channels": channels,
+            "site": row["public_enabled"], "google": row["google_status"],
+            "whatsapp": row["whatsapp_connected"],
+            "operations": [{"key": item["idempotency_key"], "step": item["step"],
+                            "version": item["version"], "result": item["result"]}
+                           for item in row["operations"]]}
 
 
 async def _state(db, tenant, access):
     facts = await _facts(db, tenant)
-    meta = (await db.execute(text("SELECT * FROM business_onboarding WHERE tenant_id=:t"), {"t": tenant})).mappings().first()
+    details = await _state_details(db, tenant)
+    meta = details["meta"]
     configuration = dict(meta["configuration"]) if meta else {}
     managed = meta["managed_ids"] if meta else {}
-    channels = await _profile(db, tenant)
+    channels = details["channels"]
     if not meta:
         published = channels.get("published") or {}
         categories = published.get("categories") or []
@@ -305,9 +331,7 @@ async def _state(db, tenant, access):
                          "contact_phone": published.get("contact_phone"), "modality": None, "private_address": None}
     pending = readiness(configuration, facts, managed)
     configuration.setdefault("private_address", None)
-    site = (await db.execute(text("SELECT public_enabled FROM management_site_preferences WHERE tenant_id=:t"), {"t": tenant})).scalar_one_or_none()
-    google = (await db.execute(text("SELECT status FROM google_connections WHERE tenant_id=:t"), {"t": tenant})).scalar_one_or_none()
-    whatsapp = (await db.execute(text("SELECT bool_or(status='connected') FROM whatsapp_channels WHERE tenant_id=:t"), {"t": tenant})).scalar_one_or_none()
+    site, google, whatsapp = details["site"], details["google"], details["whatsapp"]
     catalog = {k: [] for k in ("professionals", "services", "products", "hours")}
     for key, table in (("professionals", "professionals"), ("services", "services"), ("products", "commercial_products"), ("hours", "working_hours")):
         for raw in facts[key]:
@@ -327,9 +351,7 @@ async def _state(db, tenant, access):
             if key == "hours":
                 row["breaks"] = [{k: v for k, v in b.items() if k != "tenant_id"} for b in facts["breaks"] if b["working_hour_id"] == raw["id"]]
             catalog[key].append(row)
-    operations = [dict(r) for r in (await db.execute(text("""SELECT idempotency_key AS key,step,version,result
-        FROM business_onboarding_operations WHERE tenant_id=:t ORDER BY created_at DESC,idempotency_key DESC LIMIT 20"""),
-        {"t": tenant})).mappings().all()]
+    operations = details["operations"]
     missing = {p["step"] for p in pending}
     result = {"enabled": enabled(), "tenant_id": tenant, "name": facts["business"]["name"], "timezone": facts["business"]["timezone"],
               "version": meta["version"] if meta else 0, "can_edit": access.role in {"owner", "support", "admin"},
