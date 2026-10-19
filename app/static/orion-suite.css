@@ -550,6 +550,43 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-customer-dialog .os-form-actions>.os-button{min-height:44px;border-radius:100px}
 .os-customer-dialog .os-form-actions>button[type=submit]{flex:1;font-weight:600}
 .os-customer-dialog .os-field label{font-size:12px;line-height:16px}
+
+/* Customer form: a single, theme-aware visual language for create and edit. */
+#osDialog.os-customer-dialog .os-client-form{display:grid;gap:18px;min-width:0}
+#osDialog.os-customer-dialog .os-client-intro{font-size:12px;line-height:18px}
+#osDialog.os-customer-dialog .os-client-field{display:grid;gap:7px;min-width:0}
+#osDialog.os-customer-dialog .os-client-field>label{display:block;margin:0;color:var(--os-text);font:600 13px/19px var(--os-font)}
+#osDialog.os-customer-dialog .os-client-input,
+#osDialog.os-customer-dialog .os-client-textarea{box-sizing:border-box;display:flex;align-items:center;gap:11px;min-width:0;width:100%;min-height:52px;padding:0 14px;border:1px solid var(--os-border);border-radius:16px;background:color-mix(in srgb,var(--os-tint) 38%,var(--os-card));box-shadow:var(--os-shadow);transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease}
+#osDialog.os-customer-dialog .os-client-input:focus-within,
+#osDialog.os-customer-dialog .os-client-textarea:focus-within{border-color:var(--os-primary);background:var(--os-card);box-shadow:0 0 0 3px color-mix(in srgb,var(--os-primary) 18%,transparent)}
+#osDialog.os-customer-dialog .os-client-input-icon{display:grid;place-items:center;flex:0 0 19px;width:19px;height:19px;color:var(--os-muted);pointer-events:none}
+#osDialog.os-customer-dialog .os-client-input-icon .os-icon{display:block;width:19px;height:19px}
+#osDialog.os-customer-dialog .os-client-input-plain{gap:0}
+#osDialog.os-customer-dialog .os-client-input>input:not([type=checkbox]):not([type=radio]):not([type=color]),
+#osDialog.os-customer-dialog .os-client-textarea>textarea{box-sizing:border-box;flex:1;min-width:0;max-width:100%;width:100%;min-height:48px;height:48px;padding:0;border:0;border-radius:0;background:transparent;color:var(--os-text);box-shadow:none;outline:none;font:400 16px/24px var(--os-font)}
+#osDialog.os-customer-dialog .os-client-input>input:not([type=checkbox]):not([type=radio]):not([type=color]):focus,
+#osDialog.os-customer-dialog .os-client-textarea>textarea:focus{border:0;background:transparent;box-shadow:none;outline:none}
+#osDialog.os-customer-dialog .os-client-input input::placeholder,
+#osDialog.os-customer-dialog .os-client-textarea textarea::placeholder{color:var(--os-muted);opacity:.86}
+#osDialog.os-customer-dialog .os-client-hint{margin:0;font:400 11px/17px var(--os-font);color:var(--os-muted)}
+#osDialog.os-customer-dialog .os-client-textarea{align-items:flex-start;min-height:112px;padding:0 14px}
+#osDialog.os-customer-dialog .os-client-textarea>textarea{height:auto;min-height:108px;padding:14px 0;line-height:23px;resize:vertical}
+#osDialog.os-customer-dialog .os-client-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0}
+#osDialog.os-customer-dialog .os-client-more{min-width:0;border:0;padding:0}
+#osDialog.os-customer-dialog .os-client-more-toggle{box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:9px;min-height:48px;width:100%;padding:11px 13px;border:1px dashed color-mix(in srgb,var(--os-primary) 22%,var(--os-border));border-radius:14px;background:color-mix(in srgb,var(--os-tint) 16%,var(--os-card));color:var(--os-primary);list-style:none;text-align:center;font:500 13px/20px var(--os-font);cursor:pointer;transition:background-color .18s,border-color .18s}
+#osDialog.os-customer-dialog .os-client-more-toggle::-webkit-details-marker{display:none}
+#osDialog.os-customer-dialog .os-client-more-toggle::marker{content:""}
+#osDialog.os-customer-dialog .os-client-more-toggle:hover{background:var(--os-tint);border-color:color-mix(in srgb,var(--os-primary) 45%,var(--os-border))}
+#osDialog.os-customer-dialog .os-client-more-toggle:focus-visible{outline:3px solid color-mix(in srgb,var(--os-primary) 55%,transparent);outline-offset:2px}
+#osDialog.os-customer-dialog .os-client-more-icon{display:grid;place-items:center;flex:0 0 17px;width:17px;height:17px;font:600 19px/1 var(--os-font)}
+#osDialog.os-customer-dialog .os-client-more-icon::before{content:"+"}
+#osDialog.os-customer-dialog .os-client-more[open] .os-client-more-icon::before{content:"−"}
+#osDialog.os-customer-dialog .os-client-more-text{min-width:0}
+#osDialog.os-customer-dialog .os-client-more-text small{font:400 12px/18px var(--os-font);color:inherit;opacity:.86}
+#osDialog.os-customer-dialog .os-client-extra-fields{display:grid;gap:18px;padding-top:16px}
+@media(max-width:359px){#osDialog.os-customer-dialog .os-client-grid{grid-template-columns:1fr}}
+
 .os-more-fields{border-top:1px solid var(--os-border);padding-top:16px}
 .os-more-fields summary{cursor:pointer;color:var(--os-text);font-size:14px;font-weight:500;line-height:22px}
 .os-more-fields summary span{display:block;font-size:12px;color:var(--os-muted);font-weight:400}
