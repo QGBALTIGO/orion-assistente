@@ -4,7 +4,7 @@ import secrets
 
 import httpx
 import pytest
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
 from redis.exceptions import RedisError
 
 from app import panel_auth
@@ -126,6 +126,17 @@ async def test_no_lifespan_fallback_still_closes_its_owned_client(monkeypatch):
         result = await client.get("/auth/me", headers={"cookie": f"{panel_auth.COOKIE}=" + "A" * 43})
         assert result.status_code == 401
     assert store.closed == 1 and not hasattr(app.state, "panel_session_redis")
+
+
+@pytest.mark.asyncio
+async def test_direct_request_without_application_retains_owned_client_fallback(monkeypatch):
+    store = Store()
+    monkeypatch.setattr(panel_auth, "_redis", lambda: store)
+    request = Request({"type": "http", "method": "GET",
+                       "headers": [(b"cookie", (panel_auth.COOKIE + "=" + "A" * 43).encode())]})
+    with pytest.raises(HTTPException) as error:
+        await panel_auth.panel_actor(request)
+    assert error.value.status_code == 401 and store.closed == 1
 
 
 @pytest.mark.asyncio

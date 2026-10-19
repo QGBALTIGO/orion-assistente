@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from pydantic import AwareDatetime, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -86,7 +87,7 @@ async def availability(
     async with get_session_factory()() as session:
         result = await list_slots(session, tenant_id, professional_id, service_ids, day,
                                   appointment_id=appointment_id)
-        return jsonable_encoder(result)
+        return JSONResponse(jsonable_encoder(result))
 
 
 @router.post("/appointments/hold", status_code=201)
@@ -103,7 +104,7 @@ async def create_hold(
             )
         except IntegrityError as exc:
             raise safe_conflict(exc) from exc
-        return appointment_response(result, actor, tenant_id)
+        return JSONResponse(appointment_response(result, actor, tenant_id), status_code=201)
 
 
 @router.post("/appointments/{appointment_id}/confirm")
@@ -118,7 +119,7 @@ async def confirm(
                 **(payload or MutationRequest()).model_dump(), context=panel_actor(actor))
         except IntegrityError as exc:
             raise safe_conflict(exc) from exc
-        return appointment_response(result, actor, tenant_id)
+        return JSONResponse(appointment_response(result, actor, tenant_id))
 
 
 @router.post("/appointments/{appointment_id}/cancel")
@@ -133,7 +134,7 @@ async def cancel(
                 **(payload or CancellationRequest()).model_dump(), context=panel_actor(actor))
         except IntegrityError as exc:
             raise safe_conflict(exc) from exc
-        return appointment_response(result, actor, tenant_id)
+        return JSONResponse(appointment_response(result, actor, tenant_id))
 
 
 @router.post("/appointments/{appointment_id}/reschedule")
@@ -151,7 +152,7 @@ async def reschedule(
             )
         except IntegrityError as exc:
             raise safe_conflict(exc) from exc
-        return appointment_response(result, actor, tenant_id)
+        return JSONResponse(appointment_response(result, actor, tenant_id))
 
 
 @router.get("/appointments/{appointment_id}")
@@ -162,7 +163,8 @@ async def detail(
     async with get_session_factory()() as session:
         async with tenant_transaction(session, tenant_id):
             result = await read_appointment(session, tenant_id, appointment_id, include_history=True)
-            return appointment_response(result, actor, tenant_id)
+            content = appointment_response(result, actor, tenant_id)
+    return JSONResponse(content)
 
 
 @router.get("/appointments")
@@ -224,7 +226,6 @@ async def list_appointments(
             """), parameters)).mappings().one()
             result = [appointment_response(row, actor, tenant_id)
                       for row in await read_appointments(session, tenant_id, page["ids"])]
-            if not paged:
-                return result
-            return {"items": result, "total": page["total"], "limit": page_limit, "offset": offset,
-                    "has_more": offset + len(result) < page["total"]}
+            content = {"items": result, "total": page["total"], "limit": page_limit, "offset": offset,
+                       "has_more": offset + len(result) < page["total"]} if paged else result
+    return JSONResponse(content)

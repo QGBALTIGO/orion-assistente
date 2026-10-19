@@ -4,6 +4,7 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from app import commercial_service as service
@@ -45,7 +46,7 @@ async def run(operation, *args, **kwargs):
 @router.get("/products")
 async def products(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     await resolve_tenant_access(actor, tenant_id)
-    return await run(service.catalog, tenant_id)
+    return JSONResponse(await run(service.catalog, tenant_id))
 
 
 @router.get("/pickup-appointments")

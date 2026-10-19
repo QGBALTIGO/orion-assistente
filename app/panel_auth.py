@@ -42,7 +42,8 @@ async def close_session_store(application):
 
 
 def _request_redis(request):
-    redis = getattr(request.app.state, "panel_session_redis", None)
+    state = getattr(request.scope.get("app"), "state", None)
+    redis = getattr(state, "panel_session_redis", None)
     # ASGI callers without a lifespan still own and close their short-lived client.
     return (redis, False) if redis is not None else (_redis(), True)
 

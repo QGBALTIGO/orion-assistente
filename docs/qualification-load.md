@@ -117,7 +117,11 @@ permanecem iguais.
 O diagnóstico também mede a CPU dos processos PostgreSQL visíveis no host Linux
 isolado. Só calcula o intervalo quando o conjunto de PIDs e seus instantes de
 nascimento permanece idêntico; criação, saída ou reutilização de PID marca a
-cobertura como incompleta e omite o percentual. Os identificadores temporários
+cobertura como incompleta e omite o percentual total. Nesse caso pode guardar
+somente um limite inferior, somando o trabalho dos mesmos processos presentes
+nas duas amostras, com contagem de entradas/saídas e cobertura explícita. Isso
+não contabiliza processos curtos ou encerrados e não é uma estimativa do total.
+Os identificadores temporários
 são descartados antes de serializar a amostra. CPU residual do host não é
 atribuída ao banco por subtração.
 
@@ -186,6 +190,15 @@ de autorização, de CSRF ou de associação à empresa. Chamadas ASGI sem lifes
 mantêm o cliente temporário com fechamento próprio. Os testes com Redis real
 verificam isolamento de sessões concorrentes, reutilização TCP, exclusão da
 sessão e revogação da versão da conta no PostgreSQL.
+
+As respostas de catálogo, disponibilidade e agenda reutilizam sua conversão
+JSON já pronta, sem uma segunda travessia pelo encoder do framework. Isso não
+muda o encoder, campos, ordenação, cabeçalhos ou status (incluindo 201 no hold).
+Testes HTTP com PostgreSQL comparam corpo e cabeçalhos completos ao caminho
+anterior, inclusive replay, confirmação, remarcação, cancelamento, detalhe e
+paginação. Os routers de cadastro guiado e comércio vêm logo após a agenda;
+as rotas específicas continuam antes do catálogo genérico. Nenhuma autorização
+ou validação de domínio foi removida.
 
 As primeiras cargas completas com dois workers reprovaram em 1.000 e 1.500
 sessões. Os resultados permanecem preservados. O próximo candidato usa três

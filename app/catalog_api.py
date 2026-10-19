@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -255,7 +256,8 @@ async def list_items(tenant_id: UUID, resource: str, actor: Actor = Depends(auth
                 text(f"SELECT * FROM {resource} WHERE tenant_id = :t{scope} ORDER BY {ordering} LIMIT 200"),
                 {"t": tenant_id}
             )).mappings().all()
-            return jsonable_encoder(rows)
+            content = jsonable_encoder(rows)
+    return JSONResponse(content)
 
 
 @router.post("/tenants/{tenant_id}/{resource}", status_code=201)

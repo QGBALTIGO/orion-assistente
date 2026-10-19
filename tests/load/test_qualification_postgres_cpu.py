@@ -9,7 +9,10 @@ def test_only_same_process_birth_and_positive_interval_produce_postgres_cpu():
     after = {(10, 100): 3.5, (11, 110): 1.5}
     result = load.postgres_cpu_interval(before, after, 5)
     assert result == {"postgres_processes": 2, "postgres_cpu_interval_complete": True,
-                      "postgres_cpu_percent_one_core": 40.0}
+                      "postgres_cpu_percent_one_core": 40.0,
+                      "postgres_cpu_lower_bound_percent_one_core": 40.0,
+                      "postgres_processes_observed_both": 2, "postgres_processes_added": 0,
+                      "postgres_processes_exited": 0}
     assert "10" not in str(result) and "110" not in str(result)
 
 
@@ -64,3 +67,13 @@ def test_process_collection_separates_api_children_from_postgres_without_command
     assert result["processes"] == 2 and result["cpu_seconds"] == .5
     assert result["rss_bytes"] == 7 * 4096 and result["open_fds"] == 4
     assert result["_postgres_cpu_by_process"] == {(20, 200): .4, (21, 210): .5}
+
+
+def test_churn_reports_only_a_lower_bound_of_surviving_identities_not_a_total():
+    result = load.postgres_cpu_interval({(10, 100): 2., (11, 110): 1.},
+                                        {(10, 100): 3., (11, 111): 4.}, 5)
+    assert result["postgres_cpu_interval_complete"] is False
+    assert "postgres_cpu_percent_one_core" not in result
+    assert result["postgres_cpu_lower_bound_percent_one_core"] == 20.
+    assert result["postgres_processes_observed_both"] == 1
+    assert result["postgres_processes_added"] == result["postgres_processes_exited"] == 1

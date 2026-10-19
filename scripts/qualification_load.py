@@ -558,6 +558,17 @@ def postgres_cpu_interval(previous, current, elapsed):
                 and elapsed > 0 and all(current[key] >= previous[key] for key in current))
     result = {"postgres_processes": len(current) if current is not None else 0,
               "postgres_cpu_interval_complete": bool(complete)}
+    if previous and current and elapsed > 0:
+        common = previous.keys() & current.keys()
+        valid = {key for key in common if current[key] >= previous[key]}
+        result.update(postgres_processes_observed_both=len(valid),
+                      postgres_processes_added=len(current.keys()-previous.keys()),
+                      postgres_processes_exited=len(previous.keys()-current.keys()))
+        if valid:
+            # Departed/new/short-lived backends can consume additional CPU;
+            # this is measured work of surviving identities, never a total.
+            result["postgres_cpu_lower_bound_percent_one_core"] = sum(
+                current[key]-previous[key] for key in valid)/elapsed*100
     if complete:
         result["postgres_cpu_percent_one_core"] = sum(current[key]-previous[key] for key in current)/elapsed*100
     return result
