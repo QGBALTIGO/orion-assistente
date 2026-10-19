@@ -43,7 +43,7 @@ test('cartões compactos exibem thumbnail circular, dados/status juntos e açõe
   assert.equal(second.querySelector('img'),null,'URL não HTTPS vira ícone local seguro');
   assert.ok(second.querySelector('.os-service-photo svg.os-icon'));
   assert.equal(first.querySelector('.os-service-info h3').textContent,'Corte tradicional');
-  assert.match(first.querySelector('.os-service-meta').textContent,/40 min.*R\$ 45,00/);
+  assert.match(first.querySelector('.os-service-meta').textContent,/40 min.*R\$\s*45,00/);
   assert.equal(first.querySelector('.os-service-state .os-badge').textContent.trim(),'Ativo');
   assert.equal(second.querySelector('.os-service-state .os-badge').textContent.trim(),'Inativo');
   assert.equal(first.querySelector('.os-item-commands .os-service-state'),null,'estado não fica solto no rodapé');
