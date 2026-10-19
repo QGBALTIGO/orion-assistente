@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {readFile} from 'node:fs/promises';
 import {makeSuite, flush, deferred, defaultResponse, tenantA, tenantB, customerId} from './harness.mjs';
 
 const professionalId='50000000-0000-4000-8000-000000000005';
@@ -276,4 +275,14 @@ test('monitor e atualizar têm quadrados 44px, ícones 20px e continuam funciona
   await flush();
   assert.ok(h.document.querySelector('[data-os-action=agenda-tablet]'),'ampliar e sair permanecem disponíveis');
   assert.equal(h.errors.length,0);
+});
+
+test('ícone atualizar usa arcos equilibrados e setas do mesmo padrão da suíte',async ()=>{
+  const source=await readFile(new URL('../app/static/orion-suite.js',import.meta.url),'utf8');
+  const refresh=source.match(/refresh:'([^']+)'/g)||[];
+  assert.deepEqual(refresh,[
+    "refresh:'M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5'"
+  ],'não criar variantes divergentes para o mesmo ícone de atualizar');
+  assert.match(source,/const icon = name => '<svg class="os-icon" viewBox="0 0 24 24"/,
+    'mantém o SVG e o viewBox padronizados do Orion');
 });
