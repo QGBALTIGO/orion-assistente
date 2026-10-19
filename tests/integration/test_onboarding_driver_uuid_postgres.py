@@ -40,6 +40,7 @@ async def test_real_text_driver_uuid_and_full_state_use_native_path_without_chan
             access = TenantAccess("owner", ctx.actor.account_id)
             with monkeypatch.context() as isolated:
                 isolated.setattr(service, "digest", old_digest)
+                isolated.setattr(service, "_prepare_state_digests", lambda *_: None)
                 isolated.setattr(service, "_state_jsonable", jsonable_encoder)
                 expected = await service._state(db, tenant, access)
             with monkeypatch.context() as isolated:

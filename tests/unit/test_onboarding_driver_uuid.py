@@ -173,6 +173,7 @@ async def test_actual_state_assembly_with_driver_facts_keeps_http_snapshot_and_e
     assert service._digest_needs_legacy(facts) is False
     with monkeypatch.context() as isolated:
         isolated.setattr(service, "digest", old_digest)
+        isolated.setattr(service, "_prepare_state_digests", lambda *_: None)
         isolated.setattr(service, "_state_jsonable", jsonable_encoder)
         expected = await service._state(DB(), tenant, SimpleNamespace(role="owner"))
     with monkeypatch.context() as isolated:

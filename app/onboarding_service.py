@@ -259,6 +259,7 @@ def readiness(configuration, facts, managed=None, *, staged=True):
 class _PreparedStateDigests:
     facts: dict
     rows: dict
+    managed: dict
     snapshot: str
 
 
@@ -288,7 +289,7 @@ def _prepare_state_digests(configuration, managed, facts):
         return None
     rows = {id(item): normalized["facts"][key][index]
             for key, _table in _FACT_TABLES for index, item in enumerate(facts[key])}
-    return _PreparedStateDigests(facts, rows, snapshot)
+    return _PreparedStateDigests(facts, rows, normalized["managed_ids"], snapshot)
 
 
 def _entity_fingerprint(facts, table, item, prepared=None):
@@ -375,26 +376,37 @@ async def _state(db, tenant, access):
                          "contact_phone": published.get("contact_phone"), "modality": None, "private_address": None}
     pending = readiness(configuration, facts, managed)
     configuration.setdefault("private_address", None)
-    prepared_digests = _prepare_state_digests(configuration, managed, facts)
+    # SQL details and the route identity must also be ordinary before using
+    # already normalized catalog rows in the response. Other input keeps the
+    # original whole-state encoder and its ordering/consumption behavior.
+    prepared_digests = (_prepare_state_digests(configuration, managed, facts)
+                        if ordinary_json_tree(details) and ordinary_json_tree(tenant) else None)
+    response_managed = prepared_digests.managed if prepared_digests is not None else managed
+    def response_row(raw):
+        return prepared_digests.rows[id(raw)] if prepared_digests is not None else raw
     site, google, whatsapp = details["site"], details["google"], details["whatsapp"]
     catalog = {k: [] for k in ("professionals", "services", "products", "hours")}
     for key, table in (("professionals", "professionals"), ("services", "services"), ("products", "commercial_products"), ("hours", "working_hours")):
         for raw in facts[key]:
-            row = dict(raw)
+            row = dict(response_row(raw))
             row.pop("tenant_id", None)
             row["fingerprint"] = _entity_fingerprint(facts, table, raw, prepared_digests)
             if str(raw["id"]) in managed.get(table, {}):
-                row.update(draft=not bool(meta["completed_at"]), requested_active=managed[table][str(raw["id"])])
+                row.update(draft=not bool(meta["completed_at"]), requested_active=response_managed[table][str(raw["id"])])
             if key == "services":
-                row["professional_ids"] = [x["professional_id"] for x in facts["links"] if x["service_id"] == raw["id"]]
+                row["professional_ids"] = [response_row(x)["professional_id"] for x in facts["links"] if x["service_id"] == raw["id"]]
             if key == "products":
-                row["variants"] = [{k: v for k, v in variant.items() if k != "tenant_id"}
-                                   for variant in facts["variants"] if variant["product_id"] == raw["id"]]
-                for variant in row["variants"]:
-                    if str(variant["id"]) in managed.get("commercial_variants", {}):
-                        variant.update(draft=not bool(meta["completed_at"]), requested_active=managed["commercial_variants"][str(variant["id"])])
+                row["variants"] = []
+                for original in facts["variants"]:
+                    if not (original["product_id"] == raw["id"]):
+                        continue
+                    variant = {k: v for k, v in response_row(original).items() if k != "tenant_id"}
+                    identity = str(original["id"])
+                    if identity in managed.get("commercial_variants", {}):
+                        variant.update(draft=not bool(meta["completed_at"]), requested_active=response_managed["commercial_variants"][identity])
+                    row["variants"].append(variant)
             if key == "hours":
-                row["breaks"] = [{k: v for k, v in b.items() if k != "tenant_id"} for b in facts["breaks"] if b["working_hour_id"] == raw["id"]]
+                row["breaks"] = [{k: v for k, v in response_row(b).items() if k != "tenant_id"} for b in facts["breaks"] if b["working_hour_id"] == raw["id"]]
             catalog[key].append(row)
     operations = details["operations"]
     missing = {p["step"] for p in pending}
@@ -414,6 +426,12 @@ async def _state(db, tenant, access):
                            "google": {"status": google or "not_configured"},
                            "whatsapp": {"status": "connected" if whatsapp else "not_configured"}},
               "operations": operations, "last_operation_key": operations[0]["key"] if operations else None}
+    if prepared_digests is not None:
+        # Catalog scalars and containers were normalized in this same read.
+        # Encode all remaining fields through the existing helper, then retain
+        # the historical top-level key order without visiting catalog again.
+        rest = _state_jsonable({key: value for key, value in result.items() if key != "catalog"})
+        return {key: catalog if key == "catalog" else rest[key] for key in result}
     return _state_jsonable(result)
 
 

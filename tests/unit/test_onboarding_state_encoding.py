@@ -304,15 +304,17 @@ def raw_catalog(count):
             "active": True, "price_kind": "on_request", "unit_price_cents": None, "attributes": {"size": "250 ml"}}]}
 
 
-@pytest.mark.parametrize("count", [113, 200, 281, 1000])
+@pytest.mark.parametrize("count,managed_items", [(113, False), (200, False), (281, False), (1000, False), (3, True)])
 @pytest.mark.asyncio
-async def test_actual_state_values_fingerprints_snapshot_and_http_bytes_are_identical(monkeypatch, count):
+async def test_actual_state_values_fingerprints_snapshot_and_http_bytes_are_identical(monkeypatch, count, managed_items):
     """Run actual state assembly; synthetic SQL results do not claim PG proof."""
     facts = raw_catalog(count)
     before = deepcopy(facts)
     tenant = facts["business"]["id"]
     configuration = {"niche": "outro", "activity": "both", "modality": "online", "private_address": None}
-    meta = {"configuration": configuration, "managed_ids": {}, "version": 7, "is_new": True,
+    managed = {table: {str(row["id"]): True for row in facts[key]}
+        for key, table in service._FACT_TABLES} if managed_items else {}
+    meta = {"configuration": configuration, "managed_ids": managed, "version": 7, "is_new": True,
         "completed_at": None, "current_step": "review"}
     operations = [{"key": "synthetic-operation", "step": "channels", "version": 7,
         "result": {"generation": 2, "version_id": str(UUID(int=5))}}]
@@ -343,6 +345,10 @@ async def test_actual_state_values_fingerprints_snapshot_and_http_bytes_are_iden
     assert actual["catalog"]["hours"][0]["start_time"] == "09:00:00"
     assert actual["catalog"]["products"][0]["variants"][0]["unit_price_cents"] is None
     assert actual["operations"] == operations
+    if managed_items:
+        assert actual["catalog"]["services"][0]["draft"] is True
+        assert actual["catalog"]["services"][0]["requested_active"] is True
+        assert actual["catalog"]["products"][0]["variants"][0]["requested_active"] is True
     assert not actual["pending"]
     assert facts == before
 
