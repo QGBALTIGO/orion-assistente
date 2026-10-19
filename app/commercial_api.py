@@ -4,7 +4,6 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from app import commercial_service as service
@@ -15,6 +14,7 @@ from app.commercial_schemas import (
 )
 from app.database import get_session_factory
 from app.tenant_access import resolve_tenant_access
+from app.http_json import json_response
 
 def commerce_enabled():
     if os.getenv("COMMERCIAL_CATALOG_ENABLED", "0") != "1":
@@ -46,7 +46,11 @@ async def run(operation, *args, **kwargs):
 @router.get("/products")
 async def products(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     await resolve_tenant_access(actor, tenant_id)
-    return JSONResponse(await run(service.catalog, tenant_id))
+    try:
+        async with get_session_factory()() as session:
+            return json_response(await service.catalog(session, tenant_id))
+    except IntegrityError:
+        raise HTTPException(409, "Cadastro duplicado ou referência inválida neste estabelecimento") from None
 
 
 @router.get("/pickup-appointments")

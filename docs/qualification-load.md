@@ -249,6 +249,17 @@ O pre-ping e os limites dos pools permanecem iguais. O GET de serviços usa um
 caminho específico anterior ao catálogo genérico e delega à mesma função, sem
 mudar autorização, SQL ou contrato HTTP. A aceitação ainda depende da carga.
 
+O renderer HTTP seguinte admite somente containers builtin exatos e escalares
+SQL conhecidos, usando o mesmo JSON da biblioteca padrão e os encoders de
+escalares existentes. Evita construir uma segunda árvore Python antes de gerar
+os bytes. Modelos, subclasses, iteradores, aliases, chaves não textuais ou `_sa`
+e tipos incomuns seguem o caminho FastAPI anterior; erros de representação
+também mantêm esse fallback. A comparação independente cobre bytes/cabeçalhos,
+UTF-8, UUID do driver, Decimal, datas/fusos e erros, além do contrato PostgreSQL
+real de catálogo/agenda. Fingerprints, regras, autorização e cálculos não mudam.
+O ganho local de CPU de encoding não comprova capacidade: os dois perfis de
+carga completos continuam obrigatórios na árvore exata.
+
 O gerador versão 2 distribui 40% dos operadores adicionais pelas cinco empresas
 mais movimentadas, com contagem por empresa no relatório. A versão anterior
 escolhia somente duas dessas cinco empresas por um erro no índice. Os relatórios

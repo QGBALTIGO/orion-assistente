@@ -11,7 +11,6 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -22,6 +21,7 @@ from functools import lru_cache
 
 from app.catalog_schemas import Business, RESOURCE_MODELS
 from app.database import engine_pool_options, get_session_factory, tenant_transaction
+from app.http_json import json_response
 
 router = APIRouter(prefix="/api/v1", tags=["Operação interna"])
 
@@ -261,8 +261,8 @@ async def list_items(tenant_id: UUID, resource: str, actor: Actor = Depends(auth
                 text(f"SELECT * FROM {resource} WHERE tenant_id = :t{scope} ORDER BY {ordering} LIMIT 200"),
                 {"t": tenant_id}
             )).mappings().all()
-            content = jsonable_encoder(rows)
-    return JSONResponse(content)
+            content = [dict(row) for row in rows]
+    return json_response(content)
 
 
 async def list_services(tenant_id: UUID, actor: Actor = Depends(authenticate)):

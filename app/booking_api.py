@@ -7,7 +7,6 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
 from pydantic import AwareDatetime, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -20,6 +19,7 @@ from app.booking_service import (
     read_appointment, read_appointments, reschedule_appointment,
 )
 from app.database import get_session_factory, tenant_transaction
+from app.http_json import json_response
 
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}", tags=["Agendamentos internos"])
 
@@ -66,9 +66,13 @@ def can_write(actor, tenant_id):
         return False
 
 
+def appointment_payload(result, actor, tenant_id):
+    return {**result, "allowed_actions": allowed_actions(
+        result, can_write=can_write(actor, tenant_id))}
+
+
 def appointment_response(result, actor, tenant_id):
-    return jsonable_encoder({**result, "allowed_actions": allowed_actions(
-        result, can_write=can_write(actor, tenant_id))})
+    return jsonable_encoder(appointment_payload(result, actor, tenant_id))
 
 
 def safe_conflict(exc: IntegrityError) -> HTTPException:
@@ -87,7 +91,7 @@ async def availability(
     async with get_session_factory()() as session:
         result = await list_slots(session, tenant_id, professional_id, service_ids, day,
                                   appointment_id=appointment_id)
-        return JSONResponse(jsonable_encoder(result))
+        return json_response(result)
 
 
 @router.post("/appointments/hold", status_code=201)
@@ -104,7 +108,7 @@ async def create_hold(
             )
         except IntegrityError as exc:
             raise safe_conflict(exc) from exc
-        return JSONResponse(appointment_response(result, actor, tenant_id), status_code=201)
+        return json_response(appointment_payload(result, actor, tenant_id), status_code=201)
 
 
 @router.post("/appointments/{appointment_id}/confirm")
@@ -119,7 +123,7 @@ async def confirm(
                 **(payload or MutationRequest()).model_dump(), context=panel_actor(actor))
         except IntegrityError as exc:
             raise safe_conflict(exc) from exc
-        return JSONResponse(appointment_response(result, actor, tenant_id))
+        return json_response(appointment_payload(result, actor, tenant_id))
 
 
 @router.post("/appointments/{appointment_id}/cancel")
@@ -134,7 +138,7 @@ async def cancel(
                 **(payload or CancellationRequest()).model_dump(), context=panel_actor(actor))
         except IntegrityError as exc:
             raise safe_conflict(exc) from exc
-        return JSONResponse(appointment_response(result, actor, tenant_id))
+        return json_response(appointment_payload(result, actor, tenant_id))
 
 
 @router.post("/appointments/{appointment_id}/reschedule")
@@ -152,7 +156,7 @@ async def reschedule(
             )
         except IntegrityError as exc:
             raise safe_conflict(exc) from exc
-        return JSONResponse(appointment_response(result, actor, tenant_id))
+        return json_response(appointment_payload(result, actor, tenant_id))
 
 
 @router.get("/appointments/{appointment_id}")
@@ -163,8 +167,8 @@ async def detail(
     async with get_session_factory()() as session:
         async with tenant_transaction(session, tenant_id):
             result = await read_appointment(session, tenant_id, appointment_id, include_history=True)
-            content = appointment_response(result, actor, tenant_id)
-    return JSONResponse(content)
+            content = appointment_payload(result, actor, tenant_id)
+    return json_response(content)
 
 
 @router.get("/appointments")
@@ -224,8 +228,8 @@ async def list_appointments(
                 ) SELECT (SELECT count(*) FROM filtered) AS total,
                     ARRAY(SELECT id FROM filtered ORDER BY start_at,id LIMIT :limit OFFSET :offset) AS ids
             """), parameters)).mappings().one()
-            result = [appointment_response(row, actor, tenant_id)
+            result = [appointment_payload(row, actor, tenant_id)
                       for row in await read_appointments(session, tenant_id, page["ids"])]
             content = {"items": result, "total": page["total"], "limit": page_limit, "offset": offset,
                        "has_more": offset + len(result) < page["total"]} if paged else result
-    return JSONResponse(content)
+    return json_response(content)
