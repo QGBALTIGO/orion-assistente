@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {makeSuite, flush, deferred, defaultResponse, tenantA, tenantB, customerId} from './harness.mjs';
 
 const professionalId='50000000-0000-4000-8000-000000000005';
@@ -192,4 +193,145 @@ test('Google error codes become bounded Portuguese guidance and never expose an 
 
 test('Google historical exclusion and absent credentials are honest distinct conditions',async t=>{
   for(const data of [{status:'outside_initial_sync',configured:true,sync_enabled:true,connection_status:'active'},{status:'pending',configured:false,sync_enabled:true,connection_status:'not_connected'}]){const h=await fixture(t,{respond:responder({on:path=>path.includes('/google/appointments/')?data:undefined})});await openDetail(h);const text=h.document.getElementById('osAppointmentGoogle').textContent;if(data.status==='outside_initial_sync')assert.match(text,/Anterior à conexão.*não faz parte da sincronização inicial/s);else assert.match(text,/ainda não está configurada/);assert.equal(posts(h).length,0);}
+});
+test('toque em agendamento preserva o cartão como origem mesmo se Safari mantiver foco na área inteira',async t=>{
+  const h=await fixture(t,{respond:responder()});
+  const panel=h.document.getElementById('osPageBody');
+  const row=h.document.querySelector('[data-os-appointment="'+appointmentId+'"]');
+  assert.equal(panel.tabIndex,0,'tabpanel precisa continuar acessível por teclado');
+  panel.focus(); // Safari pode não focar o botão no toque, deixando o tabpanel ativo.
+  assert.equal(h.document.activeElement,panel);
+  h.click('[data-os-appointment="'+appointmentId+'"]');
+  await flush();
+  assert.equal(h.document.activeElement.id,'osDialogTitle','título do diálogo continua anunciado pelo foco');
+  h.click('[data-os-action=close-dialog]');
+  await flush();
+  assert.equal(h.document.activeElement,row,'foco volta ao botão real, não à área inteira');
+  assert.notEqual(h.document.activeElement,panel);
+  assert.equal(posts(h).length,0);
+});
+
+test('CSS diferencia toque de teclado apenas no tabpanel, na contagem e no título do modal',async ()=>{
+  const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
+  for(const selector of [
+    '.os-main[data-os-current-route=agenda] #osPageBody',
+    '.os-main[data-os-current-route=agenda] #osAgendaCount',
+    '.os-appointment-sheet-header #osDialogTitle',
+  ]){
+    assert.ok(css.includes(selector+':focus:not(:focus-visible)'),'sem anel nativo de toque em '+selector);
+    assert.ok(css.includes(selector+':focus-visible'),'anel preservado no teclado em '+selector);
+  }
+  assert.match(css,/\.os-agenda-item:focus-visible\{outline:3px solid var\(--os-primary\)/,
+    'foco de teclado de cada cartão não pode ser removido');
+  assert.match(css,/#osDialogTitle:focus-visible\{outline:3px solid var\(--os-primary\);outline-offset:2px\}/);
+});
+
+test('busca da agenda reserva espaço para a lupa sem sobrepor o texto',async t=>{
+  const h=await fixture(t,{respond:responder()});
+  const input=h.document.getElementById('osAgendaSearch');
+  const lens=input.closest('.os-agenda-search')?.querySelector('.os-icon');
+  assert.ok(lens,'lupa existe');
+  assert.equal(lens.getAttribute('aria-hidden'),'true');
+  assert.equal(input.getAttribute('placeholder'),'Nome, telefone ou protocolo');
+  const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
+  const svgRule=css.match(/\.os-agenda-search>\.os-icon\{([^}]*)\}/)?.[1];
+  const inputRule=css.match(/\.os-main \.os-agenda-search input#osAgendaSearch\{([^}]*)\}/)?.[1];
+  assert.ok(svgRule && inputRule,'estilos específicos da agenda presentes');
+  for(const part of ['top:50%','left:14px','transform:translateY(-50%)','width:20px','height:20px','pointer-events:none'])
+    assert.ok(svgRule.includes(part),'propriedade da lupa: '+part);
+  assert.ok(inputRule.includes('padding-left:46px'),'o ID vence o padding do input genérico');
+  assert.equal(h.errors.length,0);
+});
+
+test('monitor e atualizar têm quadrados 44px, ícones 20px e continuam funcionais',async t=>{
+  const h=await fixture(t,{respond:responder()});
+  const expand=h.document.querySelector('[data-os-action=agenda-tablet]');
+  const refresh=h.document.querySelector('.os-agenda-view-row [data-os-action=agenda-reload]');
+  assert.ok(expand && refresh,'controles principais existem');
+  assert.equal(expand.getAttribute('aria-label'),'Ampliar agenda');
+  assert.equal(refresh.getAttribute('aria-label'),'Atualizar agendamentos');
+  assert.equal(expand.querySelector('svg.os-icon').getAttribute('aria-hidden'),'true');
+  assert.equal(refresh.querySelector('svg.os-icon').getAttribute('aria-hidden'),'true');
+  const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
+  const start=css.indexOf('@container agenda (max-width:520px){');
+  assert.ok(start!==-1,'regras compactas presentes');
+  const compact=css.slice(start,css.indexOf('\n}',start));
+  const buttonRule=compact.match(/\.os-agenda-expand,\.os-agenda-view-row>\.os-button\[data-os-action=agenda-reload\]\{([^}]*)\}/)?.[1];
+  const svgRule=compact.match(/\.os-agenda-expand>\.os-icon,\.os-agenda-view-row>\.os-button\[data-os-action=agenda-reload\]>\.os-icon\{([^}]*)\}/)?.[1];
+  assert.ok(buttonRule && svgRule,'as duas ações compartilham escala');
+  for(const part of ['width:44px','min-width:44px','max-width:44px','height:44px','min-height:44px','max-height:44px','gap:0','padding:0','align-items:center','justify-content:center'])
+    assert.ok(buttonRule.includes(part),'botão compacto: '+part);
+  for(const part of ['width:20px','height:20px','flex:0 0 20px'])
+    assert.ok(svgRule.includes(part),'SVG compacto: '+part);
+  const before=h.calls.length;
+  h.click('.os-agenda-view-row [data-os-action=agenda-reload]');
+  await flush();
+  assert.ok(h.calls.length>before,'atualização consulta novamente a agenda');
+  assert.equal(h.calls.some(call=>call.method!=='GET'),false,'atualizar não altera dados');
+  h.click('[data-os-action=agenda-tablet]');
+  await flush();
+  assert.equal(h.document.querySelector('[data-os-action=agenda-tablet-exit]')?.getAttribute('aria-label'),'Sair da tela ampliada');
+  h.click('[data-os-action=agenda-tablet-exit]');
+  await flush();
+  assert.ok(h.document.querySelector('[data-os-action=agenda-tablet]'),'ampliar e sair permanecem disponíveis');
+  assert.equal(h.errors.length,0);
+});
+
+test('ícone atualizar usa arcos equilibrados e setas do mesmo padrão da suíte',async ()=>{
+  const source=await readFile(new URL('../app/static/orion-suite.js',import.meta.url),'utf8');
+  const refresh=source.match(/refresh:'([^']+)'/g)||[];
+  assert.deepEqual(refresh,[
+    "refresh:'M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5'"
+  ],'não criar variantes divergentes para o mesmo ícone de atualizar');
+  assert.match(source,/const icon = name => '<svg class="os-icon" viewBox="0 0 24 24"/,
+    'mantém o SVG e o viewBox padronizados do Orion');
+});
+
+test('detalhes usam botões só de ícone sem estilos de botões com texto',async t=>{
+  const h=await fixture(t,{respond:responder()});
+  await openDetail(h);
+  const dialog=h.document.getElementById('osDialog');
+  const close=dialog.querySelector('.os-appointment-sheet-header>.os-close');
+  const refresh=dialog.querySelector('.os-appointment-section-title>.os-appointment-google-refresh');
+  assert.ok(close && refresh,'fechar e atualizar visíveis nos detalhes');
+  assert.equal(close.dataset.osAction,'close-dialog');
+  assert.equal(refresh.dataset.osAction,'appointment-google-refresh');
+  assert.equal(close.getAttribute('aria-label'),'Fechar detalhes do agendamento');
+  assert.equal(refresh.getAttribute('aria-label'),'Atualizar sincronização deste agendamento');
+  for(const btn of [close,refresh]){
+    assert.equal(btn.tagName,'BUTTON');
+    assert.equal(btn.type,'button');
+    assert.equal(btn.classList.contains('os-icon-button'),true);
+    assert.equal(btn.classList.contains('os-button'),false,'não herda padding e estilo de botão de texto');
+    assert.equal(btn.querySelector('svg.os-icon')?.getAttribute('aria-hidden'),'true');
+  }
+  const before=h.calls.filter(c=>c.path.includes('/google/appointments/')).length;
+  h.click('.os-appointment-google-refresh');await flush();
+  const after=h.calls.filter(c=>c.path.includes('/google/appointments/')).length;
+  assert.ok(after>before,'o botão ainda atualiza a sincronização');
+  assert.equal(posts(h).length,0,'atualização apenas consulta');
+  h.click('.os-appointment-sheet-header>.os-close');await flush();
+  assert.equal(dialog.open,false,'fechar permanece funcional');
+  assert.equal(posts(h).length,0);
+  assert.equal(h.errors.length,0);
+});
+
+test('CSS mantém X e atualizar quadrados, centrados e adaptados ao celular',async ()=>{
+  const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
+  const close='.os-dialog.os-appointment-sheet .os-appointment-sheet-header>.os-close';
+  const refresh='.os-dialog.os-appointment-sheet .os-appointment-section-title>.os-appointment-google-refresh';
+  const base=css.match(/\.os-dialog\.os-appointment-sheet \.os-appointment-sheet-header>\.os-close,\s*\.os-dialog\.os-appointment-sheet \.os-appointment-section-title>\.os-appointment-google-refresh\{([^}]*)\}/)?.[1];
+  assert.ok(base,'estilo específico deve superar .os-dialog .os-close');
+  for(const rule of ['position:static','display:inline-flex','box-sizing:border-box','align-items:center','justify-content:center','flex:0 0 44px','width:44px','height:44px','min-width:44px','min-height:44px','padding:0','gap:0','border-radius:12px']){
+    assert.ok(base.includes(rule),rule);
+  }
+  const icons=css.match(/\.os-dialog\.os-appointment-sheet \.os-appointment-sheet-header>\.os-close>\.os-icon,\s*\.os-dialog\.os-appointment-sheet \.os-appointment-section-title>\.os-appointment-google-refresh>\.os-icon\{([^}]*)\}/)?.[1];
+  for(const rule of ['display:block','flex:0 0 20px','width:20px','height:20px'])
+    assert.ok(icons?.includes(rule),'icon size: '+rule);
+  const mobile=css.match(/@media\(max-width:639px\)\{\s*\.os-dialog\.os-sheet\.os-appointment-sheet[\s\S]*?\.os-dialog\.os-appointment-sheet \.os-appointment-sheet-header>\.os-close,\s*\.os-dialog\.os-appointment-sheet \.os-appointment-section-title>\.os-appointment-google-refresh\{([^}]*)\}/)?.[1];
+  assert.ok(mobile,'regras compactas dos dois botões');
+  for(const rule of ['flex-basis:48px','width:48px','height:48px','min-width:48px','min-height:48px'])
+    assert.ok(mobile.includes(rule),rule);
+  assert.match(css,/\.os-icon-button:focus-visible|\.os-icon-button:focus-visible/,
+    'anel de foco por teclado continua disponível');
 });

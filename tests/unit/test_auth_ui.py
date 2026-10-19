@@ -8,12 +8,21 @@ from app.main import app
 from app.account_auth import Register, EmailMixin
 
 
+def auth_styles():
+    return (Path(__file__).resolve().parents[2]/"app/static/orion-auth.css").read_text("utf-8")
+
+
+def compact_auth_styles():
+    return re.sub(r"\s+", "", auth_styles())
+
+
 def test_auth_panel_has_all_screens_without_google_or_hardcoded_owner():
     html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
     for identifier in (
         "loginForm","registerForm","forgotForm","resetForm","rememberMe",
         "authTabLogin","authTabRegister","authGlobalMessage",
         "page-member","memberProfileName","memberProfileEmail","authSubmitRegister",
+        "authTitle","authSubtitle","authRegisterAvailability","authForgotAvailability",
     ):
         assert re.search(r'\bid="'+identifier+'"',html),identifier
     assert "Continuar com o Google" not in html
@@ -21,7 +30,8 @@ def test_auth_panel_has_all_screens_without_google_or_hardcoded_owner():
     assert "prefers-reduced-motion" in html
     assert 'html[data-theme="light"]' in html
     assert 'prefers-color-scheme: dark' in html
-    assert "max-width:900px" in html and "max-width:560px" in html
+    styles=compact_auth_styles()
+    assert "max-width:900px" in styles and "max-width:560px" in styles
     assert "orion-brand-dark.svg" in html and "orion-brand-light.svg" in html
 
 
@@ -47,57 +57,71 @@ async def test_assets_are_allowlisted_and_svg(monkeypatch):
             assert b"<svg" in r.content
         assert (await client.get("/brand/../panel.html")).status_code in (404,405)
         assert (await client.get("/brand/untrusted.svg")).status_code==404
+        stylesheet=await client.get("/panel-assets/orion-auth.css")
+        assert stylesheet.status_code==200
+        assert "text/css" in stylesheet.headers["content-type"]
+        assert b"#loginView" in stylesheet.content
+        assert (await client.get("/panel-assets/untrusted.css")).status_code==404
 
 
 def test_login_mobile_does_not_show_turquoise_header_block():
     """Mobile/tablet uses a single clean auth layout without the marketing strip."""
     html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
-    assert re.search(r"@media\(max-width:900px\)\s*\{\s*#loginView \.auth-shell\{display:flex",html)
-    assert re.search(r"#loginView \.auth-visual\{display:none\}",html)
-    assert "#loginView .auth-right" in html
-    assert "min-height:100svh" in html
+    styles=compact_auth_styles()
+    mobile=styles.split("@media(max-width:900px)",1)[1].split("@media",1)[0]
+    assert "#loginView.auth-shell{display:flex;flex-direction:column;" in mobile
+    assert "#loginView.auth-visual{display:none;" in mobile
+    assert "#loginView.auth-right" in mobile
+    assert "min-height:100svh" in styles
     assert "auth-mobile-brand" in html
 
 
 def test_login_checkbox_has_real_unchecked_and_checked_appearance():
     """Custom checkbox avoids native browser black fill for unchecked light theme."""
     html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
+    styles=compact_auth_styles()
     assert 'id="rememberMe" type="checkbox"' in html
-    assert '#loginView .auth-form .auth-check input[type="checkbox"]{' in html
-    assert "appearance:none;-webkit-appearance:none" in html
-    assert '#loginView .auth-form .auth-check input[type="checkbox"]:checked{' in html
-    assert "background-image:url(" in html
-    assert 'input[type="checkbox"]:focus-visible' in html
-    assert "#loginView{color-scheme:light}" in html
+    unchecked=styles.split("#loginView.auth-checkinput[type=checkbox]{",1)[1].split("}",1)[0]
+    checked=styles.split("#loginView.auth-checkinput[type=checkbox]:checked{",1)[1].split("}",1)[0]
+    assert "appearance:none" in unchecked and "-webkit-appearance:none" in unchecked
+    assert "background:var(--os-bg)" in unchecked
+    assert "background-color:var(--os-primary)" in checked
+    assert "background-image:url(" in checked
+    assert "#loginView:is(button,a,input):focus-visible" in styles
 
 
-def test_login_desktop_has_readable_non_flat_hero():
-    """Retains desktop split with higher contrast and composition."""
+def test_login_reuses_the_dashboard_fonts_colors_and_motion():
+    """The login must consume the dashboard design system rather than retain its old palette."""
     html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
-    assert "#loginView .auth-shell{grid-template-columns:minmax(0,.92fr)" in html
-    assert "linear-gradient(144deg,#063642" in html
-    assert "#loginView .auth-hero li{" in html
-    assert "rgba(0,35,47,.19)" in html
-    assert "prefers-reduced-motion:reduce" in html
+    styles=auth_styles()
+    suite=(Path(__file__).resolve().parents[2]/"app/static/orion-suite.css").read_text("utf-8")
+    assert html.index('href="/panel-assets/orion-suite.css"') < html.index('href="/panel-assets/orion-auth.css"')
+    used=set(re.findall(r"var\((--os-[\w-]+)",styles))
+    declared=set(re.findall(r"(--os-[\w-]+)\s*:",suite))
+    assert used <= declared, f"Unknown dashboard design tokens: {used-declared}"
+    for token in ("--os-font","--os-display","--os-bg","--os-card","--os-text",
+                  "--os-muted","--os-primary","--os-border","--os-danger"):
+        assert token in used
+    assert "@font-face" not in styles, "Authentication must not introduce a second font bundle"
+    assert "auth-primary os-button os-full" in html
+    assert "auth-tabs os-tabs" in html
+    assert "animation:os-toast-in" in compact_auth_styles()
+    assert "@media(prefers-reduced-motion:reduce)" in compact_auth_styles()
+    for obsolete in ("#063642","#1ac6b1","#23c6ab","auth-orbit"):
+        assert obsolete not in styles
 
 
-def test_desktop_login_occupies_exactly_two_viewport_halves():
-    """Regression: left gradient must start at viewport x=0; form must not be clipped."""
-    html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
-    anchor=html.split("/* Desktop auth: the split is anchored to the viewport",1)
-    assert len(anchor)==2, "Explicit viewport layout guard absent"
-    rules=anchor[1].split("</style>",1)[0]
-    assert "@media (min-width:901px)" in rules
-    assert "position:fixed;inset:0" in rules
-    assert "width:100vw;max-width:none" in rules
-    assert "margin:0;padding:0;overflow-x:hidden;overflow-y:auto" in rules
-    assert "grid-template-columns:50% 50%" in rules
-    assert "width:100%;max-width:100%" in rules
-    assert "min-width:0" in rules
-    assert "max-width:466px" in rules
-    # Up to 900px the mobile design remains a single column, without the visual band.
-    assert '#loginView .auth-visual{display:none}' in html
-    assert "@media(max-width:900px)" in html
+def test_desktop_login_uses_the_viewport_and_equal_columns_without_clipping():
+    """Preserves the full desktop split, a bounded form and vertical overflow for short screens."""
+    styles=compact_auth_styles()
+    desktop=styles.split("@media(min-width:901px)",1)[1].split("@media",1)[0]
+    assert "position:fixed;inset:0" in desktop
+    assert "overflow-x:hidden;overflow-y:auto" in desktop
+    assert "grid-template-columns:repeat(2,minmax(0,1fr))" in styles
+    assert "width:100%" in styles and "min-width:0" in styles
+    assert "max-width:466px" in styles
+    assert "#loginView.auth-visual{display:none;" in styles
+    assert "@media(max-width:900px)" in styles
 
 
 def test_signup_is_immediate_and_otp_is_only_for_recovery():
@@ -217,7 +241,7 @@ def test_orion_theme_ui_is_accessible_and_mobile_usable():
     for label in ("Tema Automático, seguir o dispositivo","Tema Claro","Tema Escuro"):
         assert f'aria-label="{label}"' in html
     assert "role=\"group\" aria-label=\"Escolher aparência\"" in html
-    assert html.count('data-theme-choice="')==3
+    assert html.count('data-theme-choice="')==6, "Login and administration both expose the same three preferences"
     assert 'button.setAttribute("aria-pressed",String(button.dataset.themeChoice===safe))' in html
     assert "@media(max-width:790px)" in html
     assert ".sidebar-bottom{display:flex" in html

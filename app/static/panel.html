@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<meta name="theme-color" content="#0b1527" id="orionThemeColor">
+<meta name="theme-color" content="#f5f8fc" id="orionThemeColor">
 <script>
 (function(){
   var preference="auto";
@@ -272,253 +272,7 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 .wizard-timeline-copy p{font-size:.79rem}.wizard-card{padding:16px}}
 
 
-/* Autenticação Orion 2.0 — responsiva, adaptável ao tema, sem scripts externos. */
-#loginView{min-height:100vh;display:block;padding:0;background:#0e172a}
-.auth-shell{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.auth-visual{background:radial-gradient(ellipse at 20% 0%,#108e91,#1ac6b1 67%,#21cfb8);
-  position:relative;isolation:isolate;overflow:hidden;display:flex;flex-direction:column;justify-content:center;padding:clamp(34px,7vw,105px) clamp(30px,8vw,138px)}
-.auth-visual:before{content:"";position:absolute;inset:-30%;z-index:-1;background:radial-gradient(circle at 25% 20%,#085c6c75,transparent 38%),radial-gradient(circle at 100% 90%,#37d6e4ad,transparent 44%)}
-.auth-visual-logo{position:absolute;top:clamp(22px,4vw,52px);left:clamp(26px,6vw,92px)}
-.auth-visual-logo img{width:194px;height:auto;display:block;filter:drop-shadow(0 4px 15px #05292721)}
-.auth-hero{position:relative;max-width:590px;z-index:1}
-.auth-hero-kicker{display:inline-block;color:#eafffa;font-weight:750;font-size:.78rem;letter-spacing:.09em;text-transform:uppercase;margin-bottom:20px}
-.auth-hero h1{font-size:clamp(2.1rem,3.8vw,4.35rem);line-height:1.09;letter-spacing:-.055em;color:white;font-weight:850;margin:0 0 22px;text-wrap:balance}
-.auth-hero p{color:#edfffb;font-size:clamp(1rem,1.3vw,1.25rem);line-height:1.55;max-width:460px}
-.auth-hero ul{list-style:none;margin:29px 0 0;padding:0;color:white;display:grid;gap:14px;font-size:.95rem}
-.auth-hero li{display:flex;align-items:center;gap:12px}.auth-hero li span{font-size:1.1rem}
-.auth-visual-bottom{position:absolute;bottom:28px;left:clamp(26px,6vw,92px);font-size:.67rem;letter-spacing:.17em;color:#ecfffbaf;font-weight:700}
-.auth-orbit{position:absolute;width:320px;height:320px;right:-120px;bottom:-100px;border:1px solid #fff5;border-radius:50%;pointer-events:none;animation:auth-orbit 18s linear infinite}
-.auth-orbit span{display:block;position:absolute;border:1px solid #fff4;border-radius:50%;inset:45px}
-.auth-orbit span:nth-child(2){inset:90px}.auth-orbit span:nth-child(3){inset:133px;background:#fff4}
-@keyframes auth-orbit{to{transform:rotate(360deg)}}
-.auth-right{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:50px 24px 28px;background:#0e172a;color:#f5f7ff}
-.auth-card{width:min(100%,440px);border:1px solid #29364f;border-radius:17px;padding:clamp(22px,3vw,36px);background:#101b31;box-shadow:0 24px 70px #060d1d47}
-.auth-mobile-brand{display:none}
-.auth-card-top{text-align:center;margin-bottom:24px}.auth-card-top h2{font-size:1.4rem;color:#2fd1c1;margin:0 0 5px;letter-spacing:-.035em;font-weight:830}
-.auth-card-top p{font-size:.84rem;color:#bbc7d9;margin:0}
-.auth-tabs{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:4px;border-radius:11px;background:#182542;margin-bottom:19px}
-.auth-tab{background:transparent;border:0;border-radius:8px;color:#b9cbe0;font-size:.89rem;font-weight:650;min-height:39px}
-.auth-tab.active{background:#0c1429;color:#fff;box-shadow:0 1px 8px #02071455}
-.auth-form:not(.hidden){animation:auth-reveal .28s cubic-bezier(.18,.8,.33,1) both}
-@keyframes auth-reveal{from{opacity:.25;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-.auth-form label{display:block;color:#f0f5ff;font-size:.84rem;font-weight:650;margin:15px 0 7px}
-.auth-form label small{font-weight:400;margin-left:5px}
-.auth-form input:not([type=checkbox]){width:100%;height:46px;border:1px solid #2c4064;border-radius:10px;background:#0e172a;color:#f3f6ff;font-size:.9rem;padding:12px 14px}
-.auth-form input:not([type=checkbox]):focus{border-color:#23c9b3}
-.auth-form input::placeholder{color:#8393b2}
-.auth-secret-field{position:relative}.auth-secret-field input{padding-right:50px!important}
-.auth-eye{position:absolute;right:6px;top:4px;height:38px;width:38px;border:0;background:transparent;color:#9eafc5;display:grid;place-items:center;border-radius:8px}
-.auth-eye svg{height:19px;width:19px}
-.auth-eye:hover{color:#20d0b6;background:#1a2b40}
-.auth-login-options{display:flex;gap:13px;justify-content:space-between;align-items:center;margin:16px 0 19px}
-.auth-form .auth-check{margin:0;font-weight:500;font-size:.82rem;display:flex;gap:9px;align-items:center;color:#c4d5e6}
-.auth-check input{width:16px;height:16px;accent-color:#19b7a4}
-.auth-text-link{border:0;background:none;color:#31cfbb;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:5px 0;font-size:.79rem}
-.auth-primary{width:100%;border:1px solid #23c4ad;border-radius:10px;background:linear-gradient(110deg,#079f98,#23c6ab);color:#062b30;font-weight:800;min-height:46px;padding:11px 17px;display:flex;align-items:center;justify-content:center;gap:10px;margin-top:19px;transition:filter .18s,transform .18s}
-.auth-primary:hover:not(:disabled){filter:brightness(1.11);transform:translateY(-1px)}
-.auth-privacy{display:flex;justify-content:center;align-items:center;gap:7px;font-size:.73rem;color:#a9bdd2;text-align:center;margin:25px 0 0}
-.auth-privacy svg{height:16px;width:16px;flex-shrink:0}
-.auth-hint{font-size:.76rem;text-align:center;margin:11px 0 0;color:#9cb3cb}
-.auth-error{color:#ffb6a6!important;font-size:.8rem!important;margin:12px 0 0;min-height:1em}
-.auth-message{background:#123b38;border:1px solid #287767;color:#aff4d6;border-radius:10px;padding:11px 12px;font-size:.8rem;margin-bottom:15px}
-.auth-form h3{color:#f4f7ff;font-size:1.18rem;margin:4px 0 6px}.auth-form p{font-size:.86rem}
-.auth-back{display:block;text-align:center;margin:16px auto 0}
-.auth-copyright{text-align:center;font-size:.72rem;color:#8295b1;margin:21px 0 0}
-.auth-member{min-height:100vh;background:#0c1527;display:grid;place-items:center;padding:26px;color:#f7faff}
-.auth-member-card{width:min(100%,470px);border:1px solid #2c4161;background:#111c33;border-radius:19px;padding:30px}
-.auth-member-card>picture img{width:190px;height:auto}.auth-member-card h1{margin-top:15px}
-.auth-member-card h2{font-size:1.03rem}.auth-member-card>button{margin-top:19px}
-@media(max-width:900px){
- .auth-shell{grid-template-columns:1fr}.auth-visual{min-height:180px;padding:30px 35px 26px;justify-content:center;align-items:center;text-align:center}
- .auth-visual-logo,.auth-orbit,.auth-visual-bottom,.auth-hero ul,.auth-hero-kicker{display:none}
- .auth-hero h1{font-size:clamp(1.45rem,4vw,2rem);margin:0 0 7px;letter-spacing:-.045em}
- .auth-hero p{font-size:.91rem;margin:0}
- .auth-right{padding:27px 22px 33px}
- .auth-mobile-brand{display:block;text-align:center;margin:-4px 0 12px}
- .auth-mobile-brand img{width:157px;height:auto}
-}
-@media(max-width:560px){
- .auth-visual{min-height:130px;padding:25px 18px}
- .auth-hero h1{font-size:1.42rem}.auth-hero p{font-size:.82rem}
- .auth-right{padding:17px 13px 24px;justify-content:flex-start}
- .auth-card{padding:22px 19px;border-radius:14px}
- .auth-mobile-brand{display:block;text-align:center;margin:-4px 0 10px}
- .auth-mobile-brand img{width:147px;height:auto}
- .auth-card-top{margin-bottom:16px}
- .auth-login-options{gap:8px}.auth-text-link{font-size:.78rem}
- .auth-copyright{margin-top:12px}
-}
-/* Manual/system light theme */
-
-html[data-theme="light"] #loginView, html[data-theme="light"] .auth-right{background:#f4f8fc;color:#142139}
-html[data-theme="light"] .auth-card{background:#fff;border-color:#e0e7f1;box-shadow:0 14px 55px #0d233620}
-html[data-theme="light"] .auth-card-top h2{color:#098d85}
-html[data-theme="light"] .auth-card-top p{color:#516078}
-html[data-theme="light"] .auth-tabs{background:#ecf1f8}
-html[data-theme="light"] .auth-tab{color:#52627a}
-html[data-theme="light"] .auth-tab.active{background:white;color:#14233e;box-shadow:0 2px 7px #09142a19}
-html[data-theme="light"] .auth-form label{color:#1d2c42}
-html[data-theme="light"] .auth-form input:not([type=checkbox]){background:#f9fbff;border-color:#cbd6e4;color:#15213a}
-html[data-theme="light"] .auth-form input::placeholder{color:#8090a6}
-html[data-theme="light"] .auth-form .auth-check{color:#52637c}
-html[data-theme="light"] .auth-privacy, html[data-theme="light"] .auth-copyright{color:#6e7e91}
-html[data-theme="light"] .auth-form h3{color:#15233c}
-html[data-theme="light"] .auth-visual{background:radial-gradient(ellipse at 0% 0%,#0f9d9a,#18bea9 67%,#42d5c3)}
-html[data-theme="light"] .auth-member{background:#f4f8fc;color:#16243c}
-html[data-theme="light"] .auth-member-card{background:white;border-color:#d9e4ee}
-html[data-theme="light"] .auth-hint{color:#5e6f86}
-
-@media(prefers-reduced-motion:reduce){
- .auth-form:not(.hidden),.auth-orbit{animation:none!important}
- .auth-primary{transition:none}
-}
-
-
-/* Auth refinement: stronger contrast, intentional desktop depth, no mobile color slab. */
-#loginView{color-scheme:dark}
-#loginView .auth-shell{grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr)}
-#loginView .auth-visual{
- background:linear-gradient(144deg,#063642 0%,#075666 33%,#086e78 59%,#0c9c91 100%);
- padding-inline:clamp(36px,5.7vw,105px);
-}
-#loginView .auth-visual::before{
- inset:0;background:
- radial-gradient(circle at 93% 19%,rgba(99,242,224,.22),transparent 30%),
- radial-gradient(circle at -6% 90%,rgba(4,30,54,.5),transparent 47%),
- repeating-linear-gradient(145deg,transparent 0 110px,rgba(255,255,255,.015) 111px 112px);
-}
-#loginView .auth-visual::after{
- content:"";position:absolute;right:-140px;top:22%;width:min(38vw,540px);
- aspect-ratio:1;border:1px solid rgba(218,255,250,.2);
- border-radius:50%;box-shadow:0 0 0 48px rgba(216,255,249,.028),
- 0 0 0 105px rgba(216,255,249,.018);pointer-events:none;z-index:-1
-}
-#loginView .auth-visual-logo{left:clamp(36px,5.7vw,105px)}
-#loginView .auth-visual-bottom{left:clamp(36px,5.7vw,105px);color:#e8fffa;opacity:.9}
-#loginView .auth-visual-logo img{width:205px;filter:drop-shadow(0 5px 20px rgba(2,27,41,.24))}
-#loginView .auth-hero{width:100%;max-width:560px;margin:0 auto}
-#loginView .auth-hero-kicker{color:#bdf8eb;letter-spacing:.15em;font-size:.76rem}
-#loginView .auth-hero h1{
- font-size:clamp(2.15rem,3.25vw,3.65rem);line-height:1.12;letter-spacing:-.045em;
- font-weight:820;text-shadow:0 2px 14px rgba(0,29,38,.15);margin-bottom:20px
-}
-#loginView .auth-hero p{font-size:clamp(1rem,1.28vw,1.15rem);line-height:1.6;color:#f3fffd;max-width:510px}
-#loginView .auth-hero ul{gap:11px;margin-top:28px;max-width:500px}
-#loginView .auth-hero li{
- color:#f9fffd;background:rgba(0,35,47,.19);border:1px solid rgba(198,255,241,.19);
- border-radius:12px;padding:11px 15px;font-size:.92rem;backdrop-filter:blur(5px);
-}
-#loginView .auth-hero li span{display:grid;place-items:center;width:22px;height:22px;
- flex:none;border-radius:50%;background:rgba(168,255,225,.24);font-weight:850;color:#e8fff6}
-#loginView .auth-orbit{right:-115px;bottom:-135px;opacity:.6}
-#loginView .auth-right{padding-inline:clamp(24px,3.3vw,60px)}
-#loginView .auth-card{width:min(100%,466px)}
-#loginView .auth-form .auth-check input[type="checkbox"]{
- appearance:none;-webkit-appearance:none;box-sizing:border-box;
- width:18px;height:18px;min-width:18px;flex:0 0 18px;
- padding:0;margin:0;border:1.5px solid #7593ae;border-radius:5px;
- background:#16263b;box-shadow:none;cursor:pointer;
- transition:background-color .16s,border-color .16s;
-}
-#loginView .auth-form .auth-check input[type="checkbox"]:checked{
- background-color:#1ad0af;border-color:#1ad0af;
- background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m5 12 4 4 10-10' fill='none' stroke='%23062b2b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
- background-repeat:no-repeat;background-position:center;background-size:100%;
-}
-#loginView .auth-form .auth-check input[type="checkbox"]:focus-visible{
- outline:3px solid #5cf2d8;outline-offset:3px;
-}
-#loginView .auth-privacy{margin-top:20px}
-#loginView #loginError:empty{display:none}
-@media(max-width:900px){
- #loginView .auth-shell{display:flex;flex-direction:column;min-height:100svh}
- #loginView .auth-visual{display:none}
- #loginView .auth-right{
-   flex:1;min-height:100svh;padding:clamp(22px,5vh,48px) 22px 24px;
-   justify-content:center
- }
- #loginView .auth-card{width:min(100%,490px)}
-}
-@media(max-width:560px){
- #loginView .auth-right{padding:22px 14px 22px;justify-content:center}
- #loginView .auth-card{padding:22px 19px;border-radius:17px}
- #loginView .auth-mobile-brand{margin:0 0 15px}
- #loginView .auth-card-top{margin-bottom:17px}
- #loginView .auth-privacy{margin-top:18px}
-}
-/* Manual/system light theme */
-
-html[data-theme="light"] #loginView{color-scheme:light}
-html[data-theme="light"] #loginView .auth-form .auth-check input[type="checkbox"]{
-   background:#fff;border-color:#8da0b7;
- }
-html[data-theme="light"] #loginView .auth-form .auth-check input[type="checkbox"]:checked{
-   background-color:#11b8a0;border-color:#11b8a0
- }
-html[data-theme="light"] #loginView .auth-visual{
-   background:linear-gradient(144deg,#064450 0%,#0a6b74 50%,#079c8e 100%);
- }
-html[data-theme="light"] #loginView .auth-visual-logo{
-   padding:6px 12px 6px 8px;border-radius:13px;
-   background:rgba(255,255,255,.96);box-shadow:0 8px 32px rgba(0,24,40,.15);
- }
-
-@media(prefers-reduced-motion:reduce){
- #loginView .auth-form .auth-check input[type="checkbox"]{transition:none}
-}
-
-
-/* Desktop auth: the split is anchored to the viewport, not an inherited page width. */
-@media (min-width:901px){
-  #loginView{
-    position:fixed;inset:0;
-    display:block;width:100vw;max-width:none;
-    height:100vh;height:100dvh;min-height:0;
-    margin:0;padding:0;overflow-x:hidden;overflow-y:auto;
-  }
-  #loginView .auth-shell{
-    display:grid;grid-template-columns:50% 50%;
-    grid-template-rows:minmax(100%,auto);
-    width:100%;max-width:100%;min-width:0;min-height:100%;
-    margin:0;padding:0;gap:0;box-sizing:border-box;
-  }
-  #loginView .auth-shell > .auth-visual,
-  #loginView .auth-shell > .auth-right{
-    width:100%;max-width:100%;min-width:0;
-    margin:0;box-sizing:border-box;
-  }
-  #loginView .auth-visual{
-    padding-inline:clamp(32px,4.2vw,80px);
-  }
-  #loginView .auth-visual-logo,
-  #loginView .auth-visual-bottom{left:clamp(32px,4.2vw,80px);}
-  #loginView .auth-hero{min-width:0;max-width:560px;}
-  #loginView .auth-hero h1{font-size:clamp(2.2rem,3.05vw,3.55rem);}
-  #loginView .auth-right{
-    min-height:100vh;min-height:100dvh;
-    justify-content:safe center;align-items:center;
-    padding:44px clamp(26px,4vw,64px) 24px;
-    overflow-wrap:anywhere;
-  }
-  #loginView .auth-card{width:100%;max-width:466px;min-width:0;margin-inline:auto;}
-  #loginView .auth-copyright{max-width:100%;}
-}
-
-
-/* One-time e-mail code: readable, autofill-friendly and responsive. */
-#loginView .auth-form .auth-otp-input{
- text-align:center;letter-spacing:.42em;font-size:clamp(1.4rem,4vw,1.8rem);
- font-weight:800;font-variant-numeric:tabular-nums;height:58px;
- border-color:#238e80;background:#102a33;
-}
-#loginView #verifyEmail[readonly]{opacity:.84;cursor:default}
-#loginView #authResendCode:disabled{opacity:.55;cursor:not-allowed}
-/* Manual/system light theme */
-
-html[data-theme="light"] #loginView .auth-form .auth-otp-input{
-  background:#eafaf5;color:#0d6457;border-color:#50bbaa;
- }
-
+/* Authentication uses the shared suite tokens in orion-auth.css. */
 
 /* Dedicated non-privileged member dashboard inside the main Orion shell. */
 .member-overview{width:min(100%,690px);background:linear-gradient(140deg,#122923,#101e1a);
@@ -691,24 +445,7 @@ html[data-theme="light"] .device-stat strong,html[data-theme="light"] .device-na
 html[data-theme="light"] .wizard-timeline-dot{color:#ffffff}
 html[data-theme="light"] .wizard-timeline-copy strong{color:var(--text)}
 html[data-theme="light"] .wizard-method-icon{color:var(--bright)}
-html[data-theme="light"] .auth-hero li{color:#fff}
 html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
-/* Login colors also obey manual theme switches, not solely device preference. */
-html[data-theme="dark"] #loginView,
-html[data-theme="dark"] .auth-right{background:#0e172a;color:#f5f7ff}
-html[data-theme="dark"] .auth-card{background:#101b31;border-color:#29364f}
-html[data-theme="dark"] .auth-card-top h2{color:#2fd1c1}
-html[data-theme="dark"] .auth-card-top p{color:#bbc7d9}
-html[data-theme="dark"] .auth-tabs{background:#182542}
-html[data-theme="dark"] .auth-tab{color:#b9cbe0}
-html[data-theme="dark"] .auth-tab.active{background:#0c1429;color:#fff}
-html[data-theme="dark"] .auth-form label{color:#f0f5ff}
-html[data-theme="dark"] .auth-form input:not([type="checkbox"]){background:#0e172a;color:#f3f6ff;border-color:#2c4064}
-html[data-theme="dark"] .auth-form .auth-check{color:#c4d5e6}
-html[data-theme="dark"] .auth-form h3{color:#f4f7ff}
-html[data-theme="dark"] .auth-privacy,html[data-theme="dark"] .auth-copyright{color:#a9bdd2}
-html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]{background:#16263b;border-color:#7593ae}
-html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]:checked{background-color:#1ad0af;border-color:#1ad0af}
 @media(max-width:790px){
  .sidebar{position:relative;top:auto;height:auto;gap:12px;padding:12px 16px}
  .sidebar .brand{padding:0}
@@ -729,7 +466,6 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
  .sidebar-bottom .btn{align-self:end;min-height:39px}
  .nav-item{font-size:.81rem}
  .theme-choice{min-height:38px}
- .auth-card{max-width:100%}
 }
 @media(prefers-reduced-motion:reduce){
  body,.theme-choice,.nav-item,.card{transition:none!important}
@@ -943,6 +679,7 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
 }
 </style>
 <link rel="stylesheet" href="/panel-assets/orion-suite.css">
+<link rel="stylesheet" href="/panel-assets/orion-auth.css">
 <link rel="stylesheet" href="/panel-assets/orion-onboarding.css">
 <link rel="stylesheet" href="/panel-assets/orion-channels.css">
 <style>
@@ -954,12 +691,12 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
 <section id="loginView" aria-label="Acesso à conta Orion">
   <div class="auth-shell">
     <aside class="auth-visual">
-      <picture class="auth-visual-logo">
+      <a class="auth-visual-logo" href="/" aria-label="Orion, voltar ao site">
         <img data-orion-logo src="/brand/orion-brand-dark.svg" alt="ORION — Recepcionista Digital" width="240" height="84">
-      </picture>
+      </a>
       <div class="auth-hero">
         <span class="auth-hero-kicker">O seu atendimento, em outra órbita.</span>
-        <h1>Um novo jeito de cuidar do seu tempo.</h1>
+        <h1>Um novo jeito de cuidar <span>do seu tempo.</span></h1>
         <p>Agenda, conversas e automações reunidas em um único lugar.</p>
         <ul>
           <li><span aria-hidden="true" class="orion-list-check"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg></span> Mais praticidade no atendimento</li>
@@ -967,10 +704,23 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
           <li><span aria-hidden="true" class="orion-list-check"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg></span> Experiência simples e inteligente</li>
         </ul>
       </div>
-      <div class="auth-orbit" aria-hidden="true"><span></span><span></span><span></span></div>
       <span class="auth-visual-bottom">ORION RECEPCIONISTA DIGITAL</span>
     </aside>
     <div class="auth-right">
+      <div class="auth-toolbar">
+        <a class="auth-site-link" href="/"><svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 5-7 7 7 7M5 12h14"/></svg>Voltar ao site</a>
+        <div class="os-theme" id="authTheme">
+          <button id="authThemeToggle" class="os-icon-button" type="button" aria-label="Escolher aparência" aria-expanded="false" aria-controls="authThemeMenu">
+            <svg class="os-icon" data-auth-theme-icon="light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
+            <svg class="os-icon hidden" data-auth-theme-icon="dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.3A9 9 0 0 1 9.7 3.5 9 9 0 1 0 20.5 14.3Z"/></svg>
+          </button>
+          <div id="authThemeMenu" class="os-theme-menu hidden" role="group" aria-label="Aparência do acesso">
+            <button type="button" data-theme-choice="light" aria-label="Tema Claro" aria-pressed="false"><svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>Claro</button>
+            <button type="button" data-theme-choice="dark" aria-label="Tema Escuro" aria-pressed="false"><svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.3A9 9 0 0 1 9.7 3.5 9 9 0 1 0 20.5 14.3Z"/></svg>Escuro</button>
+            <button type="button" data-theme-choice="auto" aria-label="Tema Automático, seguir o dispositivo" aria-pressed="true"><svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>Sistema</button>
+          </div>
+        </div>
+      </div>
       <div class="auth-card">
         <div class="auth-mobile-brand">
           <picture>
@@ -978,21 +728,23 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
           </picture>
         </div>
         <div class="auth-card-top">
-          <h2>Bem-vindo ao Orion</h2>
-          <p>Entre na sua conta ou crie uma nova.</p>
+          <h2 id="authTitle" tabindex="-1">Bem-vindo ao Orion</h2>
+          <p id="authSubtitle">Acesse sua conta para continuar.</p>
         </div>
-        <div id="authTabs" class="auth-tabs" role="tablist" aria-label="Acesso ao Orion">
-          <button id="authTabLogin" class="auth-tab active" type="button" role="tab" aria-selected="true">Entrar</button>
-          <button id="authTabRegister" class="auth-tab" type="button" role="tab" aria-selected="false">Criar conta</button>
+        <div id="authTabs" class="auth-tabs os-tabs" role="tablist" aria-label="Acesso ao Orion">
+          <button id="authTabLogin" class="auth-tab os-tab active" type="button" role="tab" aria-selected="true" aria-controls="loginForm" tabindex="0">Entrar</button>
+          <button id="authTabRegister" class="auth-tab os-tab" type="button" role="tab" aria-selected="false" aria-controls="registerForm" tabindex="-1">Criar conta</button>
         </div>
         <div id="authGlobalMessage" class="auth-message hidden" role="status" aria-live="polite"></div>
-        <form id="loginForm" class="auth-form" autocomplete="on">
-          <label for="username">E-mail da conta</label>
-          <input id="username" type="text" inputmode="email" autocomplete="username" placeholder="seu@email.com" required maxlength="254">
+        <div id="authRegisterAvailability" class="auth-availability hidden" role="status" aria-live="polite"></div>
+        <div id="authForgotAvailability" class="auth-availability hidden" role="status" aria-live="polite"></div>
+        <form id="loginForm" class="auth-form" autocomplete="on" role="tabpanel" aria-labelledby="authTabLogin" aria-busy="false">
+          <label for="username">E-mail ou usuário</label>
+          <input id="username" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="seu@email.com" required maxlength="254">
           <label for="password">Senha</label>
           <div class="auth-secret-field">
-            <input id="password" type="password" autocomplete="current-password" required placeholder="Digite sua senha">
-            <button type="button" class="auth-eye" data-password-toggle="password" aria-label="Mostrar senha">
+            <input id="password" type="password" autocomplete="current-password" aria-describedby="loginError" required placeholder="Digite sua senha">
+            <button type="button" class="auth-eye os-icon-button" data-password-toggle="password" aria-controls="password" aria-label="Mostrar senha" aria-pressed="false">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
@@ -1000,49 +752,45 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
             <label class="auth-check"><input id="rememberMe" type="checkbox"> Lembrar de mim</label>
             <button class="auth-text-link" id="authForgotLink" type="button">Esqueci minha senha</button>
           </div>
-          <button id="authSubmitLogin" class="auth-primary" type="submit">Entrar <span aria-hidden="true">→</span></button>
+          <button id="authSubmitLogin" class="auth-primary os-button os-full" type="submit" aria-busy="false"><span class="os-spinner hidden" aria-hidden="true"></span><span data-auth-label>Entrar</span><svg class="os-icon auth-submit-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
           <p id="loginError" class="auth-error" role="alert" aria-live="polite"></p>
         </form>
-        <form id="registerForm" class="auth-form hidden" autocomplete="on">
+        <form id="registerForm" class="auth-form hidden" autocomplete="on" role="tabpanel" aria-labelledby="authTabRegister" aria-busy="false">
           <label for="registerName">Nome completo</label>
           <input id="registerName" autocomplete="name" maxlength="120" required placeholder="Seu nome completo">
           <label for="registerEmail">E-mail</label>
-          <input id="registerEmail" type="email" autocomplete="email" maxlength="254" required placeholder="seu@email.com">
+          <input id="registerEmail" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" required placeholder="seu@email.com">
           <label for="registerPassword">Senha <small>mínimo de 8 caracteres</small></label>
           <div class="auth-secret-field">
             <input id="registerPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required placeholder="Crie uma senha forte">
-            <button class="auth-eye" type="button" data-password-toggle="registerPassword" aria-label="Mostrar senha">
+            <button class="auth-eye os-icon-button" type="button" data-password-toggle="registerPassword" aria-controls="registerPassword" aria-label="Mostrar senha" aria-pressed="false">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
           <label for="registerConfirm">Confirmar senha</label>
-          <input id="registerConfirm" type="password" autocomplete="new-password" minlength="8" required placeholder="Digite a senha novamente">
-          <button id="authSubmitRegister" class="auth-primary" type="submit">Criar minha conta <span aria-hidden="true">→</span></button>
+          <input id="registerConfirm" type="password" autocomplete="new-password" aria-describedby="registerError" minlength="8" required placeholder="Digite a senha novamente">
+          <button id="authSubmitRegister" class="auth-primary os-button os-full" type="submit" aria-busy="false" disabled><span class="os-spinner hidden" aria-hidden="true"></span><span data-auth-label>Criar minha conta</span><svg class="os-icon auth-submit-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
           <p id="registerError" class="auth-error" role="alert" aria-live="polite"></p>
           
         </form>
-        <form id="forgotForm" class="auth-form hidden">
-          <h3>Recuperar senha</h3>
-          <p>Enviaremos um código de seis dígitos para seu e-mail cadastrado.</p>
+        <form id="forgotForm" class="auth-form hidden" aria-labelledby="authTitle" aria-busy="false">
           <label for="forgotEmail">E-mail cadastrado</label>
-          <input id="forgotEmail" type="email" autocomplete="email" required placeholder="seu@email.com">
-          <button id="authSubmitForgot" class="auth-primary" type="submit">Enviar código de recuperação</button>
+          <input id="forgotEmail" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" aria-describedby="forgotError" required placeholder="seu@email.com">
+          <button id="authSubmitForgot" class="auth-primary os-button os-full" type="submit" aria-busy="false" disabled><span class="os-spinner hidden" aria-hidden="true"></span><span data-auth-label>Enviar código de recuperação</span></button>
           <button class="auth-text-link auth-back" type="button" data-back-login>Voltar para entrar</button>
           <p id="forgotError" class="auth-error" role="alert" aria-live="polite"></p>
         </form>
-        <form id="resetForm" class="auth-form hidden">
-          <h3>Criar nova senha</h3>
-          <p>Digite o código enviado ao seu e-mail e escolha uma nova senha.</p>
+        <form id="resetForm" class="auth-form hidden" aria-labelledby="authTitle" aria-busy="false">
           <label for="resetEmail">E-mail cadastrado</label>
-          <input id="resetEmail" type="email" autocomplete="email" required maxlength="254" placeholder="seu@email.com">
+          <input id="resetEmail" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" required maxlength="254" placeholder="seu@email.com">
           <label for="resetCode">Código de recuperação</label>
           <input id="resetCode" class="auth-otp-input" type="text" inputmode="numeric" autocomplete="one-time-code"
             pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="000000" required>
           <label for="resetPassword">Nova senha</label>
           <input id="resetPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required placeholder="Mínimo de 8 caracteres">
           <label for="resetConfirm">Confirmar nova senha</label>
-          <input id="resetConfirm" type="password" autocomplete="new-password" minlength="8" required placeholder="Repita a nova senha">
-          <button id="authSubmitReset" class="auth-primary" type="submit">Atualizar senha</button>
+          <input id="resetConfirm" type="password" autocomplete="new-password" aria-describedby="resetError" minlength="8" required placeholder="Repita a nova senha">
+          <button id="authSubmitReset" class="auth-primary os-button os-full" type="submit" aria-busy="false"><span class="os-spinner hidden" aria-hidden="true"></span><span data-auth-label>Atualizar senha</span></button>
           <button class="auth-text-link auth-back" type="button" data-back-login>Voltar para entrar</button>
           <p id="resetError" class="auth-error" role="alert" aria-live="polite"></p>
         </form>
@@ -1576,6 +1324,11 @@ html[data-theme="dark"] #loginView .auth-form .auth-check input[type="checkbox"]
 const $=id=>document.getElementById(id);
  const preferenceQuery=window.matchMedia("(prefers-color-scheme: dark)");
  const choices=document.querySelectorAll("[data-theme-choice]");
+ function closeAuthTheme(restoreFocus=false){
+   $("authThemeMenu").classList.add("hidden");
+   $("authThemeToggle").setAttribute("aria-expanded","false");
+   if(restoreFocus)$("authThemeToggle").focus();
+ }
  function applyTheme(preference,store=false){
    const safe=["light","dark","auto"].includes(preference)?preference:"auto";
    if(store){try{localStorage.setItem("orion-theme",safe)}catch(_){/* storage blocked */}}
@@ -1586,11 +1339,32 @@ const $=id=>document.getElementById(id);
       const url=effective==="light"?"/brand/orion-brand-light.svg":"/brand/orion-brand-dark.svg";
       if(image.getAttribute("src")!==url)image.setAttribute("src",url);
    });
-   const meta=$("orionThemeColor");if(meta)meta.content=effective==="dark"?"#0b1527":"#f4f9fb";
+   const meta=$("orionThemeColor");
+   if(meta)meta.content=getComputedStyle(document.documentElement).getPropertyValue("--os-bg").trim()||(effective==="dark"?"#05080f":"#f5f8fc");
    choices.forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.themeChoice===safe)));
+   document.querySelectorAll("[data-auth-theme-icon]").forEach(icon=>icon.classList.toggle("hidden",icon.dataset.authThemeIcon!==effective));
  }
- choices.forEach(button=>button.addEventListener("click",()=>applyTheme(button.dataset.themeChoice,true)));
+ choices.forEach(button=>button.addEventListener("click",()=>{
+   applyTheme(button.dataset.themeChoice,true);
+   if(button.closest("#authTheme"))closeAuthTheme(true);
+ }));
+ $("authThemeToggle").addEventListener("click",()=>{
+   const open=$("authThemeMenu").classList.contains("hidden");
+   $("authThemeMenu").classList.toggle("hidden",!open);
+   $("authThemeToggle").setAttribute("aria-expanded",String(open));
+   if(open)$("authThemeMenu").querySelector('[aria-pressed="true"]').focus();
+ });
+ document.addEventListener("click",event=>{if(!event.target.closest("#authTheme"))closeAuthTheme()});
+ // Safari can blur a button before a tap's click without focusing the next one.
+ // Close when focus arrives outside, so a pending theme selection stays clickable.
+ document.addEventListener("focusin",event=>{if(!$("authTheme").contains(event.target))closeAuthTheme()});
+ $("authTheme").addEventListener("keydown",event=>{
+   if(event.key==="Escape"&&!$("authThemeMenu").classList.contains("hidden")){
+     event.preventDefault();closeAuthTheme(true);
+   }
+ });
  applyTheme(document.documentElement.dataset.themePreference||"auto");
+ window.addEventListener("storage",event=>{if(event.key==="orion-theme"||event.key===null)applyTheme(event.newValue||"auto")});
  const onSystemTheme=()=>{
    if(document.documentElement.dataset.themePreference==="auto")applyTheme("auto");
  };
@@ -1701,7 +1475,40 @@ async function api(url,method="GET",data){
  }
  return response.status===204?null:response.json();
 }
-let authScreen="login",loginRole="support";
+let authScreen="login",loginRole="support",authPending=null;
+let authAvailability={registration:null,passwordRecovery:null},authFeaturesFailed=false,authFeaturesSequence=0;
+const authScreens={
+ login:{form:"loginForm",button:"authSubmitLogin",title:"Bem-vindo ao Orion",subtitle:"Acesse sua conta para continuar.",label:"Entrar",busy:"Entrando…"},
+ register:{form:"registerForm",button:"authSubmitRegister",title:"Crie sua conta",subtitle:"Seu acesso ao Orion começa por aqui.",label:"Criar minha conta",busy:"Criando conta…"},
+ forgot:{form:"forgotForm",button:"authSubmitForgot",title:"Recuperar senha",subtitle:"Enviaremos um código de seis dígitos para seu e-mail cadastrado.",label:"Enviar código de recuperação",busy:"Enviando código…"},
+ reset:{form:"resetForm",button:"authSubmitReset",title:"Criar nova senha",subtitle:"Digite o código enviado ao seu e-mail e escolha uma nova senha.",label:"Atualizar senha",busy:"Atualizando senha…"}
+};
+function syncAuthAvailability(){
+ const busy=authPending!==null;
+ document.querySelectorAll("#loginView .auth-form input, #loginView .auth-form button, #authTabs button").forEach(control=>control.disabled=busy);
+ $("authSubmitRegister").disabled=busy||authAvailability.registration!==true;
+ $("authSubmitForgot").disabled=busy||authAvailability.passwordRecovery!==true;
+ for(const [screen,key,id] of [["register","registration","authRegisterAvailability"],["forgot","passwordRecovery","authForgotAvailability"]]){
+   let notice="";
+   if(authFeaturesFailed)notice=screen==="register"?"Não foi possível verificar a disponibilidade do cadastro. Tente novamente em instantes.":"Não foi possível verificar a recuperação de senha. Tente novamente em instantes.";
+   else if(authAvailability[key]===null)notice="Verificando disponibilidade…";
+   else if(!authAvailability[key])notice=screen==="register"?"Cadastro temporariamente indisponível.":"Recuperação de senha temporariamente indisponível. Tente novamente mais tarde.";
+   $(id).textContent=notice;
+   $(id).classList.toggle("hidden",authScreen!==screen||!notice);
+ }
+}
+function setAuthBusy(screen,busy){
+ authPending=busy?screen:null;
+ for(const [key,config] of Object.entries(authScreens)){
+   const pending=authPending===key,button=$(config.button);
+   $(config.form).setAttribute("aria-busy",String(pending));
+   button.setAttribute("aria-busy",String(pending));
+   button.querySelector("[data-auth-label]").textContent=pending?config.busy:config.label;
+   button.querySelector(".os-spinner").classList.toggle("hidden",!pending);
+   button.querySelector(".auth-submit-arrow")?.classList.toggle("hidden",pending);
+ }
+ syncAuthAvailability();
+}
 let actionConfirmation=null;
 function finishActionConfirmation(accepted){
  const pending=actionConfirmation;if(!pending)return;actionConfirmation=null;
@@ -1732,18 +1539,27 @@ function messageAuth(text){
  const element=$("authGlobalMessage");
  element.textContent=text||"";element.classList.toggle("hidden",!text);
 }
-function authScreenShow(screen){
- if(!["login","register","forgot","reset"].includes(screen))return;
+function authScreenShow(screen,{focus=false}={}){
+ if(!Object.hasOwn(authScreens,screen))return;
  authScreen=screen;
- const formIds={login:"loginForm",register:"registerForm",forgot:"forgotForm",reset:"resetForm"};
- for(const [key,id] of Object.entries(formIds))$(id).classList.toggle("hidden",screen!==key);
+ for(const [key,config] of Object.entries(authScreens))$(config.form).classList.toggle("hidden",screen!==key);
+ $("authTitle").textContent=authScreens[screen].title;
+ $("authSubtitle").textContent=authScreens[screen].subtitle;
  $("authTabs").classList.toggle("hidden",screen==="forgot"||screen==="reset");
  for(const [button,selected] of [["authTabLogin",screen==="login"],["authTabRegister",screen==="register"]]){
    $(button).classList.toggle("active",selected);
    $(button).setAttribute("aria-selected",String(selected));
+   $(button).tabIndex=selected?0:-1;
  }
  for(const id of ["loginError","registerError","forgotError","resetError"]){$(id).textContent=""}
+ document.querySelectorAll("#loginView [aria-invalid]").forEach(input=>input.removeAttribute("aria-invalid"));
+ document.querySelectorAll("[data-password-toggle]").forEach(button=>{
+   $(button.dataset.passwordToggle).type="password";
+   button.setAttribute("aria-pressed","false");button.setAttribute("aria-label","Mostrar senha");
+ });
  messageAuth("");
+ syncAuthAvailability();
+ if(focus)$("authTitle").focus({preventScroll:true});
 }
 function showLogin(){
  ++authEpoch;
@@ -1762,6 +1578,7 @@ function showLogin(){
  resetCatalogState();$("catalogNav").classList.add("hidden");
  $("appView").classList.add("hidden");
  $("loginView").classList.remove("hidden");
+ closeAuthTheme();
  authScreenShow("login");
 }
 function showApp(role="support",name="",email=""){
@@ -1808,94 +1625,125 @@ async function publicAuth(path,payload){
  return body;
 }
 async function authFeatures(){
+ const sequence=++authFeaturesSequence;
+ if(authFeaturesFailed){authFeaturesFailed=false;authAvailability={registration:null,passwordRecovery:null};syncAuthAvailability();}
  try{
   const result=await fetch("/auth/features",{cache:"no-store",credentials:"same-origin"});
+  if(!result.ok)throw Error("features_unavailable");
   const available=await result.json();
-  $("authSubmitRegister").disabled=!available.registration;
-  $("registerError").textContent=available.registration ? "" : "Cadastro temporariamente indisponível.";
-  $("authSubmitForgot").disabled=!available.passwordRecovery;
-  if(!available.passwordRecovery)
-    $("forgotError").textContent="Recuperação indisponível até configurar o envio de e-mails.";
+  if(sequence!==authFeaturesSequence)return;
+  authAvailability={registration:available.registration===true,passwordRecovery:available.passwordRecovery===true};
+  authFeaturesFailed=false;
  }catch{
-  $("authSubmitRegister").disabled=true;
-  $("authSubmitForgot").disabled=true;
-  $("registerError").textContent="Não foi possível verificar a disponibilidade do cadastro.";
+  if(sequence!==authFeaturesSequence)return;
+  authAvailability={registration:false,passwordRecovery:false};authFeaturesFailed=true;
  }
+ syncAuthAvailability();
 }
-$("authTabLogin").addEventListener("click",()=>authScreenShow("login"));
-$("authTabRegister").addEventListener("click",()=>authScreenShow("register"));
-$("authForgotLink").addEventListener("click",()=>authScreenShow("forgot"));
+$("authTabLogin").addEventListener("click",()=>{if(!authPending)authScreenShow("login")});
+$("authTabRegister").addEventListener("click",()=>{
+ if(authPending)return;
+ authScreenShow("register");
+ if(authAvailability.registration!==true)void authFeatures();
+});
+$("authTabs").addEventListener("keydown",event=>{
+ if(authPending||!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;
+ const tabs=[$("authTabLogin"),$("authTabRegister")],index=tabs.indexOf(event.target);
+ if(index<0)return;
+ event.preventDefault();
+ const next=event.key==="Home"?0:event.key==="End"?1:(index+1)%tabs.length;
+ tabs[next].focus();tabs[next].click();
+});
+$("authForgotLink").addEventListener("click",()=>{
+ if(authPending)return;
+ const username=$("username").value.trim();
+ if(username.includes("@"))$("forgotEmail").value=username;
+ authScreenShow("forgot",{focus:true});
+ if(authAvailability.passwordRecovery!==true)void authFeatures();
+});
 document.querySelectorAll("[data-back-login]").forEach(button=>
- button.addEventListener("click",()=>authScreenShow("login")));
+ button.addEventListener("click",()=>{if(!authPending)authScreenShow("login",{focus:true})}));
 document.querySelectorAll("[data-password-toggle]").forEach(button=>
  button.addEventListener("click",()=>{
    const target=$(button.getAttribute("data-password-toggle"));
-   const visible=target.type==="text";
+   const visible=target.type==="text",start=target.selectionStart,end=target.selectionEnd;
    target.type=visible?"password":"text";
    button.setAttribute("aria-label",visible?"Mostrar senha":"Ocultar senha");
+   button.setAttribute("aria-pressed",String(!visible));
+   target.focus({preventScroll:true});
+   if(start!==null&&end!==null)target.setSelectionRange(start,end);
  }));
+document.querySelectorAll("#loginView .auth-form input").forEach(input=>input.addEventListener("input",()=>input.removeAttribute("aria-invalid")));
 $("loginForm").addEventListener("submit",async event=>{
- event.preventDefault();authEpoch++;$("loginError").textContent="";
- const button=$("authSubmitLogin");button.disabled=true;
+ event.preventDefault();
+ if(authPending||$("authSubmitLogin").disabled)return;
+ authEpoch++;$("loginError").textContent="";
+ const payload={username:$("username").value,password:$("password").value,remember:$("rememberMe").checked};
+ setAuthBusy("login",true);
  try{
-  const result=await publicAuth("/auth/login",{
-    username:$("username").value,password:$("password").value,
-    remember:$("rememberMe").checked
-  });
+  const result=await publicAuth("/auth/login",payload);
   csrf=result.csrf;
   $("password").value="";
-  showApp(result.role||"support",result.name||"",result.email||$("username").value.trim().toLowerCase());
+  $("password").type="password";
+  const toggle=document.querySelector('[data-password-toggle="password"]');
+  toggle.setAttribute("aria-label","Mostrar senha");toggle.setAttribute("aria-pressed","false");
+  showApp(result.role||"support",result.name||"",result.email||payload.username.trim().toLowerCase());
  }catch(error){$("loginError").textContent=error.message}
- finally{button.disabled=false}
+ finally{setAuthBusy("login",false)}
 });
 $("registerForm").addEventListener("submit",async event=>{
  event.preventDefault();$("registerError").textContent="";
+ if(authPending||$("authSubmitRegister").disabled)return;
  if($("registerPassword").value!==$("registerConfirm").value){
-   $("registerError").textContent="As senhas não coincidem.";return;
+   $("registerError").textContent="As senhas não coincidem.";
+   $("registerConfirm").setAttribute("aria-invalid","true");$("registerConfirm").focus();return;
  }
- const button=$("authSubmitRegister");button.disabled=true;
+ $("registerConfirm").removeAttribute("aria-invalid");
+ const payload={name:$("registerName").value,email:$("registerEmail").value,password:$("registerPassword").value};
+ let registered=false;
+ setAuthBusy("register",true);
  try{
-  const result=await publicAuth("/auth/register",{
-    name:$("registerName").value,email:$("registerEmail").value,
-    password:$("registerPassword").value
-  });
+  const result=await publicAuth("/auth/register",payload);
   $("registerPassword").value="";$("registerConfirm").value="";
-  const registeredEmail=$("registerEmail").value.trim().toLowerCase();
   authScreenShow("login");
-  $("username").value=registeredEmail;
-  $("password").focus();
+  $("username").value=payload.email.trim().toLowerCase();registered=true;
   messageAuth(result.message||"Conta criada. Faça login com seu e-mail e senha.");
  }catch(error){$("registerError").textContent=error.message}
- finally{button.disabled=false;await authFeatures()}
+ finally{setAuthBusy("register",false);if(registered)$("password").focus();await authFeatures()}
 });
 $("forgotForm").addEventListener("submit",async event=>{
  event.preventDefault();$("forgotError").textContent="";
- const button=$("authSubmitForgot");button.disabled=true;
+ if(authPending||$("authSubmitForgot").disabled)return;
+ const email=$("forgotEmail").value;
+ let sent=false;
+ setAuthBusy("forgot",true);
  try{
-  const result=await publicAuth("/auth/password/forgot",{email:$("forgotEmail").value});
+  const result=await publicAuth("/auth/password/forgot",{email});
   authScreenShow("reset");
-  $("resetEmail").value=$("forgotEmail").value.trim().toLowerCase();
-  $("resetCode").focus();
+  $("resetEmail").value=email.trim().toLowerCase();sent=true;
   messageAuth(result.message);
  }catch(error){$("forgotError").textContent=error.message}
- finally{button.disabled=false;await authFeatures()}
+ finally{setAuthBusy("forgot",false);if(sent)$("resetCode").focus();await authFeatures()}
 });
 $("resetForm").addEventListener("submit",async event=>{
  event.preventDefault();$("resetError").textContent="";
+ if(authPending||$("authSubmitReset").disabled)return;
  if($("resetPassword").value!==$("resetConfirm").value){
-   $("resetError").textContent="As senhas não coincidem.";return;
+   $("resetError").textContent="As senhas não coincidem.";
+   $("resetConfirm").setAttribute("aria-invalid","true");$("resetConfirm").focus();return;
  }
- const button=$("authSubmitReset");button.disabled=true;
+ $("resetConfirm").removeAttribute("aria-invalid");
+ const payload={email:$("resetEmail").value,code:$("resetCode").value,password:$("resetPassword").value};
+ let reset=false;
+ setAuthBusy("reset",true);
  try{
-  const result=await publicAuth("/auth/password/reset",{
-    email:$("resetEmail").value,code:$("resetCode").value,
-    password:$("resetPassword").value
-  });
+  const result=await publicAuth("/auth/password/reset",payload);
   $("resetCode").value="";
   $("resetPassword").value="";$("resetConfirm").value="";
-  authScreenShow("login");messageAuth(result.message);
+  authScreenShow("login");$("username").value=payload.email.trim().toLowerCase();
+  messageAuth(result.message);reset=true;
  }catch(error){$("resetError").textContent=error.message}
- finally{button.disabled=false}
+ finally{setAuthBusy("reset",false);if(reset)$("password").focus()}
 });
 (async()=>{
  const epoch=authEpoch;

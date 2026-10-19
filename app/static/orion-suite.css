@@ -163,11 +163,15 @@
 .os-inline-link{display:inline-flex;align-items:center;gap:6px;margin-top:12px;color:var(--os-primary);font-size:14px;line-height:20px;background:transparent;border:0;padding:0;cursor:pointer;text-decoration:none}
 .os-inline-link:hover{text-decoration:underline}
 .os-inline-link .os-icon{width:16px;height:16px}
-.os-fab{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom,0px));right:calc(24px + env(safe-area-inset-right,0px));z-index:35;display:flex;align-items:center;gap:8px;border:1px solid var(--os-border);border-radius:100px;padding:6px;background:color-mix(in srgb,var(--os-card) 95%,transparent);color:var(--os-primary);box-shadow:0 8px 24px #2e7bf626;backdrop-filter:blur(8px);cursor:pointer;transition:transform .2s,box-shadow .2s}
-.os-fab:hover{transform:translateY(-2px);box-shadow:0 10px 28px #2e7bf640}
-.os-fab>span:first-child{display:grid;place-items:center;width:44px;height:44px;background:var(--os-tint);border-radius:100%;color:var(--os-primary)}
-.os-fab-label{max-width:0;overflow:hidden;white-space:nowrap;font:500 14px/20px var(--os-font);transition:max-width .2s}
-.os-fab:hover .os-fab-label,.os-fab:focus-visible .os-fab-label{max-width:130px;padding-right:10px}
+/* The floating consultant remains a true circle. The label is accessible through
+   aria-label; it must not create an invisible flex gap or expand on mobile taps. */
+.os-fab{position:fixed;bottom:calc(24px + env(safe-area-inset-bottom,0px));right:calc(24px + env(safe-area-inset-right,0px));z-index:35;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:0;width:56px;min-width:56px;height:56px;min-height:56px;margin:0;padding:5px;border:1px solid var(--os-border);border-radius:50%;background:var(--os-card);color:var(--os-primary);box-shadow:0 6px 18px #2e7bf626;cursor:pointer;transition:transform .2s ease,box-shadow .2s ease}
+.os-fab>span:first-child{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;background:var(--os-tint);border-radius:50%;color:var(--os-primary)}
+.os-fab>span:first-child .os-icon{display:block;width:22px;height:22px}
+.os-fab-label{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+@media(hover:hover) and (pointer:fine){.os-fab:hover{transform:translateY(-2px);box-shadow:0 10px 28px #2e7bf640}}
+.os-fab:focus-visible{outline:3px solid var(--os-primary);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){.os-fab{transition:none}}
 .os-scrim{display:none}
 .os-loading{padding:48px 20px;display:flex;gap:10px;justify-content:center;align-items:center;color:var(--os-muted);font-size:14px;text-align:center}
 .os-spinner{width:18px;height:18px;border:2px solid var(--os-border);border-top-color:var(--os-primary);border-radius:50%;animation:os-spin .7s linear infinite;flex-shrink:0}
@@ -235,8 +239,8 @@
 .os-week-today{width:4px;height:4px;border-radius:50%;background:currentColor;position:absolute;bottom:5px}
 .os-agenda-filters{display:grid;grid-template-columns:minmax(220px,1fr) repeat(2,minmax(150px,.6fr));align-items:end;gap:12px;margin-bottom:20px}
 .os-agenda-search{display:flex;align-items:center;gap:8px;position:relative;min-width:0}
-.os-agenda-search>.os-icon{position:absolute;left:13px;pointer-events:none;width:18px;height:18px;color:var(--os-muted)}
-.os-main .os-agenda-search input{padding-left:39px;min-height:44px;background:var(--os-card);font-size:14px;box-shadow:none}
+.os-agenda-search>.os-icon{position:absolute;top:50%;left:14px;transform:translateY(-50%);pointer-events:none;width:20px;height:20px;color:var(--os-muted)}
+.os-main .os-agenda-search input#osAgendaSearch{padding-left:46px;min-height:44px;background:var(--os-card);font-size:14px;box-shadow:none}
 .os-agenda-filter{min-width:0;display:flex;flex-direction:column;gap:5px;font-size:11px;line-height:16px;color:var(--os-muted)}
 .os-main .os-agenda-filter select{min-height:44px;font-size:14px;background:var(--os-card);box-shadow:none}
 .os-agenda-view-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:16px}
@@ -305,7 +309,23 @@ html:has(.os-appointment-sheet[open]){overflow:hidden}
 .os-appointment-sheet-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 22px;border-bottom:1px solid var(--os-border);background:var(--os-card);flex-shrink:0}
 .os-appointment-sheet-header p{font:600 10px/16px var(--os-font);letter-spacing:.12em;color:var(--os-muted);margin:0 0 2px}
 .os-appointment-sheet-header h2{font:600 19px/26px var(--os-display);margin:0;color:var(--os-text)}
-.os-appointment-sheet-header .os-close{position:static;flex:0 0 44px;width:44px;height:44px;padding:0}
+/* Safari may draw a native outline on focusable, non-action targets after a
+   touch or a programmatic focus restoration. Keep these targets focusable for
+   dialogs/ARIA tabs and retain a visible ring for keyboard navigation. */
+.os-main[data-os-current-route=agenda] #osPageBody:focus:not(:focus-visible),
+.os-main[data-os-current-route=agenda] #osAgendaCount:focus:not(:focus-visible),
+.os-appointment-sheet-header #osDialogTitle:focus:not(:focus-visible){outline:none}
+.os-main[data-os-current-route=agenda] #osPageBody:focus-visible,
+.os-main[data-os-current-route=agenda] #osAgendaCount:focus-visible,
+.os-appointment-sheet-header #osDialogTitle:focus-visible{outline:3px solid var(--os-primary);outline-offset:2px}
+/* Icon-only actions in appointment details must not inherit the text-button
+   padding or the generic dialog close position/size. */
+.os-dialog.os-appointment-sheet .os-appointment-sheet-header>.os-close,
+.os-dialog.os-appointment-sheet .os-appointment-section-title>.os-appointment-google-refresh{position:static;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;max-height:44px;margin:0;padding:0;gap:0;border:1px solid transparent;border-radius:12px;background:#2162d0;color:#fff;box-shadow:var(--os-shadow);cursor:pointer}
+.os-dialog.os-appointment-sheet .os-appointment-sheet-header>.os-close>.os-icon,
+.os-dialog.os-appointment-sheet .os-appointment-section-title>.os-appointment-google-refresh>.os-icon{display:block;flex:0 0 20px;width:20px;height:20px;color:inherit}
+.os-dialog.os-appointment-sheet .os-appointment-sheet-header>.os-close:hover:not(:disabled),
+.os-dialog.os-appointment-sheet .os-appointment-section-title>.os-appointment-google-refresh:hover:not(:disabled){background:var(--os-primary-hover);color:#fff}
 .os-appointment-scroll{padding:24px;overflow:auto;overscroll-behavior:contain;min-height:0;flex:1;scrollbar-width:thin}
 .os-appointment-sheet :where(h3,h4,p,dl,dd,ul,ol){margin:0}
 .os-appointment-sheet :where(p,small){overflow-wrap:anywhere}
@@ -420,8 +440,8 @@ html:has(.os-appointment-sheet[open]){overflow:hidden}
  .os-agenda-date-picker{flex:1}
  .os-agenda-connection{justify-content:space-between;min-width:0}
  .os-agenda-google{flex:1}
- .os-agenda-expand{font-size:0;width:44px;padding:0;flex:0 0 44px}
- .os-agenda-expand .os-icon{width:19px;height:19px}
+ .os-agenda-expand,.os-agenda-view-row>.os-button[data-os-action=agenda-reload]{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;max-height:44px;padding:0;gap:0;font-size:0;line-height:0}
+ .os-agenda-expand>.os-icon,.os-agenda-view-row>.os-button[data-os-action=agenda-reload]>.os-icon{display:block;flex:0 0 20px;width:20px;height:20px}
  .os-agenda-week{gap:2px;margin-bottom:16px}
  .os-agenda-week>.os-icon-button{flex-basis:22px;width:22px}
  .os-agenda-week .os-week-grid{gap:2px}
@@ -431,8 +451,7 @@ html:has(.os-appointment-sheet[open]){overflow:hidden}
  .os-main .os-agenda-search input,.os-main .os-agenda-filter select{font-size:16px}
  .os-agenda-views{flex:1;justify-content:space-between;gap:2px}
  .os-agenda-views>button{flex:1;padding:8px 7px;gap:5px;font-size:12px}
- .os-agenda-view-row>.os-button{font-size:0;padding:8px;flex:0 0 40px}
- .os-agenda-view-row>.os-button .os-icon{width:18px;height:18px}
+
  .os-agenda-summary{gap:10px 16px;padding:12px 0}
  .os-agenda-summary>.os-agenda-summary-label{width:100%;font-size:10px;line-height:12px}
  .os-agenda-summary>.os-agenda-summary-item{font-size:11px;gap:4px}
@@ -459,6 +478,8 @@ html:has(.os-appointment-sheet[open]){overflow:hidden}
  .os-dialog.os-sheet.os-appointment-sheet{width:100%;border:0;inset:0}
  .os-appointment-sheet-header{padding:calc(12px + env(safe-area-inset-top)) 16px 12px}
  .os-appointment-sheet-header h2{font-size:18px;line-height:24px}
+ .os-dialog.os-appointment-sheet .os-appointment-sheet-header>.os-close,
+ .os-dialog.os-appointment-sheet .os-appointment-section-title>.os-appointment-google-refresh{flex-basis:48px;width:48px;min-width:48px;max-width:48px;height:48px;min-height:48px;max-height:48px}
  .os-appointment-scroll{padding:20px 16px}
  .os-appointment-sheet-footer{padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
  .os-appointment-sheet-footer>.os-button{font-size:13px;min-height:46px}
@@ -529,6 +550,61 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-customer-dialog .os-form-actions>.os-button{min-height:44px;border-radius:100px}
 .os-customer-dialog .os-form-actions>button[type=submit]{flex:1;font-weight:600}
 .os-customer-dialog .os-field label{font-size:12px;line-height:16px}
+
+/* Customer form: a single, theme-aware visual language for create and edit. */
+#osDialog.os-customer-dialog .os-client-form{display:grid;gap:18px;min-width:0}
+#osDialog.os-customer-dialog .os-client-intro{font-size:12px;line-height:18px}
+#osDialog.os-customer-dialog .os-client-field{display:grid;gap:7px;min-width:0}
+#osDialog.os-customer-dialog .os-client-field>label{display:block;margin:0;color:var(--os-text);font:600 13px/19px var(--os-font)}
+#osDialog.os-customer-dialog .os-client-input,
+#osDialog.os-customer-dialog .os-client-textarea{box-sizing:border-box;display:flex;align-items:center;gap:11px;min-width:0;width:100%;min-height:52px;padding:0 14px;border:1px solid var(--os-border);border-radius:16px;background:color-mix(in srgb,var(--os-tint) 38%,var(--os-card));box-shadow:var(--os-shadow);transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease}
+#osDialog.os-customer-dialog .os-client-input:focus-within,
+#osDialog.os-customer-dialog .os-client-textarea:focus-within{border-color:var(--os-primary);background:var(--os-card);box-shadow:0 0 0 3px color-mix(in srgb,var(--os-primary) 18%,transparent)}
+#osDialog.os-customer-dialog .os-client-input-icon{display:grid;place-items:center;flex:0 0 19px;width:19px;height:19px;color:var(--os-muted);pointer-events:none}
+#osDialog.os-customer-dialog .os-client-input-icon .os-icon{display:block;width:19px;height:19px}
+/* Keep the native Safari date field and the leading calendar on the same centerline. */
+#osDialog.os-customer-dialog .os-client-date{display:grid;grid-template-columns:19px minmax(0,1fr);align-items:center;column-gap:11px}
+#osDialog.os-customer-dialog .os-client-date .os-client-input-icon{display:grid;place-items:center;align-self:center;width:19px;height:48px}
+#osDialog.os-customer-dialog .os-client-date>input[type=date]{display:block;box-sizing:border-box;width:100%;height:48px;min-height:48px;margin:0;padding:0;line-height:24px}
+#osDialog.os-customer-dialog .os-client-date>input[type=date]::-webkit-date-and-time-value{display:flex;align-items:center;min-height:48px;line-height:24px;text-align:left}
+#osDialog.os-customer-dialog .os-client-date>input[type=date]::-webkit-datetime-edit{display:inline-flex;align-items:center;min-height:24px;line-height:24px;padding:0}
+#osDialog.os-customer-dialog .os-client-input-plain{gap:0}
+#osDialog.os-customer-dialog .os-client-input>input:not([type=checkbox]):not([type=radio]):not([type=color]),
+#osDialog.os-customer-dialog .os-client-textarea>textarea{box-sizing:border-box;flex:1;min-width:0;max-width:100%;width:100%;min-height:48px;height:48px;padding:0;border:0;border-radius:0;background:transparent;color:var(--os-text);box-shadow:none;outline:none;font:400 16px/24px var(--os-font)}
+#osDialog.os-customer-dialog .os-client-input>input:not([type=checkbox]):not([type=radio]):not([type=color]):focus,
+#osDialog.os-customer-dialog .os-client-textarea>textarea:focus{border:0;background:transparent;box-shadow:none;outline:none}
+#osDialog.os-customer-dialog .os-client-input input::placeholder,
+#osDialog.os-customer-dialog .os-client-textarea textarea::placeholder{color:var(--os-muted);opacity:.86}
+#osDialog.os-customer-dialog .os-client-hint{margin:0;font:400 11px/17px var(--os-font);color:var(--os-muted)}
+#osDialog.os-customer-dialog .os-client-textarea{align-items:flex-start;min-height:112px;padding:0 14px}
+#osDialog.os-customer-dialog .os-client-textarea>textarea{height:auto;min-height:108px;padding:14px 0;line-height:23px;resize:vertical}
+#osDialog.os-customer-dialog .os-client-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0}
+#osDialog.os-customer-dialog .os-client-more{min-width:0;border:0;padding:0}
+#osDialog.os-customer-dialog .os-client-more-toggle{box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:9px;min-height:48px;width:100%;padding:11px 13px;border:1px dashed color-mix(in srgb,var(--os-primary) 22%,var(--os-border));border-radius:14px;background:color-mix(in srgb,var(--os-tint) 16%,var(--os-card));color:var(--os-primary);list-style:none;text-align:center;font:500 13px/20px var(--os-font);cursor:pointer;transition:background-color .18s,border-color .18s}
+#osDialog.os-customer-dialog .os-client-more-toggle::-webkit-details-marker{display:none}
+#osDialog.os-customer-dialog .os-client-more-toggle::marker{content:""}
+#osDialog.os-customer-dialog .os-client-more-toggle:hover{background:var(--os-tint);border-color:color-mix(in srgb,var(--os-primary) 45%,var(--os-border))}
+#osDialog.os-customer-dialog .os-client-more-toggle:focus-visible{outline:3px solid color-mix(in srgb,var(--os-primary) 55%,transparent);outline-offset:2px}
+/* SVG plus/minus share the same centered box, without font-baseline offsets. */
+#osDialog.os-customer-dialog .os-client-more-icon{display:grid;place-items:center;flex:0 0 20px;width:20px;height:20px}
+#osDialog.os-customer-dialog .os-client-more-icon>.os-icon{display:block;grid-area:1/1;width:18px;height:18px;stroke-width:2.2}
+#osDialog.os-customer-dialog .os-client-more-icon>.os-client-more-minus{display:none}
+#osDialog.os-customer-dialog .os-client-more[open] .os-client-more-icon>.os-icon:first-child{display:none}
+#osDialog.os-customer-dialog .os-client-more[open] .os-client-more-icon>.os-client-more-minus{display:block}
+#osDialog.os-customer-dialog .os-client-more-text{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px;min-width:0}
+#osDialog.os-customer-dialog .os-client-more-label-expanded{display:none}
+#osDialog.os-customer-dialog .os-client-more[open] .os-client-more-label-collapsed{display:none}
+#osDialog.os-customer-dialog .os-client-more[open] .os-client-more-label-expanded{display:inline}
+#osDialog.os-customer-dialog .os-client-more-text small{font:400 12px/18px var(--os-font);color:inherit;opacity:.86}
+#osDialog.os-customer-dialog .os-client-extra-fields{display:grid;gap:18px;padding-top:16px}
+/* Client totals must remain readable even for long BRL figures on small screens. */
+#osDialog.os-customer-dialog .os-client-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0;width:100%;max-width:100%}
+#osDialog.os-customer-dialog .os-client-stats>.os-stat{box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:5px;min-width:0;max-width:100%;padding:14px;overflow:hidden}
+#osDialog.os-customer-dialog .os-client-stats>.os-client-stat-total{grid-column:1/-1;background:color-mix(in srgb,var(--os-tint) 30%,var(--os-card))}
+#osDialog.os-customer-dialog .os-client-stats>.os-stat>strong{display:block;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:normal;font:700 clamp(18px,5.3vw,25px)/1.25 var(--os-display);letter-spacing:0;font-variant-numeric:tabular-nums}
+#osDialog.os-customer-dialog .os-client-stats>.os-stat>small{margin-top:0;font-size:12px;line-height:18px;overflow-wrap:anywhere}
+@media(max-width:359px){#osDialog.os-customer-dialog .os-client-grid{grid-template-columns:1fr}}
+
 .os-more-fields{border-top:1px solid var(--os-border);padding-top:16px}
 .os-more-fields summary{cursor:pointer;color:var(--os-text);font-size:14px;font-weight:500;line-height:22px}
 .os-more-fields summary span{display:block;font-size:12px;color:var(--os-muted);font-weight:400}
@@ -674,7 +750,7 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
  .os-dashboard-title{margin-bottom:24px}
  .os-title-row{gap:12px;margin-bottom:20px}
  .os-title-row .os-actions{gap:6px}
- .os-fab{bottom:calc(20px + env(safe-area-inset-bottom,0px));right:calc(20px + env(safe-area-inset-right,0px))}
+ .os-fab{width:52px;min-width:52px;height:52px;min-height:52px;bottom:calc(16px + env(safe-area-inset-bottom,0px));right:calc(16px + env(safe-area-inset-right,0px))}.os-fab>span:first-child{flex-basis:40px;width:40px;height:40px}
  .os-toast-region{right:16px;bottom:90px}
  .os-sidebar-context{min-height:112px}
  .orion-suite-enabled .sidebar>.sidebar-bottom{display:block;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}

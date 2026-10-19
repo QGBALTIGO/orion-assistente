@@ -118,6 +118,7 @@ async def branding(asset: str) -> FileResponse:
 async def panel_asset(asset: str) -> FileResponse:
     """Only the public suite assets; never expose arbitrary application files."""
     allowed = {"orion-suite.css": "text/css", "orion-suite.js": "text/javascript",
+               "orion-auth.css": "text/css",
                "orion-invite.css": "text/css", "orion-invite.js": "text/javascript",
                "orion-onboarding.css": "text/css", "orion-onboarding.js": "text/javascript",
                "orion-channels.css": "text/css", "orion-channels.js": "text/javascript",

@@ -47,7 +47,7 @@ export async function makePanel({ role = 'support', tenantRole = 'owner',
   function fallback(path) {
     if (path === '/auth/me') return { authenticated: true, csrf: 'synthetic-mobile-csrf', role,
       name: 'Conta sintética', email: 'mobile-test@example.invalid' };
-    if (path === '/auth/features') return { registration_enabled: false, password_reset_enabled: false };
+    if (path === '/auth/features') return { registration: false, passwordRecovery: false };
     if (path === '/auth/logout') return { ok: true };
     if (path.startsWith('/api/v1/onboarding/entry')) return { enabled: false, kind: 'dashboard' };
     if (path.endsWith('/management/marketing/execution')) return { available: false };
