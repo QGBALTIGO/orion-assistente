@@ -967,8 +967,8 @@
     const actions=(can('confirm')?button('Confirmar reserva','confirm-appointment','','check'):'')+(can('complete')?button('Finalizar atendimento','complete-appointment','','check'):'')+(can('reschedule')?button('Remarcar','reschedule-appointment','os-outline','calendar'):'')+(can('no_show')?button('Registrar falta','no-show-appointment','os-outline','block'):'')+(can('cancel')?button('Cancelar agendamento','cancel-appointment','os-outline os-appointment-cancel','close'):'');
     setAppointmentSheet('Detalhes do agendamento',content,actions||button('Fechar detalhes','close-dialog','os-outline'));
   }
-  async function showAppointmentDetail(id,{notice=''}={}){
-    if(!id||state.busy)return;const c=context(),d=beginAppointmentSheet('appointment-detail','Detalhes do agendamento','<div class="os-appointment-scroll">'+loading('Atualizando o agendamento...')+'</div>',{appointmentId:id});if(!d)return;
+  async function showAppointmentDetail(id,{notice='',trigger=null}={}){
+    if(!id||state.busy)return;const c=context(),d=beginAppointmentSheet('appointment-detail','Detalhes do agendamento','<div class="os-appointment-scroll">'+loading('Atualizando o agendamento...')+'</div>',{appointmentId:id,...(trigger?.isConnected?{trigger}:{})});if(!d)return;
     try{const record=await request(apiPath('/appointments/'+encodeURIComponent(id)));if(!current(c)||state.dialog!==d)return;if(!record||String(record.id)!==String(id)||!record.status)throw Error('Não foi possível confirmar os dados deste agendamento.');d.record=record;renderAppointmentDetail(d,notice);$('osDialogTitle')?.focus();void loadAppointmentGoogle(d);}
     catch(error){if(!current(c)||state.dialog!==d)return;setAppointmentSheet('Detalhes do agendamento','<div class="os-appointment-scroll"><div class="os-agenda-error" role="alert"><h3>Não foi possível consultar o agendamento</h3><p>'+esc(error.message||'Confira a conexão e tente novamente.')+'</p>'+button('Tentar novamente','appointment-back','os-outline','refresh')+'</div></div>');$('osDialogTitle')?.focus();}
   }
@@ -1252,7 +1252,7 @@
       if(el.dataset.osHours){await showHours(el.dataset.osHours);return;}
       if(el.dataset.osBlock){showBlockDetail(el.dataset.osBlock,el.dataset.resource);return;}
       if(el.dataset.osCalendarSlot){await showAppointment({professionalId:el.dataset.osCalendarSlot,time:el.dataset.time});return;}
-      if(el.dataset.osAppointment){await showAppointmentDetail(el.dataset.osAppointment);return;}
+      if(el.dataset.osAppointment){await showAppointmentDetail(el.dataset.osAppointment,{trigger:el});return;}
       if(el.dataset.osSettlement){await showSettlementDetail(el.dataset.osSettlement);return;}
       if(el.dataset.osFinance){const r=[...rows(state.data.finance),...rows(state.data.financeAdvances),...rows(state.data.financePayments)].find(r=>r.id===el.dataset.osFinance);if(r){if(number(r.allocated_cents)>0||rows(state.data.settlements).some(item=>item.payment_entry_id===r.id))showLockedFinance(r);else showFinance(r.kind,r);}return;}
       if(el.dataset.osMarketingTab){state.filters.marketingTab=el.dataset.osMarketingTab;renderMarketing(state.data.marketing);return;}
@@ -1305,7 +1305,7 @@
   function handleKeydown(event){if(!state.mounted)return;if(event.key==='Escape'){if(state.notificationsOpen){event.preventDefault();closeNotifications(true);}if($('appView').classList.contains('os-menu-open')){event.preventDefault();drawer(false);}if(!$('osThemeMenu').classList.contains('hidden')){$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');$('osThemeToggle').focus();}}
     const agendaTab=event.target.closest('[data-os-day],[data-os-agenda-mode]');
     if(agendaTab&&['ArrowLeft','ArrowRight','Home','End'].includes(event.key)&&!state.busy){const tabs=[...agendaTab.closest('[role=tablist]').querySelectorAll('[role=tab]')],index=tabs.indexOf(agendaTab),next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;event.preventDefault();tabs[next].focus();tabs[next].click();return;}
-    const row=event.target.closest('[data-os-appointment][role=button]');if(row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();void showAppointmentDetail(row.dataset.osAppointment);}
+    const row=event.target.closest('[data-os-appointment][role=button]');if(row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();void showAppointmentDetail(row.dataset.osAppointment,{trigger:row});}
     if(event.key==='Tab'&&$('appView').classList.contains('os-menu-open')){const focusable=[...$('osSidebar').querySelectorAll('button:not([disabled]),select:not([disabled]),a[href]')].filter(el=>el.getClientRects().length);const first=focusable[0],last=focusable[focusable.length-1];if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
   }
   function onDialogCancel(event){if(state.busy){event.preventDefault();return;}event.preventDefault();closeDialog();}

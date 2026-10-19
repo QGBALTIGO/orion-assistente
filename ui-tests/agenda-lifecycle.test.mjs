@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {makeSuite, flush, deferred, defaultResponse, tenantA, tenantB, customerId} from './harness.mjs';
 
 const professionalId='50000000-0000-4000-8000-000000000005';
@@ -192,4 +193,35 @@ test('Google error codes become bounded Portuguese guidance and never expose an 
 
 test('Google historical exclusion and absent credentials are honest distinct conditions',async t=>{
   for(const data of [{status:'outside_initial_sync',configured:true,sync_enabled:true,connection_status:'active'},{status:'pending',configured:false,sync_enabled:true,connection_status:'not_connected'}]){const h=await fixture(t,{respond:responder({on:path=>path.includes('/google/appointments/')?data:undefined})});await openDetail(h);const text=h.document.getElementById('osAppointmentGoogle').textContent;if(data.status==='outside_initial_sync')assert.match(text,/Anterior à conexão.*não faz parte da sincronização inicial/s);else assert.match(text,/ainda não está configurada/);assert.equal(posts(h).length,0);}
+});
+test('toque em agendamento preserva o cartão como origem mesmo se Safari mantiver foco na área inteira',async t=>{
+  const h=await fixture(t,{respond:responder()});
+  const panel=h.document.getElementById('osPageBody');
+  const row=h.document.querySelector('[data-os-appointment="'+appointmentId+'"]');
+  assert.equal(panel.tabIndex,0,'tabpanel precisa continuar acessível por teclado');
+  panel.focus(); // Safari pode não focar o botão no toque, deixando o tabpanel ativo.
+  assert.equal(h.document.activeElement,panel);
+  h.click('[data-os-appointment="'+appointmentId+'"]');
+  await flush();
+  assert.equal(h.document.activeElement.id,'osDialogTitle','título do diálogo continua anunciado pelo foco');
+  h.click('[data-os-action=close-dialog]');
+  await flush();
+  assert.equal(h.document.activeElement,row,'foco volta ao botão real, não à área inteira');
+  assert.notEqual(h.document.activeElement,panel);
+  assert.equal(posts(h).length,0);
+});
+
+test('CSS diferencia toque de teclado apenas no tabpanel, na contagem e no título do modal',async ()=>{
+  const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
+  for(const selector of [
+    '.os-main[data-os-current-route=agenda] #osPageBody',
+    '.os-main[data-os-current-route=agenda] #osAgendaCount',
+    '.os-appointment-sheet-header #osDialogTitle',
+  ]){
+    assert.ok(css.includes(selector+':focus:not(:focus-visible)'),'sem anel nativo de toque em '+selector);
+    assert.ok(css.includes(selector+':focus-visible'),'anel preservado no teclado em '+selector);
+  }
+  assert.match(css,/\.os-agenda-item:focus-visible\{outline:3px solid var\(--os-primary\)/,
+    'foco de teclado de cada cartão não pode ser removido');
+  assert.match(css,/#osDialogTitle:focus-visible\{outline:3px solid var\(--os-primary\);outline-offset:2px\}/);
 });
