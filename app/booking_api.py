@@ -228,3 +228,20 @@ async def list_appointments(
                 return result
             return {"items": result, "total": page["total"], "limit": page_limit, "offset": offset,
                     "has_more": offset + len(result) < page["total"]}
+
+
+@router.post("/appointments/{appointment_id}/notifications/retry")
+async def retry_appointment_notices(tenant_id: UUID, appointment_id: UUID, actor: Actor = Depends(authenticate)):
+    from app.appointment_notices import enabled, read_notices
+    authorize(actor,tenant_id,write=True)
+    if not enabled():raise HTTPException(409,"Os avisos ainda não foram ativados")
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db,tenant_id):
+            await read_appointment(db,tenant_id,appointment_id)
+            # Only definitively unsent attempts. Uncertain results are lookup-only.
+            await db.execute(text("""UPDATE appointment_notices SET status='pending',next_attempt_at=now(),
+                last_error=NULL,updated_at=clock_timestamp()
+                WHERE tenant_id=:tenant AND appointment_id=:id AND status='blocked'
+                  AND expires_at>now() AND updated_at<now()-interval '15 seconds'"""),
+                {"tenant":tenant_id,"id":appointment_id})
+            return jsonable_encoder(await read_notices(db,tenant_id,appointment_id))
