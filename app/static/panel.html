@@ -677,6 +677,24 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
  #appView .orion-workspace .wizard-method{padding:14px 8px;min-height:110px}
  #appView .orion-workspace .wizard-method span:last-child{font-size:11px;line-height:16px}
 }
+
+
+/* Same chevron and rounded disclosure surfaces inside legacy workspace pages.
+   The native summary keeps its built-in mouse, touch and keyboard behavior. */
+#appView .orion-workspace details.workspace-details{box-sizing:border-box;min-width:0;overflow:hidden;border:1px solid var(--os-border);border-radius:14px;background:var(--os-card);padding:0 16px}
+#appView .orion-workspace details.workspace-details>summary{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;margin:0 -16px;padding:12px 16px;list-style:none;text-align:left;color:var(--os-text);font:600 13px/20px var(--os-font);overflow-wrap:anywhere;cursor:pointer;transition:background-color .18s ease}
+#appView .orion-workspace details.workspace-details>summary::-webkit-details-marker{display:none}
+#appView .orion-workspace details.workspace-details>summary::marker{content:""}
+#appView .orion-workspace details.workspace-details>summary::after{content:"";box-sizing:border-box;display:block;flex:0 0 9px;width:9px;height:9px;margin:-4px 3px 0 0;border:solid var(--os-muted);border-width:0 2px 2px 0;border-radius:1px;transform:rotate(45deg);transition:transform .18s ease}
+#appView .orion-workspace details.workspace-details[open]>summary::after{transform:translateY(4px) rotate(225deg)}
+#appView .orion-workspace details.workspace-details>summary:hover{background:color-mix(in srgb,var(--os-primary) 5%,var(--os-card))}
+#appView .orion-workspace details.workspace-details>summary:focus-visible{outline:3px solid color-mix(in srgb,var(--os-primary) 65%,transparent);outline-offset:-3px;border-radius:12px}
+#appView .orion-workspace details.workspace-details[open]>summary{border-bottom:1px solid var(--os-border);margin-bottom:12px;background:color-mix(in srgb,var(--os-primary) 3%,var(--os-card))}
+@media(prefers-reduced-motion:reduce){
+  #appView .orion-workspace details.workspace-details>summary,
+  #appView .orion-workspace details.workspace-details>summary::after{transition:none}
+}
+
 </style>
 <link rel="stylesheet" href="/panel-assets/orion-suite.css">
 <link rel="stylesheet" href="/panel-assets/orion-auth.css">
@@ -1119,7 +1137,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
             <div class="wide"><label for="bizAddress">Localização ou endereço</label><input id="bizAddress" maxlength="500"></div>
             <div><label for="bizTimezone">Fuso horário da empresa</label><input id="bizTimezone" maxlength="64" placeholder="America/Campo_Grande"></div><div><label for="bizContact">Telefone de contato com DDI</label><input id="bizContact" type="tel" maxlength="16" placeholder="+5567999999999"></div>
           </div>
-          <details style="margin-top:20px"><summary>Horários e informações para responder dúvidas</summary><p class="business-muted">Estes horários são informativos. A agenda continua seguindo o expediente dos profissionais; este formulário não muda vagas ou reservas.</p>
+          <details class="workspace-details" style="margin-top:20px"><summary>Horários e informações para responder dúvidas</summary><p class="business-muted">Estes horários são informativos. A agenda continua seguindo o expediente dos profissionais; este formulário não muda vagas ou reservas.</p>
             <h3>Horários da empresa</h3><div id="businessHours" class="business-repeat"></div><button id="businessAddHours" class="btn secondary" type="button">Adicionar período</button>
             <h3>Perguntas frequentes</h3><div id="businessFaqs" class="business-repeat"></div><button id="businessAddFaq" class="btn secondary" type="button">Adicionar pergunta</button>
             <h3>Políticas da empresa</h3><div id="businessPolicies" class="business-repeat"></div><button id="businessAddPolicy" class="btn secondary" type="button">Adicionar política</button>

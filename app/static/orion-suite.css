@@ -1397,3 +1397,53 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-image-upload[data-os-uploading=true] .os-image-thumb{opacity:.65}
 .os-image-upload [data-os-action=image-remove]:disabled{opacity:.45}
 @media(max-width:390px){.os-image-upload-row{padding:10px;gap:10px}.os-image-thumb{flex-basis:80px;width:80px;height:82px}.os-image-thumb.os-image-cover{flex-basis:92px;width:92px}.os-image-upload-controls .os-button{font-size:12px}}
+
+
+/* Shared Orion disclosure: native <details>, polished card and unobtrusive chevron.
+   Scoped to legacy expanders only. Customers, FAQ, device menus and detailed
+   request rows intentionally retain their own established controls. */
+details.os-more-fields,
+details.os-ai-sources{box-sizing:border-box;min-width:0;margin:12px 0 0;padding:0 14px;border:1px solid var(--os-border);border-radius:14px;background:var(--os-card);color:var(--os-text);overflow:hidden}
+details.os-more-fields>summary,
+details.os-ai-sources>summary{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;margin:0 -14px;padding:12px 14px;list-style:none;color:var(--os-text);font:600 14px/21px var(--os-font);text-align:left;cursor:pointer;transition:background-color .18s ease}
+details.os-more-fields>summary::-webkit-details-marker,
+details.os-ai-sources>summary::-webkit-details-marker,
+details.os-automation-rule>summary::-webkit-details-marker{display:none}
+details.os-more-fields>summary::marker,
+details.os-ai-sources>summary::marker,
+details.os-automation-rule>summary::marker{content:""}
+details.os-more-fields>summary::after,
+details.os-ai-sources>summary::after{content:"";box-sizing:border-box;display:block;flex:0 0 9px;width:9px;height:9px;margin:-4px 3px 0 0;border:solid var(--os-muted);border-width:0 2px 2px 0;border-radius:1px;transform:rotate(45deg);transition:transform .18s ease,color .18s ease}
+details.os-more-fields[open]>summary::after,
+details.os-ai-sources[open]>summary::after{transform:translateY(4px) rotate(225deg)}
+details.os-more-fields>summary:hover,
+details.os-ai-sources>summary:hover{background:color-mix(in srgb,var(--os-primary) 5%,var(--os-card))}
+details.os-more-fields>summary:focus-visible,
+details.os-ai-sources>summary:focus-visible{outline:3px solid color-mix(in srgb,var(--os-primary) 65%,transparent);outline-offset:-3px;border-radius:12px}
+details.os-more-fields[open],
+details.os-ai-sources[open]{padding-bottom:14px}
+details.os-more-fields[open]>summary,
+details.os-ai-sources[open]>summary{border-bottom:1px solid var(--os-border);margin-bottom:12px;background:color-mix(in srgb,var(--os-primary) 3%,var(--os-card))}
+details.os-more-fields>summary .os-disclosure-heading,
+details.os-ai-sources>summary .os-disclosure-heading{display:inline-flex;align-items:center;gap:10px;min-width:0;color:var(--os-text);font:600 14px/21px var(--os-font);overflow-wrap:anywhere}
+details.os-more-fields>summary .os-disclosure-heading>.os-icon,
+details.os-ai-sources>summary .os-disclosure-heading>.os-icon{display:block;flex:0 0 18px;width:18px;height:18px;color:var(--os-primary)}
+details.os-ai-sources>ul{margin:0;padding:0 0 0 18px;color:var(--os-muted);font:400 12px/20px var(--os-font)}
+/* Marketing already provides a semantic right-hand chevron; no duplicate
+   pseudo-arrow is generated here. */
+details.os-automation-rule{box-sizing:border-box;min-width:0;margin:10px 0 0;border:1px solid var(--os-border);border-radius:14px;background:var(--os-card);overflow:hidden}
+details.os-automation-rule>summary{box-sizing:border-box;min-height:54px;padding:12px 15px;list-style:none;color:var(--os-text);cursor:pointer}
+details.os-automation-rule>summary:hover{background:color-mix(in srgb,var(--os-primary) 5%,var(--os-card))}
+details.os-automation-rule>summary:focus-visible{outline:3px solid color-mix(in srgb,var(--os-primary) 65%,transparent);outline-offset:-3px;border-radius:12px}
+details.os-automation-rule[open]>summary{border-bottom:1px solid var(--os-border)}
+details.os-automation-rule>.os-automation-rule-body{padding:14px 15px 16px}
+@media(max-width:767px){
+  details.os-more-fields>summary,details.os-ai-sources>summary{min-height:48px;padding:12px 14px}
+  details.os-automation-rule>summary{padding:12px 14px}
+}
+@media(prefers-reduced-motion:reduce){
+  details.os-more-fields>summary,details.os-ai-sources>summary,
+  details.os-more-fields>summary::after,details.os-ai-sources>summary::after,
+  details.os-automation-rule .os-icon{transition:none}
+}
+
