@@ -1346,7 +1346,9 @@ const $=id=>document.getElementById(id);
    if(open)$("authThemeMenu").querySelector('[aria-pressed="true"]').focus();
  });
  document.addEventListener("click",event=>{if(!event.target.closest("#authTheme"))closeAuthTheme()});
- $("authTheme").addEventListener("focusout",event=>{if(!$("authTheme").contains(event.relatedTarget))closeAuthTheme()});
+ // Safari can blur a button before a tap's click without focusing the next one.
+ // Close when focus arrives outside, so a pending theme selection stays clickable.
+ document.addEventListener("focusin",event=>{if(!$("authTheme").contains(event.target))closeAuthTheme()});
  $("authTheme").addEventListener("keydown",event=>{
    if(event.key==="Escape"&&!$("authThemeMenu").classList.contains("hidden")){
      event.preventDefault();closeAuthTheme(true);
