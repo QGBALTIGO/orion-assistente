@@ -934,6 +934,66 @@
     if(record)content+='<div class="os-stats os-client-stats"><div class="os-stat os-client-stat-total"><strong>'+money(c.total_spent_cents)+'</strong><small>Total atendido</small></div><div class="os-stat"><strong>'+number(c.total_appointments)+'</strong><small>Agendamentos</small></div><div class="os-stat"><strong>'+number(c.loyalty_points)+'</strong><small>Pontos</small></div></div>';
     showDialog('customer',record?(writable()?'Editar cliente':'Cliente'):'Novo cliente',dialogForm('customer',content,record?'Salvar alterações':'Cadastrar cliente',record&&writable()?button('Excluir','delete-customer','os-ghost','trash'):'') ,{record});
   }
+  function imageUploadField(label,name,value,kind){
+    const safe=safePublicURL(value),id='osImageFile-'+name;
+    return '<div class="os-field os-image-upload" data-os-image-kind="'+esc(kind)+'" data-os-image-name="'+esc(name)+'">'+
+      '<label for="'+esc(id)+'">'+esc(label)+'</label>'+
+      '<div class="os-image-upload-row">'+
+        '<div class="os-image-thumb'+(kind==='cover'?' os-image-cover':kind==='logo'?' os-image-logo':'')+'">'+
+          (safe?'<img src="'+esc(safe)+'" alt="Prévia da imagem" loading="lazy" referrerpolicy="no-referrer">':icon('upload'))+
+        '</div>'+
+        '<div class="os-image-upload-controls">'+
+          '<button type="button" class="os-button os-outline os-image-choose" data-os-action="image-pick">'+icon('upload')+'Escolher imagem</button>'+
+          '<button type="button" class="os-button os-ghost os-image-remove" data-os-action="image-remove" '+(value?'':'disabled')+'>Retirar imagem</button>'+
+          '<small class="os-help">JPG, PNG, WebP ou HEIC · até 8 MB. Otimização automática.</small>'+
+        '</div>'+
+      '</div>'+
+      '<input class="os-image-file hidden" id="'+esc(id)+'" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" data-os-image-file="'+esc(name)+'">'+
+      '<input type="hidden" id="osField-'+esc(name)+'" name="'+esc(name)+'" value="'+esc(value||'')+'">'+
+      '<p class="os-image-status" role="status" aria-live="polite"></p>'+
+    '</div>';
+  }
+  async function sendImageFile(input){
+    const box=input.closest('.os-image-upload'),file=input.files?.[0];
+    if(!box||!file)return;
+    input.value='';
+    const status=box.querySelector('.os-image-status'),choose=box.querySelector('[data-os-action=image-pick]'),
+      remove=box.querySelector('[data-os-action=image-remove]'),field=box.querySelector('input[type=hidden]'),
+      thumb=box.querySelector('.os-image-thumb');
+    if(!writable()||state.busy||state.imageUploading){status.textContent="Aguarde o envio anterior.";return;}
+    if(file.size>8*1024*1024||!file.size){status.textContent="Selecione uma imagem com até 8 MB.";return;}
+    if(file.type&&!['image/jpeg','image/png','image/webp','image/heic','image/heif','application/octet-stream'].includes(file.type)){
+      status.textContent="Escolha uma foto JPG, PNG, WebP ou HEIC.";return;
+    }
+    const epoch=state.epoch,currentTenant=state.tenantId,currentDialog=state.dialog;
+    state.imageUploading=true;box.dataset.osUploading='true';choose.disabled=true;remove.disabled=true;
+    const form=box.closest('form'),submit=form?.querySelector('button[type=submit]');
+    if(submit)submit.disabled=true;
+    status.textContent="Enviando e otimizando a imagem…";
+    try{
+      if(typeof state.bridge.uploadImage!=='function')throw Error("Atualize a página para habilitar o envio de imagens.");
+      const result=await state.bridge.uploadImage(apiPath('/media'),file,box.dataset.osImageKind);
+      if(!state.mounted||epoch!==state.epoch||currentTenant!==state.tenantId||currentDialog!==state.dialog||!box.isConnected)return;
+      const target=result?.url,prefix='/media/'+currentTenant+'/';
+      if(typeof target!=='string'||!target.startsWith(prefix)||!/^[0-9a-f-]{36}\.webp$/.test(target.slice(prefix.length)))
+        throw Error("O servidor retornou um endereço de imagem inválido.");
+      field.value=target;
+      const img=document.createElement('img');img.src=target;img.alt="Prévia da imagem";img.loading='lazy';
+      thumb.replaceChildren(img);
+      status.textContent="Imagem enviada. Salve o formulário para confirmar a alteração.";
+      remove.disabled=false;
+      if(form?.id==='osSiteForm')form.dataset.dirty='true';
+    }catch(ex){
+      if(state.mounted&&epoch===state.epoch&&currentDialog===state.dialog&&box.isConnected)
+        status.textContent=ex.message||"Não foi possível enviar a imagem. Tente novamente.";
+    }finally{
+      if(state.mounted&&epoch===state.epoch&&currentTenant===state.tenantId){
+        state.imageUploading=false;
+        if(box.isConnected){delete box.dataset.osUploading;choose.disabled=false;remove.disabled=!field.value;}
+        if(submit?.isConnected)submit.disabled=!writable();
+      }
+    }
+  }
   function servicePayload(form,record){const f=getValues(form);return {name:f.name.trim(),description:f.description?.trim()||null,duration_min:Number(f.duration_min),price_cents:cents(f.price),prep_min:Number(f.prep_min||0),cleanup_min:Number(f.cleanup_min||0),active:form.elements.active.checked,category:f.category?.trim()||null,color:f.color||record?.color||'#8b5cf6',image_url:f.image_url?.trim()||null,sort_order:number(record?.sort_order)};}
   async function showService(record=null,preset={}){
     const s=record||preset,c=context();let pros,links,services,addons;
