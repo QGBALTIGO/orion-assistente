@@ -1,0 +1,124 @@
+name: Recuperar correções e selar schema isolado
+on:
+  push:
+    branches: [fix/login-agenda-whatsapp-recovery-20261019]
+    paths: [.github/workflows/recovery-apply.yml]
+permissions:
+  contents: write
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Recuperar patch com hashes de origem e destino
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import base64,hashlib,json,lzma,os,pathlib,subprocess,urllib.request
+          pieces=['29e525fa7ca2d352866d613551dc10cc4ecb3805','1df1fcb8ea03c042b74fd37c3cb1451296c25357','85a2fb213db795058be57d42b7a2834a906ed882']
+          encoded=[]
+          for sha in pieces:
+              req=urllib.request.Request('https://api.github.com/repos/QGBALTIGO/orion-assistente/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','User-Agent':'orion-source-recovery'})
+              with urllib.request.urlopen(req,timeout=30) as response: data=json.load(response)
+              raw=base64.b64decode(data['content'])
+              assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==sha
+              encoded.append(raw)
+          compressed=base64.b64decode(b''.join(encoded),validate=True)
+          assert hashlib.sha256(compressed).hexdigest()=='f049ac2fd500fbf3eec0a9483190ca9fed5cde3824ffb79a2fa903ec09af4442'
+          decoded=lzma.decompress(compressed,memlimit=128*1024*1024)
+          assert len(decoded)<2*1024*1024
+          bundle=json.loads(decoded)
+          assert bundle['base']=='d1c2eb224580fdf4027e45c3374e9feb23efc5b5'
+          assert len(bundle['manifest'])==26
+          allowed={'app','alembic','scripts','tests','ui-tests','docs','qr-bridge'}
+          for item in bundle['manifest']:
+              path=pathlib.PurePosixPath(item['path'])
+              assert not path.is_absolute() and '..' not in path.parts
+              assert path.parts[0] in allowed or str(path)=='.env.example'
+              file=pathlib.Path(path)
+              actual=hashlib.sha256(file.read_bytes()).hexdigest() if file.exists() else None
+              assert actual==item['old_sha256'],f'Origin mismatch: {path}'
+          patch=pathlib.Path('/tmp/orion-recovery.patch');patch.write_text(bundle['patch'])
+          subprocess.run(['git','apply','--check','--unidiff-zero',str(patch)],check=True)
+          subprocess.run(['git','apply','--unidiff-zero',str(patch)],check=True)
+          for item in bundle['manifest']:
+              assert hashlib.sha256(pathlib.Path(item['path']).read_bytes()).hexdigest()==item['new_sha256'],item['path']
+          pathlib.Path('/tmp/orion-source-manifest.json').write_text(json.dumps(bundle['manifest']))
+          print('26 recovered files verified against both source and target hashes')
+          PY
+      - name: Dependências e cliente PostgreSQL 16
+        run: |
+          python -m pip install '.[test]'
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          echo '/usr/lib/postgresql/16/bin' >> "$GITHUB_PATH"
+      - name: Provisionar banco descartável e aplicar migrations
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 -v db_name=barber_saas -v runtime_password=ci-runtime-only -v migrator_password=ci-migrator-only -v support_password=ci-support-only -f infra/postgres/init/001-roles.sql
+          alembic upgrade head
+      - name: Selar catálogo PostgreSQL criado pelo arquivo verificado
+        run: |
+          python - <<'PY'
+          import json,os,pathlib,re
+          from sqlalchemy.engine import make_url
+          from scripts import one_time_notice_migration as ops
+          engine=ops.engine_for(make_url(os.environ['MIGRATION_DATABASE_URL']))
+          with engine.begin() as conn:
+              conn.exec_driver_sql('SET TRANSACTION READ ONLY')
+              conn.exec_driver_sql('SET LOCAL search_path=pg_catalog,public')
+              assert ops.revision(conn)==ops.TARGET
+              value=ops.fingerprint(ops.catalog(conn)['appointment_notices'])
+          assert re.fullmatch('[a-f0-9]{64}',value)
+          path=pathlib.Path('scripts/one_time_notice_migration.py')
+          source=path.read_text();assert source.count('PENDING_ISOLATED_POSTGRES_REHEARSAL')==1
+          path.write_text(source.replace('PENDING_ISOLATED_POSTGRES_REHEARSAL',value))
+          pathlib.Path('/tmp/orion-notice-schema.json').write_text(json.dumps({'schema_sha256':value}))
+          print('NOTICE_SCHEMA_SHA256='+value)
+          PY
+      - name: Publicar somente na branch de recuperação
+        run: |
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- .env.example app alembic scripts tests qr-bridge ui-tests docs
+          git commit -m 'fix: login alinhado ao painel e avisos transacionais da agenda'
+          git push origin HEAD:refs/heads/fix/login-agenda-whatsapp-recovery-20261019
+          python - <<'PY'
+          import json,pathlib,subprocess
+          value=json.loads(pathlib.Path('/tmp/orion-notice-schema.json').read_text())
+          value.update(commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip())
+          pathlib.Path('/tmp/orion-recovered-result.json').write_text(json.dumps(value,indent=2))
+          print(json.dumps(value))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orion-recovery-verification
+          path: |
+            /tmp/orion-recovered-result.json
+            /tmp/orion-source-manifest.json
+          if-no-files-found: error
+          retention-days: 7
