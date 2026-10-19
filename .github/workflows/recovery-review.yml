@@ -1,36 +1,33 @@
-name: Recovery source review
+name: Login visual qualification
 on:
   pull_request:
     branches: [main]
 permissions:
   contents: read
 jobs:
-  source-snapshots:
+  browser:
     if: github.head_ref == 'fix/login-agenda-notifications-20261018'
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-          path: candidate
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Download public test dependencies
+          python-version: '3.12'
+      - name: Install isolated browser test tools
+        if: hashFiles('scripts/check_login_browser.py') != ''
         run: |
-          mkdir -p toolkit/wheels
-          python -m pip download --only-binary=:all: --dest toolkit/wheels asyncpg arq 'psycopg[binary]' pytest-asyncio
-          npm ci --prefix candidate/ui-tests
-          tar -czf toolkit/ui-node-modules.tar.gz -C candidate/ui-tests node_modules
-          sha256sum toolkit/wheels/* toolkit/ui-node-modules.tar.gz > toolkit/SHA256SUMS
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium webkit
+      - name: Render both themes and authentication forms at four widths
+        if: hashFiles('scripts/check_login_browser.py') != ''
+        run: python scripts/check_login_browser.py --output browser-evidence
       - uses: actions/upload-artifact@v4
+        if: always() && hashFiles('browser-evidence/*.png') != ''
         with:
-          name: recovery-development-toolkit
-          path: toolkit/
-          retention-days: 3
+          name: login-browser-evidence
+          path: browser-evidence/
+          retention-days: 14
           if-no-files-found: error
