@@ -305,6 +305,15 @@ html:has(.os-appointment-sheet[open]){overflow:hidden}
 .os-appointment-sheet-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 22px;border-bottom:1px solid var(--os-border);background:var(--os-card);flex-shrink:0}
 .os-appointment-sheet-header p{font:600 10px/16px var(--os-font);letter-spacing:.12em;color:var(--os-muted);margin:0 0 2px}
 .os-appointment-sheet-header h2{font:600 19px/26px var(--os-display);margin:0;color:var(--os-text)}
+/* Safari may draw a native outline on focusable, non-action targets after a
+   touch or a programmatic focus restoration. Keep these targets focusable for
+   dialogs/ARIA tabs and retain a visible ring for keyboard navigation. */
+.os-main[data-os-current-route=agenda] #osPageBody:focus:not(:focus-visible),
+.os-main[data-os-current-route=agenda] #osAgendaCount:focus:not(:focus-visible),
+.os-appointment-sheet-header #osDialogTitle:focus:not(:focus-visible){outline:none}
+.os-main[data-os-current-route=agenda] #osPageBody:focus-visible,
+.os-main[data-os-current-route=agenda] #osAgendaCount:focus-visible,
+.os-appointment-sheet-header #osDialogTitle:focus-visible{outline:3px solid var(--os-primary);outline-offset:2px}
 .os-appointment-sheet-header .os-close{position:static;flex:0 0 44px;width:44px;height:44px;padding:0}
 .os-appointment-scroll{padding:24px;overflow:auto;overscroll-behavior:contain;min-height:0;flex:1;scrollbar-width:thin}
 .os-appointment-sheet :where(h3,h4,p,dl,dd,ul,ol){margin:0}
