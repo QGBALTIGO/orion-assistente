@@ -298,6 +298,56 @@ test('login theme choices share the saved preference, selected state and logo wi
   assert.deepEqual(writes(h), []);
 });
 
+test('login theme menu survives focus loss without a destination before a touch selection', async t => {
+  const h = await makeLogin(t);
+  const menu = h.element('#authThemeMenu'), toggle = h.element('#authThemeToggle');
+  const root = h.document.documentElement;
+  // Starting at auto, this sequence covers every transition between distinct
+  // preferences in both directions.
+  for (const preference of ['dark', 'light', 'auto', 'light', 'dark', 'auto']) {
+    h.click('#authThemeToggle');
+    const focused = menu.querySelector('[aria-pressed="true"]');
+    assert.equal(h.document.activeElement, focused, 'opening the menu focuses its selected option');
+    assert.equal(visible(menu), true);
+
+    // A touch can blur the programmatically focused option without focusing
+    // the tapped button. The target must stay visible until its click arrives.
+    let focusout;
+    focused.addEventListener('focusout', event => { focusout = event; }, { once: true });
+    focused.blur();
+    assert.ok(focusout, 'the selected option actually loses focus before the click');
+    assert.equal(focusout.relatedTarget, null, 'this reproduces loss of focus without a destination');
+    assert.equal(visible(menu), true, 'blur must preserve the pending touch target for ' + preference);
+    assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+
+    h.click('#authThemeMenu [data-theme-choice="' + preference + '"]');
+    assert.equal(root.dataset.themePreference, preference);
+    assert.equal(root.dataset.theme, preference === 'auto' ? 'light' : preference);
+    assert.equal(h.window.localStorage.getItem('orion-theme'), preference);
+    assert.equal(menu.querySelector('[aria-pressed="true"]').dataset.themeChoice, preference);
+    assert.equal(visible(menu), false, 'a completed selection closes the menu');
+    assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+  }
+  assert.deepEqual(writes(h), []);
+});
+
+test('login theme menu closes when keyboard focus moves outside without stealing that focus', async t => {
+  const h = await makeLogin(t);
+  const menu = h.element('#authThemeMenu'), toggle = h.element('#authThemeToggle');
+  h.click('#authThemeToggle');
+  const option = h.element('#authThemeMenu [data-theme-choice="light"]');
+  option.focus();
+  assert.equal(h.document.activeElement, option);
+  assert.equal(visible(menu), true, 'moving focus within the menu keeps it open');
+
+  const username = h.element('#username');
+  username.focus();
+  assert.equal(visible(menu), false);
+  assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+  assert.equal(h.document.activeElement, username, 'the destination field keeps keyboard focus');
+  assert.deepEqual(writes(h), []);
+});
+
 test('showing passwords announces the state and returns focus without changing their value', async t => {
   const h = await makeLogin(t);
   for (const id of ['password', 'registerPassword']) {
