@@ -36,7 +36,7 @@ test('Serviços mostra círculo multicolorido integrado aos presets e input nati
   assert.equal(field.querySelector('label').getAttribute('for'),'osField-color');
   assert.equal(field.classList.contains('os-color-compact'),true);
   assert.ok(h.document.querySelector('.os-color-presets').contains(field));
-  assert.equal(field.querySelector('.os-color-description'),null);
+  assert.match(field.querySelector('.os-color-custom-caption').textContent,/Personalizar.*Escolher outra cor/,'a roda fica em sua própria linha com descrição clara');
   assert.equal(input.value,'#8b5cf6');
   assert.equal(field.querySelector('.os-color-wheel').style.getPropertyValue('--os-selected-color'),'#8B5CF6');
   assert.equal(h.document.querySelector('[data-os-color="#8b5cf6"]').getAttribute('aria-pressed'),'true');
@@ -103,6 +103,7 @@ test('CSS mantém roda em círculo, swatch visível e foco, sem estilo retangula
   assert.match(css,/\.os-color-wheel>input\.os-color-native\{[^}]*opacity:0!important;cursor:pointer!important/);
   assert.match(css,/\.os-color-wheel:focus-within\{outline:3px/);
   assert.match(css,/@media\(max-width:359px\)\{\.os-color-presets/);
+  assert.match(css,/\.os-color-compact\{flex:1 1 100%;width:100%;margin:2px 0 0\}/,'personalização não fica como opção órfã');
   assert.doesNotMatch(css,/\.os-site-config input\[type=color\]\{height:40px;width:72px/);
   assert.doesNotMatch(js,/field\('Personalizar','color','color'/);
   assert.doesNotMatch(js,/field\('Cor na agenda','color','color'/);

@@ -125,7 +125,7 @@
           '<span class="os-color-selected" aria-hidden="true"></span>'+
           '<input class="os-color-native" id="osField-'+name+'" type="color" name="'+name+'" value="'+hex+'" aria-label="'+esc(label)+'">'+
         '</span>'+
-        (compact?'':'<span class="os-color-description"><strong class="os-color-value">'+hex+'</strong><small>Toque para escolher</small></span>')+
+        (compact?'<span class="os-color-description os-color-custom-caption"><strong>Personalizar</strong><small>Escolher outra cor</small></span>':'<span class="os-color-description"><strong class="os-color-value">'+hex+'</strong><small>Toque para escolher</small></span>')+
       '</div></div>';
   };
   function syncColorPicker(input){

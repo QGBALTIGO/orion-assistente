@@ -858,8 +858,8 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-color-description{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:3px;min-width:0;color:var(--os-text)}
 .os-color-description>strong{font:600 14px/20px var(--os-font);font-variant-numeric:tabular-nums}
 .os-color-description>small{font:400 12px/18px var(--os-font);color:var(--os-muted)}
-.os-color-compact{flex:0 0 46px;width:46px;margin:0 2px}
-.os-color-compact .os-color-control{gap:0}
+.os-color-compact{flex:1 1 100%;width:100%;margin:2px 0 0}
+.os-color-compact .os-color-control{gap:12px}
 @media(max-width:359px){.os-color-presets{gap:8px}.os-color-presets>button[data-os-color]{flex-basis:34px;width:34px;height:34px}.os-color-compact{margin:0}.os-color-wheel{flex-basis:44px;width:44px;height:44px}}
 
 .os-checkbox-chips{display:flex;flex-wrap:wrap;gap:8px}
