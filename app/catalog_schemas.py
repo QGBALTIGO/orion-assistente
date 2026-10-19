@@ -3,6 +3,7 @@ from datetime import datetime, time
 from decimal import Decimal
 from typing import Literal
 from urllib.parse import urlsplit
+from app.media_paths import is_media_url
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from uuid import UUID
 
@@ -48,9 +49,11 @@ class Professional(StrictModel):
     def safe_image_url(cls, value):
         if value in (None, ""):
             return None
+        if is_media_url(value):
+            return value
         parsed = urlsplit(value)
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-            raise ValueError("Use uma URL HTTPS válida para a imagem")
+            raise ValueError("Use uma URL HTTPS válida ou uma foto enviada ao Orion")
         return value
 
 

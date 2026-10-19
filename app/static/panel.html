@@ -1379,7 +1379,7 @@ async function beforeSuiteTenantChange(){
  return true;
 }
 function suiteBridge(initialRoute){
- return {request:api,user:suiteUser,tenants:businessRows,tenantId:suiteTenantId,
+ return {request:api,uploadImage:uploadImage,user:suiteUser,tenants:businessRows,tenantId:suiteTenantId,
   initialRoute:initialRoute||"dashboard",
   beforeTenantChange:beforeSuiteTenantChange,
   setTenant(id){suiteTenantId=String(id)},
@@ -1440,6 +1440,19 @@ async function api(url,method="GET",data){
    const error=Error(errorMessage(json,response.status));error.status=response.status;throw error;
  }
  return response.status===204?null:response.json();
+}
+async function uploadImage(url,file,kind){
+ const epoch=authEpoch,sessionCsrf=csrf;
+ const headers={"Accept":"application/json","X-Orion-CSRF":csrf,
+  "Content-Type":file.type||"application/octet-stream","X-Orion-Image-Kind":kind};
+ const response=await fetch(url,{method:"POST",headers,body:file,credentials:"same-origin",cache:"no-store"});
+ if(!response.ok){
+  const json=await response.json().catch(()=>({}));
+  if(response.status===401&&epoch===authEpoch&&sessionCsrf===csrf)showLogin();
+  const error=Error(errorMessage(json,response.status));error.status=response.status;throw error;
+ }
+ if(epoch!==authEpoch)throw Error("A sessão mudou durante o envio. Entre novamente.");
+ return response.json();
 }
 let authScreen="login",loginRole="support",authPending=null;
 let authAvailability={registration:null,passwordRecovery:null},authFeaturesFailed=false,authFeaturesSequence=0;

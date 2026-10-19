@@ -4,6 +4,7 @@ from decimal import Decimal
 import re
 from typing import Literal
 from urllib.parse import urlsplit
+from app.media_paths import is_media_url
 from uuid import UUID
 
 from pydantic import AwareDatetime, Field, StrictInt, field_validator, model_validator
@@ -283,9 +284,11 @@ class SitePreferences(CleanModel):
 
     @field_validator("logo_url", "cover_url", "instagram_url", "maps_url", "facebook_url", "tiktok_url", "external_url")
     @classmethod
-    def https_only(cls, value):
+    def https_only(cls, value, info):
         if value in (None, ""):
             return None
+        if info.field_name in {"logo_url", "cover_url"} and is_media_url(value):
+            return value
         parsed = urlsplit(value)
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
             raise ValueError("Use um endereço HTTPS válido")

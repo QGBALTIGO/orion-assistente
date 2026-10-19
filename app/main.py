@@ -28,6 +28,7 @@ from app.management_team import router as management_team_router, invitation_rou
 from app.management_preferences import router as management_preferences_router
 from app.public_site_api import router as public_site_router
 from app.service_packages_api import router as service_packages_router
+from app.media_api import router as media_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -72,6 +73,7 @@ app.include_router(invitation_router)
 app.include_router(management_preferences_router)
 app.include_router(public_site_router)
 app.include_router(service_packages_router)
+app.include_router(media_router)
 # Specific management paths must precede the legacy two-segment catalog path.
 app.include_router(catalog_router)
 
