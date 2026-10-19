@@ -562,6 +562,12 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 #osDialog.os-customer-dialog .os-client-textarea:focus-within{border-color:var(--os-primary);background:var(--os-card);box-shadow:0 0 0 3px color-mix(in srgb,var(--os-primary) 18%,transparent)}
 #osDialog.os-customer-dialog .os-client-input-icon{display:grid;place-items:center;flex:0 0 19px;width:19px;height:19px;color:var(--os-muted);pointer-events:none}
 #osDialog.os-customer-dialog .os-client-input-icon .os-icon{display:block;width:19px;height:19px}
+/* Keep the native Safari date field and the leading calendar on the same centerline. */
+#osDialog.os-customer-dialog .os-client-date{display:grid;grid-template-columns:19px minmax(0,1fr);align-items:center;column-gap:11px}
+#osDialog.os-customer-dialog .os-client-date .os-client-input-icon{display:grid;place-items:center;align-self:center;width:19px;height:48px}
+#osDialog.os-customer-dialog .os-client-date>input[type=date]{display:block;box-sizing:border-box;width:100%;height:48px;min-height:48px;margin:0;padding:0;line-height:24px}
+#osDialog.os-customer-dialog .os-client-date>input[type=date]::-webkit-date-and-time-value{display:flex;align-items:center;min-height:48px;line-height:24px;text-align:left}
+#osDialog.os-customer-dialog .os-client-date>input[type=date]::-webkit-datetime-edit{display:inline-flex;align-items:center;min-height:24px;line-height:24px;padding:0}
 #osDialog.os-customer-dialog .os-client-input-plain{gap:0}
 #osDialog.os-customer-dialog .os-client-input>input:not([type=checkbox]):not([type=radio]):not([type=color]),
 #osDialog.os-customer-dialog .os-client-textarea>textarea{box-sizing:border-box;flex:1;min-width:0;max-width:100%;width:100%;min-height:48px;height:48px;padding:0;border:0;border-radius:0;background:transparent;color:var(--os-text);box-shadow:none;outline:none;font:400 16px/24px var(--os-font)}
@@ -579,12 +585,24 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 #osDialog.os-customer-dialog .os-client-more-toggle::marker{content:""}
 #osDialog.os-customer-dialog .os-client-more-toggle:hover{background:var(--os-tint);border-color:color-mix(in srgb,var(--os-primary) 45%,var(--os-border))}
 #osDialog.os-customer-dialog .os-client-more-toggle:focus-visible{outline:3px solid color-mix(in srgb,var(--os-primary) 55%,transparent);outline-offset:2px}
-#osDialog.os-customer-dialog .os-client-more-icon{display:grid;place-items:center;flex:0 0 17px;width:17px;height:17px;font:600 19px/1 var(--os-font)}
-#osDialog.os-customer-dialog .os-client-more-icon::before{content:"+"}
-#osDialog.os-customer-dialog .os-client-more[open] .os-client-more-icon::before{content:"−"}
-#osDialog.os-customer-dialog .os-client-more-text{min-width:0}
+/* SVG plus/minus share the same centered box, without font-baseline offsets. */
+#osDialog.os-customer-dialog .os-client-more-icon{display:grid;place-items:center;flex:0 0 20px;width:20px;height:20px}
+#osDialog.os-customer-dialog .os-client-more-icon>.os-icon{display:block;grid-area:1/1;width:18px;height:18px;stroke-width:2.2}
+#osDialog.os-customer-dialog .os-client-more-icon>.os-client-more-minus{display:none}
+#osDialog.os-customer-dialog .os-client-more[open] .os-client-more-icon>.os-icon:first-child{display:none}
+#osDialog.os-customer-dialog .os-client-more[open] .os-client-more-icon>.os-client-more-minus{display:block}
+#osDialog.os-customer-dialog .os-client-more-text{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px;min-width:0}
+#osDialog.os-customer-dialog .os-client-more-label-expanded{display:none}
+#osDialog.os-customer-dialog .os-client-more[open] .os-client-more-label-collapsed{display:none}
+#osDialog.os-customer-dialog .os-client-more[open] .os-client-more-label-expanded{display:inline}
 #osDialog.os-customer-dialog .os-client-more-text small{font:400 12px/18px var(--os-font);color:inherit;opacity:.86}
 #osDialog.os-customer-dialog .os-client-extra-fields{display:grid;gap:18px;padding-top:16px}
+/* Client totals must remain readable even for long BRL figures on small screens. */
+#osDialog.os-customer-dialog .os-client-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0;width:100%;max-width:100%}
+#osDialog.os-customer-dialog .os-client-stats>.os-stat{box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:5px;min-width:0;max-width:100%;padding:14px;overflow:hidden}
+#osDialog.os-customer-dialog .os-client-stats>.os-client-stat-total{grid-column:1/-1;background:color-mix(in srgb,var(--os-tint) 30%,var(--os-card))}
+#osDialog.os-customer-dialog .os-client-stats>.os-stat>strong{display:block;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:normal;font:700 clamp(18px,5.3vw,25px)/1.25 var(--os-display);letter-spacing:0;font-variant-numeric:tabular-nums}
+#osDialog.os-customer-dialog .os-client-stats>.os-stat>small{margin-top:0;font-size:12px;line-height:18px;overflow-wrap:anywhere}
 @media(max-width:359px){#osDialog.os-customer-dialog .os-client-grid{grid-template-columns:1fr}}
 
 .os-more-fields{border-top:1px solid var(--os-border);padding-top:16px}
