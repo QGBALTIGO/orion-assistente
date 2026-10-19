@@ -88,9 +88,9 @@ test('leitor não pode usar o seletor nem retirar fotos',async t=>{
  let calls=0;const h=await fixture(t,'site','viewer',{uploadImage:async()=>{calls++;return {url:asset}}});
  h.click('[data-os-site-tab=settings]');await flush();
  const box=h.document.querySelector('[data-os-image-kind=logo]');
- assert.equal(box.querySelector('.os-image-file').disabled,true);
- assert.equal(box.querySelector('[data-os-action=image-pick]').disabled,true);
- assert.equal(box.querySelector('[data-os-action=image-remove]').disabled,true);
+ assert.equal(box.querySelector('.os-image-file').matches(':disabled'),true,'fieldset bloqueia campo de arquivo');
+ assert.equal(box.querySelector('[data-os-action=image-pick]').matches(':disabled'),true,'botão não abre picker');
+ assert.equal(box.querySelector('[data-os-action=image-remove]').matches(':disabled'),true,'botão não remove imagem');
  assert.equal(calls,0);
  assert.equal(h.errors.length,0);
 });
