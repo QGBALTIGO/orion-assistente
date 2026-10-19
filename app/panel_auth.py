@@ -24,7 +24,27 @@ REMEMBER_TTL = 30 * 24 * 3600
 
 def _redis():
     return from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-                    decode_responses=True, socket_timeout=3)
+                    decode_responses=True, socket_timeout=3, max_connections=100)
+
+
+async def start_session_store(application):
+    """One connection pool per application worker; session claims are never cached."""
+    if getattr(application.state, "panel_session_redis", None) is not None:
+        raise RuntimeError("Session store already started")
+    application.state.panel_session_redis = _redis()
+
+
+async def close_session_store(application):
+    redis = getattr(application.state, "panel_session_redis", None)
+    if redis is not None:
+        del application.state.panel_session_redis
+        await redis.aclose()
+
+
+def _request_redis(request):
+    redis = getattr(request.app.state, "panel_session_redis", None)
+    # ASGI callers without a lifespan still own and close their short-lived client.
+    return (redis, False) if redis is not None else (_redis(), True)
 
 
 def _hash_cookie(token: str) -> str:
@@ -59,13 +79,14 @@ async def panel_actor(request: Request) -> dict:
     token = request.cookies.get(COOKIE, "")
     if not token or len(token) != 43:
         raise HTTPException(401, "Faça login no painel")
-    redis = _redis()
+    redis, owned = _request_redis(request)
     try:
         content = await redis.get(_hash_cookie(token))
     except (RedisError, OSError):
         raise HTTPException(503, "Sessões indisponíveis") from None
     finally:
-        await redis.aclose()
+        if owned:
+            await redis.aclose()
     if not content:
         raise HTTPException(401, "Sessão expirada, entre novamente")
     data = json.loads(content)
@@ -103,7 +124,7 @@ async def login(payload: Login, request: Request, response: Response):
     # Único administrador de homologação, sem múltiplos usuários e sem dados reais.
     client_ip = request.client.host if request.client else "unknown"
     ip_key = "orion:login:fail:" + hashlib.sha256(client_ip.encode()).hexdigest()
-    redis = _redis()
+    redis, owned = _request_redis(request)
     try:
         attempts = int(await redis.get(ip_key) or "0")
         if attempts >= 8:
@@ -139,7 +160,8 @@ async def login(payload: Login, request: Request, response: Response):
     except (RedisError, OSError):
         raise HTTPException(503, "Login temporariamente indisponível") from None
     finally:
-        await redis.aclose()
+        if owned:
+            await redis.aclose()
 
 
 @router.get("/me")
@@ -152,13 +174,14 @@ async def me(data: dict = Depends(panel_actor)):
 
 @router.post("/logout")
 async def logout(request: Request, response: Response, _: dict = Depends(panel_actor)):
-    redis = _redis()
+    redis, owned = _request_redis(request)
     try:
         await redis.delete(_hash_cookie(request.cookies[COOKIE]))
     except (RedisError, OSError):
         raise HTTPException(503, "Não foi possível encerrar a sessão") from None
     finally:
-        await redis.aclose()
+        if owned:
+            await redis.aclose()
     response.delete_cookie(COOKIE, path="/", secure=True, httponly=True, samesite="strict")
     response.headers["Cache-Control"] = "no-store"
     return {"ok": True}

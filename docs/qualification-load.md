@@ -114,6 +114,13 @@ decodificação; o tempo da chamada também inclui espera no cliente e não mede
 isoladamente o servidor. A cadência, os descartes e os critérios de aceite
 permanecem iguais.
 
+O diagnóstico também mede a CPU dos processos PostgreSQL visíveis no host Linux
+isolado. Só calcula o intervalo quando o conjunto de PIDs e seus instantes de
+nascimento permanece idêntico; criação, saída ou reutilização de PID marca a
+cobertura como incompleta e omite o percentual. Os identificadores temporários
+são descartados antes de serializar a amostra. CPU residual do host não é
+atribuída ao banco por subtração.
+
 A limpeza termina apenas os processos iniciados pelo runner, remove apenas suas
 chaves Redis (nunca `FLUSH`) e exige que nome, OID e proprietário do banco ainda
 coincidam antes de removê-lo. Não usa `DROP ... FORCE` nem encerra sessões alheias.
@@ -170,6 +177,15 @@ do Uvicorn, tanto no Docker publicado quanto nos servidores reais de teste.
 O parser HTTP continua o mesmo; não se altera o relógio nem o event loop do
 gerador (`asyncio.run`). Os testes completos de HTTP, banco e navegador devem
 passar novamente com essa dependência. Windows mantém seu loop padrão.
+
+O armazenamento de sessões do painel usa um cliente Redis por worker, com até
+100 conexões, criado na inicialização e encerrado no shutdown. Login, leitura
+de sessão e logout reutilizam o pool. Toda requisição continua lendo a sessão
+no Redis e validando no PostgreSQL a versão e o papel da conta; não existe cache
+de autorização, de CSRF ou de associação à empresa. Chamadas ASGI sem lifespan
+mantêm o cliente temporário com fechamento próprio. Os testes com Redis real
+verificam isolamento de sessões concorrentes, reutilização TCP, exclusão da
+sessão e revogação da versão da conta no PostgreSQL.
 
 As primeiras cargas completas com dois workers reprovaram em 1.000 e 1.500
 sessões. Os resultados permanecem preservados. O próximo candidato usa três

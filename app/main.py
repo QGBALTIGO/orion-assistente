@@ -45,6 +45,18 @@ async def startup_provider_probe():
     await probe_groq_provider()
 
 
+@app.on_event("startup")
+async def startup_panel_session_store():
+    from app.panel_auth import start_session_store
+    await start_session_store(app)
+
+
+@app.on_event("shutdown")
+async def shutdown_panel_session_store():
+    from app.panel_auth import close_session_store
+    await close_session_store(app)
+
+
 @app.get("/health", include_in_schema=False)
 async def health() -> dict[str, str]:
     """Liveness sem informação sobre usuários, banco ou segredos."""

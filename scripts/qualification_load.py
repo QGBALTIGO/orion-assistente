@@ -536,15 +536,31 @@ def process_metrics(parent_pid):
     rows = {}
     for path in Path("/proc").glob("[0-9]*"):
         try:
-            fields = (path/"stat").read_text().rsplit(")",1)[1].split()
-            rows[int(path.name)] = (int(fields[1]), int(fields[11])+int(fields[12]), int(fields[21]), path)
+            raw = (path/"stat").read_text()
+            fields = raw.rsplit(")",1)[1].split()
+            name = raw.split("(",1)[1].rsplit(")",1)[0]
+            rows[int(path.name)] = (int(fields[1]), int(fields[11])+int(fields[12]), int(fields[21]), path,
+                                    name, int(fields[19]))
         except (OSError, ValueError, IndexError): continue
     selected = {parent_pid}
     for _ in range(3): selected.update(pid for pid, row in rows.items() if row[0] in selected)
     records = [rows[pid] for pid in selected if pid in rows]
     return {"available": True, "processes": len(records), "cpu_seconds": sum(r[1] for r in records)/os.sysconf("SC_CLK_TCK"),
         "rss_bytes": sum(r[2] for r in records)*os.sysconf("SC_PAGE_SIZE"),
-        "open_fds": sum(len(list((r[3]/"fd").iterdir())) for r in records)}
+        "open_fds": sum(len(list((r[3]/"fd").iterdir())) for r in records),
+        "_postgres_cpu_by_process": {(pid,row[5]):row[1]/os.sysconf("SC_CLK_TCK")
+                                    for pid,row in rows.items() if row[4] == "postgres"}}
+
+
+def postgres_cpu_interval(previous, current, elapsed):
+    """Only compare identical live backend identities, never infer PG CPU from host residual."""
+    complete = (bool(previous) and bool(current) and previous.keys() == current.keys()
+                and elapsed > 0 and all(current[key] >= previous[key] for key in current))
+    result = {"postgres_processes": len(current) if current is not None else 0,
+              "postgres_cpu_interval_complete": bool(complete)}
+    if complete:
+        result["postgres_cpu_percent_one_core"] = sum(current[key]-previous[key] for key in current)/elapsed*100
+    return result
 
 
 def generator_host_metrics():
@@ -566,7 +582,7 @@ def generator_host_metrics():
 
 
 async def monitor(sandbox, cache, pid, samples, stop, max_memory_mb, *, diagnostics=False, phase=None):
-    previous = None
+    previous = None; previous_postgres = None
     while not stop.is_set():
         def database():
             with sandbox.engine.connect() as db:
@@ -576,9 +592,12 @@ async def monitor(sandbox, cache, pid, samples, stop, max_memory_mb, *, diagnost
                 row["calendar_pending"] = db.exec_driver_sql("SELECT count(*) FROM calendar_outbox WHERE status='pending'").scalar_one()
                 return row
         row = await asyncio.to_thread(database); row.update(process_metrics(pid)); row["at_monotonic"] = time.monotonic()
+        postgres = row.pop("_postgres_cpu_by_process", None)
         if diagnostics:
             row.update(generator_host_metrics())
             row["phase"] = phase() if phase is not None else None
+            elapsed = row["at_monotonic"]-previous["at_monotonic"] if previous else 0
+            row.update(postgres_cpu_interval(previous_postgres, postgres, elapsed))
         info = await cache.info("memory"); row["redis_used_memory"] = info["used_memory"]
         row["disk_free_bytes"] = shutil.disk_usage(ROOT).free
         if previous and row.get("available"):
@@ -591,7 +610,7 @@ async def monitor(sandbox, cache, pid, samples, stop, max_memory_mb, *, diagnost
                 ticks = row["host_cpu_ticks"]-previous["host_cpu_ticks"]
                 idle = row["host_idle_ticks"]-previous["host_idle_ticks"]
                 if ticks > 0: row["host_cpu_percent_all_cores"] = max(0,min(100,(ticks-idle)/ticks*100))
-        samples.append(row); previous = row
+        samples.append(row); previous = row; previous_postgres = postgres
         if row.get("rss_bytes",0) > max_memory_mb*1024**2 or row["connections"] > 80 or row["disk_free_bytes"] < 512*1024**2:
             raise RuntimeError("Qualification resource stop: memory, connections or free disk")
         try: await asyncio.wait_for(stop.wait(), 5)
