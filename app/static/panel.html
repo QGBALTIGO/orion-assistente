@@ -528,8 +528,16 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 #appView .orion-workspace :where(.commerce-accept,.device-dialog .checkrow){align-items:flex-start;line-height:22px}
 #appView .orion-workspace .commerce-accept span{min-width:0}
 #appView .orion-workspace .workspace-details{border:1px solid var(--os-border);border-radius:12px;background:var(--os-card);padding:0 16px;margin:16px 0}
-#appView .orion-workspace .workspace-details>summary{min-height:44px;padding:12px 0;font-size:13px;font-weight:600;color:var(--os-muted);cursor:pointer;overflow-wrap:anywhere}
+#appView .orion-workspace .workspace-details>summary{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:12px 0;list-style:none;font:600 13px/20px var(--os-font,Figtree,sans-serif);color:var(--os-text);cursor:pointer;overflow-wrap:anywhere}
 #appView .orion-workspace .workspace-details[open]>summary{color:var(--os-text)}
+#appView .orion-workspace .workspace-details>summary::-webkit-details-marker{display:none}
+#appView .orion-workspace .workspace-details>summary::marker{content:""}
+#appView .orion-workspace .workspace-details>summary::after{content:"";display:block;box-sizing:border-box;flex:0 0 9px;width:9px;height:9px;margin:0 3px 4px auto;border-right:2px solid var(--os-muted);border-bottom:2px solid var(--os-muted);transform:rotate(45deg);transition:transform .18s ease,margin .18s ease}
+#appView .orion-workspace .workspace-details[open]>summary::after{transform:rotate(225deg);margin-top:6px;margin-bottom:0}
+#appView .orion-workspace .workspace-details>summary:hover{color:var(--os-primary)}
+#appView .orion-workspace .workspace-details>summary:focus-visible{outline:3px solid color-mix(in srgb,var(--os-primary) 55%,transparent);outline-offset:2px;border-radius:8px}
+@media(prefers-reduced-motion:reduce){#appView .orion-workspace .workspace-details>summary::after{transition:none}}
+
 #appView .orion-workspace .workspace-details>p{font-size:13px;line-height:20px;margin:0 0 16px}
 #appView .orion-workspace .workspace-details>.business-actions{margin:0 0 16px}
 #appView .orion-workspace .workspace-details>form{padding-bottom:16px}
@@ -1119,7 +1127,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
             <div class="wide"><label for="bizAddress">Localização ou endereço</label><input id="bizAddress" maxlength="500"></div>
             <div><label for="bizTimezone">Fuso horário da empresa</label><input id="bizTimezone" maxlength="64" placeholder="America/Campo_Grande"></div><div><label for="bizContact">Telefone de contato com DDI</label><input id="bizContact" type="tel" maxlength="16" placeholder="+5567999999999"></div>
           </div>
-          <details style="margin-top:20px"><summary>Horários e informações para responder dúvidas</summary><p class="business-muted">Estes horários são informativos. A agenda continua seguindo o expediente dos profissionais; este formulário não muda vagas ou reservas.</p>
+          <details class="workspace-details" style="margin-top:20px"><summary>Horários e informações para responder dúvidas</summary><p class="business-muted">Estes horários são informativos. A agenda continua seguindo o expediente dos profissionais; este formulário não muda vagas ou reservas.</p>
             <h3>Horários da empresa</h3><div id="businessHours" class="business-repeat"></div><button id="businessAddHours" class="btn secondary" type="button">Adicionar período</button>
             <h3>Perguntas frequentes</h3><div id="businessFaqs" class="business-repeat"></div><button id="businessAddFaq" class="btn secondary" type="button">Adicionar pergunta</button>
             <h3>Políticas da empresa</h3><div id="businessPolicies" class="business-repeat"></div><button id="businessAddPolicy" class="btn secondary" type="button">Adicionar política</button>
