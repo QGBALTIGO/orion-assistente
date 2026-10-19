@@ -165,6 +165,12 @@ com consultas independentes do caminho anterior, incluindo empresa vazia e
 tentativa de leitura cruzada. A redução de comandos não constitui aprovação
 de capacidade: a mesma bateria completa continua obrigatória.
 
+No Linux, `uvloop==0.23.0` é uma dependência explícita para o modo `auto`
+do Uvicorn, tanto no Docker publicado quanto nos servidores reais de teste.
+O parser HTTP continua o mesmo; não se altera o relógio nem o event loop do
+gerador (`asyncio.run`). Os testes completos de HTTP, banco e navegador devem
+passar novamente com essa dependência. Windows mantém seu loop padrão.
+
 As primeiras cargas completas com dois workers reprovaram em 1.000 e 1.500
 sessões. Os resultados permanecem preservados. O próximo candidato usa três
 workers, com `ORION_DB_POOL_SIZE=5` e `ORION_DB_MAX_OVERFLOW=5` tanto no engine
