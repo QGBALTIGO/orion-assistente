@@ -141,18 +141,18 @@ jobs:
 
   cpu-profile:
     name: Diagnostico CPU - ${{ matrix.profile }} - ${{ matrix.configuration.workers }} workers (nao qualifica capacidade)
-    if: github.event_name == 'workflow_dispatch' && inputs.cpu_profile
+    # Temporary diagnostic candidate: full acceptance jobs above remain active.
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.cpu_profile)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        profile: [concentrated, wide]
+        profile: [wide]
         configuration:
-          - workers: 2
-            overflow: 10
           - workers: 3
-            overflow: 5
+            size: 10
+            overflow: 0
     services:
       postgres:
         image: postgres:16
@@ -199,7 +199,7 @@ jobs:
           set +e
           python scripts/qualification_load.py --confirm-disposable-local --profile ${{ matrix.profile }} --profile-api \
             --profile-generator --stage-seconds 5 --sustain-seconds 30 --warmup-seconds 5 \
-            --api-workers ${{ matrix.configuration.workers }} --db-pool-size 5 --db-max-overflow ${{ matrix.configuration.overflow }} \
+            --api-workers ${{ matrix.configuration.workers }} --db-pool-size ${{ matrix.configuration.size }} --db-max-overflow ${{ matrix.configuration.overflow }} \
             --output artifacts/cpu-profile-${{ matrix.profile }}-workers${{ matrix.configuration.workers }}.json
           runner_status=$?
           printf 'runner_exit_code=%s\n' "$runner_status" > artifacts/cpu-profile-exit.txt
