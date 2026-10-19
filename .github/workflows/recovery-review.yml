@@ -1,0 +1,34 @@
+name: Recovery source review
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  source-snapshots:
+    if: github.head_ref == 'fix/login-agenda-notifications-20261018'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          path: candidate
+      - uses: actions/checkout@v4
+        with:
+          ref: dcaf29f246ecff600256fbd02995e867fe5273c3
+          persist-credentials: false
+          path: reference
+      - name: Archive tracked sources only, without credentials or runtime data
+        run: |
+          mkdir snapshots
+          git -C candidate archive --format=tar.gz HEAD > snapshots/candidate.tar.gz
+          git -C reference archive --format=tar.gz HEAD > snapshots/reference.tar.gz
+          sha256sum snapshots/*.tar.gz > snapshots/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: recovery-source-snapshots
+          path: snapshots/
+          retention-days: 3
+          if-no-files-found: error
