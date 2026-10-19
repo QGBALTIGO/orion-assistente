@@ -318,7 +318,14 @@ html:has(.os-appointment-sheet[open]){overflow:hidden}
 .os-main[data-os-current-route=agenda] #osPageBody:focus-visible,
 .os-main[data-os-current-route=agenda] #osAgendaCount:focus-visible,
 .os-appointment-sheet-header #osDialogTitle:focus-visible{outline:3px solid var(--os-primary);outline-offset:2px}
-.os-appointment-sheet-header .os-close{position:static;flex:0 0 44px;width:44px;height:44px;padding:0}
+/* Icon-only actions in appointment details must not inherit the text-button
+   padding or the generic dialog close position/size. */
+.os-dialog.os-appointment-sheet .os-appointment-sheet-header>.os-close,
+.os-dialog.os-appointment-sheet .os-appointment-section-title>.os-appointment-google-refresh{position:static;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;max-height:44px;margin:0;padding:0;gap:0;border:1px solid transparent;border-radius:12px;background:#2162d0;color:#fff;box-shadow:var(--os-shadow);cursor:pointer}
+.os-dialog.os-appointment-sheet .os-appointment-sheet-header>.os-close>.os-icon,
+.os-dialog.os-appointment-sheet .os-appointment-section-title>.os-appointment-google-refresh>.os-icon{display:block;flex:0 0 20px;width:20px;height:20px;color:inherit}
+.os-dialog.os-appointment-sheet .os-appointment-sheet-header>.os-close:hover:not(:disabled),
+.os-dialog.os-appointment-sheet .os-appointment-section-title>.os-appointment-google-refresh:hover:not(:disabled){background:var(--os-primary-hover);color:#fff}
 .os-appointment-scroll{padding:24px;overflow:auto;overscroll-behavior:contain;min-height:0;flex:1;scrollbar-width:thin}
 .os-appointment-sheet :where(h3,h4,p,dl,dd,ul,ol){margin:0}
 .os-appointment-sheet :where(p,small){overflow-wrap:anywhere}
@@ -471,6 +478,8 @@ html:has(.os-appointment-sheet[open]){overflow:hidden}
  .os-dialog.os-sheet.os-appointment-sheet{width:100%;border:0;inset:0}
  .os-appointment-sheet-header{padding:calc(12px + env(safe-area-inset-top)) 16px 12px}
  .os-appointment-sheet-header h2{font-size:18px;line-height:24px}
+ .os-dialog.os-appointment-sheet .os-appointment-sheet-header>.os-close,
+ .os-dialog.os-appointment-sheet .os-appointment-section-title>.os-appointment-google-refresh{flex-basis:48px;width:48px;min-width:48px;max-width:48px;height:48px;min-height:48px;max-height:48px}
  .os-appointment-scroll{padding:20px 16px}
  .os-appointment-sheet-footer{padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
  .os-appointment-sheet-footer>.os-button{font-size:13px;min-height:46px}

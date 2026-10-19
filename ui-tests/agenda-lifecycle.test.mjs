@@ -286,3 +286,52 @@ test('ícone atualizar usa arcos equilibrados e setas do mesmo padrão da suíte
   assert.match(source,/const icon = name => '<svg class="os-icon" viewBox="0 0 24 24"/,
     'mantém o SVG e o viewBox padronizados do Orion');
 });
+
+test('detalhes usam botões só de ícone sem estilos de botões com texto',async t=>{
+  const h=await fixture(t,{respond:responder()});
+  await openDetail(h);
+  const dialog=h.document.getElementById('osDialog');
+  const close=dialog.querySelector('.os-appointment-sheet-header>.os-close');
+  const refresh=dialog.querySelector('.os-appointment-section-title>.os-appointment-google-refresh');
+  assert.ok(close && refresh,'fechar e atualizar visíveis nos detalhes');
+  assert.equal(close.dataset.osAction,'close-dialog');
+  assert.equal(refresh.dataset.osAction,'appointment-google-refresh');
+  assert.equal(close.getAttribute('aria-label'),'Fechar detalhes do agendamento');
+  assert.equal(refresh.getAttribute('aria-label'),'Atualizar sincronização deste agendamento');
+  for(const btn of [close,refresh]){
+    assert.equal(btn.tagName,'BUTTON');
+    assert.equal(btn.type,'button');
+    assert.equal(btn.classList.contains('os-icon-button'),true);
+    assert.equal(btn.classList.contains('os-button'),false,'não herda padding e estilo de botão de texto');
+    assert.equal(btn.querySelector('svg.os-icon')?.getAttribute('aria-hidden'),'true');
+  }
+  const before=h.calls.filter(c=>c.path.includes('/google/appointments/')).length;
+  h.click('.os-appointment-google-refresh');await flush();
+  const after=h.calls.filter(c=>c.path.includes('/google/appointments/')).length;
+  assert.ok(after>before,'o botão ainda atualiza a sincronização');
+  assert.equal(posts(h).length,0,'atualização apenas consulta');
+  h.click('.os-appointment-sheet-header>.os-close');await flush();
+  assert.equal(dialog.open,false,'fechar permanece funcional');
+  assert.equal(posts(h).length,0);
+  assert.equal(h.errors.length,0);
+});
+
+test('CSS mantém X e atualizar quadrados, centrados e adaptados ao celular',async ()=>{
+  const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
+  const close='.os-dialog.os-appointment-sheet .os-appointment-sheet-header>.os-close';
+  const refresh='.os-dialog.os-appointment-sheet .os-appointment-section-title>.os-appointment-google-refresh';
+  const base=css.match(/\.os-dialog\.os-appointment-sheet \.os-appointment-sheet-header>\.os-close,\s*\.os-dialog\.os-appointment-sheet \.os-appointment-section-title>\.os-appointment-google-refresh\{([^}]*)\}/)?.[1];
+  assert.ok(base,'estilo específico deve superar .os-dialog .os-close');
+  for(const rule of ['position:static','display:inline-flex','box-sizing:border-box','align-items:center','justify-content:center','flex:0 0 44px','width:44px','height:44px','min-width:44px','min-height:44px','padding:0','gap:0','border-radius:12px']){
+    assert.ok(base.includes(rule),rule);
+  }
+  const icons=css.match(/\.os-dialog\.os-appointment-sheet \.os-appointment-sheet-header>\.os-close>\.os-icon,\s*\.os-dialog\.os-appointment-sheet \.os-appointment-section-title>\.os-appointment-google-refresh>\.os-icon\{([^}]*)\}/)?.[1];
+  for(const rule of ['display:block','flex:0 0 20px','width:20px','height:20px'])
+    assert.ok(icons?.includes(rule),'icon size: '+rule);
+  const mobile=css.match(/@media\(max-width:639px\)\{\s*\.os-dialog\.os-sheet\.os-appointment-sheet[\s\S]*?\.os-dialog\.os-appointment-sheet \.os-appointment-sheet-header>\.os-close,\s*\.os-dialog\.os-appointment-sheet \.os-appointment-section-title>\.os-appointment-google-refresh\{([^}]*)\}/)?.[1];
+  assert.ok(mobile,'regras compactas dos dois botões');
+  for(const rule of ['flex-basis:48px','width:48px','height:48px','min-width:48px','min-height:48px'])
+    assert.ok(mobile.includes(rule),rule);
+  assert.match(css,/\.os-icon-button:focus-visible|\.os-icon-button:focus-visible/,
+    'anel de foco por teclado continua disponível');
+});
