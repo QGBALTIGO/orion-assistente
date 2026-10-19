@@ -8,27 +8,29 @@ jobs:
   source-snapshots:
     if: github.head_ref == 'fix/login-agenda-notifications-20261018'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
           path: candidate
-      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          ref: dcaf29f246ecff600256fbd02995e867fe5273c3
-          persist-credentials: false
-          path: reference
-      - name: Archive tracked sources only, without credentials or runtime data
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Download public test dependencies
         run: |
-          mkdir snapshots
-          git -C candidate archive --format=tar.gz HEAD > snapshots/candidate.tar.gz
-          git -C reference archive --format=tar.gz HEAD > snapshots/reference.tar.gz
-          sha256sum snapshots/*.tar.gz > snapshots/SHA256SUMS
+          mkdir -p toolkit/wheels
+          python -m pip download --only-binary=:all: --dest toolkit/wheels asyncpg arq 'psycopg[binary]' pytest-asyncio
+          npm ci --prefix candidate/ui-tests
+          tar -czf toolkit/ui-node-modules.tar.gz -C candidate/ui-tests node_modules
+          sha256sum toolkit/wheels/* toolkit/ui-node-modules.tar.gz > toolkit/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: recovery-source-snapshots
-          path: snapshots/
+          name: recovery-development-toolkit
+          path: toolkit/
           retention-days: 3
           if-no-files-found: error
