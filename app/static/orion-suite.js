@@ -444,7 +444,26 @@
   function renderServices(){
     const list=[...(state.data.services||[])].filter(s=>!s.catalog_kind||s.catalog_kind==='base').sort((a,b)=>number(a.sort_order)-number(b.sort_order)||a.name.localeCompare(b.name,'pt-BR')),can=writable();
     let html='<section class="os-card os-service-models"><div class="os-card-header" style="margin:0"><button type="button" class="os-plain-disclosure" data-os-action="toggle-service-models" aria-expanded="false" aria-controls="osServiceModels"><span class="os-square-icon">'+icon('sparkles')+'</span><span><strong>Modelos de serviços</strong><small>Clique para ver modelos prontos por categoria.</small></span>'+icon('down')+'</button>'+button('Do zero','new-service','os-outline os-small','plus',can?'':'disabled')+'</div><div id="osServiceModels" class="hidden"><div class="os-template-grid">'+serviceModels.map(([category,name],i)=>'<button type="button" class="os-service-option" data-os-service-model="'+i+'" '+(can?'':'disabled')+'><strong>'+esc(category)+'</strong><small>'+esc(name)+'</small></button>').join('')+'</div><p class="os-help" style="margin-top:12px">Escolha um modelo e ajuste a duração e o preço antes de cadastrar.</p></div></section><div class="os-subsection-title"><h2>SEUS SERVIÇOS</h2>'+button('Novo serviço','new-service','os-small','plus',can?'':'disabled')+'</div><p class="os-help" style="margin-bottom:16px">Use as setas para definir a ordem em que os serviços aparecem no seu site.</p>';
-    html+=list.length?'<div class="os-cards-grid os-services-grid">'+list.map((s,i)=>'<article class="os-card os-item-card os-service-card"><div class="os-item-top"><div class="os-order-buttons"><button type="button" class="os-icon-button" data-os-service-order="'+esc(s.id)+'" data-direction="-1" aria-label="Mover '+esc(s.name)+' para cima" '+(!can||i===0?'disabled':'')+'>'+icon('arrowUp')+'</button><button type="button" class="os-icon-button" data-os-service-order="'+esc(s.id)+'" data-direction="1" aria-label="Mover '+esc(s.name)+' para baixo" '+(!can||i===list.length-1?'disabled':'')+'>'+icon('arrowDown')+'</button></div><div class="os-service-photo" style="color:'+cleanColor(s.color)+';background:'+cleanColor(s.color)+'15">'+(safePublicURL(s.image_url)?'<img src="'+esc(safePublicURL(s.image_url))+'" alt="" loading="lazy" referrerpolicy="no-referrer">':icon('scissors'))+'</div><div><h3>'+esc(s.name)+'</h3><p>'+number(s.duration_min)+' min · '+money(s.price_cents)+'</p></div></div><div class="os-item-commands">'+badge(s.active?'active':'inactive')+'<div class="os-actions"><button type="button" class="os-button os-ghost os-small" data-os-service="'+esc(s.id)+'">'+icon('edit')+(can?'Editar':'Detalhes')+'</button><label class="os-check os-toggle"><input type="checkbox" data-os-service-toggle="'+esc(s.id)+'" aria-label="'+(s.active?'Inativar ':'Ativar ')+esc(s.name)+'" '+(s.active?'checked ':'')+(can?'':'disabled')+'></label><button class="os-icon-button os-negative" type="button" data-os-service-delete="'+esc(s.id)+'" aria-label="Excluir '+esc(s.name)+'" '+(can?'':'disabled')+'>'+icon('trash')+'</button></div></div></article>').join('')+'</div>':'<div class="os-card">'+empty('scissors','Nenhum serviço cadastrado','Comece por um modelo ou cadastre seu primeiro serviço.',button('Novo serviço','new-service','','plus',can?'':'disabled'))+'</div>';
+    html+=list.length?'<div class="os-cards-grid os-services-grid">'+list.map((s,i)=>{
+      const serviceId=esc(s.id),name=esc(s.name),color=cleanColor(s.color),photo=safePublicURL(s.image_url);
+      return '<article class="os-card os-item-card os-service-card" data-os-service-card="'+serviceId+'">'+
+        '<div class="os-item-top">'+
+          '<div class="os-order-buttons" role="group" aria-label="Organizar '+name+'">'+
+            '<button type="button" class="os-icon-button" data-os-service-order="'+serviceId+'" data-direction="-1" aria-label="Mover '+name+' para cima" '+(!can||i===0?'disabled':'')+'>'+icon('arrowUp')+'</button>'+
+            '<button type="button" class="os-service-grip" data-os-service-drag="'+serviceId+'" aria-label="Arrastar '+name+' para reordenar (ou usar as setas do teclado)" title="Arraste para reordenar · use as setas do teclado" '+(can?'':'disabled')+'><svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="5" r="1.4"/><circle cx="15" cy="5" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="19" r="1.4"/><circle cx="15" cy="19" r="1.4"/></svg></button>'+
+            '<button type="button" class="os-icon-button" data-os-service-order="'+serviceId+'" data-direction="1" aria-label="Mover '+name+' para baixo" '+(!can||i===list.length-1?'disabled':'')+'>'+icon('arrowDown')+'</button>'+
+          '</div>'+
+          '<div class="os-service-photo" style="color:'+color+';background:'+color+'15">'+(photo?'<img src="'+esc(photo)+'" alt="" loading="lazy" referrerpolicy="no-referrer">':icon('scissors'))+'</div>'+
+          '<div class="os-service-info"><h3>'+name+'</h3><p class="os-service-meta">'+number(s.duration_min)+' min · '+money(s.price_cents)+'</p><div class="os-service-state">'+badge(s.active?'active':'inactive')+'</div></div>'+
+        '</div>'+
+        '<div class="os-item-commands">'+
+          '<button type="button" class="os-button os-ghost os-small os-service-edit" data-os-service="'+serviceId+'">'+icon('edit')+(can?'Editar':'Detalhes')+'</button>'+
+          '<div class="os-actions os-service-controls">'+
+            '<label class="os-check os-toggle os-service-toggle"><input type="checkbox" data-os-service-toggle="'+serviceId+'" aria-label="'+(s.active?'Inativar ':'Ativar ')+name+'" '+(s.active?'checked ':'')+(can?'':'disabled')+'></label>'+
+            '<button type="button" class="os-icon-button os-negative os-service-delete" data-os-service-delete="'+serviceId+'" aria-label="Excluir '+name+'" '+(can?'':'disabled')+'>'+icon('trash')+'</button>'+
+          '</div>'+
+        '</div></article>';
+    }).join('')+'</div>':'<div class="os-card">'+empty('scissors','Nenhum serviço cadastrado','Comece por um modelo ou cadastre seu primeiro serviço.',button('Novo serviço','new-service','','plus',can?'':'disabled'))+'</div>';
     html+='<section id="osPackagesSection" class="os-card" style="margin-top:24px"><div class="os-card-header"><div><h2>Pacotes e combos</h2><p>Junte 2 ou mais serviços com preço especial. Aparecem na sua página de agendamento.</p></div>'+button('Novo combo','new-package','os-outline os-small','plus',can?'':'disabled')+'</div><div id="osPackagesBody">'+loading('Carregando pacotes e combos…')+'</div></section>';bodyHTML(html);void loadPackages();
   }
   function renderProfessionals(){
@@ -1066,7 +1085,64 @@
   function confirmMutation(titleText,description,operation,success){showDialog('confirm',titleText,'<p style="margin:0 0 20px;line-height:23px">'+esc(description)+'</p><form class="os-form" data-os-form="confirm"><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+button('Voltar','close-dialog','os-outline')+'<button type="submit" class="os-button">Confirmar</button></div></form>',{operation,success});}
   async function runInline(operation,success){if(state.busy||!writable())return;const c=context();state.busy=true;if($('osTenant'))$('osTenant').disabled=true;try{await operation(c);if(stillAccount(c))toast(success);}catch(ex){if(stillAccount(c))toast(ex.message||'Não foi possível salvar.',true);}finally{if(stillAccount(c)){state.busy=false;if($('osTenant'))$('osTenant').disabled=false;if(current(c))await open(state.route,{keepScroll:true});}}}
   function deleteService(record){if(!record||!writable())return;const path=apiPath('/services/'+encodeURIComponent(record.id));confirmMutation('Excluir serviço','O serviço '+record.name+' será removido do catálogo. Se houver vínculos que impeçam a exclusão, você pode inativá-lo.',()=>request(path,'DELETE'),'Serviço excluído.');}
-  async function moveService(id,direction){const list=[...(state.data.services||[])].filter(s=>!s.catalog_kind||s.catalog_kind==='base').sort((a,b)=>number(a.sort_order)-number(b.sort_order)||a.name.localeCompare(b.name,'pt-BR')),index=list.findIndex(s=>s.id===id),target=index+direction;if(index<0||target<0||target>=list.length)return;const item=list.splice(index,1)[0];list.splice(target,0,item);await runInline(async c=>{try{for(let i=0;i<list.length;i++){if(!stillAccount(c))return;if(number(list[i].sort_order)!==i)await request(apiPath('/services/'+encodeURIComponent(list[i].id)),'PUT',{...serviceRecordPayload(list[i]),sort_order:i});}}catch(ex){throw Error('Não foi possível salvar toda a ordenação. A lista será atualizada para mostrar a ordem registrada. '+ex.message);}},'Ordem dos serviços atualizada.');}
+  function sortedServices(){return [...(state.data.services||[])].filter(s=>!s.catalog_kind||s.catalog_kind==='base').sort((a,b)=>number(a.sort_order)-number(b.sort_order)||a.name.localeCompare(b.name,'pt-BR'));}
+  async function saveServiceOrder(list){
+    await runInline(async c=>{
+      try{
+        for(let i=0;i<list.length;i++){
+          if(!stillAccount(c))return;
+          if(number(list[i].sort_order)!==i)await request(apiPath('/services/'+encodeURIComponent(list[i].id)),'PUT',{...serviceRecordPayload(list[i]),sort_order:i});
+        }
+      }catch(ex){throw Error('Não foi possível salvar toda a ordenação. A lista será atualizada para mostrar a ordem registrada. '+ex.message);}
+    },'Ordem dos serviços atualizada.');
+  }
+  async function moveService(id,direction){
+    if(!writable()||state.busy||![-1,1].includes(direction))return;
+    const list=sortedServices(),index=list.findIndex(s=>s.id===id),target=index+direction;
+    if(index<0||target<0||target>=list.length)return;
+    const item=list.splice(index,1)[0];list.splice(target,0,item);await saveServiceOrder(list);
+  }
+  async function moveServiceTo(id,targetId,after=false){
+    if(!writable()||state.busy||id===targetId)return;
+    const before=sortedServices(),list=[...before],from=list.findIndex(s=>s.id===id);
+    if(from<0||!list.some(s=>s.id===targetId))return;
+    const item=list.splice(from,1)[0],to=list.findIndex(s=>s.id===targetId);
+    list.splice(to+(after?1:0),0,item);
+    if(before.every((s,i)=>s.id===list[i].id))return;
+    await saveServiceOrder(list);
+  }
+  let serviceDrag=null;
+  function clearServiceDrag(){
+    if(!serviceDrag)return;
+    serviceDrag.handle?.classList.remove('os-service-grip-active');
+    document.querySelectorAll('.os-service-drop-target').forEach(card=>card.classList.remove('os-service-drop-target'));
+    const d=serviceDrag;serviceDrag=null;
+    try{if(d.pointerId!=null)d.handle?.releasePointerCapture?.(d.pointerId);}catch{}
+  }
+  function handleServicePointerDown(event){
+    const handle=event.target.closest?.('[data-os-service-drag]');
+    if(!handle||!state.mounted||state.route!=='servicos'||state.busy||!writable()||handle.disabled||event.button>0)return;
+    clearServiceDrag();
+    serviceDrag={handle,id:handle.dataset.osServiceDrag,pointerId:event.pointerId??0,startX:event.clientX,startY:event.clientY,moving:false,targetId:null,after:false};
+    try{if(event.pointerId!=null)handle.setPointerCapture?.(event.pointerId);}catch{}
+  }
+  function handleServicePointerMove(event){
+    const drag=serviceDrag;
+    if(!drag||(event.pointerId??0)!==drag.pointerId)return;
+    if(!drag.moving&&Math.hypot(event.clientX-drag.startX,event.clientY-drag.startY)<8)return;
+    drag.moving=true;drag.handle.classList.add('os-service-grip-active');
+    event.preventDefault();
+    const target=document.elementFromPoint?.(event.clientX,event.clientY)?.closest?.('[data-os-service-card]');
+    document.querySelectorAll('.os-service-drop-target').forEach(card=>card.classList.remove('os-service-drop-target'));
+    drag.targetId=target?.dataset.osServiceCard!==drag.id?target?.dataset.osServiceCard:null;
+    if(drag.targetId){target.classList.add('os-service-drop-target');const rect=target.getBoundingClientRect();drag.after=event.clientY>=rect.top+rect.height/2;}
+  }
+  function handleServicePointerUp(event){
+    const drag=serviceDrag;if(!drag||(event.pointerId??0)!==drag.pointerId)return;
+    const target=drag.moving?drag.targetId:null,after=drag.after,id=drag.id;
+    clearServiceDrag();
+    if(target)void moveServiceTo(id,target,after);
+  }
   function deleteResource(kind,record){if(!record||!writable())return;const specs={customer:['Excluir cliente','O cadastro de '+customerDisplayName(record)+' será removido do diretório. O histórico de atendimentos será preservado.','/customers/','Cliente excluído.'],finance:['Cancelar lançamento','Este lançamento será cancelado, mantendo o histórico financeiro.','/finance/','Lançamento cancelado.'],campaign:['Excluir rascunho','O rascunho '+record.name+' será arquivado.','/marketing/','Rascunho excluído.'],loyalty:['Desativar programa','O programa '+record.name+' será desativado. Os pontos já registrados serão preservados.','/loyalty/rules/','Programa desativado.'],goal:['Desativar meta','A meta selecionada deixará de ficar ativa.','/goals/','Meta desativada.']};const spec=specs[kind];if(!spec)return;const path=mgmt(spec[2]+encodeURIComponent(record.id));confirmMutation(spec[0],spec[1],()=>request(path,'DELETE',{expected_version:record.version}),spec[3]);}
   async function submitForm(event){
     const form=event.target.closest('form');if(!form)return;
@@ -1336,7 +1412,7 @@
     if(state.dialog?.type==='block'&&el.name==='block_type'){$('osBlockHours').classList.toggle('hidden',el.value==='days');$('osBlockDays').classList.toggle('hidden',el.value!=='days');const form=el.closest('form');['day','start_time','end_time'].forEach(name=>form.elements[name].required=el.value==='hours');form.elements.until_date.required=el.value==='hours'&&form.elements.repeat.checked;$('osBlockDays').querySelectorAll('input').forEach(i=>i.required=el.value==='days');}
   }
   function handleInput(event){if(!state.mounted)return;const el=event.target;if(el.id==='osAgendaSearch'&&!state.busy){state.filters.agendaQuery=el.value;state.filters.agendaOffset=0;state.agendaRead=(state.agendaRead||0)+1;clearTimeout(state.agendaSearchTimer);state.agendaSearchTimer=setTimeout(()=>void applyAgendaFilters(),250);return;}if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';if(el.id==='osHelpSearch'){state.filters.helpQuery=el.value;renderHelpResults();}if(el.id==='osCustomerSearch'){state.filters.customerQuery=el.value;state.filters.customerOffset=0;state.customerRead=(state.customerRead||0)+1;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);const c=context();state.searchTimer=setTimeout(()=>loadCustomers(c).catch(ex=>{if(current(c))bodyHTML(errorHTML(ex));}),250);}if(el.id==='osResourceSearch')renderServices(el.value);if(el.id==='osBookingCustomer')filterBookingCustomers(el.value);if(state.dialog?.type==='appointment'&&el.name==='customer_phone'&&state.dialog.customerId){$('osBookingCustomerHelp').textContent='Ao confirmar, o WhatsApp informado será salvo no cadastro deste cliente.';}if(state.dialog?.type==='package'&&el.name==='price')state.dialog.priceTouched=true;}
-  function handleKeydown(event){if(!state.mounted)return;if(event.key==='Escape'){if(state.notificationsOpen){event.preventDefault();closeNotifications(true);}if($('appView').classList.contains('os-menu-open')){event.preventDefault();drawer(false);}if(!$('osThemeMenu').classList.contains('hidden')){$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');$('osThemeToggle').focus();}}
+  function handleKeydown(event){if(!state.mounted)return;const serviceGrip=event.target.closest?.('[data-os-service-drag]');if(serviceGrip&&['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();void moveService(serviceGrip.dataset.osServiceDrag,event.key==='ArrowUp'?-1:1);return;}if(event.key==='Escape'){if(state.notificationsOpen){event.preventDefault();closeNotifications(true);}if($('appView').classList.contains('os-menu-open')){event.preventDefault();drawer(false);}if(!$('osThemeMenu').classList.contains('hidden')){$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');$('osThemeToggle').focus();}}
     const agendaTab=event.target.closest('[data-os-day],[data-os-agenda-mode]');
     if(agendaTab&&['ArrowLeft','ArrowRight','Home','End'].includes(event.key)&&!state.busy){const tabs=[...agendaTab.closest('[role=tablist]').querySelectorAll('[role=tab]')],index=tabs.indexOf(agendaTab),next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;event.preventDefault();tabs[next].focus();tabs[next].click();return;}
     const row=event.target.closest('[data-os-appointment][role=button]');if(row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();void showAppointmentDetail(row.dataset.osAppointment,{trigger:row});}
@@ -1353,10 +1429,10 @@
   function mount(bridge){
     if(state.mounted){sync(bridge);return;}
     state.bridge=bridge||{};state.mounted=true;state.epoch++;state.load++;const list=bridge?.tenants||[],id=String(bridge?.tenantId||'');state.tenantId=list.some(t=>String(t.id)===id)?id:String(list[0]?.id||'');state.filters.agendaDay=dateKey();resetPeriod();
-    buildShell();document.addEventListener('click',handleClick);document.addEventListener('change',handleChange);document.addEventListener('input',handleInput);document.addEventListener('submit',submitForm);document.addEventListener('keydown',handleKeydown);$('osDialog').addEventListener('cancel',onDialogCancel);
+    buildShell();document.addEventListener('click',handleClick);document.addEventListener('change',handleChange);document.addEventListener('input',handleInput);document.addEventListener('submit',submitForm);document.addEventListener('keydown',handleKeydown);document.addEventListener('pointerdown',handleServicePointerDown);document.addEventListener('pointermove',handleServicePointerMove);document.addEventListener('pointerup',handleServicePointerUp);document.addEventListener('pointercancel',clearServiceDrag);$('osDialog').addEventListener('cancel',onDialogCancel);
     state.observer=new MutationObserver(()=>applyThemeState());state.observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-theme-preference']});
     const desired=bridge?.initialRoute||'dashboard';void open(appPages.has(desired)?desired:'dashboard');
   }
-  function destroy(){state.mounted=false;clearInterval(state.clockTimer);state.epoch++;state.load++;state.busy=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
+  function destroy(){state.mounted=false;clearInterval(state.clockTimer);state.epoch++;state.load++;state.busy=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
   window.OrionSuite=Object.freeze({mount,sync,destroy,open,legacyOpened});
 })();
