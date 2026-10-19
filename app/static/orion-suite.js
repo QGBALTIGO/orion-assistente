@@ -880,7 +880,7 @@
   function customerInputField(label,name,type,value,symbol='',extra='',help=''){
     return '<div class="os-field os-client-field">'+
       '<label for="osField-'+name+'">'+esc(label)+'</label>'+
-      '<div class="os-client-input'+(symbol?'':' os-client-input-plain')+'">'+
+      '<div class="os-client-input'+(symbol?'':' os-client-input-plain')+(type==='date'?' os-client-date':'')+'">'+
         (symbol?'<span class="os-client-input-icon" aria-hidden="true">'+icon(symbol)+'</span>':'')+
         '<input id="osField-'+name+'" name="'+name+'" type="'+type+'" value="'+esc(value)+'" '+extra+'>'+
       '</div>'+(help?'<p class="os-client-hint">'+esc(help)+'</p>':'')+
@@ -894,8 +894,9 @@
     const c=record||{};
     const hasExtra=!!(record&&(c.email||c.birth_date||c.neighborhood||c.city));
     const extras='<details class="os-client-more"'+(hasExtra?' open':'')+'>'+
-      '<summary class="os-client-more-toggle"><span class="os-client-more-icon" aria-hidden="true"></span>'+
-      '<span class="os-client-more-text">Mais dados <small>(e-mail, aniversário, endereço)</small></span></summary>'+
+      '<summary class="os-client-more-toggle"><span class="os-client-more-icon" aria-hidden="true">'+
+        icon('plus')+'<svg class="os-icon os-client-more-minus" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg></span>'+
+      '<span class="os-client-more-text"><span class="os-client-more-label-collapsed">Mais dados</span><span class="os-client-more-label-expanded">Menos dados</span><small>(e-mail, aniversário, endereço)</small></span></summary>'+
       '<div class="os-client-extra-fields">'+
         customerInputField('E-mail','email','email',c.email||'','mail','autocomplete="email" maxlength="254" placeholder="nome@email.com"')+
         customerInputField('Aniversário','birth_date','date',c.birth_date||'','calendar')+
@@ -911,7 +912,7 @@
       customerInputField('Instagram','instagram','text',c.instagram||'','instagram','maxlength="120" placeholder="@usuario"')+
       extras+customerNotesField(c.notes||'')+'</div>'+
       (record?checkField('Cliente ativo','active',c.active!==false):'');
-    if(record)content+='<div class="os-stats"><div class="os-stat"><strong>'+number(c.total_appointments)+'</strong><small>Agendamentos</small></div><div class="os-stat"><strong>'+money(c.total_spent_cents)+'</strong><small>Total atendido</small></div><div class="os-stat"><strong>'+number(c.loyalty_points)+'</strong><small>Pontos</small></div></div>';
+    if(record)content+='<div class="os-stats os-client-stats"><div class="os-stat os-client-stat-total"><strong>'+money(c.total_spent_cents)+'</strong><small>Total atendido</small></div><div class="os-stat"><strong>'+number(c.total_appointments)+'</strong><small>Agendamentos</small></div><div class="os-stat"><strong>'+number(c.loyalty_points)+'</strong><small>Pontos</small></div></div>';
     showDialog('customer',record?(writable()?'Editar cliente':'Cliente'):'Novo cliente',dialogForm('customer',content,record?'Salvar alterações':'Cadastrar cliente',record&&writable()?button('Excluir','delete-customer','os-ghost','trash'):'') ,{record});
   }
   function servicePayload(form,record){const f=getValues(form);return {name:f.name.trim(),description:f.description?.trim()||null,duration_min:Number(f.duration_min),price_cents:cents(f.price),prep_min:Number(f.prep_min||0),cleanup_min:Number(f.cleanup_min||0),active:form.elements.active.checked,category:f.category?.trim()||null,color:f.color||record?.color||'#8b5cf6',image_url:f.image_url?.trim()||null,sort_order:number(record?.sort_order)};}
