@@ -39,6 +39,23 @@ test("a página requer cookie autenticado e não expõe tokens",()=>{
 // WhatsApp messages, browser cookies or production credentials are used.
 function panelHarness(){
   let activeElement=null;
+  function eventTarget(properties){
+    const listeners=new Map();
+    return Object.defineProperties({
+      addEventListener(type,callback){
+        const callbacks=listeners.get(type)||[];
+        if(!callbacks.includes(callback))callbacks.push(callback);
+        listeners.set(type,callbacks);
+      },
+      removeEventListener(type,callback){
+        listeners.set(type,(listeners.get(type)||[]).filter(value=>value!==callback));
+      },
+      dispatchEvent(event){
+        for(const callback of [...(listeners.get(event.type)||[])])callback.call(this,event);
+        return !event.defaultPrevented;
+      }
+    },Object.getOwnPropertyDescriptors(properties));
+  }
   class Element{
     constructor(tag="div"){
       this.children=[];this.listeners={};this.options=[];this.value="";
@@ -77,9 +94,11 @@ function panelHarness(){
     return nodes.get(id);
   };
   const context={
-    document:{getElementById:node,createElement:tag=>new Element(tag),
-      querySelectorAll:()=>[],documentElement:{dataset:{}},get activeElement(){return activeElement}},
-    window:{matchMedia:()=>({matches:false,addEventListener(){}})},
+    document:eventTarget({getElementById:node,createElement:tag=>new Element(tag),
+      querySelector:()=>new Element(),querySelectorAll:()=>[],documentElement:{dataset:{}},get activeElement(){return activeElement}}),
+    window:eventTarget({matchMedia:()=>({matches:false,addEventListener(){}})}),
+    // This lightweight DOM has no CSS engine; an unset custom property is empty.
+    getComputedStyle:()=>({getPropertyValue:()=>""}),
     Option:function(text,value){this.textContent=text;this.value=value},
     fetch:(url,options={})=>new Promise((resolve,reject)=>requests.push({
       url,options,reject,respond:(body,status=200)=>resolve({
