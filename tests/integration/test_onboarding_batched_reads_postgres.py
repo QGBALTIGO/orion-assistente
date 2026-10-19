@@ -125,6 +125,7 @@ async def test_batched_reads_preserve_native_values_order_hashes_and_entire_http
                 old.setattr(service, "_facts", original_facts)
                 old.setattr(service, "_state_details", original_details)
                 old.setattr(service, "digest", old_digest)
+                old.setattr(service, "_prepare_state_digests", lambda *_: None)
                 old.setattr(service, "_state_jsonable", jsonable_encoder)
                 expected_state = await service._state(db, tenant, access)
             class CountedSession:

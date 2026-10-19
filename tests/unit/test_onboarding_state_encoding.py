@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from enum import Enum, IntEnum
+import hashlib
+import json
 from pathlib import Path
 import os
 import random
@@ -327,9 +329,12 @@ async def test_actual_state_values_fingerprints_snapshot_and_http_bytes_are_iden
     monkeypatch.setenv("ONBOARDING_ENABLED", "1")
     monkeypatch.setenv("COMMERCIAL_CATALOG_ENABLED", "1")
     native = service._state_jsonable
+    prepare = service._prepare_state_digests
+    monkeypatch.setattr(service, "_prepare_state_digests", lambda *_: None)
     monkeypatch.setattr(service, "_state_jsonable", jsonable_encoder)
     expected = await service._state(Database(), tenant, SimpleNamespace(role="owner"))
     monkeypatch.setattr(service, "_state_jsonable", native)
+    monkeypatch.setattr(service, "_prepare_state_digests", prepare)
     actual = await service._state(Database(), tenant, SimpleNamespace(role="owner"))
     same_tree(actual, expected)
     assert JSONResponse(actual).body == JSONResponse(expected).body
@@ -340,3 +345,71 @@ async def test_actual_state_values_fingerprints_snapshot_and_http_bytes_are_iden
     assert actual["operations"] == operations
     assert not actual["pending"]
     assert facts == before
+
+
+@pytest.mark.parametrize("count", [1, 5, 50])
+def test_prepared_entity_and_snapshot_bytes_match_independent_original(count, monkeypatch):
+    facts = raw_catalog(count)
+    # Preserve native equality when two IDs have the same text but different types.
+    facts["links"][0]["service_id"] = str(facts["services"][0]["id"])
+    facts["breaks"] = [{"id": UUID(int=30000), "tenant_id": facts["business"]["id"],
+        "working_hour_id": facts["hours"][0]["id"], "start_time": time(12), "end_time": time(13)}]
+    configuration = {"niche": "outro", "activity": "both", "modality": "online"}
+    managed = {"services": {str(facts["services"][0]["id"]): True}}
+    before = deepcopy(facts)
+    def original(value):
+        return hashlib.sha256(json.dumps(jsonable_encoder(value), sort_keys=True,
+            separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+    expected_snapshot = original({"configuration": {"private_address": None, **configuration},
+        "managed_ids": managed, "facts": facts})
+    expected = {}
+    for key, table in (("professionals", "professionals"), ("services", "services"),
+                       ("products", "commercial_products"), ("hours", "working_hours")):
+        for item in facts[key]:
+            related = {}
+            if table == "services":
+                related["professional_ids"] = sorted(str(x["professional_id"]) for x in facts["links"] if x["service_id"] == item["id"])
+            elif table == "commercial_products":
+                related["variants"] = [v for v in facts["variants"] if v["product_id"] == item["id"]]
+            elif table == "working_hours":
+                related["breaks"] = [b for b in facts["breaks"] if b["working_hour_id"] == item["id"]]
+            expected[id(item)] = original({"row": item, **related})
+    prepared = service._prepare_state_digests(configuration, managed, facts)
+    assert prepared is not None and prepared.snapshot == expected_snapshot
+    monkeypatch.setattr(service, "digest", lambda *_: pytest.fail("Repeated ordinary-tree scan"))
+    for key, table in (("professionals", "professionals"), ("services", "services"),
+                       ("products", "commercial_products"), ("hours", "working_hours")):
+        for item in facts[key]:
+            assert service._entity_fingerprint(facts, table, item, prepared) == expected[id(item)]
+    assert facts == before and "private_address" not in configuration
+
+
+def test_prepared_facts_never_survive_a_new_read_or_replace_another_facts_tree():
+    facts = raw_catalog(1)
+    configuration = {"activity": "services"}
+    first = service._prepare_state_digests(configuration, {}, facts)
+    facts["services"][0]["price_cents"] += 100
+    second = service._prepare_state_digests(configuration, {}, facts)
+    assert first.snapshot != second.snapshot
+    assert second.snapshot == service._snapshot(configuration, {}, facts)
+    other = raw_catalog(1)
+    item = other["services"][0]
+    assert service._entity_fingerprint(other, "services", item, second) == service._entity_fingerprint(other, "services", item)
+
+
+@pytest.mark.parametrize("value", [{1: "numeric key"}, {"_sa_internal": 1}, Mapping({"a": 1}),
+    {"a": String("custom")}, {"a": float("inf")}, {"a": Decimal("NaN")}, {"a": b"\xff"}])
+def test_prepared_state_rejects_unusual_input_before_using_fast_fingerprints(value):
+    assert service._prepare_state_digests(value, {}, raw_catalog(1)) is None
+
+
+def test_prepared_state_rejects_shared_or_iterator_values_without_consuming_them():
+    shared = {"value": 1}
+    assert service._prepare_state_digests({"a": shared, "b": shared}, {}, raw_catalog(1)) is None
+    consumed = []
+    def values():
+        consumed.append(True)
+        yield "unchanged"
+    iterator = values()
+    assert service._prepare_state_digests({"value": iterator}, {}, raw_catalog(1)) is None
+    assert not consumed and list(iterator) == ["unchanged"]

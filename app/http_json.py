@@ -14,7 +14,7 @@ _SCALARS = frozenset((str, int, float, bool, type(None), bytes, date, datetime,
 _CONTAINERS = frozenset((dict, list, tuple))
 
 
-def _ordinary(value):
+def ordinary_json_tree(value):
     pending, seen = [(value, 1)], set()
     while pending:
         current, depth = pending.pop()
@@ -50,7 +50,7 @@ def _scalar(value):
 
 def json_response(value, *, status_code=200):
     """No model, iterator, subclass or SQLAlchemy-specific key takes the fast path."""
-    if _ordinary(value):
+    if ordinary_json_tree(value):
         try:
             body = json.dumps(value, ensure_ascii=False, allow_nan=False,
                               separators=(",", ":"), default=_scalar).encode("utf-8")

@@ -4,6 +4,7 @@ All operational writes use runtime RLS. The support transaction holds the live
 owner membership until the runtime transaction commits, including final activation.
 """
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 import hashlib
@@ -23,6 +24,7 @@ from app.tenant_access import TenantAccess, check_access
 from app import onboarding_schemas as schemas
 from app import business_profile_service as profiles
 from app.business_profile_schemas import BusinessProfile
+from app.http_json import ordinary_json_tree
 from app.commercial_service import audit as commercial_audit
 
 LABELS = {"business": "Empresa", "location": "Atendimento e endereço", "professionals": "Profissionais",
@@ -253,7 +255,43 @@ def readiness(configuration, facts, managed=None, *, staged=True):
     return pending
 
 
-def _entity_fingerprint(facts, table, item):
+@dataclass(frozen=True)
+class _PreparedStateDigests:
+    facts: dict
+    rows: dict
+    snapshot: str
+
+
+def _normalized_digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True,
+        separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+
+def _prepare_state_digests(configuration, managed, facts):
+    """Normalize one fresh state read, never cache facts or authority across calls.
+
+    Only exact ordinary trees enter this path. The original comparisons still
+    select relations, before normalized rows are used to produce the same bytes.
+    Unusual inputs retain the original digest helpers and consumption behavior.
+    """
+    if any(type(value) is not dict for value in (configuration, managed, facts)):
+        return None
+    value = {"configuration": {"private_address": None, **configuration},
+             "managed_ids": managed, "facts": facts}
+    if not ordinary_json_tree(value):
+        return None
+    try:
+        normalized = json.loads(json.dumps(value, default=_onboarding_json_default,
+            separators=(",", ":"), ensure_ascii=False, allow_nan=False))
+        snapshot = _normalized_digest(normalized)
+    except (TypeError, ValueError, UnicodeError, OverflowError, RecursionError):
+        return None
+    rows = {id(item): normalized["facts"][key][index]
+            for key, _table in _FACT_TABLES for index, item in enumerate(facts[key])}
+    return _PreparedStateDigests(facts, rows, snapshot)
+
+
+def _entity_fingerprint(facts, table, item, prepared=None):
     related = {}
     if table == "services":
         related["professional_ids"] = sorted(str(x["professional_id"]) for x in facts["links"] if x["service_id"] == item["id"])
@@ -261,6 +299,12 @@ def _entity_fingerprint(facts, table, item):
         related["variants"] = [v for v in facts["variants"] if v["product_id"] == item["id"]]
     elif table == "working_hours":
         related["breaks"] = [b for b in facts["breaks"] if b["working_hour_id"] == item["id"]]
+    if prepared is not None and prepared.facts is facts:
+        normalized = {"row": prepared.rows[id(item)], **related}
+        for key in ("variants", "breaks"):
+            if key in related:
+                normalized[key] = [prepared.rows[id(row)] for row in related[key]]
+        return _normalized_digest(normalized)
     return digest({"row": item, **related})
 
 
@@ -331,13 +375,14 @@ async def _state(db, tenant, access):
                          "contact_phone": published.get("contact_phone"), "modality": None, "private_address": None}
     pending = readiness(configuration, facts, managed)
     configuration.setdefault("private_address", None)
+    prepared_digests = _prepare_state_digests(configuration, managed, facts)
     site, google, whatsapp = details["site"], details["google"], details["whatsapp"]
     catalog = {k: [] for k in ("professionals", "services", "products", "hours")}
     for key, table in (("professionals", "professionals"), ("services", "services"), ("products", "commercial_products"), ("hours", "working_hours")):
         for raw in facts[key]:
             row = dict(raw)
             row.pop("tenant_id", None)
-            row["fingerprint"] = _entity_fingerprint(facts, table, raw)
+            row["fingerprint"] = _entity_fingerprint(facts, table, raw, prepared_digests)
             if str(raw["id"]) in managed.get(table, {}):
                 row.update(draft=not bool(meta["completed_at"]), requested_active=managed[table][str(raw["id"])])
             if key == "services":
@@ -362,7 +407,7 @@ async def _state(db, tenant, access):
                          and (k not in {"hours", "professionals"} or configuration.get("activity") != "products"),
                          "complete": k not in missing and (k != "review" or bool(configuration.get("reviewed")))} for k, label in LABELS.items()],
               "configuration": configuration, "catalog": catalog,
-              "snapshot": _snapshot(configuration, managed, facts),
+              "snapshot": prepared_digests.snapshot if prepared_digests is not None else _snapshot(configuration, managed, facts),
               "channels": {"assistant": {"status": "draft" if channels.get("draft") else "published" if channels.get("published") else "not_configured",
                            "generation": channels["generation"], "profile": channels.get("draft") or channels.get("published") or BusinessProfile().model_dump(mode="json")},
                            "site": {"status": "published" if site else "not_published"},
