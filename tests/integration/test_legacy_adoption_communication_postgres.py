@@ -12,7 +12,7 @@ from alembic import command
 from alembic.config import Config
 import pytest
 import redis
-from sqlalchemy import text
+from sqlalchemy import event,text
 
 from scripts import one_time_legacy_adoption as ops
 from test_legacy_adoption_postgres import source,run,PHONE  # noqa: F401
@@ -154,7 +154,18 @@ def test_owner_and_exact_revision_are_fail_closed_before_backup(current_source,m
         with case.engine.begin() as db:db.execute(text('UPDATE alembic_version SET version_num=:r'),{'r':ops.inbox.TARGET})
         code='unexpected_source_schema'
     else:
-        settings=replace(settings,url=settings.url.set(username='app_migrator'))
+        # Reach the actual current_user/owner guard on both trust-auth local PG
+        # and password-auth CI. Reusing the owner's password under a different
+        # login would fail authentication first and test the wrong boundary.
+        denied=ops.backup.engine_for(settings.url)
+        @event.listens_for(denied,'connect')
+        def assume_non_owner(raw,_):
+            old=raw.autocommit
+            try:
+                raw.autocommit=True
+                with raw.cursor() as cursor:cursor.execute('SET ROLE app_migrator')
+            finally:raw.autocommit=old
+        monkeypatch.setattr(ops.backup,'engine_for',lambda *_:denied)
         code='database_owner_required'
     monkeypatch.setattr(ops,'capture_dump',lambda *_:pytest.fail('Invalid owner/schema reached backup'))
     with pytest.raises(ops.Stop,match=code):ops.execute(settings)
