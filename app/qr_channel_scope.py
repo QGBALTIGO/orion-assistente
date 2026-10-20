@@ -60,6 +60,8 @@ async def _lock_authority(session, identity):
          "fence": identity.fence})).scalar_one()
     if valid is not True:
         raise _changed()
+    from app.inbox_control import guard_transaction
+    await guard_transaction(session, identity)
 
 
 @asynccontextmanager

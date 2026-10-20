@@ -264,7 +264,8 @@ async def lease_operation(db, channel_id, credential, payload, operation):
         return {"channel_id": str(row["id"]), "tenant_id": str(row["tenant_id"]),
                 "owner_account_id": str(row["owner_account_id"]), "provider": row["provider"],
                 "owner": str(payload.owner), "fence": row["fence"], "expires_in_ms": remaining,
-                "allowed_senders": row["allowed_senders"], "assistant_enabled": row["assistant_enabled"]}
+                "allowed_senders": row["allowed_senders"], "assistant_enabled": row["assistant_enabled"],
+                **({"inbox_control": True} if os.getenv("INBOX_CONTROL_ENABLED", "0") == "1" else {})}
 
 
 @router.post(INTERNAL + "/lease/{operation}")

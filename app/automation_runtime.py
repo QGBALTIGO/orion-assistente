@@ -99,7 +99,12 @@ async def contact_facts(db, tenant, phone):
         {"t": tenant, "phone": phone})).mappings().one_or_none()
     handoff = (await db.execute(text("""SELECT 1 FROM human_handoffs WHERE tenant_id=:t AND contact_e164=:phone
       AND status='active' AND expires_at>now() LIMIT 1"""), {"t": tenant, "phone": phone})).first()
-    if handoff:
+    from app.inbox_control import enabled as inbox_enabled
+    inbox_handoff = False
+    if inbox_enabled():
+        inbox_handoff = (await db.execute(text("""SELECT 1 FROM inbox_controls WHERE tenant_id=:t
+            AND contact_e164=:phone AND mode<>'ai' LIMIT 1"""), {"t": tenant, "phone": phone})).first()
+    if handoff or inbox_handoff:
         state = {**dict(state or {}), "human_paused": True, "revision": state["revision"] if state else 0}
     return dict(consent) if consent else None, dict(state) if state else None
 
@@ -189,14 +194,14 @@ async def plan_tenant(tenant):
                     local = a["start_at"].astimezone(ZoneInfo(settings["timezone"]))
                     facts = {**dict(a), "appointment_id": a["id"], "has_future_booking": future}
                     known = {**labels, "data": local.strftime("%d/%m/%Y"), "horario": local.strftime("%Hh%M"),
-                             "profissional": a["professional"], "servico": a["services"] or "", "valor": f"R$ {a['total_cents']//100},{a['total_cents']%100:02d}"}
-                    for event in ("booking_confirmed", "rescheduled", "reminder_24h", "reminder_2h", "reminder_1h", "after_service", "cancelled_7d"):
+                             "profissional": a["professional"], "servico": a["services"] or "", "protocolo": a["protocol"], "valor": f"R$ {a['total_cents']//100},{a['total_cents']%100:02d}"}
+                    for event in ("booking_confirmed", "rescheduled", "cancelled", "reminder_24h", "reminder_2h", "reminder_1h", "after_service", "cancelled_7d"):
                         if event == "rescheduled":
                             occurred = (await db.execute(text("SELECT max(occurred_at) FROM appointment_history WHERE tenant_id=:t AND appointment_id=:id AND event='rescheduled'"), {"t": tenant, "id": a["id"]})).scalar_one_or_none()
                             event_facts = {**facts, "occurred_at": occurred}
                         else:
                             event_facts = facts
-                        origin = event_facts.get("occurred_at") if event in {"booking_confirmed", "rescheduled", "after_service", "cancelled_7d"} else a["updated_at"]
+                        origin = event_facts.get("occurred_at") if event in {"booking_confirmed", "rescheduled", "cancelled", "after_service", "cancelled_7d"} else a["updated_at"]
                         key = event + ":" + str(a["id"]) + ":" + (origin.isoformat() if origin else "none")
                         queued += await queue_notification(db, tenant, settings, preference, customer, event, key, event_facts, known)
                 completed_at = (await db.execute(text("""SELECT max(h.occurred_at) FROM appointment_history h

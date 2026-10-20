@@ -4,9 +4,9 @@ from datetime import datetime, timedelta, timezone
 from string import Formatter
 from zoneinfo import ZoneInfo
 
-OPERATIONAL_EVENTS = frozenset({"booking_confirmed", "reminder_24h", "reminder_2h", "reminder_1h", "rescheduled"})
+OPERATIONAL_EVENTS = frozenset({"booking_confirmed", "reminder_24h", "reminder_2h", "reminder_1h", "rescheduled", "cancelled"})
 MARKETING_EVENTS = frozenset({"inactive_60d", "cancelled_7d", "birthday_7d", "birthday_2d", "loyalty_reward", "after_service", "campaign"})
-FIELDS = frozenset({"cliente", "empresa", "data", "horario", "profissional", "servico", "valor", "cupom", "link_agendar", "link_review"})
+FIELDS = frozenset({"cliente", "empresa", "data", "horario", "profissional", "servico", "valor", "protocolo", "cupom", "link_agendar", "link_review"})
 UNAVAILABLE_AUTOMATIONS = {"vacancy": "waitlist_contract_missing"}
 
 
@@ -78,7 +78,7 @@ def delivery_reason(job, consent, contact, settings, *, now, preferences_version
     if (contact or {}).get("human_paused") or (contact or {}).get("revision", 0) != job["interaction_revision"]:
         return "conversation_changed"
     if job.get("appointment_id"):
-        expected = "completed" if job["event"] == "after_service" else "cancelled" if job["event"] == "cancelled_7d" else "confirmed"
+        expected = "completed" if job["event"] == "after_service" else "cancelled" if job["event"] in {"cancelled", "cancelled_7d"} else "confirmed"
         if not appointment or appointment["status"] != expected or appointment["updated_at"] != job["appointment_version"]:
             return "appointment_changed"
         if expected == "confirmed" and appointment["start_at"] <= now:
@@ -113,11 +113,13 @@ def schedule_for(event, facts, now, tz_name, recovery_days=60):
         hours = {"reminder_24h": 24, "reminder_2h": 2, "reminder_1h": 1}[event]
         due = facts["start_at"] - timedelta(hours=hours)
         expiry = min(due + timedelta(minutes=15), facts["start_at"])
-    elif event in {"booking_confirmed", "rescheduled", "after_service", "loyalty_reward"}:
+    elif event in {"booking_confirmed", "rescheduled", "cancelled", "after_service", "loyalty_reward"}:
         due = facts.get("occurred_at")
         if due is None:
             return None
         if event == "after_service" and facts.get("status") != "completed":
+            return None
+        if event == "cancelled" and facts.get("status") != "cancelled":
             return None
         if event in {"booking_confirmed", "rescheduled"} and facts.get("status") != "confirmed":
             return None

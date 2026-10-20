@@ -2679,7 +2679,8 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                     result = await qr_operation_receipt.pending(redis, tenant, phone, require_summary_review, preview=preview)
                     if result is None:
                         result = await turn(tenant, phone, body, redis, namespace, preview=preview)
-                    if not preview and result.get("step") == "human":
+                    if (not preview and result.get("step") == "human" and not (
+                            channel is not None and os.getenv("INBOX_CONTROL_ENABLED", "0") == "1")):
                         # Every QR handoff path converges here. Redis's short
                         # conversational pause must not let new marketing jobs
                         # resume after it expires. Only the owner's explicit
@@ -2837,6 +2838,12 @@ async def managed_qr_reply(channel_id: UUID, payload: Incoming, request: Request
     identity = await authenticated_channel(request, phone=payload.phone)
     if not identity.assistant_enabled or not await _managed_assistant_ready(identity):
         return {"answer": None, "step": "disabled"}
+    from app import inbox_control
+    control_revision = None
+    if inbox_control.enabled():
+        if await inbox_control.blocked(identity.tenant_id, channel_id, payload.phone):
+            return {"answer": None, "step": "human"}
+        control_revision = await inbox_control.assistant_revision(identity.tenant_id, channel_id, payload.phone)
     if payload.intake_revision is None:
         raise HTTPException(422, "Registre a mensagem antes de iniciar o atendimento")
 
@@ -2844,20 +2851,32 @@ async def managed_qr_reply(channel_id: UUID, payload: Incoming, request: Request
         fresh = await authenticated_channel(request, phone=payload.phone)
         if not fresh.assistant_enabled or not await _managed_assistant_ready(fresh):
             raise HTTPException(423, "Assistente do canal desativado")
+        if inbox_control.enabled() and await inbox_control.assistant_revision(fresh.tenant_id, channel_id, payload.phone) != control_revision:
+            raise HTTPException(409, "O controle do atendimento mudou")
         return fresh
 
     token = qr_channel_scope.bind(identity, revalidate)
+    control_token = inbox_control.bind_assistant(identity, payload.phone, control_revision) if inbox_control.enabled() else None
     try:
         await qr_channel_scope.assert_current()
         # Never give a stale/unannounced message a fresh revision here. The
         # pre-ASR notice assigned it; run_locked validates that receipt against
         # current channel-scoped Redis state before interpretation and writes.
         ids = payload.message_ids or [payload.message_id]
-        return await run_locked(identity.tenant_id, payload.phone, payload.text,
+        result = await run_locked(identity.tenant_id, payload.phone, payload.text,
             f"{identity.context_namespace}:{payload.phone}", payload.message_id,
             message_ids=ids, intake_revision=payload.intake_revision,
             require_summary_review=payload.require_summary_review)
+        if inbox_control.enabled():
+            if result.get("step") == "human":
+                await inbox_control.customer_handoff(identity.tenant_id, channel_id, payload.phone)
+                return {"answer": None, "step": "human"}
+            await revalidate()
+            return {**result, "control_revision": control_revision}
+        return result
     finally:
+        if control_token is not None:
+            inbox_control.reset_assistant(control_token)
         qr_channel_scope.reset(token)
 
 

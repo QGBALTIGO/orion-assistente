@@ -15,7 +15,7 @@ from app.management_schemas import normalize_phone
 from app.tenant_access import resolve_tenant_access
 
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}/management", tags=["Preferências e notificações"])
-EVENTS = ("booking_confirmed", "reminder_24h", "reminder_2h", "reminder_1h", "rescheduled", "inactive_60d",
+EVENTS = ("booking_confirmed", "reminder_24h", "reminder_2h", "reminder_1h", "rescheduled", "cancelled", "inactive_60d",
           "cancelled_7d", "birthday_7d", "birthday_2d", "loyalty_reward", "after_service")
 
 
@@ -66,13 +66,13 @@ class BusinessPreferences(StrictModel):
 
 
 class AutomationRule(StrictModel):
-    event: Literal["booking_confirmed", "reminder_24h", "reminder_2h", "reminder_1h", "rescheduled", "inactive_60d", "cancelled_7d", "birthday_7d", "birthday_2d", "loyalty_reward", "after_service"]
+    event: Literal["booking_confirmed", "reminder_24h", "reminder_2h", "reminder_1h", "rescheduled", "cancelled", "inactive_60d", "cancelled_7d", "birthday_7d", "birthday_2d", "loyalty_reward", "after_service"]
     requested_enabled: bool = False
     template: str = Field(min_length=1, max_length=1500)
 
 
 class AutomationPreferences(StrictModel):
-    rules: list[AutomationRule] = Field(default_factory=list, max_length=11)
+    rules: list[AutomationRule] = Field(default_factory=list, max_length=12)
     recovery_days: Literal[30, 45, 60, 90] = 60
     vacancy_requested: bool = False
 

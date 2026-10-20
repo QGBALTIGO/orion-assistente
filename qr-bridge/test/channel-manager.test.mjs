@@ -52,6 +52,39 @@ function fixture(t){
     setTime:value=>{now=value;}};
 }
 
+test('API arbitration is mandatory from the lease even with no bridge flag; accepted sends release after receipt persistence',async t=>{
+  const f=fixture(t),a=f.add(),permits=[],finished=[];f.rows.get(a.id).inbox_control=true;
+  f.broker.authorizeSend=async(id,key,lease,payload)=>{permits.push(payload);return {authorized:true,operation_id:payload.operation_id};};
+  f.broker.finishSend=async(id,key,lease,payload)=>{finished.push(payload);return {released:true};};
+  const m=f.manager();await m.start(a.id,a.key);const operation=randomUUID();
+  const result=await m.send(a.id,a.key,{to:phone,text:'synthetic',operation_id:operation});
+  assert.equal(result.accepted,true);assert.equal(f.made[0].sends.length,1);
+  assert.equal(permits.length,1);assert.equal(permits[0].source,'automation');
+  assert.equal(finished[0].operation_id,operation);assert.equal(finished[0].accepted,true);
+  await m.send(a.id,a.key,{to:phone,text:'synthetic',operation_id:operation});
+  assert.equal(permits.length,1);assert.equal(f.made[0].sends.length,1);
+});
+
+test('a human takeover refuses transport and uncertain operations are never automatically replayed',async t=>{
+  const f=fixture(t),a=f.add();f.rows.get(a.id).inbox_control=true;
+  f.broker.authorizeSend=async()=>{throw Error('human_takeover');};
+  f.broker.finishSend=async()=>{throw Error('must_not_finish');};
+  const m=f.manager();await m.start(a.id,a.key);const operation=randomUUID();
+  const result=await m.send(a.id,a.key,{to:phone,text:'synthetic',operation_id:operation});
+  assert.equal(result.accepted,false);assert.equal(f.made[0].sends.length,0);
+  f.broker.authorizeSend=async()=>{throw Error('must_not_retry');};
+  assert.equal((await m.send(a.id,a.key,{to:phone,text:'synthetic',operation_id:operation})).accepted,false);
+});
+
+test('a provider exception after a durable grant never releases the uncertain slot',async t=>{
+  const f=fixture(t),a=f.add();f.rows.get(a.id).inbox_control=true;let released=0;
+  f.broker.authorizeSend=async(id,key,lease,payload)=>({authorized:true,operation_id:payload.operation_id});
+  f.broker.finishSend=async()=>{released++;};
+  const m=f.manager();await m.start(a.id,a.key);f.made[0].send=async()=>{throw Error('provider_timeout');};
+  assert.equal((await m.send(a.id,a.key,{to:phone,text:'synthetic',operation_id:randomUUID()})).accepted,false);
+  assert.equal(released,0);
+});
+
 test('only a connected device is remembered; restart revalidates SQL and explicit stop cancels resume',async t=>{
   const f=fixture(t),a=f.add(),store=createChannelResumeStore({root:f.root,secret:'resume-master-'.repeat(4)}),m=f.manager({resumeStore:store});
   f.rows.get(a.id).assistant_enabled=false;
