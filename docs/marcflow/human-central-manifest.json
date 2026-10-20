@@ -1,6 +1,5 @@
 {
   "continuation_base": "4b1ba803d7fc3539f85a81f3e5b5f4899653ff42",
-  "qualified_candidate": "a9290ee75a85d80bf7971053eb30bf3509e207eb",
   "branch": "codex/orion-marcflow-integrations-20261020",
   "public_paths": {
     "/api/v1/tenants/{tenant_id}/management/inbox/capabilities": [
@@ -115,6 +114,8 @@
     "app/whatsapp_bot.py",
     "app/worker.py",
     "app/workflow_drafts.py",
+    "docs/marcflow-integration.md",
+    "docs/marcflow/human-central-manifest.json",
     "docs/marcflow/human-central.md",
     "qr-bridge/src/channel-broker.mjs",
     "qr-bridge/src/channel-manager.mjs",
@@ -130,5 +131,7 @@
     "ui-tests/central-browser.mjs",
     "ui-tests/conversations.test.mjs",
     "ui-tests/flows.test.mjs"
-  ]
+  ],
+  "qualified_code": "e896d2a31b464bf1ed7b7a1fe0789782bb9cf5b5",
+  "validation_receipt": "docs/marcflow/human-central-validation.md"
 }

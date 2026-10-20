@@ -28,6 +28,13 @@ Nenhum deploy, migration operacional, conexão de sessão ou envio real foi exec
 - Nova mensagem durante IA invalida gerações anteriores. A mesma autoridade é
   revalidada dentro das transações de negócio, ao reservar um envio e no bridge.
   IA desligada nunca impede o atendente de ler a conversa ou preparar atendimento.
+- Pedidos explícitos de atendente são registrados já no ingresso autenticado,
+  inclusive quando outro envio está pendente. A conversa passa para humano sem
+  liberar o slot anterior. Na Meta, o pedido precede comandos de agenda; frases
+  negadas não provocam transferência.
+- Eventos Meta já pendentes antes de habilitar a central são copiados ao histórico
+  antes de limpar a fila transitória. Isso não inventa horário do provedor nem
+  renova a janela de envio de uma mensagem antiga.
 - Envios humanos exigem posse pessoal, revisão atual e permissão válida, inclusive
   depois da fila. A identificação de operação impede duplicação após resposta HTTP
   perdida. A fila grava `sending` e o slot antes de qualquer chamada ao provedor.
@@ -55,6 +62,12 @@ homologar antes de planejar produção. A migration possui RLS forçada, FKs por
 empresa e bloqueia downgrade com histórico ou controle Meta existente. Não reverter
 apagando tabelas com dados. Pausar a fila conserva slots e histórico.
 
+Após adotar a central, manter `INBOX_CONTROL_ENABLED=1` enquanto houver
+atendimentos sob seu controle. Para interromper transporte, usar as autorizações
+da fila/canal/assistente; desligar o árbitro inteiro restaura o caminho legado e
+não é um procedimento de pausa. `INBOX_SEND_ENABLED` controla a fila humana/Meta;
+o QR automático continua dependendo da autorização da assistente do canal.
+
 O botão de recibo do QR consulta somente o ledger autenticado: só resultados
 `accepted` ou `refused/not_sent` liberam o slot correspondente. Meta pode recuperar
 um resultado por webhook assinado com o identificador opaco da operação. Se não
@@ -71,6 +84,36 @@ search_path fixos para manter o bloqueio na mesma transação sem ampliar grants
 O contexto pessoal é separado do contexto da geração, e o teste exige rejeição
 da geração obsoleta desde a entrada da transação. Não foram removidas asserções.
 
+## Contratos operacionais
+
+Todos os endpoints públicos abaixo começam em
+`/api/v1/tenants/{tenant_id}/management/inbox` e exigem autenticação e vínculo
+vigente. O tenant da URL nunca substitui a autorização do servidor.
+
+| Caminho | Ação |
+|---|---|
+| `GET /channels` | Metadados QR/Meta disponíveis no cadastro; não conecta sessão |
+| `GET /conversations` | Filtros canal/situação/não lidas, busca e páginas de 50 |
+| `GET /channels/{id}/messages` | Até 100 mensagens, cursor `before` da própria conversa |
+| `POST /channels/{id}/read` | Marca somente a leitura da conta atual até uma mensagem existente |
+| `GET/PUT /channels/{id}/control` | Leitura/transição com revisão esperada e conta pessoal |
+| `GET /channels/{id}/control/history` | Últimos cem eventos de controle |
+| `POST /channels/{id}/messages` | Enfileira texto revisado; UUID da operação identifica retries |
+| `POST /channels/{id}/control/reconcile` | Consulta ledger QR; não envia e não presume resultado |
+
+O worker consome apenas `queued`, revalida posse/versão/permissões e grava
+`sending` e o slot antes do transporte. Estados `sending`/`uncertain` nunca voltam
+automaticamente a `queued`. Com Meta desligada, textos ainda não tentados são
+cancelados e não bloqueiam indefinidamente a varredura dos demais canais.
+
+As rotas privadas QR usam chave do canal, owner, fence e lease corrente. Elas
+registram ingresso/recibo e autorizam/finalizam o envio já associado ao controle;
+não aceitam identidade de tenant, responsável ou credencial escolhida pelo modelo.
+
+Fluxos usam `/api/v1/tenants/{tenant_id}/management/workflows`: listar/criar,
+editar por ID e simular explicitamente uma revisão salva. Nenhuma rota de publicar
+ou executar fluxo foi adicionada.
+
 ## Próxima fase: editor e simulação de fluxos
 
 O editor reutiliza `workflow_definitions`, mantendo todos os fluxos desabilitados.
@@ -85,9 +128,10 @@ saída e campanhas continuam sendo fases posteriores. Esta etapa não apresenta
 o editor de rascunhos como um executor de automações publicado.
 
 Testes de domínio, integração PostgreSQL/RLS, bridge, DOM e navegador usam somente
-empresas e destinatários sintéticos e transportes substituídos. Resultados finais
-serão registrados após a qualificação da revisão final. O recibo anterior em
-`final-validation.md` continua pertencendo exclusivamente ao snapshot `b6650a0`.
+empresas e destinatários sintéticos e transportes substituídos. A revisão final
+`e896d2a` foi aprovada: [recibo e limites](human-central-validation.md).
+O recibo anterior `final-validation.md` continua pertencendo exclusivamente ao
+snapshot `b6650a0`.
 
 Não houve teste com conta Meta, aparelho WhatsApp ou cliente real. Anexos, áudio de
 saída e importação de histórico não fazem parte do envio de texto desta etapa.

@@ -138,6 +138,8 @@ persistente.
 
 Antes do transporte, o bridge solicita uma reserva persistente de envio. Uma
 conversa em estado humano/suspenso ou com envio pendente recusa novos envios.
+Na continuação, essa recusa é aplicada aos envios automáticos; o envio humano
+exige a posse pessoal e a operação manual reservada pela mesma autoridade.
 Uma falha incerta conserva a reserva, inclusive após reinício. A reserva não
 expira automaticamente. A liberação exige resultado aceito persistido ou consulta
 de recibo conclusivo; aceitação continua distinta de entrega/leitura.
@@ -369,3 +371,23 @@ O recibo da primeira qualificação foi preservado em [validation.json](marcflow
 O recibo final está em [final-validation.md](marcflow/final-validation.md).
 Um commit posterior de documentação pode registrar esses recibos sem alterar o
 código qualificado indicado no arquivo.
+
+## 11. Continuação: central humana QR/Meta e rascunhos
+
+A mesma branch recebeu a central de texto, histórico/leitura pessoal, envio
+humano com posse/revisão/slot persistentes, ingresso e recibos QR/Meta e bloqueio
+da outbox antiga após ativação. Foram preservados eventos Meta já pendentes e
+pedidos humanos recebidos durante outro envio. O editor/simulador linear
+reaproveita `workflow_definitions` e mantém execução desabilitada.
+
+Código qualificado da continuação: `e896d2a31b464bf1ed7b7a1fe0789782bb9cf5b5`.
+CI aprovada: 4.188 testes PostgreSQL/Redis (1 ignorado), 4.077 em Compose
+(112 ignorados), 416 do bridge e 306 DOM. Não somar conjuntos sobrepostos.
+
+- [Implementação, contratos e limitações](marcflow/human-central.md).
+- [Manifesto da continuação](marcflow/human-central-manifest.json).
+- [Recibo da revisão final](marcflow/human-central-validation.md).
+
+São duas migrations adicionais (0027/0028), quatro tabelas novas e versionamento
+da tabela de fluxos existente, sem dependência nova de produção. O opt-in
+`INBOX_SEND_ENABLED=0` foi acrescentado. Nenhum deploy ou recurso real foi ativado.
