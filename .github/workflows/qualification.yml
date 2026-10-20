@@ -1,5 +1,7 @@
 name: Orion - Homologacao isolada
 on:
+  push:
+    branches: [codex/whatsapp-load-diagnostics]
   workflow_dispatch:
     inputs:
       cpu_profile:
@@ -10,7 +12,7 @@ permissions:
 jobs:
   cpu-profile:
     name: CPU concentrada - FastAPI ${{ matrix.configuration.fastapi }} (diagnostico)
-    if: github.event_name == 'workflow_dispatch' && inputs.cpu_profile
+    if: github.event_name == 'push' || inputs.cpu_profile
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
