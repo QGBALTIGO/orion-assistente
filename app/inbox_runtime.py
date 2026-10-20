@@ -27,7 +27,11 @@ def fingerprint(phone, body):
 
 async def record_inbound(db, tenant, channel, phone, external, body="", kind="text", provider_at=None):
     row = await control.lock_control(db, tenant, channel, "+"+phone.removeprefix("+"))
-    next_mode='human' if row['mode'] in {'waiting','closed'} else row['mode']
+    from app.qr_behaviors import control_intent
+    human_requested=kind=='text' and control_intent(body)=='human'
+    # Record the customer's transfer before an assistant or worker can skip a
+    # busy conversation. An existing attempt keeps its slot and its receipt.
+    next_mode='human' if human_requested or row['mode'] in {'waiting','closed'} else row['mode']
     changes_generation=row['mode']=='ai' or next_mode!=row['mode']
     persisted=(await db.execute(text("""INSERT INTO inbox_messages(tenant_id,control_id,direction,source,kind,body,
       external_id,control_revision,status,provider_at) VALUES(:t,:c,'in','customer',:kind,:body,:external,:rev,'received',:at)

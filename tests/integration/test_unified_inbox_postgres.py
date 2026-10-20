@@ -130,6 +130,23 @@ async def test_timeout_or_restart_never_retries_or_releases_uncertain_slot(centr
         await control.change_control(c.tenant,c.channel,control.Change(contact_e164=PHONE,expected_revision=3,mode='ai'),c.actor)
 
 
+@pytest.mark.parametrize('ingress',[True,False])
+async def test_customer_request_during_pending_send_pauses_ai_without_releasing_slot(central,ingress):
+    c=central;operation=uuid4()
+    async with c.factory() as db:
+        async with tenant_transaction(db,c.tenant):
+            await db.execute(text("""UPDATE inbox_controls SET pending_operation=:op,pending_fingerprint=:fp,pending_since=now()
+              WHERE tenant_id=:t AND channel_id=:c AND contact_e164=:phone"""),{'op':operation,'fp':'b'*64,'t':c.tenant,'c':c.channel,'phone':PHONE})
+            if ingress:
+                await runtime.record_inbound(db,c.tenant,c.channel,PHONE,'human-while-busy','Preciso falar com um atendente')
+    if not ingress:await control.customer_handoff(c.tenant,c.channel,PHONE)
+    state=await control.get_control(c.tenant,c.channel,PHONE,c.actor)
+    assert state['mode']=='human' and state['assigned_account_id'] is None
+    assert state['pending_operation']==str(operation) and await control.blocked(c.tenant,c.channel,PHONE)
+    with pytest.raises(HTTPException):
+        await control.change_control(c.tenant,c.channel,control.Change(contact_e164=PHONE,expected_revision=state['revision'],mode='ai'),c.actor)
+
+
 @pytest.mark.parametrize('revoke',['membership','password','control'])
 async def test_revalidation_before_transport_cancels_revoked_or_obsolete_manual_work(central,revoke):
     c=central;await assume(c);operation,_=await enqueue(c)

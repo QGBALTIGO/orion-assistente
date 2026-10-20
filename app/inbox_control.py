@@ -200,8 +200,8 @@ async def customer_handoff(tenant, channel, phone):
                 row = await lock_control(db, tenant, channel, "+"+phone.removeprefix("+"))
                 # The generation check plus the bridge's final slot gate stops
                 # responses prepared before this committed transfer.
-                if row["pending_operation"] is not None:
-                    raise HTTPException(409, "Há um envio em verificação neste atendimento")
+                # A customer may suspend future AI while a provider result is
+                # pending. This never clears the slot or assigns an operator.
                 if row["mode"] != "human":
                     await db.execute(text("""UPDATE inbox_controls SET mode='human',
                       revision=revision+1,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id"""), {"t": tenant, "id": row["id"]})
