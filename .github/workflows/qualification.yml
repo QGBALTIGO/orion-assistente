@@ -1,4 +1,4 @@
-name: Orion - Ajuste de processos da API
+name: Orion - Controle do gerador de carga
 on:
   push:
     branches: [codex/whatsapp-load-diagnostics]
@@ -6,7 +6,7 @@ permissions:
   contents: read
 jobs:
   paired-control:
-    name: Mesma maquina - dois e tres processos da API (diagnostico)
+    name: Mesma maquina - gerador padrao e uvloop (diagnostico)
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
@@ -59,21 +59,25 @@ jobs:
           fields={line.split(':',1)[0].strip():line.split(':',1)[1].strip() for line in cpu.splitlines() if ':' in line and line.split(':',1)[0].strip() in {'model name','cpu cores','siblings','vendor_id'}}
           pathlib.Path('artifacts/host.json').write_text(json.dumps({'diagnostic_only':True,'logical_cpus':os.cpu_count(),'platform':platform.platform(),'cpu':fields,'versions':{n:m.version(n) for n in ['fastapi','starlette','httpx','certifi','uvicorn','uvloop','SQLAlchemy','asyncpg','pydantic']}},indent=2))
           PY
-      - name: Comparar sem profiler - dois depois tres processos
+      - name: Comparar o gerador padrao e uvloop com a mesma API de tres processos
         run: |
           set +e
-          for workers in 2 3; do
-            (cd work-candidate && python scripts/qualification_load.py --confirm-disposable-local \
+          for generator in asyncio uvloop; do
+            runner=(python scripts/qualification_load.py)
+            if [ "$generator" = uvloop ]; then
+              runner=(python -c 'import runpy,uvloop; uvloop.install(); runpy.run_path("scripts/qualification_load.py",run_name="__main__")')
+            fi
+            (cd work-candidate && "${runner[@]}" --confirm-disposable-local \
               --profile concentrated --timing-diagnostics --stage-seconds 10 --sustain-seconds 120 --warmup-seconds 5 \
-              --api-workers "$workers" --db-pool-size 10 --db-max-overflow 0 --output "$GITHUB_WORKSPACE/artifacts/workers-$workers.json")
+              --api-workers 3 --db-pool-size 10 --db-max-overflow 0 --output "$GITHUB_WORKSPACE/artifacts/generator-$generator.json")
             status=$?
-            printf 'workers_%s_exit_code=%s\n' "$workers" "$status" >> artifacts/diagnostic-exits.txt
+            printf 'generator_%s_exit_code=%s\n' "$generator" "$status" >> artifacts/diagnostic-exits.txt
           done
           exit 0
       - name: Guardar evidencias - diagnostico curto nao qualifica capacidade
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: worker-count-diagnostic-${{ github.sha }}
+          name: generator-loop-diagnostic-${{ github.sha }}
           path: artifacts/
           retention-days: 7
