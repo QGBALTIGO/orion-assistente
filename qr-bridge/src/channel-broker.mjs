@@ -27,6 +27,8 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
   return {
     lease:(id,key,operation,owner,fence)=>request(id,key,'lease/'+operation,{owner,...(fence?{fence}:{})}),
     interaction:(id,key,lease,payload)=>request(id,key,'interaction',payload,lease),
+    journal:(id,key,lease,payload)=>request(id,key,'messages',payload,lease),
+    receipt:(id,key,lease,payload)=>request(id,key,'message-receipt',payload,lease),
     transcribe:(id,key,lease,{phone,buffer,mediaType,signal})=>request(id,key,'audio',buffer,{...lease,phone,mediaType,signal}),
     forward:(id,key,lease,payload)=>request(id,key,'ai/reply',payload,lease),
     authorizeSend:(id,key,lease,payload)=>request(id,key,'send-authorize',payload,lease),

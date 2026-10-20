@@ -2742,6 +2742,9 @@ async def qr_reply(payload: Incoming, request: Request):
     given = request.headers.get("x-orion-bridge-key", "")
     if len(configured) < 32 or not secrets.compare_digest(configured, given):
         raise HTTPException(401, "Acesso negado")
+    from app.inbox_control import enabled as central_enabled
+    if central_enabled():
+        return {"answer": None, "step": "managed_channel_required"}
     if os.getenv("QR_AI_ENABLED", "0") != "1":
         return {"answer": None, "step": "disabled"}
     allowlist = {item.strip() for item in os.getenv("QR_AI_ALLOWED_SENDERS", "").split(",") if item.strip()}

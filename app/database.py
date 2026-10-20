@@ -80,4 +80,10 @@ async def tenant_transaction(
         # legacy/owner calls execute no channel SQL and need no new schema.
         from app.qr_channel_scope import transaction_guard
         async with transaction_guard(session, tenant_id):
+            from app.inbox_control import guard_transaction, _assistant_scope
+            scope = _assistant_scope.get()
+            if scope is not None and scope[0] != tenant_id:
+                raise ValueError("Authenticated inbox tenant mismatch")
+            await guard_transaction(session)
             yield session
+            await guard_transaction(session)

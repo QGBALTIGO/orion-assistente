@@ -19,6 +19,7 @@ from app.whatsapp_bot import reply
 from app.calendar_worker import scan_calendar_outbox,process_calendar_outbox
 from app.billing_worker import reconcile_asaas_job,scan_pending_billing
 from app.automation_runtime import interaction,process_automation_job,reconcile_automation_job,scan_automations
+from app.inbox_runtime import process_inbox_message,scan_inbox
 
 
 async def infrastructure_ping(ctx: dict) -> str:
@@ -34,12 +35,15 @@ async def process_inbound_event(ctx: dict, tenant_id: str, event_id: str):
                 UPDATE inbound_events SET status='processing',attempts=attempts+1,
                     processing_at=now()
                 WHERE tenant_id=:t AND id=:id AND status='pending'
-                RETURNING id, channel_id, sender_e164, message_text
+                RETURNING id, channel_id, sender_e164, message_text,external_id
             """), {"t": tenant, "id": event})).mappings().first()
     if claim is None:
         return "already_processed_or_processing"
     try:
         await interaction(tenant, claim["sender_e164"])
+        from app import inbox_control as control
+        if control.enabled():
+            return await _central_inbound(ctx,tenant,event,claim,factory)
         answer = await reply(tenant, claim["channel_id"], claim["sender_e164"],
                              claim["message_text"], ctx["redis"], message_id=str(claim["id"]))
         async with factory() as session:
@@ -75,6 +79,11 @@ async def process_inbound_event(ctx: dict, tenant_id: str, event_id: str):
 
 
 async def process_message_outbox(ctx: dict, tenant_id: str, outbox_id: str):
+    from app.inbox_control import enabled
+    if enabled():
+        # Legacy jobs have no generation/revision. They cannot bypass the
+        # unified central after it is enabled, even if previously queued.
+        return "central_outbox_required"
     tenant, item_id = UUID(tenant_id), UUID(outbox_id)
     # Não enviar sem consentimento operacional de canal e credenciais válidas.
     if os.getenv("META_LIVE_SEND") != "1":
@@ -150,9 +159,44 @@ async def recover_events(ctx: dict):
 
 
 class WorkerSettings:
-    functions = [infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,reconcile_asaas_job,process_automation_job,reconcile_automation_job]
+    functions = [infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message]
     cron_jobs = [cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
                  cron(scan_calendar_outbox, minute={2,7,12,17,22,27,32,37,42,47,52,57}, second=0),
                  cron(scan_pending_billing, minute={3,13,23,33,43,53}, second=0),
-                 cron(scan_automations, minute=set(range(60)), second=20)]
+                 cron(scan_automations, minute=set(range(60)), second=20),
+                 cron(scan_inbox,minute=set(range(60)),second={5,35})]
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+
+
+async def _central_inbound(ctx,tenant,event,claim,factory):
+    from app import inbox_control as control,inbox_runtime as runtime
+    from app.whatsapp_bot import state_key
+    channel,phone=claim["channel_id"],claim["sender_e164"]
+    async with control.assistant_turn(tenant,channel,phone,ctx["redis"],state_key(str(tenant),str(channel),phone)) as revision:
+        async with factory() as db:
+            async with tenant_transaction(db,tenant):
+                observed=(await db.execute(text("""SELECT m.control_revision FROM inbox_messages m JOIN inbox_controls c
+                  ON c.tenant_id=m.tenant_id AND c.id=m.control_id WHERE m.tenant_id=:t AND c.channel_id=:c
+                  AND c.contact_e164=:phone AND m.direction='in' AND m.external_id=:external"""),
+                  {'t':tenant,'c':channel,'phone':phone,'external':claim['external_id']})).scalar_one_or_none()
+        answer=None if revision is False or observed!=revision else await reply(tenant,channel,phone,claim["message_text"],ctx["redis"],message_id=str(event))
+        # A customer handoff changed the generation during reply. Mark the
+        # inbound processed without binding the obsolete AI authority.
+        token=control._assistant_scope.set(None)
+        try:
+            async with factory() as db:
+                async with tenant_transaction(db,tenant):
+                    row=await control.lock_control(db,tenant,channel,phone)
+                    if answer and row["mode"]=="ai" and row["revision"]==revision and row["pending_operation"] is None:
+                        from uuid import uuid5,NAMESPACE_URL
+                        operation=uuid5(NAMESPACE_URL,"orion:meta:"+str(event))
+                        body=answer[:1200]
+                        await runtime.record_outbound(db,tenant,row,operation,"assistant",body,runtime.fingerprint(phone,body))
+                    await db.execute(text("""UPDATE inbound_events SET status='processed',processed_at=now(),
+                      message_text='',processing_at=NULL WHERE tenant_id=:t AND id=:id"""),{"t":tenant,"id":event})
+                    await db.execute(text("""INSERT INTO usage_counters(tenant_id,period,inbound_messages)
+                      VALUES(:t,date_trunc('month',CURRENT_DATE)::date,1) ON CONFLICT(tenant_id,period)
+                      DO UPDATE SET inbound_messages=usage_counters.inbound_messages+1"""),{"t":tenant})
+        finally:
+            control._assistant_scope.reset(token)
+    return "processed"

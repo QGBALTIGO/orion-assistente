@@ -35,6 +35,7 @@ from app.qr_channel_audio import router as qr_channel_audio_router
 from app.media_api import router as media_router
 from app.inbox_api import router as inbox_router
 from app.inbox_control import router as inbox_control_router
+from app.inbox_conversations import router as inbox_conversations_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -100,6 +101,7 @@ app.include_router(qr_channel_audio_router)
 app.include_router(media_router)
 app.include_router(inbox_router)
 app.include_router(inbox_control_router)
+app.include_router(inbox_conversations_router)
 # Specific management paths must precede the legacy two-segment catalog path.
 app.include_router(catalog_router)
 
@@ -131,7 +133,7 @@ async def panel_asset(asset: str) -> FileResponse:
                "orion-onboarding.css": "text/css", "orion-onboarding.js": "text/javascript",
                "orion-channels.css": "text/css", "orion-channels.js": "text/javascript",
                "orion-automations.js": "text/javascript",
-               "orion-inbox.js": "text/javascript", "orion-inbox.css": "text/css"}
+               "orion-inbox.js": "text/javascript", "orion-conversations.js": "text/javascript", "orion-inbox.css": "text/css"}
     if asset not in allowed:
         from fastapi import HTTPException
         raise HTTPException(404)

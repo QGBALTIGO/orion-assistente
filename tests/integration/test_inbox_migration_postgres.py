@@ -50,8 +50,9 @@ def test_inbox_migrations_roundtrip_and_refuse_data_loss():
         alembic("upgrade", "head")
         with psycopg.connect(dsn) as db:
             tables = db.execute("""SELECT relname,relrowsecurity,relforcerowsecurity FROM pg_class
-              WHERE relname IN ('inbox_labels','inbox_quick_replies','inbox_customer_labels','inbox_controls','inbox_control_events')""").fetchall()
-            assert len(tables) == 5 and all(enabled and forced for _, enabled, forced in tables)
+              WHERE relname IN ('inbox_labels','inbox_quick_replies','inbox_customer_labels','inbox_controls','inbox_control_events',
+                'inbox_channel_links','inbox_messages','inbox_provider_receipts')""").fetchall()
+            assert len(tables) == 8 and all(enabled and forced for _, enabled, forced in tables)
         alembic("downgrade", "0023_automation_notice_guard")
         alembic("upgrade", "head")
         tenant = uuid4()

@@ -63,6 +63,7 @@ async def capabilities(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     from app.tenant_access import resolve_tenant_access
     await resolve_tenant_access(actor, tenant_id)
     return {"enabled": os.getenv("INBOX_TOOLS_ENABLED", "0") == "1", "variables": sorted(VARIABLES),
+            "central_enabled": os.getenv("INBOX_CONTROL_ENABLED", "0") == "1",
             "actions": ["prepare_text"], "sends_messages": False, "labels_prove_consent": False}
 
 

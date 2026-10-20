@@ -35,6 +35,14 @@ def number_choice(value: str, upper: int) -> int | None:
 
 
 async def reply(tenant: UUID, channel: UUID, sender: str, body: str, redis, *, message_id: str | None = None) -> str | None:
+    from app.inbox_control import assistant_turn
+    async with assistant_turn(tenant, channel, sender, redis, state_key(str(tenant), str(channel), sender)) as authority:
+        if authority is False:
+            return None
+        return await _scoped_reply(tenant, channel, sender, body, redis, message_id=message_id)
+
+
+async def _scoped_reply(tenant, channel, sender, body, redis, *, message_id=None):
     key = state_key(str(tenant), str(channel), sender)
     state = json.loads(await redis.get(key) or "{}")
     if message_id and state.get("last_message_id") == message_id and "last_answer" in state:
@@ -70,6 +78,10 @@ async def _reply(tenant, channel, sender, body, redis, key, state, prefs, messag
     if inactive or not settings or not settings["enabled"]:
         return None
     if user_text in {"falar com humano", "falar com barbeiro", "atendente", "quero uma pessoa", "falar com a equipe"}:
+        from app.inbox_control import enabled, customer_handoff
+        if enabled():
+            await customer_handoff(tenant, channel, sender)
+            return None
         state.update(step="human")
         state.pop("summary_message_id", None)
         await redis.set(key, json.dumps(state), ex=TTL)

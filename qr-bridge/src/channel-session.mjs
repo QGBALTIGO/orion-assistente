@@ -111,7 +111,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
         const entry={phone};metadata.set(id,entry);
         const entryCurrent=()=>current()&&context.allowedSender(phone);
         const task=intake.submit({conversationKey:context.channelId+':'+phone,messageId:id,isCurrent:entryCurrent,
-          notice:async()=>{const proof=await context.onInbound({phone,message_id:id});await guarded();entry.proof=proof;return proof;},
+          notice:async()=>{const proof=await context.onInbound({phone,message_id:id,text:text||'',kind:media?'audio':'text'});await guarded();entry.proof=proof;return proof;},
           prepare:async({signal})=>{
             await guarded();
             if(context.assistantEnabled?.()===false||(!text?.trim()&&context.audioEnabled?.()!==true))return {skip:true};

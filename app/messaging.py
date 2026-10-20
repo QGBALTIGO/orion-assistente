@@ -2,6 +2,8 @@
 import hashlib
 import hmac
 import os
+from datetime import datetime,timezone
+from uuid import UUID
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -62,10 +64,35 @@ def extract_messages(payload: dict) -> list[dict]:
                 event = {"phone_number_id": phone_id, "id": msgid,
                          "sender_e164": "+" + sender,
                          "text": body.strip()[:1500]}
+                timestamp=item.get("timestamp")
+                if isinstance(timestamp,str) and timestamp.isascii() and timestamp.isdigit() and len(timestamp)<=10:
+                    event["provider_at"]=datetime.fromtimestamp(int(timestamp),timezone.utc)
                 if sender in names:
                     event["whatsapp_name"] = names[sender]
                 events.append(event)
     return events[:100]
+
+
+def extract_statuses(payload):
+    if payload.get("object")!="whatsapp_business_account":
+        return []
+    result=[]
+    for entry in payload.get("entry",[]):
+        for change in entry.get("changes",[]):
+            value=change.get("value",{})
+            channel=value.get("metadata",{}).get("phone_number_id")
+            if not isinstance(channel,str) or not 1<=len(channel)<=80:
+                continue
+            for item in value.get("statuses",[]):
+                external,phone,status=item.get("id"),contact_phone(item.get("recipient_id")),item.get("status")
+                if isinstance(external,str) and 1<=len(external)<=200 and phone and status in {"sent","delivered","read","failed"}:
+                    record={"phone_number_id":channel,"id":external,"phone":"+"+phone,"status":"accepted" if status=="sent" else status}
+                    try:record['operation_id']=str(UUID(item.get('biz_opaque_callback_data','')))
+                    except (ValueError,TypeError,AttributeError):pass
+                    result.append(record)
+                if len(result)>=100:
+                    return result
+    return result
 
 
 class FakeMessagingProvider:
@@ -107,7 +134,8 @@ class CloudApiProvider(FakeMessagingProvider):
                 f"https://graph.facebook.com/{version}/{phone_id}/messages",
                 headers={"Authorization": f"Bearer {token}"},
                 json={"messaging_product": "whatsapp", "to": to_e164.removeprefix("+"),
-                      "type": "text", "text": {"body": text}},
+                      "type": "text", "text": {"body": text},
+                      **({"biz_opaque_callback_data":str(UUID(channel["operation_id"]))} if channel.get("operation_id") else {})},
             )
             r.raise_for_status()
             data = r.json()

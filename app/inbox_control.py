@@ -9,6 +9,7 @@ import json
 import os
 from typing import Literal
 from uuid import UUID
+from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
@@ -33,13 +34,21 @@ def reset_assistant(token):
     _assistant_scope.reset(token)
 
 
-async def guard_transaction(db, identity):
+async def guard_transaction(db, identity=None):
     scope = _assistant_scope.get()
     if not enabled() or scope is None:
         return
     tenant, channel, phone, revision = scope
-    if (identity.tenant_id, identity.channel_id) != (tenant, channel):
+    if identity is not None and (identity.tenant_id, identity.channel_id) != (tenant, channel):
         raise HTTPException(409, "O controle não corresponde ao canal autenticado")
+    if identity is None:
+        from app.qr_channel_scope import current
+        if current() is None:
+            valid = (await db.execute(text("""SELECT c.bot_enabled AND t.bot_enabled AND t.status='active'
+              AND c.status IN ('testing','connected') FROM whatsapp_channels c JOIN tenants t ON t.id=c.tenant_id
+              WHERE c.tenant_id=:t AND c.id=:c FOR SHARE OF c,t"""), {"t":tenant,"c":channel})).scalar_one_or_none()
+            if valid is not True:
+                raise HTTPException(409, "A autorização da assistente mudou")
     row = (await db.execute(text("""SELECT mode,revision,pending_operation FROM inbox_controls
       WHERE tenant_id=:t AND channel_id=:c AND contact_e164=:phone FOR SHARE"""),
       {"t": tenant, "c": channel, "phone": phone})).mappings().one_or_none()
@@ -81,21 +90,50 @@ class SendSlot(StrictModel):
     phone: str = Field(pattern=r"^55[1-9][0-9]{9,10}$")
     operation_id: UUID
     fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
-    source: Literal["assistant", "automation"]
+    source: Literal["assistant", "automation", "manual"]
     control_revision: StrictInt | None = Field(default=None, ge=1)
+    text: str | None = Field(default=None, min_length=1, max_length=1200)
 
 
 class FinishSlot(SendSlot):
     accepted: Literal[True]
+    provider_id: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 async def lock_control(db, tenant, channel, phone):
     values = {"t": tenant, "channel": channel, "phone": phone}
+    await register_channel(db,tenant,channel)
     await db.execute(text("""INSERT INTO inbox_controls(tenant_id,channel_id,contact_e164)
       VALUES(:t,:channel,:phone) ON CONFLICT DO NOTHING"""), values)
     row = (await db.execute(text("""SELECT * FROM inbox_controls
       WHERE tenant_id=:t AND channel_id=:channel AND contact_e164=:phone FOR UPDATE"""), values)).mappings().one()
     return dict(row)
+
+
+async def register_channel(db,tenant,channel):
+    await db.execute(text("""INSERT INTO inbox_channel_links(tenant_id,channel_id,provider,qr_channel_id,meta_channel_id)
+      SELECT tenant_id,id,'qr',id,NULL FROM qr_channels WHERE tenant_id=:t AND id=:channel
+      UNION ALL SELECT tenant_id,id,'meta',NULL,id FROM whatsapp_channels WHERE tenant_id=:t AND id=:channel
+      ON CONFLICT DO NOTHING"""), {"t":tenant,"channel":channel})
+
+
+@asynccontextmanager
+async def assistant_turn(tenant, channel, phone, redis=None, state_key=None):
+    """Meta and domain tools share the same committed authority as managed QR."""
+    if not enabled() or _assistant_scope.get() is not None:
+        yield None
+        return
+    if await blocked(tenant, channel, phone):
+        yield False
+        return
+    revision = await assistant_revision(tenant, channel, phone)
+    token = bind_assistant(SimpleNamespace(tenant_id=tenant, channel_id=channel), phone, revision)
+    try:
+        if redis is not None and state_key is not None:
+            await clear_transient_handoff(redis, state_key)
+        yield revision
+    finally:
+        reset_assistant(token)
 
 
 async def check_channel(db, tenant, channel, phone):
@@ -128,6 +166,7 @@ async def assistant_revision(tenant, channel, phone):
         async with tenant_transaction(db, tenant):
             values = {"t": tenant, "channel": channel, "phone": "+"+phone.removeprefix("+")}
             if _assistant_scope.get() is None:
+                await register_channel(db,tenant,channel)
                 await db.execute(text("""INSERT INTO inbox_controls(tenant_id,channel_id,contact_e164)
                   VALUES(:t,:channel,:phone) ON CONFLICT DO NOTHING"""), values)
             # A bound revalidation already holds SHARE in guard_transaction.
@@ -198,6 +237,11 @@ async def change_control(tenant_id: UUID, channel_id: UUID, payload: Change, act
           {"t": tenant_id, "id": row["id"], "mode": payload.mode, "account": assigned})).mappings().one()
         await audit(db, tenant_id, "inbox_control_"+payload.mode, "inbox_controls", row["id"])
         await control_event(db, tenant_id, row, payload.mode, "operator", actor.account_id)
+        # Old Meta handoff endpoints and Redis state no longer own AI access.
+        if payload.mode == "ai":
+            await db.execute(text("""UPDATE human_handoffs SET status='resolved',expires_at=now()
+              WHERE tenant_id=:t AND channel_id=:c AND contact_e164=:phone AND status='active'"""),
+              {"t":tenant_id,"c":channel_id,"phone":payload.contact_e164})
         return jsonable_encoder(result)
 
 
@@ -246,15 +290,25 @@ async def authorize_send(channel_id: UUID, payload: SendSlot, request: Request):
                "o":identity.lease_owner,"f":identity.fence})).scalar_one()
             if live is not True:
                 raise HTTPException(409, "A autorização da assistente mudou")
-        if payload.source == "assistant" and payload.control_revision != row["revision"]:
+        if payload.source in {"assistant", "manual"} and payload.control_revision != row["revision"]:
             raise HTTPException(409, "O controle mudou durante a preparação da resposta")
+        if payload.source == "manual":
+            from app.inbox_runtime import manual_slot
+            await manual_slot(db, identity.tenant_id, row, payload)
+            return {"authorized": True, "operation_id": payload.operation_id}
         if row["mode"] != "ai" or row["pending_operation"] is not None:
             raise HTTPException(409, "Atendimento ocupado ou suspenso")
         # The legacy company-wide marketing pause remains a conservative veto.
         paused = (await db.execute(text("""SELECT human_paused FROM automation_contact_state
           WHERE tenant_id=:t AND contact_e164=:phone"""), {"t": identity.tenant_id, "phone": "+"+payload.phone})).scalar_one_or_none()
-        if paused:
+        if paused and payload.source == "automation":
             raise HTTPException(409, "Atendimento suspenso")
+        if payload.text is not None:
+            from app.inbox_runtime import record_outbound, fingerprint
+            if fingerprint(payload.phone, payload.text) != payload.fingerprint:
+                raise HTTPException(409, "O texto não corresponde à operação")
+            await record_outbound(db, identity.tenant_id, row, payload.operation_id, payload.source,
+                                  payload.text, payload.fingerprint, status="sending")
         await db.execute(text("""UPDATE inbox_controls SET pending_operation=:operation,pending_fingerprint=:fingerprint,
           pending_since=clock_timestamp() WHERE tenant_id=:t AND id=:id"""),
           {"t": identity.tenant_id, "id": row["id"], "operation": payload.operation_id, "fingerprint": payload.fingerprint})
@@ -266,6 +320,8 @@ async def finish_send(channel_id: UUID, payload: FinishSlot, request: Request):
     async with bridge_control(request, payload) as (db, identity, row):
         if row["pending_operation"] != payload.operation_id or row["pending_fingerprint"] != payload.fingerprint:
             raise HTTPException(409, "Recibo não corresponde ao envio pendente")
+        from app.inbox_runtime import accepted
+        await accepted(db, identity.tenant_id, payload.operation_id, payload.provider_id)
         await db.execute(text("""UPDATE inbox_controls SET pending_operation=NULL,pending_fingerprint=NULL,pending_since=NULL
           WHERE tenant_id=:t AND id=:id"""), {"t": identity.tenant_id, "id": row["id"]})
         return {"released": True, "operation_id": payload.operation_id}

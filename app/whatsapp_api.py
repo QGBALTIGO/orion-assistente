@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.catalog_api import support_session_factory
 from app.database import get_session_factory, tenant_transaction
-from app.messaging import extract_messages, verify_meta_signature
+from app.messaging import extract_messages, extract_statuses, verify_meta_signature
 from app.customer_names import merge_whatsapp_name
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp Meta"])
@@ -42,6 +42,7 @@ async def receive_meta(request: Request):
     try:
         payload = json.loads(raw)
         events = extract_messages(payload)
+        statuses = extract_statuses(payload)
     except (ValueError, TypeError, KeyError, AttributeError):
         raise HTTPException(400, "Payload inválido") from None
     if len(events) > 100:
@@ -71,6 +72,10 @@ async def receive_meta(request: Request):
                     """), dict(id=event_id, tenant=result["tenant_id"], channel=result["id"],
                                external=item["id"], sender=item["sender_e164"], body=item["text"]))
                     persisted = out.scalar_one_or_none()
+                    from app.inbox_control import enabled
+                    if persisted and enabled():
+                        from app.inbox_runtime import record_inbound
+                        await record_inbound(session,result["tenant_id"],result["id"],item["sender_e164"],item["id"],item["text"],provider_at=item.get("provider_at"))
                     if persisted and item.get("whatsapp_name"):
                         # The Meta signature and channel lookup already chose
                         # this tenant; persist the profile in the same commit as
@@ -81,6 +86,17 @@ async def receive_meta(request: Request):
                 recorded.append((str(result["tenant_id"]), str(persisted)))
         except IntegrityError:
             raise HTTPException(503, "Falha de persistência") from None
+    from app.inbox_control import enabled
+    if enabled():
+        from app.inbox_runtime import provider_receipt
+        for item in statuses:
+            async with support() as session:
+                channel=(await session.execute(text("SELECT tenant_id,id FROM whatsapp_channels WHERE phone_number_id=:number AND status IN ('testing','connected')"),
+                    {"number":item["phone_number_id"]})).mappings().first()
+            if channel:
+                async with factory() as session:
+                    async with tenant_transaction(session,channel["tenant_id"]):
+                        await provider_receipt(session,channel["tenant_id"],channel["id"],item["phone"],item["id"],item["status"],item.get("operation_id"))
     # Responder 200 só depois que eventos foram COMMITados.
     # Se Redis estiver fora, a recuperação do worker varre pendências no banco.
     if recorded:

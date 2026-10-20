@@ -77,6 +77,11 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     async function notice(payload){
       await assertCurrent();
       if(!c.allowed.has(payload.phone)||typeof payload.message_id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(payload.message_id))throw Error('channel_sender_denied');
+      if(c.inboxControl&&('text' in payload||'kind' in payload)){
+        if(typeof broker.journal!=='function')throw Error('inbox_journal_unavailable');
+        const saved=await broker.journal(c.id,c.key,{owner,fence:c.fence},payload);
+        if(saved?.recorded!==true)throw Error('inbox_journal_unconfirmed');
+      }
       const recorded=await broker.interaction(c.id,c.key,{owner,fence:c.fence},{phone:payload.phone,message_id:payload.message_id});
       if(recorded?.recorded!==true||!Number.isSafeInteger(recorded.revision)||recorded.revision<1)throw Error('channel_interaction_unconfirmed');
       await assertCurrent();const proof=Object.freeze({revision:recorded.revision});
@@ -106,6 +111,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
           await assertCurrent();const item=c.sent.get(id);if(!item)return;
           const saved=c.ledger.reserve(item.operation,item.fingerprint).record;
           if(saved.delivery!=='read')c.ledger.save(item.operation,{...saved,delivery});
+          if(c.inboxControl&&typeof broker.receipt==='function')
+            await broker.receipt(c.id,c.key,{owner,fence:c.fence},{phone:item.phone,operation_id:item.operation,provider_id:id,delivery});
         },
         onMessage:async(payload,{noticeProof,noticeProofs,beforeReply,isCurrent:batchCurrent=()=>true}={})=>{
           await assertCurrent();
@@ -201,27 +208,32 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     }
     // The durable uncertain record exists before any network send. A process
     // crash or timeout can never cause this operation to be sent a second time.
+    let attempted=false;
     try{
       await validate(c,key);
       if(!c.session||operationCurrent()!==true)throw Error('channel_not_connected_or_superseded');
-      const slot={phone,operation_id,fingerprint,source,...(source==='assistant'?{control_revision}:{} )};
+      const slot={phone,operation_id,fingerprint,source,text,...(['assistant','manual'].includes(source)?{control_revision}:{} )};
       if(c.inboxControl===true||control_revision!==undefined){
         if(typeof broker.authorizeSend!=='function')throw Error('inbox_control_unavailable');
         const permit=await broker.authorizeSend(c.id,c.key,{owner,fence:c.fence},slot);
         if(permit?.authorized!==true||permit.operation_id!==operation_id)throw Error('inbox_send_refused');
       }
+      attempted=true;
       const result=await c.session.send(phone,text,{isCurrent:operationCurrent});requireCurrent(c);
       if(typeof result?.id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(result.id))throw Error('channel_send_unknown');
       const record={fingerprint,state:'accepted',accepted:true,delivery:'unknown',provider_id:result.id};
-      c.ledger.save(operation_id,record);c.sent.set(result.id,{operation:operation_id,fingerprint});
+      c.ledger.save(operation_id,record);c.sent.set(result.id,{operation:operation_id,fingerprint,phone});
       if(c.inboxControl===true||control_revision!==undefined){
         // A lost finish response leaves a conservative slot. It is released
         // only after the API verifies this already persisted receipt.
-        try{await broker.finishSend(c.id,c.key,{owner,fence:c.fence},{...slot,accepted:true});}catch{}
+        try{await broker.finishSend(c.id,c.key,{owner,fence:c.fence},{...slot,accepted:true,provider_id:result.id});}catch{}
       }
       if(c.sent.size>1000)c.sent.delete(c.sent.keys().next().value);
       return publicSend(operation_id,record);
-    }catch{return publicSend(operation_id,reserved.record);}
+    }catch{
+      if(!attempted){const refused={fingerprint,state:'refused',accepted:false,delivery:'not_sent'};c.ledger.save(operation_id,refused);return publicSend(operation_id,refused);}
+      return publicSend(operation_id,reserved.record);
+    }
   }
   async function operation(id,key,operationId){
     if(!channelId(id)||!channelId(operationId))throw Error('invalid_operation_id');

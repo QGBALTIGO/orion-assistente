@@ -367,6 +367,9 @@ async def qr_disconnect(data:ConfirmDisconnect,actor:Actor=Depends(authenticate)
 @router.post("/api/v1/qr/send")
 async def qr_send(data:SendPayload,actor:Actor=Depends(authenticate)):
     support_only(actor)
+    from app.inbox_control import enabled
+    if enabled():
+        raise HTTPException(423,"Use o canal gerenciado na central de atendimento")
     return await _bridge("/internal/send","POST",data.model_dump())
 
 

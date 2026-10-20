@@ -47,8 +47,10 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
         }
       }
       else {
-        const input=await body(req),allowed=action==='send'?['to','text','operation_id']:[];
-        if(Object.keys(input).some(k=>!allowed.includes(k))||allowed.some(k=>!(k in input)))throw Error('invalid_channel_request');
+        const input=await body(req),required=action==='send'?['to','text','operation_id']:[],allowed=[...required,...(action==='send'?['source','control_revision']:[])];
+        if(Object.keys(input).some(k=>!allowed.includes(k))||required.some(k=>!(k in input))||
+          ('source' in input&&(input.source!=='manual'||!Number.isSafeInteger(input.control_revision)||input.control_revision<1))||
+          ('control_revision' in input&&input.source!=='manual'))throw Error('invalid_channel_request');
         if(action==='start')result=await api.start(id,key);
         else if(action==='stop'){await api.stop(id,key);result={status:'stopped'};}
         else result=await api.send(id,key,input);
