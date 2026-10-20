@@ -8,6 +8,27 @@ const idFor = index => `40000000-0000-4000-8000-${String(index).padStart(12, '0'
 const customerResponse = items => path => path.includes('/management/customers') ? { items, total: items.length } : defaultResponse(path);
 const mobileNames = document => Array.from(document.querySelectorAll('.os-client-mobile-main strong'), element => element.textContent);
 
+for(const role of ['owner','editor','viewer'])test(`WhatsApp shortcut opens only the tenant channels for ${role}, without starting a session`,async t=>{
+  const opened=[],mounted=[];
+  const h=await makeSuite({initialRoute:'dashboard',role,bridge:{openLegacy:route=>opened.push(route)}});
+  t.after(()=>h.close());await flush();
+  h.window.OrionChannels={unmount(){},mount(options){mounted.push(options.tenantId);}};
+  const shortcut=h.document.querySelector('#osNav [data-os-action=managed-whatsapp]');
+  assert.equal(h.document.querySelector('#osNav .os-nav-link'),shortcut);
+  assert.equal(shortcut.textContent,'Conectar WhatsApp');
+  assert.equal(h.document.querySelector('#osNav [data-os-route=dispositivo]'),null);
+  h.click('#osNav [data-os-action=managed-whatsapp]');await flush();
+  assert.deepEqual(mounted,[tenantA]);assert.deepEqual(opened,[]);
+  assert.ok(h.document.querySelector('#osManagedChannels'));
+  assert.equal(shortcut.getAttribute('aria-current'),'page');
+  assert.equal(h.document.querySelector('#osNav [data-os-route=configuracoes]').getAttribute('aria-current'),null);
+  assert.equal(h.calls.some(call=>call.method!=='GET'),false);
+  h.click('[data-os-settings=appearance]');await flush();
+  assert.equal(shortcut.getAttribute('aria-current'),null);
+  assert.equal(h.document.querySelector('#osNav [data-os-route=configuracoes]').getAttribute('aria-current'),'page');
+  assert.equal(h.errors.length,0);
+});
+
 test('navigation keeps WhatsApp first, a single Dashboard, and Atendimento after Gestão', async t => {
   const opened = [];
   const h = await makeSuite({ initialRoute: 'dashboard', bridge: { user: admin, openLegacy: route => opened.push(route) } });

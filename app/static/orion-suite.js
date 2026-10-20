@@ -150,7 +150,7 @@
   function title(titleText,subtitle,actions=''){return '<div class="os-title-row"><div><h1>'+esc(titleText)+'</h1>'+(subtitle?'<p>'+esc(subtitle)+'</p>':'')+'</div>'+(actions?'<div class="os-actions">'+actions+'</div>':'')+'</div>';}
   function bodyHTML(html){window.OrionChannels?.unmount();window.OrionAutomations?.unmount();const body=$('osPageBody');if(body)body.innerHTML=html;}
   function pageHTML(html){$('page-suite').innerHTML=html;}
-  function selectedNav(){const activeRoute=state.route==='cadastros'?'configuracoes':state.route;document.querySelectorAll('.os-nav-link').forEach(a=>{if(a.dataset.osRoute===activeRoute)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});}
+  function selectedNav(){const activeRoute=state.route==='cadastros'?'configuracoes':state.route,channels=activeRoute==='configuracoes'&&state.filters.settingsTab==='whatsapp'&&!!document.querySelector('#osNav [data-os-action="managed-whatsapp"]');document.querySelectorAll('.os-nav-link').forEach(a=>{if(channels?a.dataset.osAction==='managed-whatsapp':a.dataset.osRoute===activeRoute)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});}
 
   function buildShell(){
     const app=$('appView'),sidebar=app.querySelector('.sidebar'),content=app.querySelector('.content');
@@ -182,7 +182,7 @@
     const t=tenant(),list=state.bridge.tenants||[],isAdmin=['support','admin'].includes(state.bridge.user?.role);
     $('osSidebarContext').innerHTML='<div class="os-overline">Meu negócio</div>'+(list.length>1?'<label class="os-sr-only" for="osTenant">Selecionar empresa</label><select id="osTenant" class="os-tenant-select"'+(state.busy?' disabled':'')+'>'+list.map(r=>'<option value="'+esc(r.id)+'"'+(String(r.id)===state.tenantId?' selected':'')+'>'+esc(r.name)+'</option>').join('')+'</select>':'<div class="os-tenant-name">'+esc(t?.name||'Selecione uma empresa')+'</div>')+'<div class="os-sidebar-badges"><span class="os-badge">'+esc(isAdmin?'Administração':t?.role==='viewer'?'Consulta':t?.role==='editor'?'Equipe':'Minha empresa')+'</span></div><button type="button" class="os-side-site" data-os-route="site">meu site '+icon('external')+'</button>';
     const navItem=([route,symbol],extra='')=>'<button type="button" class="os-nav-link'+extra+'" data-os-route="'+route+'" title="'+esc(routeNames[route])+'">'+icon(symbol)+'<span>'+esc(routeNames[route])+'</span></button>';
-    let nav=isAdmin?navItem(['dispositivo','phone'],' os-nav-connection'):'';
+    let nav=isAdmin?navItem(['dispositivo','phone'],' os-nav-connection'):t?'<button type="button" class="os-nav-link os-nav-connection" data-os-action="managed-whatsapp" title="Conectar WhatsApp">'+icon('phone')+'<span>Conectar WhatsApp</span></button>':'';
     nav+='<div class="os-nav-section">Gestão</div>'+mainNav.map(item=>navItem(item)).join('');
     nav+='<div class="os-nav-section">Atendimento Orion</div>';
     const attendance=[['conversas','chat'],['ai','bot'],['empresa','settings'],['catalogo','box']];
@@ -1318,6 +1318,7 @@
     }catch(ex){const target=form.querySelector('.os-form-message');if(target)target.textContent=ex.message;else toast(ex.message,true);}
   }
   async function action(name,element){
+    if(name==='managed-whatsapp'){if(state.busy)return;state.filters.settingsTab='whatsapp';await open('configuracoes');return;}
     if(name==='image-pick'){element.closest('.os-image-upload')?.querySelector('.os-image-file')?.click();return;}
     if(name==='image-remove'){
       const box=element.closest('.os-image-upload'),field=box?.querySelector('input[type=hidden]'),thumb=box?.querySelector('.os-image-thumb');
