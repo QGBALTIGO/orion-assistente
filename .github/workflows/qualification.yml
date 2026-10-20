@@ -1,157 +1,31 @@
 name: Orion - Homologacao isolada
-
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       cpu_profile:
-        description: Coletar perfis de CPU curtos; nao qualifica capacidade
         type: boolean
-        default: false
-
+        default: true
 permissions:
   contents: read
-
-concurrency:
-  group: orion-qualification-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  browser:
-    name: Navegador - 20 jornadas com API e banco reais
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: qualification-owner-only
-          POSTGRES_DB: orion_e2e
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U postgres -d orion_e2e"
-          --health-interval 5s --health-timeout 5s --health-retries 12
-      redis:
-        image: redis:7
-        ports: ['6379:6379']
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s --health-timeout 5s --health-retries 12
-    env:
-      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:qualification-runtime-only@127.0.0.1:5432/orion_e2e
-      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:qualification-migrator-only@127.0.0.1:5432/orion_e2e
-      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:qualification-support-only@127.0.0.1:5432/orion_e2e
-      ORION_E2E_REDIS_URL: redis://127.0.0.1:6379/14
-      ORION_E2E_ENABLED: '1'
-      ORION_E2E_ARTIFACTS: test-results/e2e
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Instalar aplicacao e navegador de teste
-        run: |
-          python -m pip install '.[test]' -r tests/e2e/requirements.txt
-          python -m playwright install --with-deps chromium
-      - name: Preparar banco exclusivo
-        env:
-          PGPASSWORD: qualification-owner-only
-        run: |
-          psql -h 127.0.0.1 -U postgres -d orion_e2e -v ON_ERROR_STOP=1 \
-            -v db_name=orion_e2e -v runtime_password=qualification-runtime-only \
-            -v migrator_password=qualification-migrator-only -v support_password=qualification-support-only \
-            -f infra/postgres/init/001-roles.sql
-          python -m alembic upgrade head
-      - name: Validar privacidade dos artefatos
-        run: python -m pytest tests/e2e/test_artifact_sanitization.py -q
-      - name: Executar vinte jornadas HTTPS reais
-        run: |
-          mkdir -p test-results/e2e
-          python -m pytest tests/e2e/qualification_e2e.py -vv -ra --maxfail=1 --junitxml=test-results/e2e/junit.xml
-      - name: Guardar evidencia sintetica
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: browser-qualification-${{ github.sha }}
-          path: test-results/e2e/
-          retention-days: 7
-
-  load:
-    name: Carga real isolada - ${{ matrix.profile }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    strategy:
-      fail-fast: false
-      matrix:
-        profile: [concentrated, wide]
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: qualification-owner-only
-          POSTGRES_DB: qualification_seed
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U postgres -d qualification_seed"
-          --health-interval 5s --health-timeout 5s --health-retries 12
-      redis:
-        image: redis:7
-        ports: ['6379:6379']
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s --health-timeout 5s --health-retries 12
-    env:
-      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:qualification-runtime-only@127.0.0.1:5432/qualification_seed
-      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:qualification-migrator-only@127.0.0.1:5432/qualification_seed
-      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:qualification-support-only@127.0.0.1:5432/qualification_seed
-      ORION_QUALIFICATION_OWNER_URL: postgresql+psycopg://postgres:qualification-owner-only@127.0.0.1:5432/postgres
-      ORION_QUALIFICATION_DISPOSABLE: '1'
-      REDIS_URL: redis://127.0.0.1:6379/15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Instalar aplicacao de teste
-        run: python -m pip install '.[test]'
-      - name: Preparar papeis exclusivos
-        env:
-          PGPASSWORD: qualification-owner-only
-        run: |
-          psql -h 127.0.0.1 -U postgres -d qualification_seed -v ON_ERROR_STOP=1 \
-            -v db_name=qualification_seed -v runtime_password=qualification-runtime-only \
-            -v migrator_password=qualification-migrator-only -v support_password=qualification-support-only \
-            -f infra/postgres/init/001-roles.sql
-      - name: Validar guardas do gerador
-        run: python -m pytest tests/load/test_qualification_load.py -q
-      - name: Crescimento e sustentacao de 1500 usuarios sinteticos
-        run: |
-          mkdir -p artifacts
-          python scripts/qualification_load.py --confirm-disposable-local --profile ${{ matrix.profile }} \
-            --stage-seconds 60 --sustain-seconds 600 --api-workers 3 --db-pool-size 10 --db-max-overflow 0 --timing-diagnostics \
-            --output artifacts/load-${{ matrix.profile }}.json
-      - name: Guardar metricas e falhas
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: load-${{ matrix.profile }}-${{ github.sha }}
-          path: artifacts/
-          retention-days: 7
-
   cpu-profile:
-    name: Diagnostico CPU - ${{ matrix.profile }} - ${{ matrix.configuration.workers }} workers (nao qualifica capacidade)
+    name: CPU concentrada - FastAPI ${{ matrix.configuration.fastapi }} (diagnostico)
     if: github.event_name == 'workflow_dispatch' && inputs.cpu_profile
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        profile: [wide]
+        profile: [concentrated]
         configuration:
           - workers: 3
             size: 10
             overflow: 0
+            fastapi: '0.150.0'
+          - workers: 3
+            size: 10
+            overflow: 0
+            fastapi: '0.151.0'
     services:
       postgres:
         image: postgres:16
@@ -182,7 +56,7 @@ jobs:
           python-version: '3.12'
       - name: Instalar aplicacao real e testar guardas do diagnostico
         run: |
-          python -m pip install '.[test]'
+          python -m pip install '.[test]' 'fastapi==${{ matrix.configuration.fastapi }}'
           python -m pytest tests/load/test_qualification_load.py tests/load/test_qualification_profile_api.py -q
       - name: Preparar papeis no PostgreSQL exclusivo deste job
         env:
@@ -197,9 +71,9 @@ jobs:
           mkdir -p artifacts
           set +e
           python scripts/qualification_load.py --confirm-disposable-local --profile ${{ matrix.profile }} --profile-api \
-            --profile-generator --stage-seconds 5 --sustain-seconds 30 --warmup-seconds 5 \
+            --profile-generator --stage-seconds 10 --sustain-seconds 60 --warmup-seconds 5 \
             --api-workers ${{ matrix.configuration.workers }} --db-pool-size ${{ matrix.configuration.size }} --db-max-overflow ${{ matrix.configuration.overflow }} \
-            --output artifacts/cpu-profile-${{ matrix.profile }}-workers${{ matrix.configuration.workers }}.json
+            --output artifacts/cpu-profile-${{ matrix.profile }}-workers${{ matrix.configuration.workers }}-fastapi${{ matrix.configuration.fastapi }}.json
           runner_status=$?
           printf 'runner_exit_code=%s\n' "$runner_status" > artifacts/cpu-profile-exit.txt
           exit "$runner_status"
@@ -207,6 +81,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cpu-profile-diagnostic-${{ matrix.profile }}-workers${{ matrix.configuration.workers }}-${{ github.sha }}
+          name: cpu-profile-diagnostic-${{ matrix.profile }}-workers${{ matrix.configuration.workers }}-fastapi${{ matrix.configuration.fastapi }}-${{ github.sha }}
           path: artifacts/
           retention-days: 7
