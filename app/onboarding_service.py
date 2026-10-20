@@ -41,16 +41,15 @@ def require_enabled():
 
 
 _DIGEST_SCALARS = frozenset((str, int, float, bool, type(None), bytes, date, datetime, time, timedelta, Decimal, UUID, DriverUUID))
-_LOCAL_JSON_ENCODERS = {DriverUUID: str}
+_DIGEST_CONTAINERS = (dict, list, tuple)
 
 
 def _onboarding_json_default(item):
     # SQL text results retain asyncpg's exact UUID class. Keep this override
     # local: subclasses and all other unusual values still take the old walk.
-    encoder = _LOCAL_JSON_ENCODERS.get(type(item))
-    if encoder is None:
-        encoder = ENCODERS_BY_TYPE[type(item)]
-    return encoder(item)
+    if type(item) is DriverUUID:
+        return str(item)
+    return ENCODERS_BY_TYPE[type(item)](item)
 
 
 def _digest_needs_legacy(value):
@@ -60,11 +59,11 @@ def _digest_needs_legacy(value):
     FastAPI can interpret them differently. Shared or deeply nested containers
     take the original path, preserving alias and recursion-error behavior.
     """
-    pending, seen = [(value, 1)], set()
+    pending, seen, checked_keys = [(value, 1)], set(), set()
     while pending:
         current, depth = pending.pop()
         kind = type(current)
-        if kind in (dict, list, tuple):
+        if kind in _DIGEST_CONTAINERS:
             if depth > 64:
                 return True
             identity = id(current)
@@ -73,17 +72,22 @@ def _digest_needs_legacy(value):
             seen.add(identity)
             if kind is dict:
                 for key, child in current.items():
-                    if type(key) is not str or key.startswith("_sa"):
+                    if type(key) is not str:
                         return True
+                    if key not in checked_keys:
+                        if key.startswith("_sa"):
+                            return True
+                        if len(checked_keys) < 128:
+                            checked_keys.add(key)
                     child_kind = type(child)
-                    if child_kind in (dict, list, tuple):
+                    if child_kind in _DIGEST_CONTAINERS:
                         pending.append((child, depth + 1))
                     elif child_kind not in _DIGEST_SCALARS:
                         return True
             else:
                 for child in current:
                     child_kind = type(child)
-                    if child_kind in (dict, list, tuple):
+                    if child_kind in _DIGEST_CONTAINERS:
                         pending.append((child, depth + 1))
                     elif child_kind not in _DIGEST_SCALARS:
                         return True
