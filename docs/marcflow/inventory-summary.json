@@ -1,0 +1,42 @@
+{
+  "MarcFlow": {
+    "commit": "aa105ccd21a5adb8b5db342e884f8219fc7d1bc7",
+    "tracked_files": 343,
+    "text_files_inventoried": 343,
+    "dependency_license_metadata_counts": {
+      "MIT": 934,
+      "ISC": 68,
+      "Apache-2.0": 98,
+      "BSD-3-Clause": 25,
+      "LGPL-3.0-or-later": 12,
+      "Apache-2.0 AND LGPL-3.0-or-later AND MIT": 1,
+      "Apache-2.0 AND LGPL-3.0-or-later": 3,
+      "BlueOak-1.0.0": 7,
+      "BSD-2-Clause": 9,
+      "Python-2.0": 1,
+      "UNDECLARED": 4,
+      "MPL-2.0": 13,
+      "CC-BY-4.0": 1,
+      "(MPL-2.0 OR Apache-2.0)": 1,
+      "CC0-1.0": 2,
+      "Public Domain": 1,
+      "GPL-3.0": 1,
+      "(MIT AND Zlib)": 1,
+      "(MIT AND BSD-3-Clause)": 1,
+      "0BSD": 1,
+      "(MIT OR CC0-1.0)": 1,
+      "MIT AND ISC": 1,
+      "Unlicense": 1
+    }
+  },
+  "Orion": {
+    "commit": "84e32bc722bd26151ed97ccd44a0bba7182234e8",
+    "tracked_files": 502,
+    "text_files_inventoried": 490
+  },
+  "limitations": [
+    "Inventory hashes and line counts are not manual review coverage.",
+    "Dependency license metadata is not a complete transitive legal assessment.",
+    "No reference code or production npm dependency was copied."
+  ]
+}

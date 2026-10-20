@@ -4,13 +4,17 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
+import httpx
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from app import inbox_api as api, inbox_control as control
 from app.catalog_api import Actor
+from app.catalog_api import authenticate
+from app.main import app
 from app.database import tenant_transaction
+from app.qr_channels import ChannelIdentity
 from app.inbox_templates import LabelSave, QuickReplySave
 from tests.integration.test_automation_postgres import automation_db, PHONE
 
@@ -112,3 +116,86 @@ async def test_pending_send_never_expires_or_allows_takeover(inbox_db):
         await control.change_control(c.tenant, c.channel, control.Change(contact_e164=PHONE, expected_revision=1, mode="human"), c.actor)
     assert error.value.status_code == 409
     assert await control.blocked(c.tenant, c.channel, PHONE)
+
+
+async def test_http_contract_and_current_membership_reject_other_company_and_reader_writes(inbox_db):
+    c = inbox_db
+    app.dependency_overrides[authenticate] = lambda: c.actor
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            prefix = f"/api/v1/tenants/{c.tenant}/management/inbox"
+            saved = await client.post(prefix+"/labels", json={"name":"HTTP sintético","expected_version":0})
+            assert saved.status_code == 201, saved.text
+            assert len((await client.get(prefix+"/labels")).json()["items"]) == 1
+            assert (await client.get(f"/api/v1/tenants/{c.other}/management/inbox/labels")).status_code == 403
+            context = await client.get(prefix+f"/customers/{c.customer}")
+            assert context.status_code == 200 and context.json()["customer"]["id"] == str(c.customer)
+            assert (await client.get(prefix+f"/customers/{uuid4()}")).status_code == 404
+            app.dependency_overrides[authenticate] = lambda: Actor("viewer", tenant_id=c.tenant)
+            assert (await client.post(prefix+"/labels", json={"name":"Proibido"})).status_code == 403
+            assert (await client.get(prefix+"/labels")).status_code == 200
+    finally:
+        app.dependency_overrides.pop(authenticate, None)
+
+
+async def test_business_transaction_finishes_before_handoff_and_stale_generation_cannot_write(inbox_db):
+    c = inbox_db
+    await control.assistant_revision(c.tenant, c.channel, PHONE)
+    identity = ChannelIdentity(c.channel, c.tenant, c.account, "baileys", 1, uuid4(), True, True)
+    token = control.bind_assistant(identity, PHONE, 1)
+    ready, release = asyncio.Event(), asyncio.Event()
+
+    async def business_operation():
+        async with c.factory() as db:
+            async with tenant_transaction(db, c.tenant):
+                await control.guard_transaction(db, identity)
+                ready.set()
+                await release.wait()
+                await db.execute(text("UPDATE customers SET notes='Synthetic committed operation' WHERE tenant_id=:t AND id=:id"), {"t": c.tenant, "id": c.customer})
+
+    task = asyncio.create_task(business_operation())
+    operator = None
+    try:
+        await asyncio.wait_for(ready.wait(), 3)
+        operator = asyncio.create_task(control.change_control(c.tenant, c.channel,
+            control.Change(contact_e164=PHONE, expected_revision=1, mode="human"), c.actor))
+        done, _ = await asyncio.wait({operator}, timeout=.1)
+        assert not done  # SQL SHARE lock fences the transfer until domain commit.
+        release.set()
+        await asyncio.wait_for(task, 3)
+        assert (await asyncio.wait_for(operator, 3))["revision"] == 2
+        async with c.factory() as db:
+            async with tenant_transaction(db, c.tenant):
+                with pytest.raises(HTTPException) as error:
+                    await control.guard_transaction(db, identity)
+                assert error.value.status_code == 409
+    finally:
+        release.set()
+        await asyncio.gather(task, *([operator] if operator is not None else []), return_exceptions=True)
+        control.reset_assistant(token)
+
+
+async def test_real_send_slot_has_one_winner_and_requires_matching_receipt(inbox_db, monkeypatch):
+    from app import qr_channels
+    c = inbox_db
+    lease = uuid4()
+    async with c.migration.begin() as db:
+        await db.execute(text("""UPDATE qr_channels SET assistant_enabled=true,lease_owner=:owner,fence=1,
+          lease_expires_at=now()+interval '30 seconds' WHERE tenant_id=:t AND id=:id"""),
+          {"owner": lease, "t": c.tenant, "id": c.channel})
+    identity = ChannelIdentity(c.channel, c.tenant, c.account, "baileys", 1, lease, True, True)
+    async def authenticated(request, *, phone):
+        assert phone == PHONE.lstrip("+")
+        return identity
+    monkeypatch.setattr(qr_channels, "authenticated_channel", authenticated)
+    first = control.SendSlot(phone=PHONE.lstrip("+"), operation_id=uuid4(), fingerprint="a"*64, source="assistant", control_revision=1)
+    second = first.model_copy(update={"operation_id":uuid4()})
+    outcomes = await asyncio.gather(*(control.authorize_send(c.channel, p, None) for p in (first, second)), return_exceptions=True)
+    assert sum(isinstance(x, dict) and x["authorized"] for x in outcomes) == 1
+    winner = first if isinstance(outcomes[0], dict) else second
+    assert sum(isinstance(x, HTTPException) and x.status_code == 409 for x in outcomes) == 1
+    with pytest.raises(HTTPException):
+        await control.finish_send(c.channel, control.FinishSlot(**{**winner.model_dump(), "fingerprint":"b"*64}, accepted=True), None)
+    assert await control.blocked(c.tenant, c.channel, PHONE)
+    assert (await control.finish_send(c.channel, control.FinishSlot(**winner.model_dump(), accepted=True), None))["released"]
+    assert not await control.blocked(c.tenant, c.channel, PHONE)

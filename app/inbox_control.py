@@ -123,17 +123,17 @@ async def customer_handoff(tenant, channel, phone):
     token = _assistant_scope.set(None)
     try:
         async with get_session_factory()() as db:
-          async with tenant_transaction(db, tenant):
-            row = await lock_control(db, tenant, channel, "+"+phone.removeprefix("+"))
-            # The generation check plus the bridge's final slot gate stops
-            # responses prepared before this committed transfer.
-            if row["pending_operation"] is not None:
-                raise HTTPException(409, "Há um envio em verificação neste atendimento")
-            if row["mode"] != "human":
-                await db.execute(text("""UPDATE inbox_controls SET mode='human',
-                  revision=revision+1,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id"""), {"t": tenant, "id": row["id"]})
-                await control_event(db, tenant, row, "human", "customer")
-                await audit(db, tenant, "inbox_customer_handoff", "inbox_controls", row["id"])
+            async with tenant_transaction(db, tenant):
+                row = await lock_control(db, tenant, channel, "+"+phone.removeprefix("+"))
+                # The generation check plus the bridge's final slot gate stops
+                # responses prepared before this committed transfer.
+                if row["pending_operation"] is not None:
+                    raise HTTPException(409, "Há um envio em verificação neste atendimento")
+                if row["mode"] != "human":
+                    await db.execute(text("""UPDATE inbox_controls SET mode='human',
+                      revision=revision+1,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id"""), {"t": tenant, "id": row["id"]})
+                    await control_event(db, tenant, row, "human", "customer")
+                    await audit(db, tenant, "inbox_customer_handoff", "inbox_controls", row["id"])
     finally:
         _assistant_scope.reset(token)
 
