@@ -20,7 +20,7 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
         headers:{'Content-Type':audio?mediaType:'application/json','X-Orion-Channel-Key':key,
           ...(owner?{'X-Orion-Channel-Owner':owner,'X-Orion-Channel-Fence':String(fence)}:{}),
           ...(audio?{'X-Orion-Phone':phone}:{})},body:audio?body:JSON.stringify(body)});
-      if(!response.ok||controller.signal.aborted)throw Error('channel_broker_refused');
+      if(!response.ok||controller.signal.aborted){const error=Error('channel_broker_refused');error.status=response.status;throw error;}
       return await response.json();
     }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
   }

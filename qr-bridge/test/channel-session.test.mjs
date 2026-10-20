@@ -9,14 +9,14 @@ import {createBaileysChannelSession} from '../src/channel-session.mjs';
 process.env.ORION_RETRY_TEST_MODE='1';
 
 const phone='5567999999901',self='5567999999902',flush=()=>new Promise(r=>setImmediate(r));
-async function session(t,{audio=false,assistant=true,typingFactory}={}){
+async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=false,schedule,cancel}={}){
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-channel-socket-'));fs.chmodSync(directory,0o700);
   t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
   let alive=true,now=100000;const messages=[],sent=[],notices=[];let config;
   const client={ev:new EventEmitter(),user:{id:self+'@s.whatsapp.net'},end(){this.ended=true;},
     onWhatsApp:async pn=>[{exists:true,jid:pn+'@s.whatsapp.net'}],sendMessage:async()=>assert.fail('direct sendMessage is forbidden'),
     relayMessage:async(jid,body,options)=>{sent.push({jid,body,options});}};
-  const context={directory,secret:'synthetic-secret-'.repeat(4),isCurrent:()=>alive,
+  const context={directory,secret:'synthetic-secret-'.repeat(4),isCurrent:()=>alive,notifySelf,
     assertCurrent:async()=>{if(!alive)throw Error('lease lost');},allowedSender:value=>value===phone,
     assistantEnabled:()=>assistant,audioEnabled:()=>audio,
     onInbound:async value=>{notices.push(value);return Object.freeze({revision:notices.length});},
@@ -27,12 +27,33 @@ async function session(t,{audio=false,assistant=true,typingFactory}={}){
     generateMessageIDV2:()=> 'provider-id',generateWAMessage:async(jid,{text})=>({key:{id:'provider-id',remoteJid:jid},message:{conversation:text}}),
     downloadMediaMessage:async()=>Buffer.from('OggS synthetic media'),
     Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},proto:{Message:{AppStateSyncKeyData:{fromObject:v=>v}}}};
-  const open=()=>createBaileysChannelSession(context,{now:()=>now,loadBaileys:async()=>mod,intakeOptions:{settleMs:0,maxGroupMs:0},...(typingFactory?{typingFactory}:{})});
+  const open=()=>createBaileysChannelSession(context,{now:()=>now,loadBaileys:async()=>mod,intakeOptions:{settleMs:0,maxGroupMs:0},...(typingFactory?{typingFactory}:{}),...(schedule?{schedule,cancel}:{})});
   const result=await open();
   t.after(()=>result.close());
   return {result,client,messages,sent,notices,context,mod,open,get config(){return config;},setTime:value=>{now=value;},revoke:()=>{alive=false;},
     receive:(key,body={conversation:'hello'},time=100000)=>client.ev.emit('messages.upsert',{type:'notify',messages:[{key:{id:'id-'+Math.random(),remoteJid:phone+'@s.whatsapp.net',...key},message:body,messageTimestamp:time/1000}]})};
 }
+
+test('managed connection notice goes only to socket self, caches its exact proto and is not repeated after restart',async t=>{
+  const timers=[],s=await session(t,{notifySelf:true,assistant:false,schedule:fn=>{timers.push(fn);return timers.length;},cancel(){}});
+  assert.equal(s.sent.length,0);s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();assert.equal(timers.length,1);
+  await timers.shift()();assert.equal(s.sent.length,1);assert.equal(s.sent[0].jid,self+'@s.whatsapp.net');
+  assert.match(s.sent[0].body.conversation,/Dispositivo Conectado/);
+  assert.deepEqual(await s.config.getMessage({id:'provider-id'}),s.sent[0].body);
+  await assert.rejects(s.result.send(self,'cannot send arbitrary self message'));
+  s.result.close();const reopened=await s.open();t.after(()=>reopened.close());
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();await timers.shift()();
+  assert.equal(s.sent.length,1);assert.equal(s.messages.length,0);
+});
+
+test('revoked connection cannot send a delayed notice; restart with no registered credentials never creates a socket',async t=>{
+  const timers=[],s=await session(t,{notifySelf:true,schedule:fn=>{timers.push(fn);return 1;},cancel(){}});
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();s.revoke();await timers[0]();assert.equal(s.sent.length,0);
+  const empty=await session(t);empty.result.close();empty.context.resumeOnly=true;
+  empty.mod.default=()=>assert.fail('unlinked device must not open a socket at restart');
+  await assert.rejects(empty.open(),/channel_auth_unavailable/);
+});
 test('actual socket factory uses per-channel auth and refuses group, self, history and unapproved sender',async t=>{
   const s=await session(t);
   s.receive({remoteJid:'120000@g.us',participantPn:phone+'@s.whatsapp.net'});

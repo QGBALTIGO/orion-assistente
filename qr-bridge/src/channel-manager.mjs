@@ -12,10 +12,10 @@ export function reconnectDelay(attempt,random=Math.random){
 }
 export function createChannelManager({broker,createSession,root='/data/orion-channels',
     owner=randomUUID(),clock=()=>performance.now(),schedule=setTimeout,cancel=clearTimeout,random=Math.random,maxChannels=10,
-    audioEnabled=()=>process.env.QR_AI_AUDIO_ENABLED==='1',verifiedLid=()=>process.env.QR_PILOT_USE_VERIFIED_LID==='1'}){
+    audioEnabled=()=>process.env.QR_AI_AUDIO_ENABLED==='1',verifiedLid=()=>process.env.QR_PILOT_USE_VERIFIED_LID==='1',resumeStore=null}){
   if(!channelId(owner))throw Error('invalid_channel_owner');
   if(!Number.isInteger(maxChannels)||maxChannels<1||maxChannels>50)throw Error('invalid_channel_capacity');
-  const contexts=new Map();
+  const contexts=new Map(),stopping=new Set();let resuming=false;
   const timer=(fn,ms)=>{const t=schedule(fn,ms);t?.unref?.();return t;};
   const current=c=>!c.stopped&&contexts.get(c.id)===c&&clock()<c.deadline;
   const requireCurrent=c=>{if(!current(c)){retire(c);throw Error('channel_lease_lost');}};
@@ -62,7 +62,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
   function disconnected(c,generation,reason){
     if(!current(c)||generation!==c.generation)return;
     try{c.session?.close();}catch{}c.session=null;c.generation++;
-    if(reason==='logged_out'||c.attempts>=8){retire(c);return;}
+    if(reason==='logged_out'){try{resumeStore?.forget(c.id,c.key);}catch{}retire(c);return;}
+    if(c.attempts>=8){retire(c);return;}
     cancel(c.reconnect);
     c.reconnect=timer(()=>connect(c).catch(()=>{}),reconnectDelay(c.attempts++,random));
   }
@@ -82,7 +83,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     }
     try{
       const session=await createSession({channelId:c.id,tenantId:c.tenant,owner,fence:c.fence,
-        directory:c.directory,secret:c.key,assertCurrent,isCurrent,
+        directory:c.directory,secret:c.key,assertCurrent,isCurrent,resumeOnly:c.resumeOnly,notifySelf:true,
         allowedSender:phone=>c.allowed.has(phone),
         assistantEnabled:()=>c.assistant===true,
         audioEnabled:()=>audioEnabled()===true&&c.assistant===true,
@@ -96,7 +97,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
           if(!c.assistant||audioEnabled()!==true||result?.truncated!==false||typeof result?.text!=='string'||!result.text.trim()||result.text.trim().length>1500)throw Error('channel_audio_unusable');
           return result.text.trim();
         },
-        onConnected:()=>{if(isCurrent())c.attempts=0;},
+        onConnected:async()=>{await assertCurrent();c.attempts=0;
+          resumeStore?.remember({id:c.id,tenant:c.tenant,key:c.key});},
         onDisconnected:reason=>disconnected(c,generation,reason),
         onReceipt:async(id,delivery)=>{
           if(!['delivered','read'].includes(delivery))return;
@@ -151,19 +153,25 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         }});
       if(!isCurrent()){session?.close();throw Error('channel_lease_lost');}
       c.session=session;
-    }catch(error){disconnected(c,generation,'error');throw error;}
+    }catch(error){
+      if(error?.message==='channel_auth_unavailable'){resumeStore?.forget(c.id,c.key);retire(c);}
+      else disconnected(c,generation,'error');throw error;}
   }
-  async function start(id,key){
+  async function start(id,key,{resumeOnly=false,expectedTenant=null}={}){
     if(!channelId(id)||typeof key!=='string'||key.length<32||key.length>256)throw Error('invalid_channel');
+    if(stopping.has(id))throw Error('channel_stopping');
+    if(resumeOnly&&!resumeStore?.list().some(row=>row.id===id&&row.key===key&&row.tenant===expectedTenant))
+      throw Error('channel_resume_cancelled');
     const existing=contexts.get(id);
     if(existing){if(!sameKey(existing.key,key))throw Error('channel_unauthorized');await existing.starting;await validate(existing,key);return status(id,key);}
     if(contexts.size>=maxChannels)throw Error('channel_capacity');
-    const c={id,key,deadline:0,fence:0,stopped:false,generation:0,attempts:0,sent:new Map(),summaryReview:new Map(),
+    const c={id,key,resumeOnly,deadline:0,fence:0,stopped:false,generation:0,attempts:0,sent:new Map(),summaryReview:new Map(),
       capacity:makeSendCapacity({now:clock})};contexts.set(id,c);
     c.starting=(async()=>{
       const started=clock(),lease=await broker.lease(id,key,'claim',owner);
       if(c.stopped||contexts.get(id)!==c)throw Error('channel_lease_lost');
       acceptLease(c,lease,started,{renew:true});
+      if(expectedTenant&&c.tenant!==expectedTenant)throw Error('resume_tenant_changed');
       c.directory=channelDirectory(root,c.tenant,id);c.ledger=sendLedger(c.directory,key);
       renewLater(c);await connect(c).catch(error=>{if(!current(c)||!c.reconnect)throw error;});
     })();
@@ -215,9 +223,28 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     return publicSend(operationId,record||{state:'unrecorded',accepted:false,delivery:'unknown'});
   }
   return {start,status,send,operation,
+    async resume(){
+      if(!resumeStore||resuming)return {resumed:0};
+      let resumed=0;resuming=true;
+      try{
+        for(const row of resumeStore.list()){
+          if(contexts.has(row.id))continue;
+          if(contexts.size>=maxChannels)break;
+          try{await start(row.id,row.key,{resumeOnly:true,expectedTenant:row.tenant});resumed++;}
+          catch(error){if([401,403,404,423].includes(error?.status)||
+            ['channel_auth_unavailable','resume_tenant_changed'].includes(error?.message))resumeStore.forget(row.id,row.key);}
+        }
+        return {resumed};
+      }finally{resuming=false;}
+    },
     async qr(id,key){const c=contexts.get(id);if(!c)throw Error('channel_not_started');await validate(c,key);return c.session?.qr?.()||null;},
-    async stop(id,key){const c=contexts.get(id);if(!c){await broker.lease(id,key,'inspect',owner);return;}
-      await validate(c,key);retire(c);try{await broker.lease(id,key,'release',owner,c.fence);}catch{}},
+    async stop(id,key){const c=contexts.get(id);if(c&&!sameKey(c.key,key))throw Error('channel_unauthorized');
+      if(stopping.has(id))throw Error('channel_stopping');stopping.add(id);
+      try{
+        if(!c){await broker.lease(id,key,'inspect',owner);resumeStore?.forget(id,key);return;}
+        await c.starting;await validate(c,key);resumeStore?.forget(id,key);retire(c);
+        try{await broker.lease(id,key,'release',owner,c.fence);}catch{}
+      }finally{stopping.delete(id);}},
     close(){for(const c of contexts.values())retire(c);},
     get size(){return contexts.size;}};
 }

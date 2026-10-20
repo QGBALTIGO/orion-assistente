@@ -877,4 +877,7 @@ server.requestTimeout=15000;
 server.listen({port:PORT, host:"::", ipv6Only:false},()=>{
   console.info("Orion QR: serviço privado em IPv6/dual-stack, porta "+PORT);
   connect().catch(()=>{});
+  const resumeChannels=()=>channelRoutes.resume().catch(()=>console.warn('Orion QR: retomada dos dispositivos pendente'));
+  void resumeChannels();
+  setInterval(resumeChannels,30000).unref();
 });

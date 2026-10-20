@@ -126,8 +126,10 @@ async def validate_initiator(redis, intent, tenant):
             if account_id:
                 from app.account_auth import current_account
                 account = await current_account(str(account_id), current["auth_version"])
-                if account["role"] != current["role"] or account["verified_at"] is None:
+                if account["role"] != current["role"]:
                     raise ValueError()
+                if account["verified_at"] is None:
+                    raise HTTPException(403, "Confirme seu e-mail no Orion antes de conectar o Google Agenda")
             actor = Actor(current["role"], account_id=account_id)
         except (ValueError, KeyError, TypeError):
             raise HTTPException(403, "Sua sessão mudou. Entre no painel e conecte o Google novamente") from None
@@ -135,6 +137,19 @@ async def validate_initiator(redis, intent, tenant):
         raise HTTPException(403, "A autorização do Google não é válida")
     await resolve_tenant_access(actor, tenant, "publish")
     return actor
+
+
+async def email_confirmation_required(request, actor):
+    """Preflight the same account requirement enforced again at callback."""
+    if actor.account_id is None:
+        return False
+    from app.panel_auth import panel_actor
+    from app.account_auth import current_account
+    session = await panel_actor(request)
+    if str(session.get("account_id")) != str(actor.account_id) or session.get("role") != actor.role:
+        raise HTTPException(403, "Sua sessão mudou. Entre novamente no painel")
+    account = await current_account(str(actor.account_id), session["auth_version"])
+    return account["verified_at"] is None
 
 
 async def pending_candidate(redis, tenant, initiator):

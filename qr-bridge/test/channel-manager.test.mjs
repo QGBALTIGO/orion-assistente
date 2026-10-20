@@ -10,6 +10,7 @@ import {createChannelManager,reconnectDelay} from '../src/channel-manager.mjs';
 import {createChannelRoutes} from '../src/channel-routes.mjs';
 import {createChannelBroker} from '../src/channel-broker.mjs';
 import {channelDirectory,encryptedChannelStore} from '../src/channel-storage.mjs';
+import {createChannelResumeStore} from '../src/channel-resume.mjs';
 
 const phone='5567999999901',other='5567999999902';
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
@@ -50,6 +51,27 @@ function fixture(t){
     async advance(ms){now+=ms;for(const [id,item] of [...tasks])if(item.at<=now){tasks.delete(id);item.fn();}await flush();},
     setTime:value=>{now=value;}};
 }
+
+test('only a connected device is remembered; restart revalidates SQL and explicit stop cancels resume',async t=>{
+  const f=fixture(t),a=f.add(),store=createChannelResumeStore({root:f.root,secret:'resume-master-'.repeat(4)}),m=f.manager({resumeStore:store});
+  f.rows.get(a.id).assistant_enabled=false;
+  await m.start(a.id,a.key);assert.deepEqual(store.list(),[]);
+  await f.made[0].ctx.onConnected();assert.deepEqual(store.list(),[{id:a.id,tenant:a.tenant,key:a.key}]);
+  m.close();f.setTime(31000);
+  const restarted=f.manager({resumeStore:store});await restarted.resume();
+  assert.equal(f.made.length,2);assert.equal(f.made[1].ctx.resumeOnly,true);assert.equal(f.made[1].ctx.assistantEnabled(),false);
+  assert.equal(f.forwards.length,0);await restarted.stop(a.id,a.key);assert.deepEqual(store.list(),[]);
+  restarted.close();f.setTime(62000);await f.manager({resumeStore:store}).resume();assert.equal(f.made.length,2);
+});
+
+test('restart cannot connect a disabled device, revoked owner or changed tenant',async t=>{
+  for(const mode of ['disabled','revoked','tenant']){
+    const f=fixture(t),a=f.add(),store=createChannelResumeStore({root:f.root,secret:'resume-master-'.repeat(4)});
+    store.remember({id:a.id,tenant:a.tenant,key:a.key});
+    if(mode==='tenant')f.rows.get(a.id).tenant_id=randomUUID();else f.rows.get(a.id)[mode]=true;
+    await f.manager({resumeStore:store}).resume();assert.equal(f.made.length,0);
+  }
+});
 
 test('two channels bind their actual tenant, directory, queues and credential independently',async t=>{
   const f=fixture(t),a=f.add(),b=f.add(),m=f.manager();

@@ -29,6 +29,25 @@ async function openDetail(h,id=appointmentId){h.click(`[data-os-appointment="${i
 async function fixture(t,options={}){const h=await makeSuite({initialRoute:'agenda',...options});t.after(()=>h.close());await flush();return h;}
 const posts=h=>h.calls.filter(call=>call.method==='POST');
 
+test('unverified Google connection explains the requirement and verifies only this accounts email',async t=>{
+  let confirmed=false;
+  const h=await makeSuite({initialRoute:'agenda',respond:responder({google:{...googleOff,configured:true,sync_status:'email_confirmation_required',email_confirmation_required:true},on:(path,method,data)=>{
+    if(path==='/auth/verify/resend')return {ok:true};
+    if(path==='/auth/verify'){assert.equal(data.code,'123456');confirmed=true;return {ok:true};}
+    if(path.endsWith('/google/status')&&confirmed)return {...googleOff,configured:true,capabilities:{can_connect:true}};
+  }})});t.after(()=>h.close());await flush();
+  h.click('[data-os-action=agenda-google]');await flush();
+  assert.match(h.document.querySelector('.os-dialog').textContent,/Confirme seu e-mail/);
+  assert.equal(h.document.querySelector('[data-os-action=google-connect]'),null);
+  h.click('[data-os-action=google-email]');assert.equal(posts(h).length,0);
+  h.submit('[data-os-form=google-email]');await flush();
+  assert.equal(posts(h)[0].path,'/auth/verify/resend');assert.equal(posts(h)[0].data.email,'synthetic@example.invalid');
+  h.fill('[name=code]','123456');h.submit('[data-os-form=google-email]');await flush();
+  assert.equal(posts(h)[1].path,'/auth/verify');assert.equal(posts(h)[1].data.email,'synthetic@example.invalid');
+  assert.ok(h.document.querySelector('[data-os-action=google-connect]'));
+  assert.equal(posts(h).some(call=>call.path.endsWith('/google/connect')),false);
+});
+
 test('agenda displays actual names and distinct lifecycle labels without guessing cancellation origin',async t=>{
   const states=[['confirmed',null],['completed',null],['no_show',null],['cancelled','customer'],['cancelled','professional'],['cancelled','business'],['cancelled','unknown']];
   const items=states.map(([status,requested_by],i)=>record({id:'appointment-'+i,status,cancellation:requested_by?{requested_by}:null}));
