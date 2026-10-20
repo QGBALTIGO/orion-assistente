@@ -126,8 +126,16 @@ async def assistant_revision(tenant, channel, phone):
         return None
     async with get_session_factory()() as db:
         async with tenant_transaction(db, tenant):
-            row = await lock_control(db, tenant, channel, "+"+phone.removeprefix("+"))
-            if row["mode"] != "ai" or row["pending_operation"] is not None:
+            values = {"t": tenant, "channel": channel, "phone": "+"+phone.removeprefix("+")}
+            if _assistant_scope.get() is None:
+                await db.execute(text("""INSERT INTO inbox_controls(tenant_id,channel_id,contact_e164)
+                  VALUES(:t,:channel,:phone) ON CONFLICT DO NOTHING"""), values)
+            # A bound revalidation already holds SHARE in guard_transaction.
+            # Never upgrade it to UPDATE or issue an upsert: concurrent readers
+            # must remain readers while the operator waits to take over.
+            row = (await db.execute(text("""SELECT mode,revision,pending_operation FROM inbox_controls
+              WHERE tenant_id=:t AND channel_id=:channel AND contact_e164=:phone"""), values)).mappings().one_or_none()
+            if not row or row["mode"] != "ai" or row["pending_operation"] is not None:
                 raise HTTPException(409, "Atendimento humano ou suspenso")
             return row["revision"]
 
