@@ -49,6 +49,10 @@ async def record_outbound(db, tenant, row, operation, source, body, digest, *, s
       VALUES(:id,:t,:c,'out',:source,:body,:fp,:a,:av,:rev,:status) ON CONFLICT(id) DO NOTHING"""),
       {"id":operation,"t":tenant,"c":row["id"],"source":source,"body":body,"fp":digest,
        "a":actor,"av":auth_version,"rev":row["revision"],"status":status})
+    saved=(await db.execute(text("SELECT control_id,source,fingerprint,body,actor_account_id FROM inbox_messages WHERE tenant_id=:t AND id=:id"),
+                            {'t':tenant,'id':operation})).mappings().one_or_none()
+    if not saved or (saved['control_id'],saved['source'],saved['fingerprint'],saved['body'],saved['actor_account_id'])!=(row['id'],source,digest,body,actor):
+        raise HTTPException(409,'A operação já pertence a outra mensagem')
 
 
 async def accepted(db, tenant, operation, external):
@@ -137,9 +141,12 @@ async def process_inbox_message(ctx, tenant_id, message_id):
                 valid = False
             channel = None
             if provider == "meta":
+                meta_current=(await db.execute(text('SELECT public.inbox_meta_guard(:t,:c,:assistant)'),
+                    {'t':tenant,'c':header['channel_id'],'assistant':item['source']!='manual'})).scalar_one()
+                valid=valid and meta_current is True
                 channel = (await db.execute(text("""SELECT c.phone_number_id,c.token_enc,c.status,c.bot_enabled,
                   t.bot_enabled AS tenant_bot FROM whatsapp_channels c JOIN tenants t ON t.id=c.tenant_id
-                  WHERE c.tenant_id=:t AND c.id=:c FOR SHARE OF c,t"""), {"t":tenant,"c":header["channel_id"]})).mappings().one()
+                  WHERE c.tenant_id=:t AND c.id=:c"""), {"t":tenant,"c":header["channel_id"]})).mappings().one()
                 recent = (await db.execute(text("""SELECT EXISTS(SELECT 1 FROM inbox_messages
                   WHERE tenant_id=:t AND control_id=:c AND direction='in' AND provider_at>clock_timestamp()-interval '24 hours'
                     AND provider_at<=clock_timestamp())"""),

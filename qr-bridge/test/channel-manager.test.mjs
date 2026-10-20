@@ -14,6 +14,33 @@ import {createChannelResumeStore} from '../src/channel-resume.mjs';
 
 const phone='5567999999901',other='5567999999902';
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
+test('assistant-off inbound is journaled before interaction and never forwarded',async t=>{
+  const f=fixture(t),a=f.add(),calls=[];Object.assign(f.rows.get(a.id),{inbox_control:true,assistant_enabled:false});
+  f.broker.journal=async(id,key,lease,payload)=>{calls.push('journal');assert.equal(id,a.id);assert.equal(payload.text,'Mensagem humana');return {recorded:true};};
+  const interaction=f.broker.interaction;f.broker.interaction=async(...args)=>{calls.push('interaction');return interaction(...args);};
+  const m=f.manager();await m.start(a.id,a.key);
+  await f.made[0].ctx.onInbound({phone,message_id:'journal-1',text:'Mensagem humana',kind:'text'});
+  assert.deepEqual(calls,['journal','interaction']);assert.equal(f.forwards.length,0);assert.equal(f.made[0].ctx.assistantEnabled(),false);
+});
+
+test('manual send carries the committed revision and real receipts return only to the API',async t=>{
+  const f=fixture(t),a=f.add(),permits=[],finished=[],receipts=[];f.rows.get(a.id).inbox_control=true;
+  f.broker.authorizeSend=async(id,key,lease,payload)=>{permits.push(payload);return {authorized:true,operation_id:payload.operation_id};};
+  f.broker.finishSend=async(...args)=>{finished.push(args[3]);return {released:true};};f.broker.receipt=async(...args)=>{receipts.push(args[3]);return {recorded:true};};
+  const m=f.manager();await m.start(a.id,a.key);const operation=randomUUID();
+  const result=await m.send(a.id,a.key,{to:phone,text:'Mensagem humana',operation_id:operation,source:'manual',control_revision:7});
+  assert.equal(result.accepted,true);assert.equal('provider_id' in result,false);assert.equal(permits[0].source,'manual');assert.equal(permits[0].control_revision,7);
+  assert.equal(permits[0].text,'Mensagem humana');await f.made[0].ctx.onReceipt(finished[0].provider_id,'read');
+  assert.equal(receipts[0].operation_id,operation);assert.equal(receipts[0].phone,phone);assert.equal(receipts[0].delivery,'read');
+});
+
+test('a refused permit proves not_sent without retrying the same operation',async t=>{
+  const f=fixture(t),a=f.add();f.rows.get(a.id).inbox_control=true;let permits=0;
+  f.broker.authorizeSend=async()=>{permits++;throw Error('current actor revoked');};
+  const m=f.manager();await m.start(a.id,a.key);const payload={to:phone,text:'Sintética',operation_id:randomUUID(),source:'manual',control_revision:2};
+  assert.deepEqual(await m.send(a.id,a.key,payload),{operation_id:payload.operation_id,state:'refused',accepted:false,delivery:'not_sent'});
+  await m.send(a.id,a.key,payload);assert.equal(permits,1);assert.equal(f.made[0].sends.length,0);
+});
 function fixture(t){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'orion-channel-test-'));fs.chmodSync(root,0o700);
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));

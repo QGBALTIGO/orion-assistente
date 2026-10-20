@@ -27,7 +27,7 @@ _assistant_scope = ContextVar("inbox_assistant_scope", default=None)
 
 
 def bind_assistant(identity, phone, revision):
-    return _assistant_scope.set((identity.tenant_id, identity.channel_id, "+"+phone.removeprefix("+"), revision))
+    return _assistant_scope.set((identity.tenant_id, identity.channel_id, "+"+phone.removeprefix("+"), revision,getattr(identity,'provider','meta')))
 
 
 def reset_assistant(token):
@@ -38,15 +38,13 @@ async def guard_transaction(db, identity=None):
     scope = _assistant_scope.get()
     if not enabled() or scope is None:
         return
-    tenant, channel, phone, revision = scope
+    tenant, channel, phone, revision, provider = scope
     if identity is not None and (identity.tenant_id, identity.channel_id) != (tenant, channel):
         raise HTTPException(409, "O controle não corresponde ao canal autenticado")
     if identity is None:
         from app.qr_channel_scope import current
-        if current() is None:
-            valid = (await db.execute(text("""SELECT c.bot_enabled AND t.bot_enabled AND t.status='active'
-              AND c.status IN ('testing','connected') FROM whatsapp_channels c JOIN tenants t ON t.id=c.tenant_id
-              WHERE c.tenant_id=:t AND c.id=:c FOR SHARE OF c,t"""), {"t":tenant,"c":channel})).scalar_one_or_none()
+        if current() is None and provider=='meta':
+            valid = (await db.execute(text("SELECT public.inbox_meta_guard(:t,:c,true)"), {"t":tenant,"c":channel})).scalar_one()
             if valid is not True:
                 raise HTTPException(409, "A autorização da assistente mudou")
     row = (await db.execute(text("""SELECT mode,revision,pending_operation FROM inbox_controls
@@ -115,6 +113,18 @@ async def register_channel(db,tenant,channel):
       SELECT tenant_id,id,'qr',id,NULL FROM qr_channels WHERE tenant_id=:t AND id=:channel
       UNION ALL SELECT tenant_id,id,'meta',NULL,id FROM whatsapp_channels WHERE tenant_id=:t AND id=:channel
       ON CONFLICT DO NOTHING"""), {"t":tenant,"channel":channel})
+
+
+@asynccontextmanager
+async def operator_session(tenant,actor,*,write=False):
+    # Personal authenticated operator requests never inherit an AI generation.
+    # This also makes concurrent in-process callers behave like HTTP requests.
+    token=_assistant_scope.set(None)
+    try:
+        async with management_session(tenant,actor,write=write) as db:
+            yield db
+    finally:
+        _assistant_scope.reset(token)
 
 
 @asynccontextmanager
@@ -205,7 +215,7 @@ async def customer_handoff(tenant, channel, phone):
 async def get_control(tenant_id: UUID, channel_id: UUID,
                       phone: str = Query(pattern=r"^\+55[1-9][0-9]{9,10}$"), actor: Actor = Depends(authenticate)):
     require_enabled()
-    async with management_session(tenant_id, actor) as db:
+    async with operator_session(tenant_id, actor) as db:
         await check_channel(db, tenant_id, channel_id, phone)
         row = (await db.execute(text("""SELECT mode,assigned_account_id,revision,pending_operation,pending_since
           FROM inbox_controls WHERE tenant_id=:t AND channel_id=:channel AND contact_e164=:phone"""),
@@ -218,7 +228,7 @@ async def change_control(tenant_id: UUID, channel_id: UUID, payload: Change, act
     require_enabled()
     if not isinstance(actor.account_id, UUID):
         raise HTTPException(403, "Entre com sua conta pessoal para assumir um atendimento")
-    async with management_session(tenant_id, actor, write=True) as db:
+    async with operator_session(tenant_id, actor, write=True) as db:
         await check_channel(db, tenant_id, channel_id, payload.contact_e164)
         row = await lock_control(db, tenant_id, channel_id, payload.contact_e164)
         if row["revision"] != payload.expected_revision:
@@ -242,6 +252,10 @@ async def change_control(tenant_id: UUID, channel_id: UUID, payload: Change, act
             await db.execute(text("""UPDATE human_handoffs SET status='resolved',expires_at=now()
               WHERE tenant_id=:t AND channel_id=:c AND contact_e164=:phone AND status='active'"""),
               {"t":tenant_id,"c":channel_id,"phone":payload.contact_e164})
+            await db.execute(text("""UPDATE automation_contact_state SET human_paused=false,revision=revision+1
+              WHERE tenant_id=:t AND contact_e164=:phone AND human_paused AND NOT EXISTS(
+                SELECT 1 FROM inbox_controls WHERE tenant_id=:t AND contact_e164=:phone AND mode<>'ai')"""),
+              {'t':tenant_id,'phone':payload.contact_e164})
         return jsonable_encoder(result)
 
 
@@ -249,7 +263,7 @@ async def change_control(tenant_id: UUID, channel_id: UUID, payload: Change, act
 async def control_history(tenant_id: UUID, channel_id: UUID,
                           phone: str = Query(pattern=r"^\+55[1-9][0-9]{9,10}$"), actor: Actor = Depends(authenticate)):
     require_enabled()
-    async with management_session(tenant_id, actor) as db:
+    async with operator_session(tenant_id, actor) as db:
         await check_channel(db, tenant_id, channel_id, phone)
         rows = (await db.execute(text("""SELECT e.id,e.actor_account_id,e.source,e.previous_mode,e.mode,e.revision,e.occurred_at
           FROM inbox_control_events e JOIN inbox_controls c ON c.tenant_id=e.tenant_id AND c.id=e.control_id
@@ -340,18 +354,28 @@ async def reconcile_control(tenant_id: UUID, channel_id: UUID, payload: Reconcil
     from app.automation_transport import inspect_automation
     from app.tenant_access import resolve_tenant_access
     await resolve_tenant_access(actor, tenant_id, "draft")
-    record = await inspect_automation(tenant_id, channel_id, str(payload.operation_id))
+    try:
+        record = await inspect_automation(tenant_id, channel_id, str(payload.operation_id))
+    except (ValueError,__import__('httpx').HTTPError):
+        raise HTTPException(503,"O recibo está indisponível. A suspensão foi preservada") from None
     if record.get("operation_id") != str(payload.operation_id) or not (
         record.get("state") == "accepted" and record.get("accepted") is True
         or record.get("state") == "refused" and record.get("delivery") == "not_sent"
     ):
         raise HTTPException(409, "O resultado continua incerto. A suspensão foi preservada")
-    async with management_session(tenant_id, actor, write=True) as db:
+    async with operator_session(tenant_id, actor, write=True) as db:
         await check_channel(db, tenant_id, channel_id, payload.contact_e164)
         row = await lock_control(db, tenant_id, channel_id, payload.contact_e164)
         if row["revision"] != payload.expected_revision or row["pending_operation"] != payload.operation_id:
             raise HTTPException(409, "O atendimento mudou. Atualize antes de verificar")
         await db.execute(text("""UPDATE inbox_controls SET pending_operation=NULL,pending_fingerprint=NULL,pending_since=NULL
           WHERE tenant_id=:t AND id=:id"""), {"t": tenant_id, "id": row["id"]})
+        if record.get('accepted') is True:
+            from app.inbox_runtime import accepted
+            await accepted(db,tenant_id,payload.operation_id,None)
+        else:
+            await db.execute(text("""UPDATE inbox_messages SET status='failed',updated_at=clock_timestamp()
+              WHERE tenant_id=:t AND id=:id AND control_id=:c AND status IN ('sending','uncertain')"""),
+              {'t':tenant_id,'id':payload.operation_id,'c':row['id']})
         await audit(db, tenant_id, "inbox_send_reconciled", "inbox_controls", row["id"])
         return {"released": True, "delivery": record.get("delivery", "unknown")}

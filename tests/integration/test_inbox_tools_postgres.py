@@ -165,11 +165,11 @@ async def test_business_transaction_finishes_before_handoff_and_stale_generation
         release.set()
         await asyncio.wait_for(task, 3)
         assert (await asyncio.wait_for(operator, 3))["revision"] == 2
-        async with c.factory() as db:
-            async with tenant_transaction(db, c.tenant):
-                with pytest.raises(HTTPException) as error:
+        with pytest.raises(HTTPException) as error:
+            async with c.factory() as db:
+                async with tenant_transaction(db, c.tenant):
                     await control.guard_transaction(db, identity)
-                assert error.value.status_code == 409
+        assert error.value.status_code == 409
     finally:
         release.set()
         await asyncio.gather(task, *([operator] if operator is not None else []), return_exceptions=True)

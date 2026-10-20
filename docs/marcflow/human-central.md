@@ -53,6 +53,27 @@ confirmação de entrega nem liberar um resultado incerto por tempo decorrido.
 
 ## Validação
 
+A primeira CI da continuação (`008e0d9`, run `39446140306`) encontrou quatro
+falhas: três consultas Meta tentavam `FOR SHARE` diretamente em `tenants`, cuja
+permissão de UPDATE permanece revogada, e um teste QR herdava contexto de IA na
+operação pessoal concorrente. A correção usa uma função boolean com escopo e
+search_path fixos para manter o bloqueio na mesma transação sem ampliar grants.
+O contexto pessoal é separado do contexto da geração, e o teste exige rejeição
+da geração obsoleta desde a entrada da transação. Não foram removidas asserções.
+
+## Próxima fase: editor e simulação de fluxos
+
+O editor reutiliza `workflow_definitions`, mantendo todos os fluxos desabilitados.
+A migration 0028 adiciona revisão e horário de alteração. A gestão aceita até 50
+rascunhos por empresa, com até dez etapas, edição e reordenação, CAS contra
+sobrescrita e simulação explícita da versão salva. Tipos existentes: etiqueta,
+atendimento humano e lembrete em rascunho. A simulação produz apenas uma trilha
+de ações; não lê contatos, altera cadastros, cria jobs nem envia mensagens.
+
+Execução distribuída, publicação de fluxos com condições e espera, mídia de
+saída e campanhas continuam sendo fases posteriores. Esta etapa não apresenta
+o editor de rascunhos como um executor de automações publicado.
+
 Testes de domínio, integração PostgreSQL/RLS, bridge, DOM e navegador usam somente
 empresas e destinatários sintéticos e transportes substituídos. Resultados finais
 serão registrados após a qualificação da revisão final. O recibo anterior em

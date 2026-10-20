@@ -58,7 +58,7 @@ def upgrade():
         UNIQUE(tenant_id,control_id,direction,external_id),
         CHECK((direction='in' AND source='customer' AND status='received') OR
               (direction='out' AND source<>'customer' AND fingerprint IS NOT NULL)),
-        CHECK(source<>'manual' OR actor_account_id IS NOT NULL)
+        CHECK(source<>'manual' OR (actor_account_id IS NOT NULL AND actor_auth_version IS NOT NULL AND actor_auth_version>0))
       );
       CREATE INDEX ix_inbox_messages_history ON public.inbox_messages(tenant_id,control_id,created_at DESC,id DESC);
       CREATE INDEX ix_inbox_messages_queue ON public.inbox_messages(status,created_at) WHERE status='queued';
@@ -88,6 +88,20 @@ def upgrade():
       END $fn$;
       REVOKE ALL ON FUNCTION public.inbox_operator_version(uuid,uuid) FROM PUBLIC;
       GRANT EXECUTE ON FUNCTION public.inbox_operator_version(uuid,uuid) TO app_runtime;
+      CREATE FUNCTION public.inbox_meta_guard(t uuid,c uuid,assistant boolean) RETURNS boolean
+      LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $fn$
+      DECLARE channel record; company record;
+      BEGIN
+        IF t IS DISTINCT FROM NULLIF(current_setting('app.tenant_id',true),'')::uuid OR assistant IS NULL THEN RETURN false; END IF;
+        SELECT status,bot_enabled INTO channel FROM public.whatsapp_channels WHERE tenant_id=t AND id=c FOR SHARE;
+        IF NOT FOUND THEN RETURN false; END IF;
+        SELECT status,bot_enabled INTO company FROM public.tenants WHERE id=t FOR SHARE;
+        IF NOT FOUND THEN RETURN false; END IF;
+        RETURN company.status='active' AND channel.status IN ('testing','connected')
+          AND (NOT assistant OR channel.bot_enabled AND company.bot_enabled);
+      END $fn$;
+      REVOKE ALL ON FUNCTION public.inbox_meta_guard(uuid,uuid,boolean) FROM PUBLIC;
+      GRANT EXECUTE ON FUNCTION public.inbox_meta_guard(uuid,uuid,boolean) TO app_runtime;
 
       CREATE OR REPLACE FUNCTION public.inbox_channel_contact_allowed(t uuid,c uuid,phone text) RETURNS boolean
       LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $fn$
@@ -124,6 +138,7 @@ def downgrade():
     op.execute("DROP TABLE public.inbox_messages")
     op.execute("DROP TABLE public.inbox_provider_receipts")
     op.execute("DROP FUNCTION public.inbox_operator_version(uuid,uuid)")
+    op.execute("DROP FUNCTION public.inbox_meta_guard(uuid,uuid,boolean)")
     op.execute("ALTER TABLE public.inbox_controls DROP CONSTRAINT inbox_control_channel_link")
     op.execute("ALTER TABLE public.inbox_controls ADD FOREIGN KEY(tenant_id,channel_id) REFERENCES public.qr_channels(tenant_id,id)")
     op.execute("DROP TABLE public.inbox_channel_links")
