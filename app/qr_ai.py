@@ -21,7 +21,7 @@ from pydantic import Field, model_validator
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.booking_service import book_appointment, confirm_hold, list_slots, reschedule_appointment, preview_reschedule, fingerprintas booking_fingerprint
+from app.booking_service import book_appointment, confirm_hold, list_slots, reschedule_appointment, preview_reschedule, fingerprint as booking_fingerprint
 from app.catalog_api import Actor, authenticate, authorize, support_only
 from app.catalog_schemas import StrictModel
 from app.database import get_session_factory, tenant_transaction
@@ -684,7 +684,7 @@ async def _professionals_availability(tenant, state, inquiry, business, catalog,
                         "price_cents": actual["price_cents"], "duration_min": actual["duration_min"]})
     except AVAILABILITY_ERRORS:
         state["availability_query"] = {**inquiry, "waiting_for": "retry"}
-        await redis.set(key,json.dumps(state), ex=_remaining_state_ttl(state))
+        await redis.set(key, json.dumps(state), ex=_remaining_state_ttl(state))
         return _bounded_reply(factual, "Não consegui consultar a agenda agora. Pode me pedir para tentar novamente em instantes?", state.get("step", "menu"))
     shown = available[:4]
     try:
@@ -1248,7 +1248,7 @@ async def _compound_booking_turn(tenant: UUID, phone: str, body: str, state: dic
     try:
         fresh = math.isfinite(float(state.get("confirmation_expires_at", 0))) and float(state.get("confirmation_expires_at", 0)) > datetime.now().timestamp()
     except (TypeError, ValueError):
-fresh = False
+        fresh = False
     if (not fresh or state.get("confirmation_requires_review") or state.get("availability_query") or
             not incoming_id or not summary_id or incoming_id == summary_id or not state.get("confirmation_summary")):
         return None
@@ -2325,7 +2325,7 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
     if state.get("availability_query") and text_clean in NO:
         state.pop("availability_query", None)
         await redis.set(state_key, json.dumps(state), ex=_remaining_state_ttl(state))
-        return {"answer": "Encerrei somente a consulta de disponibilidade. O pedido anterior não foi confirmado, canceladoou alterado.", "step": state.get("step", "menu")}
+        return {"answer": "Encerrei somente a consulta de disponibilidade. O pedido anterior não foi confirmado, cancelado ou alterado.", "step": state.get("step", "menu")}
     cancel = not catalog_question(body) and bool(re.search(
         r"\b(?:cancelar|cancele|desistir|desisto|nao quero mais agendar)\b", norm(body)))
     if cancel:
