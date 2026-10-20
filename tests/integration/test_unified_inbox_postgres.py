@@ -241,12 +241,15 @@ async def test_meta_domain_transaction_rejects_stale_generation_after_operator_t
 
 
 @pytest.mark.parametrize('handoff',[False,True])
-async def test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_outbox(meta,monkeypatch,handoff):
+@pytest.mark.parametrize('legacy_pending',[False,True])
+async def test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_outbox(meta,monkeypatch,handoff,legacy_pending):
     from app import worker
     from tests.unit.test_qr_ai import FakeRedis
     c=meta;event=uuid4()
     monkeypatch.setattr(worker,'get_session_factory',lambda:c.factory)
     async with c.migration.begin() as db:
+        if legacy_pending:
+            await db.execute(text("DELETE FROM inbox_messages WHERE tenant_id=:t AND external_id='synthetic-meta-in'"),{'t':c.tenant})
         await db.execute(text("""INSERT INTO inbound_events(id,tenant_id,channel_id,external_id,sender_e164,message_text)
           VALUES(:id,:t,:c,'synthetic-meta-in',:phone,'Olá Meta')"""),{'id':event,'t':c.tenant,'c':c.meta,'phone':PHONE})
     async def reply(tenant,channel,phone,*args,**kwargs):
@@ -266,3 +269,6 @@ async def test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_
             assert len(outgoing)==(0 if handoff else 1)
             if outgoing:assert outgoing[0]=={'status':'queued','source':'assistant','body':'Resposta Meta sintética'}
             assert (await db.execute(text('SELECT message_text FROM inbound_events WHERE id=:id'),{'id':event})).scalar_one()==''
+            original=(await db.execute(text("SELECT body,provider_at FROM inbox_messages WHERE tenant_id=:t AND external_id='synthetic-meta-in'"),{'t':c.tenant})).mappings().one()
+            assert original['body']=='Olá Meta'
+            if legacy_pending:assert original['provider_at'] is None

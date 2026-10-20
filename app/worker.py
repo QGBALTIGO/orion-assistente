@@ -172,6 +172,12 @@ async def _central_inbound(ctx,tenant,event,claim,factory):
     from app import inbox_control as control,inbox_runtime as runtime
     from app.whatsapp_bot import state_key
     channel,phone=claim["channel_id"],claim["sender_e164"]
+    # A signed event may have been queued before central activation. Journal
+    # its original text before clearing the transient queue, without inventing
+    # a provider timestamp or granting a new Meta service window.
+    async with factory() as db:
+        async with tenant_transaction(db,tenant):
+            await runtime.record_inbound(db,tenant,channel,phone,claim['external_id'],claim['message_text'])
     async with control.assistant_turn(tenant,channel,phone,ctx["redis"],state_key(str(tenant),str(channel),phone)) as revision:
         async with factory() as db:
             async with tenant_transaction(db,tenant):
