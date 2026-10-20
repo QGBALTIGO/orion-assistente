@@ -10,6 +10,7 @@ on:
       - 'app/static/orion-suite.js'
       - 'app/static/orion-public.js'
       - 'pyproject.toml'
+      - 'requirements.lock'
       - 'tests/unit/test_media_api.py'
       - '.github/workflows/media-tests.yml'
   workflow_dispatch:
@@ -25,7 +26,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install application and test dependencies
-        run: python -m pip install -e ".[test]"
+        run: python -m pip install -c requirements.lock -e ".[test]"
       - name: Verify Python syntax
         run: python -m compileall -q app tests/unit/test_media_api.py
       - name: Run isolated media tests (no database or bucket required)
