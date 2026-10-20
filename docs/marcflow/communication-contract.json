@@ -1,0 +1,1448 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-20T20:57:18.548127+00:00",
+  "branch": "codex/orion-marcflow-integrations-20261020",
+  "base_commit": "8a3262bfce88e074070657859b17d97c32ffd522",
+  "specification_sha256": "4f3f00960e3d385788be1f3a57d4cc7e7e38df0ac6d8e926a815eaa1f60298ae",
+  "scope": {
+    "implementation_local": true,
+    "deploy": false,
+    "push": false,
+    "production_data_changes": false,
+    "real_messages": false,
+    "campaign_activation": false,
+    "production_sessions_accessed": false,
+    "live_model_asr_native_whatsapp": false
+  },
+  "progress": {
+    "sections": 29,
+    "requirements_mapped": 29,
+    "gaps_mapped": 11,
+    "output_families": 26,
+    "static_candidates": 1247,
+    "static_candidates_individually_certified": false,
+    "high_risk_scripts": 32,
+    "reference_cases": {
+      "B": 50,
+      "C": 160,
+      "F": 128
+    },
+    "reference_fixture_is_dialogue_acceptance": false
+  },
+  "migration": {
+    "source": "0028_workflow_drafts",
+    "target": "0029_communication_contract",
+    "source_revision_note": "Use SOURCE constante do operador como autoridade; conferir com catálogo antes de executar.",
+    "operator": "python -m scripts.one_time_communication_migration",
+    "schema_gate": "python -m scripts.wait_for_communication_schema",
+    "authorization_flag": "ORION_RUN_COMMUNICATION_MIGRATION",
+    "run_id": "ORION_COMMUNICATION_MIGRATION_RUN_ID",
+    "default": "disabled",
+    "backup_encrypted_readback_and_restore_required": true,
+    "downgrade": "forward-only; preserve post-migration data",
+    "production_executed": false
+  },
+  "tests": [
+    {
+      "artifact": "backend-junit.xml",
+      "sha256": "f0a124ae47e04a499dd2a3684db4d0e1c54a371b242b68aa1bbdc3654938e33d",
+      "tests": 4282,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2,
+      "seconds": 63.531
+    },
+    {
+      "artifact": "postgres-junit-v2.xml",
+      "sha256": "0c17933793729ccb7b92f8def30ca780f62a0823a2fd96f77b10a54a1ef64552",
+      "tests": 454,
+      "failures": 2,
+      "errors": 1,
+      "skipped": 0,
+      "seconds": 2872.37
+    },
+    {
+      "artifact": "postgres-final2.xml",
+      "sha256": "dcab37a580f594aa531d0a9ed02dfd27599bc600ec1cc3f47edd3ee4b4dd1b82",
+      "tests": 61,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 295.489
+    },
+    {
+      "artifact": "qualification-final.xml",
+      "sha256": "f7ae2c599584dddb58bfc610211f1132cca74f3ea12d8cfd161590dcbd8c95c9",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 30.502
+    },
+    {
+      "artifact": "harness-final.xml",
+      "sha256": "e6b64c1c4c1d8d6895b9bead0b2dfd2f2c4d28260e86337ce0b2da9be229e8f6",
+      "tests": 59,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 13.458
+    },
+    {
+      "artifact": "migration-roundtrip-final.xml",
+      "sha256": "856872635c41abace1cbb45ce26269afd96fef912e73adfc72eff07f79266f4d",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 26.271
+    }
+  ],
+  "node_tests": [
+    {
+      "artifact": "qr-final.log",
+      "passed": 435,
+      "failed": 0,
+      "skipped": 4
+    },
+    {
+      "artifact": "ui-final.log",
+      "passed": 315,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "reconciliation": {
+    "method": "Latest result for exact classname::name, without summing overlaps",
+    "unresolved_failures": [],
+    "broad_pg_prior_failures": 3,
+    "broad_pg_corrected_in": [
+      "postgres-final2.xml",
+      "qualification-final.xml"
+    ]
+  },
+  "source_hash_type": "SHA256 of tested working-tree file bytes; not Git object hashes",
+  "sources_sha256": {
+    "alembic/versions/0029_communication_contract.py": "13164b0677526c7b439d299347d542fe6576303804e85efe699f2de5ad83662c",
+    "app/automation_api.py": "49451d911c112714abdbaab5463198215ea719d62778dfc82869cc3aacc6ac8f",
+    "app/automation_policy.py": "1cc7c28cf66d60521ab28f18aad941e102c2b47be3b09071cdac67ecd295ca4e",
+    "app/automation_runtime.py": "1b115835ddfeac7f734c3cc5820865bdd1de8dbc456b64fe2253162bb62b7675",
+    "app/automation_templates.py": "a40e4ae555a33861c9712d13ec46817d7aa33ec0718d79db28c66ecb5b34f381",
+    "app/communication_api.py": "0db75d829e0639c70d7c8979ecd104cc17518ca587e494ff4ec6e85ec6770e74",
+    "app/communication_events.py": "09517dbdd2432906a2ccdbb24fe819383ec97a43411eef0455fb0cc8e63a6047",
+    "app/communication_links.py": "6565da3bdf709867a4d8b106d0e2d370b464957c96eec56ab72596c39d21f2f5",
+    "app/communication_style.py": "b2c14bf3a58fb3588cbf4c149eba4c91c9c7a2738597edd8f622ef60d6560c51",
+    "app/contact_preferences.py": "6f2efa09fed19926700ab9e12ddfe20174c67ffbb3552c73fc6d50028f530634",
+    "app/database.py": "c783e3a2df8bddeda1cd8554ab9b22309b3c79a9ee2a2a559111192199faa36c",
+    "app/inbox_control.py": "9459e79c8352f35f6fde6b8804435ee9e823e53b6c3c5aae394eddae0fac38aa",
+    "app/inbox_conversations.py": "76f6001a9a0a934f91097ccdcfb0016bd321a8f2f9fe80ae2e08e62d3935234c",
+    "app/inbox_runtime.py": "bf90789cfa7acd502d5fe72c5587aa594d9594825979068f24ee04ee634202b3",
+    "app/main.py": "12c884cb49dff32329f81f754070f63069f8d5eaf5ac91d4c818805fd903845c",
+    "app/management_models.py": "e1154bca521e1477fc7cb22b9d688f06034bc94bc77ede46093b9c82ef5a41d4",
+    "app/management_preferences.py": "fa9ad0b531b4eaa5c53f6b1dcf1b0f2886d2848d0d5350822d7e91dc6fa641c8",
+    "app/management_schemas.py": "4c0cc3df1c567a326e23b06ee6368f6d16295552e5af39787fa981b80f4739a2",
+    "app/messaging.py": "ea09fbd8a42be366759e48428acd57ff7680d21a53261e84510dd6e10430fb6a",
+    "app/qr_ai.py": "41237b4ce26176c163593406208095a4a9b6b14a670c6a0ff7721776938f1c8d",
+    "app/qr_behaviors.py": "e11ee2e5fb32e577e70a62dda12352de3f1fd1732726d4987357d157b685621c",
+    "app/qr_intake_revision.py": "7bed085863afa52c683f5b0716ad9bd0a222fc0089db60bb3dbfee3a837f1783",
+    "app/qr_presentation.py": "97d8e1c8a8a9550c117df85a51838607602e2eb5ee77c104c48b12ee0cebc121",
+    "app/static/orion-automations.js": "1ff4ef301ffeba72aea4081fdfa0b7777e13107b38d32429a3fb4cecd1b600eb",
+    "app/static/orion-communication.js": "f1fcf3429feb981a754aceadf6ebd4ec0427be38d76ffed9c1002c207a88ab68",
+    "app/static/orion-conversations.js": "3960c6ebe572d42ab7b63442c44d79b3b6fd82ba818a9ecff994e91ead2de58e",
+    "app/static/orion-suite.js": "36d340e9cfee0aa2d1421ff9a695f96fcfa2df07b346a02d9ef413efbe018d46",
+    "app/static/panel.html": "60257e29939ff2c3f60fca667508ff534c46bee813e37a7b22b85b1d833a82e3",
+    "app/whatsapp_api.py": "2ad0e2fddb6942d2735ee93a42a603446000552628898bd245de9df6a6282bbe",
+    "app/whatsapp_bot.py": "6ab4ae17c243f45e4f9ab63322d4ba12d78b0daed299584b9514c9dc7acef060",
+    "app/whatsapp_commands.py": "68b0ca0a36b9fa2dace708048bf6061f8202a3ab7a57dbe6f0488008d76ca180",
+    "app/worker.py": "1b87ce384e7f6b14a795d988324bc698f12164fb657e58436f8b48b323da0dac",
+    "qr-bridge/src/ai-forward.mjs": "6f88349160354dd53e369d91dc0e4654b180a2e08a7dd6f8880414f1842cca61",
+    "qr-bridge/src/channel-manager.mjs": "1bedeaeda70cb480169192b8dc73f174d9e85bd368298fe1e14cb991a001d144",
+    "qr-bridge/src/channel-session.mjs": "3d5d5d2d2e5db3d2997f13a37f69d352cedf2d2789e1fe5d97bc226dcdc34a8f",
+    "qr-bridge/src/inbound-event.mjs": "5d79212c7d4e2bf12a8b38f8918983f5b9366deb8569fc1c840680c1e1886044",
+    "qr-bridge/src/server.mjs": "c47d1e315925a24c539237eb90185bb384e8cf513de5bdc9ba138420e5ccb5b2",
+    "qr-bridge/test/audio-inbound-routing.test.mjs": "95e2b01b3c1f9bf6ccc9a019d63c15ca28a95ef4fbc55669546bec04a27e5ab5",
+    "qr-bridge/test/channel-session.test.mjs": "518eb3254e57ea158647b80b7e69c0204997aa2d15b8df45dd7c9f192b84a40f",
+    "qr-bridge/test/inbound-event.test.mjs": "b60af67db2d65d3d99d06e65b06729d1bdc54442c03f8bc0fb6f2f3f9f6986ec",
+    "qr-bridge/test/linked-session.test.mjs": "fb288634294ddbb280ac309f72c6cbd0038dd2a550fa520f40955a76032d8c1c",
+    "scripts/communication_corpus.py": "db62bc9b47263825271f3c5e8a05ac8baf3688cf4bb45141656457ef12b30f2f",
+    "scripts/one_time_communication_migration.py": "cb36d5442660e4a2960dcb5872c14994be0fc304e5fbe524aec7f311c8299b58",
+    "scripts/probe_communication_references.py": "ab3af46e6a9dabdc903b642f777a73b53ee383ec518f91cb86a0e8a563d6f841",
+    "scripts/qualification_load.py": "3049947fbf22d1f6a9a6d27525faa945426b09867bbf81dbaec43c9bec4bd421",
+    "scripts/start_api.py": "ee5c96eced5e88034700722acc1c04d0df0fa5612e61ba7b6fdc9fe8b7dd3745",
+    "scripts/wait_for_communication_schema.py": "f4000f66f246a3032ab7869264f4e630d25de66561d50f72d1822ceed98bd95d",
+    "tests/fixtures/communication/references.json": "e4269985218cf5f789f7f12660de35211d42f8b6f06bd4548f0f940bcc56a8d4",
+    "tests/integration/test_automation_postgres.py": "416059a11a8558726a0f2f4ae005a0a2728bdfc5e652cfc59c48c8741a610213",
+    "tests/integration/test_communication_migration_postgres.py": "55cbd5ead1c16dafec6db010fd5a1d1e88efa01766765f981d3a3e51b7cbb08f",
+    "tests/integration/test_communication_postgres.py": "7ac2ff650a9868f6128a72ed316206e09c30177e2c55bd4a65414a69ae80d4c7",
+    "tests/integration/test_google_calendar_integration.py": "3b693d3dbbb06b4f4a3904f53e1361d920ded6a81125991f6ba8d1abe1fd1e4f",
+    "tests/integration/test_inbox_migration_postgres.py": "4f4a86921e34c806ecccbdcd18b2df469cc9071d50242081ab2d794efea24fae",
+    "tests/integration/test_unified_inbox_postgres.py": "cfe9fbdda7e6bfda8779d93506ab55c41d99b01ef2edf9132d5c51c41c50b990",
+    "tests/isolated_runner.py": "b0f5f111c4cc59a09c8c6507925fcacdfb3b7bab6a32b7a807bd37abeb3f0d60",
+    "tests/load/test_qualification_load.py": "3d6fd373b8674582e6ef45ceb793941cf55c074eb4d145cbf84d061a79fdc168",
+    "tests/unit/test_automation_composition_contract.py": "2ccdafc58695d9bdcfbc56acbdb966ed6a7173a2948e8aad1f4515a3732c5cc0",
+    "tests/unit/test_communication_contract.py": "bfcc35c20671810b40c64a631f8405b0b69468ac8dad9ea798b6807b58a678e3",
+    "tests/unit/test_communication_corpus.py": "bb1a7408d5bcf26cfd2ea598a7b41b8cf2bc40f765c04721cd370398e52d79bf",
+    "tests/unit/test_contact_preferences.py": "4c36f9b2cc9b270b1378026c32d4a7293b97136ccd2c7fd8241637966e65e39c",
+    "tests/unit/test_one_time_communication_migration.py": "104d50da45b90d61f573f5ca6c3d4b8cfd8aff8f9a62c9fbb8f0ad38bb6eabe3",
+    "tests/unit/test_whatsapp_booking_references.py": "c61beaec7d7d1bb47822edc8fe40251d4675e87830d884b58213fb883504bdb5",
+    "tests/unit/test_whatsapp_dialogue.py": "57d994f97c7583b67613b351d10f7e851770d00c131ee256e25cbe03c9a3b0b9",
+    "ui-tests/communication.test.mjs": "9a3d6dba6a344d3dee0d1283a26fd46d22ab0f8cedbc5bdd9909700de93aeca8",
+    "ui-tests/customer-form.test.mjs": "37a894e7c61699a3693ed731028f1c4a108ede7a8b6d1543fb9957c802b4647a"
+  },
+  "evidence": [
+    {
+      "file": "backend-final2.log",
+      "bytes": 7124,
+      "sha256": "7c32a1f0cbc946fe9a4c785a7c7a32ef74a110b017401004312153b9c2b3bfe9"
+    },
+    {
+      "file": "backend-run.json",
+      "bytes": 279,
+      "sha256": "c4dd0d987d6bd34e59ade5f1b59589b95118329416f2d2e5bb1ec601fb200ccd"
+    },
+    {
+      "file": "backend-junit.xml",
+      "bytes": 720813,
+      "sha256": "f0a124ae47e04a499dd2a3684db4d0e1c54a371b242b68aa1bbdc3654938e33d"
+    },
+    {
+      "file": "qr-final.log",
+      "bytes": 41627,
+      "sha256": "e45d5beb9aebfc235220206092e094972bc26e04dc28c44f75119d2f288d5eff"
+    },
+    {
+      "file": "ui-final.log",
+      "bytes": 31220,
+      "sha256": "00aa6d16460a7f44325c1a1af37e3d02ac51c448b45ba4c1b112f817825a7615"
+    },
+    {
+      "file": "postgres-junit-v2.xml",
+      "bytes": 79528,
+      "sha256": "0c17933793729ccb7b92f8def30ca780f62a0823a2fd96f77b10a54a1ef64552"
+    },
+    {
+      "file": "pg-final2.log",
+      "bytes": 3603,
+      "sha256": "83af59d75cf2ca8693bbd197aa6ec959cdff109ff5df1f8e3c0826fda38c3451"
+    },
+    {
+      "file": "postgres-final2.xml",
+      "bytes": 10059,
+      "sha256": "dcab37a580f594aa531d0a9ed02dfd27599bc600ec1cc3f47edd3ee4b4dd1b82"
+    },
+    {
+      "file": "qualification-final.xml",
+      "bytes": 414,
+      "sha256": "f7ae2c599584dddb58bfc610211f1132cca74f3ea12d8cfd161590dcbd8c95c9"
+    },
+    {
+      "file": "qualification-final.log",
+      "bytes": 728,
+      "sha256": "cabdf8a5082ea83e4b7bd3a35487d98cc5839a2e1f4c51dbdc5d2e6310c97b24"
+    },
+    {
+      "file": "harness-final.xml",
+      "bytes": 9761,
+      "sha256": "e6b64c1c4c1d8d6895b9bead0b2dfd2f2c4d28260e86337ce0b2da9be229e8f6"
+    },
+    {
+      "file": "harness-final.log",
+      "bytes": 102,
+      "sha256": "fa7efce5bcbece422eab3aa9c065cff9c9c559a9334ef424bcd702c892e5af3b"
+    },
+    {
+      "file": "browser-db-verification.json",
+      "bytes": 540,
+      "sha256": "a93aa8f4c0b92a19c47ffe481fe3bd7c559fbbeea1e6f41fc060f5efb6a21525"
+    },
+    {
+      "file": "browser-http.json",
+      "bytes": 2966,
+      "sha256": "55f90f69fe518852fa32e5febf884217eb642db97218dc524f93acbdf58d9ab2"
+    },
+    {
+      "file": "browser-layout.json",
+      "bytes": 217,
+      "sha256": "526833c58e5cbbf3babc15bff9f3f6159b459e634ee6e4fb24a379eb05ffc25e"
+    },
+    {
+      "file": "browser-desktop.png",
+      "bytes": 120485,
+      "sha256": "1e1bdf8ff7e4f6b8c3e8453ceab2284356acf0ee1cad77841fab4d5133e414e1"
+    },
+    {
+      "file": "browser-mobile.png",
+      "bytes": 90430,
+      "sha256": "f3751aa47069f6caacb5adecc18e002115004aaf719285913c0f194a514d8bb4"
+    },
+    {
+      "file": "browser-tablet.png",
+      "bytes": 104203,
+      "sha256": "4fb3f0ae37c7089f846b51089a0efc3891dab5d9829d229591ca4af36ee115cc"
+    },
+    {
+      "file": "language-probes.json",
+      "bytes": 111549,
+      "sha256": "e9424efdf3a1d0b14f98196b59f563b5a1ff6fc6f64f2f5155b52248c20b7951"
+    },
+    {
+      "file": "pg-network.json",
+      "bytes": 61,
+      "sha256": "72d95e2b801eb29f93922845c7dfe05802f8bc07e0e1b9381c4f20b9309c5ba9"
+    },
+    {
+      "file": "redis-release.json",
+      "bytes": 11063,
+      "sha256": "9c8011a5702c77687327dad4683e696019ae8b73dec00730d1cfc9e05f80af45"
+    },
+    {
+      "file": "postgres-binary-source.json",
+      "bytes": 217,
+      "sha256": "c1cc3541b007373de84658b5dd7398a15f64b15f4fa415a9ea58bdb643c061d4"
+    },
+    {
+      "file": "migration-roundtrip-final.xml",
+      "bytes": 398,
+      "sha256": "856872635c41abace1cbb45ce26269afd96fef912e73adfc72eff07f79266f4d"
+    },
+    {
+      "file": "migration-roundtrip-final.log",
+      "bytes": 101,
+      "sha256": "a93130626a11447906830d34e0e9b5cbf755472a02d23b471f5bb84a4d5864a0"
+    }
+  ],
+  "gaps": [
+    {
+      "id": "G01",
+      "priority": "Alta",
+      "title": "Meta perde correção no final da entrada",
+      "evidence": "P15",
+      "source": "app/messaging.py:56",
+      "observation": "Um texto de 1511 caracteres com negativa no fim vira 1500 caracteres e perde a negativa. O parser também elimina metadados como contexto de resposta.",
+      "proposal": "Rejeitar entrada grande ou negociar partes sem executar prefixo; manter evento autenticado e revisão.",
+      "acceptance": "Nenhuma correção ou condição final perdida, antes de LLM/domínio.",
+      "status": "Implementado e verificado no escopo local",
+      "components": "app/messaging.py; app/worker.py; app/communication_events.py",
+      "change": "Entrada integral limitada, envelope persistido e ordem de ingresso; confirmação Meta exige resumo aceito para o mesmo destinatário. Lotes acima do limite recebem erro sem confirmar prefixo.",
+      "tests": "tests/unit/test_communication_contract.py; tests/integration/test_communication_postgres.py"
+    },
+    {
+      "id": "G02",
+      "priority": "Alta",
+      "title": "Ativação pode reenfileirar eventos anteriores",
+      "evidence": "P17",
+      "source": "app/automation_runtime.py:112",
+      "observation": "Com evento confirmado duas horas antes da aprovação e ainda no prazo24h, queue_notification cria job na bancada. approved_at é salvo, mas não limita o planejamento.",
+      "proposal": "Criar marco de início e revisão explícita de backfill; separar lembretes futuros de históricos imediatos.",
+      "acceptance": "Ativar não dispara confirmação/cancelamento/cupom antigo sem revisão.",
+      "status": "Implementado e verificado no escopo local",
+      "components": "app/automation_policy.py; app/automation_runtime.py",
+      "change": "Marco de aprovação impede recuperar confirmações, cancelamentos e cupons históricos por simples ativação. Lembretes futuros preservam planejamento próprio.",
+      "tests": "tests/unit/test_automation_composition_contract.py; tests/integration/test_automation_postgres.py"
+    },
+    {
+      "id": "G03",
+      "priority": "Alta",
+      "title": "Aviso operacional durante posse humana é suprimido neste caminho",
+      "evidence": "P18",
+      "source": "app/automation_runtime.py:128",
+      "observation": "queue_notification retorna False para human_paused sem registrar pendência. delivery_reason bloqueia o que já estava na fila. Não há coordenador de aviso importante comprovado nesta rota.",
+      "proposal": "Encaminhar fato à central/equipe como pendência auditável; bot permanece pausado.",
+      "acceptance": "Aviso importante rastreável à equipe, sem concorrência automática com humano.",
+      "status": "Implementado e verificado no escopo local",
+      "components": "app/automation_runtime.py; app/communication_api.py; app/static/orion-conversations.js",
+      "change": "Avisos importantes bloqueados por posse humana ou janela viram pendência da equipe. Reconhecer a pendência não envia mensagem nem retoma IA.",
+      "tests": "tests/integration/test_communication_postgres.py; ui-tests/communication.test.mjs"
+    },
+    {
+      "id": "G04",
+      "priority": "Alta",
+      "title": "Eventos de edição, exclusão e referência não formam um contrato unificado",
+      "evidence": "inspeção estática",
+      "source": "qr-bridge/src/channel-session.mjs:90",
+      "observation": "messages.update só extrai entrega/lido; messages.upsert leva texto ou áudio. Não liga edit/delete/reaction/reply_to à revisão do intento. Sob pending>=32, ignora entrada antes do aviso.",
+      "proposal": "Normalizar envelope e distinção antes/depois do commit; manter controles prioritários sob carga.",
+      "acceptance": "Edição antiga não confirma; exclusão não desfaz reserva; controle não some sob ruído.",
+      "status": "Implementado e verificado no escopo local",
+      "components": "app/communication_events.py; qr-bridge/src/inbound-event.mjs; app/qr_ai.py",
+      "change": "Edição, exclusão, citação, reação, chamadas e controles finitos normalizados. Correção invalida proposta; exclusão não desfaz domínio. Ruído e sobrecarga preservam correção/opt-out/humano.",
+      "tests": "qr-bridge/test/channel-session.test.mjs; qr-bridge/test/inbound-event.test.mjs; tests/unit/test_communication_contract.py"
+    },
+    {
+      "id": "G05",
+      "priority": "Média",
+      "title": "Legenda Meta desaparece quando a mensagem é imagem",
+      "evidence": "P16",
+      "source": "app/messaging.py:56",
+      "observation": "A fixture de imagem com legenda útil gera zero entradas. O QR já extrai legendas sem alegar visão.",
+      "proposal": "Normalizar legenda independentemente de suporte visual e emitir fallback honesto para conteúdo não analisado.",
+      "acceptance": "Pedido em legenda chega ao núcleo sem afirmar que a imagem foi analisada.",
+      "status": "Implementado e verificado no escopo local",
+      "components": "app/messaging.py; app/communication_events.py",
+      "change": "Legendas de imagem, vídeo e documento chegam como texto autoral. Não se afirma leitura da mídia; legenda afirmativa não confirma proposta crítica.",
+      "tests": "tests/unit/test_communication_contract.py"
+    },
+    {
+      "id": "G06",
+      "priority": "Média",
+      "title": "Coleta opcional de aniversário exige novo contrato de dados",
+      "evidence": "P10",
+      "source": "app/management_schemas.py:63",
+      "observation": "Modelo atual usa data completa. Dia/mês é rejeitado. Busca de código não encontrou fluxo conversacional específico de convite, recusa persistente e finalidade de aniversário.",
+      "proposal": "Projetar dia/mês e consentimento de finalidade, mantendo datas históricas intactas e sem ano fictício.",
+      "acceptance": "Recusa não bloqueia reserva; 31/02 rejeita; 29/02 e terceiro são explícitos; revogação invalida job.",
+      "status": "Implementado e verificado no escopo local",
+      "components": "app/contact_preferences.py; app/automation_api.py; alembic/versions/0029_communication_contract.py",
+      "change": "Dia/mês sem ano inventado, convite opcional após reserva verificada, recusa persistente, finalidade própria e revogação por escopo. Convite anterior à revogação não concede permissão novamente.",
+      "tests": "tests/unit/test_contact_preferences.py; tests/integration/test_communication_postgres.py"
+    },
+    {
+      "id": "G07",
+      "priority": "Média",
+      "title": "Janela fixa pode eliminar lembrete; 29/02 não tem alternativa definida",
+      "evidence": "P08;P11",
+      "source": "app/automation_policy.py:109",
+      "observation": "Lembrete1h de reserva09h é suprimido ao deslocar08h para09h após expiração08h15. Em2027, aniversário29/02 não gera programação. São decisões de política pendentes, sem inventar alternativa.",
+      "proposal": "Expor a supressão na prévia e decidir janela operacional/feriados/leap-day antes de ampliar.",
+      "acceptance": "Operador entende por que não sai; sem acordar campanha atrasada nem converter arbitrariamente29/02.",
+      "status": "Implementado e verificado no escopo local",
+      "components": "app/automation_policy.py; app/management_preferences.py; app/static/orion-communication.js",
+      "change": "Janelas por finalidade, dias da semana, feriados e regra explícita de 29/02. Prévia explica supressão; não acumula lembretes vencidos.",
+      "tests": "tests/unit/test_automation_composition_contract.py; ui-tests/communication.test.mjs"
+    },
+    {
+      "id": "G08",
+      "priority": "Média",
+      "title": "Links e valores interpolados não seguem todo o contrato proposto",
+      "evidence": "P12;P13",
+      "source": "app/management_preferences.py:45",
+      "observation": "HTTPS arbitrário é aceito no link de avaliação; interpolador mantém * e _ do nome. Isso prova ausência desses controles de composição, não exploração, SSRF ou render nativo.",
+      "proposal": "Allowlist de destino por tenant/finalidade e política de literalização por canal; preservar nome real.",
+      "acceptance": "Sem link não autorizado/tokens vazados; nomes com delimitadores continuam legíveis no canal homologado.",
+      "status": "Implementado e verificado no escopo local",
+      "components": "app/communication_links.py; app/automation_templates.py",
+      "change": "Links publicados e literais passam por validação de HTTPS, domínio, credenciais, parâmetros sensíveis e redirecionamento. Fatos recebem escape do renderer existente.",
+      "tests": "tests/unit/test_automation_composition_contract.py"
+    },
+    {
+      "id": "G09",
+      "priority": "Média",
+      "title": "Biblioteca e prévia global ainda não estão integradas",
+      "evidence": "44 variantes;inspeção",
+      "source": "app/static/orion-suite.js:578",
+      "observation": "Os 44 modelos H compõem com o render atual na bancada. Não são os12 defaults do painel. Quick replies usam11 variáveis {{objeto.campo}}; automações11 {campo}; renderer QR é outro contrato tipado. Falta seleção automática de opcionais e prévia idêntica ao job.",
+      "proposal": "Adaptar cada contrato com versão e fatos comuns; não converter indiscriminadamente personalizados.",
+      "acceptance": "Comparação exata prévia/payload/versão; sem nome/link usa variante adequada; required ausente bloqueia.",
+      "status": "Implementado e verificado no escopo local",
+      "components": "app/automation_templates.py; app/communication_style.py; app/communication_api.py",
+      "change": "Biblioteca v1 com 12 eventos e quatro variantes; texto personalizado mantido. Prévia e job compartilham composição, hash, versão, fuso e perfil publicado; worker revalida.",
+      "tests": "tests/unit/test_automation_composition_contract.py; tests/integration/test_communication_postgres.py"
+    },
+    {
+      "id": "G10",
+      "priority": "Média",
+      "title": "Homologação de diálogo e integrações continua pendente",
+      "evidence": "32 casos obrigatórios",
+      "source": "tests/integration",
+      "observation": "Passes locais usam fakes/mocks e bytes sintéticos. Não executam os160 roteiros no LLM nem128 entradas com contexto completo, mídia real, PG/Redis real, UI em dispositivos ou entrega nativa.",
+      "proposal": "Converter roteiro em fixture confiável e executar por camadas com orçamento/ambiente próprios.",
+      "acceptance": "Resultado semântico e efeitos corretos; não aprovar por semelhança da frase.",
+      "status": "Infraestrutura e contratos locais verificados; homologação externa pendente",
+      "components": "tests/isolated_runner.py; tests/fixtures/communication/references.json",
+      "change": "PostgreSQL16, Redis7, migrações/restauração e navegador local exercitados com dados fictícios. 338 referências separadas de oráculos e 128 sondagens do planejador. Homologação semântica com LLM/ASR, mídias e WhatsApp nativo continua pendente.",
+      "tests": "postgres-final2.xml; backend-junit.xml; browser-db-verification.json"
+    },
+    {
+      "id": "G11",
+      "priority": "Referência",
+      "title": "O documento contém evidências antigas e uma data incompatível",
+      "evidence": "AnexoB DIA40",
+      "source": "PROMPT_UNICO_ORION_CODEX_COMPLETO.md:11336",
+      "observation": "DIA40 diz sexta à tarde, mas o resultado fixa24/10/2026(sábado) e12h–13h. O HEAD atual já possui cancelled e protocolo, ausentes no inventário histórico do documento.",
+      "proposal": "Corrigir oráculo numa cópia de trabalho futura, após conferir a intenção; manter origem e histórico.",
+      "acceptance": "Nenhum exemplo é usado como verdade de domínio nem resultado desta auditoria.",
+      "status": "Implementado e verificado no escopo local",
+      "components": "scripts/communication_corpus.py; scripts/probe_communication_references.py",
+      "change": "Proveniência por hash e linhas; referências e testes históricos não contam como execução. DIA-40 tem oráculo de trabalho corrigido para sexta 23/10/2026, sem inventar disponibilidade.",
+      "tests": "tests/unit/test_communication_corpus.py; language-probes.json"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "R01",
+      "title": "MISSÃO E RESULTADO ESPERADO",
+      "source_line": 19,
+      "components": "OUT02;OUT05;OUT15",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Núcleo factual existe; padrão global e todos os canais não têm aceite",
+      "acceptance": "Aceitar somente cada fluxo ligado a fatos, efeito e teste rastreável",
+      "implementation": "Contratos de eventos, consentimento, composição, pendências e prévia implementados; aceite global continua condicionado à homologação externa."
+    },
+    {
+      "id": "R02",
+      "title": "HIERARQUIA DE VERDADE E LIMITES DAS REFERÊNCIAS",
+      "source_line": 37,
+      "components": "OUT05;OUT21",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "HEAD e documento identificados; exemplos e históricos separados",
+      "acceptance": "Qualquer afirmação de execução aponta para log desta tarefa",
+      "implementation": "Documento original, referências, sondagens, resultados históricos e testes desta implementação têm proveniência separada."
+    },
+    {
+      "id": "R03",
+      "title": "AUDITORIA DO REPOSITÓRIO E INVENTÁRIO DE SAÍDAS",
+      "source_line": 49,
+      "components": "OUT01–OUT26",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "26 famílias traçadas e 1247 candidatos estáticos; não houve revisão manual individual dos 1247",
+      "acceptance": "Triar candidatos restantes antes de declarar cobertura total",
+      "implementation": "26 famílias preservadas no índice. Os 1.247 candidatos estáticos não receberam certificação manual individual."
+    },
+    {
+      "id": "R04",
+      "title": "ARQUITETURA: REUTILIZAR, NÃO CRIAR MOTORES PARALELOS",
+      "source_line": 74,
+      "components": "OUT05;OUT07;OUT14;OUT15",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Reusar renderer/guards; interpoladores de automação e quick reply distintos",
+      "acceptance": "Adaptar os contratos existentes sem duplicar domínio ou posse",
+      "implementation": "Composição automática reaproveita renderer e regras de domínio existentes; QR e Meta conservam adaptadores próprios."
+    },
+    {
+      "id": "R05",
+      "title": "PADRÃO VISUAL GLOBAL, COM ESPAÇAMENTO REAL",
+      "source_line": 92,
+      "components": "OUT05;OUT06;OUT19",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Resumo QR agrupado; padrões de automação continuam corridos; nomes/literalização e nativo pendentes",
+      "acceptance": "Blocos com linha vazia, estilos existentes preservados e render nativo homologado",
+      "implementation": "Biblioteca possui blocos e espaçamento; prévia mostra texto integral. Aparência nativa WhatsApp ainda não foi homologada."
+    },
+    {
+      "id": "R06",
+      "title": "VARIÁVEIS, DADOS AUSENTES E TAMANHO",
+      "source_line": 143,
+      "components": "OUT05;OUT14;OUT15",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "11 FIELDS atuais, não dez; 124+36 propostos não instalados",
+      "acceptance": "Campos tipados, variantes sem opcionais, UTF16 final por transporte",
+      "implementation": "Variantes sem nome/link, fatos obrigatórios, escape e orçamento UTF-16 integral; sem corte de condição final."
+    },
+    {
+      "id": "R07",
+      "title": "ENVELOPE, IDENTIDADE, DEDUPLICAÇÃO E ORDEM",
+      "source_line": 157,
+      "components": "OUT02;OUT04;OUT07",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "P15/P16; falta envelope completo edit/delete/reply e prioridade sob limite",
+      "acceptance": "Nenhuma cauda perdida; metadados autenticados e revisões ligadas ao evento",
+      "implementation": "Envelope autenticado e ordem de ingresso persistidos; revalidação antes/depois de efeitos e destinatário do resumo aceito."
+    },
+    {
+      "id": "R08",
+      "title": "RAJADAS, MENSAGENS FRAGMENTADAS E INTERRUPÇÕES",
+      "source_line": 167,
+      "components": "OUT03;OUT04",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Agrupador QR real testado; pending32 pode ignorar entrada; Meta usa fluxo separado",
+      "acceptance": "Sem prefixo executado; overflow visível; parar/humano não perdido sob carga",
+      "implementation": "Coalescência limitada, revisão na chegada e reserva para opt-out/humano/correção; testes de sobrecarga e lote decorativo."
+    },
+    {
+      "id": "R09",
+      "title": "ÁUDIOS, TRANSCRIÇÃO E CAPACIDADES MULTIMODAIS",
+      "source_line": 187,
+      "components": "OUT02;OUT04;OUT23",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "ASR bounded e revalidação; bytes/provider sintéticos nos testes",
+      "acceptance": "Mídia autorizada real, MIME/duração/custo e takeover comprovados",
+      "implementation": "Rota existente de áudio preservada; limites e ordem cobertos por testes. ASR e mídia reais não foram executados."
+    },
+    {
+      "id": "R10",
+      "title": "FIGURINHAS, GIFS, EMOJIS, VÍDEOS, DOCUMENTOS E SILÊNCIO",
+      "source_line": 203,
+      "components": "OUT04;OUT07",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "25 classes indexadas; não se implementam só por existir roteiro",
+      "acceptance": "Capacidade explícita por canal; legendas preservadas; edição/exclusão não reautorizam",
+      "implementation": "Reações/GIFs/figurinhas decorativos silenciosos, legenda preservada e fallback honesto para mídia não suportada."
+    },
+    {
+      "id": "R11",
+      "title": "LIGAÇÕES E ATENDIMENTO POR VOZ",
+      "source_line": 223,
+      "components": "OUT25",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Rejeitar/detectar ligação não é agente de voz; novo managed não trata calls",
+      "acceptance": "Sem prometer callback; handler por canal comprovado ou fallback honesto",
+      "implementation": "Eventos de ligação normalizados e resposta honesta sem simular atendimento de voz. Voz ao vivo continua fora da capacidade."
+    },
+    {
+      "id": "R12",
+      "title": "ENTENDIMENTO NATURAL, ERROS DE ESCRITA E MÚLTIPLAS INTENÇÕES",
+      "source_line": 231,
+      "components": "OUT06;OUT07;OUT08",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Guards locais testados; 128 entradas e 160 roteiros não avaliados em LLM real",
+      "acceptance": "Avaliar sentido/efeitos com contexto e orçamento autorizados, não só match de texto",
+      "implementation": "Corpus de linguagem materializado separadamente; 128 sondagens do planejador puro. Não é aceite semântico do modelo."
+    },
+    {
+      "id": "R13",
+      "title": "AGENDA, PROFISSIONAIS, DATAS E RESERVAS",
+      "source_line": 247,
+      "components": "OUT05;OUT20;OUT21",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Serviços, profissionais, slots e locks existem; grupo/beneficiários/recorrência não equivalem a bloco recorrente",
+      "acceptance": "Provar capacidade com PG; finish-before, TZ e contradições pelo domínio",
+      "implementation": "Agenda factual permanece autoridade; edição invalida confirmação; referências antigas exigem novo resumo aceito."
+    },
+    {
+      "id": "R14",
+      "title": "AÇÕES CRÍTICAS, RESULTADO INCERTO E CONCORRÊNCIA",
+      "source_line": 265,
+      "components": "OUT02;OUT12;OUT21",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Recibos, CAS e incerto existem; mock não comprova corrida PG distribuída",
+      "acceptance": "Mesmo intento e chave reconciliados; efeito único após timeout/takeover",
+      "implementation": "Fences de entrada/controle e recibo aceito impedem escrita obsoleta; testes locais de concorrência e resultado incerto."
+    },
+    {
+      "id": "R15",
+      "title": "ALTERAÇÕES NO PAINEL E GOOGLE CALENDAR",
+      "source_line": 279,
+      "components": "OUT21;OUT22",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Atribuição/CAS e espelho Calendar existem",
+      "acceptance": "Releitura invalida job antigo; status reserva/notificação/calendário separados",
+      "implementation": "Alterações de fuso, agenda e perfil invalidam payload antigo. Google permanece assíncrono; testes usam transporte falso."
+    },
+    {
+      "id": "R16",
+      "title": "MARKETING IA: CONFIGURAÇÃO E PRONTIDÃO",
+      "source_line": 293,
+      "components": "OUT17;OUT18;OUT19",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Rascunho/aprovação explícita existe; P17 permite histórico anterior à aprovação",
+      "acceptance": "Revisão do payload final e corte temporal; salvar não equivale a disparar",
+      "implementation": "Prévia não autoriza execução. Marco de ativação e revisões impedem backfill automático; campanhas reais não ativadas."
+    },
+    {
+      "id": "R17",
+      "title": "CONTRATO DAS ONZE FAMÍLIAS E NOTIFICAÇÕES COMPLEMENTARES",
+      "source_line": 309,
+      "components": "OUT15;OUT16;OUT19",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Onze famílias mais cancelled configurável; 44 variantes compatíveis só na bancada",
+      "acceptance": "Gatilho, consentimento, dados, cadência e resultado revistos por família",
+      "implementation": "12 eventos canônicos incluem confirmação, lembretes, remarcação, cancelamento, recuperação, aniversário, benefício e pós-serviço."
+    },
+    {
+      "id": "R18",
+      "title": "JANELAS, ATRASOS E POSSE HUMANA NAS AUTOMAÇÕES",
+      "source_line": 357,
+      "components": "OUT15;OUT16",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "P08/P11/P18: janela, 29/02 e coordenação humana exigem decisão",
+      "acceptance": "Previsão explica supressão; aviso operacional vira pendência da equipe sem reativar bot",
+      "implementation": "Janelas configuráveis, feriados e 29/02 explícitos; posse humana cria pendência da equipe em vez de perder aviso."
+    },
+    {
+      "id": "R19",
+      "title": "COLETA OPCIONAL DE ANIVERSÁRIO E CONSENTIMENTO",
+      "source_line": 367,
+      "components": "OUT08;OUT15",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "P10: birth_date exige ano; consentimento atual não é granular por aniversário",
+      "acceptance": "Dia/mês válido, recusa persistente, finalidade e revogação específicas, sem ano fictício",
+      "implementation": "Coleta opcional por finalidade, dia/mês, recusa, revogação granular e proteção contra convite desatualizado."
+    },
+    {
+      "id": "R20",
+      "title": "ATENDIMENTO HUMANO, ODONTOLOGIA E OUTROS SEGMENTOS",
+      "source_line": 387,
+      "components": "OUT02;OUT12;OUT13",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Controle único persistido com atribuição e sem TTL; separar solicitação de agente assumido na UI/texto",
+      "acceptance": "Humano vence LLM/ASR/fila; voltar exige ato explícito e invalidar proposta antiga",
+      "implementation": "Pedido por recepção/dono/dentista/pessoa encaminha ao humano sem alegar operador atribuído; regras clínicas preservadas."
+    },
+    {
+      "id": "R21",
+      "title": "PAGAMENTOS, PRODUTOS, FIDELIDADE E RECLAMAÇÕES",
+      "source_line": 403,
+      "components": "OUT05;OUT08;OUT15",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Commerce tipado e cupom do backend existem; recibo de imagem não é provedor",
+      "acceptance": "Sem baixa financeira/benefício/stock inventados; reclamação sem oferta",
+      "implementation": "Sem baixa de pagamento por imagem; reclamação impede oferta indevida. Regras de comércio existentes preservadas."
+    },
+    {
+      "id": "R22",
+      "title": "SEGURANÇA, PRIVACIDADE E DADOS NÃO CONFIÁVEIS",
+      "source_line": 413,
+      "components": "OUT02;OUT12;OUT14;OUT18",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Tenant/CAS/auth testados isolados; P12/P13 no limite de URL e formato",
+      "acceptance": "Allowlist, destinatário/público correto, privacidade de mídia e logs mínimos; sem alegar pentest",
+      "implementation": "RLS, CAS, escopo por tenant/contato, domínios e controles validados; nenhum dado de cliente real usado."
+    },
+    {
+      "id": "R23",
+      "title": "PRÉVIA DO PAINEL, MIGRAÇÃO E EXPERIÊNCIA ADMINISTRATIVA",
+      "source_line": 425,
+      "components": "OUT14;OUT19;OUT23",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Preview de quick reply/QR existe; editor automações mostra rascunho, não payload renderizado idêntico",
+      "acceptance": "Compartilhar versão/composição entre prévia e envio; preservar modelos personalizados",
+      "implementation": "Prévia factual e pendências no painel; política salva sem ativar envio. Migração aditiva possui backup e restauração testados."
+    },
+    {
+      "id": "R24",
+      "title": "PESQUISA E REVISÃO CRÍTICA",
+      "source_line": 437,
+      "components": "OUT04;OUT12",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Política WhatsApp e fonte oficial Baileys consultadas; Metawebhooks429; sem outro modelo",
+      "acceptance": "Rever docs de versão e homologar no canal antes de ativar",
+      "implementation": "Fontes e verificações anteriores preservadas; nenhuma pesquisa vira prova de capacidade ausente."
+    },
+    {
+      "id": "R25",
+      "title": "MEGA SIMULAÇÃO E TESTES: AVALIAR EFEITOS, NÃO SÓ FRASES",
+      "source_line": 447,
+      "components": "OUT01–OUT26",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Backend/bridge/DOM e 67 sondas rodaram; corpus388 só integridade",
+      "acceptance": "Separar componentes, corpus, modelo real, PG, browser e piloto",
+      "implementation": "Suites Python/QR/DOM, infraestrutura real local e navegador executados; modelos, ASR e conectores reais não."
+    },
+    {
+      "id": "R26",
+      "title": "CASOS DE ALTO RISCO OBRIGATÓRIOS",
+      "source_line": 470,
+      "components": "OUT01–OUT26",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "32 casos com evidência local, bloqueador, método e aceite",
+      "acceptance": "Executar cada caso completo ou manter bloqueio explícito",
+      "implementation": "32 roteiros permanecem rastreados com evidência de componentes. Não declarar os 32 como jornadas completas homologadas."
+    },
+    {
+      "id": "R27",
+      "title": "EVIDÊNCIAS HISTÓRICAS: NÃO APRESENTAR COMO TESTES ATUAIS",
+      "source_line": 509,
+      "components": "OUT01–OUT26",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "5680/41,6039/4790/81 do anexo I são históricos; não somados aos atuais",
+      "acceptance": "Nunca reutilizar esses números como aprovação deste HEAD",
+      "implementation": "Contagens do anexo I e do relatório anterior permanecem históricas."
+    },
+    {
+      "id": "R28",
+      "title": "EXECUÇÃO EM ETAPAS E ENTREGÁVEIS",
+      "source_line": 519,
+      "components": "OUT01–OUT26",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Propostas e testes externos ao repo; sem autorização de implementação nova",
+      "acceptance": "Aprovar escopo concreto antes de fase C; deploy e disparo exigem atos próprios",
+      "implementation": "Índice de progresso por seção, requisitos, gaps, testes, limitações e operação incluídos nesta entrega."
+    },
+    {
+      "id": "R29",
+      "title": "CRITÉRIOS DE ACEITE",
+      "source_line": 543,
+      "components": "OUT01–OUT26",
+      "status": "Verificado no escopo local; limites registrados",
+      "evidence_or_gap": "Nove desvios/decisões nas sondas; demais integrações sem homologação",
+      "acceptance": "Não anunciar integração concluída até fechar gates por fluxo",
+      "implementation": "Critérios locais comprovados por logs; liberação e aceite global dependem dos bloqueios explícitos."
+    }
+  ],
+  "high_risk": [
+    {
+      "id": "HR01",
+      "requirement": "“Alô” + pedido + dia + horário em mensagens separadas; uma resposta útil sem repetir o que já foi dado.",
+      "source_line": 474,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT02;OUT03",
+      "blocker": "LLM e turno completo com catálogo",
+      "validation_method": "Reproduzir V2-001/004 com clock, catálogo e ordem fixos",
+      "acceptance": "Uma resposta útil; nenhuma pergunta redundante",
+      "current_component_evidence": {
+        "passed": 83,
+        "examples": [
+          "tests.unit.test_qr_channel_intake::test_notice_returns_scoped_revision_before_asr_even_with_assistant_off",
+          "tests.unit.test_qr_channel_intake::test_text_notice_during_audio_inference_stops_first_write_and_restores_facts",
+          "tests.unit.test_qr_channel_intake::test_caller_revision_or_unannounced_batch_cannot_register_itself[99999-ids0]",
+          "tests.unit.test_qr_channel_intake::test_caller_revision_or_unannounced_batch_cannot_register_itself[1-ids1]",
+          "tests.unit.test_qr_channel_intake::test_missing_notice_revision_fails_closed_without_assigning_one"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR02",
+      "requirement": "“Pode marcar” + “não, espera” antes da gravação; nenhuma confirmação antiga.",
+      "source_line": 475,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT02;OUT03",
+      "blocker": "PG/Redis + concorrência real",
+      "validation_method": "Corrigir entre inferência e commit, com barreiras",
+      "acceptance": "Zero efeito do resumo obsoleto",
+      "current_component_evidence": {
+        "passed": 44,
+        "examples": [
+          "tests.unit.test_qr_channel_intake::test_notice_returns_scoped_revision_before_asr_even_with_assistant_off",
+          "tests.unit.test_qr_channel_intake::test_text_notice_during_audio_inference_stops_first_write_and_restores_facts",
+          "tests.unit.test_qr_channel_intake::test_caller_revision_or_unannounced_batch_cannot_register_itself[99999-ids0]",
+          "tests.unit.test_qr_channel_intake::test_caller_revision_or_unannounced_batch_cannot_register_itself[1-ids1]",
+          "tests.unit.test_qr_channel_intake::test_missing_notice_revision_fails_closed_without_assigning_one"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR03",
+      "requirement": "Correção após gravação; consulta de resultado e fluxo de alteração, não desfazimento fictício.",
+      "source_line": 476,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT02;OUT21",
+      "blocker": "Banco de homologação",
+      "validation_method": "Confirmar e depois corrigir com novo message_id",
+      "acceptance": "Ler recibo atual; propor alteração nova",
+      "current_component_evidence": {
+        "passed": 11,
+        "examples": [
+          "tests.unit.test_qr_operation_receipt::test_only_explicit_verified_terminal_result_is_preserved_and_shown_as_completed[cancelled]",
+          "tests.unit.test_qr_operation_receipt::test_only_explicit_verified_terminal_result_is_preserved_and_shown_as_completed[commerce_cancelled]",
+          "tests.unit.test_qr_operation_receipt::test_only_explicit_verified_terminal_result_is_preserved_and_shown_as_completed[commerce_confirmed]",
+          "tests.unit.test_qr_operation_receipt::test_only_explicit_verified_terminal_result_is_preserved_and_shown_as_completed[confirmed]",
+          "tests.unit.test_qr_operation_receipt::test_only_explicit_verified_terminal_result_is_preserved_and_shown_as_completed[rescheduled]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR04",
+      "requirement": "Três áudios com término de ASR fora de ordem; preservar ordem autoral.",
+      "source_line": 477,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT03;OUT04",
+      "blocker": "ASR real autorizado",
+      "validation_method": "Três áudios autorizados com finalização invertida",
+      "acceptance": "Ordem autoral preservada; sem cobrança repetida",
+      "current_component_evidence": {
+        "passed": 33,
+        "examples": [
+          "tests.unit.test_qr_channel_audio::test_managed_audio_uses_current_channel_not_legacy_tenant_allowlist_or_switch",
+          "tests.unit.test_qr_channel_audio::test_managed_audio_default_off_never_reads_auth_schema_or_provider[QR_CHANNELS_ENABLED]",
+          "tests.unit.test_qr_channel_audio::test_managed_audio_default_off_never_reads_auth_schema_or_provider[QR_AI_AUDIO_ENABLED]",
+          "tests.unit.test_qr_channel_audio::test_invalid_phone_is_rejected_before_asr[]",
+          "tests.unit.test_qr_channel_audio::test_invalid_phone_is_rejected_before_asr[120363@g.us]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR05",
+      "requirement": "Áudio com dado essencial falho; não confirmar prefixo incompleto.",
+      "source_line": 478,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT02;OUT04",
+      "blocker": "Mídia real e relógio de falha",
+      "validation_method": "Falhar trecho essencial e esgotar prazo",
+      "acceptance": "Nenhum prefixo crítico executado",
+      "current_component_evidence": {
+        "passed": 33,
+        "examples": [
+          "tests.unit.test_qr_channel_audio::test_managed_audio_uses_current_channel_not_legacy_tenant_allowlist_or_switch",
+          "tests.unit.test_qr_channel_audio::test_managed_audio_default_off_never_reads_auth_schema_or_provider[QR_CHANNELS_ENABLED]",
+          "tests.unit.test_qr_channel_audio::test_managed_audio_default_off_never_reads_auth_schema_or_provider[QR_AI_AUDIO_ENABLED]",
+          "tests.unit.test_qr_channel_audio::test_invalid_phone_is_rejected_before_asr[]",
+          "tests.unit.test_qr_channel_audio::test_invalid_phone_is_rejected_before_asr[120363@g.us]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR06",
+      "requirement": "Rajada acima do limite; sem execução parcial nem perda silenciosa da última correção.",
+      "source_line": 479,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT03;OUT04",
+      "blocker": "Saturação bridge + canal",
+      "validation_method": "Enviar acima de 6/20/32 e incluir correção final",
+      "acceptance": "Sem efeito parcial; rejeição visível e sem perder controle",
+      "current_component_evidence": {
+        "passed": 32,
+        "examples": [
+          "tests.unit.test_communication_contract::test_panel_really_serves_the_new_communication_asset",
+          "tests.unit.test_communication_contract::test_meta_preserves_complete_caption_without_claiming_vision",
+          "tests.unit.test_communication_contract::test_meta_never_executes_prefix_without_late_negation",
+          "tests.unit.test_communication_contract::test_meta_rejects_the_entire_large_batch_instead_of_acknowledging_a_prefix",
+          "tests.unit.test_communication_contract::test_oversized_meta_optout_retains_only_a_finite_control_without_executing_text"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR07",
+      "requirement": "Muitas figurinhas/GIFs seguidas e depois pedido útil; não saturar nem ignorar a intenção útil.",
+      "source_line": 480,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT03;OUT04",
+      "blocker": "Eventos sticker/GIF não normalizados",
+      "validation_method": "Saturar ruído e depois parar/humano/pedido útil",
+      "acceptance": "Ruído não bloqueia controle nem pedido útil",
+      "current_component_evidence": {
+        "passed": 17,
+        "examples": [
+          "tests.unit.test_qr_intake_revision::test_notice_is_private_exact_phone_and_server_bound_tenant",
+          "tests.unit.test_qr_intake_revision::test_feature_default_disabled_never_accesses_redis",
+          "tests.unit.test_qr_intake_revision::test_changed_ingress_before_first_write_is_the_only_replayable_ack",
+          "tests.unit.test_qr_intake_revision::test_after_a_write_starts_never_claim_non_commit_or_authorize_replay",
+          "tests.unit.test_qr_intake_revision::test_redis_failure_is_uncertain_not_a_zero_write_replay_ack"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR08",
+      "requirement": "Mesmo ID reenviado; um efeito. Texto igual com IDs novos; interpretação contextual, não descarte automático.",
+      "source_line": 481,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT02;OUT03",
+      "blocker": "PG/Redis entre instâncias",
+      "validation_method": "Reentregar ID e enviar texto igual com IDs novos",
+      "acceptance": "Um efeito por ID; texto novo não descartado por semelhança",
+      "current_component_evidence": {
+        "passed": 21,
+        "examples": [
+          "tests.unit.test_preserved_qr_history::test_history_is_owner_scoped_rechecked_and_does_not_assert_delivery",
+          "tests.unit.test_preserved_qr_history::test_reader_and_another_channel_cannot_query_the_primary_device",
+          "tests.unit.test_preserved_qr_history::test_late_revocation_discards_the_local_result",
+          "tests.unit.test_preserved_qr_history::test_foreign_contact_in_a_bridge_response_is_never_returned",
+          "tests.unit.test_qr_intake_revision::test_notice_is_private_exact_phone_and_server_bound_tenant"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR09",
+      "requirement": "Botão, reação ou “sim” citando proposta antiga; não confirmar versão atual indevidamente.",
+      "source_line": 482,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT04;OUT07",
+      "blocker": "reply_to e revisão de interativo ausentes",
+      "validation_method": "Injetar reação/botão/resposta ligada a proposta antiga",
+      "acceptance": "Não reautorizar proposta atual por texto citado",
+      "current_component_evidence": {
+        "passed": 55,
+        "examples": [
+          "tests.unit.test_whatsapp_booking_references::test_natural_reference_prepares_only_owned_summary[Quero cancelar o corte-0]",
+          "tests.unit.test_whatsapp_booking_references::test_natural_reference_prepares_only_owned_summary[cancele a barba com Bruno-1]",
+          "tests.unit.test_whatsapp_booking_references::test_natural_reference_prepares_only_owned_summary[Quero cancelar a barba com Ana-2]",
+          "tests.unit.test_whatsapp_booking_references::test_natural_reference_prepares_only_owned_summary[Quero remarcar o corte de cabelo-0]",
+          "tests.unit.test_whatsapp_booking_references::test_date_and_time_reference_uses_tenant_timezone"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR10",
+      "requirement": "“Confirmo se...”, “sim, mas...”, “não, não cancela”; efeito correto em cada estado.",
+      "source_line": 483,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT05;OUT08",
+      "blocker": "Turnos reais em cada contexto",
+      "validation_method": "Exercitar condição, correção, negativa e remarcação",
+      "acceptance": "Condição nunca confirma; não cancela preserva reserva",
+      "current_component_evidence": {
+        "passed": 228,
+        "examples": [
+          "tests.unit.test_qr_cancellation::test_new_summary_then_natural_consent_cancels_only_owned_confirmed_record",
+          "tests.unit.test_qr_cancellation::test_nonwhitelisted_semantic_consent_keeps_local_guards",
+          "tests.unit.test_qr_cancellation::test_conditions_changes_questions_and_negation_override_model_affirm[Pode cancelar, mas s\\xf3 se devolver o dinheiro]",
+          "tests.unit.test_qr_cancellation::test_conditions_changes_questions_and_negation_override_model_affirm[Sim?]",
+          "tests.unit.test_qr_cancellation::test_conditions_changes_questions_and_negation_override_model_affirm[N\\xe3o cancela]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR11",
+      "requirement": "Consulta de preço e comparação de combo; não alterar carrinho/reserva.",
+      "source_line": 484,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT05;OUT06",
+      "blocker": "Banco de jornada e catálogo",
+      "validation_method": "Consultar preço/comparar sem aceitar proposta",
+      "acceptance": "Snapshot carrinho e reserva permanece igual",
+      "current_component_evidence": {
+        "passed": 40,
+        "examples": [
+          "tests.unit.test_qr_commerce_information::test_existence_has_no_quantity_total_or_stock_promise[Voc\\xeas vendem pomada?]",
+          "tests.unit.test_qr_commerce_information::test_existence_has_no_quantity_total_or_stock_promise[E voc\\xeas vendem modelador?]",
+          "tests.unit.test_qr_commerce_information::test_existence_has_no_quantity_total_or_stock_promise[Trabalham com pomadas?]",
+          "tests.unit.test_qr_commerce_information::test_unknown_existence_does_not_fabricate_or_answer_yes",
+          "tests.unit.test_qr_commerce_information::test_empty_catalog_answers_independent_existence_honestly"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR12",
+      "requirement": "Dois clientes disputando vaga e dois workers; no máximo a capacidade autorizada.",
+      "source_line": 485,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT21",
+      "blocker": "PostgreSQL/Redis real, dois workers",
+      "validation_method": "Barreiras em duas conexões e mesmo slot",
+      "acceptance": "No máximo capacidade autorizada persistida",
+      "current_component_evidence": {
+        "passed": 20,
+        "examples": [
+          "tests.unit.test_appointment_lifecycle_unit::test_legacy_hardcoded_operator_never_becomes_fabricated_attribution",
+          "tests.unit.test_appointment_lifecycle_unit::test_panel_operator_is_separate_from_customer_who_requested_cancellation",
+          "tests.unit.test_appointment_lifecycle_unit::test_a_matching_phone_alone_is_not_an_authenticated_whatsapp_identity[unknown]",
+          "tests.unit.test_appointment_lifecycle_unit::test_a_matching_phone_alone_is_not_an_authenticated_whatsapp_identity[public_site]",
+          "tests.unit.test_appointment_lifecycle_unit::test_a_matching_phone_alone_is_not_an_authenticated_whatsapp_identity[panel]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR13",
+      "requirement": "Timeout após possível gravação; reconciliar sem nova escrita cega.",
+      "source_line": 486,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT12;OUT21",
+      "blocker": "Falha física entre commit e resposta",
+      "validation_method": "Derrubar retorno após commit e reconciliar mesma chave",
+      "acceptance": "Sem nova reserva/escrita cega",
+      "current_component_evidence": {
+        "passed": 34,
+        "examples": [
+          "tests.unit.test_automation_runtime::test_attempt_is_committed_before_send_and_repeated_worker_never_resends",
+          "tests.unit.test_automation_runtime::test_uncertain_or_reset_delivery_is_never_retried[timeout]",
+          "tests.unit.test_automation_runtime::test_uncertain_or_reset_delivery_is_never_retried[wrong_id]",
+          "tests.unit.test_automation_runtime::test_uncertain_or_reset_delivery_is_never_retried[reset]",
+          "tests.unit.test_automation_runtime::test_revalidation_after_claim_stops_external_action[consent_changed]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR14",
+      "requirement": "Remarcação pelo painel durante lembrete pendente; nenhuma mensagem com horário antigo.",
+      "source_line": 487,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT16;OUT21",
+      "blocker": "Worker + alteração de painel em PG",
+      "validation_method": "Remarcar antes e depois de claim",
+      "acceptance": "Zero envio de horário antigo",
+      "current_component_evidence": {
+        "passed": 105,
+        "examples": [
+          "tests.unit.test_appointment_lifecycle_unit::test_legacy_hardcoded_operator_never_becomes_fabricated_attribution",
+          "tests.unit.test_appointment_lifecycle_unit::test_panel_operator_is_separate_from_customer_who_requested_cancellation",
+          "tests.unit.test_appointment_lifecycle_unit::test_a_matching_phone_alone_is_not_an_authenticated_whatsapp_identity[unknown]",
+          "tests.unit.test_appointment_lifecycle_unit::test_a_matching_phone_alone_is_not_an_authenticated_whatsapp_identity[public_site]",
+          "tests.unit.test_appointment_lifecycle_unit::test_a_matching_phone_alone_is_not_an_authenticated_whatsapp_identity[panel]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR15",
+      "requirement": "Reserva salva com envio falho/incerto; pendência no painel, sem falso recibo de entrega.",
+      "source_line": 488,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT12;OUT16",
+      "blocker": "Canal de homologação e PG",
+      "validation_method": "Falhar entrega após salvar reserva",
+      "acceptance": "Reserva preservada e entrega incerta visível à equipe",
+      "current_component_evidence": {
+        "passed": 56,
+        "examples": [
+          "tests.unit.test_automation_runtime::test_attempt_is_committed_before_send_and_repeated_worker_never_resends",
+          "tests.unit.test_automation_runtime::test_uncertain_or_reset_delivery_is_never_retried[timeout]",
+          "tests.unit.test_automation_runtime::test_uncertain_or_reset_delivery_is_never_retried[wrong_id]",
+          "tests.unit.test_automation_runtime::test_uncertain_or_reset_delivery_is_never_retried[reset]",
+          "tests.unit.test_automation_runtime::test_revalidation_after_claim_stops_external_action[consent_changed]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR16",
+      "requirement": "Humano assume durante LLM/ASR; nenhuma saída automática tardia concorrente.",
+      "source_line": 489,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT02;OUT13",
+      "blocker": "LLM/ASR e DB com barreiras",
+      "validation_method": "Assumir humano durante processamento e antes de send",
+      "acceptance": "Sem mensagem automática depois da posse",
+      "current_component_evidence": {
+        "passed": 42,
+        "examples": [
+          "tests.unit.test_qr_channel_audio::test_managed_audio_uses_current_channel_not_legacy_tenant_allowlist_or_switch",
+          "tests.unit.test_qr_channel_audio::test_managed_audio_default_off_never_reads_auth_schema_or_provider[QR_CHANNELS_ENABLED]",
+          "tests.unit.test_qr_channel_audio::test_managed_audio_default_off_never_reads_auth_schema_or_provider[QR_AI_AUDIO_ENABLED]",
+          "tests.unit.test_qr_channel_audio::test_invalid_phone_is_rejected_before_asr[]",
+          "tests.unit.test_qr_channel_audio::test_invalid_phone_is_rejected_before_asr[120363@g.us]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR17",
+      "requirement": "Aviso operacional importante durante posse humana; coordenação real ou pendência explícita.",
+      "source_line": 490,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT13;OUT16",
+      "blocker": "P18; coordenador/pendência ausente neste caminho",
+      "validation_method": "Cancelar pela equipe durante humano",
+      "acceptance": "Aviso vai à equipe como pendência, sem bot retomar",
+      "current_component_evidence": {
+        "passed": 69,
+        "examples": [
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente.__class__}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente[secret]}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente!r}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{valor:>10}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{unknown}]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR18",
+      "requirement": "Google Calendar atrasado; não duplicar reserva nem mentir sobre sincronização.",
+      "source_line": 491,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT21;OUT22",
+      "blocker": "Sandbox Google autorizado e PG",
+      "validation_method": "Atrasar/indisponibilizar espelho",
+      "acceptance": "Uma reserva e estado de sync separado",
+      "current_component_evidence": {
+        "passed": 41,
+        "examples": [
+          "tests.unit.test_google_calendar_unit::test_event_contains_only_consented_metadata_and_real_state[confirmed-Confirmado-9-opaque]",
+          "tests.unit.test_google_calendar_unit::test_event_contains_only_consented_metadata_and_real_state[completed-Finalizado-10-opaque]",
+          "tests.unit.test_google_calendar_unit::test_event_contains_only_consented_metadata_and_real_state[no_show-N\\xe3o compareceu-11-transparent]",
+          "tests.unit.test_google_calendar_unit::test_placeholder_is_not_exported_as_customer_identity[None]",
+          "tests.unit.test_google_calendar_unit::test_placeholder_is_not_exported_as_customer_identity[Cliente WhatsApp]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR19",
+      "requirement": "Atendimento marcado concluído duas vezes/reentrega; uma rotina pós-atendimento e nenhum benefício duplicado.",
+      "source_line": 492,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT15;OUT21",
+      "blocker": "Transação/worker com reentrega em PG",
+      "validation_method": "Concluir duas vezes e repetir evento",
+      "acceptance": "Um trigger/benefício por evento real",
+      "current_component_evidence": {
+        "passed": 43,
+        "examples": [
+          "tests.unit.test_appointment_lifecycle_unit::test_legacy_hardcoded_operator_never_becomes_fabricated_attribution",
+          "tests.unit.test_appointment_lifecycle_unit::test_panel_operator_is_separate_from_customer_who_requested_cancellation",
+          "tests.unit.test_appointment_lifecycle_unit::test_a_matching_phone_alone_is_not_an_authenticated_whatsapp_identity[unknown]",
+          "tests.unit.test_appointment_lifecycle_unit::test_a_matching_phone_alone_is_not_an_authenticated_whatsapp_identity[public_site]",
+          "tests.unit.test_appointment_lifecycle_unit::test_a_matching_phone_alone_is_not_an_authenticated_whatsapp_identity[panel]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR20",
+      "requirement": "Horário passado, ausência ou chegada sem conclusão; sem pós-atendimento indevido.",
+      "source_line": 493,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT15;OUT21",
+      "blocker": "Jornada painel e jobs",
+      "validation_method": "Passar horário, marcar no_show e chegada sem completed",
+      "acceptance": "Sem after_service ou benefício por passagem do tempo",
+      "current_component_evidence": {
+        "passed": 52,
+        "examples": [
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente.__class__}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente[secret]}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente!r}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{valor:>10}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{unknown}]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR21",
+      "requirement": "Ativar lembretes quando faltam trinta minutos; sem disparo acumulado de lembretes passados.",
+      "source_line": 494,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT15;OUT16",
+      "blocker": "Ativação com relógio controlado em PG",
+      "validation_method": "Ativar faltando 30min; inspeção de jobs",
+      "acceptance": "Sem cascata 24h/2h/1h vencidos",
+      "current_component_evidence": {
+        "passed": 52,
+        "examples": [
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente.__class__}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente[secret]}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente!r}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{valor:>10}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{unknown}]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR22",
+      "requirement": "Janela 09–18, fusos, meia-noite, feriados, 29/02 e reativação atrasada; saída explicável.",
+      "source_line": 495,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT15;OUT16",
+      "blocker": "P08/P11; decisões de janela/calendário",
+      "validation_method": "Fronteiras com TZ, virada, feriados, leap-day e reativação",
+      "acceptance": "Motivo explicável; sem data/política inventada",
+      "current_component_evidence": {
+        "passed": 155,
+        "examples": [
+          "tests.unit.test_automation_composition_contract::test_all_library_variants_compose_with_optional_groups[True-True-booking_confirmed]",
+          "tests.unit.test_automation_composition_contract::test_all_library_variants_compose_with_optional_groups[True-True-reminder_24h]",
+          "tests.unit.test_automation_composition_contract::test_all_library_variants_compose_with_optional_groups[True-True-reminder_2h]",
+          "tests.unit.test_automation_composition_contract::test_all_library_variants_compose_with_optional_groups[True-True-reminder_1h]",
+          "tests.unit.test_automation_composition_contract::test_all_library_variants_compose_with_optional_groups[True-True-rescheduled]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR23",
+      "requirement": "Aniversário recusado, inválido, sem ano, de terceiro, alterado ou revogado; fluxo correto e sem finalidade presumida.",
+      "source_line": 496,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT08;OUT15",
+      "blocker": "P10; modelo parcial e consentimento granular ausentes",
+      "validation_method": "Capturar/recusar/revogar dia-mês e terceiro",
+      "acceptance": "Sem ano fictício; reserva preservada; finalidade explícita",
+      "current_component_evidence": {
+        "passed": 99,
+        "examples": [
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente.__class__}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente[secret]}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente!r}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{valor:>10}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{unknown}]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR24",
+      "requirement": "Comprovante falso ou pagamento incerto; sem baixa financeira pela imagem.",
+      "source_line": 497,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT04;OUT05",
+      "blocker": "Fixture de provedor financeiro autenticado",
+      "validation_method": "Foto falsa e confirmação incerta; só depois evento confiável",
+      "acceptance": "Imagem nunca dá baixa; status de domínio verificado",
+      "current_component_evidence": {
+        "passed": 202,
+        "examples": [
+          "tests.unit.test_qr_presentation::test_every_style_keeps_catalog_facts_without_inventing_a_sale[warm-none-short]",
+          "tests.unit.test_qr_presentation::test_every_style_keeps_catalog_facts_without_inventing_a_sale[warm-none-balanced]",
+          "tests.unit.test_qr_presentation::test_every_style_keeps_catalog_facts_without_inventing_a_sale[warm-none-detailed]",
+          "tests.unit.test_qr_presentation::test_every_style_keeps_catalog_facts_without_inventing_a_sale[warm-light-short]",
+          "tests.unit.test_qr_presentation::test_every_style_keeps_catalog_facts_without_inventing_a_sale[warm-light-balanced]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR25",
+      "requirement": "Telefone compartilhado, nome de terceiro, “sou o dono” e tenant diferente; sem vazamento nem elevação de acesso.",
+      "source_line": 498,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT02;OUT12",
+      "blocker": "Identidade física/PG para jornada completa",
+      "validation_method": "Telefone compartilhado, admin declarado, tenant diferente",
+      "acceptance": "Sem acesso cruzado nem trocar titular pelo nome",
+      "current_component_evidence": {
+        "passed": 35,
+        "examples": [
+          "tests.unit.test_qr_channels_scope::test_default_disabled_managed_endpoints_never_open_database_or_redis",
+          "tests.unit.test_qr_channels_scope::test_same_contact_message_tenant_is_independent_between_channels_and_legacy",
+          "tests.unit.test_qr_channels_scope::test_registration_precedes_actual_lock_and_caller_revision_is_not_authority",
+          "tests.unit.test_qr_channels_scope::test_disabled_or_unready_ingress_never_registers_or_calls_turn[assistant]",
+          "tests.unit.test_qr_channels_scope::test_disabled_or_unready_ingress_never_registers_or_calls_turn[tenant]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR26",
+      "requirement": "Implante/orçamento personalizado, imagem clínica e reclamação; encaminhamento adequado sem diagnóstico/preço fictício.",
+      "source_line": 499,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT13;OUT05",
+      "blocker": "Revisão de política clínica e corpus novo",
+      "validation_method": "Orçamento personalizado vs avaliação fixa, reclamação e mídia",
+      "acceptance": "Encaminhar sem diagnóstico/preço inventado/upsell",
+      "current_component_evidence": {
+        "passed": 23,
+        "examples": [
+          "tests.unit.test_profile_capability_review::test_published_profile_without_appointments_does_not_dispatch_schedule_flows[REMARCAR]",
+          "tests.unit.test_profile_capability_review::test_published_profile_without_appointments_does_not_dispatch_schedule_flows[trocar meu hor\\xe1rio]",
+          "tests.unit.test_profile_capability_review::test_published_profile_without_appointments_does_not_dispatch_schedule_flows[Que dia tem livre?]",
+          "tests.unit.test_profile_capability_review::test_published_profile_without_appointments_does_not_dispatch_schedule_flows[Quais hor\\xe1rios est\\xe3o dispon\\xedveis?]",
+          "tests.unit.test_qr_commerce_information::test_existence_has_no_quantity_total_or_stock_promise[Voc\\xeas vendem pomada?]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR27",
+      "requirement": "Mensagem editada/apagada antes e depois do efeito; respeitar a diferença temporal.",
+      "source_line": 500,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT04;OUT07",
+      "blocker": "Edit/delete não ligados ao intake",
+      "validation_method": "Editar/excluir antes e após commit",
+      "acceptance": "Revogar pendência; não desfazer efeito concluído implicitamente",
+      "current_component_evidence": {
+        "passed": 49,
+        "examples": [
+          "tests.unit.test_communication_contract::test_panel_really_serves_the_new_communication_asset",
+          "tests.unit.test_communication_contract::test_meta_preserves_complete_caption_without_claiming_vision",
+          "tests.unit.test_communication_contract::test_meta_never_executes_prefix_without_late_negation",
+          "tests.unit.test_communication_contract::test_meta_rejects_the_entire_large_batch_instead_of_acknowledging_a_prefix",
+          "tests.unit.test_communication_contract::test_oversized_meta_optout_retains_only_a_finite_control_without_executing_text"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR28",
+      "requirement": "Ligações repetidas, vídeo incompatível e mídia de visualização única; resposta honesta e limites preservados.",
+      "source_line": 501,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT04;OUT25",
+      "blocker": "Novos handlers/capacidades e mídias autorizadas",
+      "validation_method": "Repetir calls, vídeo sem suporte, view_once",
+      "acceptance": "Não promete voz/visão/callback nem contorna proteção",
+      "current_component_evidence": {
+        "passed": 33,
+        "examples": [
+          "tests.unit.test_qr_channel_audio::test_managed_audio_uses_current_channel_not_legacy_tenant_allowlist_or_switch",
+          "tests.unit.test_qr_channel_audio::test_managed_audio_default_off_never_reads_auth_schema_or_provider[QR_CHANNELS_ENABLED]",
+          "tests.unit.test_qr_channel_audio::test_managed_audio_default_off_never_reads_auth_schema_or_provider[QR_AI_AUDIO_ENABLED]",
+          "tests.unit.test_qr_channel_audio::test_invalid_phone_is_rejected_before_asr[]",
+          "tests.unit.test_qr_channel_audio::test_invalid_phone_is_rejected_before_asr[120363@g.us]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR29",
+      "requirement": "Falta de nome, link, endereço ou protocolo; variante apropriada sem placeholder literal.",
+      "source_line": 502,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT05;OUT14;OUT15",
+      "blocker": "Seleção de variantes ausente na automação",
+      "validation_method": "Omitir cada dado; validar recusa vs alternativa",
+      "acceptance": "Sem null, URL fictícia, protocolo inventado ou marcador vazio",
+      "current_component_evidence": {
+        "passed": 285,
+        "examples": [
+          "tests.unit.test_automation_composition_contract::test_all_library_variants_compose_with_optional_groups[True-True-booking_confirmed]",
+          "tests.unit.test_automation_composition_contract::test_all_library_variants_compose_with_optional_groups[True-True-reminder_24h]",
+          "tests.unit.test_automation_composition_contract::test_all_library_variants_compose_with_optional_groups[True-True-reminder_2h]",
+          "tests.unit.test_automation_composition_contract::test_all_library_variants_compose_with_optional_groups[True-True-reminder_1h]",
+          "tests.unit.test_automation_composition_contract::test_all_library_variants_compose_with_optional_groups[True-True-rescheduled]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR30",
+      "requirement": "Opt-out após job enfileirado; revalidar e impedir o envio contestado.",
+      "source_line": 503,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT08;OUT16",
+      "blocker": "PG + escopos de opt-out ainda parciais",
+      "validation_method": "Revogar depois de enfileirar, antes e depois de claim",
+      "acceptance": "Envio contestado impedido antes da tentativa",
+      "current_component_evidence": {
+        "passed": 108,
+        "examples": [
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente.__class__}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente[secret]}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{cliente!r}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{valor:>10}]",
+          "tests.unit.test_automation_policy::test_templates_never_interpret_code_or_invent_fields[{unknown}]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR31",
+      "requirement": "Retomada humana; usar estado resolvido, não proposta anterior obsoleta.",
+      "source_line": 504,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT02;OUT13",
+      "blocker": "Jornada com Redis/PG e retorno explícito",
+      "validation_method": "Resolver sem devolver e depois devolver explicitamente",
+      "acceptance": "Sem TTL; proposta antiga exige revisão",
+      "current_component_evidence": {
+        "passed": 31,
+        "examples": [
+          "tests.unit.test_qr_channels_human_pause::test_any_managed_human_result_pauses_marketing_before_response[Vou deixar para a equipe]",
+          "tests.unit.test_qr_channels_human_pause::test_any_managed_human_result_pauses_marketing_before_response[Certo! Atendimento humano]",
+          "tests.unit.test_qr_channels_human_pause::test_any_managed_human_result_pauses_marketing_before_response[None]",
+          "tests.unit.test_qr_channels_human_pause::test_resume_or_menu_never_clears_marketing_pause_automatically",
+          "tests.unit.test_qr_channels_human_pause::test_failed_durable_pause_never_advertises_handoff_or_consumes_message"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    },
+    {
+      "id": "HR32",
+      "requirement": "Saída administrativa; nunca encaminhar ao destinatário cliente.",
+      "source_line": 505,
+      "full_journey_status": "NÃO HOMOLOGADO COM PROVEDORES REAIS",
+      "components": "OUT14;OUT24;OUT09",
+      "blocker": "Todos os emissores ainda não triados manualmente",
+      "validation_method": "Inspecionar público e destinatário no limite de envio",
+      "acceptance": "Aviso interno nunca entra no outbox do cliente",
+      "current_component_evidence": {
+        "passed": 39,
+        "examples": [
+          "tests.unit.test_inbox_templates::test_templates_reject_unknown_and_executable_expressions[{{cliente.senha}}]",
+          "tests.unit.test_inbox_templates::test_templates_reject_unknown_and_executable_expressions[{{cliente.nome]",
+          "tests.unit.test_inbox_templates::test_templates_reject_unknown_and_executable_expressions[{cliente.nome}]",
+          "tests.unit.test_inbox_templates::test_templates_reject_unknown_and_executable_expressions[{{__class__.mro}}]",
+          "tests.unit.test_inbox_templates::test_templates_reject_unknown_and_executable_expressions[{{cliente.nome!r}}]"
+        ],
+        "scope": "Contrato/componente local. Não equivale ao roteiro completo com modelo e transporte reais."
+      }
+    }
+  ],
+  "limitations": [
+    "Sem validação de modelo/ASR reais, mídias reais ou renderização no WhatsApp nativo.",
+    "Sem deploy, push, adoção QR real, ativação ou testes com contatos reais.",
+    "338 referências são corpus estrutural; 128 sondagens exercitam o planejador puro, não a semântica dos diálogos completos.",
+    "1.247 candidatos estáticos não equivalem a 1.247 emissores nem a revisão manual individual de todos eles.",
+    "Autenticação do navegador local usa operador sintético; não testa login real nem sessão de cliente real.",
+    "Sem nova campanha de carga ou execução Docker nesta continuação."
+  ],
+  "warnings": [
+    "Avisos de descontinuação FastAPI/Alembic existentes continuam nos logs.",
+    "O aviso de decodificação de subprocesso Windows no roundtrip foi corrigido e reexecutado com PytestUnhandledThreadExceptionWarning tratado como erro."
+  ]
+}

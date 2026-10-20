@@ -71,6 +71,28 @@ async def clear_transient_handoff(redis, state_key):
     A manually resumed managed channel must not hand itself back to a human due
     to the old Redis pause. Preserve every other conversational/domain state.
     """
+    scope=_assistant_scope.get()
+    if enabled() and scope is not None:
+        tenant,channel,phone,revision,_provider=scope
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db,tenant):
+                resumed=(await db.execute(text('''SELECT e.revision FROM inbox_control_events e
+                  JOIN inbox_controls c ON c.tenant_id=e.tenant_id AND c.id=e.control_id
+                  WHERE c.tenant_id=:t AND c.channel_id=:channel AND c.contact_e164=:phone
+                    AND c.mode='ai' AND c.revision=:revision AND e.source='operator'
+                    AND e.mode='ai' AND e.previous_mode<>'ai'
+                  ORDER BY e.revision DESC LIMIT 1'''),
+                  {'t':tenant,'channel':channel,'phone':phone,'revision':revision})).scalar_one_or_none()
+        if resumed is not None:
+            marker=state_key+':ai-resume-generation'
+            seen=await redis.get(marker)
+            if isinstance(seen,bytes):seen=seen.decode('ascii',errors='replace')
+            if str(seen)!=str(resumed):
+                # Only provisional conversation state. Domain rows, journal,
+                # verified operation receipts and WhatsApp credentials remain.
+                for key in (state_key,state_key+':commerce',state_key+':birthday-invite'):await redis.delete(key)
+                await redis.set(marker,str(resumed),ex=7*86400)
+                return
     try:
         state = json.loads(await redis.get(state_key) or "null")
     except (ValueError, TypeError):
@@ -78,6 +100,7 @@ async def clear_transient_handoff(redis, state_key):
     if isinstance(state, dict) and state.get("step") == "human":
         await redis.delete(state_key)
         await redis.delete(state_key+":commerce")
+        await redis.delete(state_key+':birthday-invite')
 
 
 class Change(StrictModel):

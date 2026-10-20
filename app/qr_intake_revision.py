@@ -11,6 +11,7 @@ import os
 import re
 import secrets
 from uuid import UUID
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import Field
@@ -85,6 +86,7 @@ def channel_keys(identity, phone):
 class Notice(StrictModel):
     phone: str = Field(pattern=PHONE_PATTERN)
     message_id: str = Field(pattern=ID_PATTERN)
+    control: Literal['birthday','marketing','all','human'] | None = None
 
 
 def authorized_tenant(request: Request, phone: str):
@@ -125,7 +127,11 @@ async def notice(payload: Notice, request: Request):
     from redis.asyncio import from_url
     redis = from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), socket_connect_timeout=3, socket_timeout=3)
     try:
-        return {"revision": await register(redis, tenant, payload.phone, payload.message_id)}
+        revision=await register(redis, tenant, payload.phone, payload.message_id)
+        if payload.control:
+            from app.contact_preferences import receive_control
+            await receive_control(tenant,payload.phone,payload.control,redis)
+        return {"revision":revision}
     except Exception:
         raise HTTPException(503, "Não consegui validar esta mensagem agora") from None
     finally:

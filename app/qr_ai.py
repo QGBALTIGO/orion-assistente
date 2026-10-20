@@ -36,6 +36,7 @@ from app import qr_commerce
 from app import qr_intake_revision
 from app import qr_channel_scope
 from app import qr_cancellation
+from app.communication_events import EventMetadata
 from app.qr_service_context import resolve_service_reply
 from app.groq_understanding import interpret_plan
 from app.qr_understanding import UnderstandingPlan, build_plan, clarification_for, unique_service_reply
@@ -129,6 +130,7 @@ class Incoming(StrictModel):
     intake_revision: int | None = Field(default=None, ge=1, le=9007199254740991, strict=True)
     require_summary_review: bool = Field(default=False, strict=True)
     profile: WhatsAppProfile | None = None
+    envelope: EventMetadata | None = None
 
     @model_validator(mode="after")
     def ordered_ids(self):
@@ -2101,6 +2103,18 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
 async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, preview: bool = False, *, _confirm_scoped: bool = False):
     state_key = f"orion:qr:ai:{tenant}:{namespace}"
     text_clean = body.strip().lower()
+    from app.contact_preferences import handle_optout,birthday_turn
+    optout=await handle_optout(tenant,phone,body,preview=preview)
+    if optout is not None:
+        await redis.delete(state_key+':birthday-invite')
+        return {'answer':optout,'step':'communication_preference'}
+    birthday=await birthday_turn(tenant,phone,body,redis,state_key,preview=preview)
+    if birthday:
+        if birthday.get('remainder'):
+            following=await _turn(tenant,phone,birthday['remainder'],redis,namespace,preview,_confirm_scoped=_confirm_scoped)
+            answer=birthday['answer']+('\n\n'+following['answer'] if following.get('answer') else '')
+            if presentation.fits_message(answer):return {**following,'answer':answer}
+        return {'answer':birthday['answer'],'step':'birthday_preference'}
     if text_clean in RESET:
         await redis.delete(state_key)
         await redis.delete(state_key + ":commerce")
@@ -2482,8 +2496,14 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
                 reason="Não foi possível confirmar esse horário. Mantive o serviço, o profissional e o dia para conferir alternativas; nenhuma nova confirmação foi feita.")
         await redis.delete(state_key)
         when = reserved["start_at"].astimezone(ZoneInfo(business["timezone"]))
-        return {"answer": presentation.render_summary(_summary(state, when, business, catalog,
-                    protocol=reserved["protocol"], total_cents=reserved["total_cents"]), _preferences(business), confirmed=True),
+        answer=presentation.render_summary(_summary(state, when, business, catalog,
+                    protocol=reserved["protocol"], total_cents=reserved["total_cents"]), _preferences(business), confirmed=True)
+        from app.contact_preferences import offer_birthday,BIRTHDAY_INVITATION
+        if presentation.fits_message(answer+'\n\n'+BIRTHDAY_INVITATION):
+            try:invitation=await offer_birthday(tenant,phone,redis,state_key,reserved['protocol'])
+            except Exception:invitation=''  # Optional invitation cannot hide a committed booking receipt.
+            if invitation:answer+='\n\n'+invitation
+        return {"answer": answer,
                 "step": "confirmed", "protocol": reserved["protocol"], "_verified_operation": True}
     if state.get("step") == "time":
         options = state.get("slots", [])
@@ -2628,7 +2648,8 @@ async def _require_pending_review(redis, key: str):
 async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                      message_id: str | None = None, preview: bool = False,
                      prepare=None, reset: bool = False, message_ids: list[str] | None = None,
-                     intake_revision: int | None = None, require_summary_review: bool = False):
+                     intake_revision: int | None = None, require_summary_review: bool = False,
+                     event_meta: dict | None = None):
     from redis.asyncio import from_url
     from app import qr_operation_receipt
     channel = qr_channel_scope.current()
@@ -2680,7 +2701,16 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                     if not preview and _weekday_restriction(body) is not None:
                         raw = await redis.get(qr_operation_receipt.key(tenant, phone))
                         _recent_operation.set(qr_operation_receipt._read(raw, tenant, phone) if raw else None)
-                    result = await qr_operation_receipt.pending(redis, tenant, phone, require_summary_review, preview=preview)
+                    result = None
+                    if event_meta:
+                        from app.communication_events import event_reply,needs_review,invalidate_proposal
+                        repair=event_reply(event_meta,body)
+                        if needs_review(event_meta) or repair:
+                            await _require_pending_review(redis,state_key)
+                            await invalidate_proposal(redis,state_key)
+                        if repair is not None:result={'answer':repair or None,'step':'event_repair'}
+                    if result is None:
+                        result = await qr_operation_receipt.pending(redis, tenant, phone, require_summary_review, preview=preview)
                     if result is None:
                         result = await turn(tenant, phone, body, redis, namespace, preview=preview)
                     if (not preview and result.get("step") == "human" and not (
@@ -2772,7 +2802,8 @@ async def qr_reply(payload: Incoming, request: Request):
     return await run_locked(tenant, payload.phone, payload.text, payload.phone, payload.message_id,
                             message_ids=payload.message_ids, intake_revision=payload.intake_revision,
                             require_summary_review=payload.require_summary_review,
-                            prepare=remember_profile if payload.profile else None)
+                            prepare=remember_profile if payload.profile else None,
+                            **({'event_meta':payload.envelope.model_dump(exclude_none=True)} if payload.envelope else {}))
 
 
 async def _managed_assistant_ready(identity):
@@ -2840,6 +2871,10 @@ async def managed_qr_interaction(channel_id: UUID, payload: qr_intake_revision.N
         except Exception:
             raise HTTPException(503, "Não consegui registrar esta mensagem agora") from None
         await revalidate()
+        if payload.control:
+            from app.contact_preferences import receive_control
+            await receive_control(identity.tenant_id,payload.phone,payload.control,redis,identity=identity)
+            await revalidate()
         return {"recorded": True, "revision": revision}
     finally:
         await redis.aclose()
@@ -2880,7 +2915,8 @@ async def managed_qr_reply(channel_id: UUID, payload: Incoming, request: Request
         result = await run_locked(identity.tenant_id, payload.phone, payload.text,
             identity.conversation_namespace(payload.phone), payload.message_id,
             message_ids=ids, intake_revision=payload.intake_revision,
-            require_summary_review=payload.require_summary_review)
+            require_summary_review=payload.require_summary_review,
+            **({'event_meta':payload.envelope.model_dump(exclude_none=True)} if payload.envelope else {}))
         if inbox_control.enabled():
             if result.get("step") == "human":
                 await inbox_control.customer_handoff(identity.tenant_id, channel_id, payload.phone)

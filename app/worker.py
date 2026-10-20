@@ -35,7 +35,7 @@ async def process_inbound_event(ctx: dict, tenant_id: str, event_id: str):
                 UPDATE inbound_events SET status='processing',attempts=attempts+1,
                     processing_at=now()
                 WHERE tenant_id=:t AND id=:id AND status='pending'
-                RETURNING id, channel_id, sender_e164, message_text,external_id
+                RETURNING id, channel_id, sender_e164, message_text,external_id,envelope
             """), {"t": tenant, "id": event})).mappings().first()
     if claim is None:
         return "already_processed_or_processing"
@@ -44,8 +44,7 @@ async def process_inbound_event(ctx: dict, tenant_id: str, event_id: str):
         from app import inbox_control as control
         if control.enabled():
             return await _central_inbound(ctx,tenant,event,claim,factory)
-        answer = await reply(tenant, claim["channel_id"], claim["sender_e164"],
-                             claim["message_text"], ctx["redis"], message_id=str(claim["id"]))
+        answer = await _event_answer(tenant,event,claim,ctx['redis'])
         async with factory() as session:
             async with tenant_transaction(session, tenant):
                 if answer:
@@ -55,7 +54,7 @@ async def process_inbound_event(ctx: dict, tenant_id: str, event_id: str):
                         VALUES (:tenant,:channel,:event,:recipient,:body)
                         ON CONFLICT (tenant_id,event_id) DO NOTHING
                     """), {"tenant":tenant,"channel":claim["channel_id"],
-                            "event":event,"recipient":claim["sender_e164"],"body":answer[:1500]})
+                            "event":event,"recipient":claim["sender_e164"],"body":bounded_answer(answer)})
                 await session.execute(text("""
                     UPDATE inbound_events SET status='processed',processed_at=now(),
                         message_text='',processing_at=NULL WHERE tenant_id=:t AND id=:id
@@ -185,7 +184,7 @@ async def _central_inbound(ctx,tenant,event,claim,factory):
                   ON c.tenant_id=m.tenant_id AND c.id=m.control_id WHERE m.tenant_id=:t AND c.channel_id=:c
                   AND c.contact_e164=:phone AND m.direction='in' AND m.external_id=:external"""),
                   {'t':tenant,'c':channel,'phone':phone,'external':claim['external_id']})).scalar_one_or_none()
-        answer=None if revision is False or observed!=revision else await reply(tenant,channel,phone,claim["message_text"],ctx["redis"],message_id=str(event))
+        answer=None if revision is False or observed!=revision else await _event_answer(tenant,event,claim,ctx['redis'])
         # A customer handoff changed the generation during reply. Mark the
         # inbound processed without binding the obsolete AI authority.
         token=control._assistant_scope.set(None)
@@ -196,7 +195,7 @@ async def _central_inbound(ctx,tenant,event,claim,factory):
                     if answer and row["mode"]=="ai" and row["revision"]==revision and row["pending_operation"] is None:
                         from uuid import uuid5,NAMESPACE_URL
                         operation=uuid5(NAMESPACE_URL,"orion:meta:"+str(event))
-                        body=answer[:1200]
+                        body=bounded_answer(answer)
                         await runtime.record_outbound(db,tenant,row,operation,"assistant",body,runtime.fingerprint(phone,body))
                     await db.execute(text("""UPDATE inbound_events SET status='processed',processed_at=now(),
                       message_text='',processing_at=NULL WHERE tenant_id=:t AND id=:id"""),{"t":tenant,"id":event})
@@ -206,3 +205,40 @@ async def _central_inbound(ctx,tenant,event,claim,factory):
         finally:
             control._assistant_scope.reset(token)
     return "processed"
+
+
+def bounded_answer(answer):
+    from app.qr_presentation import fits_message
+    if fits_message(answer): return answer
+    return 'Preciso revisar o resumo completo antes de continuar. Nenhuma nova confirmação foi enviada. Pode indicar qual pedido deseja conferir?'
+
+
+async def _event_answer(tenant,event,claim,redis):
+    from app.communication_events import bind_meta,event_reply,needs_review,invalidate_proposal
+    from app.whatsapp_bot import state_key
+    from fastapi import HTTPException
+    meta=claim.get('envelope') or {}
+    # Domain writes and transaction completion both recheck the authenticated
+    # event; another inbound cannot authorize a result prepared for this one.
+    try:
+        async with redis.lock(f'orion:meta:turn:{tenant}:{claim["channel_id"]}:{claim["sender_e164"]}',timeout=30,blocking_timeout=3):
+            prepared=False
+            try:
+                with bind_meta(tenant,claim['channel_id'],claim['sender_e164'],event):
+                    async with get_session_factory()() as db:
+                        async with tenant_transaction(db,tenant):pass
+                    prepared=True
+                    repair=event_reply(meta,claim['message_text'])
+                    if needs_review(meta) or repair:
+                        await invalidate_proposal(redis,state_key(str(tenant),str(claim['channel_id']),claim['sender_e164']))
+                    answer=repair if repair is not None else await reply(tenant,claim['channel_id'],claim['sender_e164'],claim['message_text'],redis,message_id=str(event))
+                    async with get_session_factory()() as db:
+                        async with tenant_transaction(db,tenant):pass
+                    return answer or None
+            except HTTPException as exc:
+                if exc.status_code==409 and prepared:
+                    await invalidate_proposal(redis,state_key(str(tenant),str(claim['channel_id']),claim['sender_e164']))
+                raise
+    except HTTPException as exc:
+        if exc.status_code==409: return None
+        raise

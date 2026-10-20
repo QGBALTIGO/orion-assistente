@@ -182,11 +182,15 @@ async def enqueue(tenant_id: UUID, channel_id: UUID, payload: Message, actor: Ac
         return {"operation_id":payload.operation_id,"status":"queued","sent":False}
 
 
+from app.communication_events import EventMetadata
+
+
 class Journal(StrictModel):
     phone: str=Field(pattern=r"^55[1-9][0-9]{9,10}$")
     message_id: str=Field(pattern=r"^[a-zA-Z0-9._:-]{1,160}$")
     text: str=Field(default="",max_length=1500)
     kind: str=Field(default="text",pattern=r"^(text|audio|unsupported)$")
+    envelope: EventMetadata | None = None
 
 
 @router.post("/internal/qr/channels/{channel_id}/messages",include_in_schema=False)
@@ -201,7 +205,8 @@ async def journal(channel_id: UUID,payload: Journal,request: Request):
         async with tenant_transaction(db,identity.tenant_id):
             guard=_notice_identity(identity.tenant_id,payload.phone,identity)
             await _notice_guard(db,guard)
-            await runtime.record_inbound(db,identity.tenant_id,channel_id,payload.phone,payload.message_id,payload.text,payload.kind)
+            await runtime.record_inbound(db,identity.tenant_id,channel_id,payload.phone,payload.message_id,payload.text,payload.kind,
+                **({'envelope':payload.envelope.model_dump(exclude_none=True)} if payload.envelope else {}))
             await _notice_guard(db,guard)
     return {"recorded":True}
 

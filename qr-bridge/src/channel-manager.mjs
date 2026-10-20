@@ -1,3 +1,4 @@
+import {safetyControl} from './inbound-event.mjs';
 /** Per-channel lifecycle; SQL broker owns the distributed fence, not this Map. */
 import {randomUUID,timingSafeEqual} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
@@ -84,7 +85,9 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         const saved=await broker.journal(c.id,c.key,{owner,fence:c.fence},payload);
         if(saved?.recorded!==true)throw Error('inbox_journal_unconfirmed');
       }
-      const recorded=await broker.interaction(c.id,c.key,{owner,fence:c.fence},{phone:payload.phone,message_id:payload.message_id});
+      const control=payload.envelope?.control||safetyControl(payload.text);
+      const recorded=await broker.interaction(c.id,c.key,{owner,fence:c.fence},{phone:payload.phone,message_id:payload.message_id,
+        ...(!c.inboxControl&&control?{control}:{})});
       if(recorded?.recorded!==true||!Number.isSafeInteger(recorded.revision)||recorded.revision<1)throw Error('channel_interaction_unconfirmed');
       await assertCurrent();const proof=Object.freeze({revision:recorded.revision});
       notices.set(proof,{phone:payload.phone,id:payload.message_id,revision:recorded.revision,state:'new'});return proof;
@@ -141,7 +144,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
           try{
             const result=await broker.forward(c.id,c.key,{owner,fence:c.fence},
               {phone:payload.phone,message_id:payload.message_id,message_ids:ids,text:payload.text,intake_revision:revision,
-                require_summary_review:c.summaryReview.get(payload.phone)!==false});
+                require_summary_review:c.summaryReview.get(payload.phone)!==false,
+                ...(payload.envelope?{envelope:payload.envelope}:{})});
             if(result?.step==='superseded'&&result.answer===null&&result.not_committed===true){
               observed.forEach(item=>{item.state='new';});c.summaryReview.set(payload.phone,true);
               return {state:'superseded',not_committed:true};

@@ -37,7 +37,7 @@ def test_inbox_migrations_roundtrip_and_refuse_data_loss():
 
     def alembic(*args, success=True):
         result = subprocess.run([sys.executable, "-m", "alembic", *args], cwd=root, env=environment,
-            capture_output=True, text=True, timeout=90)
+            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=90)
         if success:
             assert result.returncode == 0, result.stderr.replace(owner.password or "no-password", "[redacted]").replace(migration.password or "no-password", "[redacted]")
         else:
@@ -47,14 +47,16 @@ def test_inbox_migrations_roundtrip_and_refuse_data_loss():
     with psycopg.connect(owner_dsn, autocommit=True) as admin:
         admin.execute(sql.SQL("CREATE DATABASE {} OWNER app_migrator").format(sql.Identifier(database)))
     try:
-        alembic("upgrade", "head")
+        # This roundtrip is specifically for the reversible 0024–0028 chain.
+        # 0029 has its own forward-only preservation/rehearsal test.
+        alembic("upgrade", "0028_workflow_drafts")
         with psycopg.connect(dsn) as db:
             tables = db.execute("""SELECT relname,relrowsecurity,relforcerowsecurity FROM pg_class
               WHERE relname IN ('inbox_labels','inbox_quick_replies','inbox_customer_labels','inbox_controls','inbox_control_events',
                 'inbox_channel_links','inbox_messages','inbox_provider_receipts','inbox_reads')""").fetchall()
             assert len(tables) == 9 and all(enabled and forced for _, enabled, forced in tables)
         alembic("downgrade", "0023_automation_notice_guard")
-        alembic("upgrade", "head")
+        alembic("upgrade", "0028_workflow_drafts")
         tenant = uuid4()
         with psycopg.connect(dsn) as db:
             db.execute("INSERT INTO tenants(id,name,slug) VALUES(%s,'Synthetic migration',%s)", (tenant, "migration-"+tenant.hex))

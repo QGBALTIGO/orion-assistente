@@ -1,3 +1,4 @@
+import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl} from './inbound-event.mjs';
 /**
  * Orion Linked Device — aparelho de teste único, transporte não oficial.
  * Apenas mensagens privadas recebidas após conexão; nada de histórico antigo,
@@ -341,14 +342,14 @@ function installListeners(client,mine,saveCreds){
       if(legacyCentral.configured()){
         if(!allowAssistantRecipient(phone,connectedStore.settings()))return;
         return legacyCentral.forward({phone,message_id:traceId,message_ids:batch.messages.map(item=>item.id),
-          text:batch.text,intake_revision:batch.intakeRevision},
+          text:batch.text,intake_revision:batch.intakeRevision,...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{})},
           {noticeProofs:entries.map(item=>item.noticeProof),isCurrent:current,beforeReply:value=>typing.beforeReply(value)});
       }
       transport.record('ai_forward',traceId,{count:batch.messages.length});
       let answer;
       try{answer=await forwardAssistant({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
         messageId:traceId,messageIds:batch.messages.map(item=>item.id),text:batch.text,intakeRevision:batch.intakeRevision,
-        profile:namesStore.profile(phone),isCurrent:current,
+        profile:namesStore.profile(phone),isCurrent:current,...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{}),
         requireSummaryReview:revisionEnabled?summaryReviewRequired.get(phone)!==false:undefined});}
       catch(error){if(revisionEnabled)summaryReviewRequired.set(phone,true);transport.record('ai_forward_failed',traceId);throw error;}
       if(answer?.state==='superseded'&&answer?.not_committed===true){
@@ -371,7 +372,27 @@ function installListeners(client,mine,saveCreds){
       });
     }
   });
-  client.ev.on("messages.upsert",async ({messages:incoming,type})=>{
+  let noticePending=0;const rejectedNotices=new Map(),rejectedEpoch=new Map();
+  function enqueueOverflow(message,normalized,conversationKey){
+    rejectedEpoch.set(conversationKey,(rejectedEpoch.get(conversationKey)||0)+1);
+    if(rejectedEpoch.size>100)rejectedEpoch.delete(rejectedEpoch.keys().next().value);
+    const old=rejectedNotices.get(conversationKey),control=normalized.event.control||safetyControl(normalized.text);
+    if(old){if(control)queueControl(old.controls,[message,normalized]);else old.latest=[message,normalized];return;}
+    if(rejectedNotices.size>=100)return;
+    const state={controls:[],latest:null};rejectedNotices.set(conversationKey,state);
+    void (async()=>{let item=[message,normalized];while(item&&intakeCurrent()){
+      const [msg,event]=item,phone=await resolveMessagePhone(msg.key,client);
+      if(!phone||!intakeCurrent())return;
+      if(legacyCentral.configured()){await legacyCentral.resume();if(!legacyCentral.allowed(phone))return;
+        await legacyCentral.inbound({phone,message_id:msg.key.id,text:event.text||'',kind:'unsupported',...(event.special?{envelope:event.event}:{})});
+      }else{if(!allowAssistantRecipient(phone,connectedStore.settings()))return;
+        await registerAssistantIngress({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,messageId:msg.key.id,control:event.event.control||safetyControl(event.text)});
+      }
+      if(state.controls.length)item=state.controls.shift();else{item=state.latest;state.latest=null;}
+      if(!item&&intakeCurrent())try{await send(phone,'Recebi muitas mensagens de uma vez. Pode reenviar o pedido completo com a última correção? Nenhuma nova operação foi confirmada por essa entrada.',{waitForCapacity:true,isCurrent:()=>intakeCurrent()});}catch{}
+    }})().catch(()=>{}).finally(()=>rejectedNotices.delete(conversationKey));
+  }
+  async function receive({messages:incoming,type}){
     transport.record('upsert_batch',null,{count:incoming?.length||0,type});
     if(!intakeCurrent())return;
     const jobs=[];
@@ -391,8 +412,11 @@ function installListeners(client,mine,saveCreds){
       // single-recipient pilot, PN/LID variants share this configured key; a LID
       // never supplies a telephone number. Authorization still occurs below.
       const conversationKey=String(mine)+':'+(pilotNumber()||remote[1]+'@'+remote[2]);
-      const metadata={allowed:false,phone:null,jid:message.key.remoteJid};
-      const current=()=>intakeCurrent()&&(!metadata.allowed||
+      const normalized=normalizeInbound(message);if(normalized.silent)continue;
+      if(revisionEnabled&&noticePending>=40){enqueueOverflow(message,normalized,conversationKey);continue;}
+      const epoch=rejectedEpoch.get(conversationKey)||0;
+      const metadata={allowed:false,phone:null,jid:message.key.remoteJid,...(normalized.special?{event:normalized.event}:{})};
+      const current=()=>intakeCurrent()&&(rejectedEpoch.get(conversationKey)||0)===epoch&&(!metadata.allowed||
         (legacyCentral.configured()?legacyCentral.allowed(metadata.phone):allowAssistantRecipient(metadata.phone,connectedStore.settings())));
       let identityTask;
       const resolveIdentity=()=>identityTask||=(async()=>{
@@ -406,31 +430,37 @@ function installListeners(client,mine,saveCreds){
         transport.record('inbound_resolved',traceId);
         return phone;
       })();
-      const task=inboundIntake.submit({conversationKey,messageId:traceId,isCurrent:current,
-        ...(revisionEnabled?{notice:async()=>{
+      // Start the authenticated notice before queue admission; rejected work
+      // still revokes an obsolete turn and records customer safety controls.
+      const noticeTask=revisionEnabled?(()=>{noticePending++;return (async()=>{
           const phone=await resolveIdentity();
           if(!phone||!current()||!metadata.allowed)return {skip:true};
-          const body=extractText(message.message),media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
+          const body=normalized.text,media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
           if(legacyCentral.configured()){
-            const proof=await legacyCentral.inbound({phone,message_id:traceId,text:body||'',kind:media?'audio':'text'});
+            const proof=await legacyCentral.inbound({phone,message_id:traceId,text:body||'',kind:media?'audio':body?'text':'unsupported',
+              ...(normalized.special?{envelope:normalized.event}:{})});
             metadata.noticeProof=proof;return proof;
           }
-          if(!body&&(!media||!assistantAudioEnabled()||!allowAssistantAudio(phone,connectedStore.settings())))return {skip:true};
-          return registerAssistantIngress({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,messageId:traceId});
-        }}:{}),
+          if(!normalized.special&&!body&&(!media||!assistantAudioEnabled()||!allowAssistantAudio(phone,connectedStore.settings())))return {skip:true};
+          return registerAssistantIngress({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,messageId:traceId,control:normalized.event.control||safetyControl(body)});
+        })().finally(()=>{noticePending--;});})():null;
+      void noticeTask?.catch(()=>{});
+      const task=inboundIntake.submit({conversationKey,messageId:traceId,isCurrent:current,
+        ...(noticeTask?{notice:()=>noticeTask}:{}),
         prepare:async({signal})=>{
           const phone=await resolveIdentity();
           if(!current()||signal.aborted)return {skip:true};
           if(!phone)return {skip:true};
-          let body=extractText(message.message);
+          let body=normalized.text;
           const media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
-          if(!body&&!media){transport.record('inbound_no_text',traceId);return {skip:true};}
+          if(!normalized.special&&!body&&!media){transport.record('inbound_no_text',traceId);return {skip:true};}
           const at=timestampMs(message.messageTimestamp)||Date.now();
           const row={id:'wa:'+traceId,phone,body:body?String(body).slice(0,2000):'[Áudio recebido]',direction:'in',at};
           pushMessage(row);
           lastInboundAt=Date.now();inboundSinceConnect=true;if(type==='append')recentAppends++;
           if(!metadata.allowed){transport.record('pilot_denied',traceId);return {skip:true};}
           transport.record('pilot_allowed',traceId);
+          if(normalized.special)return {text:body||'[Evento de mensagem recebido]'};
           if(!body){
             if(!assistantAudioEnabled()||!allowAssistantAudio(phone,connectedStore.settings()))return {skip:true};
             const txt=await transcribeAssistantAudio(message,{client,downloadMediaMessage,phone,token:KEY,
@@ -442,9 +472,9 @@ function installListeners(client,mine,saveCreds){
           return {text:body};
         }});
       const jobKey=String(mine)+':'+traceId;
-      const job=task.then(result=>{
+      const job=task.then(async result=>{
         if(result.state==='duplicate')transport.record('inbound_duplicate',traceId);
-        else if(result.state==='overloaded')transport.record('inbound_queue_full',traceId);
+        else if(result.state==='overloaded'){transport.record('inbound_queue_full',traceId);await noticeTask?.catch(()=>{});if(current())enqueueOverflow(message,normalized,conversationKey);}
         else if(result.state==='consume_failed')console.warn('Orion QR: atendimento IA não concluído (dados omitidos)');
       }).finally(()=>{
         if(inboundMetadata.get(traceId)===metadata)inboundMetadata.delete(traceId);
@@ -454,7 +484,15 @@ function installListeners(client,mine,saveCreds){
       jobs.push(job);
     }
     await Promise.all(jobs);
-  });
+  }
+  client.ev.on('messages.upsert',receive);
+  client.ev.on('messages.update',updates=>{for(const item of (updates||[]).slice(0,100)){
+    const event=updateEvent(item.key,item.update);if(event)void receive({messages:[event],type:'notify'});
+  }});
+  client.ev.on('messages.delete',({keys=[]}={})=>{for(const key of keys.slice(0,100)){
+    const event=updateEvent(key,{message:null,messageStubType:1});if(event)void receive({messages:[event],type:'notify'});
+  }});
+  client.ev.on('call',calls=>{for(const call of (calls||[]).slice(0,20)){const event=callEvent(call);if(event)void receive({messages:[event],type:'notify'});}});
   client.ev.on("connection.update",update=>{
     if(mine!==generation)return;
     if(update.receivedPendingNotifications===true)

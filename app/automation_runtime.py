@@ -14,6 +14,9 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 from app.automation_policy import AUDIENCE_SQL, MARKETING_EVENTS, OPERATIONAL_EVENTS, delivery_reason, render_template, schedule_for, send_window
+from app.automation_policy import schedule_explanation,consent_version
+from app.automation_templates import compose
+from app.communication_style import presentation_metadata
 from app.catalog_api import support_session_factory
 from app.database import get_session_factory, tenant_transaction
 
@@ -85,7 +88,8 @@ async def settings_for(db, tenant, *, lock=False):
     row = (await db.execute(text("""SELECT x.*,t.timezone,t.name AS business_name,t.status AS tenant_status,
       public.automation_owner_active(x.tenant_id,x.approved_by,x.approved_auth_version) AS owner_active,
       p.version AS preferences_version,coalesce(p.version=x.reviewed_preferences_version,false) AS preferences_approved,
-      coalesce((p.preferences->'automations'->>'vacancy_requested')='true',false) AS vacancy_requested
+      coalesce((p.preferences->'automations'->>'vacancy_requested')='true',false) AS vacancy_requested,
+      coalesce(p.preferences->'automations'->'delivery_policy','{}'::jsonb) AS delivery_policy
       FROM automation_execution x JOIN tenants t ON t.id=x.tenant_id
       LEFT JOIN management_preferences p ON p.tenant_id=x.tenant_id WHERE x.tenant_id=:t""" +
       (" FOR UPDATE OF x" if lock else "")), {"t": tenant})).mappings().one_or_none()
@@ -124,19 +128,30 @@ async def queue_notification(db, tenant, settings, preference, customer, event, 
     else:
         return False
     consent, contact = await contact_facts(db, tenant, customer["whatsapp_e164"])
-    required = "operational_opt_in" if event in OPERATIONAL_EVENTS else "marketing_opt_in"
-    if not consent or not consent.get(required) or contact and contact.get("human_paused"):
-        return False
-    scheduled = schedule_for(event, facts, now, settings["timezone"], rules.get("recovery_days", 60))
+    required = 'birthday_opt_in' if event.startswith('birthday_') else "operational_opt_in" if event in OPERATIONAL_EVENTS else "marketing_opt_in"
+    scheduled,stop = schedule_explanation(event,facts,now,settings['timezone'],policy=rules.get('delivery_policy'),
+        recovery_days=rules.get('recovery_days',60),approved_at=settings.get('approved_at') if event!='campaign' else None)
+    if stop=='before_activation':return False
     if scheduled is None:
+        if stop=='quiet_window_expired':await pending_notice(db,tenant,customer['whatsapp_e164'],event,event_key,facts,stop)
         return False
+    if contact and contact.get('human_paused'):
+        await pending_notice(db,tenant,customer['whatsapp_e164'],event,event_key,facts,'human_paused')
+        return False
+    if not consent or not consent.get(required):return False
     try:
-        body = render_template(template, labels)
+        if 'style' not in settings:
+            from app.communication_style import style_for
+            settings={**settings,'style':await style_for(db,tenant)}
+        prepared=compose(event,rule or {'template':template},labels,
+            business=(preference.get('preferences') or {}).get('business',{}),style=settings.get('style'),public_origin=os.getenv('PANEL_PUBLIC_URL'))
+        body=prepared.body
     except (ValueError, KeyError):
+        await pending_notice(db,tenant,customer['whatsapp_e164'],event,event_key,facts,'missing_or_unapproved_fact')
         return False  # Missing facts remain missing; no fabricated link/benefit.
     result = await db.execute(text("""INSERT INTO automation_jobs(tenant_id,contact_e164,event,event_key,campaign_id,campaign_version,customer_id,customer_version,channel_id,
-      appointment_id,appointment_version,coupon_id,coupon_version,trigger_at,settings_version,preferences_version,consent_version,interaction_revision,body,due_at,expires_at)
-      VALUES(:t,:phone,:event,:key,:campaign,:campaign_version,:customer,:customer_version,:channel,:appointment,:appointment_version,:coupon,:coupon_version,:trigger,:settings,:preferences,:consent,:interaction,:body,:due,:expiry)
+      appointment_id,appointment_version,coupon_id,coupon_version,trigger_at,settings_version,preferences_version,consent_version,interaction_revision,body,due_at,expires_at,presentation)
+      VALUES(:t,:phone,:event,:key,:campaign,:campaign_version,:customer,:customer_version,:channel,:appointment,:appointment_version,:coupon,:coupon_version,:trigger,:settings,:preferences,:consent,:interaction,:body,:due,:expiry,CAST(:presentation AS jsonb))
       ON CONFLICT(tenant_id,event_key,contact_e164) DO NOTHING RETURNING id"""),
       {"t": tenant, "phone": customer["whatsapp_e164"], "event": event, "key": event_key,
        "campaign": campaign_id, "campaign_version": facts.get("campaign_version") if campaign_id else None,
@@ -144,8 +159,9 @@ async def queue_notification(db, tenant, settings, preference, customer, event, 
        "channel": settings["channel_id"], "appointment": facts.get("appointment_id"), "appointment_version": facts.get("updated_at"),
        "coupon": facts.get("coupon_id"), "coupon_version": facts.get("coupon_version"),
        "trigger": facts.get("occurred_at"),
-       "settings": settings["version"], "preferences": preference["version"], "consent": consent["updated_at"],
-       "interaction": contact["revision"] if contact else 0, "body": body, "due": scheduled.due_at, "expiry": scheduled.expires_at})
+       "settings": settings["version"], "preferences": preference["version"], "consent": consent_version(consent,event),
+       "interaction": contact["revision"] if contact else 0, "body": body, "due": scheduled.due_at, "expiry": scheduled.expires_at,
+       'presentation':json.dumps(presentation_metadata(prepared,settings))})
     return result.scalar_one_or_none() is not None
 
 
@@ -154,6 +170,24 @@ def base_labels(settings, customer, preferences):
     labels = {"cliente": customer["name"], "empresa": settings["business_name"]}
     if business.get("google_review_url"):
         labels["link_review"] = business["google_review_url"]
+    return labels
+
+
+async def pending_notice(db,tenant,phone,event,event_key,facts,reason):
+    if event not in OPERATIONAL_EVENTS:return False
+    await db.execute(text('''INSERT INTO communication_pending(tenant_id,contact_e164,event,event_key,reason,appointment_id,appointment_version)
+      VALUES(:t,:phone,:event,:key,:reason,:appointment,:version) ON CONFLICT(tenant_id,contact_e164,event_key,reason) DO NOTHING'''),
+      {'t':tenant,'phone':phone,'event':event,'key':event_key,'reason':reason,
+       'appointment':facts.get('appointment_id'),'version':facts.get('updated_at')})
+    return True
+
+
+def appointment_context(settings,customer,preference,appointment):
+    labels=base_labels(settings,customer,preference)
+    local=appointment['start_at'].astimezone(ZoneInfo(settings['timezone']))
+    labels.update(data=local.strftime('%d/%m/%Y'),horario=local.strftime('%Hh%M'),profissional=appointment['professional'],
+        servico=appointment['services'] or '',protocolo=appointment['protocol'],
+        valor=f"R$ {appointment['total_cents']//100},{appointment['total_cents']%100:02d}")
     return labels
 
 
@@ -169,9 +203,11 @@ async def plan_tenant(tenant):
             preference = (await db.execute(text("SELECT preferences,version FROM management_preferences WHERE tenant_id=:t"), {"t": tenant})).mappings().one_or_none()
             if not preference:
                 return 0
+            from app.communication_style import style_for
+            settings['style']=await style_for(db,tenant)
             customers = (await db.execute(text("""SELECT c.* FROM customers c JOIN contact_consents k
               ON k.tenant_id=c.tenant_id AND k.contact_e164=c.whatsapp_e164
-              WHERE c.tenant_id=:t AND c.active AND c.deleted_at IS NULL AND (k.marketing_opt_in OR k.operational_opt_in)
+              WHERE c.tenant_id=:t AND c.active AND c.deleted_at IS NULL AND (k.marketing_opt_in OR k.operational_opt_in OR k.birthday_opt_in)
               ORDER BY c.id LIMIT 40 OFFSET :cursor"""), {"t": tenant, "cursor": settings["scan_cursor"]})).mappings().all()
             queued = 0
             for customer in customers:
@@ -193,8 +229,7 @@ async def plan_tenant(tenant):
                 for a in appointments:
                     local = a["start_at"].astimezone(ZoneInfo(settings["timezone"]))
                     facts = {**dict(a), "appointment_id": a["id"], "has_future_booking": future}
-                    known = {**labels, "data": local.strftime("%d/%m/%Y"), "horario": local.strftime("%Hh%M"),
-                             "profissional": a["professional"], "servico": a["services"] or "", "protocolo": a["protocol"], "valor": f"R$ {a['total_cents']//100},{a['total_cents']%100:02d}"}
+                    known = {**appointment_context(settings,customer,preference,a),**labels}
                     for event in ("booking_confirmed", "rescheduled", "cancelled", "reminder_24h", "reminder_2h", "reminder_1h", "after_service", "cancelled_7d"):
                         if event == "rescheduled":
                             occurred = (await db.execute(text("SELECT max(occurred_at) FROM appointment_history WHERE tenant_id=:t AND appointment_id=:id AND event='rescheduled'"), {"t": tenant, "id": a["id"]})).scalar_one_or_none()
@@ -209,7 +244,8 @@ async def plan_tenant(tenant):
                   WHERE a.tenant_id=:t AND a.customer_id=:customer AND a.status='completed' AND h.event='completed'"""),
                   {"t": tenant, "customer": customer["id"]})).scalar_one_or_none()
                 for event in ("inactive_60d", "birthday_7d", "birthday_2d"):
-                    facts = {"occurred_at": completed_at, "birth_date": customer["birth_date"], "has_future_booking": future}
+                    facts = {"occurred_at": completed_at, "birth_date": customer["birth_date"],
+                        'birth_month':customer.get('birth_month'),'birth_day':customer.get('birth_day'),"has_future_booking": future}
                     period = (completed_at.isoformat() if completed_at else "none") if event == "inactive_60d" else datetime.now(timezone.utc).astimezone(ZoneInfo(settings["timezone"])).strftime("%Y")
                     key = event + ":" + str(customer["id"]) + ":" + period
                     queued += await queue_notification(db, tenant, settings, preference, customer, event, key, facts, labels)
@@ -239,6 +275,9 @@ async def campaign_audience_reason(db, tenant, customer, campaign):
 
 
 async def job_reason(db, tenant, job, settings):
+    if 'body' in job:
+        from app.automation_templates import verified_presentation
+        if not verified_presentation(job):return 'presentation_changed'
     preference = (await db.execute(text("SELECT version FROM management_preferences WHERE tenant_id=:t"), {"t": tenant})).scalar_one_or_none()
     consent, contact = await contact_facts(db, tenant, job["contact_e164"])
     appointment = None
@@ -249,6 +288,11 @@ async def job_reason(db, tenant, job, settings):
         campaign = (await db.execute(text("SELECT status,version,audience FROM campaigns WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": job["campaign_id"]})).mappings().one_or_none()
     if not settings or not settings.get("owner_active") or settings.get("tenant_status") != "active":
         return "approval_revoked"
+    if job.get('presentation'):
+        from app.communication_style import style_for
+        if job['presentation'].get('source_timezone')!=settings['timezone']:return 'configuration_changed'
+        style=await style_for(db,tenant)
+        if job['presentation'].get('profile_revision')!=style.get('_published_profile_id'):return 'configuration_changed'
     if settings.get("vacancy_requested"):
         return "waitlist_contract_missing"
     if not settings.get("preferences_approved"):
@@ -297,11 +341,16 @@ async def process_automation_job(ctx, tenant_id, job_id):
             job = dict(row)
             reason = await job_reason(db, tenant, job, settings)
             if reason:
+                if reason=='conversation_changed' and job.get('event') in OPERATIONAL_EVENTS:
+                    _,contact=await contact_facts(db,tenant,job['contact_e164'])
+                    if contact and contact.get('human_paused'):
+                        await pending_notice(db,tenant,job['contact_e164'],job['event'],job['event_key'],
+                            {'appointment_id':job.get('appointment_id'),'updated_at':job.get('appointment_version')},'human_paused')
                 if reason != "not_due":
                     await db.execute(text("UPDATE automation_jobs SET status='cancelled',last_error=:reason,updated_at=now() WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": identity, "reason": reason})
                 return reason
             now = datetime.now(timezone.utc)
-            window = send_window(now, settings["timezone"])
+            window = send_window(now, settings["timezone"],settings.get('delivery_policy'),job.get('event'))
             if window > now:
                 if window >= job["expires_at"]:
                     await db.execute(text("UPDATE automation_jobs SET status='cancelled',last_error='quiet_window_expired',updated_at=now() WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": identity})
@@ -326,6 +375,11 @@ async def process_automation_job(ctx, tenant_id, job_id):
             async with tenant_transaction(db, tenant):
                 current = await settings_for(db, tenant)
                 stop = await job_reason(db, tenant, job, current)
+                if stop=='conversation_changed' and job.get('event') in OPERATIONAL_EVENTS:
+                    _,contact=await contact_facts(db,tenant,job['contact_e164'])
+                    if contact and contact.get('human_paused'):
+                        await pending_notice(db,tenant,job['contact_e164'],job['event'],job['event_key'],
+                            {'appointment_id':job.get('appointment_id'),'updated_at':job.get('appointment_version')},'human_paused')
         if not execution_enabled():
             stop = "execution_paused"
         if stop:

@@ -20,6 +20,7 @@ from app.qr_dialogue import choose_professional, choose_time
 from app.qr_understanding import build_plan
 from app.whatsapp_commands import try_command
 from app.whatsapp_dialogue import checked, consent, owned_booking, preferences, summary
+from app.communication_events import summary_was_accepted
 
 TTL = 1800
 
@@ -63,6 +64,18 @@ async def _scoped_reply(tenant, channel, sender, body, redis, *, message_id=None
 
 async def _reply(tenant, channel, sender, body, redis, key, state, prefs, message_id):
     user_text = body.strip().lower()
+    from app.contact_preferences import handle_optout,birthday_turn,offer_birthday
+    optout=await handle_optout(tenant,sender,body)
+    if optout is not None:
+        await redis.delete(key+':birthday-invite')
+        return optout
+    birthday=await birthday_turn(tenant,sender,body,redis,key)
+    if birthday:
+        if birthday.get('remainder'):
+            following=await _reply(tenant,channel,sender,birthday['remainder'],redis,key,state,prefs,message_id)
+            combined=birthday['answer']+('\n\n'+following if following else '')
+            return checked(combined)
+        return birthday['answer']
     from app.inbox_control import enabled,customer_handoff
     from app.qr_behaviors import control_intent
     intent=control_intent(body)
@@ -160,6 +173,10 @@ async def _reply(tenant, channel, sender, body, redis, key, state, prefs, messag
             timezone=zone,day=day,total_cents=available["price_cents"],duration_min=available["duration_min"],professional=chosen["name"],ask_selection=False))
 
     if state.get("step") == "confirm":
+        known=await owned_booking(tenant,sender,item_id=state.get('hold'),statuses=('hold','confirmed')) if state.get('hold') else None
+        if known and known.get('status')=='confirmed':
+            await redis.delete(key)
+            return checked(presentation.render_summary(summary(known),prefs,confirmed=True))
         decision = await consent(body, pending=True, semantic_allowed=bool(message_id and state.get("summary_message_id")
             and state.get("last_message_id")==state["summary_message_id"] and message_id!=state["summary_message_id"]))
         if decision.kind == "decline":
@@ -168,17 +185,20 @@ async def _reply(tenant, channel, sender, body, redis, key, state, prefs, messag
             await save()
             return "Tudo bem, ainda não confirmei esse agendamento. " + presentation.render_prompt("adjustment", prefs)
         if decision.kind == "affirm":
-            if not message_id or not state.get("summary_message_id") or message_id == state["summary_message_id"]:
+            if not message_id or message_id == state.get("summary_message_id"):
                 return "Preciso de uma nova resposta depois do resumo para confirmar."
-            hold = await owned_booking(tenant,sender,item_id=state.get("hold"),statuses=("hold","confirmed"))
+            hold = known
             if not hold:
                 state.update(step="date")
                 state.pop("summary_message_id",None)
                 await save()
                 return presentation.render_prompt("expired",prefs)
-            if state.get("last_message_id") != state["summary_message_id"] or not state.get("expected_snapshot"):
+            if (not state.get('summary_message_id') or state.get("last_message_id") != state["summary_message_id"] or not state.get("expected_snapshot")
+                    or state.get('confirmation_requires_review')
+                    or not await summary_was_accepted(tenant,channel,sender,state)):
                 answer=checked(presentation.render_summary(summary(hold),prefs))
                 state.update(summary_message_id=message_id,expected_snapshot=hold["expected_snapshot"])
+                state.pop('confirmation_requires_review',None)
                 await save()
                 return answer
             try:
@@ -193,7 +213,13 @@ async def _reply(tenant, channel, sender, body, redis, key, state, prefs, messag
                 return presentation.render_prompt("context_changed",prefs)
             confirmed.update(timezone=hold["timezone"],professional=hold["professional"])
             await redis.delete(key)
-            return presentation.render_summary(summary(confirmed),prefs,confirmed=True)
+            answer=presentation.render_summary(summary(confirmed),prefs,confirmed=True)
+            from app.contact_preferences import BIRTHDAY_INVITATION
+            if presentation.fits_message(answer+'\n\n'+BIRTHDAY_INVITATION):
+                try:invitation=await offer_birthday(tenant,sender,redis,key,confirmed['protocol'])
+                except Exception:invitation=''
+                if invitation:answer+='\n\n'+invitation
+            return answer
         if decision.kind != "amend":
             return presentation.render_prompt("confirmation_review",prefs)
         state.pop("summary_message_id",None)

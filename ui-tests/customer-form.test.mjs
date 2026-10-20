@@ -144,7 +144,7 @@ test('estilos de clientes respeitam o tema e têm foco e layout responsivo sem m
   assert.match(css,/#osDialog\.os-customer-dialog \.os-client-input>input:not/);
   assert.match(css,/background:color-mix\(in srgb,var\(--os-tint\)/,'campos usam cores semânticas dos temas claro e escuro');
   assert.match(css,/@media\(max-width:359px\)\{#osDialog\.os-customer-dialog \.os-client-grid\{grid-template-columns:1fr\}\}/);
-  assert.match(js,/const hasExtra=!!\(record&&\(c\.email\|\|c\.birth_date\|\|c\.neighborhood\|\|c\.city\)\)/);
+  assert.match(js,/const hasExtra=!!\(record&&\(c\.email\|\|c\.birth_date\|\|c\.birth_day\|\|c\.neighborhood\|\|c\.city\)\)/);
   assert.match(css,/\.os-client-more-toggle::-webkit-details-marker/);
   assert.doesNotMatch(js,/id="client-name"|class="os-client-more-toggle__icon"/,'sem IDs ou padrões paralelos genéricos');
 });

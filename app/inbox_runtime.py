@@ -25,21 +25,27 @@ def fingerprint(phone, body):
                                      separators=(",", ":")).encode()).hexdigest()
 
 
-async def record_inbound(db, tenant, channel, phone, external, body="", kind="text", provider_at=None):
+async def record_inbound(db, tenant, channel, phone, external, body="", kind="text", provider_at=None,envelope=None):
     row = await control.lock_control(db, tenant, channel, "+"+phone.removeprefix("+"))
     from app.qr_behaviors import control_intent
-    human_requested=kind=='text' and control_intent(body)=='human'
+    from app.communication_events import control_text
+    control_body=control_text(envelope) or body
+    human_requested=control_intent(control_body)=='human'
     # Record the customer's transfer before an assistant or worker can skip a
     # busy conversation. An existing attempt keeps its slot and its receipt.
     next_mode='human' if human_requested or row['mode'] in {'waiting','closed'} else row['mode']
     changes_generation=row['mode']=='ai' or next_mode!=row['mode']
     persisted=(await db.execute(text("""INSERT INTO inbox_messages(tenant_id,control_id,direction,source,kind,body,
-      external_id,control_revision,status,provider_at) VALUES(:t,:c,'in','customer',:kind,:body,:external,:rev,'received',:at)
+      external_id,control_revision,status,provider_at,envelope) VALUES(:t,:c,'in','customer',:kind,:body,:external,:rev,'received',:at,CAST(:envelope AS jsonb))
       ON CONFLICT(tenant_id,control_id,direction,external_id) DO NOTHING RETURNING id"""),
-      {"t":tenant,"c":row["id"],"kind":kind,"body":body,"external":external,"rev":row["revision"]+(1 if changes_generation else 0),"at":provider_at})).scalar_one_or_none()
+      {"t":tenant,"c":row["id"],"kind":kind,"body":body,"external":external,"rev":row["revision"]+(1 if changes_generation else 0),"at":provider_at,'envelope':json.dumps(envelope or {})})).scalar_one_or_none()
     if persisted and changes_generation:
         await control.control_event(db,tenant,row,next_mode,'customer')
         await db.execute(text("UPDATE inbox_controls SET revision=revision+1,mode=:mode WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':row['id'],'mode':next_mode})
+    if persisted:
+        from app.contact_preferences import preference_intent,record_optout
+        preference=preference_intent(control_body)
+        if preference:await record_optout(db,tenant,phone,preference)
     await db.execute(text("UPDATE inbox_controls SET updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id"),
                      {"t":tenant,"id":row["id"]})
     return row

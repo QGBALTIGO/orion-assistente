@@ -13,6 +13,7 @@ from app import inbox_runtime as runtime,inbox_control as control,inbox_conversa
 from app.database import tenant_transaction
 from tests.integration.test_inbox_tools_postgres import inbox_db
 from tests.integration.test_automation_postgres import automation_db,PHONE
+from tests.integration.test_communication_postgres import isolated_redis
 
 pytestmark=pytest.mark.integration
 
@@ -31,6 +32,32 @@ async def central(inbox_db,monkeypatch):
 
 async def assume(c,channel=None):
     return await control.change_control(c.tenant,channel or c.channel,control.Change(contact_e164=PHONE,expected_revision=2,mode='human'),c.actor)
+
+
+async def test_explicit_ai_resume_invalidates_only_old_proposals_once(central,isolated_redis):
+    import json
+    from types import SimpleNamespace
+    c=central;redis,key=isolated_redis
+    await assume(c)
+    await control.change_control(c.tenant,c.channel,control.Change(contact_e164=PHONE,expected_revision=3,mode='ai'),c.actor)
+    revision=await control.assistant_revision(c.tenant,c.channel,PHONE)
+    for suffix in ('',':commerce',':birthday-invite'):
+        await redis.set(key+suffix,json.dumps({'step':'confirm','summary':'Old proposal'}),ex=300)
+    await redis.set(key+':verified-receipt','committed-domain-receipt',ex=300)
+    before=await api.messages(c.tenant,c.channel,PHONE,None,c.actor)
+    token=control.bind_assistant(SimpleNamespace(tenant_id=c.tenant,channel_id=c.channel,provider='qr'),PHONE,revision)
+    try:
+        await control.clear_transient_handoff(redis,key)
+        assert not await redis.exists(key,key+':commerce',key+':birthday-invite')
+        assert await redis.get(key+':verified-receipt')==b'committed-domain-receipt'
+        await redis.set(key,json.dumps({'step':'choose','new':True}),ex=300)
+        await control.clear_transient_handoff(redis,key)
+        assert json.loads(await redis.get(key))=={'step':'choose','new':True}
+    finally:
+        control.reset_assistant(token)
+        await redis.delete(key,key+':ai-resume-generation',key+':verified-receipt')
+    after=await api.messages(c.tenant,c.channel,PHONE,None,c.actor)
+    assert after['items']==before['items'] and after['control']['mode']=='ai'
 
 
 async def enqueue(c,operation=None,channel=None,body='Resposta sintética'):
@@ -259,9 +286,8 @@ async def test_meta_domain_transaction_rejects_stale_generation_after_operator_t
 
 @pytest.mark.parametrize('handoff',[False,True])
 @pytest.mark.parametrize('legacy_pending',[False,True])
-async def test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_outbox(meta,monkeypatch,handoff,legacy_pending):
+async def test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_outbox(meta,isolated_redis,monkeypatch,handoff,legacy_pending):
     from app import worker
-    from tests.unit.test_qr_ai import FakeRedis
     c=meta;event=uuid4()
     monkeypatch.setattr(worker,'get_session_factory',lambda:c.factory)
     async with c.migration.begin() as db:
@@ -276,7 +302,7 @@ async def test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_
             return None
         return 'Resposta Meta sintética'
     monkeypatch.setattr(worker,'reply',reply)
-    ctx={'redis':FakeRedis()}
+    ctx={'redis':isolated_redis[0]}
     assert await worker.process_inbound_event(ctx,str(c.tenant),str(event))=='processed'
     assert await worker.process_inbound_event(ctx,str(c.tenant),str(event))=='already_processed_or_processing'
     assert await worker.process_message_outbox(ctx,str(c.tenant),str(uuid4()))=='central_outbox_required'

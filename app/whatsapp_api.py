@@ -43,7 +43,10 @@ async def receive_meta(request: Request):
         payload = json.loads(raw)
         events = extract_messages(payload)
         statuses = extract_statuses(payload)
-    except (ValueError, TypeError, KeyError, AttributeError):
+    except ValueError as exc:
+        if str(exc)=='too_many_events':raise HTTPException(413,'Lote acima do limite; nenhum prefixo foi processado') from None
+        raise HTTPException(400,'Payload inválido') from None
+    except (TypeError, KeyError, AttributeError):
         raise HTTPException(400, "Payload inválido") from None
     if len(events) > 100:
         raise HTTPException(413, "Lote excede limite")
@@ -64,18 +67,28 @@ async def receive_meta(request: Request):
         try:
             async with factory() as session:
                 async with tenant_transaction(session, result["tenant_id"]):
+                    await session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:scope,0))"),
+                        {'scope':f'meta-input:{result["tenant_id"]}:{result["id"]}:{item["sender_e164"]}'})
                     out = await session.execute(text("""
                         INSERT INTO inbound_events
-                        (id, tenant_id, channel_id, external_id, sender_e164, message_text)
-                        VALUES (:id, :tenant, :channel, :external, :sender, :body)
+                        (id, tenant_id, channel_id, external_id, sender_e164, message_text,envelope)
+                        VALUES (:id, :tenant, :channel, :external, :sender, :body,CAST(:envelope AS jsonb))
                         ON CONFLICT (channel_id, external_id) DO NOTHING RETURNING id
                     """), dict(id=event_id, tenant=result["tenant_id"], channel=result["id"],
-                               external=item["id"], sender=item["sender_e164"], body=item["text"]))
+                               external=item["id"], sender=item["sender_e164"], body=item["text"],
+                               envelope=json.dumps(item.get('envelope',{}))))
                     persisted = out.scalar_one_or_none()
+                    if persisted:
+                        from app.contact_preferences import preference_intent,record_optout
+                        scope=item.get('envelope',{}).get('control') or preference_intent(item['text'])
+                        if scope=='human':scope=None
+                        if scope:await record_optout(session,result['tenant_id'],item['sender_e164'],scope)
                     from app.inbox_control import enabled
                     if persisted and enabled():
                         from app.inbox_runtime import record_inbound
-                        await record_inbound(session,result["tenant_id"],result["id"],item["sender_e164"],item["id"],item["text"],provider_at=item.get("provider_at"))
+                        await record_inbound(session,result["tenant_id"],result["id"],item["sender_e164"],item["id"],item["text"],
+                            kind='audio' if item.get('envelope',{}).get('kind')=='audio' else 'text' if item['text'] else 'unsupported',
+                            provider_at=item.get("provider_at"),envelope=item.get('envelope'))
                     if persisted and item.get("whatsapp_name"):
                         # The Meta signature and channel lookup already chose
                         # this tenant; persist the profile in the same commit as

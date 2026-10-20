@@ -2,6 +2,12 @@
 
 Fundação de um SaaS gerenciado de agendamento por WhatsApp para barbearias.
 **Status: desenvolvimento e testes automatizados; não liberado para clientes reais.**
+
+Continuação local de comunicação em 20/10/2026: [relatório e índice de requisitos](docs/marcflow/communication-report.html)
+e [contrato verificável](docs/marcflow/communication-contract.json). A implementação
+permanece na branch `codex/orion-marcflow-integrations-20261020`, sem publicação,
+ativação de campanhas ou testes com mensagens reais. Os relatórios anteriores são históricos.
+
 O histórico contém PRs incrementais das FATIAS 0–8. Integrações e módulos
 comerciais avançados permanecem desabilitados ou incompletos sem piloto,
 credenciais oficiais, revisão de segurança e autorizações dos titulares.
