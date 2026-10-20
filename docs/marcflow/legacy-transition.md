@@ -103,3 +103,9 @@ casos POSIX não aplicáveis ao Windows), 308 testes DOM e dez testes unitários
 de transição/histórico aprovados. A CI com PG16 e Redis é obrigatória antes
 de publicar; o cenário descartável prepara explicitamente um piloto ativo,
 sem alterar a proteção que recusa empresas inativas em produção.
+
+A ativação recusa qualquer saída antiga em queued/sending/uncertain, em qualquer
+empresa. A fila e os estados incertos são preservados para reconciliação;
+não são liberados como efeito da ativação do worker. A publicação do bridge
+desliga a confirmação automática para a própria conta e o modo de teste de
+operador, mantendo o atendimento normal da IA e sem mensagem de teste real.

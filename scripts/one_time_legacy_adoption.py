@@ -71,6 +71,12 @@ def preflight(db, settings):
 
 
 def plan_for(db, settings, paused=()):
+    if settings.phase == 'activate':
+        # Enabling the global worker must not release any old queued send.
+        # Unknown attempts also remain untouched for operator reconciliation.
+        require(not db.execute(text("""SELECT EXISTS(SELECT 1 FROM inbox_messages
+            WHERE direction='out' AND status IN ('queued','sending','uncertain'))""")).scalar_one(),
+            'pending_outbound_preserved')
     company = db.execute(text("SELECT status,bot_enabled FROM tenants WHERE id=:t"), {'t': settings.tenant}).one_or_none()
     require(company is not None and company.status == 'active' and company.bot_enabled, 'existing_tenant_not_active')
     identity = qr_legacy.channel_id(settings.tenant)

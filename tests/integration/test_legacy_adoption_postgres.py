@@ -119,3 +119,22 @@ def test_primary_account_change_stops_before_backup(source,monkeypatch):
     monkeypatch.setattr(ops,'session_proof',lambda *_:'b'*64)
     monkeypatch.setattr(ops,'capture_dump',lambda *_:pytest.fail('backup should not start'))
     with pytest.raises(ops.Stop,match='primary_account_changed_preserved'):ops.execute(settings)
+
+
+@pytest.mark.parametrize('status',['queued','sending','uncertain'])
+def test_activation_preserves_and_refuses_any_pending_outbound(source,monkeypatch,status):
+    case,settings=source
+    run(settings,monkeypatch)
+    message=uuid4()
+    with case.engine.begin() as db:
+        control=db.execute(text('SELECT id FROM inbox_controls WHERE tenant_id=:t'),{'t':case.tenant}).scalar_one()
+        db.execute(text("""INSERT INTO inbox_messages(id,tenant_id,control_id,direction,source,body,
+            fingerprint,control_revision,status) VALUES(:m,:t,:c,'out','assistant','Synthetic pending',repeat('a',64),1,:s)"""),
+            {'m':message,'t':case.tenant,'c':control,'s':status})
+        before=ops.snapshot(db)
+    monkeypatch.setattr(ops,'paused_contacts',lambda *_:())
+    monkeypatch.setattr(ops,'capture_dump',lambda *_:pytest.fail('backup should not start'))
+    with pytest.raises(ops.Stop,match='pending_outbound_preserved'):
+        ops.execute(replace(settings,phase='activate',run_id=str(uuid4())))
+    with case.engine.begin() as db:
+        assert ops.snapshot(db)==before
