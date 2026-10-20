@@ -233,6 +233,9 @@ async def test_owner_oauth_enforces_csrf_nonce_and_single_use_before_selection(g
     assert "refresh_token" not in candidate and "synthetic-refresh" not in json.dumps(candidate)
     assert Fernet(d["key"].encode()).decrypt(candidate["refresh_token_enc"].encode()) == b"synthetic-refresh-only"
     assert await api.connection_snapshot(d["a"]) is None
+    status = (await d["client"].get(d["google_base"] + "/status")).json()
+    assert status["selection_pending"] and not status["connected"] and status["sync_status"] == "choose_calendar"
+    assert [call[0] for call in d["google"].calls] == ["exchange"]
 
 
 @pytest.mark.asyncio
@@ -250,9 +253,6 @@ async def test_unverified_owner_gets_preflight_before_google_state_or_token_exch
     assert refused.status_code == 403 and "Confirme seu e-mail" in refused.text
     assert set([key async for key in d["redis"].scan_iter(match="google:oauth:*")]) == before
     assert d["google"].calls == []
-    status = (await d["client"].get(d["google_base"] + "/status")).json()
-    assert status["selection_pending"] and not status["connected"] and status["sync_status"] == "choose_calendar"
-    assert [call[0] for call in d["google"].calls] == ["exchange"]
 
 
 @pytest.mark.parametrize("change", ["logout", "membership", "account_version", "revoke"])
