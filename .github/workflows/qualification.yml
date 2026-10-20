@@ -1,4 +1,4 @@
-name: Orion - Controle pareado de desempenho
+name: Orion - Ajuste de processos da API
 on:
   push:
     branches: [codex/whatsapp-load-diagnostics]
@@ -6,7 +6,7 @@ permissions:
   contents: read
 jobs:
   paired-control:
-    name: Mesma maquina - versao anterior e candidata (diagnostico)
+    name: Mesma maquina - dois e tres processos da API (diagnostico)
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
@@ -35,11 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 24456e82155609bcb8cde2c72d4aac3612a91b54
-          path: work-baseline
-      - uses: actions/checkout@v4
-        with:
-          ref: 8d5c747e4b78335a028217d90e07290e1e2130bc
+          ref: 6131c4748773236ffbd3aea2c776833a095e63c3
           path: work-candidate
       - uses: actions/setup-python@v5
         with:
@@ -63,21 +59,21 @@ jobs:
           fields={line.split(':',1)[0].strip():line.split(':',1)[1].strip() for line in cpu.splitlines() if ':' in line and line.split(':',1)[0].strip() in {'model name','cpu cores','siblings','vendor_id'}}
           pathlib.Path('artifacts/host.json').write_text(json.dumps({'diagnostic_only':True,'logical_cpus':os.cpu_count(),'platform':platform.platform(),'cpu':fields,'versions':{n:m.version(n) for n in ['fastapi','starlette','httpx','certifi','uvicorn','uvloop','SQLAlchemy','asyncpg','pydantic']}},indent=2))
           PY
-      - name: Comparar sem profiler e sem alterar metas - baseline depois candidata
+      - name: Comparar sem profiler - dois depois tres processos
         run: |
           set +e
-          for source in baseline candidate; do
-            (cd "work-$source" && python scripts/qualification_load.py --confirm-disposable-local \
+          for workers in 2 3; do
+            (cd work-candidate && python scripts/qualification_load.py --confirm-disposable-local \
               --profile concentrated --timing-diagnostics --stage-seconds 10 --sustain-seconds 120 --warmup-seconds 5 \
-              --api-workers 3 --db-pool-size 10 --db-max-overflow 0 --output "$GITHUB_WORKSPACE/artifacts/$source.json")
+              --api-workers "$workers" --db-pool-size 10 --db-max-overflow 0 --output "$GITHUB_WORKSPACE/artifacts/workers-$workers.json")
             status=$?
-            printf '%s_exit_code=%s\n' "$source" "$status" >> artifacts/diagnostic-exits.txt
+            printf 'workers_%s_exit_code=%s\n' "$workers" "$status" >> artifacts/diagnostic-exits.txt
           done
           exit 0
       - name: Guardar evidencias - diagnostico curto nao qualifica capacidade
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: paired-control-diagnostic-${{ github.sha }}
+          name: worker-count-diagnostic-${{ github.sha }}
           path: artifacts/
           retention-days: 7
