@@ -12,7 +12,16 @@ from sqlalchemy.pool import NullPool
 
 from app import qr_channels as channels, qr_legacy
 from app.catalog_api import Actor
-from test_admin_identity_ops_postgres import admin_source  # noqa: F401
+from test_admin_identity_ops_postgres import (  # noqa: F401
+    admin_source,
+    admin_migration_source,
+    communication_source,
+    inbox_source,
+    onboarding_source,
+    management_source,
+    fulfillment_source,
+    migration_source,
+)
 
 pytestmark = pytest.mark.integration
 
