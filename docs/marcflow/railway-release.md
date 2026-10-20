@@ -46,7 +46,9 @@ O pre-deploy antigo de onboarding não deve ser executado sobre o esquema 0028.
 
 ## Reversão
 
-Preservar os deployment IDs anteriores e seus comandos de pre-deploy. Se uma
+Preservar os deployment IDs anteriores e seus comandos de pre-deploy. Ao voltar
+ao código anterior com esquema 0028, desativar ORION_RUN_ONBOARDING_MIGRATION:
+o migrador anterior aceita somente 0019/0023 e deve ser ignorado no rollback. Se uma
 barreira falhar antes da promoção, manter a versão anterior atendendo. Depois
 da migração aditiva é possível voltar ao código anterior com flags da central
 desativadas, sem downgrade destrutivo nem restauração sobre dados novos.
@@ -55,5 +57,61 @@ não desligar INBOX_CONTROL_ENABLED como forma de pausar transporte.
 
 ## Recibo
 
-Preparação em andamento. Resultados de CI, backup, migração, deployments e
-verificações HTTP serão registrados após a execução, sem antecipar sucesso.
+### Código e testes — IMPLEMENTADO E TESTADO
+
+Commit qualificado: `b04e8de7060619fc9b2637cf0161530a1a20635c`.
+Mesma branch `codex/orion-marcflow-integrations-20261020`, PR #80.
+
+- [CI PostgreSQL, Redis, Docker, QR e interface](https://github.com/QGBALTIGO/orion-assistente/actions/runs/39456118412): sucesso.
+- Backend: **4.202 passed, 1 skipped**, 135 avisos, 206,61 s. Inclui operação
+  completa 0023 -> 0028 com pg_dump/pg_restore real e dados sintéticos, preservação
+  de pausas, reversão transacional por snapshot divergente e barreira app_runtime.
+- Compose: **4.087 passed, 116 skipped**, 10 avisos, 102,60 s. Conjuntos sobrepostos;
+  não somar ao resultado acima. Testes do runner de migração que exigem owner e
+  clientes dedicados ficam no job PostgreSQL, sem ampliar o papel runtime.
+- QR: **416 passed, 0 failed**; DOM: **306 passed, 0 failed**. Build e smoke da
+  biblioteca real sem envio externo aprovados; áudio/ASR também aprovado.
+- [CI de mídias](https://github.com/QGBALTIGO/orion-assistente/actions/runs/39456118399): sucesso.
+- Local: 84 testes do procedimento, configuração, barreira e startup passaram.
+- Navegador: seis combinações 360/768/1440 px, claro/escuro; central e rascunhos,
+  usando somente APIs sintéticas. Nenhuma mensagem real enviada.
+
+### Railway — BLOQUEADO NA CONFIRMAÇÃO, NÃO PUBLICADO
+
+Em 20/10/2026, após revisão do patch, a chamada `accept_deploy` retornou:
+**“Cancelled — the user did not approve this action. No changes were made.”**
+Não foi contornado o controle de aprovação. Nenhum build/deployment novo foi
+iniciado por essa chamada; não existe recibo de backup/migração em produção.
+O teste de restauração acima ocorreu somente no CI descartável.
+
+Patch preparado: `44be2f12-6c0e-40d7-b335-154e96b3ec13`, **27 alterações**,
+não destrutivas, apenas nos três serviços Orion. Banco, Redis, bucket, domínios,
+volumes e credenciais não têm alterações preparadas. A confirmação ainda é
+necessária para aplicar esse patch. Não usar outro canal para contornar a recusa.
+
+Planejado no patch (ainda NÃO vigente):
+
+- Mesma branch, SHA qualificado fixado nos três serviços.
+- API: pre-deploy revisado com conferência das versões testadas, migração
+  protegida, barreira runtime e probe somente de leitura API -> bridge.
+- Worker: barreira runtime 0028 antes de iniciar o novo processamento.
+- INBOX_TOOLS_ENABLED=1; INBOX_CONTROL_ENABLED=0 e INBOX_SEND_ENABLED=0 na API e no
+  worker. Conferir o piloto global existente antes de adotar a nova autoridade:
+  ativá-la bloqueia o piloto legado por projeto e pode interromper a IA atual.
+- Operação de migração: UUID `ebd63173-7d71-4b4b-b7ce-28d43112bb60`.
+- Nenhuma credencial Meta/QR nova e nenhum opt-in de campanhas ou envio real.
+
+Deployments anteriores, conferidos ainda vigentes após o cancelamento:
+
+| Serviço | Deployment |
+|---|---|
+| API | `f2f1f525-c9b2-482e-b178-6c432e13664f` |
+| Worker | `ee2b2416-b886-4487-92d1-01e6de6cec92` |
+| QR | `b37aca1e-fc08-4c3d-a5ce-0e6b8740765f` |
+
+Os cinco serviços do projeto continuam online, sem falha/alerta na consulta.
+Antes da tentativa, `/health` e `/health/whatsapp` responderam 200 e o painel 200.
+Isso comprova a disponibilidade da versão anterior, não da nova central.
+Depois de uma aprovação efetiva, aguardar a operação terminar, conferir recibo
+criptografado/restauração e revisão 0028, comparar hashes dos assets publicados,
+validar saúde dos três serviços e o isolamento HTTP sem mensagens reais.
