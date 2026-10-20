@@ -55,6 +55,7 @@ def upgrade():
         created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
         updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
         FOREIGN KEY(tenant_id,control_id) REFERENCES public.inbox_controls(tenant_id,id),
+        UNIQUE(tenant_id,control_id,id),
         UNIQUE(tenant_id,control_id,direction,external_id),
         CHECK((direction='in' AND source='customer' AND status='received') OR
               (direction='out' AND source<>'customer' AND fingerprint IS NOT NULL)),
@@ -63,6 +64,15 @@ def upgrade():
       CREATE INDEX ix_inbox_messages_history ON public.inbox_messages(tenant_id,control_id,created_at DESC,id DESC);
       CREATE INDEX ix_inbox_messages_queue ON public.inbox_messages(status,created_at) WHERE status='queued';
       CREATE INDEX ix_inbox_messages_receipt ON public.inbox_messages(tenant_id,external_id) WHERE direction='out';
+      CREATE TABLE public.inbox_reads (
+        tenant_id uuid NOT NULL,
+        control_id uuid NOT NULL,
+        account_id uuid NOT NULL REFERENCES public.panel_accounts(id),
+        message_id uuid NOT NULL,
+        read_at timestamptz NOT NULL,
+        PRIMARY KEY(tenant_id,control_id,account_id),
+        FOREIGN KEY(tenant_id,control_id,message_id) REFERENCES public.inbox_messages(tenant_id,control_id,id)
+      );
       CREATE TABLE public.inbox_provider_receipts (
         tenant_id uuid NOT NULL,
         channel_id uuid NOT NULL,
@@ -116,7 +126,7 @@ def upgrade():
       $fn$;
     """)
     setting = "NULLIF(current_setting('app.tenant_id',true),'')::uuid"
-    for table in ("inbox_channel_links", "inbox_messages", "inbox_provider_receipts"):
+    for table in ("inbox_channel_links", "inbox_messages", "inbox_provider_receipts", "inbox_reads"):
         op.execute(f"ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY")
         op.execute(f"ALTER TABLE public.{table} FORCE ROW LEVEL SECURITY")
         op.execute(f"CREATE POLICY {table}_runtime ON public.{table} TO app_runtime USING(tenant_id={setting}) WITH CHECK(tenant_id={setting})")
@@ -125,6 +135,7 @@ def upgrade():
     op.execute("GRANT SELECT,INSERT ON public.inbox_channel_links TO app_runtime")
     op.execute("GRANT SELECT,INSERT,UPDATE ON public.inbox_messages TO app_runtime")
     op.execute("GRANT SELECT,INSERT,UPDATE ON public.inbox_provider_receipts TO app_runtime")
+    op.execute("GRANT SELECT,INSERT,UPDATE ON public.inbox_reads TO app_runtime")
     op.execute("CREATE POLICY inbox_messages_scan ON public.inbox_messages FOR SELECT TO app_support USING(true)")
     op.execute("GRANT SELECT(id,tenant_id,status,created_at) ON public.inbox_messages TO app_support")
 
@@ -135,6 +146,7 @@ def downgrade():
          EXISTS(SELECT 1 FROM public.inbox_channel_links WHERE provider='meta') THEN
         RAISE EXCEPTION 'Preserve unified inbox history and Meta controls before downgrade';
       END IF; END $$""")
+    op.execute("DROP TABLE public.inbox_reads")
     op.execute("DROP TABLE public.inbox_messages")
     op.execute("DROP TABLE public.inbox_provider_receipts")
     op.execute("DROP FUNCTION public.inbox_operator_version(uuid,uuid)")

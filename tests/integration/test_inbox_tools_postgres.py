@@ -31,7 +31,7 @@ async def inbox_db(automation_db, monkeypatch):
         yield ctx
     finally:
         async with ctx.migration.begin() as db:
-            for table in ("inbox_provider_receipts", "inbox_messages", "inbox_control_events", "inbox_controls", "inbox_channel_links", "inbox_customer_labels", "inbox_labels", "inbox_quick_replies"):
+            for table in ("inbox_reads", "inbox_provider_receipts", "inbox_messages", "inbox_control_events", "inbox_controls", "inbox_channel_links", "inbox_customer_labels", "inbox_labels", "inbox_quick_replies"):
                 await db.execute(text(f"DELETE FROM {table} WHERE tenant_id IN (:a,:b)"), {"a": ctx.tenant, "b": ctx.other})
 
 

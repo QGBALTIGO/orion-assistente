@@ -59,6 +59,36 @@ async def test_history_exists_with_assistant_off_and_is_tenant_scoped(central):
                 await db.execute(text("INSERT INTO inbox_channel_links(tenant_id,channel_id,provider,qr_channel_id) VALUES(:t,:c,'qr',:c)"),{'t':c.other,'c':c.channel})
 
 
+async def test_unread_cursor_is_personal_monotonic_and_does_not_send_provider_receipts(central):
+    c=central
+    listed=await api.conversations(c.tenant,c.channel,'','Olá',0,c.actor)
+    assert listed['items'][0]['unread_count']==1 and listed['items'][0]['message_count']==1
+    data=await api.messages(c.tenant,c.channel,PHONE,None,c.actor)
+    cursor=UUID(data['items'][-1]['id'])
+    for _ in range(2):
+        result=await api.mark_read(c.tenant,c.channel,api.ReadThrough(contact_e164=PHONE,message_id=cursor),c.actor)
+        assert result=={'read':True,'provider_read_receipt':False}
+    assert not (await api.conversations(c.tenant,c.channel,'','',0,c.actor,True))['items']
+    with pytest.raises(HTTPException):
+        await api.mark_read(c.tenant,c.channel,api.ReadThrough(contact_e164=PHONE,message_id=uuid4()),c.actor)
+    async with c.factory() as db:
+        async with tenant_transaction(db,c.tenant):
+            await runtime.record_inbound(db,c.tenant,c.channel,PHONE,'new-message','Nova mensagem')
+    assert (await api.conversations(c.tenant,c.channel,'','',0,c.actor,True))['items'][0]['unread_count']==1
+
+
+@pytest.mark.parametrize('mode',['waiting','closed'])
+async def test_customer_reopens_waiting_or_closed_conversation_without_resuming_ai(central,mode):
+    c=central;await assume(c)
+    await control.change_control(c.tenant,c.channel,control.Change(contact_e164=PHONE,expected_revision=3,mode=mode),c.actor)
+    async with c.factory() as db:
+        async with tenant_transaction(db,c.tenant):
+            await runtime.record_inbound(db,c.tenant,c.channel,PHONE,'reopen-'+mode,'Retornei')
+    resumed=await control.get_control(c.tenant,c.channel,PHONE,c.actor)
+    assert resumed['mode']=='human' and await control.blocked(c.tenant,c.channel,PHONE)
+    assert resumed['assigned_account_id']==(str(c.account) if mode=='waiting' else None)
+
+
 async def test_manual_requires_claim_then_idempotent_request_and_single_worker(central):
     c=central
     with pytest.raises(HTTPException):
@@ -131,11 +161,15 @@ async def meta(central,monkeypatch):
         yield c
     finally:
         async with c.migration.begin() as db:
+            await db.execute(text('DELETE FROM inbox_reads WHERE tenant_id=:t AND control_id IN(SELECT id FROM inbox_controls WHERE channel_id=:c)'),{'t':c.tenant,'c':c.meta})
             await db.execute(text('DELETE FROM inbox_provider_receipts WHERE tenant_id=:t'),{'t':c.tenant})
             await db.execute(text('DELETE FROM inbox_messages WHERE tenant_id=:t AND control_id IN(SELECT id FROM inbox_controls WHERE channel_id=:c)'),{'t':c.tenant,'c':c.meta})
             await db.execute(text('DELETE FROM inbox_control_events WHERE tenant_id=:t AND control_id IN(SELECT id FROM inbox_controls WHERE channel_id=:c)'),{'t':c.tenant,'c':c.meta})
             await db.execute(text('DELETE FROM inbox_controls WHERE tenant_id=:t AND channel_id=:c'),{'t':c.tenant,'c':c.meta})
             await db.execute(text('DELETE FROM inbox_channel_links WHERE tenant_id=:t AND channel_id=:c'),{'t':c.tenant,'c':c.meta})
+            await db.execute(text('DELETE FROM message_outbox WHERE tenant_id=:t'),{'t':c.tenant})
+            await db.execute(text('DELETE FROM inbound_events WHERE tenant_id=:t'),{'t':c.tenant})
+            await db.execute(text('DELETE FROM usage_counters WHERE tenant_id=:t'),{'t':c.tenant})
             await db.execute(text('DELETE FROM whatsapp_channels WHERE id=:c'),{'c':c.meta})
 
 
@@ -161,6 +195,28 @@ async def test_meta_window_closed_never_calls_provider(meta):
     assert await runtime.process_inbox_message({'inbox_meta_sender':forbidden},str(c.tenant),str(operation))=='cancelled_before_send'
 
 
+async def test_meta_verified_operation_receipt_recovers_timeout_without_resending(meta):
+    c=meta;await assume(c,c.meta);operation,_=await enqueue(c,channel=c.meta);calls=[]
+    async def lost(*args):calls.append(1);raise TimeoutError('synthetic timeout after acceptance')
+    assert await runtime.process_inbox_message({'inbox_meta_sender':lost},str(c.tenant),str(operation))=='uncertain'
+    async with c.factory() as db:
+        async with tenant_transaction(db,c.tenant):
+            await runtime.provider_receipt(db,c.tenant,c.meta,PHONE,'verified-wamid','read',str(operation))
+    assert (await row(c,operation))['status']=='read'
+    assert not (await control.get_control(c.tenant,c.meta,PHONE,c.actor))['pending_operation']
+    assert await runtime.process_inbox_message({'inbox_meta_sender':lost},str(c.tenant),str(operation))=='already_claimed'
+    assert calls==[1]
+
+
+async def test_old_queued_text_is_cancelled_without_resuming_or_sending(central):
+    c=central;await assume(c);operation,_=await enqueue(c)
+    async with c.migration.begin() as db:
+        await db.execute(text("UPDATE inbox_messages SET created_at=now()-interval '11 minutes' WHERE id=:id"),{'id':operation})
+    async def forbidden(*a,**k):pytest.fail('expired draft reached transport')
+    assert await runtime.process_inbox_message({'inbox_qr_sender':forbidden},str(c.tenant),str(operation))=='cancelled_before_send'
+    assert (await control.get_control(c.tenant,c.channel,PHONE,c.actor))['mode']=='human'
+
+
 async def test_meta_domain_transaction_rejects_stale_generation_after_operator_takeover(meta):
     from types import SimpleNamespace
     c=meta;revision=await control.assistant_revision(c.tenant,c.meta,PHONE)
@@ -172,3 +228,31 @@ async def test_meta_domain_transaction_rejects_stale_generation_after_operator_t
                 async with tenant_transaction(db,c.tenant):
                     pytest.fail('stale Meta generation entered domain transaction')
     finally:control.reset_assistant(token)
+
+
+@pytest.mark.parametrize('handoff',[False,True])
+async def test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_outbox(meta,monkeypatch,handoff):
+    from app import worker
+    from tests.unit.test_qr_ai import FakeRedis
+    c=meta;event=uuid4()
+    monkeypatch.setattr(worker,'get_session_factory',lambda:c.factory)
+    async with c.migration.begin() as db:
+        await db.execute(text("""INSERT INTO inbound_events(id,tenant_id,channel_id,external_id,sender_e164,message_text)
+          VALUES(:id,:t,:c,'synthetic-meta-in',:phone,'Olá Meta')"""),{'id':event,'t':c.tenant,'c':c.meta,'phone':PHONE})
+    async def reply(tenant,channel,phone,*args,**kwargs):
+        assert control._assistant_scope.get()[:3]==(c.tenant,c.meta,PHONE)
+        if handoff:
+            await control.customer_handoff(tenant,channel,phone)
+            return None
+        return 'Resposta Meta sintética'
+    monkeypatch.setattr(worker,'reply',reply)
+    ctx={'redis':FakeRedis()}
+    assert await worker.process_inbound_event(ctx,str(c.tenant),str(event))=='processed'
+    assert await worker.process_inbound_event(ctx,str(c.tenant),str(event))=='already_processed_or_processing'
+    assert await worker.process_message_outbox(ctx,str(c.tenant),str(uuid4()))=='central_outbox_required'
+    async with c.factory() as db:
+        async with tenant_transaction(db,c.tenant):
+            outgoing=(await db.execute(text("SELECT status,source,body FROM inbox_messages WHERE tenant_id=:t AND direction='out'"),{'t':c.tenant})).mappings().all()
+            assert len(outgoing)==(0 if handoff else 1)
+            if outgoing:assert outgoing[0]=={'status':'queued','source':'assistant','body':'Resposta Meta sintética'}
+            assert (await db.execute(text('SELECT message_text FROM inbound_events WHERE id=:id'),{'id':event})).scalar_one()==''

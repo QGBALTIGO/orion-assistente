@@ -8,6 +8,13 @@ Nenhum deploy, migration operacional, conexão de sessão ou envio real foi exec
 - O painel Orion integra lista e filtros de conversas, histórico paginado, assumir,
   aguardar cliente, pausar, encerrar e retomar IA. Usa a conta pessoal e a permissão
   atual do estabelecimento. Etiquetas e respostas rápidas reaproveitam o CRM existente.
+- Contadores e leitura são pessoais na central; marcar como lida não envia recibos
+  ao WhatsApp. A busca geral consulta cadastro e as últimas cem mensagens reais de
+  cada conversa; a busca interna filtra apenas as mensagens carregadas. Há agrupamento
+  por dia, paginação de histórico e atualização periódica sem recarregar a página.
+- Mensagem recebida em conversa encerrada reabre atendimento humano sem responsável;
+  em espera, devolve a situação a humano mantendo o atendente. Nenhuma dessas
+  transições devolve automaticamente o controle à IA.
 - `inbox_controls` passa a representar canais gerenciados QR e canais oficiais Meta.
   A migration 0027 preserva os registros QR e importa conservadoramente os handoffs
   Meta ativos. Pausas persistem até uma transição explícita; o timeout antigo não
@@ -28,6 +35,9 @@ Nenhum deploy, migration operacional, conexão de sessão ou envio real foi exec
   recolocam automaticamente a mensagem em fila. Recibos QR autenticados e webhooks
   Meta assinados atualizam aceitação, entrega e leitura separadamente. Recibos Meta
   anteriores à resposta HTTP são preservados; eventos atrasados não rebaixam leitura.
+- Texto ainda em fila há mais de dez minutos é cancelado antes do transporte.
+  Esse prazo não libera slots incertos nem retoma a IA: somente evita despachar
+  uma intenção antiga depois de um longo período de pausa operacional.
 - O worker Meta antigo não pode despachar mensagens sem revisão após a ativação
   da central. O piloto QR global fica impedido de enviar/acionar IA nesse modo:
   é necessário usar um canal gerenciado. Isso não desconecta nem transfere sessões.

@@ -364,7 +364,10 @@ async def reconcile_control(tenant_id: UUID, channel_id: UUID, payload: Reconcil
     ):
         raise HTTPException(409, "O resultado continua incerto. A suspensão foi preservada")
     async with operator_session(tenant_id, actor, write=True) as db:
-        await check_channel(db, tenant_id, channel_id, payload.contact_e164)
+        exists=(await db.execute(text('SELECT id FROM inbox_controls WHERE tenant_id=:t AND channel_id=:c AND contact_e164=:phone'),
+            {'t':tenant_id,'c':channel_id,'phone':payload.contact_e164})).scalar_one_or_none()
+        if exists is None:
+            raise HTTPException(404,'Conversa não encontrada')
         row = await lock_control(db, tenant_id, channel_id, payload.contact_e164)
         if row["revision"] != payload.expected_revision or row["pending_operation"] != payload.operation_id:
             raise HTTPException(409, "O atendimento mudou. Atualize antes de verificar")

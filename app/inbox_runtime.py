@@ -6,6 +6,7 @@ their persistent slot; recovery never changes sending/uncertain back to queued.
 import hashlib
 import json
 import os
+from datetime import datetime,timedelta,timezone
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
@@ -26,13 +27,15 @@ def fingerprint(phone, body):
 
 async def record_inbound(db, tenant, channel, phone, external, body="", kind="text", provider_at=None):
     row = await control.lock_control(db, tenant, channel, "+"+phone.removeprefix("+"))
+    next_mode='human' if row['mode'] in {'waiting','closed'} else row['mode']
+    changes_generation=row['mode']=='ai' or next_mode!=row['mode']
     persisted=(await db.execute(text("""INSERT INTO inbox_messages(tenant_id,control_id,direction,source,kind,body,
       external_id,control_revision,status,provider_at) VALUES(:t,:c,'in','customer',:kind,:body,:external,:rev,'received',:at)
       ON CONFLICT(tenant_id,control_id,direction,external_id) DO NOTHING RETURNING id"""),
-      {"t":tenant,"c":row["id"],"kind":kind,"body":body,"external":external,"rev":row["revision"]+(1 if row["mode"]=="ai" else 0),"at":provider_at})).scalar_one_or_none()
-    if persisted and row['mode']=='ai':
-        await control.control_event(db,tenant,row,'ai','customer')
-        await db.execute(text("UPDATE inbox_controls SET revision=revision+1 WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':row['id']})
+      {"t":tenant,"c":row["id"],"kind":kind,"body":body,"external":external,"rev":row["revision"]+(1 if changes_generation else 0),"at":provider_at})).scalar_one_or_none()
+    if persisted and changes_generation:
+        await control.control_event(db,tenant,row,next_mode,'customer')
+        await db.execute(text("UPDATE inbox_controls SET revision=revision+1,mode=:mode WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':row['id'],'mode':next_mode})
     await db.execute(text("UPDATE inbox_controls SET updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id"),
                      {"t":tenant,"id":row["id"]})
     return row
@@ -129,7 +132,8 @@ async def process_inbox_message(ctx, tenant_id, message_id):
                 return "conversation_busy"
             provider = (await db.execute(text("SELECT provider FROM inbox_channel_links WHERE tenant_id=:t AND channel_id=:c"),
                                         {"t":tenant,"c":header["channel_id"]})).scalar_one()
-            valid = row["revision"] == item["control_revision"] and row["pending_operation"] is None
+            valid = (row["revision"] == item["control_revision"] and row["pending_operation"] is None
+                     and item['created_at']>datetime.now(timezone.utc)-timedelta(minutes=10))
             if item["source"] == "manual":
                 valid = valid and row["mode"] in {"human","waiting"} and row["assigned_account_id"] == item["actor_account_id"]
                 valid = valid and await operator_version(db,tenant,item["actor_account_id"]) == item["actor_auth_version"]

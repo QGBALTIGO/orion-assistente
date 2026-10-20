@@ -43,18 +43,25 @@ async def channels(tenant_id: UUID, actor: Actor=Depends(authenticate)):
 
 @router.get(P+"/conversations")
 async def conversations(tenant_id: UUID, channel_id: UUID|None=None, mode: str=Query(default="",pattern=r"^(|ai|human|waiting|paused|closed)$"),
-                        q: str=Query(default="",max_length=100), offset: int=Query(default=0,ge=0,le=20000), actor: Actor=Depends(authenticate)):
+                        q: str=Query(default="",max_length=100), offset: int=Query(default=0,ge=0,le=20000), actor: Actor=Depends(authenticate), unread:bool=False):
     control.require_enabled()
     async with management_session(tenant_id,actor) as db:
         rows=(await db.execute(text("""SELECT c.channel_id,c.contact_e164,c.mode,c.assigned_account_id,c.revision,
-          c.pending_operation,c.updated_at,l.provider,p.id AS customer_id,p.name,
+          c.pending_operation,c.updated_at,l.provider,p.id AS customer_id,p.name,stats.message_count,stats.unread_count,
           (SELECT body FROM inbox_messages m WHERE m.tenant_id=c.tenant_id AND m.control_id=c.id ORDER BY m.created_at DESC,m.id DESC LIMIT 1) AS preview
           FROM inbox_controls c JOIN inbox_channel_links l ON l.tenant_id=c.tenant_id AND l.channel_id=c.channel_id
           LEFT JOIN customers p ON p.tenant_id=c.tenant_id AND p.whatsapp_e164=c.contact_e164 AND p.active AND p.deleted_at IS NULL
+          LEFT JOIN inbox_reads r ON r.tenant_id=c.tenant_id AND r.control_id=c.id AND r.account_id=CAST(:account AS uuid)
+          CROSS JOIN LATERAL(SELECT count(*) AS message_count,count(*) FILTER(WHERE direction='in' AND
+            (r.message_id IS NULL OR (created_at,id)>(r.read_at,r.message_id))) AS unread_count
+            FROM inbox_messages WHERE tenant_id=c.tenant_id AND control_id=c.id) stats
           WHERE c.tenant_id=:t AND (CAST(:channel AS uuid) IS NULL OR c.channel_id=:channel)
-          AND (:mode='' OR c.mode=:mode) AND (:q='' OR position(lower(:q) in lower(COALESCE(p.name,'')||' '||c.contact_e164))>0)
+          AND (:mode='' OR c.mode=:mode) AND (NOT :unread OR stats.unread_count>0)
+          AND (:q='' OR position(lower(:q) in lower(COALESCE(p.name,'')||' '||c.contact_e164))>0 OR EXISTS(
+            SELECT 1 FROM (SELECT body FROM inbox_messages WHERE tenant_id=c.tenant_id AND control_id=c.id
+              ORDER BY created_at DESC,id DESC LIMIT 100) recent WHERE position(lower(:q) in lower(recent.body))>0))
           ORDER BY c.updated_at DESC,c.channel_id,c.contact_e164 LIMIT 51 OFFSET :offset"""),
-          {"t":tenant_id,"channel":channel_id,"mode":mode,"q":q.strip(),"offset":offset})).mappings().all()
+          {"t":tenant_id,"channel":channel_id,"mode":mode,"q":q.strip(),"offset":offset,"account":actor.account_id,"unread":unread})).mappings().all()
         return jsonable_encoder({"items":rows[:50],"has_more":len(rows)>50,"limit":50})
 
 
@@ -76,6 +83,32 @@ async def messages(tenant_id: UUID, channel_id: UUID, phone: str=Query(pattern=r
         return jsonable_encoder({"control":{k:row[k] for k in ("mode","assigned_account_id","revision","pending_operation","pending_since")},
                                  "customer_id":customer,"items":list(reversed(items[:100])),"has_more":len(items)>100,
                                  "next_before":items[99]["id"] if len(items)>100 else None})
+
+
+class ReadThrough(StrictModel):
+    contact_e164: str=Field(pattern=r"^\+55[1-9][0-9]{9,10}$")
+    message_id: UUID
+
+
+@router.post(P+'/channels/{channel_id}/read')
+async def mark_read(tenant_id:UUID,channel_id:UUID,payload:ReadThrough,actor:Actor=Depends(authenticate)):
+    control.require_enabled()
+    if not isinstance(actor.account_id,UUID):
+        raise HTTPException(403,'Entre com sua conta pessoal para marcar leitura')
+    async with management_session(tenant_id,actor) as db:
+        saved=(await db.execute(text('''INSERT INTO inbox_reads(tenant_id,control_id,account_id,message_id,read_at)
+          SELECT m.tenant_id,m.control_id,:account,m.id,m.created_at FROM inbox_messages m JOIN inbox_controls c
+          ON c.tenant_id=m.tenant_id AND c.id=m.control_id WHERE m.tenant_id=:t AND m.id=:id
+            AND c.channel_id=:channel AND c.contact_e164=:phone
+          ON CONFLICT(tenant_id,control_id,account_id) DO UPDATE SET message_id=EXCLUDED.message_id,read_at=EXCLUDED.read_at
+          WHERE (inbox_reads.read_at,inbox_reads.message_id)<(EXCLUDED.read_at,EXCLUDED.message_id)
+          RETURNING control_id'''),{'t':tenant_id,'channel':channel_id,'phone':payload.contact_e164,'id':payload.message_id,'account':actor.account_id})).scalar_one_or_none()
+        if saved is None:
+            valid=(await db.execute(text('''SELECT 1 FROM inbox_messages m JOIN inbox_controls c ON c.tenant_id=m.tenant_id AND c.id=m.control_id
+              WHERE m.tenant_id=:t AND m.id=:id AND c.channel_id=:channel AND c.contact_e164=:phone'''),
+              {'t':tenant_id,'channel':channel_id,'phone':payload.contact_e164,'id':payload.message_id})).first()
+            if not valid:raise HTTPException(404,'Mensagem não encontrada nesta conversa')
+    return {'read':True,'provider_read_receipt':False}
 
 
 @router.post(P+"/channels/{channel_id}/messages",status_code=202)
