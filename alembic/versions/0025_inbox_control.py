@@ -29,6 +29,19 @@ def upgrade():
         CHECK(mode IN ('human','waiting') OR assigned_account_id IS NULL)
       );
       CREATE INDEX ix_inbox_control_queue ON public.inbox_controls(tenant_id,channel_id,mode,updated_at);
+      CREATE TABLE public.inbox_control_events (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id uuid NOT NULL,
+        control_id uuid NOT NULL,
+        actor_account_id uuid REFERENCES public.panel_accounts(id),
+        source varchar(16) NOT NULL CHECK(source IN ('customer','operator')),
+        previous_mode varchar(16) NOT NULL,
+        mode varchar(16) NOT NULL,
+        revision bigint NOT NULL CHECK(revision>0),
+        occurred_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+        FOREIGN KEY(tenant_id,control_id) REFERENCES public.inbox_controls(tenant_id,id),
+        UNIQUE(tenant_id,control_id,revision)
+      );
       CREATE FUNCTION public.inbox_channel_contact_allowed(t uuid,c uuid,phone text) RETURNS boolean
       LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public AS $fn$
         SELECT t=NULLIF(current_setting('app.tenant_id',true),'')::uuid AND EXISTS(
@@ -47,10 +60,17 @@ def upgrade():
     op.execute("CREATE POLICY inbox_controls_migrator ON public.inbox_controls TO app_migrator USING(true) WITH CHECK(true)")
     op.execute("REVOKE ALL ON public.inbox_controls FROM PUBLIC,app_runtime,app_support")
     op.execute("GRANT SELECT,INSERT,UPDATE ON public.inbox_controls TO app_runtime")
+    op.execute("ALTER TABLE public.inbox_control_events ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE public.inbox_control_events FORCE ROW LEVEL SECURITY")
+    op.execute(f"CREATE POLICY inbox_control_events_runtime ON public.inbox_control_events TO app_runtime USING(tenant_id={setting}) WITH CHECK(tenant_id={setting})")
+    op.execute("CREATE POLICY inbox_control_events_migrator ON public.inbox_control_events TO app_migrator USING(true) WITH CHECK(true)")
+    op.execute("REVOKE ALL ON public.inbox_control_events FROM PUBLIC,app_runtime,app_support")
+    op.execute("GRANT SELECT,INSERT ON public.inbox_control_events TO app_runtime")
 
 
 def downgrade():
     op.execute("""DO $$ BEGIN IF EXISTS(SELECT 1 FROM public.inbox_controls) THEN
       RAISE EXCEPTION 'Preserve conversation controls before downgrade'; END IF; END $$""")
+    op.execute("DROP TABLE public.inbox_control_events")
     op.execute("DROP TABLE public.inbox_controls")
     op.execute("DROP FUNCTION public.inbox_channel_contact_allowed(uuid,uuid,text)")

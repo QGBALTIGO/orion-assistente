@@ -15,7 +15,8 @@ TOKEN = re.compile(r"\{\{\s*([a-z_]+\.[a-z_]+)\s*\}\}")
 
 
 def template_variables(value: str) -> set[str]:
-    if not isinstance(value, str) or not value.strip() or len(value) > 1200 or "\x00" in value:
+    if (not isinstance(value, str) or not value.strip() or len(value) > 1200 or "\x00" in value
+            or re.search(r"[\ud800-\udfff]", value)):
         raise ValueError("Use um texto de até 1200 caracteres")
     variables = set(TOKEN.findall(value))
     if variables - VARIABLES or "{" in TOKEN.sub("", value) or "}" in TOKEN.sub("", value):

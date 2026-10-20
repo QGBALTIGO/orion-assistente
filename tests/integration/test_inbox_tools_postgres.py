@@ -26,7 +26,7 @@ async def inbox_db(automation_db, monkeypatch):
         yield ctx
     finally:
         async with ctx.migration.begin() as db:
-            for table in ("inbox_controls", "inbox_customer_labels", "inbox_labels", "inbox_quick_replies"):
+            for table in ("inbox_control_events", "inbox_controls", "inbox_customer_labels", "inbox_labels", "inbox_quick_replies"):
                 await db.execute(text(f"DELETE FROM {table} WHERE tenant_id IN (:a,:b)"), {"a": ctx.tenant, "b": ctx.other})
 
 
@@ -93,6 +93,8 @@ async def test_control_two_operators_cas_and_persistent_pause(inbox_db):
     # An independent transaction after a simulated restart sees the same state.
     row = await control.get_control(c.tenant, c.channel, PHONE, c.actor)
     assert row["assigned_account_id"] == str(c.account) and row["revision"] == 2
+    history = await control.control_history(c.tenant, c.channel, PHONE, c.actor)
+    assert len(history["items"]) == 1 and history["items"][0]["actor_account_id"] == str(c.account)
     await control.change_control(c.tenant, c.channel, control.Change(contact_e164=PHONE, expected_revision=2, mode="ai"), c.actor)
     assert not await control.blocked(c.tenant, c.channel, PHONE)
 

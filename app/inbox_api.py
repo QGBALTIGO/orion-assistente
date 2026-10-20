@@ -6,6 +6,7 @@ Labels never constitute consent and this module never contacts a provider.
 from datetime import datetime, timezone
 import os
 from uuid import UUID
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -177,6 +178,17 @@ async def context(db, tenant, identity):
       ORDER BY lower(l.name),l.id"""), {"t": tenant, "customer": identity})).mappings().all()
     facts = {"cliente.nome": person["name"], "cliente.primeiro_nome": person["name"].split()[0] if person["name"].split() else "",
              "empresa.nome": business["name"]}
+    address = (await db.execute(text("""SELECT v.profile->>'address' FROM business_profile_state s
+      JOIN business_profile_versions v ON v.tenant_id=s.tenant_id AND v.id=s.published_version_id
+      WHERE s.tenant_id=:t"""), {"t": tenant})).scalar_one_or_none()
+    if isinstance(address, str) and address.strip():
+        facts["empresa.endereco"] = address
+    public_slug = (await db.execute(text("SELECT public_slug FROM management_site_preferences WHERE tenant_id=:t AND public_enabled"), {"t": tenant})).scalar_one_or_none()
+    origin = os.getenv("PANEL_PUBLIC_URL", "").rstrip("/")
+    parsed = urlsplit(origin)
+    if (public_slug and parsed.scheme == "https" and parsed.hostname and not parsed.username
+            and not parsed.password and not parsed.path and not parsed.query and not parsed.fragment):
+        facts["empresa.link_agendar"] = origin+"/s/"+public_slug
     if upcoming:
         local = upcoming["start_at"].astimezone(ZoneInfo(business["timezone"]))
         facts.update({"agendamento.data": local.strftime("%d/%m/%Y"), "agendamento.horario": local.strftime("%H:%M"),

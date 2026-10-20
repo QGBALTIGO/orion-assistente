@@ -90,6 +90,12 @@ async def check_channel(db, tenant, channel, phone):
         raise HTTPException(404, "Canal ou contato indisponível neste estabelecimento")
 
 
+async def control_event(db, tenant, row, mode, source, actor=None):
+    await db.execute(text("""INSERT INTO inbox_control_events(tenant_id,control_id,actor_account_id,source,previous_mode,mode,revision)
+      VALUES(:t,:id,:actor,:source,:previous,:mode,:revision)"""),
+      {"t": tenant, "id": row["id"], "actor": actor, "source": source, "previous": row["mode"], "mode": mode, "revision": row["revision"]+1})
+
+
 async def blocked(tenant, channel, phone):
     if not enabled():
         return False
@@ -124,8 +130,9 @@ async def customer_handoff(tenant, channel, phone):
             if row["pending_operation"] is not None:
                 raise HTTPException(409, "Há um envio em verificação neste atendimento")
             if row["mode"] != "human":
-                await db.execute(text("""UPDATE inbox_controls SET mode='human',assigned_account_id=NULL,
+                await db.execute(text("""UPDATE inbox_controls SET mode='human',
                   revision=revision+1,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id"""), {"t": tenant, "id": row["id"]})
+                await control_event(db, tenant, row, "human", "customer")
                 await audit(db, tenant, "inbox_customer_handoff", "inbox_controls", row["id"])
     finally:
         _assistant_scope.reset(token)
@@ -166,7 +173,21 @@ async def change_control(tenant_id: UUID, channel_id: UUID, payload: Change, act
           RETURNING mode,assigned_account_id,revision,pending_operation,pending_since"""),
           {"t": tenant_id, "id": row["id"], "mode": payload.mode, "account": assigned})).mappings().one()
         await audit(db, tenant_id, "inbox_control_"+payload.mode, "inbox_controls", row["id"])
+        await control_event(db, tenant_id, row, payload.mode, "operator", actor.account_id)
         return jsonable_encoder(result)
+
+
+@router.get(PREFIX+"/history")
+async def control_history(tenant_id: UUID, channel_id: UUID,
+                          phone: str = Query(pattern=r"^\+55[1-9][0-9]{9,10}$"), actor: Actor = Depends(authenticate)):
+    require_enabled()
+    async with management_session(tenant_id, actor) as db:
+        await check_channel(db, tenant_id, channel_id, phone)
+        rows = (await db.execute(text("""SELECT e.id,e.actor_account_id,e.source,e.previous_mode,e.mode,e.revision,e.occurred_at
+          FROM inbox_control_events e JOIN inbox_controls c ON c.tenant_id=e.tenant_id AND c.id=e.control_id
+          WHERE c.tenant_id=:t AND c.channel_id=:channel AND c.contact_e164=:phone
+          ORDER BY e.revision DESC LIMIT 100"""), {"t": tenant_id, "channel": channel_id, "phone": phone})).mappings().all()
+        return jsonable_encoder({"items": rows, "limit": 100})
 
 
 @asynccontextmanager
