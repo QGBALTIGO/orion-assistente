@@ -19,7 +19,7 @@ from app.csv_export import csv_document
 from app.database import get_session_factory, tenant_transaction
 from app.google_oauth import (
     OAUTH_COOKIE, OAUTH_PATH, OAUTH_TTL, candidate_key, connection_fingerprint,
-    digest, google_configured, make_authorization_url, oauth_config, oauth_redis,
+    digest, google_configured, configuration_checklist, make_authorization_url, oauth_config, oauth_redis,
     pending_candidate, request_initiator, validate_initiator,
 )
 from app.tenant_access import resolve_tenant_access
@@ -66,10 +66,13 @@ async def connection_row(db, tenant, *, lock=False):
     """ + (" FOR UPDATE" if lock else "")), {"tenant": tenant})).mappings().first()
 
 
-async def connection_snapshot(tenant):
+async def connection_snapshot(tenant, *, require_ready=False):
     async with get_session_factory()() as db:
         async with tenant_transaction(db, tenant):
             await ensure_tenant(db, tenant)
+            if require_ready:
+                from app.onboarding_service import require_operational_ready
+                await require_operational_ready(db, tenant, "google")
             return await connection_row(db, tenant)
 
 
@@ -157,6 +160,7 @@ async def google_status_data(tenant_id, actor, request):
         "failed": stats["failed"], "sent": stats["sent"], "last_error": last_error,
         "direction": "orion_to_google", "selection_pending": bool(candidate),
         "calendar_change_locked": bool(selected),
+        "setup": configuration_checklist() if can_manage else None,
         "capabilities": {
             "can_connect": can_manage and configured and oauth_available,
             "can_disconnect": can_manage and bool(candidate or row and row["refresh_token_enc"]),
@@ -173,7 +177,7 @@ async def connect_google(tenant_id: UUID, request: Request, actor: Actor = Depen
     if request.url.netloc != urlsplit(redirect).netloc:
         raise HTTPException(503, "Abra o painel no endereço configurado para a conexão Google")
     source = request_initiator(request, actor)
-    row = await connection_snapshot(tenant_id)
+    row = await connection_snapshot(tenant_id, require_ready=True)
     state, nonce, verifier = (secrets.token_urlsafe(32) for _ in range(3))
     intent = {"tenant_id": str(tenant_id), "initiator": source, "nonce_hash": digest(nonce),
               "verifier": verifier, "connection_revision": connection_fingerprint(row)}
@@ -215,7 +219,7 @@ async def callback_google(request: Request, state: str = "", code: str | None = 
         if len(nonce) != 43 or not secrets.compare_digest(intent.get("nonce_hash", ""), digest(nonce)):
             raise HTTPException(403, "Esta autorização não pertence a este navegador")
         await validate_initiator(redis, intent, tenant)
-        still_same_connection(intent, await connection_snapshot(tenant))
+        still_same_connection(intent, await connection_snapshot(tenant, require_ready=True))
         consumed = await redis.getdel("google:oauth:" + state)
         if not consumed or not secrets.compare_digest(consumed, raw):
             raise HTTPException(403, "Esta autorização já foi utilizada")
@@ -288,6 +292,7 @@ async def select_google_calendar(tenant_id: UUID, payload: CalendarSelection, re
                                  actor: Actor = Depends(authenticate)):
     await resolve_tenant_access(actor, tenant_id, "publish")
     _, _, _, key = oauth_config()
+    await connection_snapshot(tenant_id, require_ready=True)
     redis = oauth_redis()
     try:
         source, candidate, prior = await authorized_candidate(tenant_id, actor, request, redis)
@@ -314,6 +319,8 @@ async def select_google_calendar(tenant_id: UUID, payload: CalendarSelection, re
                 raise HTTPException(409, "Reconecte a agenda usada anteriormente por este negócio")
         async with get_session_factory()() as db:
             async with tenant_transaction(db, tenant_id):
+                from app.onboarding_service import require_operational_ready
+                await require_operational_ready(db, tenant_id, "google")
                 if not await calendar_lock(db, tenant_id):
                     raise HTTPException(409, "Há uma sincronização em andamento. Aguarde alguns segundos e tente novamente")
                 current = await connection_row(db, tenant_id, lock=True)

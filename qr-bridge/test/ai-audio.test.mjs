@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {transcribeAssistantAudio} from "../src/ai-audio.mjs";
+import {transcribeAssistantAudio,withAssistantAudio} from "../src/ai-audio.mjs";
 
 test("mocked voice upload uses private backend, erases audio buffer",async()=>{
  const data=Buffer.from("audio-synthetic-test");
@@ -87,4 +87,11 @@ test('provider failure and excessive or truncated transcript erase audio without
       fetchFn:async()=>({ok:result.ok,json:async()=>result})});
     assert.equal(value,null);assert.ok(data.every(byte=>byte===0));
   }
+});
+
+test('shared bounded audio lifecycle has no API routing and keeps actual supported MIME',async()=>{
+  const data=Buffer.from('synthetic WebM'),calls=[];
+  const result=await withAssistantAudio(voice({mimetype:'audio/webm; codecs=opus'}),{client:{},logger:{},downloadMediaMessage:async()=>data},async({buffer,mediaType})=>{assert.equal(buffer,data);calls.push(mediaType);return 'complete text';});
+  assert.equal(result,'complete text');assert.deepEqual(calls,['audio/webm']);assert.ok(data.every(byte=>byte===0));
+  assert.equal(await withAssistantAudio(voice({mimetype:'video/mp4'}),{downloadMediaMessage:async()=>assert.fail('must not download')},async()=>assert.fail('must not consume')),null);
 });

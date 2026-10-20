@@ -90,7 +90,9 @@ def test_missing_migration_is_safe(monkeypatch, tmp_path):
 
 
 def test_crlf_checkout_executes_the_same_reviewed_bytes(monkeypatch, tmp_path):
-    body = (ops.ROOT / "alembic" / "versions" / (ops.TARGET + ".py")).read_bytes()
+    # A Windows source checkout can already contain CRLF. Build valid CRLF,
+    # rather than introducing CRCRLF and testing corruption accidentally.
+    body = (ops.ROOT / "alembic" / "versions" / (ops.TARGET + ".py")).read_bytes().replace(b"\r\n", b"\n")
     directory = tmp_path / "alembic" / "versions"
     directory.mkdir(parents=True)
     (directory / (ops.TARGET + ".py")).write_bytes(body.replace(b"\n", b"\r\n"))

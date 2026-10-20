@@ -9,7 +9,9 @@ import hmac
 import json
 import os
 import secrets
+from dataclasses import dataclass
 from datetime import timedelta
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
@@ -22,9 +24,40 @@ TTL = 12 * 3600
 REMEMBER_TTL = 30 * 24 * 3600
 
 
+@dataclass(frozen=True)
+class VerifiedRouteMembership:
+    account_id: UUID
+    tenant_id: UUID
+    role: str | None
+
+
+ROUTE_MEMBERSHIP = "orion.verified_route_membership"
+
+
 def _redis():
     return from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-                    decode_responses=True, socket_timeout=3)
+                    decode_responses=True, socket_timeout=3, max_connections=100)
+
+
+async def start_session_store(application):
+    """One connection pool per application worker; session claims are never cached."""
+    if getattr(application.state, "panel_session_redis", None) is not None:
+        raise RuntimeError("Session store already started")
+    application.state.panel_session_redis = _redis()
+
+
+async def close_session_store(application):
+    redis = getattr(application.state, "panel_session_redis", None)
+    if redis is not None:
+        del application.state.panel_session_redis
+        await redis.aclose()
+
+
+def _request_redis(request):
+    state = getattr(request.scope.get("app"), "state", None)
+    redis = getattr(state, "panel_session_redis", None)
+    # ASGI callers without a lifespan still own and close their short-lived client.
+    return (redis, False) if redis is not None else (_redis(), True)
 
 
 def _hash_cookie(token: str) -> str:
@@ -56,28 +89,43 @@ def _same_origin(request: Request) -> None:
 
 async def panel_actor(request: Request) -> dict:
     """Cookie aleatório armazenado somente como hash; CSRF em toda mutação."""
+    # Only this invocation can issue the request-local proof. Redis claims,
+    # prior calls and another request's scope never provide membership authority.
+    request.scope.pop(ROUTE_MEMBERSHIP, None)
     token = request.cookies.get(COOKIE, "")
     if not token or len(token) != 43:
         raise HTTPException(401, "Faça login no painel")
-    redis = _redis()
+    redis, owned = _request_redis(request)
     try:
         content = await redis.get(_hash_cookie(token))
     except (RedisError, OSError):
         raise HTTPException(503, "Sessões indisponíveis") from None
     finally:
-        await redis.aclose()
+        if owned:
+            await redis.aclose()
     if not content:
         raise HTTPException(401, "Sessão expirada, entre novamente")
     data = json.loads(content)
     if data.get("account_id"):
-        from app.account_auth import current_account
+        from app.account_auth import current_account, current_account_and_membership
+        tenant = None
+        if data.get("role") == "member" and os.getenv("BUSINESS_PROFILES_ENABLED", "0") == "1":
+            try:
+                tenant = UUID(str(request.path_params.get("tenant_id")))
+            except (ValueError, TypeError):
+                pass
         try:
-            row = await current_account(data["account_id"], data["auth_version"])
+            row = (await current_account_and_membership(data["account_id"], data["auth_version"], tenant)
+                   if tenant is not None else
+                   await current_account(data["account_id"], data["auth_version"]))
         except (ValueError,KeyError):
             raise HTTPException(401,"Sessão inválida") from None
         # A changed role/password invalidates prior sessions.
         if row["role"] != data["role"]:
             raise HTTPException(401,"Sessão expirada") from None
+        if tenant is not None:
+            request.scope[ROUTE_MEMBERSHIP] = VerifiedRouteMembership(
+                UUID(data["account_id"]), tenant, row["membership_role"])
         # Return only this account's display identity; never change the privilege role.
         data["name"] = row["name"]
         data["email"] = row["email"]
@@ -103,7 +151,7 @@ async def login(payload: Login, request: Request, response: Response):
     # Único administrador de homologação, sem múltiplos usuários e sem dados reais.
     client_ip = request.client.host if request.client else "unknown"
     ip_key = "orion:login:fail:" + hashlib.sha256(client_ip.encode()).hexdigest()
-    redis = _redis()
+    redis, owned = _request_redis(request)
     try:
         attempts = int(await redis.get(ip_key) or "0")
         if attempts >= 8:
@@ -139,7 +187,8 @@ async def login(payload: Login, request: Request, response: Response):
     except (RedisError, OSError):
         raise HTTPException(503, "Login temporariamente indisponível") from None
     finally:
-        await redis.aclose()
+        if owned:
+            await redis.aclose()
 
 
 @router.get("/me")
@@ -152,13 +201,14 @@ async def me(data: dict = Depends(panel_actor)):
 
 @router.post("/logout")
 async def logout(request: Request, response: Response, _: dict = Depends(panel_actor)):
-    redis = _redis()
+    redis, owned = _request_redis(request)
     try:
         await redis.delete(_hash_cookie(request.cookies[COOKIE]))
     except (RedisError, OSError):
         raise HTTPException(503, "Não foi possível encerrar a sessão") from None
     finally:
-        await redis.aclose()
+        if owned:
+            await redis.aclose()
     response.delete_cookie(COOKIE, path="/", secure=True, httponly=True, samesite="strict")
     response.headers["Cache-Control"] = "no-store"
     return {"ok": True}

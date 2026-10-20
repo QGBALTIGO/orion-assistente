@@ -2,7 +2,7 @@
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
-from app.catalog_api import router as catalog_router
+from app.catalog_api import router as catalog_router, list_services
 from app.booking_api import router as bookings_router
 from app.whatsapp_api import router as whatsapp_router
 from app.integrations_api import router as integrations_router
@@ -28,6 +28,10 @@ from app.management_team import router as management_team_router, invitation_rou
 from app.management_preferences import router as management_preferences_router
 from app.public_site_api import router as public_site_router
 from app.service_packages_api import router as service_packages_router
+from app.onboarding_api import router as onboarding_router
+from app.qr_channels import router as qr_channels_router
+from app.automation_api import router as automation_router
+from app.qr_channel_audio import router as qr_channel_audio_router
 from app.media_api import router as media_router
 
 app = FastAPI(
@@ -42,13 +46,29 @@ async def startup_provider_probe():
     await probe_groq_provider()
 
 
+@app.on_event("startup")
+async def startup_panel_session_store():
+    from app.panel_auth import start_session_store
+    await start_session_store(app)
+
+
+@app.on_event("shutdown")
+async def shutdown_panel_session_store():
+    from app.panel_auth import close_session_store
+    await close_session_store(app)
+
+
 @app.get("/health", include_in_schema=False)
 async def health() -> dict[str, str]:
     """Liveness sem informação sobre usuários, banco ou segredos."""
     return {"status": "ok"}
 
 
+app.add_api_route("/api/v1/tenants/{tenant_id}/services", list_services,
+                  methods=["GET"], tags=["Operação interna"])
 app.include_router(bookings_router)
+app.include_router(onboarding_router)
+app.include_router(commercial_router)
 app.include_router(whatsapp_router)
 app.include_router(integrations_router)
 app.include_router(ops_router)
@@ -64,7 +84,6 @@ app.include_router(groq_router)
 app.include_router(groq_audio_router)
 app.include_router(qr_ai_router)
 app.include_router(business_profile_router)
-app.include_router(commercial_router)
 app.include_router(management_router)
 app.include_router(management_blocks_router)
 app.include_router(management_ai_router)
@@ -73,6 +92,9 @@ app.include_router(invitation_router)
 app.include_router(management_preferences_router)
 app.include_router(public_site_router)
 app.include_router(service_packages_router)
+app.include_router(qr_channels_router)
+app.include_router(automation_router)
+app.include_router(qr_channel_audio_router)
 app.include_router(media_router)
 # Specific management paths must precede the legacy two-segment catalog path.
 app.include_router(catalog_router)
@@ -101,7 +123,10 @@ async def panel_asset(asset: str) -> FileResponse:
     """Only the public suite assets; never expose arbitrary application files."""
     allowed = {"orion-suite.css": "text/css", "orion-suite.js": "text/javascript",
                "orion-auth.css": "text/css",
-               "orion-invite.css": "text/css", "orion-invite.js": "text/javascript"}
+               "orion-invite.css": "text/css", "orion-invite.js": "text/javascript",
+               "orion-onboarding.css": "text/css", "orion-onboarding.js": "text/javascript",
+               "orion-channels.css": "text/css", "orion-channels.js": "text/javascript",
+               "orion-automations.js": "text/javascript"}
     if asset not in allowed:
         from fastapi import HTTPException
         raise HTTPException(404)

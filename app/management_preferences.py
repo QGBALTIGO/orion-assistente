@@ -19,6 +19,11 @@ EVENTS = ("booking_confirmed", "reminder_24h", "reminder_2h", "reminder_1h", "re
           "cancelled_7d", "birthday_7d", "birthday_2d", "loyalty_reward", "after_service")
 
 
+async def automation_active(db, tenant):
+    from app.automation_runtime import execution_enabled, execution_approved, settings_for
+    return execution_enabled() and execution_approved(await settings_for(db, tenant))
+
+
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -119,7 +124,7 @@ async def get_preferences(tenant_id: UUID, actor: Actor = Depends(authenticate))
         if access.role == "viewer":
             result["business"]["tax_document"] = None
         return {**result, "can_save": access.role in {"owner", "support", "admin"},
-                "automation_execution_enabled": False}
+                "automation_execution_enabled": await automation_active(db, tenant_id)}
 
 
 @router.put("/preferences")
@@ -127,7 +132,7 @@ async def put_preferences(tenant_id: UUID, payload: BusinessSave, actor: Actor =
     await resolve_tenant_access(actor, tenant_id, "publish")
     async with management_session(tenant_id, actor, write=True) as db:
         result = await save_section(db, tenant_id, "business", payload.business.model_dump(), payload.expected_version)
-        return {**result, "automation_execution_enabled": False}
+        return {**result, "automation_execution_enabled": await automation_active(db, tenant_id)}
 
 
 @router.get("/marketing/automations")
@@ -135,17 +140,19 @@ async def get_automations(tenant_id: UUID, actor: Actor = Depends(authenticate))
     async with management_session(tenant_id, actor) as db:
         result = await preferences(db, tenant_id)
         channels = (await db.execute(text("SELECT status,bot_enabled FROM whatsapp_channels WHERE tenant_id=:tenant"), {"tenant": tenant_id})).mappings().all()
+        active = await automation_active(db, tenant_id)
         return {"configuration": result["automations"], "version": result["version"], "events": list(EVENTS),
                 "channel_connected": any(x["status"] == "connected" for x in channels),
-                "execution_enabled": False, "mode": "draft",
-                "reason": "Configuração salva como rascunho. O envio de campanhas e novas automações depende da aprovação operacional do Orion."}
+                "execution_enabled": active, "mode": "reviewed_execution" if active else "draft",
+                "reason": "Regras autorizadas pelo proprietário, sujeitas a consentimento e revisão antes do envio." if active else "Configuração salva. Revise e autorize os envios separadamente."}
 
 
 @router.put("/marketing/automations")
 async def put_automations(tenant_id: UUID, payload: AutomationsSave, actor: Actor = Depends(authenticate)):
     async with management_session(tenant_id, actor, write=True) as db:
         result = await save_section(db, tenant_id, "automations", payload.configuration.model_dump(), payload.expected_version)
-        return {"configuration": result["automations"], "version": result["version"], "execution_enabled": False, "mode": "draft"}
+        active = await automation_active(db, tenant_id)
+        return {"configuration": result["automations"], "version": result["version"], "execution_enabled": active, "mode": "reviewed_execution" if active else "draft"}
 
 
 @router.get("/marketing/queue")

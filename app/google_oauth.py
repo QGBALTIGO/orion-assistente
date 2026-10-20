@@ -21,22 +21,27 @@ OAUTH_COOKIE = "__Secure-orion_google_oauth"
 OAUTH_PATH = "/integrations/google/callback"
 
 
+def _valid_callback(redirect, public_value):
+    """One callback/origin contract for runtime and the local checklist."""
+    try:
+        parsed = urlsplit(redirect)
+        public = urlsplit(public_value)
+        return bool(parsed.scheme == "https" and parsed.hostname and parsed.netloc
+            and not parsed.username and not parsed.password and parsed.path == OAUTH_PATH
+            and not parsed.query and not parsed.fragment
+            and (not public_value or public.scheme == "https" and public.netloc == parsed.netloc))
+    except ValueError:
+        return False
+
+
 def oauth_config():
     cid = os.getenv("GOOGLE_CLIENT_ID", "")
     secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
     redirect = os.getenv("GOOGLE_REDIRECT_URI", "")
     key = os.getenv("INTEGRATION_FERNET_KEY", "")
     public_value = os.getenv("PANEL_PUBLIC_URL", "")
-    try:
-        parsed = urlsplit(redirect)
-        public = urlsplit(public_value)
-    except ValueError:
-        raise HTTPException(503, "O endereço de retorno do Google precisa ser configurado pela equipe Orion") from None
-    if not all((cid, secret, redirect, key)) or parsed.scheme != "https" or not parsed.netloc or \
-            parsed.username or parsed.password or parsed.path != OAUTH_PATH or parsed.query or parsed.fragment:
+    if not all((cid, secret, redirect, key)) or not _valid_callback(redirect, public_value):
         raise HTTPException(503, "A conexão com o Google ainda precisa ser configurada pela equipe Orion")
-    if public_value and (public.scheme != "https" or public.netloc != parsed.netloc):
-        raise HTTPException(503, "O endereço de retorno do Google precisa ser configurado pela equipe Orion")
     try:
         Fernet(key.encode())
     except (ValueError, TypeError):
@@ -50,6 +55,30 @@ def google_configured():
     except (HTTPException, ValueError):
         return False
     return True
+
+
+def configuration_checklist(*, worker=False):
+    """Safe local readiness facts. Presence is not authorization or delivery."""
+    checks = []
+    for name, label in (("GOOGLE_CLIENT_ID", "Identificação do aplicativo Google"),
+                        ("GOOGLE_CLIENT_SECRET", "Credencial privada do aplicativo"),
+                        ("INTEGRATION_FERNET_KEY", "Proteção das autorizações salvas")):
+        ready = bool(os.getenv(name, "").strip())
+        if name == "INTEGRATION_FERNET_KEY" and ready:
+            try:
+                Fernet(os.environ[name].encode())
+            except (ValueError, TypeError):
+                ready = False
+        checks.append({"id": name, "label": label, "ready": ready})
+    if not worker:
+        valid_redirect = _valid_callback(os.getenv("GOOGLE_REDIRECT_URI", ""), os.getenv("PANEL_PUBLIC_URL", ""))
+        checks.append({"id": "GOOGLE_REDIRECT_URI", "label": "Endereço seguro de retorno ao Orion", "ready": valid_redirect})
+    configured = all(item["ready"] for item in checks)
+    return {"checks": checks, "configured": configured,
+            "sync_enabled": os.getenv("GOOGLE_LIVE_SYNC") == "1",
+            "external_authorization_verified": False,
+            "next_step": "authorize_account" if configured else "prepare_server",
+            "direction": "orion_to_google"}
 
 
 def oauth_redis():

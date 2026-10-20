@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   pytest:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       redis:
         image: redis:7-alpine
@@ -103,7 +103,7 @@ jobs:
 
   faster_whisper:
     name: ASR faster-whisper - CPU, Docker e testes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -121,7 +121,7 @@ jobs:
 
   qr_bridge:
     name: QR bridge — Node, IPv6, segurança e Docker
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

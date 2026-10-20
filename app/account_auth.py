@@ -386,6 +386,28 @@ async def current_account(account_id,version):
     return row
 
 
+_CURRENT_ACCOUNT_SCOPE_SQL = text("""
+            SELECT a.role,a.auth_version,a.verified_at,a.name,a.email,m.role AS membership_role
+            FROM panel_accounts a LEFT JOIN tenant_memberships m
+              ON m.account_id=a.id AND m.tenant_id=:tenant AND m.active
+            WHERE a.id=:id
+        """)
+
+
+async def current_account_and_membership(account_id, version, tenant_id):
+    """One current, read-only snapshot; no authority survives this request."""
+    # Borrow the same support pool, with no new engine or connection allowance.
+    # This SELECT needs no explicit transaction. SQLAlchemy restores the default
+    # isolation on return, including failures; ordinary writes remain atomic.
+    async with _storage().kw["bind"].connect() as connection:
+        await connection.execution_options(isolation_level="AUTOCOMMIT")
+        row = (await connection.execute(_CURRENT_ACCOUNT_SCOPE_SQL,
+            {"id": UUID(account_id), "tenant": tenant_id})).mappings().first()
+    if not row or row["auth_version"] != version:
+        raise HTTPException(401, "Sua sessão expirou. Entre novamente")
+    return row
+
+
 @router.post("/admin/claim")
 async def claim_owner(payload:ClaimOwner,request:Request,data:dict=Depends(panel_actor)):
     if not data.get("account_id"):raise HTTPException(403,"Entre com sua conta verificada")

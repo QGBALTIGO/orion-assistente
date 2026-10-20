@@ -14,14 +14,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
-from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from fastapi.encoders import jsonable_encoder
 from functools import lru_cache
 
 from app.catalog_schemas import Business, RESOURCE_MODELS
-from app.database import get_session_factory, tenant_transaction
+from app.database import engine_pool_options, get_session_factory, tenant_transaction
+from app.http_json import json_response
 
 router = APIRouter(prefix="/api/v1", tags=["Operação interna"])
 
@@ -34,7 +34,7 @@ class Actor:
     membership_role: str | None = None
 
 
-async def scoped_account_actor(role: str, account_id: UUID | None, route_tenant) -> Actor:
+async def scoped_account_actor(role: str, account_id: UUID | None, route_tenant, *, checked=None) -> Actor:
     """Bind legacy catalog access to the verified account and this exact route."""
     actor = Actor(role, account_id=account_id)
     if role != "member" or account_id is None or os.getenv("BUSINESS_PROFILES_ENABLED", "0") != "1":
@@ -43,11 +43,15 @@ async def scoped_account_actor(role: str, account_id: UUID | None, route_tenant)
         tenant = UUID(str(route_tenant))
     except (ValueError, TypeError):
         return actor
-    async with support_session_factory()() as db:
-        membership = (await db.execute(text("""
-            SELECT role FROM tenant_memberships
-            WHERE account_id=:account AND tenant_id=:tenant AND active
-        """), {"account": account_id, "tenant": tenant})).scalar_one_or_none()
+    from app.panel_auth import VerifiedRouteMembership
+    if type(checked) is VerifiedRouteMembership and checked.account_id == account_id and checked.tenant_id == tenant:
+        membership = checked.role
+    else:
+        async with support_session_factory()() as db:
+            membership = (await db.execute(text("""
+                SELECT role FROM tenant_memberships
+                WHERE account_id=:account AND tenant_id=:tenant AND active
+            """), {"account": account_id, "tenant": tenant})).scalar_one_or_none()
     if membership not in {"owner", "editor", "viewer"}:
         return actor
     return Actor(role, tenant, account_id, membership)
@@ -69,7 +73,7 @@ async def authenticate(request: Request, authorization: str | None = Header(defa
             except ValueError:
                 raise HTTPException(503, "Escopo do leitor não configurado") from None
     if request.cookies.get("__Host-orion_session"):
-        from app.panel_auth import panel_actor
+        from app.panel_auth import panel_actor, ROUTE_MEMBERSHIP
         session = await panel_actor(request)
         account_id = session.get("account_id")
         try:
@@ -77,7 +81,8 @@ async def authenticate(request: Request, authorization: str | None = Header(defa
         except ValueError:
             raise HTTPException(401, "Sessão inválida") from None
         return await scoped_account_actor(session["role"], verified_account,
-                                          request.path_params.get("tenant_id"))
+                                          request.path_params.get("tenant_id"),
+                                          checked=request.scope.get(ROUTE_MEMBERSHIP))
     raise HTTPException(401, "Credenciais de operador inválidas", headers={"WWW-Authenticate": "Bearer"})
 
 
@@ -112,10 +117,7 @@ def support_session_factory():
     url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
     if make_url(url).drivername != "postgresql+asyncpg" or make_url(url).username != "app_support":
         raise RuntimeError("Conexão de suporte exige papel app_support")
-    options = {"pool_pre_ping": True}
-    if os.getenv("PYTEST_CURRENT_TEST"):
-        options["poolclass"] = NullPool
-    return async_sessionmaker(create_async_engine(url, **options), expire_on_commit=False)
+    return async_sessionmaker(create_async_engine(url, **engine_pool_options()), expire_on_commit=False)
 
 
 async def ensure_tenant(session, tenant_id: UUID):
@@ -259,7 +261,13 @@ async def list_items(tenant_id: UUID, resource: str, actor: Actor = Depends(auth
                 text(f"SELECT * FROM {resource} WHERE tenant_id = :t{scope} ORDER BY {ordering} LIMIT 200"),
                 {"t": tenant_id}
             )).mappings().all()
-            return jsonable_encoder(rows)
+            content = [dict(row) for row in rows]
+    return json_response(content)
+
+
+async def list_services(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    """Specific hot path; all catalog authorization and SQL stay in list_items."""
+    return await list_items(tenant_id, "services", actor)
 
 
 @router.post("/tenants/{tenant_id}/{resource}", status_code=201)

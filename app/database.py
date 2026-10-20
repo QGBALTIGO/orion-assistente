@@ -20,6 +20,28 @@ from sqlalchemy.ext.asyncio import (
 )
 
 
+def engine_pool_options() -> dict:
+    """One bounded per-process pool contract for runtime and support engines."""
+    values = {}
+    for name, option, default, minimum in (
+        ("ORION_DB_POOL_SIZE", "pool_size", 5, 1),
+        ("ORION_DB_MAX_OVERFLOW", "max_overflow", 10, 0),
+    ):
+        raw = os.getenv(name)
+        if raw is None:
+            value = default
+        elif not raw.isascii() or not raw.isdecimal() or not 1 <= len(raw) <= 2:
+            raise RuntimeError("Configuração dos pools PostgreSQL inválida")
+        else:
+            value = int(raw)
+        if not minimum <= value <= 20:
+            raise RuntimeError("Configuração dos pools PostgreSQL inválida")
+        values[option] = value
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return {"pool_pre_ping": True, "poolclass": NullPool}
+    return {"pool_pre_ping": True, **values}
+
+
 @lru_cache(maxsize=1)
 def get_engine() -> AsyncEngine:
     url = os.environ.get("APP_DATABASE_URL")
@@ -32,10 +54,7 @@ def get_engine() -> AsyncEngine:
         raise RuntimeError("APP_DATABASE_URL exige PostgreSQL com asyncpg")
     if make_url(url).username != "app_runtime":
         raise RuntimeError("A API deve conectar somente com o papel app_runtime")
-    options = {"pool_pre_ping": True}
-    if os.getenv("PYTEST_CURRENT_TEST"):
-        options["poolclass"] = NullPool
-    return create_async_engine(url, **options)
+    return create_async_engine(url, **engine_pool_options())
 
 
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
@@ -57,4 +76,8 @@ async def tenant_transaction(
             text("SELECT set_config('app.tenant_id', :tenant, true)"),
             {"tenant": str(tenant_id)},
         )
-        yield session
+        # Import lazily: channel registry imports the session factory. Unbound
+        # legacy/owner calls execute no channel SQL and need no new schema.
+        from app.qr_channel_scope import transaction_guard
+        async with transaction_guard(session, tenant_id):
+            yield session

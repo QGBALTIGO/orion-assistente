@@ -688,6 +688,12 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 </style>
 <link rel="stylesheet" href="/panel-assets/orion-suite.css">
 <link rel="stylesheet" href="/panel-assets/orion-auth.css">
+<link rel="stylesheet" href="/panel-assets/orion-onboarding.css">
+<link rel="stylesheet" href="/panel-assets/orion-channels.css">
+<style>
+#appView.ob-gated .content > .page,#appView.ob-gated #osConsultantFab{display:none!important}
+#orionSetup[hidden]{display:none!important}
+</style>
 </head>
 <body>
 <section id="loginView" aria-label="Acesso à conta Orion">
@@ -1316,6 +1322,9 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
   <h2 id="actionConfirmTitle">Confirmar ação</h2><p id="actionConfirmText"></p>
   <div class="confirm-actions"><button id="actionConfirmCancel" class="btn secondary" type="button">Cancelar</button><button id="actionConfirmAccept" class="btn" type="button">Aceitar</button></div>
 </dialog>
+<script src="/panel-assets/orion-onboarding.js"></script>
+<script src="/panel-assets/orion-channels.js"></script>
+<script src="/panel-assets/orion-automations.js"></script>
 <script src="/panel-assets/orion-suite.js"></script>
 <script>
 (()=>{
@@ -1372,10 +1381,34 @@ const $=id=>document.getElementById(id);
 
 let authEpoch=0;
 let suiteUser=null,suiteTenantId="";
+let setupController=null,setupResolving=0,setupGate=false;
+function setSetupGate(value){setupGate=Boolean(value);$("appView").classList.toggle("ob-gated",setupGate)}
+function mountSetup(){
+ window.OrionOnboarding?.unmount();
+ let host=$("orionSetup");
+ if(!host){host=document.createElement("section");host.id="orionSetup";host.hidden=true;$("appView").querySelector(".content").append(host)}
+ const epoch=authEpoch;
+ setupController=window.OrionOnboarding?.mount({host,request:api,user:suiteUser,
+  async onTenantChange(id){if(epoch!==authEpoch)return;suiteTenantId=id;await loadBusinesses({resolveSetup:false,selectedId:id})},
+  async onComplete(data){if(epoch!==authEpoch)return;await loadBusinesses({resolveSetup:false,selectedId:data.tenant_id})},
+  onOpenPanel(route){if(epoch!==authEpoch)return;setSetupGate(false);host.hidden=true;window.OrionSuite?.open(route)},
+  openLegacy(target){if(epoch!==authEpoch)return;setSetupGate(false);host.hidden=true;window.OrionSuite?.open(target==="dispositivo"?"configuracoes":target)},
+  logout:()=>$("logout")?.click()
+ });
+}
+async function resolveSetup(options={}){
+ if(!suiteUser||!setupController)return;
+ const epoch=authEpoch,sequence=++setupResolving;setSetupGate(true);
+ try{const entry=await setupController.resolveEntry({tenantId:suiteTenantId,...options});
+  if(epoch!==authEpoch||sequence!==setupResolving||!entry)return;
+  setSetupGate(entry.kind!=="dashboard");
+ }catch{if(epoch===authEpoch&&sequence===setupResolving)setSetupGate(true)}
+}
 function syncSuiteTenant(id){
  if(!id||!businessRows.some(row=>String(row.id)===String(id)))return;
  suiteTenantId=String(id);
  window.OrionSuite?.sync({tenantId:suiteTenantId});
+ window.OrionChannels?.unmount();window.OrionAutomations?.unmount();void resolveSetup();
 }
 async function beforeSuiteTenantChange(){
  if(businessBusy||commerceBusy||catalogWriting)return false;
@@ -1390,7 +1423,8 @@ function suiteBridge(initialRoute){
  return {request:api,uploadImage:uploadImage,user:suiteUser,tenants:businessRows,tenantId:suiteTenantId,
   initialRoute:initialRoute||"dashboard",
   beforeTenantChange:beforeSuiteTenantChange,
-  setTenant(id){suiteTenantId=String(id)},
+  setTenant(id){suiteTenantId=String(id);window.OrionChannels?.unmount();window.OrionAutomations?.unmount();void resolveSetup()},
+  openSetup(options){void resolveSetup({force:true,...options})},
   openLegacy(target){if(target==="ai"&&suiteTenantId)aiPreferredTenant=suiteTenantId;openPage(target)},
   onRouteChange(){page="suite";clearInterval(chatTimer);chatTimer=null},
  };
@@ -1550,6 +1584,8 @@ function authScreenShow(screen,{focus=false}={}){
 }
 function showLogin(){
  ++authEpoch;
+ ++setupResolving;window.OrionOnboarding?.unmount();setupController=null;setSetupGate(false);
+ window.OrionChannels?.unmount();window.OrionAutomations?.unmount();
  window.OrionSuite?.destroy();suiteUser=null;suiteTenantId="";
  finishActionConfirmation(false);manualSendRequest=null;++manualSendSequence;$("sendButton").disabled=false;
  csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);
@@ -1583,6 +1619,7 @@ function showApp(role="support",name="",email=""){
  $("sidebarAccountType").textContent=isAdmin?"Painel Orion":"Minha conta";
  $("sidebarAvatarInitial").textContent=displayName.trim().charAt(0).toLocaleUpperCase("pt-BR")||"O";
  $("loginView").classList.add("hidden");$("appView").classList.remove("hidden");
+ setSetupGate(true);mountSetup();
  void loadBusinesses();
  if(!isAdmin){
    clearInterval(statusTimer);statusTimer=null;
@@ -2665,19 +2702,21 @@ async function loadBusinessProfile(){
  }catch(error){if(current()){$("businessStatus").textContent="Configuração indisponível";$("businessFeedback").textContent=error.message}return {epoch,ok:false}}
  finally{if(current()){businessBusy=false;updateBusinessControls()}}
 }
-async function loadBusinesses(){
+async function loadBusinesses({resolveSetup:resolveAfter=true,selectedId}={}){
  const requestId=++businessListSequence,epoch=businessEpoch,role=loginRole;
  try{
    const rows=await api(["support","admin"].includes(role)?"/api/v1/tenants":"/api/v1/account/businesses");
    if(requestId!==businessListSequence||epoch!==businessEpoch||role!==loginRole)return;
    businessRows=rows;$("businessNav").classList.toggle("hidden",!rows.length);$("aiNav").classList.toggle("hidden",!rows.length);$("commerceNav").classList.toggle("hidden",!rows.length);$("catalogNav").classList.toggle("hidden",!["support","admin"].includes(role)&&!rows.length);
-   const selected=suiteTenantId||$("businessTenant").value;$("businessTenant").replaceChildren(new Option("Escolha um estabelecimento",""));
+   const selected=selectedId||suiteTenantId||$("businessTenant").value;$("businessTenant").replaceChildren(new Option("Escolha um estabelecimento",""));
    for(const row of rows)$("businessTenant").add(new Option(row.name,row.id));
    $("businessTenant").value=rows.some(x=>x.id===selected)?selected:(rows[0]?.id||"");
    suiteTenantId=$("businessTenant").value;
+   if(!selected&&rows.length>1){suiteTenantId="";$("businessTenant").value=""}
    window.OrionSuite?.sync({user:suiteUser,tenants:rows,tenantId:suiteTenantId});
+   if(resolveAfter)await resolveSetup();
    if($("businessTenant").value&&(!businessSnapshot||businessLoadedTenant!==$("businessTenant").value))await loadBusinessProfile();
- }catch(error){if(requestId===businessListSequence&&epoch===businessEpoch)$("businessFeedback").textContent=error.message}
+ }catch(error){if(requestId===businessListSequence&&epoch===businessEpoch){$("businessFeedback").textContent=error.message;if(resolveAfter)await resolveSetup()}}
 }
 async function businessMutation(kind){
  if(businessBusy||!businessSnapshot||businessStale)return;
