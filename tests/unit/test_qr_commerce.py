@@ -244,6 +244,19 @@ async def test_cancel_requires_its_own_fresh_summary_and_new_consent(backend):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('deadline',[None,'invalid',(datetime.now(timezone.utc)-timedelta(days=2)).isoformat()])
+async def test_expired_or_legacy_cancel_proposal_requires_new_review(backend,deadline):
+    events,_=backend
+    first=await turn('Quero comprar pomada')
+    proposal=await turn('cancelar meu pedido',state=first['state'],message='cancel-request')
+    assert proposal['step']=='commerce_cancel_confirm'
+    proposal['state']['pending']['expires_at']=deadline
+    result=await turn('pode cancelar',state=proposal['state'],message='late-consent')
+    assert result['step']=='commerce_new_confirmation_required' and 'expirou' in result['answer']
+    assert 'pending' not in result['state'] and 'cancel' not in events
+
+
+@pytest.mark.asyncio
 async def test_routing_probe_is_read_only_even_for_explicit_purchase(backend):
     events, _ = backend
     found = await flow.probe(UUID("11111111-1111-4111-8111-111111111111"), "5567999999901", "Quero comprar pomada e agendar corte", message_id="mixed")

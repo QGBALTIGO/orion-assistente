@@ -150,9 +150,9 @@ async def birthday_turn(tenant,phone,body,redis,key,*,preview=False):
     if error=='unrelated':
         await redis.delete(key+':birthday-invite')  # A topic change cannot turn a later booking date into birthday consent.
         return None
-    if error=='third_party':return {'answer':'Esse convite é opcional e se refere ao seu aniversário. Não vou usar a data de outra pessoa. Seu agendamento permanece.','remainder':''}
-    if error=='invalid':return {'answer':'Essa data não existe no calendário. Se quiser, informe apenas dia e mês, como 15/08. Seu agendamento permanece.','remainder':''}
-    if error=='year_not_needed':return {'answer':'Para essa permissão opcional, preciso apenas do dia e mês, sem o ano. Pode informar DD/MM? Seu agendamento permanece.','remainder':''}
+    if error=='third_party':return {'answer':'Esse convite é opcional e se refere ao seu aniversário. Não vou usar a data de outra pessoa. Esse pedido não altera seus agendamentos.','remainder':''}
+    if error=='invalid':return {'answer':'Essa data não existe no calendário. Se quiser, informe apenas dia e mês, como 15/08. Esse pedido não altera seus agendamentos.','remainder':''}
+    if error=='year_not_needed':return {'answer':'Para essa permissão opcional, preciso apenas do dia e mês, sem o ano. Pode informar DD/MM? Esse pedido não altera seus agendamentos.','remainder':''}
     if preview:return {'answer':f'Simulação: anotaria apenas {birthday[1]:02}/{birthday[0]:02} para as duas mensagens de aniversário.','remainder':remainder}
     from app.qr_intake_revision import check_before_write
     await check_before_write()

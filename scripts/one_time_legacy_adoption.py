@@ -1,6 +1,6 @@
 """Backed-up registry adoption of the existing socket; no DDL or session I/O.
 
-Two explicit phases: register a stable alias, then adopt conversation authority.
+Exact reviewed schemas 0028/0029; register alias, then adopt conversation authority.
 No messages, contact import, role creation, phone/session copy, QR or logout.
 """
 from contextlib import ExitStack, contextmanager
@@ -19,10 +19,38 @@ from sqlalchemy import text
 from app import qr_legacy
 from app.qr_channels import normalize_sender, credential_hash, _cipher
 from scripts import one_time_inbox_migration as inbox
+from scripts import one_time_communication_migration as communication
 
 backup, proof, previous = inbox.backup, inbox.proof, inbox.previous
 Stop, require = inbox.Stop, inbox.require
-TABLES = inbox.TARGET_TABLES
+REVIEWED_TABLES = {
+    inbox.TARGET: inbox.TARGET_TABLES,
+    communication.TARGET: communication.TARGET_TABLES,
+}
+
+
+@dataclass(frozen=True)
+class SourceSchema:
+    revision: str
+    tables: frozenset[str]
+
+
+def selected_schema(db):
+    revision = backup.revision(db)
+    require(revision in REVIEWED_TABLES, 'unexpected_source_schema')
+    tables = REVIEWED_TABLES[revision]
+    require(backup.table_names(db) == tables, 'unexpected_source_schema')
+    return SourceSchema(revision, tables)
+
+
+def snapshot_schema(value):
+    revision = value.get('revision')
+    require(revision in REVIEWED_TABLES, 'unreviewed_snapshot_schema')
+    tables = REVIEWED_TABLES[revision]
+    require(value.get('tables') == sorted(tables) and
+        set(value.get('rows', {})) == set(value.get('counts', {})) == tables,
+        'unreviewed_snapshot_schema')
+    return SourceSchema(revision, tables)
 
 
 @dataclass(frozen=True, repr=False)
@@ -64,10 +92,16 @@ def session_proof(settings):
 
 
 def preflight(db, settings):
-    identity = previous.owner_preflight(db, settings, source=False)
-    require(backup.revision(db) == inbox.TARGET and backup.table_names(db) == TABLES, 'unexpected_source_schema')
-    inbox.verify_new_schema(db)
-    return identity
+    schema = selected_schema(db)
+    if schema.revision == inbox.TARGET:
+        identity = previous.owner_preflight(db, settings, source=False)
+        inbox.verify_new_schema(db)
+    else:
+        # 0029 introduces exactly the reviewed ingress identity sequence and
+        # consent trigger. The older preflight correctly rejects that schema.
+        identity = communication.owner_preflight(db, settings, source=False)
+        communication.verify_new_schema(db)
+    return {**identity, 'revision': schema.revision}
 
 
 def plan_for(db, settings, paused=()):
@@ -75,7 +109,9 @@ def plan_for(db, settings, paused=()):
         # Enabling the global worker must not release any old queued send.
         # Unknown attempts also remain untouched for operator reconciliation.
         require(not db.execute(text("""SELECT EXISTS(SELECT 1 FROM inbox_messages
-            WHERE direction='out' AND status IN ('queued','sending','uncertain'))""")).scalar_one(),
+            WHERE direction='out' AND status IN ('queued','sending','uncertain')) OR
+            EXISTS(SELECT 1 FROM message_outbox WHERE status='pending' OR
+                status='dead' AND last_error IN ('delivery_unverified','prior_attempt_unverified'))""")).scalar_one(),
             'pending_outbound_preserved')
     company = db.execute(text("SELECT status,bot_enabled FROM tenants WHERE id=:t"), {'t': settings.tenant}).one_or_none()
     require(company is not None and company.status == 'active' and company.bot_enabled, 'existing_tenant_not_active')
@@ -110,10 +146,26 @@ def plan_for(db, settings, paused=()):
         'controls': {phone: uuid4() for phone in sorted(paused)}}
 
 
-def snapshot(db, *, exclude=None):
+def identity_sequences(db, schema):
+    if schema.revision == inbox.TARGET:
+        return []
+    # pg_dump restores sequence state separately from table rows. Capture it
+    # too so a changed/omitted ingress counter cannot pass a row-only rehearsal.
+    state = db.exec_driver_sql('SELECT last_value,is_called FROM public.inbound_events_ingress_order_seq').one()
+    definition = db.exec_driver_sql("""SELECT pg_get_userbyid(c.relowner),c.relacl::text,
+        s.seqtypid::regtype::text,s.seqstart,s.seqincrement,s.seqmax,s.seqmin,s.seqcache,s.seqcycle
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_sequence s ON s.seqrelid=c.oid
+        WHERE n.nspname='public' AND c.relname='inbound_events_ingress_order_seq'""").one()
+    return [{'name': 'inbound_events_ingress_order_seq', 'definition': list(definition), 'state': list(state)}]
+
+
+def snapshot(db, *, exclude=None, schema=None):
+    actual = selected_schema(db)
+    require(schema is None or actual == schema, 'source_revision_changed')
+    schema = actual
     values = {}
     counts = {}
-    for name in sorted(TABLES):
+    for name in sorted(schema.tables):
         expression = "to_jsonb(t)"
         if name == 'qr_channels':
             # Lease renewals are live transport state, never overwritten by
@@ -129,8 +181,10 @@ def snapshot(db, *, exclude=None):
         digest = hashlib.sha256(); count = 0
         for row in rows: digest.update(row[0].encode() + b'\n'); count += 1
         values[name], counts[name] = digest.hexdigest(), count
-    return {'rows': values, 'counts': counts, 'catalog': previous.canonical_catalog(backup.catalog_structure(db, TABLES)),
-        'security': proof.security_structure(db), 'constraints': previous.named_constraints(db, TABLES), 'programs': proof.programs(db)}
+    return {'revision': schema.revision, 'tables': sorted(schema.tables), 'rows': values, 'counts': counts,
+        'catalog': previous.canonical_catalog(backup.catalog_structure(db, schema.tables)),
+        'security': proof.security_structure(db), 'constraints': previous.named_constraints(db, schema.tables),
+        'programs': proof.programs(db), 'identity_sequences': identity_sequences(db, schema)}
 
 
 def paused_contacts(db, settings):
@@ -191,11 +245,13 @@ def apply(engine, settings, before, plan, *, restored=False, receipt=None):
             receipt.database == settings.url.database and receipt.fingerprint == plan['fingerprint'] and
             receipt.phase == settings.phase and receipt.snapshot_digest == snapshot_digest(before), 'rehearsal_proof_required')
         require(session_proof(settings)==settings.session_digest,'primary_account_changed_preserved')
+    schema = snapshot_schema(before)
     with engine.begin() as db:
-        preflight(db, settings)
+        identity = preflight(db, settings)
+        require(identity['revision'] == schema.revision, 'source_revision_changed')
         require(db.exec_driver_sql('SELECT pg_try_advisory_xact_lock(681692820129)').scalar_one(), 'adoption_already_running')
-        db.exec_driver_sql('LOCK TABLE ' + ','.join('public."' + n + '"' for n in sorted(TABLES)) + ' IN SHARE MODE')
-        require(snapshot(db) == before, 'source_changed_after_backup')
+        db.exec_driver_sql('LOCK TABLE ' + ','.join('public."' + n + '"' for n in sorted(schema.tables)) + ' IN SHARE MODE')
+        require(snapshot(db, schema=schema) == before, 'source_changed_after_backup')
         current = plan_for(db, settings)
         require(current['id'] == plan['id'] and current['owner'] == plan['owner'] and not current['already'], 'alias_changed_after_backup')
         if settings.phase == 'activate' and not restored:
@@ -213,11 +269,11 @@ def apply(engine, settings, before, plan, *, restored=False, receipt=None):
                 db.execute(text("""INSERT INTO inbox_controls(id,tenant_id,channel_id,contact_e164,mode)
                     VALUES(:control,:tenant,:id,:phone,'human')"""), {**plan, 'control': identity, 'phone': '+' + phone})
         db.exec_driver_sql('RESET ROLE')
-        after = snapshot(db, exclude=plan if settings.phase == 'register' else {**plan, 'id': plan['id']})
+        after = snapshot(db, exclude=plan, schema=schema)
         if settings.phase == 'activate':
             # The existing alias itself must remain byte-equivalent (apart
             # from its independent lease renewals), so include it again.
-            old = snapshot(db)
+            old = snapshot(db, schema=schema)
             after['rows']['qr_channels'], after['counts']['qr_channels'] = old['rows']['qr_channels'], old['counts']['qr_channels']
         require(after == before, 'existing_records_or_permissions_changed')
         return {'registered': True, 'authority_adopted': settings.phase == 'activate', 'preserved_counts': before['counts']}
@@ -227,9 +283,12 @@ def capture_dump(engine, settings, path):
     with engine.connect().execution_options(isolation_level='REPEATABLE READ') as db:
         with db.begin():
             db.exec_driver_sql('SET TRANSACTION READ ONLY')
-            preflight(db, settings)
+            identity = preflight(db, settings)
+            schema = selected_schema(db)
+            require(identity['revision'] == schema.revision, 'source_revision_changed')
+            db.exec_driver_sql('LOCK TABLE ' + ','.join('public."' + n + '"' for n in sorted(schema.tables)) + ' IN ACCESS SHARE MODE')
             snapshot_id = db.exec_driver_sql('SELECT pg_export_snapshot()').scalar_one()
-            before = snapshot(db)
+            before = snapshot(db, schema=schema)
             backup.private_write(path, b'')
             backup.run_client('pg_dump', ['--format=custom', '--no-password', '--snapshot=' + snapshot_id,
                 '--lock-wait-timeout=10000', '--file=' + str(path)], settings.url, max_file=path)
@@ -238,6 +297,7 @@ def capture_dump(engine, settings, path):
 
 
 def verify_restore(engine, settings, identity, path, before, plan):
+    schema = snapshot_schema(before)
     name = backup.restore_name(settings.run_id)
     require(name != settings.url.database, 'restore_source_collision')
     oid = None
@@ -256,11 +316,12 @@ def verify_restore(engine, settings, identity, path, before, plan):
             try:
                 with restored.begin() as db:
                     actual_identity = preflight(db, temporary)
+                    require(actual_identity['revision'] == schema.revision, 'restored_source_revision_mismatch')
                     require(actual_identity['oid'] == oid and actual_identity['role_oid'] == identity['role_oid'], 'restore_database_identity_changed')
                     require(not db.execute(text("""SELECT EXISTS(SELECT 1 FROM pg_roles WHERE
                       rolname IN ('app_runtime','app_support','app_migrator') AND has_database_privilege(rolname,:n,'CONNECT'))"""),
                       {'n': name}).scalar_one(), 'restore_connect_gate_changed')
-                    actual = snapshot(db)
+                    actual = snapshot(db, schema=schema)
                     normalized = lambda s: {**s, 'security': proof.without_database_identity(s['security'])}
                     require(normalized(actual) == normalized(before), 'restored_snapshot_mismatch')
                 apply(restored, temporary, actual, plan, restored=True, receipt=RestoreProof(settings.run_id, name))
@@ -279,7 +340,7 @@ def execute(settings):
             paused = paused_contacts(db, settings) if settings.phase == 'activate' else ()
             plan = plan_for(db, settings, paused)
             if plan['already']:
-                return {'status': 'already_' + settings.phase, 'revision': inbox.TARGET}
+                return {'status': 'already_' + settings.phase, 'revision': identity['revision']}
         require(backup.client_major('pg_dump') == backup.client_major('pg_restore') == 16, 'postgres_major_mismatch')
         with tempfile.TemporaryDirectory(prefix='orion-primary-adoption-') as directory:
             os.chmod(directory, 0o700)
@@ -295,7 +356,7 @@ def execute(settings):
             if settings.phase == 'activate':
                 with conversation_locks(settings): result = apply(engine, settings, before, plan, receipt=receipt)
             else: result = apply(engine, settings, before, plan, receipt=receipt)
-        return {**result, 'status': 'complete', 'phase': settings.phase, 'revision': inbox.TARGET,
+        return {**result, 'status': 'complete', 'phase': settings.phase, 'revision': before['revision'],
             'backup_id': settings.run_id, 'backup_sha256': digest, 'backup_bytes': len(envelope),
             'restore_verified': True, 'rehearsal_verified': True, 'session_preserved': True}
     finally: engine.dispose()

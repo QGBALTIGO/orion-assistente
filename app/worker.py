@@ -78,56 +78,8 @@ async def process_inbound_event(ctx: dict, tenant_id: str, event_id: str):
 
 
 async def process_message_outbox(ctx: dict, tenant_id: str, outbox_id: str):
-    from app.inbox_control import enabled
-    if enabled():
-        # Legacy jobs have no generation/revision. They cannot bypass the
-        # unified central after it is enabled, even if previously queued.
-        return "central_outbox_required"
-    tenant, item_id = UUID(tenant_id), UUID(outbox_id)
-    # Não enviar sem consentimento operacional de canal e credenciais válidas.
-    if os.getenv("META_LIVE_SEND") != "1":
-        return "not_enabled"
-    key = os.getenv("INTEGRATION_FERNET_KEY")
-    if not key:
-        return "missing_encryption_key"
-    from cryptography.fernet import Fernet
-    factory = get_session_factory()
-    async with factory() as session:
-        async with tenant_transaction(session, tenant):
-            item = (await session.execute(text("""
-                SELECT o.id, o.to_e164, o.body, o.attempts,
-                       c.phone_number_id, c.token_enc
-                FROM message_outbox o JOIN whatsapp_channels c
-                ON c.id=o.channel_id AND c.tenant_id=o.tenant_id
-                WHERE o.tenant_id=:tenant AND o.id=:id AND o.status='pending'
-                  AND c.status='connected' AND o.next_attempt_at<=now()
-                FOR UPDATE OF o SKIP LOCKED
-            """), {"tenant":tenant,"id":item_id})).mappings().first()
-            if item is None:
-                return "unavailable"
-            # Lock e operação externa são acoplados para reduzir envio duplicado.
-            # Idempotência absoluta entre commit e API Meta não é garantível.
-            try:
-                token = Fernet(key.encode()).decrypt(item["token_enc"]).decode()
-                message_id = await CloudApiProvider().send_text(
-                    {"phone_number_id":item["phone_number_id"],"access_token":token},
-                    item["to_e164"],item["body"])
-                await session.execute(text("""
-                    UPDATE message_outbox SET status='sent',
-                        external_delivery_id=:external,attempts=attempts+1
-                    WHERE tenant_id=:t AND id=:id
-                """), {"t":tenant,"id":item_id,"external":message_id})
-                return "sent"
-            except Exception:
-                await session.execute(text("""
-                    UPDATE message_outbox SET attempts=attempts+1,
-                        next_attempt_at=now() + make_interval(
-                            secs=>LEAST(3600, (power(2, LEAST(attempts, 8)) * 15)::int)),
-                        status=CASE WHEN attempts>=7 THEN 'dead' ELSE 'pending' END,
-                        last_error='provider_failure'
-                    WHERE tenant_id=:t AND id=:id
-                """), {"t":tenant,"id":item_id})
-                return "retry"
+    from app.legacy_meta_outbox import process
+    return await process(ctx,tenant_id,outbox_id)
 
 
 async def recover_events(ctx: dict):

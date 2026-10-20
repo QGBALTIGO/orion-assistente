@@ -100,15 +100,17 @@ async def receive_meta(request: Request):
         except IntegrityError:
             raise HTTPException(503, "Falha de persistência") from None
     from app.inbox_control import enabled
-    if enabled():
-        from app.inbox_runtime import provider_receipt
-        for item in statuses:
-            async with support() as session:
-                channel=(await session.execute(text("SELECT tenant_id,id FROM whatsapp_channels WHERE phone_number_id=:number AND status IN ('testing','connected')"),
-                    {"number":item["phone_number_id"]})).mappings().first()
-            if channel:
-                async with factory() as session:
-                    async with tenant_transaction(session,channel["tenant_id"]):
+    for item in statuses:
+        async with support() as session:
+            channel=(await session.execute(text("SELECT tenant_id,id FROM whatsapp_channels WHERE phone_number_id=:number AND status IN ('testing','connected')"),
+                {"number":item["phone_number_id"]})).mappings().first()
+        if channel:
+            async with factory() as session:
+                async with tenant_transaction(session,channel["tenant_id"]):
+                    from app.legacy_meta_outbox import receipt
+                    await receipt(session,channel['tenant_id'],channel['id'],item['phone'],item['id'],item['status'],item.get('operation_id'))
+                    if enabled():
+                        from app.inbox_runtime import provider_receipt
                         await provider_receipt(session,channel["tenant_id"],channel["id"],item["phone"],item["id"],item["status"],item.get("operation_id"))
     # Responder 200 só depois que eventos foram COMMITados.
     # Se Redis estiver fora, a recuperação do worker varre pendências no banco.

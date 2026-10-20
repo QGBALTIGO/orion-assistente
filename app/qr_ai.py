@@ -510,7 +510,7 @@ async def continue_reschedule(tenant: UUID, phone: str, body: str, state: dict,
     if step == "reschedule_confirm":
         if text_clean in NO:
             await redis.delete(key)
-            return {"answer": "Remarcação cancelada. O horário original permanece.", "step": "reschedule_cancelled"}
+            return {"answer": "Encerrei a solicitação de remarcação. Essa resposta não altera seus agendamentos.", "step": "reschedule_cancelled"}
         if text_clean not in YES:
             return {"answer": presentation.render_prompt("confirmation", _preferences(business)), "step": step}
         if preview:
@@ -538,7 +538,7 @@ async def continue_reschedule(tenant: UUID, phone: str, body: str, state: dict,
             state["slots"] = []
             state["reschedule_conflict_review"] = True
             await redis.set(key, json.dumps(state), ex=STATE_TTL)
-            return {"answer": "O novo horário ficou indisponível. O original permanece. Quer consultar outros horários para esse dia ou prefere outra data?", "step": "reschedule_conflict"}
+            return {"answer": "Não confirmei a remarcação. Precisamos conferir o estado atual do agendamento. Quer consultar outros horários para esse dia ou prefere outra data?", "step": "reschedule_conflict"}
         await redis.delete(key)
         when = updated["start_at"].astimezone(ZoneInfo(business["timezone"]))
         facts = state["reschedule_facts"]
@@ -1135,6 +1135,44 @@ def _bounded_reply(factual: str, operational: str, step: str) -> dict:
     return {"answer": answer, "step": step, "_literal_information": bool(factual)}
 
 
+def _confirmation_composition_fits(state, business, catalog, factual, *, preview=False):
+    """Budget the complete verified receipt before allowing a mixed write."""
+    try:
+        if state["step"] == "reschedule_confirm":
+            facts = state["reschedule_facts"]
+            if not state.get("expected_snapshot"):
+                return False
+            summary = presentation.BookingSummary(tuple(facts["services"]), datetime.fromisoformat(state["new_start"]),
+                facts["timezone"], facts["total_cents"], professional=facts["professional"],
+                duration_min=facts["duration_min"], protocol="X" * 80)
+            maximum = presentation.render_summary(summary, _preferences(business), confirmed=True, operation="reschedule")
+        else:
+            maximum = presentation.render_summary(_summary(state, state["selected_start"], business, catalog, protocol="X" * 80),
+                                                  _preferences(business), confirmed=True)
+            if not preview and os.getenv("BIRTHDAY_COLLECTION_ENABLED") == "1":
+                from app.contact_preferences import BIRTHDAY_INVITATION
+                maximum += "\n\n" + BIRTHDAY_INVITATION
+        # The terminal presentation pass must fit too, including its field icons.
+        maximum = presentation.render_message(maximum + "\n\n" + factual, _preferences(business), kind="message")
+        return presentation.fits_message(maximum)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _operation_reply(result, factual, *, information_first=False):
+    """A late optional addition may never replace an already verified receipt."""
+    receipt = result.get("answer") or ""
+    composed = (_bounded_reply(factual, receipt, result["step"]) if information_first
+                else _bounded_reply(receipt, factual, result["step"]))
+    if result.get("_verified_operation") is True:
+        if composed["step"] == "choose_priority":
+            # The normal path was budgeted before the write. If optional content
+            # still changes, preserve the whole outcome and its terminal latch.
+            return result
+        composed["_verified_operation"] = True
+    return composed
+
+
 async def _commerce_turn(tenant: UUID, phone: str, body: str, state: dict, business: dict,
                           catalog: list[dict], redis, key: str, preview: bool):
     """Tenant/contact-scoped products, with no partial mixed operation."""
@@ -1278,28 +1316,12 @@ async def _compound_booking_turn(tenant: UUID, phone: str, body: str, state: dic
         return await clarify()
     if not factual:
         return await clarify()
-    try:
-        if state["step"] == "reschedule_confirm":
-            facts = state["reschedule_facts"]
-            if not state.get("expected_snapshot"):
-                return await clarify(factual)
-            summary = presentation.BookingSummary(tuple(facts["services"]), datetime.fromisoformat(state["new_start"]),
-                facts["timezone"], facts["total_cents"], professional=facts["professional"], duration_min=facts["duration_min"], protocol="X" * 80)
-            maximum = presentation.render_summary(summary, _preferences(business), confirmed=True, operation="reschedule")
-        else:
-            maximum = presentation.render_summary(_summary(state, state["selected_start"], business, catalog, protocol="X" * 80),
-                                                  _preferences(business), confirmed=True)
-    except (KeyError, TypeError, ValueError):
-        return await clarify(factual)
-    if not presentation.fits_message(maximum + "\n\n" + factual):
+    if not _confirmation_composition_fits(state, business, catalog, factual, preview=preview):
         return await clarify()
     # No preceding information/review mutation: recurse only through the normal
     # summary/tenant/revision/backend confirmation gates, with commerce skipped.
     result = await _turn(tenant, phone, "SIM", redis, key.removeprefix(f"orion:qr:ai:{tenant}:"), preview, _confirm_scoped=True)
-    composed = _bounded_reply(result.get("answer") or "", factual, result["step"])
-    if result.get("_verified_operation") is True:
-        composed["_verified_operation"] = True
-    return composed
+    return _operation_reply(result, factual)
 
 
 async def _review_after_inquiry(state: dict, redis, key: str):
@@ -1986,13 +2008,11 @@ async def _multi_turn(tenant: UUID, phone: str, body: str, state: dict, business
             remaining = 0
         if not math.isfinite(remaining) or remaining <= 0:
             return _bounded_reply(factual, "O resumo anterior expirou. Precisamos rever a disponibilidade antes de confirmar.", "expired")
-        if presentation.message_units(factual) + 350 > 1200:
-            return _bounded_reply(factual, "x" * 1201, "confirm")
+        if factual and not _confirmation_composition_fits(state, business, catalog, factual, preview=preview):
+            await _review_after_inquiry(state, redis, key)
+            return _bounded_reply("", presentation.render_prompt("confirmation_review", _preferences(business)), state["step"])
         result = await _turn(tenant, phone, "SIM", redis, key.removeprefix(f"orion:qr:ai:{tenant}:"), preview)
-        composed = _bounded_reply(factual, result["answer"] or "", result["step"])
-        if result.get("_verified_operation") is True:
-            composed["_verified_operation"] = True
-        return composed
+        return _operation_reply(result, factual, information_first=True)
     if "cancel" in operations and "reschedule" not in operations:
         active_request = state.get("step") in {"date", "professional", "time", "confirm"} or state.get("step", "").startswith("reschedule_")
         if active_request and not re.search(r"\b(?:reserva|agendamento|confirmad\w*)\b", norm(body)):
@@ -2060,9 +2080,15 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
         literal = result.pop("_literal_information", False)
         service_question = result.pop("_service_reply_prompt", False) is True
         if result.get("answer"):
+            before_presentation = result
             result = {**result, "answer": presentation.render_message(result["answer"], _reply_preferences.get(), kind="message" if literal else result.get("step", "message"))}
             if not presentation.fits_message(result["answer"]):
-                result = _bounded_reply(result["answer"], "", result.get("step", "information"))
+                if before_presentation.get("_verified_operation") is True:
+                    # Typed terminal receipts already fit their pre-write check;
+                    # retain that exact receipt if the final styling grows it.
+                    result = before_presentation
+                else:
+                    result = _bounded_reply(result["answer"], "", result.get("step", "information"))
         if qr_commerce.enabled() and _message_identity.get() and not result.get("step", "").startswith("commerce"):
             commerce_key = key + ":commerce"
             try:

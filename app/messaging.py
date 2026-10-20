@@ -76,6 +76,7 @@ def extract_messages(payload: dict) -> list[dict]:
                 timestamp=item.get("timestamp")
                 if isinstance(timestamp,str) and timestamp.isascii() and timestamp.isdigit() and len(timestamp)<=10:
                     event["provider_at"]=datetime.fromtimestamp(int(timestamp),timezone.utc)
+                    event['envelope']['provider_at']=int(timestamp)
                 if sender in names:
                     event["whatsapp_name"] = names[sender]
                 events.append(event)

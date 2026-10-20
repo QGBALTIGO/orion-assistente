@@ -192,7 +192,10 @@ async def queue(tenant_id: UUID, status: Literal["all", "pending", "sent", "dead
     async with management_session(tenant_id, actor) as db:
         rows = (await db.execute(text("""SELECT o.id,o.status,o.attempts,o.next_attempt_at,e.received_at AS created_at,
             right(o.to_e164,4) AS recipient_suffix,
-            CASE WHEN o.status='dead' THEN 'Falha no envio; consulte a operação do canal' ELSE NULL END AS error
+            CASE WHEN o.status='dead' AND o.last_error IN ('delivery_unverified','prior_attempt_unverified') THEN 'Entrega em verificação; não reenviar automaticamente'
+              WHEN o.status='dead' THEN 'Envio interrompido; consulte a operação do canal' ELSE NULL END AS error,
+            CASE WHEN o.status='dead' AND o.last_error IN ('delivery_unverified','prior_attempt_unverified') THEN 'verification_required'
+              ELSE o.status END AS delivery_state
             FROM message_outbox o JOIN inbound_events e ON e.tenant_id=o.tenant_id AND e.id=o.event_id
             WHERE o.tenant_id=:tenant AND (:status='all' OR o.status=:status)
             ORDER BY e.received_at DESC,o.id DESC LIMIT :limit"""),
@@ -200,7 +203,7 @@ async def queue(tenant_id: UUID, status: Literal["all", "pending", "sent", "dead
         summary = (await db.execute(text("SELECT status,count(*) AS count FROM message_outbox WHERE tenant_id=:tenant GROUP BY status"),
                                    {"tenant": tenant_id})).mappings().all()
         return {"items": [dict(row) for row in rows], "summary": {x["status"]: x["count"] for x in summary},
-                "source": "whatsapp_reply_outbox", "description": "Fila real de respostas do canal Meta; campanhas permanecem em rascunho."}
+                "source": "whatsapp_reply_outbox", "description": "Fila de respostas do canal Meta. Autorizações e recibos das campanhas ficam em Envios revisados."}
 
 
 class ReadNotifications(StrictModel):

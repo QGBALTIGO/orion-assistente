@@ -1,6 +1,6 @@
 """Actual PG RLS, contact ownership, idempotency and customer audit roles."""
 import os
-from datetime import timedelta
+from datetime import datetime,timedelta,timezone
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -91,7 +91,8 @@ async def test_customer_contact_ownership_and_message_idempotency(customer_comme
             assert (await db.execute(text("SELECT count(*) FROM commercial_orders"))).scalar_one() == 1
             assert (await db.execute(text("SELECT count(*) FROM commercial_events WHERE actor_role='customer' AND action='customer_confirmed'"))).scalar_one() == 1
     cancelled = store.CustomerScope(tenant, scope.phone, "cancel-acceptance")
-    result = await store.cancel_order(cancelled, order["id"], revision=done["revision"], summary_message_id="cancel-summary")
+    result = await store.cancel_order(cancelled, order["id"], revision=done["revision"], summary_message_id="cancel-summary",
+        summary_expires_at=datetime.now(timezone.utc)+timedelta(minutes=15))
     assert result["status"] == "cancelled"
     await store.cancel_order(cancelled, order["id"], revision=done["revision"], summary_message_id="cancel-summary")
     async with factory() as db:
@@ -225,7 +226,8 @@ async def test_newer_ingress_blocks_commerce_before_first_write(customer_commerc
             elif operation == "confirm":
                 await store.confirm_order(current, order["id"], revision=order["revision"], token=quote["confirmation_token"], summary_message_id=scope.message_id)
             else:
-                await store.cancel_order(current, order["id"], revision=order["revision"], summary_message_id=scope.message_id)
+                await store.cancel_order(current, order["id"], revision=order["revision"], summary_message_id=scope.message_id,
+                    summary_expires_at=datetime.now(timezone.utc)+timedelta(minutes=15))
         assert superseded.value.not_committed is True
     finally:
         intake.reset(token)

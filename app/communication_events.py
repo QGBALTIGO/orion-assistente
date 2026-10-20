@@ -32,6 +32,7 @@ class EventMetadata(BaseModel):
     oversized: bool = Field(default=False,strict=True)
     invalid: bool = Field(default=False,strict=True)
     control: Literal['birthday','marketing','all','human'] | None = None
+    provider_at: int | None = Field(default=None,strict=True,ge=0,le=9999999999)
 
 
 def identifier(value, limit=200):

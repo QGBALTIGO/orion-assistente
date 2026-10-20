@@ -64,3 +64,14 @@ async def test_simulated_refusal_preserves_bookings_and_avoids_database(monkeypa
     redis=Redis()
     result=await birthday_turn('tenant','phone','prefiro não informar',redis,'key',preview=True)
     assert 'não vou insistir' in result['answer'] and redis.removed==['key:birthday-invite']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('body',['31/02','é o do meu filho 15/08','21/10/2026'])
+async def test_invalid_birthday_does_not_assert_current_booking_status(monkeypatch,body):
+    monkeypatch.setenv('BIRTHDAY_COLLECTION_ENABLED','1')
+    class Redis:
+        async def get(self,key):return json.dumps({'customer_id':'00000000-0000-4000-8000-000000000001','version':1,'purpose_version':1})
+    result=await birthday_turn('tenant','phone',body,Redis(),'key')
+    assert 'Esse pedido não altera seus agendamentos.' in result['answer']
+    assert 'agendamento permanece' not in result['answer']
