@@ -128,6 +128,23 @@ jobs:
       - name: Crescimento e sustentacao de 1500 usuarios sinteticos
         run: |
           mkdir -p artifacts
+          python - <<'PY'
+          import importlib.metadata as metadata, json, os, pathlib, platform
+          records = [dict(line.split(':', 1) for line in block.splitlines() if ':' in line)
+                     for block in pathlib.Path('/proc/cpuinfo').read_text().split('\n\n') if block.strip()]
+          records = [{key.strip(): value.strip() for key, value in record.items()} for record in records]
+          topology = {(record['physical id'], record['core id']) for record in records
+                      if 'physical id' in record and 'core id' in record}
+          details = {'scope': 'isolated GitHub runner, not production capacity',
+                     'platform': platform.platform(), 'python': platform.python_version(),
+                     'logical_cpus': os.cpu_count(),
+                     'physical_cores_observed': len(topology) if topology and len(records) == os.cpu_count() else None,
+                     'processor_models': sorted({record['model name'] for record in records if 'model name' in record}),
+                     'versions': {name: metadata.version(name) for name in
+                                  ('fastapi', 'starlette', 'uvicorn', 'uvloop', 'SQLAlchemy', 'asyncpg',
+                                   'httpx', 'httpcore', 'anyio', 'certifi', 'pydantic', 'redis')}}
+          pathlib.Path('artifacts/host-load.json').write_text(json.dumps(details, indent=2))
+          PY
           python scripts/qualification_load.py --confirm-disposable-local --profile ${{ matrix.profile }} \
             --stage-seconds 60 --sustain-seconds 600 --api-workers 3 --db-pool-size 10 --db-max-overflow 0 --timing-diagnostics \
             --output artifacts/load-${{ matrix.profile }}.json
