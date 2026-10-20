@@ -94,7 +94,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     }
     try{
       const session=await createSession({channelId:c.id,tenantId:c.tenant,owner,fence:c.fence,
-        directory:c.directory,secret:c.key,assertCurrent,isCurrent,resumeOnly:c.resumeOnly,notifySelf:!c.legacyTransport,
+        directory:c.directory,secret:c.key,assertCurrent,isCurrent,resumeOnly:c.resumeOnly,
+        notifySelf:!c.legacyTransport&&process.env.ORION_NOTIFY_SELF_ON_LINK!=='0',
         legacyTransport:c.legacyTransport,
         allowedSender:phone=>c.allowed.has(phone),
         assistantEnabled:()=>c.assistant===true,

@@ -79,6 +79,29 @@ function fixture(t){
     setTime:value=>{now=value;}};
 }
 
+function connectionNoticeFlag(t,value){
+  const previous=process.env.ORION_NOTIFY_SELF_ON_LINK;
+  t.after(()=>{if(previous===undefined)delete process.env.ORION_NOTIFY_SELF_ON_LINK;else process.env.ORION_NOTIFY_SELF_ON_LINK=previous;});
+  if(value===undefined)delete process.env.ORION_NOTIFY_SELF_ON_LINK;else process.env.ORION_NOTIFY_SELF_ON_LINK=value;
+}
+for(const flag of [undefined,'0','1'])for(const legacy of [false,true]){
+  test(`${legacy?'legacy':'managed'} channel connection notice obeys ${flag===undefined?'existing default':'explicit global '+flag}`,async t=>{
+    connectionNoticeFlag(t,flag);const f=fixture(t),a=f.add();f.rows.get(a.id).legacy_transport=legacy;
+    const m=f.manager();await m.start(a.id,a.key);const context=f.made[0].ctx;
+    assert.equal(context.notifySelf,!legacy&&flag!=='0');assert.equal(context.legacyTransport,legacy);
+    assert.equal(context.assistantEnabled(),true,'notification preference must preserve the current assistant');
+    assert.equal(f.forwards.length,0);assert.equal(f.made[0].sends.length,0);
+  });
+}
+test('resuming a preserved managed session honors the global notice opt-out without changing assistant or credentials',async t=>{
+  connectionNoticeFlag(t,'0');const f=fixture(t),a=f.add(),row={id:a.id,tenant:a.tenant,key:a.key};
+  const resumeStore={list:()=>[row],remember(value){assert.deepEqual(value,row);},forget(){assert.fail('resume must preserve existing session intent');}};
+  const m=f.manager({resumeStore});assert.deepEqual(await m.resume(),{resumed:1});const context=f.made[0].ctx;
+  assert.equal(context.resumeOnly,true);assert.equal(context.notifySelf,false);assert.equal(context.secret,a.key);
+  assert.equal(context.assistantEnabled(),true);context.onConnected();
+  assert.equal(f.forwards.length,0);assert.equal(f.made[0].sends.length,0);assert.equal(f.made.length,1);
+});
+
 test('API arbitration is mandatory from the lease even with no bridge flag; accepted sends release after receipt persistence',async t=>{
   const f=fixture(t),a=f.add(),permits=[],finished=[];f.rows.get(a.id).inbox_control=true;
   f.broker.authorizeSend=async(id,key,lease,payload)=>{permits.push(payload);return {authorized:true,operation_id:payload.operation_id};};
