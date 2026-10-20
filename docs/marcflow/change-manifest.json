@@ -1,0 +1,251 @@
+{
+  "base_commit": "6d9c971f5cebc9b652960f765b2f98ec5678f2eb",
+  "code_commit": "b6650a0f82cc03b8c9238406dbe6ec2567a32778",
+  "branch": "codex/orion-marcflow-integrations-20261020",
+  "production_deployed": false,
+  "mission_status": "PARCIAL",
+  "implementation_files": [
+    {
+      "status": "M",
+      "path": ".env.example"
+    },
+    {
+      "status": "A",
+      "path": "alembic/versions/0024_inbox_tools.py"
+    },
+    {
+      "status": "A",
+      "path": "alembic/versions/0025_inbox_control.py"
+    },
+    {
+      "status": "A",
+      "path": "alembic/versions/0026_cancelled_notification.py"
+    },
+    {
+      "status": "M",
+      "path": "app/automation_policy.py"
+    },
+    {
+      "status": "M",
+      "path": "app/automation_runtime.py"
+    },
+    {
+      "status": "A",
+      "path": "app/inbox_api.py"
+    },
+    {
+      "status": "A",
+      "path": "app/inbox_control.py"
+    },
+    {
+      "status": "A",
+      "path": "app/inbox_templates.py"
+    },
+    {
+      "status": "M",
+      "path": "app/main.py"
+    },
+    {
+      "status": "M",
+      "path": "app/management_preferences.py"
+    },
+    {
+      "status": "M",
+      "path": "app/qr_ai.py"
+    },
+    {
+      "status": "M",
+      "path": "app/qr_channel_scope.py"
+    },
+    {
+      "status": "M",
+      "path": "app/qr_channels.py"
+    },
+    {
+      "status": "A",
+      "path": "app/static/orion-inbox.css"
+    },
+    {
+      "status": "A",
+      "path": "app/static/orion-inbox.js"
+    },
+    {
+      "status": "M",
+      "path": "app/static/orion-suite.js"
+    },
+    {
+      "status": "M",
+      "path": "app/static/panel.html"
+    },
+    {
+      "status": "M",
+      "path": "qr-bridge/src/channel-broker.mjs"
+    },
+    {
+      "status": "M",
+      "path": "qr-bridge/src/channel-manager.mjs"
+    },
+    {
+      "status": "M",
+      "path": "qr-bridge/test/channel-manager.test.mjs"
+    },
+    {
+      "status": "A",
+      "path": "tests/integration/test_inbox_migration_postgres.py"
+    },
+    {
+      "status": "A",
+      "path": "tests/integration/test_inbox_tools_postgres.py"
+    },
+    {
+      "status": "M",
+      "path": "tests/unit/test_automation_policy.py"
+    },
+    {
+      "status": "A",
+      "path": "tests/unit/test_inbox_templates.py"
+    },
+    {
+      "status": "A",
+      "path": "ui-tests/inbox-browser.mjs"
+    },
+    {
+      "status": "A",
+      "path": "ui-tests/inbox.test.mjs"
+    }
+  ],
+  "documentation_files": [
+    "docs/marcflow-integration.md",
+    "docs/marcflow/change-manifest.json",
+    "docs/marcflow/file-inventory.csv",
+    "docs/marcflow/final-validation.md",
+    "docs/marcflow/inventory-summary.json",
+    "docs/marcflow/validation.json"
+  ],
+  "new_tables": [
+    "inbox_labels",
+    "inbox_customer_labels",
+    "inbox_quick_replies",
+    "inbox_controls",
+    "inbox_control_events"
+  ],
+  "existing_table_constraints_changed": [
+    "automation_jobs"
+  ],
+  "migrations": [
+    "0024_inbox_tools",
+    "0025_inbox_control",
+    "0026_cancelled_notification"
+  ],
+  "new_http_contracts": [
+    {
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/tenants/{tenant_id}/management/inbox/capabilities",
+      "documented": true
+    },
+    {
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "path": "/api/v1/tenants/{tenant_id}/management/inbox/labels",
+      "documented": true
+    },
+    {
+      "methods": [
+        "DELETE",
+        "PUT"
+      ],
+      "path": "/api/v1/tenants/{tenant_id}/management/inbox/labels/{label_id}",
+      "documented": true
+    },
+    {
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/tenants/{tenant_id}/management/inbox/customers",
+      "documented": true
+    },
+    {
+      "methods": [
+        "DELETE",
+        "PUT"
+      ],
+      "path": "/api/v1/tenants/{tenant_id}/management/inbox/customers/{customer_id}/labels/{label_id}",
+      "documented": true
+    },
+    {
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/tenants/{tenant_id}/management/inbox/customers/{customer_id}",
+      "documented": true
+    },
+    {
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "path": "/api/v1/tenants/{tenant_id}/management/inbox/quick-replies",
+      "documented": true
+    },
+    {
+      "methods": [
+        "DELETE",
+        "PUT"
+      ],
+      "path": "/api/v1/tenants/{tenant_id}/management/inbox/quick-replies/{reply_id}",
+      "documented": true
+    },
+    {
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/tenants/{tenant_id}/management/inbox/quick-replies/{reply_id}/preview",
+      "documented": true
+    },
+    {
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "path": "/api/v1/tenants/{tenant_id}/management/inbox/channels/{channel_id}/control",
+      "documented": true
+    },
+    {
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/tenants/{tenant_id}/management/inbox/channels/{channel_id}/control/history",
+      "documented": true
+    },
+    {
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/tenants/{tenant_id}/management/inbox/channels/{channel_id}/control/reconcile",
+      "documented": true
+    },
+    {
+      "methods": [
+        "POST"
+      ],
+      "path": "/internal/qr/channels/{channel_id}/send-authorize",
+      "documented": false
+    },
+    {
+      "methods": [
+        "POST"
+      ],
+      "path": "/internal/qr/channels/{channel_id}/send-finish",
+      "documented": false
+    }
+  ],
+  "new_feature_flags": {
+    "INBOX_TOOLS_ENABLED": "0",
+    "INBOX_CONTROL_ENABLED": "0"
+  },
+  "new_production_dependencies": []
+}

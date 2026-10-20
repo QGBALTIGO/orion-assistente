@@ -274,6 +274,12 @@ A CI de PostgreSQL/Redis/Docker é executada no PR. Os IDs, contagens finais e
 resultados do snapshot de código qualificado ficam no registro de validação desta
 entrega, junto da distinção entre testes locais e infraestrutura real descartável.
 
+O [recibo final](marcflow/final-validation.md) qualifica o código `b6650a0`:
+4.149 aprovações na suíte PostgreSQL/Redis, 4.038 no Compose, 413 no conector
+Linux e 298 nos testes DOM. Todos os trabalhos da CI correspondente passaram.
+Os conjuntos possuem casos sobrepostos e suas contagens não devem ser somadas
+como testes únicos. As limitações de homologação real permanecem.
+
 ## 7. Ordem de continuação e ativação segura
 
 1. **FASE 0 — PARCIAL:** completar os 25 itens de avaliação por recurso, leitura
@@ -305,6 +311,9 @@ planejar backend/bridge compatíveis e manter as flags desligadas. A ativação
 externa depende de autorização posterior do proprietário e homologação por canal.
 Não há comando de deploy automático nesta entrega.
 
+Definir também retenção e exclusão autorizada dos novos controles, eventos,
+etiquetas e respostas pessoais antes de ativar o recurso com dados reais.
+
 ## 8. Licenças e atribuição
 
 Referência conceitual: [MarcFlow](https://github.com/marcolamaia/MarcFlow), Marcos
@@ -331,3 +340,24 @@ Não existe resultado de varredura completa nem conclusão de ausência de
 vulnerabilidades. A inspeção de código, os testes de RLS/permissões e as
 constatações parciais acima permanecem evidências de escopo limitado. Retomar essa
 varredura exige uma execução com o perfil de permissões compatível.
+
+## 10. Arquivos e commits
+
+O [manifesto de alterações](marcflow/change-manifest.json) lista arquivos,
+contratos HTTP, tabelas, migrations, flags e dependências da implementação.
+
+| Commit | Incremento |
+|---|---|
+| `8611d56` | Backend CRM, arbitragem e aviso de cancelamento |
+| `5314880` | Etiquetas e respostas factuais no painel |
+| `84e32bc` | Eventos de operadores, rollback protegido e navegador responsivo |
+| `f302bd2` | Matriz, inventário, HTTP e concorrência com PostgreSQL |
+| `19bb6ea` | Retomada pela autoridade persistente e configuração sintética do canal |
+| `9e6accc` | Revalidação concorrente sem promover locks de leitura a escrita |
+| `b09b313` | Gravações pendentes durante troca de empresa |
+| `b6650a0` | Verificação atômica das flags antes da reserva de envio |
+
+O recibo da primeira qualificação foi preservado em [validation.json](marcflow/validation.json).
+O recibo final está em [final-validation.md](marcflow/final-validation.md).
+Um commit posterior de documentação pode registrar esses recibos sem alterar o
+código qualificado indicado no arquivo.
