@@ -4,7 +4,6 @@ from datetime import datetime,timedelta,timezone
 import json
 import os
 from uuid import uuid4
-from urllib.parse import urlsplit
 
 import pytest
 import pytest_asyncio
@@ -17,6 +16,7 @@ from app import contact_preferences as birthday,communication_api as api,automat
 from app.communication_events import bind_meta
 from app.database import tenant_transaction
 from tests.integration.test_automation_postgres import automation_db,queue,PHONE
+from tests.redis_test_scope import communication_redis_url
 
 pytestmark=pytest.mark.integration
 
@@ -24,9 +24,12 @@ pytestmark=pytest.mark.integration
 @pytest_asyncio.fixture
 async def isolated_redis():
     url=os.getenv('ORION_INTAKE_TEST_REDIS_URL')
-    if not url:pytest.skip('Explicit disposable Redis required')
-    parsed=urlsplit(url)
-    assert parsed.hostname in {'localhost','127.0.0.1','::1'} and parsed.path=='/15'
+    if not url:
+        if os.getenv('ORION_REQUIRE_INTAKE_REDIS_TEST')=='1' or os.getenv('REQUIRE_REDIS_TESTS')=='1':
+            pytest.fail('Mandatory disposable communication Redis not configured')
+        pytest.skip('Explicit disposable Redis required')
+    try:url=communication_redis_url(url)
+    except ValueError:pytest.fail('Communication tests require the designated isolated Redis database15')
     redis=from_url(url,socket_connect_timeout=2,socket_timeout=3)
     await redis.ping()
     key='orion:communication:test:'+uuid4().hex
