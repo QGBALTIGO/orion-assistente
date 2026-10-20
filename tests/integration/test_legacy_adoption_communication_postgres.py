@@ -93,11 +93,6 @@ def current_source(source):
 def assert_original_scope(case,before,plan):
     with case.engine.begin() as db:
         actual=ops.snapshot(db,exclude=plan)
-        # Activation must include the already registered alias itself.
-        if plan.get('already'):
-            original=ops.snapshot(db)
-            actual['rows']['qr_channels']=original['rows']['qr_channels']
-            actual['counts']['qr_channels']=original['counts']['qr_channels']
         assert actual==before
     assert {key:case.redis.get(key) for key in case.redis_keys}==case.redis_keys
 

@@ -32,6 +32,12 @@ def source(inbox_source,monkeypatch):
         # Model an already active pilot only in this disposable database.
         db.execute(text("UPDATE tenants SET bot_enabled=true WHERE id=:t"),{'t':case.tenant})
         assert db.execute(text("SELECT bot_enabled FROM tenants WHERE id=:t"),{'t':case.tenant}).scalar_one()
+        # The upstream migration fixture has a historical pending Meta reply.
+        # Model a reconciled synthetic history before taking any preservation
+        # snapshot. Adoption itself must never clear or send that backlog.
+        db.execute(text("""UPDATE message_outbox SET status='sent',attempts=1,
+            external_delivery_id='synthetic-reconciled-before-adoption'
+            WHERE tenant_id=:t AND status='pending'"""),{'t':case.tenant})
     return case,settings
 
 
