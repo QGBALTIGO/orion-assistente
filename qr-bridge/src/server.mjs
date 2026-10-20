@@ -8,7 +8,7 @@ import http from "node:http";
 import {databaseBackup} from './database-backup-store.mjs';
 import path from "node:path";
 import fs from "node:fs";
-import {timingSafeEqual,randomUUID} from "node:crypto";
+import {timingSafeEqual,randomUUID,createHmac} from "node:crypto";
 import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import NodeCache from "@cacheable/node-cache";
@@ -41,6 +41,7 @@ import {createLegacyCentral} from './legacy-central.mjs';
 
 const legacyCentral=createLegacyCentral({
   start:(id,key)=>channelRoutes.adopt(id,key),send:(id,key,payload)=>channelRoutes.send(id,key,payload),
+  sessionDigest:()=>status==='connected'?createHmac('sha256',KEY).update('orion:preserved-primary-session:v1\0'+pairedNumber).digest('hex'):null,
   status:()=>status,rawSend:(phone,text,options)=>sendLegacyRaw(phone,text,options)});
 const channelRoutes=createChannelRoutes({sessionFactory:context=>context.legacyTransport?
   legacyCentral.attach(context):createBaileysChannelSession(context)});

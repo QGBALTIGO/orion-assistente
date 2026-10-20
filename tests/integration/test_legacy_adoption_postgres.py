@@ -25,8 +25,12 @@ def source(inbox_source,monkeypatch):
     config.set_main_option('script_location',str(ops.inbox.ROOT/'alembic'))
     command.upgrade(config,ops.inbox.TARGET)
     monkeypatch.setenv('INTEGRATION_FERNET_KEY',Fernet.generate_key().decode())
-    settings=ops.Settings(case.settings.url,case.settings.bridge_url,case.settings.token,str(uuid4()),case.tenant,(PHONE,), 'register')
+    monkeypatch.setattr(ops,'session_proof',lambda *_:'a'*64)
+    settings=ops.Settings(case.settings.url,case.settings.bridge_url,case.settings.token,str(uuid4()),case.tenant,(PHONE,), 'register', 'a'*64)
     with case.engine.begin() as db:
+        # The shared migration fixture deliberately starts with the bot off.
+        # Model an already active pilot only in this disposable database.
+        db.execute(text("UPDATE tenants SET bot_enabled=true WHERE id=:t"),{'t':case.tenant})
         assert db.execute(text("SELECT bot_enabled FROM tenants WHERE id=:t"),{'t':case.tenant}).scalar_one()
     return case,settings
 
@@ -98,3 +102,20 @@ def test_ambiguous_owner_stops_before_backup_or_registration(source,monkeypatch)
         db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role) VALUES(:t,:a,'owner')"),{'t':case.tenant,'a':account})
     monkeypatch.setattr(ops,'capture_dump',lambda *_:pytest.fail('backup should not start'))
     with pytest.raises(ops.Stop,match='unique_existing_owner_required'):ops.execute(settings)
+
+
+def test_inactive_tenant_stops_without_enabling_it(source,monkeypatch):
+    case,settings=source
+    with case.engine.begin() as db:
+        db.execute(text('UPDATE tenants SET bot_enabled=false WHERE id=:t'),{'t':case.tenant})
+    monkeypatch.setattr(ops,'capture_dump',lambda *_:pytest.fail('backup should not start'))
+    with pytest.raises(ops.Stop,match='existing_tenant_not_active'):ops.execute(settings)
+    with case.engine.begin() as db:
+        assert not db.execute(text('SELECT bot_enabled FROM tenants WHERE id=:t'),{'t':case.tenant}).scalar_one()
+
+
+def test_primary_account_change_stops_before_backup(source,monkeypatch):
+    _,settings=source
+    monkeypatch.setattr(ops,'session_proof',lambda *_:'b'*64)
+    monkeypatch.setattr(ops,'capture_dump',lambda *_:pytest.fail('backup should not start'))
+    with pytest.raises(ops.Stop,match='primary_account_changed_preserved'):ops.execute(settings)

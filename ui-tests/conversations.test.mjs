@@ -33,6 +33,19 @@ test('conversation text is escaped, reader controls are disabled and no send occ
   assert.equal(h.calls.filter(x=>x.method!=='GET').length,0);
 });
 
+test('preserved device history is loaded explicitly, escaped and never marks or sends messages',async t=>{
+  const h=await setup({respond(path){
+    if(path.includes('/messages?'))return {preserved_history_available:true,
+      control:{mode:'human',revision:2,assigned_account_id:account,pending_operation:null},items:[],has_more:false};
+    if(path.includes('/preserved-history?'))return {items:[{direction:'out',body:'<img src=x onerror=alert(1)>',at:1000000,delivery:null}]};
+  }});t.after(()=>h.close());
+  assert.equal(h.calls.some(c=>c.path.includes('preserved-history')),false);
+  h.host.querySelector('[data-central-action=preserved-history]').click();await flush();
+  assert.match(h.host.textContent,/Histórico preservado no dispositivo/);
+  assert.match(h.host.textContent,/Sem confirmação de entrega/);
+  assert.equal(h.host.querySelector('img'),null);assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
+});
+
 test('a response lost after enqueue preserves the same operation for an explicit retry',async t=>{
   let n=0;const h=await setup({respond(path,method){if(method==='POST'&&n++===0)throw Error('Resposta perdida');}});t.after(()=>h.close());
   h.compose('Mensagem revisada');await flush();

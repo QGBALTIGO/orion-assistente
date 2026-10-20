@@ -1,5 +1,6 @@
 """Human central: bounded history, personal assignment and durable enqueue."""
 from uuid import UUID
+import math
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
@@ -10,9 +11,20 @@ from app.catalog_api import Actor, authenticate, audit
 from app.catalog_schemas import StrictModel
 from app.management_api import management_session
 from app import inbox_control as control, inbox_runtime as runtime
+from app.qr_legacy import is_alias, configured_tenant
 
 router = APIRouter(tags=["Central de atendimento"])
 P = "/api/v1/tenants/{tenant_id}/management/inbox"
+
+
+async def can_read_preserved(db, tenant, channel, actor):
+    if not is_alias(tenant, channel):
+        return False
+    if actor.role in {'admin','support'}:
+        return True
+    owner=(await db.execute(text('SELECT owner_account_id FROM qr_channels WHERE tenant_id=:t AND id=:c'),
+        {'t':tenant,'c':channel})).scalar_one_or_none()
+    return db.info.get('management_actor_role')=='owner' and owner==actor.account_id
 
 
 class Message(StrictModel):
@@ -82,7 +94,38 @@ async def messages(tenant_id: UUID, channel_id: UUID, phone: str=Query(pattern=r
                                    {"t":tenant_id,"phone":phone})).scalar_one_or_none()
         return jsonable_encoder({"control":{k:row[k] for k in ("mode","assigned_account_id","revision","pending_operation","pending_since")},
                                  "customer_id":customer,"items":list(reversed(items[:100])),"has_more":len(items)>100,
+                                 "preserved_history_available":await can_read_preserved(db,tenant_id,channel_id,actor),
                                  "next_before":items[99]["id"] if len(items)>100 else None})
+
+
+@router.get(P+'/channels/{channel_id}/preserved-history')
+async def preserved_history(tenant_id:UUID,channel_id:UUID,phone:str=Query(pattern=r'^\+55[1-9][0-9]{9,10}$'),
+                            actor:Actor=Depends(authenticate)):
+    """Tenant-authorized read of the retained local inbox; never imports or sends."""
+    control.require_enabled()
+    if not is_alias(tenant_id,channel_id) or configured_tenant()!=tenant_id:
+        raise HTTPException(404,'Histórico preservado indisponível neste canal')
+    async def authorize():
+        async with management_session(tenant_id,actor) as db:
+            if not await can_read_preserved(db,tenant_id,channel_id,actor):
+                raise HTTPException(403,'O histórico preservado exige o proprietário da sessão')
+            await control.check_channel(db,tenant_id,channel_id,phone)
+    await authorize()
+    from app.qr_api import _bridge
+    result=await _bridge('/internal/messages',query={'phone':phone.removeprefix('+')})
+    items=result.get('items')
+    if not isinstance(items,list) or len(items)>100:
+        raise HTTPException(503,'Histórico temporariamente indisponível')
+    safe=[]
+    for row in items:
+        if (not isinstance(row,dict) or row.get('phone')!=phone.removeprefix('+') or row.get('direction') not in {'in','out'}
+                or not isinstance(row.get('body'),str) or len(row['body'])>2000 or type(row.get('at')) not in {int,float}
+                or not math.isfinite(row['at']) or not 0<row['at']<10**14):
+            raise HTTPException(503,'Histórico temporariamente indisponível')
+        safe.append({'direction':row['direction'],'body':row['body'],'at':row['at'],
+            'delivery':row.get('delivery') if row.get('delivery') in {'delivered','read','played'} else None})
+    await authorize()  # A revocation during the private read must discard it.
+    return {'items':safe,'origin':'preserved_device','read_receipts_sent':False}
 
 
 class ReadThrough(StrictModel):

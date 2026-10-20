@@ -27,7 +27,7 @@ process.env.ORION_CONTACT_TEST_MODE='1';
 const contactDirectories=[];
 after(()=>{for(const directory of contactDirectories)fs.rmSync(directory,{recursive:true,force:true});});
 
-function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answer=null,realAudio=false,
+function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answer=null,realAudio=false,legacyController,
   revisionEnabled=false,forwardResponse,sendResponse,presence,typingConfig={maxPauseMs:0}}={}){
   let listener,transcriptions=0,downloads=0;
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-inbound-names-'));
@@ -44,6 +44,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     presenceCalls.push({type,jid});events.push(['typing',type,jid]);return presence(type,jid);
   };
   const context=vm.createContext({client,socket:client,mine:1,generation:1,status:'connected',
+    legacyCentral:legacyController||{configured:()=>false},
     namesStore,namesSync:{changed(){nameChanges++;}},
     extractText,resolveMessagePhone,shouldIngestUpsert,timestampMs,makeConversationIntake,
     makeAssistantTyping:options=>makeAssistantTyping({...options,...typingConfig}),
@@ -87,6 +88,18 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     emit:(messages,type='notify')=>listener({type,messages}),
     get transcriptions(){return transcriptions;},get downloads(){return downloads;}};
 }
+
+test('real adopted handler journals before processing and uses only the managed reply path',async()=>{
+  const events=[],proofs=[];
+  const legacyController={configured:()=>true,resume:async()=>{},allowed:p=>p===phone,
+    inbound:async payload=>{events.push(['journal',payload]);const proof={revision:proofs.length+1};proofs.push(proof);return proof;},
+    forward:async(payload,options)=>{events.push(['managed',payload,options]);return {accepted:true};}};
+  const h=harness({legacyController,answer:'This legacy answer must never be used'});
+  await h.emit([h.message('SYNTHETIC-ADOPTED',{text:'Olá'})]);
+  assert.deepEqual(events.map(e=>e[0]),['journal','managed']);
+  assert.equal(events[1][1].intake_revision,1);assert.equal(events[1][2].noticeProofs[0],proofs[0]);
+  assert.equal(h.forwarded.length,0);assert.equal(h.sent.length,0);assert.equal(h.notices.length,0);
+});
 
 test('real inbound handler forwards a known WhatsApp profile without deriving a name from message text',async()=>{
   const h=harness();

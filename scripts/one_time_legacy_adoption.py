@@ -6,6 +6,7 @@ No messages, contact import, role creation, phone/session copy, QR or logout.
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, replace
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
@@ -29,6 +30,7 @@ class Settings(previous.Settings):
     tenant: UUID
     senders: tuple[str, ...]
     phase: str
+    session_digest: str = ''
 
     @classmethod
     def from_environment(cls):
@@ -47,7 +49,18 @@ class Settings(previous.Settings):
             raise
         except Exception:
             raise Stop('legacy_configuration_invalid') from None
-        return cls(base.url, base.bridge_url, base.token, base.run_id, tenant, senders, phase)
+        return cls(base.url, base.bridge_url, base.token, base.run_id, tenant, senders, phase, session_proof(base))
+
+
+def session_proof(settings):
+    with httpx.Client(timeout=httpx.Timeout(5, connect=3), follow_redirects=False, trust_env=False) as client:
+        response=client.get(settings.bridge_url+'/internal/status',headers={'X-Orion-Bridge-Key':settings.token})
+        require(response.status_code==200 and len(response.content)<=64000,'existing_session_unavailable')
+        value=response.json()
+    phone=value.get('phone')
+    require(value.get('status')=='connected' and isinstance(phone,str) and phone.isdigit() and 8<=len(phone)<=15,
+        'existing_session_not_connected')
+    return hmac.new(settings.token.encode(),b'orion:preserved-primary-session:v1\0'+phone.encode(),hashlib.sha256).hexdigest()
 
 
 def preflight(db, settings):
@@ -81,8 +94,8 @@ def plan_for(db, settings, paused=()):
     if settings.phase == 'activate': require(row is not None, 'register_alias_first')
     if settings.phase == 'activate' and link is None:
         require(row['enabled'] and row['assistant_enabled'], 'existing_assistant_configuration_changed')
-    fingerprint = hashlib.sha256(json.dumps({'purpose': 'preserved-primary-qr-v1', 'tenant': str(settings.tenant),
-        'owner': str(owner), 'senders': settings.senders}, sort_keys=True).encode()).hexdigest()
+    fingerprint = settings.session_digest
+    require(len(fingerprint)==64 and all(c in '0123456789abcdef' for c in fingerprint),'session_proof_required')
     if row: require(row['request_fingerprint'] == fingerprint, 'existing_alias_fingerprint_mismatch')
     return {'id': identity, 'tenant': settings.tenant, 'owner': owner, 'senders': list(settings.senders),
         'key': credential_hash(settings.token), 'encrypted': row['credential_encrypted'] if row else _cipher().encrypt(settings.token.encode()).decode(),
@@ -171,6 +184,7 @@ def apply(engine, settings, before, plan, *, restored=False, receipt=None):
         require(isinstance(receipt, RehearsalProof) and receipt.run_id == settings.run_id and
             receipt.database == settings.url.database and receipt.fingerprint == plan['fingerprint'] and
             receipt.phase == settings.phase and receipt.snapshot_digest == snapshot_digest(before), 'rehearsal_proof_required')
+        require(session_proof(settings)==settings.session_digest,'primary_account_changed_preserved')
     with engine.begin() as db:
         preflight(db, settings)
         require(db.exec_driver_sql('SELECT pg_try_advisory_xact_lock(681692820129)').scalar_one(), 'adoption_already_running')
@@ -251,6 +265,7 @@ def verify_restore(engine, settings, identity, path, before, plan):
 
 
 def execute(settings):
+    require(session_proof(settings)==settings.session_digest,'primary_account_changed_preserved')
     engine = backup.engine_for(settings.url)
     try:
         with engine.begin() as db:

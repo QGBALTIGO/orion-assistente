@@ -13,11 +13,11 @@ const phone='5567999999901',key='synthetic-primary-key-0000000000000000000000000
 function fixture(changes={}){
   const calls=[],env={QR_LEGACY_CENTRAL_ENABLED:'1',QR_CHANNEL_BROKER_URL:'http://api.railway.internal',
     QR_BRIDGE_TOKEN:key,QR_AI_PILOT_NUMBER:phone,...changes};
-  let active=true,connected=true,context,closeAdapter;
-  const central=createLegacyCentral({env,status:()=>connected?'connected':'reconnecting',
+  let active=true,connected=true,currentDigest='a'.repeat(64),context,closeAdapter;
+  const central=createLegacyCentral({env,sessionDigest:()=> 'a'.repeat(64),sessionDigest:()=>currentDigest,status:()=>connected?'connected':'reconnecting',
     fetchImpl:async(url,options)=>{
       calls.push(['bootstrap',String(url),options]);
-      return {ok:true,json:async()=>({legacy_transport:true,channel_id:id,tenant_id:tenant,allowed_senders:[phone]})};
+      return {ok:true,json:async()=>({legacy_transport:true,channel_id:id,tenant_id:tenant,session_digest:'a'.repeat(64),allowed_senders:[phone]})};
     },
     start:async()=>{
       context={channelId:id,tenantId:tenant,secret:key,legacyTransport:true,
@@ -29,7 +29,7 @@ function fixture(changes={}){
     },
     send:async(...args)=>{calls.push(['send',...args]);return {accepted:true};},
     rawSend:async(...args)=>{calls.push(['raw',...args]);return {accepted:true,id:'out:SYNTHETIC'};}});
-  return {central,calls,env,context:()=>context,adapter:()=>closeAdapter,revoke:()=>{active=false;},disconnect:()=>{connected=false;}};
+  return {central,calls,env,context:()=>context,adapter:()=>closeAdapter,revoke:()=>{active=false;},disconnect:()=>{connected=false;},replaceAccount:()=>{currentDigest='b'.repeat(64);}};
 }
 
 test('adopts one registry identity without opening or sending on the existing socket',async()=>{
@@ -54,6 +54,14 @@ test('manager retirement detaches only the adapter and refuses stale sends',asyn
   const f=fixture();await f.central.resume();const adapter=f.adapter();adapter.close();
   assert.equal(f.central.health().connected,true);assert.equal(f.central.health().ready,false);
   await assert.rejects(adapter.send(phone,'Sintético'),/revoked/);
+  assert.equal(f.calls.some(c=>c[0]==='raw'),false);
+});
+
+test('a different physical account cannot use the adopted company or send on its behalf',async()=>{
+  const f=fixture();await f.central.resume();f.replaceAccount();
+  assert.equal(f.central.health().session_preserved,false);assert.equal(f.central.health().ready,false);
+  assert.equal(f.central.allowed(phone),false);assert.equal(f.adapter().status(),'connecting');
+  await assert.rejects(f.adapter().send(phone,'Sintético'),/revoked/);
   assert.equal(f.calls.some(c=>c[0]==='raw'),false);
 });
 
@@ -96,8 +104,8 @@ for(const pause of [false,true])test(`full managed pipeline preserves the legacy
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'orion-legacy-central-test-'));
   let manager,mode='ai',revision=0,raw=0,finished=0;const calls=[];
   const env={QR_LEGACY_CENTRAL_ENABLED:'1',QR_CHANNEL_BROKER_URL:'http://api.railway.internal',QR_BRIDGE_TOKEN:key};
-  const central=createLegacyCentral({env,status:()=> 'connected',
-    fetchImpl:async()=>({ok:true,json:async()=>({legacy_transport:true,channel_id:id,tenant_id:tenant,allowed_senders:[phone]})}),
+  const central=createLegacyCentral({env,sessionDigest:()=> 'a'.repeat(64),status:()=> 'connected',
+    fetchImpl:async()=>({ok:true,json:async()=>({legacy_transport:true,channel_id:id,tenant_id:tenant,session_digest:'a'.repeat(64),allowed_senders:[phone]})}),
     start:(...a)=>manager.start(...a),send:(...a)=>manager.send(...a),
     rawSend:async()=>{raw++;return {id:'out:SYNTHETIC',accepted:true};}});
   const broker={

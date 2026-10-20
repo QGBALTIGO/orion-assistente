@@ -79,3 +79,27 @@ Esta transição está em qualificação. Não declarar ativação concluída se
 recibos das duas fases e as conferências do Railway. Mídias completas, executor
 de grafos, campanhas avançadas, exportações e webhooks mantêm as pendências da
 matriz; não são certificados como completos por esta transição.
+
+
+O proprietário da sessão pode consultar o histórico local preservado, limitado
+às últimas cem mensagens do contato autorizado. Essa leitura revalida vínculo,
+proprietário e contato antes e depois de consultar o bridge; não importa dados,
+marca leitura, envia recibo nem presume entrega. Outros atendentes não recebem
+esse acesso adicional ao histórico anterior. A central mantém seu histórico novo
+com leitura pessoal e acesso por empresa conforme as permissões vigentes.
+
+A primeira CI da adaptação encontrou fixtures que extraíam o handler antigo sem
+fornecer o novo controlador opcional. As fixtures foram atualizadas para o modo
+legado desligado, mantendo suas asserções; foi acrescentado um teste do handler
+adotado que exige journal antes do processamento e zero chamada ao caminho antigo.
+
+A identidade preservada inclui uma prova HMAC do aparelho principal conectado,
+validada antes do backup, antes da escrita e pelo adaptador a cada operação.
+O número e a chave privada não são expostos nos recibos. Uma troca de conta
+impede a adoção ou o envio pela identidade anterior.
+
+Qualificação local desta revisão: 429 testes do bridge (425 aprovados, quatro
+casos POSIX não aplicáveis ao Windows), 308 testes DOM e dez testes unitários
+de transição/histórico aprovados. A CI com PG16 e Redis é obrigatória antes
+de publicar; o cenário descartável prepara explicitamente um piloto ativo,
+sem alterar a proteção que recusa empresas inativas em produção.

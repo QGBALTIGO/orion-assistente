@@ -5,6 +5,17 @@ const writes=h=>h.calls.filter(call=>call.method!=='GET');
 const base='/api/v1/tenants/'+tenantA+'/qr-channels';
 const secret='synthetic-private-credential-'+'x'.repeat(40);
 
+test('preserved primary session offers status and assistant control without reconnect or QR actions',async t=>{
+  const row=item({enabled:true,assistant_enabled:true,legacy_transport:true});
+  const h=await makeChannels({data:listing([row]),respond:(path,method)=>path.endsWith('/status')?runtime(row,'connected'):undefined});
+  t.after(()=>h.close());
+  for(const action of ['start','connect','qr','stop','enable','disable'])assert.equal(h.document.querySelector('[data-qc-action='+action+']'),null);
+  assert.ok(h.document.querySelector('[data-qc-action=status]'));
+  assert.ok(h.document.querySelector('[data-qc-action=assistant_off]'));
+  assert.match(h.element('#channels').textContent,/sessão existente/);
+  assert.deepEqual(writes(h),[]);
+});
+
 test('connect enables only the selected device then starts with its new revision, never the assistant',async t=>{
   const row=item(),h=await makeChannels({respond:(path,method,payload)=>method==='PATCH'?item({enabled:true,revision:2}):method==='POST'?runtime(item({enabled:true,revision:2}),'connecting'):undefined});t.after(()=>h.close());
   h.click('[data-qc-action=connect]');assert.equal(writes(h).length,0);h.submit();h.submit();await flush();

@@ -62,7 +62,7 @@ async def bootstrap(request: Request):
     from app.qr_channels import credential_hash
     tenant = configured_tenant()
     async with support_session_factory()() as db:
-        row = (await db.execute(text("""SELECT c.id,c.tenant_id,c.enabled,c.assistant_enabled,c.allowed_senders
+        row = (await db.execute(text("""SELECT c.id,c.tenant_id,c.enabled,c.assistant_enabled,c.allowed_senders,c.request_fingerprint
           FROM qr_channels c JOIN tenant_memberships m ON m.tenant_id=c.tenant_id AND m.account_id=c.owner_account_id
           JOIN tenants t ON t.id=c.tenant_id WHERE c.id=:c AND c.tenant_id=:t AND c.credential_hash=:key
           AND c.enabled AND t.status='active' AND m.active AND m.role='owner'"""),
@@ -70,4 +70,4 @@ async def bootstrap(request: Request):
     if row is None:
         raise HTTPException(409, 'Preparação da sessão principal pendente')
     return {'channel_id': str(row['id']), 'tenant_id': str(tenant),
-        'legacy_transport': True, 'allowed_senders': row['allowed_senders']}
+        'legacy_transport': True, 'allowed_senders': row['allowed_senders'], 'session_digest':row['request_fingerprint']}
