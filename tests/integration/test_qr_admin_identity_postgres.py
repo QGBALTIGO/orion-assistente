@@ -44,7 +44,7 @@ async def native_qr(admin_source, monkeypatch):
                 VALUES (:tenant,:account,'owner',true)"""), {"tenant": case.tenant, "account": account})
         db.execute(text("INSERT INTO tenants(id,name,slug) VALUES (:id,'Synthetic QR foreign tenant',:slug)"),
                    {"id": foreign, "slug": f"qr-foreign-{foreign}"})
-    support_url = case.settings.url.set(drivername="postgresql+asyncpg", username="app_support")
+    support_url = case.support_url
     engine = create_async_engine(support_url, poolclass=NullPool)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     network = []

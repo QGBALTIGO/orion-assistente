@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 from uuid import uuid4,uuid5,NAMESPACE_URL
 
 from alembic import command
@@ -18,6 +19,7 @@ from scripts import one_time_admin_identity_migration as migration
 from scripts import one_time_admin_demo_setup as setup
 from scripts import one_time_legacy_adoption as adoption
 from scripts import wait_for_admin_identity_schema as gate
+from tests.admin_test_scope import role_url
 from test_communication_migration_postgres import communication_source  # noqa:F401
 from test_one_time_inbox_migration_postgres import inbox_source  # noqa:F401
 from test_one_time_onboarding_migration_postgres import onboarding_source  # noqa:F401
@@ -46,6 +48,8 @@ def admin_migration_source(communication_source):
     case=communication_source
     upgrade(migration.SOURCE)
     case.settings=migration.Settings(case.settings.url,case.settings.bridge_url,case.settings.token,str(uuid4()))
+    case.runtime_url=role_url(case.settings.url,os.environ['APP_DATABASE_URL'],'app_runtime')
+    case.support_url=role_url(case.settings.url,os.environ['SUPPORT_DATABASE_URL'],'app_support')
     with case.engine.begin() as db:
         # An upstream fixture intentionally has a pending historical Meta
         # reply. Model a definite synthetic no-send before preservation starts;
@@ -223,7 +227,7 @@ def test_existing_owner_native_admin_or_active_bot_is_never_overwritten(admin_so
 
 async def test_runtime_metadata_gate_accepts_0030_and_denies_0029(admin_migration_source):
     case=admin_migration_source
-    runtime=gate.Settings(case.settings.url.set(drivername='postgresql',username='app_runtime').render_as_string(hide_password=False))
+    runtime=gate.Settings(case.runtime_url.set(drivername='postgresql').render_as_string(hide_password=False))
     assert await gate.probe_schema(runtime,3) is False
     upgrade(migration.TARGET)
     assert await gate.probe_schema(runtime,3) is True
@@ -241,7 +245,7 @@ async def test_password_account_queries_work_on_0029_and_0030_and_exclude_native
         db.execute(text("INSERT INTO panel_accounts(id,name,email,password_hash,role) VALUES(:id,'Synthetic password member',:email,:hash,'member')"),
             {'id':account,'email':email,'hash':account_auth._hasher.hash(password)})
         db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role) VALUES(:t,:a,'owner')"),{'t':case.tenant,'a':account})
-    engine=create_async_engine(case.settings.url.set(drivername='postgresql+asyncpg',username='app_support'),poolclass=NullPool)
+    engine=create_async_engine(case.support_url,poolclass=NullPool)
     factory=async_sessionmaker(engine,expire_on_commit=False)
     monkeypatch.setattr(account_auth,'_storage',lambda:factory)
     try:
