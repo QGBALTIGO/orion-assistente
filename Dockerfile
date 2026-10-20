@@ -27,6 +27,7 @@ COPY tests/ ./tests/
 COPY scripts/ ./scripts/
 COPY landing/ ./landing/
 RUN pip install --no-cache-dir -c requirements.lock ".[test]" \
+    && python -m pip check \
     && useradd --uid 10001 --create-home appuser
 
 USER appuser

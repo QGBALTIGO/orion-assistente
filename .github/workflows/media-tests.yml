@@ -26,7 +26,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install application and test dependencies
-        run: python -m pip install -c requirements.lock -e ".[test]"
+        run: |
+          python -m pip install -c requirements.lock -e ".[test]"
+          python -m pip check
       - name: Verify Python syntax
         run: python -m compileall -q app tests/unit/test_media_api.py
       - name: Run isolated media tests (no database or bucket required)
