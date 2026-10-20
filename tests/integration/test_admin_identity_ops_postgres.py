@@ -114,6 +114,103 @@ def approved_settings(case):
     return replace(case.settings,phase='apply',approved_plan_sha256=receipt['plan_sha256'])
 
 
+def seed_preserved_qr(case):
+    """An unrelated synthetic active transport; never the demo alias."""
+    channel,other_owner=uuid4(),uuid4()
+    with case.engine.begin() as db:
+        owner=db.execute(text("SELECT account_id FROM tenant_memberships WHERE tenant_id=:t AND active AND role='owner'"),
+            {'t':case.original_tenant}).scalar_one()
+        db.execute(text("INSERT INTO panel_accounts(id,name,email,password_hash,role) VALUES(:a,'Synthetic alternate owner',:email,'synthetic-unusable-hash','member')"),
+            {'a':other_owner,'email':other_owner.hex+'@example.invalid'})
+        db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role,active) VALUES(:t,:a,'owner',true)"),
+            {'t':case.original_tenant,'a':other_owner})
+        db.execute(text("""INSERT INTO qr_channels(id,tenant_id,owner_account_id,provider,label,credential_hash,
+            credential_encrypted,allowed_senders,enabled,assistant_enabled,idempotency_key,request_fingerprint,
+            lease_owner,lease_expires_at,fence) VALUES(:c,:t,:a,'baileys','Synthetic preserved transport',:hash,
+            'synthetic-encrypted-preserved',CAST(:senders AS jsonb),true,true,:key,:fingerprint,:lease,now()+interval '30 seconds',1)"""),
+            {'c':channel,'t':case.original_tenant,'a':owner,'hash':'a'*64,'senders':json.dumps([PHONE]),
+                'key':uuid4(),'fingerprint':'b'*64,'lease':uuid4()})
+    return channel,other_owner
+
+
+def test_setup_plan_survives_lease_renewal_and_preserves_latest_live_lease(admin_source,monkeypatch):
+    case=admin_source
+    channel,_=seed_preserved_qr(case)
+    stored,_=private_transport(monkeypatch,case.settings)
+    settings=approved_settings(case)
+    def renew():
+        with case.engine.begin() as db:
+            db.execute(text("""UPDATE qr_channels SET lease_owner=:lease,fence=fence+1,
+                lease_expires_at=clock_timestamp()+interval '30 seconds',updated_at=clock_timestamp() WHERE id=:c"""),
+                {'c':channel,'lease':uuid4()})
+            return tuple(db.execute(text('SELECT * FROM qr_channels WHERE id=:c'),{'c':channel}).one())
+    renew()  # A different process can renew after the user approves the plan.
+    assert setup.execute(case.settings)['plan_sha256']==settings.approved_plan_sha256
+    original=setup.verify_restore
+    latest=[]
+    def rehearse_then_renew(*args):
+        receipt=original(*args)
+        latest.append(renew())  # A lease can also renew during restore/rehearsal.
+        return receipt
+    monkeypatch.setattr(setup,'verify_restore',rehearse_then_renew)
+    result=setup.execute(settings)
+    assert result['rehearsal_verified'] and result['restore_verified'] and len(stored)==1
+    with case.engine.begin() as db:
+        assert tuple(db.execute(text('SELECT * FROM qr_channels WHERE id=:c'),{'c':channel}).one())==latest[0]
+        assert db.execute(text("SELECT count(*) FROM panel_accounts WHERE auth_provider='legacy_admin'")).scalar_one()==1
+
+
+def test_lease_projection_keeps_all_qr_configuration_and_owner_changes_unapproved(admin_source,monkeypatch):
+    case=admin_source
+    channel,other_owner=seed_preserved_qr(case)
+    stored,_=private_transport(monkeypatch,case.settings)
+    settings=approved_settings(case)
+    monkeypatch.setattr(setup,'capture_dump',lambda *_:pytest.fail('Changed configuration reached backup'))
+    with case.engine.begin() as db:
+        original=dict(db.execute(text('SELECT * FROM qr_channels WHERE id=:c'),{'c':channel}).mappings().one())
+        before=setup.snapshot(db)
+    changes={'label':'Synthetic changed label','revision':original['revision']+1,'owner_account_id':other_owner,
+        'enabled':False,'assistant_enabled':False,'credential_hash':'f'*64,
+        'credential_encrypted':'synthetic-rotated-encrypted','allowed_senders':[PHONE+'1'],
+        'request_fingerprint':'e'*64,'idempotency_key':uuid4()}
+    for field,value in changes.items():
+        expression='CAST(:value AS jsonb)' if field=='allowed_senders' else ':value'
+        with case.engine.begin() as db:
+            db.execute(text('UPDATE qr_channels SET '+field+'='+expression+' WHERE id=:c'),
+                {'c':channel,'value':json.dumps(value) if field=='allowed_senders' else value})
+        with pytest.raises(setup.Stop,match='approved_plan_mismatch'):setup.execute(settings)
+        with case.engine.begin() as db:
+            old=original[field]
+            db.execute(text('UPDATE qr_channels SET '+field+'='+expression+' WHERE id=:c'),
+                {'c':channel,'value':json.dumps(old) if field=='allowed_senders' else old})
+            assert setup.snapshot(db)==before
+    # Membership revocation is outside the four lease fields as well.
+    with case.engine.begin() as db:
+        db.execute(text('UPDATE tenant_memberships SET active=false WHERE tenant_id=:t AND account_id=:a'),
+            {'t':case.original_tenant,'a':original['owner_account_id']})
+    with pytest.raises(setup.Stop,match='approved_plan_mismatch'):setup.execute(settings)
+    assert not stored
+
+
+def test_setup_rejects_qr_revision_change_after_rehearsal_without_domain_writes(admin_source,monkeypatch):
+    case=admin_source
+    channel,_=seed_preserved_qr(case)
+    private_transport(monkeypatch,case.settings)
+    settings=approved_settings(case)
+    original=setup.verify_restore
+    def rehearse_then_change(*args):
+        receipt=original(*args)
+        with case.engine.begin() as db:
+            db.execute(text('UPDATE qr_channels SET revision=revision+1 WHERE id=:c'),{'c':channel})
+        return receipt
+    monkeypatch.setattr(setup,'verify_restore',rehearse_then_change)
+    with pytest.raises(setup.Stop,match='source_changed_after_backup'):setup.execute(settings)
+    with case.engine.begin() as db:
+        assert db.execute(text("SELECT count(*) FROM panel_accounts WHERE auth_provider='legacy_admin'")).scalar_one()==0
+        assert db.execute(text('SELECT bot_enabled FROM tenants WHERE id=:t'),{'t':case.tenant}).scalar_one() is False
+        assert db.execute(text('SELECT revision FROM qr_channels WHERE id=:c'),{'c':channel}).scalar_one()==2
+
+
 def test_0030_encrypted_backup_restore_and_rehearsal_preserves_every_old_fact(admin_migration_source,monkeypatch):
     case=admin_migration_source
     with case.engine.begin() as db:before=migration.snapshot(db)

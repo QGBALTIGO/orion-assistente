@@ -70,3 +70,73 @@ def test_disabled_commands_never_connect_or_provision(configured,monkeypatch,cap
     monkeypatch.setenv('ORION_RUN_ADMIN_IDENTITY_MIGRATION','0')
     assert setup.main()==migration.main()==0
     assert [json.loads(line) for line in capsys.readouterr().out.splitlines()]==[{'status':'disabled'},{'status':'disabled'}]
+
+
+def _lease_plan_process_sample():
+    """Synthetic SQL result boundary; the integration cases execute this SQL."""
+    import hashlib
+    import re
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    row={'id':'synthetic-channel','tenant_id':'synthetic-tenant','owner_account_id':'synthetic-owner',
+        'label':'Synthetic label','idempotency_key':'synthetic-request','created_at':'2026-10-19T00:00:00Z',
+        'credential_hash':'a'*64,'credential_encrypted':'synthetic-encrypted','allowed_senders':['5567999999901'],
+        'enabled':True,'assistant_enabled':True,'revision':1,'request_fingerprint':'b'*64,
+        'lease_owner':'synthetic-lease-owner','lease_expires_at':'2026-10-20T00:00:30Z','fence':1,
+        'updated_at':'2026-10-20T00:00:00Z'}
+    def rows_hash(value):
+        item=hashlib.sha256(json.dumps(value,sort_keys=True).encode()).hexdigest()
+        return hashlib.sha256(item.encode()+b'\n').hexdigest()
+    def raw_snapshot(_):
+        return {'revision':migration.TARGET,'counts':{'qr_channels':1,'customers':1},
+            'rows':{'qr_channels':rows_hash(row),'customers':'synthetic-preserved-customer'}}
+    class DB:
+        def execute(self,query,params):
+            sql=str(query)
+            assert 'FROM public."qr_channels" t' in sql and sql.endswith(' ORDER BY 1')
+            removed=re.findall(r" - '([a-z_]+)'",sql)
+            assert set(removed)=={'lease_owner','lease_expires_at','fence','updated_at'}
+            value={key:value for key,value in row.items() if key not in removed}
+            return [(hashlib.sha256(json.dumps(value,sort_keys=True).encode()).hexdigest(),)]
+    settings=SimpleNamespace(run_id='075a435e-ed21-44b7-8d59-ba5f01087ec0')
+    plan={'session_digest':'c'*64,'credential_digest':'d'*64,'owner':'synthetic-demo-owner'}
+    with patch.object(setup.schema,'snapshot',raw_snapshot):
+        first=setup.snapshot(DB());expected=setup.plan_digest(first,plan,settings)
+        row.update(lease_owner='synthetic-new-lease-owner',lease_expires_at='2026-10-20T00:01:30Z',
+            fence=9,updated_at='2026-10-20T00:01:00Z')
+        lease_hash=setup.plan_digest(setup.snapshot(DB()),plan,settings)
+        protected={}
+        for field,value in {'id':'synthetic-other-channel','tenant_id':'synthetic-other-tenant',
+            'label':'Synthetic changed label','idempotency_key':'synthetic-other-request',
+            'created_at':'2026-10-18T00:00:00Z','owner_account_id':'synthetic-other-owner','credential_hash':'f'*64,
+            'credential_encrypted':'synthetic-rotated','allowed_senders':['5567999999902'],
+            'enabled':False,'assistant_enabled':False,'revision':2,'request_fingerprint':'e'*64}.items():
+            old=row[field];row[field]=value
+            protected[field]=setup.plan_digest(setup.snapshot(DB()),plan,settings)!=expected
+            row[field]=old
+        other=setup.snapshot(DB());other['rows']['customers']='synthetic-changed-customer'
+        protected['other_table']=setup.plan_digest(other,plan,settings)!=expected
+        protected['session']=setup.plan_digest(first,{**plan,'session_digest':'e'*64},settings)!=expected
+        protected['credential_binding']=setup.plan_digest(first,{**plan,'credential_digest':'e'*64},settings)!=expected
+    return {'stable_hash':expected,'lease_hash':lease_hash,'protected':protected}
+
+
+def test_plan_snapshot_ignores_only_transport_lease_across_processes():
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+    root=Path(__file__).resolve().parents[2]
+    code="import sys;sys.path[:0]=[sys.argv[1],sys.argv[2]];from test_admin_demo_setup import _lease_plan_process_sample;import json;print(json.dumps(_lease_plan_process_sample(),sort_keys=True))"
+    # A child never inherits database/provider credentials. No database is used.
+    allowed={'SYSTEMROOT','WINDIR','PATH','TEMP','TMP','COMSPEC','PATHEXT','LOCALAPPDATA','APPDATA','USERPROFILE'}
+    clean={key:value for key,value in os.environ.items() if key.upper() in allowed}
+    samples=[]
+    for seed in ('0','1','42'):
+        result=subprocess.run([sys.executable,'-c',code,str(root),str(Path(__file__).parent)],
+            cwd=root,env={**clean,'PYTHONHASHSEED':seed,'PYTHONIOENCODING':'utf-8'},
+            check=True,capture_output=True,text=True,timeout=45)
+        samples.append(json.loads(result.stdout))
+    assert len({sample['stable_hash'] for sample in samples})==1
+    assert all(sample['lease_hash']==sample['stable_hash'] for sample in samples)
+    assert all(all(sample['protected'].values()) for sample in samples)

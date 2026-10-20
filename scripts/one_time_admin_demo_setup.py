@@ -114,6 +114,12 @@ def plan_for(db,settings):
 
 def snapshot(db,*,exclude=None):
     value=schema.snapshot(db)
+    # Match adoption's reviewed lease projection. Live renewal is preserved,
+    # while every QR identity/configuration field remains approval-bound.
+    rows=db.execute(text("SELECT encode(sha256(convert_to((to_jsonb(t) - 'lease_owner' - 'lease_expires_at' - 'fence' - 'updated_at')::text,'UTF8')),'hex') FROM public.\"qr_channels\" t ORDER BY 1"),{})
+    digest=hashlib.sha256();count=0
+    for row in rows:digest.update(row[0].encode()+b'\n');count+=1
+    value['rows']['qr_channels']=digest.hexdigest();value['counts']['qr_channels']=count
     if exclude:
         changes={'panel_accounts':exclude['account'],'tenant_memberships':exclude['membership'],'platform_audit':exclude['audit']}
         for name in sorted(schema.TARGET_TABLES-{'alembic_version'}):
