@@ -63,5 +63,7 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
     return true;
   };
   route.resume=async()=>env.QR_CHANNELS_ENABLED==='1'?getManager().resume():{resumed:0};
+  route.adopt=(id,key)=>getManager().start(id,key);
+  route.send=(id,key,payload)=>getManager().send(id,key,payload);
   return route;
 }

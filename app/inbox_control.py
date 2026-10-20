@@ -55,7 +55,9 @@ async def guard_transaction(db, identity=None):
 
 
 def enabled():
-    return os.getenv("INBOX_CONTROL_ENABLED", "0") == "1"
+    from app.qr_channel_scope import current
+    identity = current()
+    return os.getenv("INBOX_CONTROL_ENABLED", "0") == "1" or bool(identity and getattr(identity, 'central_adopted', False))
 
 
 def require_enabled():
@@ -274,9 +276,10 @@ async def control_history(tenant_id: UUID, channel_id: UUID,
 
 @asynccontextmanager
 async def bridge_control(request, payload):
-    require_enabled()
     from app.qr_channels import authenticated_channel
     identity = await authenticated_channel(request, phone=payload.phone)
+    if not identity.central_adopted:
+        require_enabled()
     async with get_session_factory()() as db:
         async with tenant_transaction(db, identity.tenant_id):
             # This server identity has already been authenticated independently

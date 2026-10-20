@@ -148,11 +148,12 @@ class Journal(StrictModel):
 
 @router.post("/internal/qr/channels/{channel_id}/messages",include_in_schema=False)
 async def journal(channel_id: UUID,payload: Journal,request: Request):
-    control.require_enabled()
     from app.qr_channels import authenticated_channel
     from app.database import get_session_factory,tenant_transaction
     from app.automation_runtime import _notice_guard,_notice_identity
     identity=await authenticated_channel(request,phone=payload.phone)
+    if not identity.central_adopted:
+        control.require_enabled()
     async with get_session_factory()() as db:
         async with tenant_transaction(db,identity.tenant_id):
             guard=_notice_identity(identity.tenant_id,payload.phone,identity)

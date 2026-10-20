@@ -99,10 +99,15 @@ class ChannelIdentity:
     lease_owner: UUID
     allowed_sender: bool
     assistant_enabled: bool = False
+    legacy_transport: bool = False
+    central_adopted: bool = False
 
     @property
     def context_namespace(self):
         return f"qr:{self.tenant_id}:{self.channel_id}"
+
+    def conversation_namespace(self, phone):
+        return phone if self.legacy_transport else f"{self.context_namespace}:{phone}"
 
 
 def credential_hash(value):
@@ -176,6 +181,8 @@ async def list_channels(tenant_id: UUID, response: Response, actor: Actor = Depe
     for row in rows:
         own = can_manage and row["owner_account_id"] == actor.account_id
         item = {k: row[k] for k in SAFE_FIELDS}
+        from app.qr_legacy import is_alias
+        item['legacy_transport'] = is_alias(row['tenant_id'], row['id'])
         item["can_manage"] = own
         if own:
             item["allowed_senders"] = row["allowed_senders"]
@@ -187,6 +194,9 @@ async def list_channels(tenant_id: UUID, response: Response, actor: Actor = Depe
 
 @router.patch(BASE + "/{channel_id}")
 async def change_state(tenant_id: UUID, channel_id: UUID, payload: ChannelState, actor: Actor = Depends(authenticate)):
+    from app.qr_legacy import is_alias
+    if is_alias(tenant_id, channel_id) and payload.enabled is not None:
+        raise HTTPException(409, 'A sessão principal é preservada; use o controle da assistente ou do atendimento')
     async with support_session_factory()() as db:
         async with db.begin():
             await _owner(db, tenant_id, actor)
@@ -261,11 +271,17 @@ async def lease_operation(db, channel_id, credential, payload, operation):
                     updated_at=clock_timestamp() WHERE id=:id RETURNING *,clock_timestamp() AS server_now"""),
                     {"id": channel_id, "release": operation == "release"})).mappings().one()
         remaining = max(0, int((row["lease_expires_at"]-row["server_now"]).total_seconds()*1000)) if row["lease_expires_at"] else 0
+        from app import qr_legacy
+        legacy = qr_legacy.is_alias(row['tenant_id'], row['id'])
+        if legacy and (not qr_legacy.enabled() or qr_legacy.configured_tenant() != row['tenant_id']):
+            raise HTTPException(423, 'Transição da sessão principal não habilitada')
+        central = legacy and await qr_legacy.registry_adopted(row['tenant_id'], row['id'])
         return {"channel_id": str(row["id"]), "tenant_id": str(row["tenant_id"]),
                 "owner_account_id": str(row["owner_account_id"]), "provider": row["provider"],
                 "owner": str(payload.owner), "fence": row["fence"], "expires_in_ms": remaining,
                 "allowed_senders": row["allowed_senders"], "assistant_enabled": row["assistant_enabled"],
-                **({"inbox_control": True} if os.getenv("INBOX_CONTROL_ENABLED", "0") == "1" else {})}
+                "legacy_transport": legacy,
+                **({"inbox_control": True} if central or os.getenv("INBOX_CONTROL_ENABLED", "0") == "1" else {})}
 
 
 @router.post(INTERNAL + "/lease/{operation}")
@@ -292,8 +308,20 @@ async def authenticated_channel(request: Request, *, phone: str | None = None) -
             allowed = sender is not None and sender in row["allowed_senders"]
             if sender is not None and not allowed:
                 raise HTTPException(403, "Remetente não autorizado neste canal")
-            return ChannelIdentity(row["id"], row["tenant_id"], row["owner_account_id"], row["provider"],
-                                   fence, owner, allowed, row["assistant_enabled"])
+            from app import qr_legacy
+            legacy = qr_legacy.is_alias(row['tenant_id'], row['id'])
+            if legacy and (not qr_legacy.enabled() or qr_legacy.configured_tenant() != row['tenant_id']):
+                raise HTTPException(423, 'Transição da sessão principal não habilitada')
+            # The runtime connection below has the tenant RLS scope; support
+            # receives no additional journal privileges.
+            central = False
+    if legacy:
+        from app.database import get_session_factory, tenant_transaction
+        async with get_session_factory()() as journal:
+            async with tenant_transaction(journal, row['tenant_id']):
+                central = await qr_legacy.adopted(journal, row['tenant_id'], row['id'])
+    return ChannelIdentity(row["id"], row["tenant_id"], row["owner_account_id"], row["provider"],
+        fence, owner, allowed, row["assistant_enabled"], legacy, central)
 
 
 async def outbound_channel_credentials(tenant_id: UUID, channel_id: UUID, *, read_only: bool = False) -> dict:
@@ -394,6 +422,9 @@ def _control_result(row, data, action):
 
 async def _control(tenant_id, channel_id, actor, action, expected_revision=None):
     row = await _owned_channel(tenant_id, channel_id, actor, expected_revision)
+    from app.qr_legacy import is_alias
+    if is_alias(tenant_id, channel_id) and action != 'status':
+        raise HTTPException(409, 'A sessão principal existente não precisa de novo vínculo')
     if not row["enabled"]:
         if action == "start":
             raise HTTPException(409, "Habilite a conexão deste canal antes de iniciar")
@@ -428,3 +459,9 @@ async def command_control(tenant_id: UUID, channel_id: UUID, action: str, payloa
 async def channel_identity(request: Request):
     identity = await authenticated_channel(request)
     return jsonable_encoder(identity)
+
+
+@router.get('/internal/qr/legacy/identity', include_in_schema=False)
+async def legacy_identity(request: Request):
+    from app.qr_legacy import bootstrap
+    return await bootstrap(request)

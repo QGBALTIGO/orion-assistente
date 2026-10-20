@@ -21,7 +21,7 @@ from pydantic import Field, model_validator
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.booking_service import book_appointment, confirm_hold, list_slots, reschedule_appointment, preview_reschedule, fingerprint as booking_fingerprint
+from app.booking_service import book_appointment, confirm_hold, list_slots, reschedule_appointment, preview_reschedule, fingerprintas booking_fingerprint
 from app.catalog_api import Actor, authenticate, authorize, support_only
 from app.catalog_schemas import StrictModel
 from app.database import get_session_factory, tenant_transaction
@@ -684,7 +684,7 @@ async def _professionals_availability(tenant, state, inquiry, business, catalog,
                         "price_cents": actual["price_cents"], "duration_min": actual["duration_min"]})
     except AVAILABILITY_ERRORS:
         state["availability_query"] = {**inquiry, "waiting_for": "retry"}
-        await redis.set(key, json.dumps(state), ex=_remaining_state_ttl(state))
+        await redis.set(key,json.dumps(state), ex=_remaining_state_ttl(state))
         return _bounded_reply(factual, "Não consegui consultar a agenda agora. Pode me pedir para tentar novamente em instantes?", state.get("step", "menu"))
     shown = available[:4]
     try:
@@ -1248,7 +1248,7 @@ async def _compound_booking_turn(tenant: UUID, phone: str, body: str, state: dic
     try:
         fresh = math.isfinite(float(state.get("confirmation_expires_at", 0))) and float(state.get("confirmation_expires_at", 0)) > datetime.now().timestamp()
     except (TypeError, ValueError):
-        fresh = False
+fresh = False
     if (not fresh or state.get("confirmation_requires_review") or state.get("availability_query") or
             not incoming_id or not summary_id or incoming_id == summary_id or not state.get("confirmation_summary")):
         return None
@@ -2325,7 +2325,7 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
     if state.get("availability_query") and text_clean in NO:
         state.pop("availability_query", None)
         await redis.set(state_key, json.dumps(state), ex=_remaining_state_ttl(state))
-        return {"answer": "Encerrei somente a consulta de disponibilidade. O pedido anterior não foi confirmado, cancelado ou alterado.", "step": state.get("step", "menu")}
+        return {"answer": "Encerrei somente a consulta de disponibilidade. O pedido anterior não foi confirmado, canceladoou alterado.", "step": state.get("step", "menu")}
     cancel = not catalog_question(body) and bool(re.search(
         r"\b(?:cancelar|cancele|desistir|desisto|nao quero mais agendar)\b", norm(body)))
     if cancel:
@@ -2633,7 +2633,7 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
     from app import qr_operation_receipt
     channel = qr_channel_scope.current()
     if channel is not None:
-        if preview or tenant != channel.tenant_id or namespace != f"{channel.context_namespace}:{phone}":
+        if preview or tenant != channel.tenant_id or namespace != channel.conversation_namespace(phone):
             raise HTTPException(403, "Contexto de canal inválido")
         await qr_channel_scope.assert_current()
     redis = from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"),
@@ -2646,7 +2646,7 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
         async with lock:
             ids = message_ids or ([message_id] if message_id else [])
             keys = [f"orion:qr:ai:done:{tenant}:{namespace}:{item}" for item in ids]
-            legacy_keys = [] if preview or channel is not None else [f"orion:qr:ai:done:{tenant}:{item}" for item in ids]
+            legacy_keys = [] if preview or channel is not None and not channel.legacy_transport else [f"orion:qr:ai:done:{tenant}:{item}" for item in ids]
             if any([await redis.exists(key) for key in keys + legacy_keys]):
                 return {"answer": None, "step": "duplicate"}
             if not preview and qr_intake_revision.enabled():
@@ -2743,7 +2743,8 @@ async def qr_reply(payload: Incoming, request: Request):
     if len(configured) < 32 or not secrets.compare_digest(configured, given):
         raise HTTPException(401, "Acesso negado")
     from app.inbox_control import enabled as central_enabled
-    if central_enabled():
+    from app.qr_legacy import require_managed_path
+    if central_enabled() or await require_managed_path():
         return {"answer": None, "step": "managed_channel_required"}
     if os.getenv("QR_AI_ENABLED", "0") != "1":
         return {"answer": None, "step": "disabled"}
@@ -2782,6 +2783,11 @@ async def _managed_assistant_ready(identity):
                                       {"tenant": identity.tenant_id})).scalar_one_or_none()
             if active is not True:
                 return False
+            if identity.legacy_transport:
+                # Preserve the existing pilot's authorization. New managed
+                # devices still require the full onboarding gate below.
+                from app.qr_legacy import enabled, configured_tenant
+                return enabled() and configured_tenant() == identity.tenant_id and os.getenv('QR_AI_ENABLED') == '1'
             await require_operational_ready(db, identity.tenant_id, "assistant")
     return True
 
@@ -2847,7 +2853,8 @@ async def managed_qr_reply(channel_id: UUID, payload: Incoming, request: Request
         return {"answer": None, "step": "disabled"}
     from app import inbox_control
     control_revision = None
-    if inbox_control.enabled():
+    use_control = inbox_control.enabled() or identity.central_adopted
+    if use_control:
         if await inbox_control.blocked(identity.tenant_id, channel_id, payload.phone):
             return {"answer": None, "step": "human"}
         control_revision = await inbox_control.assistant_revision(identity.tenant_id, channel_id, payload.phone)
@@ -2858,12 +2865,12 @@ async def managed_qr_reply(channel_id: UUID, payload: Incoming, request: Request
         fresh = await authenticated_channel(request, phone=payload.phone)
         if not fresh.assistant_enabled or not await _managed_assistant_ready(fresh):
             raise HTTPException(423, "Assistente do canal desativado")
-        if inbox_control.enabled() and await inbox_control.assistant_revision(fresh.tenant_id, channel_id, payload.phone) != control_revision:
+        if (inbox_control.enabled() or fresh.central_adopted) and await inbox_control.assistant_revision(fresh.tenant_id, channel_id, payload.phone) != control_revision:
             raise HTTPException(409, "O controle do atendimento mudou")
         return fresh
 
     token = qr_channel_scope.bind(identity, revalidate)
-    control_token = inbox_control.bind_assistant(identity, payload.phone, control_revision) if inbox_control.enabled() else None
+    control_token = inbox_control.bind_assistant(identity, payload.phone, control_revision) if use_control else None
     try:
         await qr_channel_scope.assert_current()
         # Never give a stale/unannounced message a fresh revision here. The
@@ -2871,7 +2878,7 @@ async def managed_qr_reply(channel_id: UUID, payload: Incoming, request: Request
         # current channel-scoped Redis state before interpretation and writes.
         ids = payload.message_ids or [payload.message_id]
         result = await run_locked(identity.tenant_id, payload.phone, payload.text,
-            f"{identity.context_namespace}:{payload.phone}", payload.message_id,
+            identity.conversation_namespace(payload.phone), payload.message_id,
             message_ids=ids, intake_revision=payload.intake_revision,
             require_summary_review=payload.require_summary_review)
         if inbox_control.enabled():

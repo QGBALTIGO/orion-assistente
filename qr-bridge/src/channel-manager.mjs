@@ -27,6 +27,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         result.allowed_senders.some(p=>typeof p!=='string'||!/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(p))||
         (c.fence&&(result.fence!==c.fence||result.tenant_id!==c.tenant)))throw Error('invalid_channel_lease');
     c.tenant=result.tenant_id;c.fence=result.fence;c.allowed=new Set(result.allowed_senders);c.assistant=result.assistant_enabled;
+    if(c.legacyTransport!==undefined&&c.legacyTransport!==(result.legacy_transport===true))throw Error('channel_transport_changed');
+    c.legacyTransport=result.legacy_transport===true;
     c.inboxControl=c.inboxControl===true||result.inbox_control===true||process.env.INBOX_CONTROL_ENABLED==='1';
     const deadline=started+result.expires_in_ms-250;
     c.deadline=renew||!c.deadline?deadline:Math.min(c.deadline,deadline);
@@ -89,7 +91,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     }
     try{
       const session=await createSession({channelId:c.id,tenantId:c.tenant,owner,fence:c.fence,
-        directory:c.directory,secret:c.key,assertCurrent,isCurrent,resumeOnly:c.resumeOnly,notifySelf:true,
+        directory:c.directory,secret:c.key,assertCurrent,isCurrent,resumeOnly:c.resumeOnly,notifySelf:!c.legacyTransport,
+        legacyTransport:c.legacyTransport,
         allowedSender:phone=>c.allowed.has(phone),
         assistantEnabled:()=>c.assistant===true,
         audioEnabled:()=>audioEnabled()===true&&c.assistant===true,

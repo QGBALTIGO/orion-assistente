@@ -17,6 +17,7 @@ import {sendConnectionNoticeOnce} from './connection-alert.mjs';
 
 const silent={level:'silent',trace(){},debug(){},info(){},warn(){},error(){},fatal(){},child(){return this;}};
 export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),now=Date.now,typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout}={}){
+  if(context.legacyTransport===true)throw Error('legacy_requires_existing_socket');
   await context.assertCurrent();
   const mod=await loadBaileys();await context.assertCurrent();
   const makeSocket=mod.default,openedAt=now();

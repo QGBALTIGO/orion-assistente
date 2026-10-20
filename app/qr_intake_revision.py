@@ -78,7 +78,8 @@ def channel_keys(identity, phone):
             or not isinstance(identity.tenant_id, UUID) or not isinstance(identity.channel_id, UUID)
             or not isinstance(phone, str) or not re.fullmatch(PHONE_PATTERN, phone)):
         raise ValueError("Authenticated channel conversation required")
-    return _storage_keys(f"{identity.tenant_id}:{identity.channel_id}", phone)
+    namespace = str(identity.tenant_id) if identity.legacy_transport else f"{identity.tenant_id}:{identity.channel_id}"
+    return _storage_keys(namespace, phone)
 
 
 class Notice(StrictModel):

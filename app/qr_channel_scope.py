@@ -113,13 +113,15 @@ def tenant_scope(tenant: UUID) -> str:
         return str(tenant)
     if tenant != identity.tenant_id:
         raise ValueError("Authenticated channel tenant mismatch")
+    if identity.legacy_transport:
+        return str(tenant)
     return f"{tenant}:{identity.channel_id}"
 
 
 def message_identity(message_id: str | None) -> str | None:
     """Domain idempotency/consent IDs are also isolated, not just Redis keys."""
     identity = current()
-    if identity is None or message_id is None:
+    if identity is None or identity.legacy_transport or message_id is None:
         return message_id
     return hashlib.sha256(f"{identity.context_namespace}\0{message_id}".encode()).hexdigest()
 
