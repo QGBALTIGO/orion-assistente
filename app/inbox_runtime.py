@@ -156,6 +156,11 @@ async def process_inbox_message(ctx, tenant_id, message_id):
                     AND provider_at<=clock_timestamp())"""),
                   {"t":tenant,"c":row["id"]})).scalar_one()
                 if os.getenv("META_LIVE_SEND") != "1":
+                    # A provider disabled before the attempt is a definite
+                    # no-send. Do not let these rows starve another channel's
+                    # bounded scan or replay a backlog after re-enabling Meta.
+                    await db.execute(text("UPDATE inbox_messages SET status='failed',updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id"),
+                                     {'t':tenant,'id':operation})
                     return "meta_not_enabled"
                 valid = valid and recent and channel["status"] == "connected"
                 if item["source"] != "manual":

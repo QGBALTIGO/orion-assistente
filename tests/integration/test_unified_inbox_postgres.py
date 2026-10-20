@@ -195,6 +195,16 @@ async def test_meta_window_closed_never_calls_provider(meta):
     assert await runtime.process_inbox_message({'inbox_meta_sender':forbidden},str(c.tenant),str(operation))=='cancelled_before_send'
 
 
+async def test_disabled_meta_does_not_starve_qr_or_replay_a_backlog(meta,monkeypatch):
+    c=meta;await assume(c,c.meta);operation,_=await enqueue(c,channel=c.meta)
+    monkeypatch.setenv('META_LIVE_SEND','0')
+    async def forbidden(*a):pytest.fail('disabled Meta reached provider')
+    assert await runtime.process_inbox_message({'inbox_meta_sender':forbidden},str(c.tenant),str(operation))=='meta_not_enabled'
+    assert (await row(c,operation))['status']=='failed'
+    monkeypatch.setenv('META_LIVE_SEND','1')
+    assert await runtime.process_inbox_message({'inbox_meta_sender':forbidden},str(c.tenant),str(operation))=='already_claimed'
+
+
 async def test_meta_verified_operation_receipt_recovers_timeout_without_resending(meta):
     c=meta;await assume(c,c.meta);operation,_=await enqueue(c,channel=c.meta);calls=[]
     async def lost(*args):calls.append(1);raise TimeoutError('synthetic timeout after acceptance')
