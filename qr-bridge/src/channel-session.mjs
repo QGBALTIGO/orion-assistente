@@ -78,7 +78,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
                 }});
             }catch{/* Preserve the receipt; never retry an ambiguous notice. */}
           },2500);noticeTimer?.unref?.();
-        }).catch(close);
+        }).catch(()=>{close();context.onDisconnected('disconnected');});
       }
     }
     if(event.connection==='close'){

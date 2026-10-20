@@ -54,6 +54,14 @@ test('revoked connection cannot send a delayed notice; restart with no registere
   empty.mod.default=()=>assert.fail('unlinked device must not open a socket at restart');
   await assert.rejects(empty.open(),/channel_auth_unavailable/);
 });
+
+test('failed connection bookkeeping reports disconnection instead of leaving a stopped socket in a live manager',async t=>{
+  const s=await session(t),events=[];
+  s.context.onConnected=()=>{throw Error('synthetic persistence failure');};
+  s.context.onDisconnected=reason=>events.push(reason);
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();await flush();
+  assert.equal(s.result.status(),'stopped');assert.deepEqual(events,['disconnected']);assert.equal(s.sent.length,0);
+});
 test('actual socket factory uses per-channel auth and refuses group, self, history and unapproved sender',async t=>{
   const s=await session(t);
   s.receive({remoteJid:'120000@g.us',participantPn:phone+'@s.whatsapp.net'});

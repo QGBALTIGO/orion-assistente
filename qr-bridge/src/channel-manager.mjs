@@ -97,7 +97,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
           if(!c.assistant||audioEnabled()!==true||result?.truncated!==false||typeof result?.text!=='string'||!result.text.trim()||result.text.trim().length>1500)throw Error('channel_audio_unusable');
           return result.text.trim();
         },
-        onConnected:async()=>{await assertCurrent();c.attempts=0;
+        onConnected:()=>{if(!isCurrent())return;c.attempts=0;
           resumeStore?.remember({id:c.id,tenant:c.tenant,key:c.key});},
         onDisconnected:reason=>disconnected(c,generation,reason),
         onReceipt:async(id,delivery)=>{
