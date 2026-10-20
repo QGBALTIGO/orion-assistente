@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 import httpx
+import json
 import pytest
 from pydantic import ValidationError
 
@@ -53,3 +54,16 @@ async def test_toolbox_has_no_anonymous_access_and_disabled_flag_never_uses_db(m
             assert capabilities["labels_prove_consent"] is False
         finally:
             app.dependency_overrides.pop(authenticate, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("step", ["human", "confirm", "reschedule_confirm", "menu"])
+async def test_persistent_resume_clears_only_old_transient_handoff(step):
+    from app.inbox_control import clear_transient_handoff
+    from tests.unit.test_qr_ai import FakeRedis
+    redis = FakeRedis()
+    await redis.set("conversation", json.dumps({"step":step}))
+    await redis.set("conversation:commerce", "preserve other domain state")
+    await clear_transient_handoff(redis, "conversation")
+    assert (await redis.get("conversation") is None) == (step == "human")
+    assert (await redis.get("conversation:commerce") is None) == (step == "human")

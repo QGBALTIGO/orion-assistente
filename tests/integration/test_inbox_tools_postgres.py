@@ -26,6 +26,7 @@ async def inbox_db(automation_db, monkeypatch):
     ctx = automation_db
     monkeypatch.setenv("INBOX_TOOLS_ENABLED", "1")
     monkeypatch.setenv("INBOX_CONTROL_ENABLED", "1")
+    monkeypatch.setenv("QR_CHANNELS_ENABLED", "1")
     try:
         yield ctx
     finally:
@@ -191,7 +192,7 @@ async def test_real_send_slot_has_one_winner_and_requires_matching_receipt(inbox
     first = control.SendSlot(phone=PHONE.lstrip("+"), operation_id=uuid4(), fingerprint="a"*64, source="assistant", control_revision=1)
     second = first.model_copy(update={"operation_id":uuid4()})
     outcomes = await asyncio.gather(*(control.authorize_send(c.channel, p, None) for p in (first, second)), return_exceptions=True)
-    assert sum(isinstance(x, dict) and x["authorized"] for x in outcomes) == 1
+    assert sum(isinstance(x, dict) and x["authorized"] for x in outcomes) == 1, [getattr(x,"detail",type(x).__name__) for x in outcomes]
     winner = first if isinstance(outcomes[0], dict) else second
     assert sum(isinstance(x, HTTPException) and x.status_code == 409 for x in outcomes) == 1
     with pytest.raises(HTTPException):

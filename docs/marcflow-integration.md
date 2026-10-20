@@ -125,6 +125,11 @@ A mudança de controle precisa do lock exclusivo: uma operação já em transaç
 termina antes da transferência; operações posteriores precisam da nova revisão.
 Não se mantém esse lock durante chamadas ao modelo.
 
+Após a devolução manual à IA, somente o estado transitório antigo de handoff é
+limpo no próximo turno autorizado. Estados de confirmação/reserva que não são
+handoff permanecem intactos. A expiração do Redis não reativa o controle humano
+persistente.
+
 Antes do transporte, o bridge solicita uma reserva persistente de envio. Uma
 conversa em estado humano/suspenso ou com envio pendente recusa novos envios.
 Uma falha incerta conserva a reserva, inclusive após reinício. A reserva não
@@ -313,3 +318,16 @@ entradas sem licença declarada. A contagem está em `inventory-summary.json`.
 O campo `license: MIT` do projeto não caracteriza todas as dependências.
 A revisão de licenças transitivas/binárias não está concluída; por isso nenhuma
 dessas dependências foi transplantada nesta etapa.
+
+## 9. Varredura automatizada de segurança — BLOQUEADO
+
+A tentativa de Deep Security Scan não iniciou os workers. O plugin retornou:
+
+`Deep Scan cannot safely start a read-only worker: the parent must provide a managed filesystem permission profile.`
+
+O ambiente desta execução oferece acesso irrestrito, sem o perfil gerenciado de
+leitura exigido pelo scanner. Não foram alteradas as permissões do ambiente.
+Não existe resultado de varredura completa nem conclusão de ausência de
+vulnerabilidades. A inspeção de código, os testes de RLS/permissões e as
+constatações parciais acima permanecem evidências de escopo limitado. Retomar essa
+varredura exige uma execução com o perfil de permissões compatível.

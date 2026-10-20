@@ -5,6 +5,7 @@ reconciled before another sender or operator can take over. No LLM owns access.
 """
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
+import json
 import os
 from typing import Literal
 from uuid import UUID
@@ -53,6 +54,21 @@ def enabled():
 def require_enabled():
     if not enabled():
         raise HTTPException(423, "O controle persistente de atendimento ainda não está habilitado")
+
+
+async def clear_transient_handoff(redis, state_key):
+    """Called under the existing conversation lock, after persistent AI authority.
+
+    A manually resumed managed channel must not hand itself back to a human due
+    to the old Redis pause. Preserve every other conversational/domain state.
+    """
+    try:
+        state = json.loads(await redis.get(state_key) or "null")
+    except (ValueError, TypeError):
+        return
+    if isinstance(state, dict) and state.get("step") == "human":
+        await redis.delete(state_key)
+        await redis.delete(state_key+":commerce")
 
 
 class Change(StrictModel):

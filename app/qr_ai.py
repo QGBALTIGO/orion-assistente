@@ -2664,6 +2664,10 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                     await _require_pending_review(redis, f"orion:qr:ai:{tenant}:{namespace}")
                 if reset:
                     await redis.delete(f"orion:qr:ai:{tenant}:{namespace}")
+                if not preview and channel is not None and os.getenv("INBOX_CONTROL_ENABLED", "0") == "1":
+                    await qr_channel_scope.assert_current()
+                    from app.inbox_control import clear_transient_handoff
+                    await clear_transient_handoff(redis, state_key)
                 transcript = await prepare() if prepare else None
                 if transcript is not None:
                     body = transcript["text"]
