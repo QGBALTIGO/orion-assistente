@@ -1,3 +1,9 @@
+> Estado mais recente: a versão anterior foi publicada às 16:45 UTC em
+> `a7199de`; a central permaneceu desligada. A nova transição foi qualificada
+> e sua publicação de 17:36 UTC foi cancelada no controle de aprovação da
+> integração. Consulte [o recibo atual](legacy-transition.md#recibo-final-desta-tentativa--20102026).
+> As informações abaixo descrevem a tentativa anterior e seus limites naquele momento.
+
 # Publicação Railway da central humana
 
 ## Escopo e autorização

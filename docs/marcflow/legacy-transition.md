@@ -75,7 +75,7 @@ controle da assistente e do atendimento continuam separados da sessão.
 
 ## Limites e recibos
 
-Esta transição está em qualificação. Não declarar ativação concluída sem os
+Esta transição está qualificada em CI. Não declarar ativação concluída sem os
 recibos das duas fases e as conferências do Railway. Mídias completas, executor
 de grafos, campanhas avançadas, exportações e webhooks mantêm as pendências da
 matriz; não são certificados como completos por esta transição.
@@ -109,3 +109,42 @@ empresa. A fila e os estados incertos são preservados para reconciliação;
 não são liberados como efeito da ativação do worker. A publicação do bridge
 desliga a confirmação automática para a própria conta e o modo de teste de
 operador, mantendo o atendimento normal da IA e sem mensagem de teste real.
+
+## Recibo final desta tentativa — 20/10/2026
+
+Runtime qualificado: `7a3dafb906003a38e529b62deec2d139d875e890`.
+[CI principal](https://github.com/QGBALTIGO/orion-assistente/actions/runs/39466167900)
+e [CI de mídias](https://github.com/QGBALTIGO/orion-assistente/actions/runs/39466167895)
+concluídas com sucesso. PostgreSQL/Redis: 4.222 aprovados, um ignorado e 175
+avisos; Compose: 4.097 aprovados, 126 ignorados e dez avisos (conjuntos
+sobrepostos, não somar). Bridge: 429 aprovados, zero ignorados/falhas no Linux;
+DOM: 308 aprovados. Áudio/ASR e imagens reais dos serviços aprovados. Navegador:
+seis combinações de tamanho/tema, APIs simuladas e zero envio real.
+
+A chamada `accept_deploy` da fase `register`, às 17:36 UTC, retornou:
+**“Cancelled — the user did not approve this action. No changes were made.”**
+Apesar da autorização expressa no chat, o controle de aprovação da integração
+não efetivou a publicação. Não houve tentativa por CLI ou outro canal para
+contornar a recusa. Não há recibo novo de backup/restauração/adoção em produção.
+O patch `07d4a48a-3a3a-4f76-9ddc-f0c3d3ccb335` conserva 22 alterações preparadas,
+somente API e worker; não inclui troca do bridge, bancos, volumes ou segredos.
+
+A conferência após a recusa confirmou os mesmos deployments de 16:45 UTC,
+commit vivo `a7199de33ed265705a2a0116f01cbb43b488bd5c`: API
+`97a318ab-7d8e-43a4-a898-b7c53623d868`, worker
+`cef72f64-c467-4170-9f11-eebe3075e387`, bridge
+`75e296ba-26cd-497f-946e-617ebea7cb7e`. `/health` e `/health/whatsapp` responderam
+200. Isso prova disponibilidade da versão anterior, não ativação desta transição.
+Dados e sessão não foram modificados por esta tentativa; nenhuma mensagem real
+foi enviada como teste. O backup/restore da migração anterior para 0028 já existe
+em produção; não deve ser confundido com a nova adoção ainda não aplicada.
+
+Continuam necessárias a aprovação efetiva da primeira fase, sua conferência,
+a publicação do adaptador e depois a ativação da autoridade humana. Ao publicar
+o bridge, fixar a revisão qualificada e manter o volume/chave/diretório existentes;
+ORION_NOTIFY_SELF_ON_LINK=0 e QR_OPERATOR_TEST_ENABLED=0 evitam notificações ou
+testes automáticos. Não desabilitar a autoridade persistente nem voltar ao runtime
+anterior à adaptação depois da adoção: a reversão deve usar código compatível,
+conservando pausas e slots incertos. Nunca restaurar o backup sobre registros novos.
+
+Recibo legível por ferramenta: `legacy-transition-validation.json`.
