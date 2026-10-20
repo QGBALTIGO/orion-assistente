@@ -2,11 +2,16 @@
 
 Data: 20/10/2026. PR de desenvolvimento: https://github.com/QGBALTIGO/orion-assistente/pull/80.
 
-**A missão completa permanece PARCIAL.** Esta entrega implementa uma base de CRM e
-respostas rápidas, arbitragem persistente no canal QR gerenciado e o aviso
-operacional de cancelamento. Ela não entrega o editor visual, o motor distribuído
-de fluxos nem todas as melhorias solicitadas. Os itens restantes estão separados
-abaixo. Nenhuma funcionalidade nova foi habilitada em produção.
+**A missão completa permanece PARCIAL.** A continuação entrega a central humana
+de texto com QR gerenciado e Meta, histórico, leitura pessoal, CRM, respostas
+rápidas, controle único e fila persistente. Também avança o editor e simulador
+de rascunhos lineares. O executor distribuído de fluxos, a mídia de atendimento e
+as demais extensões ainda não estão concluídos. Nenhum recurso foi habilitado em produção.
+
+O estado atual, os contratos e os limites da central estão em
+[human-central.md](marcflow/human-central.md). Os recibos `validation.json` e
+`final-validation.md` abaixo preservam a qualificação da etapa anterior; não
+devem ser interpretados como testes desta continuação.
 
 ## 1. Alvo e preservação
 
@@ -104,15 +109,16 @@ Prisma, MySQL, outro painel ou dependência de produção.
   Data/hora usam o fuso da empresa. Endereço vem apenas do perfil publicado.
 - Variável inexistente, sintaxe inválida, fato ausente ou texto acima do limite
   impedem o preparo. Não existe substituição silenciosa por informação inventada.
-- A interface prepara e copia o texto para revisão. **Ela não envia mensagens.**
-  Sequências, mídias e disparo direto ainda não foram implementados.
+- A biblioteca prepara e copia texto para revisão. A central permite levar a
+  resposta preparada ao compositor e solicitar envio humano após assumir a
+  conversa. Sequências e mídias continuam fora desta implementação.
 - Histórico do contexto é limitado aos 20 agendamentos mais recentes. A consulta
   do próximo agendamento é independente desse recorte.
 - Etiquetas não alteram consentimento, assinatura, valores, reservas ou canais.
 
 Flag: `INBOX_TOOLS_ENABLED=0` por padrão. A tela mostra preparação quando desligada.
 
-### Arbitragem — PARCIAL, backend implementado e testado
+### Arbitragem — integrada à central humana QR/Meta em desenvolvimento
 
 `inbox_controls` usa chave `(tenant_id, channel_id, contact_e164)` e estados
 `ai`, `human`, `paused`, `waiting`, `closed`. Não há reativação automática por
@@ -140,22 +146,25 @@ A ativação é transmitida pela concessão do canal obtida da API. Assim, o con
 atualizado aplica o controle mesmo sem uma flag local equivalente. Com backend
 inacessível, não prossegue com um envio protegido.
 
-**Limites que impedem considerar a central humana concluída:**
+**Continuação e limites:**
 
-- Esta arbitragem nova cobre QR gerenciado. O piloto legado e o canal Meta
-  conservam seus mecanismos anteriores, sem uma unificação completa.
-- Ainda falta a interface de assumir/devolver/aguardar e o envio manual do
-  operador integrado à mesma reserva. Não ativar a flag para atendimentos reais.
-- O pedido de humano no QR gerenciado é persistido e interrompe a resposta; ainda
-  falta o aviso visual/fila operacional do atendente e sua confirmação de handoff.
-- Pausas legadas por empresa continuam sendo veto conservador. Não são apagadas
-  automaticamente pela nova API. A migração de semântica requer revisão explícita.
+- A central integra QR gerenciado e Meta com assumir, devolver, aguardar, pausar,
+  encerrar, histórico, fila e envio humano sob a mesma reserva. A migration 0027
+  incorpora os handoffs Meta ativos sem permitir reativação por timeout.
+- O piloto QR global é preservado, mas não pode enviar nem acionar IA com a
+  central habilitada. Usar um canal gerenciado exige homologação explícita;
+  nenhuma sessão antiga é transferida ou desconectada automaticamente.
+- A retomada manual pode remover a pausa comercial legada somente se não houver
+  outra conversa suspensa para o mesmo contato. Não concede opt-in comercial.
+- Mídias, reprodução de áudio, citação, encaminhamento e reações não são
+  apresentados como recursos prontos da central gerenciada de texto.
 - Resultado incerto sem recibo conclusivo continua suspenso. Não existe botão
   para afirmar artificialmente que não houve envio ou para repetir às cegas.
 - O estado `flow` fica reservado para quando houver executor integrado; não foi
   apresentado como funcionalidade operacional nesta entrega.
 
-Flag: `INBOX_CONTROL_ENABLED=0`. Homologar backend e bridge juntos em canal sintético.
+Flags: `INBOX_CONTROL_ENABLED=0`, `INBOX_SEND_ENABLED=0`. Homologar API, worker
+e bridge juntos em canal sintético; Meta exige também seu opt-in de transporte.
 
 ### Notificação de cancelamento — IMPLEMENTADO, AGUARDANDO HOMOLOGAÇÃO
 
@@ -211,16 +220,16 @@ autenticados; as rotas internas permanecem excluídas.
 | Recurso | MarcFlow | Orion anterior | Orion após trabalho | Evidência | Pendência |
 |---|---|---|---|---|---|
 | Arquitetura | Next/Prisma/MySQL | FastAPI/PG/Redis | Mantida | `app/main.py`, `pyproject.toml` | Nenhuma substituição proposta |
-| Chat | Socket, lista e mídia | Caixa limitada do piloto | Preservado | `qr_api.py`, `durable-inbox.mjs` | Central gerenciada com histórico/mídia/paginação |
+| Chat | Socket, lista e mídia | Caixa limitada do piloto | Central QR/Meta de texto, histórico, contadores e leitura pessoal | `inbox_conversations.py`, `orion-conversations.js` | Mídia e homologação real |
 | Identidade | JID/LID e contatos | Resolução verificada existente | Reutilizada | `core.mjs`, `customer_names.py` | Homologação real por provedor |
 | CRM no atendimento | Dados WhatsApp | Clientes/agenda reais | Consulta integrada na nova tela | `inbox_api.context` | Fidelidade, profissional habitual e ligação à conversa |
 | Etiquetas | Label/ChatLabel | Sem biblioteca equivalente | CRUD e associação ao cliente | `0024`, testes PostgreSQL/DOM | Etiquetas da conversa e segmentação de campanha |
 | Respostas rápidas | Sequências de ações | Sem biblioteca equivalente | Texto factual pessoal/compartilhado | `inbox_templates.py`, UI | Sequências duráveis/mídias/progresso |
-| Handoff | Pausa do contato | Estados Redis e pausas persistidas separados | Árbitro QR gerenciado e eventos | `0025`, `inbox_control.py` | UI, envio manual, Meta e piloto |
+| Handoff | Pausa do contato | Pausas separadas | Controle QR/Meta, UI e envio humano com geração e slot únicos | `0025`, `0027`, `inbox_runtime.py` | Homologação; piloto não migra sessões |
 | Recibos | Eventos Baileys | Ledger/diagnóstico existentes | Reserva antes do transporte | `channel-manager.mjs` | WhatsApp real, reinício e contingência operacional |
-| Editor visual | XYFlow | Workflow linear desativado | Não alterado | `advanced_api.WorkflowDraft` | NÃO INICIADO: grafo, UI, publicação e executor |
-| Simulador de fluxos | Contato artificial | Prévia isolada da IA | Prévia IA preservada | `qr_ai.conversation_preview` | NÃO INICIADO: simulador do grafo |
-| Versionamento de fluxo | Draft/published e snapshot | Perfis IA versionados; workflow básico | Mantido | `business_profile_service.py` | Versões imutáveis por execução de fluxo |
+| Editor visual | XYFlow | Workflow linear desativado | Editor linear com reordenação e CAS | `orion-flows.js`, `workflow_drafts.py` | Grafo, publicação e executor |
+| Simulador de fluxos | Contato artificial | Prévia isolada da IA | Trilha explícita da versão salva sem ações reais | `workflow_drafts.simulate` | Condições e grafo |
+| Versionamento de fluxo | Draft/published e snapshot | Perfis versionados; workflow básico | Revisões de rascunho com CAS e auditoria | `0028_workflow_drafts` | Snapshots imutáveis por execução |
 | Condições/gatilhos | Regras e blocos | Interpretação e eventos de domínio | Mantidos | `automation_policy.py` | Gatilhos de fluxo distribuído |
 | Confirmação de agenda | Não é motor de agenda Orion | Fila revisada já existente | Preservada; variável protocolo | `automation_runtime.py` | Homologar no canal escolhido |
 | Remarcação | Fluxos genéricos | Evento/versão já existentes | Preservados | `appointment_lifecycle.py` | Homologação operacional |
@@ -285,16 +294,15 @@ como testes únicos. As limitações de homologação real permanecem.
 1. **FASE 0 — PARCIAL:** completar os 25 itens de avaliação por recurso, leitura
    manual remanescente e revisão exaustiva da superfície de segurança. O inventário
    atual e as constatações acima são evidência parcial, não uma certificação.
-2. **FASE 1 — PARCIAL:** concluir a central QR gerenciada, persistência/paginação
-   de mensagens e capacidades de mídia; interface de controle humano e envio
-   manual pelo mesmo árbitro; migrar a semântica das pausas antigas; integrar Meta;
-   acrescentar fidelidade/contexto e uso das respostas na conversa atual.
+2. **FASE 1 — núcleo humano de texto implementado:** QR/Meta, histórico, paginação,
+   leitura pessoal, interface e envio humano com arbitragem persistente. Restam
+   mídias, fidelidade/contexto ampliado e homologação real autorizada.
 3. **FASE 2 — PARCIAL:** homologar eventos existentes e cancelamento em canal de
    teste autorizado; provar concorrência com remarcação/cancelamento, recebimento
    durante envio, reinício e recibo perdido, sem alegar entrega pelo aceite.
-4. **FASE 3 — NÃO INICIADO:** evoluir `workflow_definitions`, preservando o rascunho
-   existente, com grafo validado, snapshots, limites, executor Arq, simulador sem
-   capacidades reais, versão/publicação exclusiva do proprietário e editor visual.
+4. **FASE 3 — INICIADA:** editor linear e simulador de rascunhos com limites e
+   controle de versão reutilizam `workflow_definitions`. Restam grafo, snapshots,
+   executor Arq e publicação exclusiva do proprietário.
 5. **FASE 4 — PARCIAL anterior:** reaproveitar campanhas/consentimentos/worker
    existentes; acrescentar segmentação por etiqueta, mídia privada e controles de
    edição, agendamento, pausa e retomada sem duplicação ou consentimento presumido.

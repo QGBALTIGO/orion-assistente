@@ -63,6 +63,16 @@ async def _scoped_reply(tenant, channel, sender, body, redis, *, message_id=None
 
 async def _reply(tenant, channel, sender, body, redis, key, state, prefs, message_id):
     user_text = body.strip().lower()
+    from app.inbox_control import enabled,customer_handoff
+    from app.qr_behaviors import control_intent
+    intent=control_intent(body)
+    if enabled() and intent in {'human','human_clarify'}:
+        # A transfer request wins over booking/cancellation commands in the
+        # same message. Reuse QR's negation/ambiguity-aware interpretation.
+        if intent=='human':
+            await customer_handoff(tenant,channel,sender)
+            return None
+        return 'Você quer falar com uma pessoa da equipe ou continuar com a assistente?'
     handled, answer = await try_command(tenant, channel, sender, body, state, redis, key,
         message_id=message_id, preferences=prefs)
     if handled:

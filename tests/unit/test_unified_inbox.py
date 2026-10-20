@@ -40,3 +40,26 @@ async def test_new_central_routes_are_authenticated_and_disabled_without_databas
         try:assert (await client.get(path+'/channels')).status_code==423
         finally:app.dependency_overrides.pop(authenticate,None)
     assert await process_inbox_message({},str(uuid4()),str(uuid4()))=='not_enabled'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('body',['Preciso falar com um atendente','Quero falar com uma pessoa da equipe'])
+async def test_meta_human_request_precedes_every_domain_command(monkeypatch,body):
+    from app import whatsapp_bot as bot,inbox_control as control
+    monkeypatch.setenv('INBOX_CONTROL_ENABLED','1');calls=[]
+    async def handoff(*args):calls.append(args)
+    async def forbidden(*a,**k):pytest.fail('human request reached domain commands')
+    monkeypatch.setattr(control,'customer_handoff',handoff);monkeypatch.setattr(bot,'try_command',forbidden)
+    tenant,channel=uuid4(),uuid4()
+    assert await bot._reply(tenant,channel,'+5567999999901',body,None,'synthetic',{},None,'inbound') is None
+    assert calls==[(tenant,channel,'+5567999999901')]
+
+
+@pytest.mark.asyncio
+async def test_negated_meta_handoff_never_assigns_a_human(monkeypatch):
+    from app import whatsapp_bot as bot,inbox_control as control
+    monkeypatch.setenv('INBOX_CONTROL_ENABLED','1')
+    async def forbidden(*a,**k):pytest.fail('negated request transferred conversation')
+    async def command(*a,**k):return True,'Continuando'
+    monkeypatch.setattr(control,'customer_handoff',forbidden);monkeypatch.setattr(bot,'try_command',command)
+    assert await bot._reply(uuid4(),uuid4(),'+5567999999901','Não quero falar com um atendente',None,'synthetic',{},None,'inbound')=='Continuando'

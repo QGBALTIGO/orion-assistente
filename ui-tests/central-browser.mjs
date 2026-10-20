@@ -8,6 +8,7 @@ const {chromium}=await import(pathToFileURL(process.env.ORION_PLAYWRIGHT_MODULE)
 const output=process.env.ORION_INBOX_BROWSER_OUTPUT;await mkdir(output,{recursive:true});
 const channel='20000000-0000-4000-8000-000000000001',account='30000000-0000-4000-8000-000000000001',phone='+5567999999901';
 const css=(await readFile(path.join(root,'app/static/orion-suite.css'),'utf8'))+'\n'+await readFile(path.join(root,'app/static/orion-inbox.css'),'utf8');
+const fonts=(await Promise.all([['Figtree','figtree-latin.woff2'],['Outfit','outfit-latin.woff2']].map(async([name,file])=>'@font-face{font-family:"'+name+'";src:url(data:font/woff2;base64,'+(await readFile(path.join(root,'app/static',file))).toString('base64')+') format("woff2");font-weight:100 900}'))).join('\n');
 const browser=await chromium.launch({headless:true,executablePath:process.env.ORION_CHROMIUM_EXECUTABLE}),results=[];
 try{for(const width of [360,768,1440])for(const theme of ['light','dark']){
   const page=await browser.newPage({viewport:{width,height:900}}),calls=[],errors=[];let lost=true,status='received',body='Mensagem de cliente sintético com nome comprido. '+('texto '.repeat(45));
@@ -22,7 +23,7 @@ try{for(const width of [360,768,1440])for(const theme of ['light','dark']){
     throw Error('Unexpected synthetic request '+url);
   });
   await page.setContent('<html data-theme="'+theme+'"><body><main id="page-suite" class="orion-suite-enabled" style="padding:20px"><h1>Central de atendimento</h1><div id="host" class="os-inbox"></div></main></body></html>');
-  await page.addStyleTag({content:css+'\nbody{margin:0;background:var(--os-bg)}#page-suite{min-height:100vh;color:var(--os-text);background:var(--os-bg);font-family:var(--os-font)}'});
+  await page.addStyleTag({content:fonts+css+'\nbody{margin:0;background:var(--os-bg)}#page-suite{min-height:100vh;color:var(--os-text);background:var(--os-bg);font-family:var(--os-font)}'});
   await page.addScriptTag({path:path.join(root,'app/static/orion-conversations.js')});
   await page.evaluate(()=>window.OrionConversations.mount({host:document.querySelector('#host'),request:window.request,tenantId:'synthetic-tenant',canWrite:true}));
   await page.locator('[data-central-phone]').click();await page.locator('textarea').waitFor();
