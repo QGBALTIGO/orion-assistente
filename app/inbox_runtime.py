@@ -52,6 +52,15 @@ async def record_inbound(db, tenant, channel, phone, external, body="", kind="te
 
 
 async def operator_version(db, tenant, account):
+    from app.legacy_admin_identity import configured_digest
+    try:
+        digest = configured_digest()
+    except ValueError:
+        # A broken/rotated native-admin configuration cannot authorize an old
+        # queued send. Password-account operators keep their existing rules.
+        digest = None
+    await db.execute(text("SELECT set_config('app.legacy_admin_digest',:digest,true)"),
+                     {"digest": digest or ""})
     return (await db.execute(text("SELECT public.inbox_operator_version(:t,:a)"),
                             {"t":tenant,"a":account})).scalar_one()
 

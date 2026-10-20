@@ -123,15 +123,28 @@ def _cipher():
         raise HTTPException(503, "Proteção de credenciais ainda não configurada") from None
 
 
-async def _owner(db, tenant_id, actor):
+async def _owner_authorized(db, tenant_id, actor, *, lock=True):
     # Lock the current membership until the channel write commits. An earlier
     # panel/session role cannot authorize a revoked owner's operation.
-    if actor.role != "member" or not isinstance(actor.account_id, UUID):
-        raise HTTPException(403, "Somente o proprietário autenticado")
+    if actor.role not in {"member", "admin"} or not isinstance(actor.account_id, UUID):
+        return False
+    if actor.role == "admin":
+        from app.legacy_admin_identity import PROVIDER, lookup_identity
+        try:
+            identity = await lookup_identity(db, account_id=actor.account_id)
+        except ValueError:
+            return False
+        if (not identity or identity.get("id") != actor.account_id
+                or identity.get("auth_provider") != PROVIDER or identity.get("role") != "admin"):
+            return False
     role = (await db.execute(text("""SELECT role FROM tenant_memberships
-        WHERE tenant_id=:tenant AND account_id=:account AND active FOR UPDATE"""),
+        WHERE tenant_id=:tenant AND account_id=:account AND active""" + (" FOR UPDATE" if lock else "")),
         {"tenant": tenant_id, "account": actor.account_id})).scalar_one_or_none()
-    if role != "owner":
+    return role == "owner"
+
+
+async def _owner(db, tenant_id, actor):
+    if not await _owner_authorized(db, tenant_id, actor):
         raise HTTPException(403, "Somente o proprietário autenticado")
 
 
@@ -175,6 +188,8 @@ async def list_channels(tenant_id: UUID, response: Response, actor: Actor = Depe
     access = await resolve_tenant_access(actor, tenant_id)
     can_manage = access.role == "owner" and actor.role == "member" and isinstance(actor.account_id, UUID)
     async with support_session_factory()() as db:
+        if actor.role == "admin":
+            can_manage = await _owner_authorized(db, tenant_id, actor, lock=False)
         rows = (await db.execute(text("""SELECT id,tenant_id,owner_account_id,provider,label,enabled,assistant_enabled,revision,allowed_senders
             FROM qr_channels WHERE tenant_id=:tenant ORDER BY created_at,id LIMIT 100"""), {"tenant": tenant_id})).mappings().all()
     items = []

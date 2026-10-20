@@ -137,7 +137,7 @@ class ReadThrough(StrictModel):
 async def mark_read(tenant_id:UUID,channel_id:UUID,payload:ReadThrough,actor:Actor=Depends(authenticate)):
     control.require_enabled()
     if not isinstance(actor.account_id,UUID):
-        raise HTTPException(403,'Entre com sua conta pessoal para marcar leitura')
+        raise HTTPException(403,'Entre novamente com uma conta habilitada na central para marcar leitura')
     async with management_session(tenant_id,actor) as db:
         saved=(await db.execute(text('''INSERT INTO inbox_reads(tenant_id,control_id,account_id,message_id,read_at)
           SELECT m.tenant_id,m.control_id,:account,m.id,m.created_at FROM inbox_messages m JOIN inbox_controls c
@@ -160,7 +160,7 @@ async def enqueue(tenant_id: UUID, channel_id: UUID, payload: Message, actor: Ac
     if not runtime.send_enabled():
         raise HTTPException(423,"O envio pela central ainda não foi habilitado nesta instalação")
     if not isinstance(actor.account_id,UUID):
-        raise HTTPException(403,"Entre com sua conta pessoal para enviar")
+        raise HTTPException(403,"Entre novamente com uma conta habilitada na central para enviar")
     digest=runtime.fingerprint(payload.contact_e164,payload.text)
     async with management_session(tenant_id,actor,write=True) as db:
         await control.check_channel(db,tenant_id,channel_id,payload.contact_e164)

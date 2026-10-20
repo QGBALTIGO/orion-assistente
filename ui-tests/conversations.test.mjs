@@ -33,6 +33,35 @@ test('conversation text is escaped, reader controls are disabled and no send occ
   assert.equal(h.calls.filter(x=>x.method!=='GET').length,0);
 });
 
+for(const scenario of ['legacy_without_identity','identified_but_unassigned','send_disabled']){
+  test('a synthetic submit cannot enqueue when '+scenario,async t=>{
+    const h=await setup({send:scenario!=='send_disabled',respond(path){
+      if(scenario==='legacy_without_identity'&&path.endsWith('/channels'))return {items:[{id:channel,provider:'qr',label:'QR sintético',enabled:true}],account_id:null,send_enabled:true};
+      if(scenario!=='send_disabled'&&path.includes('/messages?'))return {control:{mode:'human',revision:2,assigned_account_id:null,pending_operation:null},items:[],has_more:false};
+    }});t.after(()=>h.close());
+    assert.equal(h.host.querySelector('[data-central-compose] button').disabled,true);
+    if(scenario==='legacy_without_identity'){
+      assert.match(h.host.textContent,/administrador precisa estar habilitado na central/);
+      assert.doesNotMatch(h.host.textContent,/com você/);
+      for(const action of ['human','waiting','ai','paused','closed'])assert.equal(h.host.querySelector('[data-central-action=mode-'+action+']').disabled,true);
+    }
+    h.compose('Rascunho sintético preservado');await flush();
+    assert.equal(h.calls.filter(call=>call.method!=='GET').length,0);
+    assert.equal(h.host.querySelector('textarea').value,'Rascunho sintético preservado');
+    assert.ok(h.calls.some(call=>call.path.includes('/messages?')));
+  });
+}
+
+test('an identified administrator can review a draft with no automatic write',async t=>{
+  const h=await setup();t.after(()=>h.close());
+  assert.doesNotMatch(h.host.textContent,/administrador precisa estar habilitado na central/);
+  assert.match(h.host.textContent,/com você/);
+  assert.equal(h.host.querySelector('[data-central-compose] button').disabled,false);
+  assert.equal(h.calls.filter(call=>call.method!=='GET').length,0);
+  h.compose('Resposta sintética aprovada');await flush();
+  assert.equal(h.calls.filter(call=>call.method==='POST').length,1);
+});
+
 test('preserved device history is loaded explicitly, escaped and never marks or sends messages',async t=>{
   const h=await setup({respond(path){
     if(path.includes('/messages?'))return {preserved_history_available:true,

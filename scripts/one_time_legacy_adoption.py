@@ -1,6 +1,6 @@
 """Backed-up registry adoption of the existing socket; no DDL or session I/O.
 
-Exact reviewed schemas 0028/0029; register alias, then adopt conversation authority.
+Exact reviewed schemas 0028/0029/0030; register alias, then adopt conversation authority.
 No messages, contact import, role creation, phone/session copy, QR or logout.
 """
 from contextlib import ExitStack, contextmanager
@@ -20,12 +20,14 @@ from app import qr_legacy
 from app.qr_channels import normalize_sender, credential_hash, _cipher
 from scripts import one_time_inbox_migration as inbox
 from scripts import one_time_communication_migration as communication
+from scripts import one_time_admin_identity_migration as admin_identity
 
 backup, proof, previous = inbox.backup, inbox.proof, inbox.previous
 Stop, require = inbox.Stop, inbox.require
 REVIEWED_TABLES = {
     inbox.TARGET: inbox.TARGET_TABLES,
     communication.TARGET: communication.TARGET_TABLES,
+    admin_identity.TARGET: admin_identity.TARGET_TABLES,
 }
 
 
@@ -96,15 +98,36 @@ def preflight(db, settings):
     if schema.revision == inbox.TARGET:
         identity = previous.owner_preflight(db, settings, source=False)
         inbox.verify_new_schema(db)
-    else:
+    elif schema.revision == communication.TARGET:
         # 0029 introduces exactly the reviewed ingress identity sequence and
         # consent trigger. The older preflight correctly rejects that schema.
         identity = communication.owner_preflight(db, settings, source=False)
         communication.verify_new_schema(db)
+    else:
+        identity = admin_identity.owner_preflight(db, settings, source=False)
+        admin_identity.verify_new_schema(db)
     return {**identity, 'revision': schema.revision}
 
 
+def eligible_owner(db,account,schema):
+    if schema.revision != admin_identity.TARGET:
+        return db.execute(text("SELECT role='member' FROM panel_accounts WHERE id=:id"),{'id':account}).scalar_one_or_none() is True
+    row=db.execute(text("""SELECT role,auth_provider,legacy_username,legacy_credential_digest,email,password_hash
+        FROM panel_accounts WHERE id=:id"""),{'id':account}).mappings().one_or_none()
+    if row is None:return False
+    if row['role']=='member':return True
+    if row['role']!='admin' or row['auth_provider']!='legacy_admin' or row['email'] is not None or row['password_hash'] is not None:
+        return False
+    from app import legacy_admin_identity
+    try:
+        digest=legacy_admin_identity.configured_digest()
+        username,configured=legacy_admin_identity.configuration_binding()
+    except ValueError:return False
+    return isinstance(digest,str) and digest==configured and row['legacy_username']==username and isinstance(row['legacy_credential_digest'],str) and hmac.compare_digest(row['legacy_credential_digest'],digest)
+
+
 def plan_for(db, settings, paused=()):
+    schema=selected_schema(db)
     if settings.phase == 'activate':
         # Enabling the global worker must not release any old queued send.
         # Unknown attempts also remain untouched for operator reconciliation.
@@ -124,10 +147,12 @@ def plan_for(db, settings, paused=()):
             row['allowed_senders'] == list(settings.senders), 'existing_alias_mismatch')
         require(_cipher().decrypt(row['credential_encrypted'].encode()).decode() == settings.token, 'existing_alias_key_mismatch')
     else:
-        owners = db.execute(text("""SELECT m.account_id FROM tenant_memberships m JOIN panel_accounts a ON a.id=m.account_id
-            WHERE m.tenant_id=:t AND m.active AND m.role='owner' AND a.role='member'"""), {'t': settings.tenant}).scalars().all()
+        candidates = db.execute(text("""SELECT m.account_id FROM tenant_memberships m
+            WHERE m.tenant_id=:t AND m.active AND m.role='owner'"""), {'t': settings.tenant}).scalars().all()
+        owners=[account for account in candidates if eligible_owner(db,account,schema)]
         require(len(owners) == 1, 'unique_existing_owner_required')
         owner = owners[0]
+    require(eligible_owner(db,owner,schema),'existing_owner_identity_revoked')
     require(db.execute(text("""SELECT EXISTS(SELECT 1 FROM tenant_memberships WHERE tenant_id=:t
         AND account_id=:a AND active AND role='owner')"""), {'t': settings.tenant, 'a': owner}).scalar_one(), 'existing_owner_revoked')
     link = db.execute(text('SELECT provider FROM inbox_channel_links WHERE tenant_id=:t AND channel_id=:c'),

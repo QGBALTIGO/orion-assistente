@@ -252,7 +252,7 @@ async def get_control(tenant_id: UUID, channel_id: UUID,
 async def change_control(tenant_id: UUID, channel_id: UUID, payload: Change, actor: Actor = Depends(authenticate)):
     require_enabled()
     if not isinstance(actor.account_id, UUID):
-        raise HTTPException(403, "Entre com sua conta pessoal para assumir um atendimento")
+        raise HTTPException(403, "Entre novamente com uma conta habilitada na central para assumir um atendimento")
     async with operator_session(tenant_id, actor, write=True) as db:
         await check_channel(db, tenant_id, channel_id, payload.contact_e164)
         row = await lock_control(db, tenant_id, channel_id, payload.contact_e164)
