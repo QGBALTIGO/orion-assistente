@@ -54,12 +54,13 @@ class Settings:
     run_id: str
 
     @classmethod
-    def from_environment(cls):
-        require(os.getenv("ORION_RUN_ONBOARDING_MIGRATION") == "1", "explicit_flag_required")
+    def from_environment(cls, *, flag="ORION_RUN_ONBOARDING_MIGRATION",
+                         run_id_name="ORION_ONBOARDING_MIGRATION_RUN_ID"):
+        require(os.getenv(flag) == "1", "explicit_flag_required")
         require(os.getenv("ORION_MIGRATION_SWITCH_ROLE") == "1", "role_switch_required")
         try:
             url = make_url(os.environ["MIGRATION_DATABASE_URL"])
-            run_id = os.environ["ORION_ONBOARDING_MIGRATION_RUN_ID"]
+            run_id = os.environ[run_id_name]
             require(str(UUID(run_id)) == run_id and UUID(run_id).version == 4, "canonical_run_id_required")
             bridge = os.getenv("QR_BRIDGE_URL", "").rstrip("/")
             parsed = urlsplit(bridge)
