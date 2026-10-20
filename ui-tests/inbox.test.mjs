@@ -72,3 +72,16 @@ test('a late response from a prior company cannot repopulate the current company
   pending.resolve({enabled:false});await old;await flush();
   assert.match(h.host.textContent,/Clientes e etiquetas/);assert.doesNotMatch(h.host.textContent,/preparação/);
 });
+
+test('changing company during a save releases the old screen and a late result cannot unlock the new save',async t=>{
+  const first=deferred(),second=deferred();
+  const h=await setup({respond(path,method){if(method==='POST')return path.includes(tenantA)?first.promise:second.promise;}});t.after(()=>h.close());
+  const submit=()=>{h.tab('replies');h.click('new-reply');h.host.querySelector('[name=title]').value='Rascunho';h.host.querySelector('[name=text]').value='Texto';h.host.querySelector('[data-inbox-form=reply]').dispatchEvent(new h.window.Event('submit',{bubbles:true,cancelable:true}));};
+  submit();await flush();assert.equal(h.host.inert,true);
+  await h.mount(tenantB);assert.equal(h.host.inert,false);
+  submit();await flush();assert.equal(h.host.inert,true);
+  first.resolve({id:reply,version:1});await flush();assert.equal(h.host.inert,true);
+  second.resolve({id:reply,version:1});await flush();assert.equal(h.host.inert,false);
+  const writes=h.calls.filter(x=>x.method==='POST');assert.equal(writes.length,2);
+  assert.ok(writes[0].path.includes(tenantA));assert.ok(writes[1].path.includes(tenantB));
+});

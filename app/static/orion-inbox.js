@@ -4,7 +4,7 @@
   let active=null;
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const button=(label,action,extra='')=>'<button type="button" class="os-button os-outline" data-inbox-action="'+action+'" '+extra+'>'+esc(label)+'</button>';
-  function unmount(){if(active){active.controller.abort();active.alive=false;active=null;}}
+  function unmount(){if(active){active.controller.abort();active.alive=false;active.host.inert=false;active.host.removeAttribute('aria-busy');active=null;}}
   async function mount({host,request,tenantId,canWrite=false}){
     unmount();if(!host)return;
     const state={host,request,tenantId,canWrite,alive:true,controller:new AbortController(),labels:[],replies:[],customers:[],customer:null,
@@ -49,7 +49,7 @@
       if(state.busy)return;state.busy=true;host.setAttribute('aria-busy','true');host.inert=true;
       try{await work();if(current()){state.confirmation=null;await reload();state.busy=false;render();notice(success||'Alteração salva.');}}
       catch(error){if(current())notice(error.message||'Não foi possível concluir. Seu formulário foi preservado.',true);}
-      finally{state.busy=false;host.removeAttribute('aria-busy');host.inert=false;}
+      finally{state.busy=false;if(current()){host.removeAttribute('aria-busy');host.inert=false;}}
     }
     host.addEventListener('submit',event=>{
       const form=event.target.closest('[data-inbox-form]');if(!form)return;event.preventDefault();if(state.busy)return;
