@@ -181,6 +181,7 @@ async def test_real_send_slot_has_one_winner_and_requires_matching_receipt(inbox
     c = inbox_db
     lease = uuid4()
     async with c.migration.begin() as db:
+        await db.execute(text("UPDATE tenants SET bot_enabled=true WHERE id=:t"), {"t":c.tenant})
         await db.execute(text("""UPDATE qr_channels SET assistant_enabled=true,lease_owner=:owner,fence=1,
           lease_expires_at=now()+interval '30 seconds' WHERE tenant_id=:t AND id=:id"""),
           {"owner": lease, "t": c.tenant, "id": c.channel})
@@ -200,6 +201,14 @@ async def test_real_send_slot_has_one_winner_and_requires_matching_receipt(inbox
     assert await control.blocked(c.tenant, c.channel, PHONE)
     assert (await control.finish_send(c.channel, control.FinishSlot(**winner.model_dump(), accepted=True), None))["released"]
     assert not await control.blocked(c.tenant, c.channel, PHONE)
+    # A true identity from credential lookup cannot overrule a subsequent
+    # persisted assistant-off change, even before the next lease refresh.
+    async with c.migration.begin() as db:
+        await db.execute(text("UPDATE qr_channels SET assistant_enabled=false WHERE tenant_id=:t AND id=:c"), {"t":c.tenant,"c":c.channel})
+    with pytest.raises(HTTPException) as disabled:
+        await control.authorize_send(c.channel, winner.model_copy(update={"operation_id":uuid4()}), None)
+    assert disabled.value.status_code == 409
+    assert not await control.blocked(c.tenant,c.channel,PHONE)
 
 
 async def test_concurrent_assistant_revalidations_remain_read_only_under_channel_guard(inbox_db):

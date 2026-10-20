@@ -236,6 +236,16 @@ async def authorize_send(channel_id: UUID, payload: SendSlot, request: Request):
     async with bridge_control(request, payload) as (db, identity, row):
         if payload.source == "assistant" and not identity.assistant_enabled:
             raise HTTPException(409, "Assistente desativada")
+        if payload.source == "assistant":
+            # The credential lookup precedes this transaction. Check bot/AI
+            # flags again under the domain's existing SHARE locks, so a toggle
+            # between lookup and claim cannot authorize a stale AI response.
+            live = (await db.execute(text("""SELECT public.qr_channel_transaction_guard(
+              CAST(:t AS uuid),CAST(:c AS uuid),CAST(:a AS uuid),CAST(:o AS uuid),CAST(:f AS bigint))"""),
+              {"t":identity.tenant_id,"c":identity.channel_id,"a":identity.owner_account_id,
+               "o":identity.lease_owner,"f":identity.fence})).scalar_one()
+            if live is not True:
+                raise HTTPException(409, "A autorização da assistente mudou")
         if payload.source == "assistant" and payload.control_revision != row["revision"]:
             raise HTTPException(409, "O controle mudou durante a preparação da resposta")
         if row["mode"] != "ai" or row["pending_operation"] is not None:
