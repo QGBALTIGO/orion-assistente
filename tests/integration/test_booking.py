@@ -582,7 +582,15 @@ async def test_signed_phone_scopes_customer_cancel_and_reschedule(booking_db):
     ignored,moved=await try_command(d["a"],channel,sender,
           "pode confirmar",saved,redis,key,message_id="confirm-reschedule")
     assert ignored and "Remarcação confirmada" in moved
-    assert protocol in moved
+    assert protocol not in moved and "Protocolo:" not in moved
+    async with d["migrator"].connect() as s:
+        actual=(await s.execute(text("""SELECT a.protocol,a.start_at,a.end_at,a.total_cents,a.status,
+            a.professional_id,c.whatsapp_e164 FROM appointments a JOIN customers c
+            ON c.tenant_id=a.tenant_id AND c.id=a.customer_id WHERE a.tenant_id=:t AND a.id=:id"""),
+            {"t":d["a"],"id":reservation["id"]})).mappings().one()
+        assert actual["protocol"]==protocol and actual["status"]=="confirmed"
+        assert actual["start_at"]==start_at(d["day"],14) and actual["end_at"]==start_at(d["day"],14,20)
+        assert actual["total_cents"]==2000 and actual["professional_id"]==d["pro"] and actual["whatsapp_e164"]==sender
     ignored,_=await try_command(d["a"],channel,sender,
           "cancelar "+protocol.lower(),{},redis,key,message_id="request-cancel")
     saved=json.loads(redis.data[key])

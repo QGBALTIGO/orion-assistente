@@ -463,9 +463,9 @@ def compose_summary(summary: BookingSummary, preferences=None, *, confirmed: boo
     light = prefs.emoji == "light"
     lines = [("✅ " if confirmed and light else "") + f"*{heading}*", "", *_booking_lines(summary, light=light)]
     prompt = ""
-    if confirmed:
+    if confirmed and operation == "cancel":
         lines.append(_field("Protocolo", _label(summary.protocol), light=light))
-    elif not simulation:
+    elif not confirmed and not simulation:
         if operation == "reschedule":
             lines.extend(["", "_O agendamento original permanece até a confirmação da remarcação._"])
         prompt = {"booking": "Posso confirmar esse agendamento?", "reschedule": "Posso confirmar essa remarcação?",

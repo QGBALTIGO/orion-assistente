@@ -83,7 +83,13 @@ def visual(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_three_visual_examples_per_style_share_one_scoped_real_slot_and_no_operations(visual):
+async def test_three_visual_examples_per_style_share_one_scoped_real_slot_and_no_operations(visual,monkeypatch):
+    preserved=[];render=qr_ai.presentation.render_summary
+    def observed(summary,*args,**kwargs):
+        answer=render(summary,*args,**kwargs)
+        preserved.append(summary.protocol)
+        return answer
+    monkeypatch.setattr(qr_ai.presentation,"render_summary",observed)
     h=visual;response=await h.request();assert response.status_code == 200
     data=response.json();assert len(data["examples"]) == 4
     assert len([x for x in h.events if x[0]=="grid"]) == 1
@@ -95,7 +101,9 @@ async def test_three_visual_examples_per_style_share_one_scoped_real_slot_and_no
             text=row[field]
             assert text.startswith("*Exemplo visual — nenhuma operação realizada*")
             assert all(value in text for value in ("Corte e Barba","Bruno (Demonstração)",h.target.strftime("%d/%m/%Y"),"14h30","1 hora","R$ 55,00"))
-            assert "EXEMPLO-VISUAL-SEM-VALIDADE" in text and "Protocolo de exemplo, sem validade" in text
+            assert ("EXEMPLO-VISUAL-SEM-VALIDADE" in text) is (field == "cancellation_example")
+            assert "Protocolo de exemplo, sem validade" in text
+    assert preserved == ["EXEMPLO-VISUAL-SEM-VALIDADE"]*8
     assert qr_profile.preview_snapshot.get() is None
 
 

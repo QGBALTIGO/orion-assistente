@@ -123,7 +123,9 @@ async def test_meta_natural_flow_new_consent_and_message_retry(meta):
     duplicate=await meta["turn"]("sim","choose-time")
     assert duplicate==initial and meta["events"]==["hold"]
     done=await meta["turn"]("pode marcar","consent")
-    assert "confirmado" in done and "AG-ABCDEF" in done and "R$ 55,00" in done
+    assert "confirmado" in done and "AG-ABCDEF" not in done and "R$ 55,00" in done
+    assert len(meta["records"]) == 1 and next(iter(meta["records"].values()))["protocol"] == "AG-ABCDEF"
+    assert next(iter(meta["records"].values()))["status"] == "confirmed"
     assert meta["events"]==["hold","confirm"]
     assert await meta["turn"]("pode marcar","consent")==done
     assert meta["events"]==["hold","confirm"]

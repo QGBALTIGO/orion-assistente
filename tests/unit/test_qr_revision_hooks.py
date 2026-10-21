@@ -259,7 +259,8 @@ async def test_verified_confirmation_superseded_before_reply_is_reported_without
     client.seen["synthetic-correction"]=2
     result=await qr_ai.run_locked(h.tenant,"5567999999999","Pera, é sexta",h.namespace,"synthetic-correction",
         intake_revision=2,require_summary_review=True)
-    assert result["step"] == "completed_operation_review" and "SYNTHETIC" in result["answer"]
+    assert result["step"] == "completed_operation_review" and "SYNTHETIC" not in result["answer"]
+    assert json.loads(client.values[receipt.key(h.tenant,"5567999999999")])["protocol"] == "SYNTHETIC"
     assert "ainda não foi aplicada" in result["answer"] and "_verified_operation" not in result
     assert [x[0] for x in h.calls["writes"]] == ["confirm"] and not h.calls["plans"]
     client.current=3;client.seen["synthetic-accepted"]=3
