@@ -1,0 +1,21 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.9, pytest-9.1.1, pluggy-1.7.0 -- C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Scripts\python.exe
+rootdir: C:\Users\kayky\Documents\Playground\orion-marcflow-20261020
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 3 items
+
+tests/integration/test_admin_identity_ops_postgres.py::test_runtime_metadata_gate_accepts_0030_and_denies_0029 PASSED [ 33%]
+tests/integration/test_admin_identity_ops_postgres.py::test_password_account_queries_work_on_0029_and_0030_and_exclude_native_identity PASSED [ 66%]
+tests/integration/test_qr_admin_identity_postgres.py::test_real_native_account_can_own_list_and_change_only_its_qr PASSED [100%]
+
+============================== warnings summary ===============================
+tests/integration/test_admin_identity_ops_postgres.py: 12 warnings
+tests/integration/test_qr_admin_identity_postgres.py: 6 warnings
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: C:\Users\kayky\Documents\Playground\orion-inventario-revisao-20261020\admin-role-pg-focused.xml -
+================== 3 passed, 18 warnings in 76.96s (0:01:16) ==================

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "verified_at_utc": "2026-10-21T00:09:23Z",
+  "candidate_commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+  "checks": [
+    {
+      "baseline_commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+      "paths": ["qr-bridge"],
+      "git_diff_quiet_exit_code": 0,
+      "meaning": "QR Node source is unchanged; keep its existing pinned source and volume while enabling the adapter later. No QR source deployment is attested here."
+    },
+    {
+      "baseline_commit": "08a5cc09f849bf73e9d60a76179912eeb34003fc",
+      "paths": ["scripts/one_time_admin_demo_setup.py", "alembic/versions/0030_legacy_admin_identity.py", "scripts/one_time_legacy_adoption.py", "requirements.lock", "Dockerfile"],
+      "git_diff_quiet_exit_code": 0,
+      "meaning": "The adopted-AI correction did not change the setup operator, schema/adoption operators, dependency pins or Dockerfile qualified separately. The new runtime still requires its own CI."
+    }
+  ],
+  "application_tests_executed_by_this_check": false,
+  "production_mutated": false,
+  "real_messages_sent": false
+}

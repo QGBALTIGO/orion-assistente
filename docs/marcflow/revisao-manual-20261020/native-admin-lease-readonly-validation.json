@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "candidate_commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+  "scope": "Static preparation only; no hook, application, database, or network execution",
+  "ordered_fail_closed_modules": [
+    "scripts.wait_for_admin_identity_schema",
+    "scripts.one_time_admin_demo_setup",
+    "scripts.probe_qr_bridge"
+  ],
+  "runtime_versions_checked_against_candidate_lock": 18,
+  "ddl_operator_included": false,
+  "native_admin_enabled": false,
+  "business_writes": false,
+  "worker_qr_or_volume_changes": false,
+  "approved_old_hash_reused": false,
+  "plan_file_sha256": "44c9bd2754d35a20ff7ea25c5db190e2fd4bada64d25559951e456425ac477b6"
+}

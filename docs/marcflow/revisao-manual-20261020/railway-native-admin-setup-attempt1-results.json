@@ -1,0 +1,151 @@
+{
+  "recorded_at_utc": "2026-10-20T23:46:52.105Z",
+  "approved": {
+    "authorized": true,
+    "user_reply": "Autorizei e apliquei esta etapa",
+    "at_utc": "2026-10-20T23:42:04.664Z",
+    "plan_sha256": "03a5dcc93b42e17d43c496e3ef72f90e7985baf4bf86a03983420f582988045b",
+    "patch_id": "8792e593-e431-4a8e-adba-1bca47a765b5"
+  },
+  "deployments": [
+    {
+      "service": "API",
+      "id": "ee59fb67-9c77-4681-b875-92dfa3fcc8cd",
+      "commit": "d11a86bc3b1efdef47394c62e39ee32da08ecabf",
+      "status": "FAILED",
+      "stop_code": "approved_plan_mismatch",
+      "stage": "before backup or source writes"
+    },
+    {
+      "service": "worker",
+      "id": "cf3fa7bd-9c13-45f6-9483-05a7dd6a1611",
+      "commit": "d11a86bc3b1efdef47394c62e39ee32da08ecabf",
+      "status": "SUCCESS",
+      "binding_configuration_valid": true,
+      "schema_gate": "0030_legacy_admin_identity"
+    }
+  ],
+  "predeploy_receipts": {
+    "ee59fb67-9c77-4681-b875-92dfa3fcc8cd": [
+      {
+        "timestamp": "2026-10-20T23:42:05.419239127Z",
+        "severity": "info",
+        "message": "tested_runtime_versions_match",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"info\""
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-20T23:42:05.419242116Z",
+        "severity": "info",
+        "message": "orion_release_flags={\"BIRTHDAY_COLLECTION_ENABLED\": \"0\", \"GROQ_PROBE_ON_START\": \"0\", \"INBOX_CONTROL_ENABLED\": \"0\", \"INBOX_SEND_ENABLED\": \"0\", \"INBOX_TOOLS_ENABLED\": \"1\", \"MARKETING_EXECUTION_ENABLED\": \"0\", \"MARKETING_RECONCILIATION_ENABLED\": \"0\", \"META_LIVE_SEND\": \"0\", \"ORION_EMAIL_DELIVERY_PROBE\": \"0\", \"QR_AI_ENABLED\": \"1\", \"QR_CHANNELS_ENABLED\": \"1\", \"QR_LEGACY_CENTRAL_ENABLED\": \"0\"}",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"info\""
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-20T23:42:05.419245026Z",
+        "severity": "info",
+        "message": "",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"info\""
+          },
+          {
+            "key": "ok",
+            "value": "true"
+          },
+          {
+            "key": "status",
+            "value": "\"admin_identity_schema_ready\""
+          },
+          {
+            "key": "schema_marker",
+            "value": "\"0030_legacy_admin_identity\""
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-20T23:42:06.448894608Z",
+        "severity": "info",
+        "message": "",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"info\""
+          },
+          {
+            "key": "status",
+            "value": "\"stopped\""
+          },
+          {
+            "key": "code",
+            "value": "\"approved_plan_mismatch\""
+          }
+        ]
+      }
+    ],
+    "cf3fa7bd-9c13-45f6-9483-05a7dd6a1611": [
+      {
+        "timestamp": "2026-10-20T23:42:38.406801438Z",
+        "severity": "info",
+        "message": "tested_runtime_versions_match",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"info\""
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-20T23:42:38.406805138Z",
+        "severity": "info",
+        "message": "native_admin_binding_configuration_valid",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"info\""
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-20T23:42:38.429143826Z",
+        "severity": "info",
+        "message": "",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"info\""
+          },
+          {
+            "key": "ok",
+            "value": "true"
+          },
+          {
+            "key": "status",
+            "value": "\"admin_identity_schema_ready\""
+          },
+          {
+            "key": "schema_marker",
+            "value": "\"0030_legacy_admin_identity\""
+          }
+        ]
+      }
+    ]
+  },
+  "api_cleanup": {
+    "normal_schema30_hook_restored": true,
+    "one_time_flags_disabled": true,
+    "native_flag_zero_in_next_deploy_configuration": true,
+    "no_redeploy_for_cleanup": true
+  },
+  "business_state_applied": false,
+  "exact_production_divergence_cause": "Not attributed; original complete snapshot was not emitted. Isolated lease-only reproduction is separate evidence."
+}

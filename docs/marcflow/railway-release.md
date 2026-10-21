@@ -1,7 +1,11 @@
-> Escopo atual desta continuação: **somente implementação e testes locais**.
+> **Arquivo histórico das tentativas anteriores.** A revisão manual e a nova
+> autorização de publicação estão no [relatório atual](revisao-manual-20261020/relatorio.html).
+> Somente seus recibos identificam o resultado da publicação desta execução.
+>
+> Escopo da continuação anterior: **somente implementação e testes locais**.
 > Não houve deploy, push, mudança de variáveis no Railway, adoção de sessões
-> ou envio real. A publicação e a migração reais continuam pendentes de autorização.
-> O [relatório de comunicação](communication-report.html) registra os resultados atuais.
+> ou envio real. Naquela etapa, publicação e migração reais estavam pendentes de autorização.
+> O [relatório de comunicação](communication-report.html) registra os resultados daquela etapa.
 > Para uma futura publicação, o esquema 0029 exige operação própria
 > `scripts.one_time_communication_migration`, com backup lido de volta e restauração
 > validada antes de qualquer DDL original; o gate de API/worker deverá ser
@@ -12,7 +16,7 @@
 > Histórico anterior: a versão anterior foi publicada às 16:45 UTC em
 > `a7199de`; a central permaneceu desligada. A nova transição foi qualificada
 > e sua publicação de 17:36 UTC foi cancelada no controle de aprovação da
-> integração. Consulte [o recibo atual](legacy-transition.md#recibo-final-desta-tentativa--20102026).
+> integração. Consulte [o recibo daquela tentativa](legacy-transition.md#recibo-histórico-da-tentativa-anterior--20102026).
 > As informações abaixo descrevem a tentativa anterior e seus limites naquele momento.
 
 # Publicação Railway da central humana

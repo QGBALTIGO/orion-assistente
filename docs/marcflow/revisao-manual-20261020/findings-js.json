@@ -1,0 +1,400 @@
+[
+  {
+    "id": "INV-JS-001",
+    "severity": "P2",
+    "file": "app/static/qr_connect.html",
+    "title": "QR legado prometia ausência de envios mesmo com IA/aviso próprio configurados",
+    "inventory_ids": [
+      "INV1240",
+      "INV0855",
+      "INV0856",
+      "INV0858",
+      "INV0859"
+    ],
+    "reproduction": "Abrir QR legado, autenticar suporte sintético e receber status connected. O texto anterior afirmava nenhum envio automático; bridge emite aviso próprio com ORION_NOTIFY_SELF_ON_LINK e preserva IA existente.",
+    "fix": "Texto factual sobre configuração existente; aviso/intro do canal gerenciado também condicionam confirmação própria à configuração. Nenhuma flag ou sessão alterada. Complemento pré-publicação: channel-manager agora respeita ORION_NOTIFY_SELF_ON_LINK=0 para sessões gerenciadas novas e retomadas; unset mantém default,1 habilita a preferência e legacy permanece sem aviso pelo adaptador gerenciado. IA, credenciais e retomada não mudam.",
+    "tests": [
+      "legacy QR page confirms the link without promising that existing automation is disabled"
+    ],
+    "related_files": [
+      "app/static/orion-channels.js",
+      "qr-bridge/src/channel-manager.mjs",
+      "qr-bridge/test/channel-manager.test.mjs"
+    ],
+    "runtime_supplement": {
+      "status": "fixed_tested_isolated",
+      "separate_unique_finding": false,
+      "trigger": "Managed channel restoration ignored the explicit global0 because context.notifySelf depended only on legacy_transport.",
+      "guard": "notifySelf: !c.legacyTransport && process.env.ORION_NOTIFY_SELF_ON_LINK !== '0'",
+      "new_test_cases": 7,
+      "qr_full_result": "442 passed,4 skippedWindows,0 failed",
+      "qr_full_log": "qr-notice-final.log",
+      "targeted_result": "53 passed,1 skippedWindows,0 failed",
+      "targeted_log": "notice-channel-manager.log",
+      "source_sha256": "5128ac5f469bd4971db8d3e05dab536aad3e16ea8a94b70b1c4853fe612b0340",
+      "reread_scope": "Complete connect/notice context and channel-session open caller; cross-reviewed by manual_emit_inventory, API reviewer notified.",
+      "preserved": [
+        "Legacy notice suppression",
+        "Current assistant flag and routing",
+        "Existing session credential",
+        "Resume intent and stored authentication"
+      ]
+    },
+    "status": "fixed_tested_isolated",
+    "current_line": 76,
+    "source_sha256": "a08b7bc00e27830591db570428d427ae2e5be308604552b7e485e1123ee576fe",
+    "test_file": "ui-tests/manual-inventory-regressions.test.mjs",
+    "evidence": {
+      "targeted_log": "ui-manual-regressions.log",
+      "targeted_result": "10 passed, 0 failed",
+      "ui_suite_log": "ui-all-after-manual.log",
+      "ui_suite_result": "325 passed, 0 failed; includes the 10 targeted regressions",
+      "qr_related_log": "qr-ui-after-manual.log",
+      "qr_related_result": "133 passed, 0 failed; targeted, overlaps any full QR suite",
+      "runtime_supplement": {
+        "status": "fixed_tested_isolated",
+        "separate_unique_finding": false,
+        "trigger": "Managed channel restoration ignored the explicit global0 because context.notifySelf depended only on legacy_transport.",
+        "guard": "notifySelf: !c.legacyTransport && process.env.ORION_NOTIFY_SELF_ON_LINK !== '0'",
+        "new_test_cases": 7,
+        "qr_full_result": "442 passed,4 skippedWindows,0 failed",
+        "qr_full_log": "qr-notice-final.log",
+        "targeted_result": "53 passed,1 skippedWindows,0 failed",
+        "targeted_log": "notice-channel-manager.log",
+        "source_sha256": "5128ac5f469bd4971db8d3e05dab536aad3e16ea8a94b70b1c4853fe612b0340",
+        "reread_scope": "Complete connect/notice context and channel-session open caller; cross-reviewed by manual_emit_inventory, API reviewer notified.",
+        "preserved": [
+          "Legacy notice suppression",
+          "Current assistant flag and routing",
+          "Existing session credential",
+          "Resume intent and stored authentication"
+        ]
+      }
+    },
+    "not_executed": [
+      "Native WhatsApp connection/send",
+      "Live Railway action",
+      "External model or ASR call"
+    ]
+  },
+  {
+    "id": "INV-JS-002",
+    "severity": "P2",
+    "file": "app/static/panel.html",
+    "title": "Cobertura de métricas usava fuso do navegador com legenda fixa MS",
+    "inventory_ids": [
+      "INV1023"
+    ],
+    "reproduction": "Navegador UTC, trackingSince2026-10-20T02:30Z: a data/hora exibida pertencia ao UTC mas dizia horário do MS.",
+    "fix": "toLocaleString usa explicitamente America/Campo_Grande para corresponder à legenda.",
+    "tests": [
+      "tracking coverage renders the stated MS timezone even on a device whose default is UTC"
+    ],
+    "status": "fixed_tested_isolated",
+    "current_line": 1928,
+    "source_sha256": "5fd326ae4908930babc6c80113be7ffbf82340e53e99c05d96cf3fd718121c08",
+    "test_file": "ui-tests/manual-inventory-regressions.test.mjs",
+    "evidence": {
+      "targeted_log": "ui-manual-regressions.log",
+      "targeted_result": "10 passed, 0 failed",
+      "ui_suite_log": "ui-all-after-manual.log",
+      "ui_suite_result": "325 passed, 0 failed; includes the 10 targeted regressions",
+      "qr_related_log": "qr-ui-after-manual.log",
+      "qr_related_result": "133 passed, 0 failed; targeted, overlaps any full QR suite"
+    },
+    "not_executed": [
+      "Native WhatsApp connection/send",
+      "Live Railway action",
+      "External model or ASR call"
+    ]
+  },
+  {
+    "id": "INV-JS-003",
+    "severity": "P2",
+    "file": "app/static/orion-suite.js",
+    "title": "Fila Meta presumiu todas as campanhas em rascunho",
+    "inventory_ids": [],
+    "discovered_via": "INV0919–INV0926, caminhada da rota Marketing que renderiza biblioteca/fila",
+    "reproduction": "Instalação com campanhas previamente autorizadas abre Fila; texto anterior dizia que campanhas salvas continuam em rascunho sem consultar estado.",
+    "fix": "Descrição restringe-se à fila de respostas e remete autorizações/recibos de campanhas à área Envios revisados.",
+    "tests": [
+      "Meta queue distinguishes an uncertain prior attempt from a confirmed failure"
+    ],
+    "status": "fixed_tested_isolated",
+    "current_line": 612,
+    "source_sha256": "98aa51140d29215b8e176516ddd17e0c7fa0813a4562b64086e04560918d44e4",
+    "test_file": "ui-tests/manual-inventory-regressions.test.mjs",
+    "evidence": {
+      "targeted_log": "ui-manual-regressions.log",
+      "targeted_result": "10 passed, 0 failed",
+      "ui_suite_log": "ui-all-after-manual.log",
+      "ui_suite_result": "325 passed, 0 failed; includes the 10 targeted regressions",
+      "qr_related_log": "qr-ui-after-manual.log",
+      "qr_related_result": "133 passed, 0 failed; targeted, overlaps any full QR suite"
+    },
+    "not_executed": [
+      "Native WhatsApp connection/send",
+      "Live Railway action",
+      "External model or ASR call"
+    ]
+  },
+  {
+    "id": "INV-JS-004",
+    "severity": "P2",
+    "file": "app/static/orion-suite.js",
+    "title": "Resposta de horários podia sobrescrever outro diálogo ou nova edição do mesmo profissional",
+    "inventory_ids": [
+      "INV0952"
+    ],
+    "reproduction": "Adiar GET working_hours; fechar modal e abrir Novo funcionário (erro tardio), ou reabrir Horários do mesmo profissional (sucesso tardio). Guard anterior no catch só conferia tenant, e sucesso só type/id.",
+    "fix": "Captura identidade exata activeDialog após abertura bem-sucedida e exige igualdade no sucesso e na falha, junto com stillAccount.",
+    "tests": [
+      "late hours failure cannot overwrite a different dialog in the same tenant",
+      "late hours success cannot overwrite a newly opened hours dialog for the same professional",
+      "late hours failure after a tenant switch cannot reopen the old tenant dialog"
+    ],
+    "status": "fixed_tested_isolated",
+    "current_line": 1078,
+    "source_sha256": "98aa51140d29215b8e176516ddd17e0c7fa0813a4562b64086e04560918d44e4",
+    "test_file": "ui-tests/manual-inventory-regressions.test.mjs",
+    "evidence": {
+      "targeted_log": "ui-manual-regressions.log",
+      "targeted_result": "10 passed, 0 failed",
+      "ui_suite_log": "ui-all-after-manual.log",
+      "ui_suite_result": "325 passed, 0 failed; includes the 10 targeted regressions",
+      "qr_related_log": "qr-ui-after-manual.log",
+      "qr_related_result": "133 passed, 0 failed; targeted, overlaps any full QR suite"
+    },
+    "not_executed": [
+      "Native WhatsApp connection/send",
+      "Live Railway action",
+      "External model or ASR call"
+    ]
+  },
+  {
+    "id": "INV-JS-005",
+    "severity": "P2",
+    "file": "app/static/orion-suite.js",
+    "title": "Campanha autorizada ou pausada era apresentada como arquivada",
+    "inventory_ids": [],
+    "discovered_via": "INV0919–INV0926, leitura de showCampaign no fluxo real Marketing",
+    "reproduction": "Consultar registro saved campaign com status approved ou paused. O branch !=draft tinha título/frase arquivado e label paused→Arquivada.",
+    "fix": "Título neutro Registro da campanha e labels específicos approved=Autorizada, paused=Pausada; mantém readonly e estado archived.",
+    "tests": [
+      "saved campaign approved is displayed by its actual status and remains read-only",
+      "saved campaign paused is displayed by its actual status and remains read-only",
+      "saved campaign archived is displayed by its actual status and remains read-only"
+    ],
+    "status": "fixed_tested_isolated",
+    "current_line": 1195,
+    "source_sha256": "98aa51140d29215b8e176516ddd17e0c7fa0813a4562b64086e04560918d44e4",
+    "test_file": "ui-tests/manual-inventory-regressions.test.mjs",
+    "evidence": {
+      "targeted_log": "ui-manual-regressions.log",
+      "targeted_result": "10 passed, 0 failed",
+      "ui_suite_log": "ui-all-after-manual.log",
+      "ui_suite_result": "325 passed, 0 failed; includes the 10 targeted regressions",
+      "qr_related_log": "qr-ui-after-manual.log",
+      "qr_related_result": "133 passed, 0 failed; targeted, overlaps any full QR suite"
+    },
+    "not_executed": [
+      "Native WhatsApp connection/send",
+      "Live Railway action",
+      "External model or ASR call"
+    ]
+  },
+  {
+    "id": "INV-JS-006",
+    "severity": "P2",
+    "file": "app/static/orion-suite.js",
+    "title": "Salvar seleção de rotina aparava texto custom sem edição",
+    "inventory_ids": [
+      "INV0971"
+    ],
+    "reproduction": "Template custom com espaços/quebra no início/fim; marcar somente checkbox e salvar. template.value.trim() alterava conteúdo já salvo.",
+    "fix": "Preserva template.value literalmente e só troca source para custom quando conteúdo literal difere. Validação de texto vazio/conteúdo fica no contrato servidor.",
+    "tests": [
+      "saving an automation checkbox preserves custom template whitespace exactly"
+    ],
+    "status": "fixed_tested_isolated",
+    "current_line": 1275,
+    "source_sha256": "98aa51140d29215b8e176516ddd17e0c7fa0813a4562b64086e04560918d44e4",
+    "test_file": "ui-tests/manual-inventory-regressions.test.mjs",
+    "evidence": {
+      "targeted_log": "ui-manual-regressions.log",
+      "targeted_result": "10 passed, 0 failed",
+      "ui_suite_log": "ui-all-after-manual.log",
+      "ui_suite_result": "325 passed, 0 failed; includes the 10 targeted regressions",
+      "qr_related_log": "qr-ui-after-manual.log",
+      "qr_related_result": "133 passed, 0 failed; targeted, overlaps any full QR suite"
+    },
+    "not_executed": [
+      "Native WhatsApp connection/send",
+      "Live Railway action",
+      "External model or ASR call"
+    ]
+  },
+  {
+    "id": "INV-JS-007",
+    "severity": "P2",
+    "file": "app/static/orion-suite.js",
+    "title": "Tentativa Meta sem recibo era apresentada como falha definitiva",
+    "inventory_ids": [],
+    "discovered_via": "Revisão cruzada da fila Meta com achado backend do agente root",
+    "reproduction": "Status legado dead com delivery_state verification_required fornecido pelo backend. A UI antiga usava só dead, exibindo badge Com falha.",
+    "fix": "UI usa delivery_state quando presente; verification_required recebe Entrega em verificação e badge de pendência, preservando fallback dead para falha confirmada/contrato antigo. Não repete tentativa.",
+    "tests": [
+      "Meta queue distinguishes an uncertain prior attempt from a confirmed failure"
+    ],
+    "related_files": [
+      "app/management_preferences.py (alterado pelo agente root)"
+    ],
+    "status": "fixed_tested_isolated",
+    "current_line": 611,
+    "source_sha256": "98aa51140d29215b8e176516ddd17e0c7fa0813a4562b64086e04560918d44e4",
+    "test_file": "ui-tests/manual-inventory-regressions.test.mjs",
+    "evidence": {
+      "targeted_log": "ui-manual-regressions.log",
+      "targeted_result": "10 passed, 0 failed",
+      "ui_suite_log": "ui-all-after-manual.log",
+      "ui_suite_result": "325 passed, 0 failed; includes the 10 targeted regressions",
+      "qr_related_log": "qr-ui-after-manual.log",
+      "qr_related_result": "133 passed, 0 failed; targeted, overlaps any full QR suite"
+    },
+    "not_executed": [
+      "Native WhatsApp connection/send",
+      "Live Railway action",
+      "External model or ASR call"
+    ]
+  },
+  {
+    "id": "INV-JS-008",
+    "severity": "P2",
+    "file": "app/static/orion-suite.js",
+    "title": "Abrir aba Fila não consultava endpoint e ficava carregando indefinidamente",
+    "inventory_ids": [],
+    "discovered_via": "Teste DOM da correção INV-JS-007 no caminho completo de clique",
+    "reproduction": "Montar Marketing, clicar [data-os-marketing-tab=queue]. Apenas renderMarketing era chamado; lista ficava Consultando a fila de respostas sem GET /marketing/queue.",
+    "fix": "Aba queue agora executa open/loading como automations, realizando somente GETs autenticados necessários; nenhuma alteração de campanhas.",
+    "tests": [
+      "Meta queue distinguishes an uncertain prior attempt from a confirmed failure"
+    ],
+    "status": "fixed_tested_isolated",
+    "current_line": 1499,
+    "source_sha256": "98aa51140d29215b8e176516ddd17e0c7fa0813a4562b64086e04560918d44e4",
+    "test_file": "ui-tests/manual-inventory-regressions.test.mjs",
+    "evidence": {
+      "targeted_log": "ui-manual-regressions.log",
+      "targeted_result": "10 passed, 0 failed",
+      "ui_suite_log": "ui-all-after-manual.log",
+      "ui_suite_result": "325 passed, 0 failed; includes the 10 targeted regressions",
+      "qr_related_log": "qr-ui-after-manual.log",
+      "qr_related_result": "133 passed, 0 failed; targeted, overlaps any full QR suite"
+    },
+    "not_executed": [
+      "Native WhatsApp connection/send",
+      "Live Railway action",
+      "External model or ASR call"
+    ]
+  },
+  {
+    "id": "INV-JS-009",
+    "severity": "P2",
+    "file": "app/static/orion-conversations.js",
+    "title": "Identidades ausentes eram comparadas como posse humana e habilitavam o compositor sem operador",
+    "inventory_ids": [
+      "INV0867"
+    ],
+    "discovered_via": "Releitura do fluxo ADMIN nativo e correção independente feita pelo executor root; a comparação NULL/NULL também permanecia na legenda até o complemento relatado pelo revisor.",
+    "reproduction": "Prova DOM offline executada pelo root com fonte8369e2e e fixture account_id=null/assigned_account_id=null: antes, com você, envio e assumir habilitados; após a correção, os três falsos. Em ambos, writes_requested=0, sem conexão com API/provedor ou tentativa de envio. O backend anterior já recusava identidade sem UUID.",
+    "impact": "Erro funcional de posse/controles na interface. O backend de 8369e2e já exigia actor.account_id UUID antes de enfileirar e recusava o pedido sem operador; não é elevação de privilégio nem evidência de envio real.",
+    "fix": "Root adicionou presença de account na posse, na legenda e nos controles de modo; o submit exige account, posse humana/waiting da mesma conta, sendEnabled e ausência de operação pendente. Banner orienta configuração ou novo login sem expulsar nem reidentificar a sessão antiga. Consulta e rascunho continuam disponíveis.",
+    "fixed_by": "root",
+    "status": "fixed_tested_isolated",
+    "current_line": 19,
+    "current_range": {
+      "start": 18,
+      "end": 22
+    },
+    "source_sha256": "76513437413fa7e4d868a5e08f4b712777b80e725103dd3219f4c3a9ce54ba6f",
+    "baseline": {
+      "commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+      "file": "app/static/orion-conversations.js",
+      "source_sha256": "242409fc4ccca90ed3383645d81c0b771a8c8ad98c0037d0c5f2157167e25bd4",
+      "hash_basis": "Exact bytes returned by git show <commit>:<file>; not a production fetch.",
+      "ranges": [
+        {
+          "start": 18,
+          "end": 22
+        },
+        {
+          "start": 40,
+          "end": 47
+        }
+      ],
+      "backend_guard": {
+        "file": "app/inbox_conversations.py",
+        "function": "enqueue",
+        "range": {
+          "start": 157,
+          "end": 163
+        },
+        "behavior": "Already rejects an actor without a real UUID before any journal write."
+      }
+    },
+    "reviewed_at_utc": "2026-10-20T23:05:41.563390+00:00",
+    "review_method": "Complete current JS read, baseline source comparison, server guard and new test-source/log review; no production execution.",
+    "related_files": [
+      "app/inbox_conversations.py"
+    ],
+    "test_file": "ui-tests/conversations.test.mjs",
+    "tests": [
+      "a synthetic submit cannot enqueue when legacy_without_identity",
+      "a synthetic submit cannot enqueue when identified_but_unassigned",
+      "a synthetic submit cannot enqueue when send_disabled",
+      "an identified administrator can review a draft with no automatic write"
+    ],
+    "evidence": {
+      "executor": "root",
+      "reviewer_execution": "No tests executed by this reviewer for this finding; root logs and source were read.",
+      "targeted_log": "native-admin-ui.log",
+      "targeted_result": "10 passed,0 failed; includes 4 new regression cases",
+      "ui_suite_log": "native-admin-ui-all.log",
+      "ui_suite_result": "329 passed,0 failed; includes the same 10 targeted cases",
+      "groups_overlap": true,
+      "current_source_sha256": "76513437413fa7e4d868a5e08f4b712777b80e725103dd3219f4c3a9ce54ba6f",
+      "test_source_sha256": "148207079136ca8e3c3475de3c4ecb67ed5ab3063fce4e384ed6c5827798e285",
+      "isolated_before_after_proof": {
+        "status": "executed_isolated_by_root",
+        "json": "native-admin-ui-before-after.json",
+        "log": "native-admin-ui-before-after.log",
+        "json_sha256": "e02aecee73467b5401931e105b35aea680deaf4405e6fccf5651359a260cf71c",
+        "result": {
+          "scope": "Offline DOM; synthetic account=NULL and assigned=NULL; no API/provider connection or send attempted",
+          "before_commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+          "before": {
+            "source_sha256": "242409fc4ccca90ed3383645d81c0b771a8c8ad98c0037d0c5f2157167e25bd4",
+            "claims_with_you": true,
+            "send_button_enabled": true,
+            "claim_button_enabled": true,
+            "writes_requested": 0
+          },
+          "after": {
+            "source_sha256": "76513437413fa7e4d868a5e08f4b712777b80e725103dd3219f4c3a9ce54ba6f",
+            "claims_with_you": false,
+            "send_button_enabled": false,
+            "claim_button_enabled": false,
+            "writes_requested": 0
+          }
+        },
+        "reviewer_note": "Root execution receipt and matching log read; no production access or real message claimed."
+      }
+    },
+    "not_executed": [
+      "Reproduction in production",
+      "Native WhatsApp connection or real message send",
+      "Live login or account conversion by this reviewer",
+      "Isolated before/after proof by this reviewer"
+    ]
+  }
+]

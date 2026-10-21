@@ -1,0 +1,36 @@
+{
+  "status": "passed",
+  "scope": "Static review only; hooks not executed and no production access by reviewer",
+  "api_commands": [
+    "scripts.wait_for_admin_identity_schema",
+    "scripts.one_time_admin_demo_setup",
+    "scripts.probe_qr_bridge"
+  ],
+  "all_api_subprocesses_check_true": true,
+  "worker_config_binding_checked_before_schema_gate": true,
+  "posix_roundtrip_and_ast_valid": true,
+  "expected_api_variable_delta_count": 7,
+  "expected_worker_variable_delta_count": 3,
+  "plan_sha256": "03a5dcc93b42e17d43c496e3ef72f90e7985baf4bf86a03983420f582988045b",
+  "plan_run_id": "075a435e-ed21-44b7-8d59-ba5f01087ec0",
+  "preserved_flags": {
+    "QR_AI_ENABLED": "1",
+    "QR_CHANNELS_ENABLED": "1",
+    "INBOX_TOOLS_ENABLED": "1",
+    "QR_LEGACY_CENTRAL_ENABLED": "0",
+    "INBOX_CONTROL_ENABLED": "0",
+    "INBOX_SEND_ENABLED": "0",
+    "META_LIVE_SEND": "0",
+    "MARKETING_EXECUTION_ENABLED": "0",
+    "MARKETING_RECONCILIATION_ENABLED": "0",
+    "BIRTHDAY_COLLECTION_ENABLED": "0",
+    "GROQ_PROBE_ON_START": "0",
+    "ORION_EMAIL_DELIVERY_PROBE": "0"
+  },
+  "actual_apply_authorization": false,
+  "no_provider_or_session_operation": true,
+  "reviewers": [
+    "root",
+    "manual_api_inventory"
+  ]
+}

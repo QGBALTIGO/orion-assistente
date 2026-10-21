@@ -1,0 +1,45 @@
+{
+  "prepared_at_utc": "2026-10-20T21:50:21.884Z",
+  "state": "historical_prepared_plan; final actual results are in publication-receipt.json",
+  "commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+  "target": {
+    "link_id": "link_6ad39be247248191aacc17e1b1c65792",
+    "projectId": "55750961-99ca-495e-b55e-4c07d78e53df",
+    "environmentId": "162d0407-3d4f-4163-9cb2-0c90154c707f"
+  },
+  "run_ids": {
+    "inbox_migration": "8db59147-bc4f-45c3-a0cc-d0f7413c4a69",
+    "communication_migration": "8291bdc0-ab5c-4064-bec0-a06f43c8b9cc",
+    "legacy_register": "6f920c35-8956-4ba0-b856-c3d04ddd6dd8",
+    "legacy_activate": "6b25d25d-b4fd-494d-ad96-0f8ce7cf9140"
+  },
+  "api_predeploy": "python -c \"import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); print('orion_release_flags=' + __import__('json').dumps({k: __import__('os').getenv(k, 'unset') for k in ['QR_AI_ENABLED','QR_CHANNELS_ENABLED','QR_LEGACY_CENTRAL_ENABLED','META_LIVE_SEND','INBOX_CONTROL_ENABLED','INBOX_SEND_ENABLED','INBOX_TOOLS_ENABLED','MARKETING_EXECUTION_ENABLED','MARKETING_RECONCILIATION_ENABLED','BIRTHDAY_COLLECTION_ENABLED','GROQ_PROBE_ON_START','ORION_EMAIL_DELIVERY_PROBE']}, sort_keys=True), flush=True); print('inbox_migration_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.one_time_inbox_migration'], check=True); print('communication_migration_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.one_time_communication_migration'], check=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_communication_schema'], check=True); print('qr_bridge_probe_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.probe_qr_bridge'], check=True)\"",
+  "worker_predeploy": "python -c \"import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); print('communication_schema_barrier_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_communication_schema'], check=True)\"",
+  "adoption_predeploy": "python -c \"import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); print('orion_release_flags=' + __import__('json').dumps({k: __import__('os').getenv(k, 'unset') for k in ['QR_AI_ENABLED','QR_CHANNELS_ENABLED','QR_LEGACY_CENTRAL_ENABLED','META_LIVE_SEND','INBOX_CONTROL_ENABLED','INBOX_SEND_ENABLED','INBOX_TOOLS_ENABLED','MARKETING_EXECUTION_ENABLED','MARKETING_RECONCILIATION_ENABLED','BIRTHDAY_COLLECTION_ENABLED','GROQ_PROBE_ON_START','ORION_EMAIL_DELIVERY_PROBE']}, sort_keys=True), flush=True); print('legacy_adoption_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.one_time_legacy_adoption'], check=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_communication_schema'], check=True); print('qr_bridge_probe_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.probe_qr_bridge'], check=True)\"",
+  "phases": [
+    "A API: checked sequential0023/28->28->29; failclosedifalready29oldgate; workeroldcontinues",
+    "B workeronlyafter29+QRnewcentral0; notification/operator0; existingvolumes/secretskept",
+    "C API register alias; backup/restore/sessionproof",
+    "D QR centraladapter1; sameprimarysocket; healthcentralrequired",
+    "E API activate persistentauthority; nobacklogclear; blockedifpending/uncertain",
+    "F APIworker control/send1; Meta/campaigns/birthdaycollection0; one-timeoperations0"
+  ],
+  "limitations": [
+    "No zero-latency guarantee under locks; no process change if predeploy guard fails",
+    "No destructive downgrade, source restore, session copy/logout/newQR or real test send",
+    "Already29afterpartialfailure: disable inbox gate andverifycommunicationalready_applied; do not weaken old operator"
+  ],
+  "updated_at_utc": "2026-10-20T22:16:53.155Z",
+  "qr_broker_reference": "http://${{orion-assistente.RAILWAY_PRIVATE_DOMAIN}}:8080",
+  "broker_reference_source": "https://docs.railway.com/networking/domains/working-with-domains#using-reference-variables",
+  "broker_port_basis": "Existing API service domain target8080 and unchanged API listener configuration; retain port and credentials.",
+  "actual_execution": {
+    "code_commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+    "API": "published",
+    "schema0029": "backup_restore_rehearsal_verified",
+    "worker": "published",
+    "QR": "published_existing_session_connected",
+    "register": "blocked_existing_tenant_not_active_before_write",
+    "adapter_authority_control_activation": "not_started"
+  }
+}

@@ -3,10 +3,12 @@
 Fundação de um SaaS gerenciado de agendamento por WhatsApp para barbearias.
 **Status: desenvolvimento e testes automatizados; não liberado para clientes reais.**
 
-Continuação local de comunicação em 20/10/2026: [relatório e índice de requisitos](docs/marcflow/communication-report.html)
-e [contrato verificável](docs/marcflow/communication-contract.json). A implementação
-permanece na branch `codex/orion-marcflow-integrations-20261020`, sem publicação,
-ativação de campanhas ou testes com mensagens reais. Os relatórios anteriores são históricos.
+Revisão de comunicação em 20/10/2026: [1.247 itens e correções](docs/marcflow/manual-inventory-review.md)
+e [relatório pesquisável com recibos de teste e publicação](docs/marcflow/revisao-manual-20261020/relatorio.html).
+Trabalho na mesma branch `codex/orion-marcflow-integrations-20261020`, com publicação
+autorizada e sem campanhas ou mensagens reais de teste. Consulte o recibo para o
+estado efetivo do Railway. O [contrato](docs/marcflow/communication-contract.json)
+e os relatórios anteriores preservam a evidência histórica de cada etapa.
 
 O histórico contém PRs incrementais das FATIAS 0–8. Integrações e módulos
 comerciais avançados permanecem desabilitados ou incompletos sem piloto,
@@ -75,7 +77,7 @@ Se um volume já existia, revise/provisione os papéis manualmente: o Compose
 não recria permissões automaticamente.
 
 ## Testes sem Docker
-Instale `pip install ".[test]"` em Python 3.12 e rode `pytest -q -ra`.
+Instale `pip install -c requirements.lock ".[test]"` em Python 3.12 e rode `pytest -q -ra`.
 Os unitários rodam sem serviços; os testes de integração exigem
 `APP_DATABASE_URL` e `MIGRATION_DATABASE_URL` com PostgreSQL migrado.
 Defina `REQUIRE_POSTGRES_TESTS=1` para fazer falhar em vez de pular a
@@ -92,11 +94,13 @@ Barbearia sintética de homologação: tenant_id
 `82552b25-d0c8-5338-8c42-49f11de59e45`. Administração: `/panel`,
 utilizando o `SUPPORT_API_TOKEN` guardado nas variáveis do serviço web
 na Railway. Não transmitir token por links, screenshots ou mensagens.
-Nenhuma credencial real de integrações externas está ativa.
+Esse registro de homologação descreve o estado observado em 16/10/2026.
+O estado atual de integrações e da publicação consta no recibo de comunicação.
 
-Referência histórica: [docs/railway.md](docs/railway.md). foi conectado por esta mudança.
+Referência histórica: [docs/railway.md](docs/railway.md).
 
 ## Documentação
+- [Administrador existente na central humana](docs/marcflow/admin-central-identity.md)
 - [Gestão Orion: referência BarberPilot, medidas e implementação](docs/barberpilot-orion.md)
 - [Cobertura funcional por módulo](docs/barberpilot-functional-coverage.md)
 - [Migrations, testes e implantação da suíte de gestão](docs/management-suite-runbook.md)

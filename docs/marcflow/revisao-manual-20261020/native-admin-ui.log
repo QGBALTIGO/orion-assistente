@@ -1,0 +1,18 @@
+✔ conversation text is escaped, reader controls are disabled and no send occurs on load (278.6226ms)
+✔ a synthetic submit cannot enqueue when legacy_without_identity (57.6028ms)
+✔ a synthetic submit cannot enqueue when identified_but_unassigned (43.6066ms)
+✔ a synthetic submit cannot enqueue when send_disabled (33.6428ms)
+✔ an identified administrator can review a draft with no automatic write (41.7947ms)
+✔ preserved device history is loaded explicitly, escaped and never marks or sends messages (38.2329ms)
+✔ a response lost after enqueue preserves the same operation for an explicit retry (45.1194ms)
+✔ resuming the AI updates authority and disables the human composer (44.8037ms)
+✔ an old tenant response cannot repopulate the next tenant or send by itself (35.6368ms)
+✔ an uncertain slot blocks every operator transition and preserves the result distinction (44.2552ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1922.2381

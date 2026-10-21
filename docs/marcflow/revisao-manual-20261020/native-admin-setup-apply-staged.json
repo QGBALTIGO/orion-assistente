@@ -1,0 +1,175 @@
+{
+  "project": {
+    "id": "55750961-99ca-495e-b55e-4c07d78e53df",
+    "name": "strong-creation"
+  },
+  "environment": {
+    "id": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+    "name": "production"
+  },
+  "staged": {
+    "patchId": "8792e593-e431-4a8e-adba-1bca47a765b5",
+    "status": "STAGED",
+    "changeCount": 17,
+    "message": null,
+    "createdAt": "2026-10-20T23:40:34.185Z",
+    "updatedAt": "2026-10-20T23:40:38.630Z"
+  },
+  "destructive": false,
+  "resources": [
+    {
+      "kind": "service",
+      "id": "1d39a32e-8297-4e5b-8b55-d6540542e80b",
+      "name": "orion-assistente",
+      "action": "update",
+      "changes": [
+        {
+          "path": "services.1d39a32e-8297-4e5b-8b55-d6540542e80b.deploy.preDeployCommand",
+          "displayName": "Pre Deploy Command",
+          "type": "updated",
+          "from": "[\"python -c \\\"import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); print('orion_release_flags=' + __import__('json').dumps({k: __import__('os').getenv(k, 'unset') for k in ['QR_AI_ENABLED','QR_CHANNELS_ENABLED','QR_LEGACY_CENTRAL_ENABLED','META_LIVE_SEND','INBOX_CONTROL_ENABLED','INBOX_SEND_ENABLED','INBOX_TOOLS_ENABLED','MARKETING_EXECUTION_ENABLED','MARKETING_RECONCILIATION_ENABLED','BIRTHDAY_COLLECTION_ENABLED','GROQ_PROBE_ON_START','ORION_EMAIL_DELIVERY_PROBE']}, sort_keys=True), flush=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_admin_identity_schema'], check=True); print('qr_bridge_probe_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.probe_qr_bridge'], check=True)\\\"\"]",
+          "to": "[\"python -c \\\"import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); print('orion_release_flags=' + __import__('json').dumps({k: __import__('os').getenv(k, 'unset') for k in ['QR_AI_ENABLED','QR_CHANNELS_ENABLED','QR_LEGACY_CENTRAL_ENABLED','META_LIVE_SEND','INBOX_CONTROL_ENABLED','INBOX_SEND_ENABLED','INBOX_TOOLS_ENABLED','MARKETING_EXECUTION_ENABLED','MARKETING_RECONCILIATION_ENABLED','BIRTHDAY_COLLECTION_ENABLED','GROQ_PROBE_ON_START','ORION_EMAIL_DELIVERY_PROBE']}, sort_keys=True), flush=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_admin_identity_schema'], check=True); subprocess.run([sys.executable, '-m', 'scripts.one_time_admin_demo_setup'], check=True); print('qr_bridge_probe_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.probe_qr_bridge'], check=True)\\\"\"]",
+          "destructive": false
+        },
+        {
+          "path": "services.1d39a32e-8297-4e5b-8b55-d6540542e80b.variables.ORION_ADMIN_DEMO_APPROVED_PLAN_SHA256.encryptedValue",
+          "displayName": "ORION_ADMIN_DEMO_APPROVED_PLAN_SHA256",
+          "type": "added",
+          "from": "",
+          "to": "<redacted>",
+          "destructive": false
+        },
+        {
+          "path": "services.1d39a32e-8297-4e5b-8b55-d6540542e80b.variables.ORION_ADMIN_DEMO_SETUP_PHASE.encryptedValue",
+          "displayName": "ORION_ADMIN_DEMO_SETUP_PHASE",
+          "type": "added",
+          "from": "",
+          "to": "<redacted>",
+          "destructive": false
+        },
+        {
+          "path": "services.1d39a32e-8297-4e5b-8b55-d6540542e80b.variables.ORION_ADMIN_DEMO_SETUP_RUN_ID.encryptedValue",
+          "displayName": "ORION_ADMIN_DEMO_SETUP_RUN_ID",
+          "type": "added",
+          "from": "",
+          "to": "<redacted>",
+          "destructive": false
+        },
+        {
+          "path": "services.1d39a32e-8297-4e5b-8b55-d6540542e80b.variables.ORION_ADMIN_DEMO_TENANT_ID.encryptedValue",
+          "displayName": "ORION_ADMIN_DEMO_TENANT_ID",
+          "type": "added",
+          "from": "",
+          "to": "<redacted>",
+          "destructive": false
+        },
+        {
+          "path": "services.1d39a32e-8297-4e5b-8b55-d6540542e80b.variables.ORION_RUN_ADMIN_DEMO_SETUP.encryptedValue",
+          "displayName": "ORION_RUN_ADMIN_DEMO_SETUP",
+          "type": "added",
+          "from": "",
+          "to": "<redacted>",
+          "destructive": false
+        },
+        {
+          "path": "services.1d39a32e-8297-4e5b-8b55-d6540542e80b.variables.ORION_RUN_ADMIN_IDENTITY_MIGRATION.encryptedValue",
+          "displayName": "ORION_RUN_ADMIN_IDENTITY_MIGRATION",
+          "type": "added",
+          "from": "",
+          "to": "<redacted>",
+          "destructive": false
+        },
+        {
+          "path": "services.1d39a32e-8297-4e5b-8b55-d6540542e80b.variables.PANEL_LEGACY_ADMIN_IDENTITY_ENABLED.encryptedValue",
+          "displayName": "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED",
+          "type": "added",
+          "from": "",
+          "to": "<redacted>",
+          "destructive": false
+        }
+      ]
+    },
+    {
+      "kind": "service",
+      "id": "f6c51234-ee8b-49ba-a06e-bcad37b54b67",
+      "name": "orion-worker",
+      "action": "update",
+      "changes": [
+        {
+          "path": "services.f6c51234-ee8b-49ba-a06e-bcad37b54b67.source.branch",
+          "displayName": "Branch",
+          "type": "updated",
+          "from": "codex/orion-marcflow-integrations-20261020",
+          "to": "codex/orion-marcflow-integrations-20261020",
+          "destructive": false
+        },
+        {
+          "path": "services.f6c51234-ee8b-49ba-a06e-bcad37b54b67.source.commitSha",
+          "displayName": "Commit Sha",
+          "type": "updated",
+          "from": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+          "to": "d11a86bc3b1efdef47394c62e39ee32da08ecabf",
+          "destructive": false
+        },
+        {
+          "path": "services.f6c51234-ee8b-49ba-a06e-bcad37b54b67.source.image",
+          "displayName": "Image",
+          "type": "removed",
+          "from": "",
+          "to": "",
+          "destructive": false
+        },
+        {
+          "path": "services.f6c51234-ee8b-49ba-a06e-bcad37b54b67.source.repo",
+          "displayName": "Repo",
+          "type": "updated",
+          "from": "QGBALTIGO/orion-assistente",
+          "to": "QGBALTIGO/orion-assistente",
+          "destructive": false
+        },
+        {
+          "path": "services.f6c51234-ee8b-49ba-a06e-bcad37b54b67.deploy.preDeployCommand",
+          "displayName": "Pre Deploy Command",
+          "type": "updated",
+          "from": "[\"python -c \\\"import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); print('communication_schema_barrier_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_communication_schema'], check=True)\\\"\"]",
+          "to": "[\"python -c \\\"import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); from app import legacy_admin_identity; legacy_admin_identity.configuration_binding(); print('native_admin_binding_configuration_valid', flush=True); print('admin_identity_schema_barrier_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_admin_identity_schema'], check=True)\\\"\"]",
+          "destructive": false
+        },
+        {
+          "path": "services.f6c51234-ee8b-49ba-a06e-bcad37b54b67.deploy.preDeployTimeoutSeconds",
+          "displayName": "Pre Deploy Timeout Seconds",
+          "type": "updated",
+          "from": "600",
+          "to": "600",
+          "destructive": false
+        },
+        {
+          "path": "services.f6c51234-ee8b-49ba-a06e-bcad37b54b67.variables.PANEL_ADMIN_PASSWORD_HASH.encryptedValue",
+          "displayName": "PANEL_ADMIN_PASSWORD_HASH",
+          "type": "added",
+          "from": "",
+          "to": "<redacted>",
+          "destructive": false
+        },
+        {
+          "path": "services.f6c51234-ee8b-49ba-a06e-bcad37b54b67.variables.PANEL_ADMIN_USERNAME.encryptedValue",
+          "displayName": "PANEL_ADMIN_USERNAME",
+          "type": "added",
+          "from": "",
+          "to": "<redacted>",
+          "destructive": false
+        },
+        {
+          "path": "services.f6c51234-ee8b-49ba-a06e-bcad37b54b67.variables.PANEL_LEGACY_ADMIN_IDENTITY_ENABLED.encryptedValue",
+          "displayName": "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED",
+          "type": "added",
+          "from": "",
+          "to": "<redacted>",
+          "destructive": false
+        }
+      ]
+    }
+  ],
+  "sharedVariables": [],
+  "privateNetworkDisabled": null
+}

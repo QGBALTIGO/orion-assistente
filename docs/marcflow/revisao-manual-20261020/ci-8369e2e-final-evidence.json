@@ -1,0 +1,375 @@
+{
+  "schema_version": 1,
+  "commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+  "workflow_url": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39505942545",
+  "media_workflow_url": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39505942672",
+  "jobs": {
+    "jobs": [
+      {
+        "id": 118914754166,
+        "name": "pytest",
+        "status": "completed",
+        "conclusion": "success",
+        "run_id": 39505942545,
+        "logs_url": null,
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1
+          },
+          {
+            "name": "Initialize containers",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3
+          },
+          {
+            "name": "Run actions/setup-python@v5",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4
+          },
+          {
+            "name": "Instalar dependências",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5
+          },
+          {
+            "name": "Cliente PostgreSQL 16 para validar backup e restauração isolados",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6
+          },
+          {
+            "name": "Validar sintaxe do serviço privado de transcrição",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7
+          },
+          {
+            "name": "Provisionar papéis separados",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8
+          },
+          {
+            "name": "Aplicar migration",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9
+          },
+          {
+            "name": "Testar pg_dump/restore em banco efêmero",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 10
+          },
+          {
+            "name": "Rodar suite incluindo RLS real",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 11
+          },
+          {
+            "name": "Validar build Docker, Compose e health HTTP",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 12
+          },
+          {
+            "name": "Post Run actions/setup-python@v5",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 22
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 23
+          },
+          {
+            "name": "Stop containers",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 24
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 25
+          }
+        ]
+      },
+      {
+        "id": 118914754525,
+        "name": "ASR faster-whisper - CPU, Docker e testes",
+        "status": "completed",
+        "conclusion": "success",
+        "run_id": 39505942545,
+        "logs_url": null,
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2
+          },
+          {
+            "name": "Run actions/setup-python@v5",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3
+          },
+          {
+            "name": "Install ASR dependencies",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4
+          },
+          {
+            "name": "Unit and API tests",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5
+          },
+          {
+            "name": "Build real inference image",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6
+          },
+          {
+            "name": "Synthetic speech smoke test",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7
+          },
+          {
+            "name": "Post Run actions/setup-python@v5",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 13
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 14
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 15
+          }
+        ]
+      },
+      {
+        "id": 118914754548,
+        "name": "QR bridge — Node, IPv6, segurança e Docker",
+        "status": "completed",
+        "conclusion": "success",
+        "run_id": 39505942545,
+        "logs_url": null,
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2
+          },
+          {
+            "name": "Run actions/setup-node@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3
+          },
+          {
+            "name": "Sintaxe Node do conector",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4
+          },
+          {
+            "name": "Suite de telefone, pareamento, LID e IPv6",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5
+          },
+          {
+            "name": "Instalar dependências isoladas dos testes de interface",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6
+          },
+          {
+            "name": "Fluxos DOM da gestão e do agendamento público",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7
+          },
+          {
+            "name": "Build da imagem real Node Baileys",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8
+          },
+          {
+            "name": "Provar contratos de domínios com a biblioteca instalada, sem rede",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9
+          },
+          {
+            "name": "Smoke test real Baileys + mensagem gerada e cache cifrado no contêiner",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 10
+          },
+          {
+            "name": "Verificar cache de retry com biblioteca real no contêiner",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 11
+          },
+          {
+            "name": "Post Run actions/setup-node@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 21
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 22
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 23
+          }
+        ]
+      }
+    ]
+  },
+  "media_jobs": {
+    "jobs": [
+      {
+        "id": 118914754966,
+        "name": "Image format, authorization and persistence tests",
+        "status": "completed",
+        "conclusion": "success",
+        "run_id": 39505942672,
+        "logs_url": null,
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2
+          },
+          {
+            "name": "Run actions/setup-python@v5",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3
+          },
+          {
+            "name": "Install application and test dependencies",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4
+          },
+          {
+            "name": "Verify Python syntax",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5
+          },
+          {
+            "name": "Run isolated media tests (no database or bucket required)",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6
+          },
+          {
+            "name": "Post Run actions/setup-python@v5",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 11
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 12
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 13
+          }
+        ]
+      }
+    ]
+  },
+  "summaries": {
+    "backend": [
+      "2026-10-20T22:09:38.4532235Z No broken requirements found.",
+      "2026-10-20T22:15:48.7162062Z 4909 passed, 1 skipped, 226 warnings in 361.37s (0:06:01)",
+      "2026-10-20T22:16:23.1439927Z #16 19.03 No broken requirements found.",
+      "2026-10-20T22:18:46.9475989Z 4773 passed, 137 skipped, 10 warnings in 130.14s (0:02:10)"
+    ],
+    "qr_ui": [
+      "2026-10-20T22:09:09.1377010Z # tests 446",
+      "2026-10-20T22:09:09.1377394Z # pass 446",
+      "2026-10-20T22:09:09.1377578Z # fail 0",
+      "2026-10-20T22:09:09.1378196Z # skipped 0",
+      "2026-10-20T22:09:33.1233312Z # tests 325",
+      "2026-10-20T22:09:33.1234100Z # pass 325",
+      "2026-10-20T22:09:33.1234452Z # fail 0",
+      "2026-10-20T22:09:33.1235197Z # skipped 0"
+    ],
+    "asr": [
+      "2026-10-20T22:09:20.1125194Z 4 passed in 1.50s"
+    ],
+    "media": [
+      "2026-10-20T22:09:18.5180930Z No broken requirements found.",
+      "2026-10-20T22:09:20.2365817Z 10 passed in 0.72s"
+    ]
+  },
+  "totals_are_overlapping": true,
+  "constraints_proof": "constraints-ci-8369e2e-proof.json"
+}

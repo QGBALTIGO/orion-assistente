@@ -1,0 +1,49 @@
+{
+  "verified_at_utc": "2026-10-21T00:23:55.916Z",
+  "deployment_id": "d22e7b89-7b0d-473a-8ba9-8efd6021eb02",
+  "status": "SUCCESS",
+  "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+  "setup": {
+    "timestamp": "2026-10-21T00:23:12.180796992Z",
+    "message": "",
+    "level": "info",
+    "audit_appended": true,
+    "backup_bytes": 476701,
+    "backup_id": "dec65625-cd92-4dfb-a2da-51842420fdeb",
+    "backup_sha256": "c89ea23f257fd62746357468a76fb95355383ddadc9899a1c19e294d8511b936",
+    "credential_configuration_preserved": true,
+    "demo_bot_enabled": true,
+    "demo_owner_added": true,
+    "existing_records_preserved": true,
+    "identity_provisioned": true,
+    "plan_sha256": "dbc3562c59f28b8c1bd239dcf2cb83a77b7bd5523c52d8884d2bac67e162570d",
+    "rehearsal_verified": true,
+    "restore_verified": true,
+    "revision": "0030_legacy_admin_identity",
+    "run_id": "dec65625-cd92-4dfb-a2da-51842420fdeb",
+    "session_preserved": true,
+    "status": "complete",
+    "tenant_id": "82552b25-d0c8-5338-8c42-49f11de59e45"
+  },
+  "gate": {
+    "timestamp": "2026-10-21T00:22:52.416091789Z",
+    "message": "",
+    "level": "info",
+    "ok": true,
+    "status": "admin_identity_schema_ready",
+    "schema_marker": "0030_legacy_admin_identity"
+  },
+  "release_flags": "orion_release_flags={\"BIRTHDAY_COLLECTION_ENABLED\": \"0\", \"GROQ_PROBE_ON_START\": \"0\", \"INBOX_CONTROL_ENABLED\": \"0\", \"INBOX_SEND_ENABLED\": \"0\", \"INBOX_TOOLS_ENABLED\": \"1\", \"MARKETING_EXECUTION_ENABLED\": \"0\", \"MARKETING_RECONCILIATION_ENABLED\": \"0\", \"META_LIVE_SEND\": \"0\", \"ORION_EMAIL_DELIVERY_PROBE\": \"0\", \"QR_AI_ENABLED\": \"1\", \"QR_CHANNELS_ENABLED\": \"1\", \"QR_LEGACY_CENTRAL_ENABLED\": \"0\"}",
+  "bridge_connected": true,
+  "normal_hook_restored": true,
+  "one_time_options_disabled": true,
+  "native_runtime_flag_kept1": true,
+  "cleanup_did_not_redeploy": true,
+  "source": {
+    "repo": "QGBALTIGO/orion-assistente",
+    "branch": "codex/orion-marcflow-integrations-20261020",
+    "commitSha": "a85da1c9ade64a5fc21bc9927efef727447ba83f"
+  },
+  "credential_values_not_copied": true,
+  "no_campaigns_or_task_test_messages": true
+}

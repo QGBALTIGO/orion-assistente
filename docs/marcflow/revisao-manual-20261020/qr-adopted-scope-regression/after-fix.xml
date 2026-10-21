@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="18" time="11.484" timestamp="2026-10-20T19:57:37.785421-04:00" hostname="DESKTOP-3Q48M6B"><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_ai_uses_persistent_revision_with_global_control_off[0]" time="0.031" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_ai_uses_persistent_revision_with_global_control_off[1]" time="0.022" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_human_pause_or_pending_slot_never_runs_ai[human-None]" time="0.021" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_human_pause_or_pending_slot_never_runs_ai[paused-None]" time="0.021" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_human_pause_or_pending_slot_never_runs_ai[waiting-None]" time="0.019" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_human_pause_or_pending_slot_never_runs_ai[closed-None]" time="0.017" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_human_pause_or_pending_slot_never_runs_ai[ai-synthetic-pending]" time="0.019" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_control_failure_restores_request_context" time="0.020" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_missing_intake_revision_does_not_create_consent" time="0.021" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_stale_notice_and_duplicate_keep_existing_receipts" time="0.018"><failure message="AssertionError: assert {'answer': No..._revision': 7} == {'answer': No...mitted': True}&#10;  &#10;  Omitting 3 identical items, use -vv to show&#10;  Left contains 1 more item:&#10;  {'control_revision': 7}&#10;  Use -v to get more diff">adopted = namespace(identity=ChannelIdentity(channel_id=UUID('4ee2762a-c528-44be-8e6d-bad5139708b2'), tenant_id=UUID('9014af54-0...e.ScopedRedis object at 0x000001B25CFE60F0&gt;, calls=[], api=&lt;fastapi.applications.FastAPI object at 0x000001B25CFE6480&gt;)
+
+    async def test_adopted_stale_notice_and_duplicate_keep_existing_receipts(adopted):
+        response = await request(adopted.api, adopted.identity, intake_revision=99999)
+&gt;       assert response.json() == {"answer": None, "step": "superseded", "not_committed": True}
+E       AssertionError: assert {'answer': No..._revision': 7} == {'answer': No...mitted': True}
+E         
+E         Omitting 3 identical items, use -vv to show
+E         Left contains 1 more item:
+E         {'control_revision': 7}
+E         Use -v to get more diff
+
+tests\unit\test_qr_managed_adoption_scope.py:123: AssertionError</failure></testcase><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_identity_change_before_first_write_remains_rejected[fence]" time="0.018" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_identity_change_before_first_write_remains_rejected[lease_owner]" time="0.018" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_identity_change_before_first_write_remains_rejected[owner_account_id]" time="0.018" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_identity_change_before_first_write_remains_rejected[tenant_id]" time="0.019"><failure message="AssertionError: assert UUID('6fb41622-4590-4427-9b96-d25305c77f64') == UUID('842b0aee-c9b8-420c-b9ef-2341f5e71957')&#10; +  where UUID('842b0aee-c9b8-420c-b9ef-2341f5e71957') = ChannelIdentity(channel_id=UUID('de8b7e04-1760-46d3-9c32-405143cf33e1'), tenant_id=UUID('842b0aee-c9b8-420c-b9ef-2341f...861-4486-8797-9b2cf759befc'), allowed_sender=True, assistant_enabled=True, legacy_transport=True, central_adopted=True).tenant_id">adopted = namespace(identity=ChannelIdentity(channel_id=UUID('de8b7e04-1760-46d3-9c32-405143cf33e1'), tenant_id=UUID('842b0aee-c...e.ScopedRedis object at 0x000001B25CDA0A40&gt;, calls=[], api=&lt;fastapi.applications.FastAPI object at 0x000001B25CDA0C20&gt;)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001B25CDA0DD0&gt;
+field = 'tenant_id'
+
+    @pytest.mark.parametrize("field", ["fence", "lease_owner", "owner_account_id", "tenant_id", "channel_id",
+                                       "assistant_enabled", "allowed_sender"])
+    async def test_adopted_identity_change_before_first_write_remains_rejected(adopted, monkeypatch, field):
+        async def turn(*_args, **_kwargs):
+            value = 2 if field == "fence" else False if field in {"assistant_enabled", "allowed_sender"} else uuid4()
+            adopted.identities[str(adopted.identity.channel_id)] = replace(adopted.identity, **{field: value})
+            await revision.check_before_write()
+            adopted.calls.append("must not write")
+        monkeypatch.setattr(qr_ai, "turn", turn)
+&gt;       response = await request(adopted.api, adopted.identity)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_qr_managed_adoption_scope.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\unit\test_qr_channels_scope.py:93: in request
+    return await client.post(f"/internal/qr/channels/{channel.channel_id}/ai/reply",
+.venv\Lib\site-packages\httpx\_client.py:1859: in post
+    return await self.request(
+.venv\Lib\site-packages\httpx\_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\httpx\_client.py:1629: in send
+    response = await self._send_handling_auth(
+.venv\Lib\site-packages\httpx\_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+.venv\Lib\site-packages\httpx\_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\httpx\_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\httpx\_transports\asgi.py:170: in handle_async_request
+    await self.app(scope, receive, send)
+.venv\Lib\site-packages\fastapi\applications.py:1194: in __call__
+    await super().__call__(scope, receive, send)
+.venv\Lib\site-packages\starlette\applications.py:96: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv\Lib\site-packages\starlette\middleware\errors.py:186: in __call__
+    raise exc
+.venv\Lib\site-packages\starlette\middleware\errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+.venv\Lib\site-packages\fastapi\telemetry\_asgi.py:151: in __call__
+    await self.app(scope, receive, send)
+.venv\Lib\site-packages\starlette\middleware\exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+.venv\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+.venv\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+.venv\Lib\site-packages\starlette\routing.py:678: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:2809: in app
+    await route.handle(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:1837: in handle
+    await self.original_router.handle(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:2892: in handle
+    await included_router._handle_selected(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:1863: in _handle_selected
+    await original_route.handle(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:1326: in handle
+    await effective_context.app(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:166: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+.venv\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+.venv\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+.venv\Lib\site-packages\fastapi\routing.py:152: in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\fastapi\routing.py:745: in app
+    raw_response = await run_endpoint_function(
+.venv\Lib\site-packages\fastapi\routing.py:372: in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\qr_ai.py:2944: in managed_qr_reply
+    result = await run_locked(identity.tenant_id, payload.phone, payload.text,
+app\qr_ai.py:2741: in run_locked
+    result = await turn(tenant, phone, body, redis, namespace, preview=preview)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\unit\test_qr_managed_adoption_scope.py:138: in turn
+    await revision.check_before_write()
+app\qr_intake_revision.py:202: in check_before_write
+    await assert_current()
+app\qr_intake_revision.py:186: in assert_current
+    await qr_channel_scope.assert_current()
+app\qr_channel_scope.py:142: in assert_current
+    fresh = await scope.guard()
+            ^^^^^^^^^^^^^^^^^^^
+app\qr_ai.py:2924: in revalidate
+    if (inbox_control.enabled() or fresh.central_adopted) and await inbox_control.assistant_revision(fresh.tenant_id, channel_id, payload.phone) != control_revision:
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\inbox_control.py:201: in assistant_revision
+    async with tenant_transaction(db, tenant):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\AppData\Local\Programs\Python\Python312\Lib\contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+db = &lt;test_qr_managed_adoption_scope.adopted.&lt;locals&gt;.DB object at 0x000001B25CCD6900&gt;
+tenant = UUID('6fb41622-4590-4427-9b96-d25305c77f64')
+
+    @asynccontextmanager
+    async def transaction(db, tenant):
+&gt;       assert tenant == identity.tenant_id
+E       AssertionError: assert UUID('6fb41622-4590-4427-9b96-d25305c77f64') == UUID('842b0aee-c9b8-420c-b9ef-2341f5e71957')
+E        +  where UUID('842b0aee-c9b8-420c-b9ef-2341f5e71957') = ChannelIdentity(channel_id=UUID('de8b7e04-1760-46d3-9c32-405143cf33e1'), tenant_id=UUID('842b0aee-c9b8-420c-b9ef-2341f...861-4486-8797-9b2cf759befc'), allowed_sender=True, assistant_enabled=True, legacy_transport=True, central_adopted=True).tenant_id
+
+tests\unit\test_qr_managed_adoption_scope.py:69: AssertionError</failure></testcase><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_identity_change_before_first_write_remains_rejected[channel_id]" time="0.020" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_identity_change_before_first_write_remains_rejected[assistant_enabled]" time="0.019" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_identity_change_before_first_write_remains_rejected[allowed_sender]" time="0.018" /><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_handoff_during_inference_prevents_first_write" time="0.017" /></testsuite></testsuites>

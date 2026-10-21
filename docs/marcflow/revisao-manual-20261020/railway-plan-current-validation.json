@@ -1,0 +1,38 @@
+{
+  "commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+  "validation": "static AST only; no application or production execution",
+  "hooks": {
+    "api_predeploy": {
+      "compiled": true,
+      "sequential_modules": [
+        "scripts.one_time_inbox_migration",
+        "scripts.one_time_communication_migration",
+        "scripts.wait_for_communication_schema",
+        "scripts.probe_qr_bridge"
+      ],
+      "subprocess_check_required": true,
+      "versions_count": 18,
+      "boto3": "1.43.116"
+    },
+    "worker_predeploy": {
+      "compiled": true,
+      "sequential_modules": [
+        "scripts.wait_for_communication_schema"
+      ],
+      "subprocess_check_required": true,
+      "versions_count": 18,
+      "boto3": "1.43.116"
+    },
+    "adoption_predeploy": {
+      "compiled": true,
+      "sequential_modules": [
+        "scripts.one_time_legacy_adoption",
+        "scripts.wait_for_communication_schema",
+        "scripts.probe_qr_bridge"
+      ],
+      "subprocess_check_required": true,
+      "versions_count": 18,
+      "boto3": "1.43.116"
+    }
+  }
+}

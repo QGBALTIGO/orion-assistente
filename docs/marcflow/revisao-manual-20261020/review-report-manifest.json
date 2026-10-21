@@ -1,0 +1,745 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-10-21T00:26:10.049935+00:00",
+  "status_source": "API a85da1c e setup do próprio admin publicados/verificados: identidade, proprietário somente da demonstração e IA desse cadastro ativados com backup/restauração. SessãoQR8369 e worker d11 preservados. Registro protegido da sessão(C) preparado; central humana ainda não ativada.",
+  "publication_status": "API a85da1c e setup do próprio admin publicados/verificados: identidade, proprietário somente da demonstração e IA desse cadastro ativados com backup/restauração. SessãoQR8369 e worker d11 preservados. Registro protegido da sessão(C) preparado; central humana ainda não ativada.",
+  "publication_status_provenance": {
+    "scope": "operator_supplied_receipt",
+    "receipt_field": "publication_status",
+    "missing_receipt_status_is_not_inferred": true
+  },
+  "raw_source": {
+    "path": "manual-inventory.json",
+    "sha256": "14aaa5ca3f1101bfa882d808b488ba9366030133e7ffe6344d3f2a887422838b"
+  },
+  "reviewed_records": 1247,
+  "findings_unique": 13,
+  "source_snapshot_hashes_checked": 102,
+  "primary_source_files": 80,
+  "dependency_files": 33,
+  "findings_observations": 14,
+  "compact_sha256": "416f8e41420e9f9336e4807c6da9dcdf3ef49b64ddaf13c670b2d3efa721fd5c",
+  "report_sha256": "f270704896085d2dc63cd97520b4f7c425c8b7f434afbc68187f2c7a1f335904",
+  "receipt": {
+    "data": {
+      "schema_version": 1,
+      "updated_at_utc": "2026-10-21T00:24:56.879Z",
+      "publication_status": "API a85da1c e setup do próprio admin publicados/verificados: identidade, proprietário somente da demonstração e IA desse cadastro ativados com backup/restauração. SessãoQR8369 e worker d11 preservados. Registro protegido da sessão(C) preparado; central humana ainda não ativada.",
+      "ci": {
+        "status": "passed",
+        "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+        "summary": "a85da1c qualificado: backend PG16/Redis5.074passed1skip; DockerCompose4.909passed166skip(sobrepostos); QR446,DOM329,ASR4+WAV/OGG,mídia10. Pipcheck e104matchesdos52pins emdoisambientes. Sem homologação de login/envio real.",
+        "evidence": [
+          {
+            "kind": "workflow",
+            "url": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39519120153"
+          },
+          {
+            "kind": "media_workflow",
+            "url": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39519120190"
+          },
+          {
+            "kind": "actual_job_results",
+            "path": "ci-a85da1c-final-evidence.json"
+          },
+          {
+            "kind": "exact_dependencies",
+            "path": "constraints-ci-a85da1c-proof.json"
+          }
+        ],
+        "previous_deployed_qualification": {
+          "status": "passed",
+          "commit": "d11a86bc3b1efdef47394c62e39ee32da08ecabf",
+          "summary": "d11a86b completo: backendPG16/Redis5043passed1skip; DockerCompose4881passed163skip (sobrepostos); QR446, DOM329, ASR4+WAV/OGG sintético, mídia10. Pipcheck e52pins em2ambientes/104matches confirmados. Sem homologação de login/envio real.",
+          "evidence": [
+            {
+              "kind": "workflow",
+              "url": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39514675776"
+            },
+            {
+              "kind": "media_workflow",
+              "url": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39514675733"
+            },
+            {
+              "kind": "actual_job_results",
+              "path": "ci-d11a86b-final-evidence.json"
+            },
+            {
+              "kind": "exact_python_versions",
+              "path": "constraints-ci-d11a86b-proof.json"
+            }
+          ]
+        },
+        "historical_8369_qualification": {
+          "status": "passed",
+          "summary": "Árvore limpa8369e2e: PostgreSQL/Redis4909passed1skip; DockerCompose4773passed137skip; QR446passed; UI325passed; ASR4passed+smoke sintético; mídia10passed. Compatibilidadepipcheck e52pins em ambos ambientes confirmados. Grupos sobrepostos, não somar.",
+          "commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+          "evidence": [
+            {
+              "kind": "workflow",
+              "url": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39505942545"
+            },
+            {
+              "kind": "media_workflow",
+              "url": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39505942672"
+            },
+            {
+              "kind": "job_results",
+              "path": "ci-8369e2e-final-evidence.json"
+            },
+            {
+              "kind": "exact_python_versions",
+              "path": "constraints-ci-8369e2e-proof.json"
+            }
+          ]
+        },
+        "qualification_attempts": [
+          {
+            "commit": "d2134d1951e477243e47c247e7d32dfb2af1d71a",
+            "status": "failed",
+            "passed": 5012,
+            "failed": 16,
+            "skipped": 1,
+            "cause": "New PostgreSQL test connections changed the role but retained the owner credential; no production operation was attempted.",
+            "evidence": "ci-d2134d1-backend-failure.log"
+          },
+          {
+            "commit": "d11a86bc3b1efdef47394c62e39ee32da08ecabf",
+            "status": "passed",
+            "change_scope": "Four test files only; runtime byte comparison unchanged from d2134d1."
+          },
+          {
+            "commit": "08a5cc09f849bf73e9d60a76179912eeb34003fc",
+            "status": "passed",
+            "change_scope": "One setup snapshot function plus two regression test modules; app/schema/adoption/dependencies/QR sources unchanged."
+          },
+          {
+            "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+            "status": "passed",
+            "change_scope": "Only app/qr_ai.py plus focused unit and PostgreSQL ingress regressions; schema/QR Node/locks unchanged."
+          }
+        ],
+        "previous_lease_qualification": {
+          "status": "passed",
+          "commit": "08a5cc09f849bf73e9d60a76179912eeb34003fc",
+          "summary": "08a5cc0 qualificado: backendPG16/Redis5047passed1skip; Compose4882passed166skip (sobrepostos); QR446,DOM329,ASR4+smoke,mídia10,pipcheck/104matches. Essa CI não qualifica o ajuste posterior do escopo da IA adotada.",
+          "evidence": [
+            {
+              "kind": "workflow",
+              "url": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39517658035"
+            },
+            {
+              "kind": "workflow",
+              "url": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39517657971"
+            },
+            {
+              "kind": "actual_job_results",
+              "path": "ci-08a5cc0-final-evidence.json"
+            },
+            {
+              "kind": "exact_dependencies",
+              "path": "constraints-ci-08a5cc0-proof.json"
+            }
+          ]
+        }
+      },
+      "deployments": [
+        {
+          "name": "API fase A1",
+          "status": "failed",
+          "summary": "15966935 FAILED tested_runtime_version_mismatch; boto3/botocore resolveram1.43.116, guard exigia1.43.115. Encerrou antes de qualquer migration. Tentativa histórica; não promovida.",
+          "commit": "ab1a1386828f5aafe271e977e8f667689e84384c",
+          "evidence": [
+            {
+              "kind": "railway",
+              "url": "https://railway.com/project/55750961-99ca-495e-b55e-4c07d78e53df/service/1d39a32e-8297-4e5b-8b55-d6540542e80b?environmentId=162d0407-3d4f-4163-9cb2-0c90154c707f"
+            },
+            {
+              "kind": "readback",
+              "path": "railway-publication-evidence.json"
+            }
+          ]
+        },
+        {
+          "name": "API A1 corrigida",
+          "status": "succeeded",
+          "summary": "4599d478 SUCCESS em8369e2e. Inbox já0028; communication migrou para0029 com backup463628bytes, restore_verified e rehearsal_verified true; counts preservados. Gate29 pronto; bridge stateconnected; assets públicos coincidem. IA1, central/control/send0, Meta/campanhas0.",
+          "commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+          "evidence": [
+            {
+              "kind": "actual_predeploy_receipts",
+              "path": "railway-A2-complete.json"
+            },
+            {
+              "kind": "public_get",
+              "path": "public-after-A2.json"
+            }
+          ]
+        },
+        {
+          "name": "Worker (B)",
+          "status": "succeeded",
+          "summary": "2b6c3e7d SUCCESS em8369e2e, gatecommunication_schema_ready0029. Controle/envio0; Meta/campanhas0; IA1.",
+          "commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+          "evidence": [
+            {
+              "kind": "actual_worker_receipts",
+              "path": "railway-BC-results.json"
+            }
+          ]
+        },
+        {
+          "name": "QR (B)",
+          "status": "succeeded",
+          "summary": "29a5299e SUCCESS em8369e2e. Volume /data original preservado; authbackup verified_existing96arquivos e logdispositivo conectado. Central0; aviso self/operator tests0; sem mensagens de teste.",
+          "commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+          "evidence": [
+            {
+              "kind": "actual_qr_and_volume_receipts",
+              "path": "railway-BC-results.json"
+            },
+            {
+              "kind": "public_get",
+              "path": "public-after-B.json"
+            }
+          ]
+        },
+        {
+          "name": "Registro da sessão na central (C)",
+          "status": "blocked",
+          "summary": "e34901b9 FAILED antes do backup/INSERT: existing_tenant_not_active. Significa cadastro configurado inexistente, status diferente deactive ou bot_enabledfalse; a guarda não distingue a causa. Nenhum vínculo foi forçado. API A2 segueonline. Flags one-time/central devolvidas a0 sem restart; hooknormal seguro configurado. Etapas D/E/F não iniciadas.",
+          "commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+          "evidence": [
+            {
+              "kind": "actual_stop_and_cleanup",
+              "path": "railway-BC-results.json"
+            },
+            {
+              "kind": "live_release_and_get",
+              "path": "public-after-B.json"
+            }
+          ]
+        },
+        {
+          "name": "Diagnóstico de cadastro somente leitura",
+          "status": "succeeded",
+          "commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+          "summary": "ca609c23 SUCCESS com a mesma versão. app_support e SET TRANSACTION READ ONLY confirmaram que o QR aponta para82552b25/orion-demo: active, bot_enabledfalse, active_member_owners0 e alias ausente. A primeira tentativa f159c7b9 falhou por SELECT negado a inbox_channel_links; a consulta foi reduzida sem mudar permissões e validada3/3 no clone PG16 antes da repetição. Hook normal restaurado sem redeploy, sem patch pendente; cinco serviços online. Não houve mudança no cadastro, proprietário ou sessão.",
+          "evidence": [
+            {
+              "kind": "actual_readonly_result",
+              "path": "railway-readonly-diagnostic-results.json"
+            },
+            {
+              "kind": "isolated_query_validation",
+              "path": "diagnostic-clone-summary.json"
+            },
+            {
+              "kind": "public_get_after_diagnostic",
+              "path": "public-after-diagnostic.json"
+            }
+          ]
+        },
+        {
+          "name": "Compatibilidade nativa do administrador e esquema0030",
+          "status": "succeeded",
+          "commit": "d11a86bc3b1efdef47394c62e39ee32da08ecabf",
+          "summary": "61a5b9f9 SUCCESS d11a86b:0030complete, backup474010bytes/readback/restore/rehearsaltrue; schema gate30 pronto; plan_only/writes_performedfalse SHA03a5dcc9; bridgeconnected. Hook normal30 restaurado e opções one-time desligadas sem redeploy. Demais serviços inalterados.",
+          "evidence": [
+            {
+              "kind": "actual_predeploy_receipts",
+              "path": "railway-native-admin-phase1-results.json"
+            },
+            {
+              "kind": "public_get_and_assets",
+              "path": "public-after-native-admin-phase1.json"
+            }
+          ]
+        },
+        {
+          "name": "Vínculo do próprio admin e IA somente da demonstração",
+          "status": "failed",
+          "commit": "d11a86bc3b1efdef47394c62e39ee32da08ecabf",
+          "summary": "Usuárioautorizou/aplicou8792e593. APIee59fb67 parouapproved_plan_mismatchantesbackup/escrita; workerCF3d11SUCCESS bindingvalid/gate30. Semidentidade/membership/bot/aliasgravadospor este apply. Opções APIoneshot/nativa0 e hooknormal30restauradossemredeploy. Prova isolada reproduz lease-only invalidandohash, sematribuircausaexata aoestado real.",
+          "evidence": [
+            {
+              "kind": "actual_predeploy_failure_and_worker",
+              "path": "railway-native-admin-setup-attempt1-results.json"
+            },
+            {
+              "kind": "isolated_reproduction",
+              "path": "diagnose_admin_plan_determinism.json"
+            }
+          ]
+        },
+        {
+          "name": "API corrigida e novo plano somente de leitura",
+          "status": "succeeded",
+          "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+          "summary": "a8fe8606 SUCCESS a85da1c: versões/gate0030 corretos; plan_only dbc3562c/writes_performedfalse, quatro alterações propostas, sessão preservada e bridgeconnected. Hooknormal restaurado e oneshots/native0limpos semredeploy.",
+          "evidence": [
+            {
+              "kind": "reviewed_staged_patch",
+              "path": "native-admin-lease-readonly-staged.json"
+            },
+            {
+              "kind": "static_plan_validation",
+              "path": "native-admin-lease-readonly-validation.json"
+            },
+            {
+              "kind": "actual_readonly_plan_and_cleanup",
+              "path": "railway-native-admin-readonly-v2-results.json"
+            },
+            {
+              "kind": "public_get_and_assets",
+              "path": "public-after-native-admin-readonly-v2.json"
+            }
+          ]
+        },
+        {
+          "name": "Setup do próprio admin — plano fresco dbc3562c",
+          "status": "succeeded",
+          "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+          "summary": "d22e7b89 SUCCESS a85da1c: planoexato dbc3562c aplicado. Identidade do próprio admin, owner somente demo, demo bottrue e auditoria confirmados; backup476701bytes/readback/restore/rehearsal/session/existing_recordspreserved. Hooknormal/oneshotslimpos semrestart; flag nativamantida1.",
+          "evidence": [
+            {
+              "kind": "reviewed_staged_patch",
+              "path": "native-admin-setup-v2-staged.json"
+            },
+            {
+              "kind": "actual_setup_and_cleanup",
+              "path": "railway-native-admin-setup-v2-results.json"
+            }
+          ]
+        },
+        {
+          "name": "Registro QR(C) com admin nativo",
+          "status": "pending",
+          "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+          "summary": "Patch8ded9c13:5campossomenteAPIparaalias register comUUIDnovo7e24fded,backend a85jápublicado e setupadminconcluído. Control/send0; QRworker/volumesintocados; aguardaaplicaçãomanual/recibo.",
+          "evidence": [
+            {
+              "kind": "reviewed_staged_patch",
+              "path": "native-central-C-staged.json"
+            },
+            {
+              "kind": "static_hook_review",
+              "path": "native-central-C-prepared-validation.json"
+            }
+          ]
+        }
+      ],
+      "validation": {
+        "summary": "Testes locais e CI comprovados por recibos separados; grupos sobrepostos não são somados.",
+        "results": {
+          "backend": {
+            "passed": 4295,
+            "skipped": 2,
+            "evidence": [
+              "backend-final.xml",
+              "backend-run.json"
+            ]
+          },
+          "ui": {
+            "passed": 325,
+            "evidence": [
+              "ui-all-after-manual.log"
+            ]
+          },
+          "qr_current": {
+            "passed": 442,
+            "skipped": 4,
+            "evidence": [
+              "qr-notice-final.log"
+            ]
+          },
+          "legacy_meta": {
+            "passed": 13,
+            "evidence": [
+              "legacy-final.xml"
+            ]
+          },
+          "fulfillment": {
+            "passed": 12,
+            "evidence": [
+              "fulfillment-final.xml"
+            ]
+          },
+          "adoption": {
+            "unique_cases_passed": 23,
+            "postgres_cases": 17,
+            "unit_cases": 6,
+            "evidence": [
+              "adoption-positive.xml",
+              "adoption-compat-final.xml"
+            ],
+            "bridge_proof": "synthetic",
+            "redis": "real isolated loopback"
+          },
+          "postgres_broad": {
+            "status": "historical_run_failed",
+            "passed": 470,
+            "failed": 2,
+            "deselected": 4304,
+            "seconds": 2785.28,
+            "collection": "Working tree collected before late fixture corrections; not attributed to a clean committed SHA.",
+            "failures": [
+              "test_booking.py::test_signed_phone_scopes_customer_cancel_and_reschedule",
+              "test_commercial_fulfillment_postgres.py::test_product_cancel_does_not_cancel_booking_and_booking_cancel_preserves_order_reference"
+            ],
+            "reconciliation": "Both fixture contracts corrected; booking-file-final37passed and fulfillment-final12passed. Final clean8369e2e CI4909passed1skip and Compose4773passed137skip qualified all backend changes; historical local failed run retained.",
+            "evidence": [
+              "postgres-final.xml",
+              "booking-file-final.xml",
+              "fulfillment-final.xml"
+            ],
+            "test_groups_overlap": true
+          },
+          "booking_final": {
+            "passed": 37,
+            "evidence": [
+              "booking-file-final.xml",
+              "booking-ci-fixture-fix.json"
+            ],
+            "overlaps_target": true
+          },
+          "backend_ci_d9": {
+            "passed": 4878,
+            "skipped": 1,
+            "scope": "PG16/Redis real, full suite; Compose separate and overlapping"
+          },
+          "compose_d9": {
+            "passed": 4733,
+            "skipped": 137,
+            "errors": 9,
+            "scope": "test setup hostname Redis; no runtime failure attested",
+            "evidence": [
+              "ci-d9-compose-redis-fixture-error.log"
+            ]
+          },
+          "redis_fixture_final": {
+            "passed": 40,
+            "parser_cases": 31,
+            "real_postgres_redis_cases": 9,
+            "evidence": [
+              "compose-redis-fixture.xml",
+              "compose-redis-fixture-evidence.json"
+            ]
+          },
+          "backend_ci_final": {
+            "passed": 4909,
+            "skipped": 1,
+            "commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+            "real_infra": "PostgreSQL16/Redis",
+            "evidence": [
+              "ci-8369e2e-final-evidence.json"
+            ]
+          },
+          "compose_ci_final": {
+            "passed": 4773,
+            "skipped": 137,
+            "commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+            "overlap_with_backend": true,
+            "evidence": [
+              "ci-8369e2e-final-evidence.json"
+            ]
+          },
+          "backend_ci_ab1a138": {
+            "passed": 4909,
+            "skipped": 1,
+            "commit": "ab1a1386828f5aafe271e977e8f667689e84384c",
+            "real_infra": "PostgreSQL16/Redis",
+            "evidence": [
+              "ci-final-evidence.json"
+            ]
+          },
+          "constraints": {
+            "pin_count": 52,
+            "verified_environments": 2,
+            "exact_versions_matched": 104,
+            "pip_check": "passed",
+            "evidence": [
+              "constraints-ci-8369e2e-proof.json"
+            ],
+            "scope": "Python application/test dependencies; base image/apt/build tools not byte-for-byte fixed"
+          },
+          "local_packaging_resolution": {
+            "status": "not_completed",
+            "normal_dry_run": "interrupted while resolving metadata; no installation performed",
+            "no_build_isolation_dry_run": "failed because local venv lacks setuptools; not an application test result",
+            "qualification": "clean Linux CI installs and Docker build succeeded with constraints",
+            "evidence": [
+              "locked-resolution-windows.log",
+              "locked-resolution-windows-no-build.log"
+            ]
+          },
+          "isolated_infrastructure_cleanup": {
+            "postgres_loopback55439": "stopped",
+            "redis_loopback55440": "stopped",
+            "listeners_remaining": 0,
+            "data_files": "preserved",
+            "production_services": "never stopped by local cleanup"
+          },
+          "readonly_diagnostic": {
+            "passed": 3,
+            "database": "PostgreSQL16 real isolated clone, revision0029",
+            "role": "app_support",
+            "writes": "SET TRANSACTION READ ONLY blocked UPDATE with SQLSTATE25006",
+            "preservation": "All84original table counts and hashes unchanged; clone dropped only after OID/owner verification; owned PG stopped",
+            "evidence": [
+              "diagnostic-clone-summary.json",
+              "diagnostic-clone-test.log"
+            ]
+          },
+          "native_admin_auth_unit": {
+            "passed": 104,
+            "scope": "Fake storage, network denied; includes41newauth,31QRadmin and4runtime cases plus panel regressions; overlaps other unit groups",
+            "evidence": [
+              "legacy-admin-auth-unit-final.xml",
+              "legacy-admin-auth-unit-final-network.json"
+            ]
+          },
+          "native_admin_backend_unit": {
+            "passed": 4410,
+            "skipped": 2,
+            "deselected": 1,
+            "scope": "Working-tree unit suite, fake providers/database, external configuration removed; collected before final username-length operator guard and its extra case; not attributed to a clean committed SHA",
+            "network_attempts": 0,
+            "evidence": [
+              "native-admin-backend-unit.xml",
+              "native-admin-backend-unit-run.json"
+            ]
+          },
+          "native_admin_qr_unit": {
+            "passed": 149,
+            "new_cases": 31,
+            "prior_regressions": 118,
+            "evidence": [
+              "qr-admin-unit.xml"
+            ],
+            "overlaps_backend_unit": true
+          },
+          "native_admin_launcher_unit": {
+            "passed": 20,
+            "evidence": [
+              "native-admin-launcher-unit.xml"
+            ],
+            "overlaps_backend_unit": true
+          },
+          "native_admin_ui": {
+            "passed": 329,
+            "new_cases": 4,
+            "targeted": 10,
+            "evidence": [
+              "native-admin-ui-all.log",
+              "native-admin-ui.log",
+              "native-admin-ui-before-after.json"
+            ],
+            "overlapping_groups": true,
+            "real_browser_login": false
+          },
+          "report_generator_dynamic_counts": {
+            "status": "passed",
+            "scope": "Generator-only synthetic temporary12/13-finding fixtures, both1247expanded,5invalid-input rejections; no app/provider qualification",
+            "evidence": [
+              "review-dynamic-counts-helper-test.json"
+            ]
+          },
+          "native_admin_postgres": {
+            "status": "passed",
+            "unique_cases_passed": 34,
+            "post_fixture_fix_focused_cases_passed": 3,
+            "focused_cases_overlap": true,
+            "scope": "PG16 disposable synthetic databases; fake bridge/provider; original0029/84tables/ingresssequence preserved; both owned clones dropped and PG stopped",
+            "authentication_limit": "Local PG uses unchanged trust; distinct-password/SCRAM qualification remains exact-commit Linux CI.",
+            "overlaps_ci": true,
+            "evidence": [
+              "admin-ops-test-evidence.json",
+              "admin-pg-final.xml",
+              "admin-qr-final.xml",
+              "admin-runtime-compat.xml",
+              "admin-role-pg-focused.xml"
+            ]
+          },
+          "native_admin_setup_and_fixture_units": {
+            "unique_cases_passed": 24,
+            "setup_cases": 9,
+            "role_url_parser_cases": 15,
+            "scope": "Pure synthetic operator guards and distinct-role credential/TLS parsing; no application/database/provider writes",
+            "overlaps_backend_unit_and_ci": true,
+            "evidence": [
+              "admin-setup-unit.xml",
+              "admin-role-url-unit.xml",
+              "admin-ops-test-evidence.json"
+            ]
+          },
+          "native_admin_backend_ci": {
+            "passed": 5043,
+            "skipped": 1,
+            "commit": "d11a86bc3b1efdef47394c62e39ee32da08ecabf",
+            "evidence": [
+              "ci-d11a86b-final-evidence.json"
+            ]
+          },
+          "native_admin_compose": {
+            "passed": 4881,
+            "skipped": 163,
+            "overlaps_backend": true,
+            "commit": "d11a86bc3b1efdef47394c62e39ee32da08ecabf",
+            "evidence": [
+              "ci-d11a86b-final-evidence.json"
+            ]
+          },
+          "admin_lease_regression": {
+            "status": "passed",
+            "source_commit": "08a5cc09f849bf73e9d60a76179912eeb34003fc",
+            "unit_passed": 10,
+            "postgres_passed": 15,
+            "new_postgres_cases": 3,
+            "scope": "PG16 isolado; 15 inclui12anteriores. Lease volátil atualizado preservado;10campos estáticos/proprietário e revisão pós-ensaio recusados. Grupos sobrepostos; sem prova de qual componente de produção divergiu.",
+            "evidence": [
+              "admin-lease-test-evidence.json",
+              "admin-lease-unit-final.xml",
+              "admin-lease-pg-final.xml"
+            ],
+            "original_data_preserved": true,
+            "clone_dropped": true,
+            "owned_postgres_stopped": true
+          },
+          "adopted_ai_scope_regression": {
+            "status": "passed",
+            "candidate_commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+            "before_fix": "Three synthetic regressions intentionally reproduced prior failures: initial409 and two stale Redis handoff cases.",
+            "unit_qr_inbox_passed": 2204,
+            "new_unit_cases": 22,
+            "postgres_passed": 5,
+            "scope": "ASGI real/control functions with SQL/Redis fakes for local units; separate PG16 real authentication/RLS/transaction guard with inference fake. External providers/messages not used. Groups overlap backend CI.",
+            "production_changed": false,
+            "original_84_tables_and_sequence_preserved": true,
+            "owned_clone_dropped_and_pg_stopped": true,
+            "evidence": [
+              "admin-scope-test-evidence.json",
+              "admin-scope-pg-final.xml",
+              "qr-adopted-scope-regression/qr-inbox-final-v3.xml",
+              "qr-adopted-scope-regression/backend-run.json"
+            ]
+          },
+          "documentation_delivery_review": {
+            "status": "passed",
+            "executor": "manual_js_inventory",
+            "scope": "Read-only local review of six changed repository documents; 53 valid relative links including historical heading fragment; staged HTML/compact hash checks match offline QA. Draft CI summary identified stale PG wording and was corrected before final regeneration.",
+            "application_or_production_checks": false
+          }
+        },
+        "evidence": [
+          {
+            "kind": "local_logs",
+            "path": "backend-final.xml"
+          },
+          {
+            "kind": "local_logs",
+            "path": "adoption-compat-final.xml"
+          },
+          {
+            "kind": "full_ci",
+            "path": "ci-8369e2e-final-evidence.json"
+          },
+          {
+            "kind": "installed_dependency_receipts",
+            "path": "constraints-ci-8369e2e-proof.json"
+          }
+        ],
+        "finding_attestations": {
+          "executor": "root",
+          "scope": "Isolated only, fake providers; preserves reviewer historical handoff statuses.",
+          "EMIT-01": {
+            "status": "passed",
+            "evidence": "legacy-final.xml",
+            "cases": 13
+          },
+          "EMIT-03": {
+            "status": "passed",
+            "evidence": "fulfillment-final.xml",
+            "cases": 12
+          },
+          "INV-JS-009": {
+            "status": "passed",
+            "scope": "Isolated DOM, synthetic identity; no real message or API write",
+            "targeted_cases": 10,
+            "new_cases": 4,
+            "evidence": [
+              "native-admin-ui.log",
+              "native-admin-ui-before-after.json"
+            ]
+          }
+        }
+      },
+      "external_acceptance": {
+        "campaigns_activated": false,
+        "model_whatsapp_native_homologation": "not performed",
+        "central_activation": "Not performed yet. Approved native-admin/demo setup completed and verified; protected alias registration(C) pending, followed by QRadapterD/authorityE/controlF. No real test messages/campaigns.",
+        "real_qr_transport": "existing production session resumed,96authfiles verified; no new pairing or message-send test",
+        "meta_provider_homologation": "not performed; META_LIVE_SEND0",
+        "full_browser_20_journeys": "not run in this continuation;329DOM tests are not full browser/login qualification",
+        "load1500": "not rerun in this continuation; old results remain historical",
+        "real_test_messages_sent": false,
+        "task_generated_provider_messages": false,
+        "normal_existing_traffic": "Not audited; existing AI/global settings and connected session preserved. No claim that normal customer traffic was stopped.",
+        "current_global_ai_and_tenant_ai": "Global QR_AI_ENABLED1/QR_CHANNELS_ENABLED1 preserved. Only the explicitly approved demonstration's bot_enabled changed fromfalse totrue, backed up and audited; other records preserved by snapshot proof."
+      },
+      "remaining_acceptance": {
+        "central_registration": [
+          "Completed: same ENV admin nativeidentity provisioned; activeowner only on82552b25/orion-demo; demoAI enabled and audit appended using exact freshplan dbc3562c.",
+          "Completed: verified backup476701bytes/readback/restore/rehearsal; credentials/session/existing records preserved. No new email/password or other personal account.",
+          "Pending: protected alias register(C) with separateUUID7e24fded and its own verified backup/restore/rehearsal. Five APIfields prepared; no QRrestart/authorityactivation yet."
+        ],
+        "central_activation": [
+          "After registration: enable only QR adapter and verify ready+connected+same session.",
+          "Activate persistent authority only after backup/restore/rehearsal and no queued/sending/uncertain outbound; preserve paused contacts.",
+          "Finally enable control/send in API+worker, retaining Meta/campaigns off and no real test messages."
+        ]
+      }
+    },
+    "path": "publication-receipt.json",
+    "sha256": "00855fcac51eada049ba605fe74a7af2fdac3d03e9f6b5af68bb338d3755c349",
+    "semantics": "Operator-supplied receipt, displayed verbatim; not independently checked by this report builder."
+  },
+  "offline_html_checks": {
+    "scripts": 2,
+    "external_resource_tags": 0,
+    "static_id_duplicates": 0
+  },
+  "execution_claims": {
+    "evidence_layer": "historical_baseline",
+    "unit_passed": 4295,
+    "unit_skipped": 2,
+    "ui_passed": 325,
+    "qr_passed": 435,
+    "qr_skipped_windows": 4,
+    "qr_latest_notice_passed": 442,
+    "qr_notice_regressions_included": 7,
+    "qr_notice_runtime_commit": "832bc392c0b4e4fbd10e5028288d312a2cb0c88d",
+    "pg_targeted_groups": [
+      24,
+      12
+    ],
+    "legacy_meta_final_passed": 13,
+    "fulfillment_final_passed": 12,
+    "pg_groups_overlap": true,
+    "pg_broad_status": "pending",
+    "adoption_compatibility_status": "pending",
+    "basis": "Earlier counts supplied by the executor, preserved as a historical baseline; current receipt updates are separate; no sum of overlapping tests."
+  },
+  "execution_claims_provenance": {
+    "scope": "historical_baseline",
+    "current_updates_field": "receipt.data.validation",
+    "does_not_override_supplied_receipt": true,
+    "description": "Earlier executor-supplied local test groups, retained as recorded; pending fields describe that baseline, not the current supplied CI/deployment/validation receipt."
+  },
+  "not_attested_scope": "Independent attestations not performed by this report generator; this does not negate any CI, deployment or validation evidence explicitly supplied in the receipt.",
+  "not_attested": [
+    "By this generator: independent CI or Railway completion; supplied receipts are displayed verbatim",
+    "By this generator: independent Broad PostgreSQL acceptance; supplied validation/CI evidence is retained",
+    "By this generator: external model/ASR/native WhatsApp delivery"
+  ]
+}

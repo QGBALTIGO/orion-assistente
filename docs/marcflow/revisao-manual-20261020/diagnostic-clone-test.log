@@ -1,0 +1,22 @@
+pg_ctl -D C:\Users\kayky\Documents\Playground\orion-comunicacao-implementacao-20261020\pg-data status: exit=3
+pg_ctl: nenhum servidor est� executando
+pg_ctl -D C:\Users\kayky\Documents\Playground\orion-comunicacao-implementacao-20261020\pg-data -l C:\Users\kayky\Documents\Playground\orion-inventario-revisao-20261020\diagnostic-clone-postgres.log -o -h 127.0.0.1 -p 55439 -w start: exit=0
+esperando o servidor iniciar....feito
+servidor iniciado
+helper subprocess exit=0
+orion_legacy_readonly={"configured_matches_requested": false, "exists": false, "label": "configured_qr", "tenant": null}
+orion_legacy_readonly={"configured_matches_requested": false, "exists": true, "label": "requested_demo", "tenant": {"active_member_owners": 0, "bot_enabled": false, "id": "82552b25-d0c8-5338-8c42-49f11de59e45", "legacy_alias_registered": false, "name": "Synthetic diagnostic requested demo", "status": "active"}}
+diagnostic_test_network=[{"host": "127.0.0.1", "port": 55439}]
+PASS case1 configured missing; requested active, bot=false, owners=0
+helper subprocess exit=0
+orion_legacy_readonly={"configured_matches_requested": true, "exists": true, "label": "configured_qr", "tenant": {"active_member_owners": 1, "bot_enabled": false, "id": "82552b25-d0c8-5338-8c42-49f11de59e45", "legacy_alias_registered": true, "name": "Synthetic diagnostic requested demo", "status": "active"}}
+orion_legacy_readonly={"configured_matches_requested": true, "exists": true, "label": "requested_demo", "tenant": {"active_member_owners": 1, "bot_enabled": false, "id": "82552b25-d0c8-5338-8c42-49f11de59e45", "legacy_alias_registered": true, "name": "Synthetic diagnostic requested demo", "status": "active"}}
+diagnostic_test_network=[{"host": "127.0.0.1", "port": 55439}]
+PASS case2 configured matches; owners=1; support can see registered alias
+PASS case3 READ ONLY blocks UPDATE with SQLSTATE 25006; all rows unchanged
+pg_ctl -D C:\Users\kayky\Documents\Playground\orion-comunicacao-implementacao-20261020\pg-data -m fast -w stop: exit=0
+esperando o servidor desligar....feito
+servidor est� parado
+pg_ctl -D C:\Users\kayky\Documents\Playground\orion-comunicacao-implementacao-20261020\pg-data status: exit=3
+pg_ctl: nenhum servidor est� executando
+diagnostic_clone_result={"clone_dropped_with_oid_owner_check": true, "original_unchanged": true, "owned_pg_stopped": true, "source_sha256": "0676a02330ac787985391299f0af5578183435493a68b7b2afc31016f72f84eb", "success": true}

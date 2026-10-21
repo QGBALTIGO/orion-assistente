@@ -1,0 +1,66 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.9, pytest-9.1.1, pluggy-1.7.0 -- C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Scripts\python.exe
+rootdir: C:\Users\kayky\Documents\Playground\orion-marcflow-20261020
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 11 items
+
+tests/integration/test_legacy_admin_runtime_postgres.py::test_native_admin_claim_read_cursor_and_fake_send_use_real_account_id PASSED [  9%]
+tests/integration/test_legacy_admin_runtime_postgres.py::test_native_admin_queued_work_revalidated_before_any_transport[password] PASSED [ 18%]
+tests/integration/test_legacy_admin_runtime_postgres.py::test_native_admin_queued_work_revalidated_before_any_transport[username] PASSED [ 27%]
+tests/integration/test_legacy_admin_runtime_postgres.py::test_native_admin_queued_work_revalidated_before_any_transport[flag] PASSED [ 36%]
+tests/integration/test_legacy_admin_runtime_postgres.py::test_native_admin_queued_work_revalidated_before_any_transport[missing_hash] PASSED [ 45%]
+tests/integration/test_legacy_admin_runtime_postgres.py::test_native_admin_queued_work_revalidated_before_any_transport[auth_version] PASSED [ 54%]
+tests/integration/test_legacy_admin_runtime_postgres.py::test_native_admin_queued_work_revalidated_before_any_transport[owner] PASSED [ 63%]
+tests/integration/test_legacy_admin_runtime_postgres.py::test_native_operator_guard_requires_server_context_and_exact_tenant PASSED [ 72%]
+tests/integration/test_admin_identity_ops_postgres.py::test_0030_constraints_require_exact_native_admin_branch_and_singleton PASSED [ 81%]
+tests/integration/test_admin_identity_ops_postgres.py::test_older_member_owner_registration_keeps_0028_and_0029_compatibility[0028_workflow_drafts] PASSED [ 90%]
+tests/integration/test_admin_identity_ops_postgres.py::test_older_member_owner_registration_keeps_0028_and_0029_compatibility[0029_communication_contract] PASSED [100%]
+
+============================== warnings summary ===============================
+app\main.py:49
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\app\main.py:49: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+.venv\Lib\site-packages\fastapi\applications.py:4723
+.venv\Lib\site-packages\fastapi\applications.py:4723
+.venv\Lib\site-packages\fastapi\applications.py:4723
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Lib\site-packages\fastapi\applications.py:4723: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+app\main.py:54
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\app\main.py:54: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+app\main.py:60
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\app\main.py:60: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+tests/integration/test_admin_identity_ops_postgres.py: 15 warnings
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: C:\Users\kayky\Documents\Playground\orion-inventario-revisao-20261020\admin-runtime-compat.xml -
+================= 11 passed, 21 warnings in 127.79s (0:02:07) =================

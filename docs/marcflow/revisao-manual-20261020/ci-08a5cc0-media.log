@@ -1,0 +1,382 @@
+﻿2026-10-20T23:51:10.5170470Z Current runner version: '2.338.0'
+2026-10-20T23:51:10.5195132Z ##[group]Runner Image Provisioner
+2026-10-20T23:51:10.5196058Z Hosted Compute Agent
+2026-10-20T23:51:10.5196684Z Version: 20261012.601
+2026-10-20T23:51:10.5197371Z Commit: f3dc54e1fb89da6852db922499a0233137369e1d
+2026-10-20T23:51:10.5198153Z Build Date: 2026-10-12T17:48:21Z
+2026-10-20T23:51:10.5198828Z Worker ID: {7455ad92-67c7-4eb0-8ef1-3cb43436d3a2}
+2026-10-20T23:51:10.5199510Z Region: westcentralus
+2026-10-20T23:51:10.5200133Z Cloud: Azure
+2026-10-20T23:51:10.5200734Z ##[endgroup]
+2026-10-20T23:51:10.5202592Z ##[group]Operating System
+2026-10-20T23:51:10.5203541Z Ubuntu
+2026-10-20T23:51:10.5204061Z 26.04.1
+2026-10-20T23:51:10.5204651Z LTS
+2026-10-20T23:51:10.5205203Z ##[endgroup]
+2026-10-20T23:51:10.5205788Z ##[group]Runner Image
+2026-10-20T23:51:10.5206406Z Image: ubuntu-26.04
+2026-10-20T23:51:10.5207042Z Version: 20261012.163.1
+2026-10-20T23:51:10.5208373Z Included Software: https://github.com/actions/runner-images/blob/ubuntu26/20261012.163/images/ubuntu/Ubuntu2604-Readme.md
+2026-10-20T23:51:10.5209924Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu26%2F20261012.163
+2026-10-20T23:51:10.5210898Z ##[endgroup]
+2026-10-20T23:51:10.5212112Z ##[group]GITHUB_TOKEN Permissions
+2026-10-20T23:51:10.5214227Z Contents: read
+2026-10-20T23:51:10.5214879Z Metadata: read
+2026-10-20T23:51:10.5215555Z Packages: read
+2026-10-20T23:51:10.5216190Z ##[endgroup]
+2026-10-20T23:51:10.5218306Z Secret source: Actions
+2026-10-20T23:51:10.5219297Z Cache mode: write
+2026-10-20T23:51:10.5220068Z Prepare workflow directory
+2026-10-20T23:51:10.5617445Z Prepare all required actions
+2026-10-20T23:51:10.5665349Z Getting action download info
+2026-10-20T23:51:10.8425623Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-20T23:51:10.9583339Z Download action repository 'actions/setup-python@v5' (SHA:a26af69be951a213d495a4c3e4e4022e16d87065)
+2026-10-20T23:51:11.1258203Z Complete job name: Image format, authorization and persistence tests
+2026-10-20T23:51:11.2059207Z ##[group]Run actions/checkout@v4
+2026-10-20T23:51:11.2060096Z with:
+2026-10-20T23:51:11.2060580Z   repository: QGBALTIGO/orion-assistente
+2026-10-20T23:51:11.2064540Z   token: ***
+2026-10-20T23:51:11.2064993Z   ssh-strict: true
+2026-10-20T23:51:11.2065435Z   ssh-user: git
+2026-10-20T23:51:11.2065889Z   persist-credentials: true
+2026-10-20T23:51:11.2066381Z   clean: true
+2026-10-20T23:51:11.2066824Z   sparse-checkout-cone-mode: true
+2026-10-20T23:51:11.2067340Z   fetch-depth: 1
+2026-10-20T23:51:11.2067776Z   fetch-tags: false
+2026-10-20T23:51:11.2068221Z   show-progress: true
+2026-10-20T23:51:11.2068681Z   lfs: false
+2026-10-20T23:51:11.2069094Z   submodules: false
+2026-10-20T23:51:11.2069541Z   set-safe-directory: true
+2026-10-20T23:51:11.2070072Z   allow-unsafe-pr-checkout: false
+2026-10-20T23:51:11.2070853Z ##[endgroup]
+2026-10-20T23:51:11.3196737Z Syncing repository: QGBALTIGO/orion-assistente
+2026-10-20T23:51:11.3199745Z ##[group]Getting Git version info
+2026-10-20T23:51:11.3201289Z Working directory is '/home/runner/work/orion-assistente/orion-assistente'
+2026-10-20T23:51:11.3203584Z [command]/usr/bin/git version
+2026-10-20T23:51:11.3204455Z git version 2.55.0
+2026-10-20T23:51:11.3206127Z ##[endgroup]
+2026-10-20T23:51:11.3218055Z Temporarily overriding HOME='/home/runner/work/_temp/d52191b3-8150-43f7-b11d-087984bd7bda' before making global git config changes
+2026-10-20T23:51:11.3220972Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-20T23:51:11.3226090Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/orion-assistente/orion-assistente
+2026-10-20T23:51:11.3290621Z Deleting the contents of '/home/runner/work/orion-assistente/orion-assistente'
+2026-10-20T23:51:11.3296988Z ##[group]Initializing the repository
+2026-10-20T23:51:11.3301292Z [command]/usr/bin/git init /home/runner/work/orion-assistente/orion-assistente
+2026-10-20T23:51:11.3435596Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-20T23:51:11.3437809Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-20T23:51:11.3439581Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-20T23:51:11.3441042Z hint: call:
+2026-10-20T23:51:11.3450982Z hint:
+2026-10-20T23:51:11.3459166Z hint: 	git config --global init.defaultBranch <name>
+2026-10-20T23:51:11.3460214Z hint:
+2026-10-20T23:51:11.3461196Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-20T23:51:11.3463039Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-20T23:51:11.3464296Z hint:
+2026-10-20T23:51:11.3464979Z hint: 	git branch -m <name>
+2026-10-20T23:51:11.3465791Z hint:
+2026-10-20T23:51:11.3466925Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-20T23:51:11.3468865Z Initialized empty Git repository in /home/runner/work/orion-assistente/orion-assistente/.git/
+2026-10-20T23:51:11.3472023Z [command]/usr/bin/git remote add origin https://github.com/QGBALTIGO/orion-assistente
+2026-10-20T23:51:11.3506837Z ##[endgroup]
+2026-10-20T23:51:11.3508148Z ##[group]Disabling automatic garbage collection
+2026-10-20T23:51:11.3512295Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-20T23:51:11.3547777Z ##[endgroup]
+2026-10-20T23:51:11.3548934Z ##[group]Setting up auth
+2026-10-20T23:51:11.3554558Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-20T23:51:11.3590158Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-20T23:51:11.4079312Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-20T23:51:11.4118920Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-20T23:51:11.4397108Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-20T23:51:11.4432741Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-20T23:51:11.4707423Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-20T23:51:11.4749707Z ##[endgroup]
+2026-10-20T23:51:11.4751182Z ##[group]Fetching the repository
+2026-10-20T23:51:11.4761633Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +00a4010175232b76c5b2d0bb82d20a10e57c34ac:refs/remotes/pull/80/merge
+2026-10-20T23:51:12.4438390Z From https://github.com/QGBALTIGO/orion-assistente
+2026-10-20T23:51:12.4442032Z  * [new ref]         00a4010175232b76c5b2d0bb82d20a10e57c34ac -> pull/80/merge
+2026-10-20T23:51:12.4449982Z ##[endgroup]
+2026-10-20T23:51:12.4452765Z ##[group]Determining the checkout info
+2026-10-20T23:51:12.4455778Z ##[endgroup]
+2026-10-20T23:51:12.4457089Z [command]/usr/bin/git sparse-checkout disable
+2026-10-20T23:51:12.4509356Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-20T23:51:12.4542039Z ##[group]Checking out the ref
+2026-10-20T23:51:12.4545112Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/80/merge
+2026-10-20T23:51:12.5134791Z Note: switching to 'refs/remotes/pull/80/merge'.
+2026-10-20T23:51:12.5136042Z 
+2026-10-20T23:51:12.5137047Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-10-20T23:51:12.5140790Z changes and commit them, and you can discard any commits you make in this
+2026-10-20T23:51:12.5144199Z state without impacting any branches by switching back to a branch.
+2026-10-20T23:51:12.5146215Z 
+2026-10-20T23:51:12.5147685Z If you want to create a new branch to retain commits you create, you may
+2026-10-20T23:51:12.5151104Z do so (now or later) by using -c with the switch command. Example:
+2026-10-20T23:51:12.5153122Z 
+2026-10-20T23:51:12.5153807Z   git switch -c <new-branch-name>
+2026-10-20T23:51:12.5154845Z 
+2026-10-20T23:51:12.5155550Z Or undo this operation with:
+2026-10-20T23:51:12.5156756Z 
+2026-10-20T23:51:12.5157488Z   git switch -
+2026-10-20T23:51:12.5158455Z 
+2026-10-20T23:51:12.5160128Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-10-20T23:51:12.5161565Z 
+2026-10-20T23:51:12.5163432Z HEAD is now at 00a4010 Merge 08a5cc09f849bf73e9d60a76179912eeb34003fc into 6d9c971f5cebc9b652960f765b2f98ec5678f2eb
+2026-10-20T23:51:12.5169622Z ##[endgroup]
+2026-10-20T23:51:12.5200565Z [command]/usr/bin/git log -1 --format=%H
+2026-10-20T23:51:12.5226262Z 00a4010175232b76c5b2d0bb82d20a10e57c34ac
+2026-10-20T23:51:12.5628291Z ##[group]Run actions/setup-python@v5
+2026-10-20T23:51:12.5629553Z with:
+2026-10-20T23:51:12.5630436Z   python-version: 3.12
+2026-10-20T23:51:12.5631475Z   check-latest: false
+2026-10-20T23:51:12.5641792Z   token: ***
+2026-10-20T23:51:12.5642747Z   update-environment: true
+2026-10-20T23:51:12.5643977Z   allow-prereleases: false
+2026-10-20T23:51:12.5645080Z   freethreaded: false
+2026-10-20T23:51:12.5646056Z ##[endgroup]
+2026-10-20T23:51:12.7086162Z ##[group]Installed versions
+2026-10-20T23:51:12.7198075Z (node:2458) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-20T23:51:12.7202570Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-20T23:51:12.7204988Z Successfully set up CPython (3.12.15)
+2026-10-20T23:51:12.7207094Z ##[endgroup]
+2026-10-20T23:51:12.7433189Z ##[group]Run python -m pip install -c requirements.lock -e ".[test]"
+2026-10-20T23:51:12.7435282Z [36;1mpython -m pip install -c requirements.lock -e ".[test]"[0m
+2026-10-20T23:51:12.7436885Z [36;1mpython -m pip check[0m
+2026-10-20T23:51:12.7675263Z shell: /usr/bin/bash -e {0}
+2026-10-20T23:51:12.7676518Z env:
+2026-10-20T23:51:12.7677801Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.15/x64
+2026-10-20T23:51:12.7679925Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.15/x64/lib/pkgconfig
+2026-10-20T23:51:12.7682242Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64
+2026-10-20T23:51:12.7684288Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64
+2026-10-20T23:51:12.7686189Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64
+2026-10-20T23:51:12.7687980Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.15/x64/lib
+2026-10-20T23:51:12.7689442Z ##[endgroup]
+2026-10-20T23:51:13.6621330Z Obtaining file:///home/runner/work/orion-assistente/orion-assistente
+2026-10-20T23:51:13.6636885Z   Installing build dependencies: started
+2026-10-20T23:51:14.6688617Z   Installing build dependencies: finished with status 'done'
+2026-10-20T23:51:14.6693628Z   Checking if build backend supports build_editable: started
+2026-10-20T23:51:15.0300182Z   Checking if build backend supports build_editable: finished with status 'done'
+2026-10-20T23:51:15.0306789Z   Getting requirements to build editable: started
+2026-10-20T23:51:15.3698090Z   Getting requirements to build editable: finished with status 'done'
+2026-10-20T23:51:15.3705294Z   Preparing editable metadata (pyproject.toml): started
+2026-10-20T23:51:15.5681732Z   Preparing editable metadata (pyproject.toml): finished with status 'done'
+2026-10-20T23:51:15.6997412Z Collecting fastapi==0.150.0 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:15.7692043Z   Downloading fastapi-0.150.0-py3-none-any.whl.metadata (26 kB)
+2026-10-20T23:51:15.8186973Z Collecting uvicorn<1,>=0.30 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:15.8382608Z   Downloading uvicorn-0.54.0-py3-none-any.whl.metadata (6.6 kB)
+2026-10-20T23:51:15.9065256Z Collecting uvloop==0.23.0 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:15.9264709Z   Downloading uvloop-0.23.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (5.1 kB)
+2026-10-20T23:51:16.2469778Z Collecting SQLAlchemy<3,>=2.0.36 (from SQLAlchemy[asyncio]<3,>=2.0.36->orion-barbearias==0.8.0)
+2026-10-20T23:51:16.2672493Z   Downloading sqlalchemy-2.1.5-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (9.7 kB)
+2026-10-20T23:51:16.3279282Z Collecting asyncpg<1,>=0.29 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:16.3475702Z   Downloading asyncpg-0.32.0-cp312-cp312-manylinux_2_28_x86_64.whl.metadata (4.4 kB)
+2026-10-20T23:51:16.3830922Z Collecting alembic<2,>=1.13 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:16.4031929Z   Downloading alembic-1.20.0-py3-none-any.whl.metadata (7.3 kB)
+2026-10-20T23:51:16.4336593Z Collecting psycopg<4,>=3.2 (from psycopg[binary]<4,>=3.2->orion-barbearias==0.8.0)
+2026-10-20T23:51:16.4539669Z   Downloading psycopg-3.3.6-py3-none-any.whl.metadata (4.4 kB)
+2026-10-20T23:51:16.4886747Z Collecting arq<1,>=0.26 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:16.5089596Z   Downloading arq-0.28.0-py3-none-any.whl.metadata (2.8 kB)
+2026-10-20T23:51:16.5555268Z Collecting tzdata>=2025.2 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:16.5770423Z   Downloading tzdata-2026.5-py2.py3-none-any.whl.metadata (1.4 kB)
+2026-10-20T23:51:16.7561796Z Collecting cryptography<50,>=43 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:16.7762545Z   Downloading cryptography-49.0.0-cp311-abi3-manylinux_2_34_x86_64.whl.metadata (4.3 kB)
+2026-10-20T23:51:16.8131273Z Collecting argon2-cffi<26,>=23.1 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:16.8330193Z   Downloading argon2_cffi-25.1.0-py3-none-any.whl.metadata (4.1 kB)
+2026-10-20T23:51:16.8668917Z Collecting httpx<1,>=0.27 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:16.8888114Z   Downloading httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+2026-10-20T23:51:16.9153473Z Collecting sniffio<2,>=1.3.1 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:16.9350073Z   Downloading sniffio-1.3.1-py3-none-any.whl.metadata (3.9 kB)
+2026-10-20T23:51:17.1445940Z Collecting boto3<2,>=1.35 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:17.1642396Z   Downloading boto3-1.43.116-py3-none-any.whl.metadata (6.6 kB)
+2026-10-20T23:51:17.3383510Z Collecting Pillow<13,>=11 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:17.3585924Z   Downloading pillow-12.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (9.1 kB)
+2026-10-20T23:51:17.4739626Z Collecting pillow-heif<2,>=0.21 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:17.4936977Z   Downloading pillow_heif-1.8.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (9.7 kB)
+2026-10-20T23:51:17.5629722Z Collecting pytest<10,>=8 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:17.5836271Z   Downloading pytest-9.1.1-py3-none-any.whl.metadata (7.6 kB)
+2026-10-20T23:51:17.6165120Z Collecting pytest-asyncio<2,>=0.24 (from orion-barbearias==0.8.0)
+2026-10-20T23:51:17.6358419Z   Downloading pytest_asyncio-1.4.0-py3-none-any.whl.metadata (4.1 kB)
+2026-10-20T23:51:17.6760109Z Collecting starlette>=0.46.0 (from fastapi==0.150.0->orion-barbearias==0.8.0)
+2026-10-20T23:51:17.6969919Z   Downloading starlette-1.9.0-py3-none-any.whl.metadata (6.6 kB)
+2026-10-20T23:51:17.8110727Z Collecting pydantic>=2.9.0 (from fastapi==0.150.0->orion-barbearias==0.8.0)
+2026-10-20T23:51:17.8311737Z   Downloading pydantic-2.14.1-py3-none-any.whl.metadata (133 kB)
+2026-10-20T23:51:17.9155035Z Collecting typing-extensions>=4.8.0 (from fastapi==0.150.0->orion-barbearias==0.8.0)
+2026-10-20T23:51:17.9383751Z   Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+2026-10-20T23:51:17.9644754Z Collecting typing-inspection>=0.4.2 (from fastapi==0.150.0->orion-barbearias==0.8.0)
+2026-10-20T23:51:17.9839751Z   Downloading typing_inspection-0.4.4-py3-none-any.whl.metadata (2.6 kB)
+2026-10-20T23:51:18.0101294Z Collecting annotated-doc>=0.0.2 (from fastapi==0.150.0->orion-barbearias==0.8.0)
+2026-10-20T23:51:18.0299800Z   Downloading annotated_doc-0.0.5-py3-none-any.whl.metadata (6.5 kB)
+2026-10-20T23:51:18.0637349Z Collecting opentelemetry-api>=1.44.0 (from fastapi==0.150.0->orion-barbearias==0.8.0)
+2026-10-20T23:51:18.0844972Z   Downloading opentelemetry_api-1.45.1-py3-none-any.whl.metadata (1.4 kB)
+2026-10-20T23:51:18.1183784Z Collecting Mako (from alembic<2,>=1.13->orion-barbearias==0.8.0)
+2026-10-20T23:51:18.1376811Z   Downloading mako-1.4.3-py3-none-any.whl.metadata (2.9 kB)
+2026-10-20T23:51:18.1721008Z Collecting argon2-cffi-bindings (from argon2-cffi<26,>=23.1->orion-barbearias==0.8.0)
+2026-10-20T23:51:18.1931274Z   Downloading argon2_cffi_bindings-26.1.0-cp310-abi3-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl.metadata (7.5 kB)
+2026-10-20T23:51:18.2268058Z Collecting click>=8.0 (from arq<1,>=0.26->orion-barbearias==0.8.0)
+2026-10-20T23:51:18.2474927Z   Downloading click-8.5.0-py3-none-any.whl.metadata (2.6 kB)
+2026-10-20T23:51:18.2860377Z Collecting redis<6,>=4.2.0 (from redis[hiredis]<6,>=4.2.0->arq<1,>=0.26->orion-barbearias==0.8.0)
+2026-10-20T23:51:18.3059097Z   Downloading redis-5.3.1-py3-none-any.whl.metadata (9.2 kB)
+2026-10-20T23:51:18.5272217Z Collecting botocore<1.44.0,>=1.43.116 (from boto3<2,>=1.35->orion-barbearias==0.8.0)
+2026-10-20T23:51:18.5472215Z   Downloading botocore-1.43.116-py3-none-any.whl.metadata (5.6 kB)
+2026-10-20T23:51:18.5758514Z Collecting jmespath<2.0.0,>=0.7.1 (from boto3<2,>=1.35->orion-barbearias==0.8.0)
+2026-10-20T23:51:18.5956704Z   Downloading jmespath-1.1.0-py3-none-any.whl.metadata (7.6 kB)
+2026-10-20T23:51:18.6263094Z Collecting s3transfer<0.20.0,>=0.19.0 (from boto3<2,>=1.35->orion-barbearias==0.8.0)
+2026-10-20T23:51:18.6472708Z   Downloading s3transfer-0.19.3-py3-none-any.whl.metadata (1.7 kB)
+2026-10-20T23:51:18.6769643Z Collecting python-dateutil<3.0.0,>=2.1 (from botocore<1.44.0,>=1.43.116->boto3<2,>=1.35->orion-barbearias==0.8.0)
+2026-10-20T23:51:18.6965336Z   Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+2026-10-20T23:51:18.7315830Z Collecting urllib3!=2.2.0,<3,>=1.25.4 (from botocore<1.44.0,>=1.43.116->boto3<2,>=1.35->orion-barbearias==0.8.0)
+2026-10-20T23:51:18.7510544Z   Downloading urllib3-2.8.0-py3-none-any.whl.metadata (7.4 kB)
+2026-10-20T23:51:18.8666051Z Collecting cffi>=2.0.0 (from cryptography<50,>=43->orion-barbearias==0.8.0)
+2026-10-20T23:51:18.8917013Z   Downloading cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.5 kB)
+2026-10-20T23:51:18.9257978Z Collecting anyio (from httpx<1,>=0.27->orion-barbearias==0.8.0)
+2026-10-20T23:51:18.9454584Z   Downloading anyio-4.15.1-py3-none-any.whl.metadata (4.7 kB)
+2026-10-20T23:51:18.9773432Z Collecting certifi (from httpx<1,>=0.27->orion-barbearias==0.8.0)
+2026-10-20T23:51:18.9971962Z   Downloading certifi-2026.10.19-py3-none-any.whl.metadata (2.5 kB)
+2026-10-20T23:51:19.0295643Z Collecting httpcore==1.* (from httpx<1,>=0.27->orion-barbearias==0.8.0)
+2026-10-20T23:51:19.0518939Z   Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+2026-10-20T23:51:19.0828183Z Collecting idna (from httpx<1,>=0.27->orion-barbearias==0.8.0)
+2026-10-20T23:51:19.1021288Z   Downloading idna-3.20-py3-none-any.whl.metadata (7.2 kB)
+2026-10-20T23:51:19.1297558Z Collecting h11>=0.16 (from httpcore==1.*->httpx<1,>=0.27->orion-barbearias==0.8.0)
+2026-10-20T23:51:19.1490515Z   Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+2026-10-20T23:51:19.3551989Z Collecting psycopg-binary==3.3.6 (from psycopg[binary]<4,>=3.2->orion-barbearias==0.8.0)
+2026-10-20T23:51:19.3750641Z   Downloading psycopg_binary-3.3.6-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.7 kB)
+2026-10-20T23:51:19.4034086Z Collecting iniconfig>=1.0.1 (from pytest<10,>=8->orion-barbearias==0.8.0)
+2026-10-20T23:51:19.4230410Z   Downloading iniconfig-2.3.1-py3-none-any.whl.metadata (2.8 kB)
+2026-10-20T23:51:19.4328856Z Collecting packaging>=22 (from pytest<10,>=8->orion-barbearias==0.8.0)
+2026-10-20T23:51:19.4340562Z   Using cached packaging-26.3-py3-none-any.whl.metadata (3.5 kB)
+2026-10-20T23:51:19.4601373Z Collecting pluggy<2,>=1.5 (from pytest<10,>=8->orion-barbearias==0.8.0)
+2026-10-20T23:51:19.4794505Z   Downloading pluggy-1.7.0-py3-none-any.whl.metadata (5.0 kB)
+2026-10-20T23:51:19.5117241Z Collecting pygments>=2.7.2 (from pytest<10,>=8->orion-barbearias==0.8.0)
+2026-10-20T23:51:19.5309772Z   Downloading pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)
+2026-10-20T23:51:19.5643369Z Collecting six>=1.5 (from python-dateutil<3.0.0,>=2.1->botocore<1.44.0,>=1.43.116->boto3<2,>=1.35->orion-barbearias==0.8.0)
+2026-10-20T23:51:19.5839955Z   Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+2026-10-20T23:51:19.6149506Z Collecting PyJWT>=2.9.0 (from redis<6,>=4.2.0->redis[hiredis]<6,>=4.2.0->arq<1,>=0.26->orion-barbearias==0.8.0)
+2026-10-20T23:51:19.6345779Z   Downloading pyjwt-2.15.1-py3-none-any.whl.metadata (3.5 kB)
+2026-10-20T23:51:19.7579129Z Collecting hiredis>=3.0.0 (from redis[hiredis]<6,>=4.2.0->arq<1,>=0.26->orion-barbearias==0.8.0)
+2026-10-20T23:51:19.7790427Z   Downloading hiredis-3.5.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (7.5 kB)
+2026-10-20T23:51:19.9448201Z Collecting greenlet>=1 (from SQLAlchemy[asyncio]<3,>=2.0.36->orion-barbearias==0.8.0)
+2026-10-20T23:51:19.9644802Z   Downloading greenlet-3.5.6-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (3.8 kB)
+2026-10-20T23:51:19.9958631Z Collecting pycparser (from cffi>=2.0.0->cryptography<50,>=43->orion-barbearias==0.8.0)
+2026-10-20T23:51:20.0167423Z   Downloading pycparser-3.11-py3-none-any.whl.metadata (8.2 kB)
+2026-10-20T23:51:20.0492763Z Collecting annotated-types>=0.6.0 (from pydantic>=2.9.0->fastapi==0.150.0->orion-barbearias==0.8.0)
+2026-10-20T23:51:20.0691195Z   Downloading annotated_types-0.8.0-py3-none-any.whl.metadata (15 kB)
+2026-10-20T23:51:20.7814867Z Collecting pydantic-core==2.50.1 (from pydantic>=2.9.0->fastapi==0.150.0->orion-barbearias==0.8.0)
+2026-10-20T23:51:20.8036088Z   Downloading pydantic_core-2.50.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.5 kB)
+2026-10-20T23:51:20.8851518Z Collecting MarkupSafe>=2.0 (from Mako->alembic<2,>=1.13->orion-barbearias==0.8.0)
+2026-10-20T23:51:20.9068461Z   Downloading markupsafe-3.0.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.7 kB)
+2026-10-20T23:51:20.9361513Z Downloading fastapi-0.150.0-py3-none-any.whl (145 kB)
+2026-10-20T23:51:20.9692095Z Downloading uvloop-0.23.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (4.5 MB)
+2026-10-20T23:51:21.0444117Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.5/4.5 MB 64.6 MB/s  0:00:00
+2026-10-20T23:51:21.0664715Z Downloading alembic-1.20.0-py3-none-any.whl (268 kB)
+2026-10-20T23:51:21.0899755Z Downloading argon2_cffi-25.1.0-py3-none-any.whl (14 kB)
+2026-10-20T23:51:21.1117489Z Downloading arq-0.28.0-py3-none-any.whl (26 kB)
+2026-10-20T23:51:21.1362005Z Downloading asyncpg-0.32.0-cp312-cp312-manylinux_2_28_x86_64.whl (3.8 MB)
+2026-10-20T23:51:21.1528132Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.8/3.8 MB 254.8 MB/s  0:00:00
+2026-10-20T23:51:21.1738156Z Downloading boto3-1.43.116-py3-none-any.whl (140 kB)
+2026-10-20T23:51:21.1962911Z Downloading botocore-1.43.116-py3-none-any.whl (16.1 MB)
+2026-10-20T23:51:21.2786008Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.1/16.1 MB 199.6 MB/s  0:00:00
+2026-10-20T23:51:21.2997074Z Downloading cryptography-49.0.0-cp311-abi3-manylinux_2_34_x86_64.whl (4.7 MB)
+2026-10-20T23:51:21.3424004Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.7/4.7 MB 112.9 MB/s  0:00:00
+2026-10-20T23:51:21.3629991Z Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
+2026-10-20T23:51:21.3868711Z Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
+2026-10-20T23:51:21.4090688Z Downloading jmespath-1.1.0-py3-none-any.whl (20 kB)
+2026-10-20T23:51:21.4343173Z Downloading pillow-12.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (6.9 MB)
+2026-10-20T23:51:21.4920131Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.9/6.9 MB 121.0 MB/s  0:00:00
+2026-10-20T23:51:21.5189649Z Downloading pillow_heif-1.8.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (5.7 MB)
+2026-10-20T23:51:21.5947011Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.7/5.7 MB 77.4 MB/s  0:00:00
+2026-10-20T23:51:21.6149040Z Downloading psycopg-3.3.6-py3-none-any.whl (215 kB)
+2026-10-20T23:51:21.6382692Z Downloading psycopg_binary-3.3.6-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (5.2 MB)
+2026-10-20T23:51:21.6736308Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.2/5.2 MB 151.5 MB/s  0:00:00
+2026-10-20T23:51:21.6941059Z Downloading pytest-9.1.1-py3-none-any.whl (386 kB)
+2026-10-20T23:51:21.7171899Z Downloading pluggy-1.7.0-py3-none-any.whl (27 kB)
+2026-10-20T23:51:21.7393268Z Downloading pytest_asyncio-1.4.0-py3-none-any.whl (16 kB)
+2026-10-20T23:51:21.7612374Z Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+2026-10-20T23:51:21.7837341Z Downloading redis-5.3.1-py3-none-any.whl (272 kB)
+2026-10-20T23:51:21.8062247Z Downloading s3transfer-0.19.3-py3-none-any.whl (90 kB)
+2026-10-20T23:51:21.8295218Z Downloading sniffio-1.3.1-py3-none-any.whl (10 kB)
+2026-10-20T23:51:21.8649352Z Downloading sqlalchemy-2.1.5-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (4.7 MB)
+2026-10-20T23:51:21.9000388Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.7/4.7 MB 140.0 MB/s  0:00:00
+2026-10-20T23:51:21.9198518Z Downloading urllib3-2.8.0-py3-none-any.whl (135 kB)
+2026-10-20T23:51:21.9420870Z Downloading uvicorn-0.54.0-py3-none-any.whl (87 kB)
+2026-10-20T23:51:21.9638054Z Downloading annotated_doc-0.0.5-py3-none-any.whl (5.3 kB)
+2026-10-20T23:51:21.9858386Z Downloading cffi-2.1.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (221 kB)
+2026-10-20T23:51:22.0090912Z Downloading click-8.5.0-py3-none-any.whl (125 kB)
+2026-10-20T23:51:22.0331664Z Downloading greenlet-3.5.6-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (621 kB)
+2026-10-20T23:51:22.0388614Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 621.4/621.4 kB 116.8 MB/s  0:00:00
+2026-10-20T23:51:22.0584282Z Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+2026-10-20T23:51:22.0839708Z Downloading hiredis-3.5.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (314 kB)
+2026-10-20T23:51:22.1085569Z Downloading iniconfig-2.3.1-py3-none-any.whl (7.6 kB)
+2026-10-20T23:51:22.1303371Z Downloading opentelemetry_api-1.45.1-py3-none-any.whl (60 kB)
+2026-10-20T23:51:22.1335210Z Using cached packaging-26.3-py3-none-any.whl (129 kB)
+2026-10-20T23:51:22.1536172Z Downloading pydantic-2.14.1-py3-none-any.whl (488 kB)
+2026-10-20T23:51:22.1793673Z Downloading pydantic_core-2.50.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.2 MB)
+2026-10-20T23:51:22.1901979Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.2/2.2 MB 233.8 MB/s  0:00:00
+2026-10-20T23:51:22.2097947Z Downloading annotated_types-0.8.0-py3-none-any.whl (13 kB)
+2026-10-20T23:51:22.2314607Z Downloading pygments-2.21.0-py3-none-any.whl (1.3 MB)
+2026-10-20T23:51:22.2394507Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 191.1 MB/s  0:00:00
+2026-10-20T23:51:22.2589556Z Downloading pyjwt-2.15.1-py3-none-any.whl (33 kB)
+2026-10-20T23:51:22.2815454Z Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+2026-10-20T23:51:22.3027750Z Downloading starlette-1.9.0-py3-none-any.whl (80 kB)
+2026-10-20T23:51:22.3251924Z Downloading anyio-4.15.1-py3-none-any.whl (132 kB)
+2026-10-20T23:51:22.3485626Z Downloading idna-3.20-py3-none-any.whl (69 kB)
+2026-10-20T23:51:22.3719672Z Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+2026-10-20T23:51:22.3935188Z Downloading typing_inspection-0.4.4-py3-none-any.whl (14 kB)
+2026-10-20T23:51:22.4154780Z Downloading tzdata-2026.5-py2.py3-none-any.whl (347 kB)
+2026-10-20T23:51:22.4382129Z Downloading argon2_cffi_bindings-26.1.0-cp310-abi3-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl (26 kB)
+2026-10-20T23:51:22.4614807Z Downloading certifi-2026.10.19-py3-none-any.whl (136 kB)
+2026-10-20T23:51:22.4844963Z Downloading mako-1.4.3-py3-none-any.whl (80 kB)
+2026-10-20T23:51:22.5065663Z Downloading markupsafe-3.0.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (22 kB)
+2026-10-20T23:51:22.5281381Z Downloading pycparser-3.11-py3-none-any.whl (51 kB)
+2026-10-20T23:51:22.7016562Z Building wheels for collected packages: orion-barbearias
+2026-10-20T23:51:22.7023132Z   Building editable for orion-barbearias (pyproject.toml): started
+2026-10-20T23:51:22.9271526Z   Building editable for orion-barbearias (pyproject.toml): finished with status 'done'
+2026-10-20T23:51:22.9276409Z   Created wheel for orion-barbearias: filename=orion_barbearias-0.8.0-0.editable-py3-none-any.whl size=3135 sha256=694c1b3e43b73aaad226f5d380554d248cad930c512c9f064052e64908248484
+2026-10-20T23:51:22.9278274Z   Stored in directory: /tmp/pip-ephem-wheel-cache-1xhcof41/wheels/49/71/80/d66de85543e164594da63af40c5530807fdb669b4766b30b62
+2026-10-20T23:51:22.9293775Z Successfully built orion-barbearias
+2026-10-20T23:51:23.0279999Z Installing collected packages: uvloop, urllib3, tzdata, typing-extensions, sniffio, six, PyJWT, pygments, pycparser, psycopg-binary, pluggy, Pillow, packaging, MarkupSafe, jmespath, iniconfig, idna, hiredis, h11, greenlet, click, certifi, asyncpg, annotated-types, annotated-doc, uvicorn, typing-inspection, SQLAlchemy, redis, python-dateutil, pytest, pydantic-core, psycopg, pillow-heif, opentelemetry-api, Mako, httpcore, cffi, anyio, starlette, pytest-asyncio, pydantic, httpx, cryptography, botocore, argon2-cffi-bindings, alembic, s3transfer, fastapi, arq, argon2-cffi, boto3, orion-barbearias
+2026-10-20T23:51:29.0074872Z 
+2026-10-20T23:51:29.0123106Z Successfully installed Mako-1.4.3 MarkupSafe-3.0.4 Pillow-12.3.0 PyJWT-2.15.1 SQLAlchemy-2.1.5 alembic-1.20.0 annotated-doc-0.0.5 annotated-types-0.8.0 anyio-4.15.1 argon2-cffi-25.1.0 argon2-cffi-bindings-26.1.0 arq-0.28.0 asyncpg-0.32.0 boto3-1.43.116 botocore-1.43.116 certifi-2026.10.19 cffi-2.1.1 click-8.5.0 cryptography-49.0.0 fastapi-0.150.0 greenlet-3.5.6 h11-0.16.0 hiredis-3.5.0 httpcore-1.0.9 httpx-0.28.1 idna-3.20 iniconfig-2.3.1 jmespath-1.1.0 opentelemetry-api-1.45.1 orion-barbearias-0.8.0 packaging-26.3 pillow-heif-1.8.1 pluggy-1.7.0 psycopg-3.3.6 psycopg-binary-3.3.6 pycparser-3.11 pydantic-2.14.1 pydantic-core-2.50.1 pygments-2.21.0 pytest-9.1.1 pytest-asyncio-1.4.0 python-dateutil-2.9.0.post0 redis-5.3.1 s3transfer-0.19.3 six-1.17.0 sniffio-1.3.1 starlette-1.9.0 typing-extensions-4.16.0 typing-inspection-0.4.4 tzdata-2026.5 urllib3-2.8.0 uvicorn-0.54.0 uvloop-0.23.0
+2026-10-20T23:51:29.0132516Z 
+2026-10-20T23:51:29.0133452Z [notice] A new release of pip is available: 26.2.1 -> 26.2.2
+2026-10-20T23:51:29.0134523Z [notice] To update, run: pip install --upgrade pip
+2026-10-20T23:51:29.4994937Z No broken requirements found.
+2026-10-20T23:51:29.5292678Z ##[group]Run python -m compileall -q app tests/unit/test_media_api.py
+2026-10-20T23:51:29.5293652Z [36;1mpython -m compileall -q app tests/unit/test_media_api.py[0m
+2026-10-20T23:51:29.5356109Z shell: /usr/bin/bash -e {0}
+2026-10-20T23:51:29.5356361Z env:
+2026-10-20T23:51:29.5356630Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.15/x64
+2026-10-20T23:51:29.5357073Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.15/x64/lib/pkgconfig
+2026-10-20T23:51:29.5357542Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64
+2026-10-20T23:51:29.5357943Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64
+2026-10-20T23:51:29.5358327Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64
+2026-10-20T23:51:29.5358714Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.15/x64/lib
+2026-10-20T23:51:29.5359036Z ##[endgroup]
+2026-10-20T23:51:29.9028281Z ##[group]Run python -m pytest -q tests/unit/test_media_api.py
+2026-10-20T23:51:29.9028780Z [36;1mpython -m pytest -q tests/unit/test_media_api.py[0m
+2026-10-20T23:51:29.9088928Z shell: /usr/bin/bash -e {0}
+2026-10-20T23:51:29.9089199Z env:
+2026-10-20T23:51:29.9089488Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.15/x64
+2026-10-20T23:51:29.9089965Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.15/x64/lib/pkgconfig
+2026-10-20T23:51:29.9090428Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64
+2026-10-20T23:51:29.9090840Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64
+2026-10-20T23:51:29.9091439Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64
+2026-10-20T23:51:29.9091857Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.15/x64/lib
+2026-10-20T23:51:29.9092210Z ##[endgroup]
+2026-10-20T23:51:31.6191988Z ..........                                                               [100%]
+2026-10-20T23:51:31.6192781Z 10 passed in 0.89s
+2026-10-20T23:51:31.7785583Z Post job cleanup.
+2026-10-20T23:51:31.8981424Z (node:2547) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-20T23:51:31.8983237Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-20T23:51:31.9193263Z Post job cleanup.
+2026-10-20T23:51:32.0075844Z [command]/usr/bin/git version
+2026-10-20T23:51:32.0120857Z git version 2.55.0
+2026-10-20T23:51:32.0163245Z Temporarily overriding HOME='/home/runner/work/_temp/985a78a4-8587-453c-b392-4161aa2e4eea' before making global git config changes
+2026-10-20T23:51:32.0164616Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-20T23:51:32.0169664Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/orion-assistente/orion-assistente
+2026-10-20T23:51:32.0211667Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-20T23:51:32.0250890Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-20T23:51:32.0562730Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-20T23:51:32.0591053Z http.https://github.com/.extraheader
+2026-10-20T23:51:32.0601550Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-10-20T23:51:32.0643996Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-20T23:51:32.0966229Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-20T23:51:32.1007100Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-20T23:51:32.1438406Z Cleaning up orphan processes
+2026-10-20T23:51:32.1740830Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-python@v5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+

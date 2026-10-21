@@ -2,11 +2,17 @@
 
 Data: 20/10/2026. PR de desenvolvimento: https://github.com/QGBALTIGO/orion-assistente/pull/80.
 
+Continuação: [revisão manual dos 1.247 candidatos de comunicação](marcflow/manual-inventory-review.md).
+Esse relatório registra os achados corrigidos e separa testes, CI, publicação e
+aceites externos. Os números e estados operacionais abaixo são históricos das
+etapas que os produziram; não substituem o recibo atual.
+
 **A missão completa permanece PARCIAL.** A continuação entrega a central humana
 de texto com QR gerenciado e Meta, histórico, leitura pessoal, CRM, respostas
 rápidas, controle único e fila persistente. Também avança o editor e simulador
 de rascunhos lineares. O executor distribuído de fluxos, a mídia de atendimento e
-as demais extensões ainda não estão concluídos. Nenhum recurso foi habilitado em produção.
+as demais extensões ainda não estão concluídos. Na etapa descrita abaixo, nenhum
+recurso havia sido habilitado em produção; a continuação possui recibo próprio.
 
 O estado atual, os contratos e os limites da central estão em
 [human-central.md](marcflow/human-central.md). Os recibos `validation.json` e
@@ -28,7 +34,7 @@ devem ser interpretados como testes desta continuação.
   A cópia local já tinha alterações; foi preservada e não recebeu a integração.
 - Referência MarcFlow: `aa105ccd21a5adb8b5db342e884f8219fc7d1bc7`. A cópia de
   referência continua sem alterações rastreadas. Não foi iniciada sua aplicação.
-- Não houve acesso a dados operacionais, alteração de credenciais, migração em
+- Naquela etapa, não houve acesso a dados operacionais, alteração de credenciais, migração em
   Railway, conexão/desconexão de WhatsApp, envio a contatos ou deploy.
 
 O envio Git local ficou preso no gerenciador de credenciais. Os commits foram
@@ -193,7 +199,7 @@ Não houve envio real para provar entrega ou leitura.
 As novas tabelas aplicam `ENABLE` e `FORCE ROW LEVEL SECURITY`. O runtime não recebe
 credenciais do canal nem acesso geral a `allowed_senders`; a função retorna somente
 um booleano no contexto do tenant da transação. Eventos de controle são somente
-inseridos/lidos pelo runtime. Nenhuma migration foi executada em banco operacional.
+inseridos/lidos pelo runtime. Naquela etapa, nenhuma migration foi executada em banco operacional.
 
 Prefixo autenticado `P=/api/v1/tenants/{tenant_id}/management/inbox`:
 
@@ -285,7 +291,7 @@ A CI de PostgreSQL/Redis/Docker é executada no PR. Os IDs, contagens finais e
 resultados do snapshot de código qualificado ficam no registro de validação desta
 entrega, junto da distinção entre testes locais e infraestrutura real descartável.
 
-O [recibo final](marcflow/final-validation.md) qualifica o código `b6650a0`:
+O [recibo final da etapa anterior](marcflow/final-validation.md) qualifica o código `b6650a0`:
 4.149 aprovações na suíte PostgreSQL/Redis, 4.038 no Compose, 413 no conector
 Linux e 298 nos testes DOM. Todos os trabalhos da CI correspondente passaram.
 Os conjuntos possuem casos sobrepostos e suas contagens não devem ser somadas
@@ -368,7 +374,7 @@ contratos HTTP, tabelas, migrations, flags e dependências da implementação.
 | `b6650a0` | Verificação atômica das flags antes da reserva de envio |
 
 O recibo da primeira qualificação foi preservado em [validation.json](marcflow/validation.json).
-O recibo final está em [final-validation.md](marcflow/final-validation.md).
+O recibo final daquela etapa está em [final-validation.md](marcflow/final-validation.md).
 Um commit posterior de documentação pode registrar esses recibos sem alterar o
 código qualificado indicado no arquivo.
 
