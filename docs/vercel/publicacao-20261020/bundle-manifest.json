@@ -1,0 +1,71 @@
+{
+  "format_version": 1,
+  "public_origin": "https://orion-painel-iota.vercel.app",
+  "upstream_origin": "https://orion-assistente-production.up.railway.app",
+  "files": [
+    {
+      "source": "landing/index.html",
+      "source_sha256": "75cfe04362d040afd30f03e762615530c8204cdbcbd99bf5d5c80a8514288c9c",
+      "source_sha256_lf": "7ff99d5ef55f96ae89e24a0c33d9f0e0245fc918e1b0a0fd90b1f417ae452365",
+      "reviewed_source_sha256_lf": "7ff99d5ef55f96ae89e24a0c33d9f0e0245fc918e1b0a0fd90b1f417ae452365",
+      "output": "public/index.html",
+      "output_sha256": "5285c4bac3ccf06c6d0d8950d3cc7647cf8f2c1ec946492e2781421ec53a5648",
+      "output_bytes": 39185,
+      "transformation": "three_origin_metadata_values"
+    },
+    {
+      "source": "app/static/orion-suite.js",
+      "source_sha256": "98aa51140d29215b8e176516ddd17e0c7fa0813a4562b64086e04560918d44e4",
+      "source_sha256_lf": "98aa51140d29215b8e176516ddd17e0c7fa0813a4562b64086e04560918d44e4",
+      "reviewed_source_sha256_lf": "98aa51140d29215b8e176516ddd17e0c7fa0813a4562b64086e04560918d44e4",
+      "output": "public/orion-suite-vercel.js",
+      "output_sha256": "0dec8087f9d9894cf4288d4f75b110b28e217d7c3fb0b17a628dfbfe3a7c7c32",
+      "output_bytes": 376431,
+      "transformation": "google_connect_dialog_insertion_after_capability_guard"
+    },
+    {
+      "source": "deploy/vercel-orion/403.html",
+      "source_sha256": "779aab92b7fb2b79b3c0d08440fdd06162d35304143027dd6836ad21c2967afd",
+      "source_sha256_lf": "779aab92b7fb2b79b3c0d08440fdd06162d35304143027dd6836ad21c2967afd",
+      "reviewed_source_sha256_lf": null,
+      "output": "public/403.html",
+      "output_sha256": "779aab92b7fb2b79b3c0d08440fdd06162d35304143027dd6836ad21c2967afd",
+      "output_bytes": 303,
+      "transformation": "byte_identical_copy"
+    },
+    {
+      "source": "deploy/vercel-orion/404.html",
+      "source_sha256": "139d492526d35bff929037482d0a707d4eb43bc05837ff6b1f34e865704d6ace",
+      "source_sha256_lf": "139d492526d35bff929037482d0a707d4eb43bc05837ff6b1f34e865704d6ace",
+      "reviewed_source_sha256_lf": null,
+      "output": "public/404.html",
+      "output_sha256": "139d492526d35bff929037482d0a707d4eb43bc05837ff6b1f34e865704d6ace",
+      "output_bytes": 247,
+      "transformation": "byte_identical_copy"
+    },
+    {
+      "source": "deploy/vercel-orion/google-origin.json",
+      "source_sha256": "e2f4aa45945f8e1338f91a1d96ae7b15992f84ec248fdd9a034a27c453c6210c",
+      "source_sha256_lf": "e2f4aa45945f8e1338f91a1d96ae7b15992f84ec248fdd9a034a27c453c6210c",
+      "reviewed_source_sha256_lf": null,
+      "output": "public/google-origin.json",
+      "output_sha256": "e2f4aa45945f8e1338f91a1d96ae7b15992f84ec248fdd9a034a27c453c6210c",
+      "output_bytes": 228,
+      "transformation": "byte_identical_copy"
+    },
+    {
+      "source": "deploy/vercel-orion/vercel.json",
+      "source_sha256": "10a79d6a85010de66d51b45e6d8d894463f2941132383ac6dba1af1520ccbbdd",
+      "source_sha256_lf": "10a79d6a85010de66d51b45e6d8d894463f2941132383ac6dba1af1520ccbbdd",
+      "reviewed_source_sha256_lf": null,
+      "output": "vercel.json",
+      "output_sha256": "10a79d6a85010de66d51b45e6d8d894463f2941132383ac6dba1af1520ccbbdd",
+      "output_bytes": 3562,
+      "transformation": "byte_identical_copy"
+    }
+  ],
+  "network_requests": 0,
+  "runtime_execution": false,
+  "production_changes": false,
+  "manifest_public": false
+}

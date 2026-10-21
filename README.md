@@ -230,19 +230,17 @@ transcrição real, visualizador React Flow ou onboarding autônomo.
 Essas integrações requerem piloto real, orçamento aprovado, revisão de
 licenças e testes específicos. Veja [docs/advanced.md](docs/advanced.md).
 
-## Teste online da agenda
+## Acesso ao site e ao painel
 
-1. Abra https://orion-assistente-production.up.railway.app/ (landing) e
-   https://orion-assistente-production.up.railway.app/panel (painel).
-2. Localize o `SUPPORT_API_TOKEN` nas variáveis privadas do serviço
-   `orion-assistente` no projeto Railway `strong-creation`.
-3. Insira esse token **apenas no painel HTTPS**. Selecione a barbearia
-   com nome DEMONSTRAÇÃO FICTÍCIA. Há dois profissionais, três serviços,
-   expedientes de segunda a sábado; o WhatsApp externo está desativado.
-4. A API interativa em `/docs` permite consultar disponibilidade,
-   criar holds, confirmar, cancelar e remarcar com token Bearer. Use somente
-   clientes e números **fictícios**, nunca clientes de verdade.
+- Site: https://orion-painel-iota.vercel.app/
+- Painel: https://orion-painel-iota.vercel.app/panel
+- O endereço anterior https://orion-assistente-production.up.railway.app/panel continua disponível.
 
-API e worker estão no ambiente chamado `production` pela Railway,
-mas este é um **ambiente de testes não homologado para dados reais**.
+Entre com a conta atual. O novo domínio exige um novo login, sem invalidar as
+sessões do endereço anterior. Dados, APIs, IA, worker e sessão QR continuam no
+Railway; a publicação Vercel não altera os serviços ou suas configurações.
+
+Procedimento e limites: [deploy/vercel-orion/README.md](deploy/vercel-orion/README.md).
+Evidências desta publicação: [docs/vercel/publicacao-20261020](docs/vercel/publicacao-20261020/README.md).
+As condições de aceite de integrações reais permanecem nos documentos MarcFlow.
 

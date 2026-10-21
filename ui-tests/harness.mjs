@@ -5,7 +5,7 @@ import { JSDOM, VirtualConsole } from 'jsdom';
 export const tenantA = '10000000-0000-4000-8000-000000000001';
 export const tenantB = '20000000-0000-4000-8000-000000000002';
 export const customerId = '30000000-0000-4000-8000-000000000003';
-const sourceURL = new URL('../app/static/orion-suite.js', import.meta.url);
+const defaultSourceURL = new URL('../app/static/orion-suite.js', import.meta.url);
 export const flush = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setImmediate(resolve)); };
 export function deferred() { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
 export function customer(name = 'Cliente sintético', id = customerId) { return { id, name, active: true, phone: null, email: null, version: 1, total_appointments: 0, total_spent_cents: 0, loyalty_points: 0 }; }
@@ -20,7 +20,7 @@ export function defaultResponse(path) {
   return [];
 }
 
-export async function makeSuite({ initialRoute = 'clientes', role = 'owner', respond = defaultResponse, bridge: extra = {} } = {}) {
+export async function makeSuite({ initialRoute = 'clientes', role = 'owner', respond = defaultResponse, bridge: extra = {}, sourceURL = defaultSourceURL } = {}) {
   const console = new VirtualConsole(), errors = [];
   console.on('jsdomError', error => errors.push(error));
   const dom = new JSDOM('<!doctype html><html lang="pt-BR" data-theme="light"><body><div id="appView" class="app"><aside class="sidebar"><div class="brand">Orion</div></aside><main class="content"><section id="page-original" class="page">Área original</section></main></div></body></html>', { url: 'https://orion.test/panel', runScripts: 'outside-only', virtualConsole: console });

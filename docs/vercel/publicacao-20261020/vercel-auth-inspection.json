@@ -1,0 +1,310 @@
+{
+  "artifacts_sha256": {
+    "run_vercel_auth_contract.py": "70ff3807f3070a890d5eba0f6273f3a86a0c469a3241b208914eaf9f212306ed",
+    "test_vercel_auth_contract.py": "dd3a4b86a310616a9fc1e6755f9242de3c4c42069321d9fb867d2b3fa67bfea6",
+    "vercel-auth-contract.log": "404f7e58d9c594cf369a95cef0594c4e03124deb3e8a38693778262145123001",
+    "vercel-auth-contract.xml": "e503aecbe546f9844d24319ddc91f59613ca100f1b25b71d0f5e01e3c152deae"
+  },
+  "conclusion": "A catch-all external rewrite is not proven to work unchanged. It must preserve the browser-visible authority for same-origin checks or perform strict trusted-origin normalization at the proxy. Configured public-origin and Google host-only nonce contracts remain separate obstacles to full transparent dual-domain operation.",
+  "findings": [
+    {
+      "conditional_reproduction": "Host=upstream Railway, Origin=Vercel =>403, including X-Forwarded-Host and Forwarded. Host=Vercel/Origin=Vercel =>200. Actual Vercel upstream Host was not queried by this task.",
+      "evidence": "panel_auth._same_origin compares parsed Origin.netloc exactly to Host; forwarded headers are ignored. Login and every cookie-auth mutation call it.",
+      "id": "PROXY-ORIGIN",
+      "references": [
+        "same_origin",
+        "session_actor",
+        "login"
+      ]
+    },
+    {
+      "evidence": "__Host-orion_session is Secure+HttpOnly+SameSiteStrict+Path=/ with no Domain. Server stores only SHA256(session token) in existing Redis; domain is not in claims.",
+      "id": "PROXY-COOKIE",
+      "implication": "Rewriting Set-Cookie unchanged can create a new host-only Vercel session while keeping existing Railway sessions intact. Existing Railway cookies cannot automatically travel to the unrelated vercel.app hostname; a fresh login there is required. Never weaken to Domain or SameSite=None merely to copy sessions.",
+      "references": [
+        "login",
+        "session_actor",
+        "logout"
+      ]
+    },
+    {
+      "evidence": "panel.html api/publicAuth/uploadImage uses relative URLs, credentials same-origin and X-Orion-CSRF for authenticated mutations; publicAuth login has no CSRF token yet. orion-public.js also uses relative API paths and same-origin credentials for preview.",
+      "id": "PROXY-FRONTEND",
+      "implication": "Serve HTML, assets, auth and browser API on one visible origin. A static frontend making direct credentialed cross-origin browser calls to Railway is not compatible with current cookie/CORS/origin policy.",
+      "source_lines": [
+        {
+          "file": "app/static/panel.html",
+          "line_end": 1495,
+          "line_start": 1479
+        },
+        {
+          "file": "app/static/panel.html",
+          "line_end": 1649,
+          "line_start": 1646
+        },
+        {
+          "file": "app/static/orion-public.js",
+          "line_end": 41,
+          "line_start": 8
+        }
+      ]
+    },
+    {
+      "evidence": "The landing contact POST requires Origin == configured PANEL_PUBLIC_URL, independently of incoming Host; public booking POST calls _same_origin. No forwarded-browser-header trust fallback.",
+      "id": "PROXY-PUBLIC-ORIGIN",
+      "implication": "Preserving Host alone cannot make a new-domain contact form work while PANEL_PUBLIC_URL remains the Railway origin. A reviewed canonical-origin or trusted proxy-normalization strategy is needed.",
+      "references": [
+        "public_form_origin",
+        "public_booking_origin"
+      ]
+    },
+    {
+      "evidence": "GOOGLE_REDIRECT_URI must share origin with PANEL_PUBLIC_URL. Google connect requires request.url.netloc equal callback.netloc, then sets host-only Secure/HttpOnly/Lax nonce at /integrations/google/callback. Callback requires that exact browser nonce before provider exchange.",
+      "id": "PROXY-OAUTH",
+      "implication": "Starting from a Vercel cookie origin and returning to the current Railway callback loses the nonce and fails403; Host-preserving new-origin connect with old callback fails503. Full Google transparency cannot be claimed without canonical callback/provider configuration and preserving the existing Railway flow, or an explicitly separate Railway entry point. Do not rewrite provider redirect_uri strings or weaken nonce checks as a shortcut.",
+      "references": [
+        "oauth_origin_config",
+        "oauth_config",
+        "oauth_connect",
+        "oauth_callback",
+        "oauth_return_redirect"
+      ]
+    },
+    {
+      "evidence": "Email public URLs and booking/invitation links are generated from PANEL_PUBLIC_URL. Explicit /conectar-whatsapp and OAuth callback_result redirects are relative; automatic FastAPI slash redirects use received Host/scheme.",
+      "extra_source": {
+        "file": "app/qr_api.py",
+        "line_end": 393,
+        "line_start": 389
+      },
+      "id": "PROXY-URLS-REDIRECTS",
+      "implication": "/panel/ can redirect the browser to upstream Railway if Host is upstream; preserve or narrowly remap same-upstream Location at the proxy. An Origin/Host strategy does not automatically migrate email/public links. Keep all existing provider URLs/credentials intact until separately reviewed.",
+      "references": [
+        "mail_public_url",
+        "oauth_return_redirect",
+        "server_start"
+      ]
+    },
+    {
+      "evidence": "/panel and login/logout have no-store; authenticated /auth/me currently returns csrf and identity without a Cache-Control response header. Client fetch(cache=no-store) alone is not a server/CDN cache policy. No application CORSMiddleware was found.",
+      "id": "PROXY-CACHE",
+      "implication": "Proxy must guarantee private/no-store for auth, authenticated API, panel and preview responses, pass distinct Set-Cookie headers faithfully, and avoid logging cookies/Authorization/CSRF or OAuth code/state query values.",
+      "references": [
+        "panel_html",
+        "login",
+        "me",
+        "logout",
+        "server_start"
+      ]
+    },
+    {
+      "evidence": "Media image upload accepts8*1024*1024bytes; generated media <=1500000bytes. Audio ingress accepts2000000bytes and120s content duration, with30s processing scope. Public landing includes mp4/FileResponse assets. UI currently polls HTTP; no WebSocket/EventSource usage was found in app source.",
+      "id": "PROXY-TRANSPORT",
+      "implication": "Any Function/middleware/proxy choice must be checked against official request/response size, streaming/range and duration limits. An8MiB request must not silently become unsupported. Do not retry unsafe methods automatically or strip CSRF/content/idempotency/cookie headers.",
+      "source_lines": [
+        {
+          "file": "app/media_api.py",
+          "line_end": 29,
+          "line_start": 27
+        },
+        {
+          "file": "app/media_api.py",
+          "line_end": 151,
+          "line_start": 134
+        },
+        {
+          "file": "app/groq_audio.py",
+          "line_end": 17,
+          "line_start": 16
+        },
+        {
+          "file": "app/qr_channel_audio.py",
+          "line_end": 47,
+          "line_start": 40
+        }
+      ]
+    },
+    {
+      "evidence": "Login and public form limits key off request.client.host; start_api uses uvicorn defaults without explicit proxy-header/trusted-IP arguments. Effective environment/proxy trust was not inspected here.",
+      "id": "PROXY-IP",
+      "implication": "Verify safe real client-IP behavior in the deployment without enabling arbitrary forwarded-header trust; otherwise clients may share a Vercel-edge rate-limit bucket. X-Forwarded-Host alone does not affect _same_origin.",
+      "references": [
+        "login",
+        "public_form_origin",
+        "server_start"
+      ]
+    }
+  ],
+  "isolated_execution": {
+    "browser_limit": "HTTPX cookie host scoping and emitted cookie attributes were checked, not a real browser SameSite/real login or actual Vercel platform forwarding.",
+    "case_names": [
+      "test_actual_origin_contract[synthetic-orion.up.railway.app-https://synthetic-orion.vercel.app-extra0-403]",
+      "test_actual_origin_contract[synthetic-orion.up.railway.app-https://synthetic-orion.vercel.app-extra1-403]",
+      "test_actual_origin_contract[synthetic-orion.up.railway.app-https://synthetic-orion.vercel.app-extra2-403]",
+      "test_actual_origin_contract[synthetic-orion.vercel.app-https://synthetic-orion.vercel.app-extra3-200]",
+      "test_actual_origin_contract[synthetic-orion.up.railway.app-https://synthetic-orion.up.railway.app-extra4-200]",
+      "test_actual_origin_contract[synthetic-orion.vercel.app-https://evil.example-extra5-403]",
+      "test_actual_origin_contract[synthetic-orion.vercel.app-null-extra6-403]",
+      "test_actual_origin_contract[synthetic-orion.vercel.app-None-extra7-200]",
+      "test_actual_login_rejects_upstream_host_even_with_forwarded_host",
+      "test_host_preserving_contract_login_cookie_me_csrf_logout",
+      "test_existing_railway_cookie_stays_valid_but_not_shared_with_frontend",
+      "test_landing_origin_remains_bound_to_configured_public_url[synthetic-orion.vercel.app-https://synthetic-orion.vercel.app-403]",
+      "test_landing_origin_remains_bound_to_configured_public_url[synthetic-orion.up.railway.app-https://synthetic-orion.vercel.app-403]",
+      "test_landing_origin_remains_bound_to_configured_public_url[synthetic-orion.up.railway.app-https://synthetic-orion.up.railway.app-200]",
+      "test_automatic_redirect_uses_received_host_but_legacy_redirect_is_relative",
+      "test_no_application_cors_and_panel_is_no_store",
+      "test_oauth_callback_configuration_has_one_canonical_origin",
+      "test_google_connect_front_host_rejected_before_state_or_provider",
+      "test_callback_on_other_host_lacks_required_nonce_cookie"
+    ],
+    "errors": 0,
+    "failed": 0,
+    "harness_history": "Two initial harness-only runs retained: missing repo pytest asyncio mode, then Windows event-loop self-pipe blocked. Final runner supplies repo config and allows only socketpair self-pipe; no source behavior was patched to pass.",
+    "network_boundary": "Network/DNS prohibited; only Windows asyncio socketpair self-pipe internal loopback is allowed during socketpair construction. No external/real endpoint or infrastructure started.",
+    "no_real_Vercel_Railway_delivery_or_provider_acceptance": true,
+    "passed": 19,
+    "real_code": "Orion FastAPI/panel_auth/sales-origin/OAuth callback and helpers; actual password hash verification with synthetic credentials; Redis memory fake; no database."
+  },
+  "minimal_safe_solution": {
+    "before_choice": "Confirm documented/preview-observed Vercel external-rewrite request Host/Origin behavior and Railway host routing. Do not count a200GET landing as authenticated panel acceptance.",
+    "full_no_backend_change_limit": "The local tests prove the conditional backend Host/Origin/cookie contract, not an implemented proxy. A validated proxy-normalization design still needs its own tests and cannot transparently solve current Google callback/nonce or canonical public-link flows by itself. Keep those unchanged on Railway with an explicitly separate entry/acceptance, or review canonical-origin/callback configuration and official provider registration before promising full site equivalence.",
+    "if_pure_rewrite_cannot_preserve_contract": "Use a small reviewed trusted-origin/backend adaptation or a proxy with explicit origin/redirect policy, with exact fixed-origin allowlist and regression tests. Do not disable CSRF, reflect arbitrary Origin, add wildcard credentialed CORS, expose SUPPORT_API_TOKEN in browser or migrate databases/session stores.",
+    "preferred_if_platform_supports_it": "Use a narrowly fixed upstream origin and same-visible-origin routing for the existing site/panel/assets/auth/API, keeping all application state on Railway. If the proxy changes Host, validate incoming Origin against one exact approved Vercel origin BEFORE normalizing it to the fixed upstream origin; reject unexpected/null/ambiguous origins and do not accept user-supplied forwarded authority. Preserve cookie+CSRF checks and private no-store; rewrite only fixed-upstream absolute redirects when necessary. Use routing middleware only if official limits/header semantics meet existing body/timeout contracts; do not assume a generic Function is drop-in.",
+    "preservation": "No migration, new native identity provisioning, QR relink/logout, IA/campaign flag change, owner secret/Redis/DB copy or provider real message is needed for serving the frontend. Railway original remains available; frontend hostname needs its own login cookie."
+  },
+  "observed_HEAD": "f555675baa0334210b23320e599c0aef572b0292",
+  "production_or_provider_accessed": false,
+  "proposed_isolated_preview_acceptance": [
+    "Observe upstream Host/Origin/scheme and forwarded headers through a disposable echo target with synthetic values before selecting rewrite semantics.",
+    "Use fake backend session/Redis and browser: login/me/logout, valid/missing/wrong CSRF, cross-origin rejection, two domains with separate host-only cookies, no token exposure.",
+    "Check absolute slash redirects and relative redirects; every private auth/API/preview response bypasses cache, Set-Cookie preserved without Domain rewrite.",
+    "Exercise representative browser GET/POST/PATCH/DELETE and complete8MiB upload/response/range/timeout contracts against synthetic services, no data or messages.",
+    "Test contact-form canonical Origin and OAuth nonce/callback domain explicitly with fake provider. Keep current Railway integration functional; do not infer it from panel GET.",
+    "Only after preview contracts pass: publish site/panel facade and verify read-only public/asset hashes and health. A fresh real admin login is a separate acceptance with the owner; no test message/campaign."
+  ],
+  "references": {
+    "bearer_or_cookie_auth": {
+      "file": "app/catalog_api.py",
+      "line_end": 86,
+      "line_start": 60,
+      "source_sha256": "ea4545d238ff44ea08f8388c164704123ffeb71db79144739828e297b4ed0a05"
+    },
+    "landing_html": {
+      "file": "app/landing_api.py",
+      "line_end": 40,
+      "line_start": 37,
+      "source_sha256": "67adbe1899fa0a07424547d7cf275d6e1eba6b7e6550692ed9d79dba796556fd"
+    },
+    "login": {
+      "file": "app/panel_auth.py",
+      "line_end": 209,
+      "line_start": 159,
+      "source_sha256": "88479a4b25858358f43daf34eb059881a8d0c152fefbd532a7380d6cc1610442"
+    },
+    "logout": {
+      "file": "app/panel_auth.py",
+      "line_end": 232,
+      "line_start": 221,
+      "source_sha256": "88479a4b25858358f43daf34eb059881a8d0c152fefbd532a7380d6cc1610442"
+    },
+    "mail_public_url": {
+      "file": "app/account_auth.py",
+      "line_end": 87,
+      "line_start": 82,
+      "source_sha256": "7bab90cdb8623e2eac3719eb4f464c1d9f65ba0103788ebf1f4c0095f854a4ca"
+    },
+    "me": {
+      "file": "app/panel_auth.py",
+      "line_end": 217,
+      "line_start": 213,
+      "source_sha256": "88479a4b25858358f43daf34eb059881a8d0c152fefbd532a7380d6cc1610442"
+    },
+    "oauth_callback": {
+      "file": "app/integrations_api.py",
+      "line_end": 249,
+      "line_start": 210,
+      "source_sha256": "0d1785d417e2115f54284d4399e6fa3aa1a48e0edadce0993d8362656c620d98"
+    },
+    "oauth_config": {
+      "file": "app/google_oauth.py",
+      "line_end": 49,
+      "line_start": 37,
+      "source_sha256": "5fecdef34d8457da7d54b6e2bab1f62f485865e0b571089f73459478d821878d"
+    },
+    "oauth_connect": {
+      "file": "app/integrations_api.py",
+      "line_end": 206,
+      "line_start": 178,
+      "source_sha256": "0d1785d417e2115f54284d4399e6fa3aa1a48e0edadce0993d8362656c620d98"
+    },
+    "oauth_origin_config": {
+      "file": "app/google_oauth.py",
+      "line_end": 34,
+      "line_start": 24,
+      "source_sha256": "5fecdef34d8457da7d54b6e2bab1f62f485865e0b571089f73459478d821878d"
+    },
+    "oauth_return_redirect": {
+      "file": "app/integrations_api.py",
+      "line_end": 92,
+      "line_start": 88,
+      "source_sha256": "0d1785d417e2115f54284d4399e6fa3aa1a48e0edadce0993d8362656c620d98"
+    },
+    "panel_html": {
+      "file": "app/main.py",
+      "line_end": 158,
+      "line_start": 153,
+      "source_sha256": "12c884cb49dff32329f81f754070f63069f8d5eaf5ac91d4c818805fd903845c"
+    },
+    "public_booking_origin": {
+      "file": "app/public_site_api.py",
+      "line_end": 361,
+      "line_start": 320,
+      "source_sha256": "40336e9bedf1d3403248b58eba7dfefc2f906f224829d25292920f0ee9bbaa8e"
+    },
+    "public_form_origin": {
+      "file": "app/sales_requests_api.py",
+      "line_end": 80,
+      "line_start": 66,
+      "source_sha256": "0875c91edf07e80f36887f35cfb5909f2d835263c8dfc045b103b6d2979e0b4d"
+    },
+    "same_origin": {
+      "file": "app/panel_auth.py",
+      "line_end": 87,
+      "line_start": 80,
+      "source_sha256": "88479a4b25858358f43daf34eb059881a8d0c152fefbd532a7380d6cc1610442"
+    },
+    "server_start": {
+      "file": "scripts/start_api.py",
+      "line_end": 34,
+      "line_start": 25,
+      "source_sha256": "9bb0c9076b785cd93e40282e4065d05029fe0a524047a4edef6c5c819e9f74ab"
+    },
+    "session_actor": {
+      "file": "app/panel_auth.py",
+      "line_end": 149,
+      "line_start": 90,
+      "source_sha256": "88479a4b25858358f43daf34eb059881a8d0c152fefbd532a7380d6cc1610442"
+    }
+  },
+  "repository": "C:\\Users\\kayky\\Documents\\Playground\\orion-marcflow-20261020",
+  "repository_mutated_by_this_review": false,
+  "reviewed_at_utc": "2026-10-21T01:32:47.234890+00:00",
+  "schema_version": 1,
+  "source_hashes": {
+    "app/account_auth.py": "7bab90cdb8623e2eac3719eb4f464c1d9f65ba0103788ebf1f4c0095f854a4ca",
+    "app/catalog_api.py": "ea4545d238ff44ea08f8388c164704123ffeb71db79144739828e297b4ed0a05",
+    "app/google_oauth.py": "5fecdef34d8457da7d54b6e2bab1f62f485865e0b571089f73459478d821878d",
+    "app/integrations_api.py": "0d1785d417e2115f54284d4399e6fa3aa1a48e0edadce0993d8362656c620d98",
+    "app/landing_api.py": "67adbe1899fa0a07424547d7cf275d6e1eba6b7e6550692ed9d79dba796556fd",
+    "app/main.py": "12c884cb49dff32329f81f754070f63069f8d5eaf5ac91d4c818805fd903845c",
+    "app/media_api.py": "14565058db8d35e38ef4e2c650b71b76f42defc35a97dd0450fa688a653c1328",
+    "app/panel_auth.py": "88479a4b25858358f43daf34eb059881a8d0c152fefbd532a7380d6cc1610442",
+    "app/public_site_api.py": "40336e9bedf1d3403248b58eba7dfefc2f906f224829d25292920f0ee9bbaa8e",
+    "app/sales_requests_api.py": "0875c91edf07e80f36887f35cfb5909f2d835263c8dfc045b103b6d2979e0b4d",
+    "app/static/orion-public.js": "516c8efca9f3bda29d4a88d7b2e7ec321d6af0bc69ac34fb4f9b2a82c89b5d63",
+    "app/static/panel.html": "5fd326ae4908930babc6c80113be7ffbf82340e53e99c05d96cf3fd718121c08",
+    "scripts/start_api.py": "9bb0c9076b785cd93e40282e4065d05029fe0a524047a4edef6c5c819e9f74ab"
+  },
+  "task_scope": "Read-only current Orion source inspection and synthetic local ASGI contract tests. No app/repo edit, deployment, real host/Redis/DB/provider access, campaign or message. Separate Vercel platform documentation/actual rewrite behavior is owned by the orchestrator."
+}
