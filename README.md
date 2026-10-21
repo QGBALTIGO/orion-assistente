@@ -9,6 +9,9 @@ Trabalho na mesma branch `codex/orion-marcflow-integrations-20261020`, com publi
 autorizada e sem campanhas ou mensagens reais de teste. Consulte o recibo para o
 estado efetivo do Railway. O [contrato](docs/marcflow/communication-contract.json)
 e os relatórios anteriores preservam a evidência histórica de cada etapa.
+O QR principal já foi adotado e a central humana habilitada; o novo acesso do
+próprio admin foi conferido em leitura. Meta e campanhas continuam desligados,
+e entrega ou resposta real não fizeram parte dos testes.
 
 O histórico contém PRs incrementais das FATIAS 0–8. Integrações e módulos
 comerciais avançados permanecem desabilitados ou incompletos sem piloto,

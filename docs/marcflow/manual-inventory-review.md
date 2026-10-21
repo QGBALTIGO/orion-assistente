@@ -14,6 +14,11 @@ registros e os 13 achados únicos, mantendo as 14 observações dos revisores. S
 recibos distinguem testes desta execução, referências históricas, CI e Railway.
 O JSON bruto e o índice compacto acompanham o HTML e funcionam sem rede.
 
+Estado observado: central humana QR habilitada no Railway, com novo acesso do
+próprio admin conferido em leitura. Sessão e IA preservadas; Meta, campanhas e
+sondagens desligados. Esse aceite não inclui entrega ou resposta real nem conclui
+a missão MarcFlow inteira.
+
 ## Correções
 
 - QR: preservar o recibo de uma operação concluída quando a apresentação excede
@@ -66,13 +71,13 @@ preservadas. O QR confirmou `verified_existing` para 96 arquivos de autenticaç�
 e aparelho conectado no volume original. Os assets públicos coincidiram com o
 commit publicado; os detalhes e identificadores estão no recibo JSON.
 
-**A central humana ainda não foi ativada.** A primeira tentativa de registro parou antes do
+**A central QR foi habilitada e o acesso do admin conferido, conforme os recibos abaixo.** A primeira tentativa de registro parou antes do
 backup ou INSERT com `existing_tenant_not_active`. O diagnóstico real posterior,
 executado como `app_support` em transação `READ ONLY`, confirmou o cadastro
 indicado pelo proprietário: **Barbearia Orion — DEMONSTRAÇÃO FICTÍCIA**, slug
 `orion-demo`, ID `82552b25-d0c8-5338-8c42-49f11de59e45`. Ele coincide com o QR
-configurado e está ativo, mas tem `bot_enabled=false`, zero proprietários
-pessoais `member` e nenhum alias legado registrado. Esses estados foram
+configurado e estava ativo, mas tinha `bot_enabled=false`, zero proprietários
+pessoais `member` e nenhum alias legado registrado naquele diagnóstico. Esses estados foram
 preservados no diagnóstico. A ativação aprovada posterior está registrada abaixo.
 A flag global `QR_AI_ENABLED=1` não ativa a IA de uma empresa cujo
 `bot_enabled` esteja falso; não foi realizado teste de conversa real.
@@ -173,9 +178,59 @@ O hook normal foi restaurado, opções de uso único limpas e a opção nativa d
 runtime mantida ligada, sem reinício adicional. O admin precisa de novo login
 para receber a identidade auditável; a sessão antiga continua válida.
 
-O registro protegido do QR (C) foi preparado em cinco campos somente da API,
-com novo UUID, backup/restauração/ensaio próprios e controle/envio globais em
-zero. O QR e o worker não fazem parte desse patch; D/E/F continuam pendentes.
+O proprietário aplicou os cinco campos do registro protegido do QR (C). O
+deployment `9658651d` confirmou `registered=true`, `authority_adopted=false`,
+backup cifrado de 476.977 bytes, leitura de volta, restauração, ensaio e
+preservação da sessão. O [recibo C](revisao-manual-20261020/railway-native-central-C-results.json)
+registra o UUID e o hash do backup. Controle/envio globais permaneceram em zero.
+
+O adaptador D foi publicado em `5d6bf01f`, com prontidão da central e prova HMAC
+da mesma sessão conectada. Os 96 arquivos de autenticação existentes e o volume
+original foram preservados; avisos e testes do operador permaneceram desligados.
+O [recibo D](revisao-manual-20261020/railway-native-central-D-results.json) e a
+[consulta pública](revisao-manual-20261020/public-after-native-central-D.json)
+comprovam essa etapa, sem homologar envio ou resposta real. A configuração aponta
+para os commits qualificados anteriores, enquanto os metadados dos deployments
+C/D informam `168872a`. A comparação Git verificou todos os 537 arquivos de
+runtime e os 72 do QR idênticos aos commits qualificados; os dois identificadores
+são registrados, sem inferir o código da imagem apenas de um desses rótulos.
+
+A adoção E concluiu em `5501a2cf`: `authority_adopted=true`, backup cifrado de
+477.386 bytes, restauração, ensaio e sessão preservada. A verificação privada de
+prontidão passou antes do operador. As pausas e a ausência de backlog foram
+guardas da aplicação; os dados anteriores foram preservados pelo snapshot. O
+[recibo E](revisao-manual-20261020/railway-native-central-E-results.json) registra
+UUID, hash, resultado e limpeza das opções temporárias, mantendo native/QR legado
+ligados. A [consulta após E](revisao-manual-20261020/public-after-native-central-E.json)
+confirmou três saúdes e três assets. A nova imagem informou `168872a`, também
+aprovado na [CI própria](revisao-manual-20261020/ci-168872a-final-evidence.json),
+com as mesmas contagens qualificadas e 104 correspondências dos pins.
+
+As guardas de prontidão passaram em 37 testes isolados com rede bloqueada.
+Cinco casos adicionais verificaram somente o mascaramento do log preparado de F,
+com variáveis fictícias. Esses grupos não representam execução de aplicação,
+login ou mensagens em produção. O proprietário aplicou os sete campos de F
+somente da API e worker após o recibo E, a limpeza das opções temporárias e nova
+consulta de saúde. API `47000175` e worker `0bff9fba` concluíram com sucesso:
+controle/fila humana em 1, IA/canais/ferramentas em 1 e Meta/campanhas/sondagens
+em 0. Ambos confirmaram as 18 versões e o gate 0030; o worker confirmou também
+a configuração nativa administrativa. O QR `5d6bf01f`, banco, Redis e volumes não
+foram reiniciados por F. Os [recibos F](revisao-manual-20261020/railway-native-central-F-results.json)
+e a [consulta pública](revisao-manual-20261020/public-after-native-central-F.json)
+confirmam os cinco serviços online, sem patch pendente e com a sessão preservada.
+
+O usuário realizou novo login do mesmo admin na aba que antes exibia o formulário.
+A conferência real, somente de leitura, abriu a demonstração correta, a central,
+o QR principal e um histórico existente. O aviso de identidade ausente não apareceu;
+`Assumir` estava habilitado e enviar permaneceu bloqueado sem atribuição. A IA
+continuou ativa e a consulta não alterou as contagens de leitura. Filtros de canal
+e situação responderam corretamente; o console não registrou erros. Não foram
+acionados controle, marcação de leitura, CRM, rascunho ou envio. O
+[recibo da conferência](revisao-manual-20261020/native-admin-fresh-login-readonly.json)
+e a [captura sem histórico de contato](revisao-manual-20261020/native-admin-central-readonly-top.png)
+registram seu escopo. Isso não equivale às 20 jornadas completas nem à homologação
+de entrega ou resposta real. A sessão antiga foi recarregada e continuou
+autenticada na página administrativa anterior; não houve logout ou troca de senha.
 
 Os 4.410 testes unitários locais da preparação antecedem a última guarda do
 operador de provisionamento. São evidência daquela árvore de trabalho; a
@@ -198,9 +253,9 @@ e os [testes isolados](revisao-manual-20261020/diagnostic-clone-summary.json)
 acompanham o relatório. Flags de migração/adoção, a sessão e os valores globais
 anteriores da IA foram preservados.
 
-Depois de resolver o pré-requisito do cadastro, faltam registro protegido,
-adapter QR com prova da mesma sessão, adoção persistente sem backlog incerto e
-habilitação do controle/envio na API e worker. Meta e campanhas permanecem
+Provisionamento, registro, prontidão, adoção persistente, habilitação na API/worker
+e novo login do administrador com verificação de consulta estão confirmados.
+Meta e campanhas permanecem
 desativados. O controle do conector cancelou as confirmações anteriores, exigindo
 aplicação manual no painel; isso não foi contornado por outro acesso.
 

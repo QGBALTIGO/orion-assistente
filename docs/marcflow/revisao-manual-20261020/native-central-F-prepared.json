@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "created_at_utc": "2026-10-21T00:38:14.029879+00:00",
+  "status": "prepared_only_requires_E_complete_and_D_health_recheck",
+  "phase": "F",
+  "scope": "Ativar controle/envio humano somente após adoção persistente; nenhum staging ou aplicação realizado por este artefato.",
+  "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+  "source_qualification": {
+    "file": "ci-a85da1c-final-evidence.json",
+    "status": "passed",
+    "sha256": "c8b2256b6c8f1d438c7ef6f528eb87355926c23a44ddeff4e94f8da5842f80b6"
+  },
+  "environment": {
+    "id": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+    "name": "production"
+  },
+  "api": {
+    "service_id": "1d39a32e-8297-4e5b-8b55-d6540542e80b",
+    "name": "orion-assistente",
+    "variable_updates": {
+      "INBOX_CONTROL_ENABLED": "1",
+      "INBOX_SEND_ENABLED": "1"
+    },
+    "configuration_changes": {}
+  },
+  "worker": {
+    "service": {
+      "id": "f6c51234-ee8b-49ba-a06e-bcad37b54b67",
+      "name": "orion-worker"
+    },
+    "source_update": {
+      "commitSha": "a85da1c9ade64a5fc21bc9927efef727447ba83f"
+    },
+    "preserve_repo": "QGBALTIGO/orion-assistente",
+    "preserve_branch": "codex/orion-marcflow-integrations-20261020",
+    "variable_updates": {
+      "INBOX_CONTROL_ENABLED": "1",
+      "INBOX_SEND_ENABLED": "1",
+      "QR_LEGACY_CENTRAL_ENABLED": "1"
+    },
+    "preDeployCommand": [
+      "python -c \"import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); safe_flag_names = ('QR_AI_ENABLED', 'QR_CHANNELS_ENABLED', 'QR_LEGACY_CENTRAL_ENABLED', 'META_LIVE_SEND', 'INBOX_CONTROL_ENABLED', 'INBOX_SEND_ENABLED', 'INBOX_TOOLS_ENABLED', 'MARKETING_EXECUTION_ENABLED', 'MARKETING_RECONCILIATION_ENABLED', 'BIRTHDAY_COLLECTION_ENABLED', 'GROQ_PROBE_ON_START', 'ORION_EMAIL_DELIVERY_PROBE', 'PANEL_LEGACY_ADMIN_IDENTITY_ENABLED'); safe_flag_values = {k: __import__('os').getenv(k, 'unset') for k in safe_flag_names}; print('orion_release_flags=' + __import__('json').dumps({k: (v if v in ('0', '1', 'unset') else 'invalid') for k, v in safe_flag_values.items()}, sort_keys=True), flush=True); from app import legacy_admin_identity; legacy_admin_identity.configuration_binding(); print('native_admin_binding_configuration_valid', flush=True); print('admin_identity_schema_barrier_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_admin_identity_schema'], check=True)\""
+    ],
+    "code": "import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); safe_flag_names = ('QR_AI_ENABLED', 'QR_CHANNELS_ENABLED', 'QR_LEGACY_CENTRAL_ENABLED', 'META_LIVE_SEND', 'INBOX_CONTROL_ENABLED', 'INBOX_SEND_ENABLED', 'INBOX_TOOLS_ENABLED', 'MARKETING_EXECUTION_ENABLED', 'MARKETING_RECONCILIATION_ENABLED', 'BIRTHDAY_COLLECTION_ENABLED', 'GROQ_PROBE_ON_START', 'ORION_EMAIL_DELIVERY_PROBE', 'PANEL_LEGACY_ADMIN_IDENTITY_ENABLED'); safe_flag_values = {k: __import__('os').getenv(k, 'unset') for k in safe_flag_names}; print('orion_release_flags=' + __import__('json').dumps({k: (v if v in ('0', '1', 'unset') else 'invalid') for k, v in safe_flag_values.items()}, sort_keys=True), flush=True); from app import legacy_admin_identity; legacy_admin_identity.configuration_binding(); print('native_admin_binding_configuration_valid', flush=True); print('admin_identity_schema_barrier_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_admin_identity_schema'], check=True)",
+    "preserve_startCommand": "arq app.worker.WorkerSettings"
+  },
+  "safe_logged_flags": [
+    "QR_AI_ENABLED",
+    "QR_CHANNELS_ENABLED",
+    "QR_LEGACY_CENTRAL_ENABLED",
+    "META_LIVE_SEND",
+    "INBOX_CONTROL_ENABLED",
+    "INBOX_SEND_ENABLED",
+    "INBOX_TOOLS_ENABLED",
+    "MARKETING_EXECUTION_ENABLED",
+    "MARKETING_RECONCILIATION_ENABLED",
+    "BIRTHDAY_COLLECTION_ENABLED",
+    "GROQ_PROBE_ON_START",
+    "ORION_EMAIL_DELIVERY_PROBE",
+    "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED"
+  ],
+  "safe_flag_value_policy": "Somente0,1ouunset são exibidos; outro conteúdo é substituído porinvalid. Nenhum nome/login/hash/digest/token/DSN é impresso.",
+  "preserve_without_copy_or_change": [
+    "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED=1 já configurado",
+    "PANEL_ADMIN_USERNAME e PANEL_ADMIN_PASSWORD_HASH nas referências atuais API/worker",
+    "credenciais e URLs restritas atuais",
+    "QR_AI_ENABLED=1",
+    "QR_CHANNELS_ENABLED=1",
+    "INBOX_TOOLS_ENABLED=1",
+    "QR_LEGACY_CENTRAL_ENABLED=1 na API e QR",
+    "tenant/allowlist/piloto/chaves/volumes/sessões existentes",
+    "Meta/campanhas/coleta de aniversário/sondagens desligadas"
+  ],
+  "not_part_of_patch": [
+    "credencial owner ou MIGRATION_DATABASE_URL",
+    "opções/UUIDs de operadores one-time",
+    "username/hash/referências de senha",
+    "QR source ou configuração",
+    "banco/Redis/volumes/dados/sessões"
+  ],
+  "gates_before_staging_or_apply": [
+    "ReciboEcomplete com authority_adopted=true, backup/readback/restore/rehearsal e preservação confirmados; simples registroC não basta.",
+    "D continua saudável: healthcentral200/readytrue/sessionpreservedtrue; conferir novamente o estado apósE sem mensagens.",
+    "Conferir o diff concreto somenteAPI2flags e worker3flags+fontequalificada+predeploynormal; nenhuma inclusão de credenciais de operador.",
+    "Conferir flag nativa atual1 e referências administrativas iguais; nenhuma cópia/substituição desses valores.",
+    "Conferir revisão efetivamente implantada e gate30/binding/18pins/log seguro antes de ARQ promover o novo worker.",
+    "Verificar configuração efetiva/saúde após publicação; novo login do admin para identidade persistida, sem tentar enviar mensagem de teste."
+  ],
+  "D_observation_provenance": "Responsável informou5d6bf01fSUCCESS,healthcentral200ready/sessionpreservedtrue,96authfilesverified_existing e volume intacto. Este preparador não consultou produção; rechecagem é gate.",
+  "E_observation_provenance": "Nenhum reciboE foi consultado ou presumido nesta preparação; bloqueio explícito atécomplete.",
+  "input_worker_config": {
+    "file": "native-central-F-worker-current-config.json",
+    "sha256": "9b49fa8a90295fe4d16ec5ca78d19acf14fc4cbc92fde14b61a4f1c2ca514b72",
+    "basis": "snapshot externo fornecido pelo responsável; somente configuração não secreta e nomes de variáveis foram usados"
+  },
+  "application_or_production_execution": false
+}

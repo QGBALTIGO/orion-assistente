@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scope": "offline HTMLParser plus JSDOM, real report and malicious-source fixture",
-  "report_sha256": "f270704896085d2dc63cd97520b4f7c425c8b7f434afbc68187f2c7a1f335904",
+  "report_sha256": "ca1829eb64fb1bcc527b40e3cdae73dc1c89fff799f18580110592e0bac5b585",
   "compact_sha256": "416f8e41420e9f9336e4807c6da9dcdf3ef49b64ddaf13c670b2d3efa721fd5c",
   "source_records": 1247,
   "rendered_records": 1247,

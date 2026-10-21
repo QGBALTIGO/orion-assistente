@@ -1,11 +1,20 @@
 # Administrador existente na central humana
 
-O diagnóstico real de 20/10/2026 confirmou que o QR configurado já aponta para
-`orion-demo` (`82552b25-d0c8-5338-8c42-49f11de59e45`). A empresa está ativa,
-mas sua IA está desativada, não há proprietário pessoal ativo e o alias da
-sessão principal ainda não foi registrado. O administrador legado autentica
-como suporte sem `account_id`. Esses são estados observados, não inferências
-do seed de demonstração.
+O diagnóstico real inicial de 20/10/2026 confirmou que o QR configurado aponta
+para `orion-demo` (`82552b25-d0c8-5338-8c42-49f11de59e45`). Naquele diagnóstico,
+a empresa estava ativa, com IA desligada, sem proprietário ativo e sem alias
+da sessão principal. O administrador legado autenticava como suporte sem
+`account_id`. Esses estados históricos motivaram a compatibilidade abaixo.
+
+O provisionamento explicitamente aprovado foi aplicado no deployment `d22e7b89`:
+identidade do próprio admin, membership `owner` somente na demonstração, IA
+desse cadastro ligada e auditoria. O registro da sessão concluiu em `9658651d`,
+e o adaptador `5d6bf01f` confirmou prontidão e a mesma sessão, com os 96 arquivos
+de autenticação e volume originais. Adoção da autoridade em `5501a2cf` e
+habilitação global na API `47000175`/worker `0bff9fba` concluíram separadamente.
+O novo login do próprio admin foi conferido na central em leitura, com o QR
+principal e controles disponíveis, sem assumir conversa ou enviar mensagens.
+Os resultados e os limites desse aceite estão no recibo.
 
 O usuário definiu que o atendimento deve usar apenas o administrador. A
 compatibilidade desta alteração persiste a identidade desse administrador

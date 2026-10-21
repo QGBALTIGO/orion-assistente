@@ -1,0 +1,32 @@
+{
+  "verified_at_utc": "2026-10-21T00:35:17.985060+00:00",
+  "scope": "GET only, no login/provider/send calls",
+  "phase": "D adapter ready, before E authority adoption",
+  "health": [
+    {
+      "path": "/health",
+      "status": 200,
+      "body": {
+        "status": "ok"
+      }
+    },
+    {
+      "path": "/health/whatsapp",
+      "status": 200,
+      "body": {
+        "status": "ok",
+        "bridge": "reachable"
+      }
+    },
+    {
+      "path": "/health/central",
+      "status": 200,
+      "body": {
+        "status": "ok",
+        "legacy_ready": true,
+        "session_preserved": true
+      }
+    }
+  ],
+  "adapter_ready_connected_and_same_session_proof": true
+}

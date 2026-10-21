@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-10-21T00:26:10.049935+00:00",
-  "status_source": "API a85da1c e setup do próprio admin publicados/verificados: identidade, proprietário somente da demonstração e IA desse cadastro ativados com backup/restauração. SessãoQR8369 e worker d11 preservados. Registro protegido da sessão(C) preparado; central humana ainda não ativada.",
-  "publication_status": "API a85da1c e setup do próprio admin publicados/verificados: identidade, proprietário somente da demonstração e IA desse cadastro ativados com backup/restauração. SessãoQR8369 e worker d11 preservados. Registro protegido da sessão(C) preparado; central humana ainda não ativada.",
+  "generated_at_utc": "2026-10-21T01:10:10.490329+00:00",
+  "status_source": "Central humana QR habilitada na API e worker; novo acesso do próprio admin conferido em leitura. Sessão, dados e IA preservados. Meta/campanhas/sondagens desligados; nenhuma mensagem real de teste. Entrega e resposta reais não foram homologadas.",
+  "publication_status": "Central humana QR habilitada na API e worker; novo acesso do próprio admin conferido em leitura. Sessão, dados e IA preservados. Meta/campanhas/sondagens desligados; nenhuma mensagem real de teste. Entrega e resposta reais não foram homologadas.",
   "publication_status_provenance": {
     "scope": "operator_supplied_receipt",
     "receipt_field": "publication_status",
@@ -19,16 +19,16 @@
   "dependency_files": 33,
   "findings_observations": 14,
   "compact_sha256": "416f8e41420e9f9336e4807c6da9dcdf3ef49b64ddaf13c670b2d3efa721fd5c",
-  "report_sha256": "f270704896085d2dc63cd97520b4f7c425c8b7f434afbc68187f2c7a1f335904",
+  "report_sha256": "ca1829eb64fb1bcc527b40e3cdae73dc1c89fff799f18580110592e0bac5b585",
   "receipt": {
     "data": {
       "schema_version": 1,
-      "updated_at_utc": "2026-10-21T00:24:56.879Z",
-      "publication_status": "API a85da1c e setup do próprio admin publicados/verificados: identidade, proprietário somente da demonstração e IA desse cadastro ativados com backup/restauração. SessãoQR8369 e worker d11 preservados. Registro protegido da sessão(C) preparado; central humana ainda não ativada.",
+      "updated_at_utc": "2026-10-21T01:10:09.170981+00:00",
+      "publication_status": "Central humana QR habilitada na API e worker; novo acesso do próprio admin conferido em leitura. Sessão, dados e IA preservados. Meta/campanhas/sondagens desligados; nenhuma mensagem real de teste. Entrega e resposta reais não foram homologadas.",
       "ci": {
         "status": "passed",
         "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
-        "summary": "a85da1c qualificado: backend PG16/Redis5.074passed1skip; DockerCompose4.909passed166skip(sobrepostos); QR446,DOM329,ASR4+WAV/OGG,mídia10. Pipcheck e104matchesdos52pins emdoisambientes. Sem homologação de login/envio real.",
+        "summary": "Runtime a85da1c qualificado: backend com PostgreSQL 16/Redis, 5.074 aprovados e 1 ignorado; Docker Compose, 4.909 aprovados e 166 ignorados, em grupos sobrepostos. QR: 446; DOM: 329; ASR: 4 e smoke sintético WAV/OGG; mídia: 10. Pip check e 104 correspondências dos 52 pins em dois ambientes confirmados. Testes da CI não incluem login ou envios reais; a conferência real de acesso possui recibo separado.",
         "evidence": [
           {
             "kind": "workflow",
@@ -139,6 +139,21 @@
             {
               "kind": "exact_dependencies",
               "path": "constraints-ci-08a5cc0-proof.json"
+            }
+          ]
+        },
+        "equivalent_reported_commit_qualification": {
+          "status": "passed",
+          "commit": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+          "summary": "Commit de documentação168 também passou em sua própria CI; fontes de runtime idênticas a a85. Contagens preservadas separadamente, sem soma entre rodadas ou grupos sobrepostos.",
+          "evidence": [
+            {
+              "kind": "actual_job_logs_and_counts",
+              "path": "ci-168872a-final-evidence.json"
+            },
+            {
+              "kind": "exact_pins",
+              "path": "ci-168872a-constraints-proof.json"
             }
           ]
         }
@@ -314,9 +329,9 @@
         },
         {
           "name": "Registro QR(C) com admin nativo",
-          "status": "pending",
+          "status": "succeeded",
           "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
-          "summary": "Patch8ded9c13:5campossomenteAPIparaalias register comUUIDnovo7e24fded,backend a85jápublicado e setupadminconcluído. Control/send0; QRworker/volumesintocados; aguardaaplicaçãomanual/recibo.",
+          "summary": "9658651d SUCCESS: registercomplete/authority_adoptedfalse,backup476977bytes/restore/rehearsal/sessionpreserved. Nativeowner/demo ativos; oneshotlimpo/normalhooksemredeploy;APIlegacy/native1,control/send0. Deploymentmetadata168872a econfigsourcea85; runtimeequivalenteconfirmado.",
           "evidence": [
             {
               "kind": "reviewed_staged_patch",
@@ -325,12 +340,73 @@
             {
               "kind": "static_hook_review",
               "path": "native-central-C-prepared-validation.json"
+            },
+            {
+              "kind": "actual_registration_and_cleanup",
+              "path": "railway-native-central-C-results.json"
+            },
+            {
+              "kind": "full_runtime_and_qr_equivalence",
+              "path": "runtime-168872a-equivalence-and-D-checklist.json"
+            }
+          ]
+        },
+        {
+          "name": "Adaptador QR(D)",
+          "status": "succeeded",
+          "commit": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+          "summary": "5d6bf01fSUCCESS com1alteração deopt-inQR;96authfiles verified_existing e dispositivoconectado. Configsource8369/rootDirectory/volumeoriginaisintocados;QRtreeidêntico72files. GETcentral200legacy_ready/session_preservedtrue. APIworker/controlsend0preservados; autoridadeE ainda nãoadotada.",
+          "evidence": [
+            {
+              "kind": "staged_scope",
+              "path": "native-central-D-staged.json"
+            },
+            {
+              "kind": "actual_qr_session_and_volume",
+              "path": "railway-native-central-D-results.json"
+            },
+            {
+              "kind": "public_readiness",
+              "path": "public-after-native-central-D.json"
+            }
+          ]
+        },
+        {
+          "name": "Adoção da autoridade QR(E)",
+          "status": "succeeded",
+          "commit": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+          "configured_source_commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+          "summary": "5501a2cf-a57e-42d6-8cb7-4ae2468f9dcd SUCCESS; activate complete/authority_adopted=true, backup cifrado de 477386 bytes, leitura de volta, restauração, ensaio e sessão preservada. Verificação privada de prontidão passou antes do operador; pausas e backlog protegidos. Controle/envio globais ainda em0 nesta etapa.",
+          "evidence": [
+            {
+              "kind": "actual_operator_and_cleanup",
+              "path": "railway-native-central-E-results.json"
+            },
+            {
+              "kind": "public_readonly_health",
+              "path": "public-after-native-central-E.json"
+            }
+          ]
+        },
+        {
+          "name": "Habilitação humana(F)",
+          "status": "succeeded",
+          "commit": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+          "summary": "API 47000175-4026-44d9-92aa-e8530bf724b9 e worker 0bff9fba-2213-4fbb-b314-4d833731ed15 SUCCESS; controle e fila de envio humano ligados, IA/canais/ferramentas preservados. Meta/campanhas/sondagens desligados. QR, volume e sessão preservados; nenhuma mensagem real de teste.",
+          "evidence": [
+            {
+              "kind": "actual_runtime_configuration",
+              "path": "railway-native-central-F-results.json"
+            },
+            {
+              "kind": "public_readonly_health",
+              "path": "public-after-native-central-F.json"
             }
           ]
         }
       ],
       "validation": {
-        "summary": "Testes locais e CI comprovados por recibos separados; grupos sobrepostos não são somados.",
+        "summary": "Testes locais, CI, deployments e consulta real do administrador têm recibos separados. A conferência de UI é somente de leitura; grupos e rodadas sobrepostos não são somados nem representam homologação de envio real.",
         "results": {
           "backend": {
             "passed": 4295,
@@ -629,6 +705,37 @@
             "executor": "manual_js_inventory",
             "scope": "Read-only local review of six changed repository documents; 53 valid relative links including historical heading fragment; staged HTML/compact hash checks match offline QA. Draft CI summary identified stale PG wording and was corrected before final regeneration.",
             "application_or_production_checks": false
+          },
+          "legacy_central_E_preflight_guard": {
+            "passed": 37,
+            "failures": 0,
+            "scope": "Guarda GET e ordem do hook com HTTP/subprocess/versões substituídos; rede bloqueada. Não são testes do runtime real nem adoção em produção.",
+            "evidence": [
+              "native-central-E-guard-evidence.json",
+              "native-central-E-guard.xml",
+              "native-central-E-guard-network.json"
+            ]
+          },
+          "legacy_central_F_safe_logging": {
+            "passed": 5,
+            "failures": 0,
+            "scope": "Somente três instruções de log, com variáveis fictícias e importações restritas. Não executa o predeploy completo, binding, esquema, worker ou produção.",
+            "evidence": [
+              "native-central-F-review-and-masking-test.json",
+              "native-central-F-masking-isolated.log"
+            ]
+          },
+          "native_admin_live_readonly_UI": {
+            "status": "passed",
+            "scope": "Novo login feito pelo usuário; central, canal, histórico, permissões e filtros conferidos em leitura, sem ações de negócio, controle, marcação de leitura ou envio.",
+            "old_admin_session_reloaded_still_authenticated": true,
+            "console_errors": 0,
+            "not_full20_browser_journeys_or_provider_homologation": true,
+            "evidence": [
+              "native-admin-fresh-login-readonly.json",
+              "native-admin-central-readonly.png",
+              "native-admin-central-readonly-top.png"
+            ]
           }
         },
         "evidence": [
@@ -647,6 +754,22 @@
           {
             "kind": "installed_dependency_receipts",
             "path": "constraints-ci-8369e2e-proof.json"
+          },
+          {
+            "kind": "runtime_ci",
+            "path": "ci-a85da1c-final-evidence.json"
+          },
+          {
+            "kind": "reported_commit_ci",
+            "path": "ci-168872a-final-evidence.json"
+          },
+          {
+            "kind": "live_readonly_admin",
+            "path": "native-admin-fresh-login-readonly.json"
+          },
+          {
+            "kind": "live_readonly_screenshot",
+            "path": "native-admin-central-readonly-top.png"
           }
         ],
         "finding_attestations": {
@@ -677,31 +800,34 @@
       "external_acceptance": {
         "campaigns_activated": false,
         "model_whatsapp_native_homologation": "not performed",
-        "central_activation": "Not performed yet. Approved native-admin/demo setup completed and verified; protected alias registration(C) pending, followed by QRadapterD/authorityE/controlF. No real test messages/campaigns.",
-        "real_qr_transport": "existing production session resumed,96authfiles verified; no new pairing or message-send test",
+        "central_activation": "Central humana QR habilitada na API e worker; novo acesso do próprio admin conferido em leitura. Sessão, dados e IA preservados. Meta/campanhas/sondagens desligados; nenhuma mensagem real de teste. Entrega e resposta reais não foram homologadas.",
+        "real_qr_transport": "Original96authfiles verified_existing on QRdeployment5d6bf01f; existingdeviceconnected andsame-sessionHMACproofready. No newpair/logout/message-sendtest.",
         "meta_provider_homologation": "not performed; META_LIVE_SEND0",
         "full_browser_20_journeys": "not run in this continuation;329DOM tests are not full browser/login qualification",
         "load1500": "not rerun in this continuation; old results remain historical",
         "real_test_messages_sent": false,
         "task_generated_provider_messages": false,
         "normal_existing_traffic": "Not audited; existing AI/global settings and connected session preserved. No claim that normal customer traffic was stopped.",
-        "current_global_ai_and_tenant_ai": "Global QR_AI_ENABLED1/QR_CHANNELS_ENABLED1 preserved. Only the explicitly approved demonstration's bot_enabled changed fromfalse totrue, backed up and audited; other records preserved by snapshot proof."
+        "current_global_ai_and_tenant_ai": "Global QR_AI_ENABLED1/QR_CHANNELS_ENABLED1 preserved. Only the explicitly approved demonstration's bot_enabled changed fromfalse totrue, backed up and audited; other records preserved by snapshot proof.",
+        "fresh_admin_login": {
+          "status": "passed_readonly",
+          "evidence": "native-admin-fresh-login-readonly.json",
+          "message_send_test": false
+        }
       },
       "remaining_acceptance": {
         "central_registration": [
-          "Completed: same ENV admin nativeidentity provisioned; activeowner only on82552b25/orion-demo; demoAI enabled and audit appended using exact freshplan dbc3562c.",
-          "Completed: verified backup476701bytes/readback/restore/rehearsal; credentials/session/existing records preserved. No new email/password or other personal account.",
-          "Pending: protected alias register(C) with separateUUID7e24fded and its own verified backup/restore/rehearsal. Five APIfields prepared; no QRrestart/authorityactivation yet."
+          "Concluído: próprio admin persistido, propriedade/IA somente da demonstração e auditoria; backup do setup de476701bytes verificado.",
+          "Concluído: registroC e adaptadorD com volume, autenticação e mesma sessão preservados; nenhum novo e-mail, usuário pessoal ou senha criado.",
+          "Concluído: adoçãoE com backup de477386bytes/restauração/ensaio, habilitaçãoF API/worker e configuração efetiva conferida; Meta/campanhas/sondagens desligados."
         ],
         "central_activation": [
-          "After registration: enable only QR adapter and verify ready+connected+same session.",
-          "Activate persistent authority only after backup/restore/rehearsal and no queued/sending/uncertain outbound; preserve paused contacts.",
-          "Finally enable control/send in API+worker, retaining Meta/campaigns off and no real test messages."
+          "Homologação de entrega/resposta real e demais provedores permanece fora dos testes executados."
         ]
       }
     },
     "path": "publication-receipt.json",
-    "sha256": "00855fcac51eada049ba605fe74a7af2fdac3d03e9f6b5af68bb338d3755c349",
+    "sha256": "222fbfef07fecd1e9c893b8780d6107b151284b6c6c8f169511ae0db390bce9c",
     "semantics": "Operator-supplied receipt, displayed verbatim; not independently checked by this report builder."
   },
   "offline_html_checks": {

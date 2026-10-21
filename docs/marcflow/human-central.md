@@ -1,12 +1,25 @@
 # Central humana QR e Meta — desenvolvimento
 
-Continuação na branch `codex/orion-marcflow-integrations-20261020`, sobre `4b1ba80`.
-Nenhum deploy, migration operacional, conexão de sessão ou envio real foi executado.
+Continuação na branch `codex/orion-marcflow-integrations-20261020`. A descrição
+original sobre `4b1ba80` antecede a autorização operacional posterior.
+O [recibo atual](revisao-manual-20261020/publication-receipt.json) distingue esse
+histórico dos deployments realmente aplicados e dos testes isolados.
+
+O próprio admin já foi provisionado como proprietário somente da demonstração,
+com a IA desse cadastro ligada por aprovação explícita. A sessão QR principal
+foi registrada e seu adaptador está pronto, com autenticação e volume originais.
+Sua autoridade persistente foi adotada em E e o controle/fila humana habilitados
+na API e worker em F. O novo login do próprio admin foi conferido em leitura,
+incluindo controles disponíveis e proteção de envio sem atribuição. Os
+[passos atuais](legacy-transition.md) usam o esquema 0030. Novo login do mesmo
+admin é necessário para receber a identidade auditável, preservando a sessão
+antiga. Meta e campanhas continuam desligados, sem mensagens reais de teste.
+Esse aceite não homologa entrega ou resposta real da IA nem as demais integrações.
 
 ## Implementação
 
 - O painel Orion integra lista e filtros de conversas, histórico paginado, assumir,
-  aguardar cliente, pausar, encerrar e retomar IA. Usa a conta pessoal e a permissão
+  aguardar cliente, pausar, encerrar e retomar IA. Usa a identidade auditável e a permissão
   atual do estabelecimento. Etiquetas e respostas rápidas reaproveitam o CRM existente.
 - Contadores e leitura são pessoais na central; marcar como lida não envia recibos
   ao WhatsApp. A busca geral consulta cadastro e as últimas cem mensagens reais de
@@ -55,18 +68,25 @@ Todas as flags continuam `0` em `.env.example`. `INBOX_CONTROL_ENABLED` habilita
 histórico e controle; `INBOX_TOOLS_ENABLED` habilita CRM; `INBOX_SEND_ENABLED` é uma
 autorização independente para a fila. Meta exige também `META_LIVE_SEND=1`, canal
 conectado, credencial válida e janela de 24 horas verificável. QR mantém allowlist,
-lease, fence e autenticação privada já existentes. Não ativar em produção neste trabalho.
+lease, fence e autenticação privada já existentes. As flags de exemplo não
+comprovam o estado efetivo; consultar o recibo dos processos publicados.
 
-Atualizar API, worker e bridge em conjunto, aplicar 0027 em banco descartável e
-homologar antes de planejar produção. A migration possui RLS forçada, FKs por
+O ensaio original da central usava 0027 em banco descartável. No alvo atual,
+seguir a sequência protegida de provisionamento, registro, adaptador, adoção e
+habilitação em [legacy-transition.md](legacy-transition.md), com gate 0030.
+As migrations possuem RLS forçada, FKs por
 empresa e bloqueia downgrade com histórico ou controle Meta existente. Não reverter
 apagando tabelas com dados. Pausar a fila conserva slots e histórico.
 
-Após adotar a central, manter `INBOX_CONTROL_ENABLED=1` enquanto houver
+Após habilitar a central, manter `INBOX_CONTROL_ENABLED=1` enquanto houver
 atendimentos sob seu controle. Para interromper transporte, usar as autorizações
-da fila/canal/assistente; desligar o árbitro inteiro restaura o caminho legado e
-não é um procedimento de pausa. `INBOX_SEND_ENABLED` controla a fila humana/Meta;
-o QR automático continua dependendo da autorização da assistente do canal.
+da fila/canal/assistente. O QR principal adotado mantém a autoridade persistente
+mesmo com controle global em `0`, desde que `QR_LEGACY_CENTRAL_ENABLED=1` permaneça
+na API e no QR; esse valor global não pausa o atendimento nem desfaz a adoção.
+Os demais canais ainda dependem de suas autorizações globais. Não usar essas
+flags como substituto das transições explícitas de pausa ou controle.
+`INBOX_SEND_ENABLED` controla a fila humana/Meta; o QR automático continua
+dependendo da autorização da assistente do canal.
 
 O botão de recibo do QR consulta somente o ledger autenticado: só resultados
 `accepted` ou `refused/not_sent` liberam o slot correspondente. Meta pode recuperar

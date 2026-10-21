@@ -1,0 +1,104 @@
+{
+  "created_at_utc": "2026-10-21T00:38:08.834156+00:00",
+  "status": "prepared_guard_verified_with_isolated_fakes; no_stage_or_execution",
+  "reviewed_runtime_base_commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+  "phase": "activate",
+  "run_id": "0a1fa3b2-4d80-46cb-99f7-1c31900f9113",
+  "guard": {
+    "method": "GET",
+    "path": "/internal/legacy-central/status",
+    "destination": "existing private QR_BRIDGE_URL, HTTP Railway internal port3000",
+    "authentication": "X-Orion-Bridge-Key from QR_BRIDGE_TOKEN at runtime; no secret stored in artifact",
+    "required_flags_boolean_true": [
+      "configured",
+      "ready",
+      "connected",
+      "session_preserved"
+    ],
+    "maximum_decoded_body_bytes": 64000,
+    "timeout_seconds": {
+      "connect": 3,
+      "read": 5,
+      "write": 5,
+      "pool": 5
+    },
+    "trust_env": false,
+    "follow_redirects": false,
+    "status": 200,
+    "failure": "generic safe message plus exit1 before one_time_legacy_adoption; no response/error/URL/token output",
+    "read_only": true,
+    "position": "after schema30 gate, before adoption operator"
+  },
+  "static_validation": {
+    "shell": "POSIX Docker python -c",
+    "shlex_roundtrip": true,
+    "AST_parse": true,
+    "ordered_steps": [
+      "18_runtime_versions",
+      "safe_flag_log",
+      "wait_schema30",
+      "read_only_central_ready_guard",
+      "legacy_adoption_activate",
+      "private_bridge_probe"
+    ],
+    "all_subprocess_check_true": true,
+    "constraints_pins": 52,
+    "runtime_versions": 18,
+    "runtime_versions_unchanged_from_C": {
+      "fastapi": "0.150.0",
+      "starlette": "1.9.0",
+      "SQLAlchemy": "2.1.5",
+      "asyncpg": "0.32.0",
+      "uvicorn": "0.54.0",
+      "uvloop": "0.23.0",
+      "pydantic": "2.14.1",
+      "pydantic_core": "2.50.1",
+      "redis": "5.3.1",
+      "arq": "0.28.0",
+      "cryptography": "49.0.0",
+      "httpx": "0.28.1",
+      "psycopg": "3.3.6",
+      "Pillow": "12.3.0",
+      "pillow_heif": "1.8.1",
+      "boto3": "1.43.116",
+      "argon2_cffi": "25.1.0",
+      "tzdata": "2026.5"
+    },
+    "all18_match_requirements_lock": true,
+    "requirements_lock_sha256": "3d50179c4cdafad5828b283ce483b7556795e5c242f7957c43e193ea2dbd3fa8",
+    "future_runtime_versions_not_executed_locally": true,
+    "guard_source_sha256": "05400c5e5d636df3ce7427924ae6dd75053e50f38c09d7b5eb41f576efb95f10",
+    "code_sha256": "12f6239c0f226d5b88d0ebe798a84acfee70f955168be89cbb5605c702690c5e"
+  },
+  "test_results": {
+    "passed": 37,
+    "failures": 0,
+    "errors": 0,
+    "network_attempts": [],
+    "scope": "GET response and complete inline hook simulated with local HTTP/subprocess/version fakes. All socket/DNS connections denied. Docker/Railway actual runtime/package versions and live readiness were not queried by these tests.",
+    "coverage": [
+      "success",
+      "all4requiredfields_missing_or_false",
+      "strict_boolean_types",
+      "notdict",
+      "non200_including_redirect",
+      "invalid_JSON_UTF8_empty",
+      "64000boundary_and_oversize_stream",
+      "client_stream_body_exceptions_secret_not_printed",
+      "unsafe_origin",
+      "fullhook_order_and_failure_before_adoption",
+      "POSIX_shlex_roundtrip_AST_52pins18versions"
+    ]
+  },
+  "mutation_scope": "external prepared artifact and isolated fake-test files only; no app/repo edits, no production or deployment call, no campaigns or real messages",
+  "freshness_limit": "Readiness GET is a point-in-time observation immediately before the operator. Existing operator separately rechecks primary-session HMAC, snapshot, queues and pauses around backup/rehearsal/apply; this GET does not make adapter liveness atomic with commit. Recheck health after activation.",
+  "approval_and_readback": "Root must separately attest Dready immediately before staging and obtain corresponding phaseE activation approval; this evidence does not authorize or perform that operation.",
+  "artifacts_sha256": {
+    "native-central-E-prepared.json": "176bc9d1f97daa9b5ac5a813e05b7a6da0672b80815da5de2bb366db2c304985",
+    "test_native_central_e_guard.py": "285b29d23c83f3b2aeaa3a3913296e748058061107976cde3527108c36c982a5",
+    "run_native_central_e_guard_tests.py": "e131b98e06796a49b280b3bdb997e9c05acf904b2dbb0426ed468fd3a2ae4980",
+    "native-central-E-guard.xml": "cac5cdbffa7254fd825b55679763bbfb8d621e9145dddbfefd232ff62188641d",
+    "native-central-E-guard.log": "ef7b2bef872e0a4e3ad82901508add30cd9083fdd971ab84da0a573f6465e8fa",
+    "native-central-E-guard-network.json": "97e2fea8c9b53bed6c89d8470004a134a92516ba92b6ad66c448630b047abeb8"
+  }
+}

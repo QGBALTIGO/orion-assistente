@@ -3,9 +3,15 @@
 ## Autorização e estado atual
 
 Em 20/10/2026 o proprietário autorizou concluir a transição e publicar no Railway,
-preservando dados, sessões e IA e sem mensagens reais de teste. As fases C/D/E/F
-abaixo continuam pendentes; aprovação de plano ou publicação de código não prova
-registro, adoção ou ativação. O estado observado e os recibos mais recentes estão
+preservando dados, sessões e IA e sem mensagens reais de teste. As fases C/D
+concluíram: registro em `9658651d`, adaptador em `5d6bf01f`, prontidão e prova da
+mesma sessão confirmadas. A adoção E concluiu em `5501a2cf`, com backup,
+restauração, ensaio, autoridade persistente e sessão preservada. A habilitação
+F concluiu na API `47000175` e worker `0bff9fba`, com controle/envio humano
+habilitados, IA preservada e Meta/campanhas/sondagens desligados. O novo login do
+admin foi conferido em leitura; não houve mensagem real de teste. Aprovação de
+plano ou publicação de código, isoladamente, não prova esses resultados.
+O estado observado e os recibos mais recentes estão
 na [revisão manual](manual-inventory-review.md) e no
 [recibo de publicação](revisao-manual-20261020/publication-receipt.json).
 O pré-requisito do administrador está descrito em
@@ -62,7 +68,10 @@ usam as permissões e a autoridade persistente já existentes.
    pronto/conectado e prova HMAC da mesma sessão. Essas consultas não chamam a
    IA, consultam contatos no WhatsApp ou enviam mensagens. Ligar o adaptador antes
    de sua preparação pode interromper respostas por recusa segura.
-5. **E — adoção:** com o runtime corrigido e qualificado, executar `activate` com
+5. **E — adoção:** com o runtime corrigido e qualificado, verificar novamente o
+   estado privado configurado/pronto/conectado e a prova da mesma sessão antes
+   do operador. Essa consulta é somente de leitura e falha antes da escrita;
+   não torna a prontidão atômica com o commit. Executar `activate` com
    outro UUID e outra prova completa de backup/restauração/ensaio. Preservar
    pausas existentes e inserir o vínculo persistente de autoridade. Qualquer
    backlog global pendente ou incerto bloqueia a etapa; não limpar nem reenviar

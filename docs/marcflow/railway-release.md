@@ -1,3 +1,24 @@
+## Estado da continuação de 20/10/2026
+
+O alvo continua sendo o mesmo projeto, ambiente e branch. A migração estrutural
+0030 e o setup aprovado do próprio admin concluíram com backup, leitura de volta,
+restauração e ensaio. O registro C (`9658651d`) e o adaptador D (`5d6bf01f`)
+concluíram, com prova da mesma sessão e os 96 arquivos de autenticação no volume
+original. A adoção E concluiu em `5501a2cf`, com backup de 477.386 bytes,
+restauração, ensaio e sessão preservada. F concluiu na API `47000175` e worker
+`0bff9fba`: controle/fila humana ligados, IA e ferramentas mantidas, Meta/campanhas/
+sondagens desligados. Os cinco serviços foram conferidos online, sem trabalho
+pendente. O usuário fez novo login do admin e a central foi conferida em leitura,
+sem mensagens reais. Os recibos incluem as verificações efetivas; publicação de
+código isoladamente não provaria esses resultados.
+
+O [procedimento atual](legacy-transition.md), a
+[identidade do admin](admin-central-identity.md) e o
+[recibo completo](revisao-manual-20261020/publication-receipt.json) são as fontes
+do estado efetivo, das flags e das versões por serviço. O controle de aprovação
+do conector cancelou as confirmações anteriores; os patches revisados foram
+aplicados pelo proprietário no painel. Sem campanhas ou mensagens reais de teste.
+
 > **Arquivo histórico das tentativas anteriores.** A revisão manual e a nova
 > autorização de publicação estão no [relatório atual](revisao-manual-20261020/relatorio.html).
 > Somente seus recibos identificam o resultado da publicação desta execução.

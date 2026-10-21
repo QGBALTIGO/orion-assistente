@@ -1,0 +1,2610 @@
+{
+  "schema_version": 1,
+  "created_at_utc": "2026-10-21T00:31:32.157014+00:00",
+  "scope": "Comparação Git local completa e checklist mínimo da faseD; nenhuma consulta de produção.",
+  "commits": {
+    "candidate": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+    "qualified_runtime": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+    "published_qr_baseline": "8369e2e4d53379e7353ac69af3d40b70fc2b926e"
+  },
+  "comparison": {
+    "candidate_vs_qualified": {
+      "all_changed_paths_count": 201,
+      "allowed_counts": {
+        "docs": 199,
+        "README.md": 1,
+        ".gitattributes": 1
+      },
+      "forbidden_paths": [],
+      "runtime_files_checked": 537,
+      "runtime_blob_modes_types_identical": true,
+      "runtime_manifest_sha256_base": "cca6e62d613e84c98b3b7c2c9b993eb501d7d14c0b884b5badb950c4901a1c56",
+      "runtime_manifest_sha256_candidate": "cca6e62d613e84c98b3b7c2c9b993eb501d7d14c0b884b5badb950c4901a1c56",
+      "changed_paths_complete": [
+        {
+          "path": ".gitattributes",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "2aa368335a645fea1f77bf21f188e0e923fb3289"
+          },
+          "allowed": true
+        },
+        {
+          "path": "README.md",
+          "old": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "6d5f6381d2c92997fef60cc190afe412714a349f"
+          },
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "115b9f216201b1dea15ec73ff1b69d486da5800b"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow-integration.md",
+          "old": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "e82d3ae65e48f9dae599e21a0e8e1299752405b0"
+          },
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "14bb88b1ad025766bf7083aaee389965128167f1"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/admin-central-identity.md",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "ff539e00b6d39935c2ee4b31d0a958da67141698"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/legacy-transition.md",
+          "old": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "6ee1a10118b3d4abdf75a2a4d0b3180e67f18a6c"
+          },
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "5ec46c1f379aeeeb0731992d5b18f2e4d068f025"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/manual-inventory-review.md",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "f898cab2655efb878c1e8761f563ed43a94dd3f0"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/railway-release.md",
+          "old": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "6ba278d1af84b4a2388d47a6255d7c7daa4bfce7"
+          },
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "bf7a0c504b81cde0d8c1d79975cf1b22b2f8d448"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-identity-pg16-seal.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "76b0e6fee16c35ad1dbca180b7e011373d8a5ea6"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-lease-cleanup.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c41341ad1732bfb1a4db1efffcfa58f9830976af"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-lease-pg-before.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "cf1850cd5ec9a5c4464e7fd7a738ca8b8569957e"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-lease-pg-before.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "01cb1172d7c01af31a7dc8eb3a418b3a72474667"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-lease-pg-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "df0c7d57a902a25ed7b3f342ce29f6a896d33f60"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-lease-pg-final.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "d69f73057106714fc9e6a54696192e81cf603a10"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-lease-pg-network.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "31bd2c3a08abf8f7c9879062ce30a4dcfa839bea"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-lease-test-evidence.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "da861c626ca724d7bf86b098fec159a7ca01ceec"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-lease-unit-before.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "f87889fd2bdcde2823ac9e527db596d6324d277e"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-lease-unit-before.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "685d747fc16ff77b7a8f63fb30cdb5a407041adb"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-lease-unit-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "39f65ecc9765456d7d2edfb2cbcaa442d503e667"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-lease-unit-final.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "59014b85604865ef6f48ef98772aba7250dfa555"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-ops-test-evidence.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "41bd78a81d87cc3ca7b5586dbe1a19952021333b"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-pg-cleanup.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c41341ad1732bfb1a4db1efffcfa58f9830976af"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-pg-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "4b7fcb0f1539ef29cd7d8656de41f0b8b4d2c3b5"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-pg-final.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "cb36e8d7ed163ecb80194bebf8097413e73db7a0"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-qr-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "9d75f94685add8b3a8cda1de02f6419a9e710543"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-qr-final.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "6d0709c640472cdd536b1af301407c86a17ee137"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-role-pg-cleanup.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c41341ad1732bfb1a4db1efffcfa58f9830976af"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-role-pg-focused.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "6acca98360949121fc9dfa8d6eeb98f02bcfda9f"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-role-pg-focused.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "de76da764acae2504130006eb291594994b2cb34"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-role-url-unit.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "51a6c1cfee6b9a51cdae70537adce3cdc70d7b14"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-role-url-unit.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "affa68df5a9ff8de1619a6b3c4fc1ef468e4507a"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-runtime-compat.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "f17d816c4c08a1df9b65a8c36756acbd39ac4f34"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-runtime-compat.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "d217fa031533b4081977075b40b9e71e52005e09"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-scope-cleanup.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c41341ad1732bfb1a4db1efffcfa58f9830976af"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-scope-pg-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "0672c12262925dd4e8f2fa071a9356fd238b3935"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-scope-pg-final.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "fe643e65881499368f7be2c479e311074760c665"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-scope-pg-network.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "31bd2c3a08abf8f7c9879062ce30a4dcfa839bea"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-scope-test-evidence.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "cb35f156432d200636f718f29012490bf615f347"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-setup-unit.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "61cd1f6bb3d7a3791c64d38d90e6bb82f53f979f"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/admin-setup-unit.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "37bb16c05ea62c847a66efb31786c112eaa25804"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/adoption-compat-evidence.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "990e07300d60d215e7c3a105fb819f01944e8c65"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/adoption-compat-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "09f093d3d8b6d327914354906d0cf68cc1560337"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/adoption-compat-final.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "ec07ae9ecfeca1fae2929366c3398e7371295e5c"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/adoption-owner-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "a30b59d609971a8e32f0c6ed1973eb9836cafad0"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/adoption-owner-final.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "6a1fed1a584cc0826c34aad238d3882320b5857e"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/adoption-positive.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "27c1e558663955dc294c15d7f10621477dba15fb"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/adoption-positive.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "00058d25ebcc94478fc61f4b70e742ccc4e566c8"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/api-adopted-scope-followup-review.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "73f3681e883f9ede450434f6d960ba9b130b413e"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/api-adopted-scope-unit-evidence.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "deb2d2a433b18501447291afd444e3de95e99acf"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/api-followup-review.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "d13713a635b37b178fd0159750c5c41deafe515a"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/api-native-admin-followup-review.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "beea9dac7673c7bd40cf16d3c75912facdcdc85e"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/backend-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "d6dfd3ac59bce2d38db0e99a0a8a6f160159ea40"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/backend-final.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "6fbde4b8f36a147ffe0790864c6c8457403574af"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/backend-run.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "ef9d1039e8472705c87e55083f8a61ccd043afa2"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/booking-ci-fix.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "ea30dc35d7eb33e494b94304e3ecde1d59bc80b8"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/booking-ci-fix.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "6c66c3e65071e32674b1ef78c422d8a78f969580"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/booking-ci-fixture-fix.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "d3f98ec153d8240d8af24434c0749f25ddeeba3b"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/booking-file-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "1a72f2f8c0ba47210ebf5ecf071fd75c6aa22966"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/booking-file-final.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "b0469088f559ca0005d037438f11a329c2cf435d"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/build_review_report.py",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "0a876d332762d57189d98baedac8d5c37f2c1bbb"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-08a5cc0-asr.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c4a4516b70a7309785fb737e9d9fa97adb139f33"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-08a5cc0-backend.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "e90e9a6f22b8b0eb3ccc17362fe8b62bdb282158"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-08a5cc0-final-evidence.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "28ce45eb45d299bbf8ffa56a985fc5f07b5defc7"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-08a5cc0-media.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c25d842ec75c102dc2eb2212a62026a7cdb32442"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-08a5cc0-qr-ui.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "7d015f3fdc575ac7f4c5d0f8cc8ab1442cc62386"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-8369e2e-final-evidence.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "0a506470d1816b214b30328efc70099b177ab5d7"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-8369e2e-pytest.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "0aa6d413844b87396d0171b749ac0aeb51280fca"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-a85da1c-asr.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "6f4a28fa09f280c9933e20dd82f819f26729013f"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-a85da1c-backend.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "6d8f81f5d7aab5ad7922bdf35eca17f10cbec0c3"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-a85da1c-final-evidence.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "d710fc95d30422c36626ad73e54daae28d8c2cf3"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-a85da1c-media.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "93a914ec7c5e896d2d72580c2d17fa83550a3b18"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-a85da1c-qr-ui.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "3bf67e31ef487565ef4b3dca98497effece4ebd7"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-ab1a138-pytest.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "466994bc923a2b7cd565cf0b4db4574592ce180d"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-cc2-booking-failure.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "fba6a5bbaa45edce54af5b811996a07539c4aca7"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-d11a86b-asr.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "75155ab94a6c83b6fe4cf052457005973b5fa6ae"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-d11a86b-backend.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "eceae4bf2fc696a093fbc9ee8f92f2c60301f809"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-d11a86b-final-evidence.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "d9e8c7ecd1392239d4c1a0b33c0267dbf169c15b"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-d11a86b-media.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "14eb6d263d6a6426aea04b6d66f9e5dcd9bd7717"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-d11a86b-qr-ui.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "bfd82b12b7193d4e7b0628f57be273f66b800817"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-d2134d1-backend-failure.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "7c6326932974e2958ddb6f10a3d2b0c4cf8b1d8a"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-d9-compose-redis-fixture-error.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "1ba1b2f80d42a9c940f3f1127a35469c0bc67b28"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ci-final-evidence.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "132f1b345ac9122ce22ddb3e83ec77d2f7bb80d9"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/compose-redis-fixture-evidence.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "30f9a47772317111cd66374e3fab14f8a3584c64"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/compose-redis-fixture.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "7c56d1d88a941b27f5e5a3852acbbeaaa25586be"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/compose-redis-fixture.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "de77d80b230179ca4e9dc56cd1be37d321f9b300"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/consolidate_inventory.py",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "698293fd515a4aa958960983afb4ba5e8e53f756"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/constraints-ci-08a5cc0-proof.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "a4bd458c466c67c44b9939088fd9deb227ee40ea"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/constraints-ci-8369e2e-proof.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "e973021bb039fd1caeefb3649ae7e2076e985a38"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/constraints-ci-a85da1c-proof.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "80c89d0f80033a66e554ea06955aa74e4ed084ba"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/constraints-ci-ab1a138-proof.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "76d83e3676eeff11fda13ce81169cdc3ea86aab5"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/constraints-ci-d11a86b-proof.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "66b096236fe43beaeb5ecbd5adb7afe2e7d5e5f4"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/delivery-validation.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "32f364e6c4600b57053ea4bd8bfb94efee9de36b"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/demo-admin-ui-identification.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "fd50ee0da342a296e9174133cee465a144f311a6"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/diagnose_admin_plan_determinism.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c912c1151adc47edb74cfcf0015fa828df7c3f0f"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/diagnose_legacy_binding_readonly.py",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "aa607675f7bb1b350c3dd05b819b58f31a7242c9"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/diagnostic-clone-summary.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "3091500b29bf4c0a9c4c3711ca4060ade770d8c3"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/diagnostic-clone-test.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "f84c6ad26deb807741193d38ae96957006869127"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/findings-api.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "b78d6c0c23547118e3f640fd026df62ad1ecd25e"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/findings-emit.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "06eab2056e29afe10cd888e508a64bdd07bda356"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/findings-js.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c0ce3ad86199267695afef3ba9e0077d2877bb84"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/fulfillment-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "6506e2034291c1f4e4621d7bf22d225bcfdf373e"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/fulfillment-final.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "49fccd08cc07cb251c492c4e3ba06df7d153e5aa"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/legacy-admin-auth-unit-final-network.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "31bd2c3a08abf8f7c9879062ce30a4dcfa839bea"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/legacy-admin-auth-unit-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "fb7438421c3d9f552a808cd3293a5edaccc898d4"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/legacy-admin-auth-unit-final.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c46f8b40bb11d70993945c5ff62a1ba5a4ff526b"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/legacy-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "793e375c48c67063706a61544e42cd5bedd07d17"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/legacy-final.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "fe8bdf5cda201ebcf7757897004ae423a03c7239"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/locked-resolution-windows-no-build.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "b20bd8dd4d66b53b3a325fa2bdb53a37907268b4"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/locked-resolution-windows.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "d3e4445325db790a8f0d1b9a2ee3b92b1f8764dc"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/make_review_security_fixture.py",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c6ac656f2b7a26d677eb0161293a7683831da2cb"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/manual-api.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "221f975494798f8921ab1ec1f0ad9e5163aa17e3"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/manual-emit.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "7f1678e2d4f7514f2317603a7d794e30ec2fe56b"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/manual-inventory-compact.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "8628d46b46d60fd022cbadbbce91253da697a2c6"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/manual-inventory-summary.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "90073d1159d6886469b37316861110c2cb418722"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/manual-inventory-validation.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "cb388e7ac4304af51d06b7869131d7c1c75f563b"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/manual-inventory.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "85785f7844683841e07cfd31364f6b6cbf6a9694"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/manual-js.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "13b85e63d26230391f9c0e4f309973112c52a02a"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-backend-unit-run.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "f9203e4d511dd9b1c565bfaecba8a9dd5a4560af"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-backend-unit.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "ac84af0032e15b189782db84edfd02a31a5a9ad8"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-backend-unit.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "e4a1b493cfdd28248783929e841a2a50af5cbf0f"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-launcher-unit.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c5646c563aed898a892321a2419bd72ed9e5b789"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-launcher-unit.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "82e543ea54583270d77a71e5cebd405861533bbb"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-lease-readonly-prepared.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "dc19bb392bdafbf14a8bbd0892b9e47bf20c6eee"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-lease-readonly-staged.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "425ab21f9320d064f3becf070a022d96ebf67628"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-lease-readonly-validation.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "2f216657fff09178f62ec254fa66900d3edf0d20"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-phase1-cleanup-prepared.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "89f4e03599567389d88dde165cc48335aa2c59ff"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-phase1-prepared-validation.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "aeea9db3240d6255a36c24924311f391c2b82a07"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-phase1-prepared.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "2ce326491ae7f544f9f6143ae18ab86b97a18c5d"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-phase1-staged.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "77fb4d07dd48673701b3f0bfb8cb00e5871c6c32"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-runtime-unit.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "9b8697326d6e1f6874f23a39107a54f0161b7a54"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-runtime-unit.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "d28177da0be2e4a96a82b6ca71e3434626c58086"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-setup-apply-prepared.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "2f5626f96cbb420ad79de764aa41f1fd2699e8cf"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-setup-apply-staged.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "2144e19e62bcc2afba54b68addb3634a70491a90"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-setup-static-review.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "841a6eedb33500aec81dda6b25cf1714b4a6c0d1"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-setup-v2-apply-prepared.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "d55461887831dda542301ca83bcc2004ee145300"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-setup-v2-staged.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "2b6bb64c40043bba4de102e87fb49d0df8f9cd42"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-ui-all.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "3206274d59d937ff3d875cc2e85f2c14e71e1436"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-ui-before-after.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "5c3eb151fcf3d5a1d3f4d57773d7783917248270"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-ui-before-after.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "2eb4af2e3aa592c5d6e8bb1c9cc52cba249affdb"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-admin-ui.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "d199bac3881d0b7b1841d91e386668f06030a194"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-central-C-prepared-validation.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "6315260a41085d4f6ed6100edaf356ddf480035b"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-central-C-prepared.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "cefe3914a03d78d1b9abd2e146a32c452040c17b"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-central-C-staged.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "7c21331c600672870b46d2440e77cd872d49e7cc"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/native-central-phase-review.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "8eb915d13e48a6d4be080008f6c866bf43ab4a7b"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/notice-channel-manager.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "5a33ce4d061e749620bc355dba5ed77ffd12ee3d"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/postgres-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "4fd3cb4e1e2bf6ea6b903f119342e3a9516a1319"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/postgres-final.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "1878f217621abd21dd8b4edac8502530f5236a80"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/public-after-A-failure.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "14d01499488a6b5cd99219be3cfd982ac8a4a8b9"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/public-after-A2.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "28641dcd5dd2960cbdec3fdd90a85c73b33224e8"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/public-after-B.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "80709ee3c9e5bb09a5db5affab42ec9c673a42ed"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/public-after-diagnostic.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "8c2a6c5cb7bde3f5b434efb3c209175be8d2812b"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/public-after-native-admin-phase1.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "6e710d018a770bdca8c6a029e5ab4928d932eb05"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/public-after-native-admin-readonly-v2.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "8274bd3acceaaedf9ba6f98e659f94e4ff9b5ab3"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/public-before-corrected-admin-plan.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c618c274d2cfa2ff62a0b5224839acd690e57236"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/public-before-native-admin.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "359168ad5986a135bfa42cf10ae06aac6c92a5a2"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/publication-receipt.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "da9a52577eec0f3567056eedfd174abdcae8f50d"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-admin-unit.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c72aafce6cba584f978d72d108fe3a2a8d019214"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-admin-unit.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "e0663c87c625c82da60b5d1c14849a24c47cd777"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-adopted-scope-regression/after-fix.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "f919526b4ae49c98313602681a873401c9906e4e"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-adopted-scope-regression/after-fix.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "2ac755b1b2eb9565527aef9a0d81e1f17c3303c4"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-adopted-scope-regression/backend-run.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "d0e05305fe307c9d3d33ac21266779db9cbc9977"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-adopted-scope-regression/before-fix.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "24b0718c4e0937d03a882c9da8d304bff0bb8d5a"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-adopted-scope-regression/before-fix.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "3c0d0717dd06e6a31e7f1be34b4b41bc193c7455"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-adopted-scope-regression/handoff-before-fix.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c190c332785d3216a80abc2925a2b644b88cbb7d"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-adopted-scope-regression/handoff-before-fix.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "e36e2578094b19b1c3fae9010de7163a4581ecdc"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-adopted-scope-regression/qr-inbox-final-v2.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "38af203953b53447d033d2429a8d068fb92733b0"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-adopted-scope-regression/qr-inbox-final-v2.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "83c45a6a7ca7d544ff746c9fcf8f8e73af338b11"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-adopted-scope-regression/qr-inbox-final-v3.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "4fb4fec4e527d19ce20a09e1572caab5aacd1efa"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-adopted-scope-regression/qr-inbox-final-v3.xml",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "506a7a17cb1ef8860c61c6cd5c0d340421407f81"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-adopted-scope-regression/run_offline.py",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "95e70f7d7ba4ca2ca1f84e15af87f7deb27607ba"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "4095650e812bcd75b0f22c3f9b28008d34771281"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/qr-notice-final.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "9ee6e5f1712f26bd3121f1d54406071cf3a9ed40"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/railway-A2-complete.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "3eb73cc8c3594ebdca265f8e7aca2c763a67d9a1"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/railway-BC-results.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "50a2eed38db92639abcc7997f5ebc52c84c8df89"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/railway-BC-staged.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "ca8efcb2db8e4cc3e591e7e4f1412463fba47efb"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/railway-native-admin-phase1-results.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "8292d7580c67bc49332e7e8c7c7572ac1bd46ec3"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/railway-native-admin-readonly-v2-results.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "84c65441c27fec0460a0a7759cf54017e3880978"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/railway-native-admin-setup-attempt1-results.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "cc7eb302767e40849712980eb05d45c17541aa0c"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/railway-native-admin-setup-v2-results.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "4467d5c9ddea9b811bb528a7f77ea7fb898afc14"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/railway-plan-current-validation.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "3c41a6ddf7098872644cf67d724b2d1be41a8038"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/railway-publication-evidence.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "a463b62e8dc1293da01a20d6789d89ccad9eaf48"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/railway-readonly-diagnostic-results.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "06570f89f4bc663653c57fce7983069424924884"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/railway-release-plan-current.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "a7c1ed6e16c1eb9dcc76f1c0c4bd83c65a6f0989"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/readonly-diagnostic-hook-v2.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "925aa3515711c5af09ebaeaf7c06b5a03761fd32"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/readonly-diagnostic-v2-staged.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "d72f70aced27ffaf0350ba201ac0e714cbe0f19e"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/relatorio.html",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "423aac697778b2711e86de119756fdfe44ef1c8b"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/release-source-compatibility.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "8b0ce51e36e310ef7c6400f8cfebd225d87ca9ca"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/review-dynamic-counts-helper-test.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "2e38f3605d8f7ec548f0933cdb4964a3f1d2ff9d"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/review-report-manifest.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "81f95a7d293b4dce0599bf57cdc8bd840fc04813"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/review-report-validation.json",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "e25e72e773aa17158a39667f6c06ac8735ead3c2"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/review-report-validation.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "1e182742a489441119d052ac4b01a4dddb85a35e"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/test_legacy_diagnostic_clone.py",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "4f51bdc4ba2d66bff4c0feb33421a4254f305867"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/test_verify_ci_constraints.py",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "3b7922b19651c509516238eee3568c7f1885f4f1"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ui-all-after-manual.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "9679117d0ac82925cdbe5a042974213e2e1d9b90"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/ui-notice-compat.log",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "27bcc2e9c1a4220512289003a0858d751e6652a3"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/validate_admin_readonly_plan.py",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "5b40ee1f3d9d6f865bce54c14d8e07bf9a654a4d"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/validate_native_admin_release_plan.py",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "98c52b3480aa16ba72f045fe8ac38f7a25932c82"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/verify_bundle_index.py",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "0ed7b1bc68eb507e3f26fe76d863715668429894"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/verify_ci_constraints.py",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "2f21ead1814650b357eb30da10afb4572365ab5e"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/verify_delivery.py",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "c1c7bc58a28777b9e063cc0f9fe72b06ec75ffec"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/verify_native_admin_ui_before_after.mjs",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "33cc5e3bb9806acc7c4d2eb40b47a3a09dd7916a"
+          },
+          "allowed": true
+        },
+        {
+          "path": "docs/marcflow/revisao-manual-20261020/verify_review_report.mjs",
+          "old": null,
+          "new": {
+            "mode": "100644",
+            "type": "blob",
+            "git_object_id": "d6eba9bf48d0a76347f30908bac147a9318d9f88"
+          },
+          "allowed": true
+        }
+      ]
+    },
+    "qr_candidate_vs_published_baseline": {
+      "files_checked": 72,
+      "changed_paths": [],
+      "git_subtree_candidate": "812f99c2a7b30b53e93dc121104ad0db9db32f44",
+      "git_subtree_baseline": "812f99c2a7b30b53e93dc121104ad0db9db32f44",
+      "blob_modes_types_identical": true,
+      "manifest_sha256_candidate": "2e77c8bb233094af75f927096739b3cea1048e4cf30370696b89cbabaeac3440",
+      "manifest_sha256_baseline": "2e77c8bb233094af75f927096739b3cea1048e4cf30370696b89cbabaeac3440",
+      "files": {
+        "qr-bridge/CHANNELS.md": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "961f8cd5e8d50bfa3c60fe68ccc0078016579db5"
+        },
+        "qr-bridge/Dockerfile": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "1c1e07a6042a80c8927293b07a9c49dd72ad687c"
+        },
+        "qr-bridge/package.json": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "3b6debedd71fca7b7e6e0702312063b9dfe92b53"
+        },
+        "qr-bridge/scripts/probe-domain-contract.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "74ff65a1d34446404a6f65d999cdcdc9b7457af3"
+        },
+        "qr-bridge/src/ai-audio.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "92eaf5135800b735340e6680a33614195b862013"
+        },
+        "qr-bridge/src/ai-forward.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "316de0dc22afcc8b185e9d5ea14df0d62d2dc0a0"
+        },
+        "qr-bridge/src/ai-pilot.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "b978f13064d552d963ab3c37e765517b15afec01"
+        },
+        "qr-bridge/src/assistant-typing.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "99cea451ffbd07188e8d76a85542f6ca0722b73e"
+        },
+        "qr-bridge/src/auth-backup.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "06cdf063ffc144e7bfd18056344129d698b0a52f"
+        },
+        "qr-bridge/src/channel-broker.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "83c2e9f5371f2afed9f49633e7bdf157e27c7cb6"
+        },
+        "qr-bridge/src/channel-manager.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "722bfb547374ae34ef1b47638b06948840f86183"
+        },
+        "qr-bridge/src/channel-resume.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "f1afd8e838d246ae254b2ff9629424bd5daf5405"
+        },
+        "qr-bridge/src/channel-routes.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "115a0b42d1eb04fa2c85f8e84e373ed5c16cd99c"
+        },
+        "qr-bridge/src/channel-session.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "ea5ec5617ed7bbe20103d44c9786bf6b416ca420"
+        },
+        "qr-bridge/src/channel-storage.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "414ca3a426c9a416c379d99e43cdbfe86116f719"
+        },
+        "qr-bridge/src/connected-features.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "21cbbee290c669ffd9460bb4993bc3be617f31cf"
+        },
+        "qr-bridge/src/connected-store.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "6d9603b69250965deb74a2a4d5b53b4d61957834"
+        },
+        "qr-bridge/src/connection-alert.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "46fafb935b54a2e4146de133e44b404f920fac00"
+        },
+        "qr-bridge/src/contact-name-forward.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "676b31b0a90ae4948b8ee86db84fa3656d8d0ee4"
+        },
+        "qr-bridge/src/contact-names.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "686450f0c0f7f95332c03f4bfb9412481492929b"
+        },
+        "qr-bridge/src/conversation-intake.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "f8f479ebbd79c469751c7634a7b540d472bf3390"
+        },
+        "qr-bridge/src/core.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "f98a37f7794995dda8c9e04d83f05cae7e0ddba2"
+        },
+        "qr-bridge/src/database-backup-store.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "0f3280f6ef07caf9d050f149636149a44d0bd399"
+        },
+        "qr-bridge/src/durable-inbox.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "8a0856b2a9f09d4e9272d1865fac2906b74f8714"
+        },
+        "qr-bridge/src/encrypted-retry-store.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "ee967235d50a4f83e029516a3704740e50442f5a"
+        },
+        "qr-bridge/src/inbound-event.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "78c7905da901987bebfcd047b67535abd1db115d"
+        },
+        "qr-bridge/src/legacy-central.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "45bf7991fc4a954f514a827a756b091416f32224"
+        },
+        "qr-bridge/src/linked-session-health.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "7e6de4bce1e042ddad53a7f94c3ac93b8f472c7e"
+        },
+        "qr-bridge/src/message-retry-store.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "6dd8a9a5aab28c2e9cd057c4fd3e448b3f678cdc"
+        },
+        "qr-bridge/src/operator-test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "034c9a5d9c894fd11d55f1bab4511e083d2bc60d"
+        },
+        "qr-bridge/src/pilot-recipient.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "ef71bbfb0863144e60deed2ae31395db3cc9f5c1"
+        },
+        "qr-bridge/src/pilot-send-policy.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "a72776f66723d94f4a4a0735af2edd5051cead80"
+        },
+        "qr-bridge/src/recipient-diagnostics.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "932a58feb1b3ea619b12089500e098336380748d"
+        },
+        "qr-bridge/src/reliable-send.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "53530abe05d02e8bda3e42eef1165ef730330151"
+        },
+        "qr-bridge/src/send-capacity.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "360079b429c48f8a635330648e183870224eea9e"
+        },
+        "qr-bridge/src/server.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "d47b2dd4c47c50b2f444f8bd3cca5a5b7f98e8ee"
+        },
+        "qr-bridge/src/signal-log-safety.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "3a042af20170342618a19f859de146f140538ce9"
+        },
+        "qr-bridge/src/transport-diagnostics.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "55fd17c3efbd1bc1e8915aeb5b9687cac0d6439a"
+        },
+        "qr-bridge/test/ai-audio.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "5610783f67dc1903f0ccb2fd2dbafff517da0b46"
+        },
+        "qr-bridge/test/ai-forward.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "1974415e2c5aeb9dd84322bd14436d8ac586e265"
+        },
+        "qr-bridge/test/ai-phone.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "ff74e05f5072775957ba0218e136224e406f8348"
+        },
+        "qr-bridge/test/ai-pilot.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "d53aa55a703f4aa085c24b21d5a5fc1d9166a4aa"
+        },
+        "qr-bridge/test/assistant-typing.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "4ff1e6ce4904b4a482478bc5476248d4b8866b61"
+        },
+        "qr-bridge/test/audio-inbound-routing.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "3e9fa93578478b85c7cfb5fdc414ed38b9e5d342"
+        },
+        "qr-bridge/test/auth-backup.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "290cf6dbe9dde6419024438e0b7d89bad776cf55"
+        },
+        "qr-bridge/test/channel-intake.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "9fc92a80b41560bdd4db3f4e63dbc6e7629f540c"
+        },
+        "qr-bridge/test/channel-manager.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "d1abdb67fe3462eefb5370b4b054053ebc5807a3"
+        },
+        "qr-bridge/test/channel-resume.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "e574eeaf039e82ff39d1cefce3bb681506b45113"
+        },
+        "qr-bridge/test/channel-session.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "0a3f6f2c4123eb92b56d9e6edb63ed87911da155"
+        },
+        "qr-bridge/test/connected-features.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "c66d18a829a36f5f19038e2b1de8cb283e1ebcac"
+        },
+        "qr-bridge/test/connected-store.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "2b656e550f6e1aa5559b51e097508caccccd2006"
+        },
+        "qr-bridge/test/connection-alert.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "046f21d58376f285f807585cf5a769a9178e8284"
+        },
+        "qr-bridge/test/contact-name-forward.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "933f48fb3a4367a5dff9030f1791e37be4f46388"
+        },
+        "qr-bridge/test/contact-names.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "154f655cf63fad74479e71adf58a9a3ff69a208a"
+        },
+        "qr-bridge/test/conversation-intake.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "e31141022525a0bd69dda613ece7ca47465fb34f"
+        },
+        "qr-bridge/test/core.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "fd305acaf47b8e642626d5fefd95c722d804312c"
+        },
+        "qr-bridge/test/database-backup-store.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "097d91cfec0685475a8445fb247ae7f6d75d393a"
+        },
+        "qr-bridge/test/encrypted-retry-store.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "558e34487673b1f97eca41bb231ccd71cf5974b3"
+        },
+        "qr-bridge/test/inbound-event.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "a057ead8ae2db8001ef36e77985d5c2910e6de3b"
+        },
+        "qr-bridge/test/legacy-central.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "7d5a6a53ced9fe3bc7192aa2acdac7aee2d5bdf5"
+        },
+        "qr-bridge/test/linked-session.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "d188e5cd6206f45f5db03951cc1fd9e99e8fc8c8"
+        },
+        "qr-bridge/test/message-retry-store.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "93ac4b885911f51064d92a942173c9dcbc69c29f"
+        },
+        "qr-bridge/test/operator-test.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "ce04c6910c7b608b5f47db26058b964daa056f42"
+        },
+        "qr-bridge/test/panel-ui.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "3845ee56acdc565499a1f516a4e5e88445b5ae0f"
+        },
+        "qr-bridge/test/pilot-recipient.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "fb62f9298d61985db4c3277cb164fc03bf223840"
+        },
+        "qr-bridge/test/pilot-send-policy.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "cc5ec3fbfcce867cb274191d4eb69a3a1e321dec"
+        },
+        "qr-bridge/test/recipient-diagnostics.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "598c31ff2a5d25349859ae6a87bad0379ee1cbf8"
+        },
+        "qr-bridge/test/reliable-send.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "7b2fbfc11ed41c7266a64ec124e4b4300a73d244"
+        },
+        "qr-bridge/test/send-capacity.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "28e0a2d80602639c04a229f48f768c973496bc85"
+        },
+        "qr-bridge/test/signal-log-safety.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "6d6555e827a2a6afe228e9ddfc94293cc9ed4820"
+        },
+        "qr-bridge/test/transport-diagnostics.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "099674f792fc7fa1ef45fa2038fa6b1dac3698a9"
+        },
+        "qr-bridge/test/wizard-journey.test.mjs": {
+          "mode": "100644",
+          "type": "blob",
+          "git_object_id": "e2b643310231c9d0069eded4a4dde3b6f10ae8f1"
+        }
+      }
+    }
+  },
+  "gitattributes_review": {
+    "content": "# Preserve evidence bytes so the recorded hashes survive checkout on Windows/Linux.\ndocs/marcflow/revisao-manual-20261020/** -text -whitespace\nrequirements.lock text eol=lf\n",
+    "interpretation": "Atributos novos limitam-se a preservar bytes do bundle e impor LF em requirements.lock; nenhum atributo QR. Blob de requirements.lock permanece idêntico. Não é uma atestação de imagem Docker idêntica."
+  },
+  "D_minimum_checklist": [
+    {
+      "step": 1,
+      "requirement": "Somente avançar após reciboC completo/registrado, alias e owner/tenant/allowlist/HMAC válidos, APIcompatível em execução e bootstrap pronto; BUILDING não satisfaz esse gate.",
+      "verification": "Conferir recibo do operador e resultado do deployment; não inferir sucesso de source equivalente."
+    },
+    {
+      "step": 2,
+      "requirement": "Única mudança funcional prevista no QR: QR_LEGACY_CENTRAL_ENABLED de0para1.",
+      "preserve_flags": {
+        "ORION_NOTIFY_SELF_ON_LINK": "0",
+        "QR_OPERATOR_TEST_ENABLED": "0",
+        "QR_AI_ENABLED": "1"
+      },
+      "keep_unchanged": [
+        "INBOX_CONTROL_ENABLED",
+        "INBOX_SEND_ENABLED",
+        "Meta/campanhas/sondagens desativadas",
+        "QR_BRIDGE_TOKEN",
+        "QR_AI_TENANT_ID",
+        "QR_AI_ALLOWED_SENDERS",
+        "QR_AI_PILOT_NUMBER",
+        "QR_CHANNEL_BROKER_URL",
+        "QR_AI_API_URL"
+      ]
+    },
+    {
+      "step": 3,
+      "requirement": "Preservar source/repo/branch/ref/rootDirectory e build/start do QR; não é necessária troca de fonte para habilitar o adapter, pois qr-bridge168 é idêntico a8369.",
+      "source_baseline": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+      "root_directory_rule": "Manter rootDirectory efetivo do serviço QR apontando para o contexto qr-bridge; Dockerfile copia package.json/src locais. Valor efetivo de Railway não foi consultado nesta revisão.",
+      "build_rule": "Dockerfile do bridge, node src/server.mjs; não selecionar railway.json da API/root nem mudar serviço.",
+      "source_pin_verification": "Ler configuração/deployment efetivos e conferir commit/tree correspondente; equivalência local não prova qual fonte o Railway executou."
+    },
+    {
+      "step": 4,
+      "requirement": "Preservar volume e diretório ativos, sem renomear/copiar/resetar/parear/logout.",
+      "historical_volume_evidence": {
+        "file": "railway-BC-results.json",
+        "source_sha256": "e7d6c98dd90d7707a00b0ed0d6eebb5b48e683f62d26c08d4284e29ae44c2292",
+        "volumes": [
+          {
+            "id": "96a57936-6572-4604-887b-a7c8123263ff",
+            "name": "orion-qr-session",
+            "mountPath": "/data",
+            "sizeMB": 256,
+            "region": "iad"
+          }
+        ],
+        "provenance": "Recibo histórico local; confirmar identidade/mount efetivos antes de aplicarD."
+      },
+      "auth_directory_rule": "Preservar QR_SESSION_DIR e marcador .active existentes. Default de código /data/auth; não substituir diretório ativo por default se configuração atual difere."
+    },
+    {
+      "step": 5,
+      "requirement": "Depois deD, exigir estado privado configured=true,ready=true,connected=true,session_preserved=true e GET/health/central statusok,legacy_readytrue,session_preservedtrue.",
+      "verification": "Consultar somente endpoints de estado existentes por responsável autorizado. Nenhuma chamada foi executada nesta revisão.",
+      "same_HMAC_proof": "server calcula HMAC-SHA256 do domínio orion:preserved-primary-session:v1 seguido de NUL e telefone principal com a mesma chave do bridge. legacy-central.matching compara com request_fingerprint/session_digest do alias recebido no bootstrap; readytrue exige essa igualdade e lease atual. Não expor telefone/chave/digest nos relatórios públicos.",
+      "failure_rule": "Readyfalse/HMACdiferente/leaseinválido bloqueiaE; não emitir QR, trocar chave, forçar reconexão nem ignorar guarda."
+    },
+    {
+      "step": 6,
+      "requirement": "E e F continuam operações separadas; D não ativa autoridade persistente nem libera envio humano. Manter opt-inAPI/QR1 apósD/E e cleanup somenteone-time.",
+      "limitations": "Saúde/HMAC provam transporte e preservação da identidade conectada, não login real, resposta da IA ou entrega externa. Não enviar mensagens de teste."
+    }
+  ],
+  "source_references": {
+    "adapter": {
+      "file": "qr-bridge/src/legacy-central.mjs",
+      "lines": [
+        7,
+        74
+      ],
+      "guards": [
+        "configured/active/matching9-11",
+        "bootstrap20-31",
+        "close44",
+        "health72-73"
+      ]
+    },
+    "HMAC": {
+      "file": "qr-bridge/src/server.mjs",
+      "lines": [
+        43,
+        51
+      ]
+    },
+    "effective_auth_marker": {
+      "file": "qr-bridge/src/server.mjs",
+      "lines": [
+        51,
+        72
+      ]
+    },
+    "health": {
+      "file": "app/qr_api.py",
+      "lines": [
+        282,
+        291
+      ]
+    },
+    "bootstrap": {
+      "file": "app/qr_legacy.py",
+      "lines": [
+        57,
+        73
+      ]
+    },
+    "preserve_opt_in": {
+      "file": "app/qr_legacy.py",
+      "lines": [
+        49,
+        54
+      ]
+    }
+  },
+  "blob_references": {
+    "qr-bridge/Dockerfile": {
+      "git_object_id": "1c1e07a6042a80c8927293b07a9c49dd72ad687c",
+      "sha256": "dc555136b0b1ea2caefa0881ef6f26187e6f9f8e73e4733a29566139ae248b7a"
+    },
+    "qr-bridge/package.json": {
+      "git_object_id": "3b6debedd71fca7b7e6e0702312063b9dfe92b53",
+      "sha256": "c2b6f525bd99e3867ff222457902b556dbce586e1dd14924ff546cbf91fd6949"
+    },
+    "qr-bridge/src/legacy-central.mjs": {
+      "git_object_id": "45bf7991fc4a954f514a827a756b091416f32224",
+      "sha256": "8b58d1a567787000a524bcb023c81075fe01167fbce7702804ed1a25dfd65caf"
+    },
+    "qr-bridge/src/channel-manager.mjs": {
+      "git_object_id": "722bfb547374ae34ef1b47638b06948840f86183",
+      "sha256": "ffe6fb493288b66bcee08123b4768abfb26b8df5a6ac11492a7fbdf24779dc29"
+    },
+    "qr-bridge/src/server.mjs": {
+      "git_object_id": "d47b2dd4c47c50b2f444f8bd3cca5a5b7f98e8ee",
+      "sha256": "62c0abca54c03dfac3b00eef3690498f3a82e8cde0a970854605ebc39f58cd8f"
+    },
+    "app/qr_api.py": {
+      "git_object_id": "f0f5c655f27a6f60c1d91af57a181fd98e76737b",
+      "sha256": "9f65888f33651f113452def74f1d45f311542b8ae58fae48113e0904ca91a013"
+    },
+    "app/qr_legacy.py": {
+      "git_object_id": "74596a1e405129da9663167b0ab808fafcc3ef76",
+      "sha256": "3d4df24176642d4c2a2d824ec06ea082ec9208a20e3ab7d60af03e2f3d7d7109"
+    },
+    ".gitattributes": {
+      "git_object_id": "2aa368335a645fea1f77bf21f188e0e923fb3289",
+      "sha256": "5e7d9c31ead28e88c2826487c0fdcbc846317cfe63bf7bde2104554aee41d348"
+    },
+    "Dockerfile": {
+      "git_object_id": "8618162093d0fa71397f42b6b9b560be4747ddbf",
+      "sha256": "32d3e0fcf06864dcf326aa097419e587a19dee782b61d3252426613e64486821"
+    },
+    "railway.json": {
+      "git_object_id": "37b1b8f05fd8325610d8066ba68aaaffafdee434",
+      "sha256": "bbc8be201afc42ad79791b91b8dc36f684ab4a9eeb4292e246a48b372ad700cf"
+    },
+    "railway.worker.json": {
+      "git_object_id": "487ca1abd7c7847be9222d240dcf2449439f14bb",
+      "sha256": "3dbf40ac6c7820add0cea847e7a1c5871cc962971e8f7735af6fc8992beac890"
+    },
+    "requirements.lock": {
+      "git_object_id": "524fec301e18f4c3b8a05c8db2fed19796ba8885",
+      "sha256": "3d50179c4cdafad5828b283ce483b7556795e5c242f7957c43e193ea2dbd3fa8"
+    },
+    ".dockerignore": {
+      "git_object_id": "8d92bc0e9272a8b13100d183d45f375d5e22c7c9",
+      "sha256": "da0a682c9b90287e16a537b2770c00b205e6ea38f12d2cbbb9b97153db59d474"
+    }
+  },
+  "activity": {
+    "application_tests_executed": 0,
+    "production_calls": 0,
+    "deployments": 0,
+    "runtime_edits": 0,
+    "repository_edits": 0,
+    "database_or_session_mutations": 0,
+    "external_artifacts_written": [
+      "runtime-168872a-equivalence-and-D-checklist.json"
+    ]
+  },
+  "qualification_boundary": "Atesta igualdade de conteúdo/modo/tipo Git nos caminhos comparados. Não atesta imagem reproduzível, rollout9658651d concluído, registroC concluído, source/rootDirectory/volume atuais em Railway ou operaçãoD efetivamente aplicada."
+}

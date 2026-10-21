@@ -6,6 +6,6 @@
   "current_source_and_dependency_files_checked": 102,
   "report_and_receipt_hashes_match": true,
   "html_security_qa_passed": true,
-  "publication_status": "API a85da1c e setup do próprio admin publicados/verificados: identidade, proprietário somente da demonstração e IA desse cadastro ativados com backup/restauração. SessãoQR8369 e worker d11 preservados. Registro protegido da sessão(C) preparado; central humana ainda não ativada.",
+  "publication_status": "Central humana QR habilitada na API e worker; novo acesso do próprio admin conferido em leitura. Sessão, dados e IA preservados. Meta/campanhas/sondagens desligados; nenhuma mensagem real de teste. Entrega e resposta reais não foram homologadas.",
   "application_tests_rerun": false
 }

@@ -1,0 +1,27 @@
+{
+  "prepared_at_utc": "2026-10-21T00:31:52.988Z",
+  "phase": "D_adapter",
+  "service": "QR only",
+  "variables": {
+    "QR_LEGACY_CENTRAL_ENABLED": "1",
+    "ORION_NOTIFY_SELF_ON_LINK": "0",
+    "QR_OPERATOR_TEST_ENABLED": "0"
+  },
+  "unchanged_source": {
+    "repo": "QGBALTIGO/orion-assistente",
+    "branch": "codex/orion-marcflow-integrations-20261020",
+    "commitSha": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+    "rootDirectory": "/qr-bridge"
+  },
+  "unchanged_volumeMounts": {
+    "96a57936-6572-4604-887b-a7c8123263ff": {
+      "mountPath": "/data"
+    }
+  },
+  "unchanged_startCommand": "node src/server.mjs",
+  "credentials_tenant_allowlist_and_sessiondir_not_modified": true,
+  "api_worker_not_changed": true,
+  "requires_C_receipt": "9658651d-802e-45df-b2a7-783d8efb15e2",
+  "readiness_acceptance": "GET /health/central must return statusok/legacy_readytrue/session_preservedtrue; bridge logs must confirm existing authenticated session, with no pair/logout/send tests",
+  "authority_not_activated_here": true
+}

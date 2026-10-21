@@ -1,0 +1,73 @@
+{
+  "prepared": {
+    "prepared_at_utc": "2026-10-21T00:31:52.988Z",
+    "phase": "D_adapter",
+    "service": "QR only",
+    "variables": {
+      "QR_LEGACY_CENTRAL_ENABLED": "1",
+      "ORION_NOTIFY_SELF_ON_LINK": "0",
+      "QR_OPERATOR_TEST_ENABLED": "0"
+    },
+    "unchanged_source": {
+      "repo": "QGBALTIGO/orion-assistente",
+      "branch": "codex/orion-marcflow-integrations-20261020",
+      "commitSha": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+      "rootDirectory": "/qr-bridge"
+    },
+    "unchanged_volumeMounts": {
+      "96a57936-6572-4604-887b-a7c8123263ff": {
+        "mountPath": "/data"
+      }
+    },
+    "unchanged_startCommand": "node src/server.mjs",
+    "credentials_tenant_allowlist_and_sessiondir_not_modified": true,
+    "api_worker_not_changed": true,
+    "requires_C_receipt": "9658651d-802e-45df-b2a7-783d8efb15e2",
+    "readiness_acceptance": "GET /health/central must return statusok/legacy_readytrue/session_preservedtrue; bridge logs must confirm existing authenticated session, with no pair/logout/send tests",
+    "authority_not_activated_here": true
+  },
+  "staged": {
+    "project": {
+      "id": "55750961-99ca-495e-b55e-4c07d78e53df",
+      "name": "strong-creation"
+    },
+    "environment": {
+      "id": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+      "name": "production"
+    },
+    "staged": {
+      "patchId": "348e82ff-634d-414a-b19d-8d43fda96d18",
+      "status": "STAGED",
+      "changeCount": 1,
+      "message": null,
+      "createdAt": "2026-10-21T00:31:56.002Z",
+      "updatedAt": "2026-10-21T00:31:56.002Z"
+    },
+    "destructive": false,
+    "resources": [
+      {
+        "kind": "service",
+        "id": "ef72fd3d-fcef-4be6-8aa2-a1a544b021f7",
+        "name": "orion-qr-bridge",
+        "action": "update",
+        "changes": [
+          {
+            "path": "services.ef72fd3d-fcef-4be6-8aa2-a1a544b021f7.variables.QR_LEGACY_CENTRAL_ENABLED.encryptedValue",
+            "displayName": "QR_LEGACY_CENTRAL_ENABLED",
+            "type": "added",
+            "from": "",
+            "to": "<redacted>",
+            "destructive": false
+          }
+        ]
+      }
+    ],
+    "sharedVariables": [],
+    "privateNetworkDisabled": null
+  },
+  "scope_validated": true,
+  "source_and_volume_preserved": true,
+  "actual_changed_fields": 1,
+  "notify_and_operator_test_values_requested0_and_unchanged": true,
+  "qualification": "QR source tree unchanged from tested8369; candidate168runtime byte-equivalenttoa85, separate proof, no new integration qualification inferred"
+}

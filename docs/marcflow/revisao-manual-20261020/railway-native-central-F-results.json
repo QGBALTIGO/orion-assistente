@@ -1,0 +1,136 @@
+{
+  "verified_at_utc": "2026-10-21T00:58:48.267Z",
+  "status": "SUCCESS",
+  "api": {
+    "deployment_id": "47000175-4026-44d9-92aa-e8530bf724b9",
+    "status": "SUCCESS",
+    "deployment_reported_commit": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+    "configured_source_commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+    "normal_hook_verified": true
+  },
+  "worker": {
+    "deployment_id": "0bff9fba-2213-4fbb-b314-4d833731ed15",
+    "status": "SUCCESS",
+    "deployment_reported_commit": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+    "configured_source_commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+    "hook_matches_reviewed_F": true,
+    "startCommand": "arq app.worker.WorkerSettings",
+    "native_admin_binding_configuration_valid": true,
+    "no_owner_or_oneshot_variable_names": true
+  },
+  "effective_flags": {
+    "api": {
+      "BIRTHDAY_COLLECTION_ENABLED": "0",
+      "GROQ_PROBE_ON_START": "0",
+      "INBOX_CONTROL_ENABLED": "1",
+      "INBOX_SEND_ENABLED": "1",
+      "INBOX_TOOLS_ENABLED": "1",
+      "MARKETING_EXECUTION_ENABLED": "0",
+      "MARKETING_RECONCILIATION_ENABLED": "0",
+      "META_LIVE_SEND": "0",
+      "ORION_EMAIL_DELIVERY_PROBE": "0",
+      "QR_AI_ENABLED": "1",
+      "QR_CHANNELS_ENABLED": "1",
+      "QR_LEGACY_CENTRAL_ENABLED": "1"
+    },
+    "worker": {
+      "BIRTHDAY_COLLECTION_ENABLED": "0",
+      "GROQ_PROBE_ON_START": "0",
+      "INBOX_CONTROL_ENABLED": "1",
+      "INBOX_SEND_ENABLED": "1",
+      "INBOX_TOOLS_ENABLED": "1",
+      "MARKETING_EXECUTION_ENABLED": "0",
+      "MARKETING_RECONCILIATION_ENABLED": "0",
+      "META_LIVE_SEND": "0",
+      "ORION_EMAIL_DELIVERY_PROBE": "0",
+      "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED": "1",
+      "QR_AI_ENABLED": "1",
+      "QR_CHANNELS_ENABLED": "1",
+      "QR_LEGACY_CENTRAL_ENABLED": "1"
+    }
+  },
+  "predeploy_safe_markers": {
+    "api": [
+      {
+        "timestamp": "2026-10-21T00:55:45.225298779Z",
+        "message": "tested_runtime_versions_match",
+        "level": "info"
+      },
+      {
+        "timestamp": "2026-10-21T00:55:45.225305249Z",
+        "message": "orion_release_flags={\"BIRTHDAY_COLLECTION_ENABLED\": \"0\", \"GROQ_PROBE_ON_START\": \"0\", \"INBOX_CONTROL_ENABLED\": \"1\", \"INBOX_SEND_ENABLED\": \"1\", \"INBOX_TOOLS_ENABLED\": \"1\", \"MARKETING_EXECUTION_ENABLED\": \"0\", \"MARKETING_RECONCILIATION_ENABLED\": \"0\", \"META_LIVE_SEND\": \"0\", \"ORION_EMAIL_DELIVERY_PROBE\": \"0\", \"QR_AI_ENABLED\": \"1\", \"QR_CHANNELS_ENABLED\": \"1\", \"QR_LEGACY_CENTRAL_ENABLED\": \"1\"}",
+        "level": "info"
+      },
+      {
+        "timestamp": "2026-10-21T00:55:45.536838018Z",
+        "message": "",
+        "level": "info",
+        "ok": true,
+        "status": "admin_identity_schema_ready",
+        "schema_marker": "0030_legacy_admin_identity"
+      },
+      {
+        "timestamp": "2026-10-21T00:55:46.294760436Z",
+        "message": "Orion QR: CONNECTED_TO_PRIVATE_BRIDGE, state=connected",
+        "level": "info"
+      }
+    ],
+    "worker": [
+      {
+        "timestamp": "2026-10-21T00:56:19.720794915Z",
+        "message": "tested_runtime_versions_match",
+        "level": "info"
+      },
+      {
+        "timestamp": "2026-10-21T00:56:19.720802942Z",
+        "message": "orion_release_flags={\"BIRTHDAY_COLLECTION_ENABLED\": \"0\", \"GROQ_PROBE_ON_START\": \"0\", \"INBOX_CONTROL_ENABLED\": \"1\", \"INBOX_SEND_ENABLED\": \"1\", \"INBOX_TOOLS_ENABLED\": \"1\", \"MARKETING_EXECUTION_ENABLED\": \"0\", \"MARKETING_RECONCILIATION_ENABLED\": \"0\", \"META_LIVE_SEND\": \"0\", \"ORION_EMAIL_DELIVERY_PROBE\": \"0\", \"PANEL_LEGACY_ADMIN_IDENTITY_ENABLED\": \"1\", \"QR_AI_ENABLED\": \"1\", \"QR_CHANNELS_ENABLED\": \"1\", \"QR_LEGACY_CENTRAL_ENABLED\": \"1\"}",
+        "level": "info"
+      },
+      {
+        "timestamp": "2026-10-21T00:56:20.111418071Z",
+        "message": "native_admin_binding_configuration_valid",
+        "level": "info"
+      },
+      {
+        "timestamp": "2026-10-21T00:56:20.111424129Z",
+        "message": "admin_identity_schema_barrier_start",
+        "level": "info"
+      },
+      {
+        "timestamp": "2026-10-21T00:56:20.856529987Z",
+        "message": "",
+        "level": "info",
+        "ok": true,
+        "status": "admin_identity_schema_ready",
+        "schema_marker": "0030_legacy_admin_identity"
+      }
+    ]
+  },
+  "qr_session_preserved": true,
+  "qr": {
+    "source": {
+      "repo": "QGBALTIGO/orion-assistente",
+      "branch": "codex/orion-marcflow-integrations-20261020",
+      "commitSha": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+      "rootDirectory": "/qr-bridge"
+    },
+    "volumeMounts": {
+      "96a57936-6572-4604-887b-a7c8123263ff": {
+        "mountPath": "/data"
+      }
+    },
+    "unchanged_deployment_id": "5d6bf01f-405a-4fe7-9250-f821b67975f4",
+    "auth96_proof_from_D_not_a_new_auth_directory_read": true
+  },
+  "all5_services_online_1replica_each": true,
+  "active_crashed_replicas": 0,
+  "staged_or_applying_work": [],
+  "normal_hooks_and_E_oneshot_cleanup_verified": true,
+  "backup_and_business_record_preservation_proof": "railway-native-central-E-results.json",
+  "public_readiness_assets_proof": "public-after-native-central-F.json",
+  "runtime_equivalence_and_CI": "ci-168872a-final-evidence.json",
+  "no_task_generated_messages_or_campaigns": true,
+  "normal_existing_AI_traffic_not_audited": true,
+  "fresh_admin_login_and_readonly_UI_check": "pending; separate browser handoff",
+  "no_real_provider_delivery_or_functional_reply_homologation": true
+}
