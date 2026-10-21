@@ -1,0 +1,117 @@
+{
+  "artifact_kind": "compact_external_diagnostic_clone_evidence",
+  "boundaries": {
+    "application_repository_edited": false,
+    "diagnostic_role": "app_support",
+    "messages_sent": false,
+    "network_observed": [
+      {
+        "host": "127.0.0.1",
+        "port": 55439
+      }
+    ],
+    "new_test_execution_during_summary_review": false,
+    "production_access": false,
+    "providers_used": false,
+    "redis_used": false
+  },
+  "cases": [
+    {
+      "helper_exit_code": 0,
+      "helper_stdout_sha256": "6eab24f8e16f7c03ee0c2757c0eb1ca72ba40190661470ef0504537ed63c8b77",
+      "name": "configured_missing_requested_active_bot_false_owners_zero",
+      "observed": {
+        "active_member_owners": 0,
+        "bot_enabled": false,
+        "configured_exists": false,
+        "configured_matches_requested": false,
+        "legacy_alias_registered": false,
+        "requested_exists": true,
+        "status": "active"
+      },
+      "passed": true,
+      "snapshot_unchanged": true
+    },
+    {
+      "helper_exit_code": 0,
+      "helper_stdout_sha256": "d994c2fd6d671f00c45bd901be8eb92dc295c89630d163193d0f0a555861f777",
+      "name": "configured_matches_one_member_owner_alias_visible",
+      "observed": {
+        "active_member_owners": 1,
+        "bot_enabled": false,
+        "both_rows_exist": true,
+        "configured_matches_requested": true,
+        "legacy_alias_registered": true,
+        "status": "active"
+      },
+      "passed": true,
+      "snapshot_unchanged": true
+    },
+    {
+      "has_update_privilege": true,
+      "name": "read_only_blocks_update_with_unchanged_all_table_counts_and_hashes",
+      "passed": true,
+      "role": "app_support",
+      "snapshot_sha256": "56f4ae449b3efc1832e7beabcac7322a24030781a107d100c0a70c9cf1266a60",
+      "snapshot_unchanged": true,
+      "tables_checked": 84,
+      "transaction_read_only": "on",
+      "write_sqlstate": "25006"
+    }
+  ],
+  "cleanup": {
+    "clone_dropped_with_oid_owner_check": true,
+    "owned_pg_stopped": true
+  },
+  "preservation": {
+    "all_original_table_counts_and_row_hashes_equal": true,
+    "helper_sha256_after": "0676a02330ac787985391299f0af5578183435493a68b7b2afc31016f72f84eb",
+    "helper_sha256_before": "0676a02330ac787985391299f0af5578183435493a68b7b2afc31016f72f84eb",
+    "helper_unchanged": true,
+    "original_aggregate_sha256_after": "0087630001f879e3576bbd222647e55f679c0851f400859eec53dbb05df75e66",
+    "original_aggregate_sha256_before": "0087630001f879e3576bbd222647e55f679c0851f400859eec53dbb05df75e66",
+    "original_unchanged": true,
+    "tables_checked": 84
+  },
+  "review": {
+    "embedded_credentials_or_provider_secrets_detected": false,
+    "files_reviewed": 3,
+    "fixture_provenance": "Runner overwrites the requested demo name/flags in the disposable clone; owner UUID/email and QR credential fields are synthetic, and the email uses example.invalid. No customer rows are printed.",
+    "full_evidence_preserved": true,
+    "method": "Manual review of the three complete final files; this summary was derived offline without starting PostgreSQL.",
+    "omitted_from_summary": [
+      "repeated per-table counts and row hashes",
+      "absolute local paths and OS account name",
+      "tenant UUID/name",
+      "server PID and clone database/OID"
+    ],
+    "operational_identifier_note": "The helper and runner reuse the requested demo UUID as a test target. It is operational metadata, not a credential; the summary omits it.",
+    "real_customer_records_present_in_evidence": false
+  },
+  "schema_version": 1,
+  "source_artifacts": {
+    "diagnose_legacy_binding_readonly.py": {
+      "file": "diagnose_legacy_binding_readonly.py",
+      "sha256": "0676a02330ac787985391299f0af5578183435493a68b7b2afc31016f72f84eb"
+    },
+    "diagnostic-clone-evidence.json": {
+      "file": "diagnostic-clone-evidence.json",
+      "sha256": "f3dcec9ef0c043f020c3865545e7e8d11156179a778d7532cb2502da881de28d"
+    },
+    "test_legacy_diagnostic_clone.py": {
+      "file": "test_legacy_diagnostic_clone.py",
+      "sha256": "e16d7570479a74055a85777a984242d2265f29eebff2757db56205ff50659147"
+    }
+  },
+  "test_run": {
+    "cases_passed": 3,
+    "cases_total": 3,
+    "database_engine": "PostgreSQL 16",
+    "duration_seconds": 14.159,
+    "finished_at_utc": "2026-10-20T22:44:37.666940+00:00",
+    "schema_revision": "0029_communication_contract",
+    "scope": "isolated real PG16 clone; no Redis or providers",
+    "started_at_utc": "2026-10-20T22:44:23.507948+00:00",
+    "success": true
+  }
+}

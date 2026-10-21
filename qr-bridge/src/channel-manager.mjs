@@ -1,3 +1,4 @@
+import {safetyControl} from './inbound-event.mjs';
 /** Per-channel lifecycle; SQL broker owns the distributed fence, not this Map. */
 import {randomUUID,timingSafeEqual} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
@@ -27,6 +28,9 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         result.allowed_senders.some(p=>typeof p!=='string'||!/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(p))||
         (c.fence&&(result.fence!==c.fence||result.tenant_id!==c.tenant)))throw Error('invalid_channel_lease');
     c.tenant=result.tenant_id;c.fence=result.fence;c.allowed=new Set(result.allowed_senders);c.assistant=result.assistant_enabled;
+    if(c.legacyTransport!==undefined&&c.legacyTransport!==(result.legacy_transport===true))throw Error('channel_transport_changed');
+    c.legacyTransport=result.legacy_transport===true;
+    c.inboxControl=c.inboxControl===true||result.inbox_control===true||process.env.INBOX_CONTROL_ENABLED==='1';
     const deadline=started+result.expires_in_ms-250;
     c.deadline=renew||!c.deadline?deadline:Math.min(c.deadline,deadline);
     requireCurrent(c);
@@ -76,14 +80,23 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     async function notice(payload){
       await assertCurrent();
       if(!c.allowed.has(payload.phone)||typeof payload.message_id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(payload.message_id))throw Error('channel_sender_denied');
-      const recorded=await broker.interaction(c.id,c.key,{owner,fence:c.fence},{phone:payload.phone,message_id:payload.message_id});
+      if(c.inboxControl&&('text' in payload||'kind' in payload)){
+        if(typeof broker.journal!=='function')throw Error('inbox_journal_unavailable');
+        const saved=await broker.journal(c.id,c.key,{owner,fence:c.fence},payload);
+        if(saved?.recorded!==true)throw Error('inbox_journal_unconfirmed');
+      }
+      const control=payload.envelope?.control||safetyControl(payload.text);
+      const recorded=await broker.interaction(c.id,c.key,{owner,fence:c.fence},{phone:payload.phone,message_id:payload.message_id,
+        ...(!c.inboxControl&&control?{control}:{})});
       if(recorded?.recorded!==true||!Number.isSafeInteger(recorded.revision)||recorded.revision<1)throw Error('channel_interaction_unconfirmed');
       await assertCurrent();const proof=Object.freeze({revision:recorded.revision});
       notices.set(proof,{phone:payload.phone,id:payload.message_id,revision:recorded.revision,state:'new'});return proof;
     }
     try{
       const session=await createSession({channelId:c.id,tenantId:c.tenant,owner,fence:c.fence,
-        directory:c.directory,secret:c.key,assertCurrent,isCurrent,resumeOnly:c.resumeOnly,notifySelf:true,
+        directory:c.directory,secret:c.key,assertCurrent,isCurrent,resumeOnly:c.resumeOnly,
+        notifySelf:!c.legacyTransport&&process.env.ORION_NOTIFY_SELF_ON_LINK!=='0',
+        legacyTransport:c.legacyTransport,
         allowedSender:phone=>c.allowed.has(phone),
         assistantEnabled:()=>c.assistant===true,
         audioEnabled:()=>audioEnabled()===true&&c.assistant===true,
@@ -105,6 +118,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
           await assertCurrent();const item=c.sent.get(id);if(!item)return;
           const saved=c.ledger.reserve(item.operation,item.fingerprint).record;
           if(saved.delivery!=='read')c.ledger.save(item.operation,{...saved,delivery});
+          if(c.inboxControl&&typeof broker.receipt==='function')
+            await broker.receipt(c.id,c.key,{owner,fence:c.fence},{phone:item.phone,operation_id:item.operation,provider_id:id,delivery});
         },
         onMessage:async(payload,{noticeProof,noticeProofs,beforeReply,isCurrent:batchCurrent=()=>true}={})=>{
           await assertCurrent();
@@ -130,7 +145,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
           try{
             const result=await broker.forward(c.id,c.key,{owner,fence:c.fence},
               {phone:payload.phone,message_id:payload.message_id,message_ids:ids,text:payload.text,intake_revision:revision,
-                require_summary_review:c.summaryReview.get(payload.phone)!==false});
+                require_summary_review:c.summaryReview.get(payload.phone)!==false,
+                ...(payload.envelope?{envelope:payload.envelope}:{})});
             if(result?.step==='superseded'&&result.answer===null&&result.not_committed===true){
               observed.forEach(item=>{item.state='new';});c.summaryReview.set(payload.phone,true);
               return {state:'superseded',not_committed:true};
@@ -147,7 +163,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
             await assertCurrent();
             if(!stillCurrent()){c.summaryReview.set(payload.phone,true);return;}
             const operation=deterministicOperation(c.id,ids.join('\0'));
-            const sent=await send(c.id,c.key,{to:payload.phone,text:result.answer,operation_id:operation,isCurrent:stillCurrent});
+            const sent=await send(c.id,c.key,{to:payload.phone,text:result.answer,operation_id:operation,isCurrent:stillCurrent,
+              source:'assistant',control_revision:result.control_revision});
             c.summaryReview.set(payload.phone,!sent?.accepted||!stillCurrent());return sent;
           }catch(error){observed.forEach(item=>{item.state='spent';});c.summaryReview.set(payload.phone,true);throw error;}
         }});
@@ -184,7 +201,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     return {channel_id:id,status:c.session?.status?.()||'connecting',fence:c.fence,
       capabilities:{text:true,audio:audioEnabled()===true&&c.assistant===true,reliable_send:true,typing:true}};
   }
-  async function send(id,key,{to,text,operation_id,isCurrent:operationCurrent=()=>true}){
+  async function send(id,key,{to,text,operation_id,isCurrent:operationCurrent=()=>true,source='automation',control_revision}){
     const c=contexts.get(id);if(!c)throw Error('channel_not_started');
     await validate(c,key);const phone=validPhone(to);
     if(typeof operationCurrent!=='function'||operationCurrent()!==true)throw Error('channel_operation_superseded');
@@ -199,16 +216,32 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     }
     // The durable uncertain record exists before any network send. A process
     // crash or timeout can never cause this operation to be sent a second time.
+    let attempted=false;
     try{
       await validate(c,key);
       if(!c.session||operationCurrent()!==true)throw Error('channel_not_connected_or_superseded');
+      const slot={phone,operation_id,fingerprint,source,text,...(['assistant','manual'].includes(source)?{control_revision}:{} )};
+      if(c.inboxControl===true||control_revision!==undefined){
+        if(typeof broker.authorizeSend!=='function')throw Error('inbox_control_unavailable');
+        const permit=await broker.authorizeSend(c.id,c.key,{owner,fence:c.fence},slot);
+        if(permit?.authorized!==true||permit.operation_id!==operation_id)throw Error('inbox_send_refused');
+      }
+      attempted=true;
       const result=await c.session.send(phone,text,{isCurrent:operationCurrent});requireCurrent(c);
       if(typeof result?.id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(result.id))throw Error('channel_send_unknown');
       const record={fingerprint,state:'accepted',accepted:true,delivery:'unknown',provider_id:result.id};
-      c.ledger.save(operation_id,record);c.sent.set(result.id,{operation:operation_id,fingerprint});
+      c.ledger.save(operation_id,record);c.sent.set(result.id,{operation:operation_id,fingerprint,phone});
+      if(c.inboxControl===true||control_revision!==undefined){
+        // A lost finish response leaves a conservative slot. It is released
+        // only after the API verifies this already persisted receipt.
+        try{await broker.finishSend(c.id,c.key,{owner,fence:c.fence},{...slot,accepted:true,provider_id:result.id});}catch{}
+      }
       if(c.sent.size>1000)c.sent.delete(c.sent.keys().next().value);
       return publicSend(operation_id,record);
-    }catch{return publicSend(operation_id,reserved.record);}
+    }catch{
+      if(!attempted){const refused={fingerprint,state:'refused',accepted:false,delivery:'not_sent'};c.ledger.save(operation_id,refused);return publicSend(operation_id,refused);}
+      return publicSend(operation_id,reserved.record);
+    }
   }
   async function operation(id,key,operationId){
     if(!channelId(id)||!channelId(operationId))throw Error('invalid_operation_id');

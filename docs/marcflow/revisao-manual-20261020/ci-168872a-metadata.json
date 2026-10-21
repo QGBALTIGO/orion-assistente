@@ -1,0 +1,839 @@
+{
+  "retrieved_at_utc": "2026-10-21T00:45:20.223Z",
+  "repository": "QGBALTIGO/orion-assistente",
+  "source": "GitHub connector GET-only APIs",
+  "runs": [
+    {
+      "id": 39521404970,
+      "name": "FATIA 0 e 1 - PostgreSQL e Docker",
+      "node_id": "WFR_kwLOVMb8O88AAAAJM6jIKg",
+      "head_branch": "codex/orion-marcflow-integrations-20261020",
+      "head_sha": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+      "path": ".github/workflows/tests.yml",
+      "display_title": "Conclui revisão da central humana, identidade do admin e transição QR protegida",
+      "run_number": 378,
+      "event": "pull_request",
+      "status": "completed",
+      "conclusion": "success",
+      "workflow_id": 386843990,
+      "check_suite_id": 107101977753,
+      "check_suite_node_id": "CS_kwDOVMb8O88AAAAY78Z8mQ",
+      "url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/actions/runs/39521404970",
+      "html_url": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39521404970",
+      "pull_requests": [
+        {
+          "url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/pulls/80",
+          "id": 4936812651,
+          "number": 80,
+          "head": {
+            "ref": "codex/orion-marcflow-integrations-20261020",
+            "sha": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+            "repo": {
+              "id": 1422326843,
+              "url": "https://api.github.com/repos/QGBALTIGO/orion-assistente",
+              "name": "orion-assistente"
+            }
+          },
+          "base": {
+            "ref": "codex/whatsapp-owner-shortcut",
+            "sha": "6d9c971f5cebc9b652960f765b2f98ec5678f2eb",
+            "repo": {
+              "id": 1422326843,
+              "url": "https://api.github.com/repos/QGBALTIGO/orion-assistente",
+              "name": "orion-assistente"
+            }
+          }
+        }
+      ],
+      "created_at": "2026-10-21T00:27:13Z",
+      "updated_at": "2026-10-21T00:37:53Z",
+      "actor": {
+        "login": "QGBALTIGO",
+        "id": 119024696,
+        "node_id": "U_kgDOBxgsOA",
+        "avatar_url": "https://avatars.githubusercontent.com/u/119024696?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/QGBALTIGO",
+        "html_url": "https://github.com/QGBALTIGO",
+        "followers_url": "https://api.github.com/users/QGBALTIGO/followers",
+        "following_url": "https://api.github.com/users/QGBALTIGO/following{/other_user}",
+        "gists_url": "https://api.github.com/users/QGBALTIGO/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/QGBALTIGO/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/QGBALTIGO/subscriptions",
+        "organizations_url": "https://api.github.com/users/QGBALTIGO/orgs",
+        "repos_url": "https://api.github.com/users/QGBALTIGO/repos",
+        "events_url": "https://api.github.com/users/QGBALTIGO/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/QGBALTIGO/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "run_attempt": 1,
+      "referenced_workflows": [],
+      "run_started_at": "2026-10-21T00:27:13Z",
+      "triggering_actor": {
+        "login": "QGBALTIGO",
+        "id": 119024696,
+        "node_id": "U_kgDOBxgsOA",
+        "avatar_url": "https://avatars.githubusercontent.com/u/119024696?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/QGBALTIGO",
+        "html_url": "https://github.com/QGBALTIGO",
+        "followers_url": "https://api.github.com/users/QGBALTIGO/followers",
+        "following_url": "https://api.github.com/users/QGBALTIGO/following{/other_user}",
+        "gists_url": "https://api.github.com/users/QGBALTIGO/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/QGBALTIGO/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/QGBALTIGO/subscriptions",
+        "organizations_url": "https://api.github.com/users/QGBALTIGO/orgs",
+        "repos_url": "https://api.github.com/users/QGBALTIGO/repos",
+        "events_url": "https://api.github.com/users/QGBALTIGO/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/QGBALTIGO/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "jobs_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/actions/runs/39521404970/jobs",
+      "logs_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/actions/runs/39521404970/logs",
+      "check_suite_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/check-suites/107101977753",
+      "artifacts_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/actions/runs/39521404970/artifacts",
+      "cancel_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/actions/runs/39521404970/cancel",
+      "rerun_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/actions/runs/39521404970/rerun",
+      "previous_attempt_url": null,
+      "workflow_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/actions/workflows/386843990",
+      "head_commit": {
+        "id": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+        "tree_id": "0773a9ef47d8eb8c402855800281c87933c37dd9",
+        "message": "docs: record manual inventory and protected administrator rollout",
+        "timestamp": "2026-10-21T00:26:57Z",
+        "author": {
+          "name": "Kayky",
+          "email": "baltigooficial@gmail.com"
+        },
+        "committer": {
+          "name": "Kayky",
+          "email": "baltigooficial@gmail.com"
+        }
+      },
+      "repository": {
+        "id": 1422326843,
+        "node_id": "R_kgDOVMb8Ow",
+        "name": "orion-assistente",
+        "full_name": "QGBALTIGO/orion-assistente",
+        "private": false,
+        "owner": {
+          "login": "QGBALTIGO",
+          "id": 119024696,
+          "node_id": "U_kgDOBxgsOA",
+          "avatar_url": "https://avatars.githubusercontent.com/u/119024696?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/QGBALTIGO",
+          "html_url": "https://github.com/QGBALTIGO",
+          "followers_url": "https://api.github.com/users/QGBALTIGO/followers",
+          "following_url": "https://api.github.com/users/QGBALTIGO/following{/other_user}",
+          "gists_url": "https://api.github.com/users/QGBALTIGO/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/QGBALTIGO/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/QGBALTIGO/subscriptions",
+          "organizations_url": "https://api.github.com/users/QGBALTIGO/orgs",
+          "repos_url": "https://api.github.com/users/QGBALTIGO/repos",
+          "events_url": "https://api.github.com/users/QGBALTIGO/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/QGBALTIGO/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "html_url": "https://github.com/QGBALTIGO/orion-assistente",
+        "description": null,
+        "fork": false,
+        "url": "https://api.github.com/repos/QGBALTIGO/orion-assistente",
+        "forks_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/forks",
+        "keys_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/keys{/key_id}",
+        "collaborators_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/collaborators{/collaborator}",
+        "teams_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/teams",
+        "hooks_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/hooks",
+        "issue_events_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/issues/events{/number}",
+        "events_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/events",
+        "assignees_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/assignees{/user}",
+        "branches_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/branches{/branch}",
+        "tags_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/tags",
+        "blobs_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/blobs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/tags{/sha}",
+        "git_refs_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/refs{/sha}",
+        "trees_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/trees{/sha}",
+        "statuses_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/statuses/{sha}",
+        "languages_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/languages",
+        "stargazers_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/stargazers",
+        "contributors_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/contributors",
+        "subscribers_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/subscribers",
+        "subscription_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/subscription",
+        "commits_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/commits{/sha}",
+        "git_commits_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/commits{/sha}",
+        "comments_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/comments{/number}",
+        "issue_comment_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/issues/comments{/number}",
+        "contents_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/contents/{+path}",
+        "compare_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/compare/{base}...{head}",
+        "merges_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/merges",
+        "archive_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/{archive_format}{/ref}",
+        "downloads_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/downloads",
+        "issues_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/issues{/number}",
+        "pulls_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/pulls{/number}",
+        "milestones_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/milestones{/number}",
+        "notifications_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/notifications{?since,all,participating}",
+        "labels_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/labels{/name}",
+        "releases_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/releases{/id}",
+        "deployments_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/deployments"
+      },
+      "head_repository": {
+        "id": 1422326843,
+        "node_id": "R_kgDOVMb8Ow",
+        "name": "orion-assistente",
+        "full_name": "QGBALTIGO/orion-assistente",
+        "private": false,
+        "owner": {
+          "login": "QGBALTIGO",
+          "id": 119024696,
+          "node_id": "U_kgDOBxgsOA",
+          "avatar_url": "https://avatars.githubusercontent.com/u/119024696?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/QGBALTIGO",
+          "html_url": "https://github.com/QGBALTIGO",
+          "followers_url": "https://api.github.com/users/QGBALTIGO/followers",
+          "following_url": "https://api.github.com/users/QGBALTIGO/following{/other_user}",
+          "gists_url": "https://api.github.com/users/QGBALTIGO/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/QGBALTIGO/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/QGBALTIGO/subscriptions",
+          "organizations_url": "https://api.github.com/users/QGBALTIGO/orgs",
+          "repos_url": "https://api.github.com/users/QGBALTIGO/repos",
+          "events_url": "https://api.github.com/users/QGBALTIGO/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/QGBALTIGO/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "html_url": "https://github.com/QGBALTIGO/orion-assistente",
+        "description": null,
+        "fork": false,
+        "url": "https://api.github.com/repos/QGBALTIGO/orion-assistente",
+        "forks_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/forks",
+        "keys_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/keys{/key_id}",
+        "collaborators_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/collaborators{/collaborator}",
+        "teams_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/teams",
+        "hooks_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/hooks",
+        "issue_events_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/issues/events{/number}",
+        "events_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/events",
+        "assignees_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/assignees{/user}",
+        "branches_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/branches{/branch}",
+        "tags_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/tags",
+        "blobs_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/blobs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/tags{/sha}",
+        "git_refs_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/refs{/sha}",
+        "trees_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/trees{/sha}",
+        "statuses_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/statuses/{sha}",
+        "languages_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/languages",
+        "stargazers_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/stargazers",
+        "contributors_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/contributors",
+        "subscribers_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/subscribers",
+        "subscription_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/subscription",
+        "commits_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/commits{/sha}",
+        "git_commits_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/commits{/sha}",
+        "comments_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/comments{/number}",
+        "issue_comment_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/issues/comments{/number}",
+        "contents_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/contents/{+path}",
+        "compare_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/compare/{base}...{head}",
+        "merges_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/merges",
+        "archive_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/{archive_format}{/ref}",
+        "downloads_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/downloads",
+        "issues_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/issues{/number}",
+        "pulls_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/pulls{/number}",
+        "milestones_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/milestones{/number}",
+        "notifications_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/notifications{?since,all,participating}",
+        "labels_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/labels{/name}",
+        "releases_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/releases{/id}",
+        "deployments_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/deployments"
+      }
+    },
+    {
+      "id": 39521404960,
+      "name": "Orion media uploads",
+      "node_id": "WFR_kwLOVMb8O88AAAAJM6jIIA",
+      "head_branch": "codex/orion-marcflow-integrations-20261020",
+      "head_sha": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+      "path": ".github/workflows/media-tests.yml",
+      "display_title": "Conclui revisão da central humana, identidade do admin e transição QR protegida",
+      "run_number": 59,
+      "event": "pull_request",
+      "status": "completed",
+      "conclusion": "success",
+      "workflow_id": 389807832,
+      "check_suite_id": 107101977734,
+      "check_suite_node_id": "CS_kwDOVMb8O88AAAAY78Z8hg",
+      "url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/actions/runs/39521404960",
+      "html_url": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39521404960",
+      "pull_requests": [
+        {
+          "url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/pulls/80",
+          "id": 4936812651,
+          "number": 80,
+          "head": {
+            "ref": "codex/orion-marcflow-integrations-20261020",
+            "sha": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+            "repo": {
+              "id": 1422326843,
+              "url": "https://api.github.com/repos/QGBALTIGO/orion-assistente",
+              "name": "orion-assistente"
+            }
+          },
+          "base": {
+            "ref": "codex/whatsapp-owner-shortcut",
+            "sha": "6d9c971f5cebc9b652960f765b2f98ec5678f2eb",
+            "repo": {
+              "id": 1422326843,
+              "url": "https://api.github.com/repos/QGBALTIGO/orion-assistente",
+              "name": "orion-assistente"
+            }
+          }
+        }
+      ],
+      "created_at": "2026-10-21T00:27:13Z",
+      "updated_at": "2026-10-21T00:27:36Z",
+      "actor": {
+        "login": "QGBALTIGO",
+        "id": 119024696,
+        "node_id": "U_kgDOBxgsOA",
+        "avatar_url": "https://avatars.githubusercontent.com/u/119024696?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/QGBALTIGO",
+        "html_url": "https://github.com/QGBALTIGO",
+        "followers_url": "https://api.github.com/users/QGBALTIGO/followers",
+        "following_url": "https://api.github.com/users/QGBALTIGO/following{/other_user}",
+        "gists_url": "https://api.github.com/users/QGBALTIGO/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/QGBALTIGO/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/QGBALTIGO/subscriptions",
+        "organizations_url": "https://api.github.com/users/QGBALTIGO/orgs",
+        "repos_url": "https://api.github.com/users/QGBALTIGO/repos",
+        "events_url": "https://api.github.com/users/QGBALTIGO/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/QGBALTIGO/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "run_attempt": 1,
+      "referenced_workflows": [],
+      "run_started_at": "2026-10-21T00:27:13Z",
+      "triggering_actor": {
+        "login": "QGBALTIGO",
+        "id": 119024696,
+        "node_id": "U_kgDOBxgsOA",
+        "avatar_url": "https://avatars.githubusercontent.com/u/119024696?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/QGBALTIGO",
+        "html_url": "https://github.com/QGBALTIGO",
+        "followers_url": "https://api.github.com/users/QGBALTIGO/followers",
+        "following_url": "https://api.github.com/users/QGBALTIGO/following{/other_user}",
+        "gists_url": "https://api.github.com/users/QGBALTIGO/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/QGBALTIGO/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/QGBALTIGO/subscriptions",
+        "organizations_url": "https://api.github.com/users/QGBALTIGO/orgs",
+        "repos_url": "https://api.github.com/users/QGBALTIGO/repos",
+        "events_url": "https://api.github.com/users/QGBALTIGO/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/QGBALTIGO/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "jobs_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/actions/runs/39521404960/jobs",
+      "logs_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/actions/runs/39521404960/logs",
+      "check_suite_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/check-suites/107101977734",
+      "artifacts_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/actions/runs/39521404960/artifacts",
+      "cancel_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/actions/runs/39521404960/cancel",
+      "rerun_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/actions/runs/39521404960/rerun",
+      "previous_attempt_url": null,
+      "workflow_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/actions/workflows/389807832",
+      "head_commit": {
+        "id": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+        "tree_id": "0773a9ef47d8eb8c402855800281c87933c37dd9",
+        "message": "docs: record manual inventory and protected administrator rollout",
+        "timestamp": "2026-10-21T00:26:57Z",
+        "author": {
+          "name": "Kayky",
+          "email": "baltigooficial@gmail.com"
+        },
+        "committer": {
+          "name": "Kayky",
+          "email": "baltigooficial@gmail.com"
+        }
+      },
+      "repository": {
+        "id": 1422326843,
+        "node_id": "R_kgDOVMb8Ow",
+        "name": "orion-assistente",
+        "full_name": "QGBALTIGO/orion-assistente",
+        "private": false,
+        "owner": {
+          "login": "QGBALTIGO",
+          "id": 119024696,
+          "node_id": "U_kgDOBxgsOA",
+          "avatar_url": "https://avatars.githubusercontent.com/u/119024696?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/QGBALTIGO",
+          "html_url": "https://github.com/QGBALTIGO",
+          "followers_url": "https://api.github.com/users/QGBALTIGO/followers",
+          "following_url": "https://api.github.com/users/QGBALTIGO/following{/other_user}",
+          "gists_url": "https://api.github.com/users/QGBALTIGO/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/QGBALTIGO/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/QGBALTIGO/subscriptions",
+          "organizations_url": "https://api.github.com/users/QGBALTIGO/orgs",
+          "repos_url": "https://api.github.com/users/QGBALTIGO/repos",
+          "events_url": "https://api.github.com/users/QGBALTIGO/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/QGBALTIGO/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "html_url": "https://github.com/QGBALTIGO/orion-assistente",
+        "description": null,
+        "fork": false,
+        "url": "https://api.github.com/repos/QGBALTIGO/orion-assistente",
+        "forks_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/forks",
+        "keys_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/keys{/key_id}",
+        "collaborators_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/collaborators{/collaborator}",
+        "teams_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/teams",
+        "hooks_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/hooks",
+        "issue_events_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/issues/events{/number}",
+        "events_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/events",
+        "assignees_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/assignees{/user}",
+        "branches_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/branches{/branch}",
+        "tags_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/tags",
+        "blobs_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/blobs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/tags{/sha}",
+        "git_refs_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/refs{/sha}",
+        "trees_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/trees{/sha}",
+        "statuses_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/statuses/{sha}",
+        "languages_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/languages",
+        "stargazers_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/stargazers",
+        "contributors_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/contributors",
+        "subscribers_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/subscribers",
+        "subscription_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/subscription",
+        "commits_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/commits{/sha}",
+        "git_commits_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/commits{/sha}",
+        "comments_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/comments{/number}",
+        "issue_comment_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/issues/comments{/number}",
+        "contents_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/contents/{+path}",
+        "compare_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/compare/{base}...{head}",
+        "merges_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/merges",
+        "archive_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/{archive_format}{/ref}",
+        "downloads_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/downloads",
+        "issues_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/issues{/number}",
+        "pulls_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/pulls{/number}",
+        "milestones_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/milestones{/number}",
+        "notifications_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/notifications{?since,all,participating}",
+        "labels_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/labels{/name}",
+        "releases_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/releases{/id}",
+        "deployments_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/deployments"
+      },
+      "head_repository": {
+        "id": 1422326843,
+        "node_id": "R_kgDOVMb8Ow",
+        "name": "orion-assistente",
+        "full_name": "QGBALTIGO/orion-assistente",
+        "private": false,
+        "owner": {
+          "login": "QGBALTIGO",
+          "id": 119024696,
+          "node_id": "U_kgDOBxgsOA",
+          "avatar_url": "https://avatars.githubusercontent.com/u/119024696?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/QGBALTIGO",
+          "html_url": "https://github.com/QGBALTIGO",
+          "followers_url": "https://api.github.com/users/QGBALTIGO/followers",
+          "following_url": "https://api.github.com/users/QGBALTIGO/following{/other_user}",
+          "gists_url": "https://api.github.com/users/QGBALTIGO/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/QGBALTIGO/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/QGBALTIGO/subscriptions",
+          "organizations_url": "https://api.github.com/users/QGBALTIGO/orgs",
+          "repos_url": "https://api.github.com/users/QGBALTIGO/repos",
+          "events_url": "https://api.github.com/users/QGBALTIGO/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/QGBALTIGO/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "html_url": "https://github.com/QGBALTIGO/orion-assistente",
+        "description": null,
+        "fork": false,
+        "url": "https://api.github.com/repos/QGBALTIGO/orion-assistente",
+        "forks_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/forks",
+        "keys_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/keys{/key_id}",
+        "collaborators_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/collaborators{/collaborator}",
+        "teams_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/teams",
+        "hooks_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/hooks",
+        "issue_events_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/issues/events{/number}",
+        "events_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/events",
+        "assignees_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/assignees{/user}",
+        "branches_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/branches{/branch}",
+        "tags_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/tags",
+        "blobs_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/blobs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/tags{/sha}",
+        "git_refs_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/refs{/sha}",
+        "trees_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/trees{/sha}",
+        "statuses_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/statuses/{sha}",
+        "languages_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/languages",
+        "stargazers_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/stargazers",
+        "contributors_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/contributors",
+        "subscribers_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/subscribers",
+        "subscription_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/subscription",
+        "commits_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/commits{/sha}",
+        "git_commits_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/git/commits{/sha}",
+        "comments_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/comments{/number}",
+        "issue_comment_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/issues/comments{/number}",
+        "contents_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/contents/{+path}",
+        "compare_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/compare/{base}...{head}",
+        "merges_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/merges",
+        "archive_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/{archive_format}{/ref}",
+        "downloads_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/downloads",
+        "issues_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/issues{/number}",
+        "pulls_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/pulls{/number}",
+        "milestones_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/milestones{/number}",
+        "notifications_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/notifications{?since,all,participating}",
+        "labels_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/labels{/name}",
+        "releases_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/releases{/id}",
+        "deployments_url": "https://api.github.com/repos/QGBALTIGO/orion-assistente/deployments"
+      }
+    }
+  ],
+  "jobs": [
+    {
+      "id": 118965847478,
+      "name": "ASR faster-whisper - CPU, Docker e testes",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 39521404970,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Install ASR dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Unit and API tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Build real inference image",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Synthetic speech smoke test",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Post Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 14
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15
+        }
+      ]
+    },
+    {
+      "id": 118965847724,
+      "name": "QR bridge — Node, IPv6, segurança e Docker",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 39521404970,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Sintaxe Node do conector",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Suite de telefone, pareamento, LID e IPv6",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Instalar dependências isoladas dos testes de interface",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Fluxos DOM da gestão e do agendamento público",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Build da imagem real Node Baileys",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Provar contratos de domínios com a biblioteca instalada, sem rede",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9
+        },
+        {
+          "name": "Smoke test real Baileys + mensagem gerada e cache cifrado no contêiner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10
+        },
+        {
+          "name": "Verificar cache de retry com biblioteca real no contêiner",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11
+        },
+        {
+          "name": "Post Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 21
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 22
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23
+        }
+      ]
+    },
+    {
+      "id": 118965847745,
+      "name": "pytest",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 39521404970,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Initialize containers",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Instalar dependências",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Cliente PostgreSQL 16 para validar backup e restauração isolados",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Validar sintaxe do serviço privado de transcrição",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Provisionar papéis separados",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Aplicar migration",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 9
+        },
+        {
+          "name": "Testar pg_dump/restore em banco efêmero",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 10
+        },
+        {
+          "name": "Rodar suite incluindo RLS real",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11
+        },
+        {
+          "name": "Validar build Docker, Compose e health HTTP",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12
+        },
+        {
+          "name": "Post Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 22
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 23
+        },
+        {
+          "name": "Stop containers",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 24
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 25
+        }
+      ]
+    },
+    {
+      "id": 118965847785,
+      "name": "Image format, authorization and persistence tests",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 39521404960,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Install application and test dependencies",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Verify Python syntax",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Run isolated media tests (no database or bucket required)",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Post Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 11
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 12
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 13
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,274 @@
+FF                                                                       [100%]
+================================== FAILURES ===================================
+_ test_adopted_ai_authority_clears_old_human_context_without_global_flag[False] _
+
+adopted = namespace(identity=ChannelIdentity(channel_id=UUID('507d79bc-293a-4bb8-9ee9-7c7adaf1067c'), tenant_id=UUID('530ec898-4...e.ScopedRedis object at 0x000002152EF95B20>, calls=[], api=<fastapi.applications.FastAPI object at 0x000002152EF65070>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002152F01B620>
+operator_resume = False
+
+    @pytest.mark.parametrize("operator_resume", [False, True])
+    async def test_adopted_ai_authority_clears_old_human_context_without_global_flag(adopted, monkeypatch, operator_resume):
+        state_key = f"orion:qr:ai:{adopted.identity.tenant_id}:{PHONE}"
+        adopted.redis.values[state_key] = json.dumps({"step": "human", "old": True})
+        adopted.redis.values[state_key + ":commerce"] = json.dumps({"pending": {"old": True}})
+        adopted.redis.values[state_key + ":birthday-invite"] = "old-invitation"
+        adopted.redis.values[state_key + ":verified-receipt"] = "preserved-receipt"
+        adopted.resume_revision = 7 if operator_resume else None
+        seen = []
+    
+        async def turn(*_args, **_kwargs):
+            raw = await adopted.redis.get(state_key)
+            assert not raw or json.loads(raw).get("step") != "human"
+            await revision.check_before_write()
+            seen.append(raw)
+            return {"answer": "Retomada sintética", "step": "review"}
+    
+        monkeypatch.setattr(qr_ai, "turn", turn)
+>       response = await request(adopted.api, adopted.identity)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_qr_managed_adoption_scope.py:193: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\unit\test_qr_channels_scope.py:93: in request
+    return await client.post(f"/internal/qr/channels/{channel.channel_id}/ai/reply",
+.venv\Lib\site-packages\httpx\_client.py:1859: in post
+    return await self.request(
+.venv\Lib\site-packages\httpx\_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\httpx\_client.py:1629: in send
+    response = await self._send_handling_auth(
+.venv\Lib\site-packages\httpx\_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+.venv\Lib\site-packages\httpx\_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\httpx\_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\httpx\_transports\asgi.py:170: in handle_async_request
+    await self.app(scope, receive, send)
+.venv\Lib\site-packages\fastapi\applications.py:1194: in __call__
+    await super().__call__(scope, receive, send)
+.venv\Lib\site-packages\starlette\applications.py:96: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv\Lib\site-packages\starlette\middleware\errors.py:186: in __call__
+    raise exc
+.venv\Lib\site-packages\starlette\middleware\errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+.venv\Lib\site-packages\fastapi\telemetry\_asgi.py:151: in __call__
+    await self.app(scope, receive, send)
+.venv\Lib\site-packages\starlette\middleware\exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+.venv\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+.venv\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+.venv\Lib\site-packages\starlette\routing.py:678: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:2809: in app
+    await route.handle(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:1837: in handle
+    await self.original_router.handle(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:2892: in handle
+    await included_router._handle_selected(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:1863: in _handle_selected
+    await original_route.handle(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:1326: in handle
+    await effective_context.app(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:166: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+.venv\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+.venv\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+.venv\Lib\site-packages\fastapi\routing.py:152: in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\fastapi\routing.py:745: in app
+    raw_response = await run_endpoint_function(
+.venv\Lib\site-packages\fastapi\routing.py:372: in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\qr_ai.py:2944: in managed_qr_reply
+    result = await run_locked(identity.tenant_id, payload.phone, payload.text,
+app\qr_ai.py:2741: in run_locked
+    result = await turn(tenant, phone, body, redis, namespace, preview=preview)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+_args = (UUID('530ec898-44b9-4318-92b1-bb2bf9212768'), '5567999999901', 'Confirmar', <test_qr_channels_scope.ScopedRedis object at 0x000002152EF95B20>, '5567999999901')
+_kwargs = {'preview': False}
+
+    async def turn(*_args, **_kwargs):
+        raw = await adopted.redis.get(state_key)
+>       assert not raw or json.loads(raw).get("step") != "human"
+E       assert (not '{"step": "human", "old": true}' or 'human' != 'human')
+E        +  where 'human' = <built-in method get of dict object at 0x000002152FE8CEC0>('step')
+E        +    where <built-in method get of dict object at 0x000002152FE8CEC0> = {'step': 'human', 'old': True}.get
+E        +      where {'step': 'human', 'old': True} = <function loads at 0x00000215263C1580>('{"step": "human", "old": true}')
+E        +        where <function loads at 0x00000215263C1580> = json.loads
+
+tests\unit\test_qr_managed_adoption_scope.py:187: AssertionError
+_ test_adopted_ai_authority_clears_old_human_context_without_global_flag[True] _
+
+adopted = namespace(identity=ChannelIdentity(channel_id=UUID('c08648ac-0931-4d65-8c1a-9844cc1f17b6'), tenant_id=UUID('2e92f8c8-7...e.ScopedRedis object at 0x000002152F7A9550>, calls=[], api=<fastapi.applications.FastAPI object at 0x000002152F7A92B0>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002152FCD7620>
+operator_resume = True
+
+    @pytest.mark.parametrize("operator_resume", [False, True])
+    async def test_adopted_ai_authority_clears_old_human_context_without_global_flag(adopted, monkeypatch, operator_resume):
+        state_key = f"orion:qr:ai:{adopted.identity.tenant_id}:{PHONE}"
+        adopted.redis.values[state_key] = json.dumps({"step": "human", "old": True})
+        adopted.redis.values[state_key + ":commerce"] = json.dumps({"pending": {"old": True}})
+        adopted.redis.values[state_key + ":birthday-invite"] = "old-invitation"
+        adopted.redis.values[state_key + ":verified-receipt"] = "preserved-receipt"
+        adopted.resume_revision = 7 if operator_resume else None
+        seen = []
+    
+        async def turn(*_args, **_kwargs):
+            raw = await adopted.redis.get(state_key)
+            assert not raw or json.loads(raw).get("step") != "human"
+            await revision.check_before_write()
+            seen.append(raw)
+            return {"answer": "Retomada sintética", "step": "review"}
+    
+        monkeypatch.setattr(qr_ai, "turn", turn)
+>       response = await request(adopted.api, adopted.identity)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\unit\test_qr_managed_adoption_scope.py:193: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\unit\test_qr_channels_scope.py:93: in request
+    return await client.post(f"/internal/qr/channels/{channel.channel_id}/ai/reply",
+.venv\Lib\site-packages\httpx\_client.py:1859: in post
+    return await self.request(
+.venv\Lib\site-packages\httpx\_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\httpx\_client.py:1629: in send
+    response = await self._send_handling_auth(
+.venv\Lib\site-packages\httpx\_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+.venv\Lib\site-packages\httpx\_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\httpx\_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\httpx\_transports\asgi.py:170: in handle_async_request
+    await self.app(scope, receive, send)
+.venv\Lib\site-packages\fastapi\applications.py:1194: in __call__
+    await super().__call__(scope, receive, send)
+.venv\Lib\site-packages\starlette\applications.py:96: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv\Lib\site-packages\starlette\middleware\errors.py:186: in __call__
+    raise exc
+.venv\Lib\site-packages\starlette\middleware\errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+.venv\Lib\site-packages\fastapi\telemetry\_asgi.py:151: in __call__
+    await self.app(scope, receive, send)
+.venv\Lib\site-packages\starlette\middleware\exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+.venv\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+.venv\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+.venv\Lib\site-packages\starlette\routing.py:678: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:2809: in app
+    await route.handle(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:1837: in handle
+    await self.original_router.handle(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:2892: in handle
+    await included_router._handle_selected(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:1863: in _handle_selected
+    await original_route.handle(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:1326: in handle
+    await effective_context.app(scope, receive, send)
+.venv\Lib\site-packages\fastapi\routing.py:166: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+.venv\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+.venv\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+.venv\Lib\site-packages\fastapi\routing.py:152: in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+.venv\Lib\site-packages\fastapi\routing.py:745: in app
+    raw_response = await run_endpoint_function(
+.venv\Lib\site-packages\fastapi\routing.py:372: in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\qr_ai.py:2944: in managed_qr_reply
+    result = await run_locked(identity.tenant_id, payload.phone, payload.text,
+app\qr_ai.py:2741: in run_locked
+    result = await turn(tenant, phone, body, redis, namespace, preview=preview)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+_args = (UUID('2e92f8c8-7952-46c9-a760-a1766761e4fc'), '5567999999901', 'Confirmar', <test_qr_channels_scope.ScopedRedis object at 0x000002152F7A9550>, '5567999999901')
+_kwargs = {'preview': False}
+
+    async def turn(*_args, **_kwargs):
+        raw = await adopted.redis.get(state_key)
+>       assert not raw or json.loads(raw).get("step") != "human"
+E       assert (not '{"step": "human", "old": true}' or 'human' != 'human')
+E        +  where 'human' = <built-in method get of dict object at 0x000002153075E100>('step')
+E        +    where <built-in method get of dict object at 0x000002153075E100> = {'step': 'human', 'old': True}.get
+E        +      where {'step': 'human', 'old': True} = <function loads at 0x00000215263C1580>('{"step": "human", "old": true}')
+E        +        where <function loads at 0x00000215263C1580> = json.loads
+
+tests\unit\test_qr_managed_adoption_scope.py:187: AssertionError
+============================== warnings summary ===============================
+app\main.py:49
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\app\main.py:49: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+.venv\Lib\site-packages\fastapi\applications.py:4723
+.venv\Lib\site-packages\fastapi\applications.py:4723
+.venv\Lib\site-packages\fastapi\applications.py:4723
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Lib\site-packages\fastapi\applications.py:4723: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+app\main.py:54
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\app\main.py:54: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+app\main.py:60
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\app\main.py:60: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/unit/test_qr_managed_adoption_scope.py::test_adopted_ai_authority_clears_old_human_context_without_global_flag[False]
+FAILED tests/unit/test_qr_managed_adoption_scope.py::test_adopted_ai_authority_clears_old_human_context_without_global_flag[True]
+2 failed, 4449 deselected, 7 warnings in 9.57s

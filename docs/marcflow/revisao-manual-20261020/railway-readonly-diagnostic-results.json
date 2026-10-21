@@ -1,0 +1,113 @@
+{
+  "observed_at_utc": "2026-10-20T22:46:47.887Z",
+  "source_commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+  "diagnostic_code_sha256": "0676a02330ac787985391299f0af5578183435493a68b7b2afc31016f72f84eb",
+  "tested_isolated": "diagnostic-clone-summary.json",
+  "diagnostic_deployment": [
+    {
+      "id": "ca609c23-cc83-44e3-b8d3-01332694b900",
+      "status": "SUCCESS",
+      "meta": {
+        "reason": "deploy",
+        "commitMessage": "Verify dependency compatibility in constrained build and CI",
+        "commitHash": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+        "branch": "codex/orion-marcflow-integrations-20261020"
+      }
+    }
+  ],
+  "actual_read_only_results": [
+    {
+      "timestamp": "2026-10-20T22:46:19.019640484Z",
+      "severity": "info",
+      "message": "orion_legacy_readonly={\"configured_matches_requested\": true, \"exists\": true, \"label\": \"configured_qr\", \"tenant\": {\"active_member_owners\": 0, \"bot_enabled\": false, \"id\": \"82552b25-d0c8-5338-8c42-49f11de59e45\", \"legacy_alias_registered\": false, \"name\": \"Barbearia Orion \\u2014 DEMONSTRA\\u00c7\\u00c3O FICT\\u00cdCIA\", \"status\": \"active\"}}",
+      "attributes": [
+        {
+          "key": "level",
+          "value": "\"info\""
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-10-20T22:46:19.019647545Z",
+      "severity": "info",
+      "message": "orion_legacy_readonly={\"configured_matches_requested\": true, \"exists\": true, \"label\": \"requested_demo\", \"tenant\": {\"active_member_owners\": 0, \"bot_enabled\": false, \"id\": \"82552b25-d0c8-5338-8c42-49f11de59e45\", \"legacy_alias_registered\": false, \"name\": \"Barbearia Orion \\u2014 DEMONSTRA\\u00c7\\u00c3O FICT\\u00cdCIA\", \"status\": \"active\"}}",
+      "attributes": [
+        {
+          "key": "level",
+          "value": "\"info\""
+        }
+      ]
+    }
+  ],
+  "scope": "app_support; SET TRANSACTION READ ONLY; no mutation; existing configured QR matches requested demo; no credentials/customer records output",
+  "cleanup": {
+    "service": {
+      "id": "1d39a32e-8297-4e5b-8b55-d6540542e80b",
+      "name": "orion-assistente"
+    },
+    "environmentId": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+    "updatedFields": [
+      "preDeployCommand",
+      "preDeployTimeoutSeconds"
+    ],
+    "staged": null
+  },
+  "normal_hook_restored_without_redeploy": true,
+  "first_attempt": {
+    "deployment": "f159c7b9-81eb-4e4e-a49b-e5152e29353d",
+    "status": "FAILED",
+    "cause": "query included inbox_channel_links denied to app_support; no permissions changed; omitted before isolated three-case test and rerun"
+  },
+  "tenant_or_account_mutated": false,
+  "session_mutated": false,
+  "provider_messages_sent": false,
+  "actual_release_flags": [
+    {
+      "timestamp": "2026-10-20T22:46:17.675490975Z",
+      "severity": "info",
+      "message": "orion_release_flags={\"BIRTHDAY_COLLECTION_ENABLED\": \"0\", \"GROQ_PROBE_ON_START\": \"0\", \"INBOX_CONTROL_ENABLED\": \"0\", \"INBOX_SEND_ENABLED\": \"0\", \"INBOX_TOOLS_ENABLED\": \"1\", \"MARKETING_EXECUTION_ENABLED\": \"0\", \"MARKETING_RECONCILIATION_ENABLED\": \"0\", \"META_LIVE_SEND\": \"0\", \"ORION_EMAIL_DELIVERY_PROBE\": \"0\", \"QR_AI_ENABLED\": \"1\", \"QR_CHANNELS_ENABLED\": \"1\", \"QR_LEGACY_CENTRAL_ENABLED\": \"0\"}",
+      "attributes": [
+        {
+          "key": "level",
+          "value": "\"info\""
+        }
+      ]
+    }
+  ],
+  "final_readback": {
+    "source": {
+      "repo": "QGBALTIGO/orion-assistente",
+      "branch": "codex/orion-marcflow-integrations-20261020",
+      "commitSha": "8369e2e4d53379e7353ac69af3d40b70fc2b926e"
+    },
+    "normal_hook_matches_expected": true,
+    "staged": null,
+    "live_services": [
+      {
+        "name": "orion-assistente",
+        "state": "online",
+        "deployment": "ca609c23-cc83-44e3-b8d3-01332694b900"
+      },
+      {
+        "name": "orion-qr-bridge",
+        "state": "online",
+        "deployment": "29a5299e-278f-49a0-9cc3-dc42efa0de66"
+      },
+      {
+        "name": "orion-worker",
+        "state": "online",
+        "deployment": "2b6c3e7d-f042-4fe9-8097-176a2a6f7caf"
+      },
+      {
+        "name": "Redis",
+        "state": "online",
+        "deployment": "b369ead8-39e4-4bd3-8c9f-3fb929494788"
+      },
+      {
+        "name": "Postgres",
+        "state": "online",
+        "deployment": "47bbb965-a91a-4bde-a809-d555d75bc627"
+      }
+    ]
+  }
+}

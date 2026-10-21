@@ -138,6 +138,7 @@ function serverSendHarness(c){
   };
   const deviceCaches=new WeakMap([[socket,makePilotDeviceCache()]]);
   const context={
+    legacyCentral:{configured:()=>false},
     socket,generation:1,status:'connected',authorized:true,sendCapacity:capacity,
     validPhone:input=>input,deliveryPolicy:()=>({reliable:true,freshDevices:true}),
     pilotNumber:()=>phone,process:{env:{QR_PILOT_USE_VERIFIED_LID:'1'}},

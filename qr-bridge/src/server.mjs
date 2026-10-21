@@ -1,3 +1,4 @@
+import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl} from './inbound-event.mjs';
 /**
  * Orion Linked Device — aparelho de teste único, transporte não oficial.
  * Apenas mensagens privadas recebidas após conexão; nada de histórico antigo,
@@ -8,7 +9,7 @@ import http from "node:http";
 import {databaseBackup} from './database-backup-store.mjs';
 import path from "node:path";
 import fs from "node:fs";
-import {timingSafeEqual,randomUUID} from "node:crypto";
+import {timingSafeEqual,randomUUID,createHmac} from "node:crypto";
 import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import NodeCache from "@cacheable/node-cache";
@@ -36,8 +37,15 @@ import {transcribeAssistantAudio} from "./ai-audio.mjs";
 import {makeTransportDiagnostics,receiptDiagnosticDetails,usyncDeviceDomainCounts,encryptionTargetDetails,observeSignalRepository} from "./transport-diagnostics.mjs";
 import {backupAuth} from "./auth-backup.mjs";
 import {createChannelRoutes} from './channel-routes.mjs';
+import {createBaileysChannelSession} from './channel-session.mjs';
+import {createLegacyCentral} from './legacy-central.mjs';
 
-const channelRoutes=createChannelRoutes();
+const legacyCentral=createLegacyCentral({
+  start:(id,key)=>channelRoutes.adopt(id,key),send:(id,key,payload)=>channelRoutes.send(id,key,payload),
+  sessionDigest:()=>status==='connected'?createHmac('sha256',KEY).update('orion:preserved-primary-session:v1\0'+pairedNumber).digest('hex'):null,
+  status:()=>status,rawSend:(phone,text,options)=>sendLegacyRaw(phone,text,options)});
+const channelRoutes=createChannelRoutes({sessionFactory:context=>context.legacyTransport?
+  legacyCentral.attach(context):createBaileysChannelSession(context)});
 
 const PORT=Number(process.env.PORT || 3000);
 const SESSION_DIR=process.env.QR_SESSION_DIR || "/data/auth";
@@ -275,6 +283,8 @@ function installListeners(client,mine,saveCreds){
       }
       const found=messages.find(x=>x.id==="out:"+id);
       if(found){found.delivery=after;persistInbox();}
+      if(legacyCentral.configured()&&['delivered','read','played'].includes(after))
+        void legacyCentral.receipt(id,after==='played'?'read':after).catch(()=>{});
     }
   });
   client.ev.on("call",async calls=>{
@@ -300,7 +310,7 @@ function installListeners(client,mine,saveCreds){
     return raw!==undefined&&Number.isSafeInteger(value)&&value>=0&&value<=max?value:fallback;
   };
   const settleMs=groupSetting('QR_AI_GROUP_WAIT_MS',350,2000);
-  const revisionEnabled=process.env.QR_AI_INTAKE_REVISION_ENABLED==='1';
+  const revisionEnabled=process.env.QR_AI_INTAKE_REVISION_ENABLED==='1'||legacyCentral.configured();
   const summaryReviewRequired=new Map();
   const inboundIntake=makeConversationIntake({
     settleMs,maxGroupMs:Math.max(settleMs,groupSetting('QR_AI_GROUP_MAX_WAIT_MS',1200,5000)),
@@ -310,8 +320,9 @@ function installListeners(client,mine,saveCreds){
       if(batch.reason==='stale'||!batch.isCurrent()||!intakeCurrent())return;
       const entries=batch.messageIds.map(id=>inboundMetadata.get(id)).filter(item=>item?.allowed);
       const phone=entries[0]?.phone;
+      if(legacyCentral.configured()&&!allowAssistantRecipient(phone,connectedStore.settings()))return;
       const current=()=>intakeCurrent()&&batch.isCurrent()&&!!phone&&
-        entries.every(item=>item.phone===phone)&&allowAssistantRecipient(phone,connectedStore.settings());
+        entries.every(item=>item.phone===phone)&&(legacyCentral.configured()?legacyCentral.allowed(phone):allowAssistantRecipient(phone,connectedStore.settings()));
       if(!current())return;
       const answer=batch.reason==='revision_failed'?
         'Não consegui validar a sequência das mensagens agora. Pode reenviar o pedido completo com a correção em uma mensagem?':batch.reason==='needs_clarification'?
@@ -325,14 +336,20 @@ function installListeners(client,mine,saveCreds){
       const phone=entries[0]?.phone,traceId=batch.messages[0]?.id;
       const current=()=>intakeCurrent()&&batch.isCurrent()&&!!phone&&
         entries.every(item=>item?.allowed&&item.phone===phone)&&
-        allowAssistantRecipient(phone,connectedStore.settings());
+        (legacyCentral.configured()?legacyCentral.allowed(phone):allowAssistantRecipient(phone,connectedStore.settings()));
       if(!current())return;
       return typingPresence.run({phone,chatJid:entries[0]?.jid,isCurrent:current},async typing=>{
+      if(legacyCentral.configured()){
+        if(!allowAssistantRecipient(phone,connectedStore.settings()))return;
+        return legacyCentral.forward({phone,message_id:traceId,message_ids:batch.messages.map(item=>item.id),
+          text:batch.text,intake_revision:batch.intakeRevision,...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{})},
+          {noticeProofs:entries.map(item=>item.noticeProof),isCurrent:current,beforeReply:value=>typing.beforeReply(value)});
+      }
       transport.record('ai_forward',traceId,{count:batch.messages.length});
       let answer;
       try{answer=await forwardAssistant({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,
         messageId:traceId,messageIds:batch.messages.map(item=>item.id),text:batch.text,intakeRevision:batch.intakeRevision,
-        profile:namesStore.profile(phone),isCurrent:current,
+        profile:namesStore.profile(phone),isCurrent:current,...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{}),
         requireSummaryReview:revisionEnabled?summaryReviewRequired.get(phone)!==false:undefined});}
       catch(error){if(revisionEnabled)summaryReviewRequired.set(phone,true);transport.record('ai_forward_failed',traceId);throw error;}
       if(answer?.state==='superseded'&&answer?.not_committed===true){
@@ -355,7 +372,27 @@ function installListeners(client,mine,saveCreds){
       });
     }
   });
-  client.ev.on("messages.upsert",async ({messages:incoming,type})=>{
+  let noticePending=0;const rejectedNotices=new Map(),rejectedEpoch=new Map();
+  function enqueueOverflow(message,normalized,conversationKey){
+    rejectedEpoch.set(conversationKey,(rejectedEpoch.get(conversationKey)||0)+1);
+    if(rejectedEpoch.size>100)rejectedEpoch.delete(rejectedEpoch.keys().next().value);
+    const old=rejectedNotices.get(conversationKey),control=normalized.event.control||safetyControl(normalized.text);
+    if(old){if(control)queueControl(old.controls,[message,normalized]);else old.latest=[message,normalized];return;}
+    if(rejectedNotices.size>=100)return;
+    const state={controls:[],latest:null};rejectedNotices.set(conversationKey,state);
+    void (async()=>{let item=[message,normalized];while(item&&intakeCurrent()){
+      const [msg,event]=item,phone=await resolveMessagePhone(msg.key,client);
+      if(!phone||!intakeCurrent())return;
+      if(legacyCentral.configured()){await legacyCentral.resume();if(!legacyCentral.allowed(phone))return;
+        await legacyCentral.inbound({phone,message_id:msg.key.id,text:event.text||'',kind:'unsupported',...(event.special?{envelope:event.event}:{})});
+      }else{if(!allowAssistantRecipient(phone,connectedStore.settings()))return;
+        await registerAssistantIngress({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,messageId:msg.key.id,control:event.event.control||safetyControl(event.text)});
+      }
+      if(state.controls.length)item=state.controls.shift();else{item=state.latest;state.latest=null;}
+      if(!item&&intakeCurrent())try{await send(phone,'Recebi muitas mensagens de uma vez. Pode reenviar o pedido completo com a última correção? Nenhuma nova operação foi confirmada por essa entrada.',{waitForCapacity:true,isCurrent:()=>intakeCurrent()});}catch{}
+    }})().catch(()=>{}).finally(()=>rejectedNotices.delete(conversationKey));
+  }
+  async function receive({messages:incoming,type}){
     transport.record('upsert_batch',null,{count:incoming?.length||0,type});
     if(!intakeCurrent())return;
     const jobs=[];
@@ -375,41 +412,55 @@ function installListeners(client,mine,saveCreds){
       // single-recipient pilot, PN/LID variants share this configured key; a LID
       // never supplies a telephone number. Authorization still occurs below.
       const conversationKey=String(mine)+':'+(pilotNumber()||remote[1]+'@'+remote[2]);
-      const metadata={allowed:false,phone:null,jid:message.key.remoteJid};
-      const current=()=>intakeCurrent()&&(!metadata.allowed||
-        allowAssistantRecipient(metadata.phone,connectedStore.settings()));
+      const normalized=normalizeInbound(message);if(normalized.silent)continue;
+      if(revisionEnabled&&noticePending>=40){enqueueOverflow(message,normalized,conversationKey);continue;}
+      const epoch=rejectedEpoch.get(conversationKey)||0;
+      const metadata={allowed:false,phone:null,jid:message.key.remoteJid,...(normalized.special?{event:normalized.event}:{})};
+      const current=()=>intakeCurrent()&&(rejectedEpoch.get(conversationKey)||0)===epoch&&(!metadata.allowed||
+        (legacyCentral.configured()?legacyCentral.allowed(metadata.phone):allowAssistantRecipient(metadata.phone,connectedStore.settings())));
       let identityTask;
       const resolveIdentity=()=>identityTask||=(async()=>{
         const phone=await resolveMessagePhone(message.key,client);
         if(!current())return null;
         if(!phone){transport.record('inbound_unresolved',traceId);return null;}
         if(namesStore.observeResolvedMessage(message,phone,{historical:type==='append'}))namesSync.changed();
-        metadata.phone=phone;metadata.allowed=allowAssistantRecipient(phone,connectedStore.settings());
+        if(legacyCentral.configured())await legacyCentral.resume();
+        metadata.phone=phone;metadata.allowed=legacyCentral.configured()?legacyCentral.allowed(phone):allowAssistantRecipient(phone,connectedStore.settings());
         inboundMetadata.set(traceId,metadata);
         transport.record('inbound_resolved',traceId);
         return phone;
       })();
-      const task=inboundIntake.submit({conversationKey,messageId:traceId,isCurrent:current,
-        ...(revisionEnabled?{notice:async()=>{
+      // Start the authenticated notice before queue admission; rejected work
+      // still revokes an obsolete turn and records customer safety controls.
+      const noticeTask=revisionEnabled?(()=>{noticePending++;return (async()=>{
           const phone=await resolveIdentity();
           if(!phone||!current()||!metadata.allowed)return {skip:true};
-          const body=extractText(message.message),media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
-          if(!body&&(!media||!assistantAudioEnabled()||!allowAssistantAudio(phone,connectedStore.settings())))return {skip:true};
-          return registerAssistantIngress({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,messageId:traceId});
-        }}:{}),
+          const body=normalized.text,media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
+          if(legacyCentral.configured()){
+            const proof=await legacyCentral.inbound({phone,message_id:traceId,text:body||'',kind:media?'audio':body?'text':'unsupported',
+              ...(normalized.special?{envelope:normalized.event}:{})});
+            metadata.noticeProof=proof;return proof;
+          }
+          if(!normalized.special&&!body&&(!media||!assistantAudioEnabled()||!allowAssistantAudio(phone,connectedStore.settings())))return {skip:true};
+          return registerAssistantIngress({apiUrl:process.env.QR_AI_API_URL,token:KEY,phone,messageId:traceId,control:normalized.event.control||safetyControl(body)});
+        })().finally(()=>{noticePending--;});})():null;
+      void noticeTask?.catch(()=>{});
+      const task=inboundIntake.submit({conversationKey,messageId:traceId,isCurrent:current,
+        ...(noticeTask?{notice:()=>noticeTask}:{}),
         prepare:async({signal})=>{
           const phone=await resolveIdentity();
           if(!current()||signal.aborted)return {skip:true};
           if(!phone)return {skip:true};
-          let body=extractText(message.message);
+          let body=normalized.text;
           const media=message.message.audioMessage||message.message.ephemeralMessage?.message?.audioMessage;
-          if(!body&&!media){transport.record('inbound_no_text',traceId);return {skip:true};}
+          if(!normalized.special&&!body&&!media){transport.record('inbound_no_text',traceId);return {skip:true};}
           const at=timestampMs(message.messageTimestamp)||Date.now();
           const row={id:'wa:'+traceId,phone,body:body?String(body).slice(0,2000):'[Áudio recebido]',direction:'in',at};
           pushMessage(row);
           lastInboundAt=Date.now();inboundSinceConnect=true;if(type==='append')recentAppends++;
           if(!metadata.allowed){transport.record('pilot_denied',traceId);return {skip:true};}
           transport.record('pilot_allowed',traceId);
+          if(normalized.special)return {text:body||'[Evento de mensagem recebido]'};
           if(!body){
             if(!assistantAudioEnabled()||!allowAssistantAudio(phone,connectedStore.settings()))return {skip:true};
             const txt=await transcribeAssistantAudio(message,{client,downloadMediaMessage,phone,token:KEY,
@@ -421,9 +472,9 @@ function installListeners(client,mine,saveCreds){
           return {text:body};
         }});
       const jobKey=String(mine)+':'+traceId;
-      const job=task.then(result=>{
+      const job=task.then(async result=>{
         if(result.state==='duplicate')transport.record('inbound_duplicate',traceId);
-        else if(result.state==='overloaded')transport.record('inbound_queue_full',traceId);
+        else if(result.state==='overloaded'){transport.record('inbound_queue_full',traceId);await noticeTask?.catch(()=>{});if(current())enqueueOverflow(message,normalized,conversationKey);}
         else if(result.state==='consume_failed')console.warn('Orion QR: atendimento IA não concluído (dados omitidos)');
       }).finally(()=>{
         if(inboundMetadata.get(traceId)===metadata)inboundMetadata.delete(traceId);
@@ -433,7 +484,15 @@ function installListeners(client,mine,saveCreds){
       jobs.push(job);
     }
     await Promise.all(jobs);
-  });
+  }
+  client.ev.on('messages.upsert',receive);
+  client.ev.on('messages.update',updates=>{for(const item of (updates||[]).slice(0,100)){
+    const event=updateEvent(item.key,item.update);if(event)void receive({messages:[event],type:'notify'});
+  }});
+  client.ev.on('messages.delete',({keys=[]}={})=>{for(const key of keys.slice(0,100)){
+    const event=updateEvent(key,{message:null,messageStubType:1});if(event)void receive({messages:[event],type:'notify'});
+  }});
+  client.ev.on('call',calls=>{for(const call of (calls||[]).slice(0,20)){const event=callEvent(call);if(event)void receive({messages:[event],type:'notify'});}});
   client.ev.on("connection.update",update=>{
     if(mine!==generation)return;
     if(update.receivedPendingNotifications===true)
@@ -649,7 +708,11 @@ async function recipientInspection(value){
   recipientInspections.set(phone,{data,expires:now+90000});
   return data;
 }
-async function send(phone,text,{waitForCapacity=false,isCurrent=()=>true}={}){
+async function send(phone,text,options={}){
+  if(legacyCentral.configured())return legacyCentral.automatic(phone,text,options);
+  return sendLegacyRaw(phone,text,options);
+}
+async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true}={}){
   const target=validPhone(phone);
   if(status!=="connected"||!socket)throw Error("O WhatsApp não está conectado");
   if(typeof text!=="string"||!text.trim()||text.length>1200)
@@ -719,6 +782,8 @@ const server=http.createServer(async(req,res)=>{
         enabled:process.env.QR_DATABASE_BACKUP_ENABLED==='1',secret:KEY});
     if(path==="/internal/status"&&req.method==="GET")
       return reply(res,200,stats());
+    if(path==='/internal/legacy-central/status'&&req.method==='GET')
+      return reply(res,200,legacyCentral.health());
     if(path==="/internal/profile/refresh"&&req.method==="POST"){
       if(status!=="connected"||!socket)return reply(res,409,{error:"not_connected"});
       await refreshConnectedProfile(socket);
@@ -852,6 +917,7 @@ const server=http.createServer(async(req,res)=>{
       return reply(res,200,await recipientInspection(phone));
     }
     if(path==="/internal/send"&&req.method==="POST"){
+      if(legacyCentral.configured())return reply(res,423,{error:'central_required'});
       const body=await collectBody(req);
       return reply(res,200,await send(body.phone,body.text));
     }
@@ -877,7 +943,10 @@ server.requestTimeout=15000;
 server.listen({port:PORT, host:"::", ipv6Only:false},()=>{
   console.info("Orion QR: serviço privado em IPv6/dual-stack, porta "+PORT);
   connect().catch(()=>{});
-  const resumeChannels=()=>channelRoutes.resume().catch(()=>console.warn('Orion QR: retomada dos dispositivos pendente'));
+  const resumeChannels=async()=>{
+    if(legacyCentral.configured())await legacyCentral.resume().catch(()=>console.warn('Orion QR: adoção da sessão principal pendente'));
+    await channelRoutes.resume().catch(()=>console.warn('Orion QR: retomada dos dispositivos pendente'));
+  };
   void resumeChannels();
-  setInterval(resumeChannels,30000).unref();
+  setInterval(resumeChannels,legacyCentral.configured()?5000:30000).unref();
 });

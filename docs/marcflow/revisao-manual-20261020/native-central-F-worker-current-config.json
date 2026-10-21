@@ -1,0 +1,69 @@
+{
+  "service": {
+    "id": "f6c51234-ee8b-49ba-a06e-bcad37b54b67",
+    "name": "orion-worker"
+  },
+  "environment": {
+    "id": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+    "name": "production"
+  },
+  "config": {
+    "source": {
+      "repo": "QGBALTIGO/orion-assistente",
+      "branch": "codex/orion-marcflow-integrations-20261020",
+      "commitSha": "d11a86bc3b1efdef47394c62e39ee32da08ecabf"
+    },
+    "build": {
+      "builder": "DOCKERFILE",
+      "buildEnvironment": "V3",
+      "dockerfilePath": "Dockerfile"
+    },
+    "deploy": {
+      "startCommand": "arq app.worker.WorkerSettings",
+      "preDeployCommand": [
+        "python -c \"import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); from app import legacy_admin_identity; legacy_admin_identity.configuration_binding(); print('native_admin_binding_configuration_valid', flush=True); print('admin_identity_schema_barrier_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_admin_identity_schema'], check=True)\""
+      ],
+      "preDeployTimeoutSeconds": 600,
+      "useLegacyStacker": false,
+      "ipv6EgressEnabled": false,
+      "runtime": "V2",
+      "multiRegionConfig": {
+        "iad": {
+          "numReplicas": 1
+        }
+      }
+    }
+  },
+  "variableNames": [
+    "APP_DATABASE_URL",
+    "BIRTHDAY_COLLECTION_ENABLED",
+    "BUSINESS_PROFILES_ENABLED",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_LIVE_SYNC",
+    "GOOGLE_REDIRECT_URI",
+    "GROQ_PROBE_ON_START",
+    "INBOX_CONTROL_ENABLED",
+    "INBOX_SEND_ENABLED",
+    "INBOX_TOOLS_ENABLED",
+    "INTEGRATION_FERNET_KEY",
+    "MARKETING_EXECUTION_ENABLED",
+    "MARKETING_RECONCILIATION_ENABLED",
+    "META_LIVE_SEND",
+    "ORION_DB_MAX_OVERFLOW",
+    "ORION_DB_POOL_SIZE",
+    "ORION_DEPLOY_REV",
+    "ORION_EMAIL_DELIVERY_PROBE",
+    "PANEL_ADMIN_PASSWORD_HASH",
+    "PANEL_ADMIN_USERNAME",
+    "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED",
+    "PANEL_PUBLIC_URL",
+    "QR_AI_ENABLED",
+    "QR_BRIDGE_URL",
+    "QR_CHANNELS_ENABLED",
+    "QR_LEGACY_CENTRAL_ENABLED",
+    "REDIS_URL",
+    "SUPPORT_DATABASE_URL"
+  ],
+  "staged": null
+}

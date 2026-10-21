@@ -16,6 +16,7 @@ from app.booking_service import (
     acquire_professional_lock, cancel_appointment, reschedule_appointment, preview_reschedule, list_slots,
 )
 from app.database import get_session_factory, tenant_transaction
+from app.communication_events import summary_was_accepted
 from app import qr_presentation as presentation
 from app.qr_dialogue import choose_time
 from app.qr_understanding import build_plan, normalized
@@ -196,10 +197,12 @@ async def try_command(
             await save(state)
             return True,"Tudo bem, a reserva original permanece. Qual detalhe você gostaria de ajustar?"
         if decision.kind=="affirm":
-            if not message_id or not state.get("summary_message_id") or message_id==state["summary_message_id"]:
+            if not message_id or message_id==state.get("summary_message_id"):
                 return True,"Preciso de uma nova resposta depois do resumo antes de fazer essa alteração."
             try:
-                if state.get("last_message_id")!=state["summary_message_id"] or not state.get("expected_snapshot"):
+                if (not state.get('summary_message_id') or state.get("last_message_id")!=state["summary_message_id"] or not state.get("expected_snapshot")
+                        or state.get('confirmation_requires_review')
+                        or not await summary_was_accepted(tenant,channel,sender,state)):
                     return await cancellation_proposal(appt) if action=="cancel" else await rescheduling_proposal(appt,datetime.fromisoformat(state["new_start"]))
                 if action=="cancel":
                     checked(presentation.render_summary(summary(appt),preferences,operation="cancel",confirmed=True))

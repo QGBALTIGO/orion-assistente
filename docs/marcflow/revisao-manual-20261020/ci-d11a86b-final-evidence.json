@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "commit": "d11a86bc3b1efdef47394c62e39ee32da08ecabf",
+  "main_workflow_id": 39514675776,
+  "media_workflow_id": 39514675733,
+  "urls": [
+    "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39514675776",
+    "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39514675733"
+  ],
+  "jobs": [
+    {
+      "id": 118943865456,
+      "name": "QR bridge â€” Node, IPv6, seguranÃ§a e Docker",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 118943865681,
+      "name": "ASR faster-whisper - CPU, Docker e testes",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 118943865717,
+      "name": "pytest",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "media_job": {
+    "id": 118943865448,
+    "conclusion": "success"
+  },
+  "test_groups": {
+    "backend": {
+      "passed": 5043,
+      "skipped": 1,
+      "seconds": 421.74,
+      "postgresql": 16,
+      "redis": true,
+      "role_authentication": "distinct configured role passwords; SCRAM in isolated CI",
+      "log": "ci-d11a86b-backend.log"
+    },
+    "compose": {
+      "passed": 4881,
+      "skipped": 163,
+      "seconds": 134.16,
+      "overlaps_backend": true,
+      "owner_operation_tests": "skipped because dedicated owner URL absent in Compose; executed in the main PG job",
+      "log": "ci-d11a86b-backend.log"
+    },
+    "qr": {
+      "passed": 446,
+      "transport": "synthetic; actual installed Baileys package and Docker smoke, no provider send",
+      "log": "ci-d11a86b-qr-ui.log"
+    },
+    "ui": {
+      "passed": 329,
+      "kind": "DOM, not real administrator login",
+      "log": "ci-d11a86b-qr-ui.log"
+    },
+    "asr": {
+      "passed": 4,
+      "real_synthetic_audio_smoke": [
+        "wav",
+        "ogg"
+      ],
+      "log": "ci-d11a86b-asr.log"
+    },
+    "media": {
+      "passed": 10,
+      "log": "ci-d11a86b-media.log"
+    }
+  },
+  "dependency_proof": {
+    "pins": 52,
+    "verified_environments": 2,
+    "exact_install_matches": 104,
+    "pip_check_main_and_docker": true,
+    "evidence": "constraints-ci-d11a86b-proof.json"
+  },
+  "no_group_grand_total": true,
+  "scope": "Isolated CI and synthetic providers only; no production deployment, customer data, campaigns or test messages.",
+  "supersedes": "d2134d1 role-password fixture failures; runtime sources unchanged by d11 test-only fix.",
+  "artifact_sha256": {
+    "ci-d11a86b-backend.log": "88ba03208dbc8cfe6dc31ae3622e04c50cee4aa32e5d86a7c5e20a4e6aac8386",
+    "ci-d11a86b-qr-ui.log": "35103466ef4623f006b3f675a12d8c4481437ce238612b36a35ed54aa49b63b8",
+    "ci-d11a86b-media.log": "2d97ea49a9b2e4ead4928c308339104e963f3eeebf068d9c5eb76241a3cddd13",
+    "ci-d11a86b-asr.log": "da22547d7d1e809ab0a71890ee116f60fa2103eaffbfca46bc1fdc8a3584b744",
+    "constraints-ci-d11a86b-proof.json": "10536ec06d64ecf6fe9e9b0cf7dc2b35cbaf190a3af22a54bcaa9e9f3fee2a32"
+  }
+}

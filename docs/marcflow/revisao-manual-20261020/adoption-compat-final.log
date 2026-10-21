@@ -1,0 +1,40 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.9, pytest-9.1.1, pluggy-1.7.0 -- C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Scripts\python.exe
+rootdir: C:\Users\kayky\Documents\Playground\orion-marcflow-20261020
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 23 items / 1 deselected / 22 selected
+
+tests/integration/test_legacy_adoption_communication_postgres.py::test_activation_refuses_legacy_pending_or_ambiguous_attempt_without_backup[pending-None] PASSED [  4%]
+tests/integration/test_legacy_adoption_communication_postgres.py::test_activation_refuses_legacy_pending_or_ambiguous_attempt_without_backup[dead-delivery_unverified] PASSED [  9%]
+tests/integration/test_legacy_adoption_communication_postgres.py::test_activation_refuses_legacy_pending_or_ambiguous_attempt_without_backup[dead-prior_attempt_unverified] PASSED [ 13%]
+tests/integration/test_legacy_adoption_communication_postgres.py::test_owner_and_exact_revision_are_fail_closed_before_backup[wrong_owner] PASSED [ 18%]
+tests/integration/test_legacy_adoption_communication_postgres.py::test_owner_and_exact_revision_are_fail_closed_before_backup[schema_revision_mismatch] PASSED [ 22%]
+tests/integration/test_legacy_adoption_communication_postgres.py::test_new_table_change_after_rehearsal_is_detected_and_no_alias_is_inserted PASSED [ 27%]
+tests/integration/test_legacy_adoption_postgres.py::test_both_phases_preserve_existing_records_and_pauses_without_copying_sessions PASSED [ 31%]
+tests/integration/test_legacy_adoption_postgres.py::test_failure_never_changes_the_original_alias_or_existing_data[restore] PASSED [ 36%]
+tests/integration/test_legacy_adoption_postgres.py::test_failure_never_changes_the_original_alias_or_existing_data[source] PASSED [ 40%]
+tests/integration/test_legacy_adoption_postgres.py::test_failure_never_changes_the_original_alias_or_existing_data[owner] PASSED [ 45%]
+tests/integration/test_legacy_adoption_postgres.py::test_ambiguous_owner_stops_before_backup_or_registration PASSED [ 50%]
+tests/integration/test_legacy_adoption_postgres.py::test_inactive_tenant_stops_without_enabling_it PASSED [ 54%]
+tests/integration/test_legacy_adoption_postgres.py::test_primary_account_change_stops_before_backup PASSED [ 59%]
+tests/integration/test_legacy_adoption_postgres.py::test_activation_preserves_and_refuses_any_pending_outbound[queued] PASSED [ 63%]
+tests/integration/test_legacy_adoption_postgres.py::test_activation_preserves_and_refuses_any_pending_outbound[sending] PASSED [ 68%]
+tests/integration/test_legacy_adoption_postgres.py::test_activation_preserves_and_refuses_any_pending_outbound[uncertain] PASSED [ 72%]
+tests/unit/test_qr_legacy_transition.py::test_stable_alias_is_distinct_per_company_and_never_a_generated_v4_channel PASSED [ 77%]
+tests/unit/test_qr_legacy_transition.py::test_legacy_alias_preserves_namespace_and_message_receipts_and_scopes_tenant PASSED [ 81%]
+tests/unit/test_qr_legacy_transition.py::test_registered_alias_uses_old_context_and_done_markers_before_authority_activation PASSED [ 86%]
+tests/unit/test_qr_legacy_transition.py::test_registration_operation_is_disabled_without_explicit_authority PASSED [ 90%]
+tests/unit/test_qr_legacy_transition.py::test_source_write_requires_proof_bound_to_the_operation_snapshot_and_phase PASSED [ 95%]
+tests/unit/test_qr_legacy_transition.py::test_ordinary_startup_strips_legacy_operation_credentials PASSED [100%]
+
+============================== warnings summary ===============================
+tests/integration/test_legacy_adoption_communication_postgres.py: 30 warnings
+tests/integration/test_legacy_adoption_postgres.py: 40 warnings
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: C:\Users\kayky\Documents\Playground\orion-inventario-revisao-20261020\adoption-compat-final.xml -
+========== 22 passed, 1 deselected, 70 warnings in 442.84s (0:07:22) ==========

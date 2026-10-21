@@ -5,7 +5,7 @@ after authenticating the bridge and resolving its tenant/phone. Customer actions
 never impersonate an operator, mutate catalog prices, or confirm a payment.
 """
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime,timedelta
 import base64
 import hashlib
 import hmac
@@ -284,7 +284,14 @@ async def confirm_order(scope, order_id, *, revision, token, summary_message_id,
             return {**await owned_order(db, scope, order_id), "quote": calculated}
 
 
-async def cancel_order(scope, order_id, *, revision, summary_message_id, validate_summary=None):
+def cancellation_live(expires_at):
+    try:
+        expiry=datetime.fromisoformat(expires_at) if isinstance(expires_at,str) else expires_at
+        return isinstance(expiry,datetime) and expiry.tzinfo is not None and commercial.now_utc()<expiry<=commercial.now_utc()+timedelta(minutes=15)
+    except (ValueError,TypeError):return False
+
+
+async def cancel_order(scope, order_id, *, revision, summary_message_id, summary_expires_at=None, validate_summary=None):
     if not summary_message_id or scope.message_id == summary_message_id:
         raise HTTPException(409, "O cancelamento exige nova confirmação após o resumo")
     async with get_session_factory()() as db:
@@ -295,6 +302,8 @@ async def cancel_order(scope, order_id, *, revision, summary_message_id, validat
                 validate_summary(quote)
             if order["status"] == "cancelled":
                 return {**order, "quote": quote}
+            if not cancellation_live(summary_expires_at):
+                commercial.conflict('O resumo de cancelamento expirou; solicite uma nova revisão')
             if order["revision"] != revision:
                 commercial.conflict("O pedido mudou; confira o estado atual antes de cancelar")
             await check_before_write()

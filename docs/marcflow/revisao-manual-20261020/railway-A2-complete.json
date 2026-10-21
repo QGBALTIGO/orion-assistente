@@ -1,0 +1,171 @@
+{
+  "deployment": "4599d478-48a8-4f60-8077-aecb1d3324f5",
+  "commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+  "status": "SUCCESS",
+  "logs": [
+    {
+      "timestamp": "2026-10-20T22:21:16.424873996Z",
+      "message": "Starting Container",
+      "attributes": [
+        {
+          "key": "level",
+          "value": "\"info\""
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-10-20T22:21:17.355165278Z",
+      "message": "tested_runtime_versions_match",
+      "attributes": [
+        {
+          "key": "level",
+          "value": "\"info\""
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-10-20T22:21:17.355169608Z",
+      "message": "orion_release_flags={\"BIRTHDAY_COLLECTION_ENABLED\": \"0\", \"GROQ_PROBE_ON_START\": \"0\", \"INBOX_CONTROL_ENABLED\": \"0\", \"INBOX_SEND_ENABLED\": \"0\", \"INBOX_TOOLS_ENABLED\": \"1\", \"MARKETING_EXECUTION_ENABLED\": \"0\", \"MARKETING_RECONCILIATION_ENABLED\": \"0\", \"META_LIVE_SEND\": \"0\", \"ORION_EMAIL_DELIVERY_PROBE\": \"0\", \"QR_AI_ENABLED\": \"1\", \"QR_CHANNELS_ENABLED\": \"1\", \"QR_LEGACY_CENTRAL_ENABLED\": \"0\"}",
+      "attributes": [
+        {
+          "key": "level",
+          "value": "\"info\""
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-10-20T22:21:17.355173408Z",
+      "message": "inbox_migration_start",
+      "attributes": [
+        {
+          "key": "level",
+          "value": "\"info\""
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-10-20T22:21:17.355177288Z",
+      "message": "",
+      "attributes": [
+        {
+          "key": "level",
+          "value": "\"info\""
+        },
+        {
+          "key": "revision",
+          "value": "\"0028_workflow_drafts\""
+        },
+        {
+          "key": "status",
+          "value": "\"already_applied\""
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-10-20T22:21:17.355180788Z",
+      "message": "communication_migration_start",
+      "attributes": [
+        {
+          "key": "level",
+          "value": "\"info\""
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-10-20T22:21:21.951782142Z",
+      "message": "",
+      "attributes": [
+        {
+          "key": "level",
+          "value": "\"info\""
+        },
+        {
+          "key": "backup_bytes",
+          "value": "463628"
+        },
+        {
+          "key": "backup_id",
+          "value": "\"8291bdc0-ab5c-4064-bec0-a06f43c8b9cc\""
+        },
+        {
+          "key": "backup_sha256",
+          "value": "\"04615979a275ddc282e0ec2fba7ca1893c297d8d175895a2fb919dfd8c877a60\""
+        },
+        {
+          "key": "preserved_counts",
+          "value": "{\"alembic_version\":1,\"appointment_history\":31,\"appointment_items\":18,\"appointments\":13,\"authorized_staff\":0,\"automation_contact_state\":1,\"automation_execution\":0,\"automation_jobs\":0,\"billing_events\":0,\"business_onboarding\":2,\"business_onboarding_creations\":2,\"business_onboarding_operations\":10,\"business_profile_events\":4,\"business_profile_state\":2,\"business_profile_versions\":3,\"calendar_outbox\":6,\"campaign_recipients\":0,\"campaigns\":0,\"commercial_complements\":0,\"commercial_events\":0,\"commercial_inventory\":0,\"commercial_orders\":0,\"commercial_products\":0,\"commercial_quote_items\":0,\"commercial_quotes\":0,\"commercial_variants\":0,\"commission_advance_allocations\":0,\"commission_settlements\":0,\"contact_consents\":0,\"customers\":1,\"financial_entries\":0,\"google_connections\":1,\"human_handoffs\":0,\"inbound_events\":0,\"inbox_channel_links\":0,\"inbox_control_events\":0,\"inbox_controls\":0,\"inbox_customer_labels\":0,\"inbox_labels\":0,\"inbox_messages\":0,\"inbox_provider_receipts\":0,\"inbox_quick_replies\":0,\"inbox_reads\":0,\"loyalty_coupons\":0,\"loyalty_rules\":0,\"loyalty_transactions\":0,\"management_ai_runs\":6,\"management_block_occurrences\":0,\"management_block_series\":0,\"management_notification_reads\":0,\"management_preferences\":0,\"management_requests\":6,\"management_site_preferences\":1,\"management_team_invitations\":0,\"message_outbox\":0,\"panel_accounts\":2,\"panel_email_tokens\":0,\"plans\":0,\"platform_audit\":2,\"professional_goals\":0,\"professional_services\":9,\"professionals\":4,\"public_booking_receipts\":0,\"public_site_daily_metrics\":0,\"qr_channels\":1,\"sales_requests\":0,\"schedule_blocks\":0,\"service_addons\":1,\"service_package_items\":3,\"service_packages\":1,\"services\":5,\"subscriptions\":0,\"tenant_audit\":50,\"tenant_membership_events\":2,\"tenant_memberships\":2,\"tenant_probe\":0,\"tenants\":3,\"time_off\":0,\"usage_counters\":1,\"whatsapp_channels\":0,\"workflow_definitions\":0,\"working_breaks\":6,\"working_hours\":17}"
+        },
+        {
+          "key": "rehearsal_verified",
+          "value": "true"
+        },
+        {
+          "key": "restore_verified",
+          "value": "true"
+        },
+        {
+          "key": "revision",
+          "value": "\"0029_communication_contract\""
+        },
+        {
+          "key": "status",
+          "value": "\"complete\""
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-10-20T22:21:22.535554805Z",
+      "message": "",
+      "attributes": [
+        {
+          "key": "level",
+          "value": "\"info\""
+        },
+        {
+          "key": "ok",
+          "value": "true"
+        },
+        {
+          "key": "status",
+          "value": "\"communication_schema_ready\""
+        },
+        {
+          "key": "schema_marker",
+          "value": "\"0029_communication_contract\""
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-10-20T22:21:22.576772136Z",
+      "message": "qr_bridge_probe_start",
+      "attributes": [
+        {
+          "key": "level",
+          "value": "\"info\""
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-10-20T22:21:23.455960910Z",
+      "message": "Orion QR pre-deploy: verificando conectividade privada.",
+      "attributes": [
+        {
+          "key": "level",
+          "value": "\"info\""
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-10-20T22:21:23.455968450Z",
+      "message": "Orion QR: CONNECTED_TO_PRIVATE_BRIDGE, state=connected",
+      "attributes": [
+        {
+          "key": "level",
+          "value": "\"info\""
+        }
+      ]
+    }
+  ],
+  "public_evidence": "public-after-A2.json",
+  "next_stage": "B+C combined; worker and QR update with centralQR0; register alias API with no authority transfer; each guarded independently"
+}

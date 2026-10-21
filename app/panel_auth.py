@@ -106,7 +106,19 @@ async def panel_actor(request: Request) -> dict:
     if not content:
         raise HTTPException(401, "Sessão expirada, entre novamente")
     data = json.loads(content)
-    if data.get("account_id"):
+    if data.get("auth_provider") == "legacy_admin":
+        from app.legacy_admin_identity import current_identity
+        if data.get("role") != "admin" or not data.get("account_id"):
+            raise HTTPException(401, "Sessão inválida")
+        try:
+            row = await current_identity(data["account_id"], data["auth_version"])
+        except (ValueError, KeyError):
+            raise HTTPException(401, "Sessão inválida") from None
+        data["name"] = row["name"]
+        data["email"] = None
+    elif data.get("auth_provider") not in (None, "password"):
+        raise HTTPException(401, "Sessão inválida")
+    elif data.get("account_id"):
         from app.account_auth import current_account, current_account_and_membership
         tenant = None
         if data.get("role") == "member" and os.getenv("BUSINESS_PROFILES_ENABLED", "0") == "1":
@@ -157,11 +169,15 @@ async def login(payload: Login, request: Request, response: Response):
         if attempts >= 8:
             raise HTTPException(429, "Muitas tentativas. Aguarde quinze minutos")
         valid_user = secrets.compare_digest(
-            payload.username.strip().lower(), os.getenv("PANEL_ADMIN_USERNAME", "admin").lower()
+            payload.username.strip().lower().encode("utf-8"),
+            os.getenv("PANEL_ADMIN_USERNAME", "admin").strip().lower().encode("utf-8")
         )
         legacy_admin = valid_user and _password_valid(payload.password)
         account = None
-        if not legacy_admin:
+        if legacy_admin:
+            from app.legacy_admin_identity import login_identity
+            account = await login_identity()
+        else:
             # Registered accounts receive their true role, NEVER a blanket support role.
             from app.account_auth import authenticate_account
             account = await authenticate_account(payload.username,payload.password)
@@ -178,6 +194,8 @@ async def login(payload: Login, request: Request, response: Response):
         claims={"role": account["role"] if account else "support","csrf":csrf}
         if account:
             claims.update({"account_id":account["id"],"auth_version":account["version"]})
+            if account.get("auth_provider") == "legacy_admin":
+                claims["auth_provider"] = "legacy_admin"
         await redis.set(_hash_cookie(token),json.dumps(claims),ex=lifespan,nx=True)
         response.set_cookie(COOKIE,token,max_age=lifespan,secure=True,
                             httponly=True,samesite="strict",path="/")

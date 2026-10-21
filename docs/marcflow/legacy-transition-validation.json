@@ -1,0 +1,82 @@
+{
+  "runtime_commit": "7a3dafb906003a38e529b62deec2d139d875e890",
+  "branch": "codex/orion-marcflow-integrations-20261020",
+  "date_utc": "2026-10-20T17:37:00Z",
+  "ci": {
+    "main": {
+      "run": 39466167900,
+      "status": "success",
+      "backend": {
+        "passed": 4222,
+        "skipped": 1,
+        "warnings": 175
+      },
+      "compose": {
+        "passed": 4097,
+        "skipped": 126,
+        "warnings": 10,
+        "overlaps_backend": true
+      },
+      "qr": {
+        "passed": 429,
+        "failed": 0
+      },
+      "dom": {
+        "passed": 308,
+        "failed": 0
+      },
+      "asr": "success"
+    },
+    "media": {
+      "run": 39466167895,
+      "status": "success"
+    },
+    "browser": {
+      "cases": 6,
+      "widths": [
+        360,
+        768,
+        1440
+      ],
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "external_requests": 0,
+      "real_sends": 0
+    }
+  },
+  "railway": {
+    "project": "strong-creation",
+    "project_id": "55750961-99ca-495e-b55e-4c07d78e53df",
+    "environment_id": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+    "phase": "register",
+    "patch": "07d4a48a-3a3a-4f76-9ddc-f0c3d3ccb335",
+    "staged_changes": 22,
+    "accept_deploy": {
+      "is_error": true,
+      "error_code": "INVALID_ARGUMENT",
+      "message": "Cancelled — the user did not approve this action. No changes were made."
+    },
+    "production_changes_applied": false,
+    "legacy_transition_applied": false,
+    "central_activated": false,
+    "new_production_backup_or_restore_performed": false,
+    "live_runtime_commit": "a7199de33ed265705a2a0116f01cbb43b488bd5c",
+    "deployments_unchanged": {
+      "api": "97a318ab-7d8e-43a4-a898-b7c53623d868",
+      "worker": "cef72f64-c467-4170-9f11-eebe3075e387",
+      "qr": "75e296ba-26cd-497f-946e-617ebea7cb7e"
+    },
+    "public_readonly_probes": {
+      "/health": 200,
+      "/health/whatsapp": 200
+    }
+  },
+  "limitations": [
+    "No real WhatsApp/Meta message was sent as a test.",
+    "The existing production AI/session was not replaced in this attempt.",
+    "Production adoption requires successful registration, bridge adoption verification and authority activation, each gated as documented.",
+    "Meta live sending and advanced media/graph/campaign/export phases remain unqualified."
+  ]
+}

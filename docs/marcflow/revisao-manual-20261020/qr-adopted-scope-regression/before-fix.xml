@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="15.245" timestamp="2026-10-20T19:57:09.968083-04:00" hostname="DESKTOP-3Q48M6B"><testcase classname="tests.unit.test_qr_managed_adoption_scope" name="test_adopted_ai_uses_persistent_revision_with_global_control_off[0]" time="0.185"><failure message="AssertionError: {&quot;detail&quot;:&quot;O controle do atendimento mudou&quot;}&#10;assert 409 == 200&#10; +  where 409 = &lt;Response [409 Conflict]&gt;.status_code">adopted = namespace(identity=ChannelIdentity(channel_id=UUID('13ab963b-8e59-4f5e-9f62-e46ab9336100'), tenant_id=UUID('1b53d358-5...e.ScopedRedis object at 0x0000026C357D3B30&gt;, calls=[], api=&lt;fastapi.applications.FastAPI object at 0x0000026C35791D30&gt;)
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000026C3594FE90&gt;
+global_control = '0'
+
+    @pytest.mark.parametrize("global_control", ["0", "1"])
+    async def test_adopted_ai_uses_persistent_revision_with_global_control_off(adopted, monkeypatch, global_control):
+        monkeypatch.setenv("INBOX_CONTROL_ENABLED", global_control)
+        response = await request(adopted.api, adopted.identity)
+&gt;       assert response.status_code == 200, response.text
+E       AssertionError: {"detail":"O controle do atendimento mudou"}
+E       assert 409 == 200
+E        +  where 409 = &lt;Response [409 Conflict]&gt;.status_code
+
+tests\unit\test_qr_managed_adoption_scope.py:87: AssertionError</failure></testcase></testsuite></testsuites>

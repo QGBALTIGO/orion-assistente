@@ -1,0 +1,26 @@
+{
+  "verified_at_utc": "2026-10-21T00:35:18.734Z",
+  "deployment_id": "5d6bf01f-405a-4fe7-9250-f821b67975f4",
+  "status": "SUCCESS",
+  "deployment_reported_commit": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+  "configured_source_commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+  "qr_tree_identical_to": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+  "configured_source_and_root_directory_unchanged": true,
+  "volumeMounts": {
+    "96a57936-6572-4604-887b-a7c8123263ff": {
+      "mountPath": "/data"
+    }
+  },
+  "auth_backup": {
+    "state": "verified_existing",
+    "files": 96,
+    "label": "before-transport-diagnostics-v1"
+  },
+  "existing_device_connected": true,
+  "central_public_readiness_and_session_proof": "public-after-native-central-D.json",
+  "authority_not_yet_adopted": true,
+  "patch_observed_committed_and_deployment_successful": true,
+  "explicit_text_confirmation_not_yet_received": true,
+  "no_pair_logout_or_task_test_messages": true,
+  "notify_and_operator_tests_kept0": true
+}

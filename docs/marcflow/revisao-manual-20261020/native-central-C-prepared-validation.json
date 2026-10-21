@@ -1,0 +1,14 @@
+{
+  "status": "passed",
+  "scope": "Static hook/configuration only; no application/database/network execution",
+  "ordered_fail_closed_modules": [
+    "scripts.wait_for_admin_identity_schema",
+    "scripts.one_time_legacy_adoption",
+    "scripts.probe_qr_bridge"
+  ],
+  "phase": "register",
+  "control_send_kept0": true,
+  "native_runtime_kept1": true,
+  "source_commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+  "worker_qr_or_volume_changed": false
+}

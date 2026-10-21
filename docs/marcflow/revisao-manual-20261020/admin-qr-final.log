@@ -1,0 +1,31 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.9, pytest-9.1.1, pluggy-1.7.0 -- C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Scripts\python.exe
+rootdir: C:\Users\kayky\Documents\Playground\orion-marcflow-20261020
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 14 items
+
+tests/integration/test_qr_admin_identity_postgres.py::test_real_native_account_can_own_list_and_change_only_its_qr PASSED [  7%]
+tests/integration/test_qr_admin_identity_postgres.py::test_real_admin_identity_never_replaces_current_exact_tenant_ownership[revoked] PASSED [ 14%]
+tests/integration/test_qr_admin_identity_postgres.py::test_real_admin_identity_never_replaces_current_exact_tenant_ownership[viewer] PASSED [ 21%]
+tests/integration/test_qr_admin_identity_postgres.py::test_real_admin_identity_never_replaces_current_exact_tenant_ownership[foreign_tenant] PASSED [ 28%]
+tests/integration/test_qr_admin_identity_postgres.py::test_real_admin_identity_never_replaces_current_exact_tenant_ownership[password_admin] PASSED [ 35%]
+tests/integration/test_qr_admin_identity_postgres.py::test_real_admin_identity_never_replaces_current_exact_tenant_ownership[no_opt_in] PASSED [ 42%]
+tests/integration/test_qr_admin_identity_postgres.py::test_real_admin_identity_never_replaces_current_exact_tenant_ownership[stale_configuration] PASSED [ 50%]
+tests/integration/test_qr_admin_identity_postgres.py::test_real_support_or_unidentified_admin_never_creates_native_owned_qr[support-False] PASSED [ 57%]
+tests/integration/test_qr_admin_identity_postgres.py::test_real_support_or_unidentified_admin_never_creates_native_owned_qr[support-True] PASSED [ 64%]
+tests/integration/test_qr_admin_identity_postgres.py::test_real_support_or_unidentified_admin_never_creates_native_owned_qr[viewer-True] PASSED [ 71%]
+tests/integration/test_qr_admin_identity_postgres.py::test_real_support_or_unidentified_admin_never_creates_native_owned_qr[admin-False] PASSED [ 78%]
+tests/integration/test_qr_admin_identity_postgres.py::test_real_native_owner_cannot_manage_another_owners_channel PASSED [ 85%]
+tests/integration/test_qr_admin_identity_postgres.py::test_real_revocation_during_qr_lookup_discards_the_result PASSED [ 92%]
+tests/integration/test_qr_admin_identity_postgres.py::test_real_native_owner_keeps_primary_credentials_and_never_repairs_or_disconnects PASSED [100%]
+
+============================== warnings summary ===============================
+tests/integration/test_qr_admin_identity_postgres.py: 84 warnings
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: C:\Users\kayky\Documents\Playground\orion-inventario-revisao-20261020\admin-qr-final.xml -
+================= 14 passed, 84 warnings in 313.60s (0:05:13) =================

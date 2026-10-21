@@ -2,6 +2,17 @@
 
 Fundação de um SaaS gerenciado de agendamento por WhatsApp para barbearias.
 **Status: desenvolvimento e testes automatizados; não liberado para clientes reais.**
+
+Revisão de comunicação em 20/10/2026: [1.247 itens e correções](docs/marcflow/manual-inventory-review.md)
+e [relatório pesquisável com recibos de teste e publicação](docs/marcflow/revisao-manual-20261020/relatorio.html).
+Trabalho na mesma branch `codex/orion-marcflow-integrations-20261020`, com publicação
+autorizada e sem campanhas ou mensagens reais de teste. Consulte o recibo para o
+estado efetivo do Railway. O [contrato](docs/marcflow/communication-contract.json)
+e os relatórios anteriores preservam a evidência histórica de cada etapa.
+O QR principal já foi adotado e a central humana habilitada; o novo acesso do
+próprio admin foi conferido em leitura. Meta e campanhas continuam desligados,
+e entrega ou resposta real não fizeram parte dos testes.
+
 O histórico contém PRs incrementais das FATIAS 0–8. Integrações e módulos
 comerciais avançados permanecem desabilitados ou incompletos sem piloto,
 credenciais oficiais, revisão de segurança e autorizações dos titulares.
@@ -69,7 +80,7 @@ Se um volume já existia, revise/provisione os papéis manualmente: o Compose
 não recria permissões automaticamente.
 
 ## Testes sem Docker
-Instale `pip install ".[test]"` em Python 3.12 e rode `pytest -q -ra`.
+Instale `pip install -c requirements.lock ".[test]"` em Python 3.12 e rode `pytest -q -ra`.
 Os unitários rodam sem serviços; os testes de integração exigem
 `APP_DATABASE_URL` e `MIGRATION_DATABASE_URL` com PostgreSQL migrado.
 Defina `REQUIRE_POSTGRES_TESTS=1` para fazer falhar em vez de pular a
@@ -86,11 +97,13 @@ Barbearia sintética de homologação: tenant_id
 `82552b25-d0c8-5338-8c42-49f11de59e45`. Administração: `/panel`,
 utilizando o `SUPPORT_API_TOKEN` guardado nas variáveis do serviço web
 na Railway. Não transmitir token por links, screenshots ou mensagens.
-Nenhuma credencial real de integrações externas está ativa.
+Esse registro de homologação descreve o estado observado em 16/10/2026.
+O estado atual de integrações e da publicação consta no recibo de comunicação.
 
-Referência histórica: [docs/railway.md](docs/railway.md). foi conectado por esta mudança.
+Referência histórica: [docs/railway.md](docs/railway.md).
 
 ## Documentação
+- [Administrador existente na central humana](docs/marcflow/admin-central-identity.md)
 - [Gestão Orion: referência BarberPilot, medidas e implementação](docs/barberpilot-orion.md)
 - [Cobertura funcional por módulo](docs/barberpilot-functional-coverage.md)
 - [Migrations, testes e implantação da suíte de gestão](docs/management-suite-runbook.md)
@@ -217,19 +230,17 @@ transcrição real, visualizador React Flow ou onboarding autônomo.
 Essas integrações requerem piloto real, orçamento aprovado, revisão de
 licenças e testes específicos. Veja [docs/advanced.md](docs/advanced.md).
 
-## Teste online da agenda
+## Acesso ao site e ao painel
 
-1. Abra https://orion-assistente-production.up.railway.app/ (landing) e
-   https://orion-assistente-production.up.railway.app/panel (painel).
-2. Localize o `SUPPORT_API_TOKEN` nas variáveis privadas do serviço
-   `orion-assistente` no projeto Railway `strong-creation`.
-3. Insira esse token **apenas no painel HTTPS**. Selecione a barbearia
-   com nome DEMONSTRAÇÃO FICTÍCIA. Há dois profissionais, três serviços,
-   expedientes de segunda a sábado; o WhatsApp externo está desativado.
-4. A API interativa em `/docs` permite consultar disponibilidade,
-   criar holds, confirmar, cancelar e remarcar com token Bearer. Use somente
-   clientes e números **fictícios**, nunca clientes de verdade.
+- Site: https://orion-painel-iota.vercel.app/
+- Painel: https://orion-painel-iota.vercel.app/panel
+- O endereço anterior https://orion-assistente-production.up.railway.app/panel continua disponível.
 
-API e worker estão no ambiente chamado `production` pela Railway,
-mas este é um **ambiente de testes não homologado para dados reais**.
+Entre com a conta atual. O novo domínio exige um novo login, sem invalidar as
+sessões do endereço anterior. Dados, APIs, IA, worker e sessão QR continuam no
+Railway; a publicação Vercel não altera os serviços ou suas configurações.
+
+Procedimento e limites: [deploy/vercel-orion/README.md](deploy/vercel-orion/README.md).
+Evidências desta publicação: [docs/vercel/publicacao-20261020](docs/vercel/publicacao-20261020/README.md).
+As condições de aceite de integrações reais permanecem nos documentos MarcFlow.
 

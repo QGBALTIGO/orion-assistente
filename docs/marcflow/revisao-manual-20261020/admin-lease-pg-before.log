@@ -1,0 +1,84 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___ test_setup_plan_survives_lease_renewal_and_preserves_latest_live_lease ____
+
+admin_source = namespace(engine=Engine(postgresql+psycopg://postgres:***@127.0.0.1:55439/orion_ops_fixture_052d14c495c04d0cbb30b737b8...d41d, original_tenant=UUID('54b7d836-a431-4df0-b3cc-75376928a60d'), admin=UUID('118fb931-be88-5abe-a4c7-b92a1a1566a5'))
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000020E592DFFB0>
+
+    def test_setup_plan_survives_lease_renewal_and_preserves_latest_live_lease(admin_source,monkeypatch):
+        case=admin_source
+        channel,_=seed_preserved_qr(case)
+        stored,_=private_transport(monkeypatch,case.settings)
+        settings=approved_settings(case)
+        def renew():
+            with case.engine.begin() as db:
+                db.execute(text("""UPDATE qr_channels SET lease_owner=:lease,fence=fence+1,
+                    lease_expires_at=clock_timestamp()+interval '30 seconds',updated_at=clock_timestamp() WHERE id=:c"""),
+                    {'c':channel,'lease':uuid4()})
+                return tuple(db.execute(text('SELECT * FROM qr_channels WHERE id=:c'),{'c':channel}).one())
+        renew()  # A different process can renew after the user approves the plan.
+>       assert setup.execute(case.settings)['plan_sha256']==settings.approved_plan_sha256
+E       AssertionError: assert 'd3a98aa33fb9...9cda89683af9d' == '032f86c22869...83235468c736f'
+E         
+E         - 032f86c2286977b22ebb974223240c5ef5e74c90b0510134a8683235468c736f
+E         + d3a98aa33fb90a7bbf68441f4249bc00ddec28a3090fb5ce2ed9cda89683af9d
+
+tests\integration\test_admin_identity_ops_postgres.py:148: AssertionError
+---------------------------- Captured stderr setup ----------------------------
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_foundation_rls, FATIA 0: tenants e tabela de verificação com RLS fail-closed.
+INFO  [alembic.runtime.migration] Running upgrade 0001_foundation_rls -> 0002_catalog_operations, FATIA 1: catálogo, equipe, expedientes, pausas, folgas, bloqueios e auditoria.
+INFO  [alembic.runtime.migration] Running upgrade 0002_catalog_operations -> 0003_booking_engine, FATIA 2: clientes e reservas reais com exclusão GiST e RLS.
+INFO  [alembic.runtime.migration] Running upgrade 0003_booking_engine -> 0004_whatsapp, FATIA 3: canais Meta, eventos idempotentes, fila durável e RBAC do barbeiro.
+INFO  [alembic.runtime.migration] Running upgrade 0004_whatsapp -> 0005_google_csv, FATIA 4: OAuth Google por tenant e outbox transacional.
+INFO  [alembic.runtime.migration] Running upgrade 0005_google_csv -> 0006_commercial, FATIA 6: assinatura SaaS, eventos Asaas verificados e contadores de uso.
+INFO  [alembic.runtime.migration] Running upgrade 0006_commercial -> 0007_advanced, FATIA 8: base de inbox humana, consentimento CRM, campanhas e workflows seguros.
+INFO  [alembic.runtime.migration] Running upgrade 0007_advanced -> 0008_panel_accounts, Persistent website accounts, verification and password recovery.
+INFO  [alembic.runtime.migration] Running upgrade 0008_panel_accounts -> 0009_email_otp, Maximum five attempts for each one-time email code.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0012_commercial_fulfillment -> 0013_management, Persistent management modules, reusing booking customers and draft campaigns.
+INFO  [alembic.runtime.migration] Running upgrade 0013_management -> 0014_public_catalog, Opt-in public catalogue and managed service packages on the booking engine.
+INFO  [alembic.runtime.migration] Running upgrade 0014_public_catalog -> 0015_loyalty_rewards, Transactional loyalty earning, reward coupons and completion discounts.
+INFO  [alembic.runtime.migration] Running upgrade 0015_loyalty_rewards -> 0016_management_extras, Recurring blocks, provider usage, operational preferences and reviewed invitations.
+INFO  [alembic.runtime.migration] Running upgrade 0016_management_extras -> 0017_financial_settlements, Immutable commission settlements and partial allocation of staff advances.
+INFO  [alembic.runtime.migration] Running upgrade 0017_financial_settlements -> 0018_sales_requests, First-party commercial contact requests, isolated from tenant operations.
+INFO  [alembic.runtime.migration] Running upgrade 0018_sales_requests -> 0019_appointment_lifecycle, Structured, tenant-scoped appointment lifecycle history.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0019_appointment_lifecycle -> 0020_business_onboarding, Add explicit setup progress without changing any legacy business or channel.
+INFO  [alembic.runtime.migration] Running upgrade 0020_business_onboarding -> 0021_qr_channels, Explicit QR channel identities and database-fenced session ownership.
+INFO  [alembic.runtime.migration] Running upgrade 0021_qr_channels -> 0022_marketing_execution, Tenant-authorized automation execution, consent and durable delivery attempts.
+INFO  [alembic.runtime.migration] Running upgrade 0022_marketing_execution -> 0023_automation_notice_guard, Fence managed inbound invalidation even when the assistant is disabled.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0023_automation_notice_guard -> 0024_inbox_tools, CRM labels and factual quick replies, private to each company/account.
+INFO  [alembic.runtime.migration] Running upgrade 0024_inbox_tools -> 0025_inbox_control, Persistent per-channel arbitration and non-expiring uncertain send slots.
+INFO  [alembic.runtime.migration] Running upgrade 0025_inbox_control -> 0026_cancelled_notification, Extend the existing reviewed outbox with factual cancellation notices.
+INFO  [alembic.runtime.migration] Running upgrade 0026_cancelled_notification -> 0027_unified_inbox, Unify QR/Meta authority and durable, tenant-scoped conversation history.
+INFO  [alembic.runtime.migration] Running upgrade 0027_unified_inbox -> 0028_workflow_drafts, Version existing workflow drafts without enabling execution.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0028_workflow_drafts -> 0029_communication_contract, Additive communication facts; never rewrites sessions, bookings or templates.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0029_communication_contract -> 0030_legacy_admin_identity, Give the existing environment administrator an explicit, optional identity.
+============================== warnings summary ===============================
+tests/integration/test_admin_identity_ops_postgres.py::test_setup_plan_survives_lease_renewal_and_preserves_latest_live_lease
+tests/integration/test_admin_identity_ops_postgres.py::test_setup_plan_survives_lease_renewal_and_preserves_latest_live_lease
+tests/integration/test_admin_identity_ops_postgres.py::test_setup_plan_survives_lease_renewal_and_preserves_latest_live_lease
+tests/integration/test_admin_identity_ops_postgres.py::test_setup_plan_survives_lease_renewal_and_preserves_latest_live_lease
+tests/integration/test_admin_identity_ops_postgres.py::test_setup_plan_survives_lease_renewal_and_preserves_latest_live_lease
+tests/integration/test_admin_identity_ops_postgres.py::test_setup_plan_survives_lease_renewal_and_preserves_latest_live_lease
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/integration/test_admin_identity_ops_postgres.py::test_setup_plan_survives_lease_renewal_and_preserves_latest_live_lease
+1 failed, 6 warnings in 34.06s

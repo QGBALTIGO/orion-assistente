@@ -19,14 +19,15 @@ RUN apt-get update \
     && pg_dump --version | grep -E '^pg_dump \(PostgreSQL\) 16\.' \
     && pg_restore --version | grep -E '^pg_restore \(PostgreSQL\) 16\.' \
     && rm -rf /var/lib/apt/lists/*
-COPY pyproject.toml ./
+COPY pyproject.toml requirements.lock ./
 COPY app/ ./app/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
 COPY tests/ ./tests/
 COPY scripts/ ./scripts/
 COPY landing/ ./landing/
-RUN pip install --no-cache-dir ".[test]" \
+RUN pip install --no-cache-dir -c requirements.lock ".[test]" \
+    && python -m pip check \
     && useradd --uid 10001 --create-home appuser
 
 USER appuser

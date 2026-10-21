@@ -60,6 +60,7 @@ def meta(monkeypatch):
     async def tx(*_): yield
     async def prefs(_): return None
     async def no_commands(*_,**__): return False,None
+    async def accepted(*_):return True  # Explicit fake transport receipt; no native delivery is claimed.
     async def decision(body,*,pending,action="booking",semantic_allowed=False):
         return contextual_response(body,awaiting_confirmation=pending,confirmation_action=action)
     async def slots(_db,t,pro,ids,on_day):
@@ -91,6 +92,8 @@ def meta(monkeypatch):
     monkeypatch.setattr(bot,"tenant_transaction",tx)
     monkeypatch.setattr(bot,"preferences",prefs)
     monkeypatch.setattr(bot,"try_command",no_commands)
+    monkeypatch.setattr(bot,"summary_was_accepted",accepted)
+    monkeypatch.setattr(commands,"summary_was_accepted",accepted)
     monkeypatch.setattr(bot,"consent",decision)
     monkeypatch.setattr(bot,"list_slots",slots)
     monkeypatch.setattr(bot,"book_appointment",create)
@@ -127,6 +130,16 @@ async def test_meta_natural_flow_new_consent_and_message_retry(meta):
     assert meta["events"]==["hold","confirm"]
     assert await meta["turn"]("pode marcar","consent")==done
     assert meta["events"]==["hold","confirm"]
+
+
+@pytest.mark.asyncio
+async def test_unaccepted_meta_summary_is_reviewed_again_before_any_confirmation(meta,monkeypatch):
+    await proposal(meta)
+    async def not_accepted(*_):return False
+    monkeypatch.setattr(bot,'summary_was_accepted',not_accepted)
+    answer=await meta['turn']('pode confirmar','new-consent')
+    assert 'Posso confirmar' in answer and meta['events']==['hold']
+    assert meta['state']()['summary_message_id']=='new-consent'
 
 
 @pytest.mark.asyncio

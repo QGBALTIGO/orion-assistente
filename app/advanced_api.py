@@ -69,6 +69,9 @@ async def handoffs(tenant_id:UUID,actor:Actor=Depends(authenticate)):
 @router.post("/inbox/handoffs/{handoff_id}/resolve")
 async def resolve(tenant_id:UUID,handoff_id:UUID,actor:Actor=Depends(authenticate)):
     authorize(actor,tenant_id,write=True)
+    from app.inbox_control import enabled
+    if enabled():
+        raise HTTPException(409,"Retome a IA pelo controle da conversa na central de atendimento")
     async with get_session_factory()() as s:
         async with tenant_transaction(s,tenant_id):
             result=await s.execute(text("""

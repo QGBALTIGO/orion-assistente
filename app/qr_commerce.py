@@ -5,6 +5,7 @@ answer/step to the external bridge/UI. Preview uses estimates and no write path.
 """
 from copy import deepcopy
 from dataclasses import replace
+from datetime import datetime,timedelta,timezone
 import hashlib
 import os
 import re
@@ -268,7 +269,12 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
             current_order = await store.get_order(scope, UUID(pending["order_id"]))
             validate(current_order["quote"])
             if pending["action"] == "cancel":
-                order = await store.cancel_order(scope, UUID(pending["order_id"]), revision=pending["revision"], summary_message_id=pending["summary_message_id"], validate_summary=validate)
+                if not store.cancellation_live(pending.get('expires_at')):
+                    state.pop('pending',None)
+                    return finish('Esse resumo de cancelamento expirou. Solicite um novo resumo para conferir o estado atual do pedido.',
+                        'commerce_new_confirmation_required',state,scope)
+                order = await store.cancel_order(scope, UUID(pending["order_id"]), revision=pending["revision"], summary_message_id=pending["summary_message_id"], validate_summary=validate,
+                    summary_expires_at=pending['expires_at'])
                 state.pop("pending", None)
                 return {**finish(order_summary(order["quote"], preferences, kind="cancelled", order_id=str(order["id"])), "commerce_cancelled", state, scope), "_verified_operation": True}
             try:
@@ -298,7 +304,8 @@ async def handle(tenant, phone, body, *, message_id, state=None, preview=False,
             if order["status"] == "cancelled":
                 return finish("Esse pedido já está cancelado.", "commerce_cancelled", state, scope)
             preflight(order["quote"], preferences, str(order["id"]))
-            state["pending"] = {"action": "cancel", "order_id": str(order["id"]), "revision": order["revision"], "summary_message_id": scope.message_id}
+            state["pending"] = {"action": "cancel", "order_id": str(order["id"]), "revision": order["revision"], "summary_message_id": scope.message_id,
+                'expires_at':(datetime.now(timezone.utc)+timedelta(minutes=15)).isoformat()}
             return finish(order_summary(order["quote"], preferences, kind="cancel_proposal", order_id=str(order["id"])), "commerce_cancel_confirm", state, scope)
         if plan.intent == "catalog":
             names = [p["name"] for p in catalog]

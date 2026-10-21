@@ -1,0 +1,793 @@
+{
+  "schema_version": 1,
+  "reviewed_at_utc": "2026-10-21T01:10:27.262019+00:00",
+  "status": "review_complete_no_open_material_doc_findings_bundle_sync_and_final_HTML_QA_pending",
+  "scope": "Revisão de sete documentos de contexto, estado e runbooks, respectivos links relativos e recibos locais E/F/login. Sem modificar documentos ou consultar produção.",
+  "reviewer": "/root/manual_js_inventory",
+  "source_head_at_review": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+  "source_documents": [
+    {
+      "file": "README.md",
+      "sha256": "4d16303aa6ba2c1422f168e450d07729d635fb7031be901b97aca8da1400c06b",
+      "lines": 248
+    },
+    {
+      "file": "docs/marcflow-integration.md",
+      "sha256": "f6c081f792331864ae37eb949ea25dbe2f3ddcef9c5ac904b74cd4aa5af48045",
+      "lines": 399
+    },
+    {
+      "file": "docs/marcflow/manual-inventory-review.md",
+      "sha256": "a780dc5903380f25dd51544a17af747281bc880e9c4838f0682b8b49fdb528eb",
+      "lines": 271
+    },
+    {
+      "file": "docs/marcflow/admin-central-identity.md",
+      "sha256": "bba143d30a8b76d079c5cbb241b178100a6f427504aed00808ae30ea0b53cefa",
+      "lines": 135
+    },
+    {
+      "file": "docs/marcflow/human-central.md",
+      "sha256": "9403acb3581b6c2a6b8174dabe880b4b5840dc6a96eb480e0e9590f79af2213a",
+      "lines": 159
+    },
+    {
+      "file": "docs/marcflow/legacy-transition.md",
+      "sha256": "199d09b077893acc5b637bf7ebc34e652180269c42ead60f0f5cd179db468365",
+      "lines": 225
+    },
+    {
+      "file": "docs/marcflow/railway-release.md",
+      "sha256": "a8639131d23eceec6582266d133be9543894b7ae32afd5322accdf7a22b01ac1",
+      "lines": 159
+    }
+  ],
+  "git_diff_markdown_files_observed": [
+    "README.md",
+    "docs/marcflow/admin-central-identity.md",
+    "docs/marcflow/human-central.md",
+    "docs/marcflow/legacy-transition.md",
+    "docs/marcflow/manual-inventory-review.md",
+    "docs/marcflow/railway-release.md"
+  ],
+  "git_diff_note": "Foram encontrados seis MD alterados nesta rodada; marcflow-integration.md também foi relido como sétimo contexto histórico, sem afirmar que possui novo diff.",
+  "method": [
+    "Leitura das mudanças e seções completas relevantes, separando estado atual de registros históricos e descrições de comportamento.",
+    "Comparação das alegações operacionais com recibos externos E/F e login novo/antigo, sem novo acesso ao Railway/browser.",
+    "Inspeção visual local das duas capturas filtradas e conferência de SHA do UIJSON final informado pelo responsável.",
+    "Validação local de74links relativos e fragmento histórico; origem externa explicitada quando a cópia final ainda não está no repo."
+  ],
+  "checks": {
+    "E_complete_authority_and_preservation_supported_by_receipt": true,
+    "F_API_worker_flags_and_cleanup_supported_by_receipt": true,
+    "fresh_admin_login_and_readonly_UI_supported_by_receipt": true,
+    "prior_admin_session_readonly_reload_supported_by_receipt": true,
+    "UI_no_business_control_or_message_actions_claimed": true,
+    "Meta_campaigns_probes_kept_off": true,
+    "CI_groups_separate_and_not_added": true,
+    "historical_failures_and_old_pending_states_identified_as_historical": true,
+    "twenty_journeys_not_claimed_completed": true,
+    "real_load_capacity_not_claimed": true,
+    "real_delivery_and_AI_reply_not_homologated": true,
+    "adopted_QR_CONTROL0_text_corrected": true
+  },
+  "link_check": {
+    "documents": 7,
+    "local_links": 74,
+    "missing_origins": [],
+    "pending_bundle_copy": [
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 202,
+        "target": "revisao-manual-20261020/railway-native-central-E-results.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/railway-native-central-E-results.json",
+        "status": "pending_bundle_copy",
+        "external_source": "C:\\Users\\kayky\\Documents\\Playground\\orion-inventario-revisao-20261020\\railway-native-central-E-results.json",
+        "external_sha256": "ac83853ba52992282b69898f1f79fb9b952dbe8ff125e14bbcfbbba8b5f568e3"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 204,
+        "target": "revisao-manual-20261020/public-after-native-central-E.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/public-after-native-central-E.json",
+        "status": "pending_bundle_copy",
+        "external_source": "C:\\Users\\kayky\\Documents\\Playground\\orion-inventario-revisao-20261020\\public-after-native-central-E.json",
+        "external_sha256": "71e6814ab72037fc48f8b110439aa4e010d62956818bbd675f288cf514cd9270"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 218,
+        "target": "revisao-manual-20261020/railway-native-central-F-results.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/railway-native-central-F-results.json",
+        "status": "pending_bundle_copy",
+        "external_source": "C:\\Users\\kayky\\Documents\\Playground\\orion-inventario-revisao-20261020\\railway-native-central-F-results.json",
+        "external_sha256": "d4f834afdcd4602937194b42464b39a455a4e63034f70c81a2fb43bd4a7767ba"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 219,
+        "target": "revisao-manual-20261020/public-after-native-central-F.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/public-after-native-central-F.json",
+        "status": "pending_bundle_copy",
+        "external_source": "C:\\Users\\kayky\\Documents\\Playground\\orion-inventario-revisao-20261020\\public-after-native-central-F.json",
+        "external_sha256": "7be59a291c9771f3c666a26f827972707d2a940d0f5a3fdcb9f77919bd7a5b83"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 229,
+        "target": "revisao-manual-20261020/native-admin-fresh-login-readonly.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/native-admin-fresh-login-readonly.json",
+        "status": "pending_bundle_copy",
+        "external_source": "C:\\Users\\kayky\\Documents\\Playground\\orion-inventario-revisao-20261020\\native-admin-fresh-login-readonly.json",
+        "external_sha256": "e283d0beb3807571e88c00ba544f92a96381776dd87ad454c6b7e9c6b0613a81"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 230,
+        "target": "revisao-manual-20261020/native-admin-central-readonly-top.png",
+        "resolved": "docs/marcflow/revisao-manual-20261020/native-admin-central-readonly-top.png",
+        "status": "pending_bundle_copy",
+        "external_source": "C:\\Users\\kayky\\Documents\\Playground\\orion-inventario-revisao-20261020\\native-admin-central-readonly-top.png",
+        "external_sha256": "3e3c26caf860a02703de4af5999966d2b11803d976d4aafc735681b65a348f0e"
+      }
+    ],
+    "fragment_errors": 0,
+    "details": [
+      {
+        "file": "README.md",
+        "line": 6,
+        "target": "docs/marcflow/manual-inventory-review.md",
+        "resolved": "docs/marcflow/manual-inventory-review.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 7,
+        "target": "docs/marcflow/revisao-manual-20261020/relatorio.html",
+        "resolved": "docs/marcflow/revisao-manual-20261020/relatorio.html",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 10,
+        "target": "docs/marcflow/communication-contract.json",
+        "resolved": "docs/marcflow/communication-contract.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 91,
+        "target": "docs/railway-homologacao.md",
+        "resolved": "docs/railway-homologacao.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 103,
+        "target": "docs/railway.md",
+        "resolved": "docs/railway.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 106,
+        "target": "docs/marcflow/admin-central-identity.md",
+        "resolved": "docs/marcflow/admin-central-identity.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 107,
+        "target": "docs/barberpilot-orion.md",
+        "resolved": "docs/barberpilot-orion.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 108,
+        "target": "docs/barberpilot-functional-coverage.md",
+        "resolved": "docs/barberpilot-functional-coverage.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 109,
+        "target": "docs/management-suite-runbook.md",
+        "resolved": "docs/management-suite-runbook.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 110,
+        "target": "docs/architecture.md",
+        "resolved": "docs/architecture.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 111,
+        "target": "docs/security.md",
+        "resolved": "docs/security.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 112,
+        "target": "docs/runbook.md",
+        "resolved": "docs/runbook.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 113,
+        "target": "docs/railway.md",
+        "resolved": "docs/railway.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 114,
+        "target": "docs/backlog.md",
+        "resolved": "docs/backlog.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 168,
+        "target": "docs/booking-engine.md",
+        "resolved": "docs/booking-engine.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 191,
+        "target": "docs/whatsapp.md",
+        "resolved": "docs/whatsapp.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 199,
+        "target": "docs/google-calendar.md",
+        "resolved": "docs/google-calendar.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 205,
+        "target": "docs/pilot-beta.md",
+        "resolved": "docs/pilot-beta.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 212,
+        "target": "docs/commercial.md",
+        "resolved": "docs/commercial.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 212,
+        "target": "docs/pricing-costs.md",
+        "resolved": "docs/pricing-costs.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 217,
+        "target": "docs/capacity.md",
+        "resolved": "docs/capacity.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "README.md",
+        "line": 231,
+        "target": "docs/advanced.md",
+        "resolved": "docs/advanced.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow-integration.md",
+        "line": 5,
+        "target": "marcflow/manual-inventory-review.md",
+        "resolved": "docs/marcflow/manual-inventory-review.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow-integration.md",
+        "line": 18,
+        "target": "marcflow/human-central.md",
+        "resolved": "docs/marcflow/human-central.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow-integration.md",
+        "line": 46,
+        "target": "marcflow/file-inventory.csv",
+        "resolved": "docs/marcflow/file-inventory.csv",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow-integration.md",
+        "line": 48,
+        "target": "marcflow/inventory-summary.json",
+        "resolved": "docs/marcflow/inventory-summary.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow-integration.md",
+        "line": 294,
+        "target": "marcflow/final-validation.md",
+        "resolved": "docs/marcflow/final-validation.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow-integration.md",
+        "line": 362,
+        "target": "marcflow/change-manifest.json",
+        "resolved": "docs/marcflow/change-manifest.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow-integration.md",
+        "line": 376,
+        "target": "marcflow/validation.json",
+        "resolved": "docs/marcflow/validation.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow-integration.md",
+        "line": 377,
+        "target": "marcflow/final-validation.md",
+        "resolved": "docs/marcflow/final-validation.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow-integration.md",
+        "line": 393,
+        "target": "marcflow/human-central.md",
+        "resolved": "docs/marcflow/human-central.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow-integration.md",
+        "line": 394,
+        "target": "marcflow/human-central-manifest.json",
+        "resolved": "docs/marcflow/human-central-manifest.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow-integration.md",
+        "line": 395,
+        "target": "marcflow/human-central-validation.md",
+        "resolved": "docs/marcflow/human-central-validation.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 12,
+        "target": "revisao-manual-20261020/relatorio.html",
+        "resolved": "docs/marcflow/revisao-manual-20261020/relatorio.html",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 87,
+        "target": "admin-central-identity.md",
+        "resolved": "docs/marcflow/admin-central-identity.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 90,
+        "target": "revisao-manual-20261020/ci-d11a86b-final-evidence.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/ci-d11a86b-final-evidence.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 91,
+        "target": "revisao-manual-20261020/admin-ops-test-evidence.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/admin-ops-test-evidence.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 111,
+        "target": "revisao-manual-20261020/railway-native-admin-phase1-results.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/railway-native-admin-phase1-results.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 112,
+        "target": "revisao-manual-20261020/public-after-native-admin-phase1.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/public-after-native-admin-phase1.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 122,
+        "target": "revisao-manual-20261020/railway-native-admin-setup-attempt1-results.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/railway-native-admin-setup-attempt1-results.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 125,
+        "target": "revisao-manual-20261020/diagnose_admin_plan_determinism.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/diagnose_admin_plan_determinism.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 130,
+        "target": "revisao-manual-20261020/admin-lease-test-evidence.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/admin-lease-test-evidence.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 147,
+        "target": "revisao-manual-20261020/api-adopted-scope-unit-evidence.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/api-adopted-scope-unit-evidence.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 148,
+        "target": "revisao-manual-20261020/admin-scope-test-evidence.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/admin-scope-test-evidence.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 150,
+        "target": "revisao-manual-20261020/ci-a85da1c-final-evidence.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/ci-a85da1c-final-evidence.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 164,
+        "target": "revisao-manual-20261020/native-admin-lease-readonly-staged.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/native-admin-lease-readonly-staged.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 166,
+        "target": "revisao-manual-20261020/railway-native-admin-readonly-v2-results.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/railway-native-admin-readonly-v2-results.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 175,
+        "target": "revisao-manual-20261020/railway-native-admin-setup-v2-results.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/railway-native-admin-setup-v2-results.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 184,
+        "target": "revisao-manual-20261020/railway-native-central-C-results.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/railway-native-central-C-results.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 190,
+        "target": "revisao-manual-20261020/railway-native-central-D-results.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/railway-native-central-D-results.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 191,
+        "target": "revisao-manual-20261020/public-after-native-central-D.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/public-after-native-central-D.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 202,
+        "target": "revisao-manual-20261020/railway-native-central-E-results.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/railway-native-central-E-results.json",
+        "status": "pending_bundle_copy",
+        "external_source": "C:\\Users\\kayky\\Documents\\Playground\\orion-inventario-revisao-20261020\\railway-native-central-E-results.json",
+        "external_sha256": "ac83853ba52992282b69898f1f79fb9b952dbe8ff125e14bbcfbbba8b5f568e3"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 204,
+        "target": "revisao-manual-20261020/public-after-native-central-E.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/public-after-native-central-E.json",
+        "status": "pending_bundle_copy",
+        "external_source": "C:\\Users\\kayky\\Documents\\Playground\\orion-inventario-revisao-20261020\\public-after-native-central-E.json",
+        "external_sha256": "71e6814ab72037fc48f8b110439aa4e010d62956818bbd675f288cf514cd9270"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 206,
+        "target": "revisao-manual-20261020/ci-168872a-final-evidence.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/ci-168872a-final-evidence.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 218,
+        "target": "revisao-manual-20261020/railway-native-central-F-results.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/railway-native-central-F-results.json",
+        "status": "pending_bundle_copy",
+        "external_source": "C:\\Users\\kayky\\Documents\\Playground\\orion-inventario-revisao-20261020\\railway-native-central-F-results.json",
+        "external_sha256": "d4f834afdcd4602937194b42464b39a455a4e63034f70c81a2fb43bd4a7767ba"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 219,
+        "target": "revisao-manual-20261020/public-after-native-central-F.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/public-after-native-central-F.json",
+        "status": "pending_bundle_copy",
+        "external_source": "C:\\Users\\kayky\\Documents\\Playground\\orion-inventario-revisao-20261020\\public-after-native-central-F.json",
+        "external_sha256": "7be59a291c9771f3c666a26f827972707d2a940d0f5a3fdcb9f77919bd7a5b83"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 229,
+        "target": "revisao-manual-20261020/native-admin-fresh-login-readonly.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/native-admin-fresh-login-readonly.json",
+        "status": "pending_bundle_copy",
+        "external_source": "C:\\Users\\kayky\\Documents\\Playground\\orion-inventario-revisao-20261020\\native-admin-fresh-login-readonly.json",
+        "external_sha256": "e283d0beb3807571e88c00ba544f92a96381776dd87ad454c6b7e9c6b0613a81"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 230,
+        "target": "revisao-manual-20261020/native-admin-central-readonly-top.png",
+        "resolved": "docs/marcflow/revisao-manual-20261020/native-admin-central-readonly-top.png",
+        "status": "pending_bundle_copy",
+        "external_source": "C:\\Users\\kayky\\Documents\\Playground\\orion-inventario-revisao-20261020\\native-admin-central-readonly-top.png",
+        "external_sha256": "3e3c26caf860a02703de4af5999966d2b11803d976d4aafc735681b65a348f0e"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 251,
+        "target": "revisao-manual-20261020/railway-readonly-diagnostic-results.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/railway-readonly-diagnostic-results.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/manual-inventory-review.md",
+        "line": 252,
+        "target": "revisao-manual-20261020/diagnostic-clone-summary.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/diagnostic-clone-summary.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/admin-central-identity.md",
+        "line": 22,
+        "target": "revisao-manual-20261020/publication-receipt.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/publication-receipt.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/human-central.md",
+        "line": 5,
+        "target": "revisao-manual-20261020/publication-receipt.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/publication-receipt.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/human-central.md",
+        "line": 14,
+        "target": "legacy-transition.md",
+        "resolved": "docs/marcflow/legacy-transition.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/human-central.md",
+        "line": 76,
+        "target": "legacy-transition.md",
+        "resolved": "docs/marcflow/legacy-transition.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/human-central.md",
+        "line": 152,
+        "target": "human-central-validation.md",
+        "resolved": "docs/marcflow/human-central-validation.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/legacy-transition.md",
+        "line": 15,
+        "target": "manual-inventory-review.md",
+        "resolved": "docs/marcflow/manual-inventory-review.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/legacy-transition.md",
+        "line": 16,
+        "target": "revisao-manual-20261020/publication-receipt.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/publication-receipt.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/legacy-transition.md",
+        "line": 18,
+        "target": "admin-central-identity.md",
+        "resolved": "docs/marcflow/admin-central-identity.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/railway-release.md",
+        "line": 15,
+        "target": "legacy-transition.md",
+        "resolved": "docs/marcflow/legacy-transition.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/railway-release.md",
+        "line": 16,
+        "target": "admin-central-identity.md",
+        "resolved": "docs/marcflow/admin-central-identity.md",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/railway-release.md",
+        "line": 17,
+        "target": "revisao-manual-20261020/publication-receipt.json",
+        "resolved": "docs/marcflow/revisao-manual-20261020/publication-receipt.json",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/railway-release.md",
+        "line": 23,
+        "target": "revisao-manual-20261020/relatorio.html",
+        "resolved": "docs/marcflow/revisao-manual-20261020/relatorio.html",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/railway-release.md",
+        "line": 29,
+        "target": "communication-report.html",
+        "resolved": "docs/marcflow/communication-report.html",
+        "status": "exists_repository"
+      },
+      {
+        "file": "docs/marcflow/railway-release.md",
+        "line": 40,
+        "target": "legacy-transition.md#recibo-histórico-da-tentativa-anterior--20102026",
+        "resolved": "docs/marcflow/legacy-transition.md",
+        "status": "exists_repository",
+        "fragment_verified": true
+      }
+    ]
+  },
+  "resolved_findings": [
+    {
+      "id": "DOC-CONTROL-01",
+      "file": "docs/marcflow/human-central.md",
+      "lines": [
+        81,
+        89
+      ],
+      "issue": "Explicação anterior dizia que desligar árbitro global restaurava caminho legado após adoção.",
+      "resolution": "Root corrigiu o texto: principal adotado conserva autoridade com CONTROL0 desde que opt-in legado1 seja mantido na API/QR; não usar flags para desfazer adoção/pausar. Parágrafo completo relido e confirmado.",
+      "status": "resolved_by_parent_and_rechecked_readonly",
+      "affects_manual_inventory_finding_count": false
+    }
+  ],
+  "open_material_document_findings": [],
+  "observed_UI_evidence_summary": {
+    "fresh_login": true,
+    "old_session_authenticated_after_reload": true,
+    "QR_principal_listed": true,
+    "assume_enabled": true,
+    "send_disabled_without_assignment": true,
+    "AI_revision_observed": 3,
+    "unread_unchanged": true,
+    "filters_responded": true,
+    "console_errors": 0,
+    "no_contact_history_in_screenshots": true,
+    "no_control_business_or_message_mutations_claimed": true
+  },
+  "input_evidence": [
+    {
+      "file": "native-admin-fresh-login-readonly.json",
+      "sha256": "e283d0beb3807571e88c00ba544f92a96381776dd87ad454c6b7e9c6b0613a81",
+      "provenance": "Artefato externo fornecido pelo responsável; nenhum estado de produção foi reconsultado por este revisor."
+    },
+    {
+      "file": "railway-native-central-E-results.json",
+      "sha256": "ac83853ba52992282b69898f1f79fb9b952dbe8ff125e14bbcfbbba8b5f568e3",
+      "provenance": "Artefato externo fornecido pelo responsável; nenhum estado de produção foi reconsultado por este revisor."
+    },
+    {
+      "file": "railway-native-central-F-results.json",
+      "sha256": "d4f834afdcd4602937194b42464b39a455a4e63034f70c81a2fb43bd4a7767ba",
+      "provenance": "Artefato externo fornecido pelo responsável; nenhum estado de produção foi reconsultado por este revisor."
+    },
+    {
+      "file": "public-after-native-central-F.json",
+      "sha256": "7be59a291c9771f3c666a26f827972707d2a940d0f5a3fdcb9f77919bd7a5b83",
+      "provenance": "Artefato externo fornecido pelo responsável; nenhum estado de produção foi reconsultado por este revisor."
+    },
+    {
+      "file": "ci-a85da1c-final-evidence.json",
+      "sha256": "c8b2256b6c8f1d438c7ef6f528eb87355926c23a44ddeff4e94f8da5842f80b6",
+      "provenance": "Artefato externo fornecido pelo responsável; nenhum estado de produção foi reconsultado por este revisor."
+    },
+    {
+      "file": "ci-168872a-final-evidence.json",
+      "sha256": "6373c253c7bdad6dcd20d013f48e6601fa602fa1a9680550fc9e535e0f6ae118",
+      "provenance": "Artefato externo fornecido pelo responsável; nenhum estado de produção foi reconsultado por este revisor."
+    },
+    {
+      "file": "publication-receipt.json",
+      "provenance": "Snapshot do recibo consultado nesta revisão antes da atualização final do responsável; seu hash não atesta o recibo final que acompanhará o HTML regenerado. Demais provas E/F/UI possuem identificação própria.",
+      "sha256_at_review_before_final_regeneration": "222fbfef07fecd1e9c893b8780d6107b151284b6c6c8f169511ae0db390bce9c",
+      "final_receipt_update_expected": true
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "native-admin-central-readonly.png",
+      "sha256": "f8ab55d129a0c940b846f5d736e563d89b07a5ca86f41ff9da7ae8bf0a0ff53c",
+      "visually_inspected": true,
+      "visible_contact_names_numbers_or_message_history": false,
+      "scope": "Filtros/cabeçalho da central e recorte humano vazio; não mostram entrega ou resposta."
+    },
+    {
+      "file": "native-admin-central-readonly-top.png",
+      "sha256": "3e3c26caf860a02703de4af5999966d2b11803d976d4aafc735681b65a348f0e",
+      "visually_inspected": true,
+      "visible_contact_names_numbers_or_message_history": false,
+      "scope": "Filtros/cabeçalho da central e recorte humano vazio; não mostram entrega ou resposta."
+    }
+  ],
+  "remaining_gaps": [
+    {
+      "kind": "delivery_packaging",
+      "description": "Copiar os novos recibos/capturas e este review para o bundle; seis links ainda estavam apenas com origem externa no momento da conferência. Ambos os PNGs citados pelo UIJSON também precisam acompanhar o bundle."
+    },
+    {
+      "kind": "receipt_sync",
+      "description": "Recibo no repo ainda difere do externo atualizado; sincronizar antes da entrega. Não editar ou reinterpretar os recibos históricos de etapa que precedem o login posterior."
+    },
+    {
+      "kind": "report_generation",
+      "description": "Root ainda vai regenerar HTML/índice e executar QA final; esta revisão NÃO atesta hash final do HTML nem reaproveita o QA anterior como se cobrisse a nova geração."
+    },
+    {
+      "kind": "external_acceptance",
+      "description": "Meta/campanhas continuam desligados; entrega real, resposta funcional da IA, vinte jornadas completas, teste de carga/capacidade real e demais integrações continuam sem homologação por este aceite de leitura."
+    }
+  ],
+  "HTML_final_attestation": {
+    "performed": false,
+    "final_hash": null,
+    "reason": "Regeneração e novo QA estão reservados ao responsável após esta revisão."
+  },
+  "activity": {
+    "repository_edits": 0,
+    "runtime_edits": 0,
+    "application_tests_executed": 0,
+    "network_or_production_calls": 0,
+    "browser_or_Railway_actions": 0,
+    "database_or_session_mutations": 0,
+    "artifact_only_written": "final-central-docs-review.json"
+  },
+  "final_followup": {
+    "reviewed_at_utc": "2026-10-21T01:10:51.983321+00:00",
+    "file": "docs/marcflow/manual-inventory-review.md",
+    "previous_review_sha256": "a780dc5903380f25dd51544a17af747281bc880e9c4838f0682b8b49fdb528eb",
+    "current_sha256": "a780dc5903380f25dd51544a17af747281bc880e9c4838f0682b8b49fdb528eb",
+    "method": "Releitura do parágrafo222–234 após aviso do responsável; frase nova de recarga autenticada da sessão antiga conferida com prior_admin_session_reload do UIJSON final e283. Nenhuma nova alegação de elevação/logout/mensagem.",
+    "links_changed": false,
+    "other_six_documents_unchanged": true
+  },
+  "sealed_at_utc": "2026-10-21T01:10:51.985639+00:00"
+}

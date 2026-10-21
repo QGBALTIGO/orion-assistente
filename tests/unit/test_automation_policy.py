@@ -61,6 +61,17 @@ def test_notification_requires_real_trigger_instead_of_creation_now(event):
     assert result.due_at == NOW and result.expires_at == NOW+timedelta(hours=24)
 
 
+def test_cancelled_notice_is_operational_immediate_and_uses_actual_cancelled_state():
+    from app.automation_policy import OPERATIONAL_EVENTS, MARKETING_EVENTS
+    assert "cancelled" in OPERATIONAL_EVENTS and "cancelled" not in MARKETING_EVENTS
+    assert "cancelled_7d" in MARKETING_EVENTS
+    assert schedule_for("cancelled", {"occurred_at": NOW, "status": "confirmed"}, NOW, "UTC") is None
+    assert schedule_for("cancelled", {"status": "cancelled"}, NOW, "UTC") is None
+    value = schedule_for("cancelled", {"occurred_at": NOW, "status": "cancelled"}, NOW, "UTC")
+    assert value.due_at == NOW
+    assert render_template("Cancelado: {protocolo}", {"protocolo": "OR-SYNTHETIC"}) == "Cancelado: OR-SYNTHETIC"
+
+
 @pytest.mark.parametrize("event,days", [("inactive_60d", 60), ("cancelled_7d", 7)])
 def test_recovery_never_sends_to_someone_with_a_future_booking(event, days):
     facts = {"occurred_at": NOW-timedelta(days=days), "has_future_booking": False}

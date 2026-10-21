@@ -1,0 +1,215 @@
+{
+  "reviewer": "manual_emit_inventory",
+  "repository_mutated_by_reviewer": false,
+  "production_or_provider_accessed": false,
+  "runtime_integration_tests_executed_by_reviewer": false,
+  "baseline": "61d8fe8",
+  "findings": [
+    {
+      "id": "EMIT-01",
+      "priority": "high",
+      "title": "Outbox Meta legado repetia resultado incerto e não revalidava janela/canal atual",
+      "baseline_file": "app/worker.py",
+      "baseline_range": [
+        80,
+        130
+      ],
+      "inventory_ids": [
+        "INV0846"
+      ],
+      "status_at_handoff": "static fix reread: durable claim and signed receipt, reactive consent guard corrected; root isolated tests pending",
+      "trigger": "INBOX_CONTROL_ENABLED=0, META_LIVE_SEND=1, row message_outbox.pending com canal conectado; Meta aceita POST e o cliente recebe timeout, ou o commit da TX falha depois do POST.",
+      "observed_static_behavior": "Baseline chamava CloudApiProvider dentro tenant_transaction. Qualquer Exception atualizava row para pending e adiava next_attempt_at, permitindo repetir o mesmo texto. SELECT não exigia janela24h/provider_at, botflags atuais ou geração de conversa. Nenhum timeout real foi induzido em provedor.",
+      "reproduction_plan_isolated": [
+        "Inserir evento/outbox sintéticos em PostgreSQL local, tokenFernet sintético e canal apto.",
+        "Stub do sender registra um aceite em memória e depois levanta TimeoutError.",
+        "Chamar worker duas vezes; baseline count2 demonstra reenvio cego. Depois da correção count1 e estado terminal delivery_unverified devem prevalecer.",
+        "Simular falha de persistência depois do retorno do sender; repetir worker não pode enviar novamente.",
+        "Cobrir janela24h expirada/futura/ausente, bot off, tenant inativo, canal desconectado, handoff, ingresso novo e tentativa histórica attempts>0.",
+        "Webhook assinado de receipt aceito deve reconciliar mesmo tenant/canal/phone/operation sem chamar sender; ID errado não altera row."
+      ],
+      "proposal": "Claim durável de tentativa única antes da rede, estado terminal incerto sem retry cego, UUID de correlação e reconciliação por receipt assinado. Guardas de canal e janela devem governar backlog sem ativar central ou interromper conversa reativa por falta de opt-in de automação.",
+      "implementation_review_note": "Root legacy_meta_outbox.process now reserves dead/delivery_unverified before I/O, prevents replay, enforces current channel/tenant/bot/time window/newer event and reconciles signed receipts. operational_opt_in predicate removed, preserving reactive AI for contacts without automation consent. No further concrete defect identified in this manual follow-up.",
+      "tests_source_pointers": [
+        "tests/integration/test_whatsapp.py",
+        "tests/integration/test_unified_inbox_postgres.py",
+        "tests/unit/test_communication_contract.py"
+      ]
+    },
+    {
+      "id": "EMIT-02",
+      "priority": "high",
+      "title": "Resposta multi-intent podia confirmar e depois substituir recibo por negação de efeito",
+      "baseline_file": "app/qr_ai.py",
+      "baseline_range": [
+        1980,
+        1995
+      ],
+      "related_ranges": [
+        [
+          1130,
+          1135
+        ],
+        [
+          2062,
+          2065
+        ]
+      ],
+      "inventory_ids": [
+        "INV0533",
+        "INV0534",
+        "INV0541"
+      ],
+      "status_at_handoff": "static fix reread: complete pre-write receipt budget and verified fallback preservation; root tests pending",
+      "trigger": "Plano estruturado confirm+FAQ/preço sem novas seleções; factual<=850UTF16 e resumo confirmado grande mas individualmente válido. _multi_turn usa factual+350 para preflight, embora recibo possa ter927UTF16.",
+      "observed_static_behavior": "_turn('SIM') é chamado antes do orçamento real da composição. _bounded_reply após o resultado pode devolver choose_priority com 'Nenhuma alteração foi confirmada', e o código recoloca _verified_operation=True nesse fallback. qr_operation_receipt aceita apenas steps terminais e não salva choose_priority.",
+      "pure_probe_executed": {
+        "kind": "local deterministic mocked branch probe; no DB, network, actual commit, provider or production",
+        "receipt_generator": "render_summary(BookingSummary com8serviços de~80caracteres, profissional93caracteres, protocolAG-ABCDEF), confirmed=True",
+        "receipt_utf16_units": 927,
+        "factual_utf16_units": 500,
+        "combined_utf16_units": 1429,
+        "stubs": [
+          "_time_context={}",
+          "interpret_plan=UnderstandingPlan(intents=['confirm','faq'])",
+          "compose_information.answer='F'*500",
+          "_multiple_professional_availability=None",
+          "_turn returns synthetic verified confirmed receipt"
+        ],
+        "actual_result": {
+          "step": "choose_priority",
+          "verified_operation": true,
+          "answer_claim": "Nenhuma alteração foi confirmada",
+          "turn_await_count": 1
+        }
+      },
+      "proposal": "Construir e orçamentar recibo completo máximo+fatos antes da confirmação (padrão já usado em _compound_booking_turn). Se resultado verificado surpreender em tamanho, preservar recibo e status real; jamais trocar por negação de efeito. Cobrir confirmação e remarcação, emoji UTF16 e falha de fatos independentes.",
+      "tests_source_pointers": [
+        "tests/unit/test_qr_multi_flow.py",
+        "tests/unit/test_qr_compound_consent.py",
+        "tests/unit/test_qr_ai_interruptions.py"
+      ],
+      "implementation_review_note": "EditorAPI added _confirmation_composition_fits and _operation_reply. Both compound/multi branches budget complete maximum receipt (80-character protocol, style/icons, birthday invitation when enabled) with factual text before recursive SIM. Late overflow preserves original verified terminal receipt, including final turn styling fallback. No post-patch tests executed by this reviewer."
+    },
+    {
+      "id": "EMIT-03",
+      "priority": "medium",
+      "title": "Proposta de cancelamento comercial não tinha prazo próprio de consentimento",
+      "baseline_file": "app/qr_commerce.py",
+      "baseline_range": [
+        246,
+        302
+      ],
+      "related_sources": [
+        "app/qr_ai.py:49",
+        "app/qr_ai.py:1215",
+        "app/qr_commerce_store.py:cancel_order"
+      ],
+      "inventory_ids": [
+        "INV0720"
+      ],
+      "status_at_handoff": "static fix reread: handler and store reject expired/missing/naive/far-future cancellation deadline; root isolated tests pending",
+      "trigger": "Cliente recebe cancel_proposal de pedido confirmado, não envia outra mensagem, bridge permanece no mesmo processo/geração e só responde podecancelar dias depois, antes do TTL7dias do estado.",
+      "observed_static_behavior": "pending cancel salva action/order_id/revision/summary_message_id sem expires_at. Branch confirm exige última mensagem/resumo/revisão mas não relógio. store.cancel_order revalida posse/revisão e estoque, mas não idade da proposta. TTL7dias limita armazenamento e não é consentimento recente explícito. Não foi cancelado pedido real nem executado teste de integração nesta revisão.",
+      "proposal": "Guardar expires_at próprio para cancel_proposal (por exemplo15min), testar relógio aware/finite antes do cancel_order e renovar resumo após vencimento. Não usar expires_at do orçamento original para cancelar pedido antigo confirmado; o prazo é da nova proposta de cancelamento.",
+      "reproduction_plan_isolated": [
+        "Construir pedido sintético confirmed e pedir cancelamento.",
+        "Avançar relógio além do prazo mantendo revision e same last_message.",
+        "Responder podecancelar; aceitar somente novo resumo, sem cancel_order e sem release de estoque.",
+        "Após novo resumo aceito e mensagem distinta dentro prazo, cancelar uma vez e retornar recibo verificado."
+      ],
+      "tests_source_pointers": [
+        "tests/unit/test_qr_commerce.py",
+        "tests/integration/test_qr_commerce_postgres.py"
+      ],
+      "implementation_review_note": "Root added pending.expires_at aware now+15min, handler cancellation_live check and store.cancel_order summary_expires_at recheck before stock/status writes. Alreadycancelled result remains idempotent. No new migration required."
+    }
+  ],
+  "limitations": [
+    "Não houve revisão de dados reais, configurações de produção, credenciais ou sessões.",
+    "Testes citados são ponteiros de código; somente o probe puro EMIT-02 foi executado pelo revisor.",
+    "Homologação com Meta/Baileys/Groq/ASR reais não é inferida desta leitura.",
+    "Hashes dos registros fixam snapshot; alterações posteriores do root precisam revalidação e novo manifest."
+  ],
+  "follow_up_reviews": [
+    {
+      "at_utc": "2026-10-20T21:12:43.157316+00:00",
+      "request": "Root complementary read-only review of new legacy Meta paths, expiry and reactive AI preservation",
+      "files": [
+        {
+          "file": "C:\\Users\\kayky\\Documents\\Playground\\orion-marcflow-20261020\\app\\legacy_meta_outbox.py",
+          "sha256": "f732054b8a1c41c4e2501ac7604bc6c0f30c3e50dce85b6a8f2bac7e44e9e3fc"
+        },
+        {
+          "file": "C:\\Users\\kayky\\Documents\\Playground\\orion-marcflow-20261020\\app\\worker.py",
+          "sha256": "1afba948a89a27bd92f018d49845073adbfc71280da7e7ae223fca439f44a78b"
+        },
+        {
+          "file": "C:\\Users\\kayky\\Documents\\Playground\\orion-marcflow-20261020\\app\\messaging.py",
+          "sha256": "ec3589f85237b33ffbd9f8864b958a007b6c994102474dcfdc1f5277a58f3778"
+        },
+        {
+          "file": "C:\\Users\\kayky\\Documents\\Playground\\orion-marcflow-20261020\\app\\communication_events.py",
+          "sha256": "599bcaf0780c8b58e9146752b4d0498fe598aec687aacbad8a6469af61c78dd1"
+        },
+        {
+          "file": "C:\\Users\\kayky\\Documents\\Playground\\orion-marcflow-20261020\\app\\whatsapp_api.py",
+          "sha256": "7d2dbbe51c7c23618bb6d34f73f21bf614b6b8efa532a69b8ad57e33676d2718"
+        },
+        {
+          "file": "C:\\Users\\kayky\\Documents\\Playground\\orion-marcflow-20261020\\app\\management_preferences.py",
+          "sha256": "d796fb175a5f21c885475d494123d08b7bc38a60247444f76c7715b66aef17fb"
+        },
+        {
+          "file": "C:\\Users\\kayky\\Documents\\Playground\\orion-marcflow-20261020\\app\\qr_commerce.py",
+          "sha256": "d7432e9934157d14416abfa721e8cba756e1229a9808485881847728cb603adc"
+        },
+        {
+          "file": "C:\\Users\\kayky\\Documents\\Playground\\orion-marcflow-20261020\\app\\qr_commerce_store.py",
+          "sha256": "84b13769e99701b999a3689b1d19235e777129ce12c5467d64a013d5ab6fc751"
+        },
+        {
+          "file": "C:\\Users\\kayky\\Documents\\Playground\\orion-marcflow-20261020\\app\\qr_ai.py",
+          "sha256": "11b95850249796e18ac6d3272013e86d5804d9ac8c3b1397ca85cf64426d2807"
+        },
+        {
+          "file": "C:\\Users\\kayky\\Documents\\Playground\\orion-marcflow-20261020\\tests\\integration\\test_legacy_meta_outbox_postgres.py",
+          "sha256": "d2c5eb6be34b18be5882224f83fd5baf8e0f920fdef839037f695496f96a8d0f"
+        }
+      ],
+      "checks": {
+        "reactive_automation_optin_veto_removed": true,
+        "single_durable_claim_before_external_io": true,
+        "no_automatic_replay_for_uncertain_or_crash": true,
+        "signed_receipt_scope_tenant_channel_phone_operation": true,
+        "provider_at_from_signed_meta_parsing": true,
+        "separate_15min_cancel_proposal_deadline_checked_in_handler_and_store": true,
+        "complete_receipt_budget_before_mixed_confirmation": true,
+        "verified_outcome_preserved_on_late_optional_overflow": true,
+        "complete_payload_bound_before_claim": true
+      },
+      "new_concrete_findings": [],
+      "test_review_only": "PG test source read, not run by this reviewer; covers concurrent second worker, committed reservation, timeout and wrong-scope receipt,8 stale/unauthorized cases, operational_opt_in=false reactive preservation, CancelledError crash. Runtime acceptance belongs to root. Latest local preflight rejects nonstr/empty/over1200UTF16 payload before any attempt; PG source adds601emoji case. This reviewer did not execute those provider-stub tests."
+    },
+    {
+      "at_utc": "2026-10-20T21:31:43.174557+00:00",
+      "request": "Cross-review INV-JS-001 managed connection notice optout",
+      "files": [
+        {
+          "file": "C:\\Users\\kayky\\Documents\\Playground\\orion-marcflow-20261020\\qr-bridge\\src\\channel-manager.mjs",
+          "sha256": "5128ac5f469bd4971db8d3e05dab536aad3e16ea8a94b70b1c4853fe612b0340"
+        },
+        {
+          "file": "C:\\Users\\kayky\\Documents\\Playground\\orion-marcflow-20261020\\qr-bridge\\src\\channel-session.mjs",
+          "sha256": "3d5d5d2d2e5db3d2997f13a37f69d352cedf2d2789e1fe5d97bc226dcdc34a8f"
+        },
+        {
+          "file": "C:\\Users\\kayky\\Documents\\Playground\\orion-marcflow-20261020\\qr-bridge\\test\\channel-manager.test.mjs",
+          "sha256": "41a5d178a06a39a7f0405582fc2dfb36cf3c5929634603c9241fb168120fd163"
+        }
+      ],
+      "result": "Reviewed manager caller and session open-handler fully: notifySelf now requires nonlegacy AND ORION_NOTIFY_SELF_ON_LINK !=0; session invokes onConnected first then returns without scheduling notice unless notifySelf===true/current. Defaults unchanged, existing legacy alwaysfalse, assistant/credentials/routing unaffected. Read7new source-level regression cases. No test executed by this reviewer.",
+      "new_concrete_findings": []
+    }
+  ]
+}

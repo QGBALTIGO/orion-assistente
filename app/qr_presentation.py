@@ -169,7 +169,7 @@ class InteractionContext:
                     or re.search(r"\b(?:estou|to)\s+(?:apenas\s+|so\s+)?pesquisando\b", lower))
         declined = bool(re.fullmatch(r"\s*(?:nao|n|dispenso)[.!\s]*", lower)
                         or re.search(r"\b(?:nao quero|nao tenho interesse|sem produto|so o corte)\b", lower))
-        complaint = bool(re.search(r"\b(?:reclamacao|reclamar|insatisfeito|insatisfeita|cobranca indevida)\b", lower))
+        complaint = bool(re.search(r"\b(?:reclamacao|reclamar|insatisfeit[oa]|cobranca indevida|nao gostei|atendimento ruim|corte ruim|me machucou|ficou pessimo|fui mal atendid[oa])\b", lower))
         return cls(information_only=only or bool(remembered.get("information_only")),
                    declined=declined or bool(remembered.get("declined")),
                    complaint=complaint or bool(remembered.get("complaint")),

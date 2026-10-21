@@ -690,6 +690,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <link rel="stylesheet" href="/panel-assets/orion-auth.css">
 <link rel="stylesheet" href="/panel-assets/orion-onboarding.css">
 <link rel="stylesheet" href="/panel-assets/orion-channels.css">
+<link rel="stylesheet" href="/panel-assets/orion-inbox.css">
 <style>
 #appView.ob-gated .content > .page,#appView.ob-gated #osConsultantFab{display:none!important}
 #orionSetup[hidden]{display:none!important}
@@ -1324,7 +1325,11 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 </dialog>
 <script src="/panel-assets/orion-onboarding.js"></script>
 <script src="/panel-assets/orion-channels.js"></script>
+<script src="/panel-assets/orion-communication.js"></script>
 <script src="/panel-assets/orion-automations.js"></script>
+<script src="/panel-assets/orion-flows.js"></script>
+<script src="/panel-assets/orion-conversations.js"></script>
+<script src="/panel-assets/orion-inbox.js"></script>
 <script src="/panel-assets/orion-suite.js"></script>
 <script>
 (()=>{
@@ -1408,7 +1413,7 @@ function syncSuiteTenant(id){
  if(!id||!businessRows.some(row=>String(row.id)===String(id)))return;
  suiteTenantId=String(id);
  window.OrionSuite?.sync({tenantId:suiteTenantId});
- window.OrionChannels?.unmount();window.OrionAutomations?.unmount();void resolveSetup();
+ window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionInbox?.unmount();void resolveSetup();
 }
 async function beforeSuiteTenantChange(){
  if(businessBusy||commerceBusy||catalogWriting)return false;
@@ -1423,7 +1428,7 @@ function suiteBridge(initialRoute){
  return {request:api,uploadImage:uploadImage,user:suiteUser,tenants:businessRows,tenantId:suiteTenantId,
   initialRoute:initialRoute||"dashboard",
   beforeTenantChange:beforeSuiteTenantChange,
-  setTenant(id){suiteTenantId=String(id);window.OrionChannels?.unmount();window.OrionAutomations?.unmount();void resolveSetup()},
+  setTenant(id){suiteTenantId=String(id);window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionInbox?.unmount();void resolveSetup()},
   openSetup(options){void resolveSetup({force:true,...options})},
   openLegacy(target){if(target==="ai"&&suiteTenantId)aiPreferredTenant=suiteTenantId;openPage(target)},
   onRouteChange(){page="suite";clearInterval(chatTimer);chatTimer=null},
@@ -1585,7 +1590,7 @@ function authScreenShow(screen,{focus=false}={}){
 function showLogin(){
  ++authEpoch;
  ++setupResolving;window.OrionOnboarding?.unmount();setupController=null;setSetupGate(false);
- window.OrionChannels?.unmount();window.OrionAutomations?.unmount();
+ window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionInbox?.unmount();
  window.OrionSuite?.destroy();suiteUser=null;suiteTenantId="";
  finishActionConfirmation(false);manualSendRequest=null;++manualSendSequence;$("sendButton").disabled=false;
  csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);
@@ -1920,7 +1925,7 @@ function renderConnectedCenter(data){
  $("statMonth").textContent=stats.available?format(stats.last30Days):"—";
  $("statTotal").textContent=stats.available?format(stats.total):"—";
  $("statsCoverage").textContent=stats.available?
-   "Mensagens novas registradas desde "+new Date(stats.trackingSince).toLocaleString("pt-BR")+
+   "Mensagens novas registradas desde "+new Date(stats.trackingSince).toLocaleString("pt-BR",{timeZone:"America/Campo_Grande"})+
    " · horário do MS · Não inclui mensagens anteriores à ativação.": 
    "Ainda não há contagem auditável: verifique o armazenamento da instância.";
  const settings=data.featureSettings||{};

@@ -125,8 +125,8 @@ def local_url(value, *, role=None, database=None, redis_url=False):
 
 def clean_environment():
     # Do not inherit provider credentials, service URLs, feature flags or proxies.
-    return {key: value for key, value in os.environ.items() if key in {
-        "PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "LANG", "LC_ALL",
+    return {key: value for key, value in os.environ.items() if key.upper() in {
+        "PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "LANG", "LC_ALL",
         "LD_LIBRARY_PATH", "VIRTUAL_ENV", "PYTHONUTF8"}}
 
 

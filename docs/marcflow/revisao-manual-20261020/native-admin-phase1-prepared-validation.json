@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "scope": "static preparation; no hook/application/network execution",
+  "command_roundtrip": true,
+  "fail_closed_subprocess_order": [
+    "scripts.one_time_admin_identity_migration",
+    "scripts.wait_for_admin_identity_schema",
+    "scripts.one_time_admin_demo_setup",
+    "scripts.probe_qr_bridge"
+  ],
+  "runtime_versions_checked_against_lock": 18,
+  "structural_migration_sha256": "09c070122ef84c0af272de1b9ec853585ba209d6f7ebaff782fe770c8eaa1a96",
+  "business_changes_authorized_or_applied": false,
+  "worker_staged_in_phase1": false
+}

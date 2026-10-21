@@ -1,0 +1,111 @@
+{
+  "verified_at_utc": "2026-10-21T00:54:03.286Z",
+  "staged": {
+    "project": {
+      "id": "55750961-99ca-495e-b55e-4c07d78e53df",
+      "name": "strong-creation"
+    },
+    "environment": {
+      "id": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+      "name": "production"
+    },
+    "staged": {
+      "patchId": "be4322e9-dd50-4015-9acd-6f7f35760b4e",
+      "status": "STAGED",
+      "changeCount": 7,
+      "message": null,
+      "createdAt": "2026-10-21T00:53:43.112Z",
+      "updatedAt": "2026-10-21T00:53:51.117Z"
+    },
+    "destructive": false,
+    "resources": [
+      {
+        "kind": "service",
+        "id": "1d39a32e-8297-4e5b-8b55-d6540542e80b",
+        "name": "orion-assistente",
+        "action": "update",
+        "changes": [
+          {
+            "path": "services.1d39a32e-8297-4e5b-8b55-d6540542e80b.variables.INBOX_CONTROL_ENABLED.encryptedValue",
+            "displayName": "INBOX_CONTROL_ENABLED",
+            "type": "added",
+            "from": "",
+            "to": "<redacted>",
+            "destructive": false
+          },
+          {
+            "path": "services.1d39a32e-8297-4e5b-8b55-d6540542e80b.variables.INBOX_SEND_ENABLED.encryptedValue",
+            "displayName": "INBOX_SEND_ENABLED",
+            "type": "added",
+            "from": "",
+            "to": "<redacted>",
+            "destructive": false
+          }
+        ]
+      },
+      {
+        "kind": "service",
+        "id": "f6c51234-ee8b-49ba-a06e-bcad37b54b67",
+        "name": "orion-worker",
+        "action": "update",
+        "changes": [
+          {
+            "path": "services.f6c51234-ee8b-49ba-a06e-bcad37b54b67.source.commitSha",
+            "displayName": "Commit Sha",
+            "type": "updated",
+            "from": "d11a86bc3b1efdef47394c62e39ee32da08ecabf",
+            "to": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+            "destructive": false
+          },
+          {
+            "path": "services.f6c51234-ee8b-49ba-a06e-bcad37b54b67.deploy.preDeployCommand",
+            "displayName": "Pre Deploy Command",
+            "type": "updated",
+            "from": "[\"python -c \\\"import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); from app import legacy_admin_identity; legacy_admin_identity.configuration_binding(); print('native_admin_binding_configuration_valid', flush=True); print('admin_identity_schema_barrier_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_admin_identity_schema'], check=True)\\\"\"]",
+            "to": "[\"python -c \\\"import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); safe_flag_names = ('QR_AI_ENABLED', 'QR_CHANNELS_ENABLED', 'QR_LEGACY_CENTRAL_ENABLED', 'META_LIVE_SEND', 'INBOX_CONTROL_ENABLED', 'INBOX_SEND_ENABLED', 'INBOX_TOOLS_ENABLED', 'MARKETING_EXECUTION_ENABLED', 'MARKETING_RECONCILIATION_ENABLED', 'BIRTHDAY_COLLECTION_ENABLED', 'GROQ_PROBE_ON_START', 'ORION_EMAIL_DELIVERY_PROBE', 'PANEL_LEGACY_ADMIN_IDENTITY_ENABLED'); safe_flag_values = {k: __import__('os').getenv(k, 'unset') for k in safe_flag_names}; print('orion_release_flags=' + __import__('json').dumps({k: (v if v in ('0', '1', 'unset') else 'invalid') for k, v in safe_flag_values.items()}, sort_keys=True), flush=True); from app import legacy_admin_identity; legacy_admin_identity.configuration_binding(); print('native_admin_binding_configuration_valid', flush=True); print('admin_identity_schema_barrier_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_admin_identity_schema'], check=True)\\\"\"]",
+            "destructive": false
+          },
+          {
+            "path": "services.f6c51234-ee8b-49ba-a06e-bcad37b54b67.variables.INBOX_CONTROL_ENABLED.encryptedValue",
+            "displayName": "INBOX_CONTROL_ENABLED",
+            "type": "added",
+            "from": "",
+            "to": "<redacted>",
+            "destructive": false
+          },
+          {
+            "path": "services.f6c51234-ee8b-49ba-a06e-bcad37b54b67.variables.INBOX_SEND_ENABLED.encryptedValue",
+            "displayName": "INBOX_SEND_ENABLED",
+            "type": "added",
+            "from": "",
+            "to": "<redacted>",
+            "destructive": false
+          },
+          {
+            "path": "services.f6c51234-ee8b-49ba-a06e-bcad37b54b67.variables.QR_LEGACY_CENTRAL_ENABLED.encryptedValue",
+            "displayName": "QR_LEGACY_CENTRAL_ENABLED",
+            "type": "added",
+            "from": "",
+            "to": "<redacted>",
+            "destructive": false
+          }
+        ]
+      }
+    ],
+    "sharedVariables": [],
+    "privateNetworkDisabled": null
+  },
+  "prepared": "native-central-F-prepared.json",
+  "static_and_isolated_logging_proof": "native-central-F-review-and-masking-test.json",
+  "E_receipt": "railway-native-central-E-results.json",
+  "E_complete": true,
+  "E_cleanup_verified": true,
+  "fresh_readiness_proof": "public-after-native-central-E.json",
+  "api_normal_hook_verified_before_staging": true,
+  "worker_no_migration_database_url": true,
+  "preserve_native1_and_current_admin_references": true,
+  "only_api2flags_and_worker_source_hook3flags": true,
+  "no_QR_volume_database_session_secret_changes": true,
+  "no_task_test_messages_or_campaigns": true,
+  "applied": false
+}

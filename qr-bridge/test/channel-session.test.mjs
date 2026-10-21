@@ -182,3 +182,38 @@ test('a newer intake during proto generation suppresses relay without weakening 
   await assert.rejects(s.result.send(phone,'old summary',{isCurrent:()=>latest}));assert.equal(s.sent.length,0);
   assert.equal(s.context.isCurrent(),true);assert.equal(s.result.status(),'connected');
 });
+
+
+test('decorative floods never take an inference slot; a useful caption is preserved',async t=>{
+ const s=await session(t);for(let i=0;i<400;i++){s.receive({id:'sticker-'+i},{stickerMessage:{}});s.receive({id:'gif-'+i},{videoMessage:{gifPlayback:true}});}
+ s.receive({id:'caption'},{imageMessage:{caption:'Qual o preço do corte?'}});await flush();await flush();
+ assert.equal(s.notices.length,1);assert.equal(s.messages.length,1);assert.equal(s.messages[0].text,'Qual o preço do corte?');
+});
+test('native Baileys edits, revocations and calls forward typed events without ASR',async t=>{
+ const s=await session(t);s.context.transcribe=()=>assert.fail('event cannot download or transcribe media');
+ const key={id:'original',fromMe:false,remoteJid:phone+'@s.whatsapp.net'};
+ s.client.ev.emit('messages.update',[{key,update:{message:{editedMessage:{message:{conversation:'sim'}}}}}]);
+ await flush();await flush();assert.equal(s.messages[0].envelope.kind,'edited');assert.equal(s.messages[0].envelope.target,'original');
+ s.client.ev.emit('messages.update',[{key,update:{message:null,messageStubType:1}}]);
+ await flush();await flush();assert.equal(s.messages[1].envelope.kind,'deleted');
+ s.client.ev.emit('call',[{id:'native-call',from:phone+'@s.whatsapp.net',status:'offer',isGroup:false}]);
+ await flush();await flush();assert.equal(s.messages[2].envelope.kind,'call');
+});
+test('bounded ingress overflow retains human control and the final correction without executing a prefix',async t=>{
+ const s=await session(t);let release;const barrier=new Promise(r=>release=r),notices=[];
+ s.context.onInbound=async value=>{notices.push(value);await barrier;return {revision:notices.indexOf(value)+1};};
+ for(let i=0;i<50;i++)s.receive({id:'burst-'+i},{conversation:'Quero marcar '+i});
+ s.receive({id:'human-final'},{conversation:'quero falar com atendente'});
+ s.receive({id:'correction-final'},{conversation:'não, espera, não confirme nada'});
+ await flush();await flush();release();for(let i=0;i<12;i++)await flush();
+ assert.ok(notices.some(n=>n.message_id==='human-final'));
+ assert.ok(notices.some(n=>n.message_id==='correction-final'));
+ assert.equal(s.messages.length,0);assert.equal(s.sent.length,0);
+});
+
+test('a single large decorative batch does not discard its final useful message',async t=>{
+ const s=await session(t);const messages=Array.from({length:400},(_,i)=>({key:{id:'bulk-sticker-'+i,fromMe:false,remoteJid:phone+'@s.whatsapp.net'},message:{stickerMessage:{}},messageTimestamp:100}));
+ messages.push({key:{id:'bulk-final',fromMe:false,remoteJid:phone+'@s.whatsapp.net'},message:{conversation:'Qual o preço do corte?'},messageTimestamp:100});
+ s.client.ev.emit('messages.upsert',{type:'notify',messages});await flush();await flush();
+ assert.equal(s.messages.length,1);assert.equal(s.messages[0].text,'Qual o preço do corte?');assert.equal(s.notices.length,1);
+});

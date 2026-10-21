@@ -1,0 +1,70 @@
+{
+  "acceptance": [
+    "Persisted adopted channel with global control0 obtains valid revision1 and succeeds under real SQL authority guard",
+    "Global control1 stays compatible",
+    "Human/paused controls return human with no inference",
+    "Fence revoked after authentication fails409 before initial control row/inference",
+    "Context scopes all reset after each request; no outbound sender called"
+  ],
+  "artifact_sha256": {
+    "admin-scope-cleanup.log": "167dff40f55fbba91f360850661abc9d9a2f56afcfd3baf677253e5685c3e1fc",
+    "admin-scope-pg-final.log": "7f66465f8c45bf8361dc4e483f768f7d53f7e0dc324aa9ef0973c094a5a19afc",
+    "admin-scope-pg-final.xml": "eaa89eb911e57b99df3c76913fb30eac1decc0589c80229b2f78aa64aeede768",
+    "admin-scope-pg-network.json": "72d95e2b801eb29f93922845c7dfe05802f8bc07e0e1b9381c4f20b9309c5ba9"
+  },
+  "candidate_commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+  "generated_at_utc": "2026-10-21T00:06:58.391891+00:00",
+  "manual_inventory": {
+    "dependency_hash_drift": 0,
+    "direct_hash_drift": 0,
+    "file": "manual-emit.json",
+    "qr_records_refreshed": 81,
+    "records": 184,
+    "sha256": "661022ebd24a3b0325fb3951129e528c4d38e1061a3e9a7361090927bad3adc3"
+  },
+  "not_added_again_to_counts": {
+    "API_agent_unit_cases": "separately recorded by API/orchestrator",
+    "lease_postgres_cases": 15,
+    "lease_unit_cases": 10
+  },
+  "preservation": {
+    "clone_dropped": true,
+    "created_clone_oid_owner_verified_before_drop": true,
+    "original_aggregate_sha256_after": "0087630001f879e3576bbd222647e55f679c0851f400859eec53dbb05df75e66",
+    "original_aggregate_sha256_before": "0087630001f879e3576bbd222647e55f679c0851f400859eec53dbb05df75e66",
+    "original_public_tables": 84,
+    "original_revision": "0029_communication_contract",
+    "original_sequence_after": [
+      101,
+      true
+    ],
+    "original_sequence_before": [
+      101,
+      true
+    ],
+    "owned_postgres_stopped": true,
+    "pg_hba_roles_or_credentials_changed": false
+  },
+  "production_or_campaign_activation_or_real_messages_sent": false,
+  "qualification_limit": "Local authentication remains trust; queries/roles/RLS/SQL guards are real. Linux CI with distinct SCRAM passwords is separate. No LLM/provider/phone integration is claimed.",
+  "results": {
+    "case_names": [
+      "test_adopted_ingress_reads_initial_authority_with_real_transaction_guard[0-None-False]",
+      "test_adopted_ingress_reads_initial_authority_with_real_transaction_guard[1-None-False]",
+      "test_adopted_ingress_reads_initial_authority_with_real_transaction_guard[0-human-False]",
+      "test_adopted_ingress_reads_initial_authority_with_real_transaction_guard[0-paused-False]",
+      "test_adopted_ingress_reads_initial_authority_with_real_transaction_guard[0-None-True]"
+    ],
+    "errors": 0,
+    "failures": 0,
+    "postgres_cases_passed": 5
+  },
+  "scope": "Five real PostgreSQL16 tests on disposable synthetic 0030 clone; real channel authentication/RLS/control/transaction guards; run_locked inference and provider transport replaced by local fakes. No Redis/production/Railway used.",
+  "source_sha256": {
+    "app/inbox_control.py": "c0dd316a94e2fffd525b75581c16ac5c954fb69bc6c23df4f37ede7824c31ac7",
+    "app/qr_ai.py": "ad88122248c997bc2dbdd5828aa72bbae72e08125ee2a3868559aa0df092a92b",
+    "app/qr_channel_scope.py": "8cb80281883c947acaba09af07325b4204e8e67b2b9b5c21bc4ca6154f0ee043",
+    "tests/integration/test_qr_adopted_ingress_postgres.py": "67ad148f3ed2c838b8ecb9218d46338fc572e2b6bdf32c83d16c29897d71c275",
+    "tests/unit/test_qr_managed_adoption_scope.py": "95ab0f3e148d3892279019d70e809e4706d578de3221cd4edd01976d4cdf98bc"
+  }
+}

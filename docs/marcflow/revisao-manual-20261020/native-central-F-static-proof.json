@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "created_at_utc": "2026-10-21T00:38:14.029879+00:00",
+  "scope": "Validação estática local somente; shlex,AST,compile e comparação de literais/recibos. Nenhum hook/binding/gate foi executado.",
+  "prepared_file": "native-central-F-prepared.json",
+  "input_worker_config_sha256": "9b49fa8a90295fe4d16ec5ca78d19acf14fc4cbc92fde14b61a4f1c2ca514b72",
+  "checks": {
+    "baseline_single_predeploy_command": true,
+    "baseline_python_c_shlex_roundtrip": true,
+    "proposed_python_c_shlex_roundtrip": true,
+    "proposed_ast_parse_and_compile": true,
+    "baseline_ast_preserved_except_safe_flag_print": true,
+    "inserted_statements": 3,
+    "pins_count": 18,
+    "all_pins_match_qualified_CI52_pin_receipt": true,
+    "binding_call_preserved_before_gate": true,
+    "gate_module": "scripts.wait_for_admin_identity_schema",
+    "gate_check_true": true,
+    "gate_schema_marker": "0030_legacy_admin_identity",
+    "start_command_preserved": "arq app.worker.WorkerSettings",
+    "safe_flag_names_count": 13,
+    "safe_flag_names_unique": true,
+    "print_masks_non_boolean_values": true,
+    "credentials_not_in_print_or_updates": true,
+    "api_updates_exactly_control_send": true,
+    "worker_updates_exactly_control_send_legacy": true,
+    "native_flag_present_in_snapshot_names": true,
+    "no_owner_or_one_time_updates_proposed": true,
+    "repo_branch_build_start_and_other_deploy_fields_preserved": true,
+    "no_migration_or_operator_variable_names_in_worker_snapshot": true
+  },
+  "expected18_versions": {
+    "fastapi": "0.150.0",
+    "starlette": "1.9.0",
+    "SQLAlchemy": "2.1.5",
+    "asyncpg": "0.32.0",
+    "uvicorn": "0.54.0",
+    "uvloop": "0.23.0",
+    "pydantic": "2.14.1",
+    "pydantic_core": "2.50.1",
+    "redis": "5.3.1",
+    "arq": "0.28.0",
+    "cryptography": "49.0.0",
+    "httpx": "0.28.1",
+    "psycopg": "3.3.6",
+    "Pillow": "12.3.0",
+    "pillow_heif": "1.8.1",
+    "boto3": "1.43.116",
+    "argon2_cffi": "25.1.0",
+    "tzdata": "2026.5"
+  },
+  "safe_logged_flags": [
+    "QR_AI_ENABLED",
+    "QR_CHANNELS_ENABLED",
+    "QR_LEGACY_CENTRAL_ENABLED",
+    "META_LIVE_SEND",
+    "INBOX_CONTROL_ENABLED",
+    "INBOX_SEND_ENABLED",
+    "INBOX_TOOLS_ENABLED",
+    "MARKETING_EXECUTION_ENABLED",
+    "MARKETING_RECONCILIATION_ENABLED",
+    "BIRTHDAY_COLLECTION_ENABLED",
+    "GROQ_PROBE_ON_START",
+    "ORION_EMAIL_DELIVERY_PROBE",
+    "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED"
+  ],
+  "source_references": {
+    "app/legacy_admin_identity.py": {
+      "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+      "sha256": "d97a7b05b2f0c7778d63172a9f88d704b8fa152733895518b5d9c9724e8766c5"
+    },
+    "scripts/wait_for_admin_identity_schema.py": {
+      "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+      "sha256": "4695c26c076dab7c9d3ccf0427c405cbfab302b8360caa507bc9eee1d7486d2c"
+    },
+    "railway.worker.json": {
+      "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+      "sha256": "3dbf40ac6c7820add0cea847e7a1c5871cc962971e8f7735af6fc8992beac890"
+    }
+  },
+  "qualified_ci_evidence": {
+    "file": "ci-a85da1c-final-evidence.json",
+    "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+    "status": "passed",
+    "sha256": "c8b2256b6c8f1d438c7ef6f528eb87355926c23a44ddeff4e94f8da5842f80b6"
+  },
+  "pin_evidence": {
+    "file": "constraints-ci-a85da1c-proof.json",
+    "sha256": "459e18b09bde2cd7516480b7bab3a677a3a2a159d275c7677d1224722ea87959",
+    "expected52": 52,
+    "matched104": 104
+  },
+  "activity": {
+    "application_tests_executed": 0,
+    "runtime_or_hook_execution": 0,
+    "production_calls": 0,
+    "staging_calls": 0,
+    "deployments": 0,
+    "repository_edits": 0,
+    "database_or_session_mutations": 0
+  },
+  "not_proven": [
+    "E concluído",
+    "saúdeD atual reconsultada",
+    "valores efetivos das flags/referências atuais",
+    "imagem publicada e worker iniciado",
+    "login/envio real"
+  ],
+  "prepared_sha256": "3307a88482b73a5299a8ee81d90de5dc65f478f988f1f323e71fe944f20f875f"
+}

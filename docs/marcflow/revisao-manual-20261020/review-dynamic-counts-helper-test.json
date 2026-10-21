@@ -1,0 +1,63 @@
+{
+  "scope": "Generator-only synthetic temporary fixtures; no app, provider or production tests",
+  "cases": [
+    {
+      "schema_version": 1,
+      "scope": "offline HTMLParser plus JSDOM, real report and malicious-source fixture",
+      "report_sha256": "6830fa8721bacfaa2ad76b476897d61c17d88fdfd9139c585f9cd079bafed547",
+      "compact_sha256": "833711c5f461595b9a09d753f9b1388ccfa0ea36aafde96750698f4949635de5",
+      "source_records": 1247,
+      "rendered_records": 1247,
+      "expanded_records": 1247,
+      "findings": 12,
+      "observations": 13,
+      "source_and_dependency_files": 90,
+      "search_by_id": true,
+      "search_file": true,
+      "search_kind": true,
+      "empty_search": true,
+      "pagination": true,
+      "finding_links": true,
+      "source_conclusions_present": true,
+      "injected_markup_nodes": 0,
+      "injected_script_execution": false,
+      "network_attempts": 0,
+      "jsdom_errors": [],
+      "receipt_status": "pending, no completion receipt supplied",
+      "tests_are_artifact_checks_not_application_acceptance": true
+    },
+    {
+      "schema_version": 1,
+      "scope": "offline HTMLParser plus JSDOM, real report and malicious-source fixture",
+      "report_sha256": "d0da665facfd27e3335848a8386482f8c4e6241c28d904f1e9861285d6ac1d02",
+      "compact_sha256": "97094b3a28b40aba9c96ad51c3e8f41516b970ab902dc74aee42e54eb9e38e54",
+      "source_records": 1247,
+      "rendered_records": 1247,
+      "expanded_records": 1247,
+      "findings": 13,
+      "observations": 14,
+      "source_and_dependency_files": 90,
+      "search_by_id": true,
+      "search_file": true,
+      "search_kind": true,
+      "empty_search": true,
+      "pagination": true,
+      "finding_links": true,
+      "source_conclusions_present": true,
+      "injected_markup_nodes": 0,
+      "injected_script_execution": false,
+      "network_attempts": 0,
+      "jsdom_errors": [],
+      "receipt_status": "pending, no completion receipt supplied",
+      "tests_are_artifact_checks_not_application_acceptance": true
+    }
+  ],
+  "fail_closed_rejections": [
+    "id",
+    "range",
+    "source_hash",
+    "dependency_hash",
+    "finding_summary"
+  ],
+  "real_report_receipt_and_consolidated_unchanged": true
+}

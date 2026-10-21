@@ -279,6 +279,18 @@ async def qr_status(actor:Actor=Depends(authenticate)):
     return await _bridge("/internal/status")
 
 
+@router.get('/health/central', include_in_schema=False)
+async def central_health():
+    """No contacts, session credentials, model call or provider message."""
+    from app.qr_legacy import enabled
+    if not enabled():
+        return {'status': 'disabled'}
+    result = await _bridge('/internal/legacy-central/status')
+    if result.get('ready') is not True or result.get('connected') is not True:
+        raise HTTPException(503, 'A sessão principal ainda não está pronta na central')
+    return {'status': 'ok', 'legacy_ready': True, 'session_preserved': True}
+
+
 @router.get("/api/v1/qr/image")
 async def qr_image(actor:Actor=Depends(authenticate)):
     support_only(actor)
@@ -367,6 +379,10 @@ async def qr_disconnect(data:ConfirmDisconnect,actor:Actor=Depends(authenticate)
 @router.post("/api/v1/qr/send")
 async def qr_send(data:SendPayload,actor:Actor=Depends(authenticate)):
     support_only(actor)
+    from app.inbox_control import enabled
+    from app.qr_legacy import require_managed_path
+    if enabled() or await require_managed_path():
+        raise HTTPException(423,"Use o canal gerenciado na central de atendimento")
     return await _bridge("/internal/send","POST",data.model_dump())
 
 

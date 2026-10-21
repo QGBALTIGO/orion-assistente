@@ -1,0 +1,194 @@
+{
+  "verified_at_utc": "2026-10-21T00:53:07.665Z",
+  "deployment_id": "5501a2cf-a57e-42d6-8cb7-4ae2468f9dcd",
+  "status": "SUCCESS",
+  "deployment_reported_commit": "168872acffc015b4aaf51c4d96fda46720d66ba5",
+  "configured_source_commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+  "runtime_equivalence_verified_to": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+  "reported_commit_also_ci_passed": "ci-168872a-final-evidence.json",
+  "adoption": {
+    "timestamp": "2026-10-21T00:50:49.908766262Z",
+    "message": "",
+    "level": "info",
+    "authority_adopted": true,
+    "backup_bytes": 477386,
+    "backup_id": "0a1fa3b2-4d80-46cb-99f7-1c31900f9113",
+    "backup_sha256": "15385bd8367c974534fc5745d19b49ea620430733fe074ced5ee642ed29aab2e",
+    "phase": "activate",
+    "preserved_counts": {
+      "alembic_version": 1,
+      "appointment_history": 31,
+      "appointment_items": 18,
+      "appointments": 13,
+      "authorized_staff": 0,
+      "automation_contact_state": 1,
+      "automation_execution": 0,
+      "automation_jobs": 0,
+      "billing_events": 0,
+      "business_onboarding": 2,
+      "business_onboarding_creations": 2,
+      "business_onboarding_operations": 10,
+      "business_profile_events": 4,
+      "business_profile_state": 2,
+      "business_profile_versions": 3,
+      "calendar_outbox": 6,
+      "campaign_recipients": 0,
+      "campaigns": 0,
+      "commercial_complements": 0,
+      "commercial_events": 0,
+      "commercial_inventory": 0,
+      "commercial_orders": 0,
+      "commercial_products": 0,
+      "commercial_quote_items": 0,
+      "commercial_quotes": 0,
+      "commercial_variants": 0,
+      "commission_advance_allocations": 0,
+      "commission_settlements": 0,
+      "communication_pending": 0,
+      "contact_consents": 0,
+      "customers": 1,
+      "financial_entries": 0,
+      "google_connections": 1,
+      "human_handoffs": 0,
+      "inbound_events": 0,
+      "inbox_channel_links": 0,
+      "inbox_control_events": 0,
+      "inbox_controls": 0,
+      "inbox_customer_labels": 0,
+      "inbox_labels": 0,
+      "inbox_messages": 0,
+      "inbox_provider_receipts": 0,
+      "inbox_quick_replies": 0,
+      "inbox_reads": 0,
+      "loyalty_coupons": 0,
+      "loyalty_rules": 0,
+      "loyalty_transactions": 0,
+      "management_ai_runs": 9,
+      "management_block_occurrences": 0,
+      "management_block_series": 0,
+      "management_notification_reads": 0,
+      "management_preferences": 0,
+      "management_requests": 6,
+      "management_site_preferences": 1,
+      "management_team_invitations": 0,
+      "message_outbox": 0,
+      "panel_accounts": 3,
+      "panel_email_tokens": 0,
+      "plans": 0,
+      "platform_audit": 3,
+      "professional_goals": 0,
+      "professional_services": 9,
+      "professionals": 4,
+      "public_booking_receipts": 0,
+      "public_site_daily_metrics": 0,
+      "qr_channels": 2,
+      "sales_requests": 0,
+      "schedule_blocks": 0,
+      "service_addons": 1,
+      "service_package_items": 3,
+      "service_packages": 1,
+      "services": 5,
+      "subscriptions": 0,
+      "tenant_audit": 50,
+      "tenant_membership_events": 2,
+      "tenant_memberships": 3,
+      "tenant_probe": 0,
+      "tenants": 3,
+      "time_off": 0,
+      "usage_counters": 1,
+      "whatsapp_channels": 0,
+      "workflow_definitions": 0,
+      "working_breaks": 6,
+      "working_hours": 17
+    },
+    "registered": true,
+    "rehearsal_verified": true,
+    "restore_verified": true,
+    "revision": "0030_legacy_admin_identity",
+    "session_preserved": true,
+    "status": "complete"
+  },
+  "preflight_ready": true,
+  "readiness_guard_point_in_time_not_atomic": true,
+  "predeploy_safe_markers": [
+    {
+      "timestamp": "2026-10-21T00:50:45.705342263Z",
+      "message": "tested_runtime_versions_match",
+      "level": "info"
+    },
+    {
+      "timestamp": "2026-10-21T00:50:45.705345783Z",
+      "message": "orion_release_flags={\"BIRTHDAY_COLLECTION_ENABLED\": \"0\", \"GROQ_PROBE_ON_START\": \"0\", \"INBOX_CONTROL_ENABLED\": \"0\", \"INBOX_SEND_ENABLED\": \"0\", \"INBOX_TOOLS_ENABLED\": \"1\", \"MARKETING_EXECUTION_ENABLED\": \"0\", \"MARKETING_RECONCILIATION_ENABLED\": \"0\", \"META_LIVE_SEND\": \"0\", \"ORION_EMAIL_DELIVERY_PROBE\": \"0\", \"QR_AI_ENABLED\": \"1\", \"QR_CHANNELS_ENABLED\": \"1\", \"QR_LEGACY_CENTRAL_ENABLED\": \"1\"}",
+      "level": "info"
+    },
+    {
+      "timestamp": "2026-10-21T00:50:45.810194685Z",
+      "message": "",
+      "level": "info",
+      "ok": true,
+      "status": "admin_identity_schema_ready",
+      "schema_marker": "0030_legacy_admin_identity"
+    },
+    {
+      "timestamp": "2026-10-21T00:50:46.077374342Z",
+      "message": "legacy_central_preflight_ready",
+      "level": "info"
+    },
+    {
+      "timestamp": "2026-10-21T00:50:50.117649184Z",
+      "message": "qr_bridge_probe_start",
+      "level": "info"
+    },
+    {
+      "timestamp": "2026-10-21T00:50:50.884936182Z",
+      "message": "Orion QR: CONNECTED_TO_PRIVATE_BRIDGE, state=connected",
+      "level": "info"
+    }
+  ],
+  "cleanup": {
+    "normal_hook_matches": true,
+    "hook_update": {
+      "service": {
+        "id": "1d39a32e-8297-4e5b-8b55-d6540542e80b",
+        "name": "orion-assistente"
+      },
+      "environmentId": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+      "updatedFields": [
+        "preDeployCommand"
+      ],
+      "staged": null
+    },
+    "requested_variables": {
+      "ORION_RUN_LEGACY_ADOPTION": "0",
+      "ORION_LEGACY_ADOPTION_RUN_ID": "",
+      "ORION_LEGACY_ADOPTION_PHASE": "register"
+    },
+    "variable_update": {
+      "environment": {
+        "id": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+        "name": "production"
+      },
+      "serviceId": "1d39a32e-8297-4e5b-8b55-d6540542e80b",
+      "variableNames": [
+        "ORION_LEGACY_ADOPTION_PHASE",
+        "ORION_LEGACY_ADOPTION_RUN_ID",
+        "ORION_RUN_LEGACY_ADOPTION"
+      ],
+      "skippedDeploys": true,
+      "staged": null
+    },
+    "kept_native_and_qr_legacy_flags1": true,
+    "control_send0_at_this_phase": true,
+    "no_additional_deployment": true
+  },
+  "qr_volumeMounts": {
+    "96a57936-6572-4604-887b-a7c8123263ff": {
+      "mountPath": "/data"
+    }
+  },
+  "public_readiness_assets_proof": "public-after-native-central-E.json",
+  "preserved_records_scope": "Operator normalized snapshot comparison preserves original records; only authorized link/control rows may be inserted. Counts are before adoption, not a blanket claim about ordinary traffic outside this operation.",
+  "no_task_test_messages_or_campaigns": true,
+  "observed_user_triggered_publication": true,
+  "explicit_text_confirmation_not_yet_received": true
+}

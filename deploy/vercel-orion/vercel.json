@@ -1,0 +1,100 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "framework": null,
+  "buildCommand": null,
+  "installCommand": null,
+  "outputDirectory": "public",
+  "public": false,
+  "routes": [
+    {
+      "src": "/(.*)",
+      "headers": {
+        "Cache-Control": "private, no-store, max-age=0",
+        "CDN-Cache-Control": "no-store",
+        "Vercel-CDN-Cache-Control": "no-store",
+        "x-vercel-enable-rewrite-caching": "0",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin"
+      },
+      "continue": true
+    },
+    {
+      "src": "/(.*)",
+      "methods": ["OPTIONS"],
+      "status": 403
+    },
+    {
+      "src": "/.*(?:%|\\.\\.|\\\\).*",
+      "dest": "/404.html",
+      "status": 404
+    },
+    {
+      "src": "/(?:internal|docs|redoc|openapi\\.json|webhooks|\\.git|\\.env|backups?|reports?|scripts|tests|deploy)(?:/.*)?",
+      "dest": "/404.html",
+      "status": 404
+    },
+    {
+      "src": "/api/v1/tenants/[^/]+/google/connect/?",
+      "methods": ["POST"],
+      "dest": "/google-origin.json",
+      "status": 409,
+      "headers": {"Content-Type": "application/json; charset=utf-8"}
+    },
+    {
+      "src": "/integrations/google/callback/?",
+      "dest": "/google-origin.json",
+      "status": 409,
+      "headers": {"Content-Type": "application/json; charset=utf-8"}
+    },
+    {
+      "src": "/((?:auth/(?:login|logout|register|verify(?:/resend)?|password/(?:forgot|reset))|api/public/sales-requests|api/v1/(?:account|admin|onboarding|ops|public|qr|team-invitations|tenants)(?:/[^%\\\\]*)?))",
+      "methods": ["POST", "PUT", "PATCH", "DELETE"],
+      "has": [
+        {"type": "host", "value": {"eq": "orion-painel-iota.vercel.app"}},
+        {"type": "header", "key": "origin", "value": {"eq": "https://orion-painel-iota.vercel.app"}}
+      ],
+      "dest": "https://orion-assistente-production.up.railway.app/$1",
+      "transforms": [
+        {"type": "request.headers", "op": "set", "target": {"key": "origin"}, "args": "https://orion-assistente-production.up.railway.app"},
+        {"type": "request.headers", "op": "delete", "target": {"key": "forwarded"}},
+        {"type": "request.headers", "op": "delete", "target": {"key": "x-forwarded-host"}}
+      ]
+    },
+    {
+      "src": "/(.*)",
+      "methods": ["POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT"],
+      "dest": "/403.html",
+      "status": 403
+    },
+    {
+      "src": "/",
+      "methods": ["GET", "HEAD"],
+      "dest": "/index.html"
+    },
+    {
+      "src": "/panel-assets/orion-suite\\.js",
+      "methods": ["GET", "HEAD"],
+      "dest": "/orion-suite-vercel.js"
+    },
+    {
+      "src": "/(panel|convite|conectar-whatsapp)/",
+      "methods": ["GET", "HEAD"],
+      "dest": "https://orion-assistente-production.up.railway.app/$1"
+    },
+    {
+      "src": "/((?:panel/?|convite/?|conectar-whatsapp/?|auth/(?:me|features)|health(?:/(?:whatsapp|central))?|(?:brand|landing-assets|panel-assets|public-assets|media)/[^%\\\\]+|s/[^/%\\\\]+/?|app/site-preview/[^/%\\\\]+/?|api/v1/(?:account|admin|onboarding|ops|public|qr|team-invitations|tenants)(?:/[^%\\\\]*)?))",
+      "methods": ["GET", "HEAD"],
+      "dest": "https://orion-assistente-production.up.railway.app/$1",
+      "transforms": [
+        {"type": "request.headers", "op": "delete", "target": {"key": "forwarded"}},
+        {"type": "request.headers", "op": "delete", "target": {"key": "x-forwarded-host"}}
+      ]
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/404.html",
+      "status": 404
+    }
+  ]
+}

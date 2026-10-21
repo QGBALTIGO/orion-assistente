@@ -1,0 +1,7 @@
+{
+  "started_at": "2026-10-21T00:03:48.683301+00:00",
+  "completed_at": "2026-10-21T00:04:21.126766+00:00",
+  "exit_code": 0,
+  "external_network_blocked_attempts": [],
+  "scope": "existing tests/unit; mock providers and fake databases; no live model or real integration"
+}

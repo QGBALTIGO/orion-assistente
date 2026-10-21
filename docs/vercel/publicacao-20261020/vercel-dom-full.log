@@ -1,0 +1,2006 @@
+TAP version 13
+# Subtest: unverified Google connection explains the requirement and verifies only this accounts email
+ok 1 - unverified Google connection explains the requirement and verifies only this accounts email
+  ---
+  duration_ms: 1501.139
+  type: 'test'
+  ...
+# Subtest: agenda displays actual names and distinct lifecycle labels without guessing cancellation origin
+ok 2 - agenda displays actual names and distinct lifecycle labels without guessing cancellation origin
+  ---
+  duration_ms: 269.2629
+  type: 'test'
+  ...
+# Subtest: calendar keeps cancellations and no-shows outside occupied slots and leaves them actionable for consultation
+ok 3 - calendar keeps cancellations and no-shows outside occupied slots and leaves them actionable for consultation
+  ---
+  duration_ms: 365.3373
+  type: 'test'
+  ...
+# Subtest: filter requests use SQL pagination, professional, cancellation requester, and name or phone query
+ok 4 - filter requests use SQL pagination, professional, cancellation requester, and name or phone query
+  ---
+  duration_ms: 262.1571
+  type: 'test'
+  ...
+# Subtest: a stale agenda response cannot replace newer search results
+ok 5 - a stale agenda response cannot replace newer search results
+  ---
+  duration_ms: 191.3961
+  type: 'test'
+  ...
+# Subtest: calendar loads complete batches and disables grid creation at its explicit 1000 item limit
+ok 6 - calendar loads complete batches and disables grid creation at its explicit 1000 item limit
+  ---
+  duration_ms: 3206.4081
+  type: 'test'
+  ...
+# Subtest: list pagination preserves an honest total and moves by the returned page limit
+ok 7 - list pagination preserves an honest total and moves by the returned page limit
+  ---
+  duration_ms: 239.5635
+  type: 'test'
+  ...
+# Subtest: opening a cached appointment always obtains fresh detail and safely escapes its content
+ok 8 - opening a cached appointment always obtains fresh detail and safely escapes its content
+  ---
+  duration_ms: 119.4145
+  type: 'test'
+  ...
+# Subtest: a late detail response cannot replace a different appointment or reopen a closed drawer
+ok 9 - a late detail response cannot replace a different appointment or reopen a closed drawer
+  ---
+  duration_ms: 120.6683
+  type: 'test'
+  ...
+# Subtest: changing tenant discards both old detail and old search timer
+ok 10 - changing tenant discards both old detail and old search timer
+  ---
+  duration_ms: 460.4123
+  type: 'test'
+  ...
+# Subtest: failed detail has only a retry and never exposes stale mutation actions
+ok 11 - failed detail has only a retry and never exposes stale mutation actions
+  ---
+  duration_ms: 81.2213
+  type: 'test'
+  ...
+# Subtest: viewer and absent server capabilities prevent appointment mutations
+ok 12 - viewer and absent server capabilities prevent appointment mutations
+  ---
+  duration_ms: 194.7196
+  type: 'test'
+  ...
+# Subtest: cancellation records explicit customer origin with exact version, reason, and one operation
+ok 13 - cancellation records explicit customer origin with exact version, reason, and one operation
+  ---
+  duration_ms: 196.7777
+  type: 'test'
+  ...
+# Subtest: cancellation records explicit professional origin with exact version, reason, and one operation
+ok 14 - cancellation records explicit professional origin with exact version, reason, and one operation
+  ---
+  duration_ms: 219.5513
+  type: 'test'
+  ...
+# Subtest: cancellation records explicit business origin with exact version, reason, and one operation
+ok 15 - cancellation records explicit business origin with exact version, reason, and one operation
+  ---
+  duration_ms: 216.5038
+  type: 'test'
+  ...
+# Subtest: conflict reloads fresh details and requires another deliberate review without repeating the operation
+ok 16 - conflict reloads fresh details and requires another deliberate review without repeating the operation
+  ---
+  duration_ms: 152.4466
+  type: 'test'
+  ...
+# Subtest: an uncertain mutation freezes its intent and retries the identical version and idempotency key
+ok 17 - an uncertain mutation freezes its intent and retries the identical version and idempotency key
+  ---
+  duration_ms: 141.6691
+  type: 'test'
+  ...
+# Subtest: rescheduling excludes only the current booking from availability and submits the selected server slot
+ok 18 - rescheduling excludes only the current booking from availability and submits the selected server slot
+  ---
+  duration_ms: 113.9634
+  type: 'test'
+  ...
+# Subtest: a stale availability response cannot restore slots for a previous reschedule date
+ok 19 - a stale availability response cannot restore slots for a previous reschedule date
+  ---
+  duration_ms: 94.3
+  type: 'test'
+  ...
+# Subtest: no-show uses lifecycle guard while completion remains separate from payment
+ok 20 - no-show uses lifecycle guard while completion remains separate from payment
+  ---
+  duration_ms: 80.6276
+  type: 'test'
+  ...
+# Subtest: complete uses lifecycle guard while completion remains separate from payment
+ok 21 - complete uses lifecycle guard while completion remains separate from payment
+  ---
+  duration_ms: 76.1727
+  type: 'test'
+  ...
+# Subtest: closing the drawer restores focus and Escape is blocked only while a mutation is in flight
+ok 22 - closing the drawer restores focus and Escape is blocked only while a mutation is in flight
+  ---
+  duration_ms: 207.9126
+  type: 'test'
+  ...
+# Subtest: agenda tabs provide arrow navigation and a single tab stop per tab group
+ok 23 - agenda tabs provide arrow navigation and a single tab stop per tab group
+  ---
+  duration_ms: 98.3544
+  type: 'test'
+  ...
+# Subtest: Google failure is independent of agenda and does not trigger connection or retry writes
+ok 24 - Google failure is independent of agenda and does not trigger connection or retry writes
+  ---
+  duration_ms: 54.3324
+  type: 'test'
+  ...
+# Subtest: unconfigured Google and viewer capabilities have no operational controls
+ok 25 - unconfigured Google and viewer capabilities have no operational controls
+  ---
+  duration_ms: 123.8399
+  type: 'test'
+  ...
+# Subtest: Google connection is explicit POST only after disclosure and rejects an unexpected authorization host
+ok 26 - Google connection is explicit POST only after disclosure and rejects an unexpected authorization host
+  ---
+  duration_ms: 78.4118
+  type: 'test'
+  ...
+# Subtest: Google calendar activation requires explicit selection and preserves a locked canonical calendar
+ok 27 - Google calendar activation requires explicit selection and preserves a locked canonical calendar
+  ---
+  duration_ms: 76.4774
+  type: 'test'
+  ...
+# Subtest: OAuth return for the selected tenant opens calendar choice without activating or connecting automatically
+ok 28 - OAuth return for the selected tenant opens calendar choice without activating or connecting automatically
+  ---
+  duration_ms: 52.2288
+  type: 'test'
+  ...
+# Subtest: late Google appointment sync cannot replace another detail and private contact actions only copy
+ok 29 - late Google appointment sync cannot replace another detail and private contact actions only copy
+  ---
+  duration_ms: 73.7822
+  type: 'test'
+  ...
+# Subtest: persisted hold expiration has a distinct label and system cancellation alone does not imply expiration
+ok 30 - persisted hold expiration has a distinct label and system cancellation alone does not imply expiration
+  ---
+  duration_ms: 73.7606
+  type: 'test'
+  ...
+# Subtest: Google primary alias accepts only canonical calendars explicitly marked selectable by the server
+ok 31 - Google primary alias accepts only canonical calendars explicitly marked selectable by the server
+  ---
+  duration_ms: 66.289
+  type: 'test'
+  ...
+# Subtest: Google error codes become bounded Portuguese guidance and never expose an unexpected raw provider error
+ok 32 - Google error codes become bounded Portuguese guidance and never expose an unexpected raw provider error
+  ---
+  duration_ms: 65.6749
+  type: 'test'
+  ...
+# Subtest: Google historical exclusion and absent credentials are honest distinct conditions
+ok 33 - Google historical exclusion and absent credentials are honest distinct conditions
+  ---
+  duration_ms: 121.6511
+  type: 'test'
+  ...
+# Subtest: toque em agendamento preserva o cartão como origem mesmo se Safari mantiver foco na área inteira
+ok 34 - toque em agendamento preserva o cartão como origem mesmo se Safari mantiver foco na área inteira
+  ---
+  duration_ms: 56.5944
+  type: 'test'
+  ...
+# Subtest: CSS diferencia toque de teclado apenas no tabpanel, na contagem e no título do modal
+ok 35 - CSS diferencia toque de teclado apenas no tabpanel, na contagem e no título do modal
+  ---
+  duration_ms: 1.4558
+  type: 'test'
+  ...
+# Subtest: busca da agenda reserva espaço para a lupa sem sobrepor o texto
+ok 36 - busca da agenda reserva espaço para a lupa sem sobrepor o texto
+  ---
+  duration_ms: 40.8835
+  type: 'test'
+  ...
+# Subtest: monitor e atualizar têm quadrados 44px, ícones 20px e continuam funcionais
+ok 37 - monitor e atualizar têm quadrados 44px, ícones 20px e continuam funcionais
+  ---
+  duration_ms: 99.1118
+  type: 'test'
+  ...
+# Subtest: ícone atualizar usa arcos equilibrados e setas do mesmo padrão da suíte
+ok 38 - ícone atualizar usa arcos equilibrados e setas do mesmo padrão da suíte
+  ---
+  duration_ms: 2.4733
+  type: 'test'
+  ...
+# Subtest: detalhes usam botões só de ícone sem estilos de botões com texto
+ok 39 - detalhes usam botões só de ícone sem estilos de botões com texto
+  ---
+  duration_ms: 86.46
+  type: 'test'
+  ...
+# Subtest: CSS mantém X e atualizar quadrados, centrados e adaptados ao celular
+ok 40 - CSS mantém X e atualizar quadrados, centrados e adaptados ao celular
+  ---
+  duration_ms: 2.3818
+  type: 'test'
+  ...
+# Subtest: loading reviewed execution is read-only and a disabled rollout is labelled as draft
+ok 41 - loading reviewed execution is read-only and a disabled rollout is labelled as draft
+  ---
+  duration_ms: 265.4268
+  type: 'test'
+  ...
+# Subtest: accepted transport is never presented as delivered or physically readable
+ok 42 - accepted transport is never presented as delivered or physically readable
+  ---
+  duration_ms: 61.9454
+  type: 'test'
+  ...
+# Subtest: a viewer has monitoring but no consent, activation or campaign actions
+ok 43 - a viewer has monitoring but no consent, activation or campaign actions
+  ---
+  duration_ms: 41.9171
+  type: 'test'
+  ...
+# Subtest: execution needs an explicit reviewed submit and carries CAS and a stable request identity
+ok 44 - execution needs an explicit reviewed submit and carries CAS and a stable request identity
+  ---
+  duration_ms: 194.4702
+  type: 'test'
+  ...
+# Subtest: an uncertain settings response offers only the same idempotent request, without automatic retry
+ok 45 - an uncertain settings response offers only the same idempotent request, without automatic retry
+  ---
+  duration_ms: 109.3935
+  type: 'test'
+  ...
+# Subtest: consent is loaded separately and cannot be inferred from an existing customer phone
+ok 46 - consent is loaded separately and cannot be inferred from an existing customer phone
+  ---
+  duration_ms: 111.7293
+  type: 'test'
+  ...
+# Subtest: campaign preview escapes text and does not approve or send
+ok 47 - campaign preview escapes text and does not approve or send
+  ---
+  duration_ms: 48.5741
+  type: 'test'
+  ...
+# Subtest: delivery reconciliation is an explicit read of the prior operation and carries no message text
+ok 48 - delivery reconciliation is an explicit read of the prior operation and carries no message text
+  ---
+  duration_ms: 54.3239
+  type: 'test'
+  ...
+# Subtest: a late prior-company response cannot populate the current monitoring screen
+ok 49 - a late prior-company response cannot populate the current monitoring screen
+  ---
+  duration_ms: 53.5215
+  type: 'test'
+  ...
+# Subtest: failed authorization refresh discards previously enabled execution instead of permitting stale writes
+ok 50 - failed authorization refresh discards previously enabled execution instead of permitting stale writes
+  ---
+  duration_ms: 42.2679
+  type: 'test'
+  ...
+# Subtest: failed job or channel reads never become a usable empty result
+ok 51 - failed job or channel reads never become a usable empty result
+  ---
+  duration_ms: 158.716
+  type: 'test'
+  ...
+# Subtest: reconciliation-only mode allows checking prior delivery but cannot offer execution or contact writes
+ok 52 - reconciliation-only mode allows checking prior delivery but cannot offer execution or contact writes
+  ---
+  duration_ms: 78.2292
+  type: 'test'
+  ...
+# Subtest: execution authorization binds to the displayed preferences version and needs current explicit review
+ok 53 - execution authorization binds to the displayed preferences version and needs current explicit review
+  ---
+  duration_ms: 91.1055
+  type: 'test'
+  ...
+# Subtest: a missing preferences version cannot be replaced with a guessed version when authorizing
+ok 54 - a missing preferences version cannot be replaced with a guessed version when authorizing
+  ---
+  duration_ms: 125.8312
+  type: 'test'
+  ...
+# Subtest: a failed second contact read clears the first contacts permissions and pause controls
+ok 55 - a failed second contact read clears the first contacts permissions and pause controls
+  ---
+  duration_ms: 139.3612
+  type: 'test'
+  ...
+# Subtest: pausing a loaded contact is separate reviewed intent, strict boolean, and re-reads actual pause
+ok 56 - pausing a loaded contact is separate reviewed intent, strict boolean, and re-reads actual pause
+  ---
+  duration_ms: 229.521
+  type: 'test'
+  ...
+# Subtest: resume rechecks human handoff and never claims messages were resent or contact already unpaused
+ok 57 - resume rechecks human handoff and never claims messages were resent or contact already unpaused
+  ---
+  duration_ms: 212.6972
+  type: 'test'
+  ...
+# Subtest: an unknown contact pause is retried only by the identical explicit setter
+ok 58 - an unknown contact pause is retried only by the identical explicit setter
+  ---
+  duration_ms: 147.9472
+  type: 'test'
+  ...
+# Subtest: unknown human-pause status is not shown as unpaused or given a resume control
+ok 59 - unknown human-pause status is not shown as unpaused or given a resume control
+  ---
+  duration_ms: 81.9608
+  type: 'test'
+  ...
+# Subtest: a foreign campaign review cannot authorize the selected campaign
+ok 60 - a foreign campaign review cannot authorize the selected campaign
+  ---
+  duration_ms: 77.9289
+  type: 'test'
+  ...
+# Subtest: confirmation retry preserves the original hold and updates the selected customer before booking
+ok 61 - confirmation retry preserves the original hold and updates the selected customer before booking
+  ---
+  duration_ms: 1741.1465
+  type: 'test'
+  ...
+# Subtest: an uncertain hold request is retried with exactly the same idempotency key and booking intent
+ok 62 - an uncertain hold request is retried with exactly the same idempotency key and booking intent
+  ---
+  duration_ms: 459.1422
+  type: 'test'
+  ...
+# Subtest: a customer phone update with a lost response is verified by id before creating the hold
+ok 63 - a customer phone update with a lost response is verified by id before creating the hold
+  ---
+  duration_ms: 284.9253
+  type: 'test'
+  ...
+# Subtest: an explicit foreign country code is not rewritten into a Brazilian customer number
+ok 64 - an explicit foreign country code is not rewritten into a Brazilian customer number
+  ---
+  duration_ms: 219.017
+  type: 'test'
+  ...
+# Subtest: add-ons use a single server-prepared service id for both availability and the hold
+ok 65 - add-ons use a single server-prepared service id for both availability and the hold
+  ---
+  duration_ms: 249.5989
+  type: 'test'
+  ...
+# Subtest: switching to multiple individual services removes the earlier add-on variant from availability
+ok 66 - switching to multiple individual services removes the earlier add-on variant from availability
+  ---
+  duration_ms: 165.5036
+  type: 'test'
+  ...
+# Subtest: a late availability response cannot overwrite slots for a newer service selection
+ok 67 - a late availability response cannot overwrite slots for a newer service selection
+  ---
+  duration_ms: 96.5063
+  type: 'test'
+  ...
+# Subtest: recurring block submission preserves Monday-based weekdays without requiring the repeat checkbox
+ok 68 - recurring block submission preserves Monday-based weekdays without requiring the repeat checkbox
+  ---
+  duration_ms: 178.2356
+  type: 'test'
+  ...
+# Subtest: an all-day block ignores the hidden hourly recurrence controls
+ok 69 - an all-day block ignores the hidden hourly recurrence controls
+  ---
+  duration_ms: 165.8205
+  type: 'test'
+  ...
+# Subtest: the tenant-change guard can retain the current company and its unsaved form
+ok 70 - the tenant-change guard can retain the current company and its unsaved form
+  ---
+  duration_ms: 51.7095
+  type: 'test'
+  ...
+# Subtest: switching companies clears the search debounce and notification content from the previous company
+ok 71 - switching companies clears the search debounce and notification content from the previous company
+  ---
+  duration_ms: 392.9296
+  type: 'test'
+  ...
+# Subtest: AI retry reuses its key only for unchanged content
+ok 72 - AI retry reuses its key only for unchanged content
+  ---
+  duration_ms: 146.0321
+  type: 'test'
+  ...
+# Subtest: a late-night customer visit is displayed on the date in the company timezone
+ok 73 - a late-night customer visit is displayed on the date in the company timezone
+  ---
+  duration_ms: 99.385
+  type: 'test'
+  ...
+# Subtest: preserved primary session offers status and assistant control without reconnect or QR actions
+ok 74 - preserved primary session offers status and assistant control without reconnect or QR actions
+  ---
+  duration_ms: 753.9375
+  type: 'test'
+  ...
+# Subtest: connect enables only the selected device then starts with its new revision, never the assistant
+ok 75 - connect enables only the selected device then starts with its new revision, never the assistant
+  ---
+  duration_ms: 204.2556
+  type: 'test'
+  ...
+# Subtest: uncertain enable or start never automatically repeats either connection operation
+ok 76 - uncertain enable or start never automatically repeats either connection operation
+  ---
+  duration_ms: 595.6105
+  type: 'test'
+  ...
+# Subtest: switching business before enable returns cannot start the old device
+ok 77 - switching business before enable returns cannot start the old device
+  ---
+  duration_ms: 268.9271
+  type: 'test'
+  ...
+# Subtest: QR is shown automatically only during an explicitly started connection flow
+ok 78 - QR is shown automatically only during an explicitly started connection flow
+  ---
+  duration_ms: 386.6899
+  type: 'test'
+  ...
+# Subtest: opening the list performs no start, activation, send or legacy operation
+ok 79 - opening the list performs no start, activation, send or legacy operation
+  ---
+  duration_ms: 101.388
+  type: 'test'
+  ...
+# Subtest: disabled feature shows unavailable without touching the existing connector
+ok 80 - disabled feature shows unavailable without touching the existing connector
+  ---
+  duration_ms: 58.0276
+  type: 'test'
+  ...
+# Subtest: viewers and a different channel owner cannot invoke mutations
+ok 81 - viewers and a different channel owner cannot invoke mutations
+  ---
+  duration_ms: 108.8906
+  type: 'test'
+  ...
+# Subtest: a read-only list has no create or mutation controls
+ok 82 - a read-only list has no create or mutation controls
+  ---
+  duration_ms: 80.8036
+  type: 'test'
+  ...
+# Subtest: new channel needs an explicit submit and sends no enabled or assistant flag
+ok 83 - new channel needs an explicit submit and sends no enabled or assistant flag
+  ---
+  duration_ms: 208.0786
+  type: 'test'
+  ...
+# Subtest: allowlist validation rejects duplicates, nonphones, foreign numbers and excess entries before POST
+ok 84 - allowlist validation rejects duplicates, nonphones, foreign numbers and excess entries before POST
+  ---
+  duration_ms: 122.7037
+  type: 'test'
+  ...
+# Subtest: the one-time credential is absent from state, logs, URLs and persistent browser storage
+ok 85 - the one-time credential is absent from state, logs, URLs and persistent browser storage
+  ---
+  duration_ms: 118.8701
+  type: 'test'
+  ...
+# Subtest: create response loss is recovered only by explicit repetition of the identical intent
+ok 86 - create response loss is recovered only by explicit repetition of the identical intent
+  ---
+  duration_ms: 118.9371
+  type: 'test'
+  ...
+# Subtest: canceling creation performs no write and keeps the registered channels
+ok 87 - canceling creation performs no write and keeps the registered channels
+  ---
+  duration_ms: 50.7865
+  type: 'test'
+  ...
+# Subtest: enabling the channel requires a review and cannot enable the assistant or start a session
+ok 88 - enabling the channel requires a review and cannot enable the assistant or start a session
+  ---
+  duration_ms: 79.7454
+  type: 'test'
+  ...
+# Subtest: start is an independent POST with current revision and no channel secret
+ok 89 - start is an independent POST with current revision and no channel secret
+  ---
+  duration_ms: 128.8434
+  type: 'test'
+  ...
+# Subtest: assistant activation has its own explicit acknowledgement and PATCH
+ok 90 - assistant activation has its own explicit acknowledgement and PATCH
+  ---
+  duration_ms: 124.1139
+  type: 'test'
+  ...
+# Subtest: stop preserves channel/assistant configuration and never calls delete or logout
+ok 91 - stop preserves channel/assistant configuration and never calls delete or logout
+  ---
+  duration_ms: 79.6074
+  type: 'test'
+  ...
+# Subtest: a stale-revision rejection never retries the state change automatically
+ok 92 - a stale-revision rejection never retries the state change automatically
+  ---
+  duration_ms: 113.8402
+  type: 'test'
+  ...
+# Subtest: status polling is serialized and stops on unmount
+ok 93 - status polling is serialized and stops on unmount
+  ---
+  duration_ms: 54.492
+  type: 'test'
+  ...
+# Subtest: hidden or inactive hosts do not poll and discard one-time private content
+ok 94 - hidden or inactive hosts do not poll and discard one-time private content
+  ---
+  duration_ms: 66.3168
+  type: 'test'
+  ...
+# Subtest: a delayed status or QR from channel A cannot replace the selected channel B
+ok 95 - a delayed status or QR from channel A cannot replace the selected channel B
+  ---
+  duration_ms: 128.184
+  type: 'test'
+  ...
+# Subtest: tenant switch drops old credentials and refuses a delayed previous-company response
+ok 96 - tenant switch drops old credentials and refuses a delayed previous-company response
+  ---
+  duration_ms: 55.4605
+  type: 'test'
+  ...
+# Subtest: QR display accepts only scoped PNG with matching revision and erases it at expiry
+ok 97 - QR display accepts only scoped PNG with matching revision and erases it at expiry
+  ---
+  duration_ms: 154.3448
+  type: 'test'
+  ...
+# Subtest: foreign, stale or non-PNG QR payloads never become browser images
+ok 98 - foreign, stale or non-PNG QR payloads never become browser images
+  ---
+  duration_ms: 139.6585
+  type: 'test'
+  ...
+# Subtest: status failures show unknown rather than inventing a successful disconnection or connection
+ok 99 - status failures show unknown rather than inventing a successful disconnection or connection
+  ---
+  duration_ms: 50.5395
+  type: 'test'
+  ...
+# Subtest: channel labels cannot inject HTML and no key appears after a replay
+ok 100 - channel labels cannot inject HTML and no key appears after a replay
+  ---
+  duration_ms: 55.2259
+  type: 'test'
+  ...
+# Subtest: confirmation pauses polling so an acknowledgement cannot be erased by a background response
+ok 101 - confirmation pauses polling so an acknowledgement cannot be erased by a background response
+  ---
+  duration_ms: 110.7094
+  type: 'test'
+  ...
+# Subtest: a changed server revision blocks old authority and does not start an immediate reload loop
+ok 102 - a changed server revision blocks old authority and does not start an immediate reload loop
+  ---
+  duration_ms: 55.8926
+  type: 'test'
+  ...
+# Subtest: an invalid status contract backs off without inventing a state or recursive GETs
+ok 103 - an invalid status contract backs off without inventing a state or recursive GETs
+  ---
+  duration_ms: 121.8095
+  type: 'test'
+  ...
+# Subtest: Serviços mostra círculo multicolorido integrado aos presets e input nativo sem retângulo
+ok 104 - Serviços mostra círculo multicolorido integrado aos presets e input nativo sem retângulo
+  ---
+  duration_ms: 1453.783
+  type: 'test'
+  ...
+# Subtest: Cores prontas e personalizadas sincronizam swatch, marcação e payload do serviço
+ok 105 - Cores prontas e personalizadas sincronizam swatch, marcação e payload do serviço
+  ---
+  duration_ms: 429.3322
+  type: 'test'
+  ...
+# Subtest: Cor na agenda do profissional tem o mesmo seletor circular e valor visível
+ok 106 - Cor na agenda do profissional tem o mesmo seletor circular e valor visível
+  ---
+  duration_ms: 144.339
+  type: 'test'
+  ...
+# Subtest: Cor principal do Meu Site usa o controle circular e só grava após Salvar
+ok 107 - Cor principal do Meu Site usa o controle circular e só grava após Salvar
+  ---
+  duration_ms: 273.99
+  type: 'test'
+  ...
+# Subtest: Pessoas sem permissão não podem abrir o controle de edição de cores
+ok 108 - Pessoas sem permissão não podem abrir o controle de edição de cores
+  ---
+  duration_ms: 147.5585
+  type: 'test'
+  ...
+# Subtest: CSS mantém roda em círculo, swatch visível e foco, sem estilo retangular antigo
+ok 109 - CSS mantém roda em círculo, swatch visível e foco, sem estilo retangular antigo
+  ---
+  duration_ms: 66.0636
+  type: 'test'
+  ...
+# Subtest: opening the review reads facts without any mutation or send and escapes customer text
+ok 110 - opening the review reads facts without any mutation or send and escapes customer text
+  ---
+  duration_ms: 297.8901
+  type: 'test'
+  ...
+# Subtest: preview uses a real customer and appointment, carries preference CAS and never enqueues
+ok 111 - preview uses a real customer and appointment, carries preference CAS and never enqueues
+  ---
+  duration_ms: 802.2181
+  type: 'test'
+  ...
+# Subtest: late preview from another tenant cannot populate the new screen
+ok 112 - late preview from another tenant cannot populate the new screen
+  ---
+  duration_ms: 150.6666
+  type: 'test'
+  ...
+# Subtest: search and appointment requests remain tenant scoped and clear prior choices
+ok 113 - search and appointment requests remain tenant scoped and clear prior choices
+  ---
+  duration_ms: 133.8574
+  type: 'test'
+  ...
+# Subtest: saving send windows preserves custom rules, sends the weekday policy and does not activate
+ok 114 - saving send windows preserves custom rules, sends the weekday policy and does not activate
+  ---
+  duration_ms: 192.5923
+  type: 'test'
+  ...
+# Subtest: acknowledgment carries only the pending notice CAS and never resumes AI
+ok 115 - acknowledgment carries only the pending notice CAS and never resumes AI
+  ---
+  duration_ms: 157.918
+  type: 'test'
+  ...
+# Subtest: viewer can review facts but cannot edit policies, links or acknowledge notices
+ok 116 - viewer can review facts but cannot edit policies, links or acknowledge notices
+  ---
+  duration_ms: 113.6368
+  type: 'test'
+  ...
+# Subtest: conversations show available names and search names or phones at 390px
+ok 117 - conversations show available names and search names or phones at 390px
+  ---
+  duration_ms: 1960.1914
+  type: 'test'
+  ...
+# Subtest: conversations show available names and search names or phones at 820px
+ok 118 - conversations show available names and search names or phones at 820px
+  ---
+  duration_ms: 1178.4743
+  type: 'test'
+  ...
+# Subtest: conversations show available names and search names or phones at 1366px
+ok 119 - conversations show available names and search names or phones at 1366px
+  ---
+  duration_ms: 542.0364
+  type: 'test'
+  ...
+# Subtest: updated contact metadata changes the visible title without disturbing the selected phone or draft
+ok 120 - updated contact metadata changes the visible title without disturbing the selected phone or draft
+  ---
+  duration_ms: 643.8304
+  type: 'test'
+  ...
+# Subtest: equal WhatsApp names keep distinct recipients and untrusted names render only as text
+ok 121 - equal WhatsApp names keep distinct recipients and untrusted names render only as text
+  ---
+  duration_ms: 551.5902
+  type: 'test'
+  ...
+# Subtest: conversation text is escaped, reader controls are disabled and no send occurs on load
+ok 122 - conversation text is escaped, reader controls are disabled and no send occurs on load
+  ---
+  duration_ms: 1078.0857
+  type: 'test'
+  ...
+# Subtest: a synthetic submit cannot enqueue when legacy_without_identity
+ok 123 - a synthetic submit cannot enqueue when legacy_without_identity
+  ---
+  duration_ms: 177.4506
+  type: 'test'
+  ...
+# Subtest: a synthetic submit cannot enqueue when identified_but_unassigned
+ok 124 - a synthetic submit cannot enqueue when identified_but_unassigned
+  ---
+  duration_ms: 193.1557
+  type: 'test'
+  ...
+# Subtest: a synthetic submit cannot enqueue when send_disabled
+ok 125 - a synthetic submit cannot enqueue when send_disabled
+  ---
+  duration_ms: 101.0622
+  type: 'test'
+  ...
+# Subtest: an identified administrator can review a draft with no automatic write
+ok 126 - an identified administrator can review a draft with no automatic write
+  ---
+  duration_ms: 183.4383
+  type: 'test'
+  ...
+# Subtest: preserved device history is loaded explicitly, escaped and never marks or sends messages
+ok 127 - preserved device history is loaded explicitly, escaped and never marks or sends messages
+  ---
+  duration_ms: 177.2838
+  type: 'test'
+  ...
+# Subtest: a response lost after enqueue preserves the same operation for an explicit retry
+ok 128 - a response lost after enqueue preserves the same operation for an explicit retry
+  ---
+  duration_ms: 199.7928
+  type: 'test'
+  ...
+# Subtest: resuming the AI updates authority and disables the human composer
+ok 129 - resuming the AI updates authority and disables the human composer
+  ---
+  duration_ms: 230.5707
+  type: 'test'
+  ...
+# Subtest: an old tenant response cannot repopulate the next tenant or send by itself
+ok 130 - an old tenant response cannot repopulate the next tenant or send by itself
+  ---
+  duration_ms: 86.1781
+  type: 'test'
+  ...
+# Subtest: an uncertain slot blocks every operator transition and preserves the result distinction
+ok 131 - an uncertain slot blocks every operator transition and preserves the result distinction
+  ---
+  duration_ms: 108.3521
+  type: 'test'
+  ...
+# Subtest: novo cliente apresenta campos com ícones, notas visíveis e Mais dados nativo recolhido
+ok 132 - novo cliente apresenta campos com ícones, notas visíveis e Mais dados nativo recolhido
+  ---
+  duration_ms: 1454.8999
+  type: 'test'
+  ...
+# Subtest: cadastro envia os mesmos campos mesmo quando Mais dados permanece fechado
+ok 133 - cadastro envia os mesmos campos mesmo quando Mais dados permanece fechado
+  ---
+  duration_ms: 540.9949
+  type: 'test'
+  ...
+# Subtest: edição mantém dados, detalhes preenchidos abertos, estatísticas e versão
+ok 134 - edição mantém dados, detalhes preenchidos abertos, estatísticas e versão
+  ---
+  duration_ms: 271.068
+  type: 'test'
+  ...
+# Subtest: usuário leitor continua sem permissão de gravação e conteúdo é escapado
+ok 135 - usuário leitor continua sem permissão de gravação e conteúdo é escapado
+  ---
+  duration_ms: 240.5002
+  type: 'test'
+  ...
+# Subtest: estilos de clientes respeitam o tema e têm foco e layout responsivo sem mexer em outros formulários
+ok 136 - estilos de clientes respeitam o tema e têm foco e layout responsivo sem mexer em outros formulários
+  ---
+  duration_ms: 24.8596
+  type: 'test'
+  ...
+# Subtest: mais e menos dados usam dois rótulos e SVGs alinhados conforme open
+ok 137 - mais e menos dados usam dois rótulos e SVGs alinhados conforme open
+  ---
+  duration_ms: 153.2515
+  type: 'test'
+  ...
+# Subtest: aniversário mantém ícone e conteúdo nativo da data centralizados no Safari
+ok 138 - aniversário mantém ícone e conteúdo nativo da data centralizados no Safari
+  ---
+  duration_ms: 124.2711
+  type: 'test'
+  ...
+# Subtest: totais altos ocupam uma linha inteira e não truncam valores monetários
+ok 139 - totais altos ocupam uma linha inteira e não truncam valores monetários
+  ---
+  duration_ms: 138.4171
+  type: 'test'
+  ...
+# Subtest: WhatsApp shortcut opens only the tenant channels for owner, without starting a session
+ok 140 - WhatsApp shortcut opens only the tenant channels for owner, without starting a session
+  ---
+  duration_ms: 1462.1729
+  type: 'test'
+  ...
+# Subtest: WhatsApp shortcut opens only the tenant channels for editor, without starting a session
+ok 141 - WhatsApp shortcut opens only the tenant channels for editor, without starting a session
+  ---
+  duration_ms: 241.9329
+  type: 'test'
+  ...
+# Subtest: WhatsApp shortcut opens only the tenant channels for viewer, without starting a session
+ok 142 - WhatsApp shortcut opens only the tenant channels for viewer, without starting a session
+  ---
+  duration_ms: 292.1013
+  type: 'test'
+  ...
+# Subtest: navigation keeps WhatsApp first, a single Dashboard, and Atendimento after Gestão
+ok 143 - navigation keeps WhatsApp first, a single Dashboard, and Atendimento after Gestão
+  ---
+  duration_ms: 115.5772
+  type: 'test'
+  ...
+# Subtest: the acelerar deep link canonicalizes to Dashboard while preserving tenant and query context
+ok 144 - the acelerar deep link canonicalizes to Dashboard while preserving tenant and query context
+  ---
+  duration_ms: 152.1503
+  type: 'test'
+  ...
+# Subtest: Dashboard retains quick actions, factual onboarding, daily totals, settings and site access
+ok 145 - Dashboard retains quick actions, factual onboarding, daily totals, settings and site access
+  ---
+  duration_ms: 240.6262
+  type: 'test'
+  ...
+# Subtest: Dashboard viewer can navigate but cannot create or access the WhatsApp operator routes
+ok 146 - Dashboard viewer can navigate but cannot create or access the WhatsApp operator routes
+  ---
+  duration_ms: 228.5633
+  type: 'test'
+  ...
+# Subtest: Customers uses useful manual names before resolved metadata, with safe phone and emoji fallbacks
+ok 147 - Customers uses useful manual names before resolved metadata, with safe phone and emoji fallbacks
+  ---
+  duration_ms: 166.2044
+  type: 'test'
+  ...
+# Subtest: generic customer placeholders are normalized before falling back to WhatsApp metadata
+ok 148 - generic customer placeholders are normalized before falling back to WhatsApp metadata
+  ---
+  duration_ms: 141.4725
+  type: 'test'
+  ...
+# Subtest: editing a resolved customer retains the stored manual name and does not write metadata fields
+ok 149 - editing a resolved customer retains the stored manual name and does not write metadata fields
+  ---
+  duration_ms: 130.9128
+  type: 'test'
+  ...
+# Subtest: deleting a resolved customer names the visible person and preserves explicit confirmation and version
+ok 150 - deleting a resolved customer names the visible person and preserves explicit confirmation and version
+  ---
+  duration_ms: 106.3289
+  type: 'test'
+  ...
+# Subtest: customer search sends names and formatted phones to the tenant-scoped read endpoint
+ok 151 - customer search sends names and formatted phones to the tenant-scoped read endpoint
+  ---
+  duration_ms: 631.6986
+  type: 'test'
+  ...
+# Subtest: Serviços: intervalos e adicionais aparecem como cartões sem triângulos, mantendo campos e funcionamento
+ok 152 - Serviços: intervalos e adicionais aparecem como cartões sem triângulos, mantendo campos e funcionamento
+  ---
+  duration_ms: 1483.5549
+  type: 'test'
+  ...
+# Subtest: Financeiro: pagamento e observações continuam no disclosure acessível
+ok 153 - Financeiro: pagamento e observações continuam no disclosure acessível
+  ---
+  duration_ms: 393.4601
+  type: 'test'
+  ...
+# Subtest: Clientes mantém seu expansor Mais/Menos dados já padronizado
+ok 154 - Clientes mantém seu expansor Mais/Menos dados já padronizado
+  ---
+  duration_ms: 126.2415
+  type: 'test'
+  ...
+# Subtest: Áreas antigas do painel exibem <details> nativos, inclusive informações da empresa
+ok 155 - Áreas antigas do painel exibem <details> nativos, inclusive informações da empresa
+  ---
+  duration_ms: 504.0163
+  type: 'test'
+  ...
+# Subtest: Seções de Marketing, IA e solicitações continuam usando details com um chevron único
+ok 156 - Seções de Marketing, IA e solicitações continuam usando details com um chevron único
+  ---
+  duration_ms: 21.5645
+  type: 'test'
+  ...
+# Subtest: CSS padroniza os cards e oculta marcadores nativos sem remover foco ou movimento reduzido
+ok 157 - CSS padroniza os cards e oculta marcadores nativos sem remover foco ou movimento reduzido
+  ---
+  duration_ms: 4.9561
+  type: 'test'
+  ...
+# Subtest: Consultor IA mantém dimensões quadradas, ícone centrado e área de toque adequada
+ok 158 - Consultor IA mantém dimensões quadradas, ícone centrado e área de toque adequada
+  ---
+  duration_ms: 113.4484
+  type: 'test'
+  ...
+# Subtest: rótulo continua acessível, sem alargar o botão por hover persistente no toque
+ok 159 - rótulo continua acessível, sem alargar o botão por hover persistente no toque
+  ---
+  duration_ms: 0.7767
+  type: 'test'
+  ...
+# Subtest: atalho flutuante segue acessível e mantém navegação para Consultor IA
+ok 160 - atalho flutuante segue acessível e mantém navegação para Consultor IA
+  ---
+  duration_ms: 1411.2279
+  type: 'test'
+  ...
+# Subtest: opening and selecting a flow never executes or simulates it
+ok 161 - opening and selecting a flow never executes or simulates it
+  ---
+  duration_ms: 580.6622
+  type: 'test'
+  ...
+# Subtest: reader can simulate a saved draft but cannot edit or save it
+ok 162 - reader can simulate a saved draft but cannot edit or save it
+  ---
+  duration_ms: 51.465
+  type: 'test'
+  ...
+# Subtest: a failed flow save preserves ordered steps and draft text
+ok 163 - a failed flow save preserves ordered steps and draft text
+  ---
+  duration_ms: 60.0614
+  type: 'test'
+  ...
+# Subtest: disabled tools show an honest setup state and issue no mutation
+ok 164 - disabled tools show an honest setup state and issue no mutation
+  ---
+  duration_ms: 522.6177
+  type: 'test'
+  ...
+# Subtest: CRM labels escape markup and selecting a customer never creates a duplicate record
+ok 165 - CRM labels escape markup and selecting a customer never creates a duplicate record
+  ---
+  duration_ms: 182.647
+  type: 'test'
+  ...
+# Subtest: a reader cannot create, delete or label a customer after a refresh
+ok 166 - a reader cannot create, delete or label a customer after a refresh
+  ---
+  duration_ms: 72.559
+  type: 'test'
+  ...
+# Subtest: a failed save preserves the draft and never retries automatically
+ok 167 - a failed save preserves the draft and never retries automatically
+  ---
+  duration_ms: 65.9588
+  type: 'test'
+  ...
+# Subtest: a prepared reply explicitly remains unsent and uses the current stored revision
+ok 168 - a prepared reply explicitly remains unsent and uses the current stored revision
+  ---
+  duration_ms: 40.6779
+  type: 'test'
+  ...
+# Subtest: a late response from a prior company cannot repopulate the current company
+ok 169 - a late response from a prior company cannot repopulate the current company
+  ---
+  duration_ms: 39.5472
+  type: 'test'
+  ...
+# Subtest: changing company during a save releases the old screen and a late result cannot unlock the new save
+ok 170 - changing company during a save releases the old screen and a late result cannot unlock the new save
+  ---
+  duration_ms: 107.9245
+  type: 'test'
+  ...
+# Subtest: support usernames and remember payload survive the redesign while pending login sends only once
+ok 171 - support usernames and remember payload survive the redesign while pending login sends only once
+  ---
+  duration_ms: 2090.2686
+  type: 'test'
+  ...
+# Subtest: a rejected login restores the form and preserves a useful error for another attempt
+ok 172 - a rejected login restores the form and preserves a useful error for another attempt
+  ---
+  duration_ms: 934.6862
+  type: 'test'
+  ...
+# Subtest: a delayed availability response cannot unlock controls during an active login
+ok 173 - a delayed availability response cannot unlock controls during an active login
+  ---
+  duration_ms: 449.1808
+  type: 'test'
+  ...
+# Subtest: registration errors remain visible after the availability refresh
+ok 174 - registration errors remain visible after the availability refresh
+  ---
+  duration_ms: 347.2015
+  type: 'test'
+  ...
+# Subtest: disabled registration and recovery keep their explanation when moving between screens
+ok 175 - disabled registration and recovery keep their explanation when moving between screens
+  ---
+  duration_ms: 698.1259
+  type: 'test'
+  ...
+# Subtest: a newly created account returns to login and enters only its member area without an OTP step
+ok 176 - a newly created account returns to login and enters only its member area without an OTP step
+  ---
+  duration_ms: 736.0017
+  type: 'test'
+  ...
+# Subtest: recovery preserves the generic response, six-digit code and password confirmation flow
+ok 177 - recovery preserves the generic response, six-digit code and password confirmation flow
+  ---
+  duration_ms: 703.7374
+  type: 'test'
+  ...
+# Subtest: login and registration tabs expose their panels and support keyboard navigation
+ok 178 - login and registration tabs expose their panels and support keyboard navigation
+  ---
+  duration_ms: 483.6198
+  type: 'test'
+  ...
+# Subtest: login theme choices share the saved preference, selected state and logo with administration
+ok 179 - login theme choices share the saved preference, selected state and logo with administration
+  ---
+  duration_ms: 553.7974
+  type: 'test'
+  ...
+# Subtest: login theme menu survives focus loss without a destination before a touch selection
+ok 180 - login theme menu survives focus loss without a destination before a touch selection
+  ---
+  duration_ms: 661.0902
+  type: 'test'
+  ...
+# Subtest: login theme menu closes when keyboard focus moves outside without stealing that focus
+ok 181 - login theme menu closes when keyboard focus moves outside without stealing that focus
+  ---
+  duration_ms: 366.035
+  type: 'test'
+  ...
+# Subtest: showing passwords announces the state and returns focus without changing their value
+ok 182 - showing passwords announces the state and returns focus without changing their value
+  ---
+  duration_ms: 289.4155
+  type: 'test'
+  ...
+# Subtest: legacy QR page confirms the link without promising that existing automation is disabled
+ok 183 - legacy QR page confirms the link without promising that existing automation is disabled
+  ---
+  duration_ms: 846.0455
+  type: 'test'
+  ...
+# Subtest: tracking coverage renders the stated MS timezone even on a device whose default is UTC
+ok 184 - tracking coverage renders the stated MS timezone even on a device whose default is UTC
+  ---
+  duration_ms: 1819.0723
+  type: 'test'
+  ...
+# Subtest: Meta queue distinguishes an uncertain prior attempt from a confirmed failure
+ok 185 - Meta queue distinguishes an uncertain prior attempt from a confirmed failure
+  ---
+  duration_ms: 160.4349
+  type: 'test'
+  ...
+# Subtest: saved campaign approved is displayed by its actual status and remains read-only
+ok 186 - saved campaign approved is displayed by its actual status and remains read-only
+  ---
+  duration_ms: 102.2819
+  type: 'test'
+  ...
+# Subtest: saved campaign paused is displayed by its actual status and remains read-only
+ok 187 - saved campaign paused is displayed by its actual status and remains read-only
+  ---
+  duration_ms: 100.1385
+  type: 'test'
+  ...
+# Subtest: saved campaign archived is displayed by its actual status and remains read-only
+ok 188 - saved campaign archived is displayed by its actual status and remains read-only
+  ---
+  duration_ms: 75.6489
+  type: 'test'
+  ...
+# Subtest: late hours failure cannot overwrite a different dialog in the same tenant
+ok 189 - late hours failure cannot overwrite a different dialog in the same tenant
+  ---
+  duration_ms: 90.4141
+  type: 'test'
+  ...
+# Subtest: late hours success cannot overwrite a newly opened hours dialog for the same professional
+ok 190 - late hours success cannot overwrite a newly opened hours dialog for the same professional
+  ---
+  duration_ms: 77.3148
+  type: 'test'
+  ...
+# Subtest: late hours failure after a tenant switch cannot reopen the old tenant dialog
+ok 191 - late hours failure after a tenant switch cannot reopen the old tenant dialog
+  ---
+  duration_ms: 100.9278
+  type: 'test'
+  ...
+# Subtest: saving an automation checkbox preserves custom template whitespace exactly
+ok 192 - saving an automation checkbox preserves custom template whitespace exactly
+  ---
+  duration_ms: 131.6454
+  type: 'test'
+  ...
+# Subtest: serviço oferece seleção de foto, prévia de link legado e envia o arquivo no escopo da empresa
+ok 193 - serviço oferece seleção de foto, prévia de link legado e envia o arquivo no escopo da empresa
+  ---
+  duration_ms: 1570.745
+  type: 'test'
+  ...
+# Subtest: cliente rejeita formato inválido e arquivo acima de 8MB antes da rede
+ok 194 - cliente rejeita formato inválido e arquivo acima de 8MB antes da rede
+  ---
+  duration_ms: 404.2893
+  type: 'test'
+  ...
+# Subtest: site usa mesma seleção no logo e na capa, preservando rascunho e upload sem auto-publicar
+ok 195 - site usa mesma seleção no logo e na capa, preservando rascunho e upload sem auto-publicar
+  ---
+  duration_ms: 151.609
+  type: 'test'
+  ...
+# Subtest: leitor não pode usar o seletor nem retirar fotos
+ok 196 - leitor não pode usar o seletor nem retirar fotos
+  ---
+  duration_ms: 221.845
+  type: 'test'
+  ...
+# Subtest: resposta inválida ou de outra empresa não altera o cadastro
+ok 197 - resposta inválida ou de outra empresa não altera o cadastro
+  ---
+  duration_ms: 149.2958
+  type: 'test'
+  ...
+# Subtest: upload pendente impede salvar um formulário antes de obter a URL final
+ok 198 - upload pendente impede salvar um formulário antes de obter a URL final
+  ---
+  duration_ms: 184.5568
+  type: 'test'
+  ...
+# Subtest: CSS dos uploads mantém upload responsivo, preview e hierarquia sem URLs editáveis
+ok 199 - CSS dos uploads mantém upload responsivo, preview e hierarquia sem URLs editáveis
+  ---
+  duration_ms: 11.4212
+  type: 'test'
+  ...
+# Subtest: the single management menu prioritizes WhatsApp and preserves existing atendimento links
+ok 200 - the single management menu prioritizes WhatsApp and preserves existing atendimento links
+  ---
+  duration_ms: 2326.8223
+  type: 'test'
+  ...
+# Subtest: member deep links and direct navigation never load the global WhatsApp operation
+ok 201 - member deep links and direct navigation never load the global WhatsApp operation
+  ---
+  duration_ms: 871.6712
+  type: 'test'
+  ...
+# Subtest: the top connection entry keeps the pairing wizard, authenticated request and code expiry
+ok 202 - the top connection entry keeps the pairing wizard, authenticated request and code expiry
+  ---
+  duration_ms: 546.5478
+  type: 'test'
+  ...
+# Subtest: mobile contact navigation preserves each draft, history and reading position without sending
+ok 203 - mobile contact navigation preserves each draft, history and reading position without sending
+  ---
+  duration_ms: 760.1626
+  type: 'test'
+  ...
+# Subtest: logout clears mobile conversation state and late reads cannot contaminate the next session
+ok 204 - logout clears mobile conversation state and late reads cannot contaminate the next session
+  ---
+  duration_ms: 879.582
+  type: 'test'
+  ...
+# Subtest: manual sending locks only its transport attempt and clears only the reviewed draft
+ok 205 - manual sending locks only its transport attempt and clears only the reviewed draft
+  ---
+  duration_ms: 820.4638
+  type: 'test'
+  ...
+# Subtest: unauthenticated mount makes no request and never creates a business
+ok 206 - unauthenticated mount makes no request and never creates a business
+  ---
+  duration_ms: 235.4149
+  type: 'test'
+  ...
+# Subtest: disabled rollout and legacy dashboard leave the existing panel intact
+ok 207 - disabled rollout and legacy dashboard leave the existing panel intact
+  ---
+  duration_ms: 57.4216
+  type: 'test'
+  ...
+# Subtest: new member sees empty real fields, explicit niche and timezone, without a write on page load
+ok 208 - new member sees empty real fields, explicit niche and timezone, without a write on page load
+  ---
+  duration_ms: 176.701
+  type: 'test'
+  ...
+# Subtest: pending invitation cannot silently create a business or grant owner access
+ok 209 - pending invitation cannot silently create a business or grant owner access
+  ---
+  duration_ms: 54.0111
+  type: 'test'
+  ...
+# Subtest: business chooser resolves only an explicit authorized selection
+ok 210 - business chooser resolves only an explicit authorized selection
+  ---
+  duration_ms: 102.4623
+  type: 'test'
+  ...
+# Subtest: late response from business A cannot replace business B or issue a stale completion callback
+ok 211 - late response from business A cannot replace business B or issue a stale completion callback
+  ---
+  duration_ms: 69.6779
+  type: 'test'
+  ...
+# Subtest: unmount drops private forms and ignores an outstanding read
+ok 212 - unmount drops private forms and ignores an outstanding read
+  ---
+  duration_ms: 27.7465
+  type: 'test'
+  ...
+# Subtest: business labels and backend messages are rendered as text
+ok 213 - business labels and backend messages are rendered as text
+  ---
+  duration_ms: 85.8362
+  type: 'test'
+  ...
+# Subtest: products-only server steps omit professional scheduling requirements from progress
+ok 214 - products-only server steps omit professional scheduling requirements from progress
+  ---
+  duration_ms: 302.3766
+  type: 'test'
+  ...
+# Subtest: mounting twice does not duplicate handlers or replace navigation
+ok 215 - mounting twice does not duplicate handlers or replace navigation
+  ---
+  duration_ms: 165.688
+  type: 'test'
+  ...
+# Subtest: entry failure stays visible and cannot pretend the setup is complete
+ok 216 - entry failure stays visible and cannot pretend the setup is complete
+  ---
+  duration_ms: 51.9088
+  type: 'test'
+  ...
+# Subtest: explicit new-business creation does not reuse the selected business facts
+ok 217 - explicit new-business creation does not reuse the selected business facts
+  ---
+  duration_ms: 58.7433
+  type: 'test'
+  ...
+# Subtest: explicit createNew opens an independent empty setup after checking server entitlement
+ok 218 - explicit createNew opens an independent empty setup after checking server entitlement
+  ---
+  duration_ms: 116.7088
+  type: 'test'
+  ...
+# Subtest: revoked create entitlement cannot be bypassed by the createNew client option
+ok 219 - revoked create entitlement cannot be bypassed by the createNew client option
+  ---
+  duration_ms: 165.9678
+  type: 'test'
+  ...
+# Subtest: disabled rollout takes priority over an explicit createNew request
+ok 220 - disabled rollout takes priority over an explicit createNew request
+  ---
+  duration_ms: 65.9213
+  type: 'test'
+  ...
+# Subtest: the shipped panel enters setup after authentication without creating a company on GET
+ok 221 - the shipped panel enters setup after authentication without creating a company on GET
+  ---
+  duration_ms: 1385.1293
+  type: 'test'
+  ...
+# Subtest: the dashboard stays covered while the authenticated entry decision is loading
+ok 222 - the dashboard stays covered while the authenticated entry decision is loading
+  ---
+  duration_ms: 705.5928
+  type: 'test'
+  ...
+# Subtest: a failed entry request keeps a recoverable setup screen, without bypass to an empty dashboard
+ok 223 - a failed entry request keeps a recoverable setup screen, without bypass to an empty dashboard
+  ---
+  duration_ms: 474.6978
+  type: 'test'
+  ...
+# Subtest: an incomplete business resumes its own stored step and does not publish channels
+ok 224 - an incomplete business resumes its own stored step and does not publish channels
+  ---
+  duration_ms: 582.4154
+  type: 'test'
+  ...
+# Subtest: logout discards the wizard and a late decision cannot restore the prior account
+ok 225 - logout discards the wizard and a late decision cannot restore the prior account
+  ---
+  duration_ms: 345.8269
+  type: 'test'
+  ...
+# Subtest: multiple companies require a choice before evaluating their setup
+ok 226 - multiple companies require a choice before evaluating their setup
+  ---
+  duration_ms: 236.9728
+  type: 'test'
+  ...
+# Subtest: the explicit new-business action opens a separate creation form for an existing owner
+ok 227 - the explicit new-business action opens a separate creation form for an existing owner
+  ---
+  duration_ms: 279.9064
+  type: 'test'
+  ...
+# Subtest: a failed company menu read still resolves the authenticated entry into a recoverable wizard
+ok 228 - a failed company menu read still resolves the authenticated entry into a recoverable wizard
+  ---
+  duration_ms: 276.0392
+  type: 'test'
+  ...
+# Subtest: the wizard tenant callback refreshes the menu without restarting its stored hours step
+ok 229 - the wizard tenant callback refreshes the menu without restarting its stored hours step
+  ---
+  duration_ms: 302.8221
+  type: 'test'
+  ...
+# Subtest: creating a second business updates the navigation and preserves the returned next step
+ok 230 - creating a second business updates the navigation and preserves the returned next step
+  ---
+  duration_ms: 365.9637
+  type: 'test'
+  ...
+# Subtest: completion keeps real channel statuses visible until the user explicitly opens the panel
+ok 231 - completion keeps real channel statuses visible until the user explicitly opens the panel
+  ---
+  duration_ms: 376.8756
+  type: 'test'
+  ...
+# Subtest: WhatsApp settings mounts managed public APIs and navigation discards a late channel status
+ok 232 - WhatsApp settings mounts managed public APIs and navigation discards a late channel status
+  ---
+  duration_ms: 513.9006
+  type: 'test'
+  ...
+# Subtest: logout unmounts managed connections before an in-flight channel list returns
+ok 233 - logout unmounts managed connections before an in-flight channel list returns
+  ---
+  duration_ms: 345.6594
+  type: 'test'
+  ...
+# Subtest: Google setup marks only explicit boolean ready as complete without connecting automatically
+ok 234 - Google setup marks only explicit boolean ready as complete without connecting automatically
+  ---
+  duration_ms: 266.8701
+  type: 'test'
+  ...
+# Subtest: explicit creation uses one idempotent intent despite a double submit and follows the saved current step
+ok 235 - explicit creation uses one idempotent intent despite a double submit and follows the saved current step
+  ---
+  duration_ms: 536.7589
+  type: 'test'
+  ...
+# Subtest: create timeout is reconciled from the operation ledger without a second POST
+ok 236 - create timeout is reconciled from the operation ledger without a second POST
+  ---
+  duration_ms: 174.4741
+  type: 'test'
+  ...
+# Subtest: create timeout before commit keeps the same key and exact payload for an explicit retry
+ok 237 - create timeout before commit keeps the same key and exact payload for an explicit retry
+  ---
+  duration_ms: 136.0815
+  type: 'test'
+  ...
+# Subtest: business update sends CAS and preserves typed fields after validation rejection
+ok 238 - business update sends CAS and preserves typed fields after validation rejection
+  ---
+  duration_ms: 95.1323
+  type: 'test'
+  ...
+# Subtest: a version conflict blocks a fresh write until a current-state read, preserving local edits
+ok 239 - a version conflict blocks a fresh write until a current-state read, preserving local edits
+  ---
+  duration_ms: 127.4456
+  type: 'test'
+  ...
+# Subtest: a transport timeout never triggers an automatic retry or a new operation
+ok 240 - a transport timeout never triggers an automatic retry or a new operation
+  ---
+  duration_ms: 124.4085
+  type: 'test'
+  ...
+# Subtest: read-only user cannot submit even a programmatically triggered form
+ok 241 - read-only user cannot submit even a programmatically triggered form
+  ---
+  duration_ms: 38.6572
+  type: 'test'
+  ...
+# Subtest: online business does not need an address or publish a private address
+ok 242 - online business does not need an address or publish a private address
+  ---
+  duration_ms: 43.7215
+  type: 'test'
+  ...
+# Subtest: onsite manual address uses separate fields and explicit no-number, with optional complement
+ok 243 - onsite manual address uses separate fields and explicit no-number, with optional complement
+  ---
+  duration_ms: 67.7851
+  type: 'test'
+  ...
+# Subtest: professional self-provider is a revisable suggestion and never grants membership
+ok 244 - professional self-provider is a revisable suggestion and never grants membership
+  ---
+  duration_ms: 42.8633
+  type: 'test'
+  ...
+# Subtest: cancel edit discards the unsaved service change without any partial write
+ok 245 - cancel edit discards the unsaved service change without any partial write
+  ---
+  duration_ms: 134.0295
+  type: 'test'
+  ...
+# Subtest: service edit sends current entity fingerprint, cents, duration and actual professional links
+ok 246 - service edit sends current entity fingerprint, cents, duration and actual professional links
+  ---
+  duration_ms: 84.92
+  type: 'test'
+  ...
+# Subtest: an empty price cannot become a free service, while explicit zero remains valid
+ok 247 - an empty price cannot become a free service, while explicit zero remains valid
+  ---
+  duration_ms: 58.7585
+  type: 'test'
+  ...
+# Subtest: a service cannot be saved without an explicit real professional
+ok 248 - a service cannot be saved without an explicit real professional
+  ---
+  duration_ms: 75.1408
+  type: 'test'
+  ...
+# Subtest: a product uses its own variant contract without a duration or invented stock
+ok 249 - a product uses its own variant contract without a duration or invented stock
+  ---
+  duration_ms: 94.0475
+  type: 'test'
+  ...
+# Subtest: hours add only the selected days and carry actual existing-day fingerprints
+ok 250 - hours add only the selected days and carry actual existing-day fingerprints
+  ---
+  duration_ms: 92.459
+  type: 'test'
+  ...
+# Subtest: hours spanning midnight or containing an invalid break never issue a write
+ok 251 - hours spanning midnight or containing an invalid break never issue a write
+  ---
+  duration_ms: 55.9785
+  type: 'test'
+  ...
+# Subtest: channels save only a draft configuration with generation and preserve unedited style fields
+ok 252 - channels save only a draft configuration with generation and preserve unedited style fields
+  ---
+  duration_ms: 62.6652
+  type: 'test'
+  ...
+# Subtest: channel cards use server states rather than a filled phone number or a successful draft save
+ok 253 - channel cards use server states rather than a filled phone number or a successful draft save
+  ---
+  duration_ms: 40.1975
+  type: 'test'
+  ...
+# Subtest: completion requires a deliberate review acknowledgement and never sends channel activation
+ok 254 - completion requires a deliberate review acknowledgement and never sends channel activation
+  ---
+  duration_ms: 73.0204
+  type: 'test'
+  ...
+# Subtest: completion rejection cannot call success or discard the review acknowledgement
+ok 255 - completion rejection cannot call success or discard the review acknowledgement
+  ---
+  duration_ms: 78.3888
+  type: 'test'
+  ...
+# Subtest: a late save from the previous tenant cannot replace the newly selected business
+ok 256 - a late save from the previous tenant cannot replace the newly selected business
+  ---
+  duration_ms: 82.1223
+  type: 'test'
+  ...
+# Subtest: editing an inactive legacy professional preserves commission, colour, image and activity
+ok 257 - editing an inactive legacy professional preserves commission, colour, image and activity
+  ---
+  duration_ms: 69.9969
+  type: 'test'
+  ...
+# Subtest: service name correction preserves hidden catalog facts instead of replacing them with defaults
+ok 258 - service name correction preserves hidden catalog facts instead of replacing them with defaults
+  ---
+  duration_ms: 62.5306
+  type: 'test'
+  ...
+# Subtest: editing a chosen product variant preserves its SKU, attributes and official facts
+ok 259 - editing a chosen product variant preserves its SKU, attributes and official facts
+  ---
+  duration_ms: 77.0836
+  type: 'test'
+  ...
+# Subtest: moving between steps preserves unsaved identity text without claiming it was saved
+ok 260 - moving between steps preserves unsaved identity text without claiming it was saved
+  ---
+  duration_ms: 112.157
+  type: 'test'
+  ...
+# Subtest: missing profile generation blocks channels write instead of inventing revision zero
+ok 261 - missing profile generation blocks channels write instead of inventing revision zero
+  ---
+  duration_ms: 47.5865
+  type: 'test'
+  ...
+# Subtest: a panel callback error after known completion cannot turn the committed result into a retry
+ok 262 - a panel callback error after known completion cannot turn the committed result into a retry
+  ---
+  duration_ms: 99.4085
+  type: 'test'
+  ...
+# Subtest: missing reviewed facts snapshot blocks completion without inventing an authority
+ok 263 - missing reviewed facts snapshot blocks completion without inventing an authority
+  ---
+  duration_ms: 69.1993
+  type: 'test'
+  ...
+# Subtest: the landing initializes locally, keeps the no-script submit disabled and does not send API requests while browsing
+ok 264 - the landing initializes locally, keeps the no-script submit disabled and does not send API requests while browsing
+  ---
+  duration_ms: 852.8751
+  type: 'test'
+  ...
+# Subtest: product tabs expose the selected panel, mouse activation and their ARIA relationships
+ok 265 - product tabs expose the selected panel, mouse activation and their ARIA relationships
+  ---
+  duration_ms: 233.4232
+  type: 'test'
+  ...
+# Subtest: product tabs support arrows, Home, End and the next-step controls with focus
+ok 266 - product tabs support arrows, Home, End and the next-step controls with focus
+  ---
+  duration_ms: 327.5104
+  type: 'test'
+  ...
+# Subtest: business tabs update meaningful content, image alternatives, panel labels and keyboard focus
+ok 267 - business tabs update meaningful content, image alternatives, panel labels and keyboard focus
+  ---
+  duration_ms: 484.9422
+  type: 'test'
+  ...
+# Subtest: business and plan calls to action preselect the corresponding segment and intent without submitting
+ok 268 - business and plan calls to action preselect the corresponding segment and intent without submitting
+  ---
+  duration_ms: 303.1089
+  type: 'test'
+  ...
+# Subtest: hero sectors keep grammatical text, matching photography, state and a stable accessible heading
+ok 269 - hero sectors keep grammatical text, matching photography, state and a stable accessible heading
+  ---
+  duration_ms: 165.548
+  type: 'test'
+  ...
+# Subtest: hero rotation can pause and resume, and stays paused after a manual selection
+ok 270 - hero rotation can pause and resume, and stays paused after a manual selection
+  ---
+  duration_ms: 112.5492
+  type: 'test'
+  ...
+# Subtest: reduced motion, page visibility, viewport visibility and data saving stop automatic hero changes
+ok 271 - reduced motion, page visibility, viewport visibility and data saving stop automatic hero changes
+  ---
+  duration_ms: 241.2509
+  type: 'test'
+  ...
+# Subtest: the mobile menu closes through Escape, anchors and desktop resizing, restoring its state
+ok 272 - the mobile menu closes through Escape, anchors and desktop resizing, restoring its state
+  ---
+  duration_ms: 87.8382
+  type: 'test'
+  ...
+# Subtest: privacy opens by explicit request, does not grant consent and returns focus when closed
+ok 273 - privacy opens by explicit request, does not grant consent and returns focus when closed
+  ---
+  duration_ms: 92.479
+  type: 'test'
+  ...
+# Subtest: the optional video waits for a click and pauses when the document becomes hidden
+ok 274 - the optional video waits for a click and pauses when the document becomes hidden
+  ---
+  duration_ms: 99.2513
+  type: 'test'
+  ...
+# Subtest: required identity, email, segment and consent prevent incomplete API submissions
+ok 275 - required identity, email, segment and consent prevent incomplete API submissions
+  ---
+  duration_ms: 127.4475
+  type: 'test'
+  ...
+# Subtest: a confirmed 201 submits once with an idempotency key, freezes the form and then shows the receipt
+ok 276 - a confirmed 201 submits once with an idempotency key, freezes the form and then shows the receipt
+  ---
+  duration_ms: 100.2045
+  type: 'test'
+  ...
+# Subtest: 503 preserves every field, permits an explicit retry and reuses the exact payload and key
+ok 277 - 503 preserves every field, permits an explicit retry and reuses the exact payload and key
+  ---
+  duration_ms: 134.8949
+  type: 'test'
+  ...
+# Subtest: editing a failed request changes its key while keeping the revised input intact
+ok 278 - editing a failed request changes its key while keeping the revised input intact
+  ---
+  duration_ms: 92.1462
+  type: 'test'
+  ...
+# Subtest: 409 renews the key only on the next explicit attempt and does not clear the fields
+ok 279 - 409 renews the key only on the next explicit attempt and does not clear the fields
+  ---
+  duration_ms: 129.4722
+  type: 'test'
+  ...
+# Subtest: validation and rate errors are actionable and preserve the request
+    # Subtest: 422
+    ok 1 - 422
+      ---
+      duration_ms: 87.0268
+      type: 'test'
+      ...
+    # Subtest: 429
+    ok 2 - 429
+      ---
+      duration_ms: 99.165
+      type: 'test'
+      ...
+    1..2
+ok 280 - validation and rate errors are actionable and preserve the request
+  ---
+  duration_ms: 187.1824
+  type: 'test'
+  ...
+# Subtest: a timeout aborts the request and a retry keeps the key for an uncertain outcome
+ok 281 - a timeout aborts the request and a retry keeps the key for an uncertain outcome
+  ---
+  duration_ms: 130.9508
+  type: 'test'
+  ...
+# Subtest: a network failure preserves the input and offers the same identifiable retry
+ok 282 - a network failure preserves the input and offers the same identifiable retry
+  ---
+  duration_ms: 117.968
+  type: 'test'
+  ...
+# Subtest: 201 only clears personal input after a valid acknowledgement with a canonical request UUID
+    # Subtest: missing receipt
+    ok 1 - missing receipt
+      ---
+      duration_ms: 90.2626
+      type: 'test'
+      ...
+    # Subtest: negative acknowledgement
+    ok 2 - negative acknowledgement
+      ---
+      duration_ms: 103.9166
+      type: 'test'
+      ...
+    # Subtest: malformed UUID
+    ok 3 - malformed UUID
+      ---
+      duration_ms: 96.7271
+      type: 'test'
+      ...
+    # Subtest: invalid JSON
+    ok 4 - invalid JSON
+      ---
+      duration_ms: 127.556
+      type: 'test'
+      ...
+    1..4
+ok 283 - 201 only clears personal input after a valid acknowledgement with a canonical request UUID
+  ---
+  duration_ms: 419.8491
+  type: 'test'
+  ...
+# Subtest: public configuration renders as text, accepts HTTPS links, and filters the catalogue
+ok 284 - public configuration renders as text, accepts HTTPS links, and filters the catalogue
+  ---
+  duration_ms: 401.6635
+  type: 'test'
+  ...
+# Subtest: authenticated preview cannot query availability or submit a public reservation
+ok 285 - authenticated preview cannot query availability or submit a public reservation
+  ---
+  duration_ms: 128.5498
+  type: 'test'
+  ...
+# Subtest: public wizard confirms a combo with an untimed addon only after explicit consent
+ok 286 - public wizard confirms a combo with an untimed addon only after explicit consent
+  ---
+  duration_ms: 141.6618
+  type: 'test'
+  ...
+# Subtest: a late availability response cannot replace slots for the newly selected day
+ok 287 - a late availability response cannot replace slots for the newly selected day
+  ---
+  duration_ms: 121.5106
+  type: 'test'
+  ...
+# Subtest: authorized marketing rules display their real review state and a save requires new authorization
+ok 288 - authorized marketing rules display their real review state and a save requires new authorization
+  ---
+  duration_ms: 559.0562
+  type: 'test'
+  ...
+# Subtest: unapproved marketing rules stay draft and loading does not authorize or send them
+ok 289 - unapproved marketing rules stay draft and loading does not authorize or send them
+  ---
+  duration_ms: 163.2555
+  type: 'test'
+  ...
+# Subtest: vacancy preference stays an explicit draft even when other marketing rules are authorized
+ok 290 - vacancy preference stays an explicit draft even when other marketing rules are authorized
+  ---
+  duration_ms: 148.0583
+  type: 'test'
+  ...
+# Subtest: known execution authorization refreshes the rules indicator without manual route navigation
+ok 291 - known execution authorization refreshes the rules indicator without manual route navigation
+  ---
+  duration_ms: 237.9103
+  type: 'test'
+  ...
+# Subtest: uncertain execution authorization keeps the same pending request without rerendering the rules
+ok 292 - uncertain execution authorization keeps the same pending request without rerendering the rules
+  ---
+  duration_ms: 143.0059
+  type: 'test'
+  ...
+# Subtest: mount preserves original sections, escapes customer content, and is idempotent
+ok 293 - mount preserves original sections, escapes customer content, and is idempotent
+  ---
+  duration_ms: 202.2422
+  type: 'test'
+  ...
+# Subtest: late tenant A response cannot replace tenant B after an authorized switch
+ok 294 - late tenant A response cannot replace tenant B after an authorized switch
+  ---
+  duration_ms: 107.5056
+  type: 'test'
+  ...
+# Subtest: viewer can inspect customers but cannot submit mutations
+ok 295 - viewer can inspect customers but cannot submit mutations
+  ---
+  duration_ms: 104.1914
+  type: 'test'
+  ...
+# Subtest: customer deletion requires concrete confirmation and accepts an empty 204 result
+ok 296 - customer deletion requires concrete confirmation and accepts an empty 204 result
+  ---
+  duration_ms: 97.8898
+  type: 'test'
+  ...
+# Subtest: consultant loads status/history without generation and requires an explicit submit
+ok 297 - consultant loads status/history without generation and requires an explicit submit
+  ---
+  duration_ms: 61.7781
+  type: 'test'
+  ...
+# Subtest: invitation replay with null link never fabricates or exposes a link
+ok 298 - invitation replay with null link never fabricates or exposes a link
+  ---
+  duration_ms: 70.4134
+  type: 'test'
+  ...
+# Subtest: approving a claimed invitation waits for an explicit confirmation and includes version
+ok 299 - approving a claimed invitation waits for an explicit confirmation and includes version
+  ---
+  duration_ms: 90.884
+  type: 'test'
+  ...
+# Subtest: actual panel API returns null for HTTP 204 without parsing JSON
+ok 300 - actual panel API returns null for HTTP 204 without parsing JSON
+  ---
+  duration_ms: 350.793
+  type: 'test'
+  ...
+# Subtest: cartões compactos exibem thumbnail circular, dados/status juntos e ações em rodapé próprio
+ok 301 - cartões compactos exibem thumbnail circular, dados/status juntos e ações em rodapé próprio
+  ---
+  duration_ms: 496.348
+  type: 'test'
+  ...
+# Subtest: edição, alternância de ativo e exclusão preservam as permissões e os contratos de dados
+ok 302 - edição, alternância de ativo e exclusão preservam as permissões e os contratos de dados
+  ---
+  duration_ms: 251.4362
+  type: 'test'
+  ...
+# Subtest: reordenar por setas continua salvando os mesmos sort_order na API
+ok 303 - reordenar por setas continua salvando os mesmos sort_order na API
+  ---
+  duration_ms: 146.5876
+  type: 'test'
+  ...
+# Subtest: alça de arrastar realmente reordena no touch com Pointer Events
+ok 304 - alça de arrastar realmente reordena no touch com Pointer Events
+  ---
+  duration_ms: 116.4258
+  type: 'test'
+  ...
+# Subtest: alça de arrastar tem equivalente de teclado pelas setas e mantém foco destacado
+ok 305 - alça de arrastar tem equivalente de teclado pelas setas e mantém foco destacado
+  ---
+  duration_ms: 130.2462
+  type: 'test'
+  ...
+# Subtest: leitor enxerga cartões e status mas não consegue alterar serviços
+ok 306 - leitor enxerga cartões e status mas não consegue alterar serviços
+  ---
+  duration_ms: 93.6841
+  type: 'test'
+  ...
+# Subtest: nomes longos são texto seguro e metadados sem overflow seguem proporções reais do CSS
+ok 307 - nomes longos são texto seguro e metadados sem overflow seguem proporções reais do CSS
+  ---
+  duration_ms: 192.2515
+  type: 'test'
+  ...
+# Subtest: site requests are inside Settings for support and admin, including accounts without a business
+    # Subtest: support
+    ok 1 - support
+      ---
+      duration_ms: 521.6962
+      type: 'test'
+      ...
+    # Subtest: admin
+    ok 2 - admin
+      ---
+      duration_ms: 195.48
+      type: 'test'
+      ...
+    1..2
+ok 308 - site requests are inside Settings for support and admin, including accounts without a business
+  ---
+  duration_ms: 720.2234
+  type: 'test'
+  ...
+# Subtest: tenant owners, editors and viewers cannot discover, fetch or mutate global site requests
+    # Subtest: owner
+    ok 1 - owner
+      ---
+      duration_ms: 145.7247
+      type: 'test'
+      ...
+    # Subtest: editor
+    ok 2 - editor
+      ---
+      duration_ms: 115.5703
+      type: 'test'
+      ...
+    # Subtest: viewer
+    ok 3 - viewer
+      ---
+      duration_ms: 101.3069
+      type: 'test'
+      ...
+    1..3
+ok 309 - tenant owners, editors and viewers cannot discover, fetch or mutate global site requests
+  ---
+  duration_ms: 365.3526
+  type: 'test'
+  ...
+# Subtest: the list escapes contact details and copying is an explicit local action
+ok 310 - the list escapes contact details and copying is an explicit local action
+  ---
+  duration_ms: 145.3198
+  type: 'test'
+  ...
+# Subtest: search, status, interest and pagination are sent to the API, with filters resetting the offset
+ok 311 - search, status, interest and pagination are sent to the API, with filters resetting the offset
+  ---
+  duration_ms: 1018.439
+  type: 'test'
+  ...
+# Subtest: marking a request as contacted uses its version, ignores duplicate clicks and reloads server counts
+ok 312 - marking a request as contacted uses its version, ignores duplicate clicks and reloads server counts
+  ---
+  duration_ms: 105.0826
+  type: 'test'
+  ...
+# Subtest: the server can make admin site requests read-only
+ok 313 - the server can make admin site requests read-only
+  ---
+  duration_ms: 58.6338
+  type: 'test'
+  ...
+# Subtest: updating the last new request on the final page returns to the remaining results
+ok 314 - updating the last new request on the final page returns to the remaining results
+  ---
+  duration_ms: 382.8665
+  type: 'test'
+  ...
+# Subtest: a version conflict displays the error and reloads the authoritative status
+ok 315 - a version conflict displays the error and reloads the authoritative status
+  ---
+  duration_ms: 85.3894
+  type: 'test'
+  ...
+# Subtest: an unavailable lead store is distinct from an empty list and offers a real retry
+ok 316 - an unavailable lead store is distinct from an empty list and offers a real retry
+  ---
+  duration_ms: 94.1163
+  type: 'test'
+  ...
+# Subtest: late site-request reads cannot reveal contacts after the operator becomes a member
+ok 317 - late site-request reads cannot reveal contacts after the operator becomes a member
+  ---
+  duration_ms: 100.6593
+  type: 'test'
+  ...
+# Subtest: a late status update does not repopulate contacts or leave the next account blocked
+ok 318 - a late status update does not repopulate contacts or leave the next account blocked
+  ---
+  duration_ms: 117.9895
+  type: 'test'
+  ...
+# Subtest: generated facade sends capable Google connect to the original panel for exactly the selected tenant, without OAuth or POST
+ok 319 - generated facade sends capable Google connect to the original panel for exactly the selected tenant, without OAuth or POST
+  ---
+  duration_ms: 521.2131
+  type: 'test'
+  ...
+# Subtest: generated facade keeps the capability guard even for a forged Google connect control
+ok 320 - generated facade keeps the capability guard even for a forged Google connect control
+  ---
+  duration_ms: 63.3561
+  type: 'test'
+  ...
+# Subtest: generated facade preserves explicit revoke and retry confirmation and their original API calls
+ok 321 - generated facade preserves explicit revoke and retry confirmation and their original API calls
+  ---
+  duration_ms: 158.0833
+  type: 'test'
+  ...
+1..321
+# tests 332
+# suites 0
+# pass 332
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 15521.0224

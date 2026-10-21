@@ -1,0 +1,24 @@
+{
+  "qualified_code_commit": "84e32bc722bd26151ed97ccd44a0bba7182234e8",
+  "workflow_url": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39435706055",
+  "media_workflow_url": "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39435706082",
+  "status": "success",
+  "postgres_redis_suite": {"passed": 4141, "skipped": 1, "failed": 0},
+  "docker_compose_suite": {"passed": 4030, "skipped": 112, "failed": 0},
+  "bridge_linux": {"passed": 413, "skipped": 0, "failed": 0},
+  "dom": {"passed": 297, "skipped": 0, "failed": 0},
+  "browser_synthetic": {"cases": 6, "widths": [360,768,1440], "themes": ["light","dark"], "send_requests": 0, "external_requests": 0},
+  "migration_roundtrip": {"disposable_local_database": true, "upgrade": true, "downgrade_empty": true, "reupgrade": true, "refuses_data_loss": true},
+  "local_python": {"passed": 3744, "skipped": 395, "failed": 4, "failures_reproduced_on_original_base": true, "reason": "PostgreSQL/support/migration URLs absent locally"},
+  "local_bridge": {"passed": 409, "skipped": 4, "failed": 0},
+  "reference_pure_tests": {"flow_logic": "passed", "quick_reply_logic": "passed"},
+  "production_deployment": false,
+  "real_whatsapp_messages_sent": 0,
+  "physical_device_validation": false,
+  "notes": [
+    "Counts describe separate suites; they must not be summed as unique cases.",
+    "The Compose suite deliberately lacks the optional disposable database owner; those tests ran in the first PostgreSQL/Redis suite.",
+    "This record describes the cited immutable code commit; later documentation or test-only commits require their own CI receipt.",
+    "A passing CI run does not complete the whole MarcFlow integration mission."
+  ]
+}

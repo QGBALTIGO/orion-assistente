@@ -1,0 +1,20 @@
+ ERRORS ====================================
+2026-10-20T21:51:00.8139925Z _ ERROR at setup of test_optional_birthday_has_purpose_and_preserves_full_legacy_date_and_booking _
+2026-10-20T21:51:00.8140637Z 
+2026-10-20T21:51:00.8140960Z >   ???
+2026-10-20T21:51:00.8141674Z E   AssertionError: assert ('redis' in {'127.0.0.1', '::1', 'localhost'})
+2026-10-20T21:51:00.8142618Z E    +  where 'redis' = SplitResult(scheme='redis', netloc='redis:6379', path='/15', query='', fragment='').hostname
+2026-10-20T21:51:00.8143519Z 
+2026-10-20T21:51:00.8144250Z /home/runner/work/orion-assistente/orion-assistente/tests/integration/test_communication_postgres.py:29: AssertionError
+2026-10-20T21:51:00.8145718Z 2026-10-20T21:48:17.6250478Z 4878 passed, 1 skipped, 226 warnings in 339.70s (0:05:39)
+2026-10-20T21:51:00.8368547Z ERROR tests/integration/test_communication_postgres.py::test_optional_birthday_has_purpose_and_preserves_full_legacy_date_and_booking
+2026-10-20T21:51:00.8369212Z ERROR tests/integration/test_communication_postgres.py::test_refusal_is_persistent_and_does_not_interrupt_booking_or_other_consent
+2026-10-20T21:51:00.8369855Z ERROR tests/integration/test_communication_postgres.py::test_old_birthday_invitation_cannot_regrant_after_a_separate_revocation
+2026-10-20T21:51:00.8370501Z ERROR tests/integration/test_communication_postgres.py::test_new_meta_receipt_fences_old_write_and_delete_never_undoes_committed_booking
+2026-10-20T21:51:00.8371624Z ERROR tests/integration/test_unified_inbox_postgres.py::test_explicit_ai_resume_invalidates_only_old_proposals_once
+2026-10-20T21:51:00.8372712Z ERROR tests/integration/test_unified_inbox_postgres.py::test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_outbox[False-False]
+2026-10-20T21:51:00.8373878Z ERROR tests/integration/test_unified_inbox_postgres.py::test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_outbox[False-True]
+2026-10-20T21:51:00.8374574Z ERROR tests/integration/test_unified_inbox_postgres.py::test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_outbox[True-False]
+2026-10-20T21:51:00.8375253Z ERROR tests/integration/test_unified_inbox_postgres.py::test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_outbox[True-True]
+2026-10-20T21:51:00.8375972Z 4733 passed, 137 skipped, 11 warnings, 9 errors in 119.31s (0:01:59)
+2026-10-20T21:51:02.7724428Z ##[error]Process completed with exit code 1.

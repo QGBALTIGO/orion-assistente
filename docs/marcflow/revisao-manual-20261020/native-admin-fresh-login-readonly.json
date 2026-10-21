@@ -1,0 +1,71 @@
+{
+  "verified_at_utc": "2026-10-21T01:08:26.733Z",
+  "status": "passed",
+  "scope": "Fresh administrator login and live read-only central UI; not a provider/message-send or full20journey homologation.",
+  "fresh_login_observed": true,
+  "user_confirmed_fresh_login": true,
+  "initial_fresh_tab_showed_login_form": true,
+  "expected_tenant_id": "82552b25-d0c8-5338-8c42-49f11de59e45",
+  "expected_tenant_label": "Barbearia Orion — DEMONSTRAÇÃO FICTÍCIA",
+  "admin_role_observed": true,
+  "central_url": "https://orion-assistente-production.up.railway.app/panel?aba=inbox&empresa=82552b25-d0c8-5338-8c42-49f11de59e45",
+  "checks": {
+    "central_loaded": true,
+    "principal_QR_channel_listed": true,
+    "native_identity_warning_absent": true,
+    "existing_conversation_readable": true,
+    "ai_active_revision_observed": 3,
+    "assume_button_enabled": true,
+    "send_disabled_until_assigned": true,
+    "unread_count_unchanged_after_opening_history": true,
+    "channel_and_mode_filters_responded": true,
+    "human_queue_filter_empty": true,
+    "console_errors": 0
+  },
+  "no_control_business_message_mutations": true,
+  "actions_by_agent": [
+    "Open central from authenticated admin dashboard",
+    "Read existing conversation without marking read or taking control",
+    "Reload view to close contact history without changing session",
+    "Filter existing QR principal and human mode, GET-only list refresh"
+  ],
+  "not_executed": [
+    "Assume/wait/pause/resume/close",
+    "Mark as read",
+    "Create/edit CRM, drafts or records",
+    "Compose/send or provider tests",
+    "Campaign/Meta activation",
+    "Read cookies/tokens/hidden application state"
+  ],
+  "privacy": {
+    "no_contact_names_numbers_or_message_text_in_this_receipt": true,
+    "screenshots_show_filters_without_contact_history": true
+  },
+  "screenshots": [
+    "native-admin-central-readonly.png",
+    "native-admin-central-readonly-top.png"
+  ],
+  "viewport_observed_pixels": {
+    "width": 354,
+    "height": 587
+  },
+  "automation_recovery": "First AX-index click failed before selection with a browser shadow-root check error. Fresh full state confirmed no selection; one documented Playwright click opened history. This was recovered automation input, not an app/backend failure.",
+  "no_real_delivery_or_AI_reply_homologation": true,
+  "normal_existing_traffic_not_audited": true,
+  "old_admin_session_not_logged_out": true,
+  "screenshots_sha256": {
+    "native-admin-central-readonly.png": "f8ab55d129a0c940b846f5d736e563d89b07a5ca86f41ff9da7ae8bf0a0ff53c",
+    "native-admin-central-readonly-top.png": "3e3c26caf860a02703de4af5999966d2b11803d976d4aafc735681b65a348f0e"
+  },
+  "prior_admin_session_reload": {
+    "verified_at_utc": "2026-10-21T01:08:26.733Z",
+    "browser": "existing Chrome session",
+    "url": "https://orion-assistente-production.up.railway.app/panel?aba=cadastros",
+    "authenticated_admin_page_loaded": true,
+    "admin_role_visible": true,
+    "login_form_visible": false,
+    "session_expired_notice": false,
+    "no_logout_cookie_read_or_credential_change": true,
+    "original_navigation_preserved": true
+  }
+}

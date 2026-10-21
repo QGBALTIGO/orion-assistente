@@ -1,0 +1,170 @@
+{
+  "boundaries": {
+    "campaigns_activated": false,
+    "production_access": false,
+    "production_provisioning_applied": false,
+    "railway_actions_in_this_subtask": false,
+    "real_provider_messages_or_emails_sent": false,
+    "redis_used": false
+  },
+  "credential_fixture_fix": {
+    "application_scripts_schema_requirements_or_docker_changed": false,
+    "cause": "Replacing owner-URL username retained the owner password; Linux CI uses distinct role passwords.",
+    "distinct_synthetic_dsn_passwords_supplied": true,
+    "fix": "Derive configured APP_DATABASE_URL/SUPPORT_DATABASE_URL credentials and TLS, change only driver and random fixture database; no owner fallback.",
+    "focused_real_pg_cases_passed": 3,
+    "local_authentication_method": "trust (unchanged)",
+    "parser_unit_cases_passed": 15,
+    "proof_limit": "Local PG proves schema, SQL and restricted-role use; parser units prove distinct passwords/TLS are preserved. Password authentication via SCRAM must be proved by the separately recorded Linux CI.",
+    "roles_or_pg_hba_modified": false
+  },
+  "current_candidate_commit": "d11a86bc3b1efdef47394c62e39ee32da08ecabf",
+  "earlier_positive_fixture_issue": {
+    "artifact": "admin-ops-positive.xml",
+    "cause": "An upstream fixture supplied historical pending Meta work; activation correctly refused it. Only the disposable fixture was modeled as definite no-send before preservation snapshots.",
+    "operator_retry_guard_weakened": false,
+    "used_to_inflate_final_counts": false
+  },
+  "executed_batches": {
+    "admin-pg-final.xml": {
+      "kind": "postgres",
+      "sha256": "cc9f586b7c4325d13996ac0d41eb26255ee7da2b65c611a9442c7fa70cdb444e",
+      "stats": {
+        "errors": 3,
+        "failed": 0,
+        "passed": 9,
+        "skipped": 0
+      }
+    },
+    "admin-qr-final.xml": {
+      "kind": "postgres",
+      "sha256": "54dd91f21c7ea880a3996f228d07ea2608650a22488d0adcc6162f5fdc146e5d",
+      "stats": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 14,
+        "skipped": 0
+      }
+    },
+    "admin-role-pg-focused.xml": {
+      "kind": "postgres",
+      "sha256": "8c7e5499c5693fe9287477c91fbf495186e95e5c545d57936c4e4fc13c7b0380",
+      "stats": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 3,
+        "skipped": 0
+      }
+    },
+    "admin-role-url-unit.xml": {
+      "kind": "unit",
+      "sha256": "3e5be170c9a338b2ece0e16a2f11fafe66115609cd86964f93c0b71571f29ac5",
+      "stats": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 15,
+        "skipped": 0
+      }
+    },
+    "admin-runtime-compat.xml": {
+      "kind": "postgres",
+      "sha256": "62c48ef4df45b6a70026547ac5f1a95c9da42c5ca7beb2d26aadca454fd43399",
+      "stats": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 11,
+        "skipped": 0
+      }
+    },
+    "admin-setup-unit.xml": {
+      "kind": "unit",
+      "sha256": "9d6de41f3ea4cee82500a713884189d3f3b9135a59330a0ca50c9844c516775e",
+      "stats": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 9,
+        "skipped": 0
+      }
+    }
+  },
+  "generated_at_utc": "2026-10-20T23:25:56.958468+00:00",
+  "log_hashes_sha256": {
+    "admin-pg-cleanup.log": "167dff40f55fbba91f360850661abc9d9a2f56afcfd3baf677253e5685c3e1fc",
+    "admin-pg-final.log": "808ae7702f6dac8fde1f8c95d3cff05fc132fed2b93a41f02e2ee005a237f13f",
+    "admin-qr-final.log": "a2679cd1f71a91a469f676370813d983395644bc5068d31ea2dde779a662809a",
+    "admin-role-pg-cleanup.log": "167dff40f55fbba91f360850661abc9d9a2f56afcfd3baf677253e5685c3e1fc",
+    "admin-role-pg-focused.log": "36bec366cdd57f2ac099db97af979c0e0a07760caa84866ab237cafddd553ebc",
+    "admin-role-url-unit.log": "7a5601c4b55c704d428fc6e56c889cf66496bf245a5f39be864b314bb7e91725",
+    "admin-runtime-compat.log": "4b1bb7bae3080d4188c9cca68774e62d1782d617399cc3d1a86afae79f0be921",
+    "admin-setup-unit.log": "c0c5df12c705fbc7b2edcd8faa77c0f723ad1d943e2c8a9a89709f6c1b6cebd4"
+  },
+  "manual_inventory": {
+    "dependency_hash_drift": 0,
+    "direct_hash_drift": 0,
+    "file": "manual-emit.json",
+    "records": 184,
+    "sha256": "a726e46d3778395139588ad72c2a6dd6b8db220a111c02cd044437468ca980a8"
+  },
+  "migration_seal": {
+    "constraint_definition": "CHECK (((((auth_provider)::text = 'password'::text) AND (email IS NOT NULL) AND (password_hash IS NOT NULL) AND (legacy_username IS NULL) AND (legacy_credential_digest IS NULL)) OR (((auth_provider)::text = 'legacy_admin'::text) AND ((role)::text = 'admin'::text) AND (email IS NULL) AND (password_hash IS NULL) AND (legacy_username IS NOT NULL) AND ((length((legacy_username)::text) >= 1) AND (length((legacy_username)::text) <= 254)) AND ((legacy_username)::text = lower(btrim((legacy_username)::text))) AND ((legacy_username)::text !~ '[[:cntrl:]]'::text) AND (legacy_credential_digest IS NOT NULL) AND (legacy_credential_digest ~ '^[a-f0-9]{64}$'::text))))",
+    "constraint_sha256": "ed5f016a031d4b744ea124c3eb468df9ce8281669a45c45f9e5f487bc64e60ea",
+    "migration_sha256_lf": "09c070122ef84c0af272de1b9ec853585ba209d6f7ebaff782fe770c8eaa1a96",
+    "operator_prosrc_sha256_lf": "466adfe7a39efdd33f9a56742d70776224e6d5eb5af4f6f65a42cd9929764bb2",
+    "scope": "Reviewed migration applied only on isolated PG16 clone"
+  },
+  "preservation": {
+    "both_created_clones_dropped_after_oid_owner_session_checks": true,
+    "operators_verified": "Encrypted backup/readback, actual pg_restore, isolated rehearsal, projected preservation of existing rows/catalog/ACL/RLS/programs and ingress identity sequence; setup permits only identity, owner membership, demo bot and audit changes.",
+    "original_aggregate_sha256_after": "0087630001f879e3576bbd222647e55f679c0851f400859eec53dbb05df75e66",
+    "original_aggregate_sha256_before": "0087630001f879e3576bbd222647e55f679c0851f400859eec53dbb05df75e66",
+    "original_logical_rows_and_sequence_unchanged_in_both_runs": true,
+    "original_public_tables_checked": 84,
+    "original_revision": "0029_communication_contract",
+    "original_sequence_after": [
+      101,
+      true
+    ],
+    "original_sequence_before": [
+      101,
+      true
+    ],
+    "owned_pg_stopped_after_both_runs": true
+  },
+  "remaining_acceptance": "Final Linux CI with distinct SCRAM credentials is recorded by the orchestrator. Production domain setup remains a separate explicit plan/apply authorization; no real user login or phone reconnection is claimed.",
+  "results": {
+    "case_identity_set_sha256": "92df4faf3f69e615796e78e688f1629d97a4192ed74c66a2d32213b26ee7f15e",
+    "post_fixture_fix_focused_pg_passed": 3,
+    "total_unique_cases_passed": 58,
+    "unique_postgres_cases_passed": 34,
+    "unique_unit_cases_passed": 24,
+    "unresolved_local_case_failures": 0
+  },
+  "schema_version": 1,
+  "scope": "Real PG16 on disposable synthetic databases; fake bridge backup/status and provider transports; no production access.",
+  "source_hashes_sha256": {
+    "alembic/versions/0030_legacy_admin_identity.py": "09c070122ef84c0af272de1b9ec853585ba209d6f7ebaff782fe770c8eaa1a96",
+    "app/account_auth.py": "7bab90cdb8623e2eac3719eb4f464c1d9f65ba0103788ebf1f4c0095f854a4ca",
+    "app/inbox_runtime.py": "e264e655487ec47cd8416ccdf35879e93784d4f8763f9f9d1b682e2f2047bf0f",
+    "app/legacy_admin_identity.py": "d97a7b05b2f0c7778d63172a9f88d704b8fa152733895518b5d9c9724e8766c5",
+    "app/panel_auth.py": "88479a4b25858358f43daf34eb059881a8d0c152fefbd532a7380d6cc1610442",
+    "app/qr_channels.py": "052902537dab59958589ca1aa70396d869370d7e61e2a3488f9e19960941e117",
+    "scripts/one_time_admin_demo_setup.py": "f345f837bc88cb2110597f15efaf874fa63442bf8dc70ffb772736e31008171a",
+    "scripts/one_time_admin_identity_migration.py": "25b1cfcd982e2b61e7f37ceb4c607c963470533003b413a8c489ce376b7a6cde",
+    "scripts/one_time_legacy_adoption.py": "3ec1cc69ae48e8e2c657aed858a7dcfcf8a264c0a149ceebdda09d473c4deff8",
+    "scripts/wait_for_admin_identity_schema.py": "4695c26c076dab7c9d3ccf0427c405cbfab302b8360caa507bc9eee1d7486d2c",
+    "tests/admin_test_scope.py": "c6bf26acafdc8dc7f39a129c5557aade7eaeb42a32d35d29beb1ad2281adb09d",
+    "tests/integration/test_admin_identity_ops_postgres.py": "9e4e2894b2e46daa7bdbf039d8284896d705527de7e8039d2aba44e259f29ea5",
+    "tests/integration/test_legacy_admin_runtime_postgres.py": "effe2778d34d9e66fd24408d9ed077510660675d9179a5488146f1163e7535ce",
+    "tests/integration/test_qr_admin_identity_postgres.py": "92f05b2031ec17bef8febbc95add7a94e903c0d73fd7fbab323eef04374e3c38",
+    "tests/unit/test_admin_demo_setup.py": "cb3d9f96795959bc0181c4723b8917f0db02632bea3a2c360dbd499bb3c559d5",
+    "tests/unit/test_admin_fixture_urls.py": "391009105ee5276e73488d7b3a537d8c0418c7347f682c4a438aac20ffcbf8c9"
+  },
+  "superseded_fixture_issues": {
+    "cause": "QR test module initially did not import its complete fixture dependency chain.",
+    "count": 3,
+    "partial_artifact_retained": true,
+    "partial_original_artifact": "admin-pg-final.xml",
+    "resolved_by": "14/14 real PG QR rerun with corrected imports; app code unchanged."
+  },
+  "timing_note": "The final display-name<=120 veto was added during the initial operator PG batch; its new refusal was checked by the subsequent nine-unit batch. App/script/schema bytes are identical between candidates d2134d1 and d11a86b; their change is isolated test credentials only."
+}

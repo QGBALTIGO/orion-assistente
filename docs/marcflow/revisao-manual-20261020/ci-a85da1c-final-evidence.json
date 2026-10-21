@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+  "main_workflow_id": 39519120153,
+  "media_workflow_id": 39519120190,
+  "urls": [
+    "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39519120153",
+    "https://github.com/QGBALTIGO/orion-assistente/actions/runs/39519120190"
+  ],
+  "jobs": [
+    {
+      "id": 118958363706,
+      "name": "ASR",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 118958364040,
+      "name": "pytest",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 118958364107,
+      "name": "QR bridge and DOM",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "media_job": {
+    "id": 118958363919,
+    "conclusion": "success"
+  },
+  "test_groups": {
+    "backend": {
+      "passed": 5074,
+      "skipped": 1,
+      "seconds": 428.4,
+      "postgresql": 16,
+      "redis": true,
+      "role_authentication": "distinct configured role passwords; SCRAM in isolated CI",
+      "log": "ci-a85da1c-backend.log"
+    },
+    "compose": {
+      "passed": 4909,
+      "skipped": 166,
+      "seconds": 129.93,
+      "overlaps_backend": true,
+      "owner_operation_tests": "skipped because dedicated owner URL absent in Compose; executed in the main PG job",
+      "log": "ci-a85da1c-backend.log"
+    },
+    "qr": {
+      "passed": 446,
+      "transport": "synthetic; actual installed Baileys package and Docker smoke, no provider send",
+      "log": "ci-a85da1c-qr-ui.log"
+    },
+    "ui": {
+      "passed": 329,
+      "kind": "DOM, not real administrator login",
+      "log": "ci-a85da1c-qr-ui.log"
+    },
+    "asr": {
+      "passed": 4,
+      "real_synthetic_audio_smoke": [
+        "wav",
+        "ogg"
+      ],
+      "log": "ci-a85da1c-asr.log"
+    },
+    "media": {
+      "passed": 10,
+      "log": "ci-a85da1c-media.log"
+    }
+  },
+  "dependency_proof": {
+    "pins": 52,
+    "verified_environments": 2,
+    "exact_install_matches": 104,
+    "pip_check_main_and_docker": true,
+    "evidence": "constraints-ci-a85da1c-proof.json"
+  },
+  "no_group_grand_total": true,
+  "scope": "Isolated CI and synthetic providers only; no production deployment, customer data, campaigns or test messages.",
+  "supersedes": "Qualifies adopted-AI context and effective-control handoff fixes; includes preceding setup lease correction. No production rollout acceptance is inferred.",
+  "artifact_sha256": {
+    "ci-a85da1c-backend.log": "c2e49398fdcde02c42d0d3ac3d09c16d04f9c7bd1261059380222eda7bde1370",
+    "ci-a85da1c-qr-ui.log": "e70dcebd18da3676fba3d756c9efab5d87867a4a8d98c000fd1d5fadff073da3",
+    "ci-a85da1c-asr.log": "d13f38c5cd8893217c102d3564d93e384fd225d8fc51b613c849962baa183a6f",
+    "ci-a85da1c-media.log": "42951669496322b2265dcc0092d70a21a15963fc07e00598fa7049281dd85aae",
+    "constraints-ci-a85da1c-proof.json": "459e18b09bde2cd7516480b7bab3a677a3a2a159d275c7677d1224722ea87959"
+  }
+}

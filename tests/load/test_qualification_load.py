@@ -26,6 +26,7 @@ def test_remote_ambiguous_or_nondedicated_targets_are_rejected(value,options):
 
 
 def test_private_environment_excludes_providers_and_production_settings(monkeypatch):
+    monkeypatch.setenv("SYSTEMROOT",r"C:\Windows")
     monkeypatch.setenv("GROQ_API_KEY","do-not-copy")
     monkeypatch.setenv("GOOGLE_CLIENT_SECRET","do-not-copy")
     monkeypatch.setenv("APP_DATABASE_URL","do-not-copy")
@@ -35,6 +36,7 @@ def test_private_environment_excludes_providers_and_production_settings(monkeypa
     result = load.clean_environment()
     assert not {"GROQ_API_KEY","GOOGLE_CLIENT_SECRET","APP_DATABASE_URL","HTTP_PROXY"}&result.keys()
     assert not {"ORION_DB_POOL_SIZE", "ORION_DB_MAX_OVERFLOW"}&result.keys()
+    assert result['SYSTEMROOT']==r'C:\Windows'
 
 
 @pytest.mark.parametrize("flag,value", [("--db-pool-size", "0"), ("--db-pool-size", "21"),

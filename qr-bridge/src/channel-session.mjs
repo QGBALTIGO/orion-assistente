@@ -4,7 +4,7 @@
  */
 import path from 'node:path';
 import {encryptedChannelStore,privateDirectory} from './channel-storage.mjs';
-import {extractText,resolveMessagePhone,normalizeFromJid,freshQR} from './core.mjs';
+import {resolveMessagePhone,normalizeFromJid,freshQR} from './core.mjs';
 import {shouldIngestUpsert,timestampMs} from './linked-session-health.mjs';
 import {deliveryFromAck} from './message-retry-store.mjs';
 import {makeEncryptedRetryStore} from './encrypted-retry-store.mjs';
@@ -14,9 +14,11 @@ import {makeAssistantTyping} from './assistant-typing.mjs';
 import {withAssistantAudio} from './ai-audio.mjs';
 import {makeConversationIntake} from './conversation-intake.mjs';
 import {sendConnectionNoticeOnce} from './connection-alert.mjs';
+import {normalizeInbound,priorityText,updateEvent,callEvent,queueControl} from './inbound-event.mjs';
 
 const silent={level:'silent',trace(){},debug(){},info(){},warn(){},error(){},fatal(){},child(){return this;}};
 export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),now=Date.now,typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout}={}){
+  if(context.legacyTransport===true)throw Error('legacy_requires_existing_socket');
   await context.assertCurrent();
   const mod=await loadBaileys();await context.assertCurrent();
   const makeSocket=mod.default,openedAt=now();
@@ -29,8 +31,35 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const retryStore=makeEncryptedRetryStore({directory:privateDirectory(path.join(context.directory,'retry-proto')),secret:context.secret,
     serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver),now});
   const deviceCache=makePilotDeviceCache();
+  const overflowNotices=new Map(),overflowEpoch=new Map();
   const current=()=>!closed&&context.isCurrent();
   const guarded=async()=>{if(!current())throw Error('channel_socket_replaced');await context.assertCurrent();if(!current())throw Error('channel_socket_replaced');};
+  function overflowNotice(message,normalized){
+    const peer=String(message.key?.remoteJid||'');
+    if(!/^\d{8,20}(?::\d+)?@(s\.whatsapp\.net|lid)$/.test(peer))return;
+    if(!overflowEpoch.has(peer)&&overflowEpoch.size>=100)return;
+    overflowEpoch.set(peer,(overflowEpoch.get(peer)||0)+1);
+    const existing=overflowNotices.get(peer),priority=priorityText(normalized.text)||!!normalized.event.control;
+    if(existing){
+      if(priority)queueControl(existing.controls,[message,normalized]);
+      else existing.latest=[message,normalized];
+      return;
+    }
+    if(overflowNotices.size>=100)return;
+    const state={controls:[],latest:null};overflowNotices.set(peer,state);
+    void (async()=>{
+      let item=[message,normalized];
+      while(item&&current()){
+        const [msg,event]=item;await guarded();const pn=await resolveMessagePhone(msg.key,client);await guarded();
+        if(!pn||!context.allowedSender(pn))return;
+        context.onRejected?.({phone:pn});
+        await context.onInbound({phone:pn,message_id:msg.key.id,text:event.text||'',kind:event.text?'text':'unsupported',
+          ...(event.special?{envelope:event.event}:{})});
+        if(state.controls.length)item=state.controls.shift();
+        else {item=state.latest;state.latest=null;}
+      }
+    })().catch(()=>{}).finally(()=>overflowNotices.delete(peer));
+  }
   const write=job=>{const next=queue.then(async()=>{await guarded();job();});queue=next.catch(()=>{});return next;};
   const auth={creds,keys:{
     async get(type,ids){await guarded();return Object.fromEntries(ids.map(id=>{
@@ -54,7 +83,8 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       if(!batchCurrent())return {state:'superseded',not_committed:true};
       await guarded();
       return context.onMessage({phone:first.phone,message_id:batch.messages[0].id,message_ids:batch.messages.map(item=>item.id),
-        text:batch.text,intake_revision:batch.intakeRevision},{noticeProofs:entries.map(item=>item.proof),isCurrent:batchCurrent,
+        text:batch.text,intake_revision:batch.intakeRevision,
+        ...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{})},{noticeProofs:entries.map(item=>item.proof),isCurrent:batchCurrent,
         beforeReply:value=>entries.at(-1)?.lease?.beforeReply(value)});
     }});
   client.ev.on('creds.update',()=>{write(()=>store.set('creds',creds)).catch(close);});
@@ -88,19 +118,29 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   });
   client.ev.on('messages.update',updates=>{
     for(const item of updates){const delivery=deliveryFromAck(item.update?.status);
-      if(current()&&['delivered','read'].includes(delivery))context.onReceipt(item.key?.id,delivery).catch(()=>{});}
+      if(current()&&['delivered','read'].includes(delivery))context.onReceipt(item.key?.id,delivery).catch(()=>{});
+      const edited=updateEvent(item.key,item.update,now);if(current()&&edited)receive({messages:[edited],type:'notify'});}
   });
-  client.ev.on('messages.upsert',({messages=[],type})=>{
-    for(const message of messages.slice(0,100)){
+  client.ev.on('messages.delete',({keys=[]}={})=>{
+    for(const key of keys.slice(0,100))if(key?.fromMe===false&&key.id)
+      receive({type:'notify',messages:[{key:{...key,id:'deleted:'+key.id.slice(0,145)},messageTimestamp:now()/1000,
+        message:{protocolMessage:{type:0,key}}}]});
+  });
+  client.ev.on('call',calls=>{for(const call of (calls||[]).slice(0,20)){const event=callEvent(call,now);if(event)receive({messages:[event],type:'notify'});}});
+  function receive({messages=[],type}){
+    for(const message of messages){
       const id=message.key?.id,at=timestampMs(message.messageTimestamp);
       if(!current()||message.key?.fromMe||typeof id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(id)||seen.has(id)||
           !shouldIngestUpsert(type,message.messageTimestamp,now())||!at||at<openedAt-1000)continue;
-      const text=extractText(message.message),media=message.message?.audioMessage||message.message?.ephemeralMessage?.message?.audioMessage;
-      if((typeof text!=='string'||!text.trim())&&!media||typeof text==='string'&&text.length>1500)continue;
-      if(pending>=32)continue;
+       const normalized=normalizeInbound(message),text=normalized.text,media=message.message?.audioMessage||message.message?.ephemeralMessage?.message?.audioMessage;
+       if(normalized.silent)continue;
+       const overflow=pending>=32;
+       if(pending>=40){overflowNotice(message,normalized);continue;}
       seen.add(id);if(seen.size>2000)seen.delete(seen.values().next().value);
       const peer=String(message.key.remoteJid||'');
       if(!/^\d{8,20}(?::\d+)?@(s\.whatsapp\.net|lid)$/.test(peer))continue;
+      if(overflow)overflowEpoch.set(peer,(overflowEpoch.get(peer)||0)+1);
+      const ingressEpoch=overflowEpoch.get(peer)||0;
       // Only identity resolution is ordered here. Never wait for ASR or an AI
       // reply before registering a newer authenticated message's revision.
       pending++;
@@ -108,18 +148,28 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
         await guarded();const phone=await resolveMessagePhone(message.key,client);await guarded();
         const self=normalizeFromJid(client.user?.id);
         if(!phone||!self||!context.allowedSender(phone)||phone===self)return null;
-        const entry={phone};metadata.set(id,entry);
-        const entryCurrent=()=>current()&&context.allowedSender(phone);
+         const entry={phone,...(normalized.special?{event:normalized.event}:{})};metadata.set(id,entry);
+        const entryCurrent=()=>current()&&context.allowedSender(phone)&&(overflowEpoch.get(peer)||0)===ingressEpoch;
+         // Even rejected input registers its revision before consuming more
+         // work. It revokes stale inference and records handoff/opt-out in the
+         // journal. The rejected prefix never reaches the domain consumer.
+         const proofTask=Promise.resolve(context.onInbound({phone,message_id:id,text:text||'',kind:media?'audio':text?'text':'unsupported',
+           ...(normalized.special?{envelope:normalized.event}:{})})).then(proof=>{entry.proof=proof;return proof;});
+         void proofTask.catch(()=>{});
+         if(overflow&&!priorityText(text)&&!normalized.event.control){
+           context.onRejected?.({phone});void proofTask.catch(()=>{}).finally(()=>{metadata.delete(id);pending--;});return true;
+         }
         const task=intake.submit({conversationKey:context.channelId+':'+phone,messageId:id,isCurrent:entryCurrent,
-          notice:async()=>{const proof=await context.onInbound({phone,message_id:id});await guarded();entry.proof=proof;return proof;},
+           notice:async()=>{const proof=await proofTask;await guarded();return proof;},
           prepare:async({signal})=>{
             await guarded();
-            if(context.assistantEnabled?.()===false||(!text?.trim()&&context.audioEnabled?.()!==true))return {skip:true};
+            if(context.assistantEnabled?.()===false||(!normalized.special&&!text?.trim()&&context.audioEnabled?.()!==true))return {skip:true};
             let typing=typingByPhone.get(phone);
             if(!typing){typing=typingFactory({socket:client,pilotPhone:()=>phone,isConnected:()=>state==='connected'&&current(),
               isAllowed:value=>context.allowedSender(value)&&context.assistantEnabled?.()!==false});typingByPhone.set(phone,typing);}
             entry.lease=typing.begin({phone,chatJid:peer,isCurrent:entryCurrent});typingLeases.add(entry.lease);
-            let body=text;
+             if(normalized.special)return {text:text||'[Evento de mensagem recebido]'};
+             let body=text;
             if(!body?.trim())body=await withAssistantAudio(message,{client,downloadMediaMessage:mod.downloadMediaMessage,logger:silent,
               signal:AbortSignal.any([abort.signal,signal])},async({buffer,mediaType,signal})=>{
                 await guarded();return context.transcribe({phone,buffer,mediaType,signal});});
@@ -127,12 +177,13 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
           }});
         // The identity queue returns immediately; only this message's cleanup
         // waits for ordered consumption (including an explicit zero-write carry).
-        void task.catch(()=>{}).finally(()=>{entry.lease?.stop();typingLeases.delete(entry.lease);metadata.delete(id);pending--;});
+        void task.then(result=>{if(result?.state==='overloaded'){overflowEpoch.set(peer,(overflowEpoch.get(peer)||0)+1);context.onRejected?.({phone});}},()=>{}).finally(()=>{entry.lease?.stop();typingLeases.delete(entry.lease);metadata.delete(id);pending--;});
         return true;
       });
       identityQueue=identityTask;identityTask.then(accepted=>{if(!accepted)pending--;},()=>{pending--;});
     }
-  });
+  }
+  client.ev.on('messages.upsert',receive);
   return {close,status:()=>state,
     qr:()=>state==='qr_ready'&&freshQR(qrAt,now())?{value:qrValue,expires_in_ms:Math.max(0,45000-(now()-qrAt))}:null,
     async send(phone,text,{isCurrent:operationCurrent=()=>true}={}){await guarded();const self=normalizeFromJid(client.user?.id);

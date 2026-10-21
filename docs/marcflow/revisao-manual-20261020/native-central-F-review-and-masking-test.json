@@ -1,0 +1,272 @@
+{
+  "schema_version": 1,
+  "created_at_utc": "2026-10-21T00:44:39.222990+00:00",
+  "status": "passed_static_review_and_isolated_masking_with_explicit_pre_F_cleanup_gate",
+  "provenance": "Mesmo agente que preparou os arquivos fez nova leitura completa e verificações recalculadas, sem confiar apenas nos booleanos do static-proof. Não é atestado de outro revisor humano ou de produção.",
+  "inputs": {
+    "native-central-F-prepared.json": "3307a88482b73a5299a8ee81d90de5dc65f478f988f1f323e71fe944f20f875f",
+    "native-central-F-static-proof.json": "d29e3e74d8a894fdfce2bec362a1d6b3db478447b87bc32854d70b5336880fe5",
+    "native-central-F-worker-current-config.json": "9b49fa8a90295fe4d16ec5ca78d19acf14fc4cbc92fde14b61a4f1c2ca514b72",
+    "ci-a85da1c-final-evidence.json": "c8b2256b6c8f1d438c7ef6f528eb87355926c23a44ddeff4e94f8da5842f80b6",
+    "constraints-ci-a85da1c-proof.json": "459e18b09bde2cd7516480b7bab3a677a3a2a159d275c7677d1224722ea87959"
+  },
+  "review_checks": {
+    "E_complete_and_D_recheck_explicit": true,
+    "API_exactly_2_flag_updates": true,
+    "worker_exactly_3_flag_updates": true,
+    "worker_source_qualified_a85": true,
+    "repo_branch_build_start_preserved": true,
+    "worker_baseline_AST_unchanged_except_3_log_statements": true,
+    "all_18pins_match_CI_receipt": true,
+    "logging_exactly_13_flags": true,
+    "no_one_time_migration_or_credentials_added_to_patch_or_logged": true,
+    "no_QR_or_volume_updates": true,
+    "prepared_and_proof_hashes_valid": true,
+    "actual_E_receipt_not_assumed": true
+  },
+  "isolated_masking_test": {
+    "passed": 5,
+    "failed": 0,
+    "snippet_statements": 3,
+    "snippet_sha256": "145bb3eeb033432f33d26d017c8c557b819847d125b3385e7ce34a3563bd60de",
+    "cases": [
+      {
+        "case": "all_unset",
+        "status": "passed",
+        "environment_reads": [
+          "QR_AI_ENABLED",
+          "QR_CHANNELS_ENABLED",
+          "QR_LEGACY_CENTRAL_ENABLED",
+          "META_LIVE_SEND",
+          "INBOX_CONTROL_ENABLED",
+          "INBOX_SEND_ENABLED",
+          "INBOX_TOOLS_ENABLED",
+          "MARKETING_EXECUTION_ENABLED",
+          "MARKETING_RECONCILIATION_ENABLED",
+          "BIRTHDAY_COLLECTION_ENABLED",
+          "GROQ_PROBE_ON_START",
+          "ORION_EMAIL_DELIVERY_PROBE",
+          "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED"
+        ],
+        "imports": [
+          "json",
+          "os"
+        ],
+        "single_print_line": true,
+        "printed_flags": {
+          "BIRTHDAY_COLLECTION_ENABLED": "unset",
+          "GROQ_PROBE_ON_START": "unset",
+          "INBOX_CONTROL_ENABLED": "unset",
+          "INBOX_SEND_ENABLED": "unset",
+          "INBOX_TOOLS_ENABLED": "unset",
+          "MARKETING_EXECUTION_ENABLED": "unset",
+          "MARKETING_RECONCILIATION_ENABLED": "unset",
+          "META_LIVE_SEND": "unset",
+          "ORION_EMAIL_DELIVERY_PROBE": "unset",
+          "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED": "unset",
+          "QR_AI_ENABLED": "unset",
+          "QR_CHANNELS_ENABLED": "unset",
+          "QR_LEGACY_CENTRAL_ENABLED": "unset"
+        },
+        "secret_canary_absent": true,
+        "non_flag_env_not_read": true
+      },
+      {
+        "case": "mixed_boolean_values",
+        "status": "passed",
+        "environment_reads": [
+          "QR_AI_ENABLED",
+          "QR_CHANNELS_ENABLED",
+          "QR_LEGACY_CENTRAL_ENABLED",
+          "META_LIVE_SEND",
+          "INBOX_CONTROL_ENABLED",
+          "INBOX_SEND_ENABLED",
+          "INBOX_TOOLS_ENABLED",
+          "MARKETING_EXECUTION_ENABLED",
+          "MARKETING_RECONCILIATION_ENABLED",
+          "BIRTHDAY_COLLECTION_ENABLED",
+          "GROQ_PROBE_ON_START",
+          "ORION_EMAIL_DELIVERY_PROBE",
+          "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED"
+        ],
+        "imports": [
+          "json",
+          "os"
+        ],
+        "single_print_line": true,
+        "printed_flags": {
+          "BIRTHDAY_COLLECTION_ENABLED": "1",
+          "GROQ_PROBE_ON_START": "0",
+          "INBOX_CONTROL_ENABLED": "0",
+          "INBOX_SEND_ENABLED": "1",
+          "INBOX_TOOLS_ENABLED": "0",
+          "MARKETING_EXECUTION_ENABLED": "1",
+          "MARKETING_RECONCILIATION_ENABLED": "0",
+          "META_LIVE_SEND": "1",
+          "ORION_EMAIL_DELIVERY_PROBE": "1",
+          "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED": "0",
+          "QR_AI_ENABLED": "0",
+          "QR_CHANNELS_ENABLED": "1",
+          "QR_LEGACY_CENTRAL_ENABLED": "0"
+        },
+        "secret_canary_absent": true,
+        "non_flag_env_not_read": true
+      },
+      {
+        "case": "all_invalid_canaries",
+        "status": "passed",
+        "environment_reads": [
+          "QR_AI_ENABLED",
+          "QR_CHANNELS_ENABLED",
+          "QR_LEGACY_CENTRAL_ENABLED",
+          "META_LIVE_SEND",
+          "INBOX_CONTROL_ENABLED",
+          "INBOX_SEND_ENABLED",
+          "INBOX_TOOLS_ENABLED",
+          "MARKETING_EXECUTION_ENABLED",
+          "MARKETING_RECONCILIATION_ENABLED",
+          "BIRTHDAY_COLLECTION_ENABLED",
+          "GROQ_PROBE_ON_START",
+          "ORION_EMAIL_DELIVERY_PROBE",
+          "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED"
+        ],
+        "imports": [
+          "json",
+          "os"
+        ],
+        "single_print_line": true,
+        "printed_flags": {
+          "BIRTHDAY_COLLECTION_ENABLED": "invalid",
+          "GROQ_PROBE_ON_START": "invalid",
+          "INBOX_CONTROL_ENABLED": "invalid",
+          "INBOX_SEND_ENABLED": "invalid",
+          "INBOX_TOOLS_ENABLED": "invalid",
+          "MARKETING_EXECUTION_ENABLED": "invalid",
+          "MARKETING_RECONCILIATION_ENABLED": "invalid",
+          "META_LIVE_SEND": "invalid",
+          "ORION_EMAIL_DELIVERY_PROBE": "invalid",
+          "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED": "invalid",
+          "QR_AI_ENABLED": "invalid",
+          "QR_CHANNELS_ENABLED": "invalid",
+          "QR_LEGACY_CENTRAL_ENABLED": "invalid"
+        },
+        "secret_canary_absent": true,
+        "non_flag_env_not_read": true
+      },
+      {
+        "case": "newline_unicode_and_shell_text_are_data",
+        "status": "passed",
+        "environment_reads": [
+          "QR_AI_ENABLED",
+          "QR_CHANNELS_ENABLED",
+          "QR_LEGACY_CENTRAL_ENABLED",
+          "META_LIVE_SEND",
+          "INBOX_CONTROL_ENABLED",
+          "INBOX_SEND_ENABLED",
+          "INBOX_TOOLS_ENABLED",
+          "MARKETING_EXECUTION_ENABLED",
+          "MARKETING_RECONCILIATION_ENABLED",
+          "BIRTHDAY_COLLECTION_ENABLED",
+          "GROQ_PROBE_ON_START",
+          "ORION_EMAIL_DELIVERY_PROBE",
+          "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED"
+        ],
+        "imports": [
+          "json",
+          "os"
+        ],
+        "single_print_line": true,
+        "printed_flags": {
+          "BIRTHDAY_COLLECTION_ENABLED": "0",
+          "GROQ_PROBE_ON_START": "0",
+          "INBOX_CONTROL_ENABLED": "0",
+          "INBOX_SEND_ENABLED": "0",
+          "INBOX_TOOLS_ENABLED": "0",
+          "MARKETING_EXECUTION_ENABLED": "0",
+          "MARKETING_RECONCILIATION_ENABLED": "0",
+          "META_LIVE_SEND": "0",
+          "ORION_EMAIL_DELIVERY_PROBE": "0",
+          "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED": "0",
+          "QR_AI_ENABLED": "invalid",
+          "QR_CHANNELS_ENABLED": "0",
+          "QR_LEGACY_CENTRAL_ENABLED": "0"
+        },
+        "secret_canary_absent": true,
+        "non_flag_env_not_read": true
+      },
+      {
+        "case": "explicit_unset_and_empty_invalid",
+        "status": "passed",
+        "environment_reads": [
+          "QR_AI_ENABLED",
+          "QR_CHANNELS_ENABLED",
+          "QR_LEGACY_CENTRAL_ENABLED",
+          "META_LIVE_SEND",
+          "INBOX_CONTROL_ENABLED",
+          "INBOX_SEND_ENABLED",
+          "INBOX_TOOLS_ENABLED",
+          "MARKETING_EXECUTION_ENABLED",
+          "MARKETING_RECONCILIATION_ENABLED",
+          "BIRTHDAY_COLLECTION_ENABLED",
+          "GROQ_PROBE_ON_START",
+          "ORION_EMAIL_DELIVERY_PROBE",
+          "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED"
+        ],
+        "imports": [
+          "json",
+          "os"
+        ],
+        "single_print_line": true,
+        "printed_flags": {
+          "BIRTHDAY_COLLECTION_ENABLED": "unset",
+          "GROQ_PROBE_ON_START": "unset",
+          "INBOX_CONTROL_ENABLED": "unset",
+          "INBOX_SEND_ENABLED": "unset",
+          "INBOX_TOOLS_ENABLED": "unset",
+          "MARKETING_EXECUTION_ENABLED": "unset",
+          "MARKETING_RECONCILIATION_ENABLED": "unset",
+          "META_LIVE_SEND": "unset",
+          "ORION_EMAIL_DELIVERY_PROBE": "unset",
+          "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED": "unset",
+          "QR_AI_ENABLED": "unset",
+          "QR_CHANNELS_ENABLED": "invalid",
+          "QR_LEGACY_CENTRAL_ENABLED": "unset"
+        },
+        "secret_canary_absent": true,
+        "non_flag_env_not_read": true
+      }
+    ],
+    "log": "native-central-F-masking-isolated.log",
+    "log_sha256": "7efdc3383fb8ba3b89ededa4a5debd0961ff0aecdffb77eea999367a7da5c113",
+    "boundary": "Somente as três instruções adicionadas de log foram executadas. os.getenv é fake e __import__ aceita apenas os/json substituídos; print capturado. Nenhuma variável real, binding, versão instalada, gate, ARQ ou predeploy completo foi executado."
+  },
+  "operational_precondition": {
+    "id": "F-API-CLEANUP-AFTER-E",
+    "status": "acknowledged_by_parent_pending_verification_after_E",
+    "reason": "O prepared histórico altera somente duas flags na API e não substitui o hookE nem desliga suas opções. Aplicá-lo antes da limpezaE poderia repetir o predeployactivate no redeploy da API.",
+    "required_gate": "Após reciboEcomplete, o responsável restaura hook normal da API, desliga ORION_RUN_LEGACY_ADOPTION e limpa runid/fase de uso único, preservando PANEL_LEGACY_ADMIN_IDENTITY_ENABLED=1 e QR_LEGACY_CENTRAL_ENABLED=1; confere configuração efetiva antes de F.",
+    "parent_acknowledgement": "Root confirmou nesta tarefa que fará normalhook + legacy oneshots0/runidblank mantendo native1/QRlegacy1 antesF e verificaráconfig. Nenhum cumprimento foi presumido enquanto E está em andamento.",
+    "historical_prepared_unchanged": true
+  },
+  "problems_found": [],
+  "pending_acceptance": [
+    "ReciboEcomplete e confronto de estado",
+    "LimpezaE/hooknormal efetivos",
+    "RechecagemDhealth/sessão",
+    "Configuração atual de referências/flags e publicaçãoF"
+  ],
+  "activity": {
+    "added_logging_snippet_fake_cases_executed": 5,
+    "application_tests_executed": 0,
+    "full_predeploy_executions": 0,
+    "binding_or_schema_gate_executions": 0,
+    "ARQ_starts": 0,
+    "real_environment_values_read": 0,
+    "network_or_production_calls": 0,
+    "staging_calls": 0,
+    "deployments": 0,
+    "repository_edits": 0,
+    "database_or_session_mutations": 0
+  },
+  "limit": "Esses cinco casos são testes do log preparado, não cinco casos de aplicação/PG/CI nem aceites da central."
+}

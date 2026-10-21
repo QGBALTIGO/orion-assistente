@@ -1,0 +1,46 @@
+{
+  "recorded_at_utc": "2026-10-20T21:41:02.260857+00:00",
+  "cause": "CI fixture directly invoked try_command with non-UUID message identities and no wrapper last_answer/accepted SQL outbox receipt; production accepted-summary guard correctly regenerated the proposal.",
+  "fix_scope": "test fixture and scenario only; production whatsapp_commands/communication_events/whatsapp_bot unchanged",
+  "file": "tests/integration/test_booking.py",
+  "source_sha256": "8884a20409ee37dd03b47c2282ab09f0f968a3c848b8c64c1560aba8c90ff0ba",
+  "checks": [
+    "real reply wrapper stores exact last_answer and UUID identity",
+    "real PostgreSQL synthetic sent receipt for tenant/channel/phone/body",
+    "no receipt cannot reschedule/cancel",
+    "same message cannot confirm, direct handler and wrapper",
+    "wrong sender cannot alter reservation; wrong tenant/channel/phone receipt cannot grant consent",
+    "fresh owner confirmation after synthetic acceptance reschedules/cancels through real PostgreSQL domain",
+    "fixture cleanup removes synthetic outbox/inbound before channel deletion"
+  ],
+  "targeted_test": {
+    "junit": "booking-ci-fix.xml",
+    "log": "booking-ci-fix.log",
+    "cases": 1,
+    "failures_or_errors": 0,
+    "times": [
+      "4.290"
+    ]
+  },
+  "isolation": "test_pg.py invokes isolated_runner with loopback PostgreSQL URLs and external DNS/socket denial; synthetic receipt is not a native Meta send",
+  "runtime_inventory_changes": false,
+  "production_accessed": false,
+  "messages_sent": false,
+  "deployment_performed": false,
+  "complete_booking_file": {
+    "junit": "booking-file-final.xml",
+    "log": "booking-file-final.log",
+    "cases": 37,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "observed_log_result": "37 passed,6warnings in49.14s",
+    "scope": "same isolated PostgreSQL/no external network runner; overlaps the targeted case, do not sum as distinct tests"
+  },
+  "artifacts_sha256": {
+    "booking-ci-fix.xml": "93a7c935c5b97c2c68835fd0767db7d513dcfa15aaab078c8a49d6f3af13f0ba",
+    "booking-ci-fix.log": "a95e4940e9263d5c2f019ff0d945e2a7f5e27a6d2e3dffc16213261fb838cfcd",
+    "booking-file-final.xml": "5b55d140cbaae32244252648028d7de5e6a06f82f6eb3ffe2c2d99549786436a",
+    "booking-file-final.log": "1dbc7a8a2b426ade9b6d2b07c8a8bea78531a8e4b9f647e3f3deec811b6390a8"
+  }
+}

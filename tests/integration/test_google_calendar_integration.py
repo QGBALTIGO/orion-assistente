@@ -481,6 +481,10 @@ async def test_disconnect_cannot_succeed_while_old_credential_is_sending(google_
 
 @pytest.mark.asyncio
 async def test_two_outboxes_reenqueue_after_connection_busy_despite_arq_retained_result(google_db, monkeypatch):
+    # ARQ uses SIGUSR1 as an internal close token even with OS handlers off.
+    # Windows has no SIGUSR1; keep the real Redis/worker assertions unchanged.
+    import signal
+    if not hasattr(signal,'SIGUSR1'):monkeypatch.setattr(signal,'SIGUSR1',signal.SIGTERM,raising=False)
     d = google_db
     person = await customer(d)
     identities = [await appointment(d, person["id"], start_at=d["now"] + timedelta(days=day)) for day in (1, 2)]

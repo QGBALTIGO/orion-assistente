@@ -1,6 +1,6 @@
 /** Encaminha apenas mensagem privada recém-recebida para a API Orion autorizada. */
 import {cleanContactProfile} from './contact-names.mjs';
-export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,text,intakeRevision,requireSummaryReview,profile,isCurrent=()=>true,fetchImpl=fetch}){
+export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,text,intakeRevision,requireSummaryReview,profile,envelope,isCurrent=()=>true,fetchImpl=fetch}){
   if(typeof token!=="string"||token.length<32)throw Error("bridge_key_missing");
   if(typeof phone!=="string"||!/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(phone))throw Error("invalid_recipient");
   if(typeof messageId!=="string"||! /^[a-zA-Z0-9._:-]{1,160}$/.test(messageId))throw Error("invalid_message_id");
@@ -22,7 +22,7 @@ export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),19000);
   try{
-    const payload={phone,message_id:messageId,text,
+    const payload={phone,message_id:messageId,text,...(envelope?{envelope}:{}),
       ...(intakeRevision===undefined?{}:{intake_revision:intakeRevision}),
       ...(requireSummaryReview===undefined?{}:{require_summary_review:requireSummaryReview}),
       ...(messageIds?.length>1?{message_ids:messageIds}:{})};
@@ -58,7 +58,7 @@ export async function forwardAssistant({apiUrl,token,phone,messageId,messageIds,
 }
 
 /** One authenticated notice after PN resolution; no media and no business action. */
-export async function registerAssistantIngress({apiUrl,token,phone,messageId,fetchImpl=fetch}){
+export async function registerAssistantIngress({apiUrl,token,phone,messageId,control,fetchImpl=fetch}){
   if(typeof token!=='string'||token.length<32||typeof phone!=='string'||
       !/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(phone)||
       typeof messageId!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(messageId))
@@ -71,7 +71,7 @@ export async function registerAssistantIngress({apiUrl,token,phone,messageId,fet
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5000);
   try{
     const response=await fetchImpl(target.toString(),{method:'POST',headers:{'Content-Type':'application/json',
-      'X-Orion-Bridge-Key':token},body:JSON.stringify({phone,message_id:messageId}),signal:controller.signal});
+      'X-Orion-Bridge-Key':token},body:JSON.stringify({phone,message_id:messageId,...(control?{control}:{})}),signal:controller.signal});
     if(!response.ok)throw Error('ingress_notice_unavailable');
     const result=await response.json();
     if(!Number.isSafeInteger(result?.revision)||result.revision<1)throw Error('invalid_ingress_revision');

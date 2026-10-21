@@ -61,8 +61,16 @@ class CustomerFields(CleanModel):
     city: str | None = Field(default=None, max_length=120)
     email: str | None = Field(default=None, max_length=320)
     birth_date: date | None = None
+    birth_month: int | None = Field(default=None,ge=1,le=12,strict=True)
+    birth_day: int | None = Field(default=None,ge=1,le=31,strict=True)
     notes: str | None = Field(default=None, max_length=5000)
     active: bool = True
+
+    @model_validator(mode='after')
+    def birthday_pair(self):
+        if (self.birth_month is None)!=(self.birth_day is None):raise ValueError('Informe dia e mês juntos')
+        if self.birth_month is not None:date(2000,self.birth_month,self.birth_day)
+        return self
 
     _phone = field_validator("phone")(normalize_phone)
 
@@ -95,6 +103,8 @@ class CustomerPatch(VersionedOperation):
     city: str | None = Field(default=None, max_length=120)
     email: str | None = Field(default=None, max_length=320)
     birth_date: date | None = None
+    birth_month: int | None = Field(default=None,ge=1,le=12,strict=True)
+    birth_day: int | None = Field(default=None,ge=1,le=31,strict=True)
     notes: str | None = Field(default=None, max_length=5000)
     active: bool | None = None
 
