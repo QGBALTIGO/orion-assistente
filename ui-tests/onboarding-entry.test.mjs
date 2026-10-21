@@ -14,14 +14,19 @@ test('new member sees empty real fields, explicit niche and timezone, without a 
 test('pending invitation cannot silently create a business or grant owner access',async t=>{
   const h=await makeOnboarding({decision:entry({kind:'invitation',tenant_id:null,create_allowed:false,invitations:[{tenant_id:tenantA,business_name:'Empresa convidante',status:'pending',role:'editor'}]})});t.after(()=>h.close());assert.match(h.element('#setup').textContent,/Empresa convidante/);assert.equal(h.document.querySelector('[data-ob-form=create]'),null);assert.equal(h.document.querySelector('a[href="/convite"]').textContent,'Ver convite');assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);
 });
-test('business chooser resolves only an explicit authorized selection',async t=>{
-  const h=await makeOnboarding({decision:entry({kind:'choose_business',tenant_id:null,businesses:[{id:tenantA,name:'Empresa A',role:'owner'},{id:tenantB,name:'Empresa B',role:'editor'}]}),respond:path=>path.includes('tenant_id='+tenantB)?entry({tenant_id:tenantB}):path.includes('/tenants/'+tenantB+'/')?fullState({tenant_id:tenantB,name:'Empresa B',can_edit:false}):undefined});t.after(()=>h.close());assert.equal(h.calls.length,1);h.click('[data-ob-tenant="'+tenantB+'"]');await flush();assert.equal(h.controller.getState().tenantId,tenantB);assert.match(h.element('[data-ob-title]').textContent,/Empresa B/);assert.equal(h.element('[data-ob-write]').disabled,true);assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);
+test('multiple businesses block entry without offering a choice or another registration',async t=>{
+  for(const kind of ['business_conflict','choose_business']){
+    const h=await makeOnboarding({decision:entry({kind,tenant_id:null,create_allowed:true,businesses:[{id:tenantA,name:'Empresa A'},{id:tenantB,name:'Empresa B'}]})});t.after(()=>h.close());
+    assert.equal(h.calls.length,1);assert.match(h.element('#setup').textContent,/mais de uma empresa/);assert.equal(h.document.querySelector('[data-ob-tenant]'),null);assert.equal(h.document.querySelector('[data-ob-form=create]'),null);assert.equal(h.controller.getState().tenantId,null);
+  }
 });
-test('late response from business A cannot replace business B or issue a stale completion callback',async t=>{
+
+test('a late read cannot replace refreshed facts for the account business',async t=>{
   const late=deferred();let waiting=true;
-  const h=await makeOnboarding({auto:false,respond:path=>path==='/api/v1/tenants/'+tenantA+'/onboarding'&&waiting?late.promise:path.includes('tenant_id='+tenantB)?entry({tenant_id:tenantB}):path.includes('/tenants/'+tenantB+'/')?fullState({tenant_id:tenantB,name:'Empresa B'}):undefined});t.after(()=>h.close());
-  const a=h.controller.resolveEntry({tenantId:tenantA});await flush();const b=h.controller.resolveEntry({tenantId:tenantB});await b;waiting=false;late.resolve(fullState({name:'Empresa A atrasada'}));assert.equal(await a,null);assert.equal(h.controller.getState().tenantId,tenantB);assert.doesNotMatch(h.element('#setup').textContent,/Empresa A atrasada/);assert.deepEqual(h.tenants,[tenantB]);assert.equal(h.completed.length,0);
+  const h=await makeOnboarding({auto:false,respond:path=>path==='/api/v1/tenants/'+tenantA+'/onboarding'?(waiting?late.promise:fullState({name:'Dados atuais'})):undefined});t.after(()=>h.close());
+  const first=h.controller.resolveEntry();await flush();waiting=false;await h.controller.resolveEntry({tenantId:tenantB});late.resolve(fullState({name:'Dados atrasados'}));assert.equal(await first,null);assert.equal(h.controller.getState().tenantId,tenantA);assert.match(h.element('#setup').textContent,/Dados atuais/);assert.doesNotMatch(h.element('#setup').textContent,/Dados atrasados/);assert.deepEqual(h.tenants,[tenantA]);assert.equal(h.completed.length,0);assert.equal(h.calls.some(c=>c.path.includes('tenant_id=')),false);
 });
+
 test('unmount drops private forms and ignores an outstanding read',async t=>{
   const late=deferred();const h=await makeOnboarding({auto:false,respond:path=>path.includes('/tenants/')?late.promise:undefined});t.after(()=>h.close());const pending=h.controller.resolveEntry();await flush();h.controller.unmount();late.resolve(fullState());await pending;assert.equal(h.element('#setup').childElementCount,0);assert.equal(h.element('#setup').hidden,true);
 });
@@ -38,12 +43,14 @@ test('mounting twice does not duplicate handlers or replace navigation',async t=
 test('entry failure stays visible and cannot pretend the setup is complete',async t=>{
   const h=await makeOnboarding({auto:false,respond:()=>{throw Object.assign(Error('Acesso temporariamente indisponível'),{status:503});}});t.after(()=>h.close());await assert.rejects(h.controller.resolveEntry(),/indisponível/);assert.match(h.element('[role=alert]').textContent,/indisponível/);assert.equal(h.completed.length,0);assert.equal(h.document.querySelector('[data-ob-form=create]'),null);
 });
-test('explicit new-business creation does not reuse the selected business facts',async t=>{
-  const h=await makeOnboarding({decision:entry({kind:'choose_business',tenant_id:null,businesses:[{id:tenantA,name:'Empresa existente',role:'owner'}]})});t.after(()=>h.close());h.click('[data-ob-action=create-business]');assert.equal(h.element('[name=name]').value,'');assert.equal(h.element('[name=niche]').value,'');assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
+test('a legacy chooser response never exposes an additional business form',async t=>{
+  const h=await makeOnboarding({decision:entry({kind:'choose_business',tenant_id:null,businesses:[{id:tenantA,name:'Empresa existente',role:'owner'}]})});t.after(()=>h.close());assert.equal(h.document.querySelector('[data-ob-action=create-business]'),null);assert.equal(h.document.querySelector('[data-ob-form=create]'),null);assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
 });
-test('explicit createNew opens an independent empty setup after checking server entitlement',async t=>{
-  const h=await makeOnboarding({auto:false,decision:entry({kind:'dashboard',tenant_id:tenantA,create_allowed:true,businesses:[{id:tenantA,name:'Empresa existente',role:'owner'}]})});t.after(()=>h.close());const result=await h.controller.resolveEntry({createNew:true});assert.equal(result.kind,'onboarding');assert.equal(h.controller.getState().tenantId,null);assert.equal(h.element('[name=name]').value,'');assert.equal(h.element('[name=niche]').value,'');assert.equal(h.calls.length,1);assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);
+
+test('the removed createNew option cannot create a second business for an existing account',async t=>{
+  const h=await makeOnboarding({auto:false,decision:entry({kind:'dashboard',tenant_id:tenantA,create_allowed:true,businesses:[{id:tenantA,name:'Empresa existente',role:'owner'}]})});t.after(()=>h.close());const result=await h.controller.resolveEntry({createNew:true});assert.equal(result.kind,'dashboard');assert.equal(h.document.querySelector('[data-ob-form=create]'),null);assert.equal(h.element('#setup').hidden,true);assert.equal(h.calls.length,1);assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);
 });
+
 test('revoked create entitlement cannot be bypassed by the createNew client option',async t=>{
   const h=await makeOnboarding({auto:false,decision:entry({kind:'invitation',tenant_id:null,create_allowed:false,invitations:[{tenant_id:tenantA,business_name:'Empresa com convite',status:'claimed'}]})});t.after(()=>h.close());const result=await h.controller.resolveEntry({createNew:true});assert.equal(result.kind,'invitation');assert.equal(h.document.querySelector('[data-ob-form=create]'),null);assert.match(h.element('#setup').textContent,/Aguardando aprovação/);assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);
 });

@@ -29,6 +29,25 @@ async function openDetail(h,id=appointmentId){h.click(`[data-os-appointment="${i
 async function fixture(t,options={}){const h=await makeSuite({initialRoute:'agenda',...options});t.after(()=>h.close());await flush();return h;}
 const posts=h=>h.calls.filter(call=>call.method==='POST');
 
+test('unverified Google connection explains the requirement and verifies only this accounts email',async t=>{
+  let confirmed=false;
+  const h=await makeSuite({initialRoute:'agenda',respond:responder({google:{...googleOff,configured:true,sync_status:'email_confirmation_required',email_confirmation_required:true},on:(path,method,data)=>{
+    if(path==='/auth/verify/resend')return {ok:true};
+    if(path==='/auth/verify'){assert.equal(data.code,'123456');confirmed=true;return {ok:true};}
+    if(path.endsWith('/google/status')&&confirmed)return {...googleOff,configured:true,capabilities:{can_connect:true}};
+  }})});t.after(()=>h.close());await flush();
+  h.click('[data-os-action=agenda-google]');await flush();
+  assert.match(h.document.querySelector('.os-dialog').textContent,/Confirme seu e-mail/);
+  assert.equal(h.document.querySelector('[data-os-action=google-connect]'),null);
+  h.click('[data-os-action=google-email]');assert.equal(posts(h).length,0);
+  h.submit('[data-os-form=google-email]');await flush();
+  assert.equal(posts(h)[0].path,'/auth/verify/resend');assert.equal(posts(h)[0].data.email,'synthetic@example.invalid');
+  h.fill('[name=code]','123456');h.submit('[data-os-form=google-email]');await flush();
+  assert.equal(posts(h)[1].path,'/auth/verify');assert.equal(posts(h)[1].data.email,'synthetic@example.invalid');
+  assert.ok(h.document.querySelector('[data-os-action=google-connect]'));
+  assert.equal(posts(h).some(call=>call.path.endsWith('/google/connect')),false);
+});
+
 test('agenda displays actual names and distinct lifecycle labels without guessing cancellation origin',async t=>{
   const states=[['confirmed',null],['completed',null],['no_show',null],['cancelled','customer'],['cancelled','professional'],['cancelled','business'],['cancelled','unknown']];
   const items=states.map(([status,requested_by],i)=>record({id:'appointment-'+i,status,cancellation:requested_by?{requested_by}:null}));
@@ -92,9 +111,9 @@ test('a late detail response cannot replace a different appointment or reopen a 
   h.click(`[data-os-appointment="${appointmentId}"]`);await flush();h.click('[data-os-action=close-dialog]');await openDetail(h,b.id);late.resolve(record({customer_display_name:'Resposta antiga privada'}));await flush();assert.match(h.document.getElementById('osDialog').textContent,/Outra pessoa sintética/);assert.doesNotMatch(h.document.getElementById('osDialog').textContent,/Resposta antiga privada/);
 });
 
-test('changing tenant discards both old detail and old search timer',async t=>{
+test('authenticating another account discards both old detail and old search timer',async t=>{
   const late=deferred();const h=await fixture(t,{respond:responder({on:path=>path.endsWith('/appointments/'+appointmentId)&&path.includes(tenantA)?late.promise:undefined})});
-  h.fill('#osAgendaSearch','Privado A');h.click(`[data-os-appointment="${appointmentId}"]`);await flush();h.window.OrionSuite.sync({tenantId:tenantB});await flush();late.resolve(record({customer_display_name:'Segredo A'}));await flush();await new Promise(resolve=>setTimeout(resolve,280));await flush();
+  h.fill('#osAgendaSearch','Privado A');h.click(`[data-os-appointment="${appointmentId}"]`);await flush();h.window.OrionSuite.sync({user:{role:'member',email:'second-account@example.invalid'},tenants:[{id:tenantB,name:'Empresa B',role:'owner'}],tenantId:tenantB});await flush();late.resolve(record({customer_display_name:'Segredo A'}));await flush();await new Promise(resolve=>setTimeout(resolve,280));await flush();
   assert.equal(h.document.getElementById('osDialog').open,false);assert.equal(h.document.getElementById('osAgendaSearch').value,'');assert.doesNotMatch(h.document.getElementById('page-suite').textContent,/Segredo A/);assert.equal(h.calls.filter(call=>call.path.includes(tenantB+'/appointments?')).length,1);
 });
 
@@ -166,9 +185,9 @@ test('Google calendar activation requires explicit selection and preserves a loc
   const h=await fixture(t,{respond:responder({google,on:(path,method)=>{if(path.endsWith('/google/calendars'))return {items:[{id:google.calendar_id,name:'Equipe sintética',selectable:true},{id:'other@example.invalid',name:'Outro calendário',selectable:false}],selection_pending:true,calendar_change_locked:true};if(path.endsWith('/google/calendar')&&method==='POST')return google;}})});h.click('[data-os-action=agenda-google]');await flush();h.click('[data-os-action=google-calendars]');await flush();assert.equal(posts(h).length,0);assert.equal([...h.document.querySelector('[name=calendar_id]').options].some(option=>option.value==='other@example.invalid'),false);assert.match(h.document.getElementById('osDialog').textContent,/calendário já vinculado será mantido/);h.submit('[data-os-form=google-calendar]');await flush();assert.equal(posts(h).length,1);assert.deepEqual(plain(posts(h)[0].data),{calendar_id:google.calendar_id});
 });
 
-test('OAuth return for the selected tenant opens calendar choice without activating or connecting automatically',async t=>{
+test('OAuth return uses the verified account without a company selector or automatic activation',async t=>{
   const google={...googleOn,selection_pending:true,sync_status:'choose_calendar',capabilities:{can_select_calendar:true}};const status=deferred();let reads=0;
-  const h=await makeSuite({initialRoute:'agenda',respond:responder({google,on:path=>{if(path.endsWith('/google/status')&&++reads===1)return status.promise;if(path.endsWith('/google/calendars'))return {items:[{id:google.calendar_id,name:'Equipe sintética',selectable:true}],selection_pending:true,calendar_change_locked:false};}})});t.after(()=>h.close());h.window.history.replaceState({},'','/panel?aba=agenda&empresa='+tenantA+'&google=choose');status.resolve(google);await flush();assert.ok(h.document.querySelector('[data-os-form=google-calendar]'));assert.equal(posts(h).length,0);assert.equal(new URL(h.window.location.href).searchParams.has('google'),false);assert.equal(h.document.querySelector('[name=calendar_id]').value,'');
+  const h=await makeSuite({initialRoute:'agenda',respond:responder({google,on:path=>{if(path.endsWith('/google/status')&&++reads===1)return status.promise;if(path.endsWith('/google/calendars'))return {items:[{id:google.calendar_id,name:'Equipe sintética',selectable:true}],selection_pending:true,calendar_change_locked:false};}})});t.after(()=>h.close());h.window.history.replaceState({},'','/panel?aba=agenda&google=choose');status.resolve(google);await flush();assert.ok(h.document.querySelector('[data-os-form=google-calendar]'));assert.equal(posts(h).length,0);assert.equal(new URL(h.window.location.href).searchParams.has('google'),false);assert.equal(h.document.querySelector('[name=calendar_id]').value,'');
 });
 
 test('late Google appointment sync cannot replace another detail and private contact actions only copy',async t=>{

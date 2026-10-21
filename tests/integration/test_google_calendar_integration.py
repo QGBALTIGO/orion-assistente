@@ -238,6 +238,23 @@ async def test_owner_oauth_enforces_csrf_nonce_and_single_use_before_selection(g
     assert [call[0] for call in d["google"].calls] == ["exchange"]
 
 
+@pytest.mark.asyncio
+async def test_unverified_owner_gets_preflight_before_google_state_or_token_exchange(google_db):
+    d = google_db
+    await as_owner_session(d)
+    async with d["migrator"].begin() as db:
+        await db.execute(text("UPDATE panel_accounts SET verified_at=NULL WHERE id=:id"), {"id": d["account"]})
+    status = (await d["client"].get(d["google_base"] + "/status")).json()
+    assert status["email_confirmation_required"] is True
+    assert status["sync_status"] == "email_confirmation_required"
+    assert status["capabilities"]["can_connect"] is False
+    before = set([key async for key in d["redis"].scan_iter(match="google:oauth:*")])
+    refused = await d["client"].post(d["google_base"] + "/connect")
+    assert refused.status_code == 403 and "Confirme seu e-mail" in refused.text
+    assert set([key async for key in d["redis"].scan_iter(match="google:oauth:*")]) == before
+    assert d["google"].calls == []
+
+
 @pytest.mark.parametrize("change", ["logout", "membership", "account_version", "revoke"])
 @pytest.mark.asyncio
 async def test_callback_rechecks_initiator_and_revocation_after_token_exchange(google_db, change):
@@ -464,6 +481,10 @@ async def test_disconnect_cannot_succeed_while_old_credential_is_sending(google_
 
 @pytest.mark.asyncio
 async def test_two_outboxes_reenqueue_after_connection_busy_despite_arq_retained_result(google_db, monkeypatch):
+    # ARQ uses SIGUSR1 as an internal close token even with OS handlers off.
+    # Windows has no SIGUSR1; keep the real Redis/worker assertions unchanged.
+    import signal
+    if not hasattr(signal,'SIGUSR1'):monkeypatch.setattr(signal,'SIGUSR1',signal.SIGTERM,raising=False)
     d = google_db
     person = await customer(d)
     identities = [await appointment(d, person["id"], start_at=d["now"] + timedelta(days=day)) for day in (1, 2)]

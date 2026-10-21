@@ -630,6 +630,8 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 #appView .orion-workspace .workspace-toolbar{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
 #appView .orion-workspace .workspace-toolbar .workspace-select{flex:1 1 240px;min-width:0;margin:0}
 #appView .orion-workspace .workspace-toolbar .workspace-select select{display:block;margin-top:8px}
+#appView .orion-workspace [data-account-business-name]{display:block;overflow-wrap:anywhere;font-weight:600}
+#appView .orion-workspace .workspace-select [data-account-business-name]{margin-top:8px}
 #appView .orion-workspace .workspace-toolbar .pill{align-self:center}
 #appView .orion-workspace .simulator-review{margin-top:20px}
 #appView .orion-workspace .simulator-review .business-actions{margin:0 0 16px}
@@ -690,6 +692,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <link rel="stylesheet" href="/panel-assets/orion-auth.css">
 <link rel="stylesheet" href="/panel-assets/orion-onboarding.css">
 <link rel="stylesheet" href="/panel-assets/orion-channels.css">
+<link rel="stylesheet" href="/panel-assets/orion-inbox.css">
 <style>
 #appView.ob-gated .content > .page,#appView.ob-gated #osConsultantFab{display:none!important}
 #orionSetup[hidden]{display:none!important}
@@ -1120,8 +1123,8 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
     </section>
     <section id="page-empresa" class="page orion-workspace hidden" aria-labelledby="businessHeading">
       <div class="header"><div><div class="eyebrow">Orion / Sua empresa</div><h1 id="businessHeading">Configure seu atendimento</h1><p class="subhead">Apresente sua empresa, escolha a forma de conversar e revise o que o assistente poderá fazer.</p></div></div>
-      <div class="card"><label for="businessTenant">Empresa ou unidade</label><select id="businessTenant"><option value="">Escolha um estabelecimento</option></select>
-        <div class="business-actions"><button id="businessReload" class="btn secondary" type="button">Atualizar configuração</button><span id="businessStatus" class="pill">Escolha uma empresa</span></div>
+      <div class="card"><p class="business-muted">Sua empresa</p><strong data-account-business-name>Conferindo empresa…</strong><input id="businessTenant" type="hidden">
+        <div class="business-actions"><button id="businessReload" class="btn secondary" type="button">Atualizar configuração</button><span id="businessStatus" class="pill">Aguardando configuração</span></div>
         <p id="businessAccess" class="business-muted"></p><p id="businessFeedback" class="feedback" role="status" aria-live="polite"></p></div>
       <nav class="business-steps" aria-label="Etapas da configuração"><button id="businessStep1" class="btn secondary" type="button" aria-current="step">1. Empresa</button><button id="businessStep2" class="btn secondary" type="button">2. Estilo</button><button id="businessStep3" class="btn secondary" type="button">3. Atividades e revisão</button></nav>
       <form id="businessForm"><fieldset id="businessFields" class="business-fields" disabled>
@@ -1175,8 +1178,8 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
     </section>
     <section id="page-catalogo" class="page orion-workspace hidden" aria-labelledby="commerceHeading">
       <div class="header"><div><div class="eyebrow">Orion / Produtos e pedidos</div><h1 id="commerceHeading">Catálogo e pedidos</h1><p class="subhead">Cadastre produtos e consulte propostas calculadas pelo servidor. Criar ou confirmar um pedido não confirma pagamento.</p></div></div>
-      <div class="card"><label for="comTenant">Empresa do catálogo</label><select id="comTenant"><option value="">Escolha uma empresa</option></select>
-        <div class="business-actions"><button id="comReload" class="btn secondary" type="button">Atualizar catálogo</button><span id="comStatus" class="pill">Escolha uma empresa</span></div>
+      <div class="card"><p class="business-muted">Sua empresa</p><strong data-account-business-name>Conferindo empresa…</strong><input id="comTenant" type="hidden">
+        <div class="business-actions"><button id="comReload" class="btn secondary" type="button">Atualizar catálogo</button><span id="comStatus" class="pill">Aguardando configuração</span></div>
         <p id="comAccess" class="business-muted"></p><p id="comAssistant" class="business-muted"></p><p id="comFeedback" class="feedback" role="status" aria-live="polite"></p>
         <p id="comUnavailable" class="commerce-warning">O catálogo comercial precisa estar habilitado pelo servidor para esta área funcionar.</p>
       </div>
@@ -1244,12 +1247,12 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
     </section>
     <section id="page-ai" class="page orion-workspace hidden">
       <div class="header"><div><div class="eyebrow">Atendimento Orion</div>
-        <h1>Teste seu atendimento</h1><p class="subhead">Converse por texto ou envie um arquivo de áudio. Valores e horários vêm do estabelecimento selecionado. Esta simulação não envia mensagens nem cria reservas.</p></div>
+        <h1>Teste seu atendimento</h1><p class="subhead">Converse por texto ou envie um arquivo de áudio. Valores e horários vêm da sua empresa. Esta simulação não envia mensagens nem cria reservas.</p></div>
       </div>
       <div class="card">
         <div class="workspace-toolbar">
-          <label class="workspace-select" for="aiTenant">Estabelecimento
-            <select id="aiTenant"><option value="">Escolha o estabelecimento</option></select></label>
+          <div class="workspace-select"><span>Sua empresa</span>
+            <strong data-account-business-name>Conferindo empresa…</strong><input id="aiTenant" type="hidden"></div>
           <button type="button" id="aiReset" class="btn secondary">Nova conversa</button>
           <button type="button" id="aiStatusRefresh" class="btn secondary">Atualizar disponibilidade</button>
           <span id="aiStatus" class="pill">Aguardando teste</span>
@@ -1279,30 +1282,21 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
           <summary>Revisar e exportar avaliações</summary>
           <p id="aiEvaluationHelp" class="business-muted">Marque o que precisa melhorar em cada resposta de teste. Clique novamente para remover. As avaliações ficam só nesta conversa, para revisão; não alteram preços, políticas nem o atendimento publicado.</p>
           <div class="business-actions"><button id="aiExportEvaluation" type="button" class="btn secondary" disabled aria-describedby="aiEvaluationHelp aiEvaluationExportHelp">Exportar avaliação JSON</button><small id="aiEvaluationStatus" role="status" aria-live="polite">Nenhuma resposta marcada.</small></div>
-          <p id="aiEvaluationExportHelp" class="business-muted">O arquivo inclui somente as respostas marcadas e a empresa, versão e estilo do teste. Revise o conteúdo antes de compartilhar. Nova conversa, mudança de empresa, versão ou estilo e saída da conta apagam as avaliações desta tela.</p>
+          <p id="aiEvaluationExportHelp" class="business-muted">O arquivo inclui somente as respostas marcadas e a empresa, versão e estilo do teste. Revise o conteúdo antes de compartilhar. Nova conversa, mudança de versão ou estilo e saída da conta apagam as avaliações desta tela.</p>
         </details>
       </div>
     </section>
     <section id="page-cadastros" class="page orion-workspace hidden">
       <button type="button" class="btn secondary workspace-back" data-os-route="configuracoes">Voltar para Configurações</button>
       <div class="header"><div><div class="eyebrow">Configurações</div><h1>Administração do atendimento</h1>
-        <p class="subhead">Gerencie telefones autorizados, folgas e empresas. Serviços, profissionais e expediente ficam nas abas de gestão.</p></div></div>
+        <p class="subhead">Gerencie os telefones autorizados e as folgas da sua empresa. Serviços, profissionais e expediente ficam nas abas de gestão.</p></div></div>
       <div class="columns">
         <div>
           <div class="card">
-            <h2>Selecionar empresa</h2>
-            <label for="tenant">Estabelecimento</label>
-            <select id="tenant"><option value="">Carregando...</option></select>
-            <button class="btn secondary" id="loadTenants">Atualizar estabelecimentos</button>
+            <h2>Sua empresa</h2>
+            <strong data-account-business-name>Conferindo empresa…</strong><input id="tenant" type="hidden">
+            <button class="btn secondary" id="loadTenants">Atualizar dados</button>
             <p id="notice" class="feedback" role="status" aria-live="polite"></p>
-          </div>
-          <div class="card" data-admin-only><h2>Nova empresa</h2>
-            <form id="tenantForm">
-              <label for="newName">Nome</label><input id="newName" name="name" required maxlength="160">
-              <label for="newSlug">Identificador</label><input id="newSlug" name="slug" required pattern="[a-z0-9-]+">
-              <label for="newTz">Fuso horário</label><input id="newTz" name="timezone" value="America/Campo_Grande" required>
-              <button class="btn" type="submit">Cadastrar empresa</button>
-            </form>
           </div>
         </div>
         <div class="card">
@@ -1324,7 +1318,11 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 </dialog>
 <script src="/panel-assets/orion-onboarding.js"></script>
 <script src="/panel-assets/orion-channels.js"></script>
+<script src="/panel-assets/orion-communication.js"></script>
 <script src="/panel-assets/orion-automations.js"></script>
+<script src="/panel-assets/orion-flows.js"></script>
+<script src="/panel-assets/orion-conversations.js"></script>
+<script src="/panel-assets/orion-inbox.js"></script>
 <script src="/panel-assets/orion-suite.js"></script>
 <script>
 (()=>{
@@ -1380,52 +1378,70 @@ const $=id=>document.getElementById(id);
  else if(preferenceQuery.addListener)preferenceQuery.addListener(onSystemTheme);
 
 let authEpoch=0;
-let suiteUser=null,suiteTenantId="";
+let suiteUser=null,suiteTenantId="",businessContextReady=false,businessContextError="";
 let setupController=null,setupResolving=0,setupGate=false;
 function setSetupGate(value){setupGate=Boolean(value);$("appView").classList.toggle("ob-gated",setupGate)}
+function accountBusiness(){return businessContextReady&&businessRows.length===1&&businessRows[0].id===suiteTenantId?businessRows[0]:null}
+function requireAccountBusiness(){const business=accountBusiness();if(!business)throw Error(businessContextError||"Sua conta ainda não possui uma empresa disponível.");return business}
+function renderAccountBusiness(){
+ const business=accountBusiness();
+ for(const id of ["businessTenant","comTenant","aiTenant","tenant"])$(id).value=business?.id||"";
+ document.querySelectorAll("[data-account-business-name]").forEach(node=>node.textContent=business?.name||(businessContextReady?"Nenhuma empresa vinculada":"Conferindo empresa…"));
+}
+function showBusinessContextError(message){
+ ++setupResolving;mountSetup();setSetupGate(true);const host=$("orionSetup");if(!host)return;
+ host.hidden=false;host.innerHTML='<header class="ob-heading"><div><p class="ob-eyebrow">Seu acesso ao Orion</p><h1 tabindex="-1">Confira o acesso à sua empresa</h1></div></header><section class="ob-card"><p class="ob-note ob-error" role="alert" id="businessContextMessage"></p><div class="ob-actions"><button type="button" id="retryBusinessContext" class="ob-button">Verificar novamente</button><button type="button" id="businessContextLogout" class="ob-button ob-secondary">Entrar com outra conta</button></div></section>';
+ $("businessContextMessage").textContent=message;
+ $("retryBusinessContext").onclick=async()=>{const button=$("retryBusinessContext");button.disabled=true;button.textContent="Conferindo…";if(await loadBusinesses())startBusinessSession();};
+ $("businessContextLogout").onclick=()=>$("logout").click();
+ host.querySelector("h1").focus();
+}
+function blockBusinessContext(message){
+ businessContextReady=false;businessContextError=message||"Não foi possível conferir o acesso à sua empresa. Tente novamente.";suiteTenantId="";businessRows=[];
+ resetBusinessState();resetCommerceState();resetCatalogState();resetAiConversation();clearAiProfileState();resetChatState();
+ ++statusSequence;connectedSnapshot=null;
+ clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);statusTimer=null;chatTimer=null;wizardClocks=null;
+ window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();renderAccountBusiness();
+ window.OrionSuite?.sync({tenants:[],tenantId:"",businessContextReady:false,businessContextError});
+ showBusinessContextError(businessContextError);
+}
+function startBusinessSession(){
+ if(!accountBusiness()||!["support","admin"].includes(loginRole))return;
+ if(!statusTimer)statusTimer=setInterval(updateStatus,4500);
+ if(!wizardClocks)wizardClocks=setInterval(updateWizardClocks,1000);
+ void updateStatus();
+}
 function mountSetup(){
  window.OrionOnboarding?.unmount();
  let host=$("orionSetup");
  if(!host){host=document.createElement("section");host.id="orionSetup";host.hidden=true;$("appView").querySelector(".content").append(host)}
  const epoch=authEpoch;
  setupController=window.OrionOnboarding?.mount({host,request:api,user:suiteUser,
-  async onTenantChange(id){if(epoch!==authEpoch)return;suiteTenantId=id;await loadBusinesses({resolveSetup:false,selectedId:id})},
-  async onComplete(data){if(epoch!==authEpoch)return;await loadBusinesses({resolveSetup:false,selectedId:data.tenant_id})},
-  onOpenPanel(route){if(epoch!==authEpoch)return;setSetupGate(false);host.hidden=true;window.OrionSuite?.open(route)},
-  openLegacy(target){if(epoch!==authEpoch)return;setSetupGate(false);host.hidden=true;window.OrionSuite?.open(target==="dispositivo"?"configuracoes":target)},
+  async onTenantChange(){if(epoch!==authEpoch)return;await loadBusinesses({resolveSetup:false});startBusinessSession()},
+  async onComplete(){if(epoch!==authEpoch)return;await loadBusinesses({resolveSetup:false})},
+  onOpenPanel(route){if(epoch!==authEpoch||!accountBusiness())return;setSetupGate(false);host.hidden=true;window.OrionSuite?.open(route)},
+  openLegacy(target){if(epoch!==authEpoch||!accountBusiness())return;setSetupGate(false);host.hidden=true;window.OrionSuite?.open(target==="dispositivo"?"configuracoes":target)},
   logout:()=>$("logout")?.click()
  });
 }
 async function resolveSetup(options={}){
  if(!suiteUser||!setupController)return;
+ if(businessContextError){showBusinessContextError(businessContextError);return}
+ if(!businessContextReady)return;
  const epoch=authEpoch,sequence=++setupResolving;setSetupGate(true);
- try{const entry=await setupController.resolveEntry({tenantId:suiteTenantId,...options});
+ try{const entry=await setupController.resolveEntry({force:options.force===true});
   if(epoch!==authEpoch||sequence!==setupResolving||!entry)return;
+  if(entry.kind==="business_conflict"){blockBusinessContext(entry.message||"Sua conta está vinculada a mais de uma empresa. Entre em contato com o suporte para regularizar o vínculo.");return}
   setSetupGate(entry.kind!=="dashboard");
  }catch{if(epoch===authEpoch&&sequence===setupResolving)setSetupGate(true)}
 }
-function syncSuiteTenant(id){
- if(!id||!businessRows.some(row=>String(row.id)===String(id)))return;
- suiteTenantId=String(id);
- window.OrionSuite?.sync({tenantId:suiteTenantId});
- window.OrionChannels?.unmount();window.OrionAutomations?.unmount();void resolveSetup();
-}
-async function beforeSuiteTenantChange(){
- if(businessBusy||commerceBusy||catalogWriting)return false;
- const epoch=authEpoch;
- if((businessDirty||commerceDirty()||commerceBasket.length)&&
-    !await confirmAction("Há alterações não salvas nesta empresa. Deseja descartá-las e trocar de empresa?"))return false;
- if(epoch!==authEpoch||businessBusy||commerceBusy||catalogWriting)return false;
- resetBusinessState();resetCommerceState();resetAiConversation();
- return true;
-}
 function suiteBridge(initialRoute){
  return {request:api,uploadImage:uploadImage,user:suiteUser,tenants:businessRows,tenantId:suiteTenantId,
+  businessContextReady,businessContextError,
   initialRoute:initialRoute||"dashboard",
-  beforeTenantChange:beforeSuiteTenantChange,
-  setTenant(id){suiteTenantId=String(id);window.OrionChannels?.unmount();window.OrionAutomations?.unmount();void resolveSetup()},
-  openSetup(options){void resolveSetup({force:true,...options})},
-  openLegacy(target){if(target==="ai"&&suiteTenantId)aiPreferredTenant=suiteTenantId;openPage(target)},
+  openSetup(){void resolveSetup({force:true})},
+  retryBusinessContext(){void loadBusinesses().then(ok=>{if(ok)startBusinessSession()})},
+  openLegacy(target){if(accountBusiness())openPage(target)},
   onRouteChange(){page="suite";clearInterval(chatTimer);chatTimer=null},
  };
 }
@@ -1472,6 +1488,9 @@ for(const key of ["authorized_staff","time_off"])$("resource").add(new Option(de
 function errorMessage(data,code){return typeof data?.detail==="string"?data.detail:(typeof data?.error==="string"?data.error:
   "O servidor retornou HTTP "+code+".")}
 async function api(url,method="GET",data){
+ const scoped=url.match(/^\/api\/v1\/tenants\/([^/?]+)/);
+ if(scoped&&(!accountBusiness()||decodeURIComponent(scoped[1])!==suiteTenantId))throw Error(businessContextError||"Não foi possível confirmar a empresa desta conta.");
+ if(url.startsWith("/api/v1/qr/")&&!accountBusiness())throw Error(businessContextError||"Confirme o acesso à sua empresa antes de continuar.");
  const requestAuthEpoch=authEpoch,requestCsrf=csrf;
  const headers={"Accept":"application/json"};
  if(method!=="GET"){headers["Content-Type"]="application/json";headers["X-Orion-CSRF"]=csrf;}
@@ -1484,6 +1503,8 @@ async function api(url,method="GET",data){
  return response.status===204?null:response.json();
 }
 async function uploadImage(url,file,kind){
+ const scoped=url.match(/^\/api\/v1\/tenants\/([^/?]+)/);
+ if(scoped&&(!accountBusiness()||decodeURIComponent(scoped[1])!==suiteTenantId))throw Error("Não foi possível confirmar a empresa desta conta.");
  const epoch=authEpoch,sessionCsrf=csrf;
  const headers={"Accept":"application/json","X-Orion-CSRF":csrf,
   "Content-Type":file.type||"application/octet-stream","X-Orion-Image-Kind":kind};
@@ -1585,27 +1606,29 @@ function authScreenShow(screen,{focus=false}={}){
 function showLogin(){
  ++authEpoch;
  ++setupResolving;window.OrionOnboarding?.unmount();setupController=null;setSetupGate(false);
- window.OrionChannels?.unmount();window.OrionAutomations?.unmount();
- window.OrionSuite?.destroy();suiteUser=null;suiteTenantId="";
+ window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
+ window.OrionSuite?.destroy();suiteUser=null;suiteTenantId="";businessContextReady=false;businessContextError="";
  finishActionConfirmation(false);manualSendRequest=null;++manualSendSequence;$("sendButton").disabled=false;
- csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);
+ csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);statusTimer=null;chatTimer=null;wizardClocks=null;
  ++statusSequence;connectedSnapshot=null;wizardSuccessUntil=0;
  $("realWhatsAppPhoto").removeAttribute("src");$("realWhatsAppName").textContent="";$("realWhatsAppPhone").textContent="";$("connectedPhone").textContent="";
  resetChatState();
  resetAiConversation("");
- clearAiProfileState();$("aiTenant").replaceChildren(new Option("Escolha o estabelecimento",""));
- resetBusinessState();businessRows=[];$("businessTenant").replaceChildren(new Option("Escolha um estabelecimento",""));$("businessNav").classList.add("hidden");$("aiNav").classList.add("hidden");aiPreferredTenant="";aiPreferredVersion="";
- resetCommerceState();$("comTenant").replaceChildren(new Option("Escolha uma empresa",""));$("commerceNav").classList.add("hidden");
+ clearAiProfileState();$("aiTenant").value="";
+ resetBusinessState();businessRows=[];$("businessTenant").value="";$("businessNav").classList.add("hidden");$("aiNav").classList.add("hidden");aiPreferredVersion="";
+ resetCommerceState();$("comTenant").value="";$("commerceNav").classList.add("hidden");
  resetCatalogState();$("catalogNav").classList.add("hidden");
  $("appView").classList.add("hidden");
  $("loginView").classList.remove("hidden");
  closeAuthTheme();
  authScreenShow("login");
 }
-function showApp(role="support",name="",email=""){
+async function showApp(role="support",name="",email=""){
  try{const pendingInvite=sessionStorage.getItem("orion_pending_invitation");if(pendingInvite&&/^[A-Za-z0-9_-]{43}$/.test(pendingInvite)){sessionStorage.removeItem("orion_pending_invitation");location.assign("/convite#token="+encodeURIComponent(pendingInvite));return}}catch{}
  const desired=new URLSearchParams(location.search).get("aba");
- suiteTenantId=new URLSearchParams(location.search).get("empresa")||"";
+ const epoch=authEpoch;
+ suiteTenantId="";businessRows=[];businessContextReady=false;businessContextError="";
+ const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({},"",url.pathname+url.search);
  suiteUser={role,name,email};
  loginRole=role;
  const isAdmin=role==="support"||role==="admin";
@@ -1619,24 +1642,16 @@ function showApp(role="support",name="",email=""){
  $("sidebarAccountType").textContent=isAdmin?"Painel Orion":"Minha conta";
  $("sidebarAvatarInitial").textContent=displayName.trim().charAt(0).toLocaleUpperCase("pt-BR")||"O";
  $("loginView").classList.add("hidden");$("appView").classList.remove("hidden");
- setSetupGate(true);mountSetup();
- void loadBusinesses();
+ setSetupGate(true);mountSetup();renderAccountBusiness();$("orionSetup").hidden=false;$("orionSetup").innerHTML='<div class="ob-loading" role="status">Conferindo o acesso à sua empresa…</div>';
  if(!isAdmin){
    clearInterval(statusTimer);statusTimer=null;
    clearInterval(chatTimer);chatTimer=null;
    clearInterval(wizardClocks);wizardClocks=null;
    $("memberProfileName").textContent=name||"—";
    $("memberProfileEmail").textContent=email||"—";
-   openPage("member");
-   window.OrionSuite?.mount(suiteBridge(desired));
-   return;
  }
- statusTimer&&clearInterval(statusTimer);statusTimer=setInterval(updateStatus,4500);
- wizardClocks&&clearInterval(wizardClocks);
- wizardClocks=setInterval(updateWizardClocks,1000);
- updateStatus();
- openPage(["conversas","cadastros","ai","empresa","catalogo"].includes(desired)?desired:"dispositivo");
  window.OrionSuite?.mount(suiteBridge(desired));
+ if(await loadBusinesses()&&epoch===authEpoch)startBusinessSession();
 }
 async function publicAuth(path,payload){
  const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},
@@ -1776,6 +1791,7 @@ $("resetForm").addEventListener("submit",async event=>{
 })();
 void authFeatures();
 function openPage(target){
+ if(!accountBusiness()){if(businessContextError)showBusinessContextError(businessContextError);else void resolveSetup();return}
  if(target!=="empresa"&&target!=="ai"&&target!=="catalogo"&&target!=="cadastros"){
   if(loginRole!=="support"&&loginRole!=="admin")target="member";
   else if(target==="member")target="dispositivo";
@@ -1787,7 +1803,7 @@ function openPage(target){
  else{clearInterval(chatTimer);chatTimer=null;}
  if(target==="dispositivo"){renderGuide();updateStatus();}
  if(target==="ai")void aiLoadTenants();
- if(target==="empresa")void loadBusinesses();
+ if(target==="empresa")void loadBusinessProfile();
  if(target==="catalogo")void loadCommerceTenants();
  if(target==="cadastros")void loadTenants();
  history.replaceState({}, "", "/panel?aba="+encodeURIComponent(target));
@@ -1920,7 +1936,7 @@ function renderConnectedCenter(data){
  $("statMonth").textContent=stats.available?format(stats.last30Days):"—";
  $("statTotal").textContent=stats.available?format(stats.total):"—";
  $("statsCoverage").textContent=stats.available?
-   "Mensagens novas registradas desde "+new Date(stats.trackingSince).toLocaleString("pt-BR")+
+   "Mensagens novas registradas desde "+new Date(stats.trackingSince).toLocaleString("pt-BR",{timeZone:"America/Campo_Grande"})+
    " · horário do MS · Não inclui mensagens anteriores à ativação.": 
    "Ainda não há contagem auditável: verifique o armazenamento da instância.";
  const settings=data.featureSettings||{};
@@ -2473,24 +2489,22 @@ let catalogRows=[],catalogSequence=0,catalogReadSequence=0,catalogWriteSequence=
 function catalogCanWrite(){const row=catalogRows.find(row=>row.id===$("tenant").value);return !!row&&(["support","admin"].includes(loginRole)||row.role==="owner"||row.role==="editor"&&$("resource").value!=="authorized_staff")}
 function updateCatalogControls(){
  $("recordFields").disabled=catalogLoading||catalogWriting||catalogUncertain||!catalogCanWrite();$("tenant").disabled=catalogWriting||catalogLoading;$("resource").disabled=catalogWriting||catalogLoading;$("loadTenants").disabled=catalogWriting;$("refresh").disabled=catalogWriting||catalogLoading;
- const role=catalogRows.find(row=>row.id===$("tenant").value)?.role;$("catalogAccess").textContent=!$("tenant").value?"Selecione uma empresa autorizada.":catalogCanWrite()?"Você pode consultar e cadastrar registros nesta empresa.":role==="viewer"?"Seu acesso nesta empresa é somente leitura.":role==="editor"&&$("resource").value==="authorized_staff"?"Acessos da equipe podem ser consultados. Somente o proprietário pode alterá-los.":"A edição não está autorizada para este acesso.";
+ const role=catalogRows.find(row=>row.id===$("tenant").value)?.role;$("catalogAccess").textContent=!$("tenant").value?"Confirme o acesso à sua empresa.":catalogCanWrite()?"Você pode consultar e cadastrar registros nesta empresa.":role==="viewer"?"Seu acesso nesta empresa é somente leitura.":role==="editor"&&$("resource").value==="authorized_staff"?"Acessos da equipe podem ser consultados. Somente o proprietário pode alterá-los.":"A edição não está autorizada para este acesso.";
 }
 function resetCatalogState(){
  ++catalogSequence;++catalogReadSequence;++catalogWriteSequence;catalogRows=[];catalogLoading=false;catalogWriting=false;catalogUncertain=false;
- $("tenant").replaceChildren(new Option("Escolha uma empresa",""));$("records").replaceChildren();$("notice").textContent="";renderForm();updateCatalogControls();
+ $("tenant").value="";$("records").replaceChildren();$("notice").textContent="";renderForm();updateCatalogControls();
 }
 async function loadTenants(){
  if(catalogWriting)return;
- const sequence=++catalogSequence,epoch=authEpoch,role=loginRole,selected=suiteTenantId||$("tenant").value;
+ const sequence=++catalogSequence,epoch=authEpoch,role=loginRole;
  catalogLoading=true;++catalogReadSequence;$("records").replaceChildren();updateCatalogControls();
  const current=()=>sequence===catalogSequence&&epoch===authEpoch&&role===loginRole;
  try{
-  const data=await api(["support","admin"].includes(role)?"/api/v1/tenants":"/api/v1/account/businesses");if(!current())return;
-  catalogRows=data;$("tenant").replaceChildren(new Option("Escolha uma empresa",""));
-  for(const row of data)$("tenant").add(new Option(row.name+(row.slug?" · "+row.slug:""),row.id));
-  $("tenant").value=data.some(row=>row.id===selected)?selected:(data[0]?.id||"");catalogLoading=false;catalogUncertain=false;renderForm();updateCatalogControls();
-  $("notice").textContent=data.length+" empresa(s) autorizada(s).";await loadRecords();
- }catch(ex){if(current()){catalogRows=[];$("tenant").replaceChildren(new Option("Escolha uma empresa",""));$("notice").textContent=ex.message}}
+  const business=requireAccountBusiness();if(!current())return;
+  catalogRows=[business];$("tenant").value=business.id;catalogLoading=false;catalogUncertain=false;renderForm();updateCatalogControls();
+  await loadRecords();
+ }catch(ex){if(current()){catalogRows=[];$("tenant").value="";$("notice").textContent=ex.message}}
  finally{if(current()){catalogLoading=false;updateCatalogControls()}}
 }
 function renderForm(){
@@ -2525,15 +2539,7 @@ async function loadRecords(){
 }
 $("loadTenants").addEventListener("click",loadTenants);
 $("refresh").addEventListener("click",loadRecords);
-$("tenant").addEventListener("change",()=>{syncSuiteTenant($("tenant").value);return loadRecords()});
 $("resource").addEventListener("change",()=>{renderForm();loadRecords()});
-$("tenantForm").addEventListener("submit",async ev=>{
- ev.preventDefault();
- if(!["support","admin"].includes(loginRole))return;
- try{await api("/api/v1/tenants","POST",Object.fromEntries(new FormData(ev.target)));
- ev.target.reset();await loadTenants();}
- catch(ex){$("notice").textContent=ex.message}
-});
 async function submitRecord(ev){
  ev.preventDefault();if(catalogWriting||catalogLoading||catalogUncertain||!catalogCanWrite()||!ev.target.reportValidity())return;
  const tenant=$("tenant").value,resource=$("resource").value,epoch=authEpoch,role=loginRole,request=++catalogWriteSequence;
@@ -2574,7 +2580,7 @@ function resetBusinessState(){
  $("businessVersion").replaceChildren(new Option("Nenhuma versão carregada",""));
  $("businessVersionState").textContent="Nenhuma configuração carregada.";$("businessWarnings").textContent="";$("businessAccess").textContent="";$("businessRuntime").textContent="A integração do perfil com o atendimento ainda não foi consultada.";
  renderBusinessStyleExamples();
- $("businessStatus").textContent="Escolha uma empresa";updateBusinessControls();
+ $("businessStatus").textContent="Aguardando configuração";updateBusinessControls();
 }
 function businessCan(action){return !!businessSnapshot?.access?.[action]&&!businessStale}
 function updateBusinessControls(){
@@ -2702,21 +2708,27 @@ async function loadBusinessProfile(){
  }catch(error){if(current()){$("businessStatus").textContent="Configuração indisponível";$("businessFeedback").textContent=error.message}return {epoch,ok:false}}
  finally{if(current()){businessBusy=false;updateBusinessControls()}}
 }
-async function loadBusinesses({resolveSetup:resolveAfter=true,selectedId}={}){
- const requestId=++businessListSequence,epoch=businessEpoch,role=loginRole;
+async function loadBusinesses({resolveSetup:resolveAfter=true}={}){
+ const requestId=++businessListSequence,epoch=authEpoch;
  try{
-   const rows=await api(["support","admin"].includes(role)?"/api/v1/tenants":"/api/v1/account/businesses");
-   if(requestId!==businessListSequence||epoch!==businessEpoch||role!==loginRole)return;
-   businessRows=rows;$("businessNav").classList.toggle("hidden",!rows.length);$("aiNav").classList.toggle("hidden",!rows.length);$("commerceNav").classList.toggle("hidden",!rows.length);$("catalogNav").classList.toggle("hidden",!["support","admin"].includes(role)&&!rows.length);
-   const selected=selectedId||suiteTenantId||$("businessTenant").value;$("businessTenant").replaceChildren(new Option("Escolha um estabelecimento",""));
-   for(const row of rows)$("businessTenant").add(new Option(row.name,row.id));
-   $("businessTenant").value=rows.some(x=>x.id===selected)?selected:(rows[0]?.id||"");
-   suiteTenantId=$("businessTenant").value;
-   if(!selected&&rows.length>1){suiteTenantId="";$("businessTenant").value=""}
-   window.OrionSuite?.sync({user:suiteUser,tenants:rows,tenantId:suiteTenantId});
+   const rows=await api("/api/v1/account/businesses");
+   if(requestId!==businessListSequence||epoch!==authEpoch)return false;
+   if(!Array.isArray(rows))throw Error("Não foi possível conferir a empresa desta conta. Tente novamente.");
+   if(rows.length>1)throw Error("Sua conta está vinculada a mais de uma empresa. Entre em contato com o suporte para regularizar o vínculo.");
+   if(rows.length===1&&(!rows[0]||typeof rows[0].id!=="string"||!rows[0].id))throw Error("Não foi possível confirmar a empresa desta conta.");
+   const id=rows.length===1?rows[0].id:"";
+   if(suiteTenantId!==id){resetBusinessState();resetCommerceState();resetCatalogState();resetAiConversation();clearAiProfileState();window.OrionChannels?.unmount();window.OrionAutomations?.unmount()}
+   suiteTenantId=id;businessContextReady=true;businessContextError="";
+   businessRows=rows;$("businessNav").classList.toggle("hidden",!rows.length);$("aiNav").classList.toggle("hidden",!rows.length);$("commerceNav").classList.toggle("hidden",!rows.length);$("catalogNav").classList.toggle("hidden",!rows.length);
+   renderAccountBusiness();
+   window.OrionSuite?.sync({user:suiteUser,tenants:rows,tenantId:suiteTenantId,businessContextReady:true,businessContextError:""});
    if(resolveAfter)await resolveSetup();
-   if($("businessTenant").value&&(!businessSnapshot||businessLoadedTenant!==$("businessTenant").value))await loadBusinessProfile();
- }catch(error){if(requestId===businessListSequence&&epoch===businessEpoch){$("businessFeedback").textContent=error.message;if(resolveAfter)await resolveSetup()}}
+   if(!businessContextReady)return false;
+   if(accountBusiness()&&(!businessSnapshot||businessLoadedTenant!==suiteTenantId))await loadBusinessProfile();
+   return true;
+ }catch(error){if(requestId===businessListSequence&&epoch===authEpoch){
+   blockBusinessContext(error.message);
+  }return false;}
 }
 async function businessMutation(kind){
  if(businessBusy||!businessSnapshot||businessStale)return;
@@ -2774,17 +2786,6 @@ $("businessForm").addEventListener("input",businessChanged);$("businessForm").ad
 for(let i=1;i<=3;i++)$("businessStep"+i).addEventListener("click",()=>businessStep(i));
 for(const [id,step] of [["businessNext1",2],["businessNext2",3],["businessBack2",1],["businessBack3",2]])$(id).addEventListener("click",()=>businessStep(step));
 for(const [id,key] of [["businessAddHours","hours"],["businessAddFaq","faqs"],["businessAddPolicy","policies"],["businessAddDifferentiator","differentiators"]])$(id).addEventListener("click",()=>addBusinessRow(key));
-$("businessTenant").addEventListener("change",async()=>{
- const origin=businessLoadedTenant,target=$("businessTenant").value,epoch=businessEpoch,accountEpoch=authEpoch,editing=businessExampleSequence;
- const current=()=>epoch===businessEpoch&&accountEpoch===authEpoch&&origin===businessLoadedTenant&&target===$("businessTenant").value;
- if(businessDirty){
-   const accepted=await confirmAction("Há alterações não salvas. Deseja trocar de empresa e descartá-las?");if(!current())return;
-   if(!accepted||businessBusy||editing!==businessExampleSequence){$("businessTenant").value=origin;return;}
- }
- if(!current())return;
- syncSuiteTenant(target);
- $("businessFeedback").textContent="";businessStep(1);await loadBusinessProfile();
-});
 $("businessReload").addEventListener("click",async()=>{
  const tenant=businessLoadedTenant,epoch=businessEpoch,accountEpoch=authEpoch,editing=businessExampleSequence;
  if(businessDirty&&!await confirmAction("Descartar as alterações não salvas e consultar a versão do servidor?"))return;
@@ -2795,7 +2796,7 @@ $("businessSave").addEventListener("click",()=>businessMutation("draft"));$("bus
 $("businessVersion").addEventListener("change",()=>{++businessReviewSequence;businessReviewed=null;$("businessVersionReview").classList.add("hidden");updateBusinessControls()});$("businessReviewVersion").addEventListener("click",reviewBusinessVersion);
 function openBusinessPreview(draft=false){
  if(!businessSnapshot||businessBusy||draft&&(!businessSnapshot.runtime_connected||!businessSnapshot.draft||businessDirty))return;
- aiPreferredTenant=businessLoadedTenant;aiPreferredVersion=draft?businessSnapshot.draft.id:"";openPage("ai");
+ aiPreferredVersion=draft?businessSnapshot.draft.id:"";openPage("ai");
 }
 $("businessTest").addEventListener("click",()=>openBusinessPreview());$("businessTestDraft").addEventListener("click",()=>openBusinessPreview(true));$("businessExamples").addEventListener("click",loadBusinessStyleExamples);
 
@@ -2899,17 +2900,16 @@ function resetCommerceState(){
  for(const id of ["comFaqRows","comAttributeRows","comBasket"])$(id).replaceChildren();
  for(const [id,label] of [["comProduct","Novo produto"],["comVariant","Nova variante"],["comBasketVariant","Escolha um item"]])$(id).replaceChildren(new Option(label,""));
  $("comBody").classList.add("hidden");$("comUnavailable").classList.remove("hidden");$("comUnavailable").textContent="O catálogo comercial precisa estar habilitado pelo servidor para esta área funcionar.";
- $("comStatus").textContent="Escolha uma empresa";$("comAccess").textContent="";$("comAssistant").textContent="";$("comFeedback").textContent="";$("comProductState").textContent="";$("comVariantState").textContent="";$("comStockCurrent").textContent="Selecione uma variante salva para consultar o estoque.";
+ $("comStatus").textContent="Aguardando configuração";$("comAccess").textContent="";$("comAssistant").textContent="";$("comFeedback").textContent="";$("comProductState").textContent="";$("comVariantState").textContent="";$("comStockCurrent").textContent="Selecione uma variante salva para consultar o estoque.";
  commerceClearProposal();
 }
 function commercePane(orders){$("comCatalogPane").classList.toggle("hidden",orders);$("comOrdersPane").classList.toggle("hidden",!orders);$("comCatalogTab").setAttribute("aria-current",orders?"false":"step");$("comOrdersTab").setAttribute("aria-current",orders?"step":"false")}
 async function loadCommerceTenants(){
  const sequence=++commerceListSequence,epoch=commerceEpoch,role=loginRole;
  try{
-   const rows=await api(["support","admin"].includes(role)?"/api/v1/tenants":"/api/v1/account/businesses");
+   const business=requireAccountBusiness();
    if(sequence!==commerceListSequence||epoch!==commerceEpoch||role!==loginRole)return;
-   const selected=suiteTenantId||$("comTenant").value;$("comTenant").replaceChildren(new Option("Escolha uma empresa",""));for(const row of rows)$("comTenant").add(new Option(row.name,row.id));
-   $("comTenant").value=rows.some(row=>row.id===selected)?selected:(rows[0]?.id||"");
+   $("comTenant").value=business.id;
    if($("comTenant").value&&commerceTenant!==$("comTenant").value)await loadCommerceTenant();
  }catch(error){if(sequence===commerceListSequence&&epoch===commerceEpoch)$("comFeedback").textContent=error.message}
 }
@@ -3156,7 +3156,6 @@ $("comPriceKind").addEventListener("change",updateCommerceControls);$("comStockM
 $("comComplementRead").addEventListener("click",commerceReadComplements);$("comComplementForm").addEventListener("submit",event=>{event.preventDefault();return commerceSaveComplement()});
 $("comComplementTarget").addEventListener("change",()=>{const target=$("comComplementTarget").value;if(commerceComplementDirty&&!confirm("Descartar a edição local e escolher outra relação?")){$("comComplementTarget").value=commerceComplementSelected;return;}commerceFillComplement(target);commerceCatalogChanged("complement")});
 $("comComplementReason").addEventListener("input",()=>commerceCatalogChanged("complement"));$("comComplementApproved").addEventListener("change",()=>commerceCatalogChanged("complement"));
-$("comTenant").addEventListener("change",async()=>{if((commerceDirty()||commerceBasket.length)&&!confirm("Trocar de empresa e descartar a edição local? Os registros salvos permanecem no servidor.")){$("comTenant").value=commerceTenant;return;}syncSuiteTenant($("comTenant").value);commercePane(false);await loadCommerceTenant()});
 $("comReload").addEventListener("click",()=>{if((commerceDirty()||commerceBasket.length)&&!confirm("Atualizar o catálogo e descartar a edição local? Registros salvos continuarão disponíveis para consulta."))return;return loadCommerceTenant({preserveLookups:true})});
 $("comCatalogTab").addEventListener("click",()=>commercePane(false));$("comOrdersTab").addEventListener("click",()=>commercePane(true));$("comBasketAdd").addEventListener("click",commerceAddBasket);
 $("comPlanForm").addEventListener("submit",event=>{event.preventDefault();return commerceCalculate()});for(const id of ["comCustomer","comValidity"])$(id).addEventListener("input",commercePlanningChanged);
@@ -3165,7 +3164,7 @@ $("comPickupAppointment").addEventListener("change",commercePlanningChanged);$("
 $("comQuoteCreate").addEventListener("click",()=>commerceCalculate(true));$("comOrderCreate").addEventListener("click",commerceCreateOrder);$("comOrderConfirm").addEventListener("click",commerceConfirmOrder);$("comAccept").addEventListener("change",updateCommerceControls);
 $("comReadQuote").addEventListener("click",()=>commerceRead("quote"));$("comReadOrder").addEventListener("click",()=>commerceRead("order"));$("comReadOrderByQuote").addEventListener("click",()=>commerceRead("by-quote"));
 
-let aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)),aiPreferredTenant="",aiPreferredVersion="",
+let aiSession=(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)),aiPreferredVersion="",
     aiEpoch=0,aiRequestSequence=0,aiActiveRequest=null,aiStatusSequence=0,aiTenantSequence=0,aiProfileSequence=0,aiProfileData=null,aiProfileLoading=false,aiProfileSelectionRequired=false,aiReadiness=null,aiStatusLoading=false;
 let aiEvaluations=[],aiEvaluationUrl=null,aiEvaluationTimer=null;
 const aiEvaluationLabels=[["dry","Seca"],["insistent","Insistente"],["incorrect","Incorreta"],["confusing","Confusa"],["off_context","Fora do contexto"]];
@@ -3266,19 +3265,17 @@ function aiBubble(content,direction){
  return wrapper;
 }
 async function aiLoadTenants(){
- const sequence=++aiTenantSequence,role=loginRole,preferredTenant=aiPreferredTenant,preferredVersion=aiPreferredVersion,last=suiteTenantId||$("aiTenant").value;
+ const sequence=++aiTenantSequence,role=loginRole,preferredVersion=aiPreferredVersion;
  resetAiConversation("Consultando a empresa e a versão para iniciar o teste...");clearAiProfileState();
- $("aiTenant").replaceChildren(new Option("Consultando estabelecimentos...",""));aiProfileLoading=true;updateAiControls();
+ $("aiTenant").value="";aiProfileLoading=true;updateAiControls();
  const epoch=aiEpoch;
  const current=()=>sequence===aiTenantSequence&&epoch===aiEpoch&&role===loginRole;
  try{
-   const tenants=await api(["support","admin"].includes(role)?"/api/v1/tenants":"/api/v1/account/businesses");
+   const business=requireAccountBusiness();
    if(!current())return;
-   $("aiTenant").replaceChildren(new Option("Escolha o estabelecimento",""));
-   for(const tenant of tenants)$("aiTenant").add(new Option(tenant.name,tenant.id));
-   $("aiTenant").value=tenants.some(x=>x.id===preferredTenant)?preferredTenant:tenants.some(x=>x.id===last)?last:(tenants[0]?.id||"");
-   aiPreferredTenant="";aiPreferredVersion="";
-   resetAiConversation("Conversa reiniciada para a empresa e a versão selecionadas.");
+   $("aiTenant").value=business.id;
+   aiPreferredVersion="";
+   resetAiConversation("Conversa reiniciada para sua empresa e a versão selecionada.");
    void aiLoadProfiles(preferredVersion);
    await aiCheckStatus();
  }catch(ex){if(current()){aiProfileLoading=false;$("aiStatus").textContent=ex.message;updateAiControls();}}
@@ -3316,7 +3313,7 @@ async function aiLoadProfiles(preferredVersion=""){
 async function aiCheckStatus(){
  const tenant=$("aiTenant").value,epoch=aiEpoch,requestId=++aiStatusSequence;
  aiReadiness=null;aiStatusLoading=!!tenant;updateAiControls();
- if(!tenant){$("aiStatus").textContent="Escolha um estabelecimento";return;}
+ if(!tenant){$("aiStatus").textContent="Empresa indisponível";return;}
  $("aiStatus").textContent="Consultando disponibilidade da prévia...";
  const current=()=>epoch===aiEpoch&&tenant===$("aiTenant").value&&requestId===aiStatusSequence;
  try{
@@ -3328,10 +3325,6 @@ async function aiCheckStatus(){
  finally{if(current()){aiStatusLoading=false;updateAiControls()}}
 }
 $("aiStatusRefresh").addEventListener("click",aiCheckStatus);
-$("aiTenant").addEventListener("change",async()=>{
- syncSuiteTenant($("aiTenant").value);
- resetAiConversation("Conversa reiniciada para o estabelecimento selecionado.");void aiLoadProfiles();await aiCheckStatus();
-});
 $("aiReset").addEventListener("click",()=>{
  resetAiConversation();
  if(!aiProfileData)void aiLoadProfiles();
@@ -3344,7 +3337,7 @@ async function sendAiPreview(message,file=null){
  if(aiProfileLoading||aiProfileSelectionRequired){$("aiDiagnostics").textContent=aiProfileLoading?"Aguarde a consulta da versão antes de enviar.":"Escolha a versão que deseja testar antes de enviar.";return;}
  if(aiActiveRequest!==null)return;
  const tenant=$("aiTenant").value;
- if(!tenant){$("aiDiagnostics").textContent="Selecione um estabelecimento.";return}
+ if(!tenant){$("aiDiagnostics").textContent="Confirme o acesso à sua empresa.";return}
  if(!aiReady(!!file)){$("aiDiagnostics").textContent=aiCurrentReadiness()?file?"O teste por áudio não está disponível no servidor. Atualize a disponibilidade ou use texto.":"A prévia não está habilitada ou configurada no servidor.":"Atualize a disponibilidade do teste antes de enviar.";return;}
  if(file&&$("aiStyle").value){$("aiDiagnostics").textContent="Para testar áudio, selecione Usar o estilo da versão.";return}
  const mime=file?({"audio/ogg":"audio/ogg","audio/webm":"audio/webm","audio/wav":"audio/wav","audio/x-wav":"audio/wav","audio/wave":"audio/wav","audio/mpeg":"audio/mpeg","audio/mp3":"audio/mpeg","audio/mp4":"audio/mp4","audio/x-m4a":"audio/mp4"}[String(file.type||"").toLowerCase().split(";")[0]]):null;

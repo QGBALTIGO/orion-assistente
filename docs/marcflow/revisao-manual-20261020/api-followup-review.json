@@ -1,0 +1,410 @@
+{
+  "reviewed_at_utc": "2026-10-21T00:10:07.507141+00:00",
+  "reviewer": "manual_api_inventory",
+  "review_kind": "current manual followup reconciliation; prior source snapshots and test results preserved as explicit historical reviews",
+  "files": [
+    {
+      "file": "app/management_preferences.py",
+      "source_sha256": "d796fb175a5f21c885475d494123d08b7bc38a60247444f76c7715b66aef17fb",
+      "reviewed": true,
+      "contexts": [
+        {
+          "current_function": "queue",
+          "current_line": 190,
+          "current_range": {
+            "start": 190,
+            "end": 206
+          },
+          "reviewed": true,
+          "rationale": "Rota GET autenticada+management_session scoped por tenant; sufixo4 em vez de telefone completo. CASE delivery_state verification_required para delivery_unverified/prior_attempt_unverified; não equipara incerteza a falha definitiva. Texto da fila direciona campanhas a Envios revisados sem prometer que todas são drafts."
+        }
+      ]
+    },
+    {
+      "file": "app/whatsapp_api.py",
+      "source_sha256": "7d2dbbe51c7c23618bb6d34f73f21bf614b6b8efa532a69b8ad57e33676d2718",
+      "reviewed": true,
+      "contexts": [
+        {
+          "current_function": "receive_meta",
+          "current_line": 34,
+          "current_range": {
+            "start": 34,
+            "end": 130
+          },
+          "reviewed": true,
+          "rationale": "Leitura integral após patch: assinatura HMAC e limite do lote antes de persistir. Status resolve tenant/channel pelo phone_number_id assinado e chama legacy_meta_outbox.receipt independentemente da flag central; provider_receipt central é adicional. Nenhuma emissão ou retry neste endpoint."
+        }
+      ]
+    },
+    {
+      "file": "app/communication_events.py",
+      "source_sha256": "599bcaf0780c8b58e9146752b4d0498fe598aec687aacbad8a6469af61c78dd1",
+      "reviewed": true,
+      "contexts": [
+        {
+          "current_function": "EventMetadata",
+          "current_line": 25,
+          "current_range": {
+            "start": 25,
+            "end": 35
+          },
+          "reviewed": true,
+          "rationale": "Modelo relido: provider_at é campo opcional int estrito0..9999999999; não concede autorização. QR/Meta continuam protegidos por identidade/canal/revisão. Inteiro válido é metadado do adaptador autenticado e é usado pelo legado para veto de janela24h."
+        }
+      ]
+    },
+    {
+      "file": "app/messaging.py",
+      "source_sha256": "ec3589f85237b33ffbd9f8864b958a007b6c994102474dcfdc1f5277a58f3778",
+      "reviewed": true,
+      "contexts": [
+        {
+          "current_function": "extract_messages",
+          "current_line": 31,
+          "current_range": {
+            "start": 31,
+            "end": 84
+          },
+          "reviewed": true,
+          "rationale": "provider_at é criado somente quando timestamp do evento assinado é string ASCII numérica de até10digitos; armazena datetime para journal e inteiro no envelope. Ingresso sem timestamp permanece sem prova temporal e legado veta envio. Sem truncar texto/legenda."
+        }
+      ]
+    },
+    {
+      "file": "app/legacy_meta_outbox.py",
+      "source_sha256": "f732054b8a1c41c4e2501ac7604bc6c0f30c3e50dce85b6a8f2bac7e44e9e3fc",
+      "reviewed": true,
+      "contexts": [
+        {
+          "current_function": "receipt",
+          "current_line": 83,
+          "current_range": {
+            "start": 83,
+            "end": 95
+          },
+          "reviewed": true,
+          "rationale": "Relido como dependência do webhook: operation UUID, status enum, external limitado, UPDATE por tenant+channel+phone+operation e attempts>0; apenas dead/delivery_unverified é reconciliado. Não chama sender nem gera nova tentativa."
+        },
+        {
+          "current_function": "reason",
+          "current_line": 19,
+          "current_range": {
+            "start": 19,
+            "end": 41
+          },
+          "reviewed": true,
+          "rationale": "Releitura integral após novo precheck: antes de canal/janela e antes do claim, body deve ser str não vazia e <=1200UTF16 pelo mesmo message_units do transporte.601emoji são recusados como payload_not_approved sem I/O, evitando classificar recusa definitiva de tamanho como entrega incerta. Demais vetos de janela, canal, humano e ingresso novo preservados; credenciais não são impressas."
+        }
+      ]
+    },
+    {
+      "file": "app/qr_ai.py",
+      "source_sha256": "ad88122248c997bc2dbdd5828aa72bbae72e08125ee2a3868559aa0df092a92b",
+      "reviewed": true,
+      "contexts": [
+        {
+          "current_function": "_confirmation_composition_fits",
+          "current_line": 1138,
+          "current_range": {
+            "start": 1138,
+            "end": 1159
+          },
+          "reviewed": true,
+          "rationale": "Helper novo relido integralmente: calcula recibo booking/remarcação com protocolo máximo80, estilo real e convite opcional, verifica composição completa antes de qualquer domínio.",
+          "reconciliation_method": "previously manually reviewed function body AST-identical; current changed ingress/callers manually reread"
+        },
+        {
+          "current_function": "_operation_reply",
+          "current_line": 1162,
+          "current_range": {
+            "start": 1162,
+            "end": 1173
+          },
+          "reviewed": true,
+          "rationale": "Helper novo relido: fallback tardio preserva result verificado integral+step terminal; nunca substitui efeito conhecido por negação.",
+          "reconciliation_method": "previously manually reviewed function body AST-identical; current changed ingress/callers manually reread"
+        },
+        {
+          "current_function": "turn",
+          "current_line": 2065,
+          "current_range": {
+            "start": 2065,
+            "end": 2126
+          },
+          "reviewed": true,
+          "rationale": "Guard final relido: apresentação que cresce mantém recibo tipado anterior já validado quando operação é verificada, e conserva a mesma chave de recibo/fluxo de histórico.",
+          "reconciliation_method": "previously manually reviewed function body AST-identical; current changed ingress/callers manually reread"
+        },
+        {
+          "current_function": "continue_reschedule",
+          "current_line": 460,
+          "current_range": {
+            "start": 460,
+            "end": 549
+          },
+          "reviewed": true,
+          "rationale": "API-01 relido após fix: recusa não afirma status atual do original e conflito pede conferência do estado atual.",
+          "reconciliation_method": "previously manually reviewed function body AST-identical; current changed ingress/callers manually reread"
+        },
+        {
+          "current_function": "_multi_turn",
+          "current_line": 1873,
+          "current_range": {
+            "start": 1873,
+            "end": 2062
+          },
+          "reviewed": true,
+          "rationale": "EMIT-02 relido após fix: antes de _turn(SIM), fatos mistos devem caber no recibo completo; soma fixa350 removida. Resultado verificado vai a _operation_reply.",
+          "reconciliation_method": "previously manually reviewed function body AST-identical; current changed ingress/callers manually reread"
+        },
+        {
+          "current_function": "run_locked",
+          "current_line": 2674,
+          "current_range": {
+            "start": 2674,
+            "end": 2792
+          },
+          "reviewed": true,
+          "rationale": "Relido integralmente: escopo de canal autenticado usa enabled() efetivo na limpeza de handoff e seleção do controlador persistente. Global0/adoptedTrue não conserva Redis human depois de autoridade ai. Revisão/recebidos/dedup/recibos e não replay de efeitos preservados.",
+          "manual_followup": "api-adopted-scope-followup-review.json"
+        },
+        {
+          "current_function": "managed_qr_reply",
+          "current_line": 2910,
+          "current_range": {
+            "start": 2910,
+            "end": 2959
+          },
+          "reviewed": true,
+          "rationale": "Relido integralmente: bind de ChannelIdentity precede blocked/assistant_revision dentro try/finally. Revisão real antecede bind_assistant e assert_current; retornos humanos/erros/cancelamento restauram contextos. Auth/tenant/allowlist/lease/fence/intake atual continuam revalidados antes de domínio/transporte.",
+          "manual_followup": "api-adopted-scope-followup-review.json"
+        }
+      ],
+      "current_review_commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f"
+    }
+  ],
+  "validation_evidence": {
+    "log": "api-fixes.log",
+    "junit": "api-fixes.xml",
+    "result": "422 passed,3876 deselected,0 failed;9 new regression cases included",
+    "scope": "isolated unit fakes; configuration scrubbed; external sockets/DNS denied; no PostgreSQL/provider/native send executed by this run",
+    "historical": true,
+    "applies_to": "initial API-01/EMIT-02 isolated fixes; not a claim that the latest commit ran those same422 cases"
+  },
+  "production_accessed": false,
+  "deployment_performed": false,
+  "campaigns_activated": false,
+  "messages_sent": false,
+  "followup_legacy_payload_precheck": {
+    "reviewed_at_utc": "2026-10-20T21:28:05.953705+00:00",
+    "source_reread": true,
+    "test_source_reread": "tests/integration/test_legacy_meta_outbox_postgres.py",
+    "execution_by_this_reviewer": false,
+    "provided_root_execution_evidence": {
+      "junit": "legacy-final.xml",
+      "log": "legacy-final.log",
+      "test_cases": 13,
+      "failures_or_errors": 0,
+      "scope": "PostgreSQL isolated root run; fake sender; no native Meta send"
+    }
+  },
+  "historical_reviews": [
+    {
+      "historical": true,
+      "superseded_as_current_source_snapshot_by": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+      "preserved_at_utc": "2026-10-21T00:10:07.507141+00:00",
+      "review": {
+        "reviewed_at_utc": "2026-10-20T21:17:27.941489+00:00",
+        "reviewer": "manual_api_inventory",
+        "review_kind": "manual source reread of post-audit changes and full callers/guards",
+        "files": [
+          {
+            "file": "app/management_preferences.py",
+            "source_sha256": "d796fb175a5f21c885475d494123d08b7bc38a60247444f76c7715b66aef17fb",
+            "reviewed": true,
+            "contexts": [
+              {
+                "current_function": "queue",
+                "current_line": 190,
+                "current_range": {
+                  "start": 190,
+                  "end": 206
+                },
+                "reviewed": true,
+                "rationale": "Rota GET autenticada+management_session scoped por tenant; sufixo4 em vez de telefone completo. CASE delivery_state verification_required para delivery_unverified/prior_attempt_unverified; não equipara incerteza a falha definitiva. Texto da fila direciona campanhas a Envios revisados sem prometer que todas são drafts."
+              }
+            ]
+          },
+          {
+            "file": "app/whatsapp_api.py",
+            "source_sha256": "7d2dbbe51c7c23618bb6d34f73f21bf614b6b8efa532a69b8ad57e33676d2718",
+            "reviewed": true,
+            "contexts": [
+              {
+                "current_function": "receive_meta",
+                "current_line": 34,
+                "current_range": {
+                  "start": 34,
+                  "end": 130
+                },
+                "reviewed": true,
+                "rationale": "Leitura integral após patch: assinatura HMAC e limite do lote antes de persistir. Status resolve tenant/channel pelo phone_number_id assinado e chama legacy_meta_outbox.receipt independentemente da flag central; provider_receipt central é adicional. Nenhuma emissão ou retry neste endpoint."
+              }
+            ]
+          },
+          {
+            "file": "app/communication_events.py",
+            "source_sha256": "599bcaf0780c8b58e9146752b4d0498fe598aec687aacbad8a6469af61c78dd1",
+            "reviewed": true,
+            "contexts": [
+              {
+                "current_function": "EventMetadata",
+                "current_line": 25,
+                "current_range": {
+                  "start": 25,
+                  "end": 35
+                },
+                "reviewed": true,
+                "rationale": "Modelo relido: provider_at é campo opcional int estrito0..9999999999; não concede autorização. QR/Meta continuam protegidos por identidade/canal/revisão. Inteiro válido é metadado do adaptador autenticado e é usado pelo legado para veto de janela24h."
+              }
+            ]
+          },
+          {
+            "file": "app/messaging.py",
+            "source_sha256": "ec3589f85237b33ffbd9f8864b958a007b6c994102474dcfdc1f5277a58f3778",
+            "reviewed": true,
+            "contexts": [
+              {
+                "current_function": "extract_messages",
+                "current_line": 31,
+                "current_range": {
+                  "start": 31,
+                  "end": 84
+                },
+                "reviewed": true,
+                "rationale": "provider_at é criado somente quando timestamp do evento assinado é string ASCII numérica de até10digitos; armazena datetime para journal e inteiro no envelope. Ingresso sem timestamp permanece sem prova temporal e legado veta envio. Sem truncar texto/legenda."
+              }
+            ]
+          },
+          {
+            "file": "app/legacy_meta_outbox.py",
+            "source_sha256": "f732054b8a1c41c4e2501ac7604bc6c0f30c3e50dce85b6a8f2bac7e44e9e3fc",
+            "reviewed": true,
+            "contexts": [
+              {
+                "current_function": "receipt",
+                "current_line": 83,
+                "current_range": {
+                  "start": 83,
+                  "end": 95
+                },
+                "reviewed": true,
+                "rationale": "Relido como dependência do webhook: operation UUID, status enum, external limitado, UPDATE por tenant+channel+phone+operation e attempts>0; apenas dead/delivery_unverified é reconciliado. Não chama sender nem gera nova tentativa."
+              },
+              {
+                "current_function": "reason",
+                "current_line": 19,
+                "current_range": {
+                  "start": 19,
+                  "end": 41
+                },
+                "reviewed": true,
+                "rationale": "Releitura integral após novo precheck: antes de canal/janela e antes do claim, body deve ser str não vazia e <=1200UTF16 pelo mesmo message_units do transporte.601emoji são recusados como payload_not_approved sem I/O, evitando classificar recusa definitiva de tamanho como entrega incerta. Demais vetos de janela, canal, humano e ingresso novo preservados; credenciais não são impressas."
+              }
+            ]
+          },
+          {
+            "file": "app/qr_ai.py",
+            "source_sha256": "11b95850249796e18ac6d3272013e86d5804d9ac8c3b1397ca85cf64426d2807",
+            "reviewed": true,
+            "contexts": [
+              {
+                "current_function": "_confirmation_composition_fits",
+                "current_line": 1138,
+                "current_range": {
+                  "start": 1138,
+                  "end": 1159
+                },
+                "reviewed": true,
+                "rationale": "Helper novo relido integralmente: calcula recibo booking/remarcação com protocolo máximo80, estilo real e convite opcional, verifica composição completa antes de qualquer domínio."
+              },
+              {
+                "current_function": "_operation_reply",
+                "current_line": 1162,
+                "current_range": {
+                  "start": 1162,
+                  "end": 1173
+                },
+                "reviewed": true,
+                "rationale": "Helper novo relido: fallback tardio preserva result verificado integral+step terminal; nunca substitui efeito conhecido por negação."
+              },
+              {
+                "current_function": "turn",
+                "current_line": 2065,
+                "current_range": {
+                  "start": 2065,
+                  "end": 2126
+                },
+                "reviewed": true,
+                "rationale": "Guard final relido: apresentação que cresce mantém recibo tipado anterior já validado quando operação é verificada, e conserva a mesma chave de recibo/fluxo de histórico."
+              },
+              {
+                "current_function": "continue_reschedule",
+                "current_line": 460,
+                "current_range": {
+                  "start": 460,
+                  "end": 549
+                },
+                "reviewed": true,
+                "rationale": "API-01 relido após fix: recusa não afirma status atual do original e conflito pede conferência do estado atual."
+              },
+              {
+                "current_function": "_multi_turn",
+                "current_line": 1873,
+                "current_range": {
+                  "start": 1873,
+                  "end": 2062
+                },
+                "reviewed": true,
+                "rationale": "EMIT-02 relido após fix: antes de _turn(SIM), fatos mistos devem caber no recibo completo; soma fixa350 removida. Resultado verificado vai a _operation_reply."
+              }
+            ]
+          }
+        ],
+        "validation_evidence": {
+          "log": "api-fixes.log",
+          "junit": "api-fixes.xml",
+          "result": "422 passed,3876 deselected,0 failed;9 new regression cases included",
+          "scope": "isolated unit fakes; configuration scrubbed; external sockets/DNS denied; no PostgreSQL/provider/native send executed by this run"
+        },
+        "production_accessed": false,
+        "deployment_performed": false,
+        "campaigns_activated": false,
+        "messages_sent": false,
+        "followup_legacy_payload_precheck": {
+          "reviewed_at_utc": "2026-10-20T21:28:05.953705+00:00",
+          "source_reread": true,
+          "test_source_reread": "tests/integration/test_legacy_meta_outbox_postgres.py",
+          "execution_by_this_reviewer": false,
+          "provided_root_execution_evidence": {
+            "junit": "legacy-final.xml",
+            "log": "legacy-final.log",
+            "test_cases": 13,
+            "failures_or_errors": 0,
+            "scope": "PostgreSQL isolated root run; fake sender; no native Meta send"
+          }
+        }
+      }
+    }
+  ],
+  "current_validation_evidence": {
+    "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+    "unit_passed": 2204,
+    "new_unit_cases": 22,
+    "unit_proof": "api-adopted-scope-unit-evidence.json",
+    "independent_pg_passed": 5,
+    "independent_pg_proof": "admin-scope-test-evidence.json",
+    "qualification": "isolated unit fakes plus PostgreSQL16 clone; no provider/production/native-message acceptance; Linux CI separate"
+  }
+}

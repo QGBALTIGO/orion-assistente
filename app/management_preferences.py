@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 from sqlalchemy import text
 
 from app.catalog_api import Actor, authenticate, audit
@@ -15,7 +15,7 @@ from app.management_schemas import normalize_phone
 from app.tenant_access import resolve_tenant_access
 
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}/management", tags=["Preferências e notificações"])
-EVENTS = ("booking_confirmed", "reminder_24h", "reminder_2h", "reminder_1h", "rescheduled", "inactive_60d",
+EVENTS = ("booking_confirmed", "reminder_24h", "reminder_2h", "reminder_1h", "rescheduled", "cancelled", "inactive_60d",
           "cancelled_7d", "birthday_7d", "birthday_2d", "loyalty_reward", "after_service")
 
 
@@ -39,6 +39,13 @@ class BusinessPreferences(StrictModel):
     google_review_message: str = Field(default="Como foi sua experiência? Conte para a gente e deixe sua avaliação.", max_length=1000)
     auto_review_requested: bool = False
     weekly_summary_requested: bool = False
+    approved_link_hosts: list[str] = Field(default_factory=list,max_length=20)
+
+    @field_validator('approved_link_hosts')
+    @classmethod
+    def approved_hosts(cls,value):
+        from app.communication_links import approved_host
+        return sorted(set(approved_host(x) for x in value))
 
     _phone = field_validator("contact_phone")(normalize_phone)
 
@@ -66,15 +73,38 @@ class BusinessPreferences(StrictModel):
 
 
 class AutomationRule(StrictModel):
-    event: Literal["booking_confirmed", "reminder_24h", "reminder_2h", "reminder_1h", "rescheduled", "inactive_60d", "cancelled_7d", "birthday_7d", "birthday_2d", "loyalty_reward", "after_service"]
+    event: Literal["booking_confirmed", "reminder_24h", "reminder_2h", "reminder_1h", "rescheduled", "cancelled", "inactive_60d", "cancelled_7d", "birthday_7d", "birthday_2d", "loyalty_reward", "after_service"]
     requested_enabled: bool = False
     template: str = Field(min_length=1, max_length=1500)
+    template_source: Literal['custom','library'] = 'custom'
+    template_revision: int = Field(default=1,ge=1,le=100000)
+
+
+class DeliveryPolicy(StrictModel):
+    operational_start_hour: StrictInt = Field(default=9,ge=0,le=23)
+    operational_end_hour: StrictInt = Field(default=18,ge=1,le=24)
+    marketing_start_hour: StrictInt = Field(default=9,ge=0,le=23)
+    marketing_end_hour: StrictInt = Field(default=18,ge=1,le=24)
+    weekdays: list[StrictInt] = Field(default_factory=lambda:list(range(7)),min_length=1,max_length=7)
+    holidays: list[str] = Field(default_factory=list,max_length=100)
+    birthday_leap_day: Literal['skip','feb28','mar01'] = 'skip'
+
+    @model_validator(mode='after')
+    def consistent_policy(self):
+        from datetime import date
+        if self.operational_start_hour>=self.operational_end_hour or self.marketing_start_hour>=self.marketing_end_hour:
+            raise ValueError('O início da janela precisa ser anterior ao fim')
+        if any(type(x) is not int or not 0<=x<=6 for x in self.weekdays) or len(set(self.weekdays))!=len(self.weekdays):
+            raise ValueError('Dias de envio inválidos ou repetidos')
+        for x in self.holidays:date.fromisoformat(x)
+        return self
 
 
 class AutomationPreferences(StrictModel):
-    rules: list[AutomationRule] = Field(default_factory=list, max_length=11)
+    rules: list[AutomationRule] = Field(default_factory=list, max_length=12)
     recovery_days: Literal[30, 45, 60, 90] = 60
     vacancy_requested: bool = False
+    delivery_policy: DeliveryPolicy = Field(default_factory=DeliveryPolicy)
 
     @field_validator("rules")
     @classmethod
@@ -141,7 +171,8 @@ async def get_automations(tenant_id: UUID, actor: Actor = Depends(authenticate))
         result = await preferences(db, tenant_id)
         channels = (await db.execute(text("SELECT status,bot_enabled FROM whatsapp_channels WHERE tenant_id=:tenant"), {"tenant": tenant_id})).mappings().all()
         active = await automation_active(db, tenant_id)
-        return {"configuration": result["automations"], "version": result["version"], "events": list(EVENTS),
+        from app.automation_templates import catalog
+        return {"configuration": result["automations"], "version": result["version"], "events": list(EVENTS),'templates':catalog(),
                 "channel_connected": any(x["status"] == "connected" for x in channels),
                 "execution_enabled": active, "mode": "reviewed_execution" if active else "draft",
                 "reason": "Regras autorizadas pelo proprietário, sujeitas a consentimento e revisão antes do envio." if active else "Configuração salva. Revise e autorize os envios separadamente."}
@@ -161,7 +192,10 @@ async def queue(tenant_id: UUID, status: Literal["all", "pending", "sent", "dead
     async with management_session(tenant_id, actor) as db:
         rows = (await db.execute(text("""SELECT o.id,o.status,o.attempts,o.next_attempt_at,e.received_at AS created_at,
             right(o.to_e164,4) AS recipient_suffix,
-            CASE WHEN o.status='dead' THEN 'Falha no envio; consulte a operação do canal' ELSE NULL END AS error
+            CASE WHEN o.status='dead' AND o.last_error IN ('delivery_unverified','prior_attempt_unverified') THEN 'Entrega em verificação; não reenviar automaticamente'
+              WHEN o.status='dead' THEN 'Envio interrompido; consulte a operação do canal' ELSE NULL END AS error,
+            CASE WHEN o.status='dead' AND o.last_error IN ('delivery_unverified','prior_attempt_unverified') THEN 'verification_required'
+              ELSE o.status END AS delivery_state
             FROM message_outbox o JOIN inbound_events e ON e.tenant_id=o.tenant_id AND e.id=o.event_id
             WHERE o.tenant_id=:tenant AND (:status='all' OR o.status=:status)
             ORDER BY e.received_at DESC,o.id DESC LIMIT :limit"""),
@@ -169,7 +203,7 @@ async def queue(tenant_id: UUID, status: Literal["all", "pending", "sent", "dead
         summary = (await db.execute(text("SELECT status,count(*) AS count FROM message_outbox WHERE tenant_id=:tenant GROUP BY status"),
                                    {"tenant": tenant_id})).mappings().all()
         return {"items": [dict(row) for row in rows], "summary": {x["status"]: x["count"] for x in summary},
-                "source": "whatsapp_reply_outbox", "description": "Fila real de respostas do canal Meta; campanhas permanecem em rascunho."}
+                "source": "whatsapp_reply_outbox", "description": "Fila de respostas do canal Meta. Autorizações e recibos das campanhas ficam em Envios revisados."}
 
 
 class ReadNotifications(StrictModel):

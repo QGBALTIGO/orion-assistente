@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import pytest
 
-from app.http_json import json_response
+from app.http_json import json_response, ordinary_json_tree
 
 
 def old(value, status=200):
@@ -92,3 +92,29 @@ def test_recursive_input_keeps_legacy_recursion_error():
     value.append(value)
     with pytest.raises(RecursionError): old(value)
     with pytest.raises(RecursionError): json_response(value)
+
+
+def test_repeated_column_cache_does_not_admit_special_keys_or_hide_late_private_keys():
+    class Key(str):
+        def __hash__(self):
+            raise AssertionError("The ordinary guard must not hash a key subclass")
+    # Build the dict while the key uses the normal hash, then install the hook.
+    key = Key("name")
+    original_hash = Key.__hash__
+    Key.__hash__ = str.__hash__
+    special = {key: "unusual"}
+    Key.__hash__ = original_hash
+    assert not ordinary_json_tree([{"name": "normal"}, special])
+    rows = [{"name": str(n), "active": True} for n in range(200)]
+    assert ordinary_json_tree(rows)
+    rows.append({"_sa_private": "discard", "name": "last"})
+    assert not ordinary_json_tree(rows)
+    identical(rows)
+
+
+def test_column_cache_is_bounded_without_accepting_private_keys_after_its_capacity():
+    value = {"field-" + str(n): n for n in range(500)}
+    assert ordinary_json_tree(value)
+    value["_sa_late"] = "discard"
+    assert not ordinary_json_tree(value)
+    identical(value)

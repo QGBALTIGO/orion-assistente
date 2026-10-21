@@ -27,10 +27,10 @@ async function showRequests(h) {
   await flush();
 }
 
-test('site requests are inside Settings for support and admin, including accounts without a business', async t => {
+test('site requests remain inside Settings for support and admin with a resolved business context', async t => {
   for (const role of ['support', 'admin']) {
     await t.test(role, async t => {
-      const h = await makeSuite({ initialRoute: 'configuracoes', bridge: { user: { ...admin, role }, tenants: [], tenantId: '' },
+      const h = await makeSuite({ initialRoute: 'configuracoes', bridge: { user: { ...admin, role } },
         respond: path => isRequest(path) ? list() : defaultResponse(path) });
       t.after(() => h.close()); await flush();
       assert.equal(h.calls.some(call => isRequest(call.path)), false, 'opening Settings does not fetch private leads');
@@ -52,6 +52,16 @@ test('site requests are inside Settings for support and admin, including account
       assert.equal(h.errors.length, 0);
     });
   }
+});
+
+test('an unresolved administrative context keeps Settings gated until the business is confirmed', async t => {
+  const h = await makeSuite({ initialRoute: 'configuracoes', bridge: {
+    user: admin, tenants: [], tenantId: '', businessContextReady: false,
+    businessContextError: 'Este acesso administrativo não possui uma empresa definida.',
+  } }); t.after(() => h.close()); await flush();
+  assert.match(h.document.getElementById('page-suite').textContent, /empresa definida/);
+  assert.equal(h.document.querySelector('#osSettingsSection'), null);
+  assert.equal(h.calls.length, 0);
 });
 
 test('tenant owners, editors and viewers cannot discover, fetch or mutate global site requests', async t => {

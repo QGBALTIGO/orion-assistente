@@ -23,6 +23,29 @@ def original_bytes(value):
     return json.dumps(jsonable_encoder(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
 
+def test_digest_column_cache_keeps_legacy_keys_and_is_local_to_each_walk():
+    rows = [{"name": str(n), "active": True} for n in range(200)]
+    assert not service._digest_needs_legacy(rows)
+    rows.append({"_sa_private": "discard", "name": "last"})
+    assert service._digest_needs_legacy(rows)
+    assert service._digest_bytes(rows) == original_bytes(rows)
+    large = {"field-" + str(n): n for n in range(500)}
+    large["_sa_late"] = "discard"
+    assert service._digest_needs_legacy(large)
+    assert service._digest_bytes(large) == original_bytes(large)
+
+
+def test_digest_guard_rejects_key_subclasses_before_hashing_even_after_a_matching_key():
+    class Key(str):
+        pass
+    key = Key("name")
+    unusual = {key: "value"}
+    def rejected_hash(self):
+        raise AssertionError("Do not hash unusual key classes in the ordinary guard")
+    Key.__hash__ = rejected_hash
+    assert service._digest_needs_legacy([{"name": "normal"}, unusual])
+
+
 def assert_compatible(value):
     expected = original_bytes(value)
     assert service._digest_bytes(value) == expected

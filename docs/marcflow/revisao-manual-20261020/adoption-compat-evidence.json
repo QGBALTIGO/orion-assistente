@@ -1,0 +1,90 @@
+{
+  "reviewed_at_utc": "2026-10-20T21:26:35.141939+00:00",
+  "operator": "scripts/one_time_legacy_adoption.py",
+  "supported_revisions": [
+    "0028_workflow_drafts",
+    "0029_communication_contract"
+  ],
+  "scope": "Explicit registry adoption only; no schema upgrade, domain seed, session copy or transport. Tests on loopback disposable PG16 and owned Redis DB15; bridge/session proof are synthetic fakes.",
+  "source_hashes": {
+    "scripts/one_time_legacy_adoption.py": "cc31aff2022815038bb23d53fbd26e09cd242c5b1339db547fefd8f4c1406219",
+    "tests/integration/test_legacy_adoption_postgres.py": "562e64ed38cd8abdcf54f0845c0b99aa081ab78a22ff5eb1757a7c9b7345c33e",
+    "tests/integration/test_legacy_adoption_communication_postgres.py": "b55daed0bb5d12bd7bd4fe2e219abde3a3425f27fdc8eb78cf39bf92d6533b3f"
+  },
+  "preservation": [
+    "Full exact table set per selected revision, every row fingerprint/count and revision in snapshot digest",
+    "All current function bodies/triggers/security/constraints/catalog compared before/restore/after",
+    "Ingress identity sequence values/is_called/definition/owner/ACL included at0029",
+    "Customer legacy DOB and partialbirthday, per-purpose optout/version/refusal",
+    "communication_pending status/version plus automation_jobs uncertain presentation metadata",
+    "Inbound/journal envelope and Redis provisional/done/operation-receipt keys",
+    "Stable original session digest and existing alias credentials/configuration",
+    "Human pause mapped into central control without resuming AI or replaying queued sends"
+  ],
+  "fail_closed": [
+    "Unknown revision/table set or source drift",
+    "Wrong owner/alias credential/session digest",
+    "Backlog inbox queued/sending/uncertain",
+    "Legacy Meta pending or dead delivery_unverified/prior_attempt_unverified"
+  ],
+  "results": [
+    {
+      "junit": "adoption-positive.xml",
+      "sha256": "367ff2e6cb76ac339428bc090fb9dc81c317daf892ffac41318475cc5fd92e2c",
+      "tests": [
+        "tests.integration.test_legacy_adoption_communication_postgres::test_0029_register_activate_backup_restore_preserves_every_new_fact_and_session"
+      ],
+      "failures": 0,
+      "seconds": 52.31
+    },
+    {
+      "junit": "adoption-compat-final.xml",
+      "sha256": "b3eae60e404a575e767cd0e93db391a6c49277fff9d1b8ae2c8110426064fd24",
+      "tests": [
+        "tests.integration.test_legacy_adoption_communication_postgres::test_activation_refuses_legacy_pending_or_ambiguous_attempt_without_backup[pending-None]",
+        "tests.integration.test_legacy_adoption_communication_postgres::test_activation_refuses_legacy_pending_or_ambiguous_attempt_without_backup[dead-delivery_unverified]",
+        "tests.integration.test_legacy_adoption_communication_postgres::test_activation_refuses_legacy_pending_or_ambiguous_attempt_without_backup[dead-prior_attempt_unverified]",
+        "tests.integration.test_legacy_adoption_communication_postgres::test_owner_and_exact_revision_are_fail_closed_before_backup[wrong_owner]",
+        "tests.integration.test_legacy_adoption_communication_postgres::test_owner_and_exact_revision_are_fail_closed_before_backup[schema_revision_mismatch]",
+        "tests.integration.test_legacy_adoption_communication_postgres::test_new_table_change_after_rehearsal_is_detected_and_no_alias_is_inserted",
+        "tests.integration.test_legacy_adoption_postgres::test_both_phases_preserve_existing_records_and_pauses_without_copying_sessions",
+        "tests.integration.test_legacy_adoption_postgres::test_failure_never_changes_the_original_alias_or_existing_data[restore]",
+        "tests.integration.test_legacy_adoption_postgres::test_failure_never_changes_the_original_alias_or_existing_data[source]",
+        "tests.integration.test_legacy_adoption_postgres::test_failure_never_changes_the_original_alias_or_existing_data[owner]",
+        "tests.integration.test_legacy_adoption_postgres::test_ambiguous_owner_stops_before_backup_or_registration",
+        "tests.integration.test_legacy_adoption_postgres::test_inactive_tenant_stops_without_enabling_it",
+        "tests.integration.test_legacy_adoption_postgres::test_primary_account_change_stops_before_backup",
+        "tests.integration.test_legacy_adoption_postgres::test_activation_preserves_and_refuses_any_pending_outbound[queued]",
+        "tests.integration.test_legacy_adoption_postgres::test_activation_preserves_and_refuses_any_pending_outbound[sending]",
+        "tests.integration.test_legacy_adoption_postgres::test_activation_preserves_and_refuses_any_pending_outbound[uncertain]",
+        "tests.unit.test_qr_legacy_transition::test_stable_alias_is_distinct_per_company_and_never_a_generated_v4_channel",
+        "tests.unit.test_qr_legacy_transition::test_legacy_alias_preserves_namespace_and_message_receipts_and_scopes_tenant",
+        "tests.unit.test_qr_legacy_transition::test_registered_alias_uses_old_context_and_done_markers_before_authority_activation",
+        "tests.unit.test_qr_legacy_transition::test_registration_operation_is_disabled_without_explicit_authority",
+        "tests.unit.test_qr_legacy_transition::test_source_write_requires_proof_bound_to_the_operation_snapshot_and_phase",
+        "tests.unit.test_qr_legacy_transition::test_ordinary_startup_strips_legacy_operation_credentials"
+      ],
+      "failures": 0,
+      "seconds": 442.84
+    },
+    {
+      "junit": "adoption-owner-final.xml",
+      "sha256": "ffe72048a8a18961268766ddfe2139889aad78572aa68af98df3956352911d02",
+      "tests": [
+        "tests.integration.test_legacy_adoption_communication_postgres::test_owner_and_exact_revision_are_fail_closed_before_backup[wrong_owner]"
+      ],
+      "failures": 0,
+      "seconds": 16.4
+    }
+  ],
+  "remaining_test_run": null,
+  "prior_failed_attempts": "v1/v2 stopped in new fixture setup; v3 six negativespassed andtwo positive fixture assertions corrected; no production operation occurred",
+  "completed_at_utc": "2026-10-20T21:33:57.150503+00:00",
+  "effective_test_union": {
+    "unique_cases": 23,
+    "real_postgres_cases": 17,
+    "unit_cases": 6,
+    "all_passed": true,
+    "repeat_not_added": "wrong_owner final portable fixture was retested separately and overlaps one of the22 final cases"
+  }
+}

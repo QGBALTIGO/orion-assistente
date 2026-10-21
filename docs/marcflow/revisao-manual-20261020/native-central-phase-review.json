@@ -1,0 +1,469 @@
+{
+  "schema_version": 1,
+  "review_id": "native-central-phases-static",
+  "reviewed_at_utc": "2026-10-21T00:07:26.418623+00:00",
+  "reviewer": "/root/manual_js_inventory",
+  "review_type": "static_source_and_runbook_review",
+  "status": "static_review_complete_rollout_acceptance_pending",
+  "scope": "Guardas C/D/E/F para preservar IA, dados e sessão após provisionamento explícito do administrador nativo.",
+  "source_snapshot": {
+    "head_commit_at_review": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+    "provenance": "Leitura direta da árvore de trabalho; hashes individuais identificam os bytes lidos. Não atesta execução limpa desse commit, CI ou publicação.",
+    "files": [
+      {
+        "path": "scripts/one_time_legacy_adoption.py",
+        "sha256": "3ec1cc69ae48e8e2c657aed858a7dcfcf8a264c0a149ceebdda09d473c4deff8",
+        "line_count": 403
+      },
+      {
+        "path": "app/qr_legacy.py",
+        "sha256": "3d4df24176642d4c2a2d824ec06ea082ec9208a20e3ab7d60af03e2f3d7d7109",
+        "line_count": 73
+      },
+      {
+        "path": "app/qr_channels.py",
+        "sha256": "052902537dab59958589ca1aa70396d869370d7e61e2a3488f9e19960941e117",
+        "line_count": 482
+      },
+      {
+        "path": "app/qr_ai.py",
+        "sha256": "ad88122248c997bc2dbdd5828aa72bbae72e08125ee2a3868559aa0df092a92b",
+        "line_count": 3108
+      },
+      {
+        "path": "app/inbox_control.py",
+        "sha256": "c0dd316a94e2fffd525b75581c16ac5c954fb69bc6c23df4f37ede7824c31ac7",
+        "line_count": 410
+      },
+      {
+        "path": "app/inbox_runtime.py",
+        "sha256": "e264e655487ec47cd8416ccdf35879e93784d4f8763f9f9d1b682e2f2047bf0f",
+        "line_count": 242
+      },
+      {
+        "path": "app/qr_api.py",
+        "sha256": "0c16b339a3bc6f66852935425569d51a63c6ec4b2c8d5160819f21c4db0f27b3",
+        "line_count": 393
+      },
+      {
+        "path": "qr-bridge/src/legacy-central.mjs",
+        "sha256": "8b58d1a567787000a524bcb023c81075fe01167fbce7702804ed1a25dfd65caf",
+        "line_count": 75
+      },
+      {
+        "path": "qr-bridge/src/channel-manager.mjs",
+        "sha256": "5128ac5f469bd4971db8d3e05dab536aad3e16ea8a94b70b1c4853fe612b0340",
+        "line_count": 288
+      },
+      {
+        "path": "qr-bridge/src/server.mjs",
+        "sha256": "c47d1e315925a24c539237eb90185bb384e8cf513de5bdc9ba138420e5ccb5b2",
+        "line_count": 952
+      },
+      {
+        "path": "scripts/start_api.py",
+        "sha256": "9bb0c9076b785cd93e40282e4065d05029fe0a524047a4edef6c5c819e9f74ab",
+        "line_count": 38
+      },
+      {
+        "path": "scripts/wait_for_admin_identity_schema.py",
+        "sha256": "4695c26c076dab7c9d3ccf0427c405cbfab302b8360caa507bc9eee1d7486d2c",
+        "line_count": 66
+      },
+      {
+        "path": "railway.worker.json",
+        "sha256": "94d5d751b402d837f7d84fe60f8e1df68b854fd6cac27d04cbc9e972296a989f",
+        "line_count": 12
+      },
+      {
+        "path": "docs/marcflow/admin-central-identity.md",
+        "sha256": "8266488d8ee510dff84b14ae474fd3eae90dfd7dfcd64a1170844302ca154726",
+        "line_count": 126
+      },
+      {
+        "path": "docs/marcflow/legacy-transition.md",
+        "sha256": "d59fe6c436986d7e057c1c4dd6fe47a4b2c9f9fe6e63b9a228b56c9007001167",
+        "line_count": 216
+      }
+    ]
+  },
+  "activity": {
+    "application_tests_executed": 0,
+    "production_tool_calls": 0,
+    "provider_or_real_message_calls": 0,
+    "runtime_source_edits": 0,
+    "database_mutations": 0,
+    "session_mutations": 0,
+    "deployments": 0,
+    "documentation_edits": [
+      "docs/marcflow/legacy-transition.md"
+    ],
+    "external_artifacts_written": [
+      "native-central-phase-review.json"
+    ],
+    "document_checks": [
+      "JSON round-trip e validação local das faixas/hashes das referências",
+      "git diff --check do runbook e releitura integral"
+    ],
+    "note": "As únicas gravações desta entrega são o runbook autorizado e este artefato externo; nenhuma mutação de dados ou produção."
+  },
+  "phases": [
+    {
+      "phase": "C",
+      "operation": "register",
+      "acceptance": "pending_not_executed_by_reviewer",
+      "guards": [
+        "Provisionamento aplicado e conferido; empresa exata ativa com bot_enabled=true.",
+        "Exatamente um proprietário elegível com membership owner ativa; native admin exige provider legacy_admin e geração/configuração válidas.",
+        "API QR_LEGACY_CENTRAL_ENABLED=1, QR_CHANNELS_ENABLED=1 e QR_AI_ENABLED=1; controle e envio globais permanecem0.",
+        "UUIDv4 novo, sessão conectada com HMAC atual, allowlist original exata, esquema revisado exato0030 para o alvo atual.",
+        "Backup cifrado durável, leitura de volta, restauração e ensaio antes do INSERT; comparar dados/catálogo/permissões/sequência.",
+        "Alias somente, sem vínculo de autoridade; não criar socket, copiar auth, emitir QR ou enviar mensagem."
+      ],
+      "required_receipts": [
+        "registered=true/status complete ou prova verificada de registro existente",
+        "backup/readback/restore/rehearsal",
+        "mesmo session_digest e owner/tenant/allowlist"
+      ],
+      "references": [
+        "adoption_settings",
+        "adoption_owner_and_backlog",
+        "adoption_write_and_receipt",
+        "qr_ownership",
+        "native_admin_runbook"
+      ]
+    },
+    {
+      "phase": "D",
+      "operation": "attach_existing_socket",
+      "acceptance": "pending_not_executed_by_reviewer",
+      "guards": [
+        "Alias e bootstrap API válidos antes de ligar QR_LEGACY_CENTRAL_ENABLED=1 no bridge; antecipar a flag pode interromper respostas por recusa segura.",
+        "Mesmos tenant, chave, allowlist, volume e diretório de autenticação; adaptador usa o socket original e close apenas o desassocia.",
+        "ORION_NOTIFY_SELF_ON_LINK=0 e QR_OPERATOR_TEST_ENABLED=0; manter a IA existente ligada.",
+        "Estado privado ready=true/connected=true/session_preserved=true e /health/central ok; HMAC igual ao registro.",
+        "Não usar QR, start/stop, logout, delete ou disable no alias principal; controle/envio globais seguem0."
+      ],
+      "required_receipts": [
+        "bootstrap do alias exato",
+        "saúde do adaptador e prova da mesma sessão",
+        "deploy/revisão compatível efetivamente em execução"
+      ],
+      "references": [
+        "legacy_opt_in_and_bootstrap",
+        "original_socket_adapter",
+        "central_health",
+        "bridge_factory",
+        "bridge_notice",
+        "bridge_resume"
+      ]
+    },
+    {
+      "phase": "E",
+      "operation": "activate_persisted_authority",
+      "acceptance": "pending_not_executed_by_reviewer",
+      "guards": [
+        "API corrigida e qualificada antes da adoção: contexto ligado antes de blocked/revision e autoridade efetiva consultada por run_locked nas duas condições, inclusive CONTROL0/adoptedTrue.",
+        "Alias existente habilitado com assistente habilitada; identidade, membership, empresa, chave, allowlist e HMAC ainda válidos.",
+        "Nenhuma saída queued/sending/uncertain nem legado pending/dead-unverified em qualquer empresa; não limpar nem reenviar para contornar.",
+        "UUID novo e backup/readback/restore/rehearsal próprios; snapshot exato exceto quatro campos voláteis de lease.",
+        "Pausas Redis e persistidas conferidas novamente sob os mesmos locks de conversa antes da escrita; modo humano preservado sem prazo de retomada.",
+        "Vínculo persistente confirmado; QR_LEGACY_CENTRAL_ENABLED=1 permanece API+QR. CONTROL/SEND podem continuar0 sem desligar a autoridade adotada."
+      ],
+      "required_receipts": [
+        "authority_adopted=true/status complete ou vínculo existente verificado",
+        "pausas e contagens preservadas",
+        "backup/readback/restore/rehearsal",
+        "gate de runtime corrigido/qualificado e saúde da sessão"
+      ],
+      "references": [
+        "managed_authority",
+        "locked_authority",
+        "control_enabled",
+        "adoption_owner_and_backlog",
+        "adoption_snapshot_and_pauses",
+        "adoption_write_and_receipt",
+        "qr_lease_identity",
+        "managed_transport"
+      ]
+    },
+    {
+      "phase": "F",
+      "operation": "enable_human_control",
+      "acceptance": "pending_not_executed_by_reviewer",
+      "guards": [
+        "Fases C/D/E comprovadas; não confundir código publicado com central ativa.",
+        "INBOX_TOOLS_ENABLED=1 e INBOX_CONTROL_ENABLED=1/INBOX_SEND_ENABLED=1 na API+worker efetivamente em execução.",
+        "Novo login do admin para receber UUID real; validar owner da empresa e geração administrativa, sem elevar silenciosamente cookies antigos.",
+        "API+worker recebem a mesma configuração administrativa por referências; worker usa papel runtime restrito e não recebe owner/opções de operadores.",
+        "Meta/campanhas/sondagens e avisos seguem desligados; não enviar mensagens reais para testar.",
+        "Saúde comprova transporte/sessão, não login real, resposta da IA, entrega ou homologação externa."
+      ],
+      "required_receipts": [
+        "configuração efetiva API/worker",
+        "identidade real e permissões do admin sem envio",
+        "saúde e revisão publicada dos serviços",
+        "ausência de alteração nas sessões/volumes"
+      ],
+      "references": [
+        "manual_send_switch",
+        "manual_operator_validation",
+        "native_admin_runbook",
+        "current_schema_gate",
+        "worker_start",
+        "central_health"
+      ]
+    }
+  ],
+  "required_runtime_preservation": {
+    "after_D_and_E": {
+      "API.QR_LEGACY_CENTRAL_ENABLED": "1",
+      "QR.QR_LEGACY_CENTRAL_ENABLED": "1"
+    },
+    "remain_enabled": [
+      "QR_AI_ENABLED=1",
+      "QR_CHANNELS_ENABLED=1",
+      "configuração administrativa nativa igual na API/worker"
+    ],
+    "remain_disabled": [
+      "META_LIVE_SEND",
+      "MARKETING_EXECUTION_ENABLED",
+      "MARKETING_RECONCILIATION_ENABLED",
+      "sondagens que enviem mensagens",
+      "ORION_NOTIFY_SELF_ON_LINK=0",
+      "QR_OPERATOR_TEST_ENABLED=0"
+    ],
+    "keep_exact": [
+      "QR_AI_TENANT_ID",
+      "QR_AI_ALLOWED_SENDERS",
+      "chave e URLs internas existentes",
+      "volume/diretório de autenticação QR",
+      "namespace Redis e marcadores de idempotência"
+    ],
+    "opt_in_caveat": "require_managed_path retornaFalse quando QR_LEGACY_CENTRAL_ENABLED não é1; a resistência da adoção a INBOX_CONTROL_ENABLED=0 pressupõe preservar o opt-in legado na API/QR."
+  },
+  "hook_and_cleanup": {
+    "current_target_schema": "0030_legacy_admin_identity",
+    "current_runtime_gate": "admin_identity_schema_ready",
+    "api_start": "python -m scripts.start_api",
+    "worker_start": "arq app.worker.WorkerSettings, sem credencial owner/opções one-time",
+    "rule": "Depois da verificação, restaurar hook normal com gate0030 e sondagens somente de leitura; limpar SOMENTE credenciais e opções de uso único.",
+    "do_not_reuse": "Limpeza histórica que desligava QR_LEGACY_CENTRAL_ENABLED antes da adoção não serve após D/E; manter opt-inAPI/QR1, autoridade persistida e configuração administrativa runtime.",
+    "references": [
+      "api_credential_cleanup",
+      "current_schema_gate",
+      "worker_start",
+      "legacy_opt_in_and_bootstrap"
+    ]
+  },
+  "recovery_after_completed_write": {
+    "trigger": "Recibo completo de escrita, seguido de falha em probe/start/deploy.",
+    "steps": [
+      "Conferir UUID/fase/banco/revisão, backup/restauração/ensaio e resultado do operador contra estado atual por leitura.",
+      "Distinguir conta/membership/bot aplicados, alias registrado e autoridade adotada; falha posterior não prova rollback.",
+      "Não repetir setup apply já concluído: suas guardas exigem ausência prévia de identidade/proprietário. Não criar novo plano nem apagar estado para forçar passagem.",
+      "Recibo ausente ou estado divergente exige esclarecer antes de qualquer repetição; registro/adoção existentes precisam ser verificados.",
+      "Somente depois de conferir estado gravado, runtime compatível, gate0030 e prova/saúde da sessão, publicar hook normal.",
+      "Não rollback/downgrade/restaurar original, não apagar backlog ou slots incertos e não forçar reconexão; limpar somente one-time."
+    ]
+  },
+  "gaps": [
+    "Novo setup aplicado e recibos C/D/E/F ainda não atestados por esta revisão estática.",
+    "Qualificação/CI/publicação da correção de escopo e duas condições run_locked exigem evidência própria, não inferida da leitura.",
+    "Novo login real, resposta real da IA e entrega externa não foram executados; saúde não substitui esses aceites.",
+    "Locks/reconexão podem produzir espera temporária; preservação de sessão não significa latência zero.",
+    "O runbook legado foi corrigido nesta entrega; relatórios e resultados antigos permanecem históricos e não devem ser somados às rodadas atuais."
+  ],
+  "input_evidence": [
+    {
+      "file": "publication-receipt.json",
+      "sha256_at_review": "d7e40a0ab821200d9447b9714be8e9ce970a3d40e1d76d058c0e82140a80703c",
+      "use": "Recibo local consultado como evidência fornecida; esta revisão não atualizou nem confirmou seus estados em produção."
+    }
+  ],
+  "references": {
+    "adoption_settings": {
+      "file": "scripts/one_time_legacy_adoption.py",
+      "function_or_scope": "Settings.from_environment/session_proof",
+      "line_start": 59,
+      "line_end": 109,
+      "source_sha256": "3ec1cc69ae48e8e2c657aed858a7dcfcf8a264c0a149ceebdda09d473c4deff8"
+    },
+    "adoption_owner_and_backlog": {
+      "file": "scripts/one_time_legacy_adoption.py",
+      "function_or_scope": "eligible_owner/plan_for",
+      "line_start": 112,
+      "line_end": 171,
+      "source_sha256": "3ec1cc69ae48e8e2c657aed858a7dcfcf8a264c0a149ceebdda09d473c4deff8"
+    },
+    "adoption_snapshot_and_pauses": {
+      "file": "scripts/one_time_legacy_adoption.py",
+      "function_or_scope": "snapshot/paused_contacts/conversation_locks",
+      "line_start": 187,
+      "line_end": 243,
+      "source_sha256": "3ec1cc69ae48e8e2c657aed858a7dcfcf8a264c0a149ceebdda09d473c4deff8"
+    },
+    "adoption_write_and_receipt": {
+      "file": "scripts/one_time_legacy_adoption.py",
+      "function_or_scope": "apply/restore_and_rehearse/execute",
+      "line_start": 264,
+      "line_end": 387,
+      "source_sha256": "3ec1cc69ae48e8e2c657aed858a7dcfcf8a264c0a149ceebdda09d473c4deff8"
+    },
+    "legacy_opt_in_and_bootstrap": {
+      "file": "app/qr_legacy.py",
+      "function_or_scope": "enabled/require_managed_path/bootstrap",
+      "line_start": 24,
+      "line_end": 73,
+      "source_sha256": "3d4df24176642d4c2a2d824ec06ea082ec9208a20e3ab7d60af03e2f3d7d7109"
+    },
+    "qr_ownership": {
+      "file": "app/qr_channels.py",
+      "function_or_scope": "_owner_authorized/_owner/list_channels",
+      "line_start": 126,
+      "line_end": 205,
+      "source_sha256": "052902537dab59958589ca1aa70396d869370d7e61e2a3488f9e19960941e117"
+    },
+    "qr_lease_identity": {
+      "file": "app/qr_channels.py",
+      "function_or_scope": "broker/authenticated_channel",
+      "line_start": 261,
+      "line_end": 339,
+      "source_sha256": "052902537dab59958589ca1aa70396d869370d7e61e2a3488f9e19960941e117"
+    },
+    "managed_authority": {
+      "file": "app/qr_ai.py",
+      "function_or_scope": "managed_qr_reply",
+      "line_start": 2909,
+      "line_end": 2959,
+      "source_sha256": "ad88122248c997bc2dbdd5828aa72bbae72e08125ee2a3868559aa0df092a92b"
+    },
+    "locked_authority": {
+      "file": "app/qr_ai.py",
+      "function_or_scope": "run_locked",
+      "line_start": 2674,
+      "line_end": 2779,
+      "source_sha256": "ad88122248c997bc2dbdd5828aa72bbae72e08125ee2a3868559aa0df092a92b"
+    },
+    "legacy_reply": {
+      "file": "app/qr_ai.py",
+      "function_or_scope": "reply",
+      "line_start": 2798,
+      "line_end": 2832,
+      "source_sha256": "ad88122248c997bc2dbdd5828aa72bbae72e08125ee2a3868559aa0df092a92b"
+    },
+    "control_enabled": {
+      "file": "app/inbox_control.py",
+      "function_or_scope": "enabled",
+      "line_start": 57,
+      "line_end": 60,
+      "source_sha256": "c0dd316a94e2fffd525b75581c16ac5c954fb69bc6c23df4f37ede7824c31ac7"
+    },
+    "control_transport": {
+      "file": "app/inbox_control.py",
+      "function_or_scope": "bridge_control/authorize_send",
+      "line_start": 301,
+      "line_end": 367,
+      "source_sha256": "c0dd316a94e2fffd525b75581c16ac5c954fb69bc6c23df4f37ede7824c31ac7"
+    },
+    "manual_send_switch": {
+      "file": "app/inbox_runtime.py",
+      "function_or_scope": "send_enabled",
+      "line_start": 19,
+      "line_end": 20,
+      "source_sha256": "e264e655487ec47cd8416ccdf35879e93784d4f8763f9f9d1b682e2f2047bf0f"
+    },
+    "manual_operator_validation": {
+      "file": "app/inbox_runtime.py",
+      "function_or_scope": "operator_version",
+      "line_start": 54,
+      "line_end": 81,
+      "source_sha256": "e264e655487ec47cd8416ccdf35879e93784d4f8763f9f9d1b682e2f2047bf0f"
+    },
+    "central_health": {
+      "file": "app/qr_api.py",
+      "function_or_scope": "central_health",
+      "line_start": 282,
+      "line_end": 291,
+      "source_sha256": "0c16b339a3bc6f66852935425569d51a63c6ec4b2c8d5160819f21c4db0f27b3"
+    },
+    "original_socket_adapter": {
+      "file": "qr-bridge/src/legacy-central.mjs",
+      "function_or_scope": "createLegacyCentral",
+      "line_start": 7,
+      "line_end": 74,
+      "source_sha256": "8b58d1a567787000a524bcb023c81075fe01167fbce7702804ed1a25dfd65caf"
+    },
+    "managed_lease_notice": {
+      "file": "qr-bridge/src/channel-manager.mjs",
+      "function_or_scope": "acceptLease/connect",
+      "line_start": 23,
+      "line_end": 101,
+      "source_sha256": "5128ac5f469bd4971db8d3e05dab536aad3e16ea8a94b70b1c4853fe612b0340"
+    },
+    "managed_transport": {
+      "file": "qr-bridge/src/channel-manager.mjs",
+      "function_or_scope": "send",
+      "line_start": 204,
+      "line_end": 244,
+      "source_sha256": "5128ac5f469bd4971db8d3e05dab536aad3e16ea8a94b70b1c4853fe612b0340"
+    },
+    "bridge_factory": {
+      "file": "qr-bridge/src/server.mjs",
+      "function_or_scope": "legacyCentral/channelRoutes",
+      "line_start": 43,
+      "line_end": 51,
+      "source_sha256": "c47d1e315925a24c539237eb90185bb384e8cf513de5bdc9ba138420e5ccb5b2"
+    },
+    "bridge_notice": {
+      "file": "qr-bridge/src/server.mjs",
+      "function_or_scope": "connection.update",
+      "line_start": 515,
+      "line_end": 520,
+      "source_sha256": "c47d1e315925a24c539237eb90185bb384e8cf513de5bdc9ba138420e5ccb5b2"
+    },
+    "legacy_send_rejected": {
+      "file": "qr-bridge/src/server.mjs",
+      "function_or_scope": "/internal/send",
+      "line_start": 919,
+      "line_end": 926,
+      "source_sha256": "c47d1e315925a24c539237eb90185bb384e8cf513de5bdc9ba138420e5ccb5b2"
+    },
+    "bridge_resume": {
+      "file": "qr-bridge/src/server.mjs",
+      "function_or_scope": "resumeChannels",
+      "line_start": 946,
+      "line_end": 951,
+      "source_sha256": "c47d1e315925a24c539237eb90185bb384e8cf513de5bdc9ba138420e5ccb5b2"
+    },
+    "api_credential_cleanup": {
+      "file": "scripts/start_api.py",
+      "function_or_scope": "ONE_TIME_KEYS/runtime_environment/main",
+      "line_start": 5,
+      "line_end": 34,
+      "source_sha256": "9bb0c9076b785cd93e40282e4065d05029fe0a524047a4edef6c5c819e9f74ab"
+    },
+    "current_schema_gate": {
+      "file": "scripts/wait_for_admin_identity_schema.py",
+      "function_or_scope": "probe_schema/wait_for_schema",
+      "line_start": 9,
+      "line_end": 55,
+      "source_sha256": "4695c26c076dab7c9d3ccf0427c405cbfab302b8360caa507bc9eee1d7486d2c"
+    },
+    "worker_start": {
+      "file": "railway.worker.json",
+      "function_or_scope": "deploy.startCommand",
+      "line_start": 1,
+      "line_end": 10,
+      "source_sha256": "94d5d751b402d837f7d84fe60f8e1df68b854fd6cac27d04cbc9e972296a989f"
+    },
+    "native_admin_runbook": {
+      "file": "docs/marcflow/admin-central-identity.md",
+      "function_or_scope": "operations/preservation/gates",
+      "line_start": 53,
+      "line_end": 126,
+      "source_sha256": "8266488d8ee510dff84b14ae474fd3eae90dfd7dfcd64a1170844302ca154726"
+    }
+  },
+  "publication_claim": "Nenhuma fase C/D/E/F foi executada ou publicada por este revisor. Estados reais pertencem aos recibos de operação fornecidos pelo responsável."
+}

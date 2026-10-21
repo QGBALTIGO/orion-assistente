@@ -129,34 +129,54 @@ def test_05_reload_resumes_saved_step_and_cancel_edit_never_changes_real_price(j
     assert h.scalar("SELECT count(*) FROM services WHERE tenant_id=%s", (tenant,)) == 1
 
 
-def test_06_multiple_business_choice_loads_only_the_selected_legacy_scope(journey):
+def test_06_legacy_multiple_memberships_block_without_choosing_or_removing_a_business(journey):
     h = journey
     account = h.account()
     a = h.tenant(account, name="Empresa A sintética")
     b = h.tenant(account, name="Empresa B sintética")
     h.login(account)
-    expect(h.page.locator('#orionSetup [data-ob-action="choose-business"]')).to_have_count(2)
-    before = len(h.events)
-    h.page.locator(f'[data-ob-tenant="{b["id"]}"]').click()
-    expect(h.page.locator('#orionSetup [data-ob-title]')).to_have_text(b["name"])
-    assert not any(event["path"] == f'/api/v1/tenants/{a["id"]}/onboarding' for event in h.events[before:])
+    expect(h.page.locator("#businessContextMessage")).to_contain_text("mais de uma empresa")
+    expect(h.page.locator('[data-ob-action="choose-business"]')).to_have_count(0)
+    expect(h.page.locator('[data-ob-form="create"]')).to_have_count(0)
+    h.page.goto(h.server.origin + "/panel?aba=agenda&empresa=" + b["id"])
+    expect(h.page.locator("#businessContextMessage")).to_contain_text("mais de uma empresa")
+    assert not any(event["path"].startswith("/api/v1/tenants/") for event in h.events)
+    assert h.api("/api/v1/account/businesses")["status"] == 409
+    entry = h.api("/api/v1/onboarding/entry?tenant_id=" + b["id"])
+    assert entry["status"] == 200
+    assert entry["data"]["kind"] == "business_conflict"
+    assert entry["data"]["create_allowed"] is False
+    assert entry["data"]["tenant_id"] is None and entry["data"]["businesses"] == []
+    for business in (a, b):
+        assert h.api(f'/api/v1/tenants/{business["id"]}/onboarding')["status"] == 409
     assert h.scalar("SELECT count(*) FROM business_onboarding WHERE tenant_id IN (%s,%s)", (a["id"], b["id"])) == 0
-    assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (account["id"],)) == 2
+    assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s AND active", (account["id"],)) == 2
+    assert h.scalar("SELECT count(*) FROM tenants WHERE id IN (%s,%s)", (a["id"], b["id"])) == 2
 
 
-def test_07_explicit_new_business_preserves_existing_company_and_creates_one_independent_scope(journey):
+def test_07_existing_company_is_fixed_and_new_creation_keys_cannot_add_another(journey):
     h = journey
     account = h.account()
     legacy = h.tenant(account, configured=True, name="Negócio original sintético")
     h.login(account)
     expect(h.page.locator("#appView")).not_to_have_class(re.compile(r"\bob-gated\b"))
-    h.page.locator('[data-os-action="business-new"]').click()
-    expect(h.page.locator('#orionSetup [data-ob-form="create"] [name="name"]')).to_have_value("")
-    state = h.create(name="Segundo negócio sintético")
-    assert state["tenant_id"] != legacy["id"]
-    assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (account["id"],)) == 2
+    expect(h.page.locator("#osSidebarContext .os-tenant-name")).to_have_text(legacy["name"])
+    expect(h.page.locator("#osSidebarContext select")).to_have_count(0)
+    expect(h.page.locator('[data-os-action="business-new"]')).to_have_count(0)
+    expect(h.page.locator('[data-ob-form="create"]')).to_have_count(0)
+    businesses = h.api("/api/v1/account/businesses")
+    assert businesses["status"] == 200 and [row["id"] for row in businesses["data"]] == [legacy["id"]]
+    for _ in range(2):
+        denied = h.api("/api/v1/onboarding/businesses", method="POST", data={
+            "name":"Segundo negócio sintético", "niche":"barbearia", "activity":"services",
+            "timezone":"America/Cuiaba", "idempotency_key":str(uuid4()),
+        })
+        assert denied["status"] == 409
+        assert "apenas uma empresa" in denied["data"]["detail"]
+    assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (account["id"],)) == 1
+    assert h.scalar("SELECT count(*) FROM business_onboarding_creations WHERE account_id=%s", (account["id"],)) == 0
     assert h.scalar("SELECT count(*) FROM services WHERE tenant_id=%s", (legacy["id"],)) == 1
-    assert h.scalar("SELECT count(*) FROM services WHERE tenant_id=%s", (state["tenant_id"],)) == 0
+    assert h.scalar("SELECT name FROM tenants WHERE id=%s", (legacy["id"],)) == legacy["name"]
 
 
 def test_08_configured_legacy_owner_opens_dashboard_without_retroactive_creation(journey):
@@ -349,6 +369,10 @@ def test_18_foreign_tenant_cannot_be_read_or_updated_from_the_authenticated_brow
     b = h.tenant(foreign_owner, configured=True, name="DADO ESTRANGEIRO E2E")
     h.login(own)
     expect(h.page.locator("#appView")).not_to_have_class(re.compile(r"\bob-gated\b"))
+    h.page.goto(h.server.origin + "/panel?aba=agenda&empresa=" + b["id"])
+    expect(h.page.locator("#osSidebarContext .os-tenant-name")).to_have_text(a["name"])
+    expect(h.page).not_to_have_url(re.compile(r"[?&]empresa="))
+    assert not any(event["path"].startswith(f'/api/v1/tenants/{b["id"]}/') for event in h.events)
     assert h.api(f'/api/v1/tenants/{b["id"]}/onboarding')["status"] == 403
     denied = h.api(f'/api/v1/tenants/{b["id"]}/onboarding/steps/business', method="PUT", data={"expected_version":0,"idempotency_key":str(uuid4()),"data":{"name":"Tentativa E2E","niche":"barbearia","activity":"services","timezone":"America/Cuiaba"}})
     assert denied["status"] == 403
@@ -369,6 +393,16 @@ def test_19_owner_revoked_after_render_cannot_commit_a_stale_wizard_save(journey
     expect(h.page.locator('#orionSetup [name="modality"]')).to_have_value("online")
     assert h.scalar("SELECT configuration->>'modality' FROM business_onboarding WHERE tenant_id=%s", (tenant,)) is None
     assert h.scalar("SELECT count(*) FROM business_onboarding_operations WHERE tenant_id=%s AND step='location'", (tenant,)) == 0
+    h.page.reload()
+    expect(h.page.locator("#businessContextMessage")).to_contain_text("acesso está inativo")
+    expect(h.page.locator('[data-ob-form="create"]')).to_have_count(0)
+    denied = h.api("/api/v1/onboarding/businesses", method="POST", data={
+        "name":"Cadastro após revogação", "niche":"barbearia", "activity":"services",
+        "timezone":"America/Cuiaba", "idempotency_key":str(uuid4()),
+    })
+    assert denied["status"] == 409
+    assert h.scalar("SELECT count(*) FROM business_onboarding_creations WHERE account_id=%s", (account["id"],)) == 1
+    assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (account["id"],)) == 1
 
 
 def test_20_completed_business_channels_remain_disabled_without_touching_any_provider(journey):

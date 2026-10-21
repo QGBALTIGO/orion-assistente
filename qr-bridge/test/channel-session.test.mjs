@@ -9,14 +9,14 @@ import {createBaileysChannelSession} from '../src/channel-session.mjs';
 process.env.ORION_RETRY_TEST_MODE='1';
 
 const phone='5567999999901',self='5567999999902',flush=()=>new Promise(r=>setImmediate(r));
-async function session(t,{audio=false,assistant=true,typingFactory}={}){
+async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=false,schedule,cancel}={}){
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-channel-socket-'));fs.chmodSync(directory,0o700);
   t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
   let alive=true,now=100000;const messages=[],sent=[],notices=[];let config;
   const client={ev:new EventEmitter(),user:{id:self+'@s.whatsapp.net'},end(){this.ended=true;},
     onWhatsApp:async pn=>[{exists:true,jid:pn+'@s.whatsapp.net'}],sendMessage:async()=>assert.fail('direct sendMessage is forbidden'),
     relayMessage:async(jid,body,options)=>{sent.push({jid,body,options});}};
-  const context={directory,secret:'synthetic-secret-'.repeat(4),isCurrent:()=>alive,
+  const context={directory,secret:'synthetic-secret-'.repeat(4),isCurrent:()=>alive,notifySelf,
     assertCurrent:async()=>{if(!alive)throw Error('lease lost');},allowedSender:value=>value===phone,
     assistantEnabled:()=>assistant,audioEnabled:()=>audio,
     onInbound:async value=>{notices.push(value);return Object.freeze({revision:notices.length});},
@@ -27,12 +27,41 @@ async function session(t,{audio=false,assistant=true,typingFactory}={}){
     generateMessageIDV2:()=> 'provider-id',generateWAMessage:async(jid,{text})=>({key:{id:'provider-id',remoteJid:jid},message:{conversation:text}}),
     downloadMediaMessage:async()=>Buffer.from('OggS synthetic media'),
     Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},proto:{Message:{AppStateSyncKeyData:{fromObject:v=>v}}}};
-  const open=()=>createBaileysChannelSession(context,{now:()=>now,loadBaileys:async()=>mod,intakeOptions:{settleMs:0,maxGroupMs:0},...(typingFactory?{typingFactory}:{})});
+  const open=()=>createBaileysChannelSession(context,{now:()=>now,loadBaileys:async()=>mod,intakeOptions:{settleMs:0,maxGroupMs:0},...(typingFactory?{typingFactory}:{}),...(schedule?{schedule,cancel}:{})});
   const result=await open();
   t.after(()=>result.close());
   return {result,client,messages,sent,notices,context,mod,open,get config(){return config;},setTime:value=>{now=value;},revoke:()=>{alive=false;},
     receive:(key,body={conversation:'hello'},time=100000)=>client.ev.emit('messages.upsert',{type:'notify',messages:[{key:{id:'id-'+Math.random(),remoteJid:phone+'@s.whatsapp.net',...key},message:body,messageTimestamp:time/1000}]})};
 }
+
+test('managed connection notice goes only to socket self, caches its exact proto and is not repeated after restart',async t=>{
+  const timers=[],s=await session(t,{notifySelf:true,assistant:false,schedule:fn=>{timers.push(fn);return timers.length;},cancel(){}});
+  assert.equal(s.sent.length,0);s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();assert.equal(timers.length,1);
+  await timers.shift()();assert.equal(s.sent.length,1);assert.equal(s.sent[0].jid,self+'@s.whatsapp.net');
+  assert.match(s.sent[0].body.conversation,/Dispositivo Conectado/);
+  assert.deepEqual(await s.config.getMessage({id:'provider-id'}),s.sent[0].body);
+  await assert.rejects(s.result.send(self,'cannot send arbitrary self message'));
+  s.result.close();const reopened=await s.open();t.after(()=>reopened.close());
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();await timers.shift()();
+  assert.equal(s.sent.length,1);assert.equal(s.messages.length,0);
+});
+
+test('revoked connection cannot send a delayed notice; restart with no registered credentials never creates a socket',async t=>{
+  const timers=[],s=await session(t,{notifySelf:true,schedule:fn=>{timers.push(fn);return 1;},cancel(){}});
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();s.revoke();await timers[0]();assert.equal(s.sent.length,0);
+  const empty=await session(t);empty.result.close();empty.context.resumeOnly=true;
+  empty.mod.default=()=>assert.fail('unlinked device must not open a socket at restart');
+  await assert.rejects(empty.open(),/channel_auth_unavailable/);
+});
+
+test('failed connection bookkeeping reports disconnection instead of leaving a stopped socket in a live manager',async t=>{
+  const s=await session(t),events=[];
+  s.context.onConnected=()=>{throw Error('synthetic persistence failure');};
+  s.context.onDisconnected=reason=>events.push(reason);
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();await flush();
+  assert.equal(s.result.status(),'stopped');assert.deepEqual(events,['disconnected']);assert.equal(s.sent.length,0);
+});
 test('actual socket factory uses per-channel auth and refuses group, self, history and unapproved sender',async t=>{
   const s=await session(t);
   s.receive({remoteJid:'120000@g.us',participantPn:phone+'@s.whatsapp.net'});
@@ -152,4 +181,39 @@ test('a newer intake during proto generation suppresses relay without weakening 
   s.mod.generateWAMessage=async()=>{latest=false;return {key:{id:'obsolete'},message:{conversation:'old summary'}};};
   await assert.rejects(s.result.send(phone,'old summary',{isCurrent:()=>latest}));assert.equal(s.sent.length,0);
   assert.equal(s.context.isCurrent(),true);assert.equal(s.result.status(),'connected');
+});
+
+
+test('decorative floods never take an inference slot; a useful caption is preserved',async t=>{
+ const s=await session(t);for(let i=0;i<400;i++){s.receive({id:'sticker-'+i},{stickerMessage:{}});s.receive({id:'gif-'+i},{videoMessage:{gifPlayback:true}});}
+ s.receive({id:'caption'},{imageMessage:{caption:'Qual o preço do corte?'}});await flush();await flush();
+ assert.equal(s.notices.length,1);assert.equal(s.messages.length,1);assert.equal(s.messages[0].text,'Qual o preço do corte?');
+});
+test('native Baileys edits, revocations and calls forward typed events without ASR',async t=>{
+ const s=await session(t);s.context.transcribe=()=>assert.fail('event cannot download or transcribe media');
+ const key={id:'original',fromMe:false,remoteJid:phone+'@s.whatsapp.net'};
+ s.client.ev.emit('messages.update',[{key,update:{message:{editedMessage:{message:{conversation:'sim'}}}}}]);
+ await flush();await flush();assert.equal(s.messages[0].envelope.kind,'edited');assert.equal(s.messages[0].envelope.target,'original');
+ s.client.ev.emit('messages.update',[{key,update:{message:null,messageStubType:1}}]);
+ await flush();await flush();assert.equal(s.messages[1].envelope.kind,'deleted');
+ s.client.ev.emit('call',[{id:'native-call',from:phone+'@s.whatsapp.net',status:'offer',isGroup:false}]);
+ await flush();await flush();assert.equal(s.messages[2].envelope.kind,'call');
+});
+test('bounded ingress overflow retains human control and the final correction without executing a prefix',async t=>{
+ const s=await session(t);let release;const barrier=new Promise(r=>release=r),notices=[];
+ s.context.onInbound=async value=>{notices.push(value);await barrier;return {revision:notices.indexOf(value)+1};};
+ for(let i=0;i<50;i++)s.receive({id:'burst-'+i},{conversation:'Quero marcar '+i});
+ s.receive({id:'human-final'},{conversation:'quero falar com atendente'});
+ s.receive({id:'correction-final'},{conversation:'não, espera, não confirme nada'});
+ await flush();await flush();release();for(let i=0;i<12;i++)await flush();
+ assert.ok(notices.some(n=>n.message_id==='human-final'));
+ assert.ok(notices.some(n=>n.message_id==='correction-final'));
+ assert.equal(s.messages.length,0);assert.equal(s.sent.length,0);
+});
+
+test('a single large decorative batch does not discard its final useful message',async t=>{
+ const s=await session(t);const messages=Array.from({length:400},(_,i)=>({key:{id:'bulk-sticker-'+i,fromMe:false,remoteJid:phone+'@s.whatsapp.net'},message:{stickerMessage:{}},messageTimestamp:100}));
+ messages.push({key:{id:'bulk-final',fromMe:false,remoteJid:phone+'@s.whatsapp.net'},message:{conversation:'Qual o preço do corte?'},messageTimestamp:100});
+ s.client.ev.emit('messages.upsert',{type:'notify',messages});await flush();await flush();
+ assert.equal(s.messages.length,1);assert.equal(s.messages[0].text,'Qual o preço do corte?');assert.equal(s.notices.length,1);
 });

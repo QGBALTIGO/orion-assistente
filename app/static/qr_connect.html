@@ -46,7 +46,7 @@ ul{padding-left:20px}li{margin-bottom:8px}
 <li>Use a câmera do WhatsApp para ler o QR exibido nesta página.</li>
 <li>Confira se aparece a mensagem <strong>Conectado</strong> acima.</li>
 </ul>
-<p class="note"><strong>Atenção:</strong> somente contas sob sua administração e consentimento. O uso de bibliotecas não oficiais pode causar desconexões, restrições ou banimento da conta. Esta etapa não ativa o bot nem lê ou envia mensagens.</p>
+<p class="note"><strong>Atenção:</strong> somente contas sob sua administração e consentimento. O uso de bibliotecas não oficiais pode causar desconexões, restrições ou banimento da conta. A conexão mantém as configurações existentes do canal. A confirmação para o próprio número e as respostas automáticas dependem da configuração do Orion.</p>
 </section>
 </main>
 <script>
@@ -73,7 +73,7 @@ async function update(){
     if(d.status==="connected"){
       image.style.display="none"; image.removeAttribute("src");
       status.textContent="✅ Conectado! O dispositivo de teste foi vinculado.";
-      message.textContent="Nenhuma mensagem é enviada automaticamente.";
+      message.textContent="Vínculo confirmado. A confirmação para o próprio número e as respostas automáticas seguem a configuração existente do canal. Confira o estado no painel.";
       $("refresh").disabled=true;stop();return;
     }
     if(d.image && d.image.startsWith("data:image/png;base64,")){

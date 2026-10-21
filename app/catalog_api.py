@@ -22,6 +22,7 @@ from functools import lru_cache
 from app.catalog_schemas import Business, RESOURCE_MODELS
 from app.database import engine_pool_options, get_session_factory, tenant_transaction
 from app.http_json import json_response
+from app.account_business import account_membership_role
 
 router = APIRouter(prefix="/api/v1", tags=["Operação interna"])
 
@@ -48,10 +49,7 @@ async def scoped_account_actor(role: str, account_id: UUID | None, route_tenant,
         membership = checked.role
     else:
         async with support_session_factory()() as db:
-            membership = (await db.execute(text("""
-                SELECT role FROM tenant_memberships
-                WHERE account_id=:account AND tenant_id=:tenant AND active
-            """), {"account": account_id, "tenant": tenant})).scalar_one_or_none()
+            membership = await account_membership_role(db, account_id, tenant)
     if membership not in {"owner", "editor", "viewer"}:
         return actor
     return Actor(role, tenant, account_id, membership)

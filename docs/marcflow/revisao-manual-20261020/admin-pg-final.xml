@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="3" failures="0" skipped="0" tests="12" time="300.161" timestamp="2026-10-20T19:03:51.601687-04:00" hostname="DESKTOP-3Q48M6B"><testcase classname="tests.integration.test_admin_identity_ops_postgres" name="test_0030_encrypted_backup_restore_and_rehearsal_preserves_every_old_fact" time="38.785" /><testcase classname="tests.integration.test_admin_identity_ops_postgres" name="test_plan_is_readonly_then_setup_and_native_owner_adoption_preserve_all_other_facts" time="74.737" /><testcase classname="tests.integration.test_admin_identity_ops_postgres" name="test_malformed_existing_0030_fails_before_backup_or_setup[check]" time="21.436" /><testcase classname="tests.integration.test_admin_identity_ops_postgres" name="test_malformed_existing_0030_fails_before_backup_or_setup[function]" time="21.371" /><testcase classname="tests.integration.test_admin_identity_ops_postgres" name="test_setup_rejects_flags_old_approval_wrong_tenant_and_changed_session_without_writes" time="25.406" /><testcase classname="tests.integration.test_admin_identity_ops_postgres" name="test_credential_rotation_after_rehearsal_rolls_back_source_and_never_rebinds" time="43.072" /><testcase classname="tests.integration.test_admin_identity_ops_postgres" name="test_existing_owner_native_admin_or_active_bot_is_never_overwritten" time="23.435" /><testcase classname="tests.integration.test_admin_identity_ops_postgres" name="test_runtime_metadata_gate_accepts_0030_and_denies_0029" time="23.622" /><testcase classname="tests.integration.test_admin_identity_ops_postgres" name="test_password_account_queries_work_on_0029_and_0030_and_exclude_native_identity" time="22.480" /><testcase classname="tests.integration.test_qr_admin_identity_postgres" name="test_real_native_account_can_own_list_and_change_only_its_qr" time="0.001"><error message="failed on setup with &quot;file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_qr_admin_identity_postgres.py, line 68&#10;  @pytest.mark.asyncio&#10;  async def test_real_native_account_can_own_list_and_change_only_its_qr(native_qr):&#10;      case = native_qr&#10;      row, payload = await create(case)&#10;      assert row[&quot;owner_account_id&quot;] == case.account and row[&quot;enabled&quot;] is False&#10;      assert row[&quot;assistant_enabled&quot;] is False&#10;      async with case.factory() as db:&#10;          repeated = await channels.create_channel(db, case.tenant, payload, case.actor)&#10;      assert repeated[&quot;id&quot;] == row[&quot;id&quot;] and repeated[&quot;credential&quot;] is None&#10;      listing = await channels.list_channels(case.tenant, Response(), case.actor)&#10;      assert listing[&quot;access&quot;][&quot;can_manage&quot;] is True&#10;      assert listing[&quot;items&quot;][0][&quot;can_manage&quot;] is True&#10;      assert listing[&quot;items&quot;][0][&quot;allowed_senders&quot;] == [&quot;5567999999901&quot;]&#10;      assert row[&quot;credential&quot;] not in str(listing)&#10;      changed = await channels.change_state(case.tenant, row[&quot;id&quot;],&#10;                                            channels.ChannelState(expected_revision=1, assistant_enabled=True), case.actor)&#10;      assert changed[&quot;assistant_enabled&quot;] is True and changed[&quot;enabled&quot;] is False&#10;      assert &quot;credential_encrypted&quot; not in changed and &quot;credential_hash&quot; not in changed&#10;      assert not case.network&#10;file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_qr_admin_identity_postgres.py, line 20&#10;  @pytest_asyncio.fixture&#10;  async def native_qr(admin_source, monkeypatch):&#10;      case = admin_source&#10;      email_admin, foreign = uuid4(), uuid4()&#10;      with case.engine.begin() as db:&#10;          db.execute(text(&quot;&quot;&quot;INSERT INTO panel_accounts&#10;              (id,name,email,password_hash,role,auth_provider,legacy_username,legacy_credential_digest)&#10;              VALUES (:account,'Synthetic native ADMIN',NULL,NULL,'admin','legacy_admin',:username,:digest)&quot;&quot;&quot;),&#10;              {&quot;account&quot;: case.admin, &quot;username&quot;: case.settings.username,&#10;               &quot;digest&quot;: case.settings.credential_digest})&#10;          db.execute(text(&quot;&quot;&quot;INSERT INTO panel_accounts(id,name,email,password_hash,role)&#10;              VALUES (:account,'Synthetic email admin',:email,'unused-test-hash','admin')&quot;&quot;&quot;),&#10;              {&quot;account&quot;: email_admin, &quot;email&quot;: f&quot;qr-admin-{email_admin}@example.test&quot;})&#10;          for account in (case.admin, email_admin):&#10;              db.execute(text(&quot;&quot;&quot;INSERT INTO tenant_memberships(tenant_id,account_id,role,active)&#10;                  VALUES (:tenant,:account,'owner',true)&quot;&quot;&quot;), {&quot;tenant&quot;: case.tenant, &quot;account&quot;: account})&#10;          db.execute(text(&quot;INSERT INTO tenants(id,name,slug) VALUES (:id,'Synthetic QR foreign tenant',:slug)&quot;),&#10;                     {&quot;id&quot;: foreign, &quot;slug&quot;: f&quot;qr-foreign-{foreign}&quot;})&#10;      support_url = case.settings.url.set(drivername=&quot;postgresql+asyncpg&quot;, username=&quot;app_support&quot;)&#10;      engine = create_async_engine(support_url, poolclass=NullPool)&#10;      factory = async_sessionmaker(engine, expire_on_commit=False)&#10;      network = []&#10;&#10;      async def no_bridge(*args):&#10;          network.append(args)&#10;          raise AssertionError(&quot;No socket or outbound transport allowed in isolated QR identity tests&quot;)&#10;&#10;      monkeypatch.setattr(channels, &quot;support_session_factory&quot;, lambda: factory)&#10;      monkeypatch.setattr(channels, &quot;_bridge_control&quot;, no_bridge)&#10;      monkeypatch.setenv(&quot;QR_CHANNELS_ENABLED&quot;, &quot;1&quot;)&#10;      monkeypatch.setenv(&quot;INTEGRATION_FERNET_KEY&quot;, Fernet.generate_key().decode())&#10;      value = SimpleNamespace(source=case, tenant=case.tenant, account=case.admin,&#10;                              actor=Actor(&quot;admin&quot;, account_id=case.admin), email_admin=email_admin,&#10;                              foreign=foreign, factory=factory, network=network)&#10;      try:&#10;          yield value&#10;      finally:&#10;          await engine.dispose()&#10;file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_admin_identity_ops_postgres.py, line 61&#10;  @pytest.fixture&#10;  def admin_source(admin_migration_source,monkeypatch):&#10;E       fixture 'admin_migration_source' not found&#10;&gt;       available fixtures: _asyncio_loop_factory, _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, admin_source, anyio_backend, anyio_backend_name, anyio_backend_options, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, event_loop_policy, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, monkeypatch, native_qr, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory&#10;&gt;       use 'pytest --fixtures [testpath]' for help on them.&#10;&#10;C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_admin_identity_ops_postgres.py:61&quot;">file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_qr_admin_identity_postgres.py, line 68
+  @pytest.mark.asyncio
+  async def test_real_native_account_can_own_list_and_change_only_its_qr(native_qr):
+      case = native_qr
+      row, payload = await create(case)
+      assert row["owner_account_id"] == case.account and row["enabled"] is False
+      assert row["assistant_enabled"] is False
+      async with case.factory() as db:
+          repeated = await channels.create_channel(db, case.tenant, payload, case.actor)
+      assert repeated["id"] == row["id"] and repeated["credential"] is None
+      listing = await channels.list_channels(case.tenant, Response(), case.actor)
+      assert listing["access"]["can_manage"] is True
+      assert listing["items"][0]["can_manage"] is True
+      assert listing["items"][0]["allowed_senders"] == ["5567999999901"]
+      assert row["credential"] not in str(listing)
+      changed = await channels.change_state(case.tenant, row["id"],
+                                            channels.ChannelState(expected_revision=1, assistant_enabled=True), case.actor)
+      assert changed["assistant_enabled"] is True and changed["enabled"] is False
+      assert "credential_encrypted" not in changed and "credential_hash" not in changed
+      assert not case.network
+file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_qr_admin_identity_postgres.py, line 20
+  @pytest_asyncio.fixture
+  async def native_qr(admin_source, monkeypatch):
+      case = admin_source
+      email_admin, foreign = uuid4(), uuid4()
+      with case.engine.begin() as db:
+          db.execute(text("""INSERT INTO panel_accounts
+              (id,name,email,password_hash,role,auth_provider,legacy_username,legacy_credential_digest)
+              VALUES (:account,'Synthetic native ADMIN',NULL,NULL,'admin','legacy_admin',:username,:digest)"""),
+              {"account": case.admin, "username": case.settings.username,
+               "digest": case.settings.credential_digest})
+          db.execute(text("""INSERT INTO panel_accounts(id,name,email,password_hash,role)
+              VALUES (:account,'Synthetic email admin',:email,'unused-test-hash','admin')"""),
+              {"account": email_admin, "email": f"qr-admin-{email_admin}@example.test"})
+          for account in (case.admin, email_admin):
+              db.execute(text("""INSERT INTO tenant_memberships(tenant_id,account_id,role,active)
+                  VALUES (:tenant,:account,'owner',true)"""), {"tenant": case.tenant, "account": account})
+          db.execute(text("INSERT INTO tenants(id,name,slug) VALUES (:id,'Synthetic QR foreign tenant',:slug)"),
+                     {"id": foreign, "slug": f"qr-foreign-{foreign}"})
+      support_url = case.settings.url.set(drivername="postgresql+asyncpg", username="app_support")
+      engine = create_async_engine(support_url, poolclass=NullPool)
+      factory = async_sessionmaker(engine, expire_on_commit=False)
+      network = []
+
+      async def no_bridge(*args):
+          network.append(args)
+          raise AssertionError("No socket or outbound transport allowed in isolated QR identity tests")
+
+      monkeypatch.setattr(channels, "support_session_factory", lambda: factory)
+      monkeypatch.setattr(channels, "_bridge_control", no_bridge)
+      monkeypatch.setenv("QR_CHANNELS_ENABLED", "1")
+      monkeypatch.setenv("INTEGRATION_FERNET_KEY", Fernet.generate_key().decode())
+      value = SimpleNamespace(source=case, tenant=case.tenant, account=case.admin,
+                              actor=Actor("admin", account_id=case.admin), email_admin=email_admin,
+                              foreign=foreign, factory=factory, network=network)
+      try:
+          yield value
+      finally:
+          await engine.dispose()
+file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_admin_identity_ops_postgres.py, line 61
+  @pytest.fixture
+  def admin_source(admin_migration_source,monkeypatch):
+E       fixture 'admin_migration_source' not found
+&gt;       available fixtures: _asyncio_loop_factory, _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, admin_source, anyio_backend, anyio_backend_name, anyio_backend_options, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, event_loop_policy, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, monkeypatch, native_qr, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory
+&gt;       use 'pytest --fixtures [testpath]' for help on them.
+
+C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_admin_identity_ops_postgres.py:61</error></testcase><testcase classname="tests.integration.test_qr_admin_identity_postgres" name="test_real_admin_identity_never_replaces_current_exact_tenant_ownership[revoked]" time="0.001"><error message="failed on setup with &quot;file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_qr_admin_identity_postgres.py, line 89&#10;  @pytest.mark.asyncio&#10;  @pytest.mark.parametrize(&quot;failure&quot;, [&quot;revoked&quot;, &quot;viewer&quot;, &quot;foreign_tenant&quot;, &quot;password_admin&quot;, &quot;no_opt_in&quot;, &quot;stale_configuration&quot;])&#10;  async def test_real_admin_identity_never_replaces_current_exact_tenant_ownership(native_qr, monkeypatch, failure):&#10;      case = native_qr&#10;      row, _ = await create(case)&#10;      actor, tenant = case.actor, case.tenant&#10;      if failure in {&quot;revoked&quot;, &quot;viewer&quot;}:&#10;          with case.source.engine.begin() as db:&#10;              db.execute(text(&quot;&quot;&quot;UPDATE tenant_memberships SET active=:active,role=:role&#10;                  WHERE tenant_id=:tenant AND account_id=:account&quot;&quot;&quot;),&#10;                  {&quot;tenant&quot;: case.tenant, &quot;account&quot;: case.account, &quot;active&quot;: failure != &quot;revoked&quot;,&#10;                   &quot;role&quot;: &quot;viewer&quot; if failure == &quot;viewer&quot; else &quot;owner&quot;})&#10;      elif failure == &quot;foreign_tenant&quot;:&#10;          tenant = case.foreign&#10;      elif failure == &quot;password_admin&quot;:&#10;          actor = Actor(&quot;admin&quot;, account_id=case.email_admin)&#10;      elif failure == &quot;no_opt_in&quot;:&#10;          monkeypatch.setenv(&quot;PANEL_LEGACY_ADMIN_IDENTITY_ENABLED&quot;, &quot;0&quot;)&#10;      else:&#10;          monkeypatch.setenv(&quot;PANEL_ADMIN_USERNAME&quot;, &quot;different-synthetic-admin&quot;)&#10;      with pytest.raises(HTTPException) as caught:&#10;          await create(case, tenant=tenant, actor=actor)&#10;      assert caught.value.status_code == 403&#10;      listing = await channels.list_channels(tenant, Response(), actor)&#10;      assert listing[&quot;access&quot;][&quot;can_manage&quot;] is False&#10;      assert all(item[&quot;can_manage&quot;] is False and &quot;allowed_senders&quot; not in item for item in listing[&quot;items&quot;])&#10;      with pytest.raises(HTTPException) as caught:&#10;          await channels._owned_channel(tenant, row[&quot;id&quot;], actor)&#10;      assert caught.value.status_code == 403 and not case.network&#10;file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_qr_admin_identity_postgres.py, line 20&#10;  @pytest_asyncio.fixture&#10;  async def native_qr(admin_source, monkeypatch):&#10;      case = admin_source&#10;      email_admin, foreign = uuid4(), uuid4()&#10;      with case.engine.begin() as db:&#10;          db.execute(text(&quot;&quot;&quot;INSERT INTO panel_accounts&#10;              (id,name,email,password_hash,role,auth_provider,legacy_username,legacy_credential_digest)&#10;              VALUES (:account,'Synthetic native ADMIN',NULL,NULL,'admin','legacy_admin',:username,:digest)&quot;&quot;&quot;),&#10;              {&quot;account&quot;: case.admin, &quot;username&quot;: case.settings.username,&#10;               &quot;digest&quot;: case.settings.credential_digest})&#10;          db.execute(text(&quot;&quot;&quot;INSERT INTO panel_accounts(id,name,email,password_hash,role)&#10;              VALUES (:account,'Synthetic email admin',:email,'unused-test-hash','admin')&quot;&quot;&quot;),&#10;              {&quot;account&quot;: email_admin, &quot;email&quot;: f&quot;qr-admin-{email_admin}@example.test&quot;})&#10;          for account in (case.admin, email_admin):&#10;              db.execute(text(&quot;&quot;&quot;INSERT INTO tenant_memberships(tenant_id,account_id,role,active)&#10;                  VALUES (:tenant,:account,'owner',true)&quot;&quot;&quot;), {&quot;tenant&quot;: case.tenant, &quot;account&quot;: account})&#10;          db.execute(text(&quot;INSERT INTO tenants(id,name,slug) VALUES (:id,'Synthetic QR foreign tenant',:slug)&quot;),&#10;                     {&quot;id&quot;: foreign, &quot;slug&quot;: f&quot;qr-foreign-{foreign}&quot;})&#10;      support_url = case.settings.url.set(drivername=&quot;postgresql+asyncpg&quot;, username=&quot;app_support&quot;)&#10;      engine = create_async_engine(support_url, poolclass=NullPool)&#10;      factory = async_sessionmaker(engine, expire_on_commit=False)&#10;      network = []&#10;&#10;      async def no_bridge(*args):&#10;          network.append(args)&#10;          raise AssertionError(&quot;No socket or outbound transport allowed in isolated QR identity tests&quot;)&#10;&#10;      monkeypatch.setattr(channels, &quot;support_session_factory&quot;, lambda: factory)&#10;      monkeypatch.setattr(channels, &quot;_bridge_control&quot;, no_bridge)&#10;      monkeypatch.setenv(&quot;QR_CHANNELS_ENABLED&quot;, &quot;1&quot;)&#10;      monkeypatch.setenv(&quot;INTEGRATION_FERNET_KEY&quot;, Fernet.generate_key().decode())&#10;      value = SimpleNamespace(source=case, tenant=case.tenant, account=case.admin,&#10;                              actor=Actor(&quot;admin&quot;, account_id=case.admin), email_admin=email_admin,&#10;                              foreign=foreign, factory=factory, network=network)&#10;      try:&#10;          yield value&#10;      finally:&#10;          await engine.dispose()&#10;file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_admin_identity_ops_postgres.py, line 61&#10;  @pytest.fixture&#10;  def admin_source(admin_migration_source,monkeypatch):&#10;E       fixture 'admin_migration_source' not found&#10;&gt;       available fixtures: _asyncio_loop_factory, _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, admin_source, anyio_backend, anyio_backend_name, anyio_backend_options, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, event_loop_policy, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, monkeypatch, native_qr, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory&#10;&gt;       use 'pytest --fixtures [testpath]' for help on them.&#10;&#10;C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_admin_identity_ops_postgres.py:61&quot;">file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_qr_admin_identity_postgres.py, line 89
+  @pytest.mark.asyncio
+  @pytest.mark.parametrize("failure", ["revoked", "viewer", "foreign_tenant", "password_admin", "no_opt_in", "stale_configuration"])
+  async def test_real_admin_identity_never_replaces_current_exact_tenant_ownership(native_qr, monkeypatch, failure):
+      case = native_qr
+      row, _ = await create(case)
+      actor, tenant = case.actor, case.tenant
+      if failure in {"revoked", "viewer"}:
+          with case.source.engine.begin() as db:
+              db.execute(text("""UPDATE tenant_memberships SET active=:active,role=:role
+                  WHERE tenant_id=:tenant AND account_id=:account"""),
+                  {"tenant": case.tenant, "account": case.account, "active": failure != "revoked",
+                   "role": "viewer" if failure == "viewer" else "owner"})
+      elif failure == "foreign_tenant":
+          tenant = case.foreign
+      elif failure == "password_admin":
+          actor = Actor("admin", account_id=case.email_admin)
+      elif failure == "no_opt_in":
+          monkeypatch.setenv("PANEL_LEGACY_ADMIN_IDENTITY_ENABLED", "0")
+      else:
+          monkeypatch.setenv("PANEL_ADMIN_USERNAME", "different-synthetic-admin")
+      with pytest.raises(HTTPException) as caught:
+          await create(case, tenant=tenant, actor=actor)
+      assert caught.value.status_code == 403
+      listing = await channels.list_channels(tenant, Response(), actor)
+      assert listing["access"]["can_manage"] is False
+      assert all(item["can_manage"] is False and "allowed_senders" not in item for item in listing["items"])
+      with pytest.raises(HTTPException) as caught:
+          await channels._owned_channel(tenant, row["id"], actor)
+      assert caught.value.status_code == 403 and not case.network
+file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_qr_admin_identity_postgres.py, line 20
+  @pytest_asyncio.fixture
+  async def native_qr(admin_source, monkeypatch):
+      case = admin_source
+      email_admin, foreign = uuid4(), uuid4()
+      with case.engine.begin() as db:
+          db.execute(text("""INSERT INTO panel_accounts
+              (id,name,email,password_hash,role,auth_provider,legacy_username,legacy_credential_digest)
+              VALUES (:account,'Synthetic native ADMIN',NULL,NULL,'admin','legacy_admin',:username,:digest)"""),
+              {"account": case.admin, "username": case.settings.username,
+               "digest": case.settings.credential_digest})
+          db.execute(text("""INSERT INTO panel_accounts(id,name,email,password_hash,role)
+              VALUES (:account,'Synthetic email admin',:email,'unused-test-hash','admin')"""),
+              {"account": email_admin, "email": f"qr-admin-{email_admin}@example.test"})
+          for account in (case.admin, email_admin):
+              db.execute(text("""INSERT INTO tenant_memberships(tenant_id,account_id,role,active)
+                  VALUES (:tenant,:account,'owner',true)"""), {"tenant": case.tenant, "account": account})
+          db.execute(text("INSERT INTO tenants(id,name,slug) VALUES (:id,'Synthetic QR foreign tenant',:slug)"),
+                     {"id": foreign, "slug": f"qr-foreign-{foreign}"})
+      support_url = case.settings.url.set(drivername="postgresql+asyncpg", username="app_support")
+      engine = create_async_engine(support_url, poolclass=NullPool)
+      factory = async_sessionmaker(engine, expire_on_commit=False)
+      network = []
+
+      async def no_bridge(*args):
+          network.append(args)
+          raise AssertionError("No socket or outbound transport allowed in isolated QR identity tests")
+
+      monkeypatch.setattr(channels, "support_session_factory", lambda: factory)
+      monkeypatch.setattr(channels, "_bridge_control", no_bridge)
+      monkeypatch.setenv("QR_CHANNELS_ENABLED", "1")
+      monkeypatch.setenv("INTEGRATION_FERNET_KEY", Fernet.generate_key().decode())
+      value = SimpleNamespace(source=case, tenant=case.tenant, account=case.admin,
+                              actor=Actor("admin", account_id=case.admin), email_admin=email_admin,
+                              foreign=foreign, factory=factory, network=network)
+      try:
+          yield value
+      finally:
+          await engine.dispose()
+file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_admin_identity_ops_postgres.py, line 61
+  @pytest.fixture
+  def admin_source(admin_migration_source,monkeypatch):
+E       fixture 'admin_migration_source' not found
+&gt;       available fixtures: _asyncio_loop_factory, _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, admin_source, anyio_backend, anyio_backend_name, anyio_backend_options, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, event_loop_policy, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, monkeypatch, native_qr, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory
+&gt;       use 'pytest --fixtures [testpath]' for help on them.
+
+C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_admin_identity_ops_postgres.py:61</error></testcase><testcase classname="tests.integration.test_qr_admin_identity_postgres" name="test_real_admin_identity_never_replaces_current_exact_tenant_ownership[viewer]" time="0.001"><error message="failed on setup with &quot;file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_qr_admin_identity_postgres.py, line 89&#10;  @pytest.mark.asyncio&#10;  @pytest.mark.parametrize(&quot;failure&quot;, [&quot;revoked&quot;, &quot;viewer&quot;, &quot;foreign_tenant&quot;, &quot;password_admin&quot;, &quot;no_opt_in&quot;, &quot;stale_configuration&quot;])&#10;  async def test_real_admin_identity_never_replaces_current_exact_tenant_ownership(native_qr, monkeypatch, failure):&#10;      case = native_qr&#10;      row, _ = await create(case)&#10;      actor, tenant = case.actor, case.tenant&#10;      if failure in {&quot;revoked&quot;, &quot;viewer&quot;}:&#10;          with case.source.engine.begin() as db:&#10;              db.execute(text(&quot;&quot;&quot;UPDATE tenant_memberships SET active=:active,role=:role&#10;                  WHERE tenant_id=:tenant AND account_id=:account&quot;&quot;&quot;),&#10;                  {&quot;tenant&quot;: case.tenant, &quot;account&quot;: case.account, &quot;active&quot;: failure != &quot;revoked&quot;,&#10;                   &quot;role&quot;: &quot;viewer&quot; if failure == &quot;viewer&quot; else &quot;owner&quot;})&#10;      elif failure == &quot;foreign_tenant&quot;:&#10;          tenant = case.foreign&#10;      elif failure == &quot;password_admin&quot;:&#10;          actor = Actor(&quot;admin&quot;, account_id=case.email_admin)&#10;      elif failure == &quot;no_opt_in&quot;:&#10;          monkeypatch.setenv(&quot;PANEL_LEGACY_ADMIN_IDENTITY_ENABLED&quot;, &quot;0&quot;)&#10;      else:&#10;          monkeypatch.setenv(&quot;PANEL_ADMIN_USERNAME&quot;, &quot;different-synthetic-admin&quot;)&#10;      with pytest.raises(HTTPException) as caught:&#10;          await create(case, tenant=tenant, actor=actor)&#10;      assert caught.value.status_code == 403&#10;      listing = await channels.list_channels(tenant, Response(), actor)&#10;      assert listing[&quot;access&quot;][&quot;can_manage&quot;] is False&#10;      assert all(item[&quot;can_manage&quot;] is False and &quot;allowed_senders&quot; not in item for item in listing[&quot;items&quot;])&#10;      with pytest.raises(HTTPException) as caught:&#10;          await channels._owned_channel(tenant, row[&quot;id&quot;], actor)&#10;      assert caught.value.status_code == 403 and not case.network&#10;file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_qr_admin_identity_postgres.py, line 20&#10;  @pytest_asyncio.fixture&#10;  async def native_qr(admin_source, monkeypatch):&#10;      case = admin_source&#10;      email_admin, foreign = uuid4(), uuid4()&#10;      with case.engine.begin() as db:&#10;          db.execute(text(&quot;&quot;&quot;INSERT INTO panel_accounts&#10;              (id,name,email,password_hash,role,auth_provider,legacy_username,legacy_credential_digest)&#10;              VALUES (:account,'Synthetic native ADMIN',NULL,NULL,'admin','legacy_admin',:username,:digest)&quot;&quot;&quot;),&#10;              {&quot;account&quot;: case.admin, &quot;username&quot;: case.settings.username,&#10;               &quot;digest&quot;: case.settings.credential_digest})&#10;          db.execute(text(&quot;&quot;&quot;INSERT INTO panel_accounts(id,name,email,password_hash,role)&#10;              VALUES (:account,'Synthetic email admin',:email,'unused-test-hash','admin')&quot;&quot;&quot;),&#10;              {&quot;account&quot;: email_admin, &quot;email&quot;: f&quot;qr-admin-{email_admin}@example.test&quot;})&#10;          for account in (case.admin, email_admin):&#10;              db.execute(text(&quot;&quot;&quot;INSERT INTO tenant_memberships(tenant_id,account_id,role,active)&#10;                  VALUES (:tenant,:account,'owner',true)&quot;&quot;&quot;), {&quot;tenant&quot;: case.tenant, &quot;account&quot;: account})&#10;          db.execute(text(&quot;INSERT INTO tenants(id,name,slug) VALUES (:id,'Synthetic QR foreign tenant',:slug)&quot;),&#10;                     {&quot;id&quot;: foreign, &quot;slug&quot;: f&quot;qr-foreign-{foreign}&quot;})&#10;      support_url = case.settings.url.set(drivername=&quot;postgresql+asyncpg&quot;, username=&quot;app_support&quot;)&#10;      engine = create_async_engine(support_url, poolclass=NullPool)&#10;      factory = async_sessionmaker(engine, expire_on_commit=False)&#10;      network = []&#10;&#10;      async def no_bridge(*args):&#10;          network.append(args)&#10;          raise AssertionError(&quot;No socket or outbound transport allowed in isolated QR identity tests&quot;)&#10;&#10;      monkeypatch.setattr(channels, &quot;support_session_factory&quot;, lambda: factory)&#10;      monkeypatch.setattr(channels, &quot;_bridge_control&quot;, no_bridge)&#10;      monkeypatch.setenv(&quot;QR_CHANNELS_ENABLED&quot;, &quot;1&quot;)&#10;      monkeypatch.setenv(&quot;INTEGRATION_FERNET_KEY&quot;, Fernet.generate_key().decode())&#10;      value = SimpleNamespace(source=case, tenant=case.tenant, account=case.admin,&#10;                              actor=Actor(&quot;admin&quot;, account_id=case.admin), email_admin=email_admin,&#10;                              foreign=foreign, factory=factory, network=network)&#10;      try:&#10;          yield value&#10;      finally:&#10;          await engine.dispose()&#10;file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_admin_identity_ops_postgres.py, line 61&#10;  @pytest.fixture&#10;  def admin_source(admin_migration_source,monkeypatch):&#10;E       fixture 'admin_migration_source' not found&#10;&gt;       available fixtures: _asyncio_loop_factory, _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, admin_source, anyio_backend, anyio_backend_name, anyio_backend_options, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, event_loop_policy, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, monkeypatch, native_qr, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory&#10;&gt;       use 'pytest --fixtures [testpath]' for help on them.&#10;&#10;C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_admin_identity_ops_postgres.py:61&quot;">file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_qr_admin_identity_postgres.py, line 89
+  @pytest.mark.asyncio
+  @pytest.mark.parametrize("failure", ["revoked", "viewer", "foreign_tenant", "password_admin", "no_opt_in", "stale_configuration"])
+  async def test_real_admin_identity_never_replaces_current_exact_tenant_ownership(native_qr, monkeypatch, failure):
+      case = native_qr
+      row, _ = await create(case)
+      actor, tenant = case.actor, case.tenant
+      if failure in {"revoked", "viewer"}:
+          with case.source.engine.begin() as db:
+              db.execute(text("""UPDATE tenant_memberships SET active=:active,role=:role
+                  WHERE tenant_id=:tenant AND account_id=:account"""),
+                  {"tenant": case.tenant, "account": case.account, "active": failure != "revoked",
+                   "role": "viewer" if failure == "viewer" else "owner"})
+      elif failure == "foreign_tenant":
+          tenant = case.foreign
+      elif failure == "password_admin":
+          actor = Actor("admin", account_id=case.email_admin)
+      elif failure == "no_opt_in":
+          monkeypatch.setenv("PANEL_LEGACY_ADMIN_IDENTITY_ENABLED", "0")
+      else:
+          monkeypatch.setenv("PANEL_ADMIN_USERNAME", "different-synthetic-admin")
+      with pytest.raises(HTTPException) as caught:
+          await create(case, tenant=tenant, actor=actor)
+      assert caught.value.status_code == 403
+      listing = await channels.list_channels(tenant, Response(), actor)
+      assert listing["access"]["can_manage"] is False
+      assert all(item["can_manage"] is False and "allowed_senders" not in item for item in listing["items"])
+      with pytest.raises(HTTPException) as caught:
+          await channels._owned_channel(tenant, row["id"], actor)
+      assert caught.value.status_code == 403 and not case.network
+file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_qr_admin_identity_postgres.py, line 20
+  @pytest_asyncio.fixture
+  async def native_qr(admin_source, monkeypatch):
+      case = admin_source
+      email_admin, foreign = uuid4(), uuid4()
+      with case.engine.begin() as db:
+          db.execute(text("""INSERT INTO panel_accounts
+              (id,name,email,password_hash,role,auth_provider,legacy_username,legacy_credential_digest)
+              VALUES (:account,'Synthetic native ADMIN',NULL,NULL,'admin','legacy_admin',:username,:digest)"""),
+              {"account": case.admin, "username": case.settings.username,
+               "digest": case.settings.credential_digest})
+          db.execute(text("""INSERT INTO panel_accounts(id,name,email,password_hash,role)
+              VALUES (:account,'Synthetic email admin',:email,'unused-test-hash','admin')"""),
+              {"account": email_admin, "email": f"qr-admin-{email_admin}@example.test"})
+          for account in (case.admin, email_admin):
+              db.execute(text("""INSERT INTO tenant_memberships(tenant_id,account_id,role,active)
+                  VALUES (:tenant,:account,'owner',true)"""), {"tenant": case.tenant, "account": account})
+          db.execute(text("INSERT INTO tenants(id,name,slug) VALUES (:id,'Synthetic QR foreign tenant',:slug)"),
+                     {"id": foreign, "slug": f"qr-foreign-{foreign}"})
+      support_url = case.settings.url.set(drivername="postgresql+asyncpg", username="app_support")
+      engine = create_async_engine(support_url, poolclass=NullPool)
+      factory = async_sessionmaker(engine, expire_on_commit=False)
+      network = []
+
+      async def no_bridge(*args):
+          network.append(args)
+          raise AssertionError("No socket or outbound transport allowed in isolated QR identity tests")
+
+      monkeypatch.setattr(channels, "support_session_factory", lambda: factory)
+      monkeypatch.setattr(channels, "_bridge_control", no_bridge)
+      monkeypatch.setenv("QR_CHANNELS_ENABLED", "1")
+      monkeypatch.setenv("INTEGRATION_FERNET_KEY", Fernet.generate_key().decode())
+      value = SimpleNamespace(source=case, tenant=case.tenant, account=case.admin,
+                              actor=Actor("admin", account_id=case.admin), email_admin=email_admin,
+                              foreign=foreign, factory=factory, network=network)
+      try:
+          yield value
+      finally:
+          await engine.dispose()
+file C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_admin_identity_ops_postgres.py, line 61
+  @pytest.fixture
+  def admin_source(admin_migration_source,monkeypatch):
+E       fixture 'admin_migration_source' not found
+&gt;       available fixtures: _asyncio_loop_factory, _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, admin_source, anyio_backend, anyio_backend_name, anyio_backend_options, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, doctest_namespace, event_loop_policy, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, monkeypatch, native_qr, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, subtests, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory
+&gt;       use 'pytest --fixtures [testpath]' for help on them.
+
+C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\tests\integration\test_admin_identity_ops_postgres.py:61</error></testcase></testsuite></testsuites>

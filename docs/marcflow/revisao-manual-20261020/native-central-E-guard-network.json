@@ -1,0 +1,5 @@
+{
+  "exit_code": 0,
+  "network_attempts": [],
+  "scope": "readiness GET and whole prepared hook with local HTTP, subprocess and version fakes; no production call"
+}

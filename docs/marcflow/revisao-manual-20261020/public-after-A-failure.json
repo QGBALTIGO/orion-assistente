@@ -1,0 +1,43 @@
+{
+  "at_utc": "2026-10-20T22:07:30.265871+00:00",
+  "commit": "a7199de33ed265705a2a0116f01cbb43b488bd5c",
+  "method": "GET only; no login/provider/send calls",
+  "health": [
+    {
+      "path": "/health",
+      "status": 200,
+      "body": {
+        "status": "ok"
+      }
+    },
+    {
+      "path": "/health/whatsapp",
+      "status": 200,
+      "body": {
+        "status": "ok",
+        "bridge": "reachable"
+      }
+    },
+    {
+      "path": "/health/central",
+      "status": 404,
+      "body": {}
+    }
+  ],
+  "assets": [
+    {
+      "path": "/panel-assets/orion-suite.js",
+      "status": 200,
+      "expected_sha256": "2491888c7007dd8aa942ebeffcb39635e4ca7ba27abbe34d3c9fc720171b3905",
+      "actual_sha256": "2491888c7007dd8aa942ebeffcb39635e4ca7ba27abbe34d3c9fc720171b3905",
+      "matches_commit": true
+    },
+    {
+      "path": "/panel-assets/orion-channels.js",
+      "status": 200,
+      "expected_sha256": "30df2d29a44179c0e9cca35791cc4c5cc07d7f3059c2f573462672aa2ae6ed28",
+      "actual_sha256": "30df2d29a44179c0e9cca35791cc4c5cc07d7f3059c2f573462672aa2ae6ed28",
+      "matches_commit": true
+    }
+  ]
+}

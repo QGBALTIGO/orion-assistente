@@ -1,0 +1,45 @@
+=================================== FAILURES ===================================
+2026-10-20T21:36:29.3737766Z ___________ test_signed_phone_scopes_customer_cancel_and_reschedule ____________
+2026-10-20T21:36:29.3738314Z 
+2026-10-20T21:36:29.3739887Z booking_db = {'runtime': <sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x7fd6cad3add0>, 'migrator': <sqlalchemy.ext.asyncio....ct at 0x7fd6cad3add0>, autoflush=True, expire_on_commit=False), 'a': UUID('e7d11027-a253-4b2e-9f24-e1f8e21ffc55'), ...}
+2026-10-20T21:36:29.3741337Z 
+2026-10-20T21:36:29.3741490Z     @pytest.mark.asyncio
+2026-10-20T21:36:29.3742078Z     async def test_signed_phone_scopes_customer_cancel_and_reschedule(booking_db):
+2026-10-20T21:36:29.3743487Z         """Número autorizado pela Meta (argumento assinado) precisa ser dono da reserva."""
+2026-10-20T21:36:29.3744217Z         import json
+2026-10-20T21:36:29.3744656Z         from app.whatsapp_commands import try_command
+2026-10-20T21:36:29.3745168Z     
+2026-10-20T21:36:29.3745475Z         d=booking_db
+2026-10-20T21:36:29.3745852Z         redis=MemoryRedis()
+2026-10-20T21:36:29.3746256Z         channel=uuid4()
+2026-10-20T21:36:29.3746713Z         sender=phone(432)
+2026-10-20T21:36:29.3747149Z         other=phone(433)
+2026-10-20T21:36:29.3747629Z         async with d["factory"]() as s:
+2026-10-20T21:36:29.3749030Z             reservation=await book_appointment(s,d["a"],d["pro"],[d["beard"]],
+2026-10-20T21:36:29.3750082Z                                                sender,"Cliente sintético",start_at(d["day"],10),
+2026-10-20T21:36:29.3750529Z                                                "wa-owner-001")
+2026-10-20T21:36:29.3750884Z         async with d["factory"]() as s:
+2026-10-20T21:36:29.3751238Z             await confirm_hold(s,d["a"],reservation["id"])
+2026-10-20T21:36:29.3751613Z         protocol=reservation["protocol"]
+2026-10-20T21:36:29.3751961Z         key=f"wa:state:{d['a']}:{channel}:{sender}"
+2026-10-20T21:36:29.3752377Z         ignored,warning=await try_command(d["a"],channel,other,
+2026-10-20T21:36:29.3752827Z               "cancelar "+protocol.lower(),{},redis,"other-key")
+2026-10-20T21:36:29.3753339Z         assert ignored and "não encontrada" in warning.lower()
+2026-10-20T21:36:29.3753785Z         ignored,prompt=await try_command(d["a"],channel,sender,
+2026-10-20T21:36:29.3754310Z               "remarcar "+protocol.lower(),{},redis,key,message_id="request-reschedule")
+2026-10-20T21:36:29.3754825Z         assert ignored and "nova data" in prompt.lower()
+2026-10-20T21:36:29.3755192Z         saved=json.loads(redis.data[key])
+2026-10-20T21:36:29.3755581Z         ignored,proposal=await try_command(d["a"],channel,sender,
+2026-10-20T21:36:29.3756173Z               start_at(d["day"],14).strftime("%Y-%m-%d %H:%M"),saved,redis,key,message_id="choose-reschedule")
+2026-10-20T21:36:29.3756827Z         assert ignored and "Proposta de remarcação" in proposal
+2026-10-20T21:36:29.3757227Z         async with d["migrator"].connect() as s:
+2026-10-20T21:36:29.3757921Z             assert (await s.execute(text("SELECT start_at FROM appointments WHERE id=:id"),{"id":reservation["id"]})).scalar_one()==start_at(d["day"],10)
+2026-10-20T21:36:29.3759063Z         saved=json.loads(redis.data[key])
+2026-10-20T21:36:29.3759452Z         ignored,moved=await try_command(d["a"],channel,sender,
+2026-10-20T21:36:29.3759957Z               "pode confirmar",saved,redis,key,message_id="confirm-reschedule")
+2026-10-20T21:36:29.3760534Z >       assert ignored and "Remarcação confirmada" in moved
+2026-10-20T21:36:29.3762128Z E       AssertionError: assert (True and 'Remarcação confirmada' in '*Proposta de remarcação*\n\n*Serviço:* Barba\n*Profissional:* Barbeiro sintético\n\n*Data:* terça-feira, 27/10/2026\n...:* R$ 20,00\n\n_O agendamento original permanece até a confirmação da remarcação._\n\nPosso confirmar essa remarcação?')
+2026-10-20T21:36:29.3763276Z 
+2026-10-20T21:36:29.3763448Z tests/integration/test_booking.py:584: AssertionError
+2026-10-20T21:36:29.3763868Z 2026-10-20T21:36:29.3800381Z FAILED tests/integration/test_booking.py::test_signed_phone_scopes_customer_cancel_and_reschedule - AssertionError: assert (True and 'Remarcação confirmada' in '*Proposta de remarcação*\n\n*Serviço:* Barba\n*Profissional:* Barbeiro sintético\n\n*Data:* terça-feira, 27/10/2026\n...:* R$ 20,00\n\n_O agendamento original permanece até a confirmação da remarcação._\n\nPosso confirmar essa remarcação?')
+2026-10-20T21:36:29.3801849Z 1 failed, 4877 passed, 1 skipped, 226 warnings in 305.76s (0:05:05)

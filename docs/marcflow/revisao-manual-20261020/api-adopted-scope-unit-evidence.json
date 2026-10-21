@@ -1,0 +1,60 @@
+{
+  "commit": "a85da1c9ade64a5fc21bc9927efef727447ba83f",
+  "source_sha256": {
+    "app/inbox_control.py": "c0dd316a94e2fffd525b75581c16ac5c954fb69bc6c23df4f37ede7824c31ac7",
+    "app/qr_ai.py": "ad88122248c997bc2dbdd5828aa72bbae72e08125ee2a3868559aa0df092a92b",
+    "app/qr_channel_scope.py": "8cb80281883c947acaba09af07325b4204e8e67b2b9b5c21bc4ca6154f0ee043",
+    "tests/integration/test_qr_adopted_ingress_postgres.py": "67ad148f3ed2c838b8ecb9218d46338fc572e2b6bdf32c83d16c29897d71c275",
+    "tests/unit/test_qr_managed_adoption_scope.py": "95ab0f3e148d3892279019d70e809e4706d578de3221cd4edd01976d4cdf98bc"
+  },
+  "unit": {
+    "passed": 2204,
+    "new_adopted_scope_cases": 22,
+    "failures": 0,
+    "errors": 0,
+    "deselected": 2248,
+    "evidence": "qr-adopted-scope-regression/qr-inbox-final-v3.xml",
+    "network": "qr-adopted-scope-regression/backend-run.json",
+    "external_network_attempts": []
+  },
+  "pre_fix_regressions": {
+    "scope_init": {
+      "failures": 1,
+      "evidence": "qr-adopted-scope-regression/before-fix.xml",
+      "observed": "409 O controle do atendimento mudou before turn"
+    },
+    "legacy_handoff": {
+      "failures": 2,
+      "evidence": "qr-adopted-scope-regression/handoff-before-fix.xml",
+      "observed": "Redis human context remains despite persistent AI authority"
+    }
+  },
+  "development_runs_not_qualification": [
+    "after-fix.xml:2 assertion/fixture mismatches corrected (control_revision response and cross-tenant fake)",
+    "qr-inbox-final-v2.xml:misplaced local import corrected before final complete green v3"
+  ],
+  "postgres_reference": {
+    "cases_passed": 5,
+    "executed_by": "manual_emit_inventory",
+    "evidence": "admin-scope-test-evidence.json",
+    "limits": "Local authentication remains trust; queries/roles/RLS/SQL guards are real. Linux CI with distinct SCRAM passwords is separate. No LLM/provider/phone integration is claimed."
+  },
+  "manual_inventory": {
+    "file": "manual-api.json",
+    "records": 667,
+    "reviewed": 667,
+    "updated_qr_records": 134,
+    "direct_changed_function_candidates": 9,
+    "unchanged_function_body_candidates": 125,
+    "sha256": "1413b4996566dd9a30ed082502f2f720772ef183ec8103791863a6bb944bcc1f"
+  },
+  "no_deploy_or_real_message": true,
+  "artifacts_sha256": {
+    "qr-adopted-scope-regression\\before-fix.xml": "8cbded1c6ef6d08bd9e66a90d27021895f6b9687b1a5af91ab3b721eb9594b20",
+    "qr-adopted-scope-regression\\handoff-before-fix.xml": "dc0eba937bd4cd023e392a6e7dd90eb16aa5710a89fcd6ed8272948eefc23e7f",
+    "qr-adopted-scope-regression\\qr-inbox-final-v3.xml": "3032bc8bb895b0aa8444937c5fca9a467eaa42cb7e6ca1405b183da514dec1bf",
+    "qr-adopted-scope-regression\\qr-inbox-final-v3.log": "cc12ff0293e21a53229102179be734dce3f91b5aba53fdded2d25bbd2890f011",
+    "qr-adopted-scope-regression\\backend-run.json": "d54f3c38043c20f4eb84271474860c9fa8c1a03a876a4b4f030682d000610690",
+    "api-adopted-scope-followup-review.json": "f6846d72e0c7a17cea0a59809346b2af440f0256011d9d14b21faa33eaecb467"
+  }
+}

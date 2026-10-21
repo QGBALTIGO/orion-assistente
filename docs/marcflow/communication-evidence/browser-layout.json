@@ -1,0 +1,17 @@
+{
+  "responsive": [
+    {
+      "scrollWidth": 375,
+      "width": 375
+    },
+    {
+      "scrollWidth": 753,
+      "width": 753
+    },
+    {
+      "scrollWidth": 1265,
+      "width": 1265
+    }
+  ],
+  "console": []
+}

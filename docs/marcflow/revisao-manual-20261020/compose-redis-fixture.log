@@ -1,0 +1,91 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.9, pytest-9.1.1, pluggy-1.7.0 -- C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Scripts\python.exe
+rootdir: C:\Users\kayky\Documents\Playground\orion-marcflow-20261020
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 70 items / 30 deselected / 40 selected
+
+tests/unit/test_communication_redis_scope.py::test_designated_loopback_works_without_compose_optin[redis://127.0.0.1:55440/15] PASSED [  2%]
+tests/unit/test_communication_redis_scope.py::test_designated_loopback_works_without_compose_optin[redis://localhost:6379/15] PASSED [  5%]
+tests/unit/test_communication_redis_scope.py::test_designated_loopback_works_without_compose_optin[redis://[::1]:6379/15] PASSED [  7%]
+tests/unit/test_communication_redis_scope.py::test_exact_compose_service_requires_its_own_test_optin PASSED [ 10%]
+tests/unit/test_communication_redis_scope.py::test_compose_alias_refuses_missing_or_disabled_test_authority[None-REQUIRE_POSTGRES_TESTS] PASSED [ 12%]
+tests/unit/test_communication_redis_scope.py::test_compose_alias_refuses_missing_or_disabled_test_authority[None-REQUIRE_REDIS_TESTS] PASSED [ 15%]
+tests/unit/test_communication_redis_scope.py::test_compose_alias_refuses_missing_or_disabled_test_authority[None-ORION_REQUIRE_INTAKE_REDIS_TEST] PASSED [ 17%]
+tests/unit/test_communication_redis_scope.py::test_compose_alias_refuses_missing_or_disabled_test_authority[None-ORION_COMPOSE_TEST_INFRA] PASSED [ 20%]
+tests/unit/test_communication_redis_scope.py::test_compose_alias_refuses_missing_or_disabled_test_authority[0-REQUIRE_POSTGRES_TESTS] PASSED [ 22%]
+tests/unit/test_communication_redis_scope.py::test_compose_alias_refuses_missing_or_disabled_test_authority[0-REQUIRE_REDIS_TESTS] PASSED [ 25%]
+tests/unit/test_communication_redis_scope.py::test_compose_alias_refuses_missing_or_disabled_test_authority[0-ORION_REQUIRE_INTAKE_REDIS_TEST] PASSED [ 27%]
+tests/unit/test_communication_redis_scope.py::test_compose_alias_refuses_missing_or_disabled_test_authority[0-ORION_COMPOSE_TEST_INFRA] PASSED [ 30%]
+tests/unit/test_communication_redis_scope.py::test_compose_alias_cannot_override_the_process_redis_destination PASSED [ 32%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://cache.example.com:6379/15] PASSED [ 35%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://redis.internal:6379/15] PASSED [ 37%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://redis.evil.example:6379/15] PASSED [ 40%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://postgres:6379/15] PASSED [ 42%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[rediss://redis:6379/15] PASSED [ 45%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[https://localhost:6379/15] PASSED [ 47%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://redis:6380/15] PASSED [ 50%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://redis/15] PASSED [ 52%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://localhost:0/15] PASSED [ 55%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://localhost:65536/15] PASSED [ 57%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://localhost:bad/15] PASSED [ 60%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://localhost:6379/0] PASSED [ 62%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://redis:6379/0] PASSED [ 65%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://localhost:6379/15?db=0] PASSED [ 67%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://localhost:6379/15#fragment] PASSED [ 70%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://user:secret@localhost:6379/15] PASSED [ 72%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[redis://:secret@redis:6379/15] PASSED [ 75%]
+tests/unit/test_communication_redis_scope.py::test_unsafe_or_ambiguous_test_destinations_are_rejected[\nredis://localhost:6379/15] PASSED [ 77%]
+tests/integration/test_communication_postgres.py::test_optional_birthday_has_purpose_and_preserves_full_legacy_date_and_booking PASSED [ 80%]
+tests/integration/test_communication_postgres.py::test_refusal_is_persistent_and_does_not_interrupt_booking_or_other_consent PASSED [ 82%]
+tests/integration/test_communication_postgres.py::test_old_birthday_invitation_cannot_regrant_after_a_separate_revocation PASSED [ 85%]
+tests/integration/test_communication_postgres.py::test_new_meta_receipt_fences_old_write_and_delete_never_undoes_committed_booking PASSED [ 87%]
+tests/integration/test_unified_inbox_postgres.py::test_explicit_ai_resume_invalidates_only_old_proposals_once PASSED [ 90%]
+tests/integration/test_unified_inbox_postgres.py::test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_outbox[False-False] PASSED [ 92%]
+tests/integration/test_unified_inbox_postgres.py::test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_outbox[False-True] PASSED [ 95%]
+tests/integration/test_unified_inbox_postgres.py::test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_outbox[True-False] PASSED [ 97%]
+tests/integration/test_unified_inbox_postgres.py::test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_outbox[True-True] PASSED [100%]
+
+============================== warnings summary ===============================
+app\main.py:49
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\app\main.py:49: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+.venv\Lib\site-packages\fastapi\applications.py:4723
+.venv\Lib\site-packages\fastapi\applications.py:4723
+.venv\Lib\site-packages\fastapi\applications.py:4723
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Lib\site-packages\fastapi\applications.py:4723: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+app\main.py:54
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\app\main.py:54: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+app\main.py:60
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\app\main.py:60: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: C:\Users\kayky\Documents\Playground\orion-inventario-revisao-20261020\compose-redis-fixture.xml -
+=============== 40 passed, 30 deselected, 6 warnings in 26.47s ================

@@ -14,6 +14,7 @@ from app.business_profile_service import read_profile, save_draft, select_versio
 from app.catalog_api import Actor, authenticate, support_only, support_session_factory
 from app.database import get_session_factory
 from app.tenant_access import resolve_tenant_access
+from app.account_business import lock_account_business, ensure_membership_target, panel_businesses
 
 def profiles_enabled():
     if os.getenv("BUSINESS_PROFILES_ENABLED", "0") != "1":
@@ -21,21 +22,14 @@ def profiles_enabled():
 
 
 router = APIRouter(tags=["Configuração empresarial"], dependencies=[Depends(profiles_enabled)])
+account_router = APIRouter(tags=["Empresa da conta"])
 BASE = "/api/v1/tenants/{tenant_id}/business"
 
 
-@router.get("/api/v1/account/businesses")
+@account_router.get("/api/v1/account/businesses")
 async def my_businesses(actor: Actor = Depends(authenticate)):
-    account_id = getattr(actor, "account_id", None)
-    if not isinstance(account_id, UUID):
-        # Legacy support uses the existing global /tenants endpoint.
-        return []
     async with support_session_factory()() as session:
-        rows = (await session.execute(text("""
-            SELECT t.id,t.name,t.slug,t.status,t.timezone,m.role FROM tenant_memberships m
-            JOIN tenants t ON t.id=m.tenant_id
-            WHERE m.account_id=:account AND m.active ORDER BY t.name LIMIT 200
-        """), {"account": account_id})).mappings().all()
+        rows = await panel_businesses(session, actor)
     return jsonable_encoder(rows)
 
 
@@ -46,6 +40,9 @@ async def set_membership(tenant_id: UUID, account_id: UUID, payload: MembershipC
     try:
         async with support_session_factory()() as session:
             async with session.begin():
+                await lock_account_business(session, account_id)
+                if payload.active:
+                    await ensure_membership_target(session, account_id, tenant_id)
                 await session.execute(text("""
                     INSERT INTO tenant_memberships (tenant_id,account_id,role,active)
                     VALUES (:tenant,:account,:role,:active)

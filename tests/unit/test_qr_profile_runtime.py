@@ -291,7 +291,7 @@ async def test_feature_guard_rejects_profile_routes_before_any_database_access(m
     app.dependency_overrides[authenticate] = lambda: Actor("support")
     tenant, version = uuid4(), uuid4()
     base = f"/api/v1/tenants/{tenant}/business/profile"
-    routes = [("GET", "/api/v1/account/businesses", None), ("GET", base, None),
+    routes = [("GET", base, None),
               ("GET", base + "/history", None), ("GET", base + "/versions/" + str(version), None),
               ("PUT", base + "/draft", {"expected_generation": 0, "profile": {}}),
               ("POST", base + "/publish", {"expected_generation": 0, "version_id": str(version)})]

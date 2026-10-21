@@ -1,0 +1,116 @@
+{
+  "after_fix": {
+    "negative": "Ten QR configuration/owner/credential/allowlist/idempotency changes and owner-membership revocation reject the old approval before backup; post-rehearsal revision change aborts before domain writes. Existing nonce/session/ENV rotation/AI flag/schema/preservation regressions rerun.",
+    "positive": "Renewal between approval/backup and after restore rehearsal keeps the digest stable; source full QR row including latest lease remains identical after successful setup.",
+    "postgres": {
+      "cases": 15,
+      "errors": 0,
+      "failures": 0,
+      "sha256": "9d24991b56bcf857d1bd4e8baacc6becc68e7113f42dbb95c79ed6f9f428d9e1",
+      "skipped": 0
+    },
+    "total_cases_passed": 25,
+    "unit": {
+      "cases": 10,
+      "errors": 0,
+      "failures": 0,
+      "sha256": "1a16be40c9f69b8bea6979eb83d94c801218d90c55b7f8b9200527de8d4f6a51",
+      "skipped": 0
+    }
+  },
+  "artifact_sha256": {
+    "admin-lease-cleanup.log": "167dff40f55fbba91f360850661abc9d9a2f56afcfd3baf677253e5685c3e1fc",
+    "admin-lease-pg-before.log": "092d8c706f7b3bf8fb1962c00b348163af56b1f65dab02c46714ac142ea7b14b",
+    "admin-lease-pg-before.xml": "07452d44e7436dbf5cf3be7fedfa5b423a15dbc8cdc66ee168485bc552dbc799",
+    "admin-lease-pg-final.log": "5065e5e181ebbf2aa053f32417c552fbb9046c45db0daae08e378c92f33fe32e",
+    "admin-lease-pg-final.xml": "9d24991b56bcf857d1bd4e8baacc6becc68e7113f42dbb95c79ed6f9f428d9e1",
+    "admin-lease-pg-network.json": "72d95e2b801eb29f93922845c7dfe05802f8bc07e0e1b9381c4f20b9309c5ba9",
+    "admin-lease-unit-before.log": "8122c49c9d51b586673a39ede413bbd3d2beafe675ba8d207c6f731d9a10ac48",
+    "admin-lease-unit-before.xml": "d6361f7bb4c3ad2d4e853b2cb8b693efb8970e441aad7fc931f6f6a4a62690d0",
+    "admin-lease-unit-final.log": "d809f8569bef5588ebd837ceac30ee86584dac2dd16afb21befef82b9b91ea20",
+    "admin-lease-unit-final.xml": "1a16be40c9f69b8bea6979eb83d94c801218d90c55b7f8b9200527de8d4f6a51",
+    "diagnose_admin_plan_determinism.json": "34f70254a4be3d121482dd9c54418a2264668287f52a8fb078b2eada090cb13e"
+  },
+  "before_fix": {
+    "expected_failure": "Only lease renewal changed the approved digest. Stable state was deterministic across seven initial seeds and three regression-test child processes.",
+    "pure_process_regression": {
+      "cases": 1,
+      "errors": 0,
+      "failures": 1,
+      "sha256": "d6361f7bb4c3ad2d4e853b2cb8b693efb8970e441aad7fc931f6f6a4a62690d0",
+      "skipped": 0
+    },
+    "real_postgres_regression": {
+      "cases": 1,
+      "errors": 0,
+      "failures": 1,
+      "sha256": "07452d44e7436dbf5cf3be7fedfa5b423a15dbc8cdc66ee168485bc552dbc799",
+      "skipped": 0
+    }
+  },
+  "candidate_commit": "08a5cc09f849bf73e9d60a76179912eeb34003fc",
+  "change_contract": {
+    "all_other_fields_rows_tables_catalog_acl_rls_programs_and_sequence_bound": true,
+    "applies_to_plan_backup_restore_rehearsal_and_final_exclude_snapshot": true,
+    "approval_nonce_session_hmac_and_env_credentials_preserved": true,
+    "encrypted_full_backup_restore_and_rehearsal_preserved": true,
+    "only_excluded_fields": [
+      "qr_channels.lease_owner",
+      "qr_channels.lease_expires_at",
+      "qr_channels.fence",
+      "qr_channels.updated_at"
+    ],
+    "requires_new_plan_approval_no_automatic_substitution": true,
+    "same_query_recomputes_qr_row_hash_and_count": true,
+    "setup_writes_any_qr_fields": false
+  },
+  "credential_test_limit": "Local PG authentication is trust unchanged; role DSNs remain distinct synthetic credentials. The orchestrator records separate Linux CI/SCRAM qualification.",
+  "generated_at_utc": "2026-10-20T23:59:45.959247+00:00",
+  "manual_inventory": {
+    "dependency_hash_drift": 0,
+    "file": "manual-emit.json",
+    "lease_dependency_hash_drift": 0,
+    "new_ids_created": false,
+    "records": 184,
+    "separate_api_followup_pending_sources": [
+      "app/qr_ai.py"
+    ],
+    "sha256": "7db1e3af34fe5654902aedecc8a15b7f61ab1f33b6a98763ab7e4ef56c5cede9"
+  },
+  "preservation": {
+    "created_clone_dropped": true,
+    "created_clone_oid_owner_checked_before_drop": true,
+    "original_aggregate_sha256_after": "0087630001f879e3576bbd222647e55f679c0851f400859eec53dbb05df75e66",
+    "original_aggregate_sha256_before": "0087630001f879e3576bbd222647e55f679c0851f400859eec53dbb05df75e66",
+    "original_revision": "0029_communication_contract",
+    "original_sequence_after": [
+      101,
+      true
+    ],
+    "original_sequence_before": [
+      101,
+      true
+    ],
+    "original_tables": 84,
+    "owned_postgres_stopped": true,
+    "pg_hba_roles_or_existing_credentials_changed": false
+  },
+  "production_or_campaign_activation_or_real_messages_sent": false,
+  "production_specific_limit": "The initial production full snapshot was not logged, so the specific production changed component is not claimed proven. This fix addresses the locally demonstrated lease-only mismatch.",
+  "protected_sources_changed_from_d11": false,
+  "protected_sources_sha256": {
+    "alembic/versions/0030_legacy_admin_identity.py": "09c070122ef84c0af272de1b9ec853585ba209d6f7ebaff782fe770c8eaa1a96",
+    "app/inbox_runtime.py": "e264e655487ec47cd8416ccdf35879e93784d4f8763f9f9d1b682e2f2047bf0f",
+    "app/legacy_admin_identity.py": "d97a7b05b2f0c7778d63172a9f88d704b8fa152733895518b5d9c9724e8766c5",
+    "app/qr_channels.py": "052902537dab59958589ca1aa70396d869370d7e61e2a3488f9e19960941e117",
+    "scripts/one_time_admin_identity_migration.py": "25b1cfcd982e2b61e7f37ceb4c607c963470533003b413a8c489ce376b7a6cde",
+    "scripts/one_time_legacy_adoption.py": "3ec1cc69ae48e8e2c657aed858a7dcfcf8a264c0a149ceebdda09d473c4deff8"
+  },
+  "root_cause_class": "Full QR row hashing incorrectly approval-bound ordinary transport lease renewals. Reproduced with unchanged configuration, counts and plan fields.",
+  "scope": "Local synthetic PG16 fixtures and a disposable 0030 clone only; fake bridge status/backup transports. No production, Railway, Redis or provider access in this subtask.",
+  "source_sha256": {
+    "scripts/one_time_admin_demo_setup.py": "8993f3c304d2944f43eae21e67975cefee418e2176ba9916cdc6e50296dcd6cf",
+    "tests/integration/test_admin_identity_ops_postgres.py": "215436a101dd8f3ba3cd84a3b277b2b71021a4bad7b0cd6d2287f4aa13726138",
+    "tests/unit/test_admin_demo_setup.py": "30ffccea54e65435241147f7ba5d29397be03d50cae6f5f4c0cd6e03db6579ac"
+  }
+}

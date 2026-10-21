@@ -23,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.panel_auth import _same_origin, _redis, _password_valid, panel_actor
+from app.account_business import reject_multiple_businesses
 
 router = APIRouter(prefix="/auth", tags=["Contas Orion"])
 
@@ -366,6 +367,7 @@ async def authenticate_account(email,password):
         row=(await session.execute(text("""
             SELECT id,name,email,password_hash,role,auth_version,verified_at
             FROM panel_accounts WHERE email=:email
+              AND COALESCE(to_jsonb(panel_accounts)->>'auth_provider','password')='password'
         """),{"email":email.strip().lower()})).mappings().first()
     try:
         accepted=_hasher.verify(row["password_hash"] if row else _FAKE,password)
@@ -380,6 +382,7 @@ async def current_account(account_id,version):
     async with _storage()() as session:
         row=(await session.execute(text("""
             SELECT role,auth_version,verified_at,name,email FROM panel_accounts WHERE id=:id
+              AND COALESCE(to_jsonb(panel_accounts)->>'auth_provider','password')='password'
         """),{"id":UUID(account_id)})).mappings().first()
     if not row or row["auth_version"]!=version:
         raise HTTPException(401,"Sua sessão expirou. Entre novamente")
@@ -387,10 +390,12 @@ async def current_account(account_id,version):
 
 
 _CURRENT_ACCOUNT_SCOPE_SQL = text("""
-            SELECT a.role,a.auth_version,a.verified_at,a.name,a.email,m.role AS membership_role
+            SELECT a.role,a.auth_version,a.verified_at,a.name,a.email,m.role AS membership_role,
+              (SELECT count(*) FROM tenant_memberships all_memberships
+               WHERE all_memberships.account_id=a.id AND all_memberships.active) AS active_business_count
             FROM panel_accounts a LEFT JOIN tenant_memberships m
               ON m.account_id=a.id AND m.tenant_id=:tenant AND m.active
-            WHERE a.id=:id
+            WHERE a.id=:id AND COALESCE(to_jsonb(a)->>'auth_provider','password')='password'
         """)
 
 
@@ -405,6 +410,8 @@ async def current_account_and_membership(account_id, version, tenant_id):
             {"id": UUID(account_id), "tenant": tenant_id})).mappings().first()
     if not row or row["auth_version"] != version:
         raise HTTPException(401, "Sua sessão expirou. Entre novamente")
+    if row.get("active_business_count", 0) > 1:
+        reject_multiple_businesses()
     return row
 
 

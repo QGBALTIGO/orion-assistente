@@ -1,0 +1,157 @@
+........................................................................ [ 15%]
+........F.........................................F..................... [ 30%]
+........................................................................ [ 45%]
+........................................................................ [ 61%]
+........................................................................ [ 76%]
+........................................................................ [ 91%]
+........................................                                 [100%]
+================================== FAILURES ===================================
+___________ test_signed_phone_scopes_customer_cancel_and_reschedule ___________
+
+booking_db = {'runtime': <sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x000001CE66F145D0>, 'migrator': <sqlalchemy.ext.asyn...t 0x000001CE66F145D0>, autoflush=True, expire_on_commit=False), 'a': UUID('1d67f204-443b-417b-8a42-3496de471f8c'), ...}
+
+    @pytest.mark.asyncio
+    async def test_signed_phone_scopes_customer_cancel_and_reschedule(booking_db):
+        """Número autorizado pela Meta (argumento assinado) precisa ser dono da reserva."""
+        import json
+        from app.whatsapp_commands import try_command
+    
+        d=booking_db
+        redis=MemoryRedis()
+        channel=uuid4()
+        sender=phone(432)
+        other=phone(433)
+        async with d["factory"]() as s:
+            reservation=await book_appointment(s,d["a"],d["pro"],[d["beard"]],
+                                               sender,"Cliente sintético",start_at(d["day"],10),
+                                               "wa-owner-001")
+        async with d["factory"]() as s:
+            await confirm_hold(s,d["a"],reservation["id"])
+        protocol=reservation["protocol"]
+        key=f"wa:state:{d['a']}:{channel}:{sender}"
+        ignored,warning=await try_command(d["a"],channel,other,
+              "cancelar "+protocol.lower(),{},redis,"other-key")
+        assert ignored and "não encontrada" in warning.lower()
+        ignored,prompt=await try_command(d["a"],channel,sender,
+              "remarcar "+protocol.lower(),{},redis,key,message_id="request-reschedule")
+        assert ignored and "nova data" in prompt.lower()
+        saved=json.loads(redis.data[key])
+        ignored,proposal=await try_command(d["a"],channel,sender,
+              start_at(d["day"],14).strftime("%Y-%m-%d %H:%M"),saved,redis,key,message_id="choose-reschedule")
+        assert ignored and "Proposta de remarcação" in proposal
+        async with d["migrator"].connect() as s:
+            assert (await s.execute(text("SELECT start_at FROM appointments WHERE id=:id"),{"id":reservation["id"]})).scalar_one()==start_at(d["day"],10)
+        saved=json.loads(redis.data[key])
+        ignored,moved=await try_command(d["a"],channel,sender,
+              "pode confirmar",saved,redis,key,message_id="confirm-reschedule")
+>       assert ignored and "Remarcação confirmada" in moved
+E       AssertionError: assert (True and 'Remarcação confirmada' in '*Proposta de remarcação*\n\n*Serviço:* Barba\n*Profissional:* Barbeiro sintético\n\n*Data:* terça-feira, 27/10/2026\n...:* R$ 20,00\n\n_O agendamento original permanece até a confirmação da remarcação._\n\nPosso confirmar essa remarcação?')
+
+tests\integration\test_booking.py:584: AssertionError
+_ test_product_cancel_does_not_cancel_booking_and_booking_cancel_preserves_order_reference _
+
+receiving = namespace(booking_db={'runtime': <sqlalchemy.ext.asyncio.engine.AsyncEngine object at 0x000001CE687F77D0>, 'migrator':...one.utc)}, versions={UUID('333ec5a1-a1f7-4150-9fa4-6c900c5aacd1'): 1, UUID('92dc7b12-f5fd-4065-b39c-a34b6a9d6aa7'): 1})
+
+    @pytest.mark.asyncio
+    async def test_product_cancel_does_not_cancel_booking_and_booking_cancel_preserves_order_reference(receiving):
+        h = receiving
+        q, order = await h.draft(h.selection)
+        await h.confirm(q, order)
+        async with h.d["factory"]() as db:
+            await cancel_appointment(db, h.d["a"], h.appointment["id"])
+        recovered = await store.get_order(h.scope, order["id"])
+        assert recovered["status"] == "confirmed" and (await h.persisted())[0] == 1
+        assert recovered["quote"]["pickup_appointment_id"] == h.appointment["id"]
+        assert recovered["quote"]["pickup_appointment_current"]["status"] == "cancelled"
+        actor = store.CustomerScope(h.d["a"], h.sender[1:], "synthetic-order-cancel")
+>       cancelled = await store.cancel_order(actor, order["id"], revision=2, summary_message_id="synthetic-cancel-summary",
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            summary_expires_at=commercial.now_utc()+timedelta(minutes=15))
+
+tests\integration\test_commercial_fulfillment_postgres.py:203: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+app\qr_commerce_store.py:306: in cancel_order
+    commercial.conflict('O resumo de cancelamento expirou; solicite uma nova revisão')
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+message = 'O resumo de cancelamento expirou; solicite uma nova revisão'
+
+    def conflict(message):
+>       raise HTTPException(409, message)
+E       fastapi.exceptions.HTTPException: 409: O resumo de cancelamento expirou; solicite uma nova revisão
+
+app\commercial_service.py:23: HTTPException
+============================== warnings summary ===============================
+app\main.py:49
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\app\main.py:49: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+.venv\Lib\site-packages\fastapi\applications.py:4723
+.venv\Lib\site-packages\fastapi\applications.py:4723
+.venv\Lib\site-packages\fastapi\applications.py:4723
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Lib\site-packages\fastapi\applications.py:4723: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+app\main.py:54
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\app\main.py:54: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+app\main.py:60
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\app\main.py:60: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/integration/test_business_migration_ops_postgres.py: 3 warnings
+tests/integration/test_communication_migration_postgres.py: 16 warnings
+tests/integration/test_fulfillment_migration_ops_postgres.py: 9 warnings
+tests/integration/test_legacy_adoption_postgres.py: 40 warnings
+tests/integration/test_one_time_agenda_migration.py: 16 warnings
+tests/integration/test_one_time_inbox_migration_postgres.py: 12 warnings
+tests/integration/test_one_time_management_migration.py: 22 warnings
+tests/integration/test_one_time_onboarding_migration_postgres.py: 14 warnings
+tests/integration/test_one_time_sales_requests_migration.py: 46 warnings
+tests/integration/test_qualification_populated_migration.py: 1 warning
+tests/integration/test_wait_for_agenda_schema.py: 3 warnings
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+tests/integration/test_google_calendar_integration.py::test_two_outboxes_reenqueue_after_connection_busy_despite_arq_retained_result
+tests/integration/test_google_calendar_integration.py::test_two_outboxes_reenqueue_after_connection_busy_despite_arq_retained_result
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Lib\site-packages\arq\worker.py:877: DeprecationWarning: Call to deprecated close. (Use aclose() instead) -- Deprecated since version 5.0.1.
+    await self.pool.close(close_connection_pool=True)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/integration/test_booking.py::test_signed_phone_scopes_customer_cancel_and_reschedule
+FAILED tests/integration/test_commercial_fulfillment_postgres.py::test_product_cancel_does_not_cancel_booking_and_booking_cancel_preserves_order_reference
+2 failed, 470 passed, 4304 deselected, 191 warnings in 2785.28s (0:46:25)
+Traceback (most recent call last):
+  File "C:\Users\kayky\Documents\Playground\orion-inventario-revisao-20261020\test_pg.py", line 46, in <module>
+    command([REPO/'.venv/Scripts/python.exe','-B','-X','utf8',REPO/'tests/isolated_runner.py',*args,'-q','-p','no:cacheprovider'],cwd=REPO,env=env)
+  File "C:\Users\kayky\Documents\Playground\orion-inventario-revisao-20261020\test_pg.py", line 12, in command
+    if code:raise subprocess.CalledProcessError(code,args)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+subprocess.CalledProcessError: Command '[WindowsPath('C:/Users/kayky/Documents/Playground/orion-marcflow-20261020/.venv/Scripts/python.exe'), '-B', '-X', 'utf8', WindowsPath('C:/Users/kayky/Documents/Playground/orion-marcflow-20261020/tests/isolated_runner.py'), 'tests/integration', 'tests/unit', '-m', 'integration', '--junitxml=../orion-inventario-revisao-20261020/postgres-final.xml', '-o', 'faulthandler_timeout=55', '--maxfail=8', '-q', '-p', 'no:cacheprovider']' returned non-zero exit status 1.

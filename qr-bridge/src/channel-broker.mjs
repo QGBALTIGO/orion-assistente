@@ -20,14 +20,18 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
         headers:{'Content-Type':audio?mediaType:'application/json','X-Orion-Channel-Key':key,
           ...(owner?{'X-Orion-Channel-Owner':owner,'X-Orion-Channel-Fence':String(fence)}:{}),
           ...(audio?{'X-Orion-Phone':phone}:{})},body:audio?body:JSON.stringify(body)});
-      if(!response.ok||controller.signal.aborted)throw Error('channel_broker_refused');
+      if(!response.ok||controller.signal.aborted){const error=Error('channel_broker_refused');error.status=response.status;throw error;}
       return await response.json();
     }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
   }
   return {
     lease:(id,key,operation,owner,fence)=>request(id,key,'lease/'+operation,{owner,...(fence?{fence}:{})}),
     interaction:(id,key,lease,payload)=>request(id,key,'interaction',payload,lease),
+    journal:(id,key,lease,payload)=>request(id,key,'messages',payload,lease),
+    receipt:(id,key,lease,payload)=>request(id,key,'message-receipt',payload,lease),
     transcribe:(id,key,lease,{phone,buffer,mediaType,signal})=>request(id,key,'audio',buffer,{...lease,phone,mediaType,signal}),
-    forward:(id,key,lease,payload)=>request(id,key,'ai/reply',payload,lease)
+    forward:(id,key,lease,payload)=>request(id,key,'ai/reply',payload,lease),
+    authorizeSend:(id,key,lease,payload)=>request(id,key,'send-authorize',payload,lease),
+    finishSend:(id,key,lease,payload)=>request(id,key,'send-finish',payload,lease)
   };
 }

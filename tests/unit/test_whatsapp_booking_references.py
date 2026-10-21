@@ -87,6 +87,8 @@ def flow(monkeypatch):
     monkeypatch.setattr(commands, "_owned_booking", owned)
     monkeypatch.setattr(commands, "cancel_appointment", cancel)
     monkeypatch.setattr(commands, "_authorized_staff", unauthorized)
+    async def synthetic_accepted_summary(*args): return True
+    monkeypatch.setattr(commands, "summary_was_accepted", synthetic_accepted_summary)
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
 
     async def turn(body, message_id="new", *, caller_tenant=None, sender=None):

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="34.064" timestamp="2026-10-20T19:48:39.597730-04:00" hostname="DESKTOP-3Q48M6B"><testcase classname="tests.integration.test_admin_identity_ops_postgres" name="test_setup_plan_survives_lease_renewal_and_preserves_latest_live_lease" time="30.694"><failure message="AssertionError: assert 'd3a98aa33fb9...9cda89683af9d' == '032f86c22869...83235468c736f'&#10;  &#10;  - 032f86c2286977b22ebb974223240c5ef5e74c90b0510134a8683235468c736f&#10;  + d3a98aa33fb90a7bbf68441f4249bc00ddec28a3090fb5ce2ed9cda89683af9d">admin_source = namespace(engine=Engine(postgresql+psycopg://postgres:***@127.0.0.1:55439/orion_ops_fixture_052d14c495c04d0cbb30b737b8...d41d, original_tenant=UUID('54b7d836-a431-4df0-b3cc-75376928a60d'), admin=UUID('118fb931-be88-5abe-a4c7-b92a1a1566a5'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x0000020E592DFFB0&gt;
+
+    def test_setup_plan_survives_lease_renewal_and_preserves_latest_live_lease(admin_source,monkeypatch):
+        case=admin_source
+        channel,_=seed_preserved_qr(case)
+        stored,_=private_transport(monkeypatch,case.settings)
+        settings=approved_settings(case)
+        def renew():
+            with case.engine.begin() as db:
+                db.execute(text("""UPDATE qr_channels SET lease_owner=:lease,fence=fence+1,
+                    lease_expires_at=clock_timestamp()+interval '30 seconds',updated_at=clock_timestamp() WHERE id=:c"""),
+                    {'c':channel,'lease':uuid4()})
+                return tuple(db.execute(text('SELECT * FROM qr_channels WHERE id=:c'),{'c':channel}).one())
+        renew()  # A different process can renew after the user approves the plan.
+&gt;       assert setup.execute(case.settings)['plan_sha256']==settings.approved_plan_sha256
+E       AssertionError: assert 'd3a98aa33fb9...9cda89683af9d' == '032f86c22869...83235468c736f'
+E         
+E         - 032f86c2286977b22ebb974223240c5ef5e74c90b0510134a8683235468c736f
+E         + d3a98aa33fb90a7bbf68441f4249bc00ddec28a3090fb5ce2ed9cda89683af9d
+
+tests\integration\test_admin_identity_ops_postgres.py:148: AssertionError</failure></testcase></testsuite></testsuites>

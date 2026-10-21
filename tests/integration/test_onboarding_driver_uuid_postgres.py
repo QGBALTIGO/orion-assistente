@@ -12,7 +12,7 @@ from sqlalchemy import text
 from app import onboarding_service as service
 from app.database import tenant_transaction
 from app.tenant_access import TenantAccess
-from test_onboarding_postgres import onboarding_db, configured  # noqa: F401
+from test_onboarding_postgres import onboarding_db, configured, new_business_context  # noqa: F401
 
 pytestmark = pytest.mark.integration
 
@@ -24,7 +24,7 @@ def old_digest(value):
 
 @pytest.mark.asyncio
 async def test_real_text_driver_uuid_and_full_state_use_native_path_without_changing_historical_contract(onboarding_db, monkeypatch):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     state = await configured(ctx, activity="both")
     tenant = UUID(state["tenant_id"])
     async with ctx.runtime() as db:

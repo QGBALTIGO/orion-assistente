@@ -20,7 +20,7 @@ from app.database import get_session_factory, tenant_transaction
 from app.google_oauth import (
     OAUTH_COOKIE, OAUTH_PATH, OAUTH_TTL, candidate_key, connection_fingerprint,
     digest, google_configured, configuration_checklist, make_authorization_url, oauth_config, oauth_redis,
-    pending_candidate, request_initiator, validate_initiator,
+    pending_candidate, request_initiator, validate_initiator, email_confirmation_required,
 )
 from app.tenant_access import resolve_tenant_access
 
@@ -107,6 +107,7 @@ async def google_status_data(tenant_id, actor, request):
                 FROM calendar_outbox WHERE tenant_id=:tenant
             """), {"tenant": tenant_id, "outside": OUTSIDE_INITIAL_SYNC})).mappings().one())
     can_manage = access.role in {"owner", "support", "admin"}
+    email_pending = can_manage and await email_confirmation_required(request, actor)
     candidate, cached_name, oauth_available = None, None, True
     if configured:
         redis = oauth_redis()
@@ -152,6 +153,8 @@ async def google_status_data(tenant_id, actor, request):
     if not oauth_available and not connected:
         sync_status = "attention"
         last_error = "google_oauth_unavailable"
+    if configured and email_pending and not connected:
+        sync_status = "email_confirmation_required"
     return {
         "configured": configured, "connected": connected, "status": status,
         "sync_enabled": enabled, "sync_status": sync_status,
@@ -160,9 +163,10 @@ async def google_status_data(tenant_id, actor, request):
         "failed": stats["failed"], "sent": stats["sent"], "last_error": last_error,
         "direction": "orion_to_google", "selection_pending": bool(candidate),
         "calendar_change_locked": bool(selected),
+        "email_confirmation_required": bool(email_pending),
         "setup": configuration_checklist() if can_manage else None,
         "capabilities": {
-            "can_connect": can_manage and configured and oauth_available,
+            "can_connect": can_manage and configured and oauth_available and not email_pending,
             "can_disconnect": can_manage and bool(candidate or row and row["refresh_token_enc"]),
             "can_select_calendar": can_manage and configured and bool(candidate),
             "can_retry": can_manage and configured and connected and enabled and bool(stats["pending"] or stats["failed"]),
@@ -173,6 +177,8 @@ async def google_status_data(tenant_id, actor, request):
 @router.post("/api/v1/tenants/{tenant_id}/google/connect")
 async def connect_google(tenant_id: UUID, request: Request, actor: Actor = Depends(authenticate)):
     await resolve_tenant_access(actor, tenant_id, "publish")
+    if await email_confirmation_required(request, actor):
+        raise HTTPException(403, "Confirme seu e-mail no Orion antes de conectar o Google Agenda")
     cid, _, redirect, _ = oauth_config()
     if request.url.netloc != urlsplit(redirect).netloc:
         raise HTTPException(503, "Abra o painel no endereço configurado para a conexão Google")

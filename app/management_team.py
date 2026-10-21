@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.catalog_api import Actor, authenticate, support_session_factory
 from app.tenant_access import check_access
+from app.account_business import lock_account_business, ensure_membership_target, account_membership_role
 
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}/management/team", tags=["Equipe"])
 invitation_router = APIRouter(prefix="/api/v1/team-invitations", tags=["Convites de equipe"])
@@ -82,9 +83,7 @@ async def team_session(tenant_id, actor, *, manage=False):
                 if actor.role in {"admin", "support"}:
                     role = actor.role
                 elif actor.role == "member" and isinstance(actor.account_id, UUID) and os.getenv("BUSINESS_PROFILES_ENABLED", "0") == "1":
-                    role = (await db.execute(text("""SELECT role FROM tenant_memberships
-                        WHERE tenant_id=:tenant AND account_id=:account AND active FOR SHARE"""),
-                        {"tenant": tenant_id, "account": actor.account_id})).scalar_one_or_none()
+                    role = await account_membership_role(db, actor.account_id, tenant_id, lock=True)
                 elif actor.role == "viewer" and actor.tenant_id == tenant_id and not manage:
                     role = "viewer"
                 else:
@@ -170,6 +169,13 @@ async def review(tenant_id: UUID, invitation_id: UUID, payload: InvitationReview
                 raise HTTPException(410, "O convite expirou")
             if row["status"] != "claimed" or row["claimed_by"] is None:
                 raise HTTPException(409, "A pessoa precisa aceitar o convite com sua conta verificada")
+            # A member authorized to manage this team is already its owner.
+            # Reject self-approval before waiting on the account lock while
+            # team_session holds that owner's membership SHARE lock.
+            if actor.role == "member" and row["claimed_by"] == actor.account_id:
+                raise HTTPException(409, "Esta conta já tem vínculo com a empresa. Gerencie seu acesso na lista da equipe")
+            await lock_account_business(db, row["claimed_by"])
+            await ensure_membership_target(db, row["claimed_by"], tenant_id)
             account = (await db.execute(text("SELECT email,verified_at FROM panel_accounts WHERE id=:id FOR SHARE"),
                                        {"id": row["claimed_by"]})).mappings().one()
             if account["verified_at"] is None or (row["email"] and row["email"] != account["email"]):
@@ -192,11 +198,16 @@ async def review(tenant_id: UUID, invitation_id: UUID, payload: InvitationReview
 @router.patch("/members/{account_id}")
 async def change_member(tenant_id: UUID, account_id: UUID, payload: MemberChange, actor: Actor = Depends(authenticate)):
     async with team_session(tenant_id, actor, manage=True) as (db, _):
+        if actor.account_id == account_id:
+            raise HTTPException(403, "Este formulário não altera proprietários nem seu próprio acesso")
+        await lock_account_business(db, account_id)
+        if payload.active:
+            await ensure_membership_target(db, account_id, tenant_id)
         row = (await db.execute(text("SELECT * FROM tenant_memberships WHERE tenant_id=:tenant AND account_id=:account FOR UPDATE"),
             {"tenant": tenant_id, "account": account_id})).mappings().one_or_none()
         if row is None:
             raise HTTPException(404, "Vínculo não encontrado")
-        if row["role"] == "owner" or actor.account_id == account_id:
+        if row["role"] == "owner":
             raise HTTPException(403, "Este formulário não altera proprietários nem seu próprio acesso")
         if row["updated_at"] != payload.expected_updated_at:
             raise HTTPException(409, "O vínculo mudou. Atualize a equipe antes de salvar")
@@ -235,6 +246,8 @@ async def accept(payload: InvitationToken, response: Response, actor: Actor = De
     async with support_session_factory()() as db:
         async with db.begin():
             row = await token_row(db, payload.token, lock=True)
+            await lock_account_business(db, actor.account_id)
+            await ensure_membership_target(db, actor.account_id, row["tenant_id"])
             if row["status"] in {"claimed", "approved"}:
                 if row["claimed_by"] != actor.account_id:
                     raise HTTPException(409, "Este convite já foi usado por outra conta")

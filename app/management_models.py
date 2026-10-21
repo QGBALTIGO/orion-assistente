@@ -19,7 +19,7 @@ from app.management_schemas import MAX_REPORT_DAYS, SitePreferences
 from app.customer_names import display_customer
 
 WRITE_FIELDS = {
-    "customers": frozenset({"name", "whatsapp_e164", "instagram", "neighborhood", "city", "email", "birth_date", "notes", "active", "deleted_at"}),
+    "customers": frozenset({"name", "whatsapp_e164", "instagram", "neighborhood", "city", "email", "birth_date", "birth_month", "birth_day", "notes", "active", "deleted_at"}),
     "financial_entries": frozenset({"kind", "description", "amount_cents", "category", "payment_method", "status", "entry_type", "occurred_at", "customer_id", "professional_id", "appointment_id", "notes"}),
     "loyalty_rules": frozenset({"name", "earning_mode", "points_per_visit", "spend_step_cents", "points_per_step", "reward_points", "reward_description", "active",
                               "reward_type", "reward_percent", "reward_value_cents", "reward_service_id", "reward_valid_days"}),
@@ -195,12 +195,12 @@ def customer_filter(tenant_id, q="", status="all", birthday_month=None, risk_day
                 AND (future.status='confirmed' OR (future.status='hold' AND future.hold_expires_at>now())))""")
         parameters["risk_days"] = risk_days
     elif status == "birthday" and birthday_month is None:
-        clauses.append("""to_char(c.birth_date,'MM-DD') IN (
+        clauses.append("""coalesce(lpad(c.birth_month::text,2,'0')||'-'||lpad(c.birth_day::text,2,'0'),to_char(c.birth_date,'MM-DD')) IN (
             SELECT to_char(date(now() AT TIME ZONE t.timezone)
                 - EXTRACT(DOW FROM now() AT TIME ZONE t.timezone)::integer + days.day_offset,'MM-DD')
             FROM tenants t CROSS JOIN generate_series(0,6) AS days(day_offset) WHERE t.id=:tenant)""")
     if birthday_month is not None:
-        clauses.append("EXTRACT(MONTH FROM c.birth_date)=:birthday_month")
+        clauses.append("coalesce(c.birth_month,EXTRACT(MONTH FROM c.birth_date))=:birthday_month")
         parameters["birthday_month"] = birthday_month
     return " AND ".join(clauses), parameters
 

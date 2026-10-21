@@ -2,6 +2,7 @@
 import {createChannelBroker} from './channel-broker.mjs';
 import {createChannelManager} from './channel-manager.mjs';
 import {createBaileysChannelSession} from './channel-session.mjs';
+import {createChannelResumeStore} from './channel-resume.mjs';
 
 function response(res,status,data){
   res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',
@@ -16,11 +17,14 @@ async function body(req){
 }
 export function createChannelRoutes({env=process.env,managerFactory=createChannelManager,brokerFactory=createChannelBroker,sessionFactory=createBaileysChannelSession,
   renderQr=async value=>(await import('qrcode')).default.toDataURL(value,{errorCorrectionLevel:'M',margin:2,width:370})}={}){
-  // No manifest enumeration, directory access, socket or network at import/boot.
+  // Construction/GETs perform no network or socket mutation. Resume is an
+  // explicit server lifecycle hook, backed by an encrypted connection intent.
   let manager;
   const getManager=()=>manager||(manager=managerFactory({broker:brokerFactory({apiUrl:env.QR_CHANNEL_BROKER_URL}),
-    createSession:sessionFactory,root:'/data/orion-channels'}));
-  return async function route(req,res){
+    createSession:sessionFactory,root:'/data/orion-channels',
+    resumeStore:env.QR_CHANNELS_ENABLED==='1'&&env.QR_BRIDGE_TOKEN?.length>=32?
+      createChannelResumeStore({root:'/data/orion-channels',secret:env.QR_BRIDGE_TOKEN}):null}));
+  const route=async function route(req,res){
     const uri=new URL(req.url||'/','http://internal');
     if(!uri.pathname.startsWith('/internal/channels/'))return false;
     if(env.QR_CHANNELS_ENABLED!=='1'){response(res,423,{error:'channels_disabled'});return true;}
@@ -43,8 +47,10 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
         }
       }
       else {
-        const input=await body(req),allowed=action==='send'?['to','text','operation_id']:[];
-        if(Object.keys(input).some(k=>!allowed.includes(k))||allowed.some(k=>!(k in input)))throw Error('invalid_channel_request');
+        const input=await body(req),required=action==='send'?['to','text','operation_id']:[],allowed=[...required,...(action==='send'?['source','control_revision']:[])];
+        if(Object.keys(input).some(k=>!allowed.includes(k))||required.some(k=>!(k in input))||
+          ('source' in input&&(input.source!=='manual'||!Number.isSafeInteger(input.control_revision)||input.control_revision<1))||
+          ('control_revision' in input&&input.source!=='manual'))throw Error('invalid_channel_request');
         if(action==='start')result=await api.start(id,key);
         else if(action==='stop'){await api.stop(id,key);result={status:'stopped'};}
         else result=await api.send(id,key,input);
@@ -56,4 +62,8 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
     }
     return true;
   };
+  route.resume=async()=>env.QR_CHANNELS_ENABLED==='1'?getManager().resume():{resumed:0};
+  route.adopt=(id,key)=>getManager().start(id,key);
+  route.send=(id,key,payload)=>getManager().send(id,key,payload);
+  return route;
 }

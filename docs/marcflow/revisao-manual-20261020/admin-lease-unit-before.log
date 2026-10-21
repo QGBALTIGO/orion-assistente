@@ -1,0 +1,29 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______ test_plan_snapshot_ignores_only_transport_lease_across_processes _______
+
+    def test_plan_snapshot_ignores_only_transport_lease_across_processes():
+        import os
+        from pathlib import Path
+        import subprocess
+        import sys
+        root=Path(__file__).resolve().parents[2]
+        code="import sys;sys.path[:0]=[sys.argv[1],sys.argv[2]];from test_admin_demo_setup import _lease_plan_process_sample;import json;print(json.dumps(_lease_plan_process_sample(),sort_keys=True))"
+        # A child never inherits database/provider credentials. No database is used.
+        allowed={'SYSTEMROOT','WINDIR','PATH','TEMP','TMP','COMSPEC','PATHEXT','LOCALAPPDATA','APPDATA','USERPROFILE'}
+        clean={key:value for key,value in os.environ.items() if key.upper() in allowed}
+        samples=[]
+        for seed in ('0','1','42'):
+            result=subprocess.run([sys.executable,'-c',code,str(root),str(Path(__file__).parent)],
+                cwd=root,env={**clean,'PYTHONHASHSEED':seed,'PYTHONIOENCODING':'utf-8'},
+                check=True,capture_output=True,text=True,timeout=45)
+            samples.append(json.loads(result.stdout))
+        assert len({sample['stable_hash'] for sample in samples})==1
+>       assert all(sample['lease_hash']==sample['stable_hash'] for sample in samples)
+E       assert False
+E        +  where False = all(<generator object test_plan_snapshot_ignores_only_transport_lease_across_processes.<locals>.<genexpr> at 0x000001C5C8794FB0>)
+
+tests\unit\test_admin_demo_setup.py:138: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/unit/test_admin_demo_setup.py::test_plan_snapshot_ignores_only_transport_lease_across_processes
+1 failed in 14.24s

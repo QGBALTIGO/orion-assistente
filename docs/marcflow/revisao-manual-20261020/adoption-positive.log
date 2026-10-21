@@ -1,0 +1,22 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.9, pytest-9.1.1, pluggy-1.7.0 -- C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Scripts\python.exe
+rootdir: C:\Users\kayky\Documents\Playground\orion-marcflow-20261020
+configfile: pyproject.toml
+plugins: anyio-4.15.1, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/integration/test_legacy_adoption_communication_postgres.py::test_0029_register_activate_backup_restore_preserves_every_new_fact_and_session PASSED [100%]
+
+============================== warnings summary ===============================
+tests/integration/test_legacy_adoption_communication_postgres.py::test_0029_register_activate_backup_restore_preserves_every_new_fact_and_session
+tests/integration/test_legacy_adoption_communication_postgres.py::test_0029_register_activate_backup_restore_preserves_every_new_fact_and_session
+tests/integration/test_legacy_adoption_communication_postgres.py::test_0029_register_activate_backup_restore_preserves_every_new_fact_and_session
+tests/integration/test_legacy_adoption_communication_postgres.py::test_0029_register_activate_backup_restore_preserves_every_new_fact_and_session
+tests/integration/test_legacy_adoption_communication_postgres.py::test_0029_register_activate_backup_restore_preserves_every_new_fact_and_session
+  C:\Users\kayky\Documents\Playground\orion-marcflow-20261020\.venv\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: C:\Users\kayky\Documents\Playground\orion-inventario-revisao-20261020\adoption-positive.xml -
+======================= 1 passed, 5 warnings in 52.31s ========================

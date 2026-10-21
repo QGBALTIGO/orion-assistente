@@ -1,0 +1,137 @@
+{
+  "continuation_base": "4b1ba803d7fc3539f85a81f3e5b5f4899653ff42",
+  "branch": "codex/orion-marcflow-integrations-20261020",
+  "public_paths": {
+    "/api/v1/tenants/{tenant_id}/management/inbox/capabilities": [
+      "get"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/labels": [
+      "get",
+      "post"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/labels/{label_id}": [
+      "put",
+      "delete"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/customers": [
+      "get"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/customers/{customer_id}/labels/{label_id}": [
+      "put",
+      "delete"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/customers/{customer_id}": [
+      "get"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/quick-replies": [
+      "get",
+      "post"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/quick-replies/{reply_id}": [
+      "put",
+      "delete"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/quick-replies/{reply_id}/preview": [
+      "post"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/channels/{channel_id}/control": [
+      "get",
+      "put"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/channels/{channel_id}/control/history": [
+      "get"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/channels/{channel_id}/control/reconcile": [
+      "post"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/channels": [
+      "get"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/conversations": [
+      "get"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/channels/{channel_id}/messages": [
+      "get",
+      "post"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/inbox/channels/{channel_id}/read": [
+      "post"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/workflows": [
+      "get",
+      "post"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/workflows/{workflow_id}": [
+      "put"
+    ],
+    "/api/v1/tenants/{tenant_id}/management/workflows/{workflow_id}/simulate": [
+      "post"
+    ]
+  },
+  "new_migrations": [
+    "0027_unified_inbox",
+    "0028_workflow_drafts"
+  ],
+  "new_tables": [
+    "inbox_channel_links",
+    "inbox_messages",
+    "inbox_provider_receipts",
+    "inbox_reads"
+  ],
+  "altered_existing": [
+    "inbox_controls channel FK",
+    "workflow_definitions version and updated_at"
+  ],
+  "new_flag_defaults": {
+    "INBOX_SEND_ENABLED": "0"
+  },
+  "new_production_dependencies": [],
+  "deployments": 0,
+  "operational_migrations": 0,
+  "real_sends": 0,
+  "changed_files": [
+    ".env.example",
+    ".github/workflows/tests.yml",
+    "alembic/versions/0027_unified_inbox.py",
+    "alembic/versions/0028_workflow_drafts.py",
+    "app/advanced_api.py",
+    "app/database.py",
+    "app/inbox_api.py",
+    "app/inbox_control.py",
+    "app/inbox_conversations.py",
+    "app/inbox_runtime.py",
+    "app/main.py",
+    "app/messaging.py",
+    "app/qr_ai.py",
+    "app/qr_api.py",
+    "app/static/orion-conversations.js",
+    "app/static/orion-flows.js",
+    "app/static/orion-inbox.css",
+    "app/static/orion-inbox.js",
+    "app/static/orion-suite.js",
+    "app/static/panel.html",
+    "app/whatsapp_api.py",
+    "app/whatsapp_bot.py",
+    "app/worker.py",
+    "app/workflow_drafts.py",
+    "docs/marcflow-integration.md",
+    "docs/marcflow/human-central-manifest.json",
+    "docs/marcflow/human-central.md",
+    "qr-bridge/src/channel-broker.mjs",
+    "qr-bridge/src/channel-manager.mjs",
+    "qr-bridge/src/channel-routes.mjs",
+    "qr-bridge/src/channel-session.mjs",
+    "qr-bridge/test/channel-manager.test.mjs",
+    "tests/integration/test_inbox_migration_postgres.py",
+    "tests/integration/test_inbox_tools_postgres.py",
+    "tests/integration/test_unified_inbox_postgres.py",
+    "tests/integration/test_workflow_drafts_postgres.py",
+    "tests/unit/test_unified_inbox.py",
+    "tests/unit/test_workflow_drafts.py",
+    "ui-tests/central-browser.mjs",
+    "ui-tests/conversations.test.mjs",
+    "ui-tests/flows.test.mjs"
+  ],
+  "qualified_code": "e896d2a31b464bf1ed7b7a1fe0789782bb9cf5b5",
+  "validation_receipt": "docs/marcflow/human-central-validation.md"
+}

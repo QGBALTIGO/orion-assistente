@@ -101,7 +101,7 @@ test("web panel closed and primary phone offline are not needed for socket stora
 });
 test("do not fetch/import chat history or auto reply on inbound callbacks",()=>{
   const src=fs.readFileSync(new URL("../src/server.mjs",import.meta.url),"utf8");
-  const beginning=src.indexOf('client.ev.on("messages.upsert"');
+  const beginning=src.indexOf('async function receive({messages:incoming,type})');
   const ending=src.indexOf('client.ev.on("connection.update"',beginning);
   const handler=src.slice(beginning,ending);
   assert.ok(handler.includes('shouldIngestUpsert(type,message.messageTimestamp)'));

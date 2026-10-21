@@ -214,23 +214,26 @@ test('an all-day block ignores the hidden hourly recurrence controls', async t =
   assert.deepEqual(plain(request.data.weekdays), []);
 });
 
-test('the tenant-change guard can retain the current company and its unsaved form', async t => {
-  const guarded = [], changed = [];
-  const h = await makeSuite({ bridge: { beforeTenantChange: async id => { guarded.push(id); return false; }, setTenant: id => changed.push(id) } }); t.after(() => h.close()); await flush();
+test('a tenant id override cannot change the account business or its unsaved form', async t => {
+  const h = await makeSuite(); t.after(() => h.close()); await flush();
   h.click('[data-os-action=new-customer]'); h.fill('#osField-name', 'Rascunho da empresa A');
-  await change(h, '#osTenant', tenantB);
-  assert.deepEqual(guarded, [tenantB]); assert.deepEqual(changed, []);
-  assert.equal(h.document.getElementById('osTenant').value, tenantA);
+  h.window.OrionSuite.sync({ tenantId: tenantB }); await flush();
+  assert.equal(h.document.getElementById('osTenant'), null);
+  assert.match(h.document.getElementById('osSidebarContext').textContent, /Empresa A/);
   assert.equal(h.document.getElementById('osField-name').value, 'Rascunho da empresa A');
   assert.equal(h.calls.some(call => call.path.includes(`/tenants/${tenantB}/`)), false);
 });
 
-test('switching companies clears the search debounce and notification content from the previous company', async t => {
+test('authenticating another account clears the previous search debounce and notification content', async t => {
   const h = await makeSuite({ respond: path => path.includes('/management/notifications') ? { items: [{ id: 'event-test', event: 'confirmed', happened_at: startAt, start_at: startAt, customer_name: 'Pessoa privada A', professional_name: 'Equipe A' }], can_mark_read: true } : defaultResponse(path) }); t.after(() => h.close()); await flush();
   h.click('[data-os-action=notifications]'); await flush();
   assert.match(h.document.getElementById('osNotificationsPanel').textContent, /Pessoa privada A/);
   h.fill('#osCustomerSearch', 'Busca privada da empresa A');
-  h.window.OrionSuite.sync({ tenantId: tenantB }); await flush();
+  h.window.OrionSuite.sync({
+    user: { role: 'member', email: 'second-account@example.invalid' },
+    tenants: [{ id: tenantB, name: 'Empresa B', role: 'owner' }],
+    tenantId: tenantB,
+  }); await flush();
   assert.equal(h.document.getElementById('osCustomerSearch').value, '');
   assert.equal(h.document.getElementById('osNotificationsPanel').textContent, '');
   await new Promise(resolve => setTimeout(resolve, 300)); await flush();

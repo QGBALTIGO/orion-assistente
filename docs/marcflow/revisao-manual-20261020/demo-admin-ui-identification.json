@@ -1,0 +1,10 @@
+{
+  "observed_at_utc": "2026-10-20T22:40:38.912Z",
+  "method": "read-only browser UI via existing signed-in user tab; no authentication automation, no save or test-send",
+  "account_display": "Administrador / Administração",
+  "tenant_label": "Barbearia Orion — DEMONSTRAÇÃO FICTÍCIA",
+  "tenant_id": "82552b25-d0c8-5338-8c42-49f11de59e45",
+  "tenant_slug": "orion-demo",
+  "binding_state_from_UI": "not exposed; backend read-only diagnostic pending",
+  "identity_or_business_changes": false
+}

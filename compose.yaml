@@ -111,6 +111,7 @@ services:
       REQUIRE_REDIS_TESTS: "1"
       ORION_INTAKE_TEST_REDIS_URL: redis://redis:6379/15
       ORION_REQUIRE_INTAKE_REDIS_TEST: "1"
+      ORION_COMPOSE_TEST_INFRA: "1"
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}

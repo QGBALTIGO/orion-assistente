@@ -1,0 +1,476 @@
+{
+  "at_utc": "2026-10-20T22:27:53.731Z",
+  "commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+  "worker": {
+    "deployment_id": "2b6c3e7d-f042-4fe9-8097-176a2a6f7caf",
+    "status": "SUCCESS",
+    "schema_gate": [
+      {
+        "timestamp": "2026-10-20T22:26:21.777194501Z",
+        "severity": "info",
+        "message": "",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"info\""
+          },
+          {
+            "key": "ok",
+            "value": "true"
+          },
+          {
+            "key": "status",
+            "value": "\"communication_schema_ready\""
+          },
+          {
+            "key": "schema_marker",
+            "value": "\"0029_communication_contract\""
+          }
+        ]
+      }
+    ]
+  },
+  "qr": {
+    "deployment_id": "29a5299e-278f-49a0-9cc3-dc42efa0de66",
+    "status": "SUCCESS",
+    "connected": {
+      "scope": "deployment",
+      "deploymentId": "29a5299e-278f-49a0-9cc3-dc42efa0de66",
+      "serviceId": "ef72fd3d-fcef-4be6-8aa2-a1a544b021f7",
+      "environmentId": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+      "status": "SUCCESS",
+      "deploy": [
+        {
+          "timestamp": "2026-10-20T22:27:03.849607440Z",
+          "severity": "info",
+          "message": "Orion QR: dispositivo conectado",
+          "attributes": [
+            {
+              "key": "level",
+              "value": "\"info\""
+            }
+          ]
+        }
+      ]
+    },
+    "existing_auth_backup": {
+      "scope": "deployment",
+      "deploymentId": "29a5299e-278f-49a0-9cc3-dc42efa0de66",
+      "serviceId": "ef72fd3d-fcef-4be6-8aa2-a1a544b021f7",
+      "environmentId": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+      "status": "SUCCESS",
+      "deploy": [
+        {
+          "timestamp": "2026-10-20T22:27:03.849590291Z",
+          "severity": "info",
+          "message": "Orion auth backup {\"state\":\"verified_existing\",\"files\":96,\"label\":\"before-transport-diagnostics-v1\"}",
+          "attributes": [
+            {
+              "key": "level",
+              "value": "\"info\""
+            }
+          ]
+        }
+      ]
+    },
+    "pairing_available_log": {
+      "scope": "deployment",
+      "deploymentId": "29a5299e-278f-49a0-9cc3-dc42efa0de66",
+      "serviceId": "ef72fd3d-fcef-4be6-8aa2-a1a544b021f7",
+      "environmentId": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+      "status": "SUCCESS",
+      "deploy": []
+    },
+    "self_notice_log": {
+      "scope": "deployment",
+      "deploymentId": "29a5299e-278f-49a0-9cc3-dc42efa0de66",
+      "serviceId": "ef72fd3d-fcef-4be6-8aa2-a1a544b021f7",
+      "environmentId": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+      "status": "SUCCESS",
+      "deploy": []
+    }
+  },
+  "registration": {
+    "deployment_id": "e34901b9-2773-4d35-9e0c-f5fc44b03194",
+    "status": "FAILED",
+    "logs": [
+      {
+        "timestamp": "2026-10-20T22:25:13.047474567Z",
+        "severity": "info",
+        "message": "Starting Container",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"info\""
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-20T22:25:13.326448942Z",
+        "severity": "info",
+        "message": "tested_runtime_versions_match",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"info\""
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-20T22:25:13.326451342Z",
+        "severity": "info",
+        "message": "orion_release_flags={\"BIRTHDAY_COLLECTION_ENABLED\": \"0\", \"GROQ_PROBE_ON_START\": \"0\", \"INBOX_CONTROL_ENABLED\": \"0\", \"INBOX_SEND_ENABLED\": \"0\", \"INBOX_TOOLS_ENABLED\": \"1\", \"MARKETING_EXECUTION_ENABLED\": \"0\", \"MARKETING_RECONCILIATION_ENABLED\": \"0\", \"META_LIVE_SEND\": \"0\", \"ORION_EMAIL_DELIVERY_PROBE\": \"0\", \"QR_AI_ENABLED\": \"1\", \"QR_CHANNELS_ENABLED\": \"1\", \"QR_LEGACY_CENTRAL_ENABLED\": \"1\"}",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"info\""
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-20T22:25:13.326454142Z",
+        "severity": "info",
+        "message": "legacy_adoption_start",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"info\""
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-20T22:25:13.734280880Z",
+        "severity": "info",
+        "message": "",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"info\""
+          },
+          {
+            "key": "status",
+            "value": "\"stopped\""
+          },
+          {
+            "key": "code",
+            "value": "\"existing_tenant_not_active\""
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-20T22:25:13.938052677Z",
+        "severity": "error",
+        "message": "Traceback (most recent call last):",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"error\""
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-20T22:25:13.938064167Z",
+        "severity": "error",
+        "message": "  File \"<string>\", line 1, in <module>",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"error\""
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-20T22:25:13.938069717Z",
+        "severity": "error",
+        "message": "  File \"/usr/local/lib/python3.12/subprocess.py\", line 571, in run",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"error\""
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-20T22:25:13.938074046Z",
+        "severity": "error",
+        "message": "    raise CalledProcessError(retcode, process.args,",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"error\""
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-20T22:25:13.938078116Z",
+        "severity": "error",
+        "message": "subprocess.CalledProcessError: Command '['/usr/local/bin/python', '-m', 'scripts.one_time_legacy_adoption']' returned non-zero exit status 1.",
+        "attributes": [
+          {
+            "key": "level",
+            "value": "\"error\""
+          }
+        ]
+      }
+    ],
+    "condition": "existing_tenant_not_active",
+    "meaning": "Configured tenant is missing, not active, or bot_enabled is false. Guard does not distinguish those causes.",
+    "stage_reached": "preflight before backup or registry INSERT",
+    "no_guard_bypass": true,
+    "needed": "Identify correct existing company and verify status/bot/owner/QR binding before resuming register; do not flip existing business flags silently."
+  },
+  "safe_cleanup": {
+    "variables": {
+      "environment": {
+        "id": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+        "name": "production"
+      },
+      "serviceId": "1d39a32e-8297-4e5b-8b55-d6540542e80b",
+      "variableNames": [
+        "ORION_RUN_COMMUNICATION_MIGRATION",
+        "ORION_RUN_INBOX_MIGRATION",
+        "ORION_RUN_LEGACY_ADOPTION",
+        "QR_LEGACY_CENTRAL_ENABLED"
+      ],
+      "skippedDeploys": true,
+      "staged": null
+    },
+    "normal_hook": {
+      "service": {
+        "id": "1d39a32e-8297-4e5b-8b55-d6540542e80b",
+        "name": "orion-assistente"
+      },
+      "environmentId": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+      "updatedFields": [
+        "preDeployCommand",
+        "preDeployTimeoutSeconds"
+      ],
+      "staged": null
+    },
+    "runtime_deployment_not_restarted": true,
+    "one_time_flags_set": "all0",
+    "legacy_central_flag": "0 as already-running API"
+  },
+  "volumes": [
+    {
+      "name": "Postgres",
+      "id": "561d3641-e517-4465-8d40-4d5057b7efd8",
+      "volumes": [
+        {
+          "id": "1963a643-d72f-4dc4-b337-89def7010b56",
+          "name": "postgres-volume",
+          "mountPath": "/var/lib/postgresql/data",
+          "sizeMB": 500,
+          "region": "iad"
+        }
+      ]
+    },
+    {
+      "name": "Redis",
+      "id": "ad7110d7-fc8e-490e-9a3e-8c43a4c5a472",
+      "volumes": [
+        {
+          "id": "4fddd4cf-f8ee-4d0b-a58a-d9781935daca",
+          "name": "redis-volume",
+          "mountPath": "/data",
+          "sizeMB": 500,
+          "region": "iad"
+        }
+      ]
+    },
+    {
+      "name": "orion-worker",
+      "id": "f6c51234-ee8b-49ba-a06e-bcad37b54b67",
+      "volumes": []
+    },
+    {
+      "name": "orion-assistente",
+      "id": "1d39a32e-8297-4e5b-8b55-d6540542e80b",
+      "volumes": []
+    },
+    {
+      "name": "orion-qr-bridge",
+      "id": "ef72fd3d-fcef-4be6-8aa2-a1a544b021f7",
+      "volumes": [
+        {
+          "id": "96a57936-6572-4604-887b-a7c8123263ff",
+          "name": "orion-qr-session",
+          "mountPath": "/data",
+          "sizeMB": 256,
+          "region": "iad"
+        }
+      ]
+    }
+  ],
+  "environment": {
+    "environment": {
+      "id": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+      "name": "production"
+    },
+    "services": [
+      {
+        "serviceId": "1d39a32e-8297-4e5b-8b55-d6540542e80b",
+        "serviceName": "orion-assistente",
+        "state": "online",
+        "statusText": "Online",
+        "activeDeployments": [
+          {
+            "id": "4599d478-48a8-4f60-8077-aecb1d3324f5",
+            "status": "SUCCESS",
+            "createdAt": "2026-10-20T22:20:32.265Z",
+            "statusUpdatedAt": "2026-10-20T22:21:37.531Z"
+          }
+        ],
+        "replicaStatus": {
+          "running": 1,
+          "crashed": 0,
+          "total": 1
+        },
+        "cronJob": null,
+        "issues": {
+          "warningCount": 1,
+          "criticalCount": 0
+        },
+        "recentFailures": 2,
+        "recentFailedDeployments": [
+          {
+            "id": "e34901b9-2773-4d35-9e0c-f5fc44b03194",
+            "status": "FAILED",
+            "createdAt": "2026-10-20T22:25:01.054Z"
+          },
+          {
+            "id": "15966935-6bcd-4d13-ac13-2b6c08745ad9",
+            "status": "FAILED",
+            "createdAt": "2026-10-20T22:05:19.958Z"
+          }
+        ],
+        "hasIssues": true,
+        "isCronJob": false,
+        "hasVolume": false
+      },
+      {
+        "serviceId": "ef72fd3d-fcef-4be6-8aa2-a1a544b021f7",
+        "serviceName": "orion-qr-bridge",
+        "state": "online",
+        "statusText": "Online",
+        "activeDeployments": [
+          {
+            "id": "29a5299e-278f-49a0-9cc3-dc42efa0de66",
+            "status": "SUCCESS",
+            "createdAt": "2026-10-20T22:25:01.119Z",
+            "statusUpdatedAt": "2026-10-20T22:27:08.830Z"
+          }
+        ],
+        "replicaStatus": {
+          "running": 1,
+          "crashed": 0,
+          "total": 1
+        },
+        "cronJob": null,
+        "issues": {
+          "warningCount": 0,
+          "criticalCount": 0
+        },
+        "recentFailures": 0,
+        "recentFailedDeployments": [],
+        "hasIssues": false,
+        "isCronJob": false,
+        "hasVolume": true
+      },
+      {
+        "serviceId": "f6c51234-ee8b-49ba-a06e-bcad37b54b67",
+        "serviceName": "orion-worker",
+        "state": "online",
+        "statusText": "Online",
+        "activeDeployments": [
+          {
+            "id": "2b6c3e7d-f042-4fe9-8097-176a2a6f7caf",
+            "status": "SUCCESS",
+            "createdAt": "2026-10-20T22:25:01.078Z",
+            "statusUpdatedAt": "2026-10-20T22:26:28.698Z"
+          }
+        ],
+        "replicaStatus": {
+          "running": 1,
+          "crashed": 0,
+          "total": 1
+        },
+        "cronJob": null,
+        "issues": {
+          "warningCount": 0,
+          "criticalCount": 0
+        },
+        "recentFailures": 0,
+        "recentFailedDeployments": [],
+        "hasIssues": false,
+        "isCronJob": false,
+        "hasVolume": false
+      },
+      {
+        "serviceId": "ad7110d7-fc8e-490e-9a3e-8c43a4c5a472",
+        "serviceName": "Redis",
+        "state": "online",
+        "statusText": "Online",
+        "activeDeployments": [
+          {
+            "id": "b369ead8-39e4-4bd3-8c9f-3fb929494788",
+            "status": "SUCCESS",
+            "createdAt": "2026-10-16T17:42:49.683Z",
+            "statusUpdatedAt": "2026-10-16T17:42:54.460Z"
+          }
+        ],
+        "replicaStatus": {
+          "running": 1,
+          "crashed": 0,
+          "total": 1
+        },
+        "cronJob": null,
+        "issues": {
+          "warningCount": 0,
+          "criticalCount": 0
+        },
+        "recentFailures": 0,
+        "recentFailedDeployments": [],
+        "hasIssues": false,
+        "isCronJob": false,
+        "hasVolume": true
+      },
+      {
+        "serviceId": "561d3641-e517-4465-8d40-4d5057b7efd8",
+        "serviceName": "Postgres",
+        "state": "online",
+        "statusText": "Online",
+        "activeDeployments": [
+          {
+            "id": "47bbb965-a91a-4bde-a809-d555d75bc627",
+            "status": "SUCCESS",
+            "createdAt": "2026-10-16T17:42:46.685Z",
+            "statusUpdatedAt": "2026-10-16T17:43:04.443Z"
+          }
+        ],
+        "replicaStatus": {
+          "running": 1,
+          "crashed": 0,
+          "total": 1
+        },
+        "cronJob": null,
+        "issues": {
+          "warningCount": 0,
+          "criticalCount": 0
+        },
+        "recentFailures": 0,
+        "recentFailedDeployments": [],
+        "hasIssues": false,
+        "isCronJob": false,
+        "hasVolume": true
+      }
+    ],
+    "pendingWork": [],
+    "summary": {
+      "totalServices": 5,
+      "servicesWithIssues": 1,
+      "totalFailures": 2
+    }
+  },
+  "public_get": "public-after-B.json"
+}

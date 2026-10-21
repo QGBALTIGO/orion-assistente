@@ -1,3 +1,4 @@
+import {safetyControl} from './inbound-event.mjs';
 /** Per-channel lifecycle; SQL broker owns the distributed fence, not this Map. */
 import {randomUUID,timingSafeEqual} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
@@ -12,10 +13,10 @@ export function reconnectDelay(attempt,random=Math.random){
 }
 export function createChannelManager({broker,createSession,root='/data/orion-channels',
     owner=randomUUID(),clock=()=>performance.now(),schedule=setTimeout,cancel=clearTimeout,random=Math.random,maxChannels=10,
-    audioEnabled=()=>process.env.QR_AI_AUDIO_ENABLED==='1',verifiedLid=()=>process.env.QR_PILOT_USE_VERIFIED_LID==='1'}){
+    audioEnabled=()=>process.env.QR_AI_AUDIO_ENABLED==='1',verifiedLid=()=>process.env.QR_PILOT_USE_VERIFIED_LID==='1',resumeStore=null}){
   if(!channelId(owner))throw Error('invalid_channel_owner');
   if(!Number.isInteger(maxChannels)||maxChannels<1||maxChannels>50)throw Error('invalid_channel_capacity');
-  const contexts=new Map();
+  const contexts=new Map(),stopping=new Set();let resuming=false;
   const timer=(fn,ms)=>{const t=schedule(fn,ms);t?.unref?.();return t;};
   const current=c=>!c.stopped&&contexts.get(c.id)===c&&clock()<c.deadline;
   const requireCurrent=c=>{if(!current(c)){retire(c);throw Error('channel_lease_lost');}};
@@ -27,6 +28,9 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         result.allowed_senders.some(p=>typeof p!=='string'||!/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(p))||
         (c.fence&&(result.fence!==c.fence||result.tenant_id!==c.tenant)))throw Error('invalid_channel_lease');
     c.tenant=result.tenant_id;c.fence=result.fence;c.allowed=new Set(result.allowed_senders);c.assistant=result.assistant_enabled;
+    if(c.legacyTransport!==undefined&&c.legacyTransport!==(result.legacy_transport===true))throw Error('channel_transport_changed');
+    c.legacyTransport=result.legacy_transport===true;
+    c.inboxControl=c.inboxControl===true||result.inbox_control===true||process.env.INBOX_CONTROL_ENABLED==='1';
     const deadline=started+result.expires_in_ms-250;
     c.deadline=renew||!c.deadline?deadline:Math.min(c.deadline,deadline);
     requireCurrent(c);
@@ -62,7 +66,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
   function disconnected(c,generation,reason){
     if(!current(c)||generation!==c.generation)return;
     try{c.session?.close();}catch{}c.session=null;c.generation++;
-    if(reason==='logged_out'||c.attempts>=8){retire(c);return;}
+    if(reason==='logged_out'){try{resumeStore?.forget(c.id,c.key);}catch{}retire(c);return;}
+    if(c.attempts>=8){retire(c);return;}
     cancel(c.reconnect);
     c.reconnect=timer(()=>connect(c).catch(()=>{}),reconnectDelay(c.attempts++,random));
   }
@@ -75,14 +80,23 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     async function notice(payload){
       await assertCurrent();
       if(!c.allowed.has(payload.phone)||typeof payload.message_id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(payload.message_id))throw Error('channel_sender_denied');
-      const recorded=await broker.interaction(c.id,c.key,{owner,fence:c.fence},{phone:payload.phone,message_id:payload.message_id});
+      if(c.inboxControl&&('text' in payload||'kind' in payload)){
+        if(typeof broker.journal!=='function')throw Error('inbox_journal_unavailable');
+        const saved=await broker.journal(c.id,c.key,{owner,fence:c.fence},payload);
+        if(saved?.recorded!==true)throw Error('inbox_journal_unconfirmed');
+      }
+      const control=payload.envelope?.control||safetyControl(payload.text);
+      const recorded=await broker.interaction(c.id,c.key,{owner,fence:c.fence},{phone:payload.phone,message_id:payload.message_id,
+        ...(!c.inboxControl&&control?{control}:{})});
       if(recorded?.recorded!==true||!Number.isSafeInteger(recorded.revision)||recorded.revision<1)throw Error('channel_interaction_unconfirmed');
       await assertCurrent();const proof=Object.freeze({revision:recorded.revision});
       notices.set(proof,{phone:payload.phone,id:payload.message_id,revision:recorded.revision,state:'new'});return proof;
     }
     try{
       const session=await createSession({channelId:c.id,tenantId:c.tenant,owner,fence:c.fence,
-        directory:c.directory,secret:c.key,assertCurrent,isCurrent,
+        directory:c.directory,secret:c.key,assertCurrent,isCurrent,resumeOnly:c.resumeOnly,
+        notifySelf:!c.legacyTransport&&process.env.ORION_NOTIFY_SELF_ON_LINK!=='0',
+        legacyTransport:c.legacyTransport,
         allowedSender:phone=>c.allowed.has(phone),
         assistantEnabled:()=>c.assistant===true,
         audioEnabled:()=>audioEnabled()===true&&c.assistant===true,
@@ -96,13 +110,16 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
           if(!c.assistant||audioEnabled()!==true||result?.truncated!==false||typeof result?.text!=='string'||!result.text.trim()||result.text.trim().length>1500)throw Error('channel_audio_unusable');
           return result.text.trim();
         },
-        onConnected:()=>{if(isCurrent())c.attempts=0;},
+        onConnected:()=>{if(!isCurrent())return;
+          resumeStore?.remember({id:c.id,tenant:c.tenant,key:c.key});c.attempts=0;},
         onDisconnected:reason=>disconnected(c,generation,reason),
         onReceipt:async(id,delivery)=>{
           if(!['delivered','read'].includes(delivery))return;
           await assertCurrent();const item=c.sent.get(id);if(!item)return;
           const saved=c.ledger.reserve(item.operation,item.fingerprint).record;
           if(saved.delivery!=='read')c.ledger.save(item.operation,{...saved,delivery});
+          if(c.inboxControl&&typeof broker.receipt==='function')
+            await broker.receipt(c.id,c.key,{owner,fence:c.fence},{phone:item.phone,operation_id:item.operation,provider_id:id,delivery});
         },
         onMessage:async(payload,{noticeProof,noticeProofs,beforeReply,isCurrent:batchCurrent=()=>true}={})=>{
           await assertCurrent();
@@ -128,7 +145,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
           try{
             const result=await broker.forward(c.id,c.key,{owner,fence:c.fence},
               {phone:payload.phone,message_id:payload.message_id,message_ids:ids,text:payload.text,intake_revision:revision,
-                require_summary_review:c.summaryReview.get(payload.phone)!==false});
+                require_summary_review:c.summaryReview.get(payload.phone)!==false,
+                ...(payload.envelope?{envelope:payload.envelope}:{})});
             if(result?.step==='superseded'&&result.answer===null&&result.not_committed===true){
               observed.forEach(item=>{item.state='new';});c.summaryReview.set(payload.phone,true);
               return {state:'superseded',not_committed:true};
@@ -145,25 +163,32 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
             await assertCurrent();
             if(!stillCurrent()){c.summaryReview.set(payload.phone,true);return;}
             const operation=deterministicOperation(c.id,ids.join('\0'));
-            const sent=await send(c.id,c.key,{to:payload.phone,text:result.answer,operation_id:operation,isCurrent:stillCurrent});
+            const sent=await send(c.id,c.key,{to:payload.phone,text:result.answer,operation_id:operation,isCurrent:stillCurrent,
+              source:'assistant',control_revision:result.control_revision});
             c.summaryReview.set(payload.phone,!sent?.accepted||!stillCurrent());return sent;
           }catch(error){observed.forEach(item=>{item.state='spent';});c.summaryReview.set(payload.phone,true);throw error;}
         }});
       if(!isCurrent()){session?.close();throw Error('channel_lease_lost');}
       c.session=session;
-    }catch(error){disconnected(c,generation,'error');throw error;}
+    }catch(error){
+      if(error?.message==='channel_auth_unavailable'){resumeStore?.forget(c.id,c.key);retire(c);}
+      else disconnected(c,generation,'error');throw error;}
   }
-  async function start(id,key){
+  async function start(id,key,{resumeOnly=false,expectedTenant=null}={}){
     if(!channelId(id)||typeof key!=='string'||key.length<32||key.length>256)throw Error('invalid_channel');
+    if(stopping.has(id))throw Error('channel_stopping');
+    if(resumeOnly&&!resumeStore?.list().some(row=>row.id===id&&row.key===key&&row.tenant===expectedTenant))
+      throw Error('channel_resume_cancelled');
     const existing=contexts.get(id);
     if(existing){if(!sameKey(existing.key,key))throw Error('channel_unauthorized');await existing.starting;await validate(existing,key);return status(id,key);}
     if(contexts.size>=maxChannels)throw Error('channel_capacity');
-    const c={id,key,deadline:0,fence:0,stopped:false,generation:0,attempts:0,sent:new Map(),summaryReview:new Map(),
+    const c={id,key,resumeOnly,deadline:0,fence:0,stopped:false,generation:0,attempts:0,sent:new Map(),summaryReview:new Map(),
       capacity:makeSendCapacity({now:clock})};contexts.set(id,c);
     c.starting=(async()=>{
       const started=clock(),lease=await broker.lease(id,key,'claim',owner);
       if(c.stopped||contexts.get(id)!==c)throw Error('channel_lease_lost');
       acceptLease(c,lease,started,{renew:true});
+      if(expectedTenant&&c.tenant!==expectedTenant)throw Error('resume_tenant_changed');
       c.directory=channelDirectory(root,c.tenant,id);c.ledger=sendLedger(c.directory,key);
       renewLater(c);await connect(c).catch(error=>{if(!current(c)||!c.reconnect)throw error;});
     })();
@@ -176,7 +201,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     return {channel_id:id,status:c.session?.status?.()||'connecting',fence:c.fence,
       capabilities:{text:true,audio:audioEnabled()===true&&c.assistant===true,reliable_send:true,typing:true}};
   }
-  async function send(id,key,{to,text,operation_id,isCurrent:operationCurrent=()=>true}){
+  async function send(id,key,{to,text,operation_id,isCurrent:operationCurrent=()=>true,source='automation',control_revision}){
     const c=contexts.get(id);if(!c)throw Error('channel_not_started');
     await validate(c,key);const phone=validPhone(to);
     if(typeof operationCurrent!=='function'||operationCurrent()!==true)throw Error('channel_operation_superseded');
@@ -191,16 +216,32 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     }
     // The durable uncertain record exists before any network send. A process
     // crash or timeout can never cause this operation to be sent a second time.
+    let attempted=false;
     try{
       await validate(c,key);
       if(!c.session||operationCurrent()!==true)throw Error('channel_not_connected_or_superseded');
+      const slot={phone,operation_id,fingerprint,source,text,...(['assistant','manual'].includes(source)?{control_revision}:{} )};
+      if(c.inboxControl===true||control_revision!==undefined){
+        if(typeof broker.authorizeSend!=='function')throw Error('inbox_control_unavailable');
+        const permit=await broker.authorizeSend(c.id,c.key,{owner,fence:c.fence},slot);
+        if(permit?.authorized!==true||permit.operation_id!==operation_id)throw Error('inbox_send_refused');
+      }
+      attempted=true;
       const result=await c.session.send(phone,text,{isCurrent:operationCurrent});requireCurrent(c);
       if(typeof result?.id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(result.id))throw Error('channel_send_unknown');
       const record={fingerprint,state:'accepted',accepted:true,delivery:'unknown',provider_id:result.id};
-      c.ledger.save(operation_id,record);c.sent.set(result.id,{operation:operation_id,fingerprint});
+      c.ledger.save(operation_id,record);c.sent.set(result.id,{operation:operation_id,fingerprint,phone});
+      if(c.inboxControl===true||control_revision!==undefined){
+        // A lost finish response leaves a conservative slot. It is released
+        // only after the API verifies this already persisted receipt.
+        try{await broker.finishSend(c.id,c.key,{owner,fence:c.fence},{...slot,accepted:true,provider_id:result.id});}catch{}
+      }
       if(c.sent.size>1000)c.sent.delete(c.sent.keys().next().value);
       return publicSend(operation_id,record);
-    }catch{return publicSend(operation_id,reserved.record);}
+    }catch{
+      if(!attempted){const refused={fingerprint,state:'refused',accepted:false,delivery:'not_sent'};c.ledger.save(operation_id,refused);return publicSend(operation_id,refused);}
+      return publicSend(operation_id,reserved.record);
+    }
   }
   async function operation(id,key,operationId){
     if(!channelId(id)||!channelId(operationId))throw Error('invalid_operation_id');
@@ -215,9 +256,28 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     return publicSend(operationId,record||{state:'unrecorded',accepted:false,delivery:'unknown'});
   }
   return {start,status,send,operation,
+    async resume(){
+      if(!resumeStore||resuming)return {resumed:0};
+      let resumed=0;resuming=true;
+      try{
+        for(const row of resumeStore.list()){
+          if(contexts.has(row.id))continue;
+          if(contexts.size>=maxChannels)break;
+          try{await start(row.id,row.key,{resumeOnly:true,expectedTenant:row.tenant});resumed++;}
+          catch(error){if([401,403,404,423].includes(error?.status)||
+            ['channel_auth_unavailable','resume_tenant_changed'].includes(error?.message))resumeStore.forget(row.id,row.key);}
+        }
+        return {resumed};
+      }finally{resuming=false;}
+    },
     async qr(id,key){const c=contexts.get(id);if(!c)throw Error('channel_not_started');await validate(c,key);return c.session?.qr?.()||null;},
-    async stop(id,key){const c=contexts.get(id);if(!c){await broker.lease(id,key,'inspect',owner);return;}
-      await validate(c,key);retire(c);try{await broker.lease(id,key,'release',owner,c.fence);}catch{}},
+    async stop(id,key){const c=contexts.get(id);if(c&&!sameKey(c.key,key))throw Error('channel_unauthorized');
+      if(stopping.has(id))throw Error('channel_stopping');stopping.add(id);
+      try{
+        if(!c){await broker.lease(id,key,'inspect',owner);resumeStore?.forget(id,key);return;}
+        await c.starting;await validate(c,key);resumeStore?.forget(id,key);retire(c);
+        try{await broker.lease(id,key,'release',owner,c.fence);}catch{}
+      }finally{stopping.delete(id);}},
     close(){for(const c of contexts.values())retire(c);},
     get size(){return contexts.size;}};
 }

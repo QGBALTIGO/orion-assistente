@@ -1,0 +1,344 @@
+{
+  "deployment_id": "dpl_4NZRWqmSHdFgrdyM4YdeYPnnyXQr",
+  "deployment_url": "https://orion-painel-iota.vercel.app",
+  "auth_path": "public HTTPS without Vercel credentials",
+  "production_record_writes": 0,
+  "provider_messages": 0,
+  "tests": [
+    {
+      "path": "/",
+      "method": "GET",
+      "origin": "",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "bytes": 39185,
+      "sha256": "5285c4bac3ccf06c6d0d8950d3cc7647cf8f2c1ec946492e2781421ec53a5648",
+      "headers": {
+        "access-control-allow-origin": "*",
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "text/html; charset=utf-8",
+        "server": "Vercel",
+        "x-vercel-cache": "HIT"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/panel",
+      "method": "GET",
+      "origin": "",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "bytes": 295195,
+      "sha256": "bad2f25e975c72866d2730e1b4df456638464611ef76310de7c3e8de453efca4",
+      "headers": {
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "text/html; charset=utf-8",
+        "server": "Vercel",
+        "x-vercel-cache": "MISS"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/panel/",
+      "method": "GET",
+      "origin": "",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "bytes": 295195,
+      "sha256": "bad2f25e975c72866d2730e1b4df456638464611ef76310de7c3e8de453efca4",
+      "headers": {
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "text/html; charset=utf-8",
+        "server": "Vercel",
+        "x-vercel-cache": "MISS"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/auth/features",
+      "method": "GET",
+      "origin": "",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "bytes": 61,
+      "sha256": "3b03156f7312e702393c523b23583753274b1d42e21638cc991b6253bbd65fb0",
+      "headers": {
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "application/json",
+        "server": "Vercel",
+        "x-vercel-cache": "MISS"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/auth/me",
+      "method": "GET",
+      "origin": "",
+      "status": 401,
+      "expected": 401,
+      "passed": true,
+      "bytes": 34,
+      "sha256": "b050e033375554b7420b16b6754c9f521da4ef79773c09edb9144d293849867d",
+      "headers": {
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "application/json",
+        "server": "Vercel",
+        "x-vercel-cache": "MISS"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/panel-assets/orion-suite.js",
+      "method": "GET",
+      "origin": "",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "bytes": 376431,
+      "sha256": "0dec8087f9d9894cf4288d4f75b110b28e217d7c3fb0b17a628dfbfe3a7c7c32",
+      "headers": {
+        "access-control-allow-origin": "*",
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "application/javascript; charset=utf-8",
+        "server": "Vercel",
+        "x-vercel-cache": "HIT"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/landing-assets/orion-landing.css",
+      "method": "GET",
+      "origin": "",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "bytes": 51235,
+      "sha256": "09d2f951a25da75096891231cafa5a237be03737457cc62e5e8f9b069de37bd4",
+      "headers": {
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "text/css; charset=utf-8",
+        "server": "Vercel",
+        "x-vercel-cache": "MISS"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/brand/orion-symbol.svg",
+      "method": "GET",
+      "origin": "",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "bytes": 645,
+      "sha256": "6793ed5698780db43e0c507b9083ecaad3d19625d30b8e9cd387315db7b0f2b4",
+      "headers": {
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "image/svg+xml",
+        "server": "Vercel",
+        "x-vercel-cache": "MISS"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/health/central",
+      "method": "GET",
+      "origin": "",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "bytes": 60,
+      "sha256": "d3d3b27f8bd4cb172e322f64a293af1a97880f99c05b3cfd2ae67551f48eab89",
+      "headers": {
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "application/json",
+        "server": "Vercel",
+        "x-vercel-cache": "MISS"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/internal/health",
+      "method": "GET",
+      "origin": "",
+      "status": 404,
+      "expected": 404,
+      "passed": true,
+      "bytes": 247,
+      "sha256": "139d492526d35bff929037482d0a707d4eb43bc05837ff6b1f34e865704d6ace",
+      "headers": {
+        "access-control-allow-origin": "*",
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "text/html; charset=utf-8",
+        "server": "Vercel",
+        "x-vercel-cache": "HIT"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/docs",
+      "method": "GET",
+      "origin": "",
+      "status": 404,
+      "expected": 404,
+      "passed": true,
+      "bytes": 247,
+      "sha256": "139d492526d35bff929037482d0a707d4eb43bc05837ff6b1f34e865704d6ace",
+      "headers": {
+        "access-control-allow-origin": "*",
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "text/html; charset=utf-8",
+        "server": "Vercel",
+        "x-vercel-cache": "HIT"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/openapi.json",
+      "method": "GET",
+      "origin": "",
+      "status": 404,
+      "expected": 404,
+      "passed": true,
+      "bytes": 247,
+      "sha256": "139d492526d35bff929037482d0a707d4eb43bc05837ff6b1f34e865704d6ace",
+      "headers": {
+        "access-control-allow-origin": "*",
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "text/html; charset=utf-8",
+        "server": "Vercel",
+        "x-vercel-cache": "HIT"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/bundle-manifest.json",
+      "method": "GET",
+      "origin": "",
+      "status": 404,
+      "expected": 404,
+      "passed": true,
+      "bytes": 247,
+      "sha256": "139d492526d35bff929037482d0a707d4eb43bc05837ff6b1f34e865704d6ace",
+      "headers": {
+        "access-control-allow-origin": "*",
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "text/html; charset=utf-8",
+        "server": "Vercel",
+        "x-vercel-cache": "HIT"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/integrations/google/callback",
+      "method": "GET",
+      "origin": "",
+      "status": 409,
+      "expected": 409,
+      "passed": true,
+      "bytes": 228,
+      "sha256": "e2f4aa45945f8e1338f91a1d96ae7b15992f84ec248fdd9a034a27c453c6210c",
+      "headers": {
+        "access-control-allow-origin": "*",
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "server": "Vercel",
+        "x-vercel-cache": "HIT"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/auth/login",
+      "method": "POST",
+      "origin": "https://evil.invalid",
+      "status": 403,
+      "expected": 403,
+      "passed": true,
+      "bytes": 303,
+      "sha256": "779aab92b7fb2b79b3c0d08440fdd06162d35304143027dd6836ad21c2967afd",
+      "headers": {
+        "access-control-allow-origin": "*",
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "text/html; charset=utf-8",
+        "server": "Vercel",
+        "x-vercel-cache": "HIT"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/auth/login",
+      "method": "POST",
+      "origin": "",
+      "status": 403,
+      "expected": 403,
+      "passed": true,
+      "bytes": 303,
+      "sha256": "779aab92b7fb2b79b3c0d08440fdd06162d35304143027dd6836ad21c2967afd",
+      "headers": {
+        "access-control-allow-origin": "*",
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "text/html; charset=utf-8",
+        "server": "Vercel",
+        "x-vercel-cache": "HIT"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/api/v1/tenants/synthetic/google/connect",
+      "method": "POST",
+      "origin": "https://evil.invalid",
+      "status": 409,
+      "expected": 409,
+      "passed": true,
+      "bytes": 228,
+      "sha256": "e2f4aa45945f8e1338f91a1d96ae7b15992f84ec248fdd9a034a27c453c6210c",
+      "headers": {
+        "access-control-allow-origin": "*",
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "server": "Vercel",
+        "x-vercel-cache": "HIT"
+      },
+      "exit_code": 0
+    },
+    {
+      "path": "/auth/login",
+      "method": "OPTIONS",
+      "origin": "https://evil.invalid",
+      "status": 403,
+      "expected": 403,
+      "passed": true,
+      "bytes": 91,
+      "sha256": "2f851a4fb81dbec54c201e35a22e4dd85810f2bb9c48c31cfaf826e76d28b647",
+      "headers": {
+        "cache-control": "private, no-store, max-age=0",
+        "cdn-cache-control": "no-store",
+        "content-type": "text/plain; charset=utf-8",
+        "server": "Vercel"
+      },
+      "exit_code": 0
+    }
+  ],
+  "passed": 18,
+  "failed": 0
+}

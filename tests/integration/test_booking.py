@@ -91,7 +91,7 @@ async def booking_db():
         }
     finally:
         async with migrator.begin() as s:
-            for table in ("authorized_staff", "whatsapp_channels", "usage_counters", "calendar_outbox", "appointment_history", "appointment_items", "appointments",
+            for table in ("message_outbox", "inbound_events", "authorized_staff", "whatsapp_channels", "usage_counters", "calendar_outbox", "appointment_history", "appointment_items", "appointments",
                           "customers", "working_breaks", "professional_services",
                           "working_hours", "schedule_blocks", "time_off", "services",
                           "professionals", "tenant_audit"):
@@ -549,15 +549,26 @@ async def test_atomic_cancel_rechecks_contact_after_snapshot_validation(booking_
 
 @pytest.mark.asyncio
 async def test_signed_phone_scopes_customer_cancel_and_reschedule(booking_db):
-    """Número autorizado pela Meta (argumento assinado) precisa ser dono da reserva."""
+    """Signed ownership and a fresh reply to an accepted summary are both required.
+
+    Real PostgreSQL domain/receipt rows, in-memory Redis and synthetic provider
+    acceptance only. No Meta request, webhook queue or real message is sent.
+    """
     import json
     from app.whatsapp_commands import try_command
+    from app.whatsapp_bot import reply
+    from app.communication_events import summary_was_accepted
 
     d=booking_db
     redis=MemoryRedis()
     channel=uuid4()
     sender=phone(432)
     other=phone(433)
+    async with d["migrator"].begin() as s:
+        await s.execute(text("""INSERT INTO whatsapp_channels
+            (id,tenant_id,phone_number_id,business_number,status)
+            VALUES(:id,:tenant,:number,'+5567999999900','testing')"""),
+            {"id":channel,"tenant":d["a"],"number":"synthetic-"+channel.hex})
     async with d["factory"]() as s:
         reservation=await book_appointment(s,d["a"],d["pro"],[d["beard"]],
                                            sender,"Cliente sintético",start_at(d["day"],10),
@@ -566,33 +577,71 @@ async def test_signed_phone_scopes_customer_cancel_and_reschedule(booking_db):
         await confirm_hold(s,d["a"],reservation["id"])
     protocol=reservation["protocol"]
     key=f"wa:state:{d['a']}:{channel}:{sender}"
+
+    async def appointment_state():
+        async with d["migrator"].connect() as s:
+            return (await s.execute(text("SELECT start_at,status FROM appointments WHERE id=:id"),
+                {"id":reservation["id"]})).mappings().one()
+
+    async def accept_current_summary():
+        # Match the worker/outbox boundary without invoking any transport. The
+        # actual reply wrapper above supplies UUID identity and exact last_answer.
+        saved=json.loads(redis.data[key])
+        event=UUID(saved["summary_message_id"])
+        assert saved["last_message_id"]==str(event) and saved["last_answer"]
+        async with d["migrator"].begin() as s:
+            await s.execute(text("""INSERT INTO inbound_events
+                (id,tenant_id,channel_id,external_id,sender_e164,message_text,status,processed_at)
+                VALUES(:id,:tenant,:channel,:external,:phone,'','processed',now())"""),
+                {"id":event,"tenant":d["a"],"channel":channel,"external":"synthetic-"+event.hex,"phone":sender})
+            await s.execute(text("""INSERT INTO message_outbox
+                (tenant_id,channel_id,event_id,to_e164,body,status)
+                VALUES(:tenant,:channel,:event,:phone,:body,'sent')"""),
+                {"tenant":d["a"],"channel":channel,"event":event,"phone":sender,"body":saved["last_answer"]})
+        assert await summary_was_accepted(d["a"],channel,sender,saved)
+        assert not await summary_was_accepted(d["a"],channel,other,saved)
+        assert not await summary_was_accepted(d["a"],uuid4(),sender,saved)
+        assert not await summary_was_accepted(d["b"],channel,sender,saved)
+        return str(event),saved["last_answer"]
+
     ignored,warning=await try_command(d["a"],channel,other,
           "cancelar "+protocol.lower(),{},redis,"other-key")
     assert ignored and "não encontrada" in warning.lower()
-    ignored,prompt=await try_command(d["a"],channel,sender,
-          "remarcar "+protocol.lower(),{},redis,key,message_id="request-reschedule")
-    assert ignored and "nova data" in prompt.lower()
+
+    prompt=await reply(d["a"],channel,sender,"remarcar "+protocol.lower(),redis,message_id=str(uuid4()))
+    assert "nova data" in prompt.lower()
+    proposal=await reply(d["a"],channel,sender,start_at(d["day"],14).strftime("%Y-%m-%d %H:%M"),
+                         redis,message_id=str(uuid4()))
+    assert "Proposta de remarcação" in proposal
+    assert (await appointment_state())["start_at"]==start_at(d["day"],10)
+    # Seeing an answer in Redis alone does not establish transport acceptance.
+    reviewed=await reply(d["a"],channel,sender,"pode confirmar",redis,message_id=str(uuid4()))
+    assert "Proposta de remarcação" in reviewed
+    assert (await appointment_state())["start_at"]==start_at(d["day"],10)
+    accepted_id,accepted_body=await accept_current_summary()
     saved=json.loads(redis.data[key])
-    ignored,proposal=await try_command(d["a"],channel,sender,
-          start_at(d["day"],14).strftime("%Y-%m-%d %H:%M"),saved,redis,key,message_id="choose-reschedule")
-    assert ignored and "Proposta de remarcação" in proposal
-    async with d["migrator"].connect() as s:
-        assert (await s.execute(text("SELECT start_at FROM appointments WHERE id=:id"),{"id":reservation["id"]})).scalar_one()==start_at(d["day"],10)
-    saved=json.loads(redis.data[key])
-    ignored,moved=await try_command(d["a"],channel,sender,
-          "pode confirmar",saved,redis,key,message_id="confirm-reschedule")
-    assert ignored and "Remarcação confirmada" in moved
+    ignored,warning=await try_command(d["a"],channel,sender,"pode confirmar",saved,redis,key,message_id=accepted_id)
+    assert ignored and "nova resposta" in warning
+    ignored,warning=await try_command(d["a"],channel,other,"pode confirmar",saved,redis,"other-key",message_id=str(uuid4()))
+    assert ignored and "não está disponível" in warning
+    assert await reply(d["a"],channel,sender,"pode confirmar",redis,message_id=accepted_id)==accepted_body
+    assert (await appointment_state())["start_at"]==start_at(d["day"],10)
+    moved=await reply(d["a"],channel,sender,"pode confirmar",redis,message_id=str(uuid4()))
+    assert "Remarcação confirmada" in moved
     assert protocol in moved
-    ignored,_=await try_command(d["a"],channel,sender,
-          "cancelar "+protocol.lower(),{},redis,key,message_id="request-cancel")
-    saved=json.loads(redis.data[key])
-    ignored,cancelled=await try_command(d["a"],channel,sender,
-          "pode cancelar",saved,redis,key,message_id="confirm-cancel")
-    assert ignored and "Cancelamento confirmado" in cancelled
-    async with d["migrator"].connect() as s:
-        state=(await s.execute(text("SELECT status FROM appointments WHERE id=:id"),
-                               {"id":reservation["id"]})).scalar_one()
-        assert state=="cancelled"
+    assert (await appointment_state())["start_at"]==start_at(d["day"],14)
+    proposal=await reply(d["a"],channel,sender,"cancelar "+protocol.lower(),redis,message_id=str(uuid4()))
+    assert "Agendamento selecionado para cancelamento" in proposal
+    reviewed=await reply(d["a"],channel,sender,"pode cancelar",redis,message_id=str(uuid4()))
+    assert "Agendamento selecionado para cancelamento" in reviewed and (await appointment_state())["status"]=="confirmed"
+    accepted_id,accepted_body=await accept_current_summary()
+    ignored,warning=await try_command(d["a"],channel,sender,"pode cancelar",json.loads(redis.data[key]),redis,key,message_id=accepted_id)
+    assert ignored and "nova resposta" in warning
+    assert await reply(d["a"],channel,sender,"pode cancelar",redis,message_id=accepted_id)==accepted_body
+    assert (await appointment_state())["status"]=="confirmed"
+    cancelled=await reply(d["a"],channel,sender,"pode cancelar",redis,message_id=str(uuid4()))
+    assert "Cancelamento confirmado" in cancelled and protocol in cancelled
+    assert (await appointment_state())["status"]=="cancelled"
 
 
 @pytest.mark.asyncio

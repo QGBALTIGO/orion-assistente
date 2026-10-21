@@ -1,0 +1,6 @@
+pg_ctl -D C:\Users\kayky\Documents\Playground\orion-comunicacao-implementacao-20261020\pg-data -m fast -w stop: exit=0
+esperando o servidor desligar....feito
+servidor est� parado
+pg_ctl -D C:\Users\kayky\Documents\Playground\orion-comunicacao-implementacao-20261020\pg-data status: exit=3
+pg_ctl: nenhum servidor est� executando
+{"original_unchanged": true, "clone_dropped": true, "owned_pg_stopped": true}

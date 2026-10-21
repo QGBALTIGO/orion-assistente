@@ -1,0 +1,64 @@
+{
+  "checked_at": "2026-10-21T01:54:14.515Z",
+  "railway_writes_performed": 0,
+  "services": [
+    {
+      "name": "orion-worker",
+      "id": "f6c51234-ee8b-49ba-a06e-bcad37b54b67",
+      "state": "online",
+      "deployment": "0bff9fba-2213-4fbb-b314-4d833731ed15",
+      "unchanged": true
+    },
+    {
+      "name": "orion-assistente",
+      "id": "1d39a32e-8297-4e5b-8b55-d6540542e80b",
+      "state": "online",
+      "deployment": "47000175-4026-44d9-92aa-e8530bf724b9",
+      "unchanged": true
+    },
+    {
+      "name": "orion-qr-bridge",
+      "id": "ef72fd3d-fcef-4be6-8aa2-a1a544b021f7",
+      "state": "online",
+      "deployment": "5d6bf01f-405a-4fe7-9250-f821b67975f4",
+      "unchanged": true
+    },
+    {
+      "name": "Redis",
+      "id": "ad7110d7-fc8e-490e-9a3e-8c43a4c5a472",
+      "state": "online",
+      "deployment": "b369ead8-39e4-4bd3-8c9f-3fb929494788",
+      "unchanged": true
+    },
+    {
+      "name": "Postgres",
+      "id": "561d3641-e517-4465-8d40-4d5057b7efd8",
+      "state": "online",
+      "deployment": "47bbb965-a91a-4bde-a809-d555d75bc627",
+      "unchanged": true
+    }
+  ],
+  "configuration": [
+    {
+      "service": "orion-assistente",
+      "unchanged": true,
+      "source": {
+        "repo": "QGBALTIGO/orion-assistente",
+        "branch": "codex/orion-marcflow-integrations-20261020",
+        "commitSha": "a85da1c9ade64a5fc21bc9927efef727447ba83f"
+      },
+      "staged": null
+    },
+    {
+      "service": "orion-worker",
+      "unchanged": true,
+      "source": {
+        "repo": "QGBALTIGO/orion-assistente",
+        "branch": "codex/orion-marcflow-integrations-20261020",
+        "commitSha": "a85da1c9ade64a5fc21bc9927efef727447ba83f"
+      },
+      "staged": null
+    }
+  ],
+  "pending_work": []
+}

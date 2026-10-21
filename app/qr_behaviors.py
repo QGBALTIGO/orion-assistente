@@ -8,7 +8,7 @@ def norm(text: str) -> str:
 
 def human_control(text: str) -> str | None:
     """Pause only after an unqualified current request across the whole turn."""
-    human = r"(?:atendente(?: humano)?|humano|pessoa de verdade|falar com uma pessoa)"
+    human = r"(?:atendente(?: humano)?|humano|pessoa de verdade|falar com uma pessoa|(?:falar|conversar) com (?:o |a |um |uma )?(?:dono|dentista|recepcao|equipe)|(?:quero|preciso|prefiro) (?:uma )?pessoa|(?:encaminhar|encaminha) pra recepcao)"
     assistant = r"(?:bot|robo|(?:continuar|seguir|ficar|falar|conversar|quero|prefiro)\s+(?:(?:com|por|o|a)\s+)*(?:voce|aqui))"
     mentions = [(match.start(), match.end(), "human") for match in re.finditer(r"\b" + human + r"\b", text)]
     if not mentions:
@@ -52,6 +52,7 @@ def human_control(text: str) -> str | None:
 
 def control_intent(text: str) -> str | None:
     lower = norm(text)
+    if re.fullmatch(r'nao quero (?:falar com (?:o |um )?)?(?:robo|bot|assistente automatico)[.!\s]*',lower):return 'human'
     if human := human_control(lower):
         return human
     if any(s in lower for s in ("remarcar", "trocar meu horario", "mudar meu horario",
@@ -67,7 +68,7 @@ def control_intent(text: str) -> str | None:
     if any(s in lower for s in ("quero cancelar", "cancelar minha reserva",
                                "desmarcar meu horario")):
         return "cancel_request"
-    if re.fullmatch(r"(oi+|ola+|bom dia|boa tarde|boa noite|e ai|eae|opa)[!.,\s]*", lower):
+    if re.fullmatch(r"(oi+|ola+|alo+|bom dia|boa tarde|boa noite|e ai|eae|opa)[!.,\s]*", lower):
         return "greeting"
     if lower.strip(" ?!.,") in {"qual o seu nome", "qual seu nome", "como voce se chama", "quem e voce"}:
         return "identity"

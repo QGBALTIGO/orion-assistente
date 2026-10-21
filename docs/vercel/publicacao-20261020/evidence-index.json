@@ -1,0 +1,67 @@
+{
+  "files": [
+    {
+      "path": "vercel-auth-inspection.json",
+      "bytes": 19390,
+      "sha256": "4e84b70774bb63fa3fc48eae3472728b51bf11008f0aa58aaeabd606df4f81dd"
+    },
+    {
+      "path": "vercel-bundle-tests.xml",
+      "bytes": 3204,
+      "sha256": "d9f25981c8c0f21df4e03d3decb9eac162f8ffaad481614042c5ccf8aad83295"
+    },
+    {
+      "path": "vercel-routes-v2.log",
+      "bytes": 265,
+      "sha256": "3c696e7e2ffe5b2f9b9f6f1a29df64a64fec6595f6ee7b2893a62c4bdba06d97"
+    },
+    {
+      "path": "vercel-routes-v2.xml",
+      "bytes": 35591,
+      "sha256": "e1db619d534e4970d07489c794907ab6e1da5a737c4ba851ef05f9cc5a14ea5a"
+    },
+    {
+      "path": "vercel-dom-full.log",
+      "bytes": 78729,
+      "sha256": "784cac209a6ddf467e0ad7212e5de2aacc7cc2d1334b2cdc71d25a5ea2b0acf8"
+    },
+    {
+      "path": "vercel-candidate-http-receipt.json",
+      "bytes": 10043,
+      "sha256": "e7c6693a8b36e69d1fac67bc47c0c77afc4f5985a70edd3b61f603cda8ee8ae9"
+    },
+    {
+      "path": "vercel-candidate-v2-http-receipt.json",
+      "bytes": 10060,
+      "sha256": "73db05772c6c2bd14b8af5d264c0c75e6e8282861eca82fcbb0170429c84ec91"
+    },
+    {
+      "path": "vercel-public-http-receipt.json",
+      "bytes": 10455,
+      "sha256": "5e9df53acea8fb122da14f80ab8bad29c962a2a44b9fda2e12d8e91dcbda454d"
+    },
+    {
+      "path": "vercel-railway-preservation.json",
+      "bytes": 1753,
+      "sha256": "7880490ebe533759f5e076939fab2ba6a61162f43b935d997e1e7cd2db263efd"
+    },
+    {
+      "path": "vercel-public-home.png",
+      "bytes": 75672,
+      "sha256": "87861441f9b572809abeca4e83c70c67cb15ccb9d37847ceaa51ca1a78f6af60"
+    },
+    {
+      "path": "vercel-public-login.png",
+      "bytes": 61207,
+      "sha256": "4479794cd1ab0722418df294b8185d382415726dbd1c7a2481e1b37f9cafb377"
+    },
+    {
+      "path": "bundle-manifest.json",
+      "bytes": 3402,
+      "sha256": "dcd2aa9e7a8a48beb299268242bee50ec4913308736810e7a431f98c1aaf1190"
+    }
+  ],
+  "files_equal": true,
+  "contains_credentials": false,
+  "source_scope": "allowlisted receipts; no raw auth/credential files, customer histories or deployment logs"
+}

@@ -65,7 +65,7 @@ async def automation_db(monkeypatch):
     finally:
         async with migration.begin() as db:
             for t in (tenant, other):
-                for table in ("automation_jobs", "automation_contact_state", "automation_execution", "loyalty_coupons", "loyalty_rules",
+                for table in ("communication_pending", "automation_jobs", "automation_contact_state", "automation_execution", "loyalty_coupons", "loyalty_rules",
                               "campaign_recipients", "campaigns", "contact_consents", "management_requests", "management_preferences",
                               "tenant_audit", "qr_channels", "tenant_memberships", "appointment_history", "calendar_outbox",
                               "appointment_items", "appointments", "professionals", "customers"):
@@ -217,11 +217,11 @@ async def test_real_coupon_expiry_blocks_notification_without_modifying_reward(a
     async with ctx.migration.begin() as db:
         await db.execute(text("INSERT INTO loyalty_rules(id,tenant_id,name,reward_description) VALUES(:id,:t,'Programa sintético','Recompensa sintética')"), {"id": rule, "t": ctx.tenant})
         await db.execute(text("""INSERT INTO loyalty_coupons(id,tenant_id,customer_id,rule_id,rule_version,code,reward_type,reward_value_cents,
-            description,points_spent,issued_at,expires_at) VALUES(:id,:t,:c,:r,1,'SYNTHETIC','fixed',100,'Recompensa sintética',10,now()-interval '1 minute',now()+interval '1 day')"""),
+            description,points_spent,issued_at,expires_at) VALUES(:id,:t,:c,:r,1,'SYNTHETIC','fixed',100,'Recompensa sintética',10,now(),now()+interval '1 day')"""),
             {"id": coupon, "t": ctx.tenant, "c": ctx.customer, "r": rule})
-    _, item = await queue(ctx, event="loyalty_reward", facts={"occurred_at": datetime.now(timezone.utc)-timedelta(seconds=1), "coupon_id": coupon, "coupon_version": 1}, labels={"cupom": "SYNTHETIC"})
+    _, item = await queue(ctx, event="loyalty_reward", facts={"occurred_at": datetime.now(timezone.utc), "coupon_id": coupon, "coupon_version": 1}, labels={"cupom": "SYNTHETIC"})
     async with ctx.migration.begin() as db:
-        await db.execute(text("UPDATE loyalty_coupons SET expires_at=now()-interval '1 second' WHERE id=:id"), {"id": coupon})
+        await db.execute(text("UPDATE loyalty_coupons SET issued_at=now()-interval '2 days',expires_at=now()-interval '1 second' WHERE id=:id"), {"id": coupon})
     assert await process(ctx, item) == "coupon_changed" and not ctx.sent
 
 
@@ -248,6 +248,10 @@ async def test_preferences_edit_does_not_activate_new_content_without_fresh_owne
     assert rejected.value.status_code == 409
     fresh = stale.model_copy(update={"expected_preferences_version": 2, "idempotency_key": str(uuid4())})
     assert (await api.save_execution(ctx.tenant, fresh, ctx.actor))["enabled"]
+    # A fresh approval starts a new cutoff; it does not backfill this old coupon.
+    assert await runtime.plan_tenant(ctx.tenant) == 0
+    async with ctx.migration.begin() as db:
+        await db.execute(text("UPDATE loyalty_coupons SET issued_at=clock_timestamp() WHERE id=:id"), {"id":coupon})
     assert await runtime.plan_tenant(ctx.tenant) == 1
     assert not ctx.sent
 

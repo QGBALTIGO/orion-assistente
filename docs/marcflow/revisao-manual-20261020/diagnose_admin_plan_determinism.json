@@ -1,0 +1,108 @@
+{
+  "cross_process_determinism_passed": true,
+  "hash_seed_cases": [
+    {
+      "approved_plan_hash": "a720f3f48275f0ce4339cea8f54ae75e5ed9030b6c83cb53166a3ee6c8f23ab7",
+      "changed_tables": [
+        "qr_channels"
+      ],
+      "counts_unchanged": true,
+      "lease_only_changed_hash": "7008cabf95208aefe0647f9ce78323419ef6867a4b96f9abd7aeffc0ec834a44",
+      "plan_for_unchanged": true,
+      "plan_hash": "7d95fb3e8a929a401c59a4c051eb186ae2b1bdd6b3a1fa932ae2fe9fa3dbf2d4",
+      "seed": "0",
+      "snapshot_hash": "5c7118cad704986cb3376fe06b996f0ef1be4a66acf86d5b89cbab2eac9ba5a3",
+      "tables": 83
+    },
+    {
+      "approved_plan_hash": "a720f3f48275f0ce4339cea8f54ae75e5ed9030b6c83cb53166a3ee6c8f23ab7",
+      "changed_tables": [
+        "qr_channels"
+      ],
+      "counts_unchanged": true,
+      "lease_only_changed_hash": "7008cabf95208aefe0647f9ce78323419ef6867a4b96f9abd7aeffc0ec834a44",
+      "plan_for_unchanged": true,
+      "plan_hash": "7d95fb3e8a929a401c59a4c051eb186ae2b1bdd6b3a1fa932ae2fe9fa3dbf2d4",
+      "seed": "1",
+      "snapshot_hash": "5c7118cad704986cb3376fe06b996f0ef1be4a66acf86d5b89cbab2eac9ba5a3",
+      "tables": 83
+    },
+    {
+      "approved_plan_hash": "a720f3f48275f0ce4339cea8f54ae75e5ed9030b6c83cb53166a3ee6c8f23ab7",
+      "changed_tables": [
+        "qr_channels"
+      ],
+      "counts_unchanged": true,
+      "lease_only_changed_hash": "7008cabf95208aefe0647f9ce78323419ef6867a4b96f9abd7aeffc0ec834a44",
+      "plan_for_unchanged": true,
+      "plan_hash": "7d95fb3e8a929a401c59a4c051eb186ae2b1bdd6b3a1fa932ae2fe9fa3dbf2d4",
+      "seed": "2",
+      "snapshot_hash": "5c7118cad704986cb3376fe06b996f0ef1be4a66acf86d5b89cbab2eac9ba5a3",
+      "tables": 83
+    },
+    {
+      "approved_plan_hash": "a720f3f48275f0ce4339cea8f54ae75e5ed9030b6c83cb53166a3ee6c8f23ab7",
+      "changed_tables": [
+        "qr_channels"
+      ],
+      "counts_unchanged": true,
+      "lease_only_changed_hash": "7008cabf95208aefe0647f9ce78323419ef6867a4b96f9abd7aeffc0ec834a44",
+      "plan_for_unchanged": true,
+      "plan_hash": "7d95fb3e8a929a401c59a4c051eb186ae2b1bdd6b3a1fa932ae2fe9fa3dbf2d4",
+      "seed": "3",
+      "snapshot_hash": "5c7118cad704986cb3376fe06b996f0ef1be4a66acf86d5b89cbab2eac9ba5a3",
+      "tables": 83
+    },
+    {
+      "approved_plan_hash": "a720f3f48275f0ce4339cea8f54ae75e5ed9030b6c83cb53166a3ee6c8f23ab7",
+      "changed_tables": [
+        "qr_channels"
+      ],
+      "counts_unchanged": true,
+      "lease_only_changed_hash": "7008cabf95208aefe0647f9ce78323419ef6867a4b96f9abd7aeffc0ec834a44",
+      "plan_for_unchanged": true,
+      "plan_hash": "7d95fb3e8a929a401c59a4c051eb186ae2b1bdd6b3a1fa932ae2fe9fa3dbf2d4",
+      "seed": "42",
+      "snapshot_hash": "5c7118cad704986cb3376fe06b996f0ef1be4a66acf86d5b89cbab2eac9ba5a3",
+      "tables": 83
+    },
+    {
+      "approved_plan_hash": "a720f3f48275f0ce4339cea8f54ae75e5ed9030b6c83cb53166a3ee6c8f23ab7",
+      "changed_tables": [
+        "qr_channels"
+      ],
+      "counts_unchanged": true,
+      "lease_only_changed_hash": "7008cabf95208aefe0647f9ce78323419ef6867a4b96f9abd7aeffc0ec834a44",
+      "plan_for_unchanged": true,
+      "plan_hash": "7d95fb3e8a929a401c59a4c051eb186ae2b1bdd6b3a1fa932ae2fe9fa3dbf2d4",
+      "seed": "99",
+      "snapshot_hash": "5c7118cad704986cb3376fe06b996f0ef1be4a66acf86d5b89cbab2eac9ba5a3",
+      "tables": 83
+    },
+    {
+      "approved_plan_hash": "a720f3f48275f0ce4339cea8f54ae75e5ed9030b6c83cb53166a3ee6c8f23ab7",
+      "changed_tables": [
+        "qr_channels"
+      ],
+      "counts_unchanged": true,
+      "lease_only_changed_hash": "7008cabf95208aefe0647f9ce78323419ef6867a4b96f9abd7aeffc0ec834a44",
+      "plan_for_unchanged": true,
+      "plan_hash": "7d95fb3e8a929a401c59a4c051eb186ae2b1bdd6b3a1fa932ae2fe9fa3dbf2d4",
+      "seed": "random",
+      "snapshot_hash": "5c7118cad704986cb3376fe06b996f0ef1be4a66acf86d5b89cbab2eac9ba5a3",
+      "tables": 83
+    }
+  ],
+  "kind": "pure local subprocess diagnostic; no PostgreSQL/provider/production access",
+  "lease_only_change_invalidates_approval_with_same_counts": true,
+  "limitation": "Catalog/security/program SQL was statically audited for explicit ordering, not executed. The original full production snapshot is unavailable, so production-specific changed component is not established.",
+  "source_sha256_lf": {
+    "scripts/one_time_admin_demo_setup.py": "f345f837bc88cb2110597f15efaf874fa63442bf8dc70ffb772736e31008171a",
+    "scripts/one_time_admin_identity_migration.py": "7cf421be8e662aa7b23294c8f485429027a73a04b8b455039bae7426d851226d",
+    "scripts/one_time_business_migration.py": "efc52dbef4748401b9093b06e1528e7c6f3b656da09b7ecb49efb1548f402c16",
+    "scripts/one_time_fulfillment_migration.py": "0c0697f86ab3d163386814efe0b63135895266f7d37f3fadc7cd747932006198",
+    "scripts/one_time_legacy_adoption.py": "3ec1cc69ae48e8e2c657aed858a7dcfcf8a264c0a149ceebdda09d473c4deff8",
+    "scripts/one_time_management_migration.py": "f1a849f8c8a7db556766f1d8ef6aa67d106f4e70b93a0ea05841a192971bc349",
+    "scripts/one_time_onboarding_migration.py": "3ffebdde93fd6d9ed6eb162242ff2ecf7f7ce2e51b31b24b650f636872774364"
+  }
+}

@@ -38,6 +38,7 @@ class ContactConsent(Strict):
     contact_e164: str = Field(pattern=r"^\+55[1-9][0-9]{9,10}$")
     marketing_opt_in: StrictBool
     operational_opt_in: StrictBool
+    birthday_opt_in: StrictBool | None = None
     expected_updated_at: datetime | None = None
     evidence: str = Field(min_length=8, max_length=200)
 
@@ -113,7 +114,7 @@ async def get_execution(tenant_id: UUID, actor: Actor = Depends(authenticate)):
                           "review_required" if settings and settings["enabled"] and not execution_authorized(settings) else None,
                 "version": settings["version"] if settings else 0, "channel_id": settings["channel_id"] if settings else None,
                 "daily_limit": settings["daily_limit"] if settings else 20, "mode": "reviewed_execution",
-                "window": "09:00–18:00", "timezone": settings["timezone"] if settings else None,
+                "window": "Agenda "+str((settings or {}).get("delivery_policy",{}).get("operational_start_hour",9)).zfill(2)+"h–"+str((settings or {}).get("delivery_policy",{}).get("operational_end_hour",18)).zfill(2)+"h; promoções "+str((settings or {}).get("delivery_policy",{}).get("marketing_start_hour",9)).zfill(2)+"h–"+str((settings or {}).get("delivery_policy",{}).get("marketing_end_hour",18)).zfill(2)+"h", "timezone": settings["timezone"] if settings else None,
                 "counts": {r["status"]: r["count"] for r in counts}, "transport": "qr_managed",
                 "features": feature_status(),
                 "uncertain_policy": "manual_reconciliation_no_automatic_retry"}
@@ -126,7 +127,7 @@ async def save_execution(tenant_id: UUID, payload: ExecutionSave, actor: Actor =
     auth_version = await owner(tenant_id, actor)
     if payload.enabled:
         if not payload.acknowledged:
-            raise HTTPException(422, "Revise e autorize os envios, o limite diário e a janela de 9h às 18h")
+            raise HTTPException(422, "Revise e autorize os envios, o limite diário e a janela de envio revisada")
         await checked_channel(tenant_id, payload.channel_id)
     async with owner_write_session(tenant_id, actor) as db:
         auth_version = db.info["automation_owner_auth_version"]
@@ -172,14 +173,27 @@ async def consent(tenant_id: UUID, payload: ContactConsent, actor: Actor = Depen
         current = (await db.execute(text("SELECT updated_at FROM contact_consents WHERE tenant_id=:t AND contact_e164=:phone FOR UPDATE"), {"t": tenant_id, "phone": payload.contact_e164})).scalar_one_or_none()
         if current != payload.expected_updated_at:
             raise HTTPException(409, "O consentimento mudou. Consulte o registro atual")
-        await db.execute(text("""INSERT INTO contact_consents(tenant_id,contact_e164,marketing_opt_in,operational_opt_in,source)
-          VALUES(:t,:phone,:marketing,:operational,'owner_attestation') ON CONFLICT(tenant_id,contact_e164) DO UPDATE
+        await db.execute(text("""INSERT INTO contact_consents(tenant_id,contact_e164,marketing_opt_in,operational_opt_in,birthday_opt_in,birthday_purpose_version,source)
+          VALUES(:t,:phone,:marketing,:operational,COALESCE(:birthday,false),CASE WHEN :birthday THEN 1 ELSE 0 END,'owner_attestation') ON CONFLICT(tenant_id,contact_e164) DO UPDATE
           SET marketing_opt_in=EXCLUDED.marketing_opt_in,operational_opt_in=EXCLUDED.operational_opt_in,
+              birthday_opt_in=COALESCE(:birthday,contact_consents.birthday_opt_in),
+              birthday_declined_at=CASE WHEN :birthday=false AND contact_consents.birthday_opt_in THEN clock_timestamp()
+                WHEN :birthday=true THEN NULL ELSE contact_consents.birthday_declined_at END,
+              birthday_purpose_version=CASE WHEN :birthday THEN 1 ELSE contact_consents.birthday_purpose_version END,
               source=EXCLUDED.source,updated_at=GREATEST(clock_timestamp(),contact_consents.updated_at+interval '1 microsecond')"""),
-          {"t": tenant_id, "phone": payload.contact_e164, "marketing": payload.marketing_opt_in, "operational": payload.operational_opt_in})
+          {"t": tenant_id, "phone": payload.contact_e164, "marketing": payload.marketing_opt_in, "operational": payload.operational_opt_in,'birthday':payload.birthday_opt_in})
         # Evidence is retained only as a hash, never echoed into logs/queue bodies.
         await audit(db, tenant_id, "consent_reviewed:" + hashlib.sha256(payload.evidence.encode()).hexdigest()[:12], "contact_consents", customer)
-        await db.execute(text("UPDATE automation_jobs SET status='cancelled',last_error='consent_changed',updated_at=now() WHERE tenant_id=:t AND contact_e164=:phone AND status='pending'"), {"t": tenant_id, "phone": payload.contact_e164})
+        await db.execute(text('''UPDATE automation_jobs j SET status='cancelled',last_error='consent_changed',updated_at=now()
+          FROM contact_consents c WHERE j.tenant_id=:t AND j.contact_e164=:phone AND j.status='pending'
+            AND c.tenant_id=j.tenant_id AND c.contact_e164=j.contact_e164 AND
+            (j.consent_version IS DISTINCT FROM CASE
+              WHEN j.event IN ('birthday_7d','birthday_2d') THEN c.birthday_updated_at
+              WHEN j.event IN ('booking_confirmed','rescheduled','cancelled','reminder_24h','reminder_2h','reminder_1h') THEN c.operational_updated_at
+              ELSE c.marketing_updated_at END OR NOT CASE
+              WHEN j.event IN ('birthday_7d','birthday_2d') THEN c.birthday_opt_in
+              WHEN j.event IN ('booking_confirmed','rescheduled','cancelled','reminder_24h','reminder_2h','reminder_1h') THEN c.operational_opt_in
+              ELSE c.marketing_opt_in END)'''), {'t':tenant_id,'phone':payload.contact_e164})
         updated = (await db.execute(text("SELECT updated_at FROM contact_consents WHERE tenant_id=:t AND contact_e164=:phone"), {"t": tenant_id, "phone": payload.contact_e164})).scalar_one()
         return {"recorded": True, "updated_at": updated}
 
@@ -192,7 +206,7 @@ async def get_consent(tenant_id: UUID, contact_e164: str = Query(pattern=r"^\+55
         if not execution_enabled() and not reconciliation_enabled():
             return {"available": False}
         row, state = await contact_facts(db, tenant_id, phone)
-        values = {k: row[k] for k in ("marketing_opt_in", "operational_opt_in", "updated_at")} if row else {"marketing_opt_in": False, "operational_opt_in": False, "updated_at": None}
+        values = {k: row.get(k,False) for k in ("marketing_opt_in", "operational_opt_in", 'birthday_opt_in',"updated_at")} if row else {"marketing_opt_in": False, "operational_opt_in": False, 'birthday_opt_in':False,"updated_at": None}
         return {"available": True, "human_paused": bool(state and state.get("human_paused")), **values}
 
 

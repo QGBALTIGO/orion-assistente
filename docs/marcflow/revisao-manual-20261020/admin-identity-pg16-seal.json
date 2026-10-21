@@ -1,0 +1,7 @@
+{
+  "constraint_definition": "CHECK (((((auth_provider)::text = 'password'::text) AND (email IS NOT NULL) AND (password_hash IS NOT NULL) AND (legacy_username IS NULL) AND (legacy_credential_digest IS NULL)) OR (((auth_provider)::text = 'legacy_admin'::text) AND ((role)::text = 'admin'::text) AND (email IS NULL) AND (password_hash IS NULL) AND (legacy_username IS NOT NULL) AND ((length((legacy_username)::text) >= 1) AND (length((legacy_username)::text) <= 254)) AND ((legacy_username)::text = lower(btrim((legacy_username)::text))) AND ((legacy_username)::text !~ '[[:cntrl:]]'::text) AND (legacy_credential_digest IS NOT NULL) AND (legacy_credential_digest ~ '^[a-f0-9]{64}$'::text))))",
+  "constraint_sha256": "ed5f016a031d4b744ea124c3eb468df9ce8281669a45c45f9e5f487bc64e60ea",
+  "migration_sha256_lf": "09c070122ef84c0af272de1b9ec853585ba209d6f7ebaff782fe770c8eaa1a96",
+  "operator_prosrc_sha256_lf": "466adfe7a39efdd33f9a56742d70776224e6d5eb5af4f6f65a42cd9929764bb2",
+  "scope": "Reviewed migration applied only on isolated PG16 clone"
+}

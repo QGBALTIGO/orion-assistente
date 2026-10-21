@@ -1,0 +1,39 @@
+{
+  "project": {
+    "id": "55750961-99ca-495e-b55e-4c07d78e53df",
+    "name": "strong-creation"
+  },
+  "environment": {
+    "id": "162d0407-3d4f-4163-9cb2-0c90154c707f",
+    "name": "production"
+  },
+  "staged": {
+    "patchId": "1560e5f8-fcfc-427d-aa36-f5838efa1702",
+    "status": "STAGED",
+    "changeCount": 1,
+    "message": null,
+    "createdAt": "2026-10-20T22:45:49.123Z",
+    "updatedAt": "2026-10-20T22:45:49.123Z"
+  },
+  "destructive": false,
+  "resources": [
+    {
+      "kind": "service",
+      "id": "1d39a32e-8297-4e5b-8b55-d6540542e80b",
+      "name": "orion-assistente",
+      "action": "update",
+      "changes": [
+        {
+          "path": "services.1d39a32e-8297-4e5b-8b55-d6540542e80b.deploy.preDeployCommand",
+          "displayName": "Pre Deploy Command",
+          "type": "updated",
+          "from": "[\"python -c \\\"import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); print('orion_release_flags=' + __import__('json').dumps({k: __import__('os').getenv(k, 'unset') for k in ['QR_AI_ENABLED','QR_CHANNELS_ENABLED','QR_LEGACY_CENTRAL_ENABLED','META_LIVE_SEND','INBOX_CONTROL_ENABLED','INBOX_SEND_ENABLED','INBOX_TOOLS_ENABLED','MARKETING_EXECUTION_ENABLED','MARKETING_RECONCILIATION_ENABLED','BIRTHDAY_COLLECTION_ENABLED','GROQ_PROBE_ON_START','ORION_EMAIL_DELIVERY_PROBE']}, sort_keys=True), flush=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_communication_schema'], check=True); print('qr_bridge_probe_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.probe_qr_bridge'], check=True)\\\"\"]",
+          "to": "[\"python -c 'import importlib.metadata as m, subprocess, sys; expected={'\\\\''fastapi'\\\\'': '\\\\''0.150.0'\\\\'', '\\\\''starlette'\\\\'': '\\\\''1.9.0'\\\\'', '\\\\''SQLAlchemy'\\\\'': '\\\\''2.1.5'\\\\'', '\\\\''asyncpg'\\\\'': '\\\\''0.32.0'\\\\'', '\\\\''uvicorn'\\\\'': '\\\\''0.54.0'\\\\'', '\\\\''uvloop'\\\\'': '\\\\''0.23.0'\\\\'', '\\\\''pydantic'\\\\'': '\\\\''2.14.1'\\\\'', '\\\\''pydantic_core'\\\\'': '\\\\''2.50.1'\\\\'', '\\\\''redis'\\\\'': '\\\\''5.3.1'\\\\'', '\\\\''arq'\\\\'': '\\\\''0.28.0'\\\\'', '\\\\''cryptography'\\\\'': '\\\\''49.0.0'\\\\'', '\\\\''httpx'\\\\'': '\\\\''0.28.1'\\\\'', '\\\\''psycopg'\\\\'': '\\\\''3.3.6'\\\\'', '\\\\''Pillow'\\\\'': '\\\\''12.3.0'\\\\'', '\\\\''pillow_heif'\\\\'': '\\\\''1.8.1'\\\\'', '\\\\''boto3'\\\\'': '\\\\''1.43.116'\\\\'', '\\\\''argon2_cffi'\\\\'': '\\\\''25.1.0'\\\\'', '\\\\''tzdata'\\\\'': '\\\\''2026.5'\\\\''}; ok=all(m.version(n)==v for n,v in expected.items()); print('\\\\''tested_runtime_versions_match'\\\\'' if ok else '\\\\''tested_runtime_version_mismatch'\\\\'', flush=True); ok or sys.exit(1); print('\\\\''orion_release_flags='\\\\'' + __import__('\\\\''json'\\\\'').dumps({k: __import__('\\\\''os'\\\\'').getenv(k, '\\\\''unset'\\\\'') for k in ['\\\\''QR_AI_ENABLED'\\\\'','\\\\''QR_CHANNELS_ENABLED'\\\\'','\\\\''QR_LEGACY_CENTRAL_ENABLED'\\\\'','\\\\''META_LIVE_SEND'\\\\'','\\\\''INBOX_CONTROL_ENABLED'\\\\'','\\\\''INBOX_SEND_ENABLED'\\\\'','\\\\''INBOX_TOOLS_ENABLED'\\\\'','\\\\''MARKETING_EXECUTION_ENABLED'\\\\'','\\\\''MARKETING_RECONCILIATION_ENABLED'\\\\'','\\\\''BIRTHDAY_COLLECTION_ENABLED'\\\\'','\\\\''GROQ_PROBE_ON_START'\\\\'','\\\\''ORION_EMAIL_DELIVERY_PROBE'\\\\'']}, sort_keys=True), flush=True); subprocess.run([sys.executable, '\\\\''-m'\\\\'', '\\\\''scripts.wait_for_communication_schema'\\\\''], check=True); print('\\\\''qr_bridge_probe_start'\\\\'', flush=True); subprocess.run([sys.executable, '\\\\''-m'\\\\'', '\\\\''scripts.probe_qr_bridge'\\\\''], check=True); exec(\\\"import asyncio,json,os\\\\nfrom uuid import UUID,uuid5,NAMESPACE_URL\\\\nfrom sqlalchemy import text\\\\nfrom sqlalchemy.ext.asyncio import create_async_engine\\\\nfrom sqlalchemy.engine import make_url\\\\nasync def diagnose():\\\\n    url=os.environ['\\\\''SUPPORT_DATABASE_URL'\\\\''].replace('\\\\''postgres://'\\\\'','\\\\''postgresql://'\\\\'',1).replace('\\\\''postgresql://'\\\\'','\\\\''postgresql+asyncpg://'\\\\'',1)\\\\n    if make_url(url).drivername!='\\\\''postgresql+asyncpg'\\\\'' or make_url(url).username!='\\\\''app_support'\\\\'':\\\\n        raise RuntimeError('\\\\''support_role_required'\\\\'')\\\\n    engine=create_async_engine(url,echo=False,pool_pre_ping=True)\\\\n    try:\\\\n        async with engine.connect() as connection:\\\\n            async with connection.begin():\\\\n                await connection.execute(text('\\\\''SET TRANSACTION READ ONLY'\\\\''))\\\\n                configured=UUID(os.environ['\\\\''QR_AI_TENANT_ID'\\\\''])\\\\n                requested=UUID('\\\\''82552b25-d0c8-5338-8c42-49f11de59e45'\\\\'')\\\\n                for label,tenant in [('\\\\''configured_qr'\\\\'',configured),('\\\\''requested_demo'\\\\'',requested)]:\\\\n                    alias=uuid5(NAMESPACE_URL,'\\\\''orion:preserved-primary-qr:'\\\\''+str(tenant))\\\\n                    row=(await connection.execute(text(\\\\\\\"\\\\\\\"\\\\\\\"SELECT t.id,t.name,t.status,t.bot_enabled,\\\\n                      (SELECT count(*) FROM tenant_memberships m JOIN panel_accounts a ON a.id=m.account_id\\\\n                        WHERE m.tenant_id=t.id AND m.active AND m.role='\\\\''owner'\\\\'' AND a.role='\\\\''member'\\\\'') AS active_member_owners,\\\\n                      EXISTS(SELECT 1 FROM qr_channels c WHERE c.tenant_id=t.id AND c.id=:alias) AS legacy_alias_registered\\\\n                      FROM tenants t WHERE t.id=:tenant\\\\\\\"\\\\\\\"\\\\\\\"),{'\\\\''tenant'\\\\'':tenant,'\\\\''alias'\\\\'':alias})).mappings().one_or_none()\\\\n                    print('\\\\''orion_legacy_readonly='\\\\''+json.dumps({'\\\\''label'\\\\'':label,'\\\\''configured_matches_requested'\\\\'':configured==requested,\\\\n                        '\\\\''exists'\\\\'':row is not None,'\\\\''tenant'\\\\'':dict(row) if row else None},sort_keys=True,default=str),flush=True)\\\\n    finally:\\\\n        await engine.dispose()\\\\ntry:\\\\n    asyncio.run(diagnose())\\\\nexcept Exception:\\\\n    print('\\\\''orion_legacy_readonly_failed_without_details'\\\\'',flush=True)\\\\n    raise SystemExit(1)\\\\n\\\")'\"]",
+          "destructive": false
+        }
+      ]
+    }
+  ],
+  "sharedVariables": [],
+  "privateNetworkDisabled": null
+}

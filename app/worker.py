@@ -19,6 +19,7 @@ from app.whatsapp_bot import reply
 from app.calendar_worker import scan_calendar_outbox,process_calendar_outbox
 from app.billing_worker import reconcile_asaas_job,scan_pending_billing
 from app.automation_runtime import interaction,process_automation_job,reconcile_automation_job,scan_automations
+from app.inbox_runtime import process_inbox_message,scan_inbox
 
 
 async def infrastructure_ping(ctx: dict) -> str:
@@ -34,14 +35,16 @@ async def process_inbound_event(ctx: dict, tenant_id: str, event_id: str):
                 UPDATE inbound_events SET status='processing',attempts=attempts+1,
                     processing_at=now()
                 WHERE tenant_id=:t AND id=:id AND status='pending'
-                RETURNING id, channel_id, sender_e164, message_text
+                RETURNING id, channel_id, sender_e164, message_text,external_id,envelope
             """), {"t": tenant, "id": event})).mappings().first()
     if claim is None:
         return "already_processed_or_processing"
     try:
         await interaction(tenant, claim["sender_e164"])
-        answer = await reply(tenant, claim["channel_id"], claim["sender_e164"],
-                             claim["message_text"], ctx["redis"], message_id=str(claim["id"]))
+        from app import inbox_control as control
+        if control.enabled():
+            return await _central_inbound(ctx,tenant,event,claim,factory)
+        answer = await _event_answer(tenant,event,claim,ctx['redis'])
         async with factory() as session:
             async with tenant_transaction(session, tenant):
                 if answer:
@@ -51,7 +54,7 @@ async def process_inbound_event(ctx: dict, tenant_id: str, event_id: str):
                         VALUES (:tenant,:channel,:event,:recipient,:body)
                         ON CONFLICT (tenant_id,event_id) DO NOTHING
                     """), {"tenant":tenant,"channel":claim["channel_id"],
-                            "event":event,"recipient":claim["sender_e164"],"body":answer[:1500]})
+                            "event":event,"recipient":claim["sender_e164"],"body":bounded_answer(answer)})
                 await session.execute(text("""
                     UPDATE inbound_events SET status='processed',processed_at=now(),
                         message_text='',processing_at=NULL WHERE tenant_id=:t AND id=:id
@@ -75,51 +78,8 @@ async def process_inbound_event(ctx: dict, tenant_id: str, event_id: str):
 
 
 async def process_message_outbox(ctx: dict, tenant_id: str, outbox_id: str):
-    tenant, item_id = UUID(tenant_id), UUID(outbox_id)
-    # Não enviar sem consentimento operacional de canal e credenciais válidas.
-    if os.getenv("META_LIVE_SEND") != "1":
-        return "not_enabled"
-    key = os.getenv("INTEGRATION_FERNET_KEY")
-    if not key:
-        return "missing_encryption_key"
-    from cryptography.fernet import Fernet
-    factory = get_session_factory()
-    async with factory() as session:
-        async with tenant_transaction(session, tenant):
-            item = (await session.execute(text("""
-                SELECT o.id, o.to_e164, o.body, o.attempts,
-                       c.phone_number_id, c.token_enc
-                FROM message_outbox o JOIN whatsapp_channels c
-                ON c.id=o.channel_id AND c.tenant_id=o.tenant_id
-                WHERE o.tenant_id=:tenant AND o.id=:id AND o.status='pending'
-                  AND c.status='connected' AND o.next_attempt_at<=now()
-                FOR UPDATE OF o SKIP LOCKED
-            """), {"tenant":tenant,"id":item_id})).mappings().first()
-            if item is None:
-                return "unavailable"
-            # Lock e operação externa são acoplados para reduzir envio duplicado.
-            # Idempotência absoluta entre commit e API Meta não é garantível.
-            try:
-                token = Fernet(key.encode()).decrypt(item["token_enc"]).decode()
-                message_id = await CloudApiProvider().send_text(
-                    {"phone_number_id":item["phone_number_id"],"access_token":token},
-                    item["to_e164"],item["body"])
-                await session.execute(text("""
-                    UPDATE message_outbox SET status='sent',
-                        external_delivery_id=:external,attempts=attempts+1
-                    WHERE tenant_id=:t AND id=:id
-                """), {"t":tenant,"id":item_id,"external":message_id})
-                return "sent"
-            except Exception:
-                await session.execute(text("""
-                    UPDATE message_outbox SET attempts=attempts+1,
-                        next_attempt_at=now() + make_interval(
-                            secs=>LEAST(3600, (power(2, LEAST(attempts, 8)) * 15)::int)),
-                        status=CASE WHEN attempts>=7 THEN 'dead' ELSE 'pending' END,
-                        last_error='provider_failure'
-                    WHERE tenant_id=:t AND id=:id
-                """), {"t":tenant,"id":item_id})
-                return "retry"
+    from app.legacy_meta_outbox import process
+    return await process(ctx,tenant_id,outbox_id)
 
 
 async def recover_events(ctx: dict):
@@ -150,9 +110,87 @@ async def recover_events(ctx: dict):
 
 
 class WorkerSettings:
-    functions = [infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,reconcile_asaas_job,process_automation_job,reconcile_automation_job]
+    functions = [infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message]
     cron_jobs = [cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
                  cron(scan_calendar_outbox, minute={2,7,12,17,22,27,32,37,42,47,52,57}, second=0),
                  cron(scan_pending_billing, minute={3,13,23,33,43,53}, second=0),
-                 cron(scan_automations, minute=set(range(60)), second=20)]
+                 cron(scan_automations, minute=set(range(60)), second=20),
+                 cron(scan_inbox,minute=set(range(60)),second={5,35})]
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+
+
+async def _central_inbound(ctx,tenant,event,claim,factory):
+    from app import inbox_control as control,inbox_runtime as runtime
+    from app.whatsapp_bot import state_key
+    channel,phone=claim["channel_id"],claim["sender_e164"]
+    # A signed event may have been queued before central activation. Journal
+    # its original text before clearing the transient queue, without inventing
+    # a provider timestamp or granting a new Meta service window.
+    async with factory() as db:
+        async with tenant_transaction(db,tenant):
+            await runtime.record_inbound(db,tenant,channel,phone,claim['external_id'],claim['message_text'])
+    async with control.assistant_turn(tenant,channel,phone,ctx["redis"],state_key(str(tenant),str(channel),phone)) as revision:
+        async with factory() as db:
+            async with tenant_transaction(db,tenant):
+                observed=(await db.execute(text("""SELECT m.control_revision FROM inbox_messages m JOIN inbox_controls c
+                  ON c.tenant_id=m.tenant_id AND c.id=m.control_id WHERE m.tenant_id=:t AND c.channel_id=:c
+                  AND c.contact_e164=:phone AND m.direction='in' AND m.external_id=:external"""),
+                  {'t':tenant,'c':channel,'phone':phone,'external':claim['external_id']})).scalar_one_or_none()
+        answer=None if revision is False or observed!=revision else await _event_answer(tenant,event,claim,ctx['redis'])
+        # A customer handoff changed the generation during reply. Mark the
+        # inbound processed without binding the obsolete AI authority.
+        token=control._assistant_scope.set(None)
+        try:
+            async with factory() as db:
+                async with tenant_transaction(db,tenant):
+                    row=await control.lock_control(db,tenant,channel,phone)
+                    if answer and row["mode"]=="ai" and row["revision"]==revision and row["pending_operation"] is None:
+                        from uuid import uuid5,NAMESPACE_URL
+                        operation=uuid5(NAMESPACE_URL,"orion:meta:"+str(event))
+                        body=bounded_answer(answer)
+                        await runtime.record_outbound(db,tenant,row,operation,"assistant",body,runtime.fingerprint(phone,body))
+                    await db.execute(text("""UPDATE inbound_events SET status='processed',processed_at=now(),
+                      message_text='',processing_at=NULL WHERE tenant_id=:t AND id=:id"""),{"t":tenant,"id":event})
+                    await db.execute(text("""INSERT INTO usage_counters(tenant_id,period,inbound_messages)
+                      VALUES(:t,date_trunc('month',CURRENT_DATE)::date,1) ON CONFLICT(tenant_id,period)
+                      DO UPDATE SET inbound_messages=usage_counters.inbound_messages+1"""),{"t":tenant})
+        finally:
+            control._assistant_scope.reset(token)
+    return "processed"
+
+
+def bounded_answer(answer):
+    from app.qr_presentation import fits_message
+    if fits_message(answer): return answer
+    return 'Preciso revisar o resumo completo antes de continuar. Nenhuma nova confirmação foi enviada. Pode indicar qual pedido deseja conferir?'
+
+
+async def _event_answer(tenant,event,claim,redis):
+    from app.communication_events import bind_meta,event_reply,needs_review,invalidate_proposal
+    from app.whatsapp_bot import state_key
+    from fastapi import HTTPException
+    meta=claim.get('envelope') or {}
+    # Domain writes and transaction completion both recheck the authenticated
+    # event; another inbound cannot authorize a result prepared for this one.
+    try:
+        async with redis.lock(f'orion:meta:turn:{tenant}:{claim["channel_id"]}:{claim["sender_e164"]}',timeout=30,blocking_timeout=3):
+            prepared=False
+            try:
+                with bind_meta(tenant,claim['channel_id'],claim['sender_e164'],event):
+                    async with get_session_factory()() as db:
+                        async with tenant_transaction(db,tenant):pass
+                    prepared=True
+                    repair=event_reply(meta,claim['message_text'])
+                    if needs_review(meta) or repair:
+                        await invalidate_proposal(redis,state_key(str(tenant),str(claim['channel_id']),claim['sender_e164']))
+                    answer=repair if repair is not None else await reply(tenant,claim['channel_id'],claim['sender_e164'],claim['message_text'],redis,message_id=str(event))
+                    async with get_session_factory()() as db:
+                        async with tenant_transaction(db,tenant):pass
+                    return answer or None
+            except HTTPException as exc:
+                if exc.status_code==409 and prepared:
+                    await invalidate_proposal(redis,state_key(str(tenant),str(claim['channel_id']),claim['sender_e164']))
+                raise
+    except HTTPException as exc:
+        if exc.status_code==409: return None
+        raise

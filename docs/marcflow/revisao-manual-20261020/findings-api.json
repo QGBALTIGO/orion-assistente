@@ -1,0 +1,85 @@
+[
+  {
+    "id": "API-01",
+    "status": "fixed_source_and_isolated_unit_regressions",
+    "severity": "medium",
+    "file": "app/qr_ai.py",
+    "function": "continue_reschedule",
+    "original_lines": [
+      513,
+      541
+    ],
+    "title": "Frase afirma que a reserva original permanece sem reler seu estado atual",
+    "evidence": "Recusa em reschedule_confirm apaga apenas estado Redis e responde que o original permanece. Catch de qualquer HTTPException de reschedule_appointment repete a afirmação, embora um conflito de snapshot possa decorrer de cancelamento/alteração pelo painel.",
+    "minimal_reproduction": "Preparar state reschedule_confirm com appointment existente; outro ator cancela a reserva no painel. Cliente recusa com NÃO, ou envia SIM e motor recusa por snapshot/status divergente. Resposta anterior afirma permanência sem consulta atual.",
+    "proposal": "Responder apenas que a solicitação de remarcação foi encerrada/não confirmada; em conflito pedir conferência do estado atual ou reler ownership/status antes de citar fato. Testar recusa e conflito com reserva cancelada concorrente.",
+    "related_outside_assignment": [
+      {
+        "file": "app/contact_preferences.py",
+        "lines": [
+          153,
+          154,
+          155
+        ],
+        "reason": "Convite opcional dura24h e erros de data dizem Seu agendamento permanece sem ler status; substituir por pedido não altera seus agendamentos."
+      }
+    ],
+    "resolution": "Recusa e conflito agora descrevem apenas esta solicitação; não afirmam estado de reserva que pode ter mudado por outro ator. Frases opcionais de aniversário foram corrigidas pelo agente root.",
+    "tests_executed_in_manual_review": true,
+    "validation_run": {
+      "log": "api-fixes.log",
+      "junit": "api-fixes.xml",
+      "passed": 422,
+      "deselected": 3876,
+      "scope": "isolated unit fakes; external sockets/DNS denied; no provider, PostgreSQL or real message executed"
+    },
+    "production_access": false,
+    "inventory_ids": [
+      "INV0425",
+      "INV0426",
+      "INV0427",
+      "INV0428",
+      "INV0430",
+      "INV0431",
+      "INV0433",
+      "INV0434",
+      "INV0435",
+      "INV0436",
+      "INV0438"
+    ]
+  },
+  {
+    "id": "emit-02",
+    "status": "fixed_source_and_isolated_unit_regressions",
+    "severity": "high",
+    "file": "app/qr_ai.py",
+    "function": "_multi_turn",
+    "original_lines": [
+      1980,
+      1995
+    ],
+    "title": "Confirmação com texto factual pode executar efeito e depois perder recibo no limite de composição",
+    "evidence": "Caminho confirm+informação usa orçamento factual+350, executa _turn(SIM), e só depois chama _bounded_reply. Recibo real pode exceder350; fallback choose_priority nega confirmação, perde step terminal e impede latch de recibo verificado.",
+    "minimal_reproduction": "Plano confirm+faq, factual500UTF16, state fresco e recibo válido927UTF16. _turn pode executar; composição1429 excede1200 e fallback diz Nenhuma alteração foi confirmada.",
+    "proposal": "Preflight de resumo e recibo completos antes da escrita, usando teto de protocolo; pós-operação deve preservar recibo real/step terminal e nunca negar efeito verificado.",
+    "reported_by": "manual_emit_inventory; independently read complete _multi_turn and caller run_locked",
+    "resolution": "Preflight integral compartilhado no caminho composto e multi_intent; orçamento inclui protocolo80, apresentação e convite opcional. Composição/formatação tardia preserva texto completo e step do recibo terminal verificado, mantendo latch recuperável.",
+    "tests_executed_in_manual_review": true,
+    "validation_run": {
+      "log": "api-fixes.log",
+      "junit": "api-fixes.xml",
+      "passed": 422,
+      "deselected": 3876,
+      "scope": "isolated unit fakes; real rendered receipt; no provider or real domain commit"
+    },
+    "production_access": false,
+    "inventory_ids": [
+      "INV0517",
+      "INV0518",
+      "INV0519",
+      "INV0521",
+      "INV0522",
+      "INV0523"
+    ]
+  }
+]

@@ -200,7 +200,8 @@ async def test_product_cancel_does_not_cancel_booking_and_booking_cancel_preserv
     assert recovered["quote"]["pickup_appointment_id"] == h.appointment["id"]
     assert recovered["quote"]["pickup_appointment_current"]["status"] == "cancelled"
     actor = store.CustomerScope(h.d["a"], h.sender[1:], "synthetic-order-cancel")
-    cancelled = await store.cancel_order(actor, order["id"], revision=2, summary_message_id="synthetic-cancel-summary")
+    cancelled = await store.cancel_order(actor, order["id"], revision=2, summary_message_id="synthetic-cancel-summary",
+        summary_expires_at=commercial.now_utc()+timedelta(minutes=15))
     assert cancelled["status"] == "cancelled" and (await h.persisted())[0] == 0
     assert (await h.persisted())[3] == "cancelled"
     with pytest.raises(DBAPIError):

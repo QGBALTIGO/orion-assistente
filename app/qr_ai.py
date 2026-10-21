@@ -36,6 +36,7 @@ from app import qr_commerce
 from app import qr_intake_revision
 from app import qr_channel_scope
 from app import qr_cancellation
+from app.communication_events import EventMetadata
 from app.qr_service_context import resolve_service_reply
 from app.groq_understanding import interpret_plan
 from app.qr_understanding import UnderstandingPlan, build_plan, clarification_for, unique_service_reply
@@ -129,6 +130,7 @@ class Incoming(StrictModel):
     intake_revision: int | None = Field(default=None, ge=1, le=9007199254740991, strict=True)
     require_summary_review: bool = Field(default=False, strict=True)
     profile: WhatsAppProfile | None = None
+    envelope: EventMetadata | None = None
 
     @model_validator(mode="after")
     def ordered_ids(self):
@@ -508,7 +510,7 @@ async def continue_reschedule(tenant: UUID, phone: str, body: str, state: dict,
     if step == "reschedule_confirm":
         if text_clean in NO:
             await redis.delete(key)
-            return {"answer": "Remarcação cancelada. O horário original permanece.", "step": "reschedule_cancelled"}
+            return {"answer": "Encerrei a solicitação de remarcação. Essa resposta não altera seus agendamentos.", "step": "reschedule_cancelled"}
         if text_clean not in YES:
             return {"answer": presentation.render_prompt("confirmation", _preferences(business)), "step": step}
         if preview:
@@ -536,7 +538,7 @@ async def continue_reschedule(tenant: UUID, phone: str, body: str, state: dict,
             state["slots"] = []
             state["reschedule_conflict_review"] = True
             await redis.set(key, json.dumps(state), ex=STATE_TTL)
-            return {"answer": "O novo horário ficou indisponível. O original permanece. Quer consultar outros horários para esse dia ou prefere outra data?", "step": "reschedule_conflict"}
+            return {"answer": "Não confirmei a remarcação. Precisamos conferir o estado atual do agendamento. Quer consultar outros horários para esse dia ou prefere outra data?", "step": "reschedule_conflict"}
         await redis.delete(key)
         when = updated["start_at"].astimezone(ZoneInfo(business["timezone"]))
         facts = state["reschedule_facts"]
@@ -1133,6 +1135,44 @@ def _bounded_reply(factual: str, operational: str, step: str) -> dict:
     return {"answer": answer, "step": step, "_literal_information": bool(factual)}
 
 
+def _confirmation_composition_fits(state, business, catalog, factual, *, preview=False):
+    """Budget the complete verified receipt before allowing a mixed write."""
+    try:
+        if state["step"] == "reschedule_confirm":
+            facts = state["reschedule_facts"]
+            if not state.get("expected_snapshot"):
+                return False
+            summary = presentation.BookingSummary(tuple(facts["services"]), datetime.fromisoformat(state["new_start"]),
+                facts["timezone"], facts["total_cents"], professional=facts["professional"],
+                duration_min=facts["duration_min"], protocol="X" * 80)
+            maximum = presentation.render_summary(summary, _preferences(business), confirmed=True, operation="reschedule")
+        else:
+            maximum = presentation.render_summary(_summary(state, state["selected_start"], business, catalog, protocol="X" * 80),
+                                                  _preferences(business), confirmed=True)
+            if not preview and os.getenv("BIRTHDAY_COLLECTION_ENABLED") == "1":
+                from app.contact_preferences import BIRTHDAY_INVITATION
+                maximum += "\n\n" + BIRTHDAY_INVITATION
+        # The terminal presentation pass must fit too, including its field icons.
+        maximum = presentation.render_message(maximum + "\n\n" + factual, _preferences(business), kind="message")
+        return presentation.fits_message(maximum)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _operation_reply(result, factual, *, information_first=False):
+    """A late optional addition may never replace an already verified receipt."""
+    receipt = result.get("answer") or ""
+    composed = (_bounded_reply(factual, receipt, result["step"]) if information_first
+                else _bounded_reply(receipt, factual, result["step"]))
+    if result.get("_verified_operation") is True:
+        if composed["step"] == "choose_priority":
+            # The normal path was budgeted before the write. If optional content
+            # still changes, preserve the whole outcome and its terminal latch.
+            return result
+        composed["_verified_operation"] = True
+    return composed
+
+
 async def _commerce_turn(tenant: UUID, phone: str, body: str, state: dict, business: dict,
                           catalog: list[dict], redis, key: str, preview: bool):
     """Tenant/contact-scoped products, with no partial mixed operation."""
@@ -1276,28 +1316,12 @@ async def _compound_booking_turn(tenant: UUID, phone: str, body: str, state: dic
         return await clarify()
     if not factual:
         return await clarify()
-    try:
-        if state["step"] == "reschedule_confirm":
-            facts = state["reschedule_facts"]
-            if not state.get("expected_snapshot"):
-                return await clarify(factual)
-            summary = presentation.BookingSummary(tuple(facts["services"]), datetime.fromisoformat(state["new_start"]),
-                facts["timezone"], facts["total_cents"], professional=facts["professional"], duration_min=facts["duration_min"], protocol="X" * 80)
-            maximum = presentation.render_summary(summary, _preferences(business), confirmed=True, operation="reschedule")
-        else:
-            maximum = presentation.render_summary(_summary(state, state["selected_start"], business, catalog, protocol="X" * 80),
-                                                  _preferences(business), confirmed=True)
-    except (KeyError, TypeError, ValueError):
-        return await clarify(factual)
-    if not presentation.fits_message(maximum + "\n\n" + factual):
+    if not _confirmation_composition_fits(state, business, catalog, factual, preview=preview):
         return await clarify()
     # No preceding information/review mutation: recurse only through the normal
     # summary/tenant/revision/backend confirmation gates, with commerce skipped.
     result = await _turn(tenant, phone, "SIM", redis, key.removeprefix(f"orion:qr:ai:{tenant}:"), preview, _confirm_scoped=True)
-    composed = _bounded_reply(result.get("answer") or "", factual, result["step"])
-    if result.get("_verified_operation") is True:
-        composed["_verified_operation"] = True
-    return composed
+    return _operation_reply(result, factual)
 
 
 async def _review_after_inquiry(state: dict, redis, key: str):
@@ -1984,13 +2008,11 @@ async def _multi_turn(tenant: UUID, phone: str, body: str, state: dict, business
             remaining = 0
         if not math.isfinite(remaining) or remaining <= 0:
             return _bounded_reply(factual, "O resumo anterior expirou. Precisamos rever a disponibilidade antes de confirmar.", "expired")
-        if presentation.message_units(factual) + 350 > 1200:
-            return _bounded_reply(factual, "x" * 1201, "confirm")
+        if factual and not _confirmation_composition_fits(state, business, catalog, factual, preview=preview):
+            await _review_after_inquiry(state, redis, key)
+            return _bounded_reply("", presentation.render_prompt("confirmation_review", _preferences(business)), state["step"])
         result = await _turn(tenant, phone, "SIM", redis, key.removeprefix(f"orion:qr:ai:{tenant}:"), preview)
-        composed = _bounded_reply(factual, result["answer"] or "", result["step"])
-        if result.get("_verified_operation") is True:
-            composed["_verified_operation"] = True
-        return composed
+        return _operation_reply(result, factual, information_first=True)
     if "cancel" in operations and "reschedule" not in operations:
         active_request = state.get("step") in {"date", "professional", "time", "confirm"} or state.get("step", "").startswith("reschedule_")
         if active_request and not re.search(r"\b(?:reserva|agendamento|confirmad\w*)\b", norm(body)):
@@ -2058,9 +2080,15 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
         literal = result.pop("_literal_information", False)
         service_question = result.pop("_service_reply_prompt", False) is True
         if result.get("answer"):
+            before_presentation = result
             result = {**result, "answer": presentation.render_message(result["answer"], _reply_preferences.get(), kind="message" if literal else result.get("step", "message"))}
             if not presentation.fits_message(result["answer"]):
-                result = _bounded_reply(result["answer"], "", result.get("step", "information"))
+                if before_presentation.get("_verified_operation") is True:
+                    # Typed terminal receipts already fit their pre-write check;
+                    # retain that exact receipt if the final styling grows it.
+                    result = before_presentation
+                else:
+                    result = _bounded_reply(result["answer"], "", result.get("step", "information"))
         if qr_commerce.enabled() and _message_identity.get() and not result.get("step", "").startswith("commerce"):
             commerce_key = key + ":commerce"
             try:
@@ -2101,6 +2129,18 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
 async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, preview: bool = False, *, _confirm_scoped: bool = False):
     state_key = f"orion:qr:ai:{tenant}:{namespace}"
     text_clean = body.strip().lower()
+    from app.contact_preferences import handle_optout,birthday_turn
+    optout=await handle_optout(tenant,phone,body,preview=preview)
+    if optout is not None:
+        await redis.delete(state_key+':birthday-invite')
+        return {'answer':optout,'step':'communication_preference'}
+    birthday=await birthday_turn(tenant,phone,body,redis,state_key,preview=preview)
+    if birthday:
+        if birthday.get('remainder'):
+            following=await _turn(tenant,phone,birthday['remainder'],redis,namespace,preview,_confirm_scoped=_confirm_scoped)
+            answer=birthday['answer']+('\n\n'+following['answer'] if following.get('answer') else '')
+            if presentation.fits_message(answer):return {**following,'answer':answer}
+        return {'answer':birthday['answer'],'step':'birthday_preference'}
     if text_clean in RESET:
         await redis.delete(state_key)
         await redis.delete(state_key + ":commerce")
@@ -2482,8 +2522,14 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
                 reason="Não foi possível confirmar esse horário. Mantive o serviço, o profissional e o dia para conferir alternativas; nenhuma nova confirmação foi feita.")
         await redis.delete(state_key)
         when = reserved["start_at"].astimezone(ZoneInfo(business["timezone"]))
-        return {"answer": presentation.render_summary(_summary(state, when, business, catalog,
-                    protocol=reserved["protocol"], total_cents=reserved["total_cents"]), _preferences(business), confirmed=True),
+        answer=presentation.render_summary(_summary(state, when, business, catalog,
+                    protocol=reserved["protocol"], total_cents=reserved["total_cents"]), _preferences(business), confirmed=True)
+        from app.contact_preferences import offer_birthday,BIRTHDAY_INVITATION
+        if presentation.fits_message(answer+'\n\n'+BIRTHDAY_INVITATION):
+            try:invitation=await offer_birthday(tenant,phone,redis,state_key,reserved['protocol'])
+            except Exception:invitation=''  # Optional invitation cannot hide a committed booking receipt.
+            if invitation:answer+='\n\n'+invitation
+        return {"answer": answer,
                 "step": "confirmed", "protocol": reserved["protocol"], "_verified_operation": True}
     if state.get("step") == "time":
         options = state.get("slots", [])
@@ -2628,12 +2674,13 @@ async def _require_pending_review(redis, key: str):
 async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                      message_id: str | None = None, preview: bool = False,
                      prepare=None, reset: bool = False, message_ids: list[str] | None = None,
-                     intake_revision: int | None = None, require_summary_review: bool = False):
+                     intake_revision: int | None = None, require_summary_review: bool = False,
+                     event_meta: dict | None = None):
     from redis.asyncio import from_url
-    from app import qr_operation_receipt
+    from app import qr_operation_receipt, inbox_control
     channel = qr_channel_scope.current()
     if channel is not None:
-        if preview or tenant != channel.tenant_id or namespace != f"{channel.context_namespace}:{phone}":
+        if preview or tenant != channel.tenant_id or namespace != channel.conversation_namespace(phone):
             raise HTTPException(403, "Contexto de canal inválido")
         await qr_channel_scope.assert_current()
     redis = from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"),
@@ -2646,7 +2693,7 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
         async with lock:
             ids = message_ids or ([message_id] if message_id else [])
             keys = [f"orion:qr:ai:done:{tenant}:{namespace}:{item}" for item in ids]
-            legacy_keys = [] if preview or channel is not None else [f"orion:qr:ai:done:{tenant}:{item}" for item in ids]
+            legacy_keys = [] if preview or channel is not None and not channel.legacy_transport else [f"orion:qr:ai:done:{tenant}:{item}" for item in ids]
             if any([await redis.exists(key) for key in keys + legacy_keys]):
                 return {"answer": None, "step": "duplicate"}
             if not preview and qr_intake_revision.enabled():
@@ -2664,6 +2711,10 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                     await _require_pending_review(redis, f"orion:qr:ai:{tenant}:{namespace}")
                 if reset:
                     await redis.delete(f"orion:qr:ai:{tenant}:{namespace}")
+                if not preview and channel is not None and inbox_control.enabled():
+                    await qr_channel_scope.assert_current()
+                    from app.inbox_control import clear_transient_handoff
+                    await clear_transient_handoff(redis, state_key)
                 transcript = await prepare() if prepare else None
                 if transcript is not None:
                     body = transcript["text"]
@@ -2676,10 +2727,20 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                     if not preview and _weekday_restriction(body) is not None:
                         raw = await redis.get(qr_operation_receipt.key(tenant, phone))
                         _recent_operation.set(qr_operation_receipt._read(raw, tenant, phone) if raw else None)
-                    result = await qr_operation_receipt.pending(redis, tenant, phone, require_summary_review, preview=preview)
+                    result = None
+                    if event_meta:
+                        from app.communication_events import event_reply,needs_review,invalidate_proposal
+                        repair=event_reply(event_meta,body)
+                        if needs_review(event_meta) or repair:
+                            await _require_pending_review(redis,state_key)
+                            await invalidate_proposal(redis,state_key)
+                        if repair is not None:result={'answer':repair or None,'step':'event_repair'}
+                    if result is None:
+                        result = await qr_operation_receipt.pending(redis, tenant, phone, require_summary_review, preview=preview)
                     if result is None:
                         result = await turn(tenant, phone, body, redis, namespace, preview=preview)
-                    if not preview and result.get("step") == "human":
+                    if (not preview and result.get("step") == "human" and not (
+                            channel is not None and inbox_control.enabled())):
                         # Every QR handoff path converges here. Redis's short
                         # conversational pause must not let new marketing jobs
                         # resume after it expires. Only the owner's explicit
@@ -2737,6 +2798,10 @@ async def qr_reply(payload: Incoming, request: Request):
     given = request.headers.get("x-orion-bridge-key", "")
     if len(configured) < 32 or not secrets.compare_digest(configured, given):
         raise HTTPException(401, "Acesso negado")
+    from app.inbox_control import enabled as central_enabled
+    from app.qr_legacy import require_managed_path
+    if central_enabled() or await require_managed_path():
+        return {"answer": None, "step": "managed_channel_required"}
     if os.getenv("QR_AI_ENABLED", "0") != "1":
         return {"answer": None, "step": "disabled"}
     allowlist = {item.strip() for item in os.getenv("QR_AI_ALLOWED_SENDERS", "").split(",") if item.strip()}
@@ -2763,7 +2828,8 @@ async def qr_reply(payload: Incoming, request: Request):
     return await run_locked(tenant, payload.phone, payload.text, payload.phone, payload.message_id,
                             message_ids=payload.message_ids, intake_revision=payload.intake_revision,
                             require_summary_review=payload.require_summary_review,
-                            prepare=remember_profile if payload.profile else None)
+                            prepare=remember_profile if payload.profile else None,
+                            **({'event_meta':payload.envelope.model_dump(exclude_none=True)} if payload.envelope else {}))
 
 
 async def _managed_assistant_ready(identity):
@@ -2774,6 +2840,11 @@ async def _managed_assistant_ready(identity):
                                       {"tenant": identity.tenant_id})).scalar_one_or_none()
             if active is not True:
                 return False
+            if identity.legacy_transport:
+                # Preserve the existing pilot's authorization. New managed
+                # devices still require the full onboarding gate below.
+                from app.qr_legacy import enabled, configured_tenant
+                return enabled() and configured_tenant() == identity.tenant_id and os.getenv('QR_AI_ENABLED') == '1'
             await require_operational_ready(db, identity.tenant_id, "assistant")
     return True
 
@@ -2826,6 +2897,10 @@ async def managed_qr_interaction(channel_id: UUID, payload: qr_intake_revision.N
         except Exception:
             raise HTTPException(503, "Não consegui registrar esta mensagem agora") from None
         await revalidate()
+        if payload.control:
+            from app.contact_preferences import receive_control
+            await receive_control(identity.tenant_id,payload.phone,payload.control,redis,identity=identity)
+            await revalidate()
         return {"recorded": True, "revision": revision}
     finally:
         await redis.aclose()
@@ -2837,27 +2912,50 @@ async def managed_qr_reply(channel_id: UUID, payload: Incoming, request: Request
     identity = await authenticated_channel(request, phone=payload.phone)
     if not identity.assistant_enabled or not await _managed_assistant_ready(identity):
         return {"answer": None, "step": "disabled"}
-    if payload.intake_revision is None:
-        raise HTTPException(422, "Registre a mensagem antes de iniciar o atendimento")
+    from app import inbox_control
+    control_revision = None
+    control_token = None
+    use_control = inbox_control.enabled() or identity.central_adopted
 
     async def revalidate():
         fresh = await authenticated_channel(request, phone=payload.phone)
         if not fresh.assistant_enabled or not await _managed_assistant_ready(fresh):
             raise HTTPException(423, "Assistente do canal desativado")
+        if (inbox_control.enabled() or fresh.central_adopted) and await inbox_control.assistant_revision(fresh.tenant_id, channel_id, payload.phone) != control_revision:
+            raise HTTPException(409, "O controle do atendimento mudou")
         return fresh
 
     token = qr_channel_scope.bind(identity, revalidate)
     try:
+        # Persisted adoption enables this channel even while the global control
+        # switch is off. Its identity must precede the initial authority reads.
+        if use_control:
+            if await inbox_control.blocked(identity.tenant_id, channel_id, payload.phone):
+                return {"answer": None, "step": "human"}
+            control_revision = await inbox_control.assistant_revision(identity.tenant_id, channel_id, payload.phone)
+        if payload.intake_revision is None:
+            raise HTTPException(422, "Registre a mensagem antes de iniciar o atendimento")
+        control_token = inbox_control.bind_assistant(identity, payload.phone, control_revision) if use_control else None
         await qr_channel_scope.assert_current()
         # Never give a stale/unannounced message a fresh revision here. The
         # pre-ASR notice assigned it; run_locked validates that receipt against
         # current channel-scoped Redis state before interpretation and writes.
         ids = payload.message_ids or [payload.message_id]
-        return await run_locked(identity.tenant_id, payload.phone, payload.text,
-            f"{identity.context_namespace}:{payload.phone}", payload.message_id,
+        result = await run_locked(identity.tenant_id, payload.phone, payload.text,
+            identity.conversation_namespace(payload.phone), payload.message_id,
             message_ids=ids, intake_revision=payload.intake_revision,
-            require_summary_review=payload.require_summary_review)
+            require_summary_review=payload.require_summary_review,
+            **({'event_meta':payload.envelope.model_dump(exclude_none=True)} if payload.envelope else {}))
+        if inbox_control.enabled():
+            if result.get("step") == "human":
+                await inbox_control.customer_handoff(identity.tenant_id, channel_id, payload.phone)
+                return {"answer": None, "step": "human"}
+            await revalidate()
+            return {**result, "control_revision": control_revision}
+        return result
     finally:
+        if control_token is not None:
+            inbox_control.reset_assistant(control_token)
         qr_channel_scope.reset(token)
 
 

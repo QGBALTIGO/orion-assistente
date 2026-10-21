@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 from app import onboarding_service as service, onboarding_schemas as schemas
 from app.database import tenant_transaction
-from test_onboarding_postgres import onboarding_db, configured, save  # noqa: F401
+from test_onboarding_postgres import onboarding_db, configured, new_business_context, save  # noqa: F401
 
 pytestmark = pytest.mark.integration
 
@@ -52,7 +52,7 @@ def completion(state):
 
 @pytest.mark.asyncio
 async def test_staged_then_published_real_facts_keep_parity_and_explicit_activation(onboarding_db):
-    ctx = onboarding_db; state = await configured(ctx, activity="both"); tenant = UUID(state["tenant_id"])
+    ctx = new_business_context(onboarding_db); state = await configured(ctx, activity="both"); tenant = UUID(state["tenant_id"])
     assert not state["pending"]
     facts = await parity(ctx, state)
     assert all(not p["active"] for p in facts["professionals"]) and all(not s["active"] for s in facts["services"])
@@ -73,7 +73,7 @@ async def test_staged_then_published_real_facts_keep_parity_and_explicit_activat
 
 @pytest.mark.asyncio
 async def test_each_professional_needs_own_link_and_fitting_uninterrupted_shift(onboarding_db):
-    ctx = onboarding_db; state = await configured(ctx); tenant = UUID(state["tenant_id"])
+    ctx = new_business_context(onboarding_db); state = await configured(ctx); tenant = UUID(state["tenant_id"])
     state = await save(ctx, state, "professionals", {"item": {"name": "Second synthetic professional"}})
     pro = UUID(state["result"]["id"]); item = UUID(state["catalog"]["services"][0]["id"]); hour = uuid4()
     await parity(ctx, state)
@@ -102,7 +102,7 @@ async def test_each_professional_needs_own_link_and_fitting_uninterrupted_shift(
 
 @pytest.mark.asyncio
 async def test_200_professional_facts_match_original_and_remain_tenant_scoped(onboarding_db):
-    ctx = onboarding_db; state = await configured(ctx); tenant = UUID(state["tenant_id"])
+    ctx = new_business_context(onboarding_db); state = await configured(ctx); tenant = UUID(state["tenant_id"])
     item = UUID(state["catalog"]["services"][0]["id"])
     rows = [{"t": tenant, "p": uuid4(), "s": item} for _ in range(199)]
     foreign = uuid4()

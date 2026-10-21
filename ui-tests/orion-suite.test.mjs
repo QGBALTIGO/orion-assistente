@@ -82,18 +82,23 @@ test('mount preserves original sections, escapes customer content, and is idempo
   assert.equal(h.errors.length, 0);
 });
 
-test('late tenant A response cannot replace tenant B after an authorized switch', async t => {
+test('a late response cannot replace the business of the next authenticated account', async t => {
   const pending = deferred();
   const h = await makeSuite({ respond: path => {
     if (path.includes(`/tenants/${tenantA}/management/customers`)) return pending.promise;
     if (path.includes(`/tenants/${tenantB}/management/customers`)) return { items: [customer('Cliente da empresa B')], total: 1 };
     return defaultResponse(path);
   } }); t.after(() => h.close());
-  h.window.OrionSuite.sync({ tenantId: tenantB }); await flush();
+  h.window.OrionSuite.sync({
+    user: { role: 'member', email: 'second-account@example.invalid' },
+    tenants: [{ id: tenantB, name: 'Empresa B', role: 'owner' }],
+    tenantId: tenantB,
+  }); await flush();
   assert.match(h.document.getElementById('page-suite').textContent, /Cliente da empresa B/);
   pending.resolve({ items: [customer('Cliente antigo da empresa A')], total: 1 }); await flush();
   assert.doesNotMatch(h.document.getElementById('page-suite').textContent, /Cliente antigo da empresa A/);
-  assert.equal(h.document.getElementById('osTenant').value, tenantB);
+  assert.equal(h.document.getElementById('osTenant'), null);
+  assert.match(h.document.getElementById('osSidebarContext').textContent, /Empresa B/);
   h.window.OrionSuite.destroy();
   assert.equal(h.document.getElementById('page-suite').childElementCount, 0);
 });
@@ -172,7 +177,7 @@ test('actual panel API returns null for HTTP 204 without parsing JSON', async t 
   const dom = new JSDOM('', { url: 'https://orion.test/panel', runScripts: 'outside-only' }); t.after(() => dom.window.close());
   let options, jsonRead = false;
   dom.window.fetch = async (path, value) => { options = value; return { ok: true, status: 204, json: async () => { jsonRead = true; throw new Error('204 has no JSON body'); } }; };
-  dom.window.eval(`var authEpoch=1, csrf='test-csrf'; function errorMessage(){return 'test error';} function showLogin(){}; ${actual}`);
+  dom.window.eval(`var authEpoch=1, csrf='test-csrf', suiteTenantId='test', businessContextError=''; function accountBusiness(){return {id:'test'};} function errorMessage(){return 'test error';} function showLogin(){}; ${actual}`);
   assert.equal(await dom.window.api('/api/v1/tenants/test/services/id', 'DELETE'), null);
   assert.equal(jsonRead, false); assert.equal(options.headers['X-Orion-CSRF'], 'test-csrf'); assert.equal(options.credentials, 'same-origin');
 });

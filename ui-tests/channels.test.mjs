@@ -5,14 +5,57 @@ const writes=h=>h.calls.filter(call=>call.method!=='GET');
 const base='/api/v1/tenants/'+tenantA+'/qr-channels';
 const secret='synthetic-private-credential-'+'x'.repeat(40);
 
+test('preserved primary session offers status and assistant control without reconnect or QR actions',async t=>{
+  const row=item({enabled:true,assistant_enabled:true,legacy_transport:true});
+  const h=await makeChannels({data:listing([row]),respond:(path,method)=>path.endsWith('/status')?runtime(row,'connected'):undefined});
+  t.after(()=>h.close());
+  for(const action of ['start','connect','qr','stop','enable','disable'])assert.equal(h.document.querySelector('[data-qc-action='+action+']'),null);
+  assert.ok(h.document.querySelector('[data-qc-action=status]'));
+  assert.ok(h.document.querySelector('[data-qc-action=assistant_off]'));
+  assert.match(h.element('#channels').textContent,/sessão existente/);
+  assert.deepEqual(writes(h),[]);
+});
+
+test('connect enables only the selected device then starts with its new revision, never the assistant',async t=>{
+  const row=item(),h=await makeChannels({respond:(path,method,payload)=>method==='PATCH'?item({enabled:true,revision:2}):method==='POST'?runtime(item({enabled:true,revision:2}),'connecting'):undefined});t.after(()=>h.close());
+  h.click('[data-qc-action=connect]');assert.equal(writes(h).length,0);h.submit();h.submit();await flush();
+  assert.deepEqual(writes(h),[{path:base+'/'+channelA,method:'PATCH',data:{expected_revision:1,enabled:true}},
+    {path:base+'/'+channelA+'/start',method:'POST',data:{expected_revision:2}}]);
+  assert.equal(h.controller.getState().runtime.status,'connecting');assert.equal(h.controller.getState().items[0].assistant_enabled,false);
+});
+
+test('uncertain enable or start never automatically repeats either connection operation',async t=>{
+  for(const fail of ['enable','start']){
+    const h=await makeChannels({respond:(path,method)=>{
+      if(method==='PATCH'){if(fail==='enable')throw Error('uncertain');return item({enabled:true,revision:2});}
+      if(method==='POST')throw Error('uncertain');
+    }});t.after(()=>h.close());h.click('[data-qc-action=connect]');h.submit();await flush();
+    assert.equal(h.controller.getState().uncertain,true);const count=writes(h).length;
+    await h.tick(30000);assert.equal(writes(h).length,count);assert.equal(count,fail==='enable'?1:2);
+  }
+});
+
+test('switching business before enable returns cannot start the old device',async t=>{
+  const late=deferred(),h=await makeChannels({respond:(path,method)=>method==='PATCH'?late.promise:path.includes(tenantB)?listing([item({id:channelB,tenant_id:tenantB})]):undefined});t.after(()=>h.close());
+  h.click('[data-qc-action=connect]');h.submit();await flush();await h.controller.setTenant(tenantB);
+  late.resolve(item({enabled:true,revision:2}));await flush();assert.equal(writes(h).length,1);assert.equal(h.controller.getState().tenantId,tenantB);
+});
+
+test('QR is shown automatically only during an explicitly started connection flow',async t=>{
+  const row=item({enabled:true}),h=await makeChannels({data:listing([row]),respond:(path,method)=>method==='POST'?runtime(row,'connecting'):path.endsWith('/status')?runtime(row,'qr_ready'):undefined});t.after(()=>h.close());
+  assert.equal(h.document.querySelector('[data-qc-qr]'),null);h.click('[data-qc-action=start]');h.submit();await flush();await h.tick(5000);
+  assert.ok(h.document.querySelector('[data-qc-qr] img'));assert.equal(writes(h).length,1);
+  h.click('[data-qc-action=hide-qr]');await h.tick(5000);assert.equal(h.document.querySelector('[data-qc-qr]'),null);
+});
+
 test('opening the list performs no start, activation, send or legacy operation',async t=>{
-  const h=await makeChannels();t.after(()=>h.close());assert.deepEqual(writes(h),[]);assert.equal(h.calls.length,1);assert.match(h.element('#channels').textContent,/Desativado/);assert.match(h.element('#channels').textContent,/Fase privada/);assert.match(h.element('#channels').textContent,/Áudio, chamadas/);assert.ok(h.document.getElementById('legacy'));assert.equal(h.calls.some(call=>call.path.includes('/internal/')||call.path.includes('/api/v1/qr/')),false);
+  const h=await makeChannels();t.after(()=>h.close());assert.deepEqual(writes(h),[]);assert.equal(h.calls.length,1);assert.match(h.element('#channels').textContent,/Desativado/);assert.match(h.element('#channels').textContent,/Fase privada/);assert.match(h.element('#channels').textContent,/Áudio depende/);assert.ok(h.document.getElementById('legacy'));assert.equal(h.calls.some(call=>call.path.includes('/internal/')||call.path.includes('/api/v1/qr/')),false);
 });
 test('disabled feature shows unavailable without touching the existing connector',async t=>{
   const h=await makeChannels({respond:()=>{throw Object.assign(Error('private debug text'),{status:423});}});t.after(()=>h.close());assert.equal(h.controller.getState().unavailable,true);assert.match(h.element('#channels').textContent,/Recurso ainda não disponível/);assert.doesNotMatch(h.element('#channels').textContent,/private debug/);assert.equal(h.calls.length,1);h.click('[data-qc-action=legacy]');await flush();assert.equal(h.legacy.length,1);assert.deepEqual(writes(h),[]);
 });
 test('viewers and a different channel owner cannot invoke mutations',async t=>{
-  const h=await makeChannels({data:listing([item({can_manage:false})])});t.after(()=>h.close());assert.equal(h.document.querySelector('[data-qc-action=start]'),null);assert.equal(h.document.querySelector('[data-qc-action=enable]'),null);assert.equal(h.element('[data-qc-action=status]').disabled,true);assert.match(h.element('#channels').textContent,/proprietário autorizado/);assert.deepEqual(writes(h),[]);
+  const h=await makeChannels({data:listing([item({can_manage:false})])});t.after(()=>h.close());assert.equal(h.document.querySelector('[data-qc-action=start]'),null);assert.equal(h.document.querySelector('[data-qc-action=enable]'),null);assert.equal(h.document.querySelector('[data-qc-action=status]'),null);assert.match(h.element('#channels').textContent,/proprietário autorizado/);assert.deepEqual(writes(h),[]);
 });
 test('a read-only list has no create or mutation controls',async t=>{
   const h=await makeChannels({data:listing([item({can_manage:false})],{access:{can_manage:false}})});t.after(()=>h.close());assert.equal(h.document.querySelector('[data-qc-action=new]'),null);assert.equal(h.document.querySelector('[data-qc-action=enable]'),null);assert.deepEqual(writes(h),[]);
@@ -24,10 +67,10 @@ test('allowlist validation rejects duplicates, nonphones, foreign numbers and ex
   const h=await makeChannels();t.after(()=>h.close());h.click('[data-qc-action=new]');h.fill('[name=label]','Novo canal');for(const value of ['+5567999999901\n5567999999901','user@lid','+12025550123',Array.from({length:11},(_,i)=>'55679999999'+String(i).padStart(2,'0')).join('\n')]){h.fill('[name=allowed_senders]',value);h.submit();await flush();assert.equal(writes(h).length,0);}assert.match(h.element('[role=alert]').textContent,/1 a 10/);
 });
 test('the one-time credential is absent from state, logs, URLs and persistent browser storage',async t=>{
-  const h=await makeChannels({respond:(path,method)=>method==='POST'?{...item(),credential:secret,credential_issued:true}:undefined});t.after(()=>h.close());h.click('[data-qc-action=new]');h.fill('[name=label]','Canal privado');h.fill('[name=allowed_senders]','5567999999901');h.submit();await flush();assert.equal(h.element('[data-qc-secret] output').textContent,secret);assert.equal(JSON.stringify(h.controller.getState()).includes(secret),false);assert.equal(JSON.stringify(h.calls).includes(secret),false);assert.equal(JSON.stringify(h.logs).includes(secret),false);assert.equal(h.window.localStorage.length,0);assert.equal(h.window.sessionStorage.length,0);h.click('[data-qc-action=copy-secret]');await flush();assert.deepEqual(h.copied,[secret]);h.click('[data-qc-action=dismiss-secret]');assert.equal(h.document.querySelector('[data-qc-secret]'),null);assert.equal(h.element('#channels').textContent.includes(secret),false);
+  const h=await makeChannels({respond:(path,method)=>method==='POST'?{...item(),credential:secret,credential_issued:true}:undefined});t.after(()=>h.close());h.click('[data-qc-action=new]');h.fill('[name=label]','Canal privado');h.fill('[name=allowed_senders]','5567999999901');h.submit();await flush();assert.equal(h.document.querySelector('[data-qc-secret]'),null);assert.equal(h.element('#channels').textContent.includes(secret),false);assert.equal(JSON.stringify(h.controller.getState()).includes(secret),false);assert.equal(JSON.stringify(h.calls).includes(secret),false);assert.equal(JSON.stringify(h.logs).includes(secret),false);assert.equal(h.window.localStorage.length,0);assert.equal(h.window.sessionStorage.length,0);assert.equal(h.document.querySelector('[data-qc-action=copy-secret]'),null);assert.deepEqual(h.copied,[]);assert.equal(h.document.querySelector('[data-qc-secret]'),null);assert.equal(h.element('#channels').textContent.includes(secret),false);
 });
 test('create response loss is recovered only by explicit repetition of the identical intent',async t=>{
-  let attempt=0;const h=await makeChannels({respond:(path,method)=>{if(method==='POST'){if(++attempt===1)throw Error('uncertain transport');return {...item(),credential:null,credential_issued:false};}}});t.after(()=>h.close());h.click('[data-qc-action=new]');h.fill('[name=label]','Canal privado');h.fill('[name=allowed_senders]','5567999999901');h.submit();await flush();assert.equal(h.controller.getState().uncertain,true);assert.equal(writes(h).length,1);h.submit();assert.equal(writes(h).length,1);h.click('[data-qc-action=retry-create]');await flush();assert.deepEqual(writes(h)[0],writes(h)[1]);assert.equal(h.document.querySelector('[data-qc-secret]'),null);assert.match(h.element('#channels').textContent,/chave privada não é emitida novamente/);
+  let attempt=0;const h=await makeChannels({respond:(path,method)=>{if(method==='POST'){if(++attempt===1)throw Error('uncertain transport');return {...item(),credential:null,credential_issued:false};}}});t.after(()=>h.close());h.click('[data-qc-action=new]');h.fill('[name=label]','Canal privado');h.fill('[name=allowed_senders]','5567999999901');h.submit();await flush();assert.equal(h.controller.getState().uncertain,true);assert.equal(writes(h).length,1);h.submit();assert.equal(writes(h).length,1);h.click('[data-qc-action=retry-create]');await flush();assert.deepEqual(writes(h)[0],writes(h)[1]);assert.equal(h.document.querySelector('[data-qc-secret]'),null);assert.match(h.element('#channels').textContent,/Dispositivo recuperado/);
 });
 test('canceling creation performs no write and keeps the registered channels',async t=>{
   const h=await makeChannels();t.after(()=>h.close());h.click('[data-qc-action=new]');h.fill('[name=label]','Descartar');h.click('[data-qc-action=cancel-create]');assert.equal(writes(h).length,0);assert.match(h.element('#channels').textContent,/Canal sintético/);

@@ -1,0 +1,40 @@
+{
+  "status": "historical_prepared_plan_applied_and_receipts_verified",
+  "candidate_commit": "d11a86bc3b1efdef47394c62e39ee32da08ecabf",
+  "run_ids": {
+    "migration": "8553cfa8-5932-44a8-be91-3ed2e5a391d4",
+    "setup": "075a435e-ed21-44b7-8d59-ba5f01087ec0"
+  },
+  "api": {
+    "pre_deploy_command": "python -c \"import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); print('orion_release_flags=' + __import__('json').dumps({k: __import__('os').getenv(k, 'unset') for k in ['QR_AI_ENABLED','QR_CHANNELS_ENABLED','QR_LEGACY_CENTRAL_ENABLED','META_LIVE_SEND','INBOX_CONTROL_ENABLED','INBOX_SEND_ENABLED','INBOX_TOOLS_ENABLED','MARKETING_EXECUTION_ENABLED','MARKETING_RECONCILIATION_ENABLED','BIRTHDAY_COLLECTION_ENABLED','GROQ_PROBE_ON_START','ORION_EMAIL_DELIVERY_PROBE']}, sort_keys=True), flush=True); subprocess.run([sys.executable, '-m', 'scripts.one_time_admin_identity_migration'], check=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_admin_identity_schema'], check=True); subprocess.run([sys.executable, '-m', 'scripts.one_time_admin_demo_setup'], check=True); print('qr_bridge_probe_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.probe_qr_bridge'], check=True)\"",
+    "pre_deploy_code": "import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); print('orion_release_flags=' + __import__('json').dumps({k: __import__('os').getenv(k, 'unset') for k in ['QR_AI_ENABLED','QR_CHANNELS_ENABLED','QR_LEGACY_CENTRAL_ENABLED','META_LIVE_SEND','INBOX_CONTROL_ENABLED','INBOX_SEND_ENABLED','INBOX_TOOLS_ENABLED','MARKETING_EXECUTION_ENABLED','MARKETING_RECONCILIATION_ENABLED','BIRTHDAY_COLLECTION_ENABLED','GROQ_PROBE_ON_START','ORION_EMAIL_DELIVERY_PROBE']}, sort_keys=True), flush=True); subprocess.run([sys.executable, '-m', 'scripts.one_time_admin_identity_migration'], check=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_admin_identity_schema'], check=True); subprocess.run([sys.executable, '-m', 'scripts.one_time_admin_demo_setup'], check=True); print('qr_bridge_probe_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.probe_qr_bridge'], check=True)",
+    "variables": {
+      "ORION_RUN_ADMIN_IDENTITY_MIGRATION": "1",
+      "ORION_ADMIN_IDENTITY_MIGRATION_RUN_ID": "8553cfa8-5932-44a8-be91-3ed2e5a391d4",
+      "ORION_RUN_ADMIN_DEMO_SETUP": "1",
+      "ORION_ADMIN_DEMO_SETUP_RUN_ID": "075a435e-ed21-44b7-8d59-ba5f01087ec0",
+      "ORION_ADMIN_DEMO_SETUP_PHASE": "plan",
+      "ORION_ADMIN_DEMO_TENANT_ID": "82552b25-d0c8-5338-8c42-49f11de59e45",
+      "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED": "0",
+      "ORION_ADMIN_DEMO_APPROVED_PLAN_SHA256": ""
+    }
+  },
+  "worker": {
+    "pre_deploy_command": "python -c \"import importlib.metadata as m, subprocess, sys; expected={'fastapi': '0.150.0', 'starlette': '1.9.0', 'SQLAlchemy': '2.1.5', 'asyncpg': '0.32.0', 'uvicorn': '0.54.0', 'uvloop': '0.23.0', 'pydantic': '2.14.1', 'pydantic_core': '2.50.1', 'redis': '5.3.1', 'arq': '0.28.0', 'cryptography': '49.0.0', 'httpx': '0.28.1', 'psycopg': '3.3.6', 'Pillow': '12.3.0', 'pillow_heif': '1.8.1', 'boto3': '1.43.116', 'argon2_cffi': '25.1.0', 'tzdata': '2026.5'}; ok=all(m.version(n)==v for n,v in expected.items()); print('tested_runtime_versions_match' if ok else 'tested_runtime_version_mismatch', flush=True); ok or sys.exit(1); print('admin_identity_schema_barrier_start', flush=True); subprocess.run([sys.executable, '-m', 'scripts.wait_for_admin_identity_schema'], check=True)\"",
+    "variables": {
+      "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED": "0"
+    },
+    "stage_after_api_0030_gate_success": true,
+    "staged_in_phase1": false
+  },
+  "does_not_provision_admin": true,
+  "does_not_change_tenant_bot": true,
+  "qr_service_changed": false,
+  "volumes_changed": false,
+  "no_campaigns_or_test_messages": true,
+  "staging_scope": "API only; worker code/gate stage follows actual successful0030 receipt",
+  "staged_patch_id": "8f101287-9492-42b7-9818-f9e1fcfda6d3",
+  "actual_deployment": "61a5b9f9-a082-4cd7-9ac9-5d122c4e520a",
+  "result_evidence": "railway-native-admin-phase1-results.json",
+  "note": "Original requested variable values preserved as historical preparation; one-time flags were subsequently cleaned without redeploy."
+}

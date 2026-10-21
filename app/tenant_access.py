@@ -4,7 +4,7 @@ import os
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import text
+from app.account_business import account_membership_role
 
 
 @dataclass(frozen=True)
@@ -38,9 +38,6 @@ async def resolve_tenant_access(actor, tenant_id: UUID, operation: str = "read")
         raise HTTPException(423, "O acesso por estabelecimento ainda não está habilitado")
     from app.catalog_api import support_session_factory
     async with support_session_factory()() as session:
-        row = (await session.execute(text("""
-            SELECT role FROM tenant_memberships
-            WHERE account_id=:account AND tenant_id=:tenant AND active
-        """), {"account": account_id, "tenant": tenant_id})).scalar_one_or_none()
+        row = await account_membership_role(session, account_id, tenant_id)
     check_access(row, operation)
     return TenantAccess(row, account_id)

@@ -1,0 +1,18 @@
+{
+  "scope": "Offline DOM; synthetic account=NULL and assigned=NULL; no API/provider connection or send attempted",
+  "before_commit": "8369e2e4d53379e7353ac69af3d40b70fc2b926e",
+  "before": {
+    "source_sha256": "242409fc4ccca90ed3383645d81c0b771a8c8ad98c0037d0c5f2157167e25bd4",
+    "claims_with_you": true,
+    "send_button_enabled": true,
+    "claim_button_enabled": true,
+    "writes_requested": 0
+  },
+  "after": {
+    "source_sha256": "76513437413fa7e4d868a5e08f4b712777b80e725103dd3219f4c3a9ce54ba6f",
+    "claims_with_you": false,
+    "send_button_enabled": false,
+    "claim_button_enabled": false,
+    "writes_requested": 0
+  }
+}

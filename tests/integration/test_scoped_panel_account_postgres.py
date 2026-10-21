@@ -56,6 +56,17 @@ async def test_joined_account_scope_is_one_live_query_and_never_crosses_requests
             await call(f"/api/v1/tenants/{ctx.b}/services", 403)
             await call(path, 403, request_headers=other_headers)
             await call(path, 200)
+            # A historical second membership must not be selectable by changing
+            # the route UUID; the same single live query rejects both routes.
+            async with ctx.migration.begin() as db:
+                await db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role) VALUES(:t,:a,'editor')"),
+                                 {"t": ctx.b, "a": ctx.actor.account_id})
+            await call(path, 409)
+            await call(f"/api/v1/tenants/{ctx.b}/services", 409)
+            async with ctx.migration.begin() as db:
+                await db.execute(text("UPDATE tenant_memberships SET active=false WHERE tenant_id=:t AND account_id=:a"),
+                                 {"t": ctx.b, "a": ctx.actor.account_id})
+            await call(path, 200)
             async with ctx.migration.begin() as db:
                 await db.execute(text("UPDATE tenant_memberships SET active=false WHERE tenant_id=:t AND account_id=:a"),
                                  {"t": ctx.a, "a": ctx.actor.account_id})

@@ -1,0 +1,377 @@
+{
+  "schema_version": 1,
+  "prepared_at_utc": "2026-10-21T00:47:52.934456+00:00",
+  "scope": "Read-only local document/bundle/receipt review. Only this external checklist was written. No repo edits, commands/guards executed, infrastructure started, network/Railway/messages/campaigns.",
+  "snapshot": {
+    "receipt_updated_at_utc": "2026-10-21T00:47:14.517823+00:00",
+    "receipt_publication_status": "Admin e IA da demonstração aplicados; sessão QR registrada (C) e adaptador (D) publicado e pronto, com os 96 arquivos de autenticação e o volume originais. Adoção E em publicação; habilitação F pendente. Controle e envio globais desligados; sem campanhas ou mensagens de teste.",
+    "external_receipt_sha256": "46151fd1bdd8ad009077db3bbb379ad229a56c1b2fa181e749be532395863fd4",
+    "bundled_receipt_sha256": "00855fcac51eada049ba605fe74a7af2fdac3d03e9f6b5af68bb338d3755c349",
+    "receipt_copies_equal": false,
+    "current_manifest_status": "API a85da1c e setup do próprio admin publicados/verificados: identidade, proprietário somente da demonstração e IA desse cadastro ativados com backup/restauração. SessãoQR8369 e worker d11 preservados. Registro protegido da sessão(C) preparado; central humana ainda não ativada.",
+    "manifest_generated_at_utc": "2026-10-21T00:26:10.049935+00:00",
+    "inventory_ids": 1247,
+    "source_hash_files": 102,
+    "findings_unique": 13,
+    "reviewer_observations": 14,
+    "current_state_from_supplied_receipts": "Setup succeeded, C register succeeded, D adapter ready; E/F not attested complete in the read snapshot."
+  },
+  "documents_to_reconcile": [
+    {
+      "path": "docs/marcflow/admin-central-identity.md",
+      "anchors": [
+        3,
+        31,
+        53,
+        126
+      ],
+      "action": "Change initial diagnosis to explicitly historical; current approved setup exists and demo bot/owner/native identity were changed intentionally. Keep old-session support and fresh-login requirement, four-field lease policy, 0030 gate, no native auto-provision. Add final C/D/E/F receipt links without treating plan as applied."
+    },
+    {
+      "path": "docs/marcflow/manual-inventory-review.md",
+      "anchors": [
+        3,
+        69,
+        145,
+        165,
+        176,
+        202
+      ],
+      "action": "Preserve 1247/13/14 and dynamic102 hashes; reconcile current-status paragraphs C/D/E/F. Keep failed attempts as dated history. Distinguish CIa85, per-service deployed/reported/configured versions and tree equivalence. Replace stale Cprepared/Dpending statements and old remaining checklist after actual rollout."
+    },
+    {
+      "path": "docs/marcflow/railway-release.md",
+      "anchors": [
+        1,
+        22,
+        26,
+        68
+      ],
+      "action": "Keep historical attempts and counts clearly archived; prepend current per-service/schema/flags table and link latest receipt. Current gate30/normal-hook cleanup and E/F acceptance must be read from actual results; do not present old0028 commands as current instructions."
+    },
+    {
+      "path": "docs/marcflow/human-central.md",
+      "anchors": [
+        1,
+        3,
+        53,
+        60,
+        64,
+        136
+      ],
+      "action": "Mark 4b1ba80/no-deploy/no-activation text as historical authorization context and link current report; update current-use entry point for native admin, fresh login and QR principal preservation. Keep functional contracts/gaps; Meta implementation is not Meta live homologation."
+    },
+    {
+      "path": "README.md",
+      "anchors": [
+        3,
+        6
+      ],
+      "action": "Keep broad readiness partial until real acceptances; current status pointer may say QR control/fila enabled only after F actual receipt. Do not replace development/not released-to-real-clients with full integration-complete claim."
+    },
+    {
+      "path": "docs/marcflow-integration.md",
+      "anchors": [
+        5,
+        10,
+        14
+      ],
+      "action": "Keep mission PARCIAL and old results explicitly historical. Add current receipt pointer only if needed; preserve unimplemented workflow executor/full media/extensions limitations."
+    }
+  ],
+  "report_and_bundle_pipeline": {
+    "source_of_operational_truth": "external publication-receipt.json; append E/F actual outcomes and cleanup, then use it as builder input",
+    "receipt_fields_to_reconcile": [
+      "publication_status",
+      "deployments(C/D/E/F status+evidence)",
+      "external_acceptance.central_activation",
+      "remaining_acceptance.central_registration",
+      "remaining_acceptance.central_activation",
+      "validation: isolated E37 and Fmasking5 with correct scope"
+    ],
+    "regenerate_after_actual_rollout": [
+      "relatorio.html",
+      "review-report-manifest.json",
+      "review-report-validation.json",
+      "review-report-validation.log"
+    ],
+    "copy_current_inventory_companions_if_reconsolidated": [
+      "manual-api.json",
+      "manual-emit.json",
+      "manual-js.json",
+      "manual-inventory.json",
+      "manual-inventory-summary.json",
+      "manual-inventory-compact.json",
+      "manual-inventory-validation.json"
+    ],
+    "already_identical_at_snapshot": "All three manual reviewer JSONs, four inventory outputs, HTML/manifest/QA and CIa85/constraints evidence currently match the bundle; the receipt alone advanced after C/D and HTML must be rebuilt.",
+    "already_bundled_C_reference_files": [
+      "native-central-C-prepared.json",
+      "native-central-C-prepared-validation.json",
+      "native-central-C-staged.json",
+      "native-central-phase-review.json"
+    ],
+    "new_CDEF_files_existing_now": [
+      {
+        "name": "railway-native-central-C-results.json",
+        "phase": "C",
+        "evidence_layer": "actual_operator_receipt",
+        "note": "Register succeeded; backup/readback/restore/rehearsal/session; authority_adopted=false. Record configured/reported SHA and runtime-equivalence separately.",
+        "exists": true,
+        "bytes": 4469,
+        "sha256": "943c9cf8635de3f6dd1f2a804a5558f82ef1e7f9ae545bf26ebe5158c9e560a0",
+        "bundle_action": "add"
+      },
+      {
+        "name": "native-central-D-prepared.json",
+        "phase": "D",
+        "evidence_layer": "prepared_plan",
+        "note": "QR-only flags; source/root/volume preserved; no operation proven by this file.",
+        "exists": true,
+        "bytes": 1028,
+        "sha256": "635bb44af9407c4ce727f45935ad7d1a28c318cfbcc1032417e4ba4c0400c833",
+        "bundle_action": "add"
+      },
+      {
+        "name": "native-central-D-staged.json",
+        "phase": "D",
+        "evidence_layer": "staged_patch",
+        "note": "Reviewed patch scope; pair with actual result.",
+        "exists": true,
+        "bytes": 2529,
+        "sha256": "4eed67c5e09321defaa9298fc27ef40eafef8b6cd2e14635705f9b67edaac0cd",
+        "bundle_action": "add"
+      },
+      {
+        "name": "railway-native-central-D-results.json",
+        "phase": "D",
+        "evidence_layer": "actual_deployment_receipt",
+        "note": "Existing device connected; original /data/auth backup verified_existing96files; configured QR8369 and reported docs SHA distinguished; not E adoption.",
+        "exists": true,
+        "bytes": 1005,
+        "sha256": "d6cbc0aecadd58d3ebac6f00982a47db5b70c63cbabe419d93e16773db4577ae",
+        "bundle_action": "add"
+      },
+      {
+        "name": "public-after-native-central-D.json",
+        "phase": "D",
+        "evidence_layer": "actual_public_GET_only",
+        "note": "health/central ready+same-session point-in-time; no login/provider/send proof.",
+        "exists": true,
+        "bytes": 711,
+        "sha256": "6f87c4834fefd44d1d0e9ea4c84de603d187bfc7bf98499fcb6737f242cd9028",
+        "bundle_action": "add"
+      },
+      {
+        "name": "native-central-E-prepared.json",
+        "phase": "E",
+        "evidence_layer": "prepared_plan",
+        "note": "Activation UUID and ordered version/schema/readiness/operator/probe hook; not execution.",
+        "exists": true,
+        "bytes": 13862,
+        "sha256": "176bc9d1f97daa9b5ac5a813e05b7a6da0672b80815da5de2bb366db2c304985",
+        "bundle_action": "add"
+      },
+      {
+        "name": "native-central-E-staged.json",
+        "phase": "E",
+        "evidence_layer": "staged_patch",
+        "note": "Approval/staging evidence only; no successful deployment inference.",
+        "exists": true,
+        "bytes": 23689,
+        "sha256": "9ce56744dca26a19aacc1bf422f19ce04d0ab1bc952631b5542af207d42d2f66",
+        "bundle_action": "add"
+      },
+      {
+        "name": "native-central-E-guard-evidence.json",
+        "phase": "E",
+        "evidence_layer": "isolated_fake_tests",
+        "note": "37 GET/inline-hook guard cases; not runtime versions/live readiness/E completion.",
+        "exists": true,
+        "bytes": 4700,
+        "sha256": "ee8dedb5038c374faa27082c23290b1dc572d1050c24143f057760b4c6ce5131",
+        "bundle_action": "add"
+      },
+      {
+        "name": "native-central-E-guard.xml",
+        "phase": "E",
+        "evidence_layer": "isolated_fake_tests_JUnit",
+        "note": "37 isolated cases, no application/PG qualification or production operation.",
+        "exists": true,
+        "bytes": 6306,
+        "sha256": "cac5cdbffa7254fd825b55679763bbfb8d621e9145dddbfefd232ff62188641d",
+        "bundle_action": "add"
+      },
+      {
+        "name": "native-central-E-guard.log",
+        "phase": "E",
+        "evidence_layer": "isolated_fake_tests_log",
+        "note": "Companion execution log; retain exact bytes.",
+        "exists": true,
+        "bytes": 101,
+        "sha256": "ef7b2bef872e0a4e3ad82901508add30cd9083fdd971ab84da0a573f6465e8fa",
+        "bundle_action": "add"
+      },
+      {
+        "name": "native-central-E-guard-network.json",
+        "phase": "E",
+        "evidence_layer": "isolated_network_audit",
+        "note": "No live DNS/socket activity in guard harness.",
+        "exists": true,
+        "bytes": 168,
+        "sha256": "97e2fea8c9b53bed6c89d8470004a134a92516ba92b6ad66c448630b047abeb8",
+        "bundle_action": "add"
+      },
+      {
+        "name": "test_native_central_e_guard.py",
+        "phase": "E",
+        "evidence_layer": "reproducer_source",
+        "note": "Synthetic readiness responses and subprocess/version fakes, no real token/response.",
+        "exists": true,
+        "bytes": 8076,
+        "sha256": "285b29d23c83f3b2aeaa3a3913296e748058061107976cde3527108c36c982a5",
+        "bundle_action": "add"
+      },
+      {
+        "name": "run_native_central_e_guard_tests.py",
+        "phase": "E",
+        "evidence_layer": "reproducer_runner",
+        "note": "Runs guard test with networking denied; inspect/review only here.",
+        "exists": true,
+        "bytes": 1304,
+        "sha256": "e131b98e06796a49b280b3bdb997e9c05acf904b2dbb0426ed468fd3a2ae4980",
+        "bundle_action": "add"
+      },
+      {
+        "name": "native-central-F-prepared.json",
+        "phase": "F",
+        "evidence_layer": "prepared_plan",
+        "note": "API control/send flags; worker source a85 plus control/send/legacy and safe logging; E complete+fresh D+API cleanup are required, not presumed.",
+        "exists": true,
+        "bytes": 7568,
+        "sha256": "3307a88482b73a5299a8ee81d90de5dc65f478f988f1f323e71fe944f20f875f",
+        "bundle_action": "add"
+      },
+      {
+        "name": "native-central-F-static-proof.json",
+        "phase": "F",
+        "evidence_layer": "static_only",
+        "note": "shlex/AST/compile/pins/source comparisons; no hook/binding/gate/ARQ execution.",
+        "exists": true,
+        "bytes": 4103,
+        "sha256": "d29e3e74d8a894fdfce2bec362a1d6b3db478447b87bc32854d70b5336880fe5",
+        "bundle_action": "add"
+      },
+      {
+        "name": "native-central-F-worker-current-config.json",
+        "phase": "F",
+        "evidence_layer": "historical_config_metadata_only",
+        "note": "Baseline worker d11 config and variable NAMES only, no variable values; not current effective F config.",
+        "exists": true,
+        "bytes": 2666,
+        "sha256": "9b49fa8a90295fe4d16ec5ca78d19acf14fc4cbc92fde14b61a4f1c2ca514b72",
+        "bundle_action": "add"
+      },
+      {
+        "name": "native-central-F-review-and-masking-test.json",
+        "phase": "F",
+        "evidence_layer": "isolated_logging_only",
+        "note": "Five fake getenv/import/print cases; E cleanup precondition pending; not five app/PG/CI tests.",
+        "exists": true,
+        "bytes": 11102,
+        "sha256": "03cb9568156baef7c2f3e4ac6dcdca631f9cc990098901019e5ea135268a22cd",
+        "bundle_action": "add"
+      },
+      {
+        "name": "native-central-F-masking-isolated.log",
+        "phase": "F",
+        "evidence_layer": "isolated_logging_only_log",
+        "note": "Synthetic mixed flags may show Meta/campaign1: never present these as production flags.",
+        "exists": true,
+        "bytes": 2515,
+        "sha256": "7efdc3383fb8ba3b89ededa4a5debd0961ff0aecdffb77eea999367a7da5c113",
+        "bundle_action": "add"
+      }
+    ],
+    "actual_result_artifacts_still_required_after_successful_rollout": [
+      {
+        "suggested_name": "railway-native-central-E-results.json",
+        "exists_now": false,
+        "required_fields": "status/deployment/configured vs reported SHA/runtime equivalence; live readiness guard; phaseactivate authority_adoptedtrue; backup/readback/restore/rehearsal/session; snapshot/pauses/empty-uncertain-backlog guards; normal API hook and legacy one-time flags cleanup readback, native1/legacy1 preserved"
+      },
+      {
+        "suggested_name": "public-after-native-central-E.json",
+        "exists_now": false,
+        "required_fields": "GET-only health/whatsapp/central and same-session readiness; time after E; no login/provider/send claim"
+      },
+      {
+        "suggested_name": "native-central-F-staged.json",
+        "exists_now": false,
+        "required_fields": "Exact staged patch, actual approval and pre-F effective E cleanup/D readiness; source/flags scope"
+      },
+      {
+        "suggested_name": "railway-native-central-F-results.json",
+        "exists_now": false,
+        "required_fields": "Actual API+worker deploy outcomes/source/gate30/native binding; actual safe effective flags control/send1 with IA/channels/native/legacy preserved; Meta/campaign/probes0; start/hook/role refs unchanged, no owner/one-time vars on worker; final cleanup/no outstanding patch"
+      },
+      {
+        "suggested_name": "public-after-native-central-F.json",
+        "exists_now": false,
+        "required_fields": "Post-F GET health/central/session continuity and public asset hashes; no fresh-admin authentication or message-delivery inference"
+      }
+    ],
+    "package_verification_after_copy": [
+      "Revalidate links and exact hashes against final receipt and sources; do not patch HTML strings by hand",
+      "Run offline HTML hostile-content/no-egress checks and report QA",
+      "Run delivery hash/source/receipt consistency validation; refresh delivery-validation.json in bundle",
+      "After git staging docs, compare raw bytes with Git blobs using verify_bundle_index; refresh bundle-index-byte-validation.json externally before adding it if desired",
+      "Inspect final git diff --check for newly authored docs; preserve original raw XML/log bytes via existing .gitattributes"
+    ],
+    "never_copy": [
+      ".env or real variable VALUE dumps",
+      "database/auth-volume/Redis dumps or encrypted backup blobs",
+      "password hashes/credential digests/tokens/cookies/phone numbers from real users",
+      "unredacted runtime/private HTTP response/trace dumps",
+      "repetitive 84-table runner state instead of compact preservation proof"
+    ]
+  },
+  "claims_and_remaining_acceptance": {
+    "inventory": "1247 frozen candidate IDs reviewed manually by function/call/guard/sink; not a whole-MarcFlow audit or proof every requirement exists. 13 distinct findings/14 observations, dynamic source hash count.",
+    "CIa85": "5.074 backend passed, 1 skipped; 4.909 Compose passed, 166 skipped: grupos sobrepostos. QR 446, DOM 329, ASR 4 mais smoke WAV/OGG sintético e mídia 10; pipcheck, 52 pins em dois ambientes, 104 correspondências. Qualificação com provedores substituídos/desativados, sem inferir login ou entrega reais.",
+    "operational": "Use actual C/D/E/F receipt per stage. A proposed/staged patch, passed guard simulation or publicready alone does not prove E/F applied. Reported SHA may differ from configured SHA; explain verified runtime/QR-tree equivalence.",
+    "fresh_admin_login": {
+      "status": "pending_real_acceptance",
+      "criteria": "The owner performs a fresh admin login with existing credentials without sharing them; confirm real native account/membership and read-only own central/channel/history access. Preserve old support sessions. Do not assume database provisioning already upgraded an existing cookie."
+    },
+    "Meta": {
+      "status": "not_homologated_live_disabled",
+      "criteria": "Current official channel/credential/webhook identity+signature/provider time/window and receipts must be qualified separately, with explicit authorization before any real-message test. META_LIVE_SEND0 is not Meta integration acceptance."
+    },
+    "model_asr_native_whatsapp": {
+      "status": "not_performed_in_this_continuation",
+      "criteria": "Evaluate real model/transcription/native WhatsApp only within separately authorized scope and data. Codecs/fakes/unit responses do not establish semantic/real-device acceptance."
+    },
+    "20_browser_journeys": {
+      "status": "not_run_in_this_continuation",
+      "criteria": "Record fresh end-to-end browser journeys with actual browser/device/viewport/login scope and observable results; DOM329 are not20browser journeys."
+    },
+    "capacity_load1500": {
+      "status": "not_rerun_in_this_continuation",
+      "criteria": "Repeat the referenced capacity/load scenario with explicit target units, workload, duration, concurrency, environment and pass thresholds/metrics. Historical results and test counts are not a current capacity guarantee."
+    },
+    "normal_traffic": "No task-generated campaign/probe/real test message. Existing live AI traffic was preserved, not audited as zero traffic.",
+    "broader_mission": "Workflow distributed executor, full media/other advanced integrations remain governed by their recorded gaps; operational QR activation does not complete the whole MarcFlow mission."
+  },
+  "proposed_current_text_until_EF_actual_success": "O inventário congelado teve 1.247 candidatos revistos manualmente, com 13 achados únicos e 14 observações; 102 arquivos de fonte/dependência têm hashes conferidos. A CI de a85da1c passou, com grupos de teste sobrepostos e provedores substituídos/desativados conforme os recibos. O setup aprovado criou o vínculo do próprio admin, a propriedade e a IA somente da demonstração. C registrou a sessão preservada e D publicou o adaptador pronto; E e F ainda dependem de seus próprios recibos. O novo login do admin, a homologação Meta/modelo/ASR/WhatsApp nativo, as 20 jornadas completas e a requalificação de capacidade continuam pendentes. Nenhuma campanha ou mensagem real de teste foi enviada pela tarefa.",
+  "proposed_final_text_only_after_E_and_F_verified_success": [
+    "A central humana QR teve o registro, o adaptador, a adoção persistente e o controle e a fila de envio humano habilitados conforme os recibos de cada serviço. Por aprovação explícita, foi persistida a identidade do próprio administrador, acrescentada a propriedade somente da demonstração e ativada a IA desse cadastro, com auditoria, backup cifrado, leitura de volta, restauração e ensaio. A sessão e o volume QR existentes foram preservados; não houve novo pareamento, logout ou mensagem real de teste. A IA e os canais globais foram mantidos ligados.",
+    "O inventário cobre 1.247 candidatos de saída, com 13 achados únicos e 14 observações, mantendo IDs e hashes atuais. A CI de a85da1c passou em PostgreSQL/Redis, Compose, QR, DOM, ASR e mídia; os conjuntos sobrepostos não são somados. As versões efetivamente publicadas por serviço e sua equivalência de código constam dos recibos. Isso não equivale à integração completa do MarcFlow nem à homologação de provedores.",
+    "O próprio administrador precisa de um novo login para receber a identidade auditável; sessões antigas conservam seu acesso anterior. Permanecem pendentes o aceite desse login e da navegação real, a homologação Meta e de modelo/transcrição/WhatsApp nativo, as 20 jornadas completas e um novo ensaio de capacidade. Meta, campanhas e sondagens de envio permanecem desligadas. Nenhuma conclusão sobre ausência de tráfego normal da IA é inferida da proibição de mensagens de teste."
+  ],
+  "text_gates": [
+    "Use final text only if E and F actual results succeeded and final effective flags/session/cleanup match",
+    "Replace pending fresh-login clause only after a separate actual read-only login receipt; never infer from setup or DOM tests",
+    "Do not update acceptance to live Meta/capacity/model just because code or reference texts exist",
+    "Recompute source-count wording from generated summary instead of blindly keeping102 if sources change"
+  ]
+}

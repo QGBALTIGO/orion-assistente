@@ -1,0 +1,27 @@
+{
+  "synthetic_only": true,
+  "human_paused": true,
+  "appointment_status": "confirmed",
+  "pending_status": "acknowledged",
+  "automation_jobs": 0,
+  "enabled_execution": 0,
+  "outbox_messages": 0,
+  "legacy_outbox_messages": 0,
+  "policy": {
+    "holidays": [],
+    "weekdays": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "birthday_leap_day": "skip",
+    "marketing_end_hour": 18,
+    "marketing_start_hour": 9,
+    "operational_end_hour": 18,
+    "operational_start_hour": 7
+  }
+}

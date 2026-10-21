@@ -40,24 +40,25 @@ async def onboarding_db(monkeypatch):
     runtime = create_async_engine(urls[0].replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool)
     migration = create_async_engine(urls[1].replace("postgresql+psycopg://", "postgresql+asyncpg://", 1).replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool)
     factory = async_sessionmaker(runtime, expire_on_commit=False)
-    owner, other, a, b = (uuid4() for _ in range(4))
+    owner, other, new_account, a, b = (uuid4() for _ in range(5))
     monkeypatch.setenv("ONBOARDING_ENABLED", "1")
     monkeypatch.setenv("BUSINESS_PROFILES_ENABLED", "1")
     monkeypatch.setenv("COMMERCIAL_CATALOG_ENABLED", "1")
     monkeypatch.setattr(service, "get_session_factory", lambda: factory)
     support_session_factory.cache_clear()
     async with migration.begin() as db:
-        for account in (owner, other):
+        for account in (owner, other, new_account):
             await db.execute(text("INSERT INTO panel_accounts(id,name,email,password_hash) VALUES(:id,'Pessoa sintética',:email,'unused-synthetic')"), {"id": account, "email": f"onboarding-{account}@example.test"})
         for tenant in (a, b):
             await db.execute(text("INSERT INTO tenants(id,name,slug) VALUES(:t,'Legado sintético',:s)"), {"t": tenant, "s": "onboarding-" + tenant.hex})
         await db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role) VALUES(:t,:a,'owner')"), {"t": a, "a": owner})
-    ctx = SimpleNamespace(actor=Actor("member", account_id=owner), other=other, a=a, b=b, runtime=factory, migration=migration)
+    ctx = SimpleNamespace(actor=Actor("member", account_id=owner), new_actor=Actor("member", account_id=new_account),
+        other=other, a=a, b=b, runtime=factory, migration=migration)
     try:
         yield ctx
     finally:
         async with migration.begin() as db:
-            new = (await db.execute(text("SELECT tenant_id FROM business_onboarding_creations WHERE account_id=:a"), {"a": owner})).scalars().all()
+            new = (await db.execute(text("SELECT tenant_id FROM business_onboarding_creations WHERE account_id IN (:a,:b,:c)"), {"a": owner, "b": other, "c": new_account})).scalars().all()
             for tenant in [a, b, *new]:
                 for table in ("business_onboarding_operations", "business_onboarding_creations", "business_onboarding",
                     "business_profile_events", "business_profile_state", "business_profile_versions", "tenant_membership_events",
@@ -66,15 +67,21 @@ async def onboarding_db(monkeypatch):
                     "services", "professionals", "tenant_audit", "platform_audit"):
                     await db.execute(text(f"DELETE FROM {table} WHERE tenant_id=:t"), {"t": tenant})
                 await db.execute(text("DELETE FROM tenants WHERE id=:t"), {"t": tenant})
-            await db.execute(text("DELETE FROM panel_accounts WHERE id IN (:a,:b)"), {"a": owner, "b": other})
+            await db.execute(text("DELETE FROM panel_accounts WHERE id IN (:a,:b,:c)"), {"a": owner, "b": other, "c": new_account})
         await runtime.dispose()
         await migration.dispose()
         support_session_factory.cache_clear()
 
 
-async def configured(ctx, *, activity="services"):
+def new_business_context(ctx):
+    """Keep the seeded legacy owner separate from a first-time business creator."""
+    return SimpleNamespace(**{**vars(ctx), "actor": ctx.new_actor})
+
+
+async def configured(ctx, *, activity="services", state=None):
     payload = creation() if activity == "services" else schemas.CreateBusiness(**{**creation().model_dump(), "activity": activity})
-    state = await service.create_business(ctx.actor, payload)
+    if state is None:
+        state = await service.create_business(ctx.actor, payload)
     state = await save(ctx, state, "location", {"modality": "online"})
     if activity in {"services", "both"}:
         state = await save(ctx, state, "professionals", {"item": {"name": "Pessoa sintética"}, "self_provider": True})
@@ -88,7 +95,7 @@ async def configured(ctx, *, activity="services"):
 
 @pytest.mark.asyncio
 async def test_create_unverified_personal_account_is_atomic_paused_and_idempotent(onboarding_db):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     payload = creation()
     first, second = await asyncio.gather(service.create_business(ctx.actor, payload), service.create_business(ctx.actor, payload))
     assert first["tenant_id"] == second["tenant_id"] and first["version"] == second["version"] == 1
@@ -118,15 +125,93 @@ async def test_get_entry_no_creation_legacy_empty_optional_and_employee_skips(on
 
 
 @pytest.mark.asyncio
-async def test_new_business_incomplete_entry_and_multiple_business_selection(onboarding_db):
-    ctx = onboarding_db
+async def test_new_business_entry_resumes_the_only_business_and_disallows_another(onboarding_db):
+    ctx = new_business_context(onboarding_db)
+    before = await service.entry(ctx.actor)
+    assert before["kind"] == "onboarding" and before["create_allowed"]
     state = await service.create_business(ctx.actor, creation())
-    assert (await service.entry(ctx.actor))["kind"] == "choose_business"
-    selected = await service.entry(ctx.actor, UUID(state["tenant_id"]))
+    selected = await service.entry(ctx.actor)
     assert selected["kind"] == "onboarding" and selected["current_step"] == "location"
+    assert selected["tenant_id"] == state["tenant_id"] and not selected["create_allowed"]
     with pytest.raises(HTTPException) as foreign:
         await service.entry(ctx.actor, ctx.b)
     assert foreign.value.status_code == 403
+    with pytest.raises(HTTPException) as duplicate:
+        await service.create_business(ctx.actor, creation())
+    assert duplicate.value.status_code == 409
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role,active", [("owner", True), ("editor", True), ("viewer", True), ("owner", False)])
+async def test_existing_business_blocks_creation_without_changing_memberships(onboarding_db, role, active):
+    ctx = onboarding_db
+    async with ctx.migration.begin() as db:
+        await db.execute(text("UPDATE tenant_memberships SET role=:r,active=:active WHERE tenant_id=:t AND account_id=:a"),
+                         {"r": role, "active": active, "t": ctx.a, "a": ctx.actor.account_id})
+    with pytest.raises(HTTPException) as denied:
+        await service.create_business(ctx.actor, creation())
+    assert denied.value.status_code == 409
+    assert not (await service.entry(ctx.actor))["create_allowed"]
+    async with ctx.migration.connect() as db:
+        membership = (await db.execute(text("SELECT tenant_id,role,active FROM tenant_memberships WHERE account_id=:a"),
+                         {"a": ctx.actor.account_id})).one()
+        assert membership == (ctx.a, role, active)
+        assert (await db.execute(text("SELECT count(*) FROM business_onboarding_creations WHERE account_id=:a"),
+                         {"a": ctx.actor.account_id})).scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_different_creation_keys_race_to_one_company_without_orphan_records(onboarding_db):
+    ctx = new_business_context(onboarding_db)
+    results = await asyncio.gather(*(service.create_business(ctx.actor, creation()) for _ in range(2)), return_exceptions=True)
+    successful = [r for r in results if isinstance(r, dict)]
+    assert len(successful) == 1
+    assert [r.status_code for r in results if isinstance(r, HTTPException)] == [409]
+    tenant = UUID(successful[0]["tenant_id"])
+    async with ctx.migration.connect() as db:
+        assert (await db.execute(text("SELECT tenant_id FROM tenant_memberships WHERE account_id=:a AND active"),
+                         {"a": ctx.actor.account_id})).scalars().all() == [tenant]
+        assert (await db.execute(text("SELECT tenant_id FROM business_onboarding_creations WHERE account_id=:a"),
+                         {"a": ctx.actor.account_id})).scalars().all() == [tenant]
+        assert (await db.execute(text("SELECT tenant_id FROM business_onboarding WHERE created_by=:a"),
+                         {"a": ctx.actor.account_id})).scalars().all() == [tenant]
+        assert (await db.execute(text("SELECT count(*) FROM tenant_membership_events WHERE account_id=:a"),
+                         {"a": ctx.actor.account_id})).scalar_one() == 1
+
+
+@pytest.mark.asyncio
+async def test_creation_history_prevents_a_second_company_after_access_is_revoked(onboarding_db):
+    ctx = new_business_context(onboarding_db)
+    payload = creation()
+    state = await service.create_business(ctx.actor, payload)
+    async with ctx.migration.begin() as db:
+        await db.execute(text("UPDATE tenant_memberships SET role='editor',active=false WHERE account_id=:a"),
+                         {"a": ctx.actor.account_id})
+    with pytest.raises(HTTPException) as denied:
+        await service.create_business(ctx.actor, creation())
+    assert denied.value.status_code == 409
+    assert not (await service.entry(ctx.actor))["create_allowed"]
+    async with ctx.migration.connect() as db:
+        assert (await db.execute(text("SELECT tenant_id FROM business_onboarding_creations WHERE account_id=:a"),
+                         {"a": ctx.actor.account_id})).scalars().all() == [UUID(state["tenant_id"])]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("requested", [None, "a", "b"])
+async def test_legacy_multiple_memberships_require_review_even_with_a_requested_company(onboarding_db, requested):
+    ctx = onboarding_db
+    async with ctx.migration.begin() as db:
+        await db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role) VALUES(:t,:a,'editor')"),
+                         {"t": ctx.b, "a": ctx.actor.account_id})
+    result = await service.entry(ctx.actor, getattr(ctx, requested) if requested else None)
+    assert result["kind"] == "business_conflict" and not result["create_allowed"]
+    assert result.get("tenant_id") is None
+    with pytest.raises(HTTPException) as denied:
+        await service.create_business(ctx.actor, creation())
+    assert denied.value.status_code == 409
+    async with ctx.migration.connect() as db:
+        assert set((await db.execute(text("SELECT tenant_id FROM tenant_memberships WHERE account_id=:a AND active"),
+                         {"a": ctx.actor.account_id})).scalars().all()) == {ctx.a, ctx.b}
 
 
 @pytest.mark.asyncio
@@ -142,7 +227,7 @@ async def test_current_owner_membership_is_required_for_mutation(onboarding_db, 
 
 @pytest.mark.asyncio
 async def test_step_replay_stale_cas_changed_key_and_separate_tenant(onboarding_db):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     initial = await service.create_business(ctx.actor, creation())
     key = str(uuid4())
     first = await save(ctx, initial, "location", {"modality": "online"}, key=key)
@@ -158,7 +243,7 @@ async def test_step_replay_stale_cas_changed_key_and_separate_tenant(onboarding_
 
 @pytest.mark.asyncio
 async def test_real_service_catalog_hours_staged_then_complete_no_channels_or_publication(onboarding_db):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     state = await configured(ctx)
     tenant = UUID(state["tenant_id"])
     assert not state["pending"]
@@ -179,7 +264,7 @@ async def test_real_service_catalog_hours_staged_then_complete_no_channels_or_pu
 
 @pytest.mark.asyncio
 async def test_products_only_complete_has_no_calendar_or_fabricated_stock(onboarding_db):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     state = await configured(ctx, activity="products")
     tenant = UUID(state["tenant_id"])
     done = await service.complete(ctx.actor, tenant, schemas.Complete(expected_version=state["version"], expected_snapshot=state["snapshot"], idempotency_key=str(uuid4()), activate_catalog=True, acknowledged=True))
@@ -193,7 +278,7 @@ async def test_products_only_complete_has_no_calendar_or_fabricated_stock(onboar
 
 @pytest.mark.asyncio
 async def test_incomplete_finish_rolls_back_and_runtime_guard_rechecks_changes(onboarding_db):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     state = await service.create_business(ctx.actor, creation())
     tenant = UUID(state["tenant_id"])
     with pytest.raises(HTTPException):
@@ -202,7 +287,7 @@ async def test_incomplete_finish_rolls_back_and_runtime_guard_rechecks_changes(o
         with pytest.raises(HTTPException):
             async with tenant_transaction(db, tenant):
                 await service.require_operational_ready(db, tenant, "appointments")
-    configured_state = await configured(ctx)
+    configured_state = await configured(ctx, state=state)
     tenant = UUID(configured_state["tenant_id"])
     done = await service.complete(ctx.actor, tenant, schemas.Complete(expected_version=configured_state["version"], expected_snapshot=configured_state["snapshot"], idempotency_key=str(uuid4()), activate_catalog=True, acknowledged=True))
     async with ctx.runtime() as db:
@@ -218,7 +303,7 @@ async def test_incomplete_finish_rolls_back_and_runtime_guard_rechecks_changes(o
 
 @pytest.mark.asyncio
 async def test_existing_day_and_catalog_edits_require_real_fingerprint_and_preserve_other_fields(onboarding_db):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     state = await configured(ctx)
     original = state["catalog"]["professionals"][0]
     # A normal module change invalidates the wizard's old entity version.
@@ -242,7 +327,7 @@ async def test_existing_day_and_catalog_edits_require_real_fingerprint_and_prese
 
 @pytest.mark.asyncio
 async def test_profile_setup_is_draft_only_preserves_existing_facts_and_generation(onboarding_db):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     state = await service.create_business(ctx.actor, creation())
     data = {"assistant_name": "Assistente sintética", "style_rules": {"style": "direct"}, "capabilities": ["catalog_answers"], "expected_profile_generation": 0}
     state = await save(ctx, state, "channels", data)
@@ -255,7 +340,7 @@ async def test_profile_setup_is_draft_only_preserves_existing_facts_and_generati
 
 @pytest.mark.asyncio
 async def test_rls_and_narrow_tenant_functions_cannot_cross_or_activate_missing_facts(onboarding_db):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     state = await service.create_business(ctx.actor, creation())
     tenant = UUID(state["tenant_id"])
     async with ctx.runtime() as db:
@@ -283,7 +368,7 @@ async def test_rls_and_narrow_tenant_functions_cannot_cross_or_activate_missing_
 
 @pytest.mark.asyncio
 async def test_two_tabs_same_version_only_one_step_commits(onboarding_db):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     state = await service.create_business(ctx.actor, creation())
     results = await asyncio.gather(save(ctx, state, "location", {"modality": "online"}),
                                    save(ctx, state, "location", {"modality": "client_address"}), return_exceptions=True)
@@ -295,7 +380,7 @@ async def test_two_tabs_same_version_only_one_step_commits(onboarding_db):
 
 @pytest.mark.asyncio
 async def test_foreign_pro_link_rolls_back_entire_new_service(onboarding_db):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     state = await service.create_business(ctx.actor, creation())
     foreign = uuid4()
     async with ctx.migration.begin() as db:
@@ -348,7 +433,7 @@ async def test_narrow_activation_never_accepts_metadata_flags_without_operationa
 
 @pytest.mark.asyncio
 async def test_staged_edits_preserve_requested_active_and_same_key_detects_omitted_default(onboarding_db):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     state = await configured(ctx)
     pro = state["catalog"]["professionals"][0]
     key = str(uuid4())
@@ -363,7 +448,7 @@ async def test_staged_edits_preserve_requested_active_and_same_key_detects_omitt
 
 @pytest.mark.asyncio
 async def test_new_inactive_or_unbound_requested_items_cannot_be_silently_made_ready(onboarding_db):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     state = await configured(ctx)
     state = await save(ctx, state, "catalog", {"kind": "service", "item": {"name": "Serviço ainda sem vínculo", "duration_min": 30, "price_cents": 2000}, "professional_ids": []})
     assert any(x["code"] == "scheduling_bindings" for x in state["pending"])
@@ -373,7 +458,7 @@ async def test_new_inactive_or_unbound_requested_items_cannot_be_silently_made_r
 
 @pytest.mark.asyncio
 async def test_catalog_change_after_review_requires_new_factual_snapshot(onboarding_db):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     state = await configured(ctx)
     tenant = UUID(state["tenant_id"])
     async with ctx.migration.begin() as db:
@@ -390,7 +475,7 @@ async def test_catalog_change_after_review_requires_new_factual_snapshot(onboard
 
 @pytest.mark.asyncio
 async def test_current_owner_lock_serializes_revocation_with_single_committed_step(onboarding_db, monkeypatch):
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     state = await service.create_business(ctx.actor, creation())
     tenant = UUID(state["tenant_id"])
     entered, release = asyncio.Event(), asyncio.Event()
@@ -423,7 +508,7 @@ async def test_current_owner_lock_serializes_revocation_with_single_committed_st
 async def test_actual_booking_engine_does_not_create_for_incomplete_new_company(onboarding_db):
     from datetime import datetime, timedelta, timezone
     from app.booking_service import book_appointment
-    ctx = onboarding_db
+    ctx = new_business_context(onboarding_db)
     state = await configured(ctx)
     tenant = UUID(state["tenant_id"])
     async with ctx.runtime() as db:

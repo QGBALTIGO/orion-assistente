@@ -19,7 +19,7 @@ from app.groq_api import router as groq_router
 from app.groq_audio import router as groq_audio_router
 from app.groq_probe import probe_groq_provider
 from app.qr_ai import router as qr_ai_router
-from app.business_profile_api import router as business_profile_router
+from app.business_profile_api import router as business_profile_router, account_router as account_business_router
 from app.commercial_api import router as commercial_router
 from app.management_api import router as management_router
 from app.management_blocks import router as management_blocks_router
@@ -33,6 +33,11 @@ from app.qr_channels import router as qr_channels_router
 from app.automation_api import router as automation_router
 from app.qr_channel_audio import router as qr_channel_audio_router
 from app.media_api import router as media_router
+from app.inbox_api import router as inbox_router
+from app.inbox_control import router as inbox_control_router
+from app.inbox_conversations import router as inbox_conversations_router
+from app.communication_api import router as communication_router
+from app.workflow_drafts import router as workflow_drafts_router
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -84,6 +89,7 @@ app.include_router(groq_router)
 app.include_router(groq_audio_router)
 app.include_router(qr_ai_router)
 app.include_router(business_profile_router)
+app.include_router(account_business_router)
 app.include_router(management_router)
 app.include_router(management_blocks_router)
 app.include_router(management_ai_router)
@@ -96,6 +102,11 @@ app.include_router(qr_channels_router)
 app.include_router(automation_router)
 app.include_router(qr_channel_audio_router)
 app.include_router(media_router)
+app.include_router(inbox_router)
+app.include_router(inbox_control_router)
+app.include_router(inbox_conversations_router)
+app.include_router(communication_router)
+app.include_router(workflow_drafts_router)
 # Specific management paths must precede the legacy two-segment catalog path.
 app.include_router(catalog_router)
 
@@ -122,11 +133,13 @@ async def branding(asset: str) -> FileResponse:
 async def panel_asset(asset: str) -> FileResponse:
     """Only the public suite assets; never expose arbitrary application files."""
     allowed = {"orion-suite.css": "text/css", "orion-suite.js": "text/javascript",
+               "orion-communication.js": "text/javascript",
                "orion-auth.css": "text/css",
                "orion-invite.css": "text/css", "orion-invite.js": "text/javascript",
                "orion-onboarding.css": "text/css", "orion-onboarding.js": "text/javascript",
                "orion-channels.css": "text/css", "orion-channels.js": "text/javascript",
-               "orion-automations.js": "text/javascript"}
+               "orion-automations.js": "text/javascript",
+               "orion-inbox.js": "text/javascript", "orion-conversations.js": "text/javascript", "orion-flows.js": "text/javascript", "orion-inbox.css": "text/css"}
     if asset not in allowed:
         from fastapi import HTTPException
         raise HTTPException(404)

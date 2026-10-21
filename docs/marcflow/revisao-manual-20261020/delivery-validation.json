@@ -1,0 +1,11 @@
+{
+  "records": 1247,
+  "relative_links_checked": 13,
+  "missing_links": [],
+  "current_record_sources_checked": 80,
+  "current_source_and_dependency_files_checked": 102,
+  "report_and_receipt_hashes_match": true,
+  "html_security_qa_passed": true,
+  "publication_status": "Central humana QR habilitada na API e worker; novo acesso do próprio admin conferido em leitura. Sessão, dados e IA preservados. Meta/campanhas/sondagens desligados; nenhuma mensagem real de teste. Entrega e resposta reais não foram homologadas.",
+  "application_tests_rerun": false
+}

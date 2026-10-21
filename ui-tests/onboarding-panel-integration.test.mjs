@@ -50,29 +50,23 @@ test('logout discards the wizard and a late decision cannot restore the prior ac
   assert.equal(h.errors.length,0);
 });
 
-test('multiple companies require a choice before evaluating their setup',async t=>{
+test('multiple companies block the panel without choosing a business or loading scoped data',async t=>{
   const h=await makePanel({role:'member',respond(path){
     if(path==='/api/v1/account/businesses')return [{id:tenantA,name:'Negócio A',role:'owner'},{id:tenantB,name:'Negócio B',role:'owner'}];
-    if(path.startsWith('/api/v1/onboarding/entry'))return {enabled:true,kind:'choose_business',create_allowed:true,businesses:[{id:tenantA,name:'Negócio A'},{id:tenantB,name:'Negócio B'}]};
   }});t.after(()=>h.close());await flush();
-  assert.ok(h.calls.some(c=>c.path==='/api/v1/onboarding/entry'));
-  assert.match(h.document.querySelector('#orionSetup').textContent,/Escolha a empresa/);
-  assert.equal(h.calls.filter(c=>c.path.endsWith('/onboarding')).length,0);
+  assert.match(h.element('#orionSetup').textContent,/mais de uma empresa/);assert.ok(h.element('#retryBusinessContext'));assert.equal(h.document.querySelector('#osTenant'),null);assert.equal(h.calls.filter(c=>c.path.startsWith('/api/v1/tenants/')).length,0);assert.equal(h.calls.filter(c=>c.path.startsWith('/api/v1/qr/')).length,0);
 });
 
-test('the explicit new-business action opens a separate creation form for an existing owner',async t=>{
+test('an existing owner has no additional business action or creation form',async t=>{
   const h=await makePanel({role:'member',respond(path){if(path.startsWith('/api/v1/onboarding/entry'))return {enabled:true,kind:'dashboard',tenant_id:tenantA,create_allowed:true};}});t.after(()=>h.close());await flush();
-  h.click('[data-os-action=business-new]');await flush();
-  assert.ok(h.document.querySelector('#orionSetup [data-ob-form=create]'));
-  assert.ok(h.document.querySelector('#appView').classList.contains('ob-gated'));
-  assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
+  assert.equal(h.document.querySelector('[data-os-action=business-new]'),null);assert.equal(h.document.querySelector('#orionSetup [data-ob-form=create]'),null);assert.equal(h.document.querySelector('#tenantForm'),null);assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
 });
 
-test('a failed company menu read still resolves the authenticated entry into a recoverable wizard',async t=>{
+test('a failed account-business read blocks access and first creation until verification succeeds',async t=>{
  const h=await makePanel({role:'member',initialRoute:'dashboard',respond(path){
-  if(path==='/api/v1/account/businesses')return jsonResponse({detail:'Lista indisponível'},503);
+  if(path==='/api/v1/account/businesses')return jsonResponse({detail:'Consulta indisponível'},503);
   if(path.startsWith('/api/v1/onboarding/entry'))return {enabled:true,kind:'onboarding',create_allowed:true};
- }});t.after(()=>h.close());await flush();assert.match(h.element('#orionSetup').textContent,/Vamos configurar seu negócio/);assert.equal(h.element('#appView').classList.contains('ob-gated'),true);assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
+ }});t.after(()=>h.close());await flush();assert.match(h.element('#orionSetup').textContent,/Consulta indisponível/);assert.ok(h.element('#retryBusinessContext'));assert.equal(h.document.querySelector('[data-ob-form=create]'),null);assert.equal(h.element('#appView').classList.contains('ob-gated'),true);assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);assert.equal(h.calls.some(c=>c.path.startsWith('/api/v1/tenants/')),false);
 });
 
 test('the wizard tenant callback refreshes the menu without restarting its stored hours step',async t=>{
@@ -83,14 +77,28 @@ test('the wizard tenant callback refreshes the menu without restarting its store
  assert.equal(h.calls.filter(c=>c.path.startsWith('/api/v1/onboarding/entry')).length,1);assert.equal(h.calls.filter(c=>c.path.endsWith('/onboarding')).length,1);assert.equal(h.calls.filter(c=>c.path==='/api/v1/account/businesses').length,2);assert.equal(h.element('#appView').classList.contains('ob-gated'),true);
 });
 
-test('creating a second business updates the navigation and preserves the returned next step',async t=>{
+test('creating the first business binds the verified account and preserves the returned next step',async t=>{
  let created=false;const h=await makePanel({role:'member',initialRoute:'dashboard',respond(path,method){
-  if(path==='/api/v1/account/businesses')return [{id:tenantA,name:'Negócio A',role:'owner'},...(created?[{id:tenantB,name:'Negócio B',role:'owner'}]:[])];
-  if(path.startsWith('/api/v1/onboarding/entry'))return {enabled:true,kind:'dashboard',tenant_id:tenantA,create_allowed:true};
-  if(path==='/api/v1/onboarding/businesses'&&method==='POST'){created=true;return fullState({tenant_id:tenantB,name:'Negócio B',current_step:'location'});}
- }});t.after(()=>h.close());await flush();h.click('[data-os-action=business-new]');await flush();
- for(const [name,value] of Object.entries({name:'Negócio B',niche:'barbearia',activity:'services',timezone:'America/Cuiaba'}))h.fill('#orionSetup [name='+name+']',value);
- h.submit('[data-ob-form=create]');await flush();assert.match(h.element('#orionSetup').textContent,/Onde você atende/);assert.equal(h.element('#businessTenant').value,tenantB);assert.equal(h.element('#appView').classList.contains('ob-gated'),true);assert.equal(h.calls.filter(c=>c.path==='/api/v1/onboarding/businesses').length,1);assert.equal(h.calls.filter(c=>c.path.startsWith('/api/v1/onboarding/entry')).length,2);assert.equal(h.errors.length,0);
+  if(path==='/api/v1/account/businesses')return created?[{id:tenantA,name:'Meu negócio',role:'owner'}]:[];
+  if(path.startsWith('/api/v1/onboarding/entry'))return {enabled:true,kind:'onboarding',tenant_id:created?tenantA:null,create_allowed:!created,businesses:[]};
+  if(path==='/api/v1/onboarding/businesses'&&method==='POST'){created=true;return fullState({tenant_id:tenantA,name:'Meu negócio',current_step:'location'});}
+ }});t.after(()=>h.close());await flush();
+ for(const [name,value] of Object.entries({name:'Meu negócio',niche:'barbearia',activity:'services',timezone:'America/Cuiaba'}))h.fill('#orionSetup [name='+name+']',value);
+ h.submit('[data-ob-form=create]');await flush();assert.match(h.element('#orionSetup').textContent,/Onde você atende/);assert.equal(h.element('#businessTenant').value,tenantA);assert.equal(h.element('#appView').classList.contains('ob-gated'),true);assert.equal(h.calls.filter(c=>c.path==='/api/v1/onboarding/businesses').length,1);assert.equal(h.calls.filter(c=>c.path.startsWith('/api/v1/onboarding/entry')).length,1);assert.equal(h.errors.length,0);
+});
+
+test('a lost first-creation response verifies the new account binding before recovering without another POST',async t=>{
+ let created=false,saved;const h=await makePanel({role:'member',initialRoute:'dashboard',respond(path,method,payload){
+  if(path==='/api/v1/account/businesses')return created?[{id:tenantA,name:'Meu negócio',role:'owner'}]:[];
+  if(path.startsWith('/api/v1/onboarding/entry'))return {enabled:true,kind:'onboarding',tenant_id:created?tenantA:null,create_allowed:!created,businesses:[]};
+  if(path==='/api/v1/onboarding/businesses'&&method==='POST'){created=true;saved=fullState({tenant_id:tenantA,name:'Meu negócio',current_step:'location',last_operation_key:payload.idempotency_key});return jsonResponse({detail:'Resposta perdida após salvar'},503);}
+  if(path.endsWith('/onboarding'))return saved;
+ }});t.after(()=>h.close());await flush();
+ for(const [name,value] of Object.entries({name:'Meu negócio',niche:'barbearia',activity:'services',timezone:'America/Cuiaba'}))h.fill('#orionSetup [name='+name+']',value);
+ h.submit('[data-ob-form=create]');await flush();h.click('[data-ob-action=refresh]');await flush();
+ assert.equal(h.element('#businessTenant').value,tenantA);assert.match(h.element('#orionSetup').textContent,/servidor confirmou/);assert.equal(h.document.querySelector('[data-ob-action=retry-operation]'),null);assert.equal(h.calls.filter(c=>c.path==='/api/v1/onboarding/businesses').length,1);
+ const accountReads=h.calls.map((c,i)=>c.path==='/api/v1/account/businesses'?i:-1).filter(i=>i>=0),recoveryRead=h.calls.findIndex(c=>c.path.endsWith('/onboarding'));
+ assert.equal(accountReads.length,2);assert.ok(recoveryRead>accountReads[1]);assert.equal(h.errors.length,0);
 });
 
 test('completion keeps real channel statuses visible until the user explicitly opens the panel',async t=>{
