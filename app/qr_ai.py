@@ -2677,7 +2677,7 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                      intake_revision: int | None = None, require_summary_review: bool = False,
                      event_meta: dict | None = None):
     from redis.asyncio import from_url
-    from app import qr_operation_receipt
+    from app import qr_operation_receipt, inbox_control
     channel = qr_channel_scope.current()
     if channel is not None:
         if preview or tenant != channel.tenant_id or namespace != channel.conversation_namespace(phone):
@@ -2711,7 +2711,7 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                     await _require_pending_review(redis, f"orion:qr:ai:{tenant}:{namespace}")
                 if reset:
                     await redis.delete(f"orion:qr:ai:{tenant}:{namespace}")
-                if not preview and channel is not None and os.getenv("INBOX_CONTROL_ENABLED", "0") == "1":
+                if not preview and channel is not None and inbox_control.enabled():
                     await qr_channel_scope.assert_current()
                     from app.inbox_control import clear_transient_handoff
                     await clear_transient_handoff(redis, state_key)
@@ -2740,7 +2740,7 @@ async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                     if result is None:
                         result = await turn(tenant, phone, body, redis, namespace, preview=preview)
                     if (not preview and result.get("step") == "human" and not (
-                            channel is not None and os.getenv("INBOX_CONTROL_ENABLED", "0") == "1")):
+                            channel is not None and inbox_control.enabled())):
                         # Every QR handoff path converges here. Redis's short
                         # conversational pause must not let new marketing jobs
                         # resume after it expires. Only the owner's explicit
@@ -2914,13 +2914,8 @@ async def managed_qr_reply(channel_id: UUID, payload: Incoming, request: Request
         return {"answer": None, "step": "disabled"}
     from app import inbox_control
     control_revision = None
+    control_token = None
     use_control = inbox_control.enabled() or identity.central_adopted
-    if use_control:
-        if await inbox_control.blocked(identity.tenant_id, channel_id, payload.phone):
-            return {"answer": None, "step": "human"}
-        control_revision = await inbox_control.assistant_revision(identity.tenant_id, channel_id, payload.phone)
-    if payload.intake_revision is None:
-        raise HTTPException(422, "Registre a mensagem antes de iniciar o atendimento")
 
     async def revalidate():
         fresh = await authenticated_channel(request, phone=payload.phone)
@@ -2931,8 +2926,16 @@ async def managed_qr_reply(channel_id: UUID, payload: Incoming, request: Request
         return fresh
 
     token = qr_channel_scope.bind(identity, revalidate)
-    control_token = inbox_control.bind_assistant(identity, payload.phone, control_revision) if use_control else None
     try:
+        # Persisted adoption enables this channel even while the global control
+        # switch is off. Its identity must precede the initial authority reads.
+        if use_control:
+            if await inbox_control.blocked(identity.tenant_id, channel_id, payload.phone):
+                return {"answer": None, "step": "human"}
+            control_revision = await inbox_control.assistant_revision(identity.tenant_id, channel_id, payload.phone)
+        if payload.intake_revision is None:
+            raise HTTPException(422, "Registre a mensagem antes de iniciar o atendimento")
+        control_token = inbox_control.bind_assistant(identity, payload.phone, control_revision) if use_control else None
         await qr_channel_scope.assert_current()
         # Never give a stale/unannounced message a fresh revision here. The
         # pre-ASR notice assigned it; run_locked validates that receipt against
