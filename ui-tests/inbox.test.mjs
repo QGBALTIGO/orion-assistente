@@ -30,7 +30,9 @@ test('disabled tools show an honest setup state and issue no mutation',async t=>
 
 test('CRM labels escape markup and selecting a customer never creates a duplicate record',async t=>{
   const h=await setup();t.after(()=>h.close());
+  h.host.querySelector('[data-inbox-view=labels]').click();await flush();
   assert.equal(h.host.querySelector('img'),null);assert.match(h.host.textContent,/<img src=x/);
+  h.host.querySelector('[data-inbox-view=customers]').click();await flush();
   h.host.querySelector('[data-inbox-customer]').click();await flush();
   assert.match(h.host.textContent,/Nenhum agendamento futuro confirmado/);
   assert.equal(h.calls.filter(x=>x.method!=='GET').length,0);
@@ -38,7 +40,9 @@ test('CRM labels escape markup and selecting a customer never creates a duplicat
 
 test('a reader cannot create, delete or label a customer after a refresh',async t=>{
   const h=await setup({canWrite:false});t.after(()=>h.close());
+  h.host.querySelector('[data-inbox-view=labels]').click();await flush();
   assert.equal(h.host.querySelector('[data-inbox-action=new-label]').disabled,true);
+  h.host.querySelector('[data-inbox-view=customers]').click();await flush();
   h.host.querySelector('[data-inbox-customer]').click();await flush();
   assert.equal(h.host.querySelector('[data-inbox-label]').disabled,true);
   assert.equal(h.host.querySelector('[data-inbox-action=previous]').disabled,true);
@@ -70,7 +74,8 @@ test('a late response from a prior company cannot repopulate the current company
   const h=await setup({respond(path){if(block&&path.includes(tenantA)&&path.endsWith('/capabilities'))return pending.promise;}});t.after(()=>h.close());
   block=true;const old=h.mount(tenantA);await h.mount(tenantB);
   pending.resolve({enabled:false});await old;await flush();
-  assert.match(h.host.textContent,/Clientes e etiquetas/);assert.doesNotMatch(h.host.textContent,/preparação/);
+  assert.ok(h.host.querySelector('[data-inbox-tab=customers][aria-selected=true]'));
+  assert.doesNotMatch(h.host.textContent,/preparação/);
 });
 
 test('changing company during a save releases the old screen and a late result cannot unlock the new save',async t=>{

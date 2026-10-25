@@ -46,8 +46,9 @@ test('central launches with a tidy conversation-first workspace, not an administ
   assert.ok(h.host.querySelector('.os-central-thread-panel'));
   assert.ok(h.host.querySelector('.os-central-placeholder'));
   assert.ok(h.host.querySelector('[data-inbox-tab=conversations][aria-selected=true]'));
-  assert.equal(h.host.querySelector('.os-inbox-more').open,false);
-  assert.equal(h.host.querySelector('.os-central-filters'),null);
+  assert.equal(h.host.querySelector('.os-inbox-more'),null,'menu sobreposto não existe');
+  assert.equal(h.host.querySelectorAll('.os-inbox-primary-nav [role=tab]').length,4);
+  assert.equal(h.host.querySelector('.os-central-filters').open,false,'filtros começam recolhidos');
   assert.equal(h.host.querySelectorAll('.os-central-thread-item-button').length,1);
   assert.equal(h.calls.some(x=>x.method!=='GET'),false);
   assert.equal(h.calls.some(x=>x.path===prefix+'/labels'),false,'CRM tools should load only when requested');

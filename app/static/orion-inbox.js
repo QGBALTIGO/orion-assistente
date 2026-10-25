@@ -61,7 +61,7 @@
       const customers=subnav+(state.crmView==='labels'?labelsPanel:contacts);
       const visibleReplies=state.replies.filter(r=>(r.title+' '+r.category+' '+r.text).toLocaleLowerCase('pt-BR').includes(state.replyQuery.toLocaleLowerCase('pt-BR')));
       const replies='<section class="os-card os-inbox-replies-panel"><div class="os-inbox-heading"><div><h2>Respostas rápidas</h2>'+
-        '<p>Crie modelos e revise o texto antes de enviar em uma conversa.</p></div>'+
+        '<p>Modelos para revisar antes do uso. Não enviam automaticamente.</p></div>'+
         button('Nova resposta','new-reply',write)+'</div>'+
         (state.confirmation?.collection==='/quick-replies'?confirmation:'')+
         (e?.kind==='reply'?replyForm(e):'')+
@@ -72,7 +72,7 @@
       if(state.tab==='flows')void window.OrionFlows?.mount({host:query('[data-inbox-flows]'),request,tenantId,canWrite});
       if(state.tab==='conversations')void window.OrionConversations?.mount({host:query('[data-inbox-central]'),request,tenantId,canWrite,toolsEnabled:state.tools,onCustomer:id=>{
         if(window.OrionConversations?.hasUnsentDraft?.()&&!window.confirm('Há uma mensagem não enviada. Sair da conversa e descartar o rascunho?'))return;
-        state.selected=id;state.tab='customers';void perform(reload);
+        state.selected=id;state.crmView='customers';state.tab='customers';void perform(reload);
       }});
     }
     function customerHTML(){
