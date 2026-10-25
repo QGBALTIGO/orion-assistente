@@ -1487,6 +1487,29 @@ const descriptions={authorized_staff:"Telefones autorizados",professionals:"Prof
 for(const key of ["authorized_staff","time_off"])$("resource").add(new Option(descriptions[key],key));
 function errorMessage(data,code){return typeof data?.detail==="string"?data.detail:(typeof data?.error==="string"?data.error:
   "O servidor retornou HTTP "+code+".")}
+// A 401 on an optional tenant integration is not proof that Orion's login expired.
+// Only the first-party /auth/me route may confirm that the active session is gone.
+let authProbePending=null;
+async function checkSessionAfterUnauthorized(epoch,expectedCsrf){
+ if(epoch!==authEpoch||csrf!==expectedCsrf)return;
+ if(!authProbePending||authProbePending.epoch!==epoch||authProbePending.csrf!==expectedCsrf){
+  const probe=(async()=>{
+   try{
+    const response=await fetch("/auth/me",{method:"GET",headers:{"Accept":"application/json"},credentials:"same-origin",cache:"no-store"});
+    if(response.status===401)return "expired";
+    if(!response.ok)return "unknown";
+    const session=await response.json().catch(()=>null);
+    if(session?.authenticated!==true||typeof session.csrf!=="string")return "unknown";
+    return session.csrf===expectedCsrf?"valid":"changed";
+   }catch{return "unknown";}
+  })();
+  authProbePending={epoch,csrf:expectedCsrf,probe};
+  void probe.finally(()=>{if(authProbePending?.probe===probe)authProbePending=null;});
+ }
+ const result=await authProbePending.probe;
+ if(epoch!==authEpoch||csrf!==expectedCsrf)return;
+ if(result==="expired"||result==="changed")showLogin();
+}
 async function api(url,method="GET",data){
  const scoped=url.match(/^\/api\/v1\/tenants\/([^/?]+)/);
  if(scoped&&(!accountBusiness()||decodeURIComponent(scoped[1])!==suiteTenantId))throw Error(businessContextError||"Não foi possível confirmar a empresa desta conta.");
@@ -1497,7 +1520,7 @@ async function api(url,method="GET",data){
  const response=await fetch(url,{method,headers,body:data===undefined?undefined:JSON.stringify(data),credentials:"same-origin",cache:"no-store"});
  if(!response.ok){
    const json=await response.json().catch(()=>({}));
-   if(response.status===401&&requestAuthEpoch===authEpoch&&requestCsrf===csrf&&url!=="/auth/login"&&url!=="/auth/me")showLogin();
+   if(response.status===401&&requestAuthEpoch===authEpoch&&requestCsrf===csrf&&url!=="/auth/login"&&url!=="/auth/me")await checkSessionAfterUnauthorized(requestAuthEpoch,requestCsrf);
    const error=Error(errorMessage(json,response.status));error.status=response.status;throw error;
  }
  return response.status===204?null:response.json();
@@ -1511,7 +1534,7 @@ async function uploadImage(url,file,kind){
  const response=await fetch(url,{method:"POST",headers,body:file,credentials:"same-origin",cache:"no-store"});
  if(!response.ok){
   const json=await response.json().catch(()=>({}));
-  if(response.status===401&&epoch===authEpoch&&sessionCsrf===csrf)showLogin();
+  if(response.status===401&&epoch===authEpoch&&sessionCsrf===csrf)await checkSessionAfterUnauthorized(epoch,sessionCsrf);
   const error=Error(errorMessage(json,response.status));error.status=response.status;throw error;
  }
  if(epoch!==authEpoch)throw Error("A sessão mudou durante o envio. Entre novamente.");
