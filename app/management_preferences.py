@@ -1,12 +1,12 @@
 """Operational settings, automation drafts and an observed delivery queue."""
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from typing import Literal
 from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator, model_validator
 from sqlalchemy import text
 
 from app.catalog_api import Actor, authenticate, audit
@@ -72,6 +72,25 @@ class BusinessPreferences(StrictModel):
         return self
 
 
+class AutoCompletionPolicy(StrictModel):
+    """Off until explicitly enabled by the owner; never catches up old bookings."""
+    enabled: StrictBool = False
+    enabled_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def consistency(self):
+        if self.enabled and (self.enabled_at is None or self.enabled_at.utcoffset() is None):
+            raise ValueError("A ativação da finalização automática exige um horário com fuso")
+        if not self.enabled and self.enabled_at is not None:
+            raise ValueError("Uma automação desligada não pode manter ativação")
+        return self
+
+
+class AutoCompletionSave(StrictModel):
+    expected_version: int = Field(ge=0)
+    enabled: StrictBool
+
+
 class AutomationRule(StrictModel):
     event: Literal["booking_confirmed", "reminder_24h", "reminder_2h", "reminder_1h", "rescheduled", "cancelled", "inactive_60d", "cancelled_7d", "birthday_7d", "birthday_2d", "loyalty_reward", "after_service"]
     requested_enabled: bool = False
@@ -130,6 +149,7 @@ async def preferences(db, tenant_id):
     stored = row["preferences"] if row else {}
     return {"business": BusinessPreferences.model_validate(stored.get("business", {})).model_dump(),
             "automations": AutomationPreferences.model_validate(stored.get("automations", {})).model_dump(),
+            "auto_completion": AutoCompletionPolicy.model_validate(stored.get("auto_completion", {})).model_dump(mode="json"),
             "version": row["version"] if row else 0, "updated_at": row["updated_at"] if row else None}
 
 
@@ -138,12 +158,41 @@ async def save_section(db, tenant_id, section, value, expected):
     current = await preferences(db, tenant_id)
     if expected != current["version"]:
         raise HTTPException(409, "As preferências mudaram. Atualize antes de salvar")
-    content = {"business": current["business"], "automations": current["automations"], section: value}
+    content = {"business": current["business"], "automations": current["automations"],
+               "auto_completion": current["auto_completion"], section: value}
     await db.execute(text("""INSERT INTO management_preferences(tenant_id,preferences) VALUES(:tenant,CAST(:content AS jsonb))
         ON CONFLICT(tenant_id) DO UPDATE SET preferences=EXCLUDED.preferences,version=management_preferences.version+1,updated_at=now()"""),
         {"tenant": tenant_id, "content": json.dumps(content)})
     await audit(db, tenant_id, "preferences_saved", "management_preferences", tenant_id)
     return await preferences(db, tenant_id)
+
+
+@router.get("/appointment-auto-completion")
+async def get_appointment_auto_completion(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    access = await resolve_tenant_access(actor, tenant_id, "read")
+    async with management_session(tenant_id, actor) as db:
+        result = await preferences(db, tenant_id)
+    return {"configuration": result["auto_completion"], "version": result["version"],
+            "can_manage": access.role in {"owner", "support", "admin"},
+            "description": "Atendimentos confirmados encerram ao fim do horário previsto; o pagamento continua pendente até ser confirmado."}
+
+
+@router.put("/appointment-auto-completion")
+async def put_appointment_auto_completion(tenant_id: UUID, payload: AutoCompletionSave,
+                                          actor: Actor = Depends(authenticate)):
+    # Completing appointments can accrue staff commissions and loyalty benefits.
+    # Explicit owner permission is required; editor/viewer cannot enable it.
+    await resolve_tenant_access(actor, tenant_id, "publish")
+    async with management_session(tenant_id, actor, write=True) as db:
+        current = await preferences(db, tenant_id)
+        before = current["auto_completion"]
+        if before["enabled"] == payload.enabled and payload.expected_version == current["version"]:
+            return {"configuration": before, "version": current["version"], "can_manage": True}
+        enabled_at = datetime.now(timezone.utc).isoformat() if payload.enabled else None
+        configuration = AutoCompletionPolicy.model_validate(
+            {"enabled": payload.enabled, "enabled_at": enabled_at}).model_dump(mode="json")
+        result = await save_section(db, tenant_id, "auto_completion", configuration, payload.expected_version)
+    return {"configuration": result["auto_completion"], "version": result["version"], "can_manage": True}
 
 
 @router.get("/preferences")
