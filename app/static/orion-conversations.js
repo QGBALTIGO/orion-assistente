@@ -150,16 +150,64 @@
     async function load({detail=true}={}){
       const seq=++s.seq,selection=key();
       const list=await request(path('/conversations?offset='+s.offset+(s.unread?'&unread=true':'')+'&q='+encodeURIComponent(s.q)+(s.channel?'&channel_id='+encodeURIComponent(s.channel):'')+(s.mode?'&mode='+encodeURIComponent(s.mode):'')));
-      const data=detail&&s.selected?await request(selectedPath('/messages?phone='+encodeURIComponent(s.selected.contact_e164))):null;
+      let data=null;
+      if(detail&&s.selected){
+        try{
+          data=await request(selectedPath('/messages?phone='+encodeURIComponent(s.selected.contact_e164)));
+          if(current()&&seq===s.seq&&selection===key())s.detailError=null;
+        }catch(error){
+          if(current()&&seq===s.seq&&selection===key()){
+            s.detailError=error?.message||'Não foi possível carregar esta conversa.';
+            render();
+          }
+          throw error;
+        }
+      }
       if(!current()||seq!==s.seq||selection!==key())return;
       s.items=list.items;s.more=list.has_more;if(s.selected){s.selected=s.items.find(x=>x.channel_id===s.selected.channel_id&&x.contact_e164===s.selected.contact_e164)||s.selected;}if(data)s.detail=data;s.pending=[];render();
       if(s.selected&&window.OrionCommunication){try{const pending=await request('/api/v1/tenants/'+encodeURIComponent(tenantId)+'/management/communication/pending?phone='+encodeURIComponent(s.selected.contact_e164));if(current()&&seq===s.seq&&selection===key()){s.pending=pending.items||[];render();}}catch{if(current()&&seq===s.seq)notice('Os avisos para a equipe não puderam ser consultados. Atualize antes de concluir o atendimento.',true);}}
     }
-    async function work(fn,msg,refresh=true){if(s.busy)return;s.busy=true;try{await fn();if(current()){if(refresh)await load();else render();if(msg)notice(msg);}}catch(e){if(current())notice(e.message||'Não foi possível concluir. O texto foi preservado.',true);}finally{s.busy=false;if(current()){const n=host.querySelector('[data-central-notice]'),msg=n?.textContent,error=n?.getAttribute('role')==='alert';render();if(msg)notice(msg,error);}}}
-    host.addEventListener('input',e=>{if(e.target.id==='centralFind'){const value=e.target.value.toLocaleLowerCase();host.querySelectorAll('.os-central-message').forEach(m=>{m.hidden=!m.textContent.toLocaleLowerCase().includes(value);});return;}if(e.target.id==='centralText')s.drafts.set(key(),{text:e.target.value,operation:null});},{signal:s.abort.signal});
+    async function work(fn,msg,refresh=true){
+      if(s.busy)return;
+      s.busy=true;
+      try{
+        await fn();
+        if(!current())return;
+        if(refresh&&fn!==load)await load();
+        else if(!refresh)render();
+        if(current()&&msg)notice(msg);
+      }catch(e){
+        if(current()){
+          if(s.selected&&!s.detail)s.detailError=e?.message||'Não foi possível consultar esta conversa.';
+          notice(e?.message||'Não foi possível concluir. O texto foi preservado.',true);
+        }
+      }finally{
+        s.busy=false;
+        if(current()){
+          const n=host.querySelector('[data-central-notice]'),message=n?.textContent,error=n?.getAttribute('role')==='alert';
+          render();
+          if(message)notice(message,error);
+        }
+      }
+    }
+    host.addEventListener('input',e=>{
+      if(e.target.id==='centralFind'){
+        const value=e.target.value.toLocaleLowerCase();
+        host.querySelectorAll('.os-central-message').forEach(m=>{m.hidden=!m.textContent.toLocaleLowerCase().includes(value);});
+        return;
+      }
+      if(e.target.id==='centralSearch'){s.searchDraft=e.target.value;return;}
+      if(e.target.id==='centralText')s.drafts.set(key(),{text:e.target.value,operation:null});
+    },{signal:s.abort.signal});
+    host.addEventListener('change',e=>{if(e.target.matches('[data-central-reply]'))s.replySelection=e.target.value;},{signal:s.abort.signal});
     host.addEventListener('submit',e=>{
       e.preventDefault();if(s.busy)return;const f=e.target;
-      if(f.matches('[data-central-search]')){const v=Object.fromEntries(new FormData(f));s.channel=v.channel||'';s.mode=v.mode;s.q=v.q;s.unread=v.unread==='on';s.offset=0;void work(()=>load());}
+      if(f.matches('[data-central-search]')){
+        const v=Object.fromEntries(new FormData(f));
+        s.channel=v.channel||'';s.mode=v.mode||'';s.q=(v.q||'').trim();
+        s.searchDraft=s.q;s.unread=v.unread==='on';s.offset=0;
+        void work(()=>load());
+      }
       if(f.matches('[data-central-compose]')&&canWrite&&s.account&&s.sendEnabled&&s.detail&&s.selected&&!s.detail.control.pending_operation&&['human','waiting'].includes(s.detail.control.mode)&&s.detail.control.assigned_account_id===s.account){
         const d=draft();if(!d.text.trim())return;
         d.operation=d.operation||crypto.randomUUID();s.drafts.set(key(),d);
@@ -169,10 +217,19 @@
     },{signal:s.abort.signal});
     host.addEventListener('click',e=>{
       const pending=e.target.closest('[data-communication-ack]');if(pending&&canWrite&&!s.busy){const row=s.pending.find(x=>x.id===pending.dataset.communicationAck);if(row)void work(()=>request('/api/v1/tenants/'+encodeURIComponent(tenantId)+'/management/communication/pending/'+encodeURIComponent(row.id)+'/acknowledge','POST',{expected_version:row.version}),'Pendência marcada como vista. Nenhuma mensagem foi enviada; o controle da conversa permanece.');return;}
-      const person=e.target.closest('[data-central-phone]');if(person&&!s.busy){s.selected=s.items.find(x=>x.channel_id===person.dataset.centralChannel&&x.contact_e164===person.dataset.centralPhone);s.detail=null;void work(()=>load());return;}
+      const person=e.target.closest('[data-central-phone]');if(person&&!s.busy){
+        const row=s.items.find(x=>x.channel_id===person.dataset.centralChannel&&x.contact_e164===person.dataset.centralPhone);
+        if(!row)return;
+        s.selected=row;s.detail=null;s.detailError=null;s.openSections.clear();s.replySelection='';
+        void work(()=>load());return;
+      }
       const a=e.target.closest('[data-central-action]');if(!a||a.disabled||s.busy)return;const action=a.dataset.centralAction;
-      if(action==='back'){s.selected=null;s.detail=null;s.pending=[];render();return;}
+      if(action==='back'){s.selected=null;s.detail=null;s.detailError=null;s.openSections.clear();s.pending=[];render();return;}
       if(action==='refresh'){void work(()=>load());return;}
+      if(action==='clear-filters'){
+        s.channel='';s.mode='';s.unread=false;s.q='';s.searchDraft='';s.offset=0;
+        void work(()=>load());return;
+      }
       if(action==='previous'||action==='next'){s.offset+=action==='next'?50:-50;void work(()=>load());return;}
       if(action==='preserved-history'){const selection=key();void work(async()=>{const result=await request(selectedPath('/preserved-history?phone='+encodeURIComponent(s.selected.contact_e164)));if(current()&&key()===selection)s.preserved.set(selection,result.items);},'Histórico consultado sem enviar mensagens.',false);return;}
       if(action==='read'){const last=s.detail.items.at(-1);if(last)void work(()=>request(selectedPath('/read'),'POST',{contact_e164:s.selected.contact_e164,message_id:last.id}),'Leitura registrada somente na central.');return;}
