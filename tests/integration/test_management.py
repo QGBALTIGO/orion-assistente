@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.catalog_api import Actor, authenticate, router as catalog_router, support_session_factory
 from app.database import get_engine
 from app.management_api import router
+from app.management_preferences import router as preferences_router
 
 pytestmark = pytest.mark.integration
 
@@ -33,6 +34,7 @@ async def management_db(monkeypatch):
         pytest.skip("Requires PostgreSQL with the management migration")
     app = FastAPI()
     app.include_router(router)
+    app.include_router(preferences_router)
     app.include_router(catalog_router)
     monkeypatch.setenv("SUPPORT_API_TOKEN", "management-test-support-token-of-at-least-32-characters")
     monkeypatch.setenv("VIEWER_API_TOKEN", "management-test-viewer-token-of-at-least-32-characters")
@@ -69,7 +71,7 @@ async def management_db(monkeypatch):
     finally:
         async with migrator.begin() as db:
             for table in ("commission_advance_allocations", "commission_settlements", "loyalty_transactions", "loyalty_coupons", "financial_entries", "loyalty_rules", "professional_goals", "management_requests",
-                          "management_site_preferences", "campaigns", "appointment_history", "appointment_items", "calendar_outbox",
+                          "management_site_preferences", "management_preferences", "campaigns", "appointment_history", "appointment_items", "calendar_outbox",
                           "appointments", "customers", "working_breaks", "working_hours", "professional_services", "services", "professionals", "tenant_audit", "tenant_memberships"):
                 await db.execute(text(f"DELETE FROM {table} WHERE tenant_id IN (:a,:b)"), {"a": a, "b": b})
             await db.execute(text("DELETE FROM tenants WHERE id IN (:a,:b)"), {"a": a, "b": b})
