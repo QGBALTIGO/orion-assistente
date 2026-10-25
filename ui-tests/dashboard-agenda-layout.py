@@ -124,7 +124,7 @@ def run(page, width, theme):
     if (width,theme) in ((390,'dark'),(390,'light'),(1280,'dark'),(375,'dark'),(768,'light')):
         page.locator('.os-dashboard-agenda-preview').screenshot(path=str(OUT/f'card-{width}-{theme}.png'))
         page.screenshot(path=str(OUT/f'full-{width}-{theme}.png'),full_page=True)
-    return dict(width=width,theme=theme,**metrics)
+    return dict(width=width,**metrics)
 
 def main():
     measurements=[]
