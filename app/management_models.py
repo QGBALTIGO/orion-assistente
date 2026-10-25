@@ -156,6 +156,8 @@ CUSTOMER_SELECT = """
           AND (a.status <> 'hold' OR a.hold_expires_at > now())) AS total_appointments,
        (SELECT max(a.start_at) FROM appointments a WHERE a.tenant_id=c.tenant_id AND a.customer_id=c.id
           AND a.status='completed') AS last_visit_at,
+       (SELECT count(*) FROM appointments a WHERE a.tenant_id=c.tenant_id AND a.customer_id=c.id
+          AND a.status='completed') AS completed_appointments,
        (SELECT COALESCE(sum(a.total_cents),0) FROM appointments a WHERE a.tenant_id=c.tenant_id
           AND a.customer_id=c.id AND a.status='completed') AS total_spent_cents,
        (SELECT COALESCE(sum(l.points_delta),0) FROM loyalty_transactions l
@@ -219,6 +221,53 @@ async def customer_detail(db, tenant_id, customer_id):
     if row is None:
         raise HTTPException(404, "Cliente não encontrado")
     return clean_row(row)
+
+
+async def customer_service_history(db, tenant_id, customer_id, limit=6, offset=0):
+    """Paginated completed bookings with immutable per-service snapshots.
+
+    A customer must be visible in the currently authenticated tenant. All
+    reads run under tenant RLS; never fetch records by an unscoped UUID.
+    Cancelled, future, no-show and temporary bookings are excluded.
+    """
+    exists = (await db.execute(text("""
+        SELECT 1 FROM customers WHERE tenant_id=:tenant AND id=:customer AND deleted_at IS NULL
+    """), {"tenant": tenant_id, "customer": customer_id})).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(404, "Cliente não encontrado")
+
+    args = {"tenant": tenant_id, "customer": customer_id, "limit": limit, "offset": offset}
+    total = (await db.execute(text("""
+        SELECT count(*) FROM appointments
+        WHERE tenant_id=:tenant AND customer_id=:customer AND status='completed'
+    """), args)).scalar_one()
+    bookings = (await db.execute(text("""
+        SELECT a.id,a.protocol,a.start_at,a.end_at,a.total_cents,
+               a.original_total_cents,a.discount_cents,
+               p.name AS professional_name
+        FROM appointments a
+        JOIN professionals p ON p.tenant_id=a.tenant_id AND p.id=a.professional_id
+        WHERE a.tenant_id=:tenant AND a.customer_id=:customer AND a.status='completed'
+        ORDER BY a.start_at DESC,a.id DESC LIMIT :limit OFFSET :offset
+    """), args)).mappings().all()
+    ids = [row["id"] for row in bookings]
+    services_by_appointment = {identity: [] for identity in ids}
+    if ids:
+        service_rows = (await db.execute(text("""
+            SELECT appointment_id,name_snapshot,duration_snapshot_min,price_snapshot_cents
+            FROM appointment_items WHERE tenant_id=:tenant
+              AND appointment_id=ANY(CAST(:ids AS uuid[]))
+            ORDER BY appointment_id,item_order
+        """), {"tenant": tenant_id, "ids": ids})).mappings().all()
+        for item in service_rows:
+            services_by_appointment[item["appointment_id"]].append({
+                "name": item["name_snapshot"],
+                "duration_min": item["duration_snapshot_min"],
+                "price_cents": item["price_snapshot_cents"],
+            })
+
+    items = [{**dict(row), "services": services_by_appointment[row["id"]]} for row in bookings]
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
 def finance_filter(tenant_id, lower, upper, kind=None, status=None, category=None, payment_method=None, entry_type=None, professional_id=None):

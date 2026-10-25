@@ -627,8 +627,10 @@
     const list=rows(data),f=state.filters,count=$('osCustomersCount');if(count)count.textContent=state.data.activeCustomers+' '+(state.data.activeCustomers===1?'ativo':'ativos');
     if(!list.length){const message=f.customerQuery?'Nenhum cliente encontrado.':f.customerStatus==='at_risk'?'Nenhum cliente em risco neste período.':f.customerStatus==='inactive'?'Nenhum cliente inativo.':f.customerStatus==='birthday'?'Nenhum aniversariante nesta semana.':'Nenhum cliente ainda. Cadastre o primeiro!';bodyHTML('<div class="os-client-empty">'+esc(message)+'</div>');return;}
     const actions=c=>'<button type="button" class="os-icon-button" data-os-customer="'+esc(c.id)+'" aria-label="'+(writable()?'Editar ':'Ver ')+esc(customerDisplayName(c))+'">'+icon('edit')+'</button>'+(writable()?'<button type="button" class="os-icon-button" data-os-customer-toggle="'+esc(c.id)+'" aria-label="'+(c.active?'Inativar ':'Ativar ')+esc(customerDisplayName(c))+'">'+icon(c.active?'block':'check')+'</button><button type="button" class="os-icon-button os-negative" data-os-customer-delete="'+esc(c.id)+'" aria-label="Excluir '+esc(customerDisplayName(c))+'">'+icon('trash')+'</button>':'');
-    let html='<p class="os-help os-only-mobile" style="margin-bottom:12px">'+(writable()?'Deslize para a esquerda para editar, inativar ou excluir.':'Toque em um cliente para consultar seus dados.')+'</p><div class="os-card os-no-pad os-hide-mobile"><div class="os-table-scroll"><table class="os-table"><thead><tr><th>Cliente</th><th>WhatsApp</th><th>Última visita</th><th>Atendimentos</th><th><span class="os-sr-only">Ações</span></th></tr></thead><tbody>'+list.map(c=>'<tr><td><div class="os-person"><span class="os-avatar">'+customerAvatar(c)+'</span><div><strong>'+esc(customerDisplayName(c))+'</strong><small>'+esc(c.email||c.instagram||'')+'</small></div></div></td><td>'+esc(c.phone||'—')+'</td><td>'+fmtDate(c.last_visit_at)+'</td><td>'+number(c.total_appointments)+'</td><td><div class="os-table-actions">'+actions(c)+'</div></td></tr>').join('')+'</tbody></table></div></div>';
-    html+='<div class="os-mobile-customers os-only-mobile">'+list.map(c=>'<div class="os-swipe-row"><button type="button" class="os-client-mobile-main" data-os-customer="'+esc(c.id)+'"><span class="os-avatar">'+customerAvatar(c)+'</span><span><strong>'+esc(customerDisplayName(c))+'</strong><small>'+esc(customerNumber(customerDisplayName(c))?'Nome ainda não informado':c.phone||'Sem WhatsApp')+'</small></span>'+icon('chevron')+'</button><div class="os-swipe-actions">'+actions(c)+'</div></div>').join('')+'</div>';
+    let html='<p class="os-help os-only-mobile" style="margin-bottom:12px">'+(writable()?'Deslize para a esquerda para editar, inativar ou excluir.':'Toque em um cliente para consultar seus dados.')+'</p><div class="os-card os-no-pad os-hide-mobile"><div class="os-table-scroll"><table class="os-table"><thead><tr><th>Cliente</th><th>WhatsApp</th><th>Última visita</th><th>Atendimentos</th><th><span class="os-sr-only">Ações</span></th></tr></thead><tbody>'+list.map(c=>'<tr><td><div class="os-person"><span class="os-avatar">'+customerAvatar(c)+'</span><div><strong>'+esc(customerDisplayName(c))+'</strong><small>'+esc(c.email||c.instagram||'')+'</small>'+
+      (c.created_at?'<small class="os-client-row-created">Cadastro: '+esc(customerRegisteredAt(c.created_at))+'</small>':'')+'</div></div></td><td>'+esc(c.phone||'—')+'</td><td>'+fmtDate(c.last_visit_at)+'</td><td>'+number(c.completed_appointments??c.total_appointments)+'</td><td><div class="os-table-actions">'+actions(c)+'</div></td></tr>').join('')+'</tbody></table></div></div>';
+    html+='<div class="os-mobile-customers os-only-mobile">'+list.map(c=>'<div class="os-swipe-row"><button type="button" class="os-client-mobile-main" data-os-customer="'+esc(c.id)+'"><span class="os-avatar">'+customerAvatar(c)+'</span><span><strong>'+esc(customerDisplayName(c))+'</strong><small>'+esc(customerNumber(customerDisplayName(c))?'Nome ainda não informado':c.phone||'Sem WhatsApp')+'</small>'+
+    (c.created_at?'<small class="os-client-mobile-created">Desde '+esc(fmtDate(dateKey(new Date(c.created_at))))+'</small>':'')+'</span>'+icon('chevron')+'</button><div class="os-swipe-actions">'+actions(c)+'</div></div>').join('')+'</div>';
     if(number(data.total)>50)html+='<div class="os-pagination"><span>'+String(f.customerOffset+1)+'–'+(f.customerOffset+list.length)+' de '+number(data.total)+' clientes</span><div class="os-actions">'+button('Anterior','customers-prev','os-outline os-small','left',f.customerOffset>0?'':'disabled')+button('Próxima','customers-next','os-outline os-small','chevron',f.customerOffset+list.length<number(data.total)?'':'disabled')+'</div></div>';
     bodyHTML(html);
   }
@@ -1108,8 +1110,8 @@
     d.showModal();const opened=state.dialog;setTimeout(()=>{if(state.dialog!==opened)return;if(meta.agendaSheet)$('osDialogTitle')?.focus();else d.querySelector('input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not(.os-close):not([disabled])')?.focus();},0);return true;
   }
   function closeDialog(force=false){if(state.busy&&!force)return;const d=$('osDialog'),previous=state.dialog;if(d?.open)d.close();if(d)d.replaceChildren();state.dialog=null;if(previous?.trigger?.isConnected)previous.trigger.focus();else if(previous?.appointmentId){const row=[...document.querySelectorAll('[data-os-appointment]')].find(el=>el.dataset.osAppointment===previous.appointmentId);(row||$('osAgendaCount'))?.focus();}}
-  function dialogForm(type,content,submitLabel='Salvar',extra=''){
-    return '<form class="os-form" data-os-form="'+type+'"><fieldset '+(writable()?'':'disabled')+' class="os-form">'+content+'</fieldset><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+extra+button('Cancelar','close-dialog','os-outline')+'<button type="submit" class="os-button" '+(writable()?'':'disabled')+'>'+esc(submitLabel)+'</button></div></form>';
+  function dialogForm(type,content,submitLabel='Salvar',extra='',afterFields=''){
+    return '<form class="os-form" data-os-form="'+type+'"><fieldset '+(writable()?'':'disabled')+' class="os-form">'+content+'</fieldset>'+afterFields+'<div class="os-form-message" role="alert"></div><div class="os-form-actions">'+extra+button('Cancelar','close-dialog','os-outline')+'<button type="submit" class="os-button" '+(writable()?'':'disabled')+'>'+esc(submitLabel)+'</button></div></form>';
   }
   function dialogError(error){const dialog=$('osDialog'),target=dialog?.querySelector('.os-form-message'),message=error?.message||String(error);if(target){target.textContent=message;target.scrollIntoView({block:'nearest'});}else if(dialog?.open&&dialog.querySelector('.os-loading'))dialog.querySelector('.os-loading').outerHTML='<div class="os-notice os-error" role="alert">'+icon('info')+'<p>'+esc(message)+'</p></div><div class="os-form-actions">'+button('Fechar','close-dialog','os-outline')+'</div>';else toast(message,true);}
   function requestKey(form,payload){const signature=JSON.stringify(payload);if(form._osRequestKey?.signature!==signature)form._osRequestKey={signature,key:crypto.randomUUID()};return form._osRequestKey.key;}
@@ -1134,6 +1136,98 @@
     return '<div class="os-field os-client-field"><label for="osField-notes">Observações</label>'+
       '<div class="os-client-textarea"><textarea id="osField-notes" name="notes" maxlength="2000" placeholder="Preferências, alergias e informações importantes...">'+esc(value||'')+'</textarea></div></div>';
   }
+  // created_at is generated once by PostgreSQL for manual, WhatsApp and site records.
+  function customerRegisteredAt(value){
+    if(typeof value!=='string'||!Number.isFinite(Date.parse(value)))return 'Data de cadastro indisponível';
+    return fmtDate(dateKey(new Date(value)))+' às '+timeLabel(value);
+  }
+  function customerHistoryPanel(record){
+    const count=Number(record.completed_appointments),known=Number.isSafeInteger(count)&&count>=0;
+    return '<details id="osCustomerServiceHistory" class="os-client-history">'+
+      '<summary aria-controls="osCustomerHistoryBody">'+
+        '<span class="os-client-history-icon">'+icon('book')+'</span>'+
+        '<span class="os-client-history-title"><strong>Histórico de serviços</strong><small>Visitas concluídas, serviços e valores</small></span>'+
+        '<span id="osCustomerHistoryCount" class="os-client-history-count">'+
+          (known?count+' concluído'+(count===1?'':'s'):'Consultar')+'</span>'+
+        '<span class="os-client-history-chevron" aria-hidden="true">'+icon('down')+'</span>'+
+      '</summary><div id="osCustomerHistoryBody" class="os-client-history-body" role="region" aria-label="Atendimentos realizados" aria-live="polite">'+
+      '<p class="os-help">Expanda para consultar os serviços realizados.</p></div></details>';
+  }
+  function customerHistoryVisit(visit){
+    const services=rows(visit.services),validDate=typeof visit.start_at==='string'&&Number.isFinite(Date.parse(visit.start_at));
+    const date=validDate?fmtDate(dateKey(new Date(visit.start_at)))+' às '+timeLabel(visit.start_at):'Data não disponível';
+    const duration=Date.parse(visit.end_at)-Date.parse(visit.start_at),minutes=Number.isFinite(duration)&&duration>0?Math.round(duration/60000):0;
+    const discount=number(visit.discount_cents);
+    return '<article class="os-client-history-visit">'+
+      '<div class="os-client-visit-heading"><span class="os-client-visit-calendar">'+icon('calendar')+'</span>'+
+        '<div><strong>'+esc(date)+'</strong><small>'+esc(visit.professional_name||'Profissional não disponível')+
+        (minutes>0?' · '+minutes+' min':'')+'</small></div>'+
+        '<strong class="os-client-visit-total">'+money(visit.total_cents)+'</strong></div>'+
+      '<ul class="os-client-visit-services">'+(services.length?services.map(service=>
+        '<li><span class="os-client-service-dot" aria-hidden="true"></span>'+
+        '<div><strong>'+esc(service.name||'Serviço registrado')+'</strong><small>'+number(service.duration_min)+' min</small></div>'+
+        '<span>'+money(service.price_cents)+'</span></li>').join(''):
+        '<li class="os-client-visit-empty">Os detalhes dos serviços não estão disponíveis neste registro.</li>')+'</ul>'+
+      (discount>0?'<div class="os-client-visit-discount"><span>Desconto aplicado</span><strong>− '+money(discount)+'</strong></div>':'')+
+      '<div class="os-client-visit-footer"><span>'+icon('check')+' Atendimento finalizado</span>'+
+        (visit.protocol?'<small>Protocolo '+esc(visit.protocol)+'</small>':'')+'</div></article>';
+  }
+  function renderCustomerServiceHistory(d){
+    if(state.dialog!==d||d.type!=='customer'||!d.historyData)return;
+    const target=$('osCustomerHistoryBody'),counter=$('osCustomerHistoryCount'),data=d.historyData;
+    if(!target)return;
+    if(counter)counter.textContent=data.total+' concluído'+(data.total===1?'':'s');
+    const visits=data.items;
+    if(!visits.length){
+      target.innerHTML='<div class="os-client-history-empty">'+icon('calendar')+
+        '<strong>Nenhum serviço finalizado</strong>'+
+        '<p>Quando um atendimento for concluído, os serviços e valores ficarão registrados aqui.</p></div>';
+      return;
+    }
+    target.innerHTML='<div class="os-client-history-overview"><strong>'+data.total+
+      (data.total===1?' atendimento realizado':' atendimentos realizados')+
+      '</strong><small>Mais recentes primeiro</small></div>'+
+      '<div class="os-client-history-list">'+visits.map(customerHistoryVisit).join('')+'</div>'+
+      (visits.length<data.total?'<div class="os-client-history-more">'+
+      button('Ver mais atendimentos','customer-history-more','os-outline os-small','down')+'</div>':'');
+  }
+  async function loadCustomerServiceHistory(d,{append=false}={}){
+    if(d?.type!=='customer'||!d.record||state.dialog!==d||d.historyLoading)return;
+    const c=context(),target=$('osCustomerHistoryBody'),limit=6;
+    if(!target)return;
+    d.historyLoading=true;d.historyRetryAppend=append;
+    if(!append)target.innerHTML=loading('Carregando atendimentos realizados…');
+    else{
+      const more=target.querySelector('.os-client-history-more');
+      if(more)more.innerHTML=loading('Carregando mais atendimentos…');
+    }
+    try{
+      const previous=append&&d.historyData?.items||[];
+      const result=await request(mgmt('/customers/'+encodeURIComponent(d.record.id)+'/services?'+query({limit,offset:previous.length}));
+      if(!stillAccount(c)||!current(c)||state.dialog!==d)return;
+      if(!Array.isArray(result?.items)||!Number.isSafeInteger(Number(result.total))||
+         Number(result.total)<0||result.items.length>limit||
+         result.items.some(item=>!item||typeof item.id!=='string'||!Array.isArray(item.services)))
+        throw Error('Os registros dos serviços não puderam ser confirmados.');
+      const seen=new Set(previous.map(item=>item.id));
+      if(result.items.some(item=>seen.has(item.id)))throw Error('A lista mudou durante a consulta. Atualize o histórico.');
+      d.historyData={items:[...previous,...result.items],total:Number(result.total)};
+      renderCustomerServiceHistory(d);
+    }catch(error){
+      if(stillAccount(c)&&current(c)&&state.dialog===d){
+        if(append&&d.historyData){
+          renderCustomerServiceHistory(d);
+          target.insertAdjacentHTML('beforeend','<div class="os-client-history-error" role="alert"><p>'+
+            esc(error.message||'Não foi possível buscar mais atendimentos.')+'</p>'+
+            button('Tentar novamente','customer-history-retry','os-outline os-small','refresh')+'</div>');
+        }else{
+          target.innerHTML='<div class="os-client-history-error" role="alert"><p>'+
+            esc(error.message||'Não foi possível consultar os atendimentos.')+'</p>'+
+            button('Tentar novamente','customer-history-retry','os-outline os-small','refresh')+'</div>';
+        }
+      }
+    }finally{if(state.dialog===d)d.historyLoading=false;}
+  }
   function showCustomer(record=null){
     const c=record||{};
     const hasExtra=!!(record&&(c.email||c.birth_date||c.birth_day||c.neighborhood||c.city));
@@ -1153,13 +1247,26 @@
       '</div></details>';
     let content='<div class="os-client-form">'+
       '<p class="os-client-hint os-client-intro">Somente o nome é obrigatório.</p>'+
+      (record?'<div class="os-client-created"><span class="os-client-created-icon">'+icon('clock')+'</span>'+
+        '<div><small>CADASTRADO EM</small><strong>'+esc(customerRegisteredAt(c.created_at))+'</strong>'+
+        '<span>Data original do cadastro</span></div></div>':'')+
       customerInputField('Nome completo *','name','text',c.name||'','userPlus','required maxlength="120" autocomplete="name" placeholder="Ex.: João Silva"')+
       customerInputField('WhatsApp','phone','tel',c.phone||'','phone','autocomplete="tel" placeholder="(11) 91234-5678"','Usado para identificar o cliente nos agendamentos.')+
       customerInputField('Instagram','instagram','text',c.instagram||'','instagram','maxlength="120" placeholder="@usuario"')+
       extras+customerNotesField(c.notes||'')+'</div>'+
       (record?checkField('Cliente ativo','active',c.active!==false):'');
     if(record)content+='<div class="os-stats os-client-stats"><div class="os-stat os-client-stat-total"><strong>'+money(c.total_spent_cents)+'</strong><small>Total atendido</small></div><div class="os-stat"><strong>'+number(c.total_appointments)+'</strong><small>Agendamentos</small></div><div class="os-stat"><strong>'+number(c.loyalty_points)+'</strong><small>Pontos</small></div></div>';
-    showDialog('customer',record?(writable()?'Editar cliente':'Cliente'):'Novo cliente',dialogForm('customer',content,record?'Salvar alterações':'Cadastrar cliente',record&&writable()?button('Excluir','delete-customer','os-ghost','trash'):'') ,{record});
+    const afterFields=record?customerHistoryPanel(c):'';
+    if(!showDialog('customer',record?(writable()?'Editar cliente':'Cliente'):'Novo cliente',
+      dialogForm('customer',content,record?'Salvar alterações':'Cadastrar cliente',
+        record&&writable()?button('Excluir','delete-customer','os-ghost','trash'):'',afterFields),{record}))return;
+    if(record){
+      const opened=state.dialog,history=$('osCustomerServiceHistory');
+      history?.addEventListener('toggle',()=>{
+        if(history.open&&state.dialog===opened&&!opened.historyData&&!opened.historyLoading)
+          void loadCustomerServiceHistory(opened);
+      });
+    }
   }
   function imageUploadField(label,name,value,kind){
     const safe=safePublicURL(value),id='osImageFile-'+name;
@@ -1590,6 +1697,8 @@
       case 'delete-block':{if(!d?.record||!writable())return;if(d.series){const series=d.series,occurrenceDate=d.occurrenceDate;showDialog('delete-series','Remover bloqueio',dialogForm('delete-series',selectField('Quais bloqueios remover?','scope',[['one','Somente este dia'],['following','Este dia e os próximos'],['all','Toda a série']],'one')+'<p class="os-help">Os períodos selecionados voltarão a aceitar novos agendamentos, conforme o expediente.</p>','Remover bloqueio'),{series,occurrenceDate});}else{const path=apiPath('/'+d.resource+'/'+encodeURIComponent(d.record.id));confirmMutation('Remover bloqueio','Este período voltará a aceitar novos agendamentos, conforme o expediente do profissional.',()=>request(path,'DELETE'),'Bloqueio removido.');}break;}
       case 'agenda-today':f.agendaOffset=0;f.agendaDay=dateKey();await open('agenda',{keepScroll:true});break;
       case 'agenda-prev':case 'agenda-next':case 'week-prev':case 'week-next':f.agendaOffset=0;f.agendaDay=shiftDay(f.agendaDay,name==='agenda-prev'?-1:name==='agenda-next'?1:name==='week-prev'?-7:7);await open('agenda',{keepScroll:true});break;
+      case 'customer-history-more':if(d?.type==='customer')await loadCustomerServiceHistory(d,{append:true});break;
+      case 'customer-history-retry':if(d?.type==='customer')await loadCustomerServiceHistory(d,{append:!!d.historyRetryAppend});break;
       case 'customers-prev':f.customerOffset=Math.max(0,f.customerOffset-50);await open('clientes',{keepScroll:true});break;
       case 'customers-next':f.customerOffset+=50;await open('clientes',{keepScroll:true});break;
       case 'customer-birthdays':f.customerStatus=f.customerStatus==='birthday'?'active':'birthday';f.customerOffset=0;await open('clientes',{keepScroll:true});break;

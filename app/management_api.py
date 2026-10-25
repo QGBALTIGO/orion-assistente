@@ -119,9 +119,18 @@ async def export_customers(tenant_id: UUID, q: str = Query(default="", max_lengt
             raise HTTPException(413, "Refine os filtros para exportar até 20 mil clientes por arquivo")
     result["items"] = await customer_display_names(tenant_id, result["items"], max_phones=MAX_EXPORT_ROWS, expected_account=account)
     return csv_response("clientes-orion.csv",
-        ["Nome", "WhatsApp", "Instagram", "E-mail", "Aniversário", "Bairro", "Cidade", "Observações", "Ativo", "Última visita", "Agendamentos", "Total em centavos", "Pontos"],
-        [[item.get(key) for key in ("display_name", "phone", "instagram", "email", "birth_date", "neighborhood", "city", "notes", "active", "last_visit_at", "total_appointments", "total_spent_cents", "loyalty_points")]
+        ["Nome", "WhatsApp", "Instagram", "E-mail", "Aniversário", "Bairro", "Cidade", "Observações", "Ativo", "Cadastrado em (UTC)", "Última visita", "Agendamentos", "Atendimentos concluídos", "Total em centavos", "Pontos"],
+        [[item.get(key) for key in ("display_name", "phone", "instagram", "email", "birth_date", "neighborhood", "city", "notes", "active", "created_at", "last_visit_at", "total_appointments", "completed_appointments", "total_spent_cents", "loyalty_points")]
          for item in result["items"]])
+
+
+@router.get("/customers/{customer_id}/services")
+async def get_customer_services(tenant_id: UUID, customer_id: UUID,
+                                limit: int = Query(default=6, ge=1, le=20),
+                                offset: int = Query(default=0, ge=0),
+                                actor: Actor = Depends(authenticate)):
+    async with management_session(tenant_id, actor) as db:
+        return await data.customer_service_history(db, tenant_id, customer_id, limit, offset)
 
 
 @router.get("/customers/{customer_id}")

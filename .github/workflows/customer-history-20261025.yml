@@ -1,0 +1,91 @@
+name: Orion - cadastro e historico de servicos (CI isolada)
+on:
+  push:
+    branches: [main, codex/orion-clientes-historico-20261025]
+    paths:
+      - app/management_models.py
+      - app/management_api.py
+      - app/static/orion-suite.js
+      - app/static/orion-suite.css
+      - tests/integration/test_customer_service_history.py
+      - ui-tests/customer-form.test.mjs
+      - ui-tests/customer-history.test.mjs
+      - scripts/prepare_vercel_orion.py
+      - .github/workflows/customer-history-20261025.yml
+  pull_request:
+    paths:
+      - app/management_models.py
+      - app/management_api.py
+      - app/static/orion-suite.js
+      - app/static/orion-suite.css
+      - tests/integration/test_customer_service_history.py
+      - ui-tests/customer-history.test.mjs
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  backend-postgres:
+    name: Historico e RLS no PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: test-support-ci-token-of-64-characters-000000000000000000000000000
+      REQUIRE_POSTGRES_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dependencias e integridade Python
+        run: |
+          python -m pip install -c requirements.lock ".[test]"
+          python -m pip check
+          python -m py_compile app/management_models.py app/management_api.py
+      - name: Papéis isolados do banco descartável
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas \
+            -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only \
+            -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+      - name: Migracoes em banco de teste
+        run: alembic upgrade head
+      - name: Cadastro, historico, permissões, paginacao e integridade
+        run: |
+          pytest -q -ra \
+            tests/integration/test_customer_service_history.py \
+            tests/integration/test_management.py
+  mobile-and-ui:
+    name: Cliente mobile e interface acessivel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Layout, formularios e historico
+        run: |
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --check app/static/orion-suite.js
+          node --test ui-tests/customer-form.test.mjs ui-tests/customer-history.test.mjs ui-tests/orion-suite.test.mjs
+          python3 scripts/prepare_vercel_orion.py --help >/dev/null

@@ -607,6 +607,69 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 #osDialog.os-customer-dialog .os-client-stats>.os-client-stat-total{grid-column:1/-1;background:color-mix(in srgb,var(--os-tint) 30%,var(--os-card))}
 #osDialog.os-customer-dialog .os-client-stats>.os-stat>strong{display:block;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:normal;font:700 clamp(18px,5.3vw,25px)/1.25 var(--os-display);letter-spacing:0;font-variant-numeric:tabular-nums}
 #osDialog.os-customer-dialog .os-client-stats>.os-stat>small{margin-top:0;font-size:12px;line-height:18px;overflow-wrap:anywhere}
+/* Customer chronology: calm account metadata and an accessible native disclosure. */
+#osDialog.os-customer-dialog .os-client-created{box-sizing:border-box;display:flex;align-items:center;gap:12px;min-width:0;padding:12px 14px;border:1px solid var(--os-border);border-radius:16px;background:color-mix(in srgb,var(--os-tint) 22%,var(--os-card))}
+#osDialog.os-customer-dialog .os-client-created-icon{display:grid;place-items:center;flex:0 0 38px;height:38px;border-radius:12px;background:var(--os-tint);color:var(--os-primary)}
+#osDialog.os-customer-dialog .os-client-created-icon>.os-icon{width:18px;height:18px}
+#osDialog.os-customer-dialog .os-client-created>div{display:grid;gap:2px;min-width:0}
+#osDialog.os-customer-dialog .os-client-created small{font:700 10px/14px var(--os-font);letter-spacing:.07em;color:var(--os-muted)}
+#osDialog.os-customer-dialog .os-client-created strong{font:600 14px/21px var(--os-display);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;color:var(--os-text)}
+#osDialog.os-customer-dialog .os-client-created>div>span{font:400 11px/17px var(--os-font);color:var(--os-muted)}
+.os-client-row-created,.os-client-mobile-created{display:block;margin-top:2px;color:var(--os-muted);font:400 11px/17px var(--os-font);overflow-wrap:anywhere}
+#osDialog.os-customer-dialog .os-client-history{box-sizing:border-box;min-width:0;border:1px solid var(--os-border);border-radius:17px;background:var(--os-card);box-shadow:var(--os-shadow);overflow:hidden}
+#osDialog.os-customer-dialog .os-client-history>summary{box-sizing:border-box;display:flex;align-items:center;gap:10px;min-width:0;min-height:64px;padding:13px 14px;list-style:none;cursor:pointer;transition:background-color .18s ease}
+#osDialog.os-customer-dialog .os-client-history>summary::-webkit-details-marker{display:none}
+#osDialog.os-customer-dialog .os-client-history>summary::marker{content:""}
+#osDialog.os-customer-dialog .os-client-history>summary:hover{background:var(--os-tint)}
+#osDialog.os-customer-dialog .os-client-history>summary:focus-visible{outline:3px solid color-mix(in srgb,var(--os-primary) 50%,transparent);outline-offset:-3px}
+#osDialog.os-customer-dialog .os-client-history-icon{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border-radius:12px;background:var(--os-tint);color:var(--os-primary)}
+#osDialog.os-customer-dialog .os-client-history-icon>.os-icon{width:19px;height:19px}
+#osDialog.os-customer-dialog .os-client-history-title{display:grid;gap:3px;flex:1;min-width:0}
+#osDialog.os-customer-dialog .os-client-history-title strong{color:var(--os-text);font:600 14px/20px var(--os-display)}
+#osDialog.os-customer-dialog .os-client-history-title small{color:var(--os-muted);font:400 11px/16px var(--os-font);overflow-wrap:anywhere}
+#osDialog.os-customer-dialog .os-client-history-count{flex:0 0 auto;padding:5px 8px;border-radius:100px;background:var(--os-soft);color:var(--os-muted);font:600 10px/16px var(--os-font);font-variant-numeric:tabular-nums}
+#osDialog.os-customer-dialog .os-client-history-chevron{display:grid;place-items:center;flex:0 0 16px;color:var(--os-muted);transition:transform .18s ease}
+#osDialog.os-customer-dialog .os-client-history-chevron>.os-icon{width:17px;height:17px}
+#osDialog.os-customer-dialog .os-client-history[open] .os-client-history-chevron{transform:rotate(180deg)}
+#osDialog.os-customer-dialog .os-client-history-body{display:grid;gap:13px;min-width:0;padding:15px 14px 16px;border-top:1px solid var(--os-border)}
+#osDialog.os-customer-dialog .os-client-history-body>.os-help{margin:0}
+#osDialog.os-customer-dialog .os-client-history-overview{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+#osDialog.os-customer-dialog .os-client-history-overview strong{font:600 12px/18px var(--os-font);color:var(--os-text)}
+#osDialog.os-customer-dialog .os-client-history-overview small{font:400 11px/17px var(--os-font);color:var(--os-muted)}
+#osDialog.os-customer-dialog .os-client-history-list{display:grid;gap:12px;min-width:0}
+#osDialog.os-customer-dialog .os-client-history-visit{box-sizing:border-box;min-width:0;border:1px solid var(--os-border);border-radius:14px;background:color-mix(in srgb,var(--os-tint) 15%,var(--os-card));overflow:hidden}
+#osDialog.os-customer-dialog .os-client-visit-heading{display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center;gap:9px;min-width:0;padding:12px}
+#osDialog.os-customer-dialog .os-client-visit-calendar{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:var(--os-tint);color:var(--os-primary)}
+#osDialog.os-customer-dialog .os-client-visit-calendar>.os-icon{width:16px;height:16px}
+#osDialog.os-customer-dialog .os-client-visit-heading>div{display:grid;gap:3px;min-width:0}
+#osDialog.os-customer-dialog .os-client-visit-heading>div>strong{font:600 12px/18px var(--os-font);color:var(--os-text)}
+#osDialog.os-customer-dialog .os-client-visit-heading>div>small{font:400 11px/16px var(--os-font);color:var(--os-muted);overflow-wrap:anywhere}
+#osDialog.os-customer-dialog .os-client-visit-total{font:700 14px/20px var(--os-display);color:var(--os-text);white-space:nowrap;font-variant-numeric:tabular-nums}
+#osDialog.os-customer-dialog .os-client-visit-services{display:grid;gap:10px;margin:0;padding:12px;list-style:none;border-top:1px solid var(--os-border);background:var(--os-card)}
+#osDialog.os-customer-dialog .os-client-visit-services>li{display:flex;align-items:flex-start;gap:9px;min-width:0}
+#osDialog.os-customer-dialog .os-client-service-dot{flex:0 0 6px;width:6px;height:6px;border-radius:50%;margin-top:7px;background:var(--os-primary)}
+#osDialog.os-customer-dialog .os-client-visit-services>li>div{display:grid;gap:2px;flex:1;min-width:0}
+#osDialog.os-customer-dialog .os-client-visit-services>li>div>strong{font:500 12px/18px var(--os-font);color:var(--os-text);overflow-wrap:anywhere}
+#osDialog.os-customer-dialog .os-client-visit-services>li>div>small{font:400 11px/16px var(--os-font);color:var(--os-muted)}
+#osDialog.os-customer-dialog .os-client-visit-services>li>span:last-child{font:600 12px/18px var(--os-font);color:var(--os-text);white-space:nowrap}
+#osDialog.os-customer-dialog .os-client-visit-empty{color:var(--os-muted);font-size:12px;line-height:18px}
+#osDialog.os-customer-dialog .os-client-visit-discount{display:flex;justify-content:space-between;gap:10px;padding:9px 12px;background:var(--os-card);border-top:1px dashed var(--os-border);font-size:11px;color:var(--os-muted)}
+#osDialog.os-customer-dialog .os-client-visit-discount strong{color:var(--os-text);white-space:nowrap}
+#osDialog.os-customer-dialog .os-client-visit-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:9px 12px;border-top:1px solid var(--os-border);font-size:11px;color:var(--os-muted)}
+#osDialog.os-customer-dialog .os-client-visit-footer>span{display:inline-flex;align-items:center;gap:5px;color:var(--os-success);font-weight:600}
+#osDialog.os-customer-dialog .os-client-visit-footer .os-icon{width:13px;height:13px}
+#osDialog.os-customer-dialog .os-client-visit-footer>small{font-size:10px;color:var(--os-muted)}
+#osDialog.os-customer-dialog .os-client-history-empty{display:grid;justify-items:center;gap:8px;padding:22px 12px;text-align:center}
+#osDialog.os-customer-dialog .os-client-history-empty>.os-icon{width:24px;height:24px;color:var(--os-muted)}
+#osDialog.os-customer-dialog .os-client-history-empty>strong{font:600 14px/20px var(--os-display);color:var(--os-text)}
+#osDialog.os-customer-dialog .os-client-history-empty>p{margin:0;max-width:270px;font-size:12px;line-height:19px;color:var(--os-muted)}
+#osDialog.os-customer-dialog .os-client-history-more{display:flex;justify-content:center;padding-top:2px}
+#osDialog.os-customer-dialog .os-client-history-more>.os-button{min-height:40px;flex:1}
+#osDialog.os-customer-dialog .os-client-history-error{display:grid;gap:9px;padding:11px;border-radius:12px;background:var(--os-tint)}
+#osDialog.os-customer-dialog .os-client-history-error>p{margin:0;color:var(--os-text);font-size:12px;line-height:19px}
+#osDialog.os-customer-dialog .os-client-history-error>.os-button{justify-self:start}
+@media(max-width:420px){#osDialog.os-customer-dialog .os-client-visit-heading{grid-template-columns:32px minmax(0,1fr)}#osDialog.os-customer-dialog .os-client-visit-total{grid-column:2;white-space:normal}#osDialog.os-customer-dialog .os-client-history-count{padding:4px 7px;font-size:10px}#osDialog.os-customer-dialog .os-client-history>summary{gap:8px;padding:12px 10px}#osDialog.os-customer-dialog .os-client-history-icon{flex-basis:33px;width:33px;height:33px}}
+@media(prefers-reduced-motion:reduce){#osDialog.os-customer-dialog .os-client-history-chevron{transition:none}}
 @media(max-width:359px){#osDialog.os-customer-dialog .os-client-grid{grid-template-columns:1fr}}
 
 /* Shared native disclosure: rounded header, left icon, quiet right chevron. */
