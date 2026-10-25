@@ -256,7 +256,7 @@
   }
   async function loadRoute(){const c=context();try{
     switch(state.route){
-      case 'dashboard':{const today=dateKey();const d=await request(mgmt('/dashboard?'+query({start_date:today,end_date:today})));if(!current(c))return;state.data.dashboard=d;renderDashboard(d,today);await loadDashboardAgenda(c,today);break;}
+      case 'dashboard':{const today=dateKey();const d=await request(mgmt('/dashboard?'+query({start_date:today,end_date:today})));if(!current(c))return;state.data.dashboard=d;renderDashboard(d,today);await Promise.all([loadDashboardAgenda(c,today),loadDashboardFinance(c,today)]);break;}
       case 'agenda':void loadGoogle();await loadAgenda(c);break;
       case 'clientes':await loadCustomers(c);break;
       case 'inbox':await window.OrionInbox?.mount({host:$('osInboxHost'),request,tenantId:state.tenantId,canWrite:writable()});break;
@@ -327,13 +327,126 @@
       if(current(c)&&read===state.dashboardAgendaRead)target.removeAttribute('aria-busy');
     }
   }
+  function dashboardFinanceFrame(){
+    return '<section class="os-card os-dashboard-finance" aria-labelledby="osDashboardFinanceTitle">'+
+      '<div class="os-dashboard-finance-head"><div class="os-dashboard-finance-heading">'+
+        '<span class="os-square-icon" aria-hidden="true">'+icon('wallet')+'</span>'+
+        '<div><p class="os-dashboard-finance-eyebrow">RESUMO</p><h3 id="osDashboardFinanceTitle">Financeiro</h3></div></div>'+
+        button('Ver financeiro','dashboard-finance-full','os-outline os-small','chevron')+'</div>'+
+      '<div id="osDashboardFinanceContent" class="os-dashboard-finance-content" aria-live="polite" aria-busy="true">'+
+        loading('Consultando financeiro…')+'</div></section>'+
+      '<section id="osDashboardGoals" class="os-card os-dashboard-goals" aria-live="polite" hidden></section>';
+  }
+  function dashboardFinanceValues(s){
+    const balance=Number(s?.balance_cents),count=Number(s?.count);
+    if(!Number.isSafeInteger(balance)||!Number.isSafeInteger(count)||count<0)
+      throw Error('Não foi possível confirmar os valores financeiros.');
+    const card=(name,value,symbol,css)=>'<div class="os-dashboard-finance-value '+css+'">'+
+      '<div class="os-dashboard-finance-label"><span>'+esc(name)+'</span>'+icon(symbol)+'</div>'+
+      '<strong>'+esc(value)+'</strong></div>';
+    return '<div class="os-dashboard-finance-values">'+
+      card('Saldo/Lucro',money(balance),'wallet',balance<0?'os-negative':'os-positive')+
+      card('Lançamentos',count.toLocaleString('pt-BR'),'list','os-dashboard-finance-count')+
+      '</div>';
+  }
+  function activeTeamGoals(items,today){
+    // Each professional contributes at most one currently active goal per metric.
+    // If periods overlap, the most recently started active goal takes precedence.
+    const latest=new Map();
+    for(const g of items){
+      if(!g||g.active!==true||!['revenue_cents','appointments'].includes(g.metric)||
+        typeof g.professional_id!=='string'||!g.professional_id||
+        typeof g.start_date!=='string'||typeof g.end_date!=='string'||
+        g.start_date>today||g.end_date<today)continue;
+      const target=Number(g.target_value),actual=Number(g.actual_value);
+      if(!Number.isSafeInteger(target)||target<=0||!Number.isSafeInteger(actual)||actual<0)continue;
+      const k=g.metric+'|'+g.professional_id,old=latest.get(k);
+      if(!old||g.start_date>old.start_date||(g.start_date===old.start_date&&g.end_date>old.end_date))
+        latest.set(k,{...g,target_value:target,actual_value:actual});
+    }
+    return ['revenue_cents','appointments'].map(metric=>{
+      const list=[...latest.values()].filter(g=>g.metric===metric);
+      if(!list.length)return null;
+      return {metric,professionals:list.length,target:list.reduce((n,g)=>n+g.target_value,0),
+        actual:list.reduce((n,g)=>n+g.actual_value,0)};
+    }).filter(Boolean);
+  }
+  function dashboardGoalContent(groups){
+    if(!groups.length)return '';
+    const goalBar=g=>{
+      const percent=g.target?g.actual/g.target*100:0,
+        rounded=Math.round(percent*10)/10,
+        progress=Math.max(0,Math.min(100,percent)),
+        moneyGoal=g.metric==='revenue_cents',
+        value=v=>moneyGoal?money(v):number(v).toLocaleString('pt-BR'),
+        label=moneyGoal?'Faturamento':'Atendimentos';
+      return '<div class="os-dashboard-goal-item"><div class="os-dashboard-goal-line">'+
+        '<div><strong>'+label+'</strong><small>'+g.professionals+' profissional'+(g.professionals===1?'':'is')+'</small></div>'+
+        '<span class="os-dashboard-goal-percent">'+esc(rounded.toLocaleString('pt-BR',{maximumFractionDigits:1}))+'%</span></div>'+
+        '<div class="os-dashboard-goal-track" role="progressbar" aria-label="Progresso da meta de '+esc(label.toLocaleLowerCase('pt-BR'))+' da equipe" '+
+        'aria-valuenow="'+Math.round(progress)+'" aria-valuemin="0" aria-valuemax="100" '+
+        'aria-valuetext="'+esc(rounded.toLocaleString('pt-BR',{maximumFractionDigits:1})+'% da meta')+'">'+
+        '<span style="width:'+progress.toFixed(2)+'%"></span></div>'+
+        '<div class="os-dashboard-goal-values"><span>Realizado <strong>'+esc(value(g.actual))+'</strong></span>'+
+        '<span>Meta <strong>'+esc(value(g.target))+'</strong></span></div></div>';
+    };
+    return '<div class="os-dashboard-goals-head"><div class="os-dashboard-goals-heading">'+
+      '<span class="os-square-icon" aria-hidden="true">'+icon('target')+'</span>'+
+      '<div><p class="os-dashboard-finance-eyebrow">OBJETIVOS</p><h3>Meta da equipe</h3></div></div>'+
+      button('Ver desempenho','dashboard-goals-full','os-outline os-small','chevron')+'</div>'+
+      '<div class="os-dashboard-goals-content">'+groups.map(goalBar).join('')+
+      '<p class="os-dashboard-goals-note">Progresso considerando o período definido para cada meta ativa.</p></div>';
+  }
+  async function loadDashboardFinance(c=context(),today=dateKey()){
+    const financeTarget=$('osDashboardFinanceContent'),goalsTarget=$('osDashboardGoals');
+    if(!current(c)||!financeTarget||!goalsTarget)return;
+    const read=state.dashboardFinanceRead=(state.dashboardFinanceRead||0)+1;
+    financeTarget.setAttribute('aria-busy','true');
+    financeTarget.innerHTML=loading('Consultando financeiro…');
+    goalsTarget.hidden=true;goalsTarget.replaceChildren();
+    const period=query({start_date:today,end_date:today});
+    // Read-only requests, with independent errors so a failed goal query never
+    // suppresses today's financial figures (and vice versa).
+    const [financial,goals]=await Promise.allSettled([
+      request(mgmt('/finance/summary?'+period)),
+      request(mgmt('/goals?'+period))
+    ]);
+    if(!current(c)||read!==state.dashboardFinanceRead)return;
+    try{
+      if(financial.status!=='fulfilled')throw financial.reason;
+      const summary=financial.value?.summary;
+      financeTarget.innerHTML=dashboardFinanceValues(summary);
+      state.data.dashboardFinance={day:today,summary};
+    }catch(error){
+      financeTarget.innerHTML='<div class="os-dashboard-finance-error" role="alert">'+icon('info')+
+        '<div><strong>Não foi possível consultar o financeiro</strong>'+
+        '<p>'+esc(error?.message||'Confira a conexão e tente novamente.')+'</p></div>'+
+        button('Tentar novamente','dashboard-finance-refresh','os-outline os-small','refresh')+'</div>';
+      state.data.dashboardFinance=null;
+    }finally{
+      financeTarget.removeAttribute('aria-busy');
+    }
+    try{
+      if(goals.status!=='fulfilled')throw goals.reason;
+      if(!Array.isArray(goals.value?.items))throw Error('Resposta inválida para metas da equipe.');
+      const active=activeTeamGoals(goals.value.items,today);
+      state.data.dashboardGoals={day:today,groups:active};
+      if(active.length){goalsTarget.innerHTML=dashboardGoalContent(active);goalsTarget.hidden=false;}
+    }catch(error){
+      state.data.dashboardGoals=null;
+      goalsTarget.innerHTML='<div class="os-dashboard-goals-error" role="status">'+
+        icon('info')+'<span>Não foi possível consultar as metas da equipe.</span>'+
+        button('Tentar novamente','dashboard-finance-refresh','os-ghost os-small','refresh')+'</div>';
+      goalsTarget.hidden=false;
+    }
+  }
   function renderDashboard(data,today=dateKey()){
     const s=data.summary||{},t=tenant(),can=writable(),hours=Number(new Intl.DateTimeFormat('en-GB',{hour:'2-digit',hourCycle:'h23',timeZone:zone()}).format(new Date()));
     const greeting=hours<12?'Bom dia':hours<18?'Boa tarde':'Boa noite';
     const quick=(titleText,sub,action,symbol,primary=false)=>'<button type="button" class="os-quick-action'+(primary?' os-primary':'')+'" data-os-action="'+action+'"'+(!can&&action!=='agenda-open'?' disabled':'')+'><span class="os-action-icon">'+icon(symbol)+'</span><div><strong>'+esc(titleText)+'</strong><small>'+esc(sub)+'</small></div>'+icon('chevron')+'</button>';
     let html='<div class="os-dashboard-title"><p class="os-date-label">'+esc(longDay(dateKey()))+'</p><h1>Dashboard</h1><p class="os-dashboard-greeting">'+greeting+', '+esc(t?.name||'seu negócio')+'.</p></div>'+(!can?'<div class="os-notice os-readonly">'+icon('lock')+'<p>Seu acesso a esta empresa é somente para consulta.</p></div>':'')+'<div class="os-space">';
     html+='<section class="os-quick-actions" aria-label="Ações rápidas">'+quick('Novo agendamento','Marque um horário em segundos','new-appointment','calendarPlus',true)+quick('Novo cliente','Cadastre nome e telefone','new-customer','userPlus')+'</section>';
-    html+='<section class="os-dashboard-today"><h2 class="os-today-title">Hoje no seu negócio</h2><div class="os-stats">'+[[s.appointments,'Agendados'],[s.completed,'Atendidos'],[number(s.cancelled)+number(s.no_show),'Cancel. / faltas']].map(([v,l])=>'<div class="os-stat"><strong>'+number(v)+'</strong><small>'+l+'</small></div>').join('')+'</div>'+dashboardAgendaFrame(today)+'</section></div>';
+    html+='<section class="os-dashboard-today"><h2 class="os-today-title">Hoje no seu negócio</h2><div class="os-stats">'+[[s.appointments,'Agendados'],[s.completed,'Atendidos'],[number(s.cancelled)+number(s.no_show),'Cancel. / faltas']].map(([v,l])=>'<div class="os-stat"><strong>'+number(v)+'</strong><small>'+l+'</small></div>').join('')+'</div>'+dashboardAgendaFrame(today)+dashboardFinanceFrame()+'</section></div>';
     bodyHTML(html);
   }
   const agendaStates={
@@ -1446,6 +1559,9 @@
       case 'approve-invitation':case 'revoke-invitation':{if(!state.data.team?.can_manage)return;const invitation=rows(state.data.team.invitations).find(i=>i.id===element.dataset.invitation);if(!invitation)return;const approval=name==='approve-invitation',path=mgmt('/team/invitations/'+encodeURIComponent(invitation.id));confirmMutation(approval?'Aprovar acesso':'Revogar convite',approval?'Autorizar o acesso de '+(invitation.claimed_by_name||invitation.email||'quem aceitou o convite')+' como '+(teamRoles[invitation.role]||invitation.role)+'.':'Este convite não poderá mais ser usado para entrar na equipe.',()=>request(path,'PATCH',{action:approval?'approve':'revoke',expected_version:invitation.version}),approval?'Acesso aprovado.':'Convite revogado.');break;}
       case 'new-appointment':await showAppointment();break;
       case 'new-block':await showBlock();break;
+      case 'dashboard-finance-refresh':if(state.route==='dashboard')await loadDashboardFinance(context(),dateKey());break;
+      case 'dashboard-finance-full':f.financeTab='entries';await open('financeiro');break;
+      case 'dashboard-goals-full':await open('desempenho');break;
       case 'dashboard-agenda-refresh':if(state.route==='dashboard')await open('dashboard',{keepScroll:true});break;
       case 'dashboard-agenda-full':{
         f.agendaDay=dateKey();f.agendaMode='list';f.agendaOffset=0;
