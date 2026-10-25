@@ -28,7 +28,11 @@
         (state.central?tabButton('conversations','Conversas'):'')+
         (state.tools?tabButton('customers','Clientes')+tabButton('replies','Respostas rápidas')+tabButton('flows','Simulações'):'')+
         '</nav>';
-      const confirmation=state.confirmation?'<div class="os-notice" role="group" aria-label="Confirmar exclusão"><p>Excluir '+esc(state.confirmation.name)+'? '+(state.confirmation.collection==='/labels'?'A etiqueta será retirada dos clientes associados.':'A resposta rápida será retirada da biblioteca.')+'</p>'+button('Cancelar','cancel-delete',disabled)+button('Confirmar exclusão','confirm-delete',write)+'</div>':'';
+      const confirmation=state.confirmation?'<div class="os-inbox-delete-confirm" role="group" aria-label="Confirmar exclusão" tabindex="-1">'+
+        '<div><strong>Excluir '+esc(state.confirmation.name)+'?</strong><p>'+
+        (state.confirmation.collection==='/labels'?'A etiqueta será retirada dos clientes associados.':'O modelo será removido da biblioteca.')+
+        '</p></div><div class="os-actions">'+button('Cancelar','cancel-delete',disabled)+
+        button('Excluir definitivamente','confirm-delete',write)+'</div></div>':'';
       const people=state.customers.length?state.customers.map(c=>'<button type="button" class="os-inbox-person" data-inbox-customer="'+esc(c.id)+'" '+disabled+' aria-pressed="'+(state.selected===c.id)+'">'+
         '<span class="os-inbox-person-avatar" aria-hidden="true">'+esc(initials(c.name||c.phone))+'</span>'+
         '<span class="os-inbox-person-copy"><strong>'+esc(c.name)+'</strong><small>'+esc(c.phone||'Sem telefone')+'</small></span>'+
@@ -49,6 +53,7 @@
       const labelsPanel='<section class="os-card os-inbox-labels-panel"><div class="os-inbox-heading"><div><h2>Etiquetas da empresa</h2>'+
         '<p>Organize seus clientes sem modificar consentimentos de marketing.</p></div>'+
         button('Nova etiqueta','new-label',write)+'</div>'+
+        (state.confirmation?.collection==='/labels'?confirmation:'')+
         (e?.kind==='label'?labelForm(e):'')+
         '<div class="os-inbox-tags os-inbox-label-list">'+(state.labels.length?state.labels.map(l=>'<article class="os-inbox-tag"><span class="os-inbox-swatch" style="background-color:'+esc(/^#[0-9a-f]{6}$/i.test(l.color)?l.color:'#2e7bf6')+'"></span><strong>'+esc(l.name)+'</strong>'+
         '<span class="os-inbox-tag-actions">'+button('Editar','edit-label','data-id="'+esc(l.id)+'" '+write)+button('Excluir','delete-label','data-id="'+esc(l.id)+'" '+write)+'</span></article>').join(''):
@@ -58,11 +63,12 @@
       const replies='<section class="os-card os-inbox-replies-panel"><div class="os-inbox-heading"><div><h2>Respostas rápidas</h2>'+
         '<p>Crie modelos e revise o texto antes de enviar em uma conversa.</p></div>'+
         button('Nova resposta','new-reply',write)+'</div>'+
+        (state.confirmation?.collection==='/quick-replies'?confirmation:'')+
         (e?.kind==='reply'?replyForm(e):'')+
         '<label for="inboxReplySearch">Buscar respostas</label><input id="inboxReplySearch" type="search" placeholder="Título, categoria ou texto" value="'+esc(state.replyQuery)+'">'+
         '<div class="os-inbox-list os-inbox-replies-list" data-inbox-replies>'+repliesHTML(visibleReplies,write)+'</div></section>';
       const panel=state.tab==='conversations'?'<div data-inbox-central></div>':state.tab==='flows'?'<div data-inbox-flows></div>':state.tab==='customers'?customers:replies;
-      host.innerHTML='<div class="os-inbox">'+header+'<p data-inbox-notice class="os-inbox-notice" role="status" aria-live="polite"></p>'+confirmation+panel+'</div>';
+      host.innerHTML='<div class="os-inbox">'+header+'<p data-inbox-notice class="os-inbox-notice" role="status" aria-live="polite"></p>'+panel+'</div>';
       if(state.tab==='flows')void window.OrionFlows?.mount({host:query('[data-inbox-flows]'),request,tenantId,canWrite});
       if(state.tab==='conversations')void window.OrionConversations?.mount({host:query('[data-inbox-central]'),request,tenantId,canWrite,toolsEnabled:state.tools,onCustomer:id=>{
         if(window.OrionConversations?.hasUnsentDraft?.()&&!window.confirm('Há uma mensagem não enviada. Sair da conversa e descartar o rascunho?'))return;
@@ -74,7 +80,7 @@
       if(!data)return '<div class="os-inbox-empty os-inbox-select-prompt"><strong>Selecione um cliente</strong><p>Consulte os dados e o histórico sem sair desta área.</p></div>';
       const c=data.customer||{},selected=new Set((data.labels||[]).map(x=>x.id)),history=data.history||[],next=data.upcoming;
       const heading='<header class="os-inbox-customer-header">'+
-        button('Voltar aos clientes','customer-back','class="os-inbox-back"')+
+        button('Voltar aos clientes','customer-back','aria-label="Voltar à lista de clientes"')+
         '<span class="os-inbox-person-avatar" aria-hidden="true">'+esc(initials(c.name||c.whatsapp_e164))+'</span>'+
         '<div><h3>'+esc(c.name||'Cliente')+'</h3><p>'+esc(c.whatsapp_e164||'Sem telefone')+'</p></div></header>';
       const upcoming='<section class="os-inbox-upcoming"><div class="os-inbox-section-title"><h3>Próximo agendamento</h3></div>'+
@@ -117,14 +123,33 @@
     async function reload(){
       const [tags,replies,people]=await Promise.all([request(path('/labels')),request(path('/quick-replies')),request(path('/customers?q='+encodeURIComponent(state.query)+'&offset='+state.offset+(state.label?'&label_id='+encodeURIComponent(state.label):'')))]);
       if(!current())return;state.labels=tags.items;state.replies=replies.items;state.customers=people.items;state.hasMore=people.has_more;
-      if(state.selected)state.customer=await request(path('/customers/'+encodeURIComponent(state.selected)));
-      if(current()){state.crmLoaded=true;render();}
+      if(state.selected){
+        try{state.customer=await request(path('/customers/'+encodeURIComponent(state.selected)));}
+        catch(error){
+          if(!current())return;
+          if(error?.status===404||error?.status_code===404){state.selected='';state.customer=null;}
+          else throw error;
+        }
+      }
+      if(current())state.crmLoaded=true;
     }
     async function perform(work,success){
-      if(state.busy)return;state.busy=true;host.setAttribute('aria-busy','true');host.inert=true;
-      try{await work();if(current()){state.confirmation=null;await reload();state.busy=false;render();notice(success||'Alteração salva.');}}
-      catch(error){if(current())notice(error.message||'Não foi possível concluir. Seu formulário foi preservado.',true);}
-      finally{state.busy=false;if(current()){host.removeAttribute('aria-busy');host.inert=false;}}
+      if(state.busy)return;
+      state.busy=true;host.setAttribute('aria-busy','true');host.inert=true;
+      try{
+        await work();
+        if(!current())return;
+        if(work!==reload)await reload();
+        if(!current())return;
+        state.confirmation=null;
+        state.busy=false;render();
+        if(success)notice(success);
+      }catch(error){
+        if(current())notice(error?.message||'Não foi possível concluir. Seus dados foram preservados.',true);
+      }finally{
+        state.busy=false;
+        if(current()){host.removeAttribute('aria-busy');host.inert=false;}
+      }
     }
     host.addEventListener('submit',event=>{
       const form=event.target.closest('[data-inbox-form]');if(!form)return;event.preventDefault();if(state.busy)return;
@@ -134,7 +159,15 @@
       const e=state.editor,kind=form.dataset.inboxForm,collection=kind==='label'?'/labels':'/quick-replies';
       void perform(async()=>{await request(path(collection+(e.id?'/'+e.id:'')),e.id?'PUT':'POST',{...values,expected_version:e.id?e.version:0});state.editor=null;},'Salvo com sucesso.');
     },{signal:state.controller.signal});
-    host.addEventListener('input',event=>{if(event.target.id==='inboxReplySearch')query('[data-inbox-replies]').innerHTML=repliesHTML(state.replies.filter(r=>(r.title+' '+r.category+' '+r.text).toLocaleLowerCase().includes(event.target.value.toLocaleLowerCase())),canWrite?'':'disabled');},{signal:state.controller.signal});
+    host.addEventListener('input',event=>{
+      if(event.target.id==='inboxReplySearch'){
+        state.replyQuery=event.target.value;
+        const target=query('[data-inbox-replies]');
+        if(target)target.innerHTML=repliesHTML(state.replies.filter(r=>
+          (r.title+' '+r.category+' '+r.text).toLocaleLowerCase('pt-BR').includes(state.replyQuery.toLocaleLowerCase('pt-BR'))),
+          canWrite&&!state.busy?'':'disabled');
+      }
+    },{signal:state.controller.signal});
     host.addEventListener('change',event=>{
       const id=event.target.dataset.inboxLabel;if(!id||!state.selected||!canWrite||state.busy)return;
       const checked=event.target.checked;
@@ -144,13 +177,27 @@
       if(state.busy)return;
       const tab=event.target.closest('[data-inbox-tab]'),person=event.target.closest('[data-inbox-customer]'),action=event.target.closest('[data-inbox-action]');
       if(tab){
-        if(state.editor&&!window.confirm('Descartar as alterações ainda não salvas?'))return;
-        if(state.tab==='conversations'&&tab.dataset.inboxTab!=='conversations'&&window.OrionConversations?.hasUnsentDraft?.()&&!window.confirm('Há mensagem não enviada. Sair sem salvar?'))return;
-        state.editor=null;state.tab=tab.dataset.inboxTab;
-        if(state.tools&&!state.crmLoaded&&state.tab!=='conversations')void perform(reload);else render();
+        if(state.tab===tab.dataset.inboxTab)return;
+        if(state.editor&&!window.confirm('Há alterações de formulário não salvas. Deseja descartá-las?'))return;
+        if(state.tab==='conversations'&&window.OrionConversations?.hasUnsentDraft?.()&&!window.confirm('Há uma mensagem não enviada. Sair sem salvar o rascunho?'))return;
+        state.editor=null;state.confirmation=null;state.tab=tab.dataset.inboxTab;
+        if(state.tools&&!state.crmLoaded&&state.tab!=='conversations')void perform(reload);
+        else render();
         return;
       }
-      if(person){state.selected=person.dataset.inboxCustomer;state.customer=null;void perform(async()=>{state.customer=await request(path('/customers/'+state.selected));},'Dados do cliente carregados.');return;}
+      const view=event.target.closest('[data-inbox-view]');
+      if(view){
+        if(state.crmView===view.dataset.inboxView)return;
+        if(state.editor&&!window.confirm('Descartar as alterações de formulário ainda não salvas?'))return;
+        state.crmView=view.dataset.inboxView;state.editor=null;state.confirmation=null;render();return;
+      }
+      if(person){
+        const selected=state.customers.find(item=>item.id===person.dataset.inboxCustomer);
+        if(!selected)return;
+        state.selected=selected.id;state.customer=null;
+        void perform(reload,'Dados do cliente carregados.');
+        return;
+      }
       if(!action)return;const kind=action.dataset.inboxAction,id=action.dataset.id;
       if(['preview','copy'].includes(kind)){
         if(kind==='copy'){try{await navigator.clipboard.writeText(query('#inboxPreparedText').value);notice('Texto copiado.');}catch{query('#inboxPreparedText').select();notice('Selecione o texto e copie pelo seu dispositivo.',true);}return;}
@@ -159,20 +206,30 @@
         try{const result=await request(path('/quick-replies/'+id+'/preview'),'POST',{customer_id:state.selected,expected_version:r.version});if(current()&&sequence===state.sequence){const target=query('[data-inbox-preview]');if(!target)return;target.hidden=false;query('#inboxPreparedText').value=result.text;notice('Texto preparado. Nenhuma mensagem enviada.');}}
         catch(error){if(current()&&sequence===state.sequence)notice(error.message,true);}return;
       }
-      if(!canWrite&& !['previous','next','cancel-editor','cancel-delete'].includes(kind))return;
+      if(kind==='customer-back'){state.selected='';state.customer=null;render();return;}
+      if(!canWrite&&!['previous','next','cancel-editor','cancel-delete'].includes(kind))return;
       if(kind==='previous'||kind==='next'){state.offset=Math.max(0,state.offset+(kind==='next'?50:-50));void perform(reload);return;}
       if(kind==='cancel-editor'){state.editor=null;render();return;}
       if(kind==='cancel-delete'){state.confirmation=null;render();return;}
       if(kind==='new-label')state.editor={kind:'label',name:'',color:'#18836b'};
-      if(kind==='edit-label')state.editor={...state.labels.find(x=>x.id===id),kind:'label'};
+      if(kind==='edit-label'){const row=state.labels.find(x=>x.id===id);if(!row)return;state.editor={...row,kind:'label'};}
       if(kind==='new-reply')state.editor={kind:'reply',title:'',category:'Geral',text:'',visibility:'company'};
-      if(kind==='edit-reply'||kind==='duplicate-reply'){const row=state.replies.find(x=>x.id===id);state.editor={...row,kind:'reply',...(kind==='duplicate-reply'?{id:null,title:(row.title+' (cópia)').slice(0,100)}:{})};}
-      if(kind==='delete-label'||kind==='delete-reply'){const row=(kind==='delete-label'?state.labels:state.replies).find(x=>x.id===id);state.confirmation={id,name:row.name||row.title,collection:kind==='delete-label'?'/labels':'/quick-replies',version:row.version};}
+      if(kind==='edit-reply'||kind==='duplicate-reply'){
+        const row=state.replies.find(x=>x.id===id);if(!row)return;
+        state.editor={...row,kind:'reply',...(kind==='duplicate-reply'?{id:null,title:(row.title+' (cópia)').slice(0,100)}:{})};
+      }
+      if(kind==='delete-label'||kind==='delete-reply'){
+        const row=(kind==='delete-label'?state.labels:state.replies).find(x=>x.id===id);
+        if(!row)return;
+        state.confirmation={id,name:row.name||row.title,collection:kind==='delete-label'?'/labels':'/quick-replies',version:row.version};
+      }
       if(kind==='confirm-delete'){const c=state.confirmation;if(c)void perform(()=>request(path(c.collection+'/'+c.id),'DELETE',{expected_version:c.version}),'Registro excluído.');return;}
-      render();if(state.editor)query('.os-inbox-editor input')?.focus();
+      render();
+      if(state.editor){const el=query('.os-inbox-editor input');el?.focus();el?.scrollIntoView?.({block:'nearest'});}
+      if(state.confirmation){const el=query('.os-inbox-delete-confirm');el?.focus();el?.scrollIntoView?.({block:'nearest'});}
     },{signal:state.controller.signal});
     host.innerHTML='<p role="status">Carregando ferramentas de atendimento…</p>';
-    try{const capability=await request(path('/capabilities'));if(!current())return;state.central=capability.central_enabled===true;state.tools=capability.enabled===true;if(state.central)state.tab='conversations';if(!capability.enabled&&!state.central){host.innerHTML='<section class="os-card"><h2>Ferramentas em preparação</h2><p>As ferramentas serão disponibilizadas após a configuração e a validação desta instalação.</p></section>';return;}if(state.tools&&state.tab!=='conversations')await reload();else render();}
+    try{const capability=await request(path('/capabilities'));if(!current())return;state.central=capability.central_enabled===true;state.tools=capability.enabled===true;if(state.central)state.tab='conversations';if(!capability.enabled&&!state.central){host.innerHTML='<section class="os-card"><h2>Ferramentas em preparação</h2><p>As ferramentas serão disponibilizadas após a configuração e a validação desta instalação.</p></section>';return;}if(state.tools&&state.tab!=='conversations')await reload();render();}
     catch(error){if(current())host.textContent=error.message||'Não foi possível carregar as ferramentas.';}
   }
   window.OrionInbox={mount,unmount};

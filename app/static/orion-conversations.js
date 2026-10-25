@@ -6,7 +6,7 @@
   const receipts={received:'Recebida',queued:'Na fila',sending:'Envio em verificação',uncertain:'Resultado incerto',accepted:'Aceita pelo canal',delivered:'Entregue',read:'Lida',failed:'Não enviada ou recusada pelo canal'};
   function unmount(){if(active){active.alive=false;active.abort.abort();clearInterval(active.timer);active=null;}}
   async function mount({host,request,tenantId,canWrite=false,onCustomer,toolsEnabled=false}){
-    unmount();const s={host,alive:true,abort:new AbortController(),channels:[],items:[],detail:null,selected:null,channel:'',mode:'',q:'',unread:false,offset:0,more:false,busy:false,seq:0,drafts:new Map(),preserved:new Map(),replies:[],pending:[],positions:new Map(),renderedKey:'',listScroll:0};active=s;
+    unmount();const s={host,alive:true,abort:new AbortController(),channels:[],items:[],detail:null,selected:null,channel:'',mode:'',q:'',unread:false,offset:0,more:false,busy:false,seq:0,drafts:new Map(),preserved:new Map(),replies:[],pending:[],positions:new Map(),renderedKey:'',listScroll:0,filtersOpen:false,searchDraft:'',openSections:new Set(),replySelection:'',detailError:null};active=s;
     const current=()=>active===s&&s.alive&&host.isConnected;
     const path=v=>'/api/v1/tenants/'+encodeURIComponent(tenantId)+'/management/inbox'+v;
     const selectedPath=v=>path('/channels/'+encodeURIComponent(s.selected.channel_id)+v);
@@ -38,6 +38,15 @@
         const atBottom=previousTimeline.scrollHeight-previousTimeline.clientHeight-previousTimeline.scrollTop<75;
         s.positions.set(s.renderedKey,{top:previousTimeline.scrollTop,atBottom});
       }
+      const oldFilters=host.querySelector('.os-central-filters');
+      if(oldFilters)s.filtersOpen=oldFilters.open;
+      const oldSearch=host.querySelector('#centralSearch');
+      if(oldSearch)s.searchDraft=oldSearch.value;
+      if(s.renderedKey!==key())s.openSections=new Set();
+      else s.openSections=new Set([...host.querySelectorAll('details[open]')].map(el=>[
+        'os-central-control-menu','os-central-quick-reply','os-central-history-tools','os-central-preserved','os-central-pending-notices'
+      ].find(name=>el.classList.contains(name))).filter(Boolean));
+      const oldReply=host.querySelector('[data-central-reply]');if(oldReply)s.replySelection=oldReply.value;
       const findValue=host.querySelector('#centralFind')?.value||'';
       const c=s.detail?.control||null;
       const owned=!!s.account&&!!c&&['human','waiting'].includes(c.mode)&&c.assigned_account_id===s.account;
@@ -51,21 +60,33 @@
         const unread=Math.max(0,Number(x.unread_count||0));
         return '<li class="os-central-thread-item"><button type="button" class="os-central-thread-item-button" data-central-phone="'+esc(x.contact_e164)+'" data-central-channel="'+esc(x.channel_id)+'" aria-pressed="'+chosen+'"><span class="os-central-avatar" aria-hidden="true">'+esc(initials(x.name||x.contact_e164))+'</span><span class="os-central-thread-copy"><span class="os-central-thread-title"><strong>'+esc(x.name||x.contact_e164)+'</strong><time>'+esc(clock(x.updated_at))+'</time></span><span class="os-central-thread-preview">'+esc((x.preview||'Sem prévia de mensagem').slice(0,120))+'</span><span class="os-central-thread-meta"><span class="os-central-mini-state os-central-mini-state-'+modeClass(x.mode)+'">'+esc(modes[x.mode]||'Em atendimento')+'</span><small>'+esc(x.provider==='qr'?'WhatsApp QR':'WhatsApp oficial')+'</small></span></span>'+(unread?'<span class="os-central-unread" aria-label="'+unread+' mensagens não lidas">'+unread+'</span>':'')+'</button></li>';
       }).join('');
+      const activeFilters=Number(!!s.channel)+Number(!!s.mode)+Number(s.unread);
       const filters='<form data-central-search class="os-central-search-form" role="search">'+
-        '<label class="os-central-search-field" for="centralSearch">'+ico('search')+'<span class="os-sr-only">Pesquisar conversas</span><input id="centralSearch" name="q" type="search" maxlength="100" placeholder="Buscar cliente ou mensagem" value="'+esc(s.q)+'"></label>'+
-        '<div class="os-central-filter-row '+(s.channels.length>1?'':'os-central-single-filter')+'">'+(s.channels.length>1?'<label class="os-central-filter-field"><span>Canal</span><select name="channel"><option value="">Todos</option>'+s.channels.map(x=>'<option value="'+esc(x.id)+'" '+(s.channel===x.id?'selected':'')+'>'+esc((x.provider==='qr'?'QR · ':'Meta · ')+x.label+(x.enabled?'':' · indisponível'))+'</option>').join('')+'</select></label>':'')+
-        '<label class="os-central-filter-field"><span>Atendimento</span><select name="mode"><option value="">Todos</option>'+Object.entries(modes).map(([id,label])=>'<option value="'+esc(id)+'" '+(s.mode===id?'selected':'')+'>'+esc(label)+'</option>').join('')+'</select></label></div>'+
-        '<div class="os-central-filter-footer"><label class="os-central-unread-toggle"><input type="checkbox" name="unread" '+(s.unread?'checked':'')+'><span>Não lidas</span></label><button class="os-button os-central-filter-submit" type="submit" '+(s.busy?'disabled':'')+'>Aplicar filtros</button></div>'+
+        '<div class="os-central-search-top"><label class="os-central-search-field" for="centralSearch">'+ico('search')+
+        '<span class="os-sr-only">Pesquisar conversas</span><input id="centralSearch" name="q" type="search" maxlength="100" placeholder="Nome, telefone ou mensagem" value="'+esc(s.searchDraft||s.q)+'"></label>'+
+        '<button class="os-button os-central-search-button" type="submit" '+(s.busy?'disabled':'')+'>Buscar</button></div>'+
+        '<details class="os-central-filters"'+(s.filtersOpen?' open':'')+'><summary><span>Filtros</span>'+
+        (activeFilters?'<small>'+activeFilters+' ativo'+(activeFilters===1?'':'s')+'</small>':'')+
+        '<span class="os-central-filter-chevron" aria-hidden="true">'+ico('chevron')+'</span></summary>'+
+        '<div class="os-central-filter-content"><div class="os-central-filter-row '+(s.channels.length>1?'':'os-central-single-filter')+'">'+
+        (s.channels.length>1?'<label class="os-central-filter-field"><span>Canal</span><select name="channel"><option value="">Todos os canais</option>'+
+          s.channels.map(x=>'<option value="'+esc(x.id)+'" '+(s.channel===x.id?'selected':'')+'>'+
+          esc((x.provider==='qr'?'QR · ':'Meta · ')+x.label+(x.enabled?'':' · indisponível'))+'</option>').join('')+'</select></label>':'')+
+        '<label class="os-central-filter-field"><span>Atendimento</span><select name="mode"><option value="">Todos</option>'+
+        Object.entries(modes).map(([id,label])=>'<option value="'+esc(id)+'" '+(s.mode===id?'selected':'')+'>'+esc(label)+'</option>').join('')+'</select></label></div>'+
+        '<div class="os-central-filter-footer"><label class="os-central-unread-toggle"><input type="checkbox" name="unread" '+(s.unread?'checked':'')+'><span>Somente não lidas</span></label>'+
+        '<div><button type="button" class="os-central-clear-filters" data-central-action="clear-filters">Limpar</button>'+
+        '<button class="os-button os-central-filter-submit" type="submit" '+(s.busy?'disabled':'')+'>Aplicar</button></div></div></div></details>'+
       '</form>';
       const listPanel='<aside class="os-central-list-panel" aria-label="Conversas da empresa">'+
-        '<header class="os-central-list-header"><div><p class="os-central-eyebrow">CAIXA DE ENTRADA</p><h2>Conversas</h2><p>'+s.items.length+' conversa'+(s.items.length===1?'':'s')+' nesta página'+(totalUnread?' · '+totalUnread+' não lida'+(totalUnread===1?'':'s'):'')+'</p></div><button type="button" class="os-icon-button os-central-refresh" data-central-action="refresh" aria-label="Atualizar conversas" title="Atualizar conversas" '+(s.busy?'disabled':'')+'>'+ico('refresh')+'</button></header>'+
+        '<header class="os-central-list-header"><div><p class="os-central-eyebrow">CAIXA DE ENTRADA</p><h2>Conversas</h2><p>'+s.items.length+' conversa'+(s.items.length===1?'':'s')+(totalUnread?' · '+totalUnread+' mensagem'+(totalUnread===1?'':'ens')+' não lida'+(totalUnread===1?'':'s'):'')+'</p></div><button type="button" class="os-icon-button os-central-refresh" data-central-action="refresh" aria-label="Atualizar conversas" title="Atualizar conversas" '+(s.busy?'disabled':'')+'>'+ico('refresh')+'</button></header>'+
         filters+
         '<ul class="os-central-thread-list" aria-label="Lista de conversas">'+(list||'<li class="os-central-empty-list">'+ico('message')+'<strong>Nenhuma conversa encontrada</strong><span>Revise os filtros ou aguarde novas mensagens.</span></li>')+'</ul>'+
         '<footer class="os-central-pagination"><button type="button" class="os-button os-outline" data-central-action="previous" '+(s.offset===0||s.busy?'disabled':'')+'>Anterior</button><span>Página '+(Math.floor(s.offset/50)+1)+'</span><button type="button" class="os-button os-outline" data-central-action="next" '+(!s.more||s.busy?'disabled':'')+'>Próxima</button></footer></aside>';
       const controlLabel=c?({human:'Humano',waiting:'Em espera',ai:'IA ativa',paused:'Pausado',closed:'Encerrado'}[c.mode]||'Em atendimento'):'Sem status';
-      const ownerText=c?(owned?'Atendimento com você':c.assigned_account_id?'Com outro atendente':c.mode==='ai'?'Orion responde automaticamente':c.mode==='closed'?'Atendimento encerrado':'Aguardando alguém assumir'):'';
+      const ownerText=c?(!s.account?'Disponível somente para consulta':owned?'Atendimento com você':c.assigned_account_id?'Com outro atendente':c.mode==='ai'?'Orion responde automaticamente':c.mode==='closed'?'Atendimento encerrado':'Aguardando alguém assumir'):'';
       const primary=modeBtn('human',c?.mode==='ai'?'Assumir da IA':'Assumir atendimento',!!c&&!owned&&!!s.account,canControl&&!owned);
-      const management='<details class="os-central-control-menu"><summary>'+ico('more')+'<span>Gerenciar</span>'+ico('chevron')+'</summary><div class="os-central-control-options">'+
+      const management='<details class="os-central-control-menu"'+(s.openSections.has('os-central-control-menu')?' open':'')+'><summary>'+ico('more')+'<span>Gerenciar</span>'+ico('chevron')+'</summary><div class="os-central-control-options">'+
         modeBtn('waiting','Aguardar cliente',owned&&c.mode!=='waiting',canControl&&owned&&c.mode!=='waiting')+
         modeBtn('ai','Retomar IA',!!c&&c.mode!=='ai',canControl&&c.mode!=='ai')+
         modeBtn('paused','Pausar atendimento',!!c&&c.mode!=='paused',canControl&&c.mode!=='paused')+
@@ -73,12 +94,12 @@
         (s.detail?.customer_id&&onCustomer?btn('Abrir ficha do cliente','customer',s.busy):'')+
         '</div></details>';
       const pending=c?.pending_operation?'<div class="os-central-pending" role="status">'+ico('info')+'<span>Há um envio em verificação. O controle da conversa fica protegido até existir um recibo seguro.</span>'+(s.channels.find(x=>x.id===s.selected?.channel_id)?.provider==='qr'?btn('Consultar recibo','reconcile',!canWrite||s.busy):'')+'</div>':'';
-      const readTools='<details class="os-central-history-tools"><summary>Mais opções do histórico '+ico('chevron')+'</summary><div class="os-central-history-actions">'+
+      const readTools='<details class="os-central-history-tools"'+(s.openSections.has('os-central-history-tools')?' open':'')+'><summary>Opções do histórico '+ico('chevron')+'</summary><div class="os-central-history-actions">'+
         (s.account&&s.detail?.items?.length&&Number(selected?.unread_count||0)>0?btn('Marcar como lida nesta central','read',s.busy):'')+
         (s.detail?.preserved_history_available?btn('Consultar histórico do dispositivo','preserved-history',s.busy):'')+
         '</div><label class="os-central-inthread-search" for="centralFind">'+ico('search')+'<span class="os-sr-only">Buscar nas mensagens carregadas</span><input id="centralFind" type="search" maxlength="100" placeholder="Buscar nesta conversa" value="'+esc(findValue)+'"></label><p>Essas ações não enviam mensagens ao cliente.</p></details>';
       const historyTools=s.detail?.has_more?'<div class="os-central-timeline-tools">'+btn('Carregar mensagens anteriores','older',s.busy)+'</div>':'';
-      const replies=s.replies.length&&s.detail?.customer_id?'<details class="os-central-quick-reply"><summary>Usar resposta rápida</summary><div class="os-central-quick-reply-form"><label for="centralReplySelect">Modelo de resposta</label><div><select id="centralReplySelect" data-central-reply><option value="">Escolher resposta salva</option>'+s.replies.map(r=>'<option value="'+esc(r.id)+'">'+esc(r.title)+'</option>').join('')+'</select>'+btn('Inserir no texto','prepare',s.busy)+'</div></div></details>':'';
+      const replies=s.replies.length&&s.detail?.customer_id?'<details class="os-central-quick-reply"'+(s.openSections.has('os-central-quick-reply')?' open':'')+'><summary>Usar resposta rápida</summary><div class="os-central-quick-reply-form"><label for="centralReplySelect">Modelo de resposta</label><div><select id="centralReplySelect" data-central-reply><option value="">Escolher resposta salva</option>'+s.replies.map(r=>'<option value="'+esc(r.id)+'" '+(s.replySelection===r.id?'selected':'')+'>'+esc(r.title)+'</option>').join('')+'</select>'+btn('Inserir no texto','prepare',s.busy)+'</div></div></details>':'';
       const composer='<footer class="os-central-compose">'+replies+
         '<form data-central-compose><label for="centralText">Mensagem</label><textarea id="centralText" name="text" rows="3" maxlength="1200" placeholder="Escreva uma resposta para revisar..." '+(!canWrite?'readonly':'')+'>'+esc(draft().text)+'</textarea><div class="os-central-compose-footer"><span class="os-central-composer-hint">'+esc(!s.sendEnabled?'O envio de mensagens está desativado.':!s.account?'Seu acesso está disponível somente para consulta.':!owned?'Assuma o atendimento para responder.':c?.pending_operation?'Aguarde a verificação do envio.':'Revise o texto antes de enviar.')+'</span><button type="submit" class="os-button" '+(!canWrite||!owned||s.busy||!!c?.pending_operation||!s.sendEnabled?'disabled':'')+'>'+ico('send')+(draft().operation?'Verificar envio':'Enviar mensagem')+'</button></div></form></footer>';
       const thread=s.selected&&c?'<div class="os-central-thread-body">'+
@@ -90,9 +111,10 @@
         '<ol class="os-central-messages" aria-label="Histórico da conversa">'+messagesHTML()+'</ol>'+
         preservedHTML()+pendingHTML()+readTools+
         '</div>'+composer+'</div>':
-        s.selected?'<div class="os-central-loading" role="status"><button type="button" class="os-icon-button os-central-back" data-central-action="back" aria-label="Voltar">'+ico('back')+'</button><p>Carregando histórico do atendimento…</p></div>':
+        s.selected?'<div class="os-central-loading" role="'+(s.detailError?'alert':'status')+'"><button type="button" class="os-icon-button os-central-back" data-central-action="back" aria-label="Voltar">'+ico('back')+'</button>'+
+        '<p>'+esc(s.detailError||'Carregando histórico do atendimento…')+'</p>'+(s.detailError?btn('Tentar novamente','refresh'):'')+'</div>':
         '<div class="os-central-placeholder"><span class="os-central-placeholder-icon">'+ico('message')+'</span><h2>Suas conversas em um só lugar</h2><p>Selecione um contato à esquerda para consultar o histórico, acompanhar o atendimento e responder quando autorizado.</p></div>';
-      host.innerHTML='<div class="os-central">'+(!s.account?'<div class="os-notice os-central-identity-notice" role="status">'+ico('info')+'<p>O administrador precisa estar habilitado na central para assumir atendimentos. Entre novamente após a configuração. Você ainda pode consultar os registros disponíveis.</p></div>':'')+
+      host.innerHTML='<div class="os-central">'+(!s.account?'<div class="os-central-identity-notice" role="status">'+ico('info')+'<span>O administrador precisa estar habilitado na central para assumir atendimentos. A consulta continua disponível.</span></div>':'')+
         '<p class="os-central-notice" data-central-notice role="status" aria-live="polite"></p>'+
         '<div class="os-central-shell'+(s.selected?' os-central-show-thread':'')+'">'+listPanel+'<section class="os-central-thread-panel" aria-label="Atendimento selecionado">'+thread+'</section></div></div>';
       const updatedList=host.querySelector('.os-central-thread-list');
@@ -124,7 +146,7 @@
       const rows=s.preserved.get(key());if(!rows)return '';
       return '<details open class="os-central-preserved"><summary>Histórico preservado no dispositivo</summary><p>Esta consulta não altera as contagens de leitura da central.</p><ol>'+rows.map(m=>'<li><small>'+esc(m.direction==='in'?'Recebida':'Enviada')+' · '+esc(new Date(m.at).toLocaleString('pt-BR'))+'</small><p class="os-inbox-text">'+esc(m.body)+'</p>'+(m.direction==='out'?'<small>'+esc(m.delivery==='read'||m.delivery==='played'?'Lida':m.delivery==='delivered'?'Entregue':'Sem confirmação de entrega')+'</small>':'')+'</li>').join('')+'</ol></details>';
     }
-    function pendingHTML(){return s.pending.length?'<details class="os-central-pending-notices"><summary>Avisos da equipe ('+s.pending.length+')</summary>'+window.OrionCommunication.pendingHTML(s.pending,canWrite,s.busy)+'</details>':'';}
+    function pendingHTML(){return s.pending.length?'<details class="os-central-pending-notices"'+(s.openSections.has('os-central-pending-notices')?' open':'')+'><summary>Avisos da equipe ('+s.pending.length+')</summary>'+window.OrionCommunication.pendingHTML(s.pending,canWrite,s.busy)+'</details>':'';}
     async function load({detail=true}={}){
       const seq=++s.seq,selection=key();
       const list=await request(path('/conversations?offset='+s.offset+(s.unread?'&unread=true':'')+'&q='+encodeURIComponent(s.q)+(s.channel?'&channel_id='+encodeURIComponent(s.channel):'')+(s.mode?'&mode='+encodeURIComponent(s.mode):'')));
