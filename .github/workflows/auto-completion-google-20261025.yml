@@ -1,0 +1,99 @@
+name: Orion - auto conclusão e Google Agenda (CI isolada)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/auto_completion_worker.py'
+      - 'app/auto_completion.py'
+      - 'app/appointment_finance.py'
+      - 'tests/unit/test_auto_completion.py'
+      - 'app/management_models.py'
+      - 'app/worker.py'
+      - 'app/calendar_worker.py'
+      - 'app/integrations_api.py'
+      - 'app/static/orion-suite.js'
+      - 'scripts/prepare_vercel_orion.py'
+      - 'alembic/versions/0031_auto_complete_appointments.py'
+      - 'tests/integration/test_auto_completion_postgres.py'
+      - 'tests/integration/test_google_calendar_integration.py'
+      - '.github/workflows/auto-completion-google-20261025.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-postgres-redis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: test-support-ci-token-of-64-characters-000000000000000000000000000
+      REDIS_URL: redis://localhost:6379/15
+      ORION_GOOGLE_TEST_REDIS_URL: redis://localhost:6379/15
+      REQUIRE_POSTGRES_TESTS: "1"
+      REQUIRE_REDIS_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependências fixadas e sintaxe Python
+        run: |
+          python -m pip install -c requirements.lock ".[test]"
+          python -m pip check
+          python -m py_compile app/auto_completion_worker.py app/auto_completion.py app/appointment_finance.py app/calendar_worker.py app/management_models.py app/worker.py app/integrations_api.py
+      - name: Provisionar somente papéis do banco de teste
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas \
+            -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only \
+            -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+      - name: Aplicar migrações apenas no banco descartável
+        run: alembic upgrade head
+      - name: Testar concorrência, comissão, recebíveis e Google Agenda
+        run: |
+          pytest -q -ra \
+            tests/integration/test_auto_completion_postgres.py \
+            tests/integration/test_google_calendar_integration.py \
+            tests/integration/test_management.py
+            tests/integration/test_appointment_lifecycle.py
+            tests/unit/test_auto_completion.py
+  javascript:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Testar interface Agenda e Dashboard
+        run: |
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --check app/static/orion-suite.js
+          node --test ui-tests/agenda-lifecycle.test.mjs ui-tests/dashboard-finance-goals.test.mjs
+          npm test --prefix ui-tests

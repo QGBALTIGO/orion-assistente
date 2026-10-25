@@ -571,7 +571,8 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
         from app.loyalty_rewards import award_completion
         from app.appointment_finance import record_service_receivable
         result["loyalty"] = await award_completion(db, tenant_id, changed, now)
-        await record_service_receivable(db, tenant_id, changed)
+        if automated:
+            await record_service_receivable(db, tenant_id, changed)
     return result
 
 

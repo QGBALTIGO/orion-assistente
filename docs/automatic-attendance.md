@@ -20,7 +20,7 @@ lock de linha, estado esperado e chave idempotente; alterações concorrentes
 não são sobrescritas. Não exige a página aberta.
 
 A transição preserva a trilha com origem `system`, comissões, descontos,
-fidelidade e outbox do Google. Atendimentos concluídos criam **uma conta a
+fidelidade e outbox do Google. Atendimentos finalizados automaticamente criam **uma conta a
 receber pendente** no Financeiro, sem alegar Pix, cartão ou dinheiro recebido.
 O DRE já contabiliza o serviço a partir do agendamento, sem duplicar receitas.
 Recebimentos reais devem ser baixados como pagos; atendimentos gratuitos
