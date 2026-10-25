@@ -1,0 +1,72 @@
+name: Orion - central atendimento mobile e integridade
+on:
+  push:
+    branches: [codex/orion-central-mobile-redesign-20261025, main]
+    paths:
+      - 'app/static/orion-inbox.js'
+      - 'app/static/orion-inbox.css'
+      - 'app/static/orion-conversations.js'
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-flows.js'
+      - 'ui-tests/inbox.test.mjs'
+      - 'ui-tests/conversations.test.mjs'
+      - 'ui-tests/central-redesign.test.mjs'
+      - 'ui-tests/central-mobile-audit.test.mjs'
+      - 'ui-tests/central-mobile-browser.py'
+      - 'ui-tests/central-layout.py'
+      - 'scripts/prepare_vercel_orion.py'
+      - '.github/workflows/central-mobile-quality-20261025.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dom:
+    name: Contratos, permissoes, navegação e acoes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar testes de interface
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Validar sintaxe e todos os testes da Central
+        run: |
+          node --check app/static/orion-inbox.js
+          node --check app/static/orion-conversations.js
+          node --check app/static/orion-flows.js
+          node --check app/static/orion-suite.js
+          node --test \
+            ui-tests/central-redesign.test.mjs \
+            ui-tests/inbox.test.mjs \
+            ui-tests/conversations.test.mjs \
+            ui-tests/flows.test.mjs \
+            ui-tests/central-mobile-audit.test.mjs
+      - name: Rodar toda a regressão DOM do painel
+        run: npm test --prefix ui-tests
+  mobile-browser:
+    name: 320 a 1280px, claro/escuro e navegador iOS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar navegadores isolados
+        run: |
+          python -m pip install "playwright==1.56.0"
+          python -m playwright install --with-deps chromium webkit
+      - name: Testar layout real de conversas
+        run: python ui-tests/central-layout.py
+      - name: Testar CRM, etiquetas, respostas e simulacoes reais em mobile
+        run: python ui-tests/central-mobile-browser.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: orion-central-mobile-qualificacao
+          path: |
+            artifacts/central-redesign/
+            artifacts/central-mobile-qa/
+          retention-days: 7
