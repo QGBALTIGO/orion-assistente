@@ -4,6 +4,8 @@ on:
     branches: [codex/orion-booking-availability-audit-20261025]
     paths:
       - 'app/booking_service.py'
+      - 'app/booking_api.py'
+      - 'app/static/orion-suite.js'
       - 'app/public_site_api.py'
       - 'app/static/orion-public.js'
       - 'app/qr_ai.py'
