@@ -1,0 +1,30 @@
+name: Orion Central — Capturas rápidas Chrome
+on:
+  push:
+    branches: [codex/orion-central-redesign-20261025]
+    paths:
+      - 'ui-tests/central-layout.py'
+      - '.github/workflows/central-ui-fast-20261025.yml'
+permissions:
+  contents: read
+jobs:
+  screenshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install playwright
+      - name: Verificar layout usando Chrome do runner (sem apt)
+        env:
+          ORION_CHROME_ONLY: "1"
+          ORION_CHROME_PATH: /usr/bin/google-chrome
+        run: python ui-tests/central-layout.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: central-quick-preview
+          path: artifacts/central-redesign/
+          retention-days: 7
