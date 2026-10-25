@@ -1547,3 +1547,16 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
   .os-dashboard-goals-error>.os-button{width:100%}
 }
 @media(prefers-reduced-motion:reduce){.os-dashboard-goal-track>span{transition:none}}
+
+/* Agenda: explicit, owner-only automatic completion control. */
+.os-agenda-heading-actions>[data-os-action=agenda-auto-completion]{white-space:nowrap;max-width:100%}
+.os-auto-completion-intro{display:grid;gap:15px;min-width:0}
+.os-auto-completion-intro>p{margin:0;font-size:13px;line-height:21px}
+.os-auto-completion-intro .os-notice{margin:0;padding:13px;align-items:flex-start}
+.os-auto-completion-intro .os-notice p{font-size:12px;line-height:20px;margin:0}
+.os-auto-completion-toggle{display:flex;align-items:center;gap:12px;cursor:pointer;border:1px solid var(--os-border);border-radius:13px;background:var(--os-bg);padding:14px;color:var(--os-text);font-weight:600;font-size:13px;line-height:20px}
+.os-auto-completion-toggle input{flex:0 0 20px;width:20px;height:20px;accent-color:var(--os-primary);cursor:pointer}
+.os-auto-completion-intro .os-help{font-size:12px!important;line-height:19px!important}
+@container agenda (max-width:520px){
+  .os-agenda-heading-actions>[data-os-action=agenda-auto-completion]{grid-column:1 / -1;min-height:44px}
+}
