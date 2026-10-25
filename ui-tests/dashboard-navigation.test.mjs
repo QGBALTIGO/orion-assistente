@@ -74,31 +74,36 @@ test('the acelerar deep link canonicalizes to Dashboard and drops business selec
   assert.equal(h.errors.length, 0);
 });
 
-test('Dashboard retains quick actions, factual onboarding, daily totals, settings and site access', async t => {
+test('Dashboard keeps management actions and daily totals without pilot banners or missions', async t => {
   const opened = [];
-  let data = { summary: { appointments: 0, completed: 0, cancelled: 2, no_show: 1, customers: 80 }, onboarding: { has_appointment: true, scheduling_ready: true, customers_with_phone: 5 } };
-  const h = await makeSuite({ initialRoute: 'acelerar', bridge: { openLegacy: route => opened.push(route) }, respond: path => path.includes('/management/dashboard') ? data : defaultResponse(path) });
+  let data = { summary: { appointments: 0, completed: 0, cancelled: 2, no_show: 1, customers: 80 },
+    onboarding: { has_appointment: true, scheduling_ready: true, customers_with_phone: 5 } };
+  const h = await makeSuite({ initialRoute: 'acelerar', bridge: { openLegacy: route => opened.push(route) },
+    respond: path => path.includes('/management/dashboard') ? data : defaultResponse(path) });
   t.after(() => h.close()); await flush();
   const page = h.document.getElementById('page-suite');
-  assert.deepEqual(Array.from(page.querySelectorAll('.os-quick-actions button'), element => element.textContent.replace(/\s+/g, ' ').trim()), [
+  const assertWithoutOnboarding = () => {
+    assert.equal(page.querySelector('.os-next-step, .os-journey, .os-missions, .os-mission'), null);
+    assert.equal(page.querySelector('[role=progressbar]'), null);
+    assert.doesNotMatch(page.textContent, /Próximo passo para o piloto automático|Traga seus clientes para o Orion|Seus próximos passos|Nível: Decolagem|Começar missão/i);
+  };
+  assertWithoutOnboarding();
+  assert.deepEqual(Array.from(page.querySelectorAll('.os-quick-actions button'), element => element.textContent.replace(/\\s+/g, ' ').trim()), [
     'Novo agendamentoMarque um horário em segundos', 'Novo clienteCadastre nome e telefone', 'Ver agenda0 agendado(s) hoje',
   ]);
-  assert.equal(page.querySelector('[role=progressbar]').getAttribute('aria-valuenow'), '3');
-  assert.deepEqual(Array.from(page.querySelectorAll('.os-mission-state'), element => element.textContent), ['Concluída', 'Concluída', 'Concluída']);
-  assert.match(page.querySelector('.os-journey-footer').textContent, /Os três passos iniciais estão concluídos\./);
-  assert.doesNotMatch(page.querySelector('.os-journey-footer').textContent, /Próxima:/);
-  assert.equal(page.querySelector('.os-journey-footer [data-os-route]').dataset.osRoute, 'agenda');
   assert.deepEqual(Array.from(page.querySelectorAll('.os-stat strong'), element => element.textContent), ['0', '0', '3']);
   assert.ok(page.querySelector('[data-os-route=site]'));
+  assert.match(page.textContent, /Personalize o atendimento/);
   h.click('#page-suite [data-os-action=new-customer]'); await flush();
   assert.ok(h.document.querySelector('[data-os-form=customer]'));
   await h.window.OrionSuite.open('dashboard');
   h.click('#page-suite [data-os-route=empresa]'); await flush();
   assert.deepEqual(opened, ['empresa']);
-  data = { summary: { appointments: 80, completed: 80, customers: 80 }, onboarding: { has_appointment: false, scheduling_ready: false, customers_with_phone: 0 } };
+  data = { summary: { appointments: 80, completed: 80, customers: 80 },
+    onboarding: { has_appointment: false, scheduling_ready: false, customers_with_phone: 0 } };
   await h.window.OrionSuite.open('dashboard'); await flush();
-  assert.equal(page.querySelector('[role=progressbar]').getAttribute('aria-valuenow'), '0', 'daily totals and total customers cannot substitute for the factual onboarding fields');
-  assert.match(page.querySelector('.os-journey-footer').textContent, /Crie e confirme seu primeiro agendamento/);
+  assertWithoutOnboarding();
+  assert.deepEqual(Array.from(page.querySelectorAll('.os-stat strong'), element => element.textContent), ['80', '80', '0']);
   assert.equal(h.calls.some(call => call.method !== 'GET'), false);
 });
 
