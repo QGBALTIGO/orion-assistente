@@ -8,7 +8,7 @@
   async function mount({host,request,tenantId,canWrite=false}){
     unmount();if(!host)return;
     const state={host,request,tenantId,canWrite,alive:true,controller:new AbortController(),labels:[],replies:[],customers:[],customer:null,
-      selected:'',editor:null,tab:'customers',query:'',label:'',offset:0,hasMore:false,busy:false,confirmation:null,sequence:0,central:false,tools:true};
+      selected:'',editor:null,tab:'customers',query:'',label:'',offset:0,hasMore:false,busy:false,confirmation:null,sequence:0,central:false,tools:true,crmLoaded:false};
     active=state;
     const current=()=>active===state&&state.alive&&host.isConnected;
     const path=value=>'/api/v1/tenants/'+encodeURIComponent(tenantId)+'/management/inbox'+value;
@@ -16,16 +16,34 @@
     const notice=(value,error=false)=>{const area=query('[data-inbox-notice]');if(area){area.textContent=value;area.setAttribute('role',error?'alert':'status');}};
     function render(){
       if(!current())return;
-      state.sequence++;window.OrionConversations?.unmount();window.OrionFlows?.unmount();
+      state.sequence++;
+      window.OrionConversations?.unmount();
+      window.OrionFlows?.unmount();
       const disabled=state.busy?'disabled':'',write=canWrite&&!state.busy?'':'disabled',e=state.editor;
-      host.innerHTML='<div class="os-inbox"><p class="os-help">Organize clientes e prepare respostas com informações do seu cadastro. O preparo de uma resposta não envia mensagens.</p>'+
-        '<div class="os-actions" role="tablist" aria-label="Ferramentas de atendimento">'+[...(state.central?[['conversations','Conversas']]:[]),...(state.tools?[['customers','Clientes e etiquetas'],['replies','Respostas rápidas'],['flows','Fluxos em rascunho']]:[])].map(([id,label])=>'<button type="button" class="os-button '+(state.tab===id?'':'os-outline')+'" role="tab" aria-selected="'+(state.tab===id)+'" data-inbox-tab="'+id+'" '+disabled+'>'+label+'</button>').join('')+'</div>'+
-        '<p data-inbox-notice role="status" aria-live="polite"></p>'+
-        (state.confirmation?'<div class="os-notice" role="group" aria-label="Confirmar exclusão"><p>Excluir '+esc(state.confirmation.name)+'? As associações desta etiqueta também serão removidas.</p>'+button('Voltar','cancel-delete',disabled)+button('Confirmar exclusão','confirm-delete',write)+'</div>':'')+
-        (state.tab==='conversations'?'<div data-inbox-central></div>':state.tab==='flows'?'<div data-inbox-flows></div>':state.tab==='customers'?'<div class="os-inbox-grid"><section class="os-card"><h2>Clientes cadastrados</h2><form data-inbox-form="search"><label for="inboxQuery">Nome ou telefone</label><input id="inboxQuery" name="q" maxlength="100" value="'+esc(state.query)+'"><label for="inboxFilter">Etiqueta</label><select id="inboxFilter" name="label"><option value="">Todas as etiquetas</option>'+state.labels.map(l=>'<option value="'+esc(l.id)+'" '+(state.label===l.id?'selected':'')+'>'+esc(l.name)+'</option>').join('')+'</select><button class="os-button" '+disabled+'>Pesquisar</button></form><div class="os-inbox-list">'+(state.customers.length?state.customers.map(c=>'<button type="button" class="os-inbox-person" data-inbox-customer="'+esc(c.id)+'" '+disabled+' aria-pressed="'+(state.selected===c.id)+'"><strong>'+esc(c.name)+'</strong><small>'+esc(c.phone)+'</small></button>').join(''):'<p>Nenhum cliente encontrado neste recorte.</p>')+'</div><div class="os-actions">'+button('Anterior','previous',state.offset>0?disabled:'disabled')+button('Próxima página','next',state.hasMore?disabled:'disabled')+'</div></section><section class="os-card"><h2>Contexto do cliente</h2>'+customerHTML()+'</section></div><section class="os-card"><h2>Etiquetas da empresa</h2><p class="os-help">Etiquetas organizam o atendimento. Autorizações comerciais continuam no registro de consentimento.</p><div class="os-inbox-tags">'+state.labels.map(l=>'<div class="os-inbox-tag"><span class="os-inbox-swatch" style="background-color:'+esc(/^#[0-9a-f]{6}$/i.test(l.color)?l.color:'#18836b')+'"></span><span>'+esc(l.name)+'</span>'+button('Editar','edit-label','data-id="'+esc(l.id)+'" '+write)+button('Excluir','delete-label','data-id="'+esc(l.id)+'" '+write)+'</div>').join('')+'</div>'+button('Nova etiqueta','new-label',write)+(e?.kind==='label'?labelForm(e):'')+'</section>':
-        '<section class="os-card"><div class="os-actions"><h2>Biblioteca de respostas</h2>'+button('Nova resposta','new-reply',write)+'</div><label for="inboxReplySearch">Pesquisar título, categoria ou texto</label><input id="inboxReplySearch" type="search" placeholder="Pesquisar na biblioteca"><div class="os-inbox-list" data-inbox-replies>'+repliesHTML(state.replies,write)+'</div>'+(e?.kind==='reply'?replyForm(e):'')+'</section>')+'</div>';
+      const tabButton=(id,label)=>'<button type="button" class="os-button '+(state.tab===id?'':'os-outline')+'" role="tab" aria-selected="'+(state.tab===id)+'" data-inbox-tab="'+id+'" '+disabled+'>'+label+'</button>';
+      const moreTabs=state.tools?'<details class="os-inbox-more" '+(state.tab!=='conversations'?'open':'')+'><summary>Ferramentas de apoio</summary><div class="os-inbox-more-menu" role="tablist" aria-label="Ferramentas de apoio">'+
+        tabButton('customers','Clientes e etiquetas')+
+        tabButton('replies','Respostas rápidas')+
+        tabButton('flows','Simulações de fluxos')+
+        '<p class="os-inbox-draft-note">Fluxos são apenas rascunhos: não executam ações nem enviam mensagens.</p></div></details>':'';
+      const header='<header class="os-inbox-topbar"><div class="os-inbox-topbar-title"><span class="os-inbox-intro"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3ZM8 8h8M8 12h5"/></svg></span></span><div><h2>Atendimento da empresa</h2><p>Conversas primeiro. Ferramentas de apoio quando precisar.</p></div></div><nav class="os-inbox-primary-nav" aria-label="Áreas da central">'+(state.central?tabButton('conversations','Conversas'):'')+moreTabs+'</nav></header>';
+      const confirmation=state.confirmation?'<div class="os-notice" role="group" aria-label="Confirmar exclusão"><p>Excluir '+esc(state.confirmation.name)+'? '+(state.confirmation.collection==='/labels'?'A etiqueta será retirada dos clientes associados.':'A resposta rápida será retirada da biblioteca.')+'</p>'+button('Cancelar','cancel-delete',disabled)+button('Confirmar exclusão','confirm-delete',write)+'</div>':'';
+      const people=state.customers.length?state.customers.map(c=>'<button type="button" class="os-inbox-person" data-inbox-customer="'+esc(c.id)+'" '+disabled+' aria-pressed="'+(state.selected===c.id)+'"><strong>'+esc(c.name)+'</strong><small>'+esc(c.phone||'Sem telefone')+'</small></button>').join(''):'<p>Nenhum cliente encontrado com estes filtros.</p>';
+      const customers='<div class="os-inbox-grid">'+
+        '<section class="os-card"><div class="os-inbox-heading"><div><h2>Clientes cadastrados</h2><p>Consulte dados existentes, sem criar contatos duplicados.</p></div></div>'+
+        '<form class="os-inbox-form" data-inbox-form="search"><label for="inboxQuery">Nome ou telefone</label><input id="inboxQuery" name="q" type="search" maxlength="100" placeholder="Buscar cliente" value="'+esc(state.query)+'"><label for="inboxFilter">Filtrar por etiqueta</label><select id="inboxFilter" name="label"><option value="">Todas as etiquetas</option>'+state.labels.map(l=>'<option value="'+esc(l.id)+'" '+(state.label===l.id?'selected':'')+'>'+esc(l.name)+'</option>').join('')+'</select><button class="os-button" '+disabled+'>Pesquisar</button></form>'+
+        '<div class="os-inbox-list">'+people+'</div><div class="os-actions">'+button('Anterior','previous',state.offset>0?disabled:'disabled')+button('Próxima página','next',state.hasMore?disabled:'disabled')+'</div></section>'+
+        '<section class="os-card os-inbox-context"><h2>Informações do cliente</h2>'+customerHTML()+'</section></div>'+
+        '<section class="os-card"><div class="os-inbox-heading"><div><h2>Etiquetas da empresa</h2><p>Organize contatos sem alterar consentimentos de marketing.</p></div>'+button('Nova etiqueta','new-label',write)+'</div>'+
+        '<div class="os-inbox-tags">'+(state.labels.length?state.labels.map(l=>'<div class="os-inbox-tag"><span class="os-inbox-swatch" style="background-color:'+esc(/^#[0-9a-f]{6}$/i.test(l.color)?l.color:'#2e7bf6')+'"></span><span>'+esc(l.name)+'</span>'+button('Editar','edit-label','data-id="'+esc(l.id)+'" '+write)+button('Excluir','delete-label','data-id="'+esc(l.id)+'" '+write)+'</div>').join(''):'<p>Nenhuma etiqueta cadastrada.</p>')+'</div>'+(e?.kind==='label'?labelForm(e):'')+'</section>';
+      const replies='<section class="os-card"><div class="os-inbox-heading"><div><h2>Respostas rápidas</h2><p>Modelos de texto para revisar antes de usar no atendimento. Não enviam automaticamente.</p></div>'+button('Nova resposta','new-reply',write)+'</div><label for="inboxReplySearch">Pesquisar na biblioteca</label><input id="inboxReplySearch" type="search" placeholder="Título, categoria ou texto"><div class="os-inbox-list" data-inbox-replies>'+repliesHTML(state.replies,write)+'</div>'+(e?.kind==='reply'?replyForm(e):'')+'</section>';
+      const panel=state.tab==='conversations'?'<div data-inbox-central></div>':state.tab==='flows'?'<div data-inbox-flows></div>':state.tab==='customers'?customers:replies;
+      host.innerHTML='<div class="os-inbox">'+header+'<p data-inbox-notice class="os-inbox-notice" role="status" aria-live="polite"></p>'+confirmation+panel+'</div>';
       if(state.tab==='flows')void window.OrionFlows?.mount({host:query('[data-inbox-flows]'),request,tenantId,canWrite});
-      if(state.tab==='conversations')void window.OrionConversations?.mount({host:query('[data-inbox-central]'),request,tenantId,canWrite,toolsEnabled:state.tools,onCustomer:id=>{state.selected=id;state.tab='customers';void perform(reload);}});
+      if(state.tab==='conversations')void window.OrionConversations?.mount({host:query('[data-inbox-central]'),request,tenantId,canWrite,toolsEnabled:state.tools,onCustomer:id=>{
+        if(window.OrionConversations?.hasUnsentDraft?.()&&!window.confirm('Há uma mensagem não enviada. Sair da conversa e descartar o rascunho?'))return;
+        state.selected=id;state.tab='customers';void perform(reload);
+      }});
     }
     function customerHTML(){
       const data=state.customer;if(!data)return '<p>Selecione um cliente para consultar os dados reais.</p>';
@@ -45,7 +63,7 @@
       const [tags,replies,people]=await Promise.all([request(path('/labels')),request(path('/quick-replies')),request(path('/customers?q='+encodeURIComponent(state.query)+'&offset='+state.offset+(state.label?'&label_id='+encodeURIComponent(state.label):'')))]);
       if(!current())return;state.labels=tags.items;state.replies=replies.items;state.customers=people.items;state.hasMore=people.has_more;
       if(state.selected)state.customer=await request(path('/customers/'+encodeURIComponent(state.selected)));
-      if(current())render();
+      if(current()){state.crmLoaded=true;render();}
     }
     async function perform(work,success){
       if(state.busy)return;state.busy=true;host.setAttribute('aria-busy','true');host.inert=true;
@@ -70,7 +88,13 @@
     host.addEventListener('click',async event=>{
       if(state.busy)return;
       const tab=event.target.closest('[data-inbox-tab]'),person=event.target.closest('[data-inbox-customer]'),action=event.target.closest('[data-inbox-action]');
-      if(tab){if(state.editor&&!window.confirm('Descartar as alterações ainda não salvas?'))return;state.editor=null;state.tab=tab.dataset.inboxTab;render();return;}
+      if(tab){
+        if(state.editor&&!window.confirm('Descartar as alterações ainda não salvas?'))return;
+        if(state.tab==='conversations'&&tab.dataset.inboxTab!=='conversations'&&window.OrionConversations?.hasUnsentDraft?.()&&!window.confirm('Há mensagem não enviada. Sair sem salvar?'))return;
+        state.editor=null;state.tab=tab.dataset.inboxTab;
+        if(state.tools&&!state.crmLoaded&&state.tab!=='conversations')void perform(reload);else render();
+        return;
+      }
       if(person){state.selected=person.dataset.inboxCustomer;state.customer=null;void perform(async()=>{state.customer=await request(path('/customers/'+state.selected));},'Dados do cliente carregados.');return;}
       if(!action)return;const kind=action.dataset.inboxAction,id=action.dataset.id;
       if(['preview','copy'].includes(kind)){
@@ -93,7 +117,7 @@
       render();if(state.editor)query('.os-inbox-editor input')?.focus();
     },{signal:state.controller.signal});
     host.innerHTML='<p role="status">Carregando ferramentas de atendimento…</p>';
-    try{const capability=await request(path('/capabilities'));if(!current())return;state.central=capability.central_enabled===true;state.tools=capability.enabled===true;if(state.central)state.tab='conversations';if(!capability.enabled&&!state.central){host.innerHTML='<section class="os-card"><h2>Ferramentas em preparação</h2><p>As ferramentas serão disponibilizadas após a configuração e a validação desta instalação.</p></section>';return;}if(state.tools)await reload();else render();}
+    try{const capability=await request(path('/capabilities'));if(!current())return;state.central=capability.central_enabled===true;state.tools=capability.enabled===true;if(state.central)state.tab='conversations';if(!capability.enabled&&!state.central){host.innerHTML='<section class="os-card"><h2>Ferramentas em preparação</h2><p>As ferramentas serão disponibilizadas após a configuração e a validação desta instalação.</p></section>';return;}if(state.tools&&state.tab!=='conversations')await reload();else render();}
     catch(error){if(current())host.textContent=error.message||'Não foi possível carregar as ferramentas.';}
   }
   window.OrionInbox={mount,unmount};
