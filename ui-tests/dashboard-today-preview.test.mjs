@@ -42,7 +42,7 @@ test('Dashboard reads only the company-local today and reuses the same appointme
   assert.ok(preview.querySelector('.os-appointment-status'));
   assert.ok(preview.querySelector('[data-os-action=dashboard-agenda-refresh]'));
   assert.equal(preview.querySelector('input[type=date], .os-agenda-week, [data-os-day]'),null);
-  assert.equal(preview.querySelector('[aria-busy]').getAttribute('aria-busy'),'false');
+  assert.equal(preview.querySelector('#osDashboardAgendaContent').hasAttribute('aria-busy'),false);
   assert.deepEqual(writes(h),[]);
   assert.deepEqual(h.errors,[]);
 });
@@ -57,11 +57,11 @@ test('Dashboard preview is limited to eight verified rows and opens the complete
   t.after(()=>h.close());await flush();
   assert.equal(h.document.querySelectorAll('.os-dashboard-agenda-list .os-agenda-item').length,8);
   assert.match(h.document.getElementById('osDashboardAgendaContent').textContent,/Exibindo 8 de 87/);
-  h.window.OrionSuite.open('agenda'); await flush();
-  h.window.OrionSuite.open('dashboard'); await flush();
-  h.window.OrionSuite.open('agenda'); await flush();
-  // A prior future date or professional filter must not influence the preview or navigation.
-  h.window.OrionSuite.open('dashboard'); await flush();
+  await h.window.OrionSuite.open('agenda'); await flush();
+  h.click('[data-os-action=agenda-next]'); await flush();
+  // Previously selected dates in the full Agenda must not leak into today's preview.
+  await h.window.OrionSuite.open('dashboard'); await flush();
+  assert.equal(new URL(h.calls.filter(x=>isPreviewRead(x.path)).at(-1).path,'https://orion.test').searchParams.get('day'),today());
   h.click('[data-os-action=dashboard-agenda-full]');await flush();
   assert.equal(h.document.getElementById('page-suite').dataset.osCurrentRoute,'agenda');
   assert.equal(h.window.location.search.includes('aba=agenda'),true);
