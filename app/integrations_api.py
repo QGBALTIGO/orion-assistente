@@ -101,6 +101,8 @@ async def google_status_data(tenant_id, actor, request):
             row = await connection_row(db, tenant_id)
             stats = dict((await db.execute(text("""
                 SELECT count(*) FILTER(WHERE status='pending') AS pending,
+                       count(*) FILTER(WHERE status='pending' AND attempts>0) AS retrying,
+                       min(next_attempt_at) FILTER(WHERE status='pending' AND attempts>0) AS next_retry_at,
                        count(*) FILTER(WHERE status='dead' AND last_error IS DISTINCT FROM :outside) AS failed,
                        count(*) FILTER(WHERE status='sent') AS sent,
                        max(updated_at) FILTER(WHERE status='sent') AS last_synced_at
@@ -142,7 +144,12 @@ async def google_status_data(tenant_id, actor, request):
         sync_status = "not_connected"
     elif not enabled:
         sync_status = "paused"
-    elif stats["failed"] or last_error:
+    elif stats["failed"]:
+        sync_status = "attention"
+    elif stats["pending"] and stats["retrying"]:
+        # Transient failures in backoff are neither disconnected nor paused.
+        sync_status = "retrying"
+    elif last_error and not stats["pending"]:
         sync_status = "attention"
     elif stats["pending"]:
         sync_status = "pending"
@@ -160,6 +167,7 @@ async def google_status_data(tenant_id, actor, request):
         "sync_enabled": enabled, "sync_status": sync_status,
         "calendar_id": selected, "calendar_name": cached_name,
         "last_synced_at": stats["last_synced_at"], "pending": stats["pending"],
+        "retrying": stats["retrying"], "next_retry_at": stats["next_retry_at"],
         "failed": stats["failed"], "sent": stats["sent"], "last_error": last_error,
         "direction": "orion_to_google", "selection_pending": bool(candidate),
         "calendar_change_locked": bool(selected),
