@@ -50,13 +50,14 @@ async def test_automatic_completion_runs_at_end_without_charging_a_customer(mana
     ))
     assert results.count("completed") == 1, results
     assert set(results) <= {"completed", "not_confirmed", "changed_before_completion"}
-    with_status = await d["client"].get(d["base"] + "/appointments/" + appt)
-    assert with_status.status_code == 200, with_status.text
-    row = with_status.json()
-    assert row["status"] == "completed"
-    assert (row["commission_percent_snapshot"],row["commission_cents"]) == ("25.00",2500) or (
-        float(row["commission_percent_snapshot"]) == 25 and row["commission_cents"]==2500)
     async with d["migrator"].connect() as conn:
+        row = (await conn.execute(text("""
+            SELECT status,commission_percent_snapshot,commission_cents
+            FROM appointments WHERE tenant_id=:tenant AND id=:appt
+        """), {"tenant":d["a"],"appt":UUID(appt)})).mappings().one()
+        assert row["status"] == "completed"
+        assert float(row["commission_percent_snapshot"]) == 25
+        assert row["commission_cents"] == 2500
         entries = (await conn.execute(text("""
             SELECT status,kind,amount_cents,payment_method,appointment_id
             FROM financial_entries WHERE tenant_id=:tenant AND appointment_id=:appt
