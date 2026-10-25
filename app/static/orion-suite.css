@@ -1482,3 +1482,68 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 /* Leave enough room to read the final row beneath Orion's existing floating consultant control. */
 .os-main[data-os-current-route=dashboard]{padding-bottom:120px}
 @media(max-width:767px){.os-main[data-os-current-route=dashboard]{padding-bottom:calc(112px + env(safe-area-inset-bottom,0px))}}
+
+
+/* Compact financial snapshot below the Dashboard's existing today-only Agenda. */
+.os-dashboard-finance,.os-dashboard-goals{box-sizing:border-box;min-width:0;padding:0;border-radius:20px;overflow:hidden;container:dashboard-finance / inline-size}
+.os-dashboard-goals[hidden]{display:none!important}
+.os-dashboard-finance-head,.os-dashboard-goals-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:20px 22px 16px}
+.os-dashboard-finance-heading,.os-dashboard-goals-heading{display:flex;align-items:center;gap:12px;min-width:0}
+.os-dashboard-finance-heading>.os-square-icon,.os-dashboard-goals-heading>.os-square-icon{width:43px;height:43px;flex:0 0 43px;border-radius:14px}
+.os-dashboard-finance-heading>div,.os-dashboard-goals-heading>div{min-width:0}
+.os-dashboard-finance-eyebrow{font:600 10px/16px var(--os-font)!important;letter-spacing:.11em;color:var(--os-primary)!important;margin:0 0 3px!important}
+.os-dashboard-finance-heading h3,.os-dashboard-goals-heading h3{margin:0;font:600 19px/27px var(--os-display);color:var(--os-text)}
+.os-dashboard-finance-head>.os-button,.os-dashboard-goals-head>.os-button{min-height:40px;padding:8px 12px;white-space:nowrap;box-shadow:none}
+.os-dashboard-finance-content{min-width:0;padding:0 20px 20px}
+.os-dashboard-finance-content>.os-loading{padding:28px 12px}
+.os-dashboard-finance-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0}
+.os-dashboard-finance-value{display:flex;flex-direction:column;min-width:0;gap:9px;padding:18px 17px;border:1px solid var(--os-border);border-radius:15px;background:var(--os-bg)}
+.os-dashboard-finance-label{display:flex;align-items:center;justify-content:space-between;gap:6px;color:var(--os-muted);font-size:13px;line-height:20px}
+.os-dashboard-finance-label>.os-icon{width:18px;height:18px;flex:0 0 18px;color:var(--os-primary)}
+.os-dashboard-finance-value>strong{display:block;min-width:0;color:var(--os-text);font:700 clamp(18px,2.1vw,27px)/1.3 var(--os-display);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.os-dashboard-finance-value.os-positive>strong{color:var(--os-success)}
+.os-dashboard-finance-value.os-negative>strong{color:var(--os-danger)}
+.os-dashboard-finance-error{display:flex;align-items:center;gap:12px;padding:17px;border:1px solid var(--os-border);border-radius:13px;background:var(--os-bg)}
+.os-dashboard-finance-error>.os-icon{width:20px;height:20px;flex:0 0 20px;color:var(--os-danger)}
+.os-dashboard-finance-error>div{flex:1;min-width:0}
+.os-dashboard-finance-error strong{font-size:13px;color:var(--os-text)}
+.os-dashboard-finance-error p{font-size:12px;line-height:20px;margin:3px 0 0!important}
+.os-dashboard-finance-error .os-button{min-height:40px;flex-shrink:0}
+.os-dashboard-goals-content{display:grid;gap:22px;padding:0 22px 20px}
+.os-dashboard-goal-item{display:grid;gap:10px;min-width:0}
+.os-dashboard-goal-line{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.os-dashboard-goal-line>div{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;min-width:0}
+.os-dashboard-goal-line strong{font:600 14px/20px var(--os-font);color:var(--os-text)}
+.os-dashboard-goal-line small{font-size:11px;color:var(--os-muted)}
+.os-dashboard-goal-percent{font:700 19px/25px var(--os-display);color:var(--os-primary);font-variant-numeric:tabular-nums}
+.os-dashboard-goal-track{width:100%;height:12px;border-radius:99px;background:var(--os-soft);overflow:hidden}
+.os-dashboard-goal-track>span{display:block;height:100%;border-radius:inherit;background:var(--os-primary);transition:width .2s ease}
+.os-dashboard-goal-values{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.os-dashboard-goal-values>span{display:flex;align-items:baseline;gap:5px;color:var(--os-muted);font-size:12px}
+.os-dashboard-goal-values strong{color:var(--os-text);font-variant-numeric:tabular-nums;font-weight:600;overflow-wrap:anywhere}
+.os-dashboard-goals-note{font-size:11px!important;line-height:18px!important;color:var(--os-muted)!important;margin:0!important}
+.os-dashboard-goals-error{display:flex;align-items:center;gap:12px;padding:17px;min-width:0}
+.os-dashboard-goals-error>.os-icon{height:18px;width:18px;flex:0 0 18px;color:var(--os-muted)}
+.os-dashboard-goals-error>span{flex:1;min-width:0;color:var(--os-muted);font-size:12px;line-height:19px}
+.os-dashboard-goals-error>.os-button{min-height:40px;flex-shrink:0}
+@container dashboard-finance (max-width:520px){
+  .os-dashboard-finance-head,.os-dashboard-goals-head{padding:16px 14px 14px;gap:10px}
+  .os-dashboard-finance-heading>.os-square-icon,.os-dashboard-goals-heading>.os-square-icon{width:38px;height:38px;flex-basis:38px}
+  .os-dashboard-finance-heading h3,.os-dashboard-goals-heading h3{font-size:17px;line-height:24px}
+  .os-dashboard-finance-head>.os-button,.os-dashboard-goals-head>.os-button{font-size:11px;padding:8px 10px}
+  .os-dashboard-finance-content{padding:0 13px 14px}
+  .os-dashboard-finance-values{gap:9px}
+  .os-dashboard-finance-value{gap:6px;padding:13px 12px;border-radius:12px}
+  .os-dashboard-finance-value>strong{font-size:clamp(17px,4.3vw,23px)}
+  .os-dashboard-finance-label{font-size:12px}
+  .os-dashboard-finance-label>.os-icon{width:16px;height:16px;flex-basis:16px}
+  .os-dashboard-goals-content{gap:17px;padding:0 14px 16px}
+  .os-dashboard-goal-line strong{font-size:12px}
+  .os-dashboard-goal-line small{font-size:10px}
+  .os-dashboard-goal-percent{font-size:16px}
+  .os-dashboard-finance-error{flex-wrap:wrap}
+  .os-dashboard-finance-error>.os-button{width:100%}
+  .os-dashboard-goals-error{flex-wrap:wrap}
+  .os-dashboard-goals-error>.os-button{width:100%}
+}
+@media(prefers-reduced-motion:reduce){.os-dashboard-goal-track>span{transition:none}}
