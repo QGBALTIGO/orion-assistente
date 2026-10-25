@@ -354,7 +354,10 @@ async def offer_slots(tenant: UUID, state: dict, preview: bool):
         return "Não consegui consultar a agenda agora. Podemos tentar novamente em instantes?", {**state, "step": "date"}
     options = representative_slots(slots["slots"])
     if not options:
-        return "Não encontrei horários livres nessa data. Informe outra data.", {**state, "step": "date"}
+        explanation = ("O profissional não tem expediente cadastrado nesse dia. Informe outra data ou escolha outro profissional."
+                       if slots.get("availability_reason") == "no_working_hours" else
+                       "Não encontrei vagas que comportem o serviço e os intervalos nessa data. Podemos consultar outro dia ou profissional?")
+        return explanation, {**state, "step": "date"}
     state.update(step="time", slots=options, price=slots["price_cents"], duration=slots["duration_min"])
     facts = _reply_facts.get()
     if facts:
