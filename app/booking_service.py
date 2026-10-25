@@ -422,7 +422,8 @@ async def verified_slot_grid(s: AsyncSession, tenant: UUID, professional: UUID,
 async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
                      ids: list[UUID], target: date, now: datetime | None = None, *,
                      replace_hold_id: UUID | None = None, customer_phone: str | None = None,
-                     expected_snapshot: str | None = None, appointment_id: UUID | None = None):
+                     expected_snapshot: str | None = None, appointment_id: UUID | None = None,
+                      explain_reason: bool = False):
     now = now or datetime.now(UTC)
     async with tenant_transaction(s, tenant):
         if replace_hold_id is not None:
@@ -450,9 +451,9 @@ async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
         result, availability_reason = await verified_slot_grid(s, tenant, professional,
             shop, items, target, now, ignored=appointment_id or replace_hold_id)
         duration, prep, cleanup, price = amounts(items)
-        return {"slots": result, "availability_reason": availability_reason,
-                "duration_min": duration, "prep_min": prep,
-                "cleanup_min": cleanup, "price_cents": price, "timezone": shop["timezone"]}
+        return {"slots": result, "duration_min": duration, "prep_min": prep,
+                "cleanup_min": cleanup, "price_cents": price, "timezone": shop["timezone"],
+                **({"availability_reason": availability_reason} if explain_reason else {})}
 
 
 async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
