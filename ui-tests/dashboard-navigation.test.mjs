@@ -85,19 +85,20 @@ test('Dashboard keeps management actions and daily totals without pilot banners 
   const assertWithoutOnboarding = () => {
     assert.equal(page.querySelector('.os-next-step, .os-journey, .os-missions, .os-mission'), null);
     assert.equal(page.querySelector('[role=progressbar]'), null);
-    assert.doesNotMatch(page.textContent, /Próximo passo para o piloto automático|Traga seus clientes para o Orion|Seus próximos passos|Nível: Decolagem|Começar missão/i);
+    assert.doesNotMatch(page.textContent, /Próximo passo para o piloto automático|Traga seus clientes para o Orion|Seus próximos passos|Nível: Decolagem|Começar missão|Personalize o atendimento para que o Orion conheça o seu negócio|Minha página de agendamento/i);
+    assert.equal(page.querySelector('.os-inline-link, .os-journey, .os-next-step'), null);
   };
   assertWithoutOnboarding();
   assert.deepEqual(Array.from(page.querySelectorAll('.os-quick-actions button'), element => element.textContent.replace(/\\s+/g, ' ').trim()), [
     'Novo agendamentoMarque um horário em segundos', 'Novo clienteCadastre nome e telefone', 'Ver agenda0 agendado(s) hoje',
   ]);
   assert.deepEqual(Array.from(page.querySelectorAll('.os-stat strong'), element => element.textContent), ['0', '0', '3']);
-  assert.ok(page.querySelector('[data-os-route=site]'));
-  assert.match(page.textContent, /Personalize o atendimento/);
+  assert.equal(page.querySelector('[data-os-route=site]'), null, 'the Dashboard must not display a redundant site link');
+  assert.ok(h.document.querySelector('#osNav [data-os-route=site]'), 'site access remains available in the navigation');
   h.click('#page-suite [data-os-action=new-customer]'); await flush();
   assert.ok(h.document.querySelector('[data-os-form=customer]'));
   await h.window.OrionSuite.open('dashboard');
-  h.click('#page-suite [data-os-route=empresa]'); await flush();
+  h.click('#osNav [data-os-route=empresa]'); await flush();
   assert.deepEqual(opened, ['empresa']);
   data = { summary: { appointments: 80, completed: 80, customers: 80 },
     onboarding: { has_appointment: false, scheduling_ready: false, customers_with_phone: 0 } };
