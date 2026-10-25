@@ -1496,7 +1496,8 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-dashboard-finance-head>.os-button,.os-dashboard-goals-head>.os-button{min-height:40px;padding:8px 12px;white-space:nowrap;box-shadow:none}
 .os-dashboard-finance-content{min-width:0;padding:0 20px 20px}
 .os-dashboard-finance-content>.os-loading{padding:28px 12px}
-.os-dashboard-finance-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0}
+.os-dashboard-finance-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;min-width:0}
+@media(max-width:680px){.os-dashboard-finance-values{grid-template-columns:repeat(2,minmax(0,1fr))}.os-dashboard-finance-pending{grid-column:span 2}}
 .os-dashboard-finance-value{display:flex;flex-direction:column;min-width:0;gap:9px;padding:18px 17px;border:1px solid var(--os-border);border-radius:15px;background:var(--os-bg)}
 .os-dashboard-finance-label{display:flex;align-items:center;justify-content:space-between;gap:6px;color:var(--os-muted);font-size:13px;line-height:20px}
 .os-dashboard-finance-label>.os-icon{width:18px;height:18px;flex:0 0 18px;color:var(--os-primary)}

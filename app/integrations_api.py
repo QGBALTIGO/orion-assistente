@@ -108,13 +108,20 @@ async def google_status_data(tenant_id, actor, request):
             """), {"tenant": tenant_id, "outside": OUTSIDE_INITIAL_SYNC})).mappings().one())
     can_manage = access.role in {"owner", "support", "admin"}
     email_pending = can_manage and await email_confirmation_required(request, actor)
-    candidate, cached_name, oauth_available = None, None, True
+    candidate, cached_name, oauth_available, worker_health = None, None, True, None
     if configured:
         redis = oauth_redis()
         try:
             if can_manage:
                 source = request_initiator(request, actor)
                 candidate = current_candidate(await pending_candidate(redis, tenant_id, source), row)
+            heartbeat = await redis.get("orion:google:worker:health")
+            if heartbeat:
+                health = json.loads(heartbeat)
+                if (isinstance(health, dict)
+                        and isinstance(health.get("configured"), bool)
+                        and isinstance(health.get("sync_enabled"), bool)):
+                    worker_health = health
             if row and row["calendar_id"]:
                 raw = await redis.get("google:calendar-meta:" + str(tenant_id))
                 meta = json.loads(raw) if raw else {}
@@ -140,8 +147,10 @@ async def google_status_data(tenant_id, actor, request):
         sync_status = "reauthorization_required"
     elif not connected:
         sync_status = "not_connected"
-    elif not enabled:
+    elif not enabled or worker_health and not worker_health["sync_enabled"]:
         sync_status = "paused"
+    elif worker_health and not worker_health["configured"]:
+        sync_status = "attention"
     elif stats["failed"] or last_error:
         sync_status = "attention"
     elif stats["pending"]:
@@ -161,7 +170,10 @@ async def google_status_data(tenant_id, actor, request):
         "calendar_id": selected, "calendar_name": cached_name,
         "last_synced_at": stats["last_synced_at"], "pending": stats["pending"],
         "failed": stats["failed"], "sent": stats["sent"], "last_error": last_error,
-        "direction": "orion_to_google", "selection_pending": bool(candidate),
+        "direction": "orion_to_google",
+        "worker_online": worker_health is not None,
+        "worker_ready": bool(worker_health and worker_health["configured"] and worker_health["sync_enabled"]),
+        "selection_pending": bool(candidate),
         "calendar_change_locked": bool(selected),
         "email_confirmation_required": bool(email_pending),
         "setup": configuration_checklist() if can_manage else None,

@@ -501,7 +501,7 @@ async def marketing(db, tenant_id, limit=50, offset=0):
     return {"items": [clean_row(row) for row in rows], "total": total, "limit": limit, "offset": offset, "delivery_enabled": active}
 
 
-async def transition_appointment(db, tenant_id, appointment_id, target, payload, operator):
+async def transition_appointment(db, tenant_id, appointment_id, target, payload, operator, *, automated=False):
     from app.booking_service import acquire_professional_lock, history, read_appointment
     from app.appointment_lifecycle import CAS_SQL, LifecycleActor, allowed_actions, check_expected_updated_at, operation_payload
     if target not in ("completed", "no_show"):
@@ -518,7 +518,9 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
     row = (await db.execute(text("SELECT * FROM appointments WHERE tenant_id=:tenant AND id=:id FOR UPDATE"), params)).mappings().one()
     if row["professional_id"] != professional:
         raise HTTPException(409, "O profissional mudou. Atualize o agendamento")
-    context = LifecycleActor(role=operator, source="panel", account_id=db.info.get("management_actor_account_id"))
+    context = LifecycleActor(role="system" if automated else operator,
+                             source="system" if automated else "panel",
+                             account_id=None if automated else db.info.get("management_actor_account_id"))
     identity_payload = {"appointment_id": appointment_id, "expected_status": payload.expected_status,
                         "target": target, "coupon_id": payload.coupon_id}
     if payload.expected_updated_at is not None:
@@ -535,6 +537,8 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
         raise HTTPException(409, "Somente agendamentos confirmados podem receber este resultado")
     if row["start_at"] > now:
         raise HTTPException(409, "Aguarde o horário de início para registrar o resultado")
+    if automated and row["end_at"] > now:
+        raise HTTPException(409, "Aguarde o término previsto do atendimento")
     percent = None
     discount = 0
     gross = row["total_cents"]
@@ -551,10 +555,12 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
             commission_cents=CASE WHEN CAST(:target AS varchar)='completed' THEN round(CAST(:net AS numeric) * CAST(:percent AS numeric) / 100)::bigint ELSE NULL END,
             total_cents=CAST(:net AS integer),original_total_cents=:gross,discount_cents=:discount
         WHERE tenant_id=:tenant AND id=:id AND status=:expected AND start_at<=clock_timestamp()
+          AND (NOT :automated OR end_at<=clock_timestamp())
           AND """ + CAS_SQL + " RETURNING *"),
         {**params, "target": target, "now": now, "percent": percent, "expected": payload.expected_status,
          "expected_updated_at": payload.expected_updated_at, "net": gross-discount,
-         "gross": gross if target == "completed" else None, "discount": discount})).mappings().one_or_none()
+         "gross": gross if target == "completed" else None, "discount": discount,
+         "automated": automated})).mappings().one_or_none()
     if changed is None:
         raise HTTPException(409, "O agendamento mudou. Atualize os detalhes antes de continuar")
     await history(db, tenant_id, appointment_id, target, context=context, previous=row)
@@ -563,7 +569,9 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
     result["allowed_actions"] = allowed_actions(result, can_write=True)
     if target == "completed":
         from app.loyalty_rewards import award_completion
+        from app.appointment_finance import record_service_receivable
         result["loyalty"] = await award_completion(db, tenant_id, changed, now)
+        await record_service_receivable(db, tenant_id, changed)
     return result
 
 

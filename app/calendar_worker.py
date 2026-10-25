@@ -1,5 +1,6 @@
 """Tenant-isolated, one-way Google synchronization with bounded retries."""
 import asyncio
+import json
 import os
 from uuid import UUID
 
@@ -30,7 +31,7 @@ async def record_failure(db, tenant, item, failure):
         UPDATE calendar_outbox SET attempts=attempts+1,updated_at=clock_timestamp(),
             next_attempt_at=now()+make_interval(
                 secs=>LEAST(3600,15*power(2,LEAST(attempts,8))::int)),
-            status=CASE WHEN :retryable AND attempts<7 THEN 'pending' ELSE 'dead' END,
+            status=CASE WHEN :retryable THEN 'pending' ELSE 'dead' END,
             last_error=:error
         WHERE tenant_id=:tenant AND id=:id
     """), {"tenant": tenant, "id": item, "retryable": failure.retryable, "error": failure.code})
@@ -141,7 +142,12 @@ async def process_calendar_outbox(ctx: dict, tenant_id: str, outbox_id: str):
 
 
 async def scan_calendar_outbox(ctx: dict):
-    if os.getenv("GOOGLE_LIVE_SYNC") != "1" or not worker_configured():
+    enabled = os.getenv("GOOGLE_LIVE_SYNC") == "1"
+    configured = worker_configured()
+    # Short-lived heartbeat for API status, without exposing credentials.
+    await ctx["redis"].set("orion:google:worker:health", json.dumps({
+        "sync_enabled": enabled, "configured": configured}), ex=150)
+    if not enabled or not configured:
         return 0
     async with support_session_factory()() as db:
         pending = (await db.execute(text("""

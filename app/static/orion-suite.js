@@ -338,14 +338,15 @@
       '<section id="osDashboardGoals" class="os-card os-dashboard-goals" aria-live="polite" hidden></section>';
   }
   function dashboardFinanceValues(s){
-    const balance=Number(s?.balance_cents),count=Number(s?.count);
-    if(!Number.isSafeInteger(balance)||!Number.isSafeInteger(count)||count<0)
+    const balance=Number(s?.balance_cents),count=Number(s?.count),pending=Number(s?.pending_income_cents);
+    if(!Number.isSafeInteger(balance)||!Number.isSafeInteger(count)||count<0||!Number.isSafeInteger(pending)||pending<0)
       throw Error('Não foi possível confirmar os valores financeiros.');
     const card=(name,value,symbol,css)=>'<div class="os-dashboard-finance-value '+css+'">'+
       '<div class="os-dashboard-finance-label"><span>'+esc(name)+'</span>'+icon(symbol)+'</div>'+
       '<strong>'+esc(value)+'</strong></div>';
     return '<div class="os-dashboard-finance-values">'+
       card('Saldo/Lucro',money(balance),'wallet',balance<0?'os-negative':'os-positive')+
+      card('A receber',money(pending),'clock','os-dashboard-finance-pending')+
       card('Lançamentos',count.toLocaleString('pt-BR'),'list','os-dashboard-finance-count')+
       '</div>';
   }
@@ -1008,6 +1009,10 @@
     let html='<div class="os-google-state os-google-state-'+key+'"><span class="os-google-mark" aria-hidden="true">G</span><div><h3>'+esc(googleStatusLabels[key])+'</h3><p>'+esc(descriptions[key])+'</p></div></div>'+(data.calendar_id?'<dl class="os-google-facts"><div><dt>Calendário escolhido</dt><dd>'+esc(data.calendar_name||data.calendar_id)+'</dd></div>'+(data.last_synced_at?'<div><dt>Última sincronização</dt><dd>'+esc(appointmentMoment(data.last_synced_at))+'</dd></div>':'')+'</dl>':'');
     if(data.connected)html+='<div class="os-google-counters"><span><strong>'+number(data.pending)+'</strong>Pendentes</span><span><strong>'+number(data.failed)+'</strong>Com falha</span><span><strong>'+number(data.sent)+'</strong>Enviados</span></div>';
     if(data.last_error)html+='<p class="os-google-error" role="status">'+esc(googleErrorText(data.last_error))+'</p>';
+    if(data.connected&&data.worker_online===false&&data.sync_enabled)
+      html+='<p class="os-google-error" role="status">Não há confirmação recente do serviço de sincronização. Os horários do Orion continuam salvos.</p>';
+    else if(data.connected&&data.worker_online===true&&!data.worker_ready)
+      html+='<p class="os-google-error" role="status">O serviço de envio do Google precisa ser habilitado ou configurado pela equipe Orion.</p>';
     if(data.setup&&Array.isArray(data.setup.checks))html+='<section class="os-google-explainer" aria-label="Preparação da integração"><h4>Preparar a conexão</h4><ul>'+data.setup.checks.map(item=>'<li>'+esc(item.ready===true?'Pronto: ':'Pendente: ')+esc(item.label)+'</li>').join('')+'</ul><p>As pendências de instalação devem ser configuradas pela administração do Orion. Depois, o proprietário autoriza sua conta Google e escolhe o calendário.</p><p>Preparação concluída não significa conta conectada ou sincronização ativa.</p></section>';
     if(key!=='not_configured')html+='<div class="os-google-explainer"><h4>Do Orion para o Google</h4><p>'+esc(googleDisclosure)+'</p><p>Os eventos são privados e não incluem convidados. Cancelar no Orion remove o evento correspondente. Alterações feitas diretamente no Google não voltam para a agenda do Orion.</p>'+(data.calendar_change_locked?'<p>Este vínculo usa sempre o mesmo calendário. Reconecte a mesma conta para mantê-lo. A troca para outro calendário não está disponível.</p>':'')+'</div>';
     html+='<div class="os-google-actions">'+(data.email_confirmation_required&&writable()&&state.bridge.user?.email?button('Confirmar meu e-mail','google-email','','mail'):'')+(googleCan('can_connect')&&(!data.connected||key==='reauthorization_required')?button(key==='reauthorization_required'?'Reconectar Google':'Conectar Google Agenda','google-connect','','link'):'')+(googleCan('can_select_calendar')&&data.selection_pending?button('Escolher calendário','google-calendars','','calendar'):'')+(googleCan('can_retry')?button('Repetir sincronização','google-retry','os-outline','refresh'):'')+button('Atualizar situação','google-refresh','os-ghost','refresh')+(googleCan('can_disconnect')?button('Desconectar','google-revoke','os-ghost os-google-disconnect','link'):'')+'</div>';
@@ -1729,13 +1734,24 @@
     const identity=state.bridge.user?.email+'|'+state.bridge.user?.role;if(oldIdentity!==identity||oldTenant!==state.tenantId){state.epoch++;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);state.data={};state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.filters.agendaDay=dateKey();resetPeriod();closeDialog(true);}
     if(!state.mounted)return;renderSidebar();if(oldIdentity!==identity||oldTenant!==state.tenantId||oldReady!==state.bridge.businessContextReady||oldError!==businessAccessError())void open(state.route,{replace:true,force:true});
   }
+  async function refreshLiveRoute(){
+    if(!state.mounted||!tenant()||state.busy||state.dialog||document.visibilityState==='hidden')return;
+    if(document.activeElement?.matches?.('input,select,textarea,[contenteditable=true]'))return;
+    const c=context();
+    if(state.route==='agenda'){
+      await loadAgenda(c,{catalogue:false});
+      if(current(c))void loadGoogle({handleReturn:false});
+    }else if(['dashboard','financeiro','desempenho'].includes(state.route)){
+      await loadRoute();
+    }
+  }
   function mount(bridge){
     if(state.mounted){sync(bridge);return;}
     state.bridge=bridge||{};state.mounted=true;state.epoch++;state.load++;state.tenantId=accountTenantId();state.filters.agendaDay=dateKey();resetPeriod();
-    buildShell();document.addEventListener('click',handleClick);document.addEventListener('change',handleChange);document.addEventListener('input',handleInput);document.addEventListener('submit',submitForm);document.addEventListener('keydown',handleKeydown);document.addEventListener('pointerdown',handleServicePointerDown);document.addEventListener('pointermove',handleServicePointerMove);document.addEventListener('pointerup',handleServicePointerUp);document.addEventListener('pointercancel',clearServiceDrag);$('osDialog').addEventListener('cancel',onDialogCancel);
+    buildShell();clearInterval(state.liveRefreshTimer);state.liveRefreshTimer=setInterval(()=>{void refreshLiveRoute().catch(()=>{});},30000);document.addEventListener('click',handleClick);document.addEventListener('change',handleChange);document.addEventListener('input',handleInput);document.addEventListener('submit',submitForm);document.addEventListener('keydown',handleKeydown);document.addEventListener('pointerdown',handleServicePointerDown);document.addEventListener('pointermove',handleServicePointerMove);document.addEventListener('pointerup',handleServicePointerUp);document.addEventListener('pointercancel',clearServiceDrag);$('osDialog').addEventListener('cancel',onDialogCancel);
     state.observer=new MutationObserver(()=>applyThemeState());state.observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-theme-preference']});
     const desired=bridge?.initialRoute||'dashboard';void open(appPages.has(desired)?desired:'dashboard');
   }
-  function destroy(){window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
+  function destroy(){window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
   window.OrionSuite=Object.freeze({mount,sync,destroy,open,legacyOpened});
 })();

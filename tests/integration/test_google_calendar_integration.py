@@ -422,9 +422,9 @@ async def test_retry_backoff_exhaustion_and_reauthorization_are_distinct_from_co
         row = await outbox(d, identity)
         assert row["attempts"] == attempt and row["last_error"] == "google_rate_limited"
         assert row["next_attempt_at"] > row["updated_at"]
-    assert row["status"] == "dead"
+    assert row["status"] == "pending"  # Transient Google limits must recover automatically.
     status = (await d["client"].get(d["google_base"] + "/status")).json()
-    assert status["connected"] and status["sync_status"] == "attention" and status["failed"] == 1
+    assert status["connected"] and status["sync_status"] == "attention" and status["pending"] == 1
     assert (await d["client"].post(d["google_base"] + "/retry")).status_code == 200
     d["google"].failure = CalendarProviderError("google_authorization_expired", reauthorize=True)
     assert await worker.process_calendar_outbox({}, str(d["a"]), str(item["id"])) == "failed"
