@@ -608,13 +608,10 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 #osDialog.os-customer-dialog .os-client-stats>.os-stat>strong{display:block;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:normal;font:700 clamp(18px,5.3vw,25px)/1.25 var(--os-display);letter-spacing:0;font-variant-numeric:tabular-nums}
 #osDialog.os-customer-dialog .os-client-stats>.os-stat>small{margin-top:0;font-size:12px;line-height:18px;overflow-wrap:anywhere}
 /* Customer chronology: calm account metadata and an accessible native disclosure. */
-#osDialog.os-customer-dialog .os-client-created{box-sizing:border-box;display:flex;align-items:center;gap:12px;min-width:0;padding:12px 14px;border:1px solid var(--os-border);border-radius:16px;background:color-mix(in srgb,var(--os-tint) 22%,var(--os-card))}
-#osDialog.os-customer-dialog .os-client-created-icon{display:grid;place-items:center;flex:0 0 38px;height:38px;border-radius:12px;background:var(--os-tint);color:var(--os-primary)}
-#osDialog.os-customer-dialog .os-client-created-icon>.os-icon{width:18px;height:18px}
-#osDialog.os-customer-dialog .os-client-created>div{display:grid;gap:2px;min-width:0}
-#osDialog.os-customer-dialog .os-client-created small{font:700 10px/14px var(--os-font);letter-spacing:.07em;color:var(--os-muted)}
-#osDialog.os-customer-dialog .os-client-created strong{font:600 14px/21px var(--os-display);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;color:var(--os-text)}
-#osDialog.os-customer-dialog .os-client-created>div>span{font:400 11px/17px var(--os-font);color:var(--os-muted)}
+#osDialog.os-customer-dialog .os-client-created{display:flex;align-items:center;gap:6px;min-width:0;margin:-9px 2px 0;padding:0;color:var(--os-muted);font:400 11px/17px var(--os-font)}
+#osDialog.os-customer-dialog .os-client-created-icon{display:grid;place-items:center;flex:0 0 14px;width:14px;height:14px;color:var(--os-muted)}
+#osDialog.os-customer-dialog .os-client-created-icon>.os-icon{display:block;width:13px;height:13px}
+#osDialog.os-customer-dialog .os-client-created>span:last-child{min-width:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 .os-client-row-created,.os-client-mobile-created{display:block;margin-top:2px;color:var(--os-muted);font:400 11px/17px var(--os-font);overflow-wrap:anywhere}
 #osDialog.os-customer-dialog .os-client-history{box-sizing:border-box;min-width:0;border:1px solid var(--os-border);border-radius:17px;background:var(--os-card);box-shadow:var(--os-shadow);overflow:hidden}
 #osDialog.os-customer-dialog .os-client-history>summary{box-sizing:border-box;display:flex;align-items:center;gap:10px;min-width:0;min-height:64px;padding:13px 14px;list-style:none;cursor:pointer;transition:background-color .18s ease}

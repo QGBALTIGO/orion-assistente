@@ -1247,13 +1247,12 @@
       '</div></details>';
     let content='<div class="os-client-form">'+
       '<p class="os-client-hint os-client-intro">Somente o nome é obrigatório.</p>'+
-      (record?'<div class="os-client-created"><span class="os-client-created-icon">'+icon('clock')+'</span>'+
-        '<div><small>CADASTRADO EM</small><strong>'+esc(customerRegisteredAt(c.created_at))+'</strong>'+
-        '<span>Data original do cadastro</span></div></div>':'')+
       customerInputField('Nome completo *','name','text',c.name||'','userPlus','required maxlength="120" autocomplete="name" placeholder="Ex.: João Silva"')+
       customerInputField('WhatsApp','phone','tel',c.phone||'','phone','autocomplete="tel" placeholder="(11) 91234-5678"','Usado para identificar o cliente nos agendamentos.')+
       customerInputField('Instagram','instagram','text',c.instagram||'','instagram','maxlength="120" placeholder="@usuario"')+
-      extras+customerNotesField(c.notes||'')+'</div>'+
+      extras+customerNotesField(c.notes||'')+
+      (record?'<p class="os-client-created"><span class="os-client-created-icon" aria-hidden="true">'+icon('clock')+'</span>'+
+        '<span>Cadastrado em '+esc(customerRegisteredAt(c.created_at))+'</span></p>':'')+'</div>'+
       (record?checkField('Cliente ativo','active',c.active!==false):'');
     if(record)content+='<div class="os-stats os-client-stats"><div class="os-stat os-client-stat-total"><strong>'+money(c.total_spent_cents)+'</strong><small>Total atendido</small></div><div class="os-stat"><strong>'+number(c.total_appointments)+'</strong><small>Agendamentos</small></div><div class="os-stat"><strong>'+number(c.loyalty_points)+'</strong><small>Pontos</small></div></div>';
     const afterFields=record?customerHistoryPanel(c):'';

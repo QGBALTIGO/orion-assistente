@@ -40,8 +40,12 @@ test('cadastro exibe data e hora locais, inclusive na prévia, sem alterar o val
   assert.match(h.document.getElementById('page-suite').textContent,/25\/10\/2026/);
   h.click('[data-os-customer="'+customerId+'"]');
   const createdBox=h.document.querySelector('.os-client-created');
-  assert.ok(createdBox,'registro de data logo no início da edição');
-  assert.match(createdBox.textContent,/CADASTRADO EM/);
+  assert.ok(createdBox,'registro discreto de data preservado na edição');
+  assert.match(createdBox.textContent,/Cadastrado em/);
+  assert.equal(createdBox.tagName,'P','o cadastro é apenas uma linha secundária');
+  assert.equal(createdBox.querySelector('strong'),null,'sem título ou valor em destaque');
+  assert.equal(createdBox.closest('.os-client-form').lastElementChild,createdBox,
+    'fica depois das observações, sem competir com os dados principais');
   assert.match(createdBox.textContent,/25\/10\/2026 às 20:42/,'usa America/Sao_Paulo e não a data de hoje do navegador');
   assert.equal(h.document.querySelectorAll('.os-client-stats .os-stat').length,3);
   assert.ok(h.document.querySelector('details.os-client-history'));
@@ -142,6 +146,11 @@ test('apresentação de histórico se adapta a 320px e aos temas do Orion',async
   const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
   const js=await readFile(new URL('../app/static/orion-suite.js',import.meta.url),'utf8');
   assert.match(css,/\.os-client-history\>summary:focus-visible/);
+  const metadataStyle=css.match(/#osDialog\.os-customer-dialog \.os-client-created\{([^}]+)\}/);
+  assert.ok(metadataStyle);
+  assert.match(metadataStyle[1],/color:var\(--os-muted\)/);
+  assert.match(metadataStyle[1],/font:400 11px\/17px/);
+  assert.doesNotMatch(metadataStyle[1],/border:|background:|box-shadow:/,'sem cartão chamativo');
   assert.match(css,/@media\(max-width:420px\)/);
   assert.match(css,/color-mix\(in srgb,var\(--os-tint\)/);
   assert.match(css,/var\(--os-border\)/);
