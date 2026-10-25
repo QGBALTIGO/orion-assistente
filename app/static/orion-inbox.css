@@ -304,3 +304,6 @@
   .os-central-compose-footer{justify-content:flex-end}
   .os-central-thread-header .os-central-state-badge{max-width:none}
 }
+
+.os-central-filter-row.os-central-single-filter{grid-template-columns:minmax(0,1fr)}
+.os-central-history-tools .os-central-inthread-search{margin:12px 0 0;width:100%}
