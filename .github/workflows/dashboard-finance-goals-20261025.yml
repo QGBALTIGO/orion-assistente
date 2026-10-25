@@ -1,0 +1,44 @@
+name: Orion — financeiro e metas no Dashboard
+on:
+  push:
+    branches: [codex/orion-dashboard-finance-goals-20261025]
+    paths:
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-suite.css'
+      - 'ui-tests/dashboard-finance-goals.test.mjs'
+      - 'ui-tests/dashboard-agenda-layout.py'
+      - 'scripts/prepare_vercel_orion.py'
+      - '.github/workflows/dashboard-finance-goals-20261025.yml'
+permissions:
+  contents: read
+jobs:
+  dashboard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependências DOM com versões fixadas
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Conferir sintaxe do Dashboard
+        run: node --check app/static/orion-suite.js
+      - name: Testes de resumo financeiro e barras da equipe
+        run: node --test ui-tests/dashboard-finance-goals.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/dashboard-today-preview.test.mjs
+      - name: Regressões completas da interface
+        run: npm test --prefix ui-tests
+      - name: Gerar pacote Vercel com hash revisado
+        run: python3 scripts/prepare_vercel_orion.py --output /tmp/orion-dashboard-finance-vercel
+      - name: Instalar driver para revisão visual
+        run: python3 -m pip install playwright
+      - name: Validar desktop e mobile com financeiro sintético
+        run: python3 ui-tests/dashboard-agenda-layout.py
+      - name: Capturas e medidas de layout sintético
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orion-dashboard-finance-and-goals
+          path: artifacts/dashboard-today/
+          retention-days: 7
+          if-no-files-found: warn
