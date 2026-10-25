@@ -518,7 +518,8 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
     row = (await db.execute(text("SELECT * FROM appointments WHERE tenant_id=:tenant AND id=:id FOR UPDATE"), params)).mappings().one()
     if row["professional_id"] != professional:
         raise HTTPException(409, "O profissional mudou. Atualize o agendamento")
-    context = LifecycleActor(role=operator, source="panel", account_id=db.info.get("management_actor_account_id"))
+    context = (LifecycleActor(role="system", source="system") if operator == "system" else
+               LifecycleActor(role=operator, source="panel", account_id=db.info.get("management_actor_account_id")))
     identity_payload = {"appointment_id": appointment_id, "expected_status": payload.expected_status,
                         "target": target, "coupon_id": payload.coupon_id}
     if payload.expected_updated_at is not None:
