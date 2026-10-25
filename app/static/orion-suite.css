@@ -1434,7 +1434,7 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-dashboard-agenda-heading-copy{min-width:0}
 .os-dashboard-agenda-eyebrow{margin:0 0 3px!important;color:var(--os-primary)!important;font:600 10px/16px var(--os-font)!important;letter-spacing:.11em;text-transform:uppercase}
 .os-dashboard-agenda-heading h3{margin:0;font:600 19px/27px var(--os-display);color:var(--os-text);letter-spacing:-.01em}
-.os-dashboard-agenda-date{margin:2px 0 0!important;font-size:12px!important;line-height:18px!important;color:var(--os-muted)!important;text-transform:capitalize}
+.os-dashboard-agenda-date{margin:2px 0 0!important;font-size:12px!important;line-height:18px!important;color:var(--os-muted)!important;text-transform:none}
 .os-dashboard-agenda-controls{display:flex;align-items:center;gap:8px;flex:0 0 auto}
 .os-dashboard-agenda-controls .os-button{box-shadow:none;min-height:40px;white-space:nowrap}
 .os-dashboard-agenda-controls .os-button:hover{box-shadow:none}
@@ -1478,3 +1478,7 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
   .os-dashboard-agenda-error{flex-wrap:wrap}
   .os-dashboard-agenda-error .os-button{width:100%}
 }
+
+/* Leave enough room to read the final row beneath Orion's existing floating consultant control. */
+.os-main[data-os-current-route=dashboard]{padding-bottom:120px}
+@media(max-width:767px){.os-main[data-os-current-route=dashboard]{padding-bottom:calc(112px + env(safe-area-inset-bottom,0px))}}
