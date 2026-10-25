@@ -422,6 +422,12 @@ async def test_retry_backoff_exhaustion_and_reauthorization_are_distinct_from_co
         row = await outbox(d, identity)
         assert row["attempts"] == attempt and row["last_error"] == "google_rate_limited"
         assert row["next_attempt_at"] > row["updated_at"]
+        if attempt == 1:
+            retry_state = (await d["client"].get(d["google_base"] + "/status")).json()
+            assert retry_state["connected"] is True
+            assert retry_state["sync_status"] == "retrying"
+            assert retry_state["retrying"] >= 1
+            assert retry_state["next_retry_at"] is not None
     assert row["status"] == "dead"
     status = (await d["client"].get(d["google_base"] + "/status")).json()
     assert status["connected"] and status["sync_status"] == "attention" and status["failed"] == 1
