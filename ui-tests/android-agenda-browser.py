@@ -96,7 +96,7 @@ def run(page,expired=False):
         assert state['logout']==0,(state,errors)
         assert page.locator('#osAgendaCount').count()==1
     assert not errors,(state,errors)
-    page.screenshot(path=str(OUT/('expired' if expired else 'active')+'-'+str(page.viewport_size['width'])+'.png'),full_page=True)
+    page.screenshot(path=str(OUT/(('expired' if expired else 'active')+'-'+str(page.viewport_size['width'])+'.png')),full_page=True)
     return dict(expired=expired,width=page.viewport_size['width'],status='PASS',checks=state['auth_me'],googleErrors=state['google'],logoutRequests=state['logout'])
 
 def main():
