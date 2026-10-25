@@ -1,0 +1,30 @@
+name: Orion - remover cartões de missões do Dashboard
+on:
+  push:
+    branches: [codex/remove-dashboard-onboarding-cards-20261025]
+    paths:
+      - 'app/static/orion-suite.js'
+      - 'ui-tests/dashboard-navigation.test.mjs'
+      - 'scripts/prepare_vercel_orion.py'
+      - '.github/workflows/dashboard-cards-cleanup-20261025.yml'
+permissions:
+  contents: read
+jobs:
+  dashboard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependencias de teste com versoes fixas
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Sintaxe do frontend do Dashboard
+        run: node --check app/static/orion-suite.js
+      - name: Validar navegacao do Dashboard e geracao Vercel
+        run: node --test ui-tests/dashboard-navigation.test.mjs ui-tests/vercel-facade.test.mjs
+      - name: Testes completos da interface
+        run: npm test --prefix ui-tests
+      - name: Verificar geracao de arquivos estaticos homologados
+        run: python3 scripts/prepare_vercel_orion.py --output /tmp/orion-dashboard-public-review
