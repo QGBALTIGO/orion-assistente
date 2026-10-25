@@ -17,6 +17,7 @@ from app.database import get_session_factory, tenant_transaction
 from app.messaging import CloudApiProvider
 from app.whatsapp_bot import reply
 from app.calendar_worker import scan_calendar_outbox,process_calendar_outbox
+from app.auto_completion_worker import scan_due_auto_completions,complete_due_appointment
 from app.billing_worker import reconcile_asaas_job,scan_pending_billing
 from app.automation_runtime import interaction,process_automation_job,reconcile_automation_job,scan_automations
 from app.inbox_runtime import process_inbox_message,scan_inbox
@@ -110,9 +111,10 @@ async def recover_events(ctx: dict):
 
 
 class WorkerSettings:
-    functions = [infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message]
+    functions = [infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,complete_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message]
     cron_jobs = [cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
-                 cron(scan_calendar_outbox, minute={2,7,12,17,22,27,32,37,42,47,52,57}, second=0),
+                 cron(scan_calendar_outbox, minute=set(range(60)), second=0),
+                 cron(scan_due_auto_completions,minute=set(range(60)),second={0,10,20,30,40,50}),
                  cron(scan_pending_billing, minute={3,13,23,33,43,53}, second=0),
                  cron(scan_automations, minute=set(range(60)), second=20),
                  cron(scan_inbox,minute=set(range(60)),second={5,35})]
