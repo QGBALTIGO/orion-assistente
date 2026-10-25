@@ -80,7 +80,7 @@ with sync_playwright() as p:
                     assert value['document']<=width+2,(engine,width,theme,label,value)
                     assert value['shellRight']<=width+2,(engine,width,theme,label,value)
                     assert value['shellLeft']>=-2,(engine,width,theme,label,value)
-                    measurements.append(dict(engine=engine,width=width,theme=theme,view=label,**value))
+                    measurements.append(dict(engine=engine,width=width,view=label,**value))
                 inspect('list')
                 if (engine,width,theme) in [('chromium',390,'light'),('chromium',1280,'light'),('webkit',390,'light')]:
                     page.screenshot(path=str(OUT/f'{engine}-{width}-{theme}-list.png'),full_page=True)
