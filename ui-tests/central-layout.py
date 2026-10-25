@@ -1,6 +1,7 @@
 """Screenshot and layout tests for Orion's Central (synthetic tenant; no network writes)."""
 from __future__ import annotations
 import json
+import os
 import re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -46,8 +47,12 @@ request_js=r'''async function(path,method='GET',body){
 }'''.replace('ACCOUNT',account).replace('CHANNEL',channel).replace('PHONE',phone).replace('CUSTOMER',customer)
 measurements=[]
 with sync_playwright() as p:
-    for engine,widths in [('chromium',(320,375,390,768,1280)),('webkit',(390,))]:
-        browser=getattr(p,engine).launch(args=['--no-sandbox'] if engine=='chromium' else [])
+    engines=[('chromium',(320,375,390,768,1280))]
+    if os.getenv('ORION_CHROME_ONLY')!='1':engines.append(('webkit',(390,)))
+    for engine,widths in engines:
+        launch={'args':['--no-sandbox']} if engine=='chromium' else {}
+        if engine=='chromium' and os.getenv('ORION_CHROME_PATH'):launch['executable_path']=os.environ['ORION_CHROME_PATH']
+        browser=getattr(p,engine).launch(**launch)
         for width in widths:
             for theme in ('light','dark'):
                 mobile=width<768
