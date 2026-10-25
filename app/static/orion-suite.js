@@ -381,7 +381,7 @@
         value=v=>moneyGoal?money(v):number(v).toLocaleString('pt-BR'),
         label=moneyGoal?'Faturamento':'Atendimentos';
       return '<div class="os-dashboard-goal-item"><div class="os-dashboard-goal-line">'+
-        '<div><strong>'+label+'</strong><small>'+g.professionals+' profissional'+(g.professionals===1?'':'is')+'</small></div>'+
+        '<div><strong>'+label+'</strong><small>'+g.professionals+' '+(g.professionals===1?'profissional':'profissionais')+'</small></div>'+
         '<span class="os-dashboard-goal-percent">'+esc(rounded.toLocaleString('pt-BR',{maximumFractionDigits:1}))+'%</span></div>'+
         '<div class="os-dashboard-goal-track" role="progressbar" aria-label="Progresso da meta de '+esc(label.toLocaleLowerCase('pt-BR'))+' da equipe" '+
         'aria-valuenow="'+Math.round(progress)+'" aria-valuemin="0" aria-valuemax="100" '+
