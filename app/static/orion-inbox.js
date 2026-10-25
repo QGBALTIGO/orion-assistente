@@ -180,6 +180,7 @@
         if(state.tab===tab.dataset.inboxTab)return;
         if(state.editor&&!window.confirm('Há alterações de formulário não salvas. Deseja descartá-las?'))return;
         if(state.tab==='conversations'&&window.OrionConversations?.hasUnsentDraft?.()&&!window.confirm('Há uma mensagem não enviada. Sair sem salvar o rascunho?'))return;
+        if(state.tab==='flows'&&window.OrionFlows?.hasUnsavedDraft?.()&&!window.confirm('Há um fluxo em rascunho não salvo. Sair sem salvar?'))return;
         state.editor=null;state.confirmation=null;state.tab=tab.dataset.inboxTab;
         if(state.tools&&!state.crmLoaded&&state.tab!=='conversations')void perform(reload);
         else render();

@@ -15,3 +15,22 @@ async function setup({write=true,fail=false}={}){
 test('opening and selecting a flow never executes or simulates it',async t=>{const h=await setup();t.after(()=>h.close());h.click('select');assert.equal(h.host.querySelector('script'),null);assert.equal(h.calls.length,1);h.click('simulate');await flush();assert.match(h.host.textContent,/Nenhuma ação foi executada/);assert.equal(h.calls[1].body.expected_version,2);});
 test('reader can simulate a saved draft but cannot edit or save it',async t=>{const h=await setup({write:false});t.after(()=>h.close());h.click('select');assert.equal(h.host.querySelector('[data-flow-action=new]').disabled,true);assert.equal(h.host.querySelector('[data-flow-form] button:not([type])').disabled,true);assert.equal(h.host.querySelector('[data-flow-action=simulate]').disabled,false);});
 test('a failed flow save preserves ordered steps and draft text',async t=>{const h=await setup({fail:true});t.after(()=>h.close());h.click('new');const name=h.host.querySelector('[name=name]');name.value='Rascunho preservado';name.dispatchEvent(new h.window.Event('input',{bubbles:true}));const label=h.host.querySelector('[data-flow-label]');label.value='Revisão';label.dispatchEvent(new h.window.Event('input',{bubbles:true}));h.host.querySelector('form').dispatchEvent(new h.window.Event('submit',{bubbles:true,cancelable:true}));await flush();assert.equal(h.host.querySelector('[name=name]').value,'Rascunho preservado');assert.match(h.host.textContent,/Versão alterada/);assert.equal(h.calls.filter(x=>x.method==='POST').length,1);});
+
+test('editing a flow warns before switching or creating another draft',async t=>{
+  const h=await setup();t.after(()=>h.close());
+  assert.equal(h.window.OrionFlows.hasUnsavedDraft(),false);
+  h.click('new');
+  assert.equal(h.window.OrionFlows.hasUnsavedDraft(),true);
+  const field=h.host.querySelector('[name=name]');
+  field.value='Rascunho ainda não salvo';
+  field.dispatchEvent(new h.window.Event('input',{bubbles:true}));
+  let confirmations=0;h.window.confirm=()=>{confirmations++;return false;};
+  h.click('select');
+  assert.equal(confirmations,1);
+  assert.equal(h.host.querySelector('[name=name]').value,'Rascunho ainda não salvo');
+  h.click('new');
+  assert.equal(confirmations,2);
+  assert.equal(h.host.querySelector('[name=name]').value,'Rascunho ainda não salvo');
+  h.window.confirm=()=>true;h.click('select');
+  assert.equal(h.window.OrionFlows.hasUnsavedDraft(),false);
+});

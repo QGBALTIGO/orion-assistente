@@ -17,15 +17,23 @@
     host.addEventListener('change',e=>{if(canWrite&&s.draft&&!s.busy&&e.target.hasAttribute('data-flow-kind')){s.draft.steps[Number(e.target.dataset.flowKind)].kind=e.target.value;changed();}},{signal:s.abort.signal});
     host.addEventListener('submit',e=>{e.preventDefault();if(!canWrite||!s.draft)return;void perform(async()=>{const d=s.draft;const saved=await request(path(d.id?'/'+d.id:''),d.id?'PUT':'POST',{name:d.name,steps:d.steps,expected_version:d.id?d.version:0});if(!current())return;s.draft=saved;s.dirty=false;s.items=(await request(path(''))).items;});},{signal:s.abort.signal});
     host.addEventListener('click',e=>{const b=e.target.closest('[data-flow-action]');if(!b||b.disabled||s.busy)return;const a=b.dataset.flowAction,i=Number(b.dataset.index),d=s.draft;
-      if(a==='select'){const item=s.items.find(x=>x.id===b.dataset.id);s.draft=JSON.parse(JSON.stringify(item));s.dirty=false;s.trace=null;render();return;}
+      if(a==='select'){
+        if(s.dirty&&!window.confirm('Há alterações não salvas neste fluxo. Descartar e abrir outro?'))return;
+        const item=s.items.find(x=>x.id===b.dataset.id);if(!item)return;
+        s.draft=JSON.parse(JSON.stringify(item));s.dirty=false;s.trace=null;render();return;
+      }
       if(a==='simulate'){void perform(async()=>{const result=await request(path('/'+d.id+'/simulate'),'POST',{expected_version:d.version});if(current())s.trace=result.trace;});return;}
       if(!canWrite)return;
-      if(a==='new'){s.draft={name:'',steps:[{kind:'handoff',label:''}]};s.dirty=true;s.trace=null;}
+      if(a==='new'){
+        if(s.dirty&&!window.confirm('Há alterações não salvas neste fluxo. Descartar e criar outro?'))return;
+        s.draft={name:'',steps:[{kind:'handoff',label:''}]};s.dirty=true;s.trace=null;
+      }
       if(a==='add')d.steps.push({kind:'tag',label:''});if(a==='remove')d.steps.splice(i,1);
       if(a==='up'||a==='down'){const target=i+(a==='up'?-1:1);[d.steps[i],d.steps[target]]=[d.steps[target],d.steps[i]];}
       if(a!=='new')changed();render();
     },{signal:s.abort.signal});
     host.innerHTML='<p role="status">Carregando rascunhos…</p>';try{s.items=(await request(path(''))).items;render();}catch(e){if(current())host.textContent=e.message;}
   }
-  window.OrionFlows={mount,unmount};
+  const hasUnsavedDraft=()=>!!active&&active.alive&&active.dirty===true;
+  window.OrionFlows={mount,unmount,hasUnsavedDraft};
 })();
