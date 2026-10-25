@@ -482,3 +482,44 @@
   .os-inbox .os-inbox-tag-actions{flex-wrap:wrap}
 }
 @media(prefers-reduced-motion:reduce){.os-inbox .os-inbox-nav-tab,.os-central-filter-chevron{transition:none}}
+
+
+/* Fluxos: editor secundário discreto, não um formulário administrativo cru. */
+.os-inbox [data-inbox-flows]>.os-card{display:grid;align-content:start;gap:12px;min-width:0}
+.os-inbox [data-inbox-flows]>.os-card>h2{font:650 19px/26px var(--os-display)}
+.os-inbox [data-inbox-flows]>.os-card>p{max-width:620px}
+.os-inbox [data-inbox-flows]>.os-card>[data-flow-action=new]{justify-self:start;min-height:43px}
+.os-inbox [data-inbox-flows] .os-inbox-list{display:flex;flex-wrap:wrap;gap:8px;min-width:0;max-height:none;margin:0;padding:0}
+.os-inbox [data-inbox-flows] .os-inbox-list .os-button{min-height:40px;border-radius:11px;font-size:12px}
+.os-inbox [data-flow-form]{display:grid;gap:13px;min-width:0;margin-top:4px;padding:16px;border:1px solid var(--os-border);border-radius:15px;background:var(--os-card)}
+.os-inbox [data-flow-form]>label{display:grid;gap:6px;margin:0;font:600 13px/19px var(--os-font)}
+.os-inbox [data-flow-form]>label>input{margin:0}
+.os-inbox [data-flow-form]>ol{display:grid;gap:10px;min-width:0;margin:0;padding:0;list-style:none}
+.os-inbox [data-flow-form]>ol>li{display:grid;gap:10px;min-width:0;padding:13px;border:1px solid var(--os-border);border-radius:12px;background:var(--os-bg)}
+.os-inbox [data-flow-form]>ol>li>label{display:grid;gap:6px;margin:0;font:500 12px/18px var(--os-font)}
+.os-inbox [data-flow-form]>ol>li>label :is(select,input){margin:0}
+.os-inbox [data-flow-form]>ol>li>.os-actions{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.os-inbox [data-flow-form]>ol>li .os-button{min-height:38px;padding:7px 10px;font-size:11px}
+.os-inbox [data-flow-form]>.os-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.os-inbox [data-flow-form]>.os-actions .os-button{min-height:42px;font-size:12px}
+.os-inbox [data-inbox-flows]>section.os-card>ol{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.os-inbox [data-inbox-flows]>section.os-card>ol>li{padding:10px 12px;border:1px solid var(--os-border);border-radius:10px;font:400 12px/18px var(--os-font);color:var(--os-text)}
+/* Menus de controle dentro da conversa não devem cobrir a mensagem no celular. */
+@media(max-width:767px){
+  .os-central-control-bar{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+  .os-central-control-buttons{display:flex;justify-content:flex-start;align-items:stretch;flex-wrap:wrap;width:100%}
+  .os-central-control-buttons>.os-button{min-height:42px}
+  .os-central-control-menu{position:static;flex:1 1 auto;min-width:0}
+  .os-central-control-menu>summary{justify-content:center;width:100%;min-height:42px}
+  .os-central-control-options{position:static;min-width:0;max-width:none;width:100%;margin-top:6px;box-shadow:none;white-space:normal}
+  .os-central-control-options>.os-button{white-space:normal;min-height:43px}
+  .os-inbox [data-inbox-flows]>.os-card{padding:15px}
+  .os-inbox [data-flow-form]{padding:12px}
+  .os-inbox [data-flow-form]>.os-actions .os-button{flex:1 1 135px}
+}
+@container inbox (max-width:760px){
+  .os-central-control-bar{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+  .os-central-control-buttons{justify-content:flex-start;flex-wrap:wrap;width:100%}
+  .os-central-control-menu{position:static;flex:1 1 auto}
+  .os-central-control-options{position:static;min-width:0;max-width:none;width:100%;box-shadow:none}
+}
