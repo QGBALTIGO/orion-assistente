@@ -4,6 +4,9 @@ on:
     branches: [codex/orion-central-redesign-20261025]
     paths:
       - 'ui-tests/central-layout.py'
+      - 'app/static/orion-conversations.js'
+      - 'app/static/orion-inbox.css'
+      - 'app/static/orion-inbox.js'
       - '.github/workflows/central-ui-fast-20261025.yml'
 permissions:
   contents: read
