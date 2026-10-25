@@ -220,6 +220,42 @@
     try{const url=new URL(location.href);url.searchParams.set('aba',route);url.searchParams.delete('empresa');history.replaceState({orionSuite:route},'',url.pathname+url.search);}catch{}
     if(!options.keepScroll)window.scrollTo({top:0,behavior:'instant'});
     renderRoute();await loadRoute();
+    const c=context();
+    if(current(c))armLiveRefresh(c);
+  }
+  function armLiveRefresh(c){
+    clearInterval(state.clockTimer);
+    if(!['dashboard','agenda','financeiro','desempenho'].includes(c.route))return;
+    state.clockTimer=setInterval(async()=>{
+      if(!current(c)||document.hidden||state.busy||state.dialog||state.liveRefreshing)return;
+      const active=document.activeElement;
+      if(active?.matches?.('input,select,textarea,[contenteditable=true]'))return;
+      state.liveRefreshing=true;
+      try{
+        if(c.route==='dashboard'){
+          const today=dateKey(),data=await request(mgmt('/dashboard?'+query({start_date:today,end_date:today})));
+          if(!current(c))return;
+          state.data.dashboard=data;
+          renderDashboard(data,today);
+          await Promise.all([loadDashboardAgenda(c,today),loadDashboardFinance(c,today)]);
+        }else if(c.route==='agenda'){
+          await loadAgenda(c,{catalogue:false});
+        }else if(c.route==='financeiro'){
+          await loadFinance(c);
+        }else if(c.route==='desempenho'){
+          const [data,goals]=await Promise.all([
+            request(mgmt('/performance?'+periodQuery())),
+            request(mgmt('/goals?'+periodQuery())),
+          ]);
+          if(!current(c))return;
+          state.data.performance=data;state.data.goals=rows(goals);
+          renderPerformance(data,rows(goals));
+        }
+      }catch(error){
+        // Retain the last verified view. The next cycle may recover, and
+        // deliberate navigation/reload will still display an explicit error.
+      }finally{state.liveRefreshing=false;}
+    },60000);
   }
   function renderRoute(){
     const f=state.filters,can=writable();$('appView').classList.toggle('os-tablet-mode',state.route==='agenda'&&f.agendaTablet);clearInterval(state.clockTimer);
