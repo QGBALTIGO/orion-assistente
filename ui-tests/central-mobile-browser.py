@@ -139,13 +139,13 @@ with sync_playwright() as p:
             page.locator("[data-inbox-tab=customers]").click()
             page.locator("[data-inbox-customer]").first.click()
             page.locator(".os-inbox-customer-profile").wait_for()
-            assert page.locator(".os-inbox-appointments").count() == 1
-            assert not page.locator(".os-inbox-appointments").evaluate("(x)=>x.open")
+            assert page.locator(".os-inbox-appointments:not(.os-inbox-notes)").count() == 1
+            assert not page.locator(".os-inbox-appointments:not(.os-inbox-notes)").evaluate("(x)=>x.open")
             inspect("client")
             if (width,theme) in ((390,"light"),(1280,"light")):
                 page.screenshot(path=str(OUT/f"{name}-{width}-{theme}-client.png"),full_page=True)
-            page.locator(".os-inbox-appointments>summary").click()
-            assert page.locator(".os-inbox-appointments li").count() == 20
+            page.locator(".os-inbox-appointments:not(.os-inbox-notes)>summary").click()
+            assert page.locator(".os-inbox-appointments:not(.os-inbox-notes) li").count() == 20
             inspect("client-history")
             if (width,theme) == (390,"light"):
                 page.screenshot(path=str(OUT/f"{name}-{width}-{theme}-client-history.png"),full_page=True)
