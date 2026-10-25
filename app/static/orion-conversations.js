@@ -63,7 +63,7 @@
       const activeFilters=Number(!!s.channel)+Number(!!s.mode)+Number(s.unread);
       const filters='<form data-central-search class="os-central-search-form" role="search">'+
         '<div class="os-central-search-top"><label class="os-central-search-field" for="centralSearch">'+ico('search')+
-        '<span class="os-sr-only">Pesquisar conversas</span><input id="centralSearch" name="q" type="search" maxlength="100" placeholder="Nome, telefone ou mensagem" value="'+esc(s.searchDraft||s.q)+'"></label>'+
+        '<span class="os-sr-only">Pesquisar conversas</span><input id="centralSearch" name="q" type="search" maxlength="100" placeholder="Nome, telefone ou mensagem" value="'+esc(s.searchDraft)+'"></label>'+
         '<button class="os-button os-central-search-button" type="submit" '+(s.busy?'disabled':'')+'>Buscar</button></div>'+
         '<details class="os-central-filters"'+(s.filtersOpen?' open':'')+'><summary><span>Filtros</span>'+
         (activeFilters?'<small>'+activeFilters+' ativo'+(activeFilters===1?'':'s')+'</small>':'')+
@@ -206,7 +206,7 @@
         const v=Object.fromEntries(new FormData(f));
         s.channel=v.channel||'';s.mode=v.mode||'';s.q=(v.q||'').trim();
         s.searchDraft=s.q;s.unread=v.unread==='on';s.offset=0;
-        void work(()=>load());
+        void work(load);
       }
       if(f.matches('[data-central-compose]')&&canWrite&&s.account&&s.sendEnabled&&s.detail&&s.selected&&!s.detail.control.pending_operation&&['human','waiting'].includes(s.detail.control.mode)&&s.detail.control.assigned_account_id===s.account){
         const d=draft();if(!d.text.trim())return;
@@ -221,16 +221,16 @@
         const row=s.items.find(x=>x.channel_id===person.dataset.centralChannel&&x.contact_e164===person.dataset.centralPhone);
         if(!row)return;
         s.selected=row;s.detail=null;s.detailError=null;s.openSections.clear();s.replySelection='';
-        void work(()=>load());return;
+        void work(load);return;
       }
       const a=e.target.closest('[data-central-action]');if(!a||a.disabled||s.busy)return;const action=a.dataset.centralAction;
       if(action==='back'){s.selected=null;s.detail=null;s.detailError=null;s.openSections.clear();s.pending=[];render();return;}
-      if(action==='refresh'){void work(()=>load());return;}
+      if(action==='refresh'){void work(load);return;}
       if(action==='clear-filters'){
         s.channel='';s.mode='';s.unread=false;s.q='';s.searchDraft='';s.offset=0;
-        void work(()=>load());return;
+        void work(load);return;
       }
-      if(action==='previous'||action==='next'){s.offset+=action==='next'?50:-50;void work(()=>load());return;}
+      if(action==='previous'||action==='next'){s.offset+=action==='next'?50:-50;void work(load);return;}
       if(action==='preserved-history'){const selection=key();void work(async()=>{const result=await request(selectedPath('/preserved-history?phone='+encodeURIComponent(s.selected.contact_e164)));if(current()&&key()===selection)s.preserved.set(selection,result.items);},'Histórico consultado sem enviar mensagens.',false);return;}
       if(action==='read'){const last=s.detail.items.at(-1);if(last)void work(()=>request(selectedPath('/read'),'POST',{contact_e164:s.selected.contact_e164,message_id:last.id}),'Leitura registrada somente na central.');return;}
       if(action==='customer'){onCustomer?.(s.detail.customer_id);return;}
