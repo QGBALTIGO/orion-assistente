@@ -11,6 +11,7 @@ on:
       - 'app/integrations_api.py'
       - 'app/static/orion-suite.js'
       - 'app/static/orion-suite.css'
+      - 'scripts/prepare_vercel_orion.py'
       - 'tests/unit/test_appointment_auto_completion.py'
       - 'tests/integration/test_management.py'
       - 'ui-tests/appointment-auto-completion.test.mjs'
@@ -96,3 +97,5 @@ jobs:
         run: node --test ui-tests/appointment-auto-completion.test.mjs ui-tests/agenda-lifecycle.test.mjs ui-tests/login-experience.test.mjs
       - name: Testes DOM completos
         run: npm test --prefix ui-tests
+      - name: Gerar bundle estático revisto e validar checksum do frontend
+        run: python3 scripts/prepare_vercel_orion.py --output /tmp/orion-autocomplete-vercel
