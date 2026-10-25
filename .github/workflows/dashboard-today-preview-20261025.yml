@@ -1,0 +1,44 @@
+name: Orion — prévia da Agenda de hoje no Dashboard
+on:
+  push:
+    branches: [codex/orion-dashboard-today-agenda-preview-20261025]
+    paths:
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-suite.css'
+      - 'ui-tests/dashboard-today-preview.test.mjs'
+      - 'ui-tests/dashboard-agenda-layout.py'
+      - 'scripts/prepare_vercel_orion.py'
+      - '.github/workflows/dashboard-today-preview-20261025.yml'
+permissions:
+  contents: read
+jobs:
+  dashboard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependências DOM fixadas
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Sintaxe do script e testes focados
+        run: |
+          node --check app/static/orion-suite.js
+          node --test ui-tests/dashboard-navigation.test.mjs ui-tests/dashboard-today-preview.test.mjs ui-tests/vercel-facade.test.mjs
+      - name: Regressões completas do painel
+        run: npm test --prefix ui-tests
+      - name: Gerar bundle Vercel revisto sem acesso externo
+        run: python3 scripts/prepare_vercel_orion.py --output /tmp/orion-dashboard-today-vercel
+      - name: Instalar driver do navegador para QA visual
+        run: python3 -m pip install playwright
+      - name: Visualizar Dashboard com dados sintéticos em Chromium
+        run: python3 ui-tests/dashboard-agenda-layout.py
+      - name: Guardar capturas e métricas sintéticas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orion-dashboard-today-preview
+          path: artifacts/dashboard-today/
+          retention-days: 7
+          if-no-files-found: warn
