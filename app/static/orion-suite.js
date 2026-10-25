@@ -1270,10 +1270,17 @@
       // for its deferred native toggle event. Toggle also handles keyboard or
       // programmatic expansion. The loading guard prevents duplicate requests.
       history?.querySelector('summary')?.addEventListener('click',()=>{
-        if(!history.open)startHistory();
+        if(!history.open){
+          opened.historyOpened=true;
+          startHistory();
+        }else opened.historyOpened=false;
       });
       history?.addEventListener('toggle',()=>{
-        if(history.open)startHistory();
+        if(!history.open){opened.historyOpened=false;return;}
+        if(!opened.historyOpened){
+          opened.historyOpened=true;
+          startHistory();
+        }
       });
     }
   }
