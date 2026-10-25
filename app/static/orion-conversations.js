@@ -53,7 +53,7 @@
       }).join('');
       const filters='<form data-central-search class="os-central-search-form" role="search">'+
         '<label class="os-central-search-field" for="centralSearch">'+ico('search')+'<span class="os-sr-only">Pesquisar conversas</span><input id="centralSearch" name="q" type="search" maxlength="100" placeholder="Buscar cliente ou mensagem" value="'+esc(s.q)+'"></label>'+
-        '<div class="os-central-filter-row"><label class="os-central-filter-field"><span>Canal</span><select name="channel"><option value="">Todos</option>'+s.channels.map(x=>'<option value="'+esc(x.id)+'" '+(s.channel===x.id?'selected':'')+'>'+esc((x.provider==='qr'?'QR · ':'Meta · ')+x.label+(x.enabled?'':' · indisponível'))+'</option>').join('')+'</select></label>'+
+        '<div class="os-central-filter-row '+(s.channels.length>1?'':'os-central-single-filter')+'">'+(s.channels.length>1?'<label class="os-central-filter-field"><span>Canal</span><select name="channel"><option value="">Todos</option>'+s.channels.map(x=>'<option value="'+esc(x.id)+'" '+(s.channel===x.id?'selected':'')+'>'+esc((x.provider==='qr'?'QR · ':'Meta · ')+x.label+(x.enabled?'':' · indisponível'))+'</option>').join('')+'</select></label>':'')+
         '<label class="os-central-filter-field"><span>Atendimento</span><select name="mode"><option value="">Todos</option>'+Object.entries(modes).map(([id,label])=>'<option value="'+esc(id)+'" '+(s.mode===id?'selected':'')+'>'+esc(label)+'</option>').join('')+'</select></label></div>'+
         '<div class="os-central-filter-footer"><label class="os-central-unread-toggle"><input type="checkbox" name="unread" '+(s.unread?'checked':'')+'><span>Não lidas</span></label><button class="os-button os-central-filter-submit" type="submit" '+(s.busy?'disabled':'')+'>Aplicar filtros</button></div>'+
       '</form>';
@@ -74,13 +74,10 @@
         '</div></details>';
       const pending=c?.pending_operation?'<div class="os-central-pending" role="status">'+ico('info')+'<span>Há um envio em verificação. O controle da conversa fica protegido até existir um recibo seguro.</span>'+(s.channels.find(x=>x.id===s.selected?.channel_id)?.provider==='qr'?btn('Consultar recibo','reconcile',!canWrite||s.busy):'')+'</div>':'';
       const readTools='<details class="os-central-history-tools"><summary>Mais opções do histórico '+ico('chevron')+'</summary><div class="os-central-history-actions">'+
-        (s.account&&s.detail?.items?.length?btn('Marcar como lida nesta central','read',s.busy):'')+
+        (s.account&&s.detail?.items?.length&&Number(selected?.unread_count||0)>0?btn('Marcar como lida nesta central','read',s.busy):'')+
         (s.detail?.preserved_history_available?btn('Consultar histórico do dispositivo','preserved-history',s.busy):'')+
-        '</div><p>Essas ações não enviam mensagens ao cliente.</p></details>';
-      const historyTools='<div class="os-central-timeline-tools">'+
-        (s.detail?.has_more?btn('Carregar mensagens anteriores','older',s.busy):'')+
-        '<label class="os-central-inthread-search" for="centralFind">'+ico('search')+'<span class="os-sr-only">Buscar nas mensagens carregadas</span><input id="centralFind" type="search" maxlength="100" placeholder="Buscar nesta conversa" value="'+esc(findValue)+'"></label>'+
-        '</div>';
+        '</div><label class="os-central-inthread-search" for="centralFind">'+ico('search')+'<span class="os-sr-only">Buscar nas mensagens carregadas</span><input id="centralFind" type="search" maxlength="100" placeholder="Buscar nesta conversa" value="'+esc(findValue)+'"></label><p>Essas ações não enviam mensagens ao cliente.</p></details>';
+      const historyTools=s.detail?.has_more?'<div class="os-central-timeline-tools">'+btn('Carregar mensagens anteriores','older',s.busy)+'</div>':'';
       const replies=s.replies.length&&s.detail?.customer_id?'<details class="os-central-quick-reply"><summary>Usar resposta rápida</summary><div class="os-central-quick-reply-form"><label for="centralReplySelect">Modelo de resposta</label><div><select id="centralReplySelect" data-central-reply><option value="">Escolher resposta salva</option>'+s.replies.map(r=>'<option value="'+esc(r.id)+'">'+esc(r.title)+'</option>').join('')+'</select>'+btn('Inserir no texto','prepare',s.busy)+'</div></div></details>':'';
       const composer='<footer class="os-central-compose">'+replies+
         '<form data-central-compose><label for="centralText">Mensagem</label><textarea id="centralText" name="text" rows="3" maxlength="1200" placeholder="Escreva uma resposta para revisar..." '+(!canWrite?'readonly':'')+'>'+esc(draft().text)+'</textarea><div class="os-central-compose-footer"><span class="os-central-composer-hint">'+esc(!s.sendEnabled?'O envio de mensagens está desativado.':!s.account?'Seu acesso está disponível somente para consulta.':!owned?'Assuma o atendimento para responder.':c?.pending_operation?'Aguarde a verificação do envio.':'Revise o texto antes de enviar.')+'</span><button type="submit" class="os-button" '+(!canWrite||!owned||s.busy||!!c?.pending_operation||!s.sendEnabled?'disabled':'')+'>'+ico('send')+(draft().operation?'Verificar envio':'Enviar mensagem')+'</button></div></form></footer>';
@@ -140,7 +137,7 @@
     host.addEventListener('input',e=>{if(e.target.id==='centralFind'){const value=e.target.value.toLocaleLowerCase();host.querySelectorAll('.os-central-message').forEach(m=>{m.hidden=!m.textContent.toLocaleLowerCase().includes(value);});return;}if(e.target.id==='centralText')s.drafts.set(key(),{text:e.target.value,operation:null});},{signal:s.abort.signal});
     host.addEventListener('submit',e=>{
       e.preventDefault();if(s.busy)return;const f=e.target;
-      if(f.matches('[data-central-search]')){const v=Object.fromEntries(new FormData(f));s.channel=v.channel;s.mode=v.mode;s.q=v.q;s.unread=v.unread==='on';s.offset=0;void work(()=>load());}
+      if(f.matches('[data-central-search]')){const v=Object.fromEntries(new FormData(f));s.channel=v.channel||'';s.mode=v.mode;s.q=v.q;s.unread=v.unread==='on';s.offset=0;void work(()=>load());}
       if(f.matches('[data-central-compose]')&&canWrite&&s.account&&s.sendEnabled&&s.detail&&s.selected&&!s.detail.control.pending_operation&&['human','waiting'].includes(s.detail.control.mode)&&s.detail.control.assigned_account_id===s.account){
         const d=draft();if(!d.text.trim())return;
         d.operation=d.operation||crypto.randomUUID();s.drafts.set(key(),d);
