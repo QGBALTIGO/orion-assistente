@@ -141,7 +141,17 @@ async def process_calendar_outbox(ctx: dict, tenant_id: str, outbox_id: str):
 
 
 async def scan_calendar_outbox(ctx: dict):
-    if os.getenv("GOOGLE_LIVE_SYNC") != "1" or not worker_configured():
+    configured = worker_configured()
+    enabled = os.getenv("GOOGLE_LIVE_SYNC") == "1"
+    # Short-lived worker heartbeat, configuration state only. Never store
+    # tokens or user data in Redis; the API can diagnose "paused" versus
+    # an unavailable worker instead of guessing from its own environment.
+    worker_health = "ready" if configured and enabled else "paused" if not enabled else "missing_configuration"
+    try:
+        await ctx["redis"].set("orion:google:worker-health", worker_health, ex=780)
+    except (OSError, RuntimeError):
+        pass
+    if not enabled or not configured:
         return 0
     async with support_session_factory()() as db:
         pending = (await db.execute(text("""
