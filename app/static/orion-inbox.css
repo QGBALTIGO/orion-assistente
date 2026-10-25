@@ -1,5 +1,5 @@
 /* Central de atendimento — Orion visual language. Scoped to the existing panel. */
-.os-main[data-os-current-route=inbox]{max-width:1320px;padding:24px 28px 48px}
+.os-main[data-os-current-route=inbox]{max-width:1320px;padding:24px 28px 48px;container:inbox / inline-size}
 #osInboxHost,.os-inbox,.os-central{min-width:0;width:100%}
 .os-inbox{display:grid;gap:16px;color:var(--os-text);font:400 14px/1.5 var(--os-font)}
 .os-inbox :where(h2,h3,p){margin:0}
@@ -264,3 +264,15 @@
   .os-central-quick-reply>div>.os-button{width:100%}
 }
 @media(prefers-reduced-motion:reduce){.os-central-thread-item-button{transition:none}}
+
+/* A sidebar can leave less room than the viewport width suggests on tablets. */
+@container inbox (max-width:760px){
+  .os-inbox-topbar{flex-direction:column;align-items:stretch}
+  .os-inbox-primary-nav{justify-content:space-between}
+  .os-central-shell{grid-template-columns:minmax(0,1fr);height:min(730px,calc(100dvh - 185px));min-height:490px}
+  .os-central-shell:not(.os-central-show-thread) .os-central-thread-panel{display:none}
+  .os-central-shell.os-central-show-thread .os-central-list-panel{display:none}
+  .os-central-list-panel{border-right:0}
+  .os-central-back{display:grid;place-items:center}
+  .os-inbox-grid{grid-template-columns:minmax(0,1fr)}
+}
