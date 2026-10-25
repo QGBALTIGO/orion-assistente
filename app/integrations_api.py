@@ -109,9 +109,13 @@ async def google_status_data(tenant_id, actor, request):
     can_manage = access.role in {"owner", "support", "admin"}
     email_pending = can_manage and await email_confirmation_required(request, actor)
     candidate, cached_name, oauth_available = None, None, True
+    worker_health = "unverified"
     if configured:
         redis = oauth_redis()
         try:
+            heartbeat = await redis.get("orion:google:worker-health")
+            if heartbeat in {b"ready", b"paused", b"missing_configuration"}:
+                worker_health = heartbeat.decode()
             if can_manage:
                 source = request_initiator(request, actor)
                 candidate = current_candidate(await pending_candidate(redis, tenant_id, source), row)
@@ -142,6 +146,9 @@ async def google_status_data(tenant_id, actor, request):
         sync_status = "not_connected"
     elif not enabled:
         sync_status = "paused"
+    elif worker_health in {"paused", "missing_configuration"}:
+        sync_status = "attention"
+        last_error = "google_worker_paused" if worker_health == "paused" else "google_worker_not_configured"
     elif stats["failed"] or last_error:
         sync_status = "attention"
     elif stats["pending"]:
@@ -158,6 +165,7 @@ async def google_status_data(tenant_id, actor, request):
     return {
         "configured": configured, "connected": connected, "status": status,
         "sync_enabled": enabled, "sync_status": sync_status,
+        "worker_status": worker_health,
         "calendar_id": selected, "calendar_name": cached_name,
         "last_synced_at": stats["last_synced_at"], "pending": stats["pending"],
         "failed": stats["failed"], "sent": stats["sent"], "last_error": last_error,
