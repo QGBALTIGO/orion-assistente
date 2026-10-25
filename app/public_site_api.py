@@ -24,7 +24,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from app.booking_service import book_appointment, check_slot, confirm_hold
+from app.booking_service import book_appointment, confirm_hold, verified_slot_grid
 from app.catalog_api import Actor, authenticate, audit
 from app.database import get_session_factory, tenant_transaction
 from app.management_api import management_session
@@ -300,18 +300,11 @@ async def public_availability(slug:str,request:Request,service_id:UUID,professio
             zone=ZoneInfo(selection['shop']['timezone']);now=datetime.now(UTC);local_now=now.astimezone(zone)
             if day<local_now.date() or day>local_now.date()+timedelta(days=selection['shop']['booking_horizon_days']):
                 raise HTTPException(422,'Data fora do período disponível')
-            slots=[]
-            for minute in range(0,1440,selection['shop']['slot_step_minutes']):
-                naive=datetime.combine(day,time.min)+timedelta(minutes=minute)
-                start=naive.replace(tzinfo=zone).astimezone(UTC).astimezone(zone)
-                if start.replace(tzinfo=None)!=naive:continue
-                try:
-                    await check_slot(db,tenant,professional_id,selection['shop'],[selection['aggregate']],start,now)
-                    slots.append(start.isoformat())
-                except HTTPException as exc:
-                    if exc.status_code not in {409,422}:raise
+            slots,availability_reason=await verified_slot_grid(
+                db,tenant,professional_id,selection['shop'],[selection['aggregate']],
+                day,now,strict_errors=True)
             quote=issue_quote(slug,professional_id,day,selection,now) if slots else None
-            return {'slots':slots,'timezone':selection['shop']['timezone'],'price_cents':selection['aggregate']['price_cents'],
+            return {'slots':slots,'availability_reason':availability_reason,'timezone':selection['shop']['timezone'],'price_cents':selection['aggregate']['price_cents'],
                     'duration_min':selection['aggregate']['duration_min'],'quote':quote,'expires_in':600 if quote else None,
                     'services':[x['name'] for x in selection['items']]}
 
