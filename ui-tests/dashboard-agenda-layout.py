@@ -90,6 +90,22 @@ def run(page, width, theme):
         if path.endswith('/management/dashboard'):
             fulfill({'summary':{'appointments':3,'completed':1,'cancelled':0,'no_show':0},
                      'onboarding':{'has_appointment':True,'scheduling_ready':True,'customers_with_phone':6}});return
+        if path.endswith('/finance/summary'):
+            params=parse_qs(u.query)
+            assert params.get('start_date')==[TODAY] and params.get('end_date')==[TODAY]
+            fulfill({'summary':{'count':2,'balance_cents':90000,'income_cents':100000,
+                     'expense_cents':10000}});return
+        if path.endswith('/goals'):
+            params=parse_qs(u.query)
+            assert params.get('start_date')==[TODAY] and params.get('end_date')==[TODAY]
+            fulfill({'items':[
+                {'id':'30000000-0000-4000-8000-000000000001','professional_id':'20000000-0000-4000-8000-000000000001',
+                 'metric':'revenue_cents','active':True,'start_date':TODAY,'end_date':TODAY,
+                 'target_value':10000,'actual_value':8000},
+                {'id':'30000000-0000-4000-8000-000000000002','professional_id':'20000000-0000-4000-8000-000000000002',
+                 'metric':'revenue_cents','active':True,'start_date':TODAY,'end_date':TODAY,
+                 'target_value':30000,'actual_value':22000}
+            ]});return
         if path.endswith('/appointments'):
             params=parse_qs(u.query)
             assert params.get('day')==[TODAY], ('Not today',params)
@@ -103,6 +119,11 @@ def run(page, width, theme):
     page.goto(ORIGIN+'/panel?aba=dashboard',wait_until='domcontentloaded')
     page.locator('#osDashboardAgendaContent .os-agenda-item').first.wait_for(timeout=12000)
     assert page.locator('#osDashboardAgendaContent .os-agenda-item').count()==3
+    page.locator('.os-dashboard-finance-values').wait_for(timeout=12000)
+    page.locator('#osDashboardGoals [role=progressbar]').wait_for(timeout=12000)
+    assert page.locator('.os-dashboard-finance-value').count()==2
+    assert '400,00' in page.locator('#osDashboardGoals').inner_text()
+    assert page.locator('#osDashboardGoals [role=progressbar]').get_attribute('aria-valuenow')=='75'
     assert page.locator('.os-dashboard-agenda-head').inner_text().find('Agendamentos de hoje')!=-1
     assert page.locator('.os-dashboard-agenda-preview input[type=date]').count()==0
     assert len([c for c in calls if c[1].endswith('/appointments')])==1
@@ -111,8 +132,12 @@ def run(page, width, theme):
       const container=document.querySelector('.os-dashboard-agenda-preview');
       const bounds=container.getBoundingClientRect();
       const row=container.querySelector('.os-agenda-item').getBoundingClientRect();
+      const finance=document.querySelector('.os-dashboard-finance').getBoundingClientRect();
+      const goals=document.querySelector('#osDashboardGoals').getBoundingClientRect();
       return {viewport:innerWidth,documentWidth:document.documentElement.scrollWidth,
         bounds:{left:bounds.left,right:bounds.right,width:bounds.width},
+        finance:{left:finance.left,right:finance.right,width:finance.width},
+        goals:{left:goals.left,right:goals.right,width:goals.width},
         firstRow:{left:row.left,right:row.right,width:row.width},
         theme:document.documentElement.dataset.theme,
         cardRows:container.querySelectorAll('.os-agenda-item').length};
@@ -121,8 +146,13 @@ def run(page, width, theme):
     assert metrics['bounds']['right']<=width+2,(width,theme,metrics)
     assert metrics['firstRow']['right']<=width+2,(width,theme,metrics)
     assert metrics['documentWidth']<=width+2,(width,theme,metrics)
+    for section in ('finance','goals'):
+        assert metrics[section]['left']>=-1,(width,theme,section,metrics)
+        assert metrics[section]['right']<=width+2,(width,theme,section,metrics)
     if (width,theme) in ((390,'dark'),(390,'light'),(1280,'dark'),(375,'dark'),(768,'light')):
         page.locator('.os-dashboard-agenda-preview').screenshot(path=str(OUT/f'card-{width}-{theme}.png'))
+        page.locator('.os-dashboard-finance').screenshot(path=str(OUT/f'finance-{width}-{theme}.png'))
+        page.locator('#osDashboardGoals').screenshot(path=str(OUT/f'goals-{width}-{theme}.png'))
         page.screenshot(path=str(OUT/f'full-{width}-{theme}.png'),full_page=True)
     return dict(width=width,**metrics)
 
