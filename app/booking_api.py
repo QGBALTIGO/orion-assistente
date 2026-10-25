@@ -90,7 +90,7 @@ async def availability(
     authorize(actor, tenant_id)
     async with get_session_factory()() as session:
         result = await list_slots(session, tenant_id, professional_id, service_ids, day,
-                                  appointment_id=appointment_id)
+                                  appointment_id=appointment_id, explain_reason=True)
         return json_response(result)
 
 

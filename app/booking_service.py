@@ -390,10 +390,40 @@ async def _replacement_hold(s, tenant, professional, item_id, phone, expected, n
     return row
 
 
+async def verified_slot_grid(s: AsyncSession, tenant: UUID, professional: UUID,
+                             shop: dict, items: list[dict], target: date, now: datetime,
+                             *, ignored: UUID | None = None, strict_errors: bool = False):
+    """Read one fresh request-scoped set of constraints and validate every local candidate.
+
+    Both WhatsApp/management and public booking use the exact same slot rules.
+    This is a read-only query. Writes still recheck the slot inside their transaction.
+    """
+    tz = ZoneInfo(shop["timezone"])
+    constraints = await _read_slot_constraints(s, tenant, professional, target, tz, now, ignored)
+    if constraints.hours is None:
+        return [], "no_working_hours"
+    result = []
+    for minute in range(0, 24 * 60, shop["slot_step_minutes"]):
+        naive = datetime.combine(target, time.min) + timedelta(minutes=minute)
+        local = naive.replace(tzinfo=tz)
+        start = local.astimezone(UTC).astimezone(tz)
+        if start.replace(tzinfo=None) != naive:
+            continue  # Never offer a clock that does not exist in this timezone.
+        try:
+            await check_slot(s, tenant, professional, shop, items, start, now,
+                             ignore_appointment=ignored, _constraints=constraints)
+            result.append(start.isoformat())
+        except HTTPException as exc:
+            if strict_errors and exc.status_code not in {409, 422}:
+                raise
+    return result, "available" if result else "no_matching_slots"
+
+
 async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
                      ids: list[UUID], target: date, now: datetime | None = None, *,
                      replace_hold_id: UUID | None = None, customer_phone: str | None = None,
-                     expected_snapshot: str | None = None, appointment_id: UUID | None = None):
+                     expected_snapshot: str | None = None, appointment_id: UUID | None = None,
+                      explain_reason: bool = False):
     now = now or datetime.now(UTC)
     async with tenant_transaction(s, tenant):
         if replace_hold_id is not None:
@@ -418,25 +448,12 @@ async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
         local_now = now.astimezone(ZoneInfo(shop["timezone"]))
         if target < local_now.date() or target > local_now.date() + timedelta(days=shop["booking_horizon_days"]):
             fail(422, "Data fora do horizonte de agendamento")
-        constraints = await _read_slot_constraints(s, tenant, professional, target,
-            ZoneInfo(shop["timezone"]), now, appointment_id or replace_hold_id)
-        result = []
-        for minute in range(0, 24 * 60, shop["slot_step_minutes"]):
-            naive = datetime.combine(target, time.min) + timedelta(minutes=minute)
-            local = naive.replace(tzinfo=ZoneInfo(shop["timezone"]))
-            try:
-                # Fornecer offset explícito do próprio fuso na validação.
-                start = local.astimezone(UTC).astimezone(ZoneInfo(shop["timezone"]))
-                if start.replace(tzinfo=None) != naive:
-                    continue  # horário inexistente por mudança de fuso
-                await check_slot(s, tenant, professional, shop, items, start, now,
-                                 ignore_appointment=appointment_id or replace_hold_id, _constraints=constraints)
-                result.append(start.isoformat())
-            except HTTPException:
-                continue
+        result, availability_reason = await verified_slot_grid(s, tenant, professional,
+            shop, items, target, now, ignored=appointment_id or replace_hold_id)
         duration, prep, cleanup, price = amounts(items)
         return {"slots": result, "duration_min": duration, "prep_min": prep,
-                "cleanup_min": cleanup, "price_cents": price, "timezone": shop["timezone"]}
+                "cleanup_min": cleanup, "price_cents": price, "timezone": shop["timezone"],
+                **({"availability_reason": availability_reason} if explain_reason else {})}
 
 
 async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
