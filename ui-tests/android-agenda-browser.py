@@ -80,6 +80,8 @@ def run(page,expired=False):
     page.route(ORIGIN+'/**',route_call)
     page.goto(ORIGIN+'/panel?aba=dashboard',wait_until='domcontentloaded')
     page.wait_for_function("document.querySelector('#appView')&&!document.querySelector('#appView').classList.contains('hidden')")
+    if page.locator('#osMenu').is_visible():
+        page.locator('#osMenu').click()
     page.locator('#osNav [data-os-route="agenda"]').click()
     page.wait_for_function("document.querySelector('#osAgendaGoogleLabel')?.textContent?.includes('Não foi possível') || !document.querySelector('#loginView')?.classList?.contains('hidden')")
     page.wait_for_timeout(200)
