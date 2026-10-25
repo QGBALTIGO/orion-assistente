@@ -501,7 +501,7 @@ async def marketing(db, tenant_id, limit=50, offset=0):
     return {"items": [clean_row(row) for row in rows], "total": total, "limit": limit, "offset": offset, "delivery_enabled": active}
 
 
-async def transition_appointment(db, tenant_id, appointment_id, target, payload, operator):
+async def transition_appointment(db, tenant_id, appointment_id, target, payload, operator, *, auto=False):
     from app.booking_service import acquire_professional_lock, history, read_appointment
     from app.appointment_lifecycle import CAS_SQL, LifecycleActor, allowed_actions, check_expected_updated_at, operation_payload
     if target not in ("completed", "no_show"):
@@ -518,7 +518,8 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
     row = (await db.execute(text("SELECT * FROM appointments WHERE tenant_id=:tenant AND id=:id FOR UPDATE"), params)).mappings().one()
     if row["professional_id"] != professional:
         raise HTTPException(409, "O profissional mudou. Atualize o agendamento")
-    context = LifecycleActor(role=operator, source="panel", account_id=db.info.get("management_actor_account_id"))
+    context = (LifecycleActor(role="system", source="system") if auto else
+               LifecycleActor(role=operator, source="panel", account_id=db.info.get("management_actor_account_id")))
     identity_payload = {"appointment_id": appointment_id, "expected_status": payload.expected_status,
                         "target": target, "coupon_id": payload.coupon_id}
     if payload.expected_updated_at is not None:
@@ -535,6 +536,8 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
         raise HTTPException(409, "Somente agendamentos confirmados podem receber este resultado")
     if row["start_at"] > now:
         raise HTTPException(409, "Aguarde o horário de início para registrar o resultado")
+    if auto and (target != "completed" or row["status"] != "confirmed" or row["end_at"] > now):
+        raise HTTPException(409, "O atendimento ainda não chegou ao horário final")
     percent = None
     discount = 0
     gross = row["total_cents"]
@@ -564,6 +567,33 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
     if target == "completed":
         from app.loyalty_rewards import award_completion
         result["loyalty"] = await award_completion(db, tenant_id, changed, now)
+        if auto and changed["total_cents"] > 0:
+            # Completion recognizes the service but never fabricates a payment.
+            # Existing linked income records (paid or pending) take precedence.
+            existing_income = (await db.execute(text("""
+                SELECT id FROM financial_entries
+                WHERE tenant_id=:tenant AND appointment_id=:id
+                  AND kind='income' AND status IN ('pending','paid')
+                LIMIT 1
+            """), params)).scalar_one_or_none()
+            if existing_income is None:
+                value = {
+                    "kind": "income",
+                    "description": ("Serviço concluído · " + str(row["protocol"]))[:255],
+                    "amount_cents": changed["total_cents"],
+                    "category": "Serviços",
+                    "payment_method": "other",
+                    "status": "pending",
+                    "entry_type": "general",
+                    "occurred_at": now,
+                    "customer_id": row["customer_id"],
+                    "professional_id": professional,
+                    "appointment_id": appointment_id,
+                    "notes": "Receita gerada automaticamente. Confirme o recebimento no Financeiro.",
+                }
+                await insert_row(db, tenant_id, "financial_entries", value,
+                                 "auto-completion-" + str(appointment_id),
+                                 operation="auto_completion_receivable")
     return result
 
 
