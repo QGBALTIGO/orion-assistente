@@ -330,6 +330,19 @@ def capability_denial(business: dict, capability: str) -> dict | None:
     return None
 
 
+def representative_slots(values: list[str], limit: int = 8) -> list[str]:
+    """Present verified times across the day, not only the earliest morning slots.
+
+    Choosing a time outside this small menu still rechecks the full backend grid.
+    """
+    if len(values) <= limit:
+        return list(values)
+    if limit <= 1:
+        return [values[0]] if limit else []
+    return [values[round(index * (len(values) - 1) / (limit - 1))]
+            for index in range(limit)]
+
+
 async def offer_slots(tenant: UUID, state: dict, preview: bool):
     try:
         async with get_session_factory()() as db:
@@ -339,7 +352,7 @@ async def offer_slots(tenant: UUID, state: dict, preview: bool):
             ), pricing=True)
     except AVAILABILITY_ERRORS:
         return "Não consegui consultar a agenda agora. Podemos tentar novamente em instantes?", {**state, "step": "date"}
-    options = slots["slots"][:8]
+    options = representative_slots(slots["slots"])
     if not options:
         return "Não encontrei horários livres nessa data. Informe outra data.", {**state, "step": "date"}
     state.update(step="time", slots=options, price=slots["price_cents"], duration=slots["duration_min"])
@@ -347,13 +360,17 @@ async def offer_slots(tenant: UUID, state: dict, preview: bool):
     if facts:
         business, catalog = facts
         state["slot_menu_numbered"] = False
-        return presentation.render_slots([x["name"] for x in catalog if str(x["id"]) in state["services"]], options,
+        answer = presentation.render_slots([x["name"] for x in catalog if str(x["id"]) in state["services"]], options,
             _preferences(business), timezone=business["timezone"], day=state["day"], total_cents=state["price"],
-            duration_min=state["duration"], simulation=preview, professional=state.get("professional_name")), state
+            duration_min=state["duration"], simulation=preview, professional=state.get("professional_name"))
+        if len(slots["slots"]) > len(options):
+            answer += f"\n\n_Mostrei {len(options)} de {len(slots['slots'])} horários ao longo do dia. Se preferir outro, diga a hora para eu conferir na agenda._"
+        return answer, state
     state["slot_menu_numbered"] = True
     listing = "\n".join(f"{i}. {datetime.fromisoformat(when):%H:%M}" for i, when in enumerate(options, 1))
+    note = f"\nMostrei {len(options)} de {len(slots['slots'])} opções; também posso consultar um horário específico." if len(slots["slots"]) > len(options) else ""
     return (f"Encontrei estes horários livres para {date.fromisoformat(state['day']):%d/%m}:\n"
-            f"{listing}\nQual horário prefere?"), state
+            f"{listing}{note}\nQual horário prefere?"), state
 
 
 async def begin_reschedule(tenant: UUID, phone: str, business: dict, redis, key: str, preview: bool):
@@ -682,7 +699,7 @@ async def _professionals_availability(tenant, state, inquiry, business, catalog,
             for person in pros:
                 actual = _slot_result(await list_slots(db, tenant, UUID(str(person["id"])), [UUID(value) for value in ids], day), pricing=True)
                 if actual["slots"]:
-                    available.append({"id": str(person["id"]), "name": person["name"], "slots": actual["slots"][:8],
+                    available.append({"id": str(person["id"]), "name": person["name"], "slots": representative_slots(actual["slots"]),
                         "price_cents": actual["price_cents"], "duration_min": actual["duration_min"]})
     except AVAILABILITY_ERRORS:
         state["availability_query"] = {**inquiry, "waiting_for": "retry"}
@@ -1661,7 +1678,7 @@ async def _natural_time_turn(tenant: UUID, phone: str, body: str, state: dict, b
         state["step"] = "reschedule_day" if rescheduling else "date"
     await redis.set(key, json.dumps(state), ex=STATE_TTL)
     return {"answer": ("Esse horário não está disponível. " if choice.kind == "unavailable" else "") +
-            presentation.render_slots([x["name"] for x in catalog if str(x["id"]) in state["services"]], options[:8],
+            presentation.render_slots([x["name"] for x in catalog if str(x["id"]) in state["services"]], representative_slots(options),
                 _preferences(business), timezone=business["timezone"], total_cents=state["price"],
                 duration_min=state["duration"], simulation=preview),
             "step": state["step"]}
@@ -1852,7 +1869,7 @@ async def _planned_slots(tenant: UUID, phone: str, plan: UnderstandingPlan, stat
     options = slots["slots"]
     if clock and relation in {"after", "before"}:
         options = [x for x in options if (datetime.fromisoformat(x).strftime("%H:%M") > clock if relation == "after" else datetime.fromisoformat(x).strftime("%H:%M") < clock)]
-    proposed.update(slots=options[:8], slot_menu_numbered=False, price=slots["price_cents"], duration=slots["duration_min"], step="reschedule_time" if rescheduling else "time")
+    proposed.update(slots=representative_slots(options), slot_menu_numbered=False, price=slots["price_cents"], duration=slots["duration_min"], step="reschedule_time" if rescheduling else "time")
     exact = next((x for x in options if clock and relation == "exact" and datetime.fromisoformat(x).strftime("%H:%M") == clock), None)
     if exact:
         proposed.pop("pending_clock", None);proposed.pop("pending_relation", None)
@@ -1860,7 +1877,7 @@ async def _planned_slots(tenant: UUID, phone: str, plan: UnderstandingPlan, stat
             return await prepare_reschedule_summary(tenant, phone, proposed, exact, business, catalog, redis, key, preview, factual)
         return await prepare_booking_summary(tenant, phone, proposed, exact, business, catalog, redis, key, preview, factual)
     question = ("O horário exato pedido não está disponível. " if clock and relation == "exact" else "") + (
-        presentation.render_slots([x["name"] for x in catalog if str(x["id"]) in ids], options[:8], _preferences(business),
+        presentation.render_slots([x["name"] for x in catalog if str(x["id"]) in ids], representative_slots(options), _preferences(business),
             timezone=business["timezone"], professional=proposed.get("professional_name"), total_cents=slots["price_cents"], duration_min=slots["duration_min"], simulation=preview)
         if options else presentation.render_prompt("unavailable", _preferences(business)))
     result = _bounded_reply(factual, question, proposed["step"] if options else "reschedule_day" if rescheduling else "date")
