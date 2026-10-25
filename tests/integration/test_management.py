@@ -632,3 +632,112 @@ async def test_settlement_rechecks_ledger_changes_and_serializes_different_reque
     final_preview = await settlement_preview(d)
     assert final_preview["summary"]["payable_cents"] == final_preview["summary"]["balance_cents"] == 0
     assert (await c.get(base + "/finance/settlements")).json()["total"] == 1
+
+
+
+@pytest.mark.asyncio
+async def test_opt_in_completion_worker_accrues_commission_and_pending_receivable_once(management_db):
+    """Use a disposable PostgreSQL tenant, real RLS and the actual completion path."""
+    from app.appointment_auto_completion import process_auto_completion
+
+    d = management_db
+    person = await customer(d, name="Cliente da automação")
+    begin = d["now"] - timedelta(minutes=80)
+    appointment_id = await appointment(d, person["id"], start_at=begin, amount=10000)
+    async with d["migrator"].connect() as conn:
+        expected_end = (await conn.execute(text(
+            "SELECT end_at FROM appointments WHERE tenant_id=:tenant AND id=:id"
+        ), {"tenant":d["a"],"id":UUID(appointment_id)})).scalar_one()
+
+    # Defaults disabled and never processes bookings ending before activation.
+    assert await process_auto_completion({}, str(d["a"]), appointment_id, expected_end.isoformat()) == "not_enabled"
+    config = await d["client"].get(d["base"] + "/appointment-auto-completion")
+    assert config.status_code == 200 and config.json()["configuration"]["enabled"] is False
+    enabled = await d["client"].put(d["base"] + "/appointment-auto-completion", json={
+        "expected_version": config.json()["version"],"enabled":True,
+    })
+    assert enabled.status_code == 200, enabled.text
+    assert enabled.json()["configuration"]["enabled"] is True
+    assert await process_auto_completion({}, str(d["a"]), appointment_id, expected_end.isoformat()) == "not_enabled"
+
+    # Model an appointment whose end time followed a prior opt-in, without
+    # waiting in real time or touching any real tenant/booking.
+    activation = (d["now"] - timedelta(hours=3)).isoformat()
+    async with d["migrator"].begin() as conn:
+        await conn.execute(text("""
+            UPDATE management_preferences
+            SET preferences=jsonb_set(preferences, '{auto_completion,enabled_at}',
+                to_jsonb(CAST(:activation AS text)))
+            WHERE tenant_id=:tenant
+        """), {"tenant":d["a"],"activation":activation})
+
+    first = await process_auto_completion({}, str(d["a"]), appointment_id, expected_end.isoformat())
+    assert first == "completed"
+    assert await process_auto_completion({}, str(d["a"]), appointment_id, expected_end.isoformat()) == "already_processed"
+
+    async with d["migrator"].connect() as conn:
+        booking = (await conn.execute(text("""
+            SELECT status,commission_percent_snapshot,commission_cents,total_cents
+            FROM appointments WHERE tenant_id=:tenant AND id=:id
+        """), {"tenant":d["a"],"id":UUID(appointment_id)})).mappings().one()
+        history = (await conn.execute(text("""
+            SELECT details FROM appointment_history
+            WHERE tenant_id=:tenant AND appointment_id=:id AND event='completed'
+        """), {"tenant":d["a"],"id":UUID(appointment_id)})).mappings().all()
+        finance = (await conn.execute(text("""
+            SELECT kind,status,amount_cents,payment_method
+            FROM financial_entries WHERE tenant_id=:tenant AND appointment_id=:id
+        """), {"tenant":d["a"],"id":UUID(appointment_id)})).mappings().all()
+    assert booking["status"] == "completed"
+    assert booking["commission_cents"] == 2500 and booking["commission_percent_snapshot"] == 25
+    assert len(history) == 1 and history[0]["details"]["source"] == "system"
+    assert history[0]["details"]["actor"]["role"] == "system"
+    assert [dict(item) for item in finance] == [{
+        "kind":"income","status":"pending","amount_cents":10000,"payment_method":"other"
+    }]
+    daily = await d["client"].get(d["base"]+"/finance/summary",params={
+        "start_date":str(begin.date()),"end_date":str((d["now"]+timedelta(days=1)).date()),
+    })
+    assert daily.status_code == 200
+    totals = daily.json()["summary"]
+    assert totals["income_cents"] == 0 and totals["balance_cents"] == 0
+    assert totals["pending_income_cents"] == 10000
+
+    dre = await d["client"].get(d["base"]+"/finance/dre",params={
+        "start_date":str(begin.date()),"end_date":str((d["now"]+timedelta(days=1)).date()),
+    })
+    assert dre.status_code == 200
+    assert dre.json()["summary"]["service_revenue_cents"] == 10000
+    assert dre.json()["summary"]["commissions_cents"] == 2500
+
+    disabled = await d["client"].put(d["base"]+"/appointment-auto-completion",json={
+        "expected_version": enabled.json()["version"],"enabled":False,
+    })
+    assert disabled.status_code == 200 and disabled.json()["configuration"]["enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_auto_completion_never_rewrites_cancelled_or_rescheduled_appointments(management_db):
+    from app.appointment_auto_completion import process_auto_completion
+    d=management_db
+    user=await customer(d,name="Cliente sem conclusão automática")
+    start=d["now"]-timedelta(hours=4)
+    one=await appointment(d,user["id"],start_at=start)
+    two=await appointment(d,user["id"],start_at=start+timedelta(hours=1))
+    async with d["migrator"].begin() as conn:
+        await conn.execute(text("""
+           INSERT INTO management_preferences(tenant_id,preferences)
+           VALUES (:tenant,CAST(:body AS jsonb))
+        """),{"tenant":d["a"],"body":'{"auto_completion":{"enabled":true,"enabled_at":"2020-01-01T00:00:00+00:00"}}'})
+        await conn.execute(text("""
+          UPDATE appointments SET status='cancelled',hold_expires_at=NULL
+          WHERE tenant_id=:tenant AND id=:id
+        """),{"tenant":d["a"],"id":UUID(one)})
+    async with d["migrator"].connect() as conn:
+        old=(await conn.execute(text("SELECT end_at FROM appointments WHERE id=:id"),{"id":UUID(one)})).scalar_one()
+        new=(await conn.execute(text("SELECT end_at FROM appointments WHERE id=:id"),{"id":UUID(two)})).scalar_one()
+    assert await process_auto_completion({},str(d["a"]),one,old.isoformat())=="already_processed"
+    assert await process_auto_completion({},str(d["a"]),two,(new+timedelta(hours=2)).isoformat())=="rescheduled"
+    async with d["migrator"].connect() as conn:
+        count=(await conn.execute(text("SELECT count(*) FROM financial_entries WHERE tenant_id=:tenant AND appointment_id IN (:one,:two)"),{"tenant":d["a"],"one":UUID(one),"two":UUID(two)})).scalar_one()
+    assert count==0
