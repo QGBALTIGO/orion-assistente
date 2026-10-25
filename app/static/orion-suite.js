@@ -1203,7 +1203,7 @@
     }
     try{
       const previous=append&&d.historyData?.items||[];
-      const result=await request(mgmt('/customers/'+encodeURIComponent(d.record.id)+'/services?'+query({limit,offset:previous.length}));
+      const result=await request(mgmt('/customers/'+encodeURIComponent(d.record.id)+'/services?'+query({limit,offset:previous.length})));
       if(!stillAccount(c)||!current(c)||state.dialog!==d)return;
       if(!Array.isArray(result?.items)||!Number.isSafeInteger(Number(result.total))||
          Number(result.total)<0||result.items.length>limit||
