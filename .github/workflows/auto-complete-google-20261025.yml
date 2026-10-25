@@ -1,0 +1,98 @@
+name: Orion — automação de agendamentos e diagnóstico Google
+on:
+  push:
+    branches: [codex/orion-google-and-autocomplete-20261025]
+    paths:
+      - 'app/appointment_auto_completion.py'
+      - 'app/management_preferences.py'
+      - 'app/management_models.py'
+      - 'app/worker.py'
+      - 'app/calendar_worker.py'
+      - 'app/integrations_api.py'
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-suite.css'
+      - 'tests/unit/test_appointment_auto_completion.py'
+      - 'tests/integration/test_management.py'
+      - 'ui-tests/appointment-auto-completion.test.mjs'
+      - '.github/workflows/auto-complete-google-20261025.yml'
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: test-support-ci-token-of-64-characters-000000000000000000000000000
+      REDIS_URL: redis://localhost:6379/15
+      REQUIRE_POSTGRES_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar dependências pinadas
+        run: |
+          python -m pip install -c requirements.lock ".[test]"
+          python -m pip check
+          python -m py_compile app/appointment_auto_completion.py app/management_models.py app/management_preferences.py app/worker.py app/calendar_worker.py app/integrations_api.py
+      - name: Provisionar papéis isolados da CI
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+      - name: Migrar somente o PostgreSQL efêmero
+        run: alembic upgrade head
+      - name: Finalização automática, comissão, histórico, recebível e Google
+        env:
+          ORION_GOOGLE_TEST_REDIS_URL: redis://localhost:6379/15
+        run: |
+          pytest -q -ra \
+            tests/unit/test_appointment_auto_completion.py \
+            tests/unit/test_appointment_lifecycle_unit.py \
+            tests/unit/test_google_calendar_unit.py \
+            tests/integration/test_management.py \
+            tests/integration/test_appointment_lifecycle.py \
+            tests/integration/test_google_calendar_integration.py
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependências de teste fixadas
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Verificar fonte do painel
+        run: node --check app/static/orion-suite.js
+      - name: Controles da Agenda e regressões existentes
+        run: node --test ui-tests/appointment-auto-completion.test.mjs ui-tests/agenda-lifecycle.test.mjs ui-tests/login-experience.test.mjs
+      - name: Testes DOM completos
+        run: npm test --prefix ui-tests
