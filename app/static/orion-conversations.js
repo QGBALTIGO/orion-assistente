@@ -33,7 +33,7 @@
       if(!current())return;
       const previousList=host.querySelector('.os-central-thread-list');
       if(previousList)s.listScroll=previousList.scrollTop;
-      const previousTimeline=host.querySelector('.os-central-messages');
+      const previousTimeline=host.querySelector('.os-central-thread-scroll');
       if(previousTimeline&&s.renderedKey){
         const atBottom=previousTimeline.scrollHeight-previousTimeline.clientHeight-previousTimeline.scrollTop<75;
         s.positions.set(s.renderedKey,{top:previousTimeline.scrollTop,atBottom});
@@ -100,7 +100,7 @@
         '<div class="os-central-shell'+(s.selected?' os-central-show-thread':'')+'">'+listPanel+'<section class="os-central-thread-panel" aria-label="Atendimento selecionado">'+thread+'</section></div></div>';
       const updatedList=host.querySelector('.os-central-thread-list');
       if(updatedList)updatedList.scrollTop=s.listScroll||0;
-      const updatedTimeline=host.querySelector('.os-central-messages');
+      const updatedTimeline=host.querySelector('.os-central-thread-scroll');
       const identity=key();
       if(updatedTimeline){
         const position=s.positions.get(identity);
@@ -127,7 +127,7 @@
       const rows=s.preserved.get(key());if(!rows)return '';
       return '<details open class="os-central-preserved"><summary>Histórico preservado no dispositivo</summary><p>Esta consulta não altera as contagens de leitura da central.</p><ol>'+rows.map(m=>'<li><small>'+esc(m.direction==='in'?'Recebida':'Enviada')+' · '+esc(new Date(m.at).toLocaleString('pt-BR'))+'</small><p class="os-inbox-text">'+esc(m.body)+'</p>'+(m.direction==='out'?'<small>'+esc(m.delivery==='read'||m.delivery==='played'?'Lida':m.delivery==='delivered'?'Entregue':'Sem confirmação de entrega')+'</small>':'')+'</li>').join('')+'</ol></details>';
     }
-    function pendingHTML(){return s.pending.length?'<section class="os-card"><h3>Avisos para a equipe</h3>'+window.OrionCommunication.pendingHTML(s.pending,canWrite,s.busy)+'</section>':'';}
+    function pendingHTML(){return s.pending.length?'<details class="os-central-pending-notices"><summary>Avisos da equipe ('+s.pending.length+')</summary>'+window.OrionCommunication.pendingHTML(s.pending,canWrite,s.busy)+'</details>':'';}
     async function load({detail=true}={}){
       const seq=++s.seq,selection=key();
       const list=await request(path('/conversations?offset='+s.offset+(s.unread?'&unread=true':'')+'&q='+encodeURIComponent(s.q)+(s.channel?'&channel_id='+encodeURIComponent(s.channel):'')+(s.mode?'&mode='+encodeURIComponent(s.mode):'')));
