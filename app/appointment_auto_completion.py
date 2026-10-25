@@ -118,16 +118,17 @@ async def process_auto_completion(ctx: dict, tenant_id: str, appointment_id: str
 
 
 async def scan_auto_completions(ctx: dict):
-    """Bounded scanner; no customer data or cross-tenant modifications."""
+    """Bounded recent-work scanner; only tenant+booking IDs leave the support role.
+
+    Runtime validates opt-in per tenant. We never query the private management
+    preferences through app_support or auto-complete long-ago appointments.
+    """
     async with support_session_factory()() as db:
         rows = (await db.execute(text("""
             SELECT a.tenant_id,a.id,a.end_at FROM appointments a
-            JOIN management_preferences prefs ON prefs.tenant_id=a.tenant_id
             WHERE a.status='confirmed' AND a.end_at<=clock_timestamp()
-              AND prefs.preferences #>> '{auto_completion,enabled}'='true'
-              AND a.end_at >= CAST(
-                prefs.preferences #>> '{auto_completion,enabled_at}' AS timestamptz)
-            ORDER BY a.end_at,a.id LIMIT :limit
+              AND a.end_at >= clock_timestamp()-interval '24 hours'
+            ORDER BY a.end_at DESC,a.id LIMIT :limit
         """), {"limit": SCAN_BATCH})).mappings().all()
     now = datetime.now(timezone.utc)
     queued = 0
