@@ -256,7 +256,7 @@
   }
   async function loadRoute(){const c=context();try{
     switch(state.route){
-      case 'dashboard':{const d=await request(mgmt('/dashboard?'+query({start_date:dateKey(),end_date:dateKey()})));if(!current(c))return;state.data.dashboard=d;renderDashboard(d);break;}
+      case 'dashboard':{const today=dateKey();const d=await request(mgmt('/dashboard?'+query({start_date:today,end_date:today})));if(!current(c))return;state.data.dashboard=d;renderDashboard(d,today);await loadDashboardAgenda(c,today);break;}
       case 'agenda':void loadGoogle();await loadAgenda(c);break;
       case 'clientes':await loadCustomers(c);break;
       case 'inbox':await window.OrionInbox?.mount({host:$('osInboxHost'),request,tenantId:state.tenantId,canWrite:writable()});break;
@@ -274,13 +274,66 @@
       case 'novidades':renderNews();break;
     }
   }catch(error){if(current(c))bodyHTML(errorHTML(error));}}
-  function renderDashboard(data){
+  function dashboardAgendaFrame(today){
+    return '<section class="os-card os-dashboard-agenda-preview" aria-labelledby="osDashboardAgendaTitle">'+
+      '<div class="os-dashboard-agenda-head"><div class="os-dashboard-agenda-heading">'+
+        '<span class="os-square-icon" aria-hidden="true">'+icon('calendar')+'</span><div class="os-dashboard-agenda-heading-copy">'+
+        '<p class="os-dashboard-agenda-eyebrow">AGENDA DO DIA</p><h3 id="osDashboardAgendaTitle">Agendamentos de hoje</h3>'+
+        '<p class="os-dashboard-agenda-date">'+esc(longDay(today))+'</p></div></div>'+
+        '<div class="os-dashboard-agenda-controls">'+
+          button('Atualizar','dashboard-agenda-refresh','os-ghost os-small','refresh')+
+          button('Abrir Agenda','dashboard-agenda-full','os-outline os-small','chevron')+'</div></div>'+
+      '<div class="os-dashboard-agenda-content" id="osDashboardAgendaContent" aria-live="polite" aria-busy="true">'+loading('Consultando os agendamentos de hoje…')+'</div>'+
+      '</section>';
+  }
+  function dashboardAgendaItems(result,today){
+    const total=number(result.total),list=result.items||[],shown=list.slice(0,8);
+    if(!total)return '<div class="os-dashboard-agenda-empty">'+
+      '<span class="os-dashboard-agenda-empty-icon" aria-hidden="true">'+icon('calendar')+'</span>'+
+      '<strong>Nenhum agendamento para hoje</strong>'+
+      '<p>Assim que houver atendimentos registrados para este dia, eles aparecerão aqui.</p>'+
+      (writable()?button('Novo agendamento','new-appointment','os-outline os-small','plus'):'')+'</div>';
+    return '<div class="os-dashboard-agenda-summary"><span>'+total+' agendamento'+(total===1?'':'s')+' no dia</span>'+
+      (total>shown.length?'<span>Exibindo '+shown.length+' de '+total+'</span>':'<span>Somente '+esc(fmtDate(today))+'</span>')+'</div>'+
+      '<div class="os-agenda-list os-dashboard-agenda-list">'+shown.map(appointmentRow).join('')+'</div>'+
+      (total>shown.length?'<div class="os-dashboard-agenda-more"><span>Mais atendimentos hoje? Consulte a lista completa.</span>'+
+        button('Ver todos os agendamentos','dashboard-agenda-full','os-ghost os-small','chevron')+'</div>':'');
+  }
+  async function loadDashboardAgenda(c=context(),today=dateKey()){
+    const target=$('osDashboardAgendaContent');if(!current(c)||!target)return;
+    const read=state.dashboardAgendaRead=(state.dashboardAgendaRead||0)+1;
+    target.setAttribute('aria-busy','true');
+    target.innerHTML=loading('Consultando os agendamentos de hoje…');
+    try{
+      let data=await request(apiPath('/appointments?'+query({paged:true,day:today,limit:50,offset:0})));
+      if(!current(c)||read!==state.dashboardAgendaRead)return;
+      if(Array.isArray(data))data={items:data,total:data.length,has_more:false};
+      if(!data||!Array.isArray(data.items)||!Number.isInteger(Number(data.total))||
+         Number(data.total)<0||data.items.length>50||Number(data.total)<data.items.length||
+         (Number(data.total)>0&&!data.items.length))throw Error('A consulta retornou dados incompletos. Atualize a agenda.');
+      if(data.items.some(a=>!a||typeof a.id!=='string'||typeof a.start_at!=='string'||
+          !Number.isFinite(Date.parse(a.start_at))||dateKey(new Date(a.start_at))!==today)){
+        throw Error('A consulta de hoje não pôde ser confirmada. Atualize para tentar novamente.');
+      }
+      state.data.dashboardAgenda={...data,day:today};
+      target.innerHTML=dashboardAgendaItems(data,today);
+    }catch(error){
+      if(!current(c)||read!==state.dashboardAgendaRead)return;
+      state.data.dashboardAgenda=null;
+      target.innerHTML='<div class="os-dashboard-agenda-error" role="alert">'+icon('info')+
+        '<div><strong>Não foi possível carregar os agendamentos de hoje</strong><p>'+esc(error?.message||'Confira sua conexão e tente novamente.')+'</p></div>'+
+        button('Tentar novamente','dashboard-agenda-refresh','os-outline os-small','refresh')+'</div>';
+    }finally{
+      if(current(c)&&read===state.dashboardAgendaRead)target.removeAttribute('aria-busy');
+    }
+  }
+  function renderDashboard(data,today=dateKey()){
     const s=data.summary||{},t=tenant(),can=writable(),hours=Number(new Intl.DateTimeFormat('en-GB',{hour:'2-digit',hourCycle:'h23',timeZone:zone()}).format(new Date()));
     const greeting=hours<12?'Bom dia':hours<18?'Boa tarde':'Boa noite';
     const quick=(titleText,sub,action,symbol,primary=false)=>'<button type="button" class="os-quick-action'+(primary?' os-primary':'')+'" data-os-action="'+action+'"'+(!can&&action!=='agenda-open'?' disabled':'')+'><span class="os-action-icon">'+icon(symbol)+'</span><div><strong>'+esc(titleText)+'</strong><small>'+esc(sub)+'</small></div>'+icon('chevron')+'</button>';
     let html='<div class="os-dashboard-title"><p class="os-date-label">'+esc(longDay(dateKey()))+'</p><h1>Dashboard</h1><p class="os-dashboard-greeting">'+greeting+', '+esc(t?.name||'seu negócio')+'.</p></div>'+(!can?'<div class="os-notice os-readonly">'+icon('lock')+'<p>Seu acesso a esta empresa é somente para consulta.</p></div>':'')+'<div class="os-space">';
     html+='<section class="os-quick-actions" aria-label="Ações rápidas">'+quick('Novo agendamento','Marque um horário em segundos','new-appointment','calendarPlus',true)+quick('Novo cliente','Cadastre nome e telefone','new-customer','userPlus')+quick('Ver agenda',number(s.appointments)+' agendado(s) hoje','agenda-open','calendar')+'</section>';
-    html+='<section><h2 class="os-today-title">Hoje no seu negócio</h2><div class="os-stats">'+[[s.appointments,'Agendados'],[s.completed,'Atendidos'],[number(s.cancelled)+number(s.no_show),'Cancel. / faltas']].map(([v,l])=>'<div class="os-stat"><strong>'+number(v)+'</strong><small>'+l+'</small></div>').join('')+'</div></section></div>';
+    html+='<section class="os-dashboard-today"><h2 class="os-today-title">Hoje no seu negócio</h2><div class="os-stats">'+[[s.appointments,'Agendados'],[s.completed,'Atendidos'],[number(s.cancelled)+number(s.no_show),'Cancel. / faltas']].map(([v,l])=>'<div class="os-stat"><strong>'+number(v)+'</strong><small>'+l+'</small></div>').join('')+'</div>'+dashboardAgendaFrame(today)+'</section></div>';
     bodyHTML(html);
   }
   const agendaStates={
@@ -1393,6 +1446,12 @@
       case 'approve-invitation':case 'revoke-invitation':{if(!state.data.team?.can_manage)return;const invitation=rows(state.data.team.invitations).find(i=>i.id===element.dataset.invitation);if(!invitation)return;const approval=name==='approve-invitation',path=mgmt('/team/invitations/'+encodeURIComponent(invitation.id));confirmMutation(approval?'Aprovar acesso':'Revogar convite',approval?'Autorizar o acesso de '+(invitation.claimed_by_name||invitation.email||'quem aceitou o convite')+' como '+(teamRoles[invitation.role]||invitation.role)+'.':'Este convite não poderá mais ser usado para entrar na equipe.',()=>request(path,'PATCH',{action:approval?'approve':'revoke',expected_version:invitation.version}),approval?'Acesso aprovado.':'Convite revogado.');break;}
       case 'new-appointment':await showAppointment();break;
       case 'new-block':await showBlock();break;
+      case 'dashboard-agenda-refresh':if(state.route==='dashboard')await open('dashboard',{keepScroll:true});break;
+      case 'dashboard-agenda-full':{
+        f.agendaDay=dateKey();f.agendaMode='list';f.agendaOffset=0;
+        f.agendaQuery='';f.agendaProfessional='';f.agendaStatus='all';
+        await open('agenda');break;
+      }
       case 'agenda-open':await open('agenda');break;
       case 'agenda-reload':await loadAgenda(context());void loadGoogle();break;
       case 'agenda-clear':f.agendaProfessional='';f.agendaStatus='all';f.agendaQuery='';f.agendaOffset=0;await open('agenda',{keepScroll:true});break;
