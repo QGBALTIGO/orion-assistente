@@ -59,7 +59,10 @@ test('histórico expansível traz serviços agrupados, valores, desconto, profis
   h.click('[data-os-customer="'+customerId+'"]');
   const details=h.document.querySelector('#osCustomerServiceHistory');
   assert.equal(details.open,false);
-  details.querySelector('summary').click();await flush();
+  details.querySelector('summary').click();
+  assert.equal(h.calls.filter(x=>x.path.includes('/services?')).length,1,
+    'o primeiro toque consulta sem depender do evento toggle tardio');
+  await flush();
   assert.equal(details.open,true);
   assert.equal(h.calls.filter(x=>x.path.includes('/services?')).length,1);
   assert.equal(details.querySelectorAll('.os-client-history-visit').length,1);

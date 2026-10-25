@@ -1262,9 +1262,18 @@
         record&&writable()?button('Excluir','delete-customer','os-ghost','trash'):'',afterFields),{record}))return;
     if(record){
       const opened=state.dialog,history=$('osCustomerServiceHistory');
-      history?.addEventListener('toggle',()=>{
-        if(history.open&&state.dialog===opened&&!opened.historyData&&!opened.historyLoading)
+      const startHistory=()=>{
+        if(state.dialog===opened&&!opened.historyData&&!opened.historyLoading)
           void loadCustomerServiceHistory(opened);
+      };
+      // A direct summary click is deterministic in Safari and avoids waiting
+      // for its deferred native toggle event. Toggle also handles keyboard or
+      // programmatic expansion. The loading guard prevents duplicate requests.
+      history?.querySelector('summary')?.addEventListener('click',()=>{
+        if(!history.open)startHistory();
+      });
+      history?.addEventListener('toggle',()=>{
+        if(history.open)startHistory();
       });
     }
   }
