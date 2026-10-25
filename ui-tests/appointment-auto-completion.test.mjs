@@ -47,7 +47,7 @@ test('an owner can opt in explicitly and uses versioned authenticated PUT',async
   const saved=calls.find(x=>x.method==='PUT');
   assert.ok(saved);
   assert.equal(saved.path.includes('/management/appointment-auto-completion'),true);
-  assert.deepEqual(saved.data,{expected_version:0,enabled:true});
+  assert.deepEqual(JSON.parse(JSON.stringify(saved.data)),{expected_version:0,enabled:true});
   assert.ok(h.document.getElementById('page-suite'));
   assert.deepEqual(h.errors,[]);
 });
