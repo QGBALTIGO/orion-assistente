@@ -178,3 +178,48 @@ async def test_minimum_notice_and_horizon_still_restrict_grid_before_any_proposa
         with pytest.raises(HTTPException) as caught:
             await booking.list_slots(db, TENANT, PRO, [SERVICE], target, now=clock)
         assert caught.value.status_code == 422 and db.calls["working_hours"] == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", ["free", "pause", "block", "confirmed", "buffers", "no_work"])
+async def test_public_verified_grid_matches_the_original_write_validator_without_one_query_per_clock(case):
+    # A public base/combo/add-on selection has already been validated by
+    # selection_contract. Its synthetic aggregate is checked identically.
+    db = Database(step=15)
+    if case == "pause":
+        db.pauses.append({"start_time": time(11), "end_time": time(12)})
+    if case == "block":
+        db.schedule_blocks.append(db.interval(14, 15))
+    if case == "confirmed":
+        db.appointments.append(db.interval(10, 11, id=UUID(int=40),
+            status="confirmed", hold_expires_at=NOW + timedelta(minutes=5)))
+    if case == "buffers":
+        db.item.update(duration_min=70, prep_min=5, cleanup_min=15, price_cents=5900)
+    if case == "no_work":
+        db.hours = None
+    slots, reason = await booking.verified_slot_grid(
+        db, TENANT, PRO, db.shop, [db.item], DAY, NOW, strict_errors=True)
+    if case == "no_work":
+        assert db.calls == Counter({"working_hours": 1})
+        assert slots == [] and reason == "no_working_hours"
+    else:
+        assert db.calls == Counter({"working_hours": 1, "working_breaks": 1,
+            "time_off": 1, "schedule_blocks": 1, "appointments": 1})
+        assert slots and reason == "available"
+    assert slots == await exhaustive(db)
+
+
+@pytest.mark.asyncio
+async def test_public_grid_refuses_to_turn_infrastructure_failure_into_no_available_hours():
+    db = Database()
+    original = db.execute
+
+    async def unreachable(statement, params):
+        if "FROM schedule_blocks" in str(statement):
+            raise ConnectionError("Synthetic calendar query outage")
+        return await original(statement, params)
+
+    db.execute = unreachable
+    with pytest.raises(ConnectionError):
+        await booking.verified_slot_grid(
+            db, TENANT, PRO, db.shop, [db.item], DAY, NOW, strict_errors=True)
