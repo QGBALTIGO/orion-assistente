@@ -33,9 +33,10 @@ test('financial cards use precisely the business-local day and the Finance repor
   assert.ok(preview,'finances appear below Agenda in the same business-today section');
   assert.ok(todaySection.querySelector('.os-dashboard-agenda-preview').compareDocumentPosition(preview)&h.window.Node.DOCUMENT_POSITION_FOLLOWING);
   assert.equal(preview.querySelector('#osDashboardFinanceContent').getAttribute('aria-busy'),null);
-  assert.equal(preview.querySelector('.os-dashboard-finance-values').children.length,2);
+  assert.equal(preview.querySelector('.os-dashboard-finance-values').children.length,3);
   assert.match(preview.textContent,/Saldo\/Lucro/);
   assert.match(preview.textContent,/Lançamentos/);
+  assert.match(preview.textContent,/A receber/);
   assert.ok(preview.textContent.includes(money(90000)));
   assert.match(preview.textContent,/2/);
   assert.equal(h.document.querySelector('#osDashboardGoals').hidden,true,'no goals: do not invent a bar');
@@ -169,7 +170,7 @@ test('outstanding financial promises cannot update the wrong page after navigati
 
 test('Dashboard finance blocks use the shared Orion colors with mobile-specific sizing',async()=>{
   const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
-  assert.match(css,/\.os-dashboard-finance-values\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(css,/\.os-dashboard-finance-values\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
   assert.match(css,/@container dashboard-finance \(max-width:520px\)/);
   assert.match(css,/\.os-dashboard-goals\[hidden\]\{display:none!important\}/);
   assert.match(css,/var\(--os-primary\)/);

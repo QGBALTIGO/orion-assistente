@@ -338,7 +338,7 @@
       '<section id="osDashboardGoals" class="os-card os-dashboard-goals" aria-live="polite" hidden></section>';
   }
   function dashboardFinanceValues(s){
-    const balance=Number(s?.balance_cents),count=Number(s?.count),pending=Number(s?.pending_income_cents);
+    const balance=Number(s?.balance_cents),count=Number(s?.count),pending=Number(s?.pending_income_cents ?? 0);
     if(!Number.isSafeInteger(balance)||!Number.isSafeInteger(count)||count<0||!Number.isSafeInteger(pending)||pending<0)
       throw Error('Não foi possível confirmar os valores financeiros.');
     const card=(name,value,symbol,css)=>'<div class="os-dashboard-finance-value '+css+'">'+

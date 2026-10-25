@@ -80,8 +80,8 @@ jobs:
           pytest -q -ra \
             tests/integration/test_auto_completion_postgres.py \
             tests/integration/test_google_calendar_integration.py \
-            tests/integration/test_management.py
-            tests/integration/test_appointment_lifecycle.py
+            tests/integration/test_management.py \
+            tests/integration/test_appointment_lifecycle.py \
             tests/unit/test_auto_completion.py
   javascript:
     runs-on: ubuntu-24.04
