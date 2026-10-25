@@ -90,8 +90,10 @@ test('Dashboard keeps management actions and daily totals without pilot banners 
   };
   assertWithoutOnboarding();
   assert.deepEqual(Array.from(page.querySelectorAll('.os-quick-actions button'), element => element.textContent.replace(/\\s+/g, ' ').trim()), [
-    'Novo agendamentoMarque um horário em segundos', 'Novo clienteCadastre nome e telefone', 'Ver agenda0 agendado(s) hoje',
+    'Novo agendamentoMarque um horário em segundos', 'Novo clienteCadastre nome e telefone',
   ]);
+  assert.equal(page.querySelector('.os-quick-actions [data-os-action=agenda-open]'), null, 'the duplicated Ver agenda shortcut must not be rendered');
+  assert.ok(page.querySelector('.os-dashboard-agenda-preview'), 'the today-only agenda preview must remain');
   assert.deepEqual(Array.from(page.querySelectorAll('.os-stat strong'), element => element.textContent), ['0', '0', '3']);
   assert.equal(page.querySelector('[data-os-route=site]'), null, 'the Dashboard must not display a redundant site link');
   assert.ok(h.document.querySelector('#osNav [data-os-route=site]'), 'site access remains available in the navigation');
@@ -117,13 +119,14 @@ test('Dashboard viewer can navigate but cannot create or access the WhatsApp ope
   assert.equal(h.document.querySelector('#osNav [data-os-route]').dataset.osRoute, 'dashboard');
   assert.equal(h.document.querySelector('[data-os-action=new-appointment]').disabled, true);
   assert.equal(h.document.querySelector('[data-os-action=new-customer]').disabled, true);
-  assert.equal(h.document.querySelector('[data-os-action=agenda-open]').disabled, false);
+  assert.equal(h.document.querySelector('.os-quick-actions [data-os-action=agenda-open]'), null);
+  assert.equal(h.document.querySelector('[data-os-action=dashboard-agenda-full]').disabled, false);
   h.click('[data-os-action=new-customer]');
   await h.window.OrionSuite.open('dispositivo');
   await h.window.OrionSuite.open('conversas'); await flush();
   assert.equal(h.document.querySelector('[data-os-form=customer]'), null);
   assert.deepEqual(opened, []);
-  h.click('[data-os-action=agenda-open]'); await flush();
+  h.click('[data-os-action=dashboard-agenda-full]'); await flush();
   assert.equal(h.document.getElementById('page-suite').dataset.osCurrentRoute, 'agenda');
   assert.equal(h.calls.some(call => call.method !== 'GET'), false);
 });
