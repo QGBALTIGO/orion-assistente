@@ -9,6 +9,7 @@ on:
       - 'app/calendar_worker.py'
       - 'app/integrations_api.py'
       - 'app/static/orion-suite.js'
+      - 'scripts/prepare_vercel_orion.py'
       - 'alembic/versions/0031_auto_complete_appointments.py'
       - 'tests/integration/test_auto_completion_postgres.py'
       - 'tests/integration/test_google_calendar_integration.py'
