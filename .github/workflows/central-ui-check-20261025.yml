@@ -1,0 +1,48 @@
+name: Orion Central — UI e layout isolados
+on:
+  push:
+    branches: [codex/orion-central-redesign-20261025]
+    paths:
+      - 'app/static/orion-inbox.css'
+      - 'app/static/orion-inbox.js'
+      - 'app/static/orion-conversations.js'
+      - 'ui-tests/**'
+      - '.github/workflows/central-ui-check-20261025.yml'
+permissions:
+  contents: read
+jobs:
+  central-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar testes DOM com dependências fixas
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Sintaxe dos controladores alterados
+        run: |
+          node --check app/static/orion-inbox.js
+          node --check app/static/orion-conversations.js
+      - name: Testes específicos da Central
+        run: node --test ui-tests/inbox.test.mjs ui-tests/conversations.test.mjs ui-tests/central-redesign.test.mjs
+      - name: Testes DOM completos do painel
+        run: npm test --prefix ui-tests
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar navegador de QA visual
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium webkit
+      - name: Revisar layouts e capturas com dados fictícios
+        run: python ui-tests/central-layout.py
+      - name: Guardar capturas, incluindo erros
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-redesign-screenshots
+          path: artifacts/central-redesign
+          retention-days: 7
+          if-no-files-found: warn
