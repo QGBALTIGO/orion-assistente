@@ -8,11 +8,14 @@
   async function mount({host,request,tenantId,canWrite=false}){
     unmount();if(!host)return;
     const state={host,request,tenantId,canWrite,alive:true,controller:new AbortController(),labels:[],replies:[],customers:[],customer:null,
-      selected:'',editor:null,tab:'customers',query:'',label:'',offset:0,hasMore:false,busy:false,confirmation:null,sequence:0,central:false,tools:true,crmLoaded:false};
+      selected:'',editor:null,tab:'customers',crmView:'customers',replyQuery:'',query:'',label:'',offset:0,hasMore:false,busy:false,confirmation:null,sequence:0,central:false,tools:true,crmLoaded:false};
     active=state;
     const current=()=>active===state&&state.alive&&host.isConnected;
     const path=value=>'/api/v1/tenants/'+encodeURIComponent(tenantId)+'/management/inbox'+value;
     const query=selector=>host.querySelector(selector);
+    const initials=value=>String(value||'?').trim().split(/\s+/).slice(0,2).map(item=>Array.from(item)[0]||'').join('').toLocaleUpperCase('pt-BR');
+    const readableDate=(value,zone)=>{try{const date=new Date(value);if(!Number.isFinite(date.getTime()))return 'Data indisponível';return new Intl.DateTimeFormat('pt-BR',{timeZone:zone||'America/Sao_Paulo',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(date);}catch{return 'Data indisponível';}};
+    const appointmentStatus={confirmed:'Confirmado',cancelled:'Cancelado',completed:'Concluído',no_show:'Não compareceu',hold:'Reserva temporária',expired:'Reserva expirada'};
     const notice=(value,error=false)=>{const area=query('[data-inbox-notice]');if(area){area.textContent=value;area.setAttribute('role',error?'alert':'status');}};
     function render(){
       if(!current())return;
@@ -20,23 +23,44 @@
       window.OrionConversations?.unmount();
       window.OrionFlows?.unmount();
       const disabled=state.busy?'disabled':'',write=canWrite&&!state.busy?'':'disabled',e=state.editor;
-      const tabButton=(id,label)=>'<button type="button" class="os-button '+(state.tab===id?'':'os-outline')+'" role="tab" aria-selected="'+(state.tab===id)+'" data-inbox-tab="'+id+'" '+disabled+'>'+label+'</button>';
-      const moreTabs=state.tools?'<details class="os-inbox-more" '+(state.tab!=='conversations'?'open':'')+'><summary>Ferramentas de apoio</summary><div class="os-inbox-more-menu" role="tablist" aria-label="Ferramentas de apoio">'+
-        tabButton('customers','Clientes e etiquetas')+
-        tabButton('replies','Respostas rápidas')+
-        tabButton('flows','Simulações de fluxos')+
-        '<p class="os-inbox-draft-note">Fluxos são apenas rascunhos: não executam ações nem enviam mensagens.</p></div></details>':'';
-      const header='<header class="os-inbox-topbar"><div class="os-inbox-topbar-title"><span class="os-inbox-intro"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3ZM8 8h8M8 12h5"/></svg></span></span><div><h2>Atendimento da empresa</h2><p>Conversas primeiro. Ferramentas de apoio quando precisar.</p></div></div><nav class="os-inbox-primary-nav" aria-label="Áreas da central">'+(state.central?tabButton('conversations','Conversas'):'')+moreTabs+'</nav></header>';
+      const tabButton=(id,label)=>'<button type="button" class="os-inbox-nav-tab" role="tab" aria-selected="'+(state.tab===id)+'" data-inbox-tab="'+id+'" '+disabled+'>'+label+'</button>';
+      const header='<nav class="os-inbox-topbar os-inbox-primary-nav" role="tablist" aria-label="Seções da Central de Atendimento">'+
+        (state.central?tabButton('conversations','Conversas'):'')+
+        (state.tools?tabButton('customers','Clientes')+tabButton('replies','Respostas rápidas')+tabButton('flows','Simulações'):'')+
+        '</nav>';
       const confirmation=state.confirmation?'<div class="os-notice" role="group" aria-label="Confirmar exclusão"><p>Excluir '+esc(state.confirmation.name)+'? '+(state.confirmation.collection==='/labels'?'A etiqueta será retirada dos clientes associados.':'A resposta rápida será retirada da biblioteca.')+'</p>'+button('Cancelar','cancel-delete',disabled)+button('Confirmar exclusão','confirm-delete',write)+'</div>':'';
-      const people=state.customers.length?state.customers.map(c=>'<button type="button" class="os-inbox-person" data-inbox-customer="'+esc(c.id)+'" '+disabled+' aria-pressed="'+(state.selected===c.id)+'"><strong>'+esc(c.name)+'</strong><small>'+esc(c.phone||'Sem telefone')+'</small></button>').join(''):'<p>Nenhum cliente encontrado com estes filtros.</p>';
-      const customers='<div class="os-inbox-grid">'+
-        '<section class="os-card"><div class="os-inbox-heading"><div><h2>Clientes cadastrados</h2><p>Consulte dados existentes, sem criar contatos duplicados.</p></div></div>'+
-        '<form class="os-inbox-form" data-inbox-form="search"><label for="inboxQuery">Nome ou telefone</label><input id="inboxQuery" name="q" type="search" maxlength="100" placeholder="Buscar cliente" value="'+esc(state.query)+'"><label for="inboxFilter">Filtrar por etiqueta</label><select id="inboxFilter" name="label"><option value="">Todas as etiquetas</option>'+state.labels.map(l=>'<option value="'+esc(l.id)+'" '+(state.label===l.id?'selected':'')+'>'+esc(l.name)+'</option>').join('')+'</select><button class="os-button" '+disabled+'>Pesquisar</button></form>'+
-        '<div class="os-inbox-list">'+people+'</div><div class="os-actions">'+button('Anterior','previous',state.offset>0?disabled:'disabled')+button('Próxima página','next',state.hasMore?disabled:'disabled')+'</div></section>'+
-        '<section class="os-card os-inbox-context"><h2>Informações do cliente</h2>'+customerHTML()+'</section></div>'+
-        '<section class="os-card"><div class="os-inbox-heading"><div><h2>Etiquetas da empresa</h2><p>Organize contatos sem alterar consentimentos de marketing.</p></div>'+button('Nova etiqueta','new-label',write)+'</div>'+
-        '<div class="os-inbox-tags">'+(state.labels.length?state.labels.map(l=>'<div class="os-inbox-tag"><span class="os-inbox-swatch" style="background-color:'+esc(/^#[0-9a-f]{6}$/i.test(l.color)?l.color:'#2e7bf6')+'"></span><span>'+esc(l.name)+'</span>'+button('Editar','edit-label','data-id="'+esc(l.id)+'" '+write)+button('Excluir','delete-label','data-id="'+esc(l.id)+'" '+write)+'</div>').join(''):'<p>Nenhuma etiqueta cadastrada.</p>')+'</div>'+(e?.kind==='label'?labelForm(e):'')+'</section>';
-      const replies='<section class="os-card"><div class="os-inbox-heading"><div><h2>Respostas rápidas</h2><p>Modelos de texto para revisar antes de usar no atendimento. Não enviam automaticamente.</p></div>'+button('Nova resposta','new-reply',write)+'</div><label for="inboxReplySearch">Pesquisar na biblioteca</label><input id="inboxReplySearch" type="search" placeholder="Título, categoria ou texto"><div class="os-inbox-list" data-inbox-replies>'+repliesHTML(state.replies,write)+'</div>'+(e?.kind==='reply'?replyForm(e):'')+'</section>';
+      const people=state.customers.length?state.customers.map(c=>'<button type="button" class="os-inbox-person" data-inbox-customer="'+esc(c.id)+'" '+disabled+' aria-pressed="'+(state.selected===c.id)+'">'+
+        '<span class="os-inbox-person-avatar" aria-hidden="true">'+esc(initials(c.name||c.phone))+'</span>'+
+        '<span class="os-inbox-person-copy"><strong>'+esc(c.name)+'</strong><small>'+esc(c.phone||'Sem telefone')+'</small></span>'+
+        '<span class="os-inbox-person-arrow" aria-hidden="true">›</span></button>').join(''):
+        '<div class="os-inbox-empty"><strong>Nenhum cliente encontrado</strong><p>Tente outro nome, telefone ou etiqueta.</p></div>';
+      const subnav='<nav class="os-inbox-subnav" role="group" aria-label="Ferramentas de clientes">'+
+        '<button type="button" data-inbox-view="customers" aria-pressed="'+(state.crmView==='customers')+'">Clientes cadastrados</button>'+
+        '<button type="button" data-inbox-view="labels" aria-pressed="'+(state.crmView==='labels')+'">Etiquetas</button></nav>';
+      const contacts='<div class="os-inbox-grid'+(state.selected?' os-inbox-show-customer':'')+'">'+
+        '<section class="os-card os-inbox-contacts" aria-label="Lista de clientes"><div class="os-inbox-heading"><div><h2>Clientes cadastrados</h2><p>Pesquise os contatos da empresa.</p></div></div>'+
+        '<form class="os-inbox-form" data-inbox-form="search"><div class="os-inbox-search-row">'+
+        '<label class="os-inbox-search-input" for="inboxQuery"><span>Nome ou telefone</span><input id="inboxQuery" name="q" type="search" maxlength="100" placeholder="Buscar cliente" value="'+esc(state.query)+'"></label>'+
+        '<label class="os-inbox-search-filter" for="inboxFilter"><span>Etiqueta</span><select id="inboxFilter" name="label"><option value="">Todas</option>'+state.labels.map(l=>'<option value="'+esc(l.id)+'" '+(state.label===l.id?'selected':'')+'>'+esc(l.name)+'</option>').join('')+'</select></label></div>'+
+        '<button class="os-button os-inbox-search-submit" '+disabled+'>Buscar clientes</button></form>'+
+        '<div class="os-inbox-list os-inbox-people-list">'+people+'</div>'+
+        '<div class="os-inbox-pagination">'+button('Anterior','previous',state.offset>0?disabled:'disabled')+button('Próxima página','next',state.hasMore?disabled:'disabled')+'</div></section>'+
+        '<section class="os-card os-inbox-context" aria-label="Ficha de cliente"><h2 class="os-inbox-context-heading">Informações do cliente</h2>'+customerHTML()+'</section></div>';
+      const labelsPanel='<section class="os-card os-inbox-labels-panel"><div class="os-inbox-heading"><div><h2>Etiquetas da empresa</h2>'+
+        '<p>Organize seus clientes sem modificar consentimentos de marketing.</p></div>'+
+        button('Nova etiqueta','new-label',write)+'</div>'+
+        (e?.kind==='label'?labelForm(e):'')+
+        '<div class="os-inbox-tags os-inbox-label-list">'+(state.labels.length?state.labels.map(l=>'<article class="os-inbox-tag"><span class="os-inbox-swatch" style="background-color:'+esc(/^#[0-9a-f]{6}$/i.test(l.color)?l.color:'#2e7bf6')+'"></span><strong>'+esc(l.name)+'</strong>'+
+        '<span class="os-inbox-tag-actions">'+button('Editar','edit-label','data-id="'+esc(l.id)+'" '+write)+button('Excluir','delete-label','data-id="'+esc(l.id)+'" '+write)+'</span></article>').join(''):
+        '<div class="os-inbox-empty"><strong>Nenhuma etiqueta cadastrada</strong><p>Use “Nova etiqueta” para organizar os contatos.</p></div>')+'</div></section>';
+      const customers=subnav+(state.crmView==='labels'?labelsPanel:contacts);
+      const visibleReplies=state.replies.filter(r=>(r.title+' '+r.category+' '+r.text).toLocaleLowerCase('pt-BR').includes(state.replyQuery.toLocaleLowerCase('pt-BR')));
+      const replies='<section class="os-card os-inbox-replies-panel"><div class="os-inbox-heading"><div><h2>Respostas rápidas</h2>'+
+        '<p>Crie modelos e revise o texto antes de enviar em uma conversa.</p></div>'+
+        button('Nova resposta','new-reply',write)+'</div>'+
+        (e?.kind==='reply'?replyForm(e):'')+
+        '<label for="inboxReplySearch">Buscar respostas</label><input id="inboxReplySearch" type="search" placeholder="Título, categoria ou texto" value="'+esc(state.replyQuery)+'">'+
+        '<div class="os-inbox-list os-inbox-replies-list" data-inbox-replies>'+repliesHTML(visibleReplies,write)+'</div></section>';
       const panel=state.tab==='conversations'?'<div data-inbox-central></div>':state.tab==='flows'?'<div data-inbox-flows></div>':state.tab==='customers'?customers:replies;
       host.innerHTML='<div class="os-inbox">'+header+'<p data-inbox-notice class="os-inbox-notice" role="status" aria-live="polite"></p>'+confirmation+panel+'</div>';
       if(state.tab==='flows')void window.OrionFlows?.mount({host:query('[data-inbox-flows]'),request,tenantId,canWrite});
@@ -46,15 +70,46 @@
       }});
     }
     function customerHTML(){
-      const data=state.customer;if(!data)return '<p>Selecione um cliente para consultar os dados reais.</p>';
-      const customer=data.customer,selected=new Set(data.labels.map(x=>x.id));
-      const history=data.history||[],next=data.upcoming;
-      return '<h3>'+esc(customer.name)+'</h3><p>'+esc(customer.whatsapp_e164)+'</p>'+(next?'<p>Próximo agendamento: <strong>'+esc(new Date(next.start_at).toLocaleString('pt-BR',{timeZone:data.timezone}))+'</strong></p><p>'+esc(next.services)+' · '+esc(next.professional)+' · '+esc(next.protocol)+'</p>':'<p>Nenhum agendamento futuro confirmado.</p>')+
-        '<div class="os-inbox-tags">'+state.labels.map(l=>'<label class="os-inbox-check"><input type="checkbox" data-inbox-label="'+esc(l.id)+'" '+(selected.has(l.id)?'checked':'')+' '+(!canWrite||state.busy?'disabled':'')+'>'+esc(l.name)+'</label>').join('')+'</div>'+
-        '<h3>Histórico recente</h3><p class="os-help">Até '+esc(data.history_limit)+' agendamentos disponíveis nesta consulta.</p><ul>'+history.map(a=>'<li>'+esc(a.services||'Serviço não informado')+' · '+esc(new Date(a.start_at).toLocaleString('pt-BR',{timeZone:data.timezone}))+' · '+esc({confirmed:'Confirmado',cancelled:'Cancelado',completed:'Concluído',no_show:'Não compareceu',hold:'Reserva temporária',expired:'Reserva expirada'}[a.status]||a.status)+'</li>').join('')+'</ul>'+
-        (customer.notes?'<details><summary>Observações cadastradas</summary><p class="os-inbox-text">'+esc(customer.notes)+'</p></details>':'')+
-        '<label for="inboxPreparedReply">Resposta rápida</label><select id="inboxPreparedReply"><option value="">Selecione uma resposta</option>'+state.replies.map(r=>'<option value="'+esc(r.id)+'">'+esc(r.category+' · '+r.title)+'</option>').join('')+'</select>'+button('Preparar com dados reais','preview',state.busy?'disabled':'')+
-        '<div data-inbox-preview class="os-inbox-preview" hidden><label for="inboxPreparedText">Texto preparado para revisão</label><textarea id="inboxPreparedText" readonly rows="5"></textarea>'+button('Copiar texto','copy')+'<p>Copie e revise no canal de atendimento autorizado. Nenhuma mensagem foi enviada.</p></div>';
+      const data=state.customer;
+      if(!data)return '<div class="os-inbox-empty os-inbox-select-prompt"><strong>Selecione um cliente</strong><p>Consulte os dados e o histórico sem sair desta área.</p></div>';
+      const c=data.customer||{},selected=new Set((data.labels||[]).map(x=>x.id)),history=data.history||[],next=data.upcoming;
+      const heading='<header class="os-inbox-customer-header">'+
+        button('Voltar aos clientes','customer-back','class="os-inbox-back"')+
+        '<span class="os-inbox-person-avatar" aria-hidden="true">'+esc(initials(c.name||c.whatsapp_e164))+'</span>'+
+        '<div><h3>'+esc(c.name||'Cliente')+'</h3><p>'+esc(c.whatsapp_e164||'Sem telefone')+'</p></div></header>';
+      const upcoming='<section class="os-inbox-upcoming"><div class="os-inbox-section-title"><h3>Próximo agendamento</h3></div>'+
+        (next?'<p><strong>'+esc(readableDate(next.start_at,data.timezone))+'</strong></p>'+
+          '<p>'+esc(next.services||'Serviço não informado')+' · '+esc(next.professional||'Profissional a confirmar')+'</p>'+
+          '<small>Protocolo '+esc(next.protocol||'—')+'</small>':
+          '<p>Nenhum agendamento futuro confirmado.</p>')+'</section>';
+      const labels='<section class="os-inbox-customer-labels"><div class="os-inbox-section-title"><h3>Etiquetas</h3>'+
+        '<small>'+selected.size+' selecionada'+(selected.size===1?'':'s')+'</small></div>'+
+        (state.labels.length?'<div class="os-inbox-tags">'+state.labels.map(l=>
+          '<label class="os-inbox-check"><input type="checkbox" data-inbox-label="'+esc(l.id)+'" '+
+          (selected.has(l.id)?'checked ':'')+(!canWrite||state.busy?'disabled':'')+'><span>'+esc(l.name)+'</span></label>').join('')+'</div>':
+          '<p>Nenhuma etiqueta cadastrada. Organize-as na seção Etiquetas.</p>')+'</section>';
+      const historyHTML='<details class="os-inbox-appointments"><summary>'+
+        '<span><strong>Histórico de agendamentos</strong><small>'+history.length+' registro'+(history.length===1?'':'s')+
+          (data.history_limit?' mais recentes':'')+'</small></span><span class="os-inbox-disclosure-arrow" aria-hidden="true">⌄</span></summary>'+
+        '<div class="os-inbox-appointments-body">'+(history.length?
+          '<ol class="os-inbox-appointments-list">'+history.map(a=>'<li><div><strong>'+esc(a.services||'Serviço não informado')+'</strong>'+
+          '<small>'+esc(readableDate(a.start_at,data.timezone))+' · '+esc(a.professional||'')+'</small></div>'+
+          '<span class="os-inbox-appointment-status os-inbox-appointment-status-'+esc(['confirmed','cancelled','completed','no_show'].includes(a.status)?a.status:'other')+'">'+
+          esc(appointmentStatus[a.status]||'Em conferência')+'</span></li>').join('')+'</ol>':
+          '<p>Este cliente ainda não tem agendamentos registrados.</p>')+
+        '</div></details>';
+      const notes=c.notes?'<details class="os-inbox-appointments os-inbox-notes"><summary><strong>Observações do cliente</strong>'+
+        '<span class="os-inbox-disclosure-arrow" aria-hidden="true">⌄</span></summary><p class="os-inbox-text">'+esc(c.notes)+'</p></details>':'';
+      const prepared='<section class="os-inbox-prepare"><div class="os-inbox-section-title"><h3>Preparar resposta rápida</h3></div>'+
+        (state.replies.length?'<label for="inboxPreparedReply">Modelo</label><div class="os-inbox-prepare-row">'+
+          '<select id="inboxPreparedReply"><option value="">Selecione uma resposta</option>'+
+          state.replies.map(r=>'<option value="'+esc(r.id)+'">'+esc(r.category+' · '+r.title)+'</option>').join('')+'</select>'+
+          button('Preparar prévia','preview')+'</div>':
+          '<p>Cadastre um modelo na aba Respostas rápidas para usá-lo aqui.</p>')+
+        '<div data-inbox-preview class="os-inbox-preview" hidden><label for="inboxPreparedText">Texto preparado para revisão</label>'+
+          '<textarea id="inboxPreparedText" readonly rows="5"></textarea>'+button('Copiar texto','copy')+
+          '<p>O Orion apenas prepara o texto; nenhuma mensagem é enviada.</p></div></section>';
+      return '<div class="os-inbox-customer-profile">'+heading+upcoming+labels+historyHTML+notes+prepared+'</div>';
     }
     function repliesHTML(items,write){return items.length?items.map(r=>'<article class="os-inbox-reply"><div><strong>'+esc(r.title)+'</strong><small>'+esc(r.category)+' · '+(r.visibility==='personal'?'Pessoal':'Compartilhada')+' · versão '+esc(r.version)+'</small></div><p class="os-inbox-text">'+esc(r.text)+'</p><div class="os-actions">'+button('Editar','edit-reply','data-id="'+esc(r.id)+'" '+write)+button('Duplicar','duplicate-reply','data-id="'+esc(r.id)+'" '+write)+button('Excluir','delete-reply','data-id="'+esc(r.id)+'" '+write)+'</div></article>').join(''):'<p>Nenhuma resposta cadastrada.</p>';}
     function labelForm(e){return '<form data-inbox-form="label" class="os-inbox-editor"><h3>'+ (e.id?'Editar etiqueta':'Nova etiqueta')+'</h3><label for="inboxLabelName">Nome</label><input id="inboxLabelName" name="name" maxlength="60" required value="'+esc(e.name)+'"><label for="inboxColor">Cor</label><input id="inboxColor" name="color" type="color" value="'+esc(e.color)+'"><div class="os-actions"><button class="os-button" '+(state.busy?'disabled':'')+'>Salvar etiqueta</button>'+button('Cancelar','cancel-editor',state.busy?'disabled':'')+'</div></form>';}
