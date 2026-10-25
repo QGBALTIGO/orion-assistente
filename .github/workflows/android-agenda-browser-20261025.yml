@@ -1,0 +1,31 @@
+name: Orion — Chrome Android emulado para Agenda
+on:
+  push:
+    branches: [codex/orion-android-agenda-session-20261025]
+    paths:
+      - 'app/static/panel.html'
+      - 'ui-tests/android-agenda-browser.py'
+      - '.github/workflows/android-agenda-browser-20261025.yml'
+permissions:
+  contents: read
+jobs:
+  android-chrome:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar driver de navegador
+        run: python -m pip install playwright
+      - name: Emular Chrome no Android com respostas de API fictícias
+        run: python ui-tests/android-agenda-browser.py
+      - name: Guardar capturas e resultados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-agenda-session-validation
+          path: artifacts/android-agenda/
+          retention-days: 7
+          if-no-files-found: warn
