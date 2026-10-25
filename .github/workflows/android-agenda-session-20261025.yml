@@ -1,0 +1,27 @@
+name: Orion — Sessão da Agenda no Android
+on:
+  push:
+    branches: [codex/orion-android-agenda-session-20261025]
+    paths:
+      - 'app/static/panel.html'
+      - 'ui-tests/android-agenda-session.test.mjs'
+      - '.github/workflows/android-agenda-session-20261025.yml'
+permissions:
+  contents: read
+jobs:
+  agenda-session:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar dependências de teste
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Android 401 versus sessão válida, expirada ou indisponível
+        run: node --test ui-tests/android-agenda-session.test.mjs
+      - name: Regressão geral de autenticação e Agenda
+        run: node --test ui-tests/login-experience.test.mjs ui-tests/agenda-lifecycle.test.mjs ui-tests/android-agenda-session.test.mjs
+      - name: Testes completos da interface
+        run: npm test --prefix ui-tests
