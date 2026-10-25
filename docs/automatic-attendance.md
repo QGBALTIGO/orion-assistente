@@ -1,52 +1,47 @@
 # Finalização automática e Google Agenda — Orion
 
-A agenda interna no PostgreSQL é a fonte da verdade; o Google é um espelho unilateral.
-Uma falha do Google não desfaz agendamentos nem lançamentos.
+A agenda interna no PostgreSQL é a fonte da verdade; o Google é um espelho
+unilateral. Uma falha externa não apaga nem altera agendamentos internos.
 
-## Finalização e segurança
+## Finalização segura de atendimentos
 
-O worker ARQ consulta os agendamentos confirmados cujo `end_at` já passou uma
-vez por minuto. A implementação só finaliza quando a flag
-`ORION_AUTO_COMPLETE_APPOINTMENTS=1` estiver ativa. Na primeira ativação,
-registra um marco durável no Redis; horários que **já haviam terminado antes**
-dessa ativação não são finalizados retroativamente. Paradas temporárias do
-worker podem ser recuperadas a partir desse marco. Reiniciar o processo não
-reinicia esse limite.
+Após a migração aditiva `0031_auto_complete_appointments`, o PostgreSQL
+mantém `tenants.auto_complete_after` como limite de ativação prospectiva
+por empresa. Na primeira instalação, horários encerrados antes da migração
+nunca são convertidos automaticamente em receita.
 
-Para cada atendimento, a transição é transacional, com escopo de empresa,
-lock de profissional, bloqueio de linha e chave determinística. Cancelamentos,
-remarcações, registros de falta e finalizações manuais concorrentes prevalecem
-corretamente; status diferente de `confirmed` nunca é finalizado em lote.
-A regra usa o horário real `end_at` do agendamento, não o relógio do navegador.
+O worker ARQ verifica a cada 10 segundos os atendimentos confirmados cujo
+`end_at` terminou. Com `ORION_AUTO_COMPLETE_APPOINTMENTS=1` no worker,
+`public.orion_due_auto_completions` lista somente IDs de agendamento/empresa.
+Essa função de banco de dados permite descoberta limitada ao usuário
+`app_support` sem conceder leitura de dados dos clientes. Cada conclusão
+é executada com `app_runtime`, RLS por empresa, bloqueio de profissional,
+lock de linha, estado esperado e chave idempotente; alterações concorrentes
+não são sobrescritas. Não exige a página aberta.
 
-Um atendimento finalizado emite histórico `source=system`, pontuação de
-fidelidade existente, comissão calculada com snapshot, intenção de atualização
-do Google e **um** lançamento de receita **pendente**, vinculado ao atendimento.
-Não há confirmação fictícia de Pix/cartão/dinheiro; quem receber pode registrar
-`paid` no Financeiro. Receita econômica de serviços continua vindo dos
-agendamentos completados no DRE para evitar dupla contabilização.
-Um atendimento zerado por desconto não cria cobrança pendente.
+A transição preserva a trilha com origem `system`, comissões, descontos,
+fidelidade e outbox do Google. Atendimentos concluídos criam **uma conta a
+receber pendente** no Financeiro, sem alegar Pix, cartão ou dinheiro recebido.
+O DRE já contabiliza o serviço a partir do agendamento, sem duplicar receitas.
+Recebimentos reais devem ser baixados como pagos; atendimentos gratuitos
+não criam cobrança. Agenda, Dashboard, Desempenho e Financeiro renovam
+informações sem interromper diálogos e formulários.
 
-**Limitação de negócio:** a passagem do horário não prova presença física.
-Estabelecimentos que precisam verificar comparecimento devem desativar a
-flag e usar a finalização manual até implementar a confirmação real.
+**Limitação:** horário passado não confirma presença física. Empresas que
+precisam de verificação presencial devem manter a flag desabilitada.
 
 ## Google Agenda
 
-`GOOGLE_LIVE_SYNC=1` precisa estar habilitada **na API e no worker**, com as
-mesmas credenciais Google e chave Fernet. A API expõe também a situação
-do heartbeat do worker (`worker_online` e `worker_ready`) para distinguir
-problemas de configuração de falhas de rede/permissão.
+O worker procura eventos pendentes a cada minuto e publica seu heartbeat
+no Redis, exposto de maneira não sensível pela API. Falhas transitórias
+continuam sendo retentadas automaticamente com backoff limitado.
+Autorização revogada, permissões insuficientes e falhas de configuração
+exigem correção manual. `GOOGLE_LIVE_SYNC=1` deve estar ativo na API e
+no worker, com as mesmas credenciais/fernet existentes. O Google não
+edita o registro de origem no Orion.
 
-A cada minuto o worker procura intenções pendentes. Limites de requisições e
-falhas transitórias continuam com retry automático de backoff limitado, sem
-precisar esgotar sete tentativas e solicitar retry manual. Erros permanentes,
-autorização vencida e agendas sem permissão continuam exigindo correção da
-conta. O painel atualiza agenda, Google e resumos financeiros periodicamente
-sem interromper formulários ou detalhes abertos.
-
-Checklist de implantação: publicar o mesmo commit na API e no worker,
-verificar o heartbeat, conferir a autorização Google real da empresa,
-ativar `GOOGLE_LIVE_SYNC=1` nos dois serviços e por último ativar
-`ORION_AUTO_COMPLETE_APPOINTMENTS=1` no worker. Não alterar a chave
-Fernet existente.
+Implantação: (1) rodar `0031` após validação de backup e papel migrador,
+(2) publicar a API e o worker no mesmo SHA, (3) conferir heartbeat e
+Google OAuth de uma conta real, (4) ativar `GOOGLE_LIVE_SYNC=1` nos dois
+serviços, (5) ativar `ORION_AUTO_COMPLETE_APPOINTMENTS=1` só no worker.
+Nunca sobrescrever `INTEGRATION_FERNET_KEY`.
