@@ -447,10 +447,11 @@ async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
         local_now = now.astimezone(ZoneInfo(shop["timezone"]))
         if target < local_now.date() or target > local_now.date() + timedelta(days=shop["booking_horizon_days"]):
             fail(422, "Data fora do horizonte de agendamento")
-        result, _reason = await verified_slot_grid(s, tenant, professional,
+        result, availability_reason = await verified_slot_grid(s, tenant, professional,
             shop, items, target, now, ignored=appointment_id or replace_hold_id)
         duration, prep, cleanup, price = amounts(items)
-        return {"slots": result, "duration_min": duration, "prep_min": prep,
+        return {"slots": result, "availability_reason": availability_reason,
+                "duration_min": duration, "prep_min": prep,
                 "cleanup_min": cleanup, "price_cents": price, "timezone": shop["timezone"]}
 
 
