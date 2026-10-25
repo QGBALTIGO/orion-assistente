@@ -63,7 +63,7 @@
         '<ul class="os-central-thread-list" aria-label="Lista de conversas">'+(list||'<li class="os-central-empty-list">'+ico('message')+'<strong>Nenhuma conversa encontrada</strong><span>Revise os filtros ou aguarde novas mensagens.</span></li>')+'</ul>'+
         '<footer class="os-central-pagination"><button type="button" class="os-button os-outline" data-central-action="previous" '+(s.offset===0||s.busy?'disabled':'')+'>Anterior</button><span>Página '+(Math.floor(s.offset/50)+1)+'</span><button type="button" class="os-button os-outline" data-central-action="next" '+(!s.more||s.busy?'disabled':'')+'>Próxima</button></footer></aside>';
       const controlLabel=c?modes[c.mode]||'Em atendimento':'Sem status';
-      const ownerText=c?(owned?'Atendimento atribuído a você':c.assigned_account_id?'Com outro atendente':c.mode==='ai'?'Orion responde automaticamente':c.mode==='closed'?'Atendimento encerrado':'Aguardando alguém assumir'):'';
+      const ownerText=c?(owned?'Atendimento com você':c.assigned_account_id?'Com outro atendente':c.mode==='ai'?'Orion responde automaticamente':c.mode==='closed'?'Atendimento encerrado':'Aguardando alguém assumir'):'';
       const primary=modeBtn('human',c?.mode==='ai'?'Assumir da IA':'Assumir atendimento',!!c&&!owned&&!!s.account,canControl&&!owned);
       const management='<details class="os-central-control-menu"><summary>'+ico('more')+'<span>Gerenciar</span>'+ico('chevron')+'</summary><div class="os-central-control-options">'+
         modeBtn('waiting','Aguardar cliente',owned&&c.mode!=='waiting',canControl&&owned&&c.mode!=='waiting')+
