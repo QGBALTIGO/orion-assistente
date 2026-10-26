@@ -52,7 +52,15 @@ def test_weekly_hours_has_edit_controls_no_horizontal_overflow(browser_name, wid
               });
             }""", {"pro": PRO, "hour": HOUR, "breakId": BREAK})
             page.locator(f'[data-os-hours="{PRO}"]').click()
-            page.locator('[data-os-hours-weekday="6"]').wait_for()
+            page.wait_for_timeout(200)
+            diagnostic = page.evaluate("""() => ({
+              dialog:document.querySelector('#osDialog')?.outerHTML.slice(0,1800),
+              open:document.querySelector('#osDialog')?.open,
+              hourCount:document.querySelectorAll('[data-os-hours-weekday]').length,
+              currentRoute:document.querySelector('#page-suite')?.dataset.osCurrentRoute
+            })""")
+            assert diagnostic["hourCount"] == 7, f"Rendered schedule unavailable: {diagnostic!r}; browser errors={errors!r}"
+            page.locator('[data-os-hours-weekday="6"]').wait_for(timeout=2000)
             names = page.locator(".os-hours-day-name").all_text_contents()
             assert names == ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira",
                              "Sexta-feira", "Sábado", "Domingo"]
