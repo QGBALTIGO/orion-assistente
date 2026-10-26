@@ -404,3 +404,94 @@ async def test_public_amenity_flags_follow_preview_published_snapshot_and_legacy
     assert all(older['site'][key] is False for key in keys)
     status=(await client.get(d['base']+'/site')).json()
     assert status['has_unpublished_changes'] is False
+
+
+@pytest.mark.asyncio
+async def test_public_custom_selection_sums_price_duration_and_creates_one_booking(public_db):
+    d=public_db;c=d['client']
+    await publish(d)
+    params=[('service_ids',str(d['cut'])),('service_ids',str(d['wash'])),
+            ('professional_id',str(d['pro'])),('day',str(d['day']))]
+    response=await c.get(d['public']+'/availability',params=params)
+    assert response.status_code==200,response.text
+    quoted=response.json()
+    assert quoted['slots'] and quoted['quote'] and quoted['price_cents']==4000
+    assert quoted['price_mode']=='fixed' and quoted['duration_min']==40
+    assert quoted['services']==['Corte','Lavagem']
+    result=await c.post(d['public']+'/appointments',json=book_body(quoted))
+    assert result.status_code==201,result.text
+    item=result.json()
+    assert item['status']=='confirmed' and item['price_cents']==4000
+    assert item['services']==['Corte','Lavagem']
+    assert (datetime.fromisoformat(item['end_at'])-datetime.fromisoformat(item['start_at'])).total_seconds()==2400
+    # Two real appointment line items, not two appointments and not a
+    # persistent synthetic package. Accounting uses the existing engine.
+    async with d['migrator'].connect() as db:
+        count=(await db.execute(text('SELECT count(*) FROM appointments WHERE tenant_id=:tenant'),
+                                {'tenant':d['a']})).scalar_one()
+        stored=(await db.execute(text("""SELECT service_id,price_snapshot_cents,duration_snapshot_min,
+            price_mode_snapshot FROM appointment_items WHERE tenant_id=:tenant ORDER BY item_order"""),
+            {'tenant':d['a']})).all()
+        synthetic=(await db.execute(text("""SELECT count(*) FROM service_packages
+            WHERE tenant_id=:tenant AND kind='variant'"""),{'tenant':d['a']})).scalar_one()
+    assert count==1 and synthetic==0
+    assert [(row[0],row[1],row[2]) for row in stored]==[
+        (d['cut'],3000,30),(d['wash'],1000,10)]
+    # Identical signed quote recovers the same booking; it cannot create a second.
+    replay=await c.post(d['public']+'/appointments',json=book_body(quoted))
+    assert replay.status_code==201 and replay.json()['protocol']==item['protocol']
+    assert replay.json()['services']==['Corte','Lavagem']
+    async with d['migrator'].connect() as db:
+        assert (await db.execute(text('SELECT count(*) FROM appointments WHERE tenant_id=:tenant'),
+                                 {'tenant':d['a']})).scalar_one()==1
+
+
+@pytest.mark.asyncio
+async def test_public_custom_selection_rejects_duplicates_incompatible_staff_and_combination_overlap(public_db):
+    d=public_db;c=d['client']
+    await publish(d)
+    root=[('professional_id',str(d['pro'])),('day',str(d['day']))]
+    async def query(ids,pro=None,addons=()):
+        return await c.get(d['public']+'/availability',params=[
+            ('professional_id',str(pro or d['pro'])),('day',str(d['day']))]+[
+            ('service_ids',str(x)) for x in ids]+[
+            ('addon_ids',str(x)) for x in addons])
+    for values in ((d['cut'],d['cut']),(d['cut'],d['foreign'])):
+        response=await query(values)
+        assert response.status_code==422,response.text
+    assert (await query([d['cut'],d['beard']],pro=d['pro2'])).status_code==422
+    assert (await query([d['cut'],d['wash']],addons=[d['beard']])).status_code==422
+    assert (await query([d['cut'],d['wash']],pro=d['pro'])).json()['slots']
+    registered,_=await combo(d)
+    combo_id=UUID(registered['synthetic_service_id'])
+    assert (await query([combo_id,d['cut']])).status_code==422
+    mixed=await query([combo_id,d['wash']])
+    assert mixed.status_code==200,mixed.text
+    assert mixed.json()['price_cents']==5200 and mixed.json()['duration_min']==60
+    assert mixed.json()['services']==['Corte + barba','Lavagem']
+
+
+@pytest.mark.asyncio
+async def test_public_custom_quote_price_change_or_professional_revocation_fails_closed(public_db):
+    d=public_db;c=d['client'];await publish(d)
+    def params():
+        return [('service_ids',str(d['cut'])),('service_ids',str(d['wash'])),
+                ('professional_id',str(d['pro'])),('day',str(d['day']))]
+    first=(await c.get(d['public']+'/availability',params=params())).json()
+    assert first['slots']
+    async with d['migrator'].begin() as db:
+        await db.execute(text("""UPDATE services SET price_cents=2200,price_mode='from'
+            WHERE tenant_id=:tenant AND id=:service"""),
+            {'tenant':d['a'],'service':d['wash']})
+    assert (await c.post(d['public']+'/appointments',json=book_body(first))).status_code==409
+    second=(await c.get(d['public']+'/availability',params=params())).json()
+    assert second['price_cents']==5200 and second['duration_min']==40
+    assert second['price_mode']=='from'
+    async with d['migrator'].begin() as db:
+        await db.execute(text("""DELETE FROM professional_services
+            WHERE tenant_id=:tenant AND professional_id=:professional AND service_id=:service"""),
+            {'tenant':d['a'],'professional':d['pro'],'service':d['wash']})
+    assert (await c.post(d['public']+'/appointments',json=book_body(second))).status_code in (409,422)
+    async with d['migrator'].connect() as db:
+        assert (await db.execute(text('SELECT count(*) FROM appointments WHERE tenant_id=:tenant'),
+                                 {'tenant':d['a']})).scalar_one()==0

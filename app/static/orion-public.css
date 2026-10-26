@@ -246,3 +246,53 @@ body{background:var(--bg);color:var(--text);min-width:0}
 @media(prefers-reduced-motion:reduce){
   .amenity-tile{transition:none}
 }
+
+
+/* Public booking: multiple complete services, no flickering image re-renders. */
+.booking-selection-intro{display:flex;align-items:baseline;flex-wrap:wrap;gap:5px 12px;margin-bottom:11px}
+.booking-selection-intro>h3{font-size:18px;line-height:25px}
+.booking-selection-intro>p{flex-basis:100%;font-size:12px;line-height:18px}
+.booking-selected-count{
+  flex:none;margin-left:auto;padding:3px 9px;border:1px solid var(--border);
+  border-radius:999px;background:var(--soft);color:var(--muted);
+  font:600 11px/17px Figtree,system-ui,sans-serif;white-space:nowrap
+}
+.booking-selection-summary{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:8px 12px;flex-wrap:wrap;min-height:42px;margin:0 0 11px;
+  padding:10px 12px;border:1px solid var(--border);border-radius:12px;
+  background:color-mix(in srgb,var(--primary) 4%,var(--card));
+  font-size:12px;line-height:19px;color:var(--muted)
+}
+.booking-selection-summary strong{
+  color:var(--text);font-size:13px;line-height:19px;font-weight:700;
+  overflow-wrap:anywhere
+}
+.booking-selection-warning{
+  margin:0 0 10px;padding:10px 12px;border-radius:10px;
+  background:color-mix(in srgb,var(--primary) 8%,var(--card));
+  border:1px solid color-mix(in srgb,var(--primary) 18%,var(--border));
+  color:var(--text);font-size:12px;line-height:19px
+}
+.booking-service-list .service-card{
+  -webkit-tap-highlight-color:transparent;
+  transition:border-color .15s,background .15s,box-shadow .15s
+}
+.booking-service-list .service-card[aria-pressed=true]{
+  border-color:var(--primary);
+  background:color-mix(in srgb,var(--primary) 6%,var(--card));
+  box-shadow:0 0 0 1px var(--primary)
+}
+.booking-service-list .service-card[aria-pressed=true] .service-arrow{
+  color:var(--primary);font-size:21px;font-weight:700
+}
+.booking-service-list .service-thumb img{will-change:auto;transform:none}
+#booking-extras .addon-section{margin-top:18px}
+@media(max-width:359px){
+  .booking-selection-intro{gap:6px}
+  .booking-selected-count{margin-left:0;font-size:10px}
+  .booking-selection-summary{gap:6px}
+}
+@media(prefers-reduced-motion:reduce){
+  .booking-service-list .service-card{transition:none}
+}

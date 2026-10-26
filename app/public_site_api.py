@@ -30,7 +30,7 @@ from app.database import get_session_factory, tenant_transaction
 from app.management_api import management_session
 from app.management_schemas import CleanModel, normalize_phone
 from app.panel_auth import _redis, _same_origin
-from app.service_packages_api import selection_contract, ensure_selection_service
+from app.service_packages_api import selection_contract, ensure_selection_service, digest
 from app.tenant_access import resolve_tenant_access
 
 router=APIRouter(tags=["Site público"])
@@ -99,9 +99,15 @@ def signing_key():
 
 def issue_quote(slug,professional,day,selection,now=None):
     stamp=int((now or datetime.now(UTC)).timestamp())
-    value={'v':1,'slug':slug,'professional':str(professional),'service':str(selection['base_id']),
-           'addons':[str(x) for x in selection['addon_ids']], 'day':day.isoformat(),
-           'fingerprint':selection['fingerprint'],'expires':stamp+600,'nonce':secrets.token_hex(16)}
+    multi='service_ids' in selection
+    value={'v':2 if multi else 1,'slug':slug,'professional':str(professional),
+           'day':day.isoformat(),'fingerprint':selection['fingerprint'],
+           'expires':stamp+600,'nonce':secrets.token_hex(16)}
+    if multi:
+        value['services']=[str(x) for x in selection['service_ids']]
+    else:
+        value['service']=str(selection['base_id'])
+        value['addons']=[str(x) for x in selection['addon_ids']]
     raw=base64.urlsafe_b64encode(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).rstrip(b'=')
     signature=base64.urlsafe_b64encode(hmac.new(signing_key(),raw,hashlib.sha256).digest()).rstrip(b'=')
     return (raw+b'.'+signature).decode()
@@ -114,11 +120,22 @@ def read_quote(token,slug,now=None):
         if not hmac.compare_digest(expected,signature):raise ValueError()
         value=json.loads(base64.urlsafe_b64decode(raw+b'='*((-len(raw))%4)))
         stamp=int((now or datetime.now(UTC)).timestamp())
-        if value['v']!=1 or value['slug']!=slug or not re.fullmatch(r'[0-9a-f]{32}',value['nonce']):raise ValueError()
+        if value['v'] not in (1,2) or value['slug']!=slug or not re.fullmatch(r'[0-9a-f]{32}',value['nonce']):raise ValueError()
         if not isinstance(value['expires'],int) or value['expires']<=stamp or value['expires']>stamp+600:
             raise HTTPException(409,'O resumo expirou. Selecione novamente o horário')
-        value['service']=UUID(value['service']);value['professional']=UUID(value['professional'])
-        value['addons']=[UUID(x) for x in value['addons']];value['day']=date.fromisoformat(value['day'])
+        if not isinstance(value['fingerprint'],str) or not re.fullmatch(r'[0-9a-f]{64}',value['fingerprint']):
+            raise ValueError()
+        value['professional']=UUID(value['professional']);value['day']=date.fromisoformat(value['day'])
+        if value['v']==1:
+            value['service']=UUID(value['service'])
+            value['addons']=[UUID(x) for x in value['addons']]
+        else:
+            ids=value['services']
+            if not isinstance(ids,list) or not 2<=len(ids)<=6 or len(set(ids))!=len(ids):
+                raise ValueError()
+            value['services']=[UUID(x) for x in ids]
+            if len(set(value['services']))!=len(value['services']):
+                raise ValueError()
         return value
     except HTTPException:raise
     except (ValueError,TypeError,KeyError,UnicodeError,json.JSONDecodeError):
@@ -303,7 +320,7 @@ async def catalogue(db,tenant,*,preview=False):
                          'professional_ids':[link['professional_id'] for link in links if link['service_id']==x['addon_service_id']]}
                         for x in addons if x['base_service_id']==row['id']]
         if row['package_id']:
-            item['components']=[dict(x) for x in (await db.execute(text("""SELECT s.name,s.duration_min,i.item_order
+            item['components']=[dict(x) for x in (await db.execute(text("""SELECT i.service_id,s.name,s.duration_min,i.item_order
                 FROM service_package_items i JOIN services s ON s.tenant_id=i.tenant_id AND s.id=i.service_id
                 WHERE i.tenant_id=:tenant AND i.package_id=:package ORDER BY i.item_order"""),
                 {'tenant':tenant,'package':row['package_id']})).mappings().all()]
@@ -367,15 +384,78 @@ async def publish_site(tenant_id:UUID,payload:Publication,actor:Actor=Depends(au
         raise HTTPException(409,'Este endereço público já está em uso. Escolha outro endereço e salve') from None
 
 
+async def multi_service_contract(db,tenant,service_ids,professional,*,lock=False):
+    """Quote complete public services as one native multi-item booking.
+
+    No persistent combo is created. Each selected service adds its full
+    duration, prep/cleanup and current server-side price. A signed fingerprint
+    also binds the underlying composition of every registered combo.
+    """
+    from app.booking_service import load_bundle
+    if not 2<=len(service_ids)<=6 or len(set(service_ids))!=len(service_ids):
+        raise HTTPException(422,'Selecione de 2 a 6 serviços diferentes')
+    suffix=' FOR SHARE' if lock else ''
+    rows=(await db.execute(text("""SELECT id,catalog_kind FROM services
+        WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[])) ORDER BY id"""+suffix),
+        {'tenant':tenant,'ids':service_ids})).mappings().all()
+    kinds={r['id']:r['catalog_kind'] for r in rows}
+    if len(kinds)!=len(service_ids) or any(kinds.get(x) not in ('base','combo') for x in service_ids):
+        raise HTTPException(422,'Serviço indisponível para agendamento')
+    shop,items=await load_bundle(db,tenant,professional,service_ids)
+    if lock:
+        await db.execute(text("""SELECT id FROM professional_services
+            WHERE tenant_id=:tenant AND professional_id=:professional
+            AND service_id=ANY(CAST(:ids AS uuid[])) ORDER BY id FOR SHARE"""),
+            {'tenant':tenant,'professional':professional,'ids':service_ids})
+    components=(await db.execute(text("""SELECT p.synthetic_service_id AS combo_id,p.version,
+        i.service_id,i.item_order,s.name,s.price_cents,s.price_mode,s.duration_min
+        FROM service_packages p
+        JOIN service_package_items i ON i.tenant_id=p.tenant_id AND i.package_id=p.id
+        JOIN services s ON s.tenant_id=i.tenant_id AND s.id=i.service_id
+        WHERE p.tenant_id=:tenant AND p.kind='combo'
+          AND p.synthetic_service_id=ANY(CAST(:ids AS uuid[]))
+        ORDER BY p.synthetic_service_id,i.item_order"""),
+        {'tenant':tenant,'ids':service_ids})).mappings().all()
+    by_combo={}
+    for entry in components:
+        by_combo.setdefault(entry['combo_id'],[]).append(entry['service_id'])
+    used=set()
+    for service_id in service_ids:
+        included=by_combo.get(service_id,[]) if kinds[service_id]=='combo' else [service_id]
+        if not included:
+            raise HTTPException(422,'Este combo precisa ser atualizado antes do agendamento')
+        for component in included:
+            if component in used:
+                raise HTTPException(422,'Um serviço já está incluído em outro combo selecionado')
+            used.add(component)
+    aggregate={'id':service_ids[0],'name':'Atendimento personalizado',
+        'price_cents':sum(x['price_cents'] for x in items),
+        'price_mode':'from' if any(x['price_mode']=='from' for x in items) else 'fixed',
+        **{key:sum(x[key] for x in items) for key in ('duration_min','prep_min','cleanup_min')}}
+    if (aggregate['duration_min']>1440 or aggregate['prep_min']>240 or
+            aggregate['cleanup_min']>240 or aggregate['price_cents']>100_000_000):
+        raise HTTPException(422,'Esta combinação ultrapassa os limites da agenda')
+    return {'service_ids':service_ids,'items':items,'aggregate':aggregate,'shop':shop,
+            'fingerprint':digest({'items':items,'shop':shop,'components':[dict(x) for x in components],
+                                  'kinds':[(str(x),kinds[x]) for x in service_ids]})}
+
+
 @router.get('/api/v1/public/sites/{slug}/availability')
-async def public_availability(slug:str,request:Request,service_id:UUID,professional_id:UUID,day:date,
-                              addon_ids:list[UUID]=Query(default=[])):
+async def public_availability(slug:str,request:Request,professional_id:UUID,day:date,
+                              service_id:UUID|None=None,addon_ids:list[UUID]=Query(default=[]),
+                              service_ids:list[UUID]=Query(default=[])):
     await public_limit(request,checked_slug(slug),'availability',60,300)
     tenant=await resolve_public(slug)
     async with get_session_factory()() as db:
         async with tenant_transaction(db,tenant):
             await published_guard(db,tenant,slug)
-            selection=await selection_contract(db,tenant,service_id,addon_ids,professional_id)
+            if service_ids:
+                if service_id is not None or addon_ids:
+                    raise HTTPException(422,'Escolha serviços completos ou um serviço com adicionais')
+                selection=await multi_service_contract(db,tenant,service_ids,professional_id)
+            else:
+                if service_id is None:raise HTTPException(422,'Selecione um serviço')
+                selection=await selection_contract(db,tenant,service_id,addon_ids,professional_id)
             zone=ZoneInfo(selection['shop']['timezone']);now=datetime.now(UTC);local_now=now.astimezone(zone)
             if day<local_now.date() or day>local_now.date()+timedelta(days=selection['shop']['booking_horizon_days']):
                 raise HTTPException(422,'Data fora do período disponível')
@@ -406,20 +486,25 @@ async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=D
                 await published_guard(db,tenant,slug)
                 replay=await confirmed_public_replay(db,tenant,quote,payload)
                 if replay is not None:return replay
-                selection=await selection_contract(db,tenant,quote['service'],quote['addons'],quote['professional'])
+                selection=(await multi_service_contract(db,tenant,quote['services'],quote['professional'])
+                           if quote['v']==2 else
+                           await selection_contract(db,tenant,quote['service'],quote['addons'],quote['professional']))
                 if not hmac.compare_digest(selection['fingerprint'],quote['fingerprint']):raise HTTPException(409,'Serviços ou preços mudaram. Confira um novo resumo')
-                engine_service=await ensure_selection_service(db,tenant,selection)
+                engine_services=(selection['service_ids'] if quote['v']==2
+                                 else [await ensure_selection_service(db,tenant,selection)])
         # Hold the publication and source contract stable while the engine
         # performs its own locked hold/confirmation transactions.
         async with get_session_factory()() as guard:
             async with tenant_transaction(guard,tenant):
                 await published_guard(guard,tenant,slug)
-                selection=await selection_contract(guard,tenant,quote['service'],quote['addons'],quote['professional'],lock=True)
+                selection=(await multi_service_contract(guard,tenant,quote['services'],quote['professional'],lock=True)
+                           if quote['v']==2 else
+                           await selection_contract(guard,tenant,quote['service'],quote['addons'],quote['professional'],lock=True))
                 if not hmac.compare_digest(selection['fingerprint'],quote['fingerprint']):raise HTTPException(409,'Serviços ou preços mudaram. Confira um novo resumo')
                 zone=ZoneInfo(selection['shop']['timezone'])
                 if payload.start_at.astimezone(zone).date()!=quote['day']:raise HTTPException(422,'O horário não pertence ao dia escolhido')
                 async with get_session_factory()() as engine:
-                    hold=await book_appointment(engine,tenant,quote['professional'],[engine_service],payload.customer_phone,
+                    hold=await book_appointment(engine,tenant,quote['professional'],engine_services,payload.customer_phone,
                                                 payload.customer_name,payload.start_at,'public:'+quote['nonce'],source='public_site')
                     result=await confirm_hold(engine,tenant,hold['id'],customer_phone=payload.customer_phone,source='public_site')
                 await record_public_booking(guard,tenant,result['id'],selection['shop']['timezone'])
