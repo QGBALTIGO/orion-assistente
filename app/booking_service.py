@@ -55,7 +55,8 @@ BUNDLE_SQL = """
     ) AS professional_available,
     COALESCE((SELECT jsonb_agg(jsonb_build_object(
         'id', s.id, 'name', s.name, 'duration_min', s.duration_min,
-        'price_cents', s.price_cents, 'prep_min', s.prep_min,
+        'price_cents', s.price_cents, 'price_mode', s.price_mode,
+        'prep_min', s.prep_min,
         'cleanup_min', s.cleanup_min
     ) ORDER BY array_position(CAST(:bundle_ids AS uuid[]), s.id))
         FROM services s JOIN professional_services ps
@@ -311,7 +312,7 @@ async def read_appointments(s: AsyncSession, tenant: UUID, item_ids: list[UUID])
     """), {"tenant": tenant, "ids": item_ids})).mappings().all()
     items = (await s.execute(text("""
         SELECT appointment_id, service_id, name_snapshot, duration_snapshot_min, price_snapshot_cents,
-               prep_snapshot_min, cleanup_snapshot_min
+               price_mode_snapshot,prep_snapshot_min, cleanup_snapshot_min
         FROM appointment_items WHERE tenant_id=:tenant AND appointment_id=ANY(CAST(:ids AS uuid[]))
         ORDER BY appointment_id,item_order
     """), {"tenant": tenant, "ids": item_ids})).mappings().all()
@@ -322,6 +323,9 @@ async def read_appointments(s: AsyncSession, tenant: UUID, item_ids: list[UUID])
     results = {}
     for row in rows:
         result = {**dict(row), "items": by_appointment.get(row["id"], [])}
+        result["price_mode"] = "from" if any(
+            item["price_mode_snapshot"] == "from" for item in result["items"]
+        ) else "fixed"
         result["customer_display_name"] = useful_name(result["customer_name"]) or result["customer_phone"]
         cancellation = public_history({
             "id": result.pop("cancellation_history_id"), "event": result.pop("cancellation_event"),
@@ -555,12 +559,12 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
             await s.execute(text("""
                 INSERT INTO appointment_items (
                     tenant_id,appointment_id,service_id,name_snapshot,
-                    duration_snapshot_min,price_snapshot_cents,
+                    duration_snapshot_min,price_snapshot_cents,price_mode_snapshot,
                     prep_snapshot_min,cleanup_snapshot_min,item_order
-                ) VALUES (:tenant,:appointment,:service,:name,:duration,:price,:prep,:cleanup,:order)
+                ) VALUES (:tenant,:appointment,:service,:name,:duration,:price,:price_mode,:prep,:cleanup,:order)
             """), {"tenant": tenant, "appointment": item_id, "service": item["id"],
                    "name": item["name"], "duration": item["duration_min"],
-                   "price": item["price_cents"], "prep": item["prep_min"],
+                   "price": item["price_cents"], "price_mode": item["price_mode"], "prep": item["prep_min"],
                    "cleanup": item["cleanup_min"], "order": order})
         await history(s, tenant, item_id, "hold_created",
                       context=resolved_actor(context, source, customer, verified_customer=True))
@@ -756,6 +760,7 @@ async def preview_reschedule(s: AsyncSession, tenant: UUID, item_id: UUID, new_s
         return {"id": item_id, "protocol": current["protocol"], "start_at": contract["start_at"],
                 "timezone": shop["timezone"], "total_cents": contract["total_cents"],
                 "duration_min": amounts(items)[0], "professional": shop["professional_name"], "services": [item["name"] for item in items],
+                "price_mode": "from" if any(item["price_mode"]=="from" for item in items) else "fixed",
                 "expected_snapshot": reschedule_snapshot(current, items, new_start, shop)}
 
 
@@ -823,11 +828,12 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
             await s.execute(text("""
                 UPDATE appointment_items SET name_snapshot=:name,
                     duration_snapshot_min=:duration,price_snapshot_cents=:price,
+                    price_mode_snapshot=:price_mode,
                     prep_snapshot_min=:prep,cleanup_snapshot_min=:cleanup
                 WHERE tenant_id=:tenant AND appointment_id=:id AND item_order=:position
             """), {"tenant": tenant, "id": item_id, "position": order,
                    "name": item["name"], "duration": item["duration_min"],
-                   "price": item["price_cents"], "prep": item["prep_min"],
+                   "price": item["price_cents"], "price_mode": item["price_mode"], "prep": item["prep_min"],
                    "cleanup": item["cleanup_min"]})
         await history(s, tenant, item_id, "rescheduled", context=context, previous=row)
         await record_operation(s, tenant, item_id, "agenda_reschedule", idempotency_key, receipt)

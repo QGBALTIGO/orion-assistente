@@ -96,11 +96,13 @@ async def package_row(db, tenant, package_id):
 
 
 async def validate_package_sources(db, tenant, fields):
-    sources = (await db.execute(text("""SELECT id,price_cents,duration_min,prep_min,cleanup_min
+    sources = (await db.execute(text("""SELECT id,price_cents,price_mode,duration_min,prep_min,cleanup_min
         FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[])) AND catalog_kind='base'
         ORDER BY id FOR SHARE"""), {"tenant": tenant, "ids": fields.service_ids})).mappings().all()
     if len(sources) != len(fields.service_ids):
         raise HTTPException(422, "Todos os componentes devem ser serviços desta barbearia")
+    if any(row["price_mode"] == "from" for row in sources):
+        raise HTTPException(422, "Combos com preço fixo não podem incluir serviços 'a partir de'. Use o serviço separado.")
     if fields.price_cents > sum(x["price_cents"] for x in sources):
         raise HTTPException(422, "O preço especial não pode superar a soma dos serviços")
     if (sum(x["duration_min"] for x in sources) > 1440 or sum(x["prep_min"] for x in sources) > 240
@@ -192,7 +194,7 @@ async def addons_result(db, tenant, service):
                               {"tenant": tenant, "id": service})).scalar_one_or_none()
     if version is None:
         raise HTTPException(404, "Serviço não encontrado")
-    items = (await db.execute(text("""SELECT a.addon_service_id,a.add_duration,a.sort_order,s.name,s.price_cents,s.duration_min,s.active
+    items = (await db.execute(text("""SELECT a.addon_service_id,a.add_duration,a.sort_order,s.name,s.price_cents,s.price_mode,s.duration_min,s.active
         FROM service_addons a JOIN services s ON s.tenant_id=a.tenant_id AND s.id=a.addon_service_id
         WHERE a.tenant_id=:tenant AND a.base_service_id=:id ORDER BY a.sort_order"""),
         {"tenant": tenant, "id": service})).mappings().all()
@@ -267,6 +269,7 @@ async def selection_contract(db, tenant, base_id, addon_ids, professional, *, lo
         use_time=item['id']==base_id or flags[item['id']]
         quoted.append({**item,"add_duration":use_time})
     aggregate={"id":base_id,"name":items[0]['name'],"price_cents":sum(x['price_cents'] for x in items),
+        "price_mode":"from" if any(x['price_mode']=="from" for x in items) else "fixed",
         **{key:sum(x[key] for x in quoted if x['add_duration']) for key in ('duration_min','prep_min','cleanup_min')}}
     if aggregate['duration_min']>1440 or aggregate['prep_min']>240 or aggregate['cleanup_min']>240 or aggregate['price_cents']>100_000_000:
         raise HTTPException(422,"Esta combinação ultrapassa os limites da agenda")
@@ -304,6 +307,8 @@ async def prepare_booking_selection(tenant_id: UUID, payload: BookingSelection, 
         selection=await selection_contract(db,tenant_id,payload.service_id,payload.addon_ids,payload.professional_id)
         service=await ensure_selection_service(db,tenant_id,selection)
         return {"engine_service_id":service,"price_cents":selection['aggregate']['price_cents'],
+                "price_mode":selection['aggregate']['price_mode'],
                 "duration_min":selection['aggregate']['duration_min'],"prep_min":selection['aggregate']['prep_min'],
                 "cleanup_min":selection['aggregate']['cleanup_min'],"timezone":selection['shop']['timezone'],
-                "items":[{"name":x['name'],"price_cents":x['price_cents'],"duration_min":x['duration_min'],"add_duration":x['add_duration']} for x in selection['items']]}
+                "items":[{"name":x['name'],"price_cents":x['price_cents'],"price_mode":x['price_mode'],
+                          "duration_min":x['duration_min'],"add_duration":x['add_duration']} for x in selection['items']]}

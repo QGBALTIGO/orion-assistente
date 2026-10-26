@@ -71,12 +71,19 @@ def _summary_requested(body: str) -> bool:
 def _service_quote(ids, catalog, business):
     """Use the same verified service prices as this installation's booking engine."""
     selected = {str(value) for value in ids}
-    items = [presentation.QuoteItem(row["name"], row["price_cents"], duration_min=row["duration_min"])
+    items = [presentation.QuoteItem(row["name"], row["price_cents"], duration_min=row["duration_min"],
+                                    price_kind=row.get("price_mode","fixed"))
              for row in catalog if str(row["id"]) in selected]
     if not items or len(items) != len(selected):
         raise ValueError("Current catalog services required")
     return presentation.render_quote(items, _preferences(business),
         context=presentation.InteractionContext(information_only=True))
+
+
+def _catalog_price_kind(catalog, ids):
+    selected = {str(value) for value in ids}
+    return "from" if any(x.get("price_mode") == "from" for x in catalog
+                         if str(x["id"]) in selected) else "fixed"
 
 
 def _remaining_state_ttl(state):
@@ -119,7 +126,9 @@ def _summary(state: dict, when: str | datetime, business: dict, catalog: list[di
         tuple(item["name"] for item in catalog if str(item["id"]) in state["services"]),
         datetime.fromisoformat(when) if isinstance(when, str) else when, business["timezone"],
         total_cents if total_cents is not None else state["price"],
-        professional=state.get("professional_name"), duration_min=state.get("duration"), protocol=protocol)
+        professional=state.get("professional_name"), duration_min=state.get("duration"), protocol=protocol,
+        price_kind="from" if any(item.get("price_mode")=="from" for item in catalog
+                            if str(item["id"]) in state["services"]) else "fixed")
 
 
 class Incoming(StrictModel):
@@ -223,7 +232,7 @@ async def tenant_data(tenant: UUID):
             if not business:
                 raise HTTPException(404, "Estabelecimento não disponível")
             services = (await db.execute(text("""
-                SELECT id,name,price_cents,duration_min FROM services
+                SELECT id,name,price_cents,price_mode,duration_min FROM services
                 WHERE tenant_id=:t AND active ORDER BY name LIMIT 60
             """), {"t": tenant})).mappings().all()
             pros = (await db.execute(text("""
@@ -365,7 +374,8 @@ async def offer_slots(tenant: UUID, state: dict, preview: bool):
         state["slot_menu_numbered"] = False
         answer = presentation.render_slots([x["name"] for x in catalog if str(x["id"]) in state["services"]], options,
             _preferences(business), timezone=business["timezone"], day=state["day"], total_cents=state["price"],
-            duration_min=state["duration"], simulation=preview, professional=state.get("professional_name"))
+            duration_min=state["duration"], simulation=preview, professional=state.get("professional_name"),
+            price_kind="from" if any(x.get("price_mode")=="from" for x in catalog if str(x["id"]) in state["services"]) else "fixed")
         if len(slots["slots"]) > len(options):
             answer += f"\n\n_Mostrei {len(options)} de {len(slots['slots'])} horários ao longo do dia. Se preferir outro, diga a hora para eu conferir na agenda._"
         return answer, state
@@ -563,7 +573,8 @@ async def continue_reschedule(tenant: UUID, phone: str, body: str, state: dict,
         when = updated["start_at"].astimezone(ZoneInfo(business["timezone"]))
         facts = state["reschedule_facts"]
         summary = presentation.BookingSummary(tuple(facts["services"]), when, facts["timezone"], facts["total_cents"],
-            professional=facts["professional"], duration_min=facts["duration_min"], protocol=updated["protocol"])
+            professional=facts["professional"], duration_min=facts["duration_min"], protocol=updated["protocol"],
+            price_kind=facts.get("price_mode","fixed"))
         return {"answer": presentation.render_summary(summary, _preferences(business), confirmed=True, operation="reschedule"),
                 "step": "rescheduled", "_verified_operation": True}
     return {"answer": "Qual nova data ou horário você quer consultar para sua reserva?", "step": "unknown"}
@@ -703,7 +714,8 @@ async def _professionals_availability(tenant, state, inquiry, business, catalog,
                 actual = _slot_result(await list_slots(db, tenant, UUID(str(person["id"])), [UUID(value) for value in ids], day), pricing=True)
                 if actual["slots"]:
                     available.append({"id": str(person["id"]), "name": person["name"], "slots": representative_slots(actual["slots"]),
-                        "price_cents": actual["price_cents"], "duration_min": actual["duration_min"]})
+                        "price_cents": actual["price_cents"], "duration_min": actual["duration_min"],
+                        "price_mode": "from" if any(x.get("price_mode")=="from" for x in catalog if str(x["id"]) in ids) else "fixed"})
     except AVAILABILITY_ERRORS:
         state["availability_query"] = {**inquiry, "waiting_for": "retry"}
         await redis.set(key, json.dumps(state), ex=_remaining_state_ttl(state))
@@ -714,7 +726,8 @@ async def _professionals_availability(tenant, state, inquiry, business, catalog,
         if inquiry.get("information_only") is True:
             answer = "\n\n".join(presentation.render_slots(names, row["slots"], _preferences(business),
                 timezone=business["timezone"], day=day, total_cents=row["price_cents"], duration_min=row["duration_min"],
-                professional=row["name"], simulation=preview, ask_selection=False) for row in shown)
+                professional=row["name"], simulation=preview, ask_selection=False,
+                price_kind=row["price_mode"]) for row in shown)
             if not shown:
                 answer = presentation.render_slots(names, [], _preferences(business), timezone=business["timezone"], ask_selection=False)
         else:
@@ -1051,7 +1064,8 @@ async def answer_availability(tenant: UUID, body: str, state: dict, business: di
         shared = metadata[0] if metadata and metadata[0] is not None and all(row == metadata[0] for row in metadata) else None
         answer = "_Consulta dos próximos sete dias._\n\n" + presentation.render_slots([x["name"] for x in catalog if str(x["id"]) in ids], found_slots,
             _preferences(business), timezone=business["timezone"], professional=selected["name"],
-            total_cents=shared[0] if shared else None, duration_min=shared[1] if shared else None, ask_selection=False)
+            total_cents=shared[0] if shared else None, duration_min=shared[1] if shared else None,
+            price_kind=_catalog_price_kind(catalog,ids), ask_selection=False)
         review = "\n" + resume_prompt(state) if state.get("confirmation_requires_review") else ""
         return {"answer": answer + "\n\n_Consulta sem reserva; nenhum agendamento foi criado ou alterado._" + review,
                 "step": state.get("step", "menu")}
@@ -1071,7 +1085,8 @@ async def answer_availability(tenant: UUID, body: str, state: dict, business: di
     answer = (note + "\n\n" if note else "") + presentation.render_slots([x["name"] for x in catalog if str(x["id"]) in ids], focused[:12],
         _preferences(business), timezone=business["timezone"], professional=selected["name"], day=chosen_day,
         total_cents=price if type(price) is int and price >= 0 else None,
-        duration_min=duration if type(duration) is int and duration > 0 else None, ask_selection=False)
+        duration_min=duration if type(duration) is int and duration > 0 else None,
+        price_kind=_catalog_price_kind(catalog,ids), ask_selection=False)
     review = "\n" + resume_prompt(state) if state.get("confirmation_requires_review") else ""
     return {"answer": answer + "\n\n_Consulta sem reserva; nenhum agendamento foi criado ou alterado._" + review,
             "step": state.get("step", "menu")}
@@ -1164,7 +1179,8 @@ def _confirmation_composition_fits(state, business, catalog, factual, *, preview
                 return False
             summary = presentation.BookingSummary(tuple(facts["services"]), datetime.fromisoformat(state["new_start"]),
                 facts["timezone"], facts["total_cents"], professional=facts["professional"],
-                duration_min=facts["duration_min"], protocol="X" * 80)
+                duration_min=facts["duration_min"], protocol="X" * 80,
+                price_kind=facts.get("price_mode","fixed"))
             maximum = presentation.render_summary(summary, _preferences(business), confirmed=True, operation="reschedule")
         else:
             maximum = presentation.render_summary(_summary(state, state["selected_start"], business, catalog, protocol="X" * 80),
@@ -1622,7 +1638,8 @@ async def prepare_reschedule_summary(tenant: UUID, phone: str, state: dict, when
                 proposal = await preview_reschedule(db, tenant, UUID(state["appointment"]),
                     datetime.fromisoformat(when), customer_phone="+" + phone)
             facts = presentation.BookingSummary(tuple(proposal["services"]), proposal["start_at"], proposal["timezone"],
-                proposal["total_cents"], professional=proposal["professional"], duration_min=proposal["duration_min"])
+                proposal["total_cents"], professional=proposal["professional"], duration_min=proposal["duration_min"],
+                price_kind=proposal["price_mode"])
             expected = proposal["expected_snapshot"]
         except HTTPException:
             return _bounded_reply(factual, "Não consegui validar a remarcação desse horário. O agendamento original permanece. Podemos consultar outra opção.", "reschedule_conflict")
@@ -1633,7 +1650,8 @@ async def prepare_reschedule_summary(tenant: UUID, phone: str, state: dict, when
         state.update(step="reschedule_confirm", new_start=when, confirmation_summary=summary, confirmation_presentation=composed.as_dict(),
                      confirmation_expires_at=datetime.now().timestamp() + 300, expected_snapshot=expected,
                      confirmation_message_id=_message_identity.get(),
-                     reschedule_facts={"services": list(facts.services), "professional": facts.professional,
+                     reschedule_facts={"services": list(facts.services), "price_mode": facts.price_kind,
+                                       "professional": facts.professional,
                         "total_cents": facts.total_cents, "duration_min": facts.duration_min, "timezone": facts.timezone})
         await redis.set(key, json.dumps(state), ex=_remaining_state_ttl(state))
     return result
@@ -1683,7 +1701,8 @@ async def _natural_time_turn(tenant: UUID, phone: str, body: str, state: dict, b
     return {"answer": ("Esse horário não está disponível. " if choice.kind == "unavailable" else "") +
             presentation.render_slots([x["name"] for x in catalog if str(x["id"]) in state["services"]], representative_slots(options),
                 _preferences(business), timezone=business["timezone"], total_cents=state["price"],
-                duration_min=state["duration"], simulation=preview),
+                duration_min=state["duration"], simulation=preview,
+                price_kind=_catalog_price_kind(catalog,state["services"])),
             "step": state["step"]}
 
 
@@ -1853,7 +1872,8 @@ async def _planned_slots(tenant: UUID, phone: str, plan: UnderstandingPlan, stat
         result = _bounded_reply(factual,
             presentation.render_slots([x["name"] for x in catalog if str(x["id"]) in ids], found_slots,
                 _preferences(business), timezone=business["timezone"], professional=selected["name"], day=day if not search_next else None,
-                total_cents=shared[0] if shared else None, duration_min=shared[1] if shared else None, ask_selection=False) +
+                total_cents=shared[0] if shared else None, duration_min=shared[1] if shared else None,
+            price_kind=_catalog_price_kind(catalog,ids), ask_selection=False) +
             "\n\n_Consulta sem reserva; nenhum agendamento foi criado ou alterado._", state.get("step", "menu"))
         if result["step"] != "choose_priority":
             state.pop("availability_query", None)
@@ -1881,7 +1901,9 @@ async def _planned_slots(tenant: UUID, phone: str, plan: UnderstandingPlan, stat
         return await prepare_booking_summary(tenant, phone, proposed, exact, business, catalog, redis, key, preview, factual)
     question = ("O horário exato pedido não está disponível. " if clock and relation == "exact" else "") + (
         presentation.render_slots([x["name"] for x in catalog if str(x["id"]) in ids], representative_slots(options), _preferences(business),
-            timezone=business["timezone"], professional=proposed.get("professional_name"), total_cents=slots["price_cents"], duration_min=slots["duration_min"], simulation=preview)
+            timezone=business["timezone"], professional=proposed.get("professional_name"), total_cents=slots["price_cents"],
+            duration_min=slots["duration_min"], simulation=preview,
+            price_kind=_catalog_price_kind(catalog,ids))
         if options else presentation.render_prompt("unavailable", _preferences(business)))
     result = _bounded_reply(factual, question, proposed["step"] if options else "reschedule_day" if rescheduling else "date")
     if result["step"] != "choose_priority":
@@ -2493,14 +2515,19 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
                 ids = set(state.get("services", []))
             chosen = [item for item in catalog if str(item["id"]) in ids]
             if chosen:
-                lines = "\n".join(f"• {item['name']}: {format_money(item['price_cents'])} ({item['duration_min']} min)" for item in chosen)
+                lines = "\n".join(f"• {item['name']}: "+("a partir de " if item.get("price_mode")=="from" else "")+
+                    f"{format_money(item['price_cents'])} ({item['duration_min']} min)" for item in chosen)
                 total = sum(item["price_cents"] for item in chosen)
                 duration = sum(item["duration_min"] for item in chosen)
-                answer = f"{lines}\nTotal desses serviços: {format_money(total)}, cerca de {duration} minutos."
+                variable = any(item.get("price_mode")=="from" for item in chosen)
+                answer = (f"{lines}\n"+("Valor mínimo estimado" if variable else "Total desses serviços")+
+                          f": {format_money(total)}, cerca de {duration} minutos."+
+                          (" O preço final depende da avaliação pela equipe." if variable else ""))
             else:
                 answer = ("Para calcular o total certo, confirme quais serviços deseja consultar. " if local_ids == [] else "") + \
                     "Estes são os serviços e valores cadastrados:\n" + "\n".join(
-                    f"• {item['name']}: {format_money(item['price_cents'])} ({item['duration_min']} min)" for item in catalog[:12])
+                    f"• {item['name']}: "+("a partir de " if item.get("price_mode")=="from" else "")+
+                        f"{format_money(item['price_cents'])} ({item['duration_min']} min)" for item in catalog[:12])
             if profile and (chosen or local_ids != []):
                 answer = qr_profile.quote(chosen or catalog[:12], profile, body)
             if not state:

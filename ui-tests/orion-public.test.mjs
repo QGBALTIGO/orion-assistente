@@ -82,3 +82,21 @@ test('a late availability response cannot replace slots for the newly selected d
   assert.match(h.document.getElementById('time-slots').textContent, /10:00/);
   assert.equal(h.calls.filter(call => call.url.includes('/availability?')).length, 2);
 });
+
+test('serviço variável mostra o preço mínimo no site, no resumo e na confirmação',async t=>{
+  const data=catalogue();
+  data.services[0].price_mode='from';
+  const h=await makePublic({data,respond: url=>{
+    if(url.includes('/availability?'))return response({...available(),price_mode:'from'});
+  }});t.after(()=>h.close());await flush();
+  assert.match(h.document.querySelector('#services-grid .service-card').textContent,/A partir de R\$\s*45,00/);
+  h.click('#services-grid .service-card');
+  assert.match(h.document.querySelector('#booking-body .service-card').textContent,/A partir de R\$\s*45,00/);
+  h.click('#booking-next');await flush();
+  assert.match(h.document.getElementById('booking-total').textContent,/A partir de/);
+  h.click('#time-slots .slot');h.click('#booking-next');
+  assert.match(h.document.querySelector('.review-card').textContent,/Valor mínimo previsto/);
+  assert.match(h.document.querySelector('.review-card').textContent,/preço final depende da avaliação/);
+  assert.equal(h.calls.filter(x=>x.options.method==='POST').length,0);
+  assert.equal(h.errors.length,0);
+});

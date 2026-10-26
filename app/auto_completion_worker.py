@@ -65,6 +65,13 @@ async def complete_due_appointment(ctx: dict, tenant_id: str, appointment_id: st
                 """), {"tenant": tenant, "id": identity})).mappings().first()
                 if row is None or row["status"] != "confirmed":
                     return "not_confirmed"
+                variable = (await session.execute(text("""
+                    SELECT EXISTS (SELECT 1 FROM appointment_items
+                        WHERE tenant_id=:tenant AND appointment_id=:id
+                          AND price_mode_snapshot='from')
+                """), {"tenant": tenant, "id": identity})).scalar_one()
+                if variable:
+                    return "requires_actual_price"
                 # Recheck against the tenant's durable activation boundary.
                 allowed = (await session.execute(text("""
                     SELECT (t.status='active' AND a.end_at >= t.auto_complete_after
@@ -76,7 +83,8 @@ async def complete_due_appointment(ctx: dict, tenant_id: str, appointment_id: st
                     return "not_due"
                 payload = SimpleNamespace(
                     expected_status="confirmed", expected_updated_at=row["updated_at"],
-                    coupon_id=None, idempotency_key="auto-completion-" + str(identity),
+                    coupon_id=None, final_total_cents=None,
+                    idempotency_key="auto-completion-" + str(identity),
                 )
                 await transition_appointment(
                     session, tenant, identity, "completed", payload, "system", automated=True,

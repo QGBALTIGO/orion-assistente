@@ -1,0 +1,111 @@
+name: Orion - precos fixos e variaveis (CI isolada)
+on:
+  push:
+    branches: [main, codex/orion-variable-service-pricing-20261025]
+    paths:
+      - 'alembic/versions/0032_variable_service_prices.py'
+      - 'app/catalog_schemas.py'
+      - 'app/booking_service.py'
+      - 'app/management_schemas.py'
+      - 'app/management_models.py'
+      - 'app/loyalty_rewards.py'
+      - 'app/auto_completion_worker.py'
+      - 'app/service_packages_api.py'
+      - 'app/public_site_api.py'
+      - 'app/qr_presentation.py'
+      - 'app/qr_profile.py'
+      - 'app/qr_ai.py'
+      - 'app/whatsapp_bot.py'
+      - 'app/whatsapp_dialogue.py'
+      - 'app/whatsapp_commands.py'
+      - 'app/qr_information.py'
+      - 'app/static/orion-public.js'
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-suite.css'
+      - 'app/static/orion-public.css'
+      - 'tests/integration/test_variable_service_pricing.py'
+      - 'tests/unit/test_variable_price_copy.py'
+      - 'ui-tests/services-compact.test.mjs'
+      - 'ui-tests/orion-public.test.mjs'
+      - 'scripts/prepare_vercel_orion.py'
+      - '.github/workflows/variable-pricing-20261025.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pricing-postgresql:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: synthetic-variable-pricing-ci-support-token-12345678987654321
+      REQUIRE_POSTGRES_TESTS: '1'
+      BUSINESS_PROFILES_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dependencias revisadas
+        run: |
+          python -m pip install -c requirements.lock ".[test]"
+          python -m pip check
+          python -m compileall -q app
+      - name: Instalar papeis isolados
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas \
+            -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only \
+            -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+      - name: Migrar banco descartavel de 0031 para 0032
+        run: alembic upgrade head
+      - name: Validar isolamento, snapshot, valor real e catalogos
+        run: |
+          pytest -q -ra \
+            tests/integration/test_variable_service_pricing.py \
+            tests/unit/test_variable_price_copy.py \
+            tests/integration/test_catalog.py \
+            tests/integration/test_appointment_lifecycle.py \
+            tests/unit/test_whatsapp_booking_references.py \
+            tests/unit/test_qr_presentation.py \
+            tests/unit/test_qr_presentation_matrix.py \
+            tests/unit/test_qr_service_menu_presentation.py
+  pricing-interface:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependencias e verificacao de sintaxe
+        run: |
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --check app/static/orion-suite.js
+          node --check app/static/orion-public.js
+      - name: Testar formularios, site e fluxo de agenda
+        run: |
+          node --test \
+            ui-tests/services-compact.test.mjs \
+            ui-tests/orion-public.test.mjs \
+            ui-tests/agenda-lifecycle.test.mjs \
+            ui-tests/booking-recovery.test.mjs

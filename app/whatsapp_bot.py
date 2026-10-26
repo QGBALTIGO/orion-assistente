@@ -96,8 +96,9 @@ async def _reply(tenant, channel, sender, body, redis, key, state, prefs, messag
             settings = (await db.execute(text("""SELECT c.bot_enabled AND t.bot_enabled AS enabled,t.timezone
                 FROM whatsapp_channels c JOIN tenants t ON t.id=c.tenant_id
                 WHERE c.tenant_id=:t AND c.id=:c"""), {"t": tenant, "c": channel})).mappings().first()
-            catalog = [dict(x) for x in (await db.execute(text("""SELECT id,name,duration_min,price_cents
-                FROM services WHERE tenant_id=:t AND active ORDER BY name,id LIMIT 60"""), {"t": tenant})).mappings()]
+            catalog = [dict(x) for x in (await db.execute(text("""SELECT id,name,duration_min,price_cents,price_mode
+                FROM services WHERE tenant_id=:t AND active
+                  AND catalog_kind IN ('base','combo') ORDER BY name,id LIMIT 60"""), {"t": tenant})).mappings()]
     if inactive or not settings or not settings["enabled"]:
         return None
     if user_text in {"falar com humano", "falar com barbeiro", "atendente", "quero uma pessoa", "falar com a equipe"}:
@@ -130,9 +131,14 @@ async def _reply(tenant, channel, sender, body, redis, key, state, prefs, messag
     def labels():
         return [item["name"] for item in catalog if str(item["id"]) in state.get("services", [])]
 
+    def price_kind(ids):
+        chosen={str(x) for x in ids}
+        return "from" if any(row.get("price_mode")=="from" for row in catalog
+                             if str(row["id"]) in chosen) else "fixed"
+
     def menu():
         displayed = catalog[:8]
-        quote = presentation.render_quote([presentation.QuoteItem(item["name"], item["price_cents"], duration_min=item["duration_min"]) for item in displayed], prefs)
+        quote = presentation.render_quote([presentation.QuoteItem(item["name"], item["price_cents"], duration_min=item["duration_min"],price_kind=item.get("price_mode","fixed")) for item in displayed], prefs)
         return checked(quote + "\n\n" + presentation.render_prompt("service", prefs))
 
     async def professionals(ids):
@@ -149,7 +155,7 @@ async def _reply(tenant, channel, sender, body, redis, key, state, prefs, messag
         selected = [item for item in catalog if item["id"] in subjects] if subjects else [item for item in catalog if str(item["id"]) in state.get("services", [])]
         if not selected:
             return presentation.render_prompt("service", prefs)
-        return checked(presentation.render_quote([presentation.QuoteItem(item["name"],item["price_cents"],duration_min=item["duration_min"]) for item in selected],prefs,
+        return checked(presentation.render_quote([presentation.QuoteItem(item["name"],item["price_cents"],duration_min=item["duration_min"],price_kind=item.get("price_mode","fixed")) for item in selected],prefs,
             context=presentation.InteractionContext.from_message(body,information_only=True)))
 
     explicit_query = "?" in body or bool(re.search(r"\b(?:tem|horários?|horarios?|dispon\w*|consult\w*|livres?)\b",user_text))
@@ -170,7 +176,8 @@ async def _reply(tenant, channel, sender, body, redis, key, state, prefs, messag
         async with get_session_factory()() as db:
             available=await list_slots(db,tenant,chosen["id"],[UUID(x) for x in ids],date.fromisoformat(day))
         return checked(presentation.render_slots([x["name"] for x in catalog if str(x["id"]) in ids],available["slots"][:8],prefs,
-            timezone=zone,day=day,total_cents=available["price_cents"],duration_min=available["duration_min"],professional=chosen["name"],ask_selection=False))
+            timezone=zone,day=day,total_cents=available["price_cents"],duration_min=available["duration_min"],professional=chosen["name"],ask_selection=False,
+            price_kind=price_kind(ids)))
 
     if state.get("step") == "confirm":
         known=await owned_booking(tenant,sender,item_id=state.get('hold'),statuses=('hold','confirmed')) if state.get('hold') else None
@@ -275,10 +282,12 @@ async def _reply(tenant, channel, sender, body, redis, key, state, prefs, messag
                 state["slots"]=list(choice.alternatives or available["slots"])[:8]
                 await save()
                 return checked(presentation.render_slots(labels(),state["slots"],prefs,timezone=zone,day=state["day"],
-                    total_cents=available["price_cents"],duration_min=available["duration_min"],professional=state.get("professional_name")))
+                    total_cents=available["price_cents"],duration_min=available["duration_min"],professional=state.get("professional_name"),
+                    price_kind=price_kind(state["services"])))
             if not message_id:
                 return "Preciso receber sua escolha em uma nova mensagem antes de preparar a reserva."
             candidate={"services":labels(),"start_at":choice.when,"timezone":zone,"total_cents":available["price_cents"],
+                       "price_mode":price_kind(state["services"]),
                        "duration_min":available["duration_min"],"professional":state.get("professional_name")}
             checked(presentation.render_summary(summary(candidate),prefs))
             # Reserve room for the real protocol before creating a hold.

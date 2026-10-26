@@ -23,6 +23,7 @@
   function picture(container, url, initials) { const safe = safeImageURL(url); container.textContent = initials; if (safe) { const img = el('img'); img.src = safe; img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.addEventListener('error', () => { container.textContent = initials; }, { once: true }); container.replaceChildren(img); } }
   function initials(name) { return String(name || '').trim().split(/\s+/).slice(0, 2).map(p => p[0] || '').join('').toUpperCase(); }
   function money(cents) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(cents) / 100); }
+  function priceText(cents, mode) { return (mode === 'from' ? 'A partir de ' : '') + money(cents); }
   function duration(minutes) { const n = Number(minutes); return n >= 60 ? `${Math.floor(n / 60)} h${n % 60 ? ` ${n % 60} min` : ''}` : `${n} min`; }
   function color(node, key, value) { if (/^#[0-9a-f]{6}$/i.test(value || '')) node.style.setProperty(key, value); }
   function dateLabel(day, options) { return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', ...options }).format(new Date(`${day}T12:00:00Z`)); }
@@ -31,7 +32,11 @@
   function selectedService() { return data.services.find(s => s.id === booking.service); }
   function selectedAddons() { return (selectedService()?.addons || []).filter(a => booking.addons.includes(a.addon_service_id)); }
   function eligibleProfessionals() { const service = selectedService(); return data.professionals.filter(p => service?.professional_ids.includes(p.id) && selectedAddons().every(a => a.professional_ids.includes(p.id))); }
-  function selectionTotal() { const service = selectedService(); return { price: (service?.price_cents || 0) + selectedAddons().reduce((n, a) => n + a.price_cents, 0), minutes: (service?.duration_min || 0) + selectedAddons().reduce((n, a) => n + (a.add_duration ? a.duration_min : 0), 0) }; }
+  function selectionTotal() { const service = selectedService(), addons = selectedAddons(); return {
+    price: (service?.price_cents || 0) + addons.reduce((n, a) => n + a.price_cents, 0),
+    price_mode: service?.price_mode === 'from' || addons.some(a => a.price_mode === 'from') ? 'from' : 'fixed',
+    minutes: (service?.duration_min || 0) + addons.reduce((n, a) => n + (a.add_duration ? a.duration_min : 0), 0)
+  }; }
   function showError(message) { $('booking-error').textContent = message || ''; $('booking-error').hidden = !message; }
 
   async function api(path = '', options = {}) {
@@ -53,7 +58,7 @@
     detail.append(el('strong', '', service.name));
     if (service.description) detail.append(el('p', '', service.description));
     const meta = el('span', 'service-meta'); meta.append(el('span', '', duration(service.duration_min)));
-    if (data.site.show_prices) meta.append(el('span', 'price', money(service.price_cents)));
+    if (data.site.show_prices) meta.append(el('span', 'price', priceText(service.price_cents,service.price_mode)));
     detail.append(meta); card.append(thumb, detail, el('span', 'service-arrow', isSelected ? '✓' : '›'));
     return card;
   }
@@ -125,7 +130,7 @@
     if (service?.components?.length) body.append(el('p', 'small muted', `Inclui: ${service.components.map(c => c.name).join(' + ')}.`));
     if (service?.addons?.length) {
       const extras = el('section', 'addon-section'); extras.append(el('h3', '', 'Complemente seu atendimento'), el('p', '', 'Adicionais opcionais. Confira o valor e o tempo de cada opção.'));
-      for (const addon of service.addons) { const label = el('label', 'addon-option'); const input = el('input'); input.type = 'checkbox'; input.checked = booking.addons.includes(addon.addon_service_id); input.addEventListener('change', () => { invalidateAvailability(); booking.addons = input.checked ? [...booking.addons, addon.addon_service_id] : booking.addons.filter(id => id !== addon.addon_service_id); booking.professional = null; showError(eligibleProfessionals().length ? '' : 'Nenhum profissional realiza essa combinação. Remova um adicional para continuar.'); updateFooter(); }); const copy = el('span', '', addon.name); copy.append(el('small', '', addon.add_duration ? `Acrescenta ${duration(addon.duration_min)}` : 'Realizado dentro do tempo do serviço')); label.append(input, copy); if (data.site.show_prices) label.append(el('b', '', `+ ${money(addon.price_cents)}`)); extras.append(label); }
+      for (const addon of service.addons) { const label = el('label', 'addon-option'); const input = el('input'); input.type = 'checkbox'; input.checked = booking.addons.includes(addon.addon_service_id); input.addEventListener('change', () => { invalidateAvailability(); booking.addons = input.checked ? [...booking.addons, addon.addon_service_id] : booking.addons.filter(id => id !== addon.addon_service_id); booking.professional = null; showError(eligibleProfessionals().length ? '' : 'Nenhum profissional realiza essa combinação. Remova um adicional para continuar.'); updateFooter(); }); const copy = el('span', '', addon.name); copy.append(el('small', '', addon.add_duration ? `Acrescenta ${duration(addon.duration_min)}` : 'Realizado dentro do tempo do serviço')); label.append(input, copy); if (data.site.show_prices) label.append(el('b', '', addon.price_mode==='from'?priceText(addon.price_cents,'from'):`+ ${money(addon.price_cents)}`)); extras.append(label); }
       body.append(extras);
     }
   }
@@ -174,7 +179,15 @@
     const lines = [['Serviços', services.filter(Boolean).join(' + ')], ['Profissional', person], ['Data', new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeZone: data.timezone }).format(new Date(start))], ['Horário', slotTime(start)]];
     if (result?.protocol) lines.push(['Protocolo', result.protocol]);
     for (const [key, value] of lines) { const row = el('div', 'review-row'); row.append(el('span', '', key), el('strong', '', value)); box.append(row); }
-    const total = el('div', 'review-row total'); total.append(el('span', '', 'Valor do atendimento'), el('strong', '', money(result?.price_cents ?? booking.availability?.price_cents ?? selectionTotal().price))); box.append(total); return box;
+    const estimate = booking.availability || selectionTotal();
+    const variable = (result?.price_mode || estimate.price_mode) === 'from';
+    const total = el('div', 'review-row total');
+    total.append(el('span', '', variable?'Valor mínimo previsto':'Valor do atendimento'),
+      el('strong', '', priceText(result?.price_cents ?? estimate.price_cents ?? estimate.price,variable?'from':'fixed')));
+    box.append(total);
+    if(variable)box.append(el('p','price-disclaimer',
+      'O valor exibido é inicial. O preço final depende da avaliação do serviço e será confirmado pela equipe. Nenhum pagamento é cobrado nesta página.'));
+    return box;
   }
   function renderConfirmation(body) {
     body.append(el('h3', '', 'Confira e confirme seu agendamento'), reviewCard());
@@ -182,13 +195,14 @@
     for (const spec of [{ key: 'name', title: 'Seu nome', autocomplete: 'name', type: 'text', max: 120, placeholder: 'Como podemos chamar você?' }, { key: 'phone', title: 'Telefone com DDD', autocomplete: 'tel', type: 'tel', max: 40, placeholder: '(11) 99999-9999' }]) {
       const label = el('label', 'field', spec.title); const field = el('input'); field.name = `customer_${spec.key}`; field.type = spec.type; field.autocomplete = spec.autocomplete; field.maxLength = spec.max; field.required = true; field.placeholder = spec.placeholder; field.value = booking[spec.key]; if (spec.key === 'phone') { field.inputMode = 'tel'; field.minLength = 10; } field.addEventListener('input', () => { booking[spec.key] = field.value; }); label.append(field); form.append(label);
     }
-    const consent = el('label', 'consent-label'); const check = el('input'); check.type = 'checkbox'; check.required = true; check.name = 'confirmed'; check.checked = booking.consent; check.addEventListener('change', () => { booking.consent = check.checked; updateFooter(); }); consent.append(check, el('span', '', 'Conferi os serviços, o profissional, a data, o horário e o valor. Quero confirmar este agendamento.')); form.append(consent, el('p', 'privacy-note', 'Seu nome e telefone serão usados pela barbearia para identificar e atender este agendamento. Nenhum pagamento é cobrado nesta página.')); body.append(form);
+    const consent = el('label', 'consent-label'); const check = el('input'); check.type = 'checkbox'; check.required = true; check.name = 'confirmed'; check.checked = booking.consent; check.addEventListener('change', () => { booking.consent = check.checked; updateFooter(); }); consent.append(check, el('span', '', 'Conferi os serviços, o profissional, a data, o horário e o valor. Quero confirmar este agendamento.')); form.append(consent, el('p', 'privacy-note',
+      'Seu nome e telefone serão usados para identificar o agendamento. Serviços “a partir de” terão o valor final confirmado pela equipe. Nenhum pagamento é cobrado nesta página.')); body.append(form);
   }
   function updateFooter() {
     const next = $('booking-next'), back = $('booking-back'), total = $('booking-total');
     back.hidden = booking.step === 1 || !!booking.result; back.disabled = booking.busy; $('close-booking').disabled = booking.busy;
     total.replaceChildren();
-    if (booking.service && !booking.result) { const amount = selectionTotal(); total.append(el('span', '', duration(booking.availability?.duration_min ?? amount.minutes))); if (data.site.show_prices || booking.step === 3) total.append(el('strong', '', money(booking.availability?.price_cents ?? amount.price))); }
+    if (booking.service && !booking.result) { const amount = selectionTotal(); total.append(el('span', '', duration(booking.availability?.duration_min ?? amount.minutes))); if (data.site.show_prices || booking.step === 3) total.append(el('strong', '', priceText(booking.availability?.price_cents ?? amount.price,booking.availability?.price_mode || amount.price_mode))); }
     next.textContent = booking.result ? 'Concluir' : booking.busy ? 'Confirmando…' : booking.step === 3 ? 'Confirmar agendamento' : 'Continuar →';
     next.disabled = booking.busy || (!booking.result && (booking.step === 1 ? !booking.service || !eligibleProfessionals().length : booking.step === 2 ? !booking.start || !booking.quote || booking.loading || preview : !booking.consent));
   }

@@ -143,7 +143,7 @@ async def award_completion(db, tenant_id, appointment, now):
     return {"points_earned": points, "points_balance": balance, "coupon": coupon}
 
 
-async def completion_discount(db, tenant_id, appointment, coupon_id, now):
+async def completion_discount(db, tenant_id, appointment, coupon_id, now, *, gross_cents=None):
     if coupon_id is None:
         return 0
     customer = await lock_customer(db, tenant_id, appointment["customer_id"])
@@ -159,7 +159,7 @@ async def completion_discount(db, tenant_id, appointment, coupon_id, now):
         raise HTTPException(409, "Este cupom já foi utilizado ou expirou")
     if appointment["discount_cents"] != 0:
         raise HTTPException(409, "O atendimento já possui um desconto")
-    gross = appointment["total_cents"]
+    gross = appointment["total_cents"] if gross_cents is None else gross_cents
     if coupon["reward_type"] == "percent":
         discount = int((Decimal(gross) * coupon["reward_percent"] / 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     elif coupon["reward_type"] == "fixed":

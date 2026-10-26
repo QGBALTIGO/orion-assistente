@@ -111,7 +111,7 @@ def info(plan: UnderstandingPlan, business: dict, catalog: list[dict], *, messag
             chosen = [by_id[value] for value in ids] if ids else catalog[:12]
             if chosen:
                 items = [QuoteItem(x["name"], x.get("price_cents"),
-                    duration_min=x.get("duration_min"), price_kind=x.get("price_kind", "fixed")) for x in chosen]
+                    duration_min=x.get("duration_min"), price_kind=x.get("price_mode",x.get("price_kind", "fixed"))) for x in chosen]
                 text = render_quote(items, style, context=InteractionContext(information_only=True), show_total=bool(ids))
                 if not ids:
                     text = "Estes são os valores cadastrados:\n" + text

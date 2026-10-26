@@ -7,3 +7,6 @@
 @media(min-width:768px){.cover{height:384px}h1{font-size:36px}.team-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.info-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.info-grid:has(>[hidden]){grid-template-columns:1fr}}
 @media(max-width:359px){.booking-footer{gap:6px;padding-inline:12px}.booking-footer .primary,.booking-footer .outline{padding-inline:10px;font-size:13px}.booking-total strong{font-size:14px}.site-logo{width:64px;height:64px}.identity-row{gap:12px}h1{font-size:22px}.slots-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* The user is booking a time, not purchasing a final-price variable service. */
+.price-disclaimer{margin:10px 0 0;padding:10px 12px;border:1px solid var(--line,var(--border,#dbe3ed));border-radius:10px;font-size:12px;line-height:1.5;color:var(--muted,#64748b);background:var(--card,#fff)}

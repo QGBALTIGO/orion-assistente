@@ -47,7 +47,9 @@ def summary(record):
         starts_at=start, timezone=record["timezone"], total_cents=record["total_cents"],
         professional=record.get("professional"), duration_min=record.get("duration_min") or
         sum(x["duration_snapshot_min"] for x in record.get("items", [])) or None,
-        protocol=record.get("protocol"))
+        protocol=record.get("protocol"),
+        price_kind=record.get("price_mode","from" if any(
+            item.get("price_mode_snapshot")=="from" for item in record.get("items", [])) else "fixed"))
 
 
 async def owned_booking(tenant, sender, *, protocol=None, item_id=None, statuses=("confirmed",)):
