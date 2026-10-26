@@ -296,3 +296,61 @@ body{background:var(--bg);color:var(--text);min-width:0}
 @media(prefers-reduced-motion:reduce){
   .booking-service-list .service-card{transition:none}
 }
+
+
+/* Booking professional cards: edge-to-edge photograph with a separate full name. */
+.booking-body .professional-picker{
+  display:flex;align-items:stretch;flex-wrap:nowrap;gap:12px;
+  margin-bottom:18px;padding:3px 2px 13px;
+  overflow-x:auto;scroll-snap-type:x proximity;scroll-padding-inline:2px;
+  -webkit-overflow-scrolling:touch
+}
+.booking-body .professional-choice{
+  display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;
+  box-sizing:border-box;flex:0 0 122px;width:122px;min-width:122px;
+  gap:8px;padding:6px 6px 12px;border:1px solid var(--border);
+  border-radius:16px;background:var(--card);color:var(--text);
+  text-align:center;scroll-snap-align:start;overflow:hidden;
+  transition:border-color .15s ease,box-shadow .15s ease,background .15s ease
+}
+.booking-body .professional-choice[aria-pressed=true]{
+  border-color:var(--primary);box-shadow:0 0 0 1px var(--primary);
+  background:color-mix(in srgb,var(--primary) 5%,var(--card))
+}
+.booking-body .professional-choice .professional-photo{
+  position:relative;display:grid;place-items:center;flex:none;
+  width:100%;height:auto;aspect-ratio:1/1.08;min-height:0;
+  border-radius:11px;overflow:hidden;
+  background:var(--soft);color:var(--muted);
+  font-family:Outfit,Figtree,sans-serif;font-size:25px;font-weight:650
+}
+.booking-body .professional-choice .professional-photo img{
+  position:absolute;inset:0;width:100%;height:100%;max-width:none;
+  object-fit:cover;object-position:center 26%;
+  border-radius:inherit
+}
+.booking-body .professional-choice .professional-name{
+  display:block;flex:1;min-width:0;width:100%;padding-inline:2px;
+  font-size:12px;line-height:1.34;font-weight:600;
+  text-align:center;white-space:normal;overflow-wrap:anywhere;
+  word-break:normal;hyphens:auto
+}
+/* Keep yesterday's time options visually anchored but disabled while querying
+   the newly selected professional/day. New results then update in place. */
+.slots-grid-pending{opacity:.42;pointer-events:none}
+.slots-grid-pending .slot{cursor:progress}
+#time-slots[aria-busy=true] .slot-message{
+  min-height:42px;padding:10px;text-align:center;font-size:12px
+}
+#time-slots .slot-message + .slots-grid{margin-top:8px}
+@media(max-width:359px){
+  .booking-body .professional-choice{flex-basis:112px;width:112px;min-width:112px}
+  .booking-body .professional-picker{gap:10px}
+}
+@media(min-width:640px){
+  .booking-body .professional-choice{flex-basis:138px;width:138px;min-width:138px}
+  .booking-body .professional-picker{gap:14px}
+}
+@media(prefers-reduced-motion:reduce){
+  .booking-body .professional-choice{transition:none}
+}
