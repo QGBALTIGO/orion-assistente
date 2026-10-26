@@ -10,3 +10,33 @@
 
 /* The user is booking a time, not purchasing a final-price variable service. */
 .price-disclaimer{margin:10px 0 0;padding:10px 12px;border:1px solid var(--line,var(--border,#dbe3ed));border-radius:10px;font-size:12px;line-height:1.5;color:var(--muted,#64748b);background:var(--card,#fff)}
+
+/* Identidade do site: ações claras e consistentes (SVG line icons, 24px viewBox).
+   O mesmo botão atende a prévia e o site público, sem depender de fontes de ícones. */
+.hero-actions{gap:10px}
+.hero-actions .pill{flex:1;min-width:0;white-space:nowrap;gap:8px}
+.hero-book-icon{display:block;flex:0 0 auto;width:19px;height:19px}
+.hero-actions .hero-icon-action{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:0 0 46px;width:46px;min-width:46px;height:46px;min-height:46px;padding:0;border:1px solid var(--border);border-radius:14px;background:color-mix(in srgb,var(--primary) 3%,var(--card));color:var(--text);box-shadow:0 2px 7px #0f1b3308;transition:background .16s ease,border-color .16s ease,transform .16s ease}
+.hero-actions .hero-icon-action:hover{border-color:color-mix(in srgb,var(--primary) 28%,var(--border));background:color-mix(in srgb,var(--primary) 8%,var(--card))}
+.hero-actions .hero-icon-action:active{transform:scale(.975)}
+.hero-actions .hero-icon-action:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+.hero-actions .hero-action-icon{display:block;width:20px;height:20px;flex:0 0 20px}
+.hero-action-label{display:none;font-size:13px;line-height:18px;font-weight:600;white-space:nowrap}
+.map-action-link{gap:9px}
+.map-action-link .inline-action-icon{display:block;width:18px;height:18px;flex:none}
+.location-mark .location-icon{width:27px;height:27px;flex:none}
+@media(min-width:640px){
+  .hero-actions .pill{flex:none;padding-inline:32px}
+  .hero-actions .hero-icon-action{flex:0 0 auto;width:auto;min-width:46px;padding-inline:14px}
+  .hero-actions .hero-action-label{display:inline}
+}
+@media(max-width:359px){
+  .hero-actions{gap:6px}
+  .hero-actions .pill{font-size:13px;padding-inline:10px;gap:5px}
+  .hero-book-icon{width:16px;height:16px}
+  .hero-actions .hero-icon-action{flex-basis:44px;width:44px;min-width:44px;height:44px;min-height:44px}
+  .hero-actions .hero-action-icon{width:19px;height:19px;flex-basis:19px}
+}
+@media(prefers-reduced-motion:reduce){
+  .hero-actions .hero-icon-action{transition:none}
+}
