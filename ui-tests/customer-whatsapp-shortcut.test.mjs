@@ -117,6 +117,9 @@ test('toque e layout acessíveis em celular estreito, sem quebrar swipe nem core
   const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
   assert.match(css,/\.os-client-mobile-front\{[^}]*scroll-snap-align:start/);
   assert.match(css,/\.os-client-mobile-front>\.os-client-mobile-whatsapp\{[^}]*width:44px;height:44px/);
+  assert.match(css,/\.os-client-mobile-front>\.os-client-mobile-whatsapp\{[^}]*border:0;border-radius:0;background:transparent/);
+  assert.match(css,/\.os-client-mobile-whatsapp>\.os-whatsapp-mark\{[^}]*width:19px;height:19px/);
+  assert.doesNotMatch(css,/\.os-client-mobile-whatsapp:hover\{background:/);
   assert.match(css,/\.os-client-mobile-whatsapp:focus-visible\{[^}]*outline:/);
   assert.match(css,/@media\(max-width:359px\)/);
   assert.match(css,/html\[data-theme=dark\] \.os-client-mobile-whatsapp/);
