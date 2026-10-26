@@ -18,7 +18,8 @@ def configure(monkeypatch, *, current=None, backup_error=False, migration_result
         events.append("backup")
         assert storage == {"bucket": "synthetic-private"}
         assert isinstance(destination, Path) and destination.name == "backup.dump"
-        assert kwargs == {"backup_context": "site-publication-0036", "schema_revision": release.PREVIOUS}
+        assert kwargs == {"backup_context": "site-publication-0036", "schema_revision": release.PREVIOUS,
+                          "preserve_ownership": True}
         if backup_error:
             raise RuntimeError("synthetic-secret-must-not-appear-in-logs")
     def migration(args, **kwargs):

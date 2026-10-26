@@ -70,16 +70,25 @@ def storage_values():
     return values
 
 
-def perform_backup(url, settings, destination: Path, *, backup_context='commission-0033', schema_revision=PREVIOUS):
+def perform_backup(url, settings, destination: Path, *, backup_context='commission-0033', schema_revision=PREVIOUS,
+                   preserve_ownership=False):
+    """Verify a private archive and its readback before allowing any migration.
+
+    Existing releases retain their historical data/schema export. New reviewed
+    releases can preserve ownership AND grants, so restoration into a separate
+    database with the existing roles also retains the authorization boundary.
+    """
     environment = dict(os.environ)
     environment["PGPASSWORD"] = url.password
     # Explicit arguments do not contain passwords; credentials remain in env.
     commands = [
         "pg_dump", "--host", url.host, "--port", str(url.port or 5432),
         "--username", url.username, "--dbname", url.database,
-        "--format=custom", "--no-owner", "--no-acl",
-        "--file", str(destination), "--lock-wait-timeout=10000",
+        "--format=custom",
     ]
+    if not preserve_ownership:
+        commands.extend(["--no-owner", "--no-acl"])
+    commands.extend(["--file", str(destination), "--lock-wait-timeout=10000"])
     # A failure aborts the migration; do not log stderr with internal host/rows.
     dump = subprocess.run(commands, env=environment, stdout=subprocess.DEVNULL,
                           stderr=subprocess.DEVNULL, timeout=600, check=False)

@@ -86,7 +86,8 @@ def main():
         storage = storage_values()
         with tempfile.TemporaryDirectory(prefix="orion-site-publication-") as folder:
             perform_backup(url, storage, Path(folder) / "backup.dump",
-                           backup_context="site-publication-0036", schema_revision=PREVIOUS)
+                           backup_context="site-publication-0036", schema_revision=PREVIOUS,
+                           preserve_ownership=True)
         environment = {**os.environ, "ORION_MIGRATION_SWITCH_ROLE": "1"}
         result = subprocess.run([sys.executable, "-m", "alembic", "upgrade", TARGET],
                                 env=environment, check=False, timeout=600,

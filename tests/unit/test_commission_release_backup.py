@@ -37,7 +37,8 @@ def test_storage_scope_requires_explicit_private_bucket(monkeypatch):
     assert release.storage_values()["style"] in {"path","virtual"}
 
 
-def test_backup_checks_archive_and_remote_digest_before_ddl(tmp_path,monkeypatch):
+@pytest.mark.parametrize("preserve_ownership", [False, True])
+def test_backup_checks_archive_and_remote_digest_before_ddl(tmp_path,monkeypatch,preserve_ownership):
     from hashlib import sha256
     data=b"synthetic-sql-backup-for-tests-only"*7
     client=SimpleNamespace()
@@ -57,7 +58,14 @@ def test_backup_checks_archive_and_remote_digest_before_ddl(tmp_path,monkeypatch
     import boto3
     monkeypatch.setattr(boto3,"client",lambda *_args,**_kwargs:client)
     def run(args,**kwargs):
-        if args[0]=="pg_dump":Path(args[args.index("--file")+1]).write_bytes(data)
+        if args[0]=="pg_dump":
+            expected=["pg_dump","--host","127.0.0.1","--port","5432","--username","app_migrator",
+                      "--dbname","synthetic","--format=custom"]
+            if not preserve_ownership:
+                expected.extend(["--no-owner","--no-acl"])
+            expected.extend(["--file",str(tmp_path/"backup.dump"),"--lock-wait-timeout=10000"])
+            assert args==expected
+            Path(args[args.index("--file")+1]).write_bytes(data)
         assert kwargs["stderr"] is not None
         return SimpleNamespace(returncode=0)
     monkeypatch.setattr(release.subprocess,"run",run)
@@ -65,7 +73,7 @@ def test_backup_checks_archive_and_remote_digest_before_ddl(tmp_path,monkeypatch
                         database="synthetic",password="private-only")
     settings={"endpoint":"https://storage.invalid","bucket":"synthetic-private",
               "region":"iad","access":"fake","secret":"fake","style":"path"}
-    key=release.perform_backup(url,settings,tmp_path/"backup.dump")
+    key=release.perform_backup(url,settings,tmp_path/"backup.dump",preserve_ownership=preserve_ownership)
     assert key.startswith("production/commission-0033/pre-schema-0032-")
     assert expected["sha"]==sha256(data).hexdigest()
 
