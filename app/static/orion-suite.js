@@ -80,6 +80,18 @@
     return customerName(customer.name)||customerName(customer.display_name)||customerName(customer.whatsapp_name)||[customer.phone,customer.display_name,customer.name].map(value=>typeof value==='string'?value.trim():'').find(customerNumber)||'Cliente sem nome';
   }
   function customerAvatar(customer){return customerName(customer.name)||customerName(customer.display_name)||customerName(customer.whatsapp_name)?esc(initials(customerDisplayName(customer))):icon('users');}
+  function customerMobileName(customer){
+    const name=customerDisplayName(customer);
+    return customerNumber(name)?'Cliente sem nome':name;
+  }
+  function customerWhatsappLink(value){
+    if(typeof value!=='string'||!/^[+\d\s().-]+$/.test(value.trim()))return '';
+    const normalized=phone(value);
+    return /^\+55[1-9][0-9]{9,10}$/.test(normalized)?'https://wa.me/'+normalized.slice(1):'';
+  }
+  const whatsappMark='<svg class="os-whatsapp-mark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">'+
+    '<path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.966-.273-.099-.471-.149-.67.149-.197.297-.767.966-.94 1.164-.173.198-.347.223-.644.075-.297-.149-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.149-.174.198-.298.298-.496.099-.198.05-.372-.025-.52-.075-.149-.67-1.612-.917-2.207-.242-.579-.487-.5-.67-.51-.173-.009-.372-.01-.57-.01s-.52.074-.792.372c-.272.297-1.04 1.016-1.04 2.48s1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.262.49 1.693.627.711.226 1.36.194 1.872.118.571-.085 1.758-.719 2.005-1.413.248-.694.248-1.289.174-1.413-.074-.124-.272-.198-.57-.347zM12.004 2C6.488 2 2 6.486 2 12c0 1.763.46 3.486 1.335 5.007L2 22l5.127-1.344A9.94 9.94 0 0 0 12.005 22C17.52 22 22 17.514 22 12S17.52 2 12.004 2zm0 18.31c-1.55 0-3.07-.416-4.396-1.203l-.315-.187-3.035.796.81-2.958-.205-.332A8.282 8.282 0 0 1 3.69 12c0-4.585 3.73-8.316 8.316-8.316 4.586 0 8.316 3.731 8.316 8.316 0 4.586-3.73 8.31-8.316 8.31z"/></svg>';
+
   const businessAccessError = () => state.bridge.businessContextError||((state.bridge.tenants||[]).length>1?'Sua conta está vinculada a mais de uma empresa. Entre em contato com o suporte para regularizar o vínculo.':'');
   const tenant = () => {const list=state.bridge.tenants||[];return state.bridge.businessContextReady!==false&&!businessAccessError()&&list.length===1&&String(list[0].id)===state.tenantId?list[0]:null;};
   const accountTenantId = () => {const list=state.bridge.tenants||[];return state.bridge.businessContextReady!==false&&!businessAccessError()&&list.length===1?String(list[0].id):'';};
@@ -644,8 +656,16 @@
     const actions=c=>'<button type="button" class="os-icon-button" data-os-customer="'+esc(c.id)+'" aria-label="'+(writable()?'Editar ':'Ver ')+esc(customerDisplayName(c))+'">'+icon('edit')+'</button>'+(writable()?'<button type="button" class="os-icon-button" data-os-customer-toggle="'+esc(c.id)+'" aria-label="'+(c.active?'Inativar ':'Ativar ')+esc(customerDisplayName(c))+'">'+icon(c.active?'block':'check')+'</button><button type="button" class="os-icon-button os-negative" data-os-customer-delete="'+esc(c.id)+'" aria-label="Excluir '+esc(customerDisplayName(c))+'">'+icon('trash')+'</button>':'');
     let html='<p class="os-help os-only-mobile" style="margin-bottom:12px">'+(writable()?'Deslize para a esquerda para editar, inativar ou excluir.':'Toque em um cliente para consultar seus dados.')+'</p><div class="os-card os-no-pad os-hide-mobile"><div class="os-table-scroll"><table class="os-table"><thead><tr><th>Cliente</th><th>WhatsApp</th><th>Última visita</th><th>Atendimentos</th><th><span class="os-sr-only">Ações</span></th></tr></thead><tbody>'+list.map(c=>'<tr><td><div class="os-person"><span class="os-avatar">'+customerAvatar(c)+'</span><div><strong>'+esc(customerDisplayName(c))+'</strong><small>'+esc(c.email||c.instagram||'')+'</small>'+
       (c.created_at?'<small class="os-client-row-created">Cadastro: '+esc(customerRegisteredAt(c.created_at))+'</small>':'')+'</div></div></td><td>'+esc(c.phone||'—')+'</td><td>'+fmtDate(c.last_visit_at)+'</td><td>'+number(c.completed_appointments??c.total_appointments)+'</td><td><div class="os-table-actions">'+actions(c)+'</div></td></tr>').join('')+'</tbody></table></div></div>';
-    html+='<div class="os-mobile-customers os-only-mobile">'+list.map(c=>'<div class="os-swipe-row"><button type="button" class="os-client-mobile-main" data-os-customer="'+esc(c.id)+'"><span class="os-avatar">'+customerAvatar(c)+'</span><span><strong>'+esc(customerDisplayName(c))+'</strong><small>'+esc(customerNumber(customerDisplayName(c))?'Nome ainda não informado':c.phone||'Sem WhatsApp')+'</small>'+
-    (c.created_at?'<small class="os-client-mobile-created">Desde '+esc(fmtDate(dateKey(new Date(c.created_at))))+'</small>':'')+'</span>'+icon('chevron')+'</button><div class="os-swipe-actions">'+actions(c)+'</div></div>').join('')+'</div>';
+    html+='<div class="os-mobile-customers os-only-mobile">'+list.map(c=>{
+      const name=customerMobileName(c),whatsapp=customerWhatsappLink(c.phone);
+      const link=whatsapp?'<a class="os-client-mobile-whatsapp" href="'+whatsapp+'" target="_blank" rel="noopener noreferrer" aria-label="Abrir WhatsApp de '+esc(name)+'" title="Conversar pelo WhatsApp">'+whatsappMark+'</a>':'';
+      return '<div class="os-swipe-row"><div class="os-client-mobile-front">'+
+        '<button type="button" class="os-client-mobile-main'+(whatsapp?' os-client-mobile-has-whatsapp':'')+'" data-os-customer="'+esc(c.id)+'" aria-label="Ver cadastro de '+esc(name)+'">'+
+        '<span class="os-avatar">'+customerAvatar(c)+'</span><span><strong>'+esc(name)+'</strong>'+
+        (c.created_at?'<small class="os-client-mobile-created">Desde '+esc(fmtDate(dateKey(new Date(c.created_at))))+'</small>':'')+
+        '</span>'+icon('chevron')+'</button>'+link+'</div>'+
+        '<div class="os-swipe-actions">'+actions(c)+'</div></div>';
+    }).join('')+'</div>';
     if(number(data.total)>50)html+='<div class="os-pagination"><span>'+String(f.customerOffset+1)+'–'+(f.customerOffset+list.length)+' de '+number(data.total)+' clientes</span><div class="os-actions">'+button('Anterior','customers-prev','os-outline os-small','left',f.customerOffset>0?'':'disabled')+button('Próxima','customers-next','os-outline os-small','chevron',f.customerOffset+list.length<number(data.total)?'':'disabled')+'</div></div>';
     bodyHTML(html);
   }
