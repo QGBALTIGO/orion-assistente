@@ -1751,13 +1751,22 @@
       shortClock(a.start_time).localeCompare(shortClock(b.start_time))||
       shortClock(a.end_time).localeCompare(shortClock(b.end_time))||String(a.id).localeCompare(String(b.id)));
   }
-  function hoursEditorForm(editor,record){
+  function hoursEditorForm(editor,record,parentHour=null){
     if(!writable())return '';
     const mode=editor.mode,isHour=mode==='add-hour'||mode==='edit-hour',
       editing=mode==='edit-hour'||mode==='edit-break',
-      formKind=isHour?(editing?'hours-edit':'hours'):(editing?'pause-edit':'pause'),
-      first=shortClock(record?.start_time||(isHour?'09:00':'12:00')),
-      last=shortClock(record?.end_time||(isHour?'18:00':'13:00'));
+      formKind=isHour?(editing?'hours-edit':'hours'):(editing?'pause-edit':'pause');
+    let first=shortClock(record?.start_time||(isHour?'09:00':'12:00'));
+    let last=shortClock(record?.end_time||(isHour?'18:00':'13:00'));
+    if(mode==='add-break'&&parentHour){
+      const minute=time=>{const parts=shortClock(time).split(':').map(Number);return parts[0]*60+parts[1];};
+      const beginning=minute(parentHour.start_time),ending=minute(parentHour.end_time),
+        length=Math.min(60,Math.max(1,ending-beginning));
+      let start=beginning<=720&&ending>=780?720:Math.round((beginning+ending-length)/30)*15;
+      start=Math.max(beginning,Math.min(start,ending-length));
+      const clock=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
+      first=clock(start);last=clock(start+length);
+    }
     const dayField=mode==='edit-hour'
       ?selectField('Dia da semana','weekday',workweekDays.map((day,index)=>[index,day]),Number(record.weekday),'required')
       :mode==='add-hour'?'<input type="hidden" name="weekday" value="'+Number(editor.weekday)+'">':'';
@@ -1797,7 +1806,7 @@
         return '<section class="os-hours-day" data-os-hours-weekday="'+weekday+'">'+
           '<div class="os-hours-day-head"><div><h3 class="os-hours-day-name">'+day+'</h3><span class="os-hours-day-meta">'+
           (daily.length?daily.length+' período'+(daily.length===1?'':'s'):'Fechado')+'</span></div>'+
-          (can?'<button type="button" class="os-button os-ghost os-small os-hours-add" data-os-hours-add="'+weekday+'" aria-label="Adicionar horário na '+day+'">'+icon('plus')+'Novo horário</button>':'')+'</div>'+
+          (can&&!daily.length?'<button type="button" class="os-button os-ghost os-small os-hours-add" data-os-hours-add="'+weekday+'" aria-label="Adicionar horário na '+day+'">'+icon('plus')+'Novo horário</button>':'')+'</div>'+
           (daily.length?daily.map(hour=>{
             const hourId=esc(hour.id),hourBreaks=breaks.filter(b=>b.working_hour_id===hour.id)
                 .sort((a,b)=>shortClock(a.start_time).localeCompare(shortClock(b.start_time))||String(a.id).localeCompare(String(b.id)));
@@ -1816,7 +1825,7 @@
                 (editor?.mode==='edit-break'&&editor.id===b.id?hoursEditorForm(editor,b):'')+'</div>'
               ).join('')+'</div>':'')+
               (can?'<button type="button" class="os-button os-ghost os-small os-hours-pause-add" data-os-pause="'+hourId+'">'+icon('plus')+'Adicionar pausa</button>':'')+
-              (editor?.mode==='add-break'&&editor.id===hour.id?hoursEditorForm(editor):'')+
+              (editor?.mode==='add-break'&&editor.id===hour.id?hoursEditorForm(editor,null,hour):'')+
               '</div>';
           }).join(''):'<p class="os-hours-closed">Sem expediente cadastrado</p>')+
           (editor?.mode==='add-hour'&&editor.weekday===weekday?hoursEditorForm(editor):'')+
@@ -1842,9 +1851,8 @@
     if(isHour){
       const weekday=Number(values.weekday),original=isEdit?(d.hours||[]).find(h=>h.id===edit.id):null;
       if(!Number.isInteger(weekday)||weekday<0||weekday>6||isEdit&&!original)throw Error('Dia da semana inválido. Atualize os horários.');
-      if((d.hours||[]).some(h=>(!isEdit||h.id!==original.id)&&Number(h.weekday)===weekday&&
-           start<shortClock(h.end_time)&&end>shortClock(h.start_time)))
-        throw Error('Este horário se sobrepõe a outro período do mesmo dia.');
+      if((d.hours||[]).some(h=>(!isEdit||h.id!==original.id)&&Number(h.weekday)===weekday))
+        throw Error('Já existe um expediente nesse dia. Edite o horário existente ou use uma pausa.');
       if(isEdit&&(d.breaks||[]).some(b=>b.working_hour_id===original.id&&
            (shortClock(b.start_time)<start||shortClock(b.end_time)>end)))
         throw Error('Há pausas fora do novo expediente. Ajuste ou remova essas pausas primeiro.');

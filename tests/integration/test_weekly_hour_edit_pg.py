@@ -23,7 +23,7 @@ async def test_weekly_hour_edit_preserves_breaks_and_rejects_overlaps(setup_cata
         created = await c.post(base + "/working_hours", headers=headers(), json=day)
         assert created.status_code == 201, created.text
         hour_id = created.json()["id"]
-        late = await c.post(base + "/working_hours", headers=headers(), json={**day, "start_time": "19:00", "end_time": "21:00"})
+        late = await c.post(base + "/working_hours", headers=headers(), json={**day, "weekday": 2, "start_time": "19:00", "end_time": "21:00"})
         assert late.status_code == 201, late.text
         pause = await c.post(base + "/working_breaks", headers=headers(), json={
             "working_hour_id": hour_id, "start_time": "12:00", "end_time": "13:00",
@@ -38,9 +38,9 @@ async def test_weekly_hour_edit_preserves_breaks_and_rejects_overlaps(setup_cata
 
         # A new shift cannot swallow an existing day period.
         overlapping = await c.put(base + "/working_hours/" + hour_id, headers=headers(), json={
-            **day, "end_time": "20:00",
+            **day, "weekday": 2,
         })
-        assert overlapping.status_code == 409 and "sobrepõe" in overlapping.text
+        assert overlapping.status_code == 409 and "Já existe" in overlapping.text
 
         # A shift cannot silently invalidate an attached lunch break.
         invalid_break = await c.put(base + "/working_hours/" + hour_id, headers=headers(), json={
@@ -55,11 +55,11 @@ async def test_weekly_hour_edit_preserves_breaks_and_rejects_overlaps(setup_cata
 
         # Change weekday without destroying the linked break. 0=Monday, 2=Wednesday.
         moved = await c.put(base + "/working_hours/" + hour_id, headers=headers(), json={
-            **day, "weekday": 2, "start_time": "09:00",
+            **day, "weekday": 1, "start_time": "09:00",
         })
         assert moved.status_code == 200, moved.text
         hours = (await c.get(base + "/working_hours", headers=headers())).json()
-        assert next(x for x in hours if x["id"] == hour_id)["weekday"] == 2
+        assert next(x for x in hours if x["id"] == hour_id)["weekday"] == 1
 
         new_pause = await c.put(base + "/working_breaks/" + pause_id, headers=headers(), json={
             "working_hour_id": hour_id, "start_time": "12:30", "end_time": "13:30",
@@ -87,4 +87,4 @@ async def test_weekly_hour_edit_preserves_breaks_and_rejects_overlaps(setup_cata
             SELECT professional_id,weekday FROM working_hours
             WHERE tenant_id=:tenant AND id=:id
         """), {"tenant": tenant, "id": UUID(hour_id)})).one()
-        assert row.professional_id == UUID(person) and row.weekday == 2
+        assert row.professional_id == UUID(person) and row.weekday == 1

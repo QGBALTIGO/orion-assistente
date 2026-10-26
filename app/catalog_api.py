@@ -179,11 +179,10 @@ async def validate_working_hour_edit(session, values):
         SELECT id FROM working_hours
         WHERE tenant_id=:tenant_id AND professional_id=:professional_id
           AND weekday=:weekday AND id<>:id
-          AND start_time < :end_time AND end_time > :start_time
         LIMIT 1
     """), values)).scalar_one_or_none()
     if collision is not None:
-        raise HTTPException(409, "Este horário se sobrepõe a outro período do mesmo dia")
+        raise HTTPException(409, "Já existe um expediente nesse dia. Edite o horário existente ou use uma pausa")
 
 
 async def validate_break(session, values, ignore_id: UUID | None = None):
