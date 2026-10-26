@@ -251,7 +251,7 @@ body{background:var(--bg);color:var(--text);min-width:0}
 /* Public booking: multiple complete services, no flickering image re-renders. */
 .booking-selection-intro{display:flex;align-items:baseline;flex-wrap:wrap;gap:5px 12px;margin-bottom:11px}
 .booking-selection-intro>h3{font-size:18px;line-height:25px}
-.booking-selection-intro>p{flex-basis:100%;font-size:12px;line-height:18px}
+.booking-selection-intro>p{order:3;flex-basis:100%;font-size:12px;line-height:18px}
 .booking-selected-count{
   flex:none;margin-left:auto;padding:3px 9px;border:1px solid var(--border);
   border-radius:999px;background:var(--soft);color:var(--muted);
