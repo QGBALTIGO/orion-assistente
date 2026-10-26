@@ -25,6 +25,110 @@
   function money(cents) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(cents) / 100); }
   function priceText(cents, mode) { return (mode === 'from' ? 'A partir de ' : '') + money(cents); }
   function duration(minutes) { const n = Number(minutes); return n >= 60 ? `${Math.floor(n / 60)} h${n % 60 ? ` ${n % 60} min` : ''}` : `${n} min`; }
+  const WEEKDAYS=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo'];
+  function validTime(value) { return typeof value==='string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value); }
+  function weeklyHours(raw) {
+    if(!Array.isArray(raw)||raw.length!==7)return null;
+    const slots=new Array(7).fill(null);
+    for(const entry of raw) {
+      const day=Number(entry?.weekday);
+      if(!Number.isInteger(day)||day<0||day>6||slots[day]!==null||!Array.isArray(entry.intervals))return null;
+      const intervals=entry.intervals.map(x=>[x?.open,x?.close]);
+      if(intervals.some(([start,end])=>!validTime(start)||!validTime(end)||start>=end))return null;
+      slots[day]=intervals;
+    }
+    return slots.every(Boolean)?slots:null;
+  }
+  function groupedHours(slots) {
+    const groups=[];
+    for(let day=0;day<7;day++){
+      const value=slots[day].map(([start,end])=>start+'–'+end).join('|'),previous=groups.at(-1);
+      if(previous?.key===value)previous.last=day;
+      else groups.push({first:day,last:day,key:value,intervals:slots[day]});
+    }
+    return groups;
+  }
+  function renderOpeningHours(raw){
+    const card=$('hours-card'),root=$('hours-list'),weekly=weeklyHours(raw);
+    if(!weekly||!weekly.some(day=>day.length)){card.hidden=true;root.replaceChildren();return;}
+    card.hidden=false;
+    root.replaceChildren(...groupedHours(weekly).map(group=>{
+      const row=el('div','hours-row');row.setAttribute('role','listitem');
+      const label=group.first===group.last?WEEKDAYS[group.first]:
+        WEEKDAYS[group.first]+' a '+WEEKDAYS[group.last].toLocaleLowerCase('pt-BR');
+      const name=el('span','hours-day',label);
+      const times=el('strong',group.intervals.length?'hours-time':'hours-time hours-closed',
+        group.intervals.length
+          ?group.intervals.map(([start,end])=>start+'–'+end).join('  ·  ')
+          :'Fechado');
+      row.append(name,times);return row;
+    }));
+  }
+  function mapDestination(site){
+    const address=[site.title,site.address,site.city,site.state,site.postal_code,'Brasil']
+      .filter(v=>typeof v==='string'&&v.trim()).map(v=>v.trim()).join(', ');
+    const hasAddress=[site.address,site.city,site.postal_code].some(v=>typeof v==='string'&&v.trim());
+    let precise=null,placeId=null;
+    const knownURL=safeHTTPS(site.maps_url);
+    if(knownURL)try{
+      const map=new URL(knownURL);
+      if(['google.com','www.google.com','maps.google.com'].includes(map.hostname)){
+        const linkText=map.pathname+map.search;
+        const coord=linkText.match(/!3d(-?\d{1,2}(?:\.\d+)?)!4d(-?\d{1,3}(?:\.\d+)?)/)
+          ||(map.searchParams.get('q')||'').match(/^(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)$/);
+        if(coord){
+          const lat=Number(coord[1]),lng=Number(coord[2]);
+          if(Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180)
+            precise=lat+','+lng;
+        }
+        const id=map.searchParams.get('query_place_id')||map.searchParams.get('destination_place_id');
+        if(id&&/^[\w-]{6,200}$/.test(id))placeId=id;
+      }
+    }catch{ /* Invalid Maps URLs fall back to business address. */ }
+    if(!precise&&!hasAddress&&!placeId)return null;
+    const destination=precise||address;
+    const route=new URL('https://www.google.com/maps/dir/');
+    route.searchParams.set('api','1');
+    route.searchParams.set('destination',destination);
+    if(placeId&&address&&!precise)route.searchParams.set('destination_place_id',placeId);
+    route.searchParams.set('travelmode','driving');
+    route.searchParams.set('dir_action','navigate');
+    // A verified Google Maps Share > Embed URL works without a Maps API key.
+    // Other Maps links fall back to the public search iframe. The supported,
+    // key-based Maps Embed API can replace this fallback when configured.
+    let embed=null;
+    if(knownURL)try{
+      const shared=new URL(knownURL);
+      if(['www.google.com','google.com'].includes(shared.hostname)
+          &&shared.pathname==='/maps/embed'&&shared.searchParams.has('pb'))
+        embed=shared;
+    }catch{}
+    if(!embed){
+      embed=new URL('https://maps.google.com/maps');
+      embed.searchParams.set('q',destination);
+      embed.searchParams.set('z','16');
+      embed.searchParams.set('output','embed');
+    }
+    return {route:route.href,embed:embed.href};
+  }
+  function renderLocation(site){
+    const address=[site.address,[site.city,site.state].filter(Boolean).join(' — '),site.postal_code]
+      .filter(Boolean).join('\n');
+    const where=$('address-card'),box=$('map-preview'),frame=$('location-map'),target=mapDestination(site);
+    $('full-address').textContent=address;
+    where.hidden=!address&&!target;
+    box.hidden=!target;
+    if(target){
+      frame.src=target.embed;
+      frame.title='Prévia do Google Maps: '+(site.title||'local de atendimento');
+      setLink($('maps-link'),target.route);
+      setLink($('hero-map'),target.route);
+    }else{
+      frame.removeAttribute('src');
+      setLink($('maps-link'),null);
+      setLink($('hero-map'),null);
+    }
+  }
   function color(node, key, value) { if (/^#[0-9a-f]{6}$/i.test(value || '')) node.style.setProperty(key, value); }
   function dateLabel(day, options) { return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', ...options }).format(new Date(`${day}T12:00:00Z`)); }
   function slotTime(start) { return new Intl.DateTimeFormat('pt-BR', { timeZone: data.timezone, hour: '2-digit', minute: '2-digit' }).format(new Date(start)); }
@@ -87,11 +191,12 @@
     const cover = safeImageURL(site.cover_url); if (cover) { const image = el('img'); image.src = cover; image.alt = ''; image.referrerPolicy = 'no-referrer'; image.style.width = '100%'; image.style.height = '100%'; $('cover').replaceChildren(image); }
     picture($('site-logo'), site.logo_url, initials(site.title));
     $('site-title').textContent = site.title; $('footer-title').textContent = site.title;
-    const address = [site.address, [site.city, site.state].filter(Boolean).join(' — '), site.postal_code].filter(Boolean).join('\n');
-    $('hero-address').textContent = [site.address, site.city].filter(Boolean).join(' · '); $('hero-address').hidden = !$('hero-address').textContent;
-    setLink($('hero-map'), site.maps_url); setLink($('maps-link'), site.maps_url);
-    $('about-text').textContent = site.description || ''; $('about-card').hidden = !site.description;
-    $('full-address').textContent = address; $('address-card').hidden = !address && !site.maps_url;
+    $('hero-address').textContent = [site.address, site.city].filter(Boolean).join(' · ');
+    $('hero-address').hidden = !$('hero-address').textContent;
+    $('about-text').textContent = site.description || '';
+    $('about-card').hidden = !site.description;
+    renderOpeningHours(data.opening_hours);
+    renderLocation(site);
     $('services-count').textContent = String(data.services.length);
     $('hero-book').disabled = !data.services.length;
     const cats = ['Todos', ...new Set(data.services.map(s => s.category || 'Serviços'))];

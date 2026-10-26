@@ -14,7 +14,12 @@ test('public configuration renders as text, accepts HTTPS links, and filters the
   assert.equal(h.document.querySelector('#services-grid script'), null);
   assert.equal(h.document.querySelector('a[href^="javascript:"]'), null);
   const map = h.document.getElementById('maps-link');
-  assert.equal(map.href, 'https://www.google.com/maps');
+  const route = new URL(map.href);
+  assert.equal(route.origin, 'https://www.google.com');
+  assert.equal(route.pathname, '/maps/dir/');
+  assert.equal(route.searchParams.get('api'), '1');
+  assert.equal(route.searchParams.get('dir_action'), 'navigate');
+  assert.match(route.searchParams.get('destination'), /Endereço sintético, São Paulo, SP/);
   assert.equal(map.rel, 'noopener noreferrer');
   h.fill('#service-search', 'não existe');
   assert.match(h.document.getElementById('services-grid').textContent, /Nenhum serviço encontrado/);

@@ -20,7 +20,11 @@ test('ações do site usam SVGs sem setas ambíguas, com nomes claros e traçado
   assert.equal(map.getAttribute('title'), 'Abrir localização no mapa');
   assert.equal(map.getAttribute('target'), '_blank');
   assert.equal(map.getAttribute('rel'), 'noopener noreferrer');
-  assert.equal(map.href, 'https://www.google.com/maps');
+  const route = new URL(map.href);
+  assert.equal(route.origin, 'https://www.google.com');
+  assert.equal(route.pathname, '/maps/dir/');
+  assert.equal(route.searchParams.get('api'), '1');
+  assert.equal(route.searchParams.get('dir_action'), 'navigate');
   assert.equal(map.querySelector('.hero-action-label')?.textContent, 'Mapa');
   assert.equal(share.getAttribute('aria-label'), 'Compartilhar site');
   assert.equal(share.querySelector('.hero-action-label')?.textContent, 'Compartilhar');
@@ -38,8 +42,8 @@ test('ações do site usam SVGs sem setas ambíguas, com nomes claros e traçado
   assert.equal(map.querySelectorAll('circle').length, 1, 'mapa usa pin reconhecível');
   assert.equal(share.querySelectorAll('circle').length, 3, 'compartilhar usa três nós');
   assert.equal(book.querySelector('svg.hero-book-icon')?.getAttribute('viewBox'), '0 0 24 24');
-  assert.equal(footerMap.querySelector('svg.inline-action-icon')?.getAttribute('viewBox'), '0 0 24 24');
-  assert.equal(doc.querySelector('.location-mark svg.location-icon')?.getAttribute('aria-hidden'), 'true');
+  assert.equal(footerMap.querySelector('svg.route-action-icon')?.getAttribute('viewBox'), '0 0 24 24');
+  assert.equal(doc.querySelector('.location-heading svg.location-icon')?.getAttribute('aria-hidden'), 'true');
   assert.ok(!doc.querySelector('#hero-map [onload],#share-site [onclick]'));
   assert.deepEqual(h.errors, []);
 });
@@ -47,9 +51,13 @@ test('ações do site usam SVGs sem setas ambíguas, com nomes claros e traçado
 test('mapa permanece um link externo seguro e desaparece quando não existe URL HTTPS válida', async t => {
   const data = catalogue();
   data.site.maps_url = 'javascript:alert(1)';
+  // An invalid external URL can never reach an iframe. The known, safe
+  // business address still enables independently generated Google directions.
   const h = await fixture(t, { data });
-  assert.equal(h.document.getElementById('hero-map').hidden, true);
-  assert.equal(h.document.getElementById('maps-link').hidden, true);
+  assert.equal(h.document.getElementById('hero-map').hidden, false);
+  assert.equal(h.document.getElementById('maps-link').hidden, false);
+  assert.equal(new URL(h.document.getElementById('maps-link').href).origin,'https://www.google.com');
+  assert.equal(new URL(h.document.getElementById('location-map').src).origin,'https://maps.google.com');
   assert.equal(h.document.getElementById('share-site').hidden, false);
   assert.equal(h.document.querySelector('a[href^="javascript:"]'), null);
   assert.equal(h.errors.length, 0);
