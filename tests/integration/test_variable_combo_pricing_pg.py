@@ -88,6 +88,12 @@ async def test_variable_component_creates_a_variable_combo_on_site_and_manual_fi
           FROM appointment_items WHERE tenant_id=:tenant AND appointment_id=:appointment
         """), {"tenant": d["a"], "appointment": old.id})).one()
         assert tuple(snapshot) == ("from", 7500)
+    # The public_db fixture predates management_requests cleanup. Completion
+    # writes an idempotent management request; clear only this test tenant.
+    async with d["migrator"].begin() as db:
+        await db.execute(text("""
+          DELETE FROM management_requests WHERE tenant_id=:tenant
+        """), {"tenant": d["a"]})
 
 
 @pytest.mark.asyncio

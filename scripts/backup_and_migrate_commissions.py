@@ -106,7 +106,8 @@ def perform_backup(url, settings, destination: Path, *, backup_context='commissi
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     if not backup_context.replace('-', '').isalnum() or not schema_revision.replace('_', '').isalnum():
         raise ValueError("invalid_backup_scope")
-    key = f"production/{backup_context}/pre-schema-{schema_revision}-{stamp}-{uuid4().hex}.dump"
+    prefix = "0032" if backup_context == "commission-0033" and schema_revision == PREVIOUS else schema_revision
+    key = f"production/{backup_context}/pre-schema-{prefix}-{stamp}-{uuid4().hex}.dump"
     client.upload_file(str(destination), settings["bucket"], key,
                        ExtraArgs={"Metadata": {"sha256": sha.hexdigest(),
                                                "schema": schema_revision}})

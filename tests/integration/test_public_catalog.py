@@ -234,7 +234,8 @@ async def test_public_booking_real_snapshot_consent_replay_conflict_and_metrics(
     result=await asyncio.wait_for(c.post(d['public']+'/appointments',json=payload),20)
     assert result.status_code==201,result.text
     item=result.json();assert item['status']=='confirmed' and item['price_cents']==3000
-    assert set(item)=={'status','protocol','start_at','end_at','price_cents','timezone','professional','services'}
+    assert set(item)=={'status','protocol','start_at','end_at','price_cents','price_mode','timezone','professional','services'}
+    assert item['price_mode']=='fixed'
     replay=await c.post(d['public']+'/appointments',json=payload)
     assert replay.status_code==201 and replay.json()['protocol']==item['protocol'],replay.text
     # Same quote binds idempotency to the contact and selected start.
