@@ -138,6 +138,12 @@ def test_finance_loses_no_horizontal_content_or_actions(browser_name,width,heigh
                     main:{left:rect.left,right:rect.right,width:rect.width},
                     boxes,offenders,scrollHosts};
                 }""")
+                if width==768 and geometry["doc"]>width+2:
+                    import json
+                    print("ORION_TABLET_DEBUG "+
+                        json.dumps({"scrollHosts":geometry["scrollHosts"],
+                                    "offenders":geometry["offenders"],
+                                    "boxes":geometry["boxes"]},ensure_ascii=False),flush=True)
                 assert geometry["doc"]<=width+2, {"viewport":width,"document":geometry["doc"],
                         "rootClient":geometry["rootClient"],"rootOverflow":geometry["rootOverflow"],
                         "offenders":geometry["offenders"],"scrollHosts":geometry["scrollHosts"]}
