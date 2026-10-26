@@ -108,28 +108,25 @@ body{background:var(--bg);color:var(--text);min-width:0}
 :root[data-theme="dark"] .booking-dialog::backdrop{background:#020611bf}
 .search-wrap:focus-within{border-color:color-mix(in srgb,var(--primary) 54%,var(--border));box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 13%,transparent)}
 
-/* Always available above the cover, with a small accessible choice menu. */
+/* Small theme toggle, harmonized with the map/share actions. */
 .hero{position:relative}
 .public-toolbar{position:absolute;inset:16px 0 auto;z-index:5;display:flex;justify-content:flex-end;pointer-events:none}
-.public-theme-control{position:relative;pointer-events:auto}
-.appearance-trigger{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:9px 12px;border:1px solid #ffffff52;border-radius:13px;background:#081326bc;color:#fff;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 5px 18px #00000026;font:600 13px/20px Figtree,sans-serif}
-.appearance-trigger:hover{background:#0b1b33e6}
+.appearance-trigger{
+  box-sizing:border-box;display:grid;place-items:center;flex:none;
+  width:46px;height:46px;min-width:44px;min-height:44px;padding:0;
+  border:1px solid #ffffff44;border-radius:14px;background:#0d1929af;color:#fff;
+  box-shadow:0 2px 8px #050a1226;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  pointer-events:auto;cursor:pointer;
+  transition:background .16s ease,border-color .16s ease,transform .16s ease
+}
+.appearance-trigger:hover{background:#0d1929d6;border-color:#ffffff73}
+.appearance-trigger:active{transform:scale(.97)}
 .appearance-trigger:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
-.appearance-current{width:19px;height:19px;display:grid;place-items:center}
-.appearance-current .appearance-symbol{width:19px;height:19px}
-.appearance-moon{display:none}
-:root[data-theme="dark"] .appearance-moon{display:grid}
-:root[data-theme="dark"] .appearance-sun{display:none}
-.appearance-label{white-space:nowrap}
-.appearance-chevron{width:15px;height:15px}
-.appearance-menu{position:absolute;right:0;top:calc(100% + 8px);min-width:180px;max-width:calc(100vw - 32px);padding:6px;border:1px solid var(--border);border-radius:14px;background:var(--card);color:var(--text);box-shadow:0 16px 36px #00000038}
-.appearance-option{display:flex;align-items:center;gap:11px;width:100%;min-height:44px;padding:10px 11px;border:0;border-radius:10px;background:transparent;color:var(--text);font:600 14px/20px Figtree,sans-serif;text-align:left}
-.appearance-option:hover,.appearance-option[aria-pressed="true"]{background:color-mix(in srgb,var(--primary) 11%,var(--card))}
-.appearance-option .appearance-symbol{width:19px;height:19px;color:var(--muted)}
-.appearance-option[aria-pressed="true"] .appearance-symbol{color:var(--primary)}
-.appearance-option>span{flex:1}
-.appearance-check{width:17px;height:17px;display:none;color:var(--primary)}
-.appearance-option[aria-pressed="true"] .appearance-check{display:block}
+.appearance-trigger .appearance-symbol{display:block;width:20px;height:20px}
+.appearance-trigger .appearance-moon{display:none}
+:root[data-theme="dark"] .appearance-trigger .appearance-sun{display:none}
+:root[data-theme="dark"] .appearance-trigger .appearance-moon{display:block}
 
 /* Compact, recognizable contact network icons: no stacked text buttons. */
 .contact-card{display:grid;grid-template-columns:minmax(0,1fr);align-items:center;gap:18px;padding:22px;border-radius:20px;min-width:0}
@@ -167,8 +164,7 @@ body{background:var(--bg);color:var(--text);min-width:0}
   .contact-links{justify-content:flex-end;max-width:400px}
 }
 @media(max-width:359px){
-  .appearance-trigger{padding-inline:11px}
-  .appearance-label{display:none}
+  .appearance-trigger{width:44px;height:44px}
   .contact-card{padding:16px;gap:16px}
   .contact-heading-icon{width:40px;height:40px;flex-basis:40px}
   .contact-card h2{font-size:18px}
@@ -176,5 +172,5 @@ body{background:var(--bg);color:var(--text);min-width:0}
   .social-link{flex-basis:47px;width:47px;height:47px}
 }
 @media(prefers-reduced-motion:reduce){
-  .social-link{transition:none}
+  .social-link,.appearance-trigger{transition:none}
 }

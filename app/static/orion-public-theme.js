@@ -1,78 +1,63 @@
-/* Theme preference shared with the Orion panel; no inline script (strict public CSP). */
+/* Independent public-site theme: follow the device unless the visitor switches. */
 (function () {
   'use strict';
   const root = document.documentElement;
-  const storageKey = 'orion-theme';
-  const allowed = ['light', 'dark', 'auto'];
-  const media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-  const labels = { light: 'Claro', dark: 'Escuro', auto: 'Sistema' };
-  function stored() {
+  const key = 'orion-public-theme';
+  const allowed = ['auto', 'light', 'dark'];
+  const media = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  const systemTheme = () => media && media.matches ? 'dark' : 'light';
+
+  function read() {
     try {
-      const value = window.localStorage.getItem(storageKey);
-      return allowed.includes(value) ? value : 'auto';
+      const preference = window.localStorage.getItem(key);
+      return allowed.includes(preference) ? preference : 'auto';
     } catch (_) { return 'auto'; }
   }
+
   function apply(value, persist) {
     const preference = allowed.includes(value) ? value : 'auto';
-    const effective = preference === 'auto' ? (media && media.matches ? 'dark' : 'light') : preference;
+    const current = preference === 'auto' ? systemTheme() : preference;
     root.dataset.themePreference = preference;
-    root.dataset.theme = effective;
+    root.dataset.theme = current;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = effective === 'dark' ? '#080d18' : '#f5f8fc';
-    const toggle = document.getElementById('public-theme-toggle');
-    if (toggle) toggle.setAttribute('aria-label', 'Aparência: ' + labels[preference] + '. Escolher tema');
-    document.querySelectorAll('[data-public-theme]').forEach(option => {
-      option.setAttribute('aria-pressed', String(option.dataset.publicTheme === preference));
-    });
+    if (meta) meta.content = current === 'dark' ? '#080d18' : '#f5f8fc';
+    const button = document.getElementById('public-theme-toggle');
+    if (button) {
+      const nextLabel = current === 'dark' ? 'claro' : 'escuro';
+      const currentLabel = current === 'dark' ? 'escuro' : 'claro';
+      button.setAttribute('aria-label', 'Tema ' + currentLabel +
+        (preference === 'auto' ? ' (automático)' : ' (manual)') + '. Ativar modo ' + nextLabel);
+      button.title = 'Ativar modo ' + nextLabel;
+    }
     if (persist) {
-      try { window.localStorage.setItem(storageKey, preference); } catch (_) { /* Private browsing */ }
+      try { window.localStorage.setItem(key, preference); } catch (_) { /* Storage unavailable */ }
     }
   }
-  function closeMenu(restoreFocus) {
-    const menu = document.getElementById('public-theme-menu');
-    const toggle = document.getElementById('public-theme-toggle');
-    if (!menu || !toggle || menu.hidden) return;
-    menu.hidden = true;
-    toggle.setAttribute('aria-expanded', 'false');
-    if (restoreFocus) toggle.focus();
+
+  function toggle() {
+    const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    // When toggling back to the device's appearance, restore automatic mode.
+    apply(next === systemTheme() ? 'auto' : next, true);
   }
+
   function mount() {
-    apply(stored(), false);
-    const wrapper = document.getElementById('public-theme-control');
-    const toggle = document.getElementById('public-theme-toggle');
-    const menu = document.getElementById('public-theme-menu');
-    if (!wrapper || !toggle || !menu) return;
-    toggle.addEventListener('click', () => {
-      menu.hidden = !menu.hidden;
-      toggle.setAttribute('aria-expanded', String(!menu.hidden));
-      if (!menu.hidden) menu.querySelector('[aria-pressed="true"]')?.focus();
-    });
-    menu.querySelectorAll('[data-public-theme]').forEach(option => {
-      option.addEventListener('click', () => {
-        apply(option.dataset.publicTheme, true);
-        closeMenu(true);
-      });
-    });
-    document.addEventListener('click', event => {
-      if (!wrapper.contains(event.target)) closeMenu(false);
-    });
-    document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && !menu.hidden) {
-        event.preventDefault();
-        closeMenu(true);
-      }
-    });
+    apply(read(), false);
+    document.getElementById('public-theme-toggle')?.addEventListener('click', toggle);
   }
-  apply(stored(), false);
-  if (document.readyState === 'loading') {
+
+  // Apply the device theme before CSS and body paint.
+  apply(read(), false);
+  if (document.readyState === 'loading')
     document.addEventListener('DOMContentLoaded', mount, { once: true });
-  } else mount();
+  else mount();
+
   if (media) {
-    const update = () => { if (root.dataset.themePreference === 'auto') apply('auto', false); };
-    if (typeof media.addEventListener === 'function') media.addEventListener('change', update);
-    else if (typeof media.addListener === 'function') media.addListener(update);
+    const refresh = () => { if (root.dataset.themePreference === 'auto') apply('auto', false); };
+    if (typeof media.addEventListener === 'function') media.addEventListener('change', refresh);
+    else if (typeof media.addListener === 'function') media.addListener(refresh);
   }
   window.addEventListener('storage', event => {
-    if (event.key === storageKey || event.key === null) apply(stored(), false);
+    if (event.key === key || event.key === null) apply(read(), false);
   });
 })();

@@ -43,34 +43,66 @@ test('contact icon links cannot inject javascript: URLs or markup', async t => {
   assert.equal(h.document.querySelector('#contact-links img'),null);
 });
 
-test('light/dark/system uses the Orion setting, menu a11y and OS changes', async t => {
-  const h=await makePublic();t.after(()=>h.close());await flush();
-  let isDark=false, notify=null;
+test('theme icon defaults to system (not panel preference), toggles opposite and back to auto', async t => {
+  const h=await makePublic(); t.after(()=>h.close()); await flush();
+  let dark=false, onChange=null;
   h.window.matchMedia=()=>({
-    get matches(){return isDark;},
-    addEventListener:(name,callback)=>{if(name==='change')notify=callback;}
+    get matches(){return dark;},
+    addEventListener:(name,listener)=>{if(name==='change')onChange=listener;}
   });
-  const theme=await readFile(new URL('../app/static/orion-public-theme.js',import.meta.url),'utf8');
-  h.window.eval(theme);await flush();
-  const doc=h.document,root=doc.documentElement,menu=doc.getElementById('public-theme-menu');
+  h.window.localStorage.setItem('orion-theme','dark'); // Admin choice must not affect the public site.
+  const script=await readFile(new URL('../app/static/orion-public-theme.js',import.meta.url),'utf8');
+  h.window.eval(script); await flush();
+  const root=h.document.documentElement;
+  const toggle=h.document.getElementById('public-theme-toggle');
+  assert.equal(toggle.textContent.trim(),'');
+  assert.equal(toggle.querySelectorAll('svg').length,2);
+  assert.equal(h.document.getElementById('public-theme-menu'),null);
+  assert.equal(root.dataset.themePreference,'auto');
   assert.equal(root.dataset.theme,'light');
+  assert.equal(h.window.localStorage.getItem('orion-public-theme'),null);
+  assert.match(toggle.getAttribute('aria-label'),/automático.*modo escuro/);
   h.click('#public-theme-toggle');
-  assert.equal(menu.hidden,false);
-  assert.equal(doc.getElementById('public-theme-toggle').getAttribute('aria-expanded'),'true');
-  h.click('[data-public-theme=dark]');
   assert.equal(root.dataset.theme,'dark');
   assert.equal(root.dataset.themePreference,'dark');
-  assert.equal(h.window.localStorage.getItem('orion-theme'),'dark');
-  assert.equal(menu.hidden,true);
-  assert.equal(doc.querySelector('[data-public-theme=dark]').getAttribute('aria-pressed'),'true');
-  assert.equal(doc.querySelector('meta[name=theme-color]').content,'#080d18');
-  isDark=false;notify();assert.equal(root.dataset.theme,'dark');
-  h.click('#public-theme-toggle');h.click('[data-public-theme=auto]');
-  assert.equal(root.dataset.theme,'light');
-  isDark=true;notify();assert.equal(root.dataset.theme,'dark');
+  assert.equal(h.window.localStorage.getItem('orion-public-theme'),'dark');
+  assert.match(toggle.getAttribute('aria-label'),/manual.*modo claro/);
+  assert.equal(h.document.querySelector('meta[name=theme-color]').content,'#080d18');
   h.click('#public-theme-toggle');
-  doc.dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
-  assert.equal(menu.hidden,true);
-  assert.equal(doc.getElementById('public-theme-toggle').getAttribute('aria-expanded'),'false');
+  assert.equal(root.dataset.theme,'light');
+  assert.equal(root.dataset.themePreference,'auto');
+  assert.equal(h.window.localStorage.getItem('orion-public-theme'),'auto');
+  dark=true;onChange();
+  assert.equal(root.dataset.theme,'dark');
+  assert.equal(root.dataset.themePreference,'auto');
+  h.click('#public-theme-toggle');
+  assert.equal(root.dataset.theme,'light');
+  assert.equal(root.dataset.themePreference,'light');
+  dark=false;onChange();
+  assert.equal(root.dataset.theme,'light'); // Manual theme stays applied.
+  h.click('#public-theme-toggle'); // Dark is now opposite to OS.
+  assert.equal(root.dataset.theme,'dark');
+  assert.equal(root.dataset.themePreference,'dark');
+  h.click('#public-theme-toggle'); // Light matches OS again; re-enable auto.
+  assert.equal(root.dataset.theme,'light');
+  assert.equal(root.dataset.themePreference,'auto');
+  assert.equal(h.window.localStorage.getItem('orion-theme'),'dark');
+  assert.equal(h.errors.length,0);
+});
+
+test('dark-mode phone starts automatically dark and returns to system with two taps', async t => {
+  const h=await makePublic(); t.after(()=>h.close()); await flush();
+  h.window.matchMedia=()=>({matches:true,addEventListener:()=>{}});
+  const script=await readFile(new URL('../app/static/orion-public-theme.js',import.meta.url),'utf8');
+  h.window.eval(script); await flush();
+  const root=h.document.documentElement;
+  assert.equal(root.dataset.theme,'dark');
+  assert.equal(root.dataset.themePreference,'auto');
+  h.click('#public-theme-toggle');
+  assert.equal(root.dataset.theme,'light');
+  assert.equal(root.dataset.themePreference,'light');
+  h.click('#public-theme-toggle');
+  assert.equal(root.dataset.theme,'dark');
+  assert.equal(root.dataset.themePreference,'auto');
   assert.equal(h.errors.length,0);
 });

@@ -42,6 +42,7 @@ def test_public_contacts_and_theme_responsive(engine,width):
             page.route('**/api/v1/public/sites/empresa-sintetica',
                 lambda route:route.fulfill(status=200,
                     content_type='application/json',body=json.dumps(DATA)))
+            page.emulate_media(color_scheme='light')
             page.goto(URL,wait_until='domcontentloaded')
             page.add_style_tag(content=CSS)
             page.add_script_tag(content=THEME)
@@ -59,22 +60,41 @@ def test_public_contacts_and_theme_responsive(engine,width):
                 assert bounds and bounds['width']>=44 and bounds['height']>=44
             toggle=page.locator('#public-theme-toggle')
             assert toggle.is_visible()
+            bounds=toggle.bounding_box()
+            assert bounds and 44<=bounds['width']<=46 and 44<=bounds['height']<=46
+            assert toggle.inner_text().strip()==''
+            assert toggle.locator('svg.appearance-symbol').count()==2
+            assert page.locator('#public-theme-menu').count()==0
+            assert page.evaluate('document.documentElement.dataset.themePreference')=='auto'
+            assert page.evaluate('document.documentElement.dataset.theme')=='light'
+            assert page.evaluate("localStorage.getItem('orion-public-theme')") is None
+            assert toggle.locator('.appearance-sun').is_visible()
+            assert not toggle.locator('.appearance-moon').is_visible()
+            assert 'Ativar modo escuro' in toggle.get_attribute('aria-label')
             toggle.click()
-            assert toggle.get_attribute('aria-expanded')=='true'
-            page.locator('[data-public-theme=dark]').click()
             assert page.evaluate('document.documentElement.dataset.theme')=='dark'
-            assert page.evaluate("localStorage.getItem('orion-theme')")=='dark'
+            assert page.evaluate('document.documentElement.dataset.themePreference')=='dark'
+            assert page.evaluate("localStorage.getItem('orion-public-theme')")=='dark'
+            assert toggle.locator('.appearance-moon').is_visible()
+            assert not toggle.locator('.appearance-sun').is_visible()
             assert page.locator('#contact-section').evaluate(
                 '(el)=>getComputedStyle(el).backgroundColor')=='rgb(17, 27, 43)'
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 2')
             toggle.click()
-            page.locator('[data-public-theme=light]').click()
             assert page.evaluate('document.documentElement.dataset.theme')=='light'
-            toggle.click()
-            page.locator('[data-public-theme=auto]').click()
+            assert page.evaluate('document.documentElement.dataset.themePreference')=='auto'
+            assert page.evaluate("localStorage.getItem('orion-public-theme')")=='auto'
             page.emulate_media(color_scheme='dark')
             page.wait_for_function("document.documentElement.dataset.theme === 'dark'")
+            toggle.click()
+            assert page.evaluate('document.documentElement.dataset.theme')=='light'
+            assert page.evaluate('document.documentElement.dataset.themePreference')=='light'
             page.emulate_media(color_scheme='light')
-            page.wait_for_function("document.documentElement.dataset.theme === 'light'")
+            assert page.evaluate('document.documentElement.dataset.theme')=='light'
+            toggle.click()
+            assert page.evaluate('document.documentElement.dataset.theme')=='dark'
+            toggle.click()
+            assert page.evaluate('document.documentElement.dataset.theme')=='light'
+            assert page.evaluate('document.documentElement.dataset.themePreference')=='auto'
         finally:
             browser.close()
