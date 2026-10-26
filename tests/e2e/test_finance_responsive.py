@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CSS = (ROOT / "app/static/orion-suite.css").read_text(encoding="utf-8")
 JS = (ROOT / "app/static/orion-suite.js").read_text(encoding="utf-8")
 HTML = """<!doctype html><html lang="pt-BR" data-theme="dark">
-<head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head>
+<head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>*{box-sizing:border-box}html,body{margin:0;padding:0}.hidden{display:none!important}</style></head>
 <body><div id="appView" class="app"><aside class="sidebar"><div class="brand">Orion</div></aside>
 <main class="content"><section id="page-original" class="page">Original</section></main>
 </div></body></html>"""
