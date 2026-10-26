@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#2e7bf6">
   <meta name="description" content="Conheça os serviços, escolha seu profissional e agende seu próximo atendimento.">
   <title>Agendamento • Orion</title>
+  <script src="/public-assets/orion-public-theme.js"></script>
   <link rel="stylesheet" href="/public-assets/orion-public.css">
   <script src="/public-assets/orion-public.js" defer></script>
 </head>
@@ -16,6 +17,21 @@
   <div id="site-content" hidden>
     <header class="hero">
       <div id="cover" class="cover" aria-hidden="true"></div>
+      <div class="container public-toolbar">
+        <div id="public-theme-control" class="public-theme-control">
+          <button id="public-theme-toggle" class="appearance-trigger" type="button" aria-label="Escolher aparência" aria-expanded="false" aria-controls="public-theme-menu" title="Aparência">
+            <span class="appearance-current appearance-sun"><svg class="appearance-symbol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></span>
+            <span class="appearance-current appearance-moon"><svg class="appearance-symbol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.4A8.5 8.5 0 0 1 9.6 3.5 8.5 8.5 0 1 0 20.5 14.4Z"/></svg></span>
+            <span class="appearance-label">Aparência</span>
+            <svg class="appearance-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div id="public-theme-menu" class="appearance-menu" role="group" aria-label="Aparência do site" hidden>
+            <button type="button" class="appearance-option" data-public-theme="light" aria-pressed="false"><svg class="appearance-symbol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg><span>Claro</span><svg class="appearance-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4 10-10"/></svg></button>
+            <button type="button" class="appearance-option" data-public-theme="dark" aria-pressed="false"><svg class="appearance-symbol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.4A8.5 8.5 0 0 1 9.6 3.5 8.5 8.5 0 1 0 20.5 14.4Z"/></svg><span>Escuro</span><svg class="appearance-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4 10-10"/></svg></button>
+            <button type="button" class="appearance-option" data-public-theme="auto" aria-pressed="false"><svg class="appearance-symbol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></svg><span>Sistema</span><svg class="appearance-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4 10-10"/></svg></button>
+          </div>
+        </div>
+      </div>
       <div class="container identity-wrap">
         <div class="identity-card">
           <div class="identity-row">
@@ -68,7 +84,18 @@
           </a>
         </article>
       </section>
-      <section id="contact-section" class="contact-card" aria-labelledby="contact-title" hidden><div><h2 id="contact-title">Fale com a gente</h2><p class="muted">Tire suas dúvidas antes do atendimento.</p></div><div id="contact-links" class="contact-links"></div></section>
+      <section id="contact-section" class="contact-card" aria-labelledby="contact-title" hidden>
+        <div class="contact-heading">
+          <span class="contact-heading-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.4 0-2.7-.3-3.9-.9L3 20.5l1.4-4.6a8.5 8.5 0 1 1 15.6-4.4Z"/><path d="M8 10h8M8 14h5"/></svg>
+          </span>
+          <div class="contact-heading-copy">
+            <h2 id="contact-title">Fale com a gente</h2>
+            <p class="muted">Escolha seu canal de contato preferido.</p>
+          </div>
+        </div>
+        <nav id="contact-links" class="contact-links" aria-label="Redes sociais e canais de contato"></nav>
+      </section>
     </main>
     <footer class="container public-footer"><span id="footer-title"></span><span id="orion-credit">Agendamento com <a href="/" aria-label="Orion">Orion</a></span></footer>
   </div>

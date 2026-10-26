@@ -18,8 +18,19 @@
     if(typeof value==='string' && /^\/media\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/.test(value))return value;
     return safeHTTPS(value);
   }
-  function link(text, value, cls = 'outline') { const href = safeHTTPS(value); if (!href) return null; const node = el('a', cls, text); node.href = href; node.target = '_blank'; node.rel = 'noopener noreferrer'; return node; }
   function setLink(node, value) { const href = safeHTTPS(value); node.hidden = !href; if (href) { node.href = href; node.target = '_blank'; node.rel = 'noopener noreferrer'; } }
+  const CONTACT_ICONS = {"whatsapp":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 11.7a8 8 0 0 1-11.8 7.1L3.5 20l1.4-4.5A8 8 0 1 1 20 11.7Z\"/><path d=\"M8.2 8c.4-.5.8-.4 1.1.1l.9 1.6c.2.4.1.6-.2.9l-.6.6a6.5 6.5 0 0 0 3.4 3.4l.7-.7c.2-.3.5-.3.9-.1l1.6.9c.4.2.5.6.2 1.1-.3.6-1.1 1.1-1.9 1-3.5-.7-6-3.2-6.8-6.7-.1-.8.2-1.6.7-2.1\"/></svg>","phone":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 16.7v2.8a2 2 0 0 1-2.2 2A18.3 18.3 0 0 1 2.5 5.2 2 2 0 0 1 4.5 3h2.8a2 2 0 0 1 2 1.7l.4 2.7a2 2 0 0 1-.6 1.7l-1.5 1.3a14.6 14.6 0 0 0 6 6l1.3-1.5a2 2 0 0 1 1.7-.6l2.7.4a2 2 0 0 1 1.7 2Z\"/></svg>","instagram":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"5\"/><circle cx=\"12\" cy=\"12\" r=\"4\"/><circle cx=\"17.5\" cy=\"6.5\" r=\"1\" fill=\"currentColor\" stroke=\"none\"/></svg>","facebook":"<svg viewBox=\"0 0 24 24\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M14.2 21v-7.8h2.6l.4-3.1h-3V8c0-.9.3-1.6 1.6-1.6h1.5V3.6c-.3-.1-1.3-.2-2.5-.2-2.5 0-4.2 1.5-4.2 4.2v2.5H8v3.1h2.6V21h3.6Z\"/></svg>","tiktok":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M14.2 3v11.5a4.2 4.2 0 1 1-4.2-4.2c.4 0 .9.1 1.2.2\"/><path d=\"M14.2 3c.6 3.3 2.5 5.3 5.8 5.6\"/></svg>","website":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M3 12h18M12 3c2.7 2.4 4 5.4 4 9s-1.3 6.6-4 9c-2.7-2.4-4-5.4-4-9s1.3-6.6 4-9Z\"/></svg>"};
+  function contactAnchor(name, kind, address, isPhone = false) {
+    const href = isPhone ? (/^tel:\+[1-9]\d{9,14}$/.test(address) ? address : null) : safeHTTPS(address);
+    if (!href) return null;
+    const node = el('a', 'social-link social-link--' + kind);
+    node.href = href;
+    node.setAttribute('aria-label', name);
+    node.title = name;
+    if (!isPhone) { node.target = '_blank'; node.rel = 'noopener noreferrer'; }
+    node.innerHTML = CONTACT_ICONS[kind]; // Fixed local SVGs; untrusted site data never enters markup.
+    return node;
+  }
   function picture(container, url, initials) { const safe = safeImageURL(url); container.textContent = initials; if (safe) { const img = el('img'); img.src = safe; img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.addEventListener('error', () => { container.textContent = initials; }, { once: true }); container.replaceChildren(img); } }
   function initials(name) { return String(name || '').trim().split(/\s+/).slice(0, 2).map(p => p[0] || '').join('').toUpperCase(); }
   function money(cents) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(cents) / 100); }
@@ -219,10 +230,20 @@
     $('team-grid').replaceChildren(...data.professionals.map(person => { const card = el('article', 'team-card'); const portrait = el('div', 'portrait'); color(portrait, '--person-color', person.color); picture(portrait, person.image_url, initials(person.name)); const info = el('div', 'person-info'); info.append(el('strong', '', person.name)); if (person.specialty) info.append(el('p', '', person.specialty)); card.append(portrait, info); return card; }));
     $('equipe').hidden = !data.professionals.length;
     const contacts = [];
-    if (/^\+[1-9]\d{9,14}$/.test(site.whatsapp_phone || '')) contacts.push(link('Conversar no WhatsApp', `https://wa.me/${site.whatsapp_phone.slice(1)}`, 'primary'));
-    if (/^\+[1-9]\d{9,14}$/.test(site.contact_phone || '')) { const phone = el('a', 'outline', 'Ligar'); phone.href = `tel:${site.contact_phone}`; phone.setAttribute('aria-label', `Ligar para ${site.contact_phone}`); contacts.push(phone); }
-    for (const [key, name] of [['instagram_url', 'Instagram'], ['facebook_url', 'Facebook'], ['tiktok_url', 'TikTok'], ['external_url', 'Website']]) { const node = link(name, site[key]); if (node) contacts.push(node); }
-    $('contact-links').replaceChildren(...contacts.filter(Boolean)); $('contact-section').hidden = !contacts.length;
+    if (/^\+[1-9]\d{9,14}$/.test(site.whatsapp_phone || ''))
+      contacts.push(contactAnchor('Conversar no WhatsApp', 'whatsapp', 'https://wa.me/' + site.whatsapp_phone.slice(1)));
+    if (/^\+[1-9]\d{9,14}$/.test(site.contact_phone || ''))
+      contacts.push(contactAnchor('Ligar para ' + site.contact_phone, 'phone', 'tel:' + site.contact_phone, true));
+    for (const [field, name, kind] of [
+      ['instagram_url', 'Abrir Instagram', 'instagram'],
+      ['tiktok_url', 'Abrir TikTok', 'tiktok'],
+      ['facebook_url', 'Abrir Facebook', 'facebook'],
+      ['external_url', 'Abrir site da empresa', 'website']
+    ]) {
+      contacts.push(contactAnchor(name, kind, site[field]));
+    }
+    $('contact-links').replaceChildren(...contacts.filter(Boolean));
+    $('contact-section').hidden = !contacts.some(Boolean);
     $('orion-credit').hidden = !!site.hide_orion_brand; $('preview-banner').hidden = !preview;
     $('site-content').hidden = false; $('page-message').hidden = true;
   }
