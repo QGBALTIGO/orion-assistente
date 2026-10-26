@@ -10,7 +10,7 @@
   let data, category = 'Todos', requestSequence = 0, availabilityController;
   let booking = newBooking();
 
-  function newBooking() { return { step: 1, service: null, addons: [], professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', consent: false }; }
+  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', consent: false }; }
   function el(tag, cls, value) { const node = document.createElement(tag); if (cls) node.className = cls; if (value !== undefined) node.textContent = value; return node; }
   function button(text, cls, handler) { const node = el('button', cls, text); node.type = 'button'; if (handler) node.addEventListener('click', handler); return node; }
   function safeHTTPS(value) { try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null; } catch { return null; } }
@@ -157,14 +157,35 @@
   function dateLabel(day, options) { return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', ...options }).format(new Date(`${day}T12:00:00Z`)); }
   function slotTime(start) { return new Intl.DateTimeFormat('pt-BR', { timeZone: data.timezone, hour: '2-digit', minute: '2-digit' }).format(new Date(start)); }
   function addDays(day, count) { const date = new Date(`${day}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + count); return date.toISOString().slice(0, 10); }
-  function selectedService() { return data.services.find(s => s.id === booking.service); }
-  function selectedAddons() { return (selectedService()?.addons || []).filter(a => booking.addons.includes(a.addon_service_id)); }
-  function eligibleProfessionals() { const service = selectedService(); return data.professionals.filter(p => service?.professional_ids.includes(p.id) && selectedAddons().every(a => a.professional_ids.includes(p.id))); }
-  function selectionTotal() { const service = selectedService(), addons = selectedAddons(); return {
-    price: (service?.price_cents || 0) + addons.reduce((n, a) => n + a.price_cents, 0),
-    price_mode: service?.price_mode === 'from' || addons.some(a => a.price_mode === 'from') ? 'from' : 'fixed',
-    minutes: (service?.duration_min || 0) + addons.reduce((n, a) => n + (a.add_duration ? a.duration_min : 0), 0)
-  }; }
+  function selectedServices() {
+    return booking.services.map(id => data.services.find(s => s.id === id)).filter(Boolean);
+  }
+  function selectedService() { return selectedServices()[0] || null; }
+  function selectedAddons() {
+    return (selectedService()?.addons || []).filter(a => booking.addons.includes(a.addon_service_id));
+  }
+  function eligibleProfessionals() {
+    const services = selectedServices(), addons = selectedAddons();
+    if (!services.length) return [];
+    return data.professionals.filter(p =>
+      services.every(s => s.professional_ids?.includes(p.id)) &&
+      addons.every(a => a.professional_ids?.includes(p.id)));
+  }
+  function selectionTotal() {
+    const services = selectedServices(), addons = selectedAddons(), all = [...services, ...addons];
+    return {
+      price: all.reduce((n, item) => n + item.price_cents, 0),
+      price_mode: all.some(s => s.price_mode === 'from') ? 'from' : 'fixed',
+      minutes: services.reduce((n, s) => n + s.duration_min, 0) +
+        addons.reduce((n, a) => n + (a.add_duration ? a.duration_min : 0), 0)
+    };
+  }
+  function componentIds(service) {
+    if (service.catalog_kind === 'combo' && service.components?.length &&
+        service.components.every(c => c.service_id))
+      return service.components.map(c => c.service_id);
+    return [service.id];
+  }
   function showError(message) { $('booking-error').textContent = message || ''; $('booking-error').hidden = !message; }
 
   async function api(path = '', options = {}) {
@@ -287,13 +308,105 @@
   }
 
   function openBooking(service = null) {
-    booking = newBooking(); booking.service = service; booking.day = data.today;
+    booking = newBooking(); booking.service = service; booking.services = service ? [service] : []; booking.day = data.today;
     $('booking-shop').textContent = data.site.title; showError(); renderBooking();
     dialog.showModal(); document.body.classList.add('booking-open');
   }
   function closeBooking() { if (booking.busy) return; availabilityController?.abort(); requestSequence++; dialog.close(); document.body.classList.remove('booking-open'); }
   function invalidateAvailability() { availabilityController?.abort(); requestSequence++; booking.quote = null; booking.start = null; booking.availability = null; booking.availabilityError = null; booking.loading = false; booking.consent = false; }
-  function chooseService(service) { invalidateAvailability(); booking.service = service; booking.addons = []; booking.professional = null; showError(); renderBooking(); }
+  function toggleService(id) {
+    const already = booking.services.includes(id);
+    if (!already && booking.services.length >= 6) {
+      showError('Você pode escolher até 6 serviços por agendamento.');
+      return;
+    }
+    if (!already) {
+      const candidate = data.services.find(s => s.id === id);
+      const used = new Set(selectedServices().flatMap(componentIds));
+      if (candidate && componentIds(candidate).some(source => used.has(source))) {
+        showError('Este serviço já está incluído em um dos combos selecionados.');
+        return;
+      }
+    }
+    const keep = already ? booking.services.filter(service => service !== id) : [...booking.services, id];
+    const removedExtras = booking.addons.length > 0 && (keep.length > 1 || keep[0] !== booking.service);
+    invalidateAvailability();
+    booking.services = keep;
+    booking.service = keep[0] || null;
+    if (removedExtras) booking.addons = [];
+    booking.professional = null;
+    booking.notice = removedExtras ? 'Adicionais anteriores foram removidos ao combinar serviços completos.' : '';
+    showError();
+    refreshServiceSelection();
+  }
+  function selectionWarning() {
+    if (booking.services.length > 0 && !eligibleProfessionals().length)
+      return 'Nenhum profissional realiza todos esses serviços. Retire um dos itens para continuar.';
+    return booking.notice;
+  }
+  function refreshSelectionSummary() {
+    const count = $('booking-selected-count'), summary = $('booking-selection-summary'),
+          warning = $('booking-selection-warning');
+    if (!count || !summary || !warning) return;
+    const amount = selectionTotal(), quantity = booking.services.length;
+    count.textContent = quantity + (quantity === 1 ? ' serviço selecionado' : ' serviços selecionados');
+    summary.replaceChildren();
+    if (quantity) {
+      summary.append(el('span', '', 'Tempo total: ' + duration(amount.minutes)));
+      if (data.site.show_prices) summary.append(el('strong', '', priceText(amount.price, amount.price_mode)));
+    } else summary.append(el('span', '', 'Selecione os serviços que deseja realizar no mesmo horário.'));
+    warning.textContent = selectionWarning();
+    warning.hidden = !warning.textContent;
+  }
+  function renderSelectedExtras() {
+    const container = $('booking-extras');
+    if (!container) return;
+    container.replaceChildren();
+    const service = selectedService();
+    if (!service || booking.services.length !== 1 || !service.addons?.length) return;
+    const extras = el('section', 'addon-section');
+    extras.append(el('h3', '', 'Complemente seu atendimento'),
+      el('p', '', 'Adicionais opcionais. O tempo e o valor aparecem no resumo.'));
+    for (const addon of service.addons) {
+      const label = el('label', 'addon-option'), input = el('input');
+      input.type = 'checkbox';
+      input.checked = booking.addons.includes(addon.addon_service_id);
+      input.addEventListener('change', () => {
+        if (input.checked && booking.services.length + booking.addons.length >= 6) {
+          input.checked = false; showError('Limite de 6 serviços e adicionais por agendamento.'); return;
+        }
+        invalidateAvailability();
+        booking.addons = input.checked ?
+          [...booking.addons, addon.addon_service_id] :
+          booking.addons.filter(id => id !== addon.addon_service_id);
+        booking.professional = null;
+        booking.notice = '';
+        showError();
+        refreshSelectionSummary();
+        updateFooter();
+      });
+      const copy = el('span', '', addon.name);
+      copy.append(el('small', '', addon.add_duration ?
+        'Acrescenta ' + duration(addon.duration_min) : 'Realizado dentro do tempo do serviço'));
+      label.append(input, copy);
+      if (data.site.show_prices) label.append(el('b', '', addon.price_mode === 'from' ?
+        priceText(addon.price_cents, 'from') : '+ ' + money(addon.price_cents)));
+      extras.append(label);
+    }
+    container.append(extras);
+  }
+  function refreshServiceSelection() {
+    const list = $('booking-service-list');
+    if (!list) return;
+    list.querySelectorAll('button[data-service-id]').forEach(card => {
+      const selected = booking.services.includes(card.dataset.serviceId);
+      card.setAttribute('aria-pressed', String(selected));
+      card.querySelector('.service-arrow').textContent = selected ? '✓' : '›';
+    });
+    renderSelectedExtras(); // The service cards and photo elements stay mounted.
+    refreshSelectionSummary();
+    updateFooter();
+  }
 
   function renderBooking() {
     const body = $('booking-body'); body.replaceChildren();
@@ -307,22 +420,44 @@
   }
 
   function renderSelection(body) {
-    body.append(el('h3', '', 'Escolha o serviço'));
-    const list = el('div', 'services-grid'); list.append(...data.services.map(s => serviceCard(s, () => chooseService(s.id), s.id === booking.service))); body.append(list);
-    const service = selectedService();
-    if (service?.components?.length) body.append(el('p', 'small muted', `Inclui: ${service.components.map(c => c.name).join(' + ')}.`));
-    if (service?.addons?.length) {
-      const extras = el('section', 'addon-section'); extras.append(el('h3', '', 'Complemente seu atendimento'), el('p', '', 'Adicionais opcionais. Confira o valor e o tempo de cada opção.'));
-      for (const addon of service.addons) { const label = el('label', 'addon-option'); const input = el('input'); input.type = 'checkbox'; input.checked = booking.addons.includes(addon.addon_service_id); input.addEventListener('change', () => { invalidateAvailability(); booking.addons = input.checked ? [...booking.addons, addon.addon_service_id] : booking.addons.filter(id => id !== addon.addon_service_id); booking.professional = null; showError(eligibleProfessionals().length ? '' : 'Nenhum profissional realiza essa combinação. Remova um adicional para continuar.'); updateFooter(); }); const copy = el('span', '', addon.name); copy.append(el('small', '', addon.add_duration ? `Acrescenta ${duration(addon.duration_min)}` : 'Realizado dentro do tempo do serviço')); label.append(input, copy); if (data.site.show_prices) label.append(el('b', '', addon.price_mode==='from'?priceText(addon.price_cents,'from'):`+ ${money(addon.price_cents)}`)); extras.append(label); }
-      body.append(extras);
-    }
+    const intro = el('div', 'booking-selection-intro');
+    intro.append(el('h3', '', 'Escolha seus serviços'),
+      el('p', 'small muted', 'Selecione um ou mais serviços para realizar no mesmo horário.'));
+    const count = el('span', 'booking-selected-count'); count.id = 'booking-selected-count';
+    intro.append(count);
+    const summary = el('div', 'booking-selection-summary'); summary.id = 'booking-selection-summary';
+    summary.setAttribute('aria-live', 'polite');
+    const warning = el('p', 'booking-selection-warning'); warning.id = 'booking-selection-warning';
+    warning.setAttribute('role', 'status');
+    const list = el('div', 'services-grid booking-service-list'); list.id = 'booking-service-list';
+    list.append(...data.services.map(service => {
+      const card = serviceCard(service, () => toggleService(service.id),
+        booking.services.includes(service.id));
+      card.dataset.serviceId = service.id;
+      return card;
+    }));
+    const extras = el('div'); extras.id = 'booking-extras';
+    body.append(intro, summary, warning, list, extras);
+    refreshServiceSelection();
   }
 
   function renderTime(body) {
     body.append(el('h3', '', 'Escolha o profissional e o horário'));
     const people = eligibleProfessionals();
     const picker = el('div', 'professional-picker'); picker.setAttribute('aria-label', 'Profissionais disponíveis');
-    for (const person of people) { const node = button('', 'professional-choice', () => { invalidateAvailability(); booking.professional = person.id; renderBooking(); loadAvailability(); }); node.setAttribute('aria-pressed', String(person.id === booking.professional)); const face = el('span', 'mini-portrait'); picture(face, person.image_url, initials(person.name)); node.append(face, el('span', '', person.name)); picker.append(node); }
+    for (const person of people) {
+      const node = button('', 'professional-choice', () => {
+        invalidateAvailability(); booking.professional = person.id;
+        picker.querySelectorAll('.professional-choice').forEach(option => {
+          option.setAttribute('aria-pressed', String(option.dataset.professionalId === person.id));
+        });
+        renderSlots(); updateFooter(); loadAvailability();
+      });
+      node.dataset.professionalId = person.id;
+      node.setAttribute('aria-pressed', String(person.id === booking.professional));
+      const face = el('span', 'mini-portrait'); picture(face, person.image_url, initials(person.name));
+      node.append(face, el('span', '', person.name)); picker.append(node);
+    }
     body.append(picker);
     const heading = el('div', 'date-heading'); heading.append(el('strong', '', dateLabel(booking.day, { month: 'long', year: 'numeric' })));
     const label = el('label', '', 'Outra data'); const input = el('input'); input.type = 'date'; input.min = data.today; input.max = addDays(data.today, data.booking_horizon_days); input.value = booking.day; input.addEventListener('change', () => { if (input.value && input.checkValidity()) selectDay(input.value); }); label.append(input); heading.append(label); body.append(heading);
@@ -348,7 +483,13 @@
     const seq = ++requestSequence; availabilityController?.abort(); const controller = new AbortController(); availabilityController = controller;
     const timeout = setTimeout(() => controller.abort(), 20000);
     booking.loading = true; booking.availabilityError = null; showError(); renderSlots(); updateFooter();
-    const params = new URLSearchParams({ service_id: booking.service, professional_id: booking.professional, day: booking.day }); booking.addons.forEach(id => params.append('addon_ids', id));
+    const params = new URLSearchParams({ professional_id: booking.professional, day: booking.day });
+    if (booking.services.length > 1)
+      booking.services.forEach(id => params.append('service_ids', id));
+    else {
+      params.set('service_id', booking.service);
+      booking.addons.forEach(id => params.append('addon_ids', id));
+    }
     try { const result = await api(`/availability?${params}`, { signal: controller.signal }); if (seq !== requestSequence) return; booking.availability = result; booking.availabilityError = null; booking.quote = result.quote; }
     catch (error) { if (seq !== requestSequence) return; booking.availabilityError = error.name === 'AbortError' ? 'A consulta demorou mais que o esperado. Tente novamente.' : (error.message || 'Não foi possível consultar a agenda. Tente novamente.'); showError(); }
     finally { clearTimeout(timeout); if (seq === requestSequence) { booking.loading = false; renderSlots(); updateFooter(); } }
@@ -357,7 +498,8 @@
   function reviewCard(result = null) {
     const box = el('div', 'review-card'); box.append(el('h3', '', 'Seu atendimento'));
     const person = result?.professional || data.professionals.find(p => p.id === booking.professional)?.name;
-    const services = result?.services || booking.availability?.services || [selectedService()?.name, ...selectedAddons().map(a => a.name)];
+    const services = result?.services || booking.availability?.services ||
+      [...selectedServices().map(s => s.name), ...selectedAddons().map(a => a.name)];
     const start = result?.start_at || booking.start;
     const lines = [['Serviços', services.filter(Boolean).join(' + ')], ['Profissional', person], ['Data', new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeZone: data.timezone }).format(new Date(start))], ['Horário', slotTime(start)]];
     if (result?.protocol) lines.push(['Protocolo', result.protocol]);
@@ -385,9 +527,9 @@
     const next = $('booking-next'), back = $('booking-back'), total = $('booking-total');
     back.hidden = booking.step === 1 || !!booking.result; back.disabled = booking.busy; $('close-booking').disabled = booking.busy;
     total.replaceChildren();
-    if (booking.service && !booking.result) { const amount = selectionTotal(); total.append(el('span', '', duration(booking.availability?.duration_min ?? amount.minutes))); if (data.site.show_prices || booking.step === 3) total.append(el('strong', '', priceText(booking.availability?.price_cents ?? amount.price,booking.availability?.price_mode || amount.price_mode))); }
+    if (booking.services.length && !booking.result) { const amount = selectionTotal(); total.append(el('span', '', duration(booking.availability?.duration_min ?? amount.minutes))); if (data.site.show_prices || booking.step === 3) total.append(el('strong', '', priceText(booking.availability?.price_cents ?? amount.price,booking.availability?.price_mode || amount.price_mode))); }
     next.textContent = booking.result ? 'Concluir' : booking.busy ? 'Confirmando…' : booking.step === 3 ? 'Confirmar agendamento' : 'Continuar →';
-    next.disabled = booking.busy || (!booking.result && (booking.step === 1 ? !booking.service || !eligibleProfessionals().length : booking.step === 2 ? !booking.start || !booking.quote || booking.loading || preview : !booking.consent));
+    next.disabled = booking.busy || (!booking.result && (booking.step === 1 ? !booking.services.length || !eligibleProfessionals().length : booking.step === 2 ? !booking.start || !booking.quote || booking.loading || preview : !booking.consent));
   }
   async function submitBooking() {
     if (booking.busy || !booking.consent || preview || !booking.quote || !booking.start) return;
@@ -433,7 +575,7 @@
   $('booking-next').addEventListener('click', () => {
     if (booking.result) { closeBooking(); return; }
     if (booking.step === 3) { submitBooking(); return; }
-    if (booking.step === 1) { if (!selectedService() || !eligibleProfessionals().length) return; booking.professional = eligibleProfessionals()[0].id; booking.step = 2; showError(); renderBooking(); loadAvailability(); }
+    if (booking.step === 1) { if (!booking.services.length || !eligibleProfessionals().length) return; booking.professional = eligibleProfessionals()[0].id; booking.step = 2; showError(); renderBooking(); loadAvailability(); }
     else if (booking.start && booking.quote) { booking.step = 3; showError(); renderBooking(); }
   });
   $('share-site').addEventListener('click', async () => {
