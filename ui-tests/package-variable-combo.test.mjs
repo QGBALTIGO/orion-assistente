@@ -99,7 +99,7 @@ test('listagem de combos anuncia mínimo real para modo A partir de',async t=>{
     version:1,service_ids:ids.slice(0,2),price_cents:0,
     effective_price_cents:6000,price_mode:'from',active:true,featured:false};
   const {h}=await fixture(t,{packs:[pack]});
-  const summary=h.document.querySelector('.os-package-card .os-item-bottom');
+  const summary=h.document.querySelector('.os-package-card .os-package-meta strong');
   assert.ok(summary);
   assert.match(summary.textContent,/A partir de R\$\s*60,00/);
   assert.doesNotMatch(summary.textContent,/R\$\s*0,00/);
