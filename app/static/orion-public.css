@@ -108,22 +108,21 @@ body{background:var(--bg);color:var(--text);min-width:0}
 :root[data-theme="dark"] .booking-dialog::backdrop{background:#020611bf}
 .search-wrap:focus-within{border-color:color-mix(in srgb,var(--primary) 54%,var(--border));box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 13%,transparent)}
 
-/* Small theme toggle, harmonized with the map/share actions. */
+/* Bare sun/moon glyph, retaining an invisible 44px touch target. */
 .hero{position:relative}
 .public-toolbar{position:absolute;inset:16px 0 auto;z-index:5;display:flex;justify-content:flex-end;pointer-events:none}
 .appearance-trigger{
   box-sizing:border-box;display:grid;place-items:center;flex:none;
   width:46px;height:46px;min-width:44px;min-height:44px;padding:0;
-  border:1px solid #ffffff44;border-radius:14px;background:#0d1929af;color:#fff;
-  box-shadow:0 2px 8px #050a1226;
-  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  border:0;border-radius:0;background:transparent;color:#fff;
+  box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;
   pointer-events:auto;cursor:pointer;
-  transition:background .16s ease,border-color .16s ease,transform .16s ease
+  transition:opacity .16s ease,transform .16s ease
 }
-.appearance-trigger:hover{background:#0d1929d6;border-color:#ffffff73}
+.appearance-trigger:hover{background:transparent;opacity:.88}
 .appearance-trigger:active{transform:scale(.97)}
 .appearance-trigger:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
-.appearance-trigger .appearance-symbol{display:block;width:20px;height:20px}
+.appearance-trigger .appearance-symbol{display:block;width:22px;height:22px;filter:drop-shadow(0 1px 2px #0009)}
 .appearance-trigger .appearance-moon{display:none}
 :root[data-theme="dark"] .appearance-trigger .appearance-sun{display:none}
 :root[data-theme="dark"] .appearance-trigger .appearance-moon{display:block}

@@ -62,6 +62,22 @@ def test_public_contacts_and_theme_responsive(engine,width):
             assert toggle.is_visible()
             bounds=toggle.bounding_box()
             assert bounds and 44<=bounds['width']<=46 and 44<=bounds['height']<=46
+            # Icon only: no surrounding square, border, shadow or translucent backdrop.
+            decoration=toggle.evaluate("""el => {
+                const style=getComputedStyle(el);
+                return {
+                    background:style.backgroundColor,
+                    border:style.borderTopWidth,
+                    shadow:style.boxShadow,
+                    backdrop:style.backdropFilter || 'none'
+                };
+            }""")
+            assert decoration == {
+                'background':'rgba(0, 0, 0, 0)',
+                'border':'0px',
+                'shadow':'none',
+                'backdrop':'none'
+            }
             assert toggle.inner_text().strip()==''
             assert toggle.locator('svg.appearance-symbol').count()==2
             assert page.locator('#public-theme-menu').count()==0
