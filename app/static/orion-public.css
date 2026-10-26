@@ -343,6 +343,17 @@ body{background:var(--bg);color:var(--text);min-width:0}
   min-height:42px;padding:10px;text-align:center;font-size:12px
 }
 #time-slots .slot-message + .slots-grid{margin-top:8px}
+/* Preserve the existing slot grid's vertical position during another query.
+   The status sits over it rather than pushing the dates and footer around. */
+#time-slots[aria-busy=true]:has(.slots-grid){position:relative}
+#time-slots[aria-busy=true]:has(.slots-grid) .slot-message{
+  position:absolute;inset:0 0 auto;z-index:1;min-height:42px;
+  padding:9px 12px;pointer-events:none;
+  background:color-mix(in srgb,var(--card) 94%,transparent);
+  border:1px solid var(--border);border-radius:10px;
+  font-size:12px
+}
+#time-slots[aria-busy=true]:has(.slots-grid) .slot-message + .slots-grid{margin-top:0}
 @media(max-width:359px){
   .booking-body .professional-choice{flex-basis:112px;width:112px;min-width:112px}
   .booking-body .professional-picker{gap:10px}
