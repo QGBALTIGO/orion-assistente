@@ -53,11 +53,31 @@ def test_public_amenities_all_combinations_and_info(engine,width,active):
                     tile=tiles.nth(i)
                     assert tile.get_attribute('aria-expanded')=='false'
                     box=tile.bounding_box()
-                    assert box and box['width']>=52 and box['height']>=60
+                    # Compact square hit targets remain stable for all 1–4 options.
+                    expected=62 if width>=640 else (54 if width<360 else 58)
+                    assert box and expected-0.5<=box['width']<=expected+0.5
+                    assert expected-0.5<=box['height']<=expected+0.5
+                    icon_box=tile.locator('svg').bounding_box()
+                    icon_size=20 if width<360 else 22
+                    assert icon_box and icon_size-0.5<=icon_box['width']<=icon_size+0.5
+                    assert icon_size-0.5<=icon_box['height']<=icon_size+0.5
                     assert tile.locator('svg').count()==1
                 if width<=390 and active==4:
                     ycoords=[round(tiles.nth(i).bounding_box()['y']) for i in range(4)]
                     assert len(set(ycoords))==1, 'All four fit a single mobile row'
+                if active>=3:
+                    # Fully closed wheel remains inside the SVG viewport,
+                    # rather than an amputated arc touching the edge.
+                    wheel=tiles.nth(2).locator('svg circle').last
+                    assert wheel.count()==1
+                    dimensions=wheel.evaluate("""node=>{
+                        const svg=node.ownerSVGElement,box=node.getBBox(),view=svg.viewBox.baseVal;
+                        return {left:box.x,top:box.y,right:box.x+box.width,
+                                bottom:box.y+box.height,width:view.width,height:view.height};
+                    }""")
+                    assert dimensions['left']>=1 and dimensions['top']>=1
+                    assert dimensions['right']<=dimensions['width']-1
+                    assert dimensions['bottom']<=dimensions['height']-1
                 tiles.nth(active-1).click()
                 assert page.locator('#amenity-detail').is_visible()
                 assert tiles.nth(active-1).get_attribute('aria-expanded')=='true'
