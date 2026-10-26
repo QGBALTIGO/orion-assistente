@@ -1,46 +1,18 @@
-import test, { before, after } from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 import { makeSuite, flush, defaultResponse, tenantA } from './harness.mjs';
 
-const repo = fileURLToPath(new URL('../', import.meta.url));
 const upstream = 'https://orion-assistente-production.up.railway.app';
-let temporary, generatedSourceURL;
-
-before(() => {
-  temporary = mkdtempSync(join(tmpdir(), 'orion-vercel-dom-'));
-  const output = join(temporary, 'facade');
-  const localPython = join(repo, '.venv', 'Scripts', 'python.exe');
-  const python = process.env.ORION_TEST_PYTHON || (existsSync(localPython) ? localPython : 'python3');
-  const result = JSON.parse(execFileSync(python, [join(repo, 'scripts', 'prepare_vercel_orion.py'), '--output', output],
-    { cwd: repo, encoding: 'utf8', windowsHide: true, timeout: 30000 }));
-  assert.equal(result.files, 6);
-  assert.equal(result.network_requests, 0);
-  const manifest = JSON.parse(readFileSync(join(output, 'bundle-manifest.json'), 'utf8'));
-  assert.equal(manifest.files.find(file => file.output === 'public/orion-suite-vercel.js').source, 'app/static/orion-suite.js');
-  generatedSourceURL = pathToFileURL(join(output, 'public', 'orion-suite-vercel.js'));
-});
-
-after(() => {
-  if (!temporary) return;
-  // Delete only the exact temporary directory created above, never a checkout.
-  assert.equal(dirname(resolve(temporary)), resolve(tmpdir()));
-  assert.ok(basename(temporary).startsWith('orion-vercel-dom-'));
-  rmSync(temporary, { recursive: true, force: true });
-});
+const liveSuiteURL = new URL('../app/static/orion-suite.js', import.meta.url);
 
 const disconnected = {
   configured: true, connected: false, sync_enabled: false, sync_status: 'not_connected',
   capabilities: { can_connect: true, can_disconnect: false, can_retry: false },
 };
 
-async function fixture(t, { google = disconnected, tenant = tenantA } = {}) {
+async function fixture(t, { google = disconnected, tenant = tenantA, url = 'https://orion-painel-iota.vercel.app/panel' } = {}) {
   const h = await makeSuite({
-    sourceURL: generatedSourceURL, initialRoute: 'agenda',
+    sourceURL: liveSuiteURL, url, initialRoute: 'agenda',
     bridge: { tenantId: tenant, tenants: [{ id: tenant, name: 'Empresa sintética', role: 'owner', timezone: 'America/Sao_Paulo' }] },
     respond(path, method) {
       assert.ok(path.startsWith('/'), 'Only relative, mocked Orion API calls are permitted');
@@ -60,7 +32,7 @@ async function fixture(t, { google = disconnected, tenant = tenantA } = {}) {
 
 const writes = h => h.calls.filter(call => call.method !== 'GET');
 
-test('generated facade sends capable Google connect to the original panel for exactly the selected tenant, without OAuth or POST', async t => {
+test('live Vercel facade sends capable Google connect to the original panel for exactly the selected tenant, without OAuth or POST', async t => {
   for (const tenant of [tenantA, 'synthetic\"\'><img src=x onerror=alert(1)>&empresa=other/#?']) {
     const h = await fixture(t, { tenant });
     h.click('[data-os-action=agenda-google]');
@@ -87,7 +59,7 @@ test('generated facade sends capable Google connect to the original panel for ex
   }
 });
 
-test('generated facade keeps the capability guard even for a forged Google connect control', async t => {
+test('live Vercel facade keeps the capability guard even for a forged Google connect control', async t => {
   const h = await fixture(t, { google: { ...disconnected, capabilities: { can_connect: false } } });
   h.click('[data-os-action=agenda-google]');
   await flush();
@@ -104,7 +76,7 @@ test('generated facade keeps the capability guard even for a forged Google conne
   assert.deepEqual(h.errors, []);
 });
 
-test('generated facade preserves explicit revoke and retry confirmation and their original API calls', async t => {
+test('live Vercel facade preserves explicit revoke and retry confirmation and their original API calls', async t => {
   for (const [action, endpoint, title] of [
     ['google-revoke', '/google/revoke', /Desconectar Google Agenda/],
     ['google-retry', '/google/retry', /Repetir sincronização/],
@@ -128,4 +100,17 @@ test('generated facade preserves explicit revoke and retry confirmation and thei
     assert.deepEqual(h.networkAttempts, []);
     assert.deepEqual(h.errors, []);
   }
+});
+
+
+test('Railway uses the same source while keeping its normal Google OAuth confirmation', async t => {
+  const h = await fixture(t, { url: upstream + '/panel' });
+  h.click('[data-os-action=agenda-google]');
+  await flush();
+  h.click('[data-os-action=google-connect]');
+  await flush();
+  assert.ok(h.document.querySelector('[data-os-form=google-action]'));
+  assert.equal(h.document.getElementById('osDialog').querySelector('a'), null);
+  assert.equal(writes(h).length, 0);
+  assert.deepEqual(h.errors, []);
 });

@@ -20,10 +20,10 @@ export function defaultResponse(path) {
   return [];
 }
 
-export async function makeSuite({ initialRoute = 'clientes', role = 'owner', respond = defaultResponse, bridge: extra = {}, sourceURL = defaultSourceURL } = {}) {
+export async function makeSuite({ initialRoute = 'clientes', role = 'owner', respond = defaultResponse, bridge: extra = {}, sourceURL = defaultSourceURL, url = 'https://orion.test/panel' } = {}) {
   const console = new VirtualConsole(), errors = [];
   console.on('jsdomError', error => errors.push(error));
-  const dom = new JSDOM('<!doctype html><html lang="pt-BR" data-theme="light"><body><div id="appView" class="app"><aside class="sidebar"><div class="brand">Orion</div></aside><main class="content"><section id="page-original" class="page">Área original</section></main></div></body></html>', { url: 'https://orion.test/panel', runScripts: 'outside-only', virtualConsole: console });
+  const dom = new JSDOM('<!doctype html><html lang="pt-BR" data-theme="light"><body><div id="appView" class="app"><aside class="sidebar"><div class="brand">Orion</div></aside><main class="content"><section id="page-original" class="page">Área original</section></main></div></body></html>', { url, runScripts: 'outside-only', virtualConsole: console });
   const { window } = dom;
   window.scrollTo = () => {};
   window.HTMLElement.prototype.scrollTo = () => {};
