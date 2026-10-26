@@ -1791,7 +1791,7 @@
       field('Fim','end_time','time',last,'required step="60"')+'</div>'+
       '<p class="os-form-message" role="alert" aria-live="polite"></p>'+
       '<div class="os-form-actions"><button type="button" class="os-button os-outline os-small" data-os-hours-cancel>Cancelar</button>'+
-      '<button type="submit" class="os-button os-small">'+(editing?'Salvar alterações':'Adicionar')+'</button></div></form>';
+      '<button type="submit" class="os-button os-small">'+(editing?'Salvar':'Adicionar')+'</button></div></form>';
   }
   async function showHours(id){
     const p=(state.data.professionals||[]).find(x=>x.id===id);if(!p)return;
@@ -1817,7 +1817,7 @@
       '</strong>. Os dias seguem de segunda a domingo. Alterações de expediente não remanejam agendamentos já confirmados.</p>'+
       '<div class="os-hours-days" aria-label="Expediente semanal">'+workweekDays.map((day,weekday)=>{
         const daily=periods.filter(item=>Number(item.weekday)===weekday);
-        return '<section class="os-hours-day" data-os-hours-weekday="'+weekday+'">'+
+        return '<section class="os-staff-hours-day '+(daily.length?'has-hours':'is-closed')+'" data-os-hours-weekday="'+weekday+'">'+
           '<div class="os-hours-day-head"><div><h3 class="os-hours-day-name">'+day+'</h3><span class="os-hours-day-meta">'+
           (daily.length?daily.length+' período'+(daily.length===1?'':'s'):'Fechado')+'</span></div>'+
           (can&&!daily.length?'<button type="button" class="os-button os-ghost os-small os-hours-add" data-os-hours-add="'+weekday+'" aria-label="Adicionar horário na '+day+'">'+icon('plus')+'Novo horário</button>':'')+'</div>'+
@@ -1833,7 +1833,7 @@
               (editor?.mode==='edit-hour'&&editor.id===hour.id?hoursEditorForm(editor,hour):'')+
               (hourBreaks.length?'<div class="os-hours-break-list">'+hourBreaks.map(b=>
                 '<div class="os-hours-break" data-os-hours-break="'+esc(b.id)+'">'+
-                '<span class="os-hours-break-label">'+icon('clock')+'<span>Pausa <strong>'+esc(shortClock(b.start_time))+' – '+esc(shortClock(b.end_time))+'</strong></span></span>'+
+                '<span class="os-hours-break-label">'+icon('clock')+'<span><span class="os-hours-break-caption">Pausa</span> <strong>'+esc(shortClock(b.start_time))+' – '+esc(shortClock(b.end_time))+'</strong></span></span>'+
                 (can?'<div class="os-hours-break-actions"><button type="button" class="os-button os-ghost os-small" data-os-edit-break="'+esc(b.id)+'" aria-label="Editar pausa das '+esc(shortClock(b.start_time))+' às '+esc(shortClock(b.end_time))+'">'+icon('edit')+'Editar</button>'+
                 '<button type="button" class="os-icon-button os-hours-trash" data-os-delete-break="'+esc(b.id)+'" aria-label="Remover pausa das '+esc(shortClock(b.start_time))+' às '+esc(shortClock(b.end_time))+'">'+icon('trash')+'</button></div>':'')+
                 (editor?.mode==='edit-break'&&editor.id===b.id?hoursEditorForm(editor,b):'')+'</div>'
@@ -1841,7 +1841,7 @@
               (can?'<button type="button" class="os-button os-ghost os-small os-hours-pause-add" data-os-pause="'+hourId+'">'+icon('plus')+'Adicionar pausa</button>':'')+
               (editor?.mode==='add-break'&&editor.id===hour.id?hoursEditorForm(editor,null,hour):'')+
               '</div>';
-          }).join(''):'<p class="os-hours-closed">Sem expediente cadastrado</p>')+
+          }).join(''):'')+
           (editor?.mode==='add-hour'&&editor.weekday===weekday?hoursEditorForm(editor):'')+
           '</section>';
       }).join('')+'</div>'+

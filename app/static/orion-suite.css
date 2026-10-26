@@ -1870,68 +1870,226 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 @media(max-width:650px){.os-site-amenities-grid{grid-template-columns:minmax(0,1fr)}}
 
 
-/* Employee schedule: ordered Monday-Sunday and compact in-place editing. */
-.os-dialog.os-hours-dialog{box-sizing:border-box;width:min(760px,calc(100vw - 28px));max-width:100vw;max-height:92dvh;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;overscroll-behavior:contain;border-radius:20px;padding:24px}
-.os-hours-dialog>h2{font-size:22px;line-height:30px;margin:0 48px 10px 0;overflow-wrap:anywhere}
-.os-hours-description{font-size:13px;line-height:21px;color:var(--os-muted);margin:0 0 18px}
-.os-hours-description strong{font-weight:600;color:var(--os-text);overflow-wrap:anywhere}
-.os-hours-days{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
-.os-hours-day{min-width:0;box-sizing:border-box;border:1px solid var(--os-border);border-radius:16px;padding:14px 16px;background:var(--os-card);box-shadow:var(--os-shadow)}
-.os-hours-day-head{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
-.os-hours-day-head>div{min-width:0}
-.os-hours-day-name{font:600 15px/22px var(--os-display);color:var(--os-text);margin:0}
-.os-hours-day-meta{display:block;margin-top:2px;font:400 12px/18px var(--os-font);color:var(--os-muted)}
-.os-hours-day-head .os-hours-add{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:6px 8px;font-size:12px}
-.os-hours-day-head .os-hours-add .os-icon{width:16px;height:16px}
-.os-hours-closed{margin:6px 0 0;font-size:12px;line-height:18px;color:var(--os-muted)}
-.os-hours-shift{min-width:0;border-top:1px solid var(--os-border);margin-top:11px;padding-top:10px}
-.os-hours-shift-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;min-width:0}
-.os-hours-clock{display:inline-flex;align-items:center;gap:5px;font:600 16px/24px var(--os-display);font-variant-numeric:tabular-nums;color:var(--os-text);white-space:nowrap}
-.os-hours-clock>span{color:var(--os-muted);font-weight:400}
-.os-hours-shift-actions,.os-hours-break-actions{display:flex;align-items:center;justify-content:flex-end;gap:4px;min-width:0}
-.os-hours-shift-actions .os-button,.os-hours-break-actions .os-button{min-height:38px;padding:6px 8px;font-size:12px;gap:6px}
-.os-hours-shift-actions .os-button .os-icon,.os-hours-break-actions .os-button .os-icon{width:16px;height:16px}
-.os-hours-dialog .os-hours-trash{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border-radius:10px;color:var(--os-muted)}
-.os-hours-dialog .os-hours-trash:hover{color:var(--os-danger);background:var(--os-danger-bg)}
-.os-hours-dialog .os-hours-trash>.os-icon{width:17px;height:17px}
-.os-hours-break-list{margin:8px 0;display:grid;gap:6px}
-.os-hours-break{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:5px;min-width:0;border:1px solid var(--os-border);border-radius:11px;padding:5px 6px 5px 10px;background:var(--os-bg)}
-.os-hours-break>.os-hours-editor{flex:1 1 100%;width:100%;min-width:0}
-.os-hours-break-label{display:flex;align-items:center;gap:8px;min-width:0;color:var(--os-muted);font-size:12px}
-.os-hours-break-label>.os-icon{flex:0 0 15px;width:15px;height:15px}
-.os-hours-break-label strong{color:var(--os-text);font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:500}
-.os-hours-pause-add.os-button{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:5px 8px;color:var(--os-muted);font-size:12px}
-.os-hours-pause-add>.os-icon{width:15px;height:15px}
-.os-hours-editor.os-form{display:grid;gap:10px;box-sizing:border-box;margin:10px 0 2px;padding:12px;border-radius:12px;border:1px solid color-mix(in srgb,var(--os-primary) 36%,var(--os-border));background:color-mix(in srgb,var(--os-tint) 28%,var(--os-card))}
-.os-hours-editor h4{font:600 14px/20px var(--os-display);margin:0;color:var(--os-text)}
-.os-hours-edit-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}
-.os-hours-edit-fields-day{grid-template-columns:minmax(0,1.5fr) repeat(2,minmax(0,1fr))}
-.os-hours-editor .os-field{min-width:0}
-.os-hours-editor .os-field label{font-size:12px;line-height:18px}
-.os-hours-editor .os-field input,.os-hours-editor .os-field select{min-height:44px}
-.os-hours-editor .os-form-message{font-size:12px;line-height:18px;color:var(--os-danger);margin:0}
-.os-hours-editor .os-form-message:empty{display:none}
-.os-hours-editor .os-form-actions{gap:8px;padding-top:0}
-.os-hours-editor .os-form-actions .os-button{min-height:40px;font-size:12px}
-.os-hours-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:18px;padding-top:14px;border-top:1px solid var(--os-border)}
-.os-hours-footer p{margin:0;max-width:500px;font-size:12px;line-height:19px;color:var(--os-muted)}
-.os-hours-footer>.os-button{flex:0 0 auto;min-height:42px}
+/* Professional working hours — intentionally distinct from .os-hours-day in settings. */
+#osDialog.os-hours-dialog{
+  box-sizing:border-box;width:min(720px,calc(100vw - 32px));max-width:100vw;
+  max-height:min(92dvh,1000px);padding:26px;overflow-y:auto;overflow-x:hidden;
+  overscroll-behavior:contain;scrollbar-gutter:stable;border:1px solid var(--os-border);
+  border-radius:22px;background:var(--os-bg);color:var(--os-text);
+}
+#osDialog.os-hours-dialog>h2{
+  font:600 22px/30px var(--os-display);letter-spacing:-.02em;
+  margin:0 48px 8px 0;overflow-wrap:anywhere;
+}
+.os-hours-dialog .os-hours-description{
+  margin:0 0 20px;color:var(--os-muted);font:400 13px/21px var(--os-font);
+}
+.os-hours-dialog .os-hours-description strong{color:var(--os-text);font-weight:600;overflow-wrap:anywhere}
+.os-hours-dialog .os-hours-days{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:10px;min-width:0;
+}
+.os-hours-dialog .os-staff-hours-day{
+  box-sizing:border-box;display:flex;flex-direction:column;gap:0;min-width:0;
+  width:100%;padding:16px 18px;border:1px solid var(--os-border);
+  border-radius:16px;background:var(--os-card);box-shadow:var(--os-shadow);
+}
+.os-hours-dialog .os-staff-hours-day.is-closed{
+  background:color-mix(in srgb,var(--os-card) 84%,var(--os-bg));
+  padding-block:13px;
+}
+.os-hours-dialog .os-hours-day-head{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:12px;min-width:0;width:100%;
+}
+.os-hours-dialog .os-hours-day-head>div{flex:1 1 auto;min-width:0}
+.os-hours-dialog .os-hours-day-name{
+  margin:0;color:var(--os-text);font:600 15px/22px var(--os-display);
+  letter-spacing:-.01em;overflow-wrap:anywhere;
+}
+.os-hours-dialog .os-hours-day-meta{
+  display:block;margin-top:2px;color:var(--os-muted);font:400 12px/18px var(--os-font);
+}
+.os-hours-dialog .has-hours .os-hours-day-meta{color:var(--os-primary)}
+.os-hours-dialog .os-hours-add.os-button{
+  flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:7px 9px;min-height:38px;font:500 12px/18px var(--os-font);
+}
+.os-hours-dialog .os-hours-add>.os-icon{flex:none;width:16px;height:16px}
+.os-hours-dialog .os-hours-shift{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:10px;min-width:0;width:100%;
+  border-top:1px solid var(--os-border);margin-top:12px;padding-top:12px;
+}
+.os-hours-dialog .os-hours-shift-head{
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;
+  gap:8px 12px;min-width:0;width:100%;
+}
+.os-hours-dialog .os-hours-clock{
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  font:600 17px/26px var(--os-display);font-variant-numeric:tabular-nums;
+  letter-spacing:-.015em;color:var(--os-text);
+}
+.os-hours-dialog .os-hours-clock>span{color:var(--os-muted);font-weight:400}
+.os-hours-dialog .os-hours-shift-actions,
+.os-hours-dialog .os-hours-break-actions{
+  display:flex;flex:0 0 auto;align-items:center;justify-content:flex-end;
+  flex-wrap:nowrap;gap:4px;min-width:0;
+}
+.os-hours-dialog .os-hours-shift-actions{margin-left:auto}
+.os-hours-dialog .os-hours-shift-actions .os-button,
+.os-hours-dialog .os-hours-break-actions .os-button{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:40px;padding:7px 9px;font:500 12px/18px var(--os-font);
+}
+.os-hours-dialog .os-hours-shift-actions .os-icon,
+.os-hours-dialog .os-hours-break-actions .os-icon{flex:0 0 16px;width:16px;height:16px}
+.os-hours-dialog .os-hours-trash.os-icon-button{
+  display:inline-grid;place-items:center;box-sizing:border-box;
+  flex:0 0 40px;width:40px;height:40px;min-width:40px;
+  border-radius:10px;color:var(--os-muted);
+}
+.os-hours-dialog .os-hours-trash.os-icon-button:hover:not(:disabled){
+  color:var(--os-danger);background:var(--os-danger-bg);
+}
+.os-hours-dialog .os-hours-trash>.os-icon{width:18px;height:18px}
+.os-hours-dialog .os-hours-break-list{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:7px;
+  width:100%;min-width:0;margin:0;
+}
+.os-hours-dialog .os-hours-break{
+  box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;gap:8px;min-width:0;width:100%;
+  margin:0;padding:7px 8px 7px 12px;
+  border:1px solid var(--os-border);border-radius:12px;
+  background:color-mix(in srgb,var(--os-bg) 86%,var(--os-card));
+}
+.os-hours-dialog .os-hours-break-label{
+  display:flex;align-items:center;gap:8px;min-width:0;
+  color:var(--os-muted);font:400 12px/18px var(--os-font);
+}
+.os-hours-dialog .os-hours-break-label>.os-icon{
+  flex:0 0 16px;width:16px;height:16px;color:var(--os-muted);
+}
+.os-hours-dialog .os-hours-break-label>span{min-width:0;overflow-wrap:anywhere}
+.os-hours-dialog .os-hours-break-caption{color:var(--os-muted)}
+.os-hours-dialog .os-hours-break-label strong{
+  display:inline-block;font:600 12px/18px var(--os-font);
+  font-variant-numeric:tabular-nums;color:var(--os-text);white-space:nowrap;
+}
+.os-hours-dialog .os-hours-break>.os-hours-editor{
+  grid-column:1/-1;min-width:0;width:100%;margin:2px 0 0;
+}
+.os-hours-dialog .os-hours-pause-add.os-button{
+  display:inline-flex;align-items:center;justify-content:flex-start;gap:6px;
+  width:max-content;max-width:100%;min-height:38px;padding:6px 9px;
+  margin:0;color:var(--os-muted);font:500 12px/18px var(--os-font);
+}
+.os-hours-dialog .os-hours-pause-add>.os-icon{width:16px;height:16px;flex:none}
+#osDialog.os-hours-dialog .os-hours-editor.os-form{
+  box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr);
+  align-items:stretch;gap:14px;width:100%;min-width:0;
+  margin:5px 0 0;padding:16px;
+  border:1px solid color-mix(in srgb,var(--os-primary) 45%,var(--os-border));
+  border-radius:14px;background:color-mix(in srgb,var(--os-tint) 28%,var(--os-card));
+}
+.os-hours-dialog .os-hours-editor h4{
+  margin:0;font:600 15px/22px var(--os-display);color:var(--os-text);
+}
+.os-hours-dialog .os-hours-edit-fields,
+.os-hours-dialog .os-hours-edit-fields-day{
+  box-sizing:border-box;display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;min-width:0;width:100%;
+}
+.os-hours-dialog .os-hours-edit-fields-day>.os-field:first-child{grid-column:1/-1}
+.os-hours-dialog .os-hours-edit-fields>.os-field{min-width:0;width:100%}
+.os-hours-dialog .os-hours-editor .os-field label{
+  display:block;margin:0 0 6px;font:500 12px/18px var(--os-font);
+}
+#osDialog.os-hours-dialog .os-hours-editor input:not([type=hidden]),
+#osDialog.os-hours-dialog .os-hours-editor select{
+  box-sizing:border-box;display:block;width:100%;min-width:0;max-width:100%;
+  min-height:46px;padding:8px 12px;border-radius:12px;
+  font:500 16px/24px var(--os-font);color:var(--os-text);
+  background:var(--os-bg);font-variant-numeric:tabular-nums;
+}
+.os-hours-dialog .os-hours-editor .os-form-message{
+  margin:0;color:var(--os-danger);font:400 12px/18px var(--os-font);
+}
+.os-hours-dialog .os-hours-editor .os-form-message:empty{display:none}
+#osDialog.os-hours-dialog .os-hours-editor>.os-form-actions{
+  display:flex;align-items:center;justify-content:flex-end;gap:8px;
+  flex-wrap:nowrap;margin:0;padding:0;border:0;background:transparent;
+}
+#osDialog.os-hours-dialog .os-hours-editor>.os-form-actions>.os-button{
+  flex:0 1 auto;min-height:44px;padding:9px 16px;border-radius:11px;
+  font:600 13px/20px var(--os-font);white-space:nowrap;
+}
+.os-hours-dialog .os-hours-footer{
+  display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:12px;min-width:0;padding-top:16px;margin-top:18px;
+  border-top:1px solid var(--os-border);
+}
+.os-hours-dialog .os-hours-footer>p{
+  flex:1 1 260px;max-width:500px;min-width:0;margin:0;
+  color:var(--os-muted);font:400 12px/19px var(--os-font);
+}
+.os-hours-dialog .os-hours-footer>.os-button{
+  flex:0 0 auto;min-height:44px;padding:9px 17px;
+}
+/* Tablet keeps the full-width card; inputs remain two readable columns. */
+@media(min-width:768px) and (max-width:1023px){
+  #osDialog.os-hours-dialog{width:min(680px,calc(100vw - 32px));padding:22px}
+}
 @media(max-width:767px){
- .os-dialog.os-hours-dialog{position:fixed;inset:0;box-sizing:border-box;width:100vw;height:100dvh;max-height:100dvh;margin:0;border:0;border-radius:0;padding:calc(20px + env(safe-area-inset-top,0px)) 16px calc(28px + env(safe-area-inset-bottom,0px));scrollbar-gutter:auto}
- .os-hours-dialog>h2{font-size:20px;line-height:27px;margin-right:42px}
- .os-hours-day{padding:13px 12px;border-radius:14px}
- .os-hours-shift-head{gap:4px}
- .os-hours-clock{font-size:15px}
- .os-hours-break{padding:5px}
- .os-hours-edit-fields-day{grid-template-columns:repeat(2,minmax(0,1fr))}
- .os-hours-edit-fields-day>.os-field:first-child{grid-column:1/-1}
- .os-hours-footer{align-items:stretch;flex-direction:column}
- .os-hours-footer>.os-button{width:100%}
+  #osDialog.os-hours-dialog{
+    position:fixed;inset:0;box-sizing:border-box;
+    width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;
+    padding:calc(16px + env(safe-area-inset-top,0px)) 16px
+      calc(24px + env(safe-area-inset-bottom,0px));
+    margin:0;border:0;border-radius:0;scrollbar-gutter:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  #osDialog.os-hours-dialog>h2{font-size:20px;line-height:27px;margin-right:45px}
+  .os-hours-dialog .os-hours-description{font-size:12px;line-height:19px;margin-bottom:15px}
+  .os-hours-dialog .os-hours-days{gap:9px}
+  .os-hours-dialog .os-staff-hours-day{padding:14px;border-radius:14px}
+  .os-hours-dialog .os-staff-hours-day.is-closed{padding-block:12px}
+  .os-hours-dialog .os-hours-day-head{gap:8px}
+  .os-hours-dialog .os-hours-day-name{font-size:15px;line-height:21px}
+  .os-hours-dialog .os-hours-shift{margin-top:11px;padding-top:10px;gap:8px}
+  .os-hours-dialog .os-hours-clock{font-size:16px;line-height:24px}
+  .os-hours-dialog .os-hours-break{padding:5px 6px 5px 10px;gap:6px}
+  #osDialog.os-hours-dialog .os-hours-editor.os-form{padding:14px;gap:12px}
+  .os-hours-dialog .os-hours-edit-fields,
+  .os-hours-dialog .os-hours-edit-fields-day{
+    grid-template-columns:minmax(0,1fr);gap:12px;
+  }
+  .os-hours-dialog .os-hours-edit-fields-day>.os-field:first-child{grid-column:1}
+  #osDialog.os-hours-dialog .os-hours-editor>.os-form-actions{
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;
+  }
+  #osDialog.os-hours-dialog .os-hours-editor>.os-form-actions>.os-button{
+    width:100%;min-width:0;min-height:46px;margin:0;padding:8px 10px;
+    white-space:normal;text-align:center;
+  }
+  .os-hours-dialog .os-hours-footer{display:grid;grid-template-columns:1fr;gap:12px}
+  .os-hours-dialog .os-hours-footer>.os-button{width:100%}
+}
+@media(max-width:420px){
+  .os-hours-dialog .os-hours-break-actions>.os-button{
+    box-sizing:border-box;flex:0 0 40px;width:40px;min-width:40px;
+    padding:0;font-size:0;gap:0;
+  }
+  .os-hours-dialog .os-hours-break-actions>.os-button>.os-icon{
+    width:17px;height:17px;flex-basis:17px;
+  }
 }
 @media(max-width:359px){
- .os-hours-day-head .os-hours-add{font-size:11px}
- .os-hours-shift-actions,.os-hours-break-actions{gap:1px}
- .os-hours-shift-actions .os-button,.os-hours-break-actions .os-button{font-size:11px;padding:5px}
- .os-hours-break-label{font-size:11px}
+  #osDialog.os-hours-dialog{padding-inline:12px}
+  .os-hours-dialog .os-staff-hours-day{padding-inline:11px}
+  .os-hours-dialog .os-hours-day-head .os-hours-add{font-size:11px;padding:6px}
+  .os-hours-dialog .os-hours-shift-head{gap:5px}
+  .os-hours-dialog .os-hours-shift-actions .os-button{font-size:0;padding:6px;gap:0}
+  .os-hours-dialog .os-hours-shift-actions .os-button>.os-icon{width:18px;height:18px;flex-basis:18px}
 }
 
