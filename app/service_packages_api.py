@@ -79,13 +79,14 @@ async def catalogue_lock(db, tenant):
 
 
 async def package_row(db, tenant, package_id):
-    row = (await db.execute(text("""SELECT p.*,s.duration_min,s.prep_min,s.cleanup_min,s.active AS available
+    row = (await db.execute(text("""SELECT p.*,s.duration_min,s.prep_min,s.cleanup_min,s.price_mode,
+                 s.price_cents AS effective_price_cents,s.active AS available
         FROM service_packages p JOIN services s ON s.tenant_id=p.tenant_id AND s.id=p.synthetic_service_id
         WHERE p.tenant_id=:tenant AND p.id=:id AND p.kind='combo'"""),
         {"tenant": tenant, "id": package_id})).mappings().one_or_none()
     if row is None:
         raise HTTPException(404, "Combo não encontrado")
-    items = (await db.execute(text("""SELECT i.service_id,i.item_order,s.name,s.price_cents,s.duration_min,s.active
+    items = (await db.execute(text("""SELECT i.service_id,i.item_order,s.name,s.price_cents,s.price_mode,s.duration_min,s.active
         FROM service_package_items i JOIN services s ON s.tenant_id=i.tenant_id AND s.id=i.service_id
         WHERE i.tenant_id=:tenant AND i.package_id=:id ORDER BY i.item_order"""),
         {"tenant": tenant, "id": package_id})).mappings().all()
@@ -101,8 +102,8 @@ async def validate_package_sources(db, tenant, fields):
         ORDER BY id FOR SHARE"""), {"tenant": tenant, "ids": fields.service_ids})).mappings().all()
     if len(sources) != len(fields.service_ids):
         raise HTTPException(422, "Todos os componentes devem ser serviços desta barbearia")
-    if any(row["price_mode"] == "from" for row in sources):
-        raise HTTPException(422, "Combos com preço fixo não podem incluir serviços 'a partir de'. Use o serviço separado.")
+    if any(row["price_mode"] == "from" for row in sources) and fields.price_cents == 0:
+        raise HTTPException(422, "Informe um preço mínimo maior que zero para este combo 'a partir de'.")
     if fields.price_cents > sum(x["price_cents"] for x in sources):
         raise HTTPException(422, "O preço especial não pode superar a soma dos serviços")
     if (sum(x["duration_min"] for x in sources) > 1440 or sum(x["prep_min"] for x in sources) > 240

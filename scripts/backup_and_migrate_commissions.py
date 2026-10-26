@@ -70,7 +70,7 @@ def storage_values():
     return values
 
 
-def perform_backup(url, settings, destination: Path):
+def perform_backup(url, settings, destination: Path, *, backup_context='commission-0033', schema_revision=PREVIOUS):
     environment = dict(os.environ)
     environment["PGPASSWORD"] = url.password
     # Explicit arguments do not contain passwords; credentials remain in env.
@@ -104,10 +104,12 @@ def perform_backup(url, settings, destination: Path):
                           config=Config(s3={"addressing_style": settings["style"]},
                                         connect_timeout=20, read_timeout=120, retries={"max_attempts":3}))
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    key = f"production/commission-0033/pre-schema-0032-{stamp}-{uuid4().hex}.dump"
+    if not backup_context.replace('-', '').isalnum() or not schema_revision.replace('_', '').isalnum():
+        raise ValueError("invalid_backup_scope")
+    key = f"production/{backup_context}/pre-schema-{schema_revision}-{stamp}-{uuid4().hex}.dump"
     client.upload_file(str(destination), settings["bucket"], key,
                        ExtraArgs={"Metadata": {"sha256": sha.hexdigest(),
-                                               "schema": PREVIOUS}})
+                                               "schema": schema_revision}})
     head = client.head_object(Bucket=settings["bucket"], Key=key)
     if (int(head["ContentLength"]) != size
             or head.get("Metadata", {}).get("sha256") != sha.hexdigest()):

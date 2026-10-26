@@ -111,7 +111,7 @@ async def test_fixed_price_cannot_be_overridden_on_completion(management_db):
 
 
 @pytest.mark.asyncio
-async def test_public_from_pricing_and_fixed_combo_rejection(public_db):
+async def test_public_from_pricing_also_propagates_to_combo(public_db):
     d = public_db
     await save_site(d)
     async with d["migrator"].begin() as db:
@@ -119,15 +119,23 @@ async def test_public_from_pricing_and_fixed_combo_rejection(public_db):
             UPDATE services SET price_mode='from',price_cents=8000
             WHERE tenant_id=:tenant AND id=:id
         """), {"tenant": d["a"], "id": d["cut"]})
-    bad = await d["client"].post(d["base"] + "/service-packages", json={
-        "name": "Combo sem preço garantido", "service_ids": [str(d["cut"]),str(d["wash"])],
-        "price_cents": 9000, "idempotency_key": "variable-combo-rejected"})
-    assert bad.status_code == 422, bad.text
+    saved = await d["client"].post(d["base"] + "/service-packages", json={
+        "name": "Corte variável + lavagem", "service_ids": [str(d["cut"]),str(d["wash"])],
+        "price_cents": 9000, "idempotency_key": "variable-combo-accepted"})
+    assert saved.status_code == 201, saved.text
+    assert saved.json()["price_mode"] == "from"
+    assert saved.json()["effective_price_cents"] == 9000
+    assert saved.json()["available"] is True
+    combo_id = UUID(saved.json()["synthetic_service_id"])
     await publish(d)
     catalog = await d["client"].get(d["public"])
     assert catalog.status_code == 200, catalog.text
     offer = next(x for x in catalog.json()["services"] if x["id"] == str(d["cut"]))
     assert offer["price_mode"] == "from" and offer["price_cents"] == 8000
+    combo_offer = next(x for x in catalog.json()["services"] if x["id"] == str(combo_id))
+    assert combo_offer["price_mode"] == "from" and combo_offer["price_cents"] == 9000
+    quote = await availability(d, service=combo_id)
+    assert quote["price_mode"] == "from" and quote["price_cents"] == 9000
     slot = await availability(d, service=d["cut"])
     assert slot["price_mode"] == "from" and slot["price_cents"] == 8000
     confirmed = await d["client"].post(d["public"] + "/appointments", json=book_body(slot,phone="+5511987654309"))
