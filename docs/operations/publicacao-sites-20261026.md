@@ -41,11 +41,14 @@ Todas as seções abaixo foram lidas; a coluna de evidência será fechada com o
 4. Retirada/reativação não distinguiam o snapshot anterior do rascunho atual. A reativação explícita preserva o rascunho e restaura a última versão pública.
 5. Havia validação insuficiente de empresa ativa, vínculo serviço/profissional/horário e erros operacionais. O checklist usa fatos atuais e não exige agenda vazia ou revisão do Orion.
 6. HTML de compartilhamento era genérico e catálogo fazia uma consulta extra por combo. Metadados são renderizados pelo servidor e componentes são buscados em lote.
+7. O retorno do usuário em Safari mostrou outro caminho: cookies administrativos antigos continuam válidos como suporte, sem a identidade pessoal necessária ao vínculo owner. O status agora explica esse caso e oferece “Atualizar acesso de admin”. O login nativo confirma a senha e a geração da credencial antes de emitir a sessão identificada; o cookie anterior não é apagado nem elevado silenciosamente. Conta sem binding recebe diagnóstico, sem criação automática de identidade ou associação.
+8. O cartão separado de publicação tinha tamanho, texto e hierarquia diferentes do painel. As ações foram integradas ao endereço existente, com botões, badge, espaçamentos e “Mais opções” já usados no sistema. Versões, histórico e retirada/reativação ficam no disclosure, sem duplicar cartões na configuração.
 
 ## Contratos e preservação
 
 - Continua sendo uma aplicação compartilhada. Não há deployment ou aprovação por empresa.
 - GET autenticado `/management/site/publication` descreve permissões, pendências, versões e histórico; GET `/site/slug-availability` informa disponibilidade sem identidade de terceiros.
+- O status inclui diagnóstico de reautenticação para acesso administrativo sem identidade. Ele nunca concede publicação com base apenas no papel admin/support. O admin identificado continua precisando da associação owner ativa da empresa selecionada.
 - POST existente continua exigindo `expected_version` e `enabled`; `restore_previous: true` reativa o snapshot anterior, somente quando retirado do ar.
 - Preços, durações, vínculos ativos e horários permanecem operacionais. Nome, descrição, imagens e apresentação dos serviços/profissionais ficam na publicação. Uma entidade inativa nunca é reativada pelo snapshot.
 - Publicações anteriores à migração mantêm o comportamento compatível até sua próxima republicação explícita.
@@ -84,6 +87,8 @@ Evidências desta tarefa ficam em `C:\Users\kayky\Documents\Playground\orion-sit
 | Contrato e hardgate do schema final | `schema_contract_ready=True`; `final-schema-ready.json` e teste PG do guard |
 | Suíte unitária ampla | 4511 passaram, 39 falharam, 2 pulados; as 39 falhas foram reproduzidas no archive imutável da base, com causas equivalentes: `baseline-39-comparison.json` |
 | Suíte DOM ampla após o merge | 495/496; a única falha é a expectativa antiga de usar telefone como nome do cliente, também reproduzida na base |
+| Regressão de autenticação do admin, após o retorno do usuário | 62/62; `native-admin-publication-regressions.xml`, incluindo PostgreSQL, Redis e login nativo sem substituir `Actor` |
+| Admin no navegador real | 2/2 Chromium/WebKit; sessão antiga de suporte → novo login → owner publica; cookie antigo preservado e outra empresa negada; `admin-compact-e2e.xml` |
 
 Na primeira suíte DOM ampla, 4 falhas já existiam na base: três guardas Vercel com hash antigo e uma expectativa de nome de cliente. A comparação usou cópia imutável do HEAD original. O merge preservou a correção concorrente da fachada e os três casos Vercel passaram. A suíte ampla não deve ser descrita como totalmente verde.
 

@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from app.management_schemas import SiteSave
 from app.public_site_api import Publication
-from app.site_publication import validate_slug
+from app.site_publication import validate_slug, _publication_access_details
 from app.tenant_access import TenantAccess, resolve_site_access
 
 
@@ -59,3 +59,24 @@ async def test_administrator_can_publish_only_as_explicit_current_owner(monkeypa
     monkeypatch.setattr("app.catalog_api.support_session_factory", lambda: Session)
     monkeypatch.setattr("app.tenant_access.account_membership_role", role)
     assert (await resolve_site_access(SimpleNamespace(role="admin", account_id=account), tenant)).role == expected
+
+
+@pytest.mark.asyncio
+async def test_an_identified_administrator_needs_no_session_upgrade_lookup(monkeypatch):
+    def forbidden(): raise AssertionError("An identified administrator must keep the current membership decision")
+    monkeypatch.setattr("app.catalog_api.support_session_factory", forbidden)
+    result = await _publication_access_details(SimpleNamespace(role="admin"), TenantAccess("owner", uuid4()))
+    assert result == {"reauthentication_required": False, "access_reason": None, "access_message": None}
+
+
+@pytest.mark.asyncio
+async def test_missing_operator_identity_configuration_is_explained_without_granting_authority(monkeypatch):
+    monkeypatch.setattr("app.legacy_admin_identity.enabled", lambda: True)
+    def unavailable(): raise RuntimeError("synthetic-private-connection-must-not-be-disclosed")
+    monkeypatch.setattr("app.catalog_api.support_session_factory", unavailable)
+    access = TenantAccess("support")
+    result = await _publication_access_details(SimpleNamespace(role="support"), access)
+    assert result["reauthentication_required"] is True
+    assert result["access_reason"] == "administrator_identity_unavailable"
+    assert "synthetic-private" not in result["access_message"]
+    assert access.role == "support" and access.account_id is None

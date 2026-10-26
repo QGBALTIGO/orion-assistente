@@ -83,7 +83,7 @@ def database_url(name, role):
 
 
 @pytest.fixture(scope="session")
-def qualification_server():
+def qualification_server(request):
     if os.environ.get("ORION_E2E_ENABLED") != "1":
         pytest.fail("Explicit ORION_E2E_ENABLED=1 required; this suite never silently skips")
     runtime, runtime_url = database_url("APP_DATABASE_URL", "app_runtime")
@@ -127,7 +127,24 @@ def qualification_server():
         "COMMERCIAL_FULFILLMENT_ENABLED": "0", "QR_CHANNELS_ENABLED": "0",
         "MARKETING_EXECUTION_ENABLED": "0", "MARKETING_RECONCILIATION_ENABLED": "0",
         "GOOGLE_LIVE_SYNC": "0", "GROQ_PROBE_ON_START": "0", "GROQ_ENABLED": "0",
+        "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED": "0",
     })
+    native_admin = None
+    mode = getattr(request, "param", None)
+    if mode is not None:
+        if mode != "synthetic_native_admin":
+            pytest.fail("Unknown E2E server opt-in; arbitrary environment overrides are forbidden")
+        # Only explicitly selected tests receive a known synthetic environment
+        # operator. The ordinary qualification fixture remains disabled/random.
+        username = "synthetic-native-e2e-" + uuid4().hex[:12]
+        salt = secrets.token_bytes(16)
+        digest = hashlib.pbkdf2_hmac("sha256", PASSWORD.encode(), salt, 200_000)
+        password_hash = "pbkdf2_sha256$200000$" + base64.urlsafe_b64encode(salt).decode() + "$" + base64.urlsafe_b64encode(digest).decode()
+        native_admin = SimpleNamespace(username=username, password=PASSWORD,
+                                       password_hash=password_hash, tenant_id=str(uuid4()))
+        env.update({"PANEL_ADMIN_USERNAME": username, "PANEL_ADMIN_PASSWORD_HASH": password_hash,
+                    "PANEL_LEGACY_ADMIN_IDENTITY_ENABLED": "1",
+                    "PANEL_OPERATOR_TENANT_ID": native_admin.tenant_id})
     with tempfile.TemporaryDirectory(prefix="orion-e2e-tls-") as private_dir:
         cert, key = Path(private_dir) / "cert.pem", Path(private_dir) / "key.pem"
         subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
@@ -149,7 +166,8 @@ def qualification_server():
                         time.sleep(0.15)
                 else:
                     pytest.fail("Real HTTPS API did not become healthy in 45s")
-                yield SimpleNamespace(origin=origin, dsn=migration_dsn, artifacts=artifacts)
+                yield SimpleNamespace(origin=origin, dsn=migration_dsn, artifacts=artifacts,
+                                      native_admin=native_admin)
             finally:
                 process.terminate()
                 try:

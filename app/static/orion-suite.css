@@ -1441,9 +1441,9 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-site-tabs{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}
 .os-site-tabs>.os-horizontal-tabs{margin:0;flex:1}
 .os-site-tabs>.os-button{flex:0 0 auto}
-.os-site-address{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px;margin-bottom:24px}
+.os-site-address{padding:20px 24px;margin-bottom:24px}
 .os-site-address>div:first-child{min-width:0}
-.os-site-address strong{display:block;font:600 16px/24px var(--os-display);margin-top:4px;overflow-wrap:anywhere}
+.os-site-address>.os-card-header strong{display:block;font:600 16px/24px var(--os-display);margin-top:4px;overflow-wrap:anywhere}
 .os-site-address .os-help{font-size:12px}
 .os-site-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:24px}
 .os-site-metrics .os-metric{padding:16px;border-radius:16px}
@@ -1471,30 +1471,11 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 /* Site theme uses the same circular picker as Services and Team. */
 .os-site-save{justify-content:space-between;padding:12px 0;position:sticky;bottom:0;z-index:3;background:var(--os-bg)}
 .os-site-save p{font-size:11px;line-height:17px;max-width:350px}
-.os-site-publication{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-top:24px}
-.os-site-publication>div:first-child{min-width:0;flex:1;max-width:680px}
-.os-site-publication p{font-size:12px;line-height:20px;margin-top:4px}
-.os-site-publication>.os-actions{justify-content:flex-end;flex-wrap:wrap}
-.os-site-publication-heading{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
-.os-site-publication-heading h3{font-size:16px;line-height:24px}
-.os-site-publication-heading .os-badge{white-space:normal;overflow-wrap:anywhere}
-.os-site-publication-meta,.os-site-publication-history li>span{color:var(--os-muted)}
-.os-site-publication-issues{display:grid;gap:8px;list-style:none;padding:0;margin:16px 0 0}
-.os-site-publication-issues li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--os-border);border-radius:10px;background:var(--os-bg);font-size:13px;line-height:20px}
-.os-site-publication-issues li>span{min-width:0;overflow-wrap:anywhere}
-.os-site-publication-issues .os-button{flex-shrink:0;white-space:normal}
-.os-site-publication-error{padding:12px;margin-top:12px;border-radius:10px;background:var(--os-danger-bg);color:var(--os-danger)}
-.os-site-publication-error .os-button{margin-top:8px}
-.os-site-publication-history{margin-top:16px;padding:16px 24px}
-.os-site-publication-history summary{cursor:pointer;font-weight:600;min-height:24px;line-height:24px}
-.os-site-publication-history ol{display:grid;gap:12px;list-style:none;margin:16px 0 0;padding:0}
-.os-site-publication-history li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px;font-size:12px;line-height:20px}
 .os-site-slug-status{margin-top:8px;min-height:20px}
 .os-site-slug-status[data-status=unavailable]{color:var(--os-danger)}
 .os-site-slug-status[data-status=available]{color:var(--os-success)}
 .os-site-metrics-error{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px}
 .os-site-metrics-error p{font-size:13px;line-height:21px;max-width:540px}
-@media(max-width:767px){.os-site-publication>.os-actions{width:100%;justify-content:flex-start}.os-site-publication>.os-actions>.os-button{max-width:100%;white-space:normal}.os-site-publication-issues li{align-items:flex-start;flex-direction:column;gap:4px}.os-site-publication-issues .os-button{padding-left:0}.os-site-publication-history{padding:16px 20px}}
 .os-plan-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
 .os-plan-details small{display:block;color:var(--os-muted);font-size:12px;line-height:18px}
 .os-plan-details strong{display:block;font:600 18px/26px var(--os-display);margin-top:4px}
@@ -1552,10 +1533,10 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-news-card ul{padding-left:20px;margin:0 0 16px;color:var(--os-text);font-size:14px;line-height:24px}
 .os-news-card li+li{margin-top:8px}
 .orion-suite-enabled button:focus-visible{outline:3px solid color-mix(in srgb,var(--os-primary) 55%,transparent);outline-offset:3px}
-@media(max-width:1199px){.os-site-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.os-appearance-options{grid-template-columns:1fr}.os-appearance-option{display:grid;grid-template-columns:110px minmax(0,1fr);gap:0 16px;align-items:center}.os-theme-preview{grid-row:span 2}.os-theme-caption{margin-top:0}.os-appearance-option>small{align-self:start}.os-site-publication{align-items:flex-start;flex-direction:column}.os-site-publication>.os-actions{justify-content:flex-start}}
-@media(max-width:1023px){.os-help-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.os-marketing-automation-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.os-marketing-automation-cards .os-card{padding:16px}.os-marketing-automation-cards .os-square-icon{width:36px;height:36px}.os-marketing-automation-cards strong{font-size:14px;line-height:20px}.os-marketing-automation-cards p{font-size:11px;line-height:18px}.os-site-address{flex-wrap:wrap}.os-help-featured h2{font-size:20px;line-height:28px}}
+@media(max-width:1199px){.os-site-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.os-appearance-options{grid-template-columns:1fr}.os-appearance-option{display:grid;grid-template-columns:110px minmax(0,1fr);gap:0 16px;align-items:center}.os-theme-preview{grid-row:span 2}.os-theme-caption{margin-top:0}.os-appearance-option>small{align-self:start}}
+@media(max-width:1023px){.os-help-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.os-marketing-automation-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.os-marketing-automation-cards .os-card{padding:16px}.os-marketing-automation-cards .os-square-icon{width:36px;height:36px}.os-marketing-automation-cards strong{font-size:14px;line-height:20px}.os-marketing-automation-cards p{font-size:11px;line-height:18px}.os-help-featured h2{font-size:20px;line-height:28px}}
 @media(max-width:1023px){.os-settings-layout{grid-template-columns:1fr}.os-settings-menu{display:none}.os-settings-mobile{display:block;margin-bottom:24px}.os-settings-section-heading{display:none}.os-settings-panel .os-form-grid{grid-template-columns:1fr}}
-@media(max-width:767px){.os-main[data-os-current-route=ajuda]{padding:16px 16px 64px}.os-main[data-os-current-route=novidades]{padding:16px}.os-main[data-os-current-route=configuracoes],.os-main[data-os-current-route=site]{padding:16px}.os-preferences-form .os-card,.os-site-config-card{padding:20px}.os-site-config .os-form-grid{grid-template-columns:1fr}.os-help-hero{padding:24px}.os-help-hero h1{font-size:30px;line-height:38px}.os-help-hero>p{font-size:14px;line-height:22px}.os-help-featured-grid{grid-template-columns:1fr}.os-help-grid{grid-template-columns:1fr}.os-help-featured{min-height:0}.os-help-featured h2{font-size:20px;line-height:28px}.os-help-article h1{font-size:26px;line-height:35px}.os-help-related>div{grid-template-columns:1fr}.os-help-related button{flex-direction:row;align-items:center}.os-site-config-card>.os-card-header{gap:12px}.os-site-config-card>.os-card-header .os-square-icon{width:32px;height:32px;flex-basis:32px}.os-site-tabs{gap:8px;flex-wrap:wrap}.os-site-tabs>.os-button{font-size:12px}.os-site-address{padding:16px}.os-site-address strong{font-size:14px;line-height:22px}.os-site-publication{padding:20px}.os-site-publication .os-button{font-size:12px}.os-plan-details{grid-template-columns:repeat(2,minmax(0,1fr))}.os-notifications-panel{position:fixed;top:56px;right:3vw}.os-marketing-automation-cards{grid-template-columns:1fr}.os-automation-choice{display:grid;grid-template-columns:36px minmax(0,1fr);gap:4px 12px}.os-automation-choice>.os-square-icon{grid-row:span 2}.os-automation-choice>strong,.os-automation-choice>p{margin:0}.os-news-toolbar{align-items:stretch;flex-direction:column}.os-news-toolbar>.os-button{align-self:flex-start}.os-news-card>header{padding:20px 16px}.os-news-card>header h2{font-size:20px;line-height:28px}.os-news-card>div{padding:16px}.os-site-save{flex-direction:column;align-items:stretch}.os-site-save>.os-button{width:100%}.os-appearance-options{grid-template-columns:repeat(3,minmax(0,1fr))}.os-appearance-option{display:block;padding:8px}.os-theme-preview{height:85px}.os-theme-caption{margin-top:10px}.os-appearance-option>small{display:none}}
+@media(max-width:767px){.os-main[data-os-current-route=ajuda]{padding:16px 16px 64px}.os-main[data-os-current-route=novidades]{padding:16px}.os-main[data-os-current-route=configuracoes],.os-main[data-os-current-route=site]{padding:16px}.os-preferences-form .os-card,.os-site-config-card{padding:20px}.os-site-config .os-form-grid{grid-template-columns:1fr}.os-help-hero{padding:24px}.os-help-hero h1{font-size:30px;line-height:38px}.os-help-hero>p{font-size:14px;line-height:22px}.os-help-featured-grid{grid-template-columns:1fr}.os-help-grid{grid-template-columns:1fr}.os-help-featured{min-height:0}.os-help-featured h2{font-size:20px;line-height:28px}.os-help-article h1{font-size:26px;line-height:35px}.os-help-related>div{grid-template-columns:1fr}.os-help-related button{flex-direction:row;align-items:center}.os-site-config-card>.os-card-header{gap:12px}.os-site-config-card>.os-card-header .os-square-icon{width:32px;height:32px;flex-basis:32px}.os-site-tabs{gap:8px;flex-wrap:wrap}.os-site-tabs>.os-button{font-size:12px}.os-site-address{padding:16px}.os-site-address>.os-card-header strong{font-size:14px;line-height:22px}.os-plan-details{grid-template-columns:repeat(2,minmax(0,1fr))}.os-notifications-panel{position:fixed;top:56px;right:3vw}.os-marketing-automation-cards{grid-template-columns:1fr}.os-automation-choice{display:grid;grid-template-columns:36px minmax(0,1fr);gap:4px 12px}.os-automation-choice>.os-square-icon{grid-row:span 2}.os-automation-choice>strong,.os-automation-choice>p{margin:0}.os-news-toolbar{align-items:stretch;flex-direction:column}.os-news-toolbar>.os-button{align-self:flex-start}.os-news-card>header{padding:20px 16px}.os-news-card>header h2{font-size:20px;line-height:28px}.os-news-card>div{padding:16px}.os-site-save{flex-direction:column;align-items:stretch}.os-site-save>.os-button{width:100%}.os-appearance-options{grid-template-columns:repeat(3,minmax(0,1fr))}.os-appearance-option{display:block;padding:8px}.os-theme-preview{height:85px}.os-theme-caption{margin-top:10px}.os-appearance-option>small{display:none}}
 
 
 /* Uploads are deliberately scoped to image fields in Services, Team, Combos and Site. */

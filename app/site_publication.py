@@ -90,6 +90,31 @@ def _issue(code, message, section="config"):
     return {"code": code, "message": message, "section": section}
 
 
+async def _publication_access_details(actor, access):
+    """Explain an old operator cookie without converting it into an identity.
+
+    A support bearer token and a cookie issued before native administrator
+    identity both lack account_id. Neither proves which owner authenticated.
+    Only another password-validated login may issue an identified session.
+    """
+    if actor.role not in {"admin", "support"} or isinstance(access.account_id, UUID):
+        return {"reauthentication_required": False, "access_reason": None, "access_message": None}
+    from app.legacy_admin_identity import enabled, lookup_identity
+    from app.catalog_api import support_session_factory
+    configured = False
+    if enabled():
+        try:
+            async with support_session_factory()() as db:
+                configured = await lookup_identity(db) is not None
+        except (HTTPException, ValueError, RuntimeError):
+            configured = False
+    if not configured:
+        return {"reauthentication_required": True, "access_reason": "administrator_identity_unavailable",
+                "access_message": "A identidade deste acesso administrativo não está disponível nesta instalação. Nenhum vínculo foi criado ou alterado. Use uma conta proprietária já identificada ou confira a configuração do acesso administrativo."}
+    return {"reauthentication_required": True, "access_reason": "administrator_reauthentication_required",
+            "access_message": "Sua sessão administrativa ainda não identifica a conta proprietária. Entre novamente com o mesmo administrador para confirmar seu vínculo e publicar."}
+
+
 async def technical_issues(db, tenant, site, *, content=None, infrastructure=True):
     """Check facts, not occupancy: a full calendar today is not a publishing ban."""
     from app.onboarding_service import _facts, _fitting_bindings, require_operational_ready
@@ -147,6 +172,7 @@ async def publication_status(tenant, actor):
     from app.management_models import site as read_site
     from app.public_site_api import catalogue
     access = await resolve_site_access(actor, tenant)
+    access_details = await _publication_access_details(actor, access)
     try:
         async with get_session_factory()() as db:
             async with tenant_transaction(db, tenant):
@@ -165,7 +191,7 @@ async def publication_status(tenant, actor):
                         "can_publish": access.role == "owner", "ready": not issues, "issues": issues,
                         "draft_version": row["version"], "public_version": row.get("public_version", 0),
                         "published_at": row.get("public_enabled_at"), "public_url": row["public_url"],
-                        "history": [dict(item) for item in history]}
+                        "history": [dict(item) for item in history], **access_details}
     except SQLAlchemyError:
         raise HTTPException(503, "A publicação está temporariamente indisponível. Tente novamente") from None
 

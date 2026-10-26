@@ -60,6 +60,10 @@ def save_preferences(h, title, slug):
 
 def change_publication(h, action):
     page = h.page
+    if action in {"unpublish-site", "restore-site"}:
+        options = page.locator("#osSitePublicationOptions")
+        if options.get_attribute("open") is None:
+            options.locator("summary").click()
     page.locator(f'[data-os-action="{action}"]').click()
     form = page.locator('[data-os-form="site-publication"]')
     expect(form).to_be_visible()
@@ -85,6 +89,52 @@ def assert_responsive(page, folder, phase):
         page.screenshot(path=str(folder / f"{phase}-{width}.png"), full_page=True)
         measurements.append(actual)
     return measurements
+
+
+def capture_compact_publication(h, folder):
+    """Compare the public address panel with existing cards in both themes."""
+    page = h.page
+    measured = []
+    for tab in ("dashboard", "settings"):
+        page.set_viewport_size({"width": 1280, "height": 900})
+        page.locator(f'[data-os-site-tab="{tab}"]').click()
+        expect(page.locator("#osSitePublication")).to_have_count(1)
+        for theme in ("light", "dark"):
+            page.locator("#osThemeToggle").click()
+            page.locator(f'#osThemeMenu [data-os-theme="{theme}"]').click()
+            expect(page.locator("html")).to_have_attribute("data-theme", theme)
+            for width in (320, 768, 1280):
+                page.set_viewport_size({"width": width, "height": 900})
+                page.evaluate("scrollTo(0,0)")
+                card = page.locator("#osSitePublication")
+                expect(card).to_be_visible()
+                state = card.evaluate("""(node) => {
+                    const style=getComputedStyle(node);
+                    const reference=[...document.querySelectorAll('#osPageBody > section.os-card')]
+                      .find(item=>item!==node&&!node.contains(item));
+                    const ref=reference&&getComputedStyle(reference);
+                    return {embedded:!node.classList.contains('os-card'),
+                      width:innerWidth,scroll:document.documentElement.scrollWidth,
+                      height:node.getBoundingClientRect().height,
+                      style:{background:style.backgroundColor,radius:style.borderRadius},
+                      reference:ref&&{background:ref.backgroundColor,radius:ref.borderRadius},
+                      optionsClosed:!document.querySelector('#osSitePublicationOptions')?.open};
+                }""")
+                assert state["scroll"] <= width + 2, state
+                assert state["optionsClosed"] is True
+                assert state["embedded"] is (tab == "settings")
+                if tab == "dashboard":
+                    assert state["style"] == state["reference"], state
+                page.screenshot(path=str(folder / f"compact-{tab}-{theme}-{width}.png"), full_page=True)
+                card.screenshot(path=str(folder / f"compact-card-{tab}-{theme}-{width}.png"))
+                if tab == "dashboard":
+                    page.locator('#osPageBody > section.os-card:not(#osSitePublication)').first.screenshot(
+                        path=str(folder / f"standard-card-{theme}-{width}.png"))
+                measured.append({"tab": tab, "theme": theme, **state})
+    page.set_viewport_size({"width": 1280, "height": 900})
+    page.locator("#osThemeToggle").click()
+    page.locator('#osThemeMenu [data-os-theme="light"]').click()
+    return measured
 
 
 def reservation_snapshot(h, tenant):
@@ -169,7 +219,7 @@ def test_owner_publishes_and_controls_real_public_site_without_admin(publication
     assert h.context.request.get(public_url).status == 404
 
     with page.expect_popup() as popup:
-        page.get_by_role("link", name="Visualizar prévia").first.click()
+        page.get_by_role("link", name="Prévia", exact=True).first.click()
     preview = popup.value
     expect(preview.locator("#site-title")).to_have_text(title)
     assert "noindex" in preview.request.get(preview.url).headers.get("x-robots-tag", "")
@@ -181,6 +231,7 @@ def test_owner_publishes_and_controls_real_public_site_without_admin(publication
     link = page.get_by_role("link", name="Abrir site").first
     expect(link).to_have_attribute("href", public_url)
     assert h.scalar("SELECT count(*) FROM public_site_publications WHERE tenant_id=%s AND action='publish'", (tenant,)) == 1
+    measurements["compact_panel"] = capture_compact_publication(h, folder)
 
     anonymous = h.browser.new_context(ignore_https_errors=True)
     anonymous.route("**/*", h._guard_network)

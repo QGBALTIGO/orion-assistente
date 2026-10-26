@@ -7,9 +7,9 @@ const preview='/app/site-preview/10000000-0000-4000-8000-000000000001';
 const site=extra=>({title:'Empresa sintética',description:'Apresentação do estabelecimento',slug:'empresa-sintetica',theme_color:'#2e7bf6',show_prices:true,version:4,published:false,preview_url:preview,public_url:null,...extra});
 const publication=extra=>({state:'ready',can_edit:true,can_publish:true,ready:true,issues:[],draft_version:4,public_version:null,published_at:null,public_url:null,history:[],...extra});
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-async function setup(t,{data=site(),status=publication(),role='owner',userRole='member',respond}={}){
+async function setup(t,{data=site(),status=publication(),role='owner',userRole='member',bridge={},respond}={}){
   const server={data,status};
-  const h=await makeSuite({initialRoute:'site',role,bridge:{user:{role:userRole,name:'Conta sintética'}},respond:async(path,method='GET',payload)=>{
+  const h=await makeSuite({initialRoute:'site',role,bridge:{user:{role:userRole,name:'Conta sintética'},...bridge},respond:async(path,method='GET',payload)=>{
     if(respond){const result=await respond(path,method,payload,server);if(result!==undefined)return result;}
     if(path===prefix+'/publication'&&method==='GET')return server.status;
     if(path===prefix&&method==='GET')return server.data;
@@ -43,6 +43,75 @@ test('a legitimate admin owner publishes directly, waits for backend and suppres
   assert.equal(h.document.querySelector('[data-os-action=publish-site]').disabled,true);
   assert.ok(h.calls.every(call=>!call.path.includes('/admin/')),'no Orion administrator approval endpoint is involved');
   assert.equal(h.errors.length,0);
+});
+
+test('publication uses the existing address card and keeps technical details collapsed',async t=>{
+  const {h}=await setup(t,{status:publication({public_version:2,published_at:'2030-01-07T15:00:00Z',history:[{version:2,action:'publish',published_at:'2030-01-07T15:00:00Z'}]})});
+  const address=h.document.getElementById('osSitePublication');
+  assert.equal(address.className,'os-card os-site-address');
+  assert.ok(address.querySelector('.os-card-header'));
+  assert.ok(address.querySelector('.os-actions>[data-os-action=publish-site]'));
+  assert.equal(h.document.querySelector('.os-site-publication'),null,'there is no separate publication card');
+  const options=address.querySelector('#osSitePublicationOptions');
+  assert.equal(options.className,'os-more-fields');assert.equal(options.open,false);
+  assert.equal(options.querySelector('summary').textContent,'Mais opções');
+  assert.ok(options.querySelector('#osSitePublicationMeta'));
+  assert.ok(options.querySelector('#osSitePublicationHistory'));
+  assert.equal(address.querySelector('h3'),null,'the address is not followed by a second oversized title');
+  h.click('[data-os-site-tab=settings]');
+  assert.equal(h.document.querySelectorAll('#osSitePublication').length,1);
+  assert.equal(h.document.querySelectorAll('#osSitePublicationState').length,1);
+  assert.equal(h.document.querySelector('#osSiteForm .os-site-address'),null,'settings reuse their existing address section without nesting another card');
+  assert.ok(h.document.getElementById('osSitePublication').closest('.os-site-config-card'));
+  assert.equal(h.document.querySelector('#osSitePublicationOptions').open,false);
+  assert.equal(writes(h).length,0);
+});
+
+test('legacy admin can confirm identity on this device without logout or a publication write',async t=>{
+  let confirmations=0;
+  const {h}=await setup(t,{userRole:'admin',status:publication({can_publish:false,reauthentication_required:true,access_reason:'administrator_reauthentication_required'}),bridge:{reauthenticate:async()=>{confirmations++;}}});
+  assert.equal(h.document.querySelector('[data-os-action=publish-site]'),null);
+  const control=h.document.querySelector('[data-os-action=site-reauthenticate]');
+  assert.equal(control.textContent,'Atualizar acesso de admin');
+  assert.match(h.document.getElementById('osSitePublication').textContent,/Confirme seu login de administrador para publicar neste dispositivo/);
+  assert.doesNotMatch(h.document.getElementById('osSitePublication').textContent,/publicação é feita pelo proprietário/);
+  h.click('[data-os-action=site-reauthenticate]');await flush();
+  assert.equal(confirmations,1);assert.equal(writes(h).length,0);
+  assert.equal(h.calls.some(call=>call.path.includes('logout')),false);
+});
+
+test('updating admin access preserves unsaved settings and never invokes the login bridge',async t=>{
+  let confirmations=0;
+  const {h}=await setup(t,{userRole:'admin',status:publication({can_publish:false,reauthentication_required:true,access_reason:'administrator_reauthentication_required'}),bridge:{reauthenticate:async()=>{confirmations++;}}});
+  h.click('[data-os-site-tab=settings]');
+  const form=h.document.getElementById('osSiteForm');
+  h.fill('#osSiteForm [name=title]','Rascunho ainda não salvo');
+  h.click('[data-os-action=site-reauthenticate]');await flush();
+  assert.equal(confirmations,0);
+  assert.equal(h.document.getElementById('osSiteForm'),form);
+  assert.equal(form.querySelector('[name=title]').value,'Rascunho ainda não salvo');
+  assert.equal(form.dataset.dirty,'true');
+  assert.match(toast(h),/Salve as configurações antes de atualizar seu acesso/);
+  assert.equal(writes(h).length,0);
+});
+
+test('identified admin owners and ordinary editors are never prompted to reauthenticate',async t=>{
+  for(const [role,userRole,canPublish] of [['owner','admin',true],['editor','member',false],['viewer','member',false]]){
+    const {h}=await setup(t,{role,userRole,status:publication({can_publish:canPublish,reauthentication_required:false})});
+    assert.equal(h.document.querySelector('[data-os-action=site-reauthenticate]'),null);
+    assert.equal(!!h.document.querySelector('[data-os-action=publish-site]'),canPublish);
+    assert.equal(writes(h).length,0);
+  }
+});
+
+test('an unavailable administrator identity offers a read refresh instead of a login loop',async t=>{
+  let confirmations=0;
+  const {h}=await setup(t,{userRole:'admin',status:publication({can_publish:false,reauthentication_required:true,access_reason:'administrator_identity_unavailable',access_message:'A identidade deste acesso administrativo não está disponível.'}),bridge:{reauthenticate:async()=>{confirmations++;}}});
+  assert.equal(h.document.querySelector('[data-os-action=site-reauthenticate]'),null);
+  assert.match(h.document.getElementById('osSitePublication').textContent,/Não foi possível confirmar seu acesso de administrador/);
+  assert.ok(h.document.querySelector('[data-os-action=site-refresh]'));
+  h.click('[data-os-action=site-refresh]');await flush();
+  assert.equal(confirmations,0);assert.equal(writes(h).length,0);
 });
 
 test('server capabilities govern editing and publishing for owners, editors, readers and support',async t=>{
@@ -84,8 +153,8 @@ test('missing or unavailable publication status disables publication without hid
 test('blocking requirements render as text with routes to the company settings',async t=>{
   const {h}=await setup(t,{status:publication({state:'blocked',ready:false,issues:[{code:'service_missing',message:'Cadastre um serviço',section:'services'},{code:'professional_missing',message:'Cadastre um profissional',section:'professionals'},{code:'hours_missing',message:'Defina horários',section:'hours'},{code:'x',message:'<img src=x onerror=alert(1)>',section:'site'}]})});
   assert.equal(h.document.querySelector('[data-os-action=publish-site]').disabled,true);
-  assert.equal(h.document.querySelectorAll('.os-site-publication-issues li').length,4);
-  assert.equal(h.document.querySelector('.os-site-publication-issues img'),null);
+  assert.equal(h.document.querySelectorAll('#osSitePublicationIssues [role=listitem]').length,4);
+  assert.equal(h.document.querySelector('#osSitePublicationIssues img'),null);
   assert.deepEqual([...h.document.querySelectorAll('[data-os-site-fix]')].map(x=>x.dataset.osSiteFix),['services','professionals','hours','site']);
   h.click('[data-os-site-fix=site]');assert.ok(h.document.getElementById('osSiteForm'));
   h.click('[data-os-site-fix=services]');await flush();
@@ -96,12 +165,12 @@ test('blocking requirements render as text with routes to the company settings',
 test('saved draft and published version dates/history remain distinct and escaped',async t=>{
   const {h}=await setup(t,{data:site({version:9,published:true,has_unpublished_changes:true,public_url:'/s/antigo'}),status:publication({state:'pending_changes',draft_version:9,public_version:5,published_at:'2030-01-07T15:00:00Z',public_url:'/s/antigo',history:[{version:5,published_at:'2030-01-07T15:00:00Z',action:'published'},{version:6,published_at:'bad-date',action:'<script>bad</script>'}]})});
   assert.equal(h.document.getElementById('osSitePublicationState').textContent,'Alterações pendentes');
-  assert.match(h.document.querySelector('.os-site-publication-main').textContent,/Rascunho: versão 9/);
-  assert.match(h.document.querySelector('.os-site-publication-meta').textContent,/versão 5/);
-  assert.equal(h.document.querySelector('.os-site-publication-meta time').dateTime,'2030-01-07T15:00:00Z');
-  assert.equal(h.document.querySelectorAll('.os-site-publication-history li').length,2);
-  assert.equal(h.document.querySelector('.os-site-publication-history script'),null);
-  assert.match(h.document.querySelector('.os-site-publication-history').textContent,/Data não informada/);
+  assert.match(h.document.querySelector('#osSitePublicationOptions').textContent,/RascunhoVersão 9/);
+  assert.match(h.document.querySelector('#osSitePublicationOptions').textContent,/Versão 5/);
+  assert.equal(h.document.querySelector('#osSitePublicationMeta time').dateTime,'2030-01-07T15:00:00Z');
+  assert.equal(h.document.querySelectorAll('#osSitePublicationHistory [role=listitem]').length,2);
+  assert.equal(h.document.querySelector('#osSitePublicationHistory script'),null);
+  assert.match(h.document.querySelector('#osSitePublicationHistory').textContent,/Data não informada/);
   assert.equal(h.document.querySelector('[data-os-action=publish-site]').disabled,false);
   let copied='';Object.defineProperty(h.window.navigator,'clipboard',{configurable:true,value:{writeText:async value=>{copied=value;}}});
   h.click('[data-os-action=copy-site]');await flush();assert.equal(copied,'https://orion.test/s/antigo');
@@ -169,13 +238,23 @@ test('saving settings writes only the draft and does not publish it automaticall
 test('a version mismatch between draft and status blocks publication until both are refreshed',async t=>{
   const {h,server}=await setup(t,{status:publication({draft_version:8})});
   assert.equal(h.document.querySelector('[data-os-action=publish-site]').disabled,true);
-  assert.match(h.document.querySelector('.os-site-publication-error').textContent,/rascunho mudou/);
+  assert.match(h.document.querySelector('#osSitePublication [role=alert]').textContent,/rascunho mudou/);
   const forged=h.document.createElement('button');forged.dataset.osAction='publish-site';h.document.body.append(forged);forged.click();
   assert.equal(h.document.querySelector('[data-os-form=site-publication]'),null);assert.equal(writes(h).length,0);
   server.data=site({version:8});h.click('[data-os-action=site-refresh]');await flush();
   assert.equal(h.document.querySelector('[data-os-action=publish-site]').disabled,false);
   h.click('[data-os-action=publish-site]');
   assert.equal(writes(h).length,0,'a refreshed state still requires explicit confirmation');
+});
+
+test('fresh preferences at version zero never display a false concurrent-change alert',async t=>{
+  const {h}=await setup(t,{data:site({version:0,title:'',slug:null}),status:publication({state:'not_published',draft_version:0,ready:false,issues:[{code:'title_required',message:'Informe o nome público da empresa',section:'config'}]})});
+  assert.equal(h.document.getElementById('osSitePublicationState').textContent,'Não publicado');
+  assert.equal(h.document.querySelector('#osSitePublication [role=alert]'),null);
+  assert.doesNotMatch(h.document.getElementById('osSitePublication').textContent,/rascunho mudou/);
+  assert.equal(h.document.querySelector('[data-os-action=publish-site]').disabled,true);
+  h.click('[data-os-site-tab=settings]');assert.ok(h.document.getElementById('osSiteForm'));
+  assert.equal(writes(h).length,0);
 });
 
 test('all advertised publication states are rendered from the backend response',async t=>{

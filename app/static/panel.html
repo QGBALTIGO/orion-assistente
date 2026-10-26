@@ -1441,6 +1441,7 @@ function suiteBridge(initialRoute){
   initialRoute:initialRoute||"dashboard",
   openSetup(){void resolveSetup({force:true})},
   retryBusinessContext(){void loadBusinesses().then(ok=>{if(ok)startBusinessSession()})},
+  reauthenticate(){const url=new URL(location.href);url.searchParams.set("aba","site");history.replaceState({},"",url.pathname+url.search);showLogin();},
   openLegacy(target){if(accountBusiness())openPage(target)},
   onRouteChange(){page="suite";clearInterval(chatTimer);chatTimer=null},
  };
