@@ -101,7 +101,7 @@ test('leitor não pode salvar remuneração de profissional',async t=>{
   const {h,saves}=await fixture(t,{role:'viewer'});
   h.click('[data-os-professional="'+professionalId+'"]');await flush();
   const form=h.document.querySelector('[data-os-form=professional]');
-  assert.equal(form.elements.commission_mode.disabled,true);
+  assert.equal(form.elements.commission_mode.matches(':disabled'),true);
   assert.equal(form.querySelector('button[type=submit]').disabled,true);
   h.submit('[data-os-form=professional]');await flush();
   assert.equal(saves.length,0);

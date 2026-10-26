@@ -15,7 +15,7 @@ on:
       - 'alembic/versions/0033_professional_commissions.py'
       - 'scripts/apply_professional_commission_migration.py'
       - 'scripts/prepare_vercel_orion.py'
-      - 'tests/integration/test_professional_commissions.py'
+      - 'tests/integration/test_commission_lifecycle_pg.py'
       - 'tests/unit/test_professional_commissions.py'
       - 'ui-tests/professional-commissions.test.mjs'
       - '.github/workflows/commissions-20261026.yml'
@@ -72,7 +72,7 @@ jobs:
         run: |
           python -m pytest -q -ra \
             tests/unit/test_professional_commissions.py \
-            tests/integration/test_professional_commissions.py \
+            tests/integration/test_commission_lifecycle_pg.py \
             tests/integration/test_variable_service_pricing.py \
             tests/integration/test_management.py \
             tests/integration/test_appointment_lifecycle.py
