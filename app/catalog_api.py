@@ -149,6 +149,42 @@ def check_resource_values(resource: str, values: dict[str, Any]):
             raise HTTPException(422, "Pausa inválida")
 
 
+async def validate_working_hour_edit(session, values):
+    """Keep linked breaks valid when an existing shift is moved or resized.
+
+    Lock the shift before checking breaks. Creation and editing of a break
+    acquire the same lock, avoiding a race that could leave invalid pauses.
+    """
+    current = (await session.execute(text("""
+        SELECT professional_id FROM working_hours
+        WHERE tenant_id=:tenant_id AND id=:id FOR UPDATE
+    """), values)).scalar_one_or_none()
+    if current is None:
+        raise HTTPException(404, "Horário não encontrado nesta empresa")
+    if current != values["professional_id"]:
+        raise HTTPException(409, "Não é possível transferir este horário para outro profissional")
+
+    invalid_pause = (await session.execute(text("""
+        SELECT id FROM working_breaks
+        WHERE tenant_id=:tenant_id AND working_hour_id=:id
+          AND (start_time < :start_time OR end_time > :end_time)
+        LIMIT 1
+    """), values)).scalar_one_or_none()
+    if invalid_pause is not None:
+        raise HTTPException(
+            409, "Ajuste ou remova as pausas que ficarão fora do novo expediente"
+        )
+
+    collision = (await session.execute(text("""
+        SELECT id FROM working_hours
+        WHERE tenant_id=:tenant_id AND professional_id=:professional_id
+          AND weekday=:weekday AND id<>:id
+        LIMIT 1
+    """), values)).scalar_one_or_none()
+    if collision is not None:
+        raise HTTPException(409, "Já existe um expediente nesse dia. Edite o horário existente ou use uma pausa")
+
+
 async def validate_break(session, values, ignore_id: UUID | None = None):
     wh = (await session.execute(text("""
         SELECT start_time, end_time FROM working_hours
@@ -360,6 +396,8 @@ async def replace_item(
                 await guard_generated_service(session, tenant_id, resource, item_id, values)
                 from app.management_blocks import guard_catalog_block
                 await guard_catalog_block(session, tenant_id, resource, values=values, item_id=item_id)
+                if resource == "working_hours":
+                    await validate_working_hour_edit(session, bind)
                 if resource == "working_breaks":
                     await validate_break(session, bind, item_id)
                 result = await session.execute(text(
