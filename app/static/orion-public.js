@@ -8,6 +8,7 @@
   const preview = !!previewMatch;
   const apiBase = preview ? `/api/v1/tenants/${previewMatch[1]}/management/site/preview` : `/api/v1/public/sites/${slugMatch?.[1] || ''}`;
   let data, category = 'Todos', requestSequence = 0, availabilityController;
+  let retainedTimeView = null; // Keep photos mounted across wizard step navigation.
   let booking = newBooking();
 
   function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', consent: false }; }
@@ -308,7 +309,7 @@
   }
 
   function openBooking(service = null) {
-    booking = newBooking(); booking.service = service; booking.services = service ? [service] : []; booking.day = data.today;
+    booking = newBooking(); retainedTimeView = null; booking.service = service; booking.services = service ? [service] : []; booking.day = data.today;
     $('booking-shop').textContent = data.site.title; showError(); renderBooking();
     dialog.showModal(); document.body.classList.add('booking-open');
   }
@@ -335,6 +336,7 @@
     booking.service = keep[0] || null;
     if (removedExtras) booking.addons = [];
     booking.professional = null;
+    retainedTimeView = null;
     booking.notice = removedExtras ? 'Adicionais anteriores foram removidos ao combinar serviços completos.' : '';
     showError();
     refreshServiceSelection();
@@ -409,13 +411,29 @@
   }
 
   function renderBooking() {
-    const body = $('booking-body'); body.replaceChildren();
+    const body = $('booking-body');
     $('booking-steps').hidden = !!booking.result;
-    for (const step of $('booking-steps').children) { const n = Number(step.dataset.step); step.classList.toggle('done', n < booking.step); if (n === booking.step) step.setAttribute('aria-current', 'step'); else step.removeAttribute('aria-current'); }
-    if (booking.result) renderSuccess(body);
-    else if (booking.step === 1) renderSelection(body);
-    else if (booking.step === 2) renderTime(body);
-    else renderConfirmation(body);
+    for (const step of $('booking-steps').children) {
+      const n = Number(step.dataset.step);
+      step.classList.toggle('done', n < booking.step);
+      if (n === booking.step) step.setAttribute('aria-current', 'step');
+      else step.removeAttribute('aria-current');
+    }
+    if (booking.step === 1 || booking.result) retainedTimeView = null;
+    if (!booking.result && booking.step === 2 && retainedTimeView) {
+      // Reuse the original people/photo elements when returning from confirmation.
+      body.replaceChildren(...retainedTimeView);
+      refreshDateChoice();
+      renderSlots();
+    } else {
+      body.replaceChildren();
+      if (booking.result) renderSuccess(body);
+      else if (booking.step === 1) renderSelection(body);
+      else if (booking.step === 2) {
+        renderTime(body);
+        retainedTimeView = [...body.childNodes];
+      } else renderConfirmation(body);
+    }
     updateFooter();
   }
 
@@ -441,58 +459,235 @@
     refreshServiceSelection();
   }
 
+  function renderDateButtons(strip, begin, max) {
+    const nodes = [];
+    for (let i = 0; i < 14; i++) {
+      const day = addDays(begin, i);
+      if (day > max) break;
+      const node = button('', 'day-button', () => selectDay(day));
+      node.dataset.day = day;
+      node.append(el('span', '', dateLabel(day, { weekday: 'short' }).replace('.', '')),
+        el('strong', '', dateLabel(day, { day: '2-digit' })));
+      node.setAttribute('aria-label', dateLabel(day, { dateStyle: 'full' }));
+      node.setAttribute('aria-pressed', String(day === booking.day));
+      nodes.push(node);
+    }
+    strip.replaceChildren(...nodes); // Only if date falls outside the existing 14-day window.
+  }
+
+  function refreshDateChoice() {
+    const heading = $('booking-month-heading'), input = $('booking-day-input'),
+          strip = $('booking-day-strip');
+    if (!heading || !input || !strip) return;
+    const month = dateLabel(booking.day, { month: 'long', year: 'numeric' });
+    if (heading.textContent !== month) heading.textContent = month;
+    if (input.value !== booking.day) input.value = booking.day;
+    const visible = [...strip.querySelectorAll('.day-button')];
+    if (!visible.some(node => node.dataset.day === booking.day)) {
+      const first = booking.day > addDays(data.today, 13) ? booking.day : data.today;
+      renderDateButtons(strip, first, input.max);
+    }
+    strip.querySelectorAll('.day-button').forEach(node => {
+      const active = node.dataset.day === booking.day;
+      if (node.getAttribute('aria-pressed') !== String(active))
+        node.setAttribute('aria-pressed', String(active));
+    });
+  }
+
   function renderTime(body) {
     body.append(el('h3', '', 'Escolha o profissional e o horário'));
     const people = eligibleProfessionals();
-    const picker = el('div', 'professional-picker'); picker.setAttribute('aria-label', 'Profissionais disponíveis');
+    const picker = el('div', 'professional-picker');
+    picker.setAttribute('aria-label', 'Profissionais disponíveis');
     for (const person of people) {
       const node = button('', 'professional-choice', () => {
-        invalidateAvailability(); booking.professional = person.id;
+        // Clicking an already selected professional should not refetch or redraw.
+        if (person.id === booking.professional) return;
+        invalidateAvailability();
+        booking.professional = person.id;
         picker.querySelectorAll('.professional-choice').forEach(option => {
-          option.setAttribute('aria-pressed', String(option.dataset.professionalId === person.id));
+          const active = option.dataset.professionalId === person.id;
+          if (option.getAttribute('aria-pressed') !== String(active))
+            option.setAttribute('aria-pressed', String(active));
         });
-        renderSlots(); updateFooter(); loadAvailability();
+        showError();
+        updateFooter();
+        loadAvailability();
       });
       node.dataset.professionalId = person.id;
       node.setAttribute('aria-pressed', String(person.id === booking.professional));
-      const face = el('span', 'mini-portrait'); picture(face, person.image_url, initials(person.name));
-      node.append(face, el('span', '', person.name)); picker.append(node);
+      node.title = person.name;
+      node.setAttribute('aria-label', 'Agendar com ' + person.name);
+      const face = el('span', 'mini-portrait professional-photo');
+      picture(face, person.image_url, initials(person.name));
+      const name = el('span', 'professional-name', person.name);
+      node.append(face, name);
+      picker.append(node);
     }
     body.append(picker);
-    const heading = el('div', 'date-heading'); heading.append(el('strong', '', dateLabel(booking.day, { month: 'long', year: 'numeric' })));
-    const label = el('label', '', 'Outra data'); const input = el('input'); input.type = 'date'; input.min = data.today; input.max = addDays(data.today, data.booking_horizon_days); input.value = booking.day; input.addEventListener('change', () => { if (input.value && input.checkValidity()) selectDay(input.value); }); label.append(input); heading.append(label); body.append(heading);
-    const strip = el('div', 'date-strip'); const begin = booking.day > addDays(data.today, 13) ? booking.day : data.today;
-    for (let i = 0; i < 14; i++) { const day = addDays(begin, i); if (day > input.max) break; const node = button('', 'day-button', () => selectDay(day)); node.append(el('span', '', dateLabel(day, { weekday: 'short' }).replace('.', '')), el('strong', '', dateLabel(day, { day: '2-digit' }))); node.setAttribute('aria-label', dateLabel(day, { dateStyle: 'full' })); node.setAttribute('aria-pressed', String(day === booking.day)); strip.append(node); }
-    body.append(strip, el('p', 'timezone-note', `Horários locais · ${data.timezone.replaceAll('_', ' ')}`));
-    const slots = el('div'); slots.id = 'time-slots'; slots.setAttribute('aria-live', 'polite'); body.append(slots); renderSlots();
+    const heading = el('div', 'date-heading');
+    const title = el('strong');
+    title.id = 'booking-month-heading';
+    const label = el('label', '', 'Outra data');
+    const input = el('input');
+    input.type = 'date'; input.id = 'booking-day-input';
+    input.min = data.today; input.max = addDays(data.today, data.booking_horizon_days);
+    input.value = booking.day;
+    input.addEventListener('change', () => {
+      if (input.value && input.checkValidity()) selectDay(input.value);
+    });
+    label.append(input); heading.append(title, label); body.append(heading);
+    const strip = el('div', 'date-strip'); strip.id = 'booking-day-strip';
+    body.append(strip, el('p', 'timezone-note',
+      'Horários locais · ' + data.timezone.replaceAll('_', ' ')));
+    const slots = el('div'); slots.id = 'time-slots';
+    slots.setAttribute('aria-live', 'polite');
+    body.append(slots);
+    refreshDateChoice();
+    renderSlots();
   }
-  function selectDay(day) { invalidateAvailability(); booking.day = day; showError(); renderBooking(); loadAvailability(); }
+
+  function selectDay(day) {
+    if (day === booking.day) return; // Preserve focus/scroll, photo and slot nodes.
+    invalidateAvailability();
+    booking.day = day;
+    showError();
+    refreshDateChoice();
+    updateFooter();
+    if (preview) renderSlots();
+    else loadAvailability();
+  }
+
+  function slotStatus(root, text, kind = 'slot-message', retry = false) {
+    let status = root.querySelector('[data-slot-status]');
+    if (!text) { status?.remove(); return; }
+    if (!status) {
+      status = el('div');
+      status.dataset.slotStatus = 'true';
+      root.prepend(status);
+    }
+    status.className = kind;
+    if (status.dataset.message !== text || status.dataset.retry !== String(retry)) {
+      status.replaceChildren(el('span', '', text));
+      if (retry) status.append(button('Tentar novamente', 'outline', loadAvailability));
+      status.dataset.message = text;
+      status.dataset.retry = String(retry);
+    }
+  }
+
+  function chooseSlot(start) {
+    if (booking.start === start) return;
+    booking.start = start;
+    booking.consent = false;
+    showError();
+    $('time-slots')?.querySelectorAll('.slot[data-slot-start]').forEach(node => {
+      const active = node.dataset.slotStart === start;
+      if (node.getAttribute('aria-pressed') !== String(active))
+        node.setAttribute('aria-pressed', String(active));
+    });
+    updateFooter(); // No teardown: same hour buttons remain mounted and focused.
+  }
+
   function renderSlots() {
-    const root = $('time-slots'); if (!root) return; root.replaceChildren();
-    if (preview) { root.append(el('p', 'preview-note', 'Esta é uma prévia. Publique o site para disponibilizar a consulta de horários e receber agendamentos de clientes.')); return; }
-    if (booking.loading) { const message = el('div', 'slot-message'); message.append(el('span', 'spinner'), el('span', '', 'Buscando horários disponíveis…')); root.append(message); return; }
-    if (booking.availabilityError) { root.append(el('p', 'slot-message', booking.availabilityError), button('Tentar novamente', 'outline', loadAvailability)); return; }
-    if (!booking.availability) { root.append(el('p', 'slot-message', 'Selecione o profissional e a data para consultar a agenda.')); return; }
-    if (!booking.availability.slots.length) { const reason = booking.availability.availability_reason; root.append(el('p', 'empty', reason === 'no_working_hours' ? 'Este profissional não tem expediente cadastrado neste dia. Escolha outra data ou profissional.' : 'Não há vagas compatíveis com a duração do serviço, o expediente e os intervalos nesta data. Experimente outro dia ou profissional.')); return; }
-    const list = el('div', 'slots-grid');
-    for (const start of booking.availability.slots) { const node = button(slotTime(start), 'slot', () => { booking.start = start; booking.consent = false; showError(); renderSlots(); updateFooter(); }); node.setAttribute('aria-pressed', String(start === booking.start)); list.append(node); }
-    root.append(list);
+    const root = $('time-slots');
+    if (!root) return;
+    let list = root.querySelector('.slots-grid');
+    if (preview) {
+      root.removeAttribute('aria-busy');
+      list?.remove();
+      slotStatus(root, 'Esta é uma prévia. Publique o site para disponibilizar a consulta de horários e receber agendamentos de clientes.', 'preview-note');
+      return;
+    }
+    if (booking.loading) {
+      root.setAttribute('aria-busy', 'true');
+      if (list) {
+        list.classList.add('slots-grid-pending');
+        list.querySelectorAll('.slot').forEach(node => { node.disabled = true; });
+      }
+      slotStatus(root, list ? 'Atualizando horários disponíveis…' :
+        'Buscando horários disponíveis…');
+      return;
+    }
+    root.removeAttribute('aria-busy');
+    if (booking.availabilityError || !booking.availability ||
+        !booking.availability.slots?.length) {
+      list?.remove();
+      const reason = booking.availability?.availability_reason;
+      const message = booking.availabilityError ||
+        (!booking.availability ? 'Selecione o profissional e a data para consultar a agenda.' :
+          reason === 'no_working_hours' ?
+            'Este profissional não tem expediente cadastrado neste dia. Escolha outra data ou profissional.' :
+            'Não há vagas compatíveis com a duração do serviço, o expediente e os intervalos nesta data. Experimente outro dia ou profissional.');
+      slotStatus(root, message, booking.availabilityError ? 'slot-message' :
+        booking.availability ? 'empty' : 'slot-message', !!booking.availabilityError);
+      return;
+    }
+    slotStatus(root, null);
+    const nextTimes = booking.availability.slots;
+    if (!list) {
+      list = el('div', 'slots-grid');
+      root.append(list);
+    }
+    const current = [...list.querySelectorAll('.slot')];
+    if (current.length !== nextTimes.length ||
+        current.some((node, index) => node.dataset.slotStart !== nextTimes[index])) {
+      list.replaceChildren(...nextTimes.map(start => {
+        const node = button(slotTime(start), 'slot', () => chooseSlot(start));
+        node.dataset.slotStart = start;
+        node.setAttribute('aria-pressed', String(start === booking.start));
+        return node;
+      }));
+    }
+    list.classList.remove('slots-grid-pending');
+    list.querySelectorAll('.slot').forEach(node => {
+      node.disabled = false;
+      const active = node.dataset.slotStart === booking.start;
+      if (node.getAttribute('aria-pressed') !== String(active))
+        node.setAttribute('aria-pressed', String(active));
+    });
   }
+
   async function loadAvailability() {
     if (preview || !booking.professional) return;
-    const seq = ++requestSequence; availabilityController?.abort(); const controller = new AbortController(); availabilityController = controller;
+    const seq = ++requestSequence;
+    availabilityController?.abort();
+    const controller = new AbortController();
+    availabilityController = controller;
     const timeout = setTimeout(() => controller.abort(), 20000);
-    booking.loading = true; booking.availabilityError = null; showError(); renderSlots(); updateFooter();
-    const params = new URLSearchParams({ professional_id: booking.professional, day: booking.day });
+    booking.loading = true;
+    booking.availabilityError = null;
+    showError();
+    renderSlots(); // Existing slot tiles dim in place instead of flashing.
+    updateFooter();
+    const params = new URLSearchParams({
+      professional_id: booking.professional, day: booking.day
+    });
     if (booking.services.length > 1)
       booking.services.forEach(id => params.append('service_ids', id));
     else {
       params.set('service_id', booking.service);
       booking.addons.forEach(id => params.append('addon_ids', id));
     }
-    try { const result = await api(`/availability?${params}`, { signal: controller.signal }); if (seq !== requestSequence) return; booking.availability = result; booking.availabilityError = null; booking.quote = result.quote; }
-    catch (error) { if (seq !== requestSequence) return; booking.availabilityError = error.name === 'AbortError' ? 'A consulta demorou mais que o esperado. Tente novamente.' : (error.message || 'Não foi possível consultar a agenda. Tente novamente.'); showError(); }
-    finally { clearTimeout(timeout); if (seq === requestSequence) { booking.loading = false; renderSlots(); updateFooter(); } }
+    try {
+      const result = await api('/availability?' + params, { signal: controller.signal });
+      if (seq !== requestSequence) return;
+      booking.availability = result;
+      booking.availabilityError = null;
+      booking.quote = result.quote;
+    } catch (error) {
+      if (seq !== requestSequence) return;
+      booking.availabilityError = error.name === 'AbortError' ?
+        'A consulta demorou mais que o esperado. Tente novamente.' :
+        (error.message || 'Não foi possível consultar a agenda. Tente novamente.');
+      showError();
+    } finally {
+      clearTimeout(timeout);
+      if (seq === requestSequence) {
+        booking.loading = false;
+        renderSlots();
+        updateFooter();
+      }
+    }
   }
 
   function reviewCard(result = null) {

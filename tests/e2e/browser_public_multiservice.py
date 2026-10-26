@@ -50,6 +50,11 @@ def test_public_custom_booking_keeps_photos_mounted_and_sums_services(engine,wid
         requests=[]
         try:
             page.route('**/*',lambda route:route.abort())
+            # Serve valid synthetic portraits: aborted photos trigger a deliberate
+            # fallback that removes <img>, unrelated to selection re-rendering.
+            page.route('https://images.example.invalid/**',
+                lambda route:route.fulfill(status=200,content_type='image/svg+xml',
+                    body='<svg xmlns="http://www.w3.org/2000/svg" width="100" height="120"><rect width="100" height="120" fill="#8da7bc"/></svg>'))
             page.route(URL,lambda route:route.fulfill(
                 status=200,content_type='text/html',body=HTML))
             page.route('**/api/v1/public/sites/empresa-sintetica',
