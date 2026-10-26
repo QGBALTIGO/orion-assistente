@@ -35,8 +35,24 @@ test('mais de um período é exibido sem anunciar abertura num intervalo fechado
   const h=await fixture(t,data);
   const hours=getHours(h);
   assert.equal(hours[0].day,'Segunda-feira');
-  assert.equal(hours[0].hours,'08:00–12:00  ·  14:00–18:00');
+  assert.equal(hours[0].hours,'08:00–12:00·14:00–18:00Intervalo 12:00–14:00');
+  assert.equal(h.document.querySelectorAll('.hours-row')[0].querySelectorAll('.hours-shift').length,2);
+  assert.equal(h.document.querySelectorAll('.hours-row')[0].querySelector('.hours-break')?.textContent,'Intervalo 12:00–14:00');
   assert.ok(hours.some(x=>x.day==='Terça-feira a sexta-feira'));
+});
+
+test('horário de almoço é apresentado em duas faixas e pausa visível',async t=>{
+  const data=catalogue();
+  for(let day=0;day<5;day++)data.opening_hours[day].intervals=[
+    {open:'09:00',close:'12:00'},{open:'13:00',close:'18:00'}
+  ];
+  const h=await fixture(t,data);
+  const weekdays=h.document.querySelector('#hours-list .hours-row');
+  assert.equal(weekdays.querySelector('.hours-day').textContent,'Segunda-feira a sexta-feira');
+  assert.deepEqual([...weekdays.querySelectorAll('.hours-shift')].map(n=>n.textContent),
+    ['09:00–12:00','13:00–18:00']);
+  assert.equal(weekdays.querySelector('.hours-break').textContent,'Intervalo 12:00–13:00');
+  assert.equal(h.errors.length,0);
 });
 
 test('horários ausentes ou inválidos não fabricam horários no site',async t=>{
@@ -107,6 +123,14 @@ test('Maps Embed gerado pelo compartilhamento mantém hospedagem aprovada, sem e
   assert.equal(embedded.pathname,'/maps/embed');
   assert.equal(embedded.searchParams.get('pb'),'synthetic-map-parameters');
   assert.ok(new URL(h.document.getElementById('maps-link').href).pathname==='/maps/dir/');
+});
+
+test('sem etiqueta própria sobre os controles obrigatórios do Google Maps',async t=>{
+  const h=await fixture(t);
+  assert.equal(h.document.querySelector('.map-provider'),null);
+  assert.equal(h.document.querySelectorAll('#map-preview iframe').length,1);
+  const css=await readFile(new URL('../app/static/orion-public.css',import.meta.url),'utf8');
+  assert.equal(css.includes('.map-provider{'),false);
 });
 
 test('estética segue o tema, mapa tem altura adequada e cartões não se aninham',async()=>{

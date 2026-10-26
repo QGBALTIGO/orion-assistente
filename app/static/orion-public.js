@@ -57,10 +57,23 @@
       const label=group.first===group.last?WEEKDAYS[group.first]:
         WEEKDAYS[group.first]+' a '+WEEKDAYS[group.last].toLocaleLowerCase('pt-BR');
       const name=el('span','hours-day',label);
-      const times=el('strong',group.intervals.length?'hours-time':'hours-time hours-closed',
-        group.intervals.length
-          ?group.intervals.map(([start,end])=>start+'–'+end).join('  ·  ')
-          :'Fechado');
+      const times=el('div',group.intervals.length?'hours-time':'hours-time hours-closed');
+      if(!group.intervals.length) {
+        times.textContent='Fechado';
+      } else {
+        const shiftList=el('span','hours-shifts');
+        for(const [index,[start,end]] of group.intervals.entries()){
+          if(index)shiftList.append(el('span','hours-separator','·'));
+          shiftList.append(el('span','hours-shift',start+'–'+end));
+        }
+        times.append(shiftList);
+        const pauses=group.intervals.slice(0,-1).map(([_,end],index)=>{
+          const next=group.intervals[index+1][0];
+          return end<next?end+'–'+next:null;
+        }).filter(Boolean);
+        if(pauses.length)
+          times.append(el('small','hours-break','Intervalo '+pauses.join(' · ')));
+      }
       row.append(name,times);return row;
     }));
   }
