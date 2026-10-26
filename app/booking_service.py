@@ -760,6 +760,7 @@ async def preview_reschedule(s: AsyncSession, tenant: UUID, item_id: UUID, new_s
         return {"id": item_id, "protocol": current["protocol"], "start_at": contract["start_at"],
                 "timezone": shop["timezone"], "total_cents": contract["total_cents"],
                 "duration_min": amounts(items)[0], "professional": shop["professional_name"], "services": [item["name"] for item in items],
+                "price_mode": "from" if any(item["price_mode"]=="from" for item in items) else "fixed",
                 "expected_snapshot": reschedule_snapshot(current, items, new_start, shop)}
 
 

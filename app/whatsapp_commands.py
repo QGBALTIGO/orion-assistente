@@ -257,7 +257,8 @@ async def try_command(
             state["slots"]=list(choice.alternatives or available["slots"])[:8]
             await save(state)
             return True,checked(presentation.render_slots([x["name_snapshot"] for x in appt["items"]],state["slots"],preferences,
-                timezone=appt["timezone"],day=day,total_cents=available["price_cents"],duration_min=available["duration_min"],professional=appt["professional"]))
+                timezone=appt["timezone"],day=day,total_cents=available["price_cents"],duration_min=available["duration_min"],professional=appt["professional"],
+                price_kind="from" if any(item.get("price_mode_snapshot")=="from" for item in appt["items"]) else "fixed"))
         except HTTPException:
             await save(state)
             return True,presentation.render_prompt("unavailable",preferences)

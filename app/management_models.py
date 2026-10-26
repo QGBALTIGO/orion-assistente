@@ -254,7 +254,7 @@ async def customer_service_history(db, tenant_id, customer_id, limit=6, offset=0
     services_by_appointment = {identity: [] for identity in ids}
     if ids:
         service_rows = (await db.execute(text("""
-            SELECT appointment_id,name_snapshot,duration_snapshot_min,price_snapshot_cents
+            SELECT appointment_id,name_snapshot,duration_snapshot_min,price_snapshot_cents,price_mode_snapshot
             FROM appointment_items WHERE tenant_id=:tenant
               AND appointment_id=ANY(CAST(:ids AS uuid[]))
             ORDER BY appointment_id,item_order
@@ -264,6 +264,7 @@ async def customer_service_history(db, tenant_id, customer_id, limit=6, offset=0
                 "name": item["name_snapshot"],
                 "duration_min": item["duration_snapshot_min"],
                 "price_cents": item["price_snapshot_cents"],
+                "price_mode_snapshot": item["price_mode_snapshot"],
             })
 
     items = [{**dict(row), "services": services_by_appointment[row["id"]]} for row in bookings]
@@ -369,19 +370,39 @@ async def dashboard(db, tenant_id, start_date=None, end_date=None):
     """), {"tenant": tenant_id})).mappings().one()
     service_rows = (await db.execute(text("""
         WITH item_values AS (
-            SELECT i.tenant_id,i.service_id,i.appointment_id,i.item_order,i.name_snapshot,i.price_snapshot_cents,a.status,a.total_cents,
-                COALESCE(floor(i.price_snapshot_cents::numeric*a.total_cents/NULLIF(COALESCE(a.original_total_cents,a.total_cents),0)),0) AS net_floor
-            FROM appointment_items i JOIN appointments a ON a.tenant_id=i.tenant_id AND a.id=i.appointment_id
+            SELECT i.tenant_id,i.service_id,i.appointment_id,i.item_order,i.name_snapshot,
+                   i.price_snapshot_cents,a.status,a.total_cents,
+                   COALESCE(a.original_total_cents,a.total_cents) AS gross_cents,
+                   COALESCE(sum(i.price_snapshot_cents) OVER (
+                       PARTITION BY i.tenant_id,i.appointment_id),0) AS quote_cents
+            FROM appointment_items i JOIN appointments a
+                ON a.tenant_id=i.tenant_id AND a.id=i.appointment_id
             WHERE """ + APPOINTMENT_RANGE + """ AND a.status IN ('confirmed','completed')
+        ), item_floors AS (
+            SELECT *,COALESCE(floor(price_snapshot_cents::numeric*
+                   total_cents/NULLIF(quote_cents,0)),0) AS net_floor,
+                   COALESCE(floor(price_snapshot_cents::numeric*
+                   gross_cents/NULLIF(quote_cents,0)),0) AS gross_floor
+            FROM item_values
         ), distributed AS (
-            SELECT *,CASE WHEN row_number() OVER (PARTITION BY appointment_id ORDER BY item_order DESC)=1 THEN
-                total_cents-COALESCE(sum(net_floor) OVER (PARTITION BY appointment_id ORDER BY item_order ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0)
-                ELSE net_floor END AS net_value FROM item_values
+            SELECT *,CASE WHEN row_number() OVER (
+                PARTITION BY tenant_id,appointment_id ORDER BY item_order DESC)=1
+                THEN total_cents-COALESCE(sum(net_floor) OVER (
+                    PARTITION BY tenant_id,appointment_id ORDER BY item_order
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0)
+                ELSE net_floor END AS net_value,
+                CASE WHEN row_number() OVER (
+                    PARTITION BY tenant_id,appointment_id ORDER BY item_order DESC)=1
+                    THEN gross_cents-COALESCE(sum(gross_floor) OVER (
+                        PARTITION BY tenant_id,appointment_id ORDER BY item_order
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0)
+                    ELSE gross_floor END AS gross_value
+            FROM item_floors
         )
         SELECT d.service_id AS id,COALESCE(s.name,max(d.name_snapshot)) AS name,count(DISTINCT d.appointment_id) AS bookings,
             COALESCE(sum(d.net_value) FILTER (WHERE d.status='completed'),0) AS revenue_cents,
-            COALESCE(sum(d.price_snapshot_cents) FILTER (WHERE d.status='completed'),0) AS gross_revenue_cents,
-            COALESCE(sum(d.price_snapshot_cents-d.net_value) FILTER (WHERE d.status='completed'),0) AS discount_cents
+            COALESCE(sum(d.gross_value) FILTER (WHERE d.status='completed'),0) AS gross_revenue_cents,
+            COALESCE(sum(d.gross_value-d.net_value) FILTER (WHERE d.status='completed'),0) AS discount_cents
         FROM distributed d LEFT JOIN services s ON s.tenant_id=d.tenant_id AND s.id=d.service_id
         GROUP BY d.service_id,s.name ORDER BY bookings DESC,name LIMIT 20
     """), params)).mappings().all()
