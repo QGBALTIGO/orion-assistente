@@ -107,6 +107,8 @@ test('estilos padronizados em botões discretos, com toque mínimo e responsivid
   assert.match(css, /\.hero-actions \.hero-icon-action\{[^}]*width:46px[^}]*height:46px[^}]*border-radius:14px/);
   assert.match(css, /\.hero-actions \.hero-action-icon\{[^}]*width:20px;height:20px/);
   assert.match(css, /@media\(min-width:640px\)\{[^}]*\.hero-actions \.pill\{flex:none/);
+  assert.match(css, /@media\(min-width:768px\)\{\s*\.hero-actions #hero-map:not\(\[hidden\]\)\{margin-left:auto\}/);
+  assert.match(css, /\.hero-actions #hero-map\[hidden\] \+ #share-site\{margin-left:auto\}/);
   assert.match(css, /@media\(max-width:359px\)/);
   assert.match(css, /\.hero-actions \.hero-icon-action:focus-visible\{outline:3px/);
   assert.match(css, /@media\(prefers-reduced-motion:reduce\)/);
