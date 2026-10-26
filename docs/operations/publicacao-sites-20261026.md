@@ -1,6 +1,6 @@
 # Publicação autônoma de sites — 26/10/2026
 
-Especificação: anexo `PROMPT ESPECIALISTA — ORION`, 326 linhas, lido integralmente. Repositório confirmado `QGBALTIGO/orion-assistente`. Base desta tarefa: `main` em `86b75d2919a9a7e820fe963ba29ae027c70785c7`. A branch anterior foi preservada; esta especificação solicita explicitamente a `main`.
+Especificação: anexo `PROMPT ESPECIALISTA — ORION`, 326 linhas, lido integralmente. Repositório confirmado `QGBALTIGO/orion-assistente`. Base desta tarefa: `main` em `86b75d2919a9a7e820fe963ba29ae027c70785c7`. A branch anterior foi preservada; esta especificação solicita explicitamente a `main`. As mudanças concorrentes até `1e28250` foram integradas e o candidato voltou a ser testado.
 
 ## Índice de leitura e execução
 
@@ -62,7 +62,9 @@ O histórico não pode ser atualizado/apagado pelo runtime. Aliases publicados f
 
 A recuperação preferida é uma correção adiante, mantendo o schema. Reverter para imagem anterior deixa a edição/publicação de sites bloqueada pelo guard; não constitui rollback funcional completo. Reverter o banco exige manutenção, backup consistente e reconciliação de gravações posteriores, sem sobrescrever agendamentos novos com uma cópia antiga.
 
-`scripts/backup_and_migrate_site_publication.py` aceita exclusivamente `0035 → 0036`: dump privado, validação do arquivo, upload no bucket já autorizado, checksum e leitura de volta precedem qualquer DDL. No final verifica owners, RLS, permissões das funções finitas, índices, colunas e triggers. Falhas recusam a nova versão. Backup nativo de volume foi recusado pela Railway porque exige plano Pro; não houve alteração de plano. Referência do provedor: [backups](https://docs.railway.com/volumes/backups).
+O ensaio exato do runner preservou dados e metadados de 85 tabelas em 0035 e 87 em 0036, incluindo ACL, owners, RLS, policies, sequências e triggers. Restauração exige os papéis existentes e o baseline de ACL do banco/schema e da extensão `btree_gist` sob seu owner antes do restore. O archive sozinho não exporta o owner dessa extensão. `exact-release-recovery-acceptance.json` registra essa condição e diferenças somente textuais do deparser de constraints; não se declara igualdade textual onde ela não existe.
+
+`scripts/backup_and_migrate_site_publication.py` aceita exclusivamente `0035 → 0036`: dump privado preservando owners e ACL, validação do arquivo, upload no bucket já autorizado, checksum e leitura de volta precedem qualquer DDL. O comportamento dos backups antigos permanece igual. No final verifica owners, RLS, permissões das funções finitas, índices, colunas e triggers. Falhas recusam a nova versão. Backup nativo de volume foi recusado pela Railway porque exige plano Pro; não houve alteração de plano. Referência do provedor: [backups](https://docs.railway.com/volumes/backups).
 
 ## Evidências e pendências da execução
 
@@ -74,13 +76,16 @@ Evidências desta tarefa ficam em `C:\Users\kayky\Documents\Playground\orion-sit
 | Responsividade real | 320/768/1280 px, site/painel/reserva; `final-browser-artifacts` |
 | Regressões visuais, respostas sintéticas | 88/88; `browser-public-regressions.xml` |
 | Nova interface e regressões de catálogo/upload/cores no DOM | 84/84, incluindo 24 cenários novos |
-| PostgreSQL, assinatura, publicação, aliases e reservas | 71/71 na rodada de aceitação; `publication-acceptance.xml`; reteste final registrado separadamente |
+| PostgreSQL, assinatura, publicação, aliases e reservas após o merge | 81/81; `merged-publication-acceptance.xml` |
+| Guard e runner do release | 42/42 backend/guard e 17/17 contratos de backup/release; recibos sobrepostos aos demais |
+| Frontend servido ao vivo e rotas da fachada após o merge | 248 passaram, 1 pulado; `merged-live-frontend.xml` |
 | 20 empresas independentes, concorrência e isolamento | Casos do backend em banco real, incluídos nos recibos `backend-publication-*.xml` |
 | Backup/restauração e migração, somente sintéticos | 85 tabelas idênticas; 2 sites legados preservados; colisão aborta sem alterações; `migration-recovery-acceptance-final.json` |
 | Contrato e hardgate do schema final | `schema_contract_ready=True`; `final-schema-ready.json` e teste PG do guard |
-| Suíte unitária ampla | 4511 passaram, 39 falharam, 2 pulados; investigação comparativa das falhas no código-base, sem alterar a IA para mascarar testes |
+| Suíte unitária ampla | 4511 passaram, 39 falharam, 2 pulados; as 39 falhas foram reproduzidas no archive imutável da base, com causas equivalentes: `baseline-39-comparison.json` |
+| Suíte DOM ampla após o merge | 495/496; a única falha é a expectativa antiga de usar telefone como nome do cliente, também reproduzida na base |
 
-Na primeira suíte DOM ampla, 4 falhas já existiam na base: três guardas Vercel com hash antigo e uma expectativa de nome de cliente. A comparação usou cópia imutável do HEAD original. Eventuais correções concorrentes de `main` serão integradas antes da publicação, preservando os recursos recentes.
+Na primeira suíte DOM ampla, 4 falhas já existiam na base: três guardas Vercel com hash antigo e uma expectativa de nome de cliente. A comparação usou cópia imutável do HEAD original. O merge preservou a correção concorrente da fachada e os três casos Vercel passaram. A suíte ampla não deve ser descrita como totalmente verde.
 
 ## Critérios de aceite e limites
 
@@ -92,3 +97,7 @@ Na primeira suíte DOM ampla, 4 falhas já existiam na base: três guardas Verce
 - Sem qualificação de carga de 10 mil usuários simultâneos ou mil sockets WhatsApp nesta tarefa. Vinte empresas sintéticas não demonstram essa capacidade.
 - Subdomínios, domínios próprios e delegação específica de publicação para editores continuam fora do modelo atual, conforme as dependências descritas acima.
 - Nenhuma mensagem, campanha, canal ou IA real foi usada nos testes. A conferência pós-deployment deve permanecer somente de leitura e constar do recibo final externo.
+
+## Estado operacional
+
+Este é o relatório versionado do candidato qualificado. O fechamento da implantação, revisão efetiva publicada, backup e comparação de integridade são registrados externamente em `orion-site-publication-20261026/relatorio-final.md` e seus recibos. Não confundir testes locais de publicação pública com publicação automática de um cadastro real.
