@@ -1,4 +1,4 @@
-name: Orion - icones do site publico (SVG e layout)
+name: Orion - site publico (SVG, catalogo e layout)
 
 on:
   pull_request:
@@ -6,6 +6,8 @@ on:
     paths:
       - 'app/static/orion-public.html'
       - 'app/static/orion-public.css'
+      - 'app/static/orion-public.js'
+      - 'ui-tests/orion-public.test.mjs'
       - 'ui-tests/public-hero-actions.test.mjs'
       - 'tests/e2e/browser_public_hero_actions.py'
       - '.github/workflows/public-site-hero-icons-20261026.yml'
@@ -15,7 +17,7 @@ permissions:
 
 jobs:
   public-hero-dom:
-    name: DOM e comportamento do mapa e compartilhamento
+    name: DOM de catalogo, mapa e compartilhamento
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -33,7 +35,7 @@ jobs:
             ui-tests/orion-public.test.mjs
 
   public-hero-mobile:
-    name: Navegadores reais iPhone e desktop
+    name: Catalogo e SVG em iPhone e desktop
     runs-on: ubuntu-24.04
     timeout-minutes: 17
     steps:

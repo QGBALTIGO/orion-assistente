@@ -57,8 +57,14 @@
     if (service.catalog_kind === 'combo') detail.append(el('span', 'tag', service.featured ? 'COMBO EM DESTAQUE' : 'COMBO'));
     detail.append(el('strong', '', service.name));
     if (service.description) detail.append(el('p', '', service.description));
-    const meta = el('span', 'service-meta'); meta.append(el('span', '', duration(service.duration_min)));
-    if (data.site.show_prices) meta.append(el('span', 'price', priceText(service.price_cents,service.price_mode)));
+    const meta = el('span', 'service-meta');
+    if (data.site.show_prices) {
+      meta.append(el('span', 'price', priceText(service.price_cents, service.price_mode)));
+      const separator = el('span', 'service-meta-separator', '•');
+      separator.setAttribute('aria-hidden', 'true');
+      meta.append(separator);
+    }
+    meta.append(el('span', 'service-duration', duration(service.duration_min).replace(/(\d)\s+(h|min)\b/g, '$1$2')));
     detail.append(meta); card.append(thumb, detail, el('span', 'service-arrow', isSelected ? '✓' : '›'));
     return card;
   }

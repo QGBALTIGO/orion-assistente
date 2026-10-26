@@ -90,6 +90,14 @@ def test_hero_icons_align_and_share_opens_native_api_without_booking(engine, wid
             assert booking["x"] + booking["width"] <= location["x"] + 2
             assert location["x"] + location["width"] <= sharing["x"] + 2
             assert sharing["x"] + sharing["width"] <= whole["x"] + whole["width"] + 2
+            service_meta = page.locator("#services-grid .service-card .service-meta").first
+            assert service_meta.locator(".price").count() == 1
+            assert service_meta.locator(".service-meta-separator").inner_text() == "•"
+            assert service_meta.locator(".service-duration").inner_text() == "40min"
+            assert service_meta.evaluate(
+                "(el)=>Array.from(el.children).map(x=>x.className)"
+            ) == ["price", "service-meta-separator", "service-duration"]
+            assert service_meta.inner_text().find("R$") < service_meta.inner_text().find("40min")
             assert page.locator("#maps-link svg.inline-action-icon").count() == 1
             assert page.locator(".location-mark svg.location-icon").count() == 1
             assert page.locator("#hero-book svg.hero-book-icon").count() == 1
