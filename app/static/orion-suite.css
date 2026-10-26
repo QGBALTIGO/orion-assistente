@@ -1708,3 +1708,24 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 #osDialog .os-commission-service-controls select:focus-visible{outline:2px solid var(--os-primary);outline-offset:1px}
 #osDialog .os-commission-service-controls.hidden{display:none}
 @media(max-width:420px){#osDialog .os-commission-service-row{padding:8px 0}#osDialog .os-commission-service-controls select{width:62px;min-width:62px}}
+
+/* Mobile clients: separate WhatsApp touch target before the existing details chevron.
+   Keep swipe actions and the full-width front as one scroll-snap item. */
+@media(max-width:639px){
+  .os-client-mobile-front{position:relative;display:flex;flex:0 0 100%;min-width:100%;width:100%;scroll-snap-align:start}
+  .os-client-mobile-front>.os-client-mobile-main{flex:1 1 auto;box-sizing:border-box;min-width:0;width:100%;scroll-snap-align:none;cursor:pointer}
+  .os-client-mobile-main.os-client-mobile-has-whatsapp>span:nth-child(2){margin-right:52px}
+  .os-client-mobile-front>.os-client-mobile-whatsapp{position:absolute;right:42px;top:50%;transform:translateY(-50%);z-index:1;box-sizing:border-box;display:grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:1px solid color-mix(in srgb,#25d366 30%,var(--os-border));border-radius:50%;background:color-mix(in srgb,#25d366 12%,var(--os-card));color:#128c47;text-decoration:none;-webkit-tap-highlight-color:transparent}
+  .os-client-mobile-whatsapp>.os-whatsapp-mark{display:block;width:23px;height:23px;fill:currentColor}
+  .os-client-mobile-whatsapp:focus-visible{outline:3px solid var(--os-primary);outline-offset:2px}
+}
+@media(max-width:359px){
+  .os-client-mobile-main.os-client-mobile-has-whatsapp>span:nth-child(2){margin-right:46px}
+  .os-client-mobile-front>.os-client-mobile-main{gap:9px;padding:12px}
+}
+@media(max-width:639px) and (hover:hover) and (pointer:fine){
+  .os-client-mobile-whatsapp:hover{background:color-mix(in srgb,#25d366 20%,var(--os-card));color:#075e32}
+}
+@media(max-width:639px){
+  html[data-theme=dark] .os-client-mobile-whatsapp{color:#59df91}
+}
