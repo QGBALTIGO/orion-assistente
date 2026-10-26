@@ -17,13 +17,16 @@ HTML = """<!doctype html><html lang="pt-BR" data-theme="dark">
 <section class="page" id="page-original">Original</section></main></div></body></html>"""
 
 
-@pytest.mark.parametrize("browser_name,width,height", [
-    ("webkit", 375, 812),
-    ("webkit", 430, 932),
-    ("chromium", 768, 1024),
-    ("chromium", 1366, 768),
+@pytest.mark.parametrize("browser_name,width,height,theme", [
+    ("webkit", 320, 693, "dark"),
+    ("webkit", 375, 812, "dark"),
+    ("webkit", 430, 932, "light"),
+    ("chromium", 375, 812, "light"),
+    ("chromium", 768, 1024, "dark"),
+    ("chromium", 1024, 768, "light"),
+    ("chromium", 1366, 768, "dark"),
 ])
-def test_weekly_hours_has_edit_controls_no_horizontal_overflow(browser_name, width, height):
+def test_weekly_hours_has_edit_controls_no_horizontal_overflow(browser_name, width, height, theme):
     with sync_playwright() as playwright:
         browser = getattr(playwright, browser_name).launch(headless=True)
         page = browser.new_page(viewport={"width": width, "height": height}, device_scale_factor=2)
@@ -33,7 +36,8 @@ def test_weekly_hours_has_edit_controls_no_horizontal_overflow(browser_name, wid
             # Serve over HTTPS, as the deployed panel does. about:blank lacks
             # secure-context crypto.randomUUID and cannot faithfully test dialogs.
             page.route("https://orion.test/panel", lambda route: route.fulfill(
-                status=200, content_type="text/html; charset=utf-8", body=HTML
+                status=200, content_type="text/html; charset=utf-8",
+                body=HTML.replace('data-theme="dark"', f'data-theme="{theme}"')
             ))
             page.goto("https://orion.test/panel")
             page.add_style_tag(content=CSS)
@@ -70,24 +74,71 @@ def test_weekly_hours_has_edit_controls_no_horizontal_overflow(browser_name, wid
             layout = page.evaluate("""() => {
               const d=document.querySelector('#osDialog');
               const rect=d.getBoundingClientRect();
-              const dayRects=[...d.querySelectorAll('.os-hours-day')].map(x=>x.getBoundingClientRect());
-              return {visible:d.open,left:rect.left,right:rect.right,scroll:d.scrollWidth,client:d.clientWidth,
-                width:innerWidth,
-                cards:dayRects.map(x=>({left:x.left,right:x.right,width:x.width}))};
+              const days=[...d.querySelectorAll('.os-staff-hours-day')];
+              return {
+                visible:d.open,left:rect.left,right:rect.right,
+                scroll:d.scrollWidth,client:d.clientWidth,width:innerWidth,
+                cards:days.map(card=>{
+                  const day=card.getBoundingClientRect();
+                  const header=card.querySelector('.os-hours-day-head').getBoundingClientRect();
+                  const shift=card.querySelector('.os-hours-shift')?.getBoundingClientRect();
+                  return {left:day.left,right:day.right,width:day.width,display:getComputedStyle(card).display,
+                    headTop:header.top,headBottom:header.bottom,headLeft:header.left,
+                    shiftTop:shift?.top,shiftLeft:shift?.left,shiftWidth:shift?.width};
+                })
+              };
             }""")
             assert layout["visible"]
             assert layout["left"] >= -2
             assert layout["right"] <= width + 2
             assert layout["scroll"] <= layout["client"] + 3, layout
+            assert len(layout["cards"]) == 7, layout
             assert all(day["left"] >= -2 and day["right"] <= width + 2 for day in layout["cards"]), layout
+            assert all(day["display"] == "flex" for day in layout["cards"]), layout
+            # Regression: the old settings .os-hours-day grid created the exact
+            # 140px left gutter seen in the user screenshot. Header and shift
+            # must occupy the same column with the shift BELOW its day title.
+            for day in layout["cards"]:
+                if day["shiftTop"] is not None:
+                    assert day["shiftTop"] >= day["headBottom"] - 2, day
+                    assert abs(day["shiftLeft"] - day["headLeft"]) <= 3, day
+                    assert day["shiftWidth"] >= day["width"] - 52, day
 
             page.locator(f'[data-os-edit-hour="{HOUR}"]').click()
-            page.locator('[data-os-form="hours-edit"]').wait_for()
-            page.locator('[data-os-form="hours-edit"] input[name="start_time"]').fill("10:00")
-            assert page.locator('[data-os-form="hours-edit"] button[type="submit"]').is_visible()
-            assert page.locator('[data-os-form="hours-edit"]').evaluate(
-                "(form)=>form.getBoundingClientRect().width <= form.parentElement.getBoundingClientRect().width+2"
-            )
+            form=page.locator('[data-os-form="hours-edit"]')
+            form.wait_for()
+            form.locator('input[name="start_time"]').fill("10:00")
+            assert form.locator('button[type="submit"]').is_visible()
+            editor=page.evaluate("""() => {
+                const form=document.querySelector('[data-os-form="hours-edit"]');
+                const parent=form.parentElement;
+                const box=form.getBoundingClientRect();
+                const inside=(name)=>form.querySelector('[name="'+name+'"]').getBoundingClientRect();
+                return {width:box.width,parentWidth:parent.getBoundingClientRect().width,
+                    left:box.left,right:box.right,
+                    day:inside('weekday').toJSON(),start:inside('start_time').toJSON(),
+                    end:inside('end_time').toJSON()};
+            }""")
+            assert editor["right"] <= width + 2 and editor["left"] >= -2, editor
+            assert editor["width"] >= editor["parentWidth"] - 3, editor
+            if width <= 767:
+                # Native time inputs stack vertically on mobile instead of being
+                # squeezed into three miniature desktop columns.
+                assert editor["day"]["bottom"] <= editor["start"]["top"] + 1, editor
+                assert editor["start"]["bottom"] <= editor["end"]["top"] + 1, editor
+            else:
+                assert abs(editor["start"]["top"] - editor["end"]["top"]) <= 2, editor
+
+            page.locator('[data-os-hours-cancel]').click()
+            page.locator(f'[data-os-edit-break="{BREAK}"]').click()
+            pause_form=page.locator('[data-os-form="pause-edit"]')
+            pause_form.wait_for()
+            assert pause_form.evaluate("""form=>{
+                const card=form.closest('[data-os-hours-break]').getBoundingClientRect();
+                const box=form.getBoundingClientRect();
+                return box.left>=card.left-2 && box.right<=card.right+2 &&
+                       box.width>=card.width-28;
+            }"""), "Break editor must fill its row rather than become a narrow column"
             assert not errors, errors
         finally:
             browser.close()

@@ -63,6 +63,21 @@ test('hours are Monday to Sunday and same-day shifts ordered by start',async t=>
   assert.equal(h.errors.length,0);
 });
 
+test('professional schedule cards stay isolated from legacy opening-hours overview classes',async t=>{
+  const h=await scheduleFixture();t.after(()=>h.close());
+  const dialog=await openSchedule(h);
+  const card=dialog.querySelector('[data-os-hours-weekday="0"]');
+  assert.ok(card.classList.contains('os-staff-hours-day'));
+  assert.equal(card.classList.contains('os-hours-day'),false,'legacy two-column settings rule must never target professional cards');
+  assert.ok(card.classList.contains('has-hours'));
+  const closed=dialog.querySelector('[data-os-hours-weekday="1"]');
+  assert.ok(closed.classList.contains('is-closed'));
+  assert.equal(closed.querySelector('.os-hours-shift'),null);
+  assert.match(closed.textContent,/Fechado/);
+  assert.match(dialog.querySelector('[data-os-hours-break="'+pauseId+'"] .os-hours-break-caption').textContent,/Pausa/);
+  assert.equal(h.errors.length,0);
+});
+
 test('edit shift in place, refresh without leaving modal, and change weekday',async t=>{
   const h=await scheduleFixture();t.after(()=>h.close());
   await openSchedule(h);
@@ -156,7 +171,7 @@ test('closed days accept new hours and pause defaults stay within chosen shift',
 test('viewers can inspect all days but cannot edit, create or remove schedule periods',async t=>{
   const h=await scheduleFixture('viewer');t.after(()=>h.close());
   const dialog=await openSchedule(h);
-  assert.equal(dialog.querySelectorAll('.os-hours-day').length,7);
+  assert.equal(dialog.querySelectorAll('.os-staff-hours-day').length,7);
   assert.equal(dialog.querySelectorAll('[data-os-edit-hour],[data-os-edit-break],[data-os-hours-add],[data-os-delete-hour],[data-os-pause]').length,0);
   assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
 });
