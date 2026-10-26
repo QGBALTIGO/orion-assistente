@@ -24,6 +24,7 @@
     sparkles:'m12 3 2.8 6.2L21 12l-6.2 2.8L12 21l-2.8-6.2L3 12l6.2-2.8ZM20 2v4m-2-2h4',
     globe:'M2 12h20M12 2c3 3.5 4 7 4 10s-1 6.5-4 10c-3-3.5-4-7-4-10s1-6.5 4-10',
     gift:'M20 12v9H4v-9M2 7h20v5H2zM12 7v14m0-14H7.5A2.5 2.5 0 1 1 10 4.5L12 7Zm0 0h4.5A2.5 2.5 0 1 0 14 4.5L12 7Z',
+    layers:'m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 17l9 5 9-5',
     bot:'M12 3v4M3 7h18v14H3zM7 13h.01M17 13h.01M8 17h8',
     credit:'M2 8h20M4 3h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM6 16h3',
     settings:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-2-6h4l1 3 3 1 3-1 2 4-2 2v3l2 2-2 4-3-1-3 1-1 3h-4l-1-3-3-1-3 1-2-4 2-2v-3l-2-2 2-4 3 1 3-1 1-3Z',
@@ -746,7 +747,10 @@
           '</div>'+
         '</div></article>';
     }).join('')+'</div>':'<div class="os-card">'+empty('scissors','Nenhum serviço cadastrado','Comece por um modelo ou cadastre seu primeiro serviço.',button('Novo serviço','new-service','','plus',can?'':'disabled'))+'</div>';
-    html+='<section id="osPackagesSection" class="os-card" style="margin-top:24px"><div class="os-card-header"><div><h2>Pacotes e combos</h2><p>Junte 2 ou mais serviços com preço especial. Aparecem na sua página de agendamento.</p></div>'+button('Novo combo','new-package','os-outline os-small','plus',can?'':'disabled')+'</div><div id="osPackagesBody">'+loading('Carregando pacotes e combos…')+'</div></section>';bodyHTML(html);void loadPackages();
+    html+='<section id="osPackagesSection" class="os-packages-section" aria-label="Pacotes e combos">'+
+      '<div class="os-packages-heading"><div><h2>Pacotes e combos</h2><p>Combine serviços com preço especial.</p></div>'+
+      button('Novo combo','new-package','os-outline os-small','plus',can?'':'disabled')+'</div>'+
+      '<div id="osPackagesBody">'+loading('Carregando pacotes e combos…')+'</div></section>';bodyHTML(html);void loadPackages();
   }
   function renderProfessionals(){
     const list=state.data.professionals||[],can=writable();
@@ -1485,7 +1489,56 @@
     const content=field('Nome','name','text',s.name||'','required maxlength="120" placeholder="Ex.: Atendimento completo"')+field('Categoria (opcional)','category','text',s.category||'','maxlength="80" placeholder="Ex.: Consultas, Cuidados, Estética"')+field('Duração (min)','duration_min','number',s.duration_min||30,'required min="1" max="1440"')+'<div class="os-service-duration-shortcuts" role="group" aria-label="Preencher duração rapidamente">'+[15,30,45,60,90].map(m=>'<button type="button" class="os-button os-outline os-small" data-os-duration="'+m+'" aria-pressed="'+(Number(s.duration_min||30)===m)+'">'+m+' min</button>').join('')+'</div>'+pricing+field('Preço (R$)','price','text',s.price_cents!=null?currencyInputGrouped(s.price_cents):'','required inputmode="decimal" autocomplete="off" maxlength="18" data-os-money-mask="whole" placeholder="0,00"')+'<div class="os-field os-service-color-field"><span class="os-color-group-label">Cor do serviço</span><div class="os-color-presets" role="group" aria-label="Cor do serviço">'+colors.map(color=>'<button type="button" data-os-color="'+color+'" aria-label="Cor '+color+'" aria-pressed="'+(color.toLowerCase()===(s.color||'#8b5cf6').toLowerCase())+'" style="--os-preset-color:'+color+'"></button>').join('')+colorField('Personalizar cor','color',s.color||'#8b5cf6',true)+'</div></div>'+imageUploadField('Imagem do serviço (opcional)','image_url',s.image_url||'','service')+'<fieldset><legend>Profissionais que realizam este serviço</legend><p class="os-help" style="margin-bottom:12px">Nenhum selecionado significa todos os profissionais cadastrados.</p>'+(rows(pros).length?'<div class="os-checkbox-chips">'+rows(pros).map(p=>'<label class="os-check"><input type="checkbox" name="professional_ids" value="'+esc(p.id)+'" '+(selected.includes(p.id)?'checked':'')+'><span>'+esc(p.name)+'</span></label>').join('')+'</div>':'<p class="os-help">Cadastre um profissional para vinculá-lo a este serviço.</p>')+'</fieldset>'+textField('Descrição','description',s.description||'','maxlength="500"')+'<details class="os-more-fields"><summary>'+icon('clock')+'<span class="os-disclosure-label">Intervalos de atendimento</span></summary><div class="os-disclosure-body"><div class="os-form-grid" style="margin-top:16px">'+field('Preparação (min)','prep_min','number',s.prep_min||0,'min="0" max="240"')+field('Intervalo após serviço (min)','cleanup_min','number',s.cleanup_min||0,'min="0" max="240"')+'</div></div></details>'+'<details class="os-more-fields"><summary>'+icon('sparkles')+'<span class="os-disclosure-label">Adicionais</span></summary><div class="os-disclosure-body"><p class="os-help" style="margin:8px 0 12px">Selecione até 5 serviços extras. Escolha se o adicional aumenta o tempo do atendimento.</p><div class="os-form">'+addonServices.map(service=>{const addon=rows(addons).find(a=>a.addon_service_id===service.id);return '<div class="os-addon-option"><label class="os-check"><input type="checkbox" name="addon_ids" value="'+esc(service.id)+'" '+(addon?'checked':'')+'><span>'+esc(service.name)+'<small>'+esc(priceLabel(service.price_cents,service.price_mode))+' · '+number(service.duration_min)+' min</small></span></label><label class="os-check"><input type="checkbox" name="addon_duration_'+esc(service.id)+'" '+(!addon||addon.add_duration?'checked ':'')+(addon?'':'disabled')+'><small>Somar tempo</small></label></div>';}).join('')+(addonServices.length?'':'<p class="os-help">Cadastre outro serviço para oferecê-lo como adicional.</p>')+'</div></div></details>'+checkField('Ativo','active',s.active!==false,'Disponível para novos agendamentos.');
     if(showDialog('service',record?'Editar serviço':'Novo serviço',dialogForm('service',content,'Salvar',record&&writable()?button('Excluir','delete-service','os-ghost','trash'):'') ,{record,drawer:true,addonVersion:number(addons.version)})){const form=$('osDialog')?.querySelector('form');updateServicePriceMode(form);syncServiceDurationPresets(form);}
   }
-  async function loadPackages(){const c=context();try{const data=await request(mgmt('/service-packages'));if(!current(c)||!$('osPackagesBody'))return;state.data.packages=data;const list=rows(data);$('osPackagesBody').innerHTML=list.length?'<div class="os-cards-grid">'+list.map(p=>'<article class="os-package-card"><div class="os-card-header"><h3>'+esc(p.name)+'</h3>'+badge(p.active?'active':'inactive')+'</div><p class="os-help">'+(p.service_ids||[]).map(id=>esc((state.data.services||[]).find(s=>s.id===id)?.name||'Serviço')).join(' + ')+'</p><div class="os-item-bottom"><strong>'+esc(priceLabel(p.effective_price_cents??p.price_cents,p.price_mode))+'</strong>'+(p.featured?badge('active','Destaque'):'')+'</div><div class="os-item-commands"><button type="button" class="os-button os-ghost os-small" data-os-package="'+esc(p.id)+'">'+icon('edit')+'Editar</button></div></article>').join('')+'</div>':'<button type="button" class="os-package-empty" data-os-action="new-package" '+(writable()?'':'disabled')+'><span class="os-square-icon">'+icon('plus')+'</span><strong>Crie seu primeiro combo</strong><small>Combine serviços com um preço especial</small></button>';}catch(ex){if(current(c)&&$('osPackagesBody'))$('osPackagesBody').innerHTML=errorHTML(ex);}}
+  function compactServiceDuration(minutes){
+    const n=Math.max(0,Math.round(number(minutes)));
+    const h=Math.floor(n/60),m=n%60;
+    return h?(h+'h'+(m?' '+m+'min':'')):(n+'min');
+  }
+  function packageComponentNames(packageRow){
+    // Names are included in the authenticated combo API, and may describe
+    // historical records no longer present in the editable base catalog.
+    const mapped=rows(packageRow.items).map(item=>item.name).filter(name=>typeof name==='string'&&name.trim());
+    if(mapped.length)return mapped;
+    return rows(packageRow.service_ids).map(id=>(state.data.services||[]).find(s=>s.id===id)?.name||'Serviço');
+  }
+  function packageCardMarkup(p,can){
+    const id=esc(p.id),name=esc(p.name),color=cleanColor(p.color),photo=safePublicURL(p.image_url);
+    const components=packageComponentNames(p).join(' + '),
+      status=p.active===false?'Inativo':p.available===false?'Indisponível':'Ativo';
+    const duration=compactServiceDuration(p.duration_min);
+    const value=priceLabel(p.effective_price_cents??p.price_cents,p.price_mode);
+    const image=photo?'<img src="'+esc(photo)+'" alt="" loading="lazy" referrerpolicy="no-referrer">':icon('layers');
+    return '<article class="os-card os-package-card" data-os-package-card="'+id+'">'+
+      '<div class="os-package-main">'+
+        '<div class="os-package-photo" style="--os-package-tone:'+color+';--os-package-tint:'+color+'12">'+image+'</div>'+
+        '<div class="os-package-info">'+
+          '<h3 title="'+name+'">'+name+'</h3>'+
+          '<p class="os-package-components" title="'+esc(components)+'">'+esc(components||'Serviços do combo')+'</p>'+
+          '<div class="os-package-meta"><strong>'+esc(value)+'</strong><span class="os-package-meta-dot" aria-hidden="true">•</span><span class="os-package-duration">'+duration+'</span></div>'+
+          '<div class="os-package-status">'+badge(status==='Ativo'?'active':'inactive',status)+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="os-item-commands os-package-actions">'+
+        '<button type="button" class="os-button os-ghost os-small os-package-edit" data-os-package="'+id+'">'+icon('edit')+(can?'Editar':'Detalhes')+'</button>'+
+        (p.featured?'<span class="os-package-featured">'+icon('sparkles')+'<span>Destaque</span></span>':'')+
+      '</div></article>';
+  }
+  async function loadPackages(){
+    const c=context();
+    try{
+      const data=await request(mgmt('/service-packages'));
+      if(!current(c)||!$('osPackagesBody'))return;
+      state.data.packages=data;
+      const list=rows(data),can=writable();
+      $('osPackagesBody').innerHTML=list.length?
+        '<div class="os-cards-grid os-packages-grid">'+list.map(p=>packageCardMarkup(p,can)).join('')+'</div>':
+        '<button type="button" class="os-package-empty" data-os-action="new-package" '+(can?'':'disabled')+'>'+
+        '<span class="os-square-icon">'+icon('plus')+'</span><strong>Crie seu primeiro combo</strong>'+
+        '<small>Combine serviços com um preço especial</small></button>';
+    }catch(ex){
+      if(current(c)&&$('osPackagesBody'))$('osPackagesBody').innerHTML=errorHTML(ex);
+    }
+  }
   async function showPackage(record=null){
     const c=context();if(!state.data.services){try{state.data.services=rows(await request(apiPath('/services')));if(!current(c))return;}catch(ex){toast(ex.message,true);return;}}
     const services=(state.data.services||[]).filter(s=>!s.catalog_kind||s.catalog_kind==='base'),p=record||{};

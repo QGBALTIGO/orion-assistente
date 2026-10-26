@@ -20,7 +20,7 @@ UPSTREAM_ORIGIN = "https://orion-assistente-production.up.railway.app"
 # Output transformations preserve the bytes/newlines of the actual checkout.
 REVIEWED_SOURCE_SHA256_LF = {
     "landing/index.html": "f627dce1f7c28d94f3210c602498192a487e0821e4444b769ac086f6f35747b4",
-    "app/static/orion-suite.js": "f2fa7eb9328c38bc5084d85aebcd6e0f91cd296121f3ea4ed9160428622ada5b",
+    "app/static/orion-suite.js": "74b29bddc30e23e0e37f4346ac6dd7f92e64c90564d091b40084515ab3376027",
 }
 SOURCE_ALLOWLIST = (
     ("landing/index.html", "public/index.html"),

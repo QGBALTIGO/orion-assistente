@@ -1060,7 +1060,92 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
  .orion-suite-enabled>.sidebar,.os-header,.os-fab,.os-toast-region,.os-title-row>.os-actions,.os-horizontal-tabs,.os-form-actions,.os-performance-periods,.os-card-header>.os-button,.os-icon-button{display:none!important}
  .app.orion-suite-enabled{display:block;background:white;color:black}.os-main{max-width:none!important;padding:0!important}.os-card{box-shadow:none;break-inside:avoid}.os-finance-metrics{grid-template-columns:repeat(6,minmax(0,1fr))}.os-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
 }
-.os-package-card{padding:16px;border:1px solid var(--os-border);border-radius:16px;background:var(--os-bg)}
+/* Combos live alongside service cards, rather than nesting a large grey
+   card inside another card. Heading stays compact on mobile and desktop. */
+.os-packages-section{min-width:0;margin-top:24px}
+.os-packages-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;margin-bottom:12px}
+.os-packages-heading>div{flex:1 1 auto;min-width:0}
+.os-packages-heading h2{margin:0;color:var(--os-text);font:600 19px/26px var(--os-display)}
+.os-packages-heading p{margin:3px 0 0;color:var(--os-muted);font:400 12px/18px var(--os-font)}
+.os-packages-heading>.os-button{flex:0 0 auto;min-height:40px;white-space:nowrap}
+@media(max-width:359px){
+  .os-packages-heading{gap:6px}
+  .os-packages-heading h2{font-size:16px;line-height:22px}
+  .os-packages-heading>.os-button{padding:6px 9px;font-size:11px}
+}
+/* Combo cards share the service-card rhythm, but keep their own component
+   summary, price minimum and featured state. The photo is decorative. */
+.os-main[data-os-current-route=servicos] #osPackagesBody .os-packages-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,350px),1fr));gap:12px;margin-top:12px;min-width:0
+}
+.os-package-card.os-card{
+  box-sizing:border-box;display:flex;flex-direction:column;min-width:0;min-height:0;
+  padding:0;border:1px solid var(--os-border);border-radius:18px;
+  background:var(--os-card);box-shadow:var(--os-shadow);overflow:hidden
+}
+.os-package-main{
+  box-sizing:border-box;display:grid;grid-template-columns:52px minmax(0,1fr);
+  align-items:center;gap:12px;min-width:0;padding:14px 16px
+}
+.os-package-photo{
+  box-sizing:border-box;display:grid;place-items:center;flex:none;
+  width:52px;height:52px;border-radius:50%;overflow:hidden;
+  border:1px solid color-mix(in srgb,var(--os-package-tone,var(--os-primary)) 12%,var(--os-border));
+  background:var(--os-package-tint,var(--os-tint));color:var(--os-package-tone,var(--os-primary))
+}
+.os-package-photo>img{display:block;width:100%;height:100%;object-fit:cover;border-radius:inherit}
+.os-package-photo>.os-icon{width:24px;height:24px;flex:none}
+.os-package-info{min-width:0;max-width:100%}
+.os-package-info>h3{
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;
+  margin:0;overflow:hidden;overflow-wrap:anywhere;
+  color:var(--os-text);font:600 15px/21px var(--os-display)
+}
+.os-package-components{
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;
+  margin:3px 0 0;overflow:hidden;overflow-wrap:anywhere;
+  color:var(--os-muted);font:400 11px/17px var(--os-font)
+}
+.os-package-meta{
+  display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;
+  min-width:0;margin-top:5px;color:var(--os-muted);font:400 12px/18px var(--os-font)
+}
+.os-package-meta>strong{min-width:0;max-width:100%;font:600 13px/19px var(--os-display);color:var(--os-text);overflow-wrap:anywhere}
+.os-package-duration{white-space:nowrap}
+.os-package-meta-dot{font-weight:600;color:var(--os-muted)}
+.os-package-status{display:flex;align-items:center;min-height:19px;margin-top:5px}
+.os-package-status>.os-badge{
+  font:600 10px/16px var(--os-font);letter-spacing:0;text-transform:none;padding:1px 7px
+}
+.os-package-card>.os-package-actions{
+  display:flex;justify-content:space-between;align-items:center;flex-wrap:nowrap;
+  gap:8px;min-height:52px;margin:0;padding:6px 16px;
+  border-top:1px solid var(--os-border)
+}
+.os-package-edit.os-button{
+  display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;min-height:40px;
+  padding:5px 0;border:0;background:transparent;
+  color:var(--os-muted);font:500 13px/20px var(--os-font)
+}
+.os-package-edit>.os-icon{width:16px;height:16px;flex:none}
+.os-package-featured{
+  display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;
+  padding:4px 8px;border-radius:100px;background:var(--os-tint);
+  color:var(--os-primary);font:600 11px/16px var(--os-font);white-space:nowrap
+}
+.os-package-featured>.os-icon{width:13px;height:13px;flex:none}
+.os-package-edit:focus-visible{outline:2px solid var(--os-primary);outline-offset:2px}
+@media(max-width:767px){
+  .os-main[data-os-current-route=servicos] #osPackagesBody .os-packages-grid{grid-template-columns:minmax(0,1fr);gap:10px}
+  .os-package-main{padding:12px 14px}
+  .os-package-card>.os-package-actions{padding:6px 14px}
+}
+@media(max-width:359px){
+  .os-package-main{grid-template-columns:46px minmax(0,1fr);gap:9px;padding:12px}
+  .os-package-photo{width:46px;height:46px}
+  .os-package-card>.os-package-actions{padding:6px 12px}
+}
+
 .os-package-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;width:100%;min-height:150px;border:1px dashed var(--os-border);border-radius:16px;background:transparent;color:var(--os-muted);font-family:var(--os-font);cursor:pointer}
 .os-package-empty .os-square-icon{width:36px;height:36px;border-radius:12px}
 .os-package-empty strong{color:var(--os-text);font-size:14px;font-weight:500;line-height:20px}
