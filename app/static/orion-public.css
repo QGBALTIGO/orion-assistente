@@ -184,7 +184,7 @@ body{background:var(--bg);color:var(--text);min-width:0}
 .amenities-heading p{font-size:13px;line-height:19px}
 .amenities-grid{
   display:flex;flex-wrap:wrap;align-items:center;
-  gap:10px;width:100%;max-width:100%;min-width:0
+  gap:14px;width:100%;max-width:100%;min-width:0
 }
 /* Center the group as one balanced row only when 3 or 4 amenities are active.
    One or two stay aligned with the rest of the left-anchored page content. */
@@ -193,14 +193,14 @@ body{background:var(--bg);color:var(--text);min-width:0}
 .amenities-grid[data-count="3"]+.amenity-detail,
 .amenities-grid[data-count="4"]+.amenity-detail{margin-inline:auto}
 .amenity-tile{
-  box-sizing:border-box;display:grid;place-items:center;flex:0 0 58px;
-  width:58px;height:58px;min-width:58px;min-height:58px;
-  padding:0;border:1px solid var(--border);border-radius:13px;
+  box-sizing:border-box;display:grid;place-items:center;flex:0 0 62px;
+  width:62px;height:62px;min-width:62px;min-height:62px;
+  padding:0;border:1px solid var(--border);border-radius:14px;
   background:var(--card);color:var(--muted);
   box-shadow:0 1px 4px #0f1b330a;
   transition:background .16s,border-color .16s,transform .16s,color .16s
 }
-.amenity-tile svg{display:block;width:22px;height:22px;overflow:visible}
+.amenity-tile svg{display:block;width:23px;height:23px;overflow:visible}
 .amenity-tile:hover{
   transform:translateY(-1px);
   border-color:color-mix(in srgb,var(--primary) 32%,var(--border));
@@ -233,13 +233,14 @@ body{background:var(--bg);color:var(--text);min-width:0}
 .amenity-available svg{width:16px;height:16px;flex:none}
 .amenity-detail p{color:var(--muted);font-size:12px;line-height:19px;margin-top:6px}
 @media(max-width:359px){
-  .amenities-grid{gap:8px}
-  .amenity-tile{flex-basis:54px;width:54px;height:54px;min-width:54px;min-height:54px;border-radius:12px}
-  .amenity-tile svg{width:20px;height:20px}
+  .amenities-grid{gap:12px}
+  .amenity-tile{flex-basis:58px;width:58px;height:58px;min-width:58px;min-height:58px;border-radius:13px}
+  .amenity-tile svg{width:21px;height:21px}
 }
 @media(min-width:640px){
-  .amenities-grid{gap:12px}
-  .amenity-tile{flex-basis:62px;width:62px;height:62px;min-width:62px;min-height:62px}
+  .amenities-grid{gap:16px}
+  .amenity-tile{flex-basis:66px;width:66px;height:66px;min-width:66px;min-height:66px}
+  .amenity-tile svg{width:24px;height:24px}
   #amenities-section:not([hidden])+#servicos{margin-top:36px}
 }
 @media(prefers-reduced-motion:reduce){

@@ -56,11 +56,11 @@ def test_public_amenities_all_combinations_and_info(engine,width,active):
                     assert tile.get_attribute('aria-expanded')=='false'
                     box=tile.bounding_box()
                     # Compact square hit targets remain stable for all 1–4 options.
-                    expected=62 if width>=640 else (54 if width<360 else 58)
+                    expected=66 if width>=640 else (58 if width<360 else 62)
                     assert box and expected-0.5<=box['width']<=expected+0.5
                     assert expected-0.5<=box['height']<=expected+0.5
                     icon_box=tile.locator('svg').bounding_box()
-                    icon_size=20 if width<360 else 22
+                    icon_size=24 if width>=640 else (21 if width<360 else 23)
                     assert icon_box and icon_size-0.5<=icon_box['width']<=icon_size+0.5
                     assert icon_size-0.5<=icon_box['height']<=icon_size+0.5
                     assert tile.locator('svg').count()==1
@@ -69,6 +69,13 @@ def test_public_amenities_all_combinations_and_info(engine,width,active):
                 boxes=[tiles.nth(i).bounding_box() for i in range(active)]
                 ycoords=[round(box['y']) for box in boxes]
                 assert len(set(ycoords))==1, 'No wrapped or uneven icon rows'
+                if active>1:
+                    expected_gap=16 if width>=640 else (12 if width<360 else 14)
+                    horizontal_gaps=[boxes[i+1]['x']-(boxes[i]['x']+boxes[i]['width'])
+                                     for i in range(active-1)]
+                    assert all(abs(gap-expected_gap)<=1.5 for gap in horizontal_gaps), (
+                        'Even, comfortable spacing between active amenities', horizontal_gaps)
+                    assert boxes[-1]['x']+boxes[-1]['width'] <= section.bounding_box()['x']+section.bounding_box()['width']+1
                 area=grid.bounding_box()
                 assert area
                 group_center=(boxes[0]['x'] + boxes[-1]['x'] + boxes[-1]['width'])/2
