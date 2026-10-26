@@ -30,7 +30,12 @@ def test_weekly_hours_has_edit_controls_no_horizontal_overflow(browser_name, wid
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         try:
-            page.set_content(HTML)
+            # Serve over HTTPS, as the deployed panel does. about:blank lacks
+            # secure-context crypto.randomUUID and cannot faithfully test dialogs.
+            page.route("https://orion.test/panel", lambda route: route.fulfill(
+                status=200, content_type="text/html; charset=utf-8", body=HTML
+            ))
+            page.goto("https://orion.test/panel")
             page.add_style_tag(content=CSS)
             page.add_script_tag(content=JS)
             page.evaluate("""({pro,hour,breakId}) => {
@@ -51,29 +56,10 @@ def test_weekly_hours_has_edit_controls_no_horizontal_overflow(browser_name, wid
                 },openLegacy(){},onRouteChange(){}
               });
             }""", {"pro": PRO, "hour": HOUR, "breakId": BREAK})
-            page.wait_for_timeout(600)
-            page.evaluate("""() => {
-              const d=document.querySelector('#osDialog');
-              window.__hourTestCalls=[];
-              document.addEventListener('click',e=>{
-                if(e.target.closest('[data-os-hours]'))window.__hourTestCalls.push('click');
-              },true);
-              const nativeShow=d.showModal.bind(d),nativeClose=d.close.bind(d);
-              d.showModal=function(){window.__hourTestCalls.push('showModal');return nativeShow();};
-              d.close=function(){window.__hourTestCalls.push('close');return nativeClose();};
-            }""")
+            assert page.evaluate("window.isSecureContext === true")
+            assert page.evaluate("typeof crypto.randomUUID === 'function'")
             page.locator(f'[data-os-hours="{PRO}"]').click()
-            page.wait_for_timeout(400)
-            diagnostic = page.evaluate("""() => ({
-              dialog:document.querySelector('#osDialog')?.outerHTML.slice(0,1800),
-              open:document.querySelector('#osDialog')?.open,
-              hourCount:document.querySelectorAll('[data-os-hours-weekday]').length,
-              currentRoute:document.querySelector('#page-suite')?.dataset.osCurrentRoute,
-              calls:window.__hourTestCalls,
-              toast:document.querySelector('#osToastRegion')?.textContent?.slice(0,250)
-            })""")
-            assert diagnostic["hourCount"] == 7, f"Rendered schedule unavailable: {diagnostic!r}; browser errors={errors!r}"
-            page.locator('[data-os-hours-weekday="6"]').wait_for(timeout=2000)
+            page.locator('[data-os-hours-weekday="6"]').wait_for(timeout=5000)
             names = page.locator(".os-hours-day-name").all_text_contents()
             assert names == ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira",
                              "Sexta-feira", "Sábado", "Domingo"]
