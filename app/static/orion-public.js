@@ -204,6 +204,42 @@
     if (!items.length) $('services-grid').append(el('p', 'empty', data.services.length ? 'Nenhum serviço encontrado. Tente outra busca.' : 'Não há serviços disponíveis para agendamento neste momento.'));
   }
 
+  const AMENITY_ICONS = {"wifi":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M2 8.8a15.3 15.3 0 0 1 20 0\"/><path d=\"M5.3 12.3a10 10 0 0 1 13.4 0\"/><path d=\"M8.7 15.8a4.7 4.7 0 0 1 6.6 0\"/><circle cx=\"12\" cy=\"19.4\" r=\"1\" fill=\"currentColor\" stroke=\"none\"/></svg>","parking":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5.4 11l1.5-4.8A2.2 2.2 0 0 1 9 4.7h6a2.2 2.2 0 0 1 2.1 1.5l1.5 4.8\"/><path d=\"M4.5 11h15a1.5 1.5 0 0 1 1.5 1.5V17H3v-4.5A1.5 1.5 0 0 1 4.5 11Z\"/><path d=\"M5.5 17v2.5h2V17M16.5 17v2.5h2V17\"/><circle cx=\"6.8\" cy=\"14.1\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"17.2\" cy=\"14.1\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/></svg>","accessibility":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11.5\" cy=\"3.5\" r=\"1.45\"/><path d=\"M11.5 6.5V14h5l2.9 5.3\"/><path d=\"M11.5 9.6h5.5M8.4 11.6A6.8 6.8 0 1 0 16.5 20\"/></svg>","children":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"13.3\" r=\"7.7\"/><path d=\"M7 7.3A3.3 3.3 0 0 1 10 4c1.4 0 2.2.8 2.2 2.1M5 11.6a2.8 2.8 0 0 0 0 4.6M19 11.6a2.8 2.8 0 0 1 0 4.6\"/><path d=\"M9.1 12.6h.01M14.9 12.6h.01M9.5 16a3.6 3.6 0 0 0 5 0\"/></svg>"};
+  const AMENITIES = [{"key":"amenity_wifi","title":"Wi-Fi","description":"Wi-Fi disponível para clientes durante a visita.","icon":"wifi"},{"key":"amenity_parking","title":"Estacionamento","description":"O estabelecimento informa oferecer estacionamento. Confirme a disponibilidade de vagas com a equipe.","icon":"parking"},{"key":"amenity_accessibility","title":"Acessibilidade","description":"O estabelecimento informa oferecer acesso acessível. Para necessidades específicas, entre em contato antes da visita.","icon":"accessibility"},{"key":"amenity_children","title":"Atende crianças","description":"O estabelecimento realiza atendimento infantil. Consulte a equipe sobre idades e serviços disponíveis.","icon":"children"}];
+  function closeAmenity(restoreFocus = false) {
+    const active = document.querySelector('#amenities-grid .amenity-tile[aria-expanded="true"]');
+    if (active) active.setAttribute('aria-expanded', 'false');
+    $('amenity-detail').hidden = true;
+    if (restoreFocus) active?.focus();
+  }
+  function toggleAmenity(item, button) {
+    const wasOpen = button.getAttribute('aria-expanded') === 'true';
+    closeAmenity();
+    if (wasOpen) return;
+    $('amenity-detail-title').textContent = item.title;
+    $('amenity-detail-description').textContent = item.description;
+    $('amenity-detail').hidden = false;
+    button.setAttribute('aria-expanded', 'true');
+  }
+  function renderAmenities(site) {
+    const root = $('amenities-section');
+    const grid = $('amenities-grid');
+    const enabled = AMENITIES.filter(item => site[item.key] === true);
+    closeAmenity();
+    grid.replaceChildren(...enabled.map(item => {
+      const tile = el('button', 'amenity-tile');
+      tile.type = 'button';
+      tile.setAttribute('aria-label', item.title + ': disponível. Ver informações');
+      tile.setAttribute('aria-controls', 'amenity-detail');
+      tile.setAttribute('aria-expanded', 'false');
+      tile.title = item.title;
+      tile.innerHTML = AMENITY_ICONS[item.icon]; // Trusted static SVG markup only.
+      tile.addEventListener('click', () => toggleAmenity(item, tile));
+      return tile;
+    }));
+    root.hidden = enabled.length === 0;
+  }
+
   function renderPage() {
     const site = data.site;
     document.title = `${site.title} • Agendamento`;
@@ -221,6 +257,7 @@
     $('about-card').hidden = !site.description;
     renderOpeningHours(data.opening_hours);
     renderLocation(site);
+    renderAmenities(site);
     $('services-count').textContent = String(data.services.length);
     $('hero-book').disabled = !data.services.length;
     const cats = ['Todos', ...new Set(data.services.map(s => s.category || 'Serviços'))];
@@ -376,6 +413,16 @@
     const url = URL.createObjectURL(new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/calendar;charset=utf-8' })); const anchor = el('a'); anchor.href = url; anchor.download = 'agendamento.ics'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  $('amenity-detail-close').addEventListener('click', () => closeAmenity(true));
+  document.addEventListener('click', event => {
+    if (!$('amenities-section').contains(event.target)) closeAmenity();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !$('amenity-detail').hidden) {
+      event.preventDefault();
+      closeAmenity(true);
+    }
+  });
   $('service-search').addEventListener('input', renderServiceGrid);
   $('hero-book').addEventListener('click', () => openBooking());
   $('close-booking').addEventListener('click', closeBooking);

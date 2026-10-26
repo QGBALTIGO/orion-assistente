@@ -537,6 +537,11 @@ async def site(db, tenant_id):
     snapshot = result.pop("public_snapshot", None)
     published = bool(result.get("public_enabled", False))
     draft = {field: result.get(field) for field in PUBLIC_FIELDS}
+    # Old published snapshots predate amenities; missing flags mean "disabled"
+    # and must not appear as artificial pending draft changes after migration.
+    if isinstance(snapshot, dict):
+        for key in ("amenity_wifi", "amenity_parking", "amenity_accessibility", "amenity_children"):
+            snapshot.setdefault(key, False)
     return {**result, "published": published, "public_enabled": published,
             "public_url": f"/s/{result['public_slug']}" if published and result.get("public_slug") else None,
             "preview_url": f"/app/site-preview/{tenant_id}",

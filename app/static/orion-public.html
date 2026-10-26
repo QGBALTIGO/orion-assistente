@@ -39,6 +39,22 @@
       </div>
     </header>
     <main class="container public-main">
+      <section id="amenities-section" class="amenities-section" aria-labelledby="amenities-title" hidden>
+        <div class="section-heading amenities-heading">
+          <div><h2 id="amenities-title">Comodidades</h2><p class="muted">Toque em um ícone para saber mais.</p></div>
+        </div>
+        <div id="amenities-grid" class="amenities-grid" aria-label="Comodidades disponíveis"></div>
+        <div id="amenity-detail" class="amenity-detail" role="region" aria-labelledby="amenity-detail-title" hidden>
+          <div class="amenity-detail-heading">
+            <strong id="amenity-detail-title"></strong>
+            <button id="amenity-detail-close" type="button" class="amenity-detail-close" aria-label="Fechar informações sobre a comodidade">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+          </div>
+          <span class="amenity-available"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m7.5 12.2 3 3 6-6"/></svg>Disponível</span>
+          <p id="amenity-detail-description"></p>
+        </div>
+      </section>
       <section id="servicos" aria-labelledby="services-title">
         <div class="section-heading"><div><h2 id="services-title">Nossos serviços</h2><p class="muted">Escolha o cuidado para o seu próximo atendimento.</p></div><span id="services-count" class="count"></span></div>
         <label class="search-wrap"><span aria-hidden="true">⌕</span><input id="service-search" type="search" placeholder="Buscar serviço" aria-label="Buscar serviço" autocomplete="off"></label>

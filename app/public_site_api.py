@@ -38,7 +38,8 @@ UTC=timezone.utc
 STATIC=Path(__file__).parent/'static'
 PUBLIC_FIELDS=('title','description','slug','theme_color','logo_url','cover_url','address','city','state','postal_code',
                'contact_phone','whatsapp_phone','instagram_url','maps_url','facebook_url','tiktok_url','external_url',
-               'hide_orion_brand','show_prices')
+               'hide_orion_brand','show_prices',
+               'amenity_wifi','amenity_parking','amenity_accessibility','amenity_children')
 HEADERS={"Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer",
          "Content-Security-Policy":"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self'; connect-src 'self'; frame-src https://www.google.com https://maps.google.com; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"}
 _booking_capacity=WeakKeyDictionary()
@@ -265,6 +266,8 @@ async def catalogue(db,tenant,*,preview=False):
     preference={key:source.get(key) for key in PUBLIC_FIELDS} if source else {key:None for key in PUBLIC_FIELDS}
     preference.update(title=preference['title'] or shop['name'],theme_color=preference['theme_color'] or '#2e7bf6',
                       show_prices=True if preference['show_prices'] is None else preference['show_prices'])
+    for key in ('amenity_wifi','amenity_parking','amenity_accessibility','amenity_children'):
+        preference[key] = preference[key] is True
     professionals=(await db.execute(text("SELECT id,name,specialty,color,image_url FROM professionals WHERE tenant_id=:tenant AND active AND accepts_appointments ORDER BY name,id LIMIT 200"),{'tenant':tenant})).mappings().all()
     working_rows=(await db.execute(text("""
         SELECT h.id AS working_hour_id,h.weekday,h.start_time,h.end_time,
