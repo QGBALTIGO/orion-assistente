@@ -1729,3 +1729,22 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 @media(max-width:639px){
   html[data-theme=dark] .os-client-mobile-whatsapp{color:#59df91}
 }
+
+/* Serviço: atalhos de duração imediatamente abaixo do campo correspondente. */
+#osDialog [data-os-form=service] .os-service-duration-shortcuts{
+  display:flex;flex-wrap:wrap;align-items:center;gap:7px;
+  min-width:0;margin:-7px 0 0;
+}
+#osDialog [data-os-form=service] .os-service-duration-shortcuts>.os-button{
+  box-sizing:border-box;display:inline-flex;justify-content:center;align-items:center;
+  min-height:38px;padding:7px 10px;border-radius:10px;
+  font:500 12px/17px var(--os-font);white-space:nowrap;
+}
+#osDialog [data-os-form=service] .os-service-duration-shortcuts>.os-button[aria-pressed=true]{
+  color:var(--os-primary);border-color:var(--os-primary);background:var(--os-tint);
+}
+#osDialog [data-os-money-mask=whole]{font-variant-numeric:tabular-nums;}
+@media(max-width:359px){
+  #osDialog [data-os-form=service] .os-service-duration-shortcuts{gap:5px}
+  #osDialog [data-os-form=service] .os-service-duration-shortcuts>.os-button{padding:7px 8px;font-size:11px}
+}
