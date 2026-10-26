@@ -50,6 +50,10 @@ def test_backup_checks_archive_and_remote_digest_before_ddl(tmp_path,monkeypatch
         assert Bucket==expected["bucket"] and Key==expected["key"]
         return {"ContentLength":len(data),"Metadata":{"sha256":sha256(data).hexdigest()}}
     client.upload_file=upload;client.head_object=head
+    class StubBody:
+        def iter_chunks(self,chunk_size):yield data
+        def close(self):pass
+    client.get_object=lambda Bucket,Key:{"Body":StubBody()}
     import boto3
     monkeypatch.setattr(boto3,"client",lambda *_args,**_kwargs:client)
     def run(args,**kwargs):

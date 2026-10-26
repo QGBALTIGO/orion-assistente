@@ -112,6 +112,21 @@ def perform_backup(url, settings, destination: Path):
     if (int(head["ContentLength"]) != size
             or head.get("Metadata", {}).get("sha256") != sha.hexdigest()):
         raise RuntimeError("private_database_backup_remote_verification_failed")
+    # HEAD confirms metadata, but only an actual readback can prove uploaded
+    # object content matches the original local dump.
+    remote = client.get_object(Bucket=settings["bucket"], Key=key)
+    digest = hashlib.sha256()
+    total = 0
+    stream = remote["Body"]
+    try:
+        for block in stream.iter_chunks(chunk_size=1048576):
+            if block:
+                digest.update(block)
+                total += len(block)
+    finally:
+        stream.close()
+    if total != size or digest.hexdigest() != sha.hexdigest():
+        raise RuntimeError("private_database_backup_readback_checksum_failed")
     print("private_backup_archive_verified", flush=True)
     print("private_backup_object_key="+key, flush=True)
     return key
