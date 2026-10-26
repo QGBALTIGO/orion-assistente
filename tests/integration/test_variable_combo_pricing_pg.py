@@ -30,6 +30,9 @@ async def test_variable_component_creates_a_variable_combo_on_site_and_manual_fi
     assert saved["available"] is True
     assert [i["price_mode"] for i in saved["items"]] == ["from", "fixed"]
 
+    # A new public card is a draft visual change until its owner republishes.
+    await publish(d)
+
     catalog = await c.get(d["public"])
     assert catalog.status_code == 200, catalog.text
     offered = next(item for item in catalog.json()["services"] if item["id"] == str(identity))

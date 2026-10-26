@@ -36,6 +36,16 @@ def test_quote_signature_scope_expiry_and_no_private_authority(signed):
         assert exc.value.status_code==expected
 
 
+def test_publication_version_is_signed_and_strictly_validated(signed):
+    _,now,selection=signed
+    token=issue_quote('public-site',uuid4(),now.date(),selection,now,publication_version=7)
+    assert read_quote(token,'public-site',now)['publication_version']==7
+    for invalid in (True,0,-1,'7'):
+        token=issue_quote('public-site',uuid4(),now.date(),selection,now,publication_version=invalid)
+        with pytest.raises(HTTPException) as exc:read_quote(token,'public-site',now)
+        assert exc.value.status_code==422
+
+
 def test_customer_must_confirm_and_cannot_submit_price_or_tenant(signed):
     token,now,_=signed
     payload={'quote':token,'start_at':now.isoformat(),'customer_name':'Cliente sintético','customer_phone':'(11) 98765-4321','confirmed':True}

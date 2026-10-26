@@ -63,7 +63,7 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 @asynccontextmanager
 async def tenant_transaction(
-    session: AsyncSession, tenant_id: UUID
+    session: AsyncSession, tenant_id: UUID, *, repeatable_read: bool = False
 ) -> AsyncIterator[AsyncSession]:
     """SET LOCAL dura somente a transação; RLS nega se contexto ausente.
 
@@ -72,6 +72,10 @@ async def tenant_transaction(
     if not isinstance(tenant_id, UUID):
         raise ValueError("tenant_id interno deve ser UUID verificado")
     async with session.begin():
+        # Publication spans multiple catalog reads. Opt in before the first
+        # statement so one snapshot is used without changing booking isolation.
+        if repeatable_read:
+            await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"))
         await session.execute(
             text("SELECT set_config('app.tenant_id', :tenant, true)"),
             {"tenant": str(tenant_id)},

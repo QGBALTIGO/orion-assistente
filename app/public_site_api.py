@@ -18,7 +18,7 @@ from weakref import WeakKeyDictionary
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import AwareDatetime, Field, StrictBool, StrictInt, field_validator
 from redis.exceptions import RedisError
 from sqlalchemy import text
@@ -32,6 +32,7 @@ from app.management_schemas import CleanModel, normalize_phone
 from app.panel_auth import _redis, _same_origin
 from app.service_packages_api import selection_contract, ensure_selection_service, digest
 from app.tenant_access import resolve_tenant_access
+from app.public_site_rendering import project_catalogue_visuals, public_html, published_booking_labels
 
 router=APIRouter(tags=["Site público"])
 UTC=timezone.utc
@@ -62,6 +63,7 @@ async def booking_capacity():
 class Publication(CleanModel):
     expected_version: StrictInt=Field(ge=1)
     enabled: StrictBool
+    restore_previous: StrictBool=False
 
 
 class PublicBooking(CleanModel):
@@ -97,12 +99,13 @@ def signing_key():
     return hmac.new(raw.encode(),b'orion-public-quotes:v1',hashlib.sha256).digest()
 
 
-def issue_quote(slug,professional,day,selection,now=None):
+def issue_quote(slug,professional,day,selection,now=None,*,publication_version=None):
     stamp=int((now or datetime.now(UTC)).timestamp())
     multi='service_ids' in selection
     value={'v':2 if multi else 1,'slug':slug,'professional':str(professional),
            'day':day.isoformat(),'fingerprint':selection['fingerprint'],
            'expires':stamp+600,'nonce':secrets.token_hex(16)}
+    if publication_version is not None:value['publication_version']=publication_version
     if multi:
         value['services']=[str(x) for x in selection['service_ids']]
     else:
@@ -121,6 +124,7 @@ def read_quote(token,slug,now=None):
         value=json.loads(base64.urlsafe_b64decode(raw+b'='*((-len(raw))%4)))
         stamp=int((now or datetime.now(UTC)).timestamp())
         if value['v'] not in (1,2) or value['slug']!=slug or not re.fullmatch(r'[0-9a-f]{32}',value['nonce']):raise ValueError()
+        if 'publication_version' in value and (type(value['publication_version']) is not int or value['publication_version']<1):raise ValueError()
         if not isinstance(value['expires'],int) or value['expires']<=stamp or value['expires']>stamp+600:
             raise HTTPException(409,'O resumo expirou. Selecione novamente o horário')
         if not isinstance(value['fingerprint'],str) or not re.fullmatch(r'[0-9a-f]{64}',value['fingerprint']):
@@ -165,7 +169,9 @@ async def resolve_public(slug):
 
 async def published_guard(db,tenant,slug):
     row=(await db.execute(text("""SELECT p.*,t.timezone,t.status FROM management_site_preferences p
-        JOIN tenants t ON t.id=p.tenant_id WHERE p.tenant_id=:tenant AND p.public_slug=:slug
+        JOIN tenants t ON t.id=p.tenant_id WHERE p.tenant_id=:tenant
+        AND EXISTS (SELECT 1 FROM public_site_slugs r WHERE r.tenant_id=p.tenant_id
+                    AND r.slug=:slug AND r.kind IN ('canonical','alias'))
         AND p.public_enabled AND t.status='active' FOR SHARE OF p"""),{'tenant':tenant,'slug':slug})).mappings().one_or_none()
     if row is None:raise HTTPException(404,'Página indisponível')
     return dict(row)
@@ -188,7 +194,7 @@ async def confirmed_public_replay(db,tenant,quote,payload):
     # changed after the first response was lost. The signed nonce, professional,
     # selected instant and normalized contact must still match this operation.
     row=(await db.execute(text("""SELECT a.id,a.professional_id,a.start_at,a.end_at,a.status,a.protocol,
-        a.total_cents,a.updated_at,c.whatsapp_e164,p.name AS professional,t.timezone
+        a.total_cents,a.updated_at,a.created_at,c.whatsapp_e164,p.name AS professional,t.timezone
         FROM appointments a JOIN customers c ON c.tenant_id=a.tenant_id AND c.id=a.customer_id
         JOIN professionals p ON p.tenant_id=a.tenant_id AND p.id=a.professional_id
         JOIN tenants t ON t.id=a.tenant_id
@@ -207,11 +213,23 @@ async def confirmed_public_replay(db,tenant,quote,payload):
         snapshot=item['catalog_snapshot'] or {}
         if snapshot.get('kind')=='variant':services.extend(x['name'] for x in snapshot.get('items',[]))
         else:services.append(item['name_snapshot'])
+    # Replays keep the visual contract in force when this booking was created,
+    # even after a later publication or an unpublished operational rename.
+    if 'publication_version' in quote:
+        snapshot=(await db.execute(text("""SELECT snapshot FROM public_site_publications
+            WHERE tenant_id=:tenant AND version=:version AND action IN ('publish','restore')"""),
+            {'tenant':tenant,'version':quote['publication_version']})).scalar_one_or_none()
+    else:
+        snapshot=(await db.execute(text("""SELECT snapshot FROM public_site_publications
+            WHERE tenant_id=:tenant AND action IN ('publish','restore') AND published_at<=:stamp
+            ORDER BY version DESC LIMIT 1"""),{'tenant':tenant,'stamp':row['created_at']})).scalar_one_or_none()
+    ids=quote['services'] if quote['v']==2 else [quote['service'],*quote['addons']]
+    labels=published_booking_labels({'public_snapshot':snapshot},quote['professional'],[{'id':item} for item in ids])
     await record_public_booking(db,tenant,row['id'],row['timezone'],row['updated_at'])
     return {'status':row['status'],'protocol':row['protocol'],'start_at':row['start_at'],'end_at':row['end_at'],
             'price_cents':row['total_cents'],
             'price_mode':'from' if any(x['price_mode_snapshot']=='from' for x in items) else 'fixed',
-            'timezone':row['timezone'],'professional':row['professional'],'services':services}
+            'timezone':row['timezone'],**(labels or {'professional':row['professional'],'services':services})}
 
 
 def public_opening_hours(entries):
@@ -311,24 +329,55 @@ async def catalogue(db,tenant,*,preview=False):
         WHERE ps.tenant_id=:tenant AND p.active AND p.accepts_appointments AND s.active AND s.catalog_kind<>'variant'"""),{'tenant':tenant})).mappings().all()
     addons=(await db.execute(text("""SELECT a.base_service_id,a.addon_service_id,a.add_duration,a.sort_order,s.name,s.price_cents,s.price_mode,s.duration_min
         FROM service_addons a JOIN services s ON s.tenant_id=a.tenant_id AND s.id=a.addon_service_id
-        WHERE a.tenant_id=:tenant AND s.active ORDER BY a.base_service_id,a.sort_order"""),{'tenant':tenant})).mappings().all()
+        WHERE a.tenant_id=:tenant AND s.active ORDER BY a.base_service_id,a.sort_order,a.addon_service_id"""),{'tenant':tenant})).mappings().all()
+    # One bounded query for all combinations, instead of one query per combo.
+    package_ids=[row['package_id'] for row in services if row['package_id']]
+    components=(await db.execute(text("""SELECT i.package_id,i.service_id,s.name,s.duration_min,i.item_order
+        FROM service_package_items i JOIN services s ON s.tenant_id=i.tenant_id AND s.id=i.service_id
+        WHERE i.tenant_id=:tenant AND i.package_id=ANY(CAST(:packages AS uuid[]))
+        ORDER BY i.package_id,i.item_order"""),{'tenant':tenant,'packages':package_ids})).mappings().all() if package_ids else []
+    by_package={}
+    for component in components:
+        by_package.setdefault(component['package_id'],[]).append({key:value for key,value in component.items() if key!='package_id'})
+    by_service={};by_addon={}
+    for link in links:by_service.setdefault(link['service_id'],[]).append(link['professional_id'])
+    for addon in addons:by_addon.setdefault(addon['base_service_id'],[]).append(addon)
     public_services=[]
     for row in services:
         item={key:value for key,value in row.items() if key!='package_id'}
-        item['professional_ids']=[x['professional_id'] for x in links if x['service_id']==row['id']]
+        item['professional_ids']=by_service.get(row['id'],[])
         item['addons']=[{**{key:value for key,value in x.items() if key!='base_service_id'},
-                         'professional_ids':[link['professional_id'] for link in links if link['service_id']==x['addon_service_id']]}
-                        for x in addons if x['base_service_id']==row['id']]
+                         'professional_ids':by_service.get(x['addon_service_id'],[])}
+                        for x in by_addon.get(row['id'],[])]
         if row['package_id']:
-            item['components']=[dict(x) for x in (await db.execute(text("""SELECT i.service_id,s.name,s.duration_min,i.item_order
-                FROM service_package_items i JOIN services s ON s.tenant_id=i.tenant_id AND s.id=i.service_id
-                WHERE i.tenant_id=:tenant AND i.package_id=:package ORDER BY i.item_order"""),
-                {'tenant':tenant,'package':row['package_id']})).mappings().all()]
+            item['components']=by_package.get(row['package_id'],[])
         public_services.append(item)
-    return {'site':preference,'services':public_services,'professionals':[dict(x) for x in professionals],
+    result={'site':preference,'services':public_services,'professionals':[dict(x) for x in professionals],
             'opening_hours':public_hours,'timezone':shop['timezone'],'booking_horizon_days':shop['booking_horizon_days'],
             'today':datetime.now(ZoneInfo(shop['timezone'])).date().isoformat(),'preview':preview,
             'published':bool(site and site['public_enabled']), 'booking_enabled':not preview and bool(site and site['public_enabled'])}
+    return result if preview else project_catalogue_visuals(result,(site or {}).get('public_snapshot'))
+
+
+def check_published_selection(site,professional,services,addons=(),components=None):
+    """A guessed ID cannot book an entity absent from the published visual version."""
+    saved=(site.get('public_snapshot') or {}).get('_catalogue')
+    if not isinstance(saved,dict):return
+    people={str(item['id']) for item in saved.get('professionals',[])}
+    available={str(item['id']):item for item in saved.get('services',[])}
+    if str(professional) not in people or any(str(item) not in available for item in services):
+        raise HTTPException(422,'Seleção indisponível no site publicado. Consulte os serviços novamente')
+    if addons:
+        allowed={str(item['addon_service_id']) for item in available[str(services[0])].get('addons',[])}
+        if any(str(item) not in allowed for item in addons):
+            raise HTTPException(422,'Adicional indisponível no site publicado')
+    if components is not None:
+        for service in services:
+            expected=[str(part['service_id']) for part in available[str(service)].get('components',[])]
+            actual=[str(part['service_id']) for part in components
+                    if str(part.get('combo_id',services[0]))==str(service)]
+            if actual!=expected:
+                raise HTTPException(409,'A composição do combo mudou e aguarda publicação. Selecione outro serviço')
 
 
 @router.get('/api/v1/public/sites/{slug}')
@@ -348,40 +397,8 @@ async def preview_catalogue(tenant_id:UUID,actor:Actor=Depends(authenticate)):
 
 @router.post('/api/v1/tenants/{tenant_id}/management/site/publication')
 async def publish_site(tenant_id:UUID,payload:Publication,actor:Actor=Depends(authenticate)):
-    access=await resolve_tenant_access(actor,tenant_id,'publish')
-    if access.role!='owner':raise HTTPException(403,'Somente o proprietário pode publicar ou retirar este site')
-    if payload.enabled:
-        signing_key()
-        cache=_redis()
-        try:await cache.ping()
-        except (RedisError,OSError):raise HTTPException(503,'Agendamento temporariamente indisponível') from None
-        finally:await cache.aclose()
-    try:
-      async with get_session_factory()() as db:
-        async with tenant_transaction(db,tenant_id):
-            existing=(await db.execute(text('SELECT * FROM management_site_preferences WHERE tenant_id=:tenant FOR UPDATE'),{'tenant':tenant_id})).mappings().one_or_none()
-            if not existing or existing['version']!=payload.expected_version:raise HTTPException(409,'As preferências mudaram. Salve e atualize antes de publicar')
-            if payload.enabled:
-                from app.onboarding_service import require_operational_ready
-                await require_operational_ready(db,tenant_id,'public_site')
-                if not existing['slug'] or not existing['title'].strip():raise HTTPException(422,'Defina o nome público e o endereço do site antes de publicar')
-                content=await catalogue(db,tenant_id,preview=True)
-                hours=(await db.execute(text("""SELECT 1 FROM working_hours h JOIN professionals p ON p.tenant_id=h.tenant_id AND p.id=h.professional_id
-                    WHERE h.tenant_id=:tenant AND p.active AND p.accepts_appointments LIMIT 1"""),{'tenant':tenant_id})).scalar_one_or_none()
-                if not content['services'] or not hours:raise HTTPException(422,'Cadastre serviços, profissionais e horários para abrir o agendamento')
-            version=(await db.execute(text("""UPDATE management_site_preferences SET public_enabled=:enabled,
-                public_enabled_at=CASE WHEN :enabled THEN now() ELSE public_enabled_at END,
-                public_slug=CASE WHEN :enabled THEN :slug ELSE public_slug END,
-                public_snapshot=CASE WHEN :enabled THEN CAST(:snapshot AS jsonb) ELSE public_snapshot END,
-                version=version+1,updated_at=now() WHERE tenant_id=:tenant RETURNING version"""),
-                {'tenant':tenant_id,'enabled':payload.enabled,'slug':existing['slug'],
-                 'snapshot':json.dumps({key:existing[key] for key in PUBLIC_FIELDS})})).scalar_one()
-            await audit(db,tenant_id,'site_published' if payload.enabled else 'site_unpublished','management_site_preferences',tenant_id)
-            return {'published':payload.enabled,'public_enabled':payload.enabled,'version':version,
-                    'public_url':'/s/'+existing['slug'] if payload.enabled else None,'preview_url':f'/app/site-preview/{tenant_id}',
-                    'has_unpublished_changes':False}
-    except IntegrityError:
-        raise HTTPException(409,'Este endereço público já está em uso. Escolha outro endereço e salve') from None
+    from app.site_publication import apply_publication
+    return await apply_publication(tenant_id,payload,actor)
 
 
 async def multi_service_contract(db,tenant,service_ids,professional,*,lock=False):
@@ -435,7 +452,7 @@ async def multi_service_contract(db,tenant,service_ids,professional,*,lock=False
     if (aggregate['duration_min']>1440 or aggregate['prep_min']>240 or
             aggregate['cleanup_min']>240 or aggregate['price_cents']>100_000_000):
         raise HTTPException(422,'Esta combinação ultrapassa os limites da agenda')
-    return {'service_ids':service_ids,'items':items,'aggregate':aggregate,'shop':shop,
+    return {'service_ids':service_ids,'items':items,'aggregate':aggregate,'shop':shop,'components':[dict(x) for x in components],
             'fingerprint':digest({'items':items,'shop':shop,'components':[dict(x) for x in components],
                                   'kinds':[(str(x),kinds[x]) for x in service_ids]})}
 
@@ -448,7 +465,8 @@ async def public_availability(slug:str,request:Request,professional_id:UUID,day:
     tenant=await resolve_public(slug)
     async with get_session_factory()() as db:
         async with tenant_transaction(db,tenant):
-            await published_guard(db,tenant,slug)
+            published=await published_guard(db,tenant,slug)
+            check_published_selection(published,professional_id,service_ids or [service_id],addon_ids)
             if service_ids:
                 if service_id is not None or addon_ids:
                     raise HTTPException(422,'Escolha serviços completos ou um serviço com adicionais')
@@ -456,17 +474,19 @@ async def public_availability(slug:str,request:Request,professional_id:UUID,day:
             else:
                 if service_id is None:raise HTTPException(422,'Selecione um serviço')
                 selection=await selection_contract(db,tenant,service_id,addon_ids,professional_id)
+            check_published_selection(published,professional_id,service_ids or [service_id],addon_ids,selection['components'])
             zone=ZoneInfo(selection['shop']['timezone']);now=datetime.now(UTC);local_now=now.astimezone(zone)
             if day<local_now.date() or day>local_now.date()+timedelta(days=selection['shop']['booking_horizon_days']):
                 raise HTTPException(422,'Data fora do período disponível')
             slots,availability_reason=await verified_slot_grid(
                 db,tenant,professional_id,selection['shop'],[selection['aggregate']],
                 day,now,strict_errors=True)
-            quote=issue_quote(slug,professional_id,day,selection,now) if slots else None
+            quote=issue_quote(slug,professional_id,day,selection,now,publication_version=published['public_version']) if slots else None
             return {'slots':slots,'availability_reason':availability_reason,'timezone':selection['shop']['timezone'],'price_cents':selection['aggregate']['price_cents'],
                     'price_mode':selection['aggregate']['price_mode'],
                     'duration_min':selection['aggregate']['duration_min'],'quote':quote,'expires_in':600 if quote else None,
-                    'services':[x['name'] for x in selection['items']]}
+                    'services':(published_booking_labels(published,professional_id,selection['items']) or
+                                {'services':[x['name'] for x in selection['items']]})['services']}
 
 
 @router.post('/api/v1/public/sites/{slug}/appointments',status_code=201)
@@ -477,18 +497,23 @@ async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=D
     await public_limit(request,slug,'booking-ip',12,3600)
     await public_limit(request,slug,'booking-contact',4,3600,subject=payload.customer_phone)
     tenant=await resolve_public(slug)
+    # Aliases belong to one establishment: old links must not multiply quotas.
+    await public_limit(request,'tenant:'+str(tenant),'booking-ip',12,3600)
+    await public_limit(request,'tenant:'+str(tenant),'booking-contact',4,3600,subject=payload.customer_phone)
     hold=None
     try:
         # Prepare a managed variant in its own transaction so the unchanged
         # engine can read it. No customer or appointment exists at this stage.
         async with get_session_factory()() as db:
             async with tenant_transaction(db,tenant):
-                await published_guard(db,tenant,slug)
+                published=await published_guard(db,tenant,slug)
                 replay=await confirmed_public_replay(db,tenant,quote,payload)
                 if replay is not None:return replay
+                check_published_selection(published,quote['professional'],quote['services'] if quote['v']==2 else [quote['service']],quote.get('addons',[]))
                 selection=(await multi_service_contract(db,tenant,quote['services'],quote['professional'])
                            if quote['v']==2 else
                            await selection_contract(db,tenant,quote['service'],quote['addons'],quote['professional']))
+                check_published_selection(published,quote['professional'],quote['services'] if quote['v']==2 else [quote['service']],quote.get('addons',[]),selection['components'])
                 if not hmac.compare_digest(selection['fingerprint'],quote['fingerprint']):raise HTTPException(409,'Serviços ou preços mudaram. Confira um novo resumo')
                 engine_services=(selection['service_ids'] if quote['v']==2
                                  else [await ensure_selection_service(db,tenant,selection)])
@@ -496,10 +521,12 @@ async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=D
         # performs its own locked hold/confirmation transactions.
         async with get_session_factory()() as guard:
             async with tenant_transaction(guard,tenant):
-                await published_guard(guard,tenant,slug)
+                published=await published_guard(guard,tenant,slug)
+                check_published_selection(published,quote['professional'],quote['services'] if quote['v']==2 else [quote['service']],quote.get('addons',[]))
                 selection=(await multi_service_contract(guard,tenant,quote['services'],quote['professional'],lock=True)
                            if quote['v']==2 else
                            await selection_contract(guard,tenant,quote['service'],quote['addons'],quote['professional'],lock=True))
+                check_published_selection(published,quote['professional'],quote['services'] if quote['v']==2 else [quote['service']],quote.get('addons',[]),selection['components'])
                 if not hmac.compare_digest(selection['fingerprint'],quote['fingerprint']):raise HTTPException(409,'Serviços ou preços mudaram. Confira um novo resumo')
                 zone=ZoneInfo(selection['shop']['timezone'])
                 if payload.start_at.astimezone(zone).date()!=quote['day']:raise HTTPException(422,'O horário não pertence ao dia escolhido')
@@ -508,10 +535,18 @@ async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=D
                                                 payload.customer_name,payload.start_at,'public:'+quote['nonce'],source='public_site')
                     result=await confirm_hold(engine,tenant,hold['id'],customer_phone=payload.customer_phone,source='public_site')
                 await record_public_booking(guard,tenant,result['id'],selection['shop']['timezone'])
+                visual_site=published
+                if quote.get('publication_version',published['public_version'])!=published['public_version']:
+                    previous=(await guard.execute(text("""SELECT snapshot FROM public_site_publications
+                        WHERE tenant_id=:tenant AND version=:version AND action IN ('publish','restore')"""),
+                        {'tenant':tenant,'version':quote['publication_version']})).scalar_one_or_none()
+                    if previous is not None:visual_site={'public_snapshot':previous}
+                labels=published_booking_labels(visual_site,quote['professional'],selection['items']) or {
+                    'professional':selection['shop']['professional_name'],'services':[x['name'] for x in selection['items']]}
                 return {'status':result['status'],'protocol':result['protocol'],'start_at':result['start_at'],'end_at':result['end_at'],
                         'price_cents':result['total_cents'],
                         'price_mode':result['price_mode'],'timezone':selection['shop']['timezone'],
-                        'professional':selection['shop']['professional_name'],'services':[x['name'] for x in selection['items']]}
+                        **labels}
     except (HTTPException,IntegrityError) as exc:
         # A hold left by a failed confirmation expires through the engine's
         # normal five-minute lease. Never race a parallel confirmed replay with
@@ -549,10 +584,19 @@ async def public_page(slug:str,request:Request):
     async with get_session_factory()() as db:
         async with tenant_transaction(db,tenant):
             site=await published_guard(db,tenant,slug)
+            if site['public_slug']!=slug:
+                return RedirectResponse('/s/'+checked_slug(site['public_slug']),status_code=308,headers=HEADERS)
+            try:
+                rendered,schema_hash=public_html((STATIC/'orion-public.html').read_text(encoding='utf-8'),
+                                                site['public_snapshot'] or {},site['public_slug'])
+            except ValueError:
+                raise HTTPException(503,'Página temporariamente indisponível') from None
             await db.execute(text("""INSERT INTO public_site_daily_metrics (tenant_id,day,visits)
                 VALUES (:tenant,CAST(now() AT TIME ZONE :zone AS date),1)
                 ON CONFLICT (tenant_id,day) DO UPDATE SET visits=public_site_daily_metrics.visits+1"""),{'tenant':tenant,'zone':site['timezone']})
-    return FileResponse(STATIC/'orion-public.html',headers=HEADERS)
+    headers={**HEADERS,'Content-Security-Policy':HEADERS['Content-Security-Policy'].replace(
+        "script-src 'self'", "script-src 'self' 'sha256-"+schema_hash+"'")}
+    return HTMLResponse(rendered,headers=headers)
 
 
 @router.get('/app/site-preview/{tenant_id}',include_in_schema=False)

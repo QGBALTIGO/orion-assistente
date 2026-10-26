@@ -85,7 +85,7 @@ async def public_db(monkeypatch):
                    'base':f"/api/v1/tenants/{ids['a']}/management",'public':f'/api/v1/public/sites/{slug}'}
     finally:
         async with migrator.begin() as db:
-            for table in ('public_booking_receipts','public_site_daily_metrics','loyalty_redemptions','loyalty_appointment_awards','loyalty_transactions','loyalty_coupons','commission_advance_allocations','commission_settlements','financial_entries',
+            for table in ('public_site_publications','public_site_slugs','public_booking_receipts','public_site_daily_metrics','loyalty_redemptions','loyalty_appointment_awards','loyalty_transactions','loyalty_coupons','commission_advance_allocations','commission_settlements','financial_entries',
                           'calendar_outbox','appointment_history','appointment_items','appointments','customers',
                           'service_package_items','service_addons','service_packages','management_site_preferences','working_breaks','working_hours','schedule_blocks','time_off','professional_services','services','professionals','usage_counters','tenant_audit','tenant_memberships'):
                 if (await db.execute(text('SELECT to_regclass(:table)'),{'table':table})).scalar_one():
@@ -215,7 +215,8 @@ async def test_owner_snapshot_publication_draft_isolation_and_no_private_fields(
     assert (await c.get('/api/v1/public/sites/'+new_slug)).status_code==404
     renewed=await publish(d)
     assert renewed['public_url']=='/s/'+new_slug
-    assert (await c.get(d['public'])).status_code==404
+    # Previously shared addresses remain this company's aliases after a rename.
+    assert (await c.get(d['public'])).json()['site']['title']=='Rascunho ainda privado'
     assert (await c.get('/api/v1/public/sites/'+new_slug)).json()['site']['title']=='Rascunho ainda privado'
     async with d['migrator'].begin() as db:
         await db.execute(text('UPDATE tenant_memberships SET active=false WHERE account_id=:id'),{'id':d['owner']})
@@ -285,7 +286,9 @@ async def test_concurrent_public_combo_addon_single_slot_and_immutable_compositi
 @pytest.mark.asyncio
 async def test_stale_quote_disabled_site_and_unavailable_professional_fail_closed(public_db):
     d=public_db;c=d['client'];publication=await publish(d)
-    item,_=await combo(d);quoted=await availability(d,UUID(item['synthetic_service_id']))
+    item,_=await combo(d)
+    publication=await publish(d)  # A new public catalogue item requires owner publication.
+    quoted=await availability(d,UUID(item['synthetic_service_id']))
     async with d['migrator'].begin() as db:
         await db.execute(text('UPDATE services SET name=\'Nome alterado\' WHERE id=:id'),{'id':d['beard']})
     stale=await c.post(d['public']+'/appointments',json=book_body(quoted))
@@ -352,8 +355,9 @@ async def test_real_redis_atomic_quota_publication_and_booking(public_db,monkeyp
         # Delete only this synthetic tenant's finite, known test counters.
         import hashlib
         for category,peer in (('atomic-test','127.0.0.1'),('availability','127.0.0.1'),('booking-ip','127.0.0.1'),('booking-contact','+5511987654321')):
-            key='orion:public-limit:'+category+':'+hashlib.sha256((d['slug']+'|'+peer).encode()).hexdigest()
-            await cache.delete(key)
+            for scope in (d['slug'],'tenant:'+str(d['a'])):
+                key='orion:public-limit:'+category+':'+hashlib.sha256((scope+'|'+peer).encode()).hexdigest()
+                await cache.delete(key)
         await cache.aclose()
 
 
@@ -463,6 +467,7 @@ async def test_public_custom_selection_rejects_duplicates_incompatible_staff_and
     assert (await query([d['cut'],d['wash']],addons=[d['beard']])).status_code==422
     assert (await query([d['cut'],d['wash']],pro=d['pro'])).json()['slots']
     registered,_=await combo(d)
+    await publish(d)
     combo_id=UUID(registered['synthetic_service_id'])
     assert (await query([combo_id,d['cut']])).status_code==422
     mixed=await query([combo_id,d['wash']])

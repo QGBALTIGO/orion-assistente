@@ -111,7 +111,7 @@ def qualification_server():
         port = listener.getsockname()[1]
     origin = f"https://127.0.0.1:{port}"
     # Do not inherit provider credentials, public deployment URLs or email flags.
-    env = {k: v for k, v in os.environ.items() if k in {"PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "HOME", "LANG", "LC_ALL"}}
+    env = {k: v for k, v in os.environ.items() if k.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "HOME", "LANG", "LC_ALL"}}
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", secrets.token_bytes(32), salt, 200_000)
     env.update({

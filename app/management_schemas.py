@@ -314,6 +314,15 @@ class SitePreferences(CleanModel):
 class SiteSave(SitePreferences):
     expected_version: StrictInt = Field(ge=0)
 
+    @field_validator("slug")
+    @classmethod
+    def public_address(cls, value):
+        if value is not None:
+            from app.site_publication import RESERVED_SLUGS
+            if value in RESERVED_SLUGS:
+                raise ValueError("Este endereço é reservado. Escolha outro identificador")
+        return value
+
 
 class MarketingFields(CleanModel):
     name: str = Field(min_length=1, max_length=120)

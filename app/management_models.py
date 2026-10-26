@@ -542,16 +542,25 @@ async def site(db, tenant_id):
     if isinstance(snapshot, dict):
         for key in ("amenity_wifi", "amenity_parking", "amenity_accessibility", "amenity_children"):
             snapshot.setdefault(key, False)
+    has_changes = bool(snapshot and draft != {field: snapshot.get(field) for field in PUBLIC_FIELDS})
+    if snapshot and snapshot.get("_catalogue") is not None and not has_changes:
+        from app.public_site_api import catalogue
+        from app.public_site_rendering import visual_catalogue_fingerprint
+        current_catalogue = await catalogue(db, tenant_id, preview=True)
+        has_changes = visual_catalogue_fingerprint(current_catalogue) != visual_catalogue_fingerprint(snapshot["_catalogue"])
     return {**result, "published": published, "public_enabled": published,
             "public_url": f"/s/{result['public_slug']}" if published and result.get("public_slug") else None,
             "preview_url": f"/app/site-preview/{tenant_id}",
-            "has_unpublished_changes": bool(row and draft != snapshot)}
+            "has_unpublished_changes": has_changes}
 
 
 async def save_site(db, tenant_id, values, expected_version):
+    from app.site_publication import reserve_slug, release_unused_drafts, enable_publication_writer
     allowed = set(SitePreferences.model_fields)
     if set(values) != allowed:
         raise ValueError("Incomplete site preference values")
+    await enable_publication_writer(db)
+    await reserve_slug(db, tenant_id, values["slug"])
     columns = list(values)
     if expected_version == 0:
         row = (await db.execute(text("INSERT INTO management_site_preferences (tenant_id," + ",".join(columns) +
@@ -563,6 +572,7 @@ async def save_site(db, tenant_id, values, expected_version):
             {"tenant": tenant_id, "expected": expected_version, **values})).mappings().one_or_none()
     if row is None:
         raise HTTPException(409, "As preferências foram alteradas. Atualize antes de salvar")
+    await release_unused_drafts(db, tenant_id, values["slug"])
     await audit(db, tenant_id, "site_preferences_saved", "management_site_preferences", tenant_id)
     return await site(db, tenant_id)
 

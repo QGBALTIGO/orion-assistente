@@ -1,5 +1,6 @@
 """Resolve account membership on the server; a customer/model never selects authority."""
 from dataclasses import dataclass
+from contextlib import asynccontextmanager
 import os
 from uuid import UUID
 
@@ -41,3 +42,35 @@ async def resolve_tenant_access(actor, tenant_id: UUID, operation: str = "read")
         row = await account_membership_role(session, account_id, tenant_id)
     check_access(row, operation)
     return TenantAccess(row, account_id)
+
+
+async def resolve_site_access(actor, tenant_id: UUID) -> TenantAccess:
+    """Platform privileges are diagnostic, never publication authority.
+
+    The same administrator may also own their one demonstration business. Only
+    a current, explicit owner membership gives that identity publication rights.
+    Other tenant APIs retain their existing support/admin permission contract.
+    """
+    access = await resolve_tenant_access(actor, tenant_id)
+    if access.role in {"admin", "support"} and isinstance(access.account_id, UUID):
+        from app.catalog_api import support_session_factory
+        async with support_session_factory()() as db:
+            membership = await account_membership_role(db, access.account_id, tenant_id)
+        if membership == "owner":
+            return TenantAccess("owner", access.account_id)
+    return access
+
+
+@asynccontextmanager
+async def site_publication_access(actor, tenant_id: UUID):
+    """Keep an actual owner membership valid through the publication commit."""
+    access = await resolve_site_access(actor, tenant_id)
+    if access.role == "owner" and isinstance(access.account_id, UUID):
+        from app.catalog_api import support_session_factory
+        async with support_session_factory()() as db:
+            async with db.begin():
+                if await account_membership_role(db, access.account_id, tenant_id, lock=True) != "owner":
+                    raise HTTPException(403, "Seu acesso não permite publicar este site")
+                yield access
+    else:
+        yield access

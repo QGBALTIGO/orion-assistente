@@ -274,7 +274,7 @@ async def selection_contract(db, tenant, base_id, addon_ids, professional, *, lo
         **{key:sum(x[key] for x in quoted if x['add_duration']) for key in ('duration_min','prep_min','cleanup_min')}}
     if aggregate['duration_min']>1440 or aggregate['prep_min']>240 or aggregate['cleanup_min']>240 or aggregate['price_cents']>100_000_000:
         raise HTTPException(422,"Esta combinação ultrapassa os limites da agenda")
-    return {"base_id":base_id,"addon_ids":ids[1:],"items":quoted,"aggregate":aggregate,"shop":shop,
+    return {"base_id":base_id,"addon_ids":ids[1:],"items":quoted,"aggregate":aggregate,"shop":shop,"components":components,
             "fingerprint":digest({"items":quoted,"components":components,"options":[dict(x) for x in options],"shop":shop}),
             "selection_key":digest({"base":base_id,"addons":[(x,flags[x]) for x in ids[1:]]})}
 
