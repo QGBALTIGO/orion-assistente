@@ -1612,19 +1612,20 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 
 /* Preços de serviços — os controles respeitam os tokens e o formulário atual do Orion. */
 #osDialog .os-service-price-modes{min-width:0;margin:0;padding:0;border:0}
-#osDialog .os-service-price-modes>legend{display:block;margin-bottom:9px;font:600 13px/20px var(--os-font);color:var(--os-text)}
-#osDialog .os-service-price-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;min-width:0}
-#osDialog .os-service-price-choice{position:relative;box-sizing:border-box;display:flex;align-items:center;gap:9px;min-height:61px;min-width:0;margin:0;padding:10px 12px;border:1px solid var(--os-border);border-radius:13px;background:var(--os-card);cursor:pointer;transition:border-color .16s,background .16s}
+#osDialog .os-service-price-modes>legend{display:block;margin-bottom:7px;font:600 13px/18px var(--os-font);color:var(--os-text)}
+#osDialog .os-service-price-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;min-width:0}
+#osDialog .os-service-price-choice{position:relative;box-sizing:border-box;display:flex;align-items:center;gap:7px;min-height:46px;min-width:0;margin:0;padding:6px 9px;border:1px solid var(--os-border);border-radius:11px;background:var(--os-card);cursor:pointer;transition:border-color .16s,background .16s}
 #osDialog .os-service-price-choice:has(input:checked){border-color:var(--os-primary);background:var(--os-tint)}
 #osDialog .os-service-price-choice:focus-within{outline:2px solid color-mix(in srgb,var(--os-primary) 36%,transparent);outline-offset:2px}
-#osDialog .os-service-price-choice input{flex:0 0 16px;width:16px!important;height:16px;accent-color:var(--os-primary);margin:0}
-#osDialog .os-service-price-choice span{display:grid;gap:3px;min-width:0}
-#osDialog .os-service-price-choice strong{font:600 12px/18px var(--os-font);color:var(--os-text)}
-#osDialog .os-service-price-choice small{font:400 11px/17px var(--os-font);color:var(--os-muted)}
-#osDialog #osServicePriceModeHint{margin:8px 0 0;color:var(--os-muted);font:400 12px/19px var(--os-font)}
+#osDialog .os-service-price-choice input{appearance:none;-webkit-appearance:none;box-sizing:border-box;display:block;flex:0 0 15px;width:15px!important;min-width:15px;height:15px!important;min-height:15px!important;margin:0;padding:0;border:2px solid var(--os-muted);border-radius:50%;background:var(--os-card);box-shadow:none;cursor:pointer}
+#osDialog .os-service-price-choice input:checked{border-color:var(--os-primary);background:var(--os-primary);box-shadow:inset 0 0 0 3px var(--os-card)}
+#osDialog .os-service-price-choice span{display:grid;gap:1px;min-width:0}
+#osDialog .os-service-price-choice strong{font:600 12px/17px var(--os-font);color:var(--os-text)}
+#osDialog .os-service-price-choice small{font:400 10px/14px var(--os-font);color:var(--os-muted)}
+#osDialog #osServicePriceModeHint{margin:6px 0 0;color:var(--os-muted);font:400 11px/17px var(--os-font)}
 #osDialog .os-appointment-variable-price{box-sizing:border-box;display:grid;gap:11px;min-width:0;padding:14px;border:1px solid var(--os-border);border-radius:13px;background:color-mix(in srgb,var(--os-tint) 15%,var(--os-card))}
 #osDialog .os-appointment-variable-price>h3{margin:0;font:600 15px/22px var(--os-display);color:var(--os-text)}
 #osDialog .os-appointment-variable-price>p{margin:0;font:400 12px/20px var(--os-font);color:var(--os-muted)}
 #osDialog .os-appointment-variable-price .os-field{margin:0}
-@media(max-width:359px){#osDialog .os-service-price-choices{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:359px){#osDialog .os-service-price-choices{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#osDialog .os-service-price-choice{padding:6px 7px;gap:6px}#osDialog .os-service-price-choice strong{font-size:11px}}
 @media(prefers-reduced-motion:reduce){#osDialog .os-service-price-choice{transition:none}}

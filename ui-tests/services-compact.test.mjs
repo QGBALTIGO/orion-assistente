@@ -192,3 +192,23 @@ test('ativar e reordenar não converte serviço variável para preço fixo',asyn
   assert.ok(touched.every(x=>x.payload.price_mode==='from'));
   assert.equal(h.errors.length,0);
 });
+
+test('seletor de preço mantém duas opções compactas e acessíveis no celular',async()=>{
+  const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
+  const rule=name=>{
+    const start=css.indexOf('#osDialog .'+name+'{');
+    assert.notEqual(start,-1,'Regra CSS ausente: '+name);
+    return css.slice(start,css.indexOf('}',start));
+  };
+  const card=rule('os-service-price-choice'),choices=rule('os-service-price-choices');
+  assert.ok(card.includes('min-height:46px'),'altura compacta sem reduzir a área de toque');
+  assert.ok(card.includes('padding:6px 9px'));
+  assert.ok(card.includes('border-radius:11px'));
+  assert.ok(choices.includes('grid-template-columns:repeat(2,minmax(0,1fr))'));
+  assert.ok(css.includes('#osDialog .os-service-price-choice input{appearance:none;'));
+  assert.ok(css.includes('width:15px!important'),'radio menor e visualmente proporcional');
+  assert.ok(css.includes('#osDialog .os-service-price-choice input:checked{'));
+  assert.ok(css.includes('@media(max-width:359px){#osDialog .os-service-price-choices{grid-template-columns:repeat(2,minmax(0,1fr))'),'duas opções também no iPhone menor');
+  assert.ok(rule('os-service-price-choice small').includes('font:400 10px/14px'));
+  assert.ok(css.includes('#osDialog .os-service-price-choice:focus-within'),'mantém foco acessível');
+});
