@@ -163,3 +163,32 @@ test('nomes longos são texto seguro e metadados sem overflow seguem proporçõe
   assert.match(css,/\.os-service-card \.os-service-grip:focus-visible/);
   assert.equal(h.errors.length,0);
 });
+
+test('valores de serviços distinguem fixo e a partir de sem perder a configuração ao editar',async t=>{
+  const items=sample();items[0].price_mode='from';
+  const {h,writes}=await fixture(t,{items});
+  const first=cards(h)[0];assert.match(first.querySelector('.os-service-meta').textContent,/A partir de R\$\s*45,00/);
+  h.click('[data-os-service="'+ids[0]+'"]');await flush();
+  const form=h.document.querySelector('[data-os-form=service]');
+  assert.equal(form.elements.price_mode.value,'from');
+  assert.match(form.querySelector('[for=osField-price]').textContent,/Valor mínimo/);
+  assert.match(form.querySelector('#osServicePriceModeHint').textContent,/valor final/i);
+  assert.equal(form.querySelectorAll('input[name=price_mode]').length,2);
+  const fixed=form.querySelector('[name=price_mode][value=fixed]');
+  fixed.checked=true;fixed.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  assert.match(form.querySelector('[for=osField-price]').textContent,/Preço/);
+  h.submit('[data-os-form=service]');await flush();
+  assert.equal(writes.length,1);
+  assert.equal(writes[0].payload.price_mode,'fixed');
+  assert.equal(writes[0].payload.price_cents,4500);
+  assert.equal(h.errors.length,0);
+});
+
+test('ativar e reordenar não converte serviço variável para preço fixo',async t=>{
+  const items=sample();items[0].price_mode='from';
+  const {h,writes}=await fixture(t,{items});
+  h.click('[data-os-service-order="'+ids[0]+'"][data-direction="1"]');await flush();
+  const touched=writes.filter(x=>x.id===ids[0]);assert.ok(touched.length);
+  assert.ok(touched.every(x=>x.payload.price_mode==='from'));
+  assert.equal(h.errors.length,0);
+});
