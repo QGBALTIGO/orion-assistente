@@ -102,7 +102,7 @@ test('por serviço grava % e R$ em centavos, preserva seleção e não duplica P
   assert.equal(events[1].action,'plan');
   assert.equal(events[1].data.mode,'per_service');
   assert.equal(events[1].data.expected_version,1);
-  assert.deepEqual(events[1].data.services,[
+  assert.deepEqual(JSON.parse(JSON.stringify(events[1].data.services)),[
     {service_id:cut,kind:'fixed',fixed_cents:1000},
     {service_id:beard,kind:'percent',percent:'12.50'},
   ]);
