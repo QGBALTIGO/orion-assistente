@@ -15,7 +15,8 @@ DATA = {
     "today": "2030-01-07",
     "booking_horizon_days": 60,
     "opening_hours": [
-        {"weekday":day, "intervals": ([{"open":"09:00","close":"18:00"}] if day<5
+        {"weekday":day, "intervals": ([{"open":"09:00","close":"12:00"},
+            {"open":"13:00","close":"18:00"}] if day<5
             else [{"open":"09:00","close":"13:00"}] if day==5 else [])}
         for day in range(7)
     ],
@@ -117,6 +118,9 @@ def test_hero_icons_align_and_share_opens_native_api_without_booking(engine, wid
             assert "Segunda-feira a sexta-feira" in hours.inner_text()
             assert "Sábado" in hours.inner_text() and "Domingo" in hours.inner_text()
             assert "Fechado" in hours.inner_text()
+            assert hours.locator(".hours-row").first.locator(".hours-shift").count()==2
+            assert hours.locator(".hours-row").first.locator(".hours-break").inner_text()=="Intervalo 12:00–13:00"
+            assert page.locator(".map-provider").count()==0,"no duplicate Google Maps overlay"
             frame=page.locator("#location-map")
             frame_box=frame.bounding_box()
             assert frame_box and frame_box["height"]>=200 and frame_box["width"]>=200

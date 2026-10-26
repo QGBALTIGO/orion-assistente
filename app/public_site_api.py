@@ -197,21 +197,52 @@ async def confirmed_public_replay(db,tenant,quote,payload):
 
 
 def public_opening_hours(entries):
-    """Weekly bookable team intervals, without leaking professional IDs.
+    """Actual weekly open intervals across active/bookable professionals.
 
-    Uses 0=Monday like the appointment engine. Merge overlapping intervals
-    but preserve true gaps; dates, breaks and time off remain subject to
-    the actual availability check at booking time.
+    Subtract each professional's registered working_breaks from that
+    professional's shift *before* combining staff availability. This means a
+    lunch closure appears only when no available professional covers it.
+    A break never affects an unrelated professional or another company.
+    Time-off and one-off closures remain checked by the booking engine.
     """
+    shifts = {}
+    for index, entry in enumerate(entries):
+        try:
+            weekday = int(entry["weekday"])
+            start = str(entry["start_time"])[:5]
+            end = str(entry["end_time"])[:5]
+        except (KeyError, TypeError, ValueError):
+            continue
+        if weekday not in range(7) or not (len(start) == len(end) == 5 and start < end):
+            continue
+
+        # An outer-joined working hour appears once for every configured break.
+        # Coalesce those rows before subtracting pauses; otherwise each copy
+        # would independently recreate the full unbroken shift.
+        hour_id = entry.get("working_hour_id")
+        key = hour_id if hour_id is not None else ("single", index)
+        shift = shifts.setdefault(key, {"weekday": weekday,
+                                        "start": start, "end": end, "breaks": set()})
+        break_start, break_end = entry.get("break_start"), entry.get("break_end")
+        if break_start is not None and break_end is not None:
+            begin, finish = str(break_start)[:5], str(break_end)[:5]
+            if len(begin) == len(finish) == 5 and begin < finish:
+                shift["breaks"].add((begin, finish))
+
     per_day = [[] for _ in range(7)]
-    for entry in entries:
-        day = int(entry["weekday"])
-        if day not in range(7):
-            continue
-        start, end = str(entry["start_time"])[:5], str(entry["end_time"])[:5]
-        if not (len(start) == len(end) == 5 and start < end):
-            continue
-        per_day[day].append((start, end))
+    for shift in shifts.values():
+        cursor = shift["start"]
+        finish = shift["end"]
+        for begin, end in sorted(shift["breaks"]):
+            begin = max(begin, shift["start"])
+            end = min(end, finish)
+            if begin >= end:
+                continue
+            if cursor < begin:
+                per_day[shift["weekday"]].append((cursor, begin))
+            cursor = max(cursor, end)
+        if cursor < finish:
+            per_day[shift["weekday"]].append((cursor, finish))
 
     days = []
     for weekday, intervals in enumerate(per_day):
@@ -222,8 +253,8 @@ def public_opening_hours(entries):
             else:
                 merged.append((begin, finish))
         days.append({"weekday": weekday,
-                     "intervals": [{"open": start, "close": finish}
-                                   for start, finish in merged]})
+                     "intervals": [{"open": begin, "close": finish}
+                                   for begin, finish in merged]})
     return days
 
 
@@ -236,12 +267,15 @@ async def catalogue(db,tenant,*,preview=False):
                       show_prices=True if preference['show_prices'] is None else preference['show_prices'])
     professionals=(await db.execute(text("SELECT id,name,specialty,color,image_url FROM professionals WHERE tenant_id=:tenant AND active AND accepts_appointments ORDER BY name,id LIMIT 200"),{'tenant':tenant})).mappings().all()
     working_rows=(await db.execute(text("""
-        SELECT h.weekday,h.start_time,h.end_time
+        SELECT h.id AS working_hour_id,h.weekday,h.start_time,h.end_time,
+               b.start_time AS break_start,b.end_time AS break_end
         FROM working_hours h
         JOIN professionals p
           ON p.tenant_id=h.tenant_id AND p.id=h.professional_id
+        LEFT JOIN working_breaks b
+          ON b.tenant_id=h.tenant_id AND b.working_hour_id=h.id
         WHERE h.tenant_id=:tenant AND p.active AND p.accepts_appointments
-        ORDER BY h.weekday,h.start_time,h.end_time
+        ORDER BY h.weekday,h.start_time,h.end_time,b.start_time
     """), {'tenant':tenant})).mappings().all()
     public_hours=public_opening_hours(working_rows)
     services=(await db.execute(text("""SELECT s.id,s.name,s.description,s.category,s.color,s.image_url,s.sort_order,s.duration_min,s.price_cents,s.price_mode,s.catalog_kind,
