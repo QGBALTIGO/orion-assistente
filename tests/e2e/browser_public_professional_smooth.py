@@ -113,7 +113,10 @@ def test_picker_photo_fill_wrapping_and_no_flicker(browser_type,width,theme):
               window.__dayNodes=[...document.querySelectorAll('#booking-day-strip .day-button')];
             }""")
             page.locator('#booking-day-strip .day-button').nth(1).click()
-            page.locator('#time-slots .slot').wait_for(state='visible')
+            # A prior day's slots remain visible but disabled while updating.
+            # Wait for the *new* list, not merely a visible stale slot element.
+            page.wait_for_function("""() => document.querySelector('#time-slots')?.getAttribute('aria-busy')!=='true'
+                && document.querySelector('#time-slots .slot')?.dataset.slotStart==='2030-01-08T10:15:00-03:00'""")
             assert requests[-1]['day']==['2030-01-08']
             assert page.evaluate("""() => window.__picker===document.querySelector('.professional-picker')
                 && window.__photoNodes.every((image,i)=>image===document.querySelectorAll('.professional-photo img')[i])
@@ -125,7 +128,8 @@ def test_picker_photo_fill_wrapping_and_no_flicker(browser_type,width,theme):
             assert slot.get_attribute('aria-pressed')=='true'
 
             page.locator('.professional-choice').nth(1).click()
-            page.locator('#time-slots .slot').wait_for(state='visible')
+            page.wait_for_function("""() => document.querySelector('#time-slots')?.getAttribute('aria-busy')!=='true'
+                && document.querySelector('#time-slots .slot')?.dataset.slotStart==='2030-01-08T10:15:00-03:00'""")
             assert requests[-1]['professional_id']==[PRO2]
             assert page.evaluate("""() => window.__photoNodes.every((image,i)=>
                 image===document.querySelectorAll('.professional-photo img')[i])""")
