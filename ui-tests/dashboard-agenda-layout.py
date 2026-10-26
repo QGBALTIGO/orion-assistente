@@ -121,7 +121,7 @@ def run(page, width, theme):
     assert page.locator('#osDashboardAgendaContent .os-agenda-item').count()==3
     page.locator('.os-dashboard-finance-values').wait_for(timeout=12000)
     page.locator('#osDashboardGoals [role=progressbar]').wait_for(timeout=12000)
-    assert page.locator('.os-dashboard-finance-value').count()==2
+    assert page.locator('.os-dashboard-finance-value').count()==3
     assert '400,00' in page.locator('#osDashboardGoals').inner_text()
     assert page.locator('#osDashboardGoals [role=progressbar]').get_attribute('aria-valuenow')=='75'
     assert page.locator('.os-dashboard-agenda-head').inner_text().find('Agendamentos de hoje')!=-1

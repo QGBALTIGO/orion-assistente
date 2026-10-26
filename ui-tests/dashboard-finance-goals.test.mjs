@@ -176,3 +176,53 @@ test('Dashboard finance blocks use the shared Orion colors with mobile-specific 
   assert.match(css,/var\(--os-primary\)/);
   assert.match(css,/var\(--os-border\)/);
 });
+
+
+test('large financial figures keep exact cents and do not abbreviate or truncate',async t=>{
+  const max=Number.MAX_SAFE_INTEGER;
+  const h=await suite(t,{summary:{summary:{balance_cents:max,pending_income_cents:max,count:max}}});
+  const cards=[...h.document.querySelectorAll('.os-dashboard-finance-value')];
+  assert.equal(cards.length,3);
+  assert.equal(cards[0].querySelector('strong').textContent,'R$\u00a090.071.992.547.409,91');
+  assert.equal(cards[1].querySelector('strong').textContent,'R$\u00a090.071.992.547.409,91');
+  assert.equal(cards[2].querySelector('strong').textContent,'9.007.199.254.740.991');
+  assert.ok(cards.every(card=>card.querySelector('strong').classList.contains('os-dashboard-finance-extra-long')));
+  assert.ok(cards.every(card=>card.querySelector('strong').title===card.querySelector('strong').textContent));
+  assert.ok(cards.every(card=>!card.querySelector('strong').textContent.includes('…')));
+  assert.equal(h.errors.length,0);
+  assert.deepEqual(writes(h),[]);
+});
+
+test('large negative balance retains sign and last cent without changing receivables',async t=>{
+  const h=await suite(t,{summary:{summary:{
+    balance_cents:-Number.MAX_SAFE_INTEGER,
+    pending_income_cents:123456789012345,
+    count:123456789
+  }}});
+  assert.equal(h.document.querySelector('.os-dashboard-finance-value.os-negative>strong').textContent,
+    '-R$\u00a090.071.992.547.409,91');
+  assert.equal(h.document.querySelector('.os-dashboard-finance-pending>strong').textContent,
+    'R$\u00a01.234.567.890.123,45');
+  assert.equal(h.document.querySelector('.os-dashboard-finance-count>strong').textContent,
+    '123.456.789');
+  assert.equal(h.document.querySelector('.os-dashboard-finance-value.os-positive'),null);
+  assert.deepEqual(writes(h),[]);
+});
+
+test('invalid monetary payload is rejected, never displayed as zero',async t=>{
+  const h=await suite(t,{summary:{summary:{balance_cents:null,count:2,pending_income_cents:250}}});
+  assert.ok(h.document.querySelector('.os-dashboard-finance-error'));
+  assert.equal(h.document.querySelector('.os-dashboard-finance-values'),null);
+  assert.deepEqual(writes(h),[]);
+});
+
+test('responsive finance layout uses named card containers, not asymmetric two-column grid',async()=>{
+  const css=await readFile(new URL('../app/static/orion-suite.css',import.meta.url),'utf8');
+  assert.doesNotMatch(css,/os-dashboard-finance-pending\{grid-column:span 2/);
+  assert.match(css,/@container dashboard-finance \(max-width:840px\)/);
+  assert.match(css,/@container dashboard-finance \(max-width:540px\)/);
+  assert.match(css,/container:dashboard-metric \/ inline-size/);
+  assert.match(css,/\.os-dashboard-finance-values\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(css,/overflow-wrap:anywhere/);
+  assert.doesNotMatch(css,/os-dashboard-finance-amount\{[^}]*text-overflow:ellipsis/);
+});

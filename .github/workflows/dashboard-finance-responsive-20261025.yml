@@ -1,0 +1,55 @@
+name: Orion - Dashboard financeiro responsivo (CI isolada)
+on:
+  push:
+    branches: [main, codex/orion-dashboard-finance-responsive-20261025]
+    paths:
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-suite.css'
+      - 'ui-tests/dashboard-finance-goals.test.mjs'
+      - 'ui-tests/dashboard-agenda-layout.py'
+      - 'ui-tests/dashboard-finance-layout.py'
+      - 'scripts/prepare_vercel_orion.py'
+      - '.github/workflows/dashboard-finance-responsive-20261025.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  financial-dom:
+    name: Valores exatos e contratos do painel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependencias reproduziveis
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Sintaxe e comportamento financeiro
+        run: |
+          node --check app/static/orion-suite.js
+          node --test ui-tests/dashboard-finance-goals.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/dashboard-today-preview.test.mjs
+          python3 scripts/prepare_vercel_orion.py --help >/dev/null
+      - name: Regressao do painel inteiro
+        run: npm test --prefix ui-tests
+  financial-browser:
+    name: 320 a 1600px, Chromium e Safari/WebKit, valores altos
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Navegadores reais
+        run: |
+          python -m pip install 'playwright==1.56.0'
+          python -m playwright install --with-deps chromium webkit
+      - name: Auditar financeiro, agenda e metas
+        run: python ui-tests/dashboard-finance-layout.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: orion-dashboard-finance-responsive
+          path: artifacts/dashboard-finance-responsive/
+          retention-days: 7

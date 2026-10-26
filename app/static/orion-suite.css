@@ -1557,7 +1557,7 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-dashboard-finance-content{min-width:0;padding:0 20px 20px}
 .os-dashboard-finance-content>.os-loading{padding:28px 12px}
 .os-dashboard-finance-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;min-width:0}
-@media(max-width:680px){.os-dashboard-finance-values{grid-template-columns:repeat(2,minmax(0,1fr))}.os-dashboard-finance-pending{grid-column:span 2}}
+/* Column counts are controlled by the Finance card width, not device width. */
 .os-dashboard-finance-value{display:flex;flex-direction:column;min-width:0;gap:9px;padding:18px 17px;border:1px solid var(--os-border);border-radius:15px;background:var(--os-bg)}
 .os-dashboard-finance-label{display:flex;align-items:center;justify-content:space-between;gap:6px;color:var(--os-muted);font-size:13px;line-height:20px}
 .os-dashboard-finance-label>.os-icon{width:18px;height:18px;flex:0 0 18px;color:var(--os-primary)}
@@ -1608,6 +1608,67 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
   .os-dashboard-goals-error>.os-button{width:100%}
 }
 @media(prefers-reduced-motion:reduce){.os-dashboard-goal-track>span{transition:none}}
+
+/* Financial Dashboard: equal-width cards, full values, container-based breakpoints.
+   A tablet with a narrow workspace uses the same coherent compact layout as
+   a narrow browser window; no implicit extra columns or clipped totals. */
+.os-dashboard-finance-values{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  align-items:stretch;gap:12px;min-width:0
+}
+.os-dashboard-finance-value{
+  box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;
+  gap:13px;min-width:0;min-height:112px;padding:17px 16px;
+  border-radius:15px;container:dashboard-metric / inline-size
+}
+.os-dashboard-finance-label{gap:8px;min-width:0;font:500 12px/19px var(--os-font)}
+.os-dashboard-finance-label>span{min-width:0;overflow-wrap:anywhere}
+.os-dashboard-finance-label>.os-icon{width:17px;height:17px;flex:0 0 17px}
+.os-dashboard-finance-value>.os-dashboard-finance-amount{
+  display:block;min-width:0;max-width:100%;margin:0;
+  font:700 clamp(18px,2.1vw,27px)/1.25 var(--os-display);
+  font-size:clamp(18px,7.8cqi,27px);
+  letter-spacing:-.025em;font-variant-numeric:tabular-nums;
+  overflow-wrap:anywhere;word-break:normal;white-space:normal;
+  text-overflow:clip
+}
+.os-dashboard-finance-value>.os-dashboard-finance-amount.os-dashboard-finance-long{
+  font-size:clamp(16px,6.3cqi,23px);
+  letter-spacing:-.035em
+}
+.os-dashboard-finance-value>.os-dashboard-finance-amount.os-dashboard-finance-extra-long{
+  font-size:clamp(14px,5.35cqi,19px);
+  letter-spacing:-.04em
+}
+@container dashboard-finance (max-width:840px){
+  .os-dashboard-finance-values{grid-template-columns:minmax(0,1fr);gap:9px}
+  .os-dashboard-finance-value{
+    display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto);
+    align-items:center;gap:12px;min-height:75px;padding:13px 15px
+  }
+  .os-dashboard-finance-label{justify-content:flex-start;gap:9px}
+  .os-dashboard-finance-value>.os-dashboard-finance-amount{
+    justify-self:end;text-align:right;max-width:100%
+  }
+}
+@container dashboard-finance (max-width:540px){
+  .os-dashboard-finance-values{gap:9px}
+  .os-dashboard-finance-value{
+    display:flex;flex-direction:column;align-items:stretch;
+    justify-content:space-between;min-height:91px;
+    gap:7px;padding:13px 14px;border-radius:12px
+  }
+  .os-dashboard-finance-label{justify-content:space-between}
+  .os-dashboard-finance-value>.os-dashboard-finance-amount{
+    align-self:stretch;text-align:left
+  }
+}
+@container dashboard-finance (max-width:350px){
+  .os-dashboard-finance-head{flex-wrap:wrap}
+  .os-dashboard-finance-head>.os-button{margin-left:auto}
+  .os-dashboard-finance-value{padding:12px}
+}
+
 
 
 /* Preços de serviços — os controles respeitam os tokens e o formulário atual do Orion. */

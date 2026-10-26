@@ -339,16 +339,29 @@
         loading('Consultando financeiro…')+'</div></section>'+
       '<section id="osDashboardGoals" class="os-card os-dashboard-goals" aria-live="polite" hidden></section>';
   }
+  // Integer-cent formatting avoids floating point rounding for large but safe
+  // financial totals (e.g. 9.007.199.254.740.991 cents must still end in ,91).
+  function dashboardFinanceMoney(cents){
+    if(!Number.isSafeInteger(cents))throw Error('Valor financeiro fora da precisão suportada.');
+    const amount=BigInt(cents),absolute=amount<0n?-amount:amount;
+    return (amount<0n?'-':'')+'R$\u00a0'+(absolute/100n).toLocaleString('pt-BR')+','+
+      (absolute%100n).toString().padStart(2,'0');
+  }
   function dashboardFinanceValues(s){
     const balance=Number(s?.balance_cents),count=Number(s?.count),pending=Number(s?.pending_income_cents ?? 0);
-    if(!Number.isSafeInteger(balance)||!Number.isSafeInteger(count)||count<0||!Number.isSafeInteger(pending)||pending<0)
+    if(s?.balance_cents==null||s?.count==null||!Number.isSafeInteger(balance)||
+       !Number.isSafeInteger(count)||count<0||!Number.isSafeInteger(pending)||pending<0)
       throw Error('Não foi possível confirmar os valores financeiros.');
-    const card=(name,value,symbol,css)=>'<div class="os-dashboard-finance-value '+css+'">'+
-      '<div class="os-dashboard-finance-label"><span>'+esc(name)+'</span>'+icon(symbol)+'</div>'+
-      '<strong>'+esc(value)+'</strong></div>';
+    const card=(name,value,symbol,css)=>{
+      const textValue=String(value),size=textValue.length>=22?' os-dashboard-finance-extra-long':
+        textValue.length>=16?' os-dashboard-finance-long':'';
+      return '<div class="os-dashboard-finance-value '+css+'">'+
+        '<div class="os-dashboard-finance-label"><span>'+esc(name)+'</span>'+icon(symbol)+'</div>'+
+        '<strong class="os-dashboard-finance-amount'+size+'" title="'+esc(textValue)+'">'+esc(textValue)+'</strong></div>';
+    };
     return '<div class="os-dashboard-finance-values">'+
-      card('Saldo/Lucro',money(balance),'wallet',balance<0?'os-negative':'os-positive')+
-      card('A receber',money(pending),'clock','os-dashboard-finance-pending')+
+      card('Saldo/Lucro',dashboardFinanceMoney(balance),'wallet',balance<0?'os-negative':'os-positive')+
+      card('A receber',dashboardFinanceMoney(pending),'clock','os-dashboard-finance-pending')+
       card('Lançamentos',count.toLocaleString('pt-BR'),'list','os-dashboard-finance-count')+
       '</div>';
   }
