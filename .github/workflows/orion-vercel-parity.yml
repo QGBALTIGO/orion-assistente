@@ -1,0 +1,29 @@
+name: Orion Vercel-Railway parity
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/static/**'
+      - 'app/landing_api.py'
+      - 'landing/**'
+      - 'deploy/vercel-orion/**'
+      - 'scripts/check_vercel_parity.py'
+      - '.github/workflows/orion-vercel-parity.yml'
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: orion-vercel-parity
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Confirm identical live frontend on both domains
+        run: python3 scripts/check_vercel_parity.py

@@ -1,7 +1,7 @@
-"""Prepare the reviewed, static Orion facade without copying the repository.
+"""Build the policy-only Vercel facade, never a frozen HTML or JavaScript snapshot.
 
-This command only creates a new directory outside the checkout. It does not
-contact Vercel, Railway, databases, authentication providers, or messaging APIs.
+The Railway backend serves all live UI and APIs through the fixed allowlisted
+Vercel proxy. Regular Orion changes require no Vercel deployment.
 """
 from __future__ import annotations
 
@@ -10,37 +10,16 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
-
+from urllib.parse import urlsplit
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_ORIGIN = "https://orion-painel-iota.vercel.app"
 UPSTREAM_ORIGIN = "https://orion-assistente-production.up.railway.app"
-
-# LF hashes make the reviewed content check independent of Git autocrlf.
-# Output transformations preserve the bytes/newlines of the actual checkout.
-REVIEWED_SOURCE_SHA256_LF = {
-    "landing/index.html": "f627dce1f7c28d94f3210c602498192a487e0821e4444b769ac086f6f35747b4",
-    "app/static/orion-suite.js": "74b29bddc30e23e0e37f4346ac6dd7f92e64c90564d091b40084515ab3376027",
-}
 SOURCE_ALLOWLIST = (
-    ("landing/index.html", "public/index.html"),
-    ("app/static/orion-suite.js", "public/orion-suite-vercel.js"),
     ("deploy/vercel-orion/403.html", "public/403.html"),
     ("deploy/vercel-orion/404.html", "public/404.html"),
     ("deploy/vercel-orion/google-origin.json", "public/google-origin.json"),
     ("deploy/vercel-orion/vercel.json", "vercel.json"),
-)
-
-GOOGLE_ACTION_GUARD = (
-    "  function showGoogleAction(action){\n"
-    "    const capability={connect:'can_connect',revoke:'can_disconnect',retry:'can_retry'}[action];if(!googleCan(capability))return;\n"
-)
-GOOGLE_CONNECT_INSERTION = (
-    "    if(action==='connect'){\n"
-    "      const originalPanel='https://orion-assistente-production.up.railway.app/panel?aba=agenda&empresa='+encodeURIComponent(state.tenantId);\n"
-    "      showDialog('google-original-panel','Conectar Google Agenda','<p>Para conectar o Google Agenda, continue no painel original do Orion. Talvez seja necessário entrar novamente.</p><div class=\"os-form-actions\">'+button('Cancelar','close-dialog','os-outline')+'<a class=\"os-button\" href=\"'+esc(originalPanel)+'\">Continuar no painel original</a></div>',{capability});\n"
-    "      return;\n"
-    "    }\n"
 )
 
 
@@ -55,40 +34,33 @@ def _source_bytes(relative: str) -> bytes:
         raise ValueError(f"Source must be a regular checkout file: {relative}")
     if not source.is_file():
         raise ValueError(f"Missing allowlisted source: {relative}")
-    content = source.read_bytes()
-    reviewed_hash = REVIEWED_SOURCE_SHA256_LF.get(relative)
-    if reviewed_hash and sha256(content.replace(b"\r\n", b"\n")) != reviewed_hash:
-        raise ValueError(f"Reviewed source hash mismatch: {relative}")
-    return content
+    return source.read_bytes()
 
 
-def _landing(content: bytes) -> bytes:
-    if b"__SALES_CONTACT_LINK__" in content:
-        raise ValueError("Unresolved sales contact placeholder in landing")
-    for attribute in (
-        'property="og:image" content="{origin}/landing-assets/orion-social.png"',
-        'property="og:url" content="{origin}/"',
-        'rel="canonical" href="{origin}/"',
-    ):
-        before = attribute.format(origin=UPSTREAM_ORIGIN).encode("utf-8")
-        after = attribute.format(origin=PUBLIC_ORIGIN).encode("utf-8")
-        if content.count(before) != 1:
-            raise ValueError("Expected exactly one reviewed landing metadata tag")
-        content = content.replace(before, after, 1)
-    return content
-
-
-def _suite(content: bytes) -> bytes:
-    newline = b"\r\n" if b"\r\n" in content else b"\n"
-    guard = GOOGLE_ACTION_GUARD.encode("utf-8").replace(b"\n", newline)
-    insertion = GOOGLE_CONNECT_INSERTION.encode("utf-8").replace(b"\n", newline)
-    if content.count(guard) != 1:
-        raise ValueError("Expected exactly one reviewed Google capability guard")
-    return content.replace(guard, guard + insertion, 1)
+def _check_proxy_policy(raw: bytes) -> None:
+    try:
+        config = json.loads(raw)
+        routes = config["routes"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ValueError("Invalid Vercel facade routing configuration") from exc
+    if not isinstance(routes, list) or not routes:
+        raise ValueError("Vercel facade routes missing")
+    for route in routes:
+        destination = route.get("dest", "")
+        parsed = urlsplit(destination)
+        if parsed.netloc and (parsed.scheme != "https" or parsed.netloc != urlsplit(UPSTREAM_ORIGIN).netloc):
+            raise ValueError("External proxy destination not allowlisted")
+        if destination in {"/index.html", "/orion-suite-vercel.js"}:
+            raise ValueError("Version-pinned frontend copies are forbidden")
+    if not any(r.get("src") == "/" and r.get("dest") == UPSTREAM_ORIGIN + "/" for r in routes):
+        raise ValueError("Public homepage must be served from Railway")
+    if not any(r.get("methods") == ["GET", "HEAD"] and "panel-assets" in r.get("src", "")
+               and r.get("dest", "").startswith(UPSTREAM_ORIGIN) for r in routes):
+        raise ValueError("Live panel assets must be routed to Railway")
 
 
 def prepare_bundle(output: Path) -> dict:
-    """Create six allowlisted files plus a provenance manifest, without IO online."""
+    """Create four static security files and a private manifest, not a copy of the UI."""
     root = SOURCE_ROOT.resolve()
     destination = output.expanduser().resolve()
     if destination == root or destination.is_relative_to(root):
@@ -100,27 +72,22 @@ def prepare_bundle(output: Path) -> dict:
 
     prepared = []
     for source, target in SOURCE_ALLOWLIST:
-        original = _source_bytes(source)
-        content = _landing(original) if source == "landing/index.html" else (
-            _suite(original) if source == "app/static/orion-suite.js" else original
-        )
+        content = _source_bytes(source)
+        if source.endswith("vercel.json"):
+            _check_proxy_policy(content)
         prepared.append((target, content, {
             "source": source,
-            "source_sha256": sha256(original),
-            "source_sha256_lf": sha256(original.replace(b"\r\n", b"\n")),
-            "reviewed_source_sha256_lf": REVIEWED_SOURCE_SHA256_LF.get(source),
+            "source_sha256": sha256(content),
+            "source_sha256_lf": sha256(content.replace(b"\r\n", b"\n")),
             "output": target,
             "output_sha256": sha256(content),
             "output_bytes": len(content),
-            "transformation": (
-                "three_origin_metadata_values" if source == "landing/index.html" else
-                "google_connect_dialog_insertion_after_capability_guard" if source == "app/static/orion-suite.js" else
-                "byte_identical_copy"
-            ),
+            "transformation": "byte_identical_copy",
         }))
 
     manifest = {
-        "format_version": 1,
+        "format_version": 2,
+        "mode": "live_railway_proxy",
         "public_origin": PUBLIC_ORIGIN,
         "upstream_origin": UPSTREAM_ORIGIN,
         "files": [record for _, _, record in prepared],
@@ -129,8 +96,6 @@ def prepare_bundle(output: Path) -> dict:
         "production_changes": False,
         "manifest_public": False,
     }
-    # All validation precedes filesystem writes. The temporary directory is
-    # created by us under the resolved external parent and renamed only once.
     with tempfile.TemporaryDirectory(prefix=".orion-vercel-", dir=destination.parent) as temporary:
         staging = Path(temporary)
         for relative, content, _ in prepared:
