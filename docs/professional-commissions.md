@@ -20,6 +20,10 @@ que substitua a comissão de outro profissional.
 - **Combos e adicionais gerados:** os itens sem regra explícita utilizam o
   percentual de reserva do profissional, identificado como default no snapshot.
   A tela explica essa exceção.
+- Quando um novo serviço é vinculado pela aba Serviços, fora do formulário
+  do profissional, o sistema cria uma regra % igual à taxa de reserva atual;
+  o gestor pode substituí-la por uma comissão individual na aba Profissionais.
+  Remover o vínculo não apaga o histórico de comissões já gerado.
 - Uma comissão fixa pode superar o valor da venda; isso significa margem
   negativa e não é cortado silenciosamente.
 - Ausência/cancelamento não gera comissão. Finalização automática usa a mesma

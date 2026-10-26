@@ -191,14 +191,6 @@ async def list_commission_rules(db, tenant_id):
 async def save_professional_configuration(db, tenant_id, payload, professional_id=None):
     """Create or replace base-service assignments and rates in one transaction."""
     selected = payload.service_ids
-    params = {"tenant": tenant_id, "ids": selected}
-    verified = (await db.execute(text("""
-        SELECT id FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[]))
-          AND catalog_kind='base' FOR SHARE
-    """), params)).scalars().all()
-    if set(verified) != set(selected):
-        raise HTTPException(422, "Selecione somente serviços válidos desta empresa")
-
     fields = payload.model_dump(exclude={
         "service_ids", "commission_rules", "expected_version", "idempotency_key"
     })
@@ -246,6 +238,16 @@ async def save_professional_configuration(db, tenant_id, payload, professional_i
             raise HTTPException(409 if exists else 404,
                 "O profissional foi alterado. Atualize os dados e tente novamente"
                 if exists else "Profissional não encontrado")
+
+    # Obtain the professional advisory lock before row-level service locks,
+    # matching the order used for ordinary catalog-link mutations.
+    params = {"tenant": tenant_id, "ids": selected}
+    verified = (await db.execute(text("""
+        SELECT id FROM services WHERE tenant_id=:tenant AND id=ANY(CAST(:ids AS uuid[]))
+          AND catalog_kind='base' FOR SHARE
+    """), params)).scalars().all()
+    if set(verified) != set(selected):
+        raise HTTPException(422, "Selecione somente serviços válidos desta empresa")
 
     old_links = (await db.execute(text("""
         SELECT ps.id,ps.service_id FROM professional_services ps

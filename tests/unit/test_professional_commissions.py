@@ -145,3 +145,8 @@ def test_admin_ui_uses_atomic_configuration_route_and_mobile_controls():
     assert "data-os-commission-row" in script
     assert "commission_fixed_cents" in script
     assert "os-commission-service-controls" in styles
+
+def test_migration_target_matches_new_commission_schema():
+    from scripts.apply_professional_commission_migration import PREVIOUS, TARGET
+    assert PREVIOUS == "0032_variable_service_prices"
+    assert TARGET == "0033_professional_commissions"

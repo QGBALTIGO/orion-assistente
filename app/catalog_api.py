@@ -290,12 +290,35 @@ async def create_item(
         async with factory() as session:
             async with tenant_transaction(session, tenant_id):
                 await ensure_tenant(session, tenant_id)
+                if resource == "professional_services":
+                    from app.booking_service import acquire_professional_lock
+                    await acquire_professional_lock(session, tenant_id, values["professional_id"])
                 await guard_generated_service(session, tenant_id, resource, values=values)
                 from app.management_blocks import guard_catalog_block
                 await guard_catalog_block(session, tenant_id, resource, values=values)
                 if resource == "working_breaks":
                     await validate_break(session, bind)
                 await session.execute(statement, bind)
+                if resource == "professional_services":
+                    # Service editor can add a link outside the staff drawer.
+                    # New base links receive an explicit percentage fallback so
+                    # custom-mode earnings never depend on an absent rule.
+                    await session.execute(text("""
+                        INSERT INTO professional_commission_rules
+                           (tenant_id,professional_id,service_id,commission_kind,
+                            commission_percent,commission_fixed_cents)
+                        SELECT :tenant,:professional,:service,'percent',p.commission_percent,NULL
+                        FROM professionals p JOIN services svc
+                          ON svc.tenant_id=p.tenant_id AND svc.id=:service
+                        WHERE p.tenant_id=:tenant AND p.id=:professional
+                          AND p.commission_mode='per_service' AND svc.catalog_kind='base'
+                        ON CONFLICT (tenant_id,professional_id,service_id) DO NOTHING
+                    """), {"tenant": tenant_id, "professional": values["professional_id"],
+                           "service": values["service_id"]})
+                    await session.execute(text("""
+                        UPDATE professionals SET commission_config_version=commission_config_version+1
+                        WHERE tenant_id=:tenant AND id=:professional
+                    """), {"tenant": tenant_id, "professional": values["professional_id"]})
                 await audit(session, tenant_id, "created", resource, item_id)
     except IntegrityError as exc:
         raise HTTPException(409, "Conflito de cadastro, referência ou intervalo inválido") from exc
@@ -308,6 +331,8 @@ async def replace_item(
     payload: dict[str, Any], actor: Actor = Depends(authenticate),
 ):
     authorize_resource(actor, tenant_id, resource, write=True)
+    if resource == "professional_services":
+        raise HTTPException(422, "Altere vínculos pela gestão de profissionais ou recadastre o serviço")
     values = validation(resource_model(resource), payload).model_dump()
     check_resource_values(resource, values)
     assignments = ", ".join(f"{field} = :{field}" for field in values)
@@ -331,6 +356,7 @@ async def replace_item(
                     if "commission_mode" in payload and values["commission_mode"] != current_mode:
                         raise HTTPException(409, "Altere o modelo de comissão no cadastro de profissionais")
                     bind["commission_mode"] = current_mode
+                    values["commission_mode"] = current_mode
                 await guard_generated_service(session, tenant_id, resource, item_id, values)
                 from app.management_blocks import guard_catalog_block
                 await guard_catalog_block(session, tenant_id, resource, values=values, item_id=item_id)
@@ -359,6 +385,15 @@ async def delete_item(
         async with factory() as session:
             async with tenant_transaction(session, tenant_id):
                 await ensure_tenant(session, tenant_id)
+                link_professional = None
+                if resource == "professional_services":
+                    link_professional = (await session.execute(text("""
+                        SELECT professional_id FROM professional_services
+                        WHERE tenant_id=:tenant AND id=:id
+                    """), {"tenant": tenant_id, "id": item_id})).scalar_one_or_none()
+                    if link_professional is not None:
+                        from app.booking_service import acquire_professional_lock
+                        await acquire_professional_lock(session, tenant_id, link_professional)
                 await guard_generated_service(session, tenant_id, resource, item_id)
                 from app.management_blocks import guard_catalog_block
                 await guard_catalog_block(session, tenant_id, resource, item_id=item_id, deleting=True)
@@ -368,6 +403,11 @@ async def delete_item(
                 )
                 if result.scalar_one_or_none() is None:
                     raise HTTPException(404, "Registro não encontrado")
+                if resource == "professional_services" and link_professional is not None:
+                    await session.execute(text("""
+                        UPDATE professionals SET commission_config_version=commission_config_version+1
+                        WHERE tenant_id=:tenant AND id=:professional
+                    """), {"tenant": tenant_id, "professional": link_professional})
                 await audit(session, tenant_id, "deleted", resource, item_id)
     except IntegrityError as exc:
         raise HTTPException(409, "Registro em uso por outro cadastro") from exc

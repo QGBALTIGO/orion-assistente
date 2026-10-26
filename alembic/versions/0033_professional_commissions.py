@@ -35,10 +35,10 @@ def upgrade():
           FOREIGN KEY (tenant_id,service_id)
             REFERENCES public.services(tenant_id,id) ON DELETE CASCADE,
           CONSTRAINT ck_professional_commission_rule CHECK (
-            (commission_kind='percent' AND commission_percent BETWEEN 0 AND 100
+            (commission_kind='percent' AND commission_percent IS NOT NULL AND commission_percent BETWEEN 0 AND 100
               AND commission_fixed_cents IS NULL)
             OR (commission_kind='fixed' AND commission_percent IS NULL
-              AND commission_fixed_cents BETWEEN 0 AND 100000000)
+              AND commission_fixed_cents IS NOT NULL AND commission_fixed_cents BETWEEN 0 AND 100000000)
           )
         );
         CREATE INDEX ix_professional_commission_service
@@ -66,9 +66,10 @@ def upgrade():
         ALTER TABLE public.appointments ADD CONSTRAINT ck_appointment_commission CHECK (
           (commission_percent_snapshot IS NULL AND commission_cents IS NULL
             AND commission_mode_snapshot IS NULL)
-          OR (commission_cents BETWEEN 0 AND 1000000000 AND
+          OR (commission_cents IS NOT NULL AND commission_cents BETWEEN 0 AND 1000000000 AND
             ((commission_mode_snapshot='per_service' AND commission_percent_snapshot IS NULL)
             OR (COALESCE(commission_mode_snapshot,'percent')='percent'
+              AND commission_percent_snapshot IS NOT NULL
               AND commission_percent_snapshot BETWEEN 0 AND 100)))
         );
 
@@ -83,13 +84,16 @@ def upgrade():
             (commission_kind_snapshot IS NULL AND commission_source_snapshot IS NULL
               AND commission_percent_snapshot IS NULL AND commission_fixed_cents_snapshot IS NULL
               AND commission_base_cents IS NULL AND commission_cents IS NULL)
-            OR (commission_base_cents>=0 AND commission_cents BETWEEN 0 AND 1000000000
+            OR (commission_base_cents IS NOT NULL AND commission_base_cents>=0
+              AND commission_cents IS NOT NULL AND commission_cents BETWEEN 0 AND 1000000000
               AND commission_source_snapshot IN ('rule','default')
               AND ((commission_kind_snapshot='percent'
+                AND commission_percent_snapshot IS NOT NULL
                 AND commission_percent_snapshot BETWEEN 0 AND 100
                 AND commission_fixed_cents_snapshot IS NULL)
                 OR (commission_kind_snapshot='fixed'
                   AND commission_percent_snapshot IS NULL
+                  AND commission_fixed_cents_snapshot IS NOT NULL
                   AND commission_fixed_cents_snapshot BETWEEN 0 AND 100000000)))
           );
     """)
