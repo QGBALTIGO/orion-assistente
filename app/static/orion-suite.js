@@ -2020,6 +2020,7 @@
           if(!stillAccount(c))return;
           d.savedId=result?.id||id;
           if(!d.savedId)throw Error('Não foi possível confirmar o cadastro do profissional.');
+          if(state.route==='funcionarios')state.filters.staffStatus=payload.active?'active':'inactive';
           state.data.commissionRules=null;
           state.data.professionalServices=null;
         },p?'Profissional atualizado.':'Profissional cadastrado.');
