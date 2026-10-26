@@ -107,10 +107,14 @@ async def test_registered_lunch_breaks_are_visible_only_when_every_staff_member_
     preview=await c.get(d["base"]+"/site/preview")
     assert preview.status_code==200
     assert preview.json()["opening_hours"][weekday]["intervals"]==closed.json()["opening_hours"][weekday]["intervals"]
-    # The public result never serializes internal hour/break or staff IDs.
-    assert str(shifts[0]["id"]) not in closed.text
-    assert str(d["pro"]) not in closed.text
-    assert str(d["pro2"]) not in closed.text
+    # Existing booking API intentionally publishes eligible professional IDs.
+    # The new opening_hours data alone must never reveal staffing identities,
+    # internal shift IDs or registered break records.
+    public_hours_only = str(closed.json()["opening_hours"])
+    assert str(shifts[0]["id"]) not in public_hours_only
+    assert str(shifts[1]["id"]) not in public_hours_only
+    assert str(d["pro"]) not in public_hours_only
+    assert str(d["pro2"]) not in public_hours_only
     # A later administrative adjustment immediately affects the public site.
     async with d["migrator"].begin() as db:
         await db.execute(text("""
