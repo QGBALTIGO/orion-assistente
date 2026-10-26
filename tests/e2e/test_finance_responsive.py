@@ -124,11 +124,23 @@ def test_finance_loses_no_horizontal_content_or_actions(browser_name,width,heigh
                       innerScroll:!!node.closest('.os-finance-table-scroll,.os-series-scroll,.os-horizontal-tabs')};
                   }).filter(x=>x.right>viewport+2&&!x.innerScroll)
                     .sort((a,b)=>b.right-a.right).slice(0,12);
+                  const scrollHosts=[...document.querySelectorAll('body *')].filter(node=>
+                    node.scrollWidth>node.clientWidth+3).map(node=>{
+                    const computed=getComputedStyle(node),rectangle=node.getBoundingClientRect();
+                    return {tag:node.tagName,cls:String(node.className||'').slice(0,65),
+                      scroll:node.scrollWidth,client:node.clientWidth,
+                      overflowX:computed.overflowX,display:computed.display,
+                      left:Math.round(rectangle.left),right:Math.round(rectangle.right)};
+                  }).sort((a,b)=>(b.scroll-b.client)-(a.scroll-a.client)).slice(0,18);
                   return {viewport,doc:document.documentElement.scrollWidth,
-                    body:document.body.scrollWidth,main:{left:rect.left,right:rect.right,width:rect.width},
-                    boxes,offenders};
+                    rootClient:document.documentElement.clientWidth,rootOverflow:getComputedStyle(document.documentElement).overflowX,
+                    body:document.body.scrollWidth,bodyClient:document.body.clientWidth,
+                    main:{left:rect.left,right:rect.right,width:rect.width},
+                    boxes,offenders,scrollHosts};
                 }""")
-                assert geometry["doc"]<=width+2, {"viewport":width,"document":geometry["doc"],"offenders":geometry["offenders"]}
+                assert geometry["doc"]<=width+2, {"viewport":width,"document":geometry["doc"],
+                        "rootClient":geometry["rootClient"],"rootOverflow":geometry["rootOverflow"],
+                        "offenders":geometry["offenders"],"scrollHosts":geometry["scrollHosts"]}
                 assert geometry["body"]<=width+2,geometry
                 assert geometry["main"]["left"]>=-2,geometry
                 assert geometry["main"]["right"]<=width+2,geometry
@@ -142,6 +154,24 @@ def test_finance_loses_no_horizontal_content_or_actions(browser_name,width,heigh
 
             geometry=check_layout()
             if width<=767:
+                compact=page.evaluate("""() => {
+                  const rect=(selector)=>document.querySelector(selector).getBoundingClientRect();
+                  const title=rect('.os-finance-title-line');
+                  const heading=rect('.os-finance-heading');
+                  const month=rect('.os-finance-period-row');
+                  const metrics=[...document.querySelectorAll('.os-finance-metrics>.os-metric')]
+                    .map(el=>el.getBoundingClientRect().height);
+                  const tabs=rect('.os-finance-tabs');
+                  const trigger=rect('.os-finance-add');
+                  return {titleTop:title.top,titleBottom:title.bottom,
+                    headingHeight:heading.height,periodTop:month.top,
+                    metricHeights:metrics,tabsHeight:tabs.height,
+                    triggerRight:trigger.right,triggerWidth:trigger.width};
+                }""")
+                assert compact["periodTop"]>=compact["titleBottom"]-2,compact
+                assert max(compact["metricHeights"])<=90,compact
+                assert compact["tabsHeight"]<=82,compact
+                assert compact["triggerRight"]<=width+2,compact
                 tabs=page.locator(".os-finance-tabs>.os-pill-tab")
                 for i in range(5):
                     assert tabs.nth(i).is_visible()
