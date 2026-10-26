@@ -72,3 +72,34 @@ async def test_public_rate_limit_fails_closed_and_does_not_trust_forwarded_heade
     monkeypatch.setattr('app.public_site_api._redis',lambda:Broken())
     with pytest.raises(HTTPException) as exc:await public_limit(request('x'),'site','unit')
     assert exc.value.status_code==503
+
+
+def test_multiservice_signed_quote_binds_every_service_and_expires(monkeypatch):
+    monkeypatch.setenv('PUBLIC_SITE_SIGNING_KEY','unit-only-public-signing-key-of-at-least-32-characters')
+    day=datetime.now(timezone.utc)
+    services=[uuid4() for _ in range(3)]
+    professional=uuid4()
+    quote=issue_quote('public-site',professional,day.date(),
+                      {'service_ids':services,'fingerprint':'a'*64},day)
+    payload=read_quote(quote,'public-site',day)
+    assert payload['v']==2
+    assert payload['services']==services
+    assert payload['professional']==professional
+    assert payload['fingerprint']=='a'*64
+    assert payload['day']==day.date()
+    assert 'service' not in payload and 'addons' not in payload
+    for value,name,clock,status in [
+        (quote+'x','public-site',day,422),
+        (quote,'another-site',day,422),
+        (quote,'public-site',day+timedelta(seconds=601),409),
+    ]:
+        with pytest.raises(HTTPException) as exc:
+            read_quote(value,name,clock)
+        assert exc.value.status_code==status
+    # The signed transport accepts only bounded, unique, type-safe IDs.
+    for invalid in [services[:1],services+[uuid4() for _ in range(4)],services[:2]+[services[1]]]:
+        malformed=issue_quote('public-site',professional,day.date(),
+                              {'service_ids':invalid,'fingerprint':'a'*64},day)
+        with pytest.raises(HTTPException) as exc:
+            read_quote(malformed,'public-site',day)
+        assert exc.value.status_code==422
