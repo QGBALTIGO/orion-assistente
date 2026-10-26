@@ -57,7 +57,7 @@ realizado. A receita estimada e o dinheiro recebido permanecem separados.
 
 ## Migração e publicação
 
-A migração `0033_professional_service_commissions` é aditiva e define
+A migração `0033_service_commissions` é aditiva e define
 `commission_mode='percent'` para todos os profissionais existentes.
 Comissões históricas continuam intactas. A mudança deve ser aplicada
 antes de disponibilizar novas gravações; executar após conferência de

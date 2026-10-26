@@ -16,7 +16,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
 PREVIOUS = "0032_variable_service_prices"
-TARGET = "0033_professional_service_commissions"
+TARGET = "0033_service_commissions"
 
 
 def migrated_version(url: str) -> str:

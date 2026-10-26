@@ -1,11 +1,11 @@
 """Add alternative commission rules without mutating historical payouts.
 
-Revision ID: 0033_professional_service_commissions
+Revision ID: 0033_service_commissions
 Revises: 0032_variable_service_prices
 """
 from alembic import op
 
-revision = "0033_professional_service_commissions"
+revision = "0033_service_commissions"
 down_revision = "0032_variable_service_prices"
 branch_labels = None
 depends_on = None
