@@ -14,7 +14,7 @@ FIELDS=['amenity_wifi','amenity_parking','amenity_accessibility','amenity_childr
 
 @pytest.mark.parametrize('engine',['chromium','webkit'])
 @pytest.mark.parametrize('width',[320,390,768,1024])
-@pytest.mark.parametrize('active',[0,1,2,4])
+@pytest.mark.parametrize('active',[0,1,2,3,4])
 def test_public_amenities_all_combinations_and_info(engine,width,active):
     site={'title':'Empresa teste','theme_color':'#ffd000','show_prices':True}
     site.update({key:index<active for index,key in enumerate(FIELDS)})
@@ -39,8 +39,10 @@ def test_public_amenities_all_combinations_and_info(engine,width,active):
             page.add_script_tag(content=JS)
             section=page.locator('#amenities-section')
             page.locator('#site-content').wait_for(state='visible')
+            grid=page.locator('#amenities-grid')
             tiles=page.locator('#amenities-grid .amenity-tile')
             assert tiles.count()==active
+            assert grid.get_attribute('data-count')==str(active)
             if not active:
                 assert not section.is_visible()
                 assert page.locator('#servicos').evaluate(
@@ -62,9 +64,22 @@ def test_public_amenities_all_combinations_and_info(engine,width,active):
                     assert icon_box and icon_size-0.5<=icon_box['width']<=icon_size+0.5
                     assert icon_size-0.5<=icon_box['height']<=icon_size+0.5
                     assert tile.locator('svg').count()==1
-                if width<=390 and active==4:
-                    ycoords=[round(tiles.nth(i).bounding_box()['y']) for i in range(4)]
-                    assert len(set(ycoords))==1, 'All four fit a single mobile row'
+                # The tiles remain a single row on phones and desktops, and
+                # only groups of 3 or 4 are centered inside the site container.
+                boxes=[tiles.nth(i).bounding_box() for i in range(active)]
+                ycoords=[round(box['y']) for box in boxes]
+                assert len(set(ycoords))==1, 'No wrapped or uneven icon rows'
+                area=grid.bounding_box()
+                assert area
+                group_center=(boxes[0]['x'] + boxes[-1]['x'] + boxes[-1]['width'])/2
+                if active>=3:
+                    grid_center=area['x']+area['width']/2
+                    assert abs(group_center-grid_center)<=1.5, '3/4 amenities centered horizontally'
+                    assert grid.evaluate('(el)=>getComputedStyle(el).justifyContent')=='center'
+                    page.locator('#amenity-detail').evaluate(
+                        '(el)=>getComputedStyle(el).marginLeft')
+                else:
+                    assert abs(boxes[0]['x']-area['x'])<=1.5, '1/2 amenities stay left-aligned'
                 if active>=3:
                     # Fully closed wheel remains inside the SVG viewport,
                     # rather than an amputated arc touching the edge.

@@ -225,6 +225,7 @@
     const root = $('amenities-section');
     const grid = $('amenities-grid');
     const enabled = AMENITIES.filter(item => site[item.key] === true);
+    grid.dataset.count = String(enabled.length);
     closeAmenity();
     grid.replaceChildren(...enabled.map(item => {
       const tile = el('button', 'amenity-tile');

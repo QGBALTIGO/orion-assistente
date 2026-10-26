@@ -10,6 +10,7 @@ test('new and legacy sites with no enabled amenities hide the entire block', asy
   const h = await makePublic(); t.after(() => h.close()); await flush();
   assert.equal(h.document.getElementById('amenities-section').hidden, true);
   assert.equal(h.document.querySelectorAll('.amenity-tile').length, 0);
+  assert.equal(h.document.getElementById('amenities-grid').dataset.count, '0');
   assert.equal(h.document.getElementById('amenity-detail').hidden, true);
   assert.equal(h.document.querySelector('#amenities-section').nextElementSibling.id, 'servicos');
   assert.equal(h.errors.length, 0);
@@ -24,6 +25,7 @@ test('one, two, three or four enabled amenities render only those icons in stabl
       assert.equal(h.document.getElementById('amenities-section').hidden, false);
       const tiles = [...h.document.querySelectorAll('#amenities-grid .amenity-tile')];
       assert.equal(tiles.length, count);
+      assert.equal(h.document.getElementById('amenities-grid').dataset.count, String(count));
       assert.deepEqual(tiles.map(el => el.title), amenityNames.slice(0, count));
       assert.ok(tiles.every(el => el.querySelectorAll('svg[aria-hidden="true"]').length === 1));
       assert.ok(tiles.every(el => el.getAttribute('aria-label')?.includes('disponível')));

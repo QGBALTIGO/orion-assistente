@@ -186,6 +186,12 @@ body{background:var(--bg);color:var(--text);min-width:0}
   display:flex;flex-wrap:wrap;align-items:center;
   gap:10px;width:100%;max-width:100%;min-width:0
 }
+/* Center the group as one balanced row only when 3 or 4 amenities are active.
+   One or two stay aligned with the rest of the left-anchored page content. */
+.amenities-grid[data-count="3"],
+.amenities-grid[data-count="4"]{justify-content:center}
+.amenities-grid[data-count="3"]+.amenity-detail,
+.amenities-grid[data-count="4"]+.amenity-detail{margin-inline:auto}
 .amenity-tile{
   box-sizing:border-box;display:grid;place-items:center;flex:0 0 58px;
   width:58px;height:58px;min-width:58px;min-height:58px;
