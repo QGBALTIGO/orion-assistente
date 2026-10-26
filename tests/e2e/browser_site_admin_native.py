@@ -14,7 +14,7 @@ from playwright.sync_api import expect, sync_playwright
 from redis import Redis
 
 from conftest import Journey, redact_text
-from test_site_publication_e2e import change_publication
+from browser_site_publication import change_publication
 
 
 def seed_business(h, tenant, title):

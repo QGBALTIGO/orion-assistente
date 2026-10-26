@@ -106,8 +106,10 @@ async def _publication_access_details(actor, access):
         try:
             async with support_session_factory()() as db:
                 configured = await lookup_identity(db) is not None
-        except (HTTPException, ValueError, RuntimeError):
+        except ValueError:
             configured = False
+        except (SQLAlchemyError, RuntimeError, OSError):
+            raise HTTPException(503, "Identidade administrativa temporariamente indisponível") from None
     if not configured:
         return {"reauthentication_required": True, "access_reason": "administrator_identity_unavailable",
                 "access_message": "A identidade deste acesso administrativo não está disponível nesta instalação. Nenhum vínculo foi criado ou alterado. Use uma conta proprietária já identificada ou confira a configuração do acesso administrativo."}
@@ -172,8 +174,8 @@ async def publication_status(tenant, actor):
     from app.management_models import site as read_site
     from app.public_site_api import catalogue
     access = await resolve_site_access(actor, tenant)
-    access_details = await _publication_access_details(actor, access)
     try:
+        access_details = await _publication_access_details(actor, access)
         async with get_session_factory()() as db:
             async with tenant_transaction(db, tenant):
                 row = await read_site(db, tenant)

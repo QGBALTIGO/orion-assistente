@@ -1,10 +1,10 @@
 # Publicação autônoma de sites — 26/10/2026
 
-Especificação: anexo `PROMPT ESPECIALISTA — ORION`, 326 linhas, lido integralmente. Repositório confirmado `QGBALTIGO/orion-assistente`. Base desta tarefa: `main` em `86b75d2919a9a7e820fe963ba29ae027c70785c7`. A branch anterior foi preservada; esta especificação solicita explicitamente a `main`. As mudanças concorrentes até `1e28250` foram integradas e o candidato voltou a ser testado.
+Especificação: anexo `PROMPT ESPECIALISTA — ORION`, 326 linhas, lido integralmente. Repositório confirmado `QGBALTIGO/orion-assistente`. Base desta tarefa: `main` em `86b75d2919a9a7e820fe963ba29ae027c70785c7`. A branch anterior foi preservada; esta especificação solicita explicitamente a `main`. As mudanças concorrentes até `00cd038` foram integradas e o candidato voltou a ser testado.
 
 ## Índice de leitura e execução
 
-Todas as seções abaixo foram lidas; a coluna de evidência será fechada com os testes desta tarefa.
+Todas as seções abaixo foram lidas; as evidências e os limites de execução estão registrados neste relatório.
 
 | Seção | Linhas do anexo | Componente real / verificação |
 |---|---:|---|
@@ -43,6 +43,7 @@ Todas as seções abaixo foram lidas; a coluna de evidência será fechada com o
 6. HTML de compartilhamento era genérico e catálogo fazia uma consulta extra por combo. Metadados são renderizados pelo servidor e componentes são buscados em lote.
 7. O retorno do usuário em Safari mostrou outro caminho: cookies administrativos antigos continuam válidos como suporte, sem a identidade pessoal necessária ao vínculo owner. O status agora explica esse caso e oferece “Atualizar acesso de admin”. O login nativo confirma a senha e a geração da credencial antes de emitir a sessão identificada; o cookie anterior não é apagado nem elevado silenciosamente. Conta sem binding recebe diagnóstico, sem criação automática de identidade ou associação.
 8. O cartão separado de publicação tinha tamanho, texto e hierarquia diferentes do painel. As ações foram integradas ao endereço existente, com botões, badge, espaçamentos e “Mais opções” já usados no sistema. Versões, histórico e retirada/reativação ficam no disclosure, sem duplicar cartões na configuração.
+9. A revisão do merge de arquivamento de profissionais reproduziu uma espera circular entre o guard público, a edição do profissional e o motor da reserva em conexões distintas. Somente o caminho público usa agora aquisição não bloqueante do mesmo advisory lock, retornando 409 recuperável durante a disputa. A confirmação tenta adquirir o lock por até um segundo, em intervalos de 25 ms, para permitir que uma disputa breve entre reservas termine; não refaz a operação nem cria outro hold. Nenhum lock foi removido; chamadas internas continuam com o comportamento anterior. Uma confirmação recusada mantém o hold com a expiração normal de cinco minutos; não cancela silenciosamente nem confirma uma reserva duplicada.
 
 ## Contratos e preservação
 
@@ -73,12 +74,14 @@ O ensaio exato do runner preservou dados e metadados de 85 tabelas em 0035 e 87 
 
 Evidências desta tarefa ficam em `C:\Users\kayky\Documents\Playground\orion-site-publication-20261026\`. Nenhum resultado histórico foi somado aos testes atuais. Recibos possuem escopos sobrepostos; os totais abaixo não devem ser somados como casos únicos.
 
+Os testes de navegador usam `tests/e2e/browser_site_publication.py` e `browser_site_admin_native.py`, seguindo a convenção existente para execução explícita. O runner separado exige `tests/e2e/requirements.txt`, navegadores instalados, `ORION_E2E_ENABLED=1` e PostgreSQL/Redis sintéticos locais com os papéis restritos e schema atual. A coleta genérica permanece independente de Playwright e não inicia essa infraestrutura.
+
 | Verificação executada | Resultado / evidência |
 |---|---|
 | Proprietário sem admin, UI → HTTPS → banco → site e reserva | 2/2 Chromium/WebKit; `site-publication-final-e2e.xml` |
 | Responsividade real | 320/768/1280 px, site/painel/reserva; `final-browser-artifacts` |
 | Regressões visuais, respostas sintéticas | 88/88; `browser-public-regressions.xml` |
-| Nova interface e regressões de catálogo/upload/cores no DOM | 84/84, incluindo 24 cenários novos |
+| Interface compacta e transição do admin no DOM | 30/30, incluindo proteção dos campos não salvos antes da reautenticação |
 | PostgreSQL, assinatura, publicação, aliases e reservas após o merge | 81/81; `merged-publication-acceptance.xml` |
 | Guard e runner do release | 42/42 backend/guard e 17/17 contratos de backup/release; recibos sobrepostos aos demais |
 | Frontend servido ao vivo e rotas da fachada após o merge | 248 passaram, 1 pulado; `merged-live-frontend.xml` |
@@ -86,9 +89,15 @@ Evidências desta tarefa ficam em `C:\Users\kayky\Documents\Playground\orion-sit
 | Backup/restauração e migração, somente sintéticos | 85 tabelas idênticas; 2 sites legados preservados; colisão aborta sem alterações; `migration-recovery-acceptance-final.json` |
 | Contrato e hardgate do schema final | `schema_contract_ready=True`; `final-schema-ready.json` e teste PG do guard |
 | Suíte unitária ampla | 4511 passaram, 39 falharam, 2 pulados; as 39 falhas foram reproduzidas no archive imutável da base, com causas equivalentes: `baseline-39-comparison.json` |
-| Suíte DOM ampla após o merge | 495/496; a única falha é a expectativa antiga de usar telefone como nome do cliente, também reproduzida na base |
+| Suíte DOM ampla após o último merge | 501/502; a única falha é a expectativa antiga de usar telefone como nome do cliente, também reproduzida na base; `admin-compact-merged-dom.log` |
 | Regressão de autenticação do admin, após o retorno do usuário | 62/62; `native-admin-publication-regressions.xml`, incluindo PostgreSQL, Redis e login nativo sem substituir `Actor` |
-| Admin no navegador real | 2/2 Chromium/WebKit; sessão antiga de suporte → novo login → owner publica; cookie antigo preservado e outra empresa negada; `admin-compact-e2e.xml` |
+| Admin no navegador real | 2/2 Chromium/WebKit; sessão antiga de suporte → novo login → owner publica; cookie antigo preservado e outra empresa negada; `native-admin-e2e.xml` |
+| Nova interface compacta no fluxo completo | 2/2 proprietários e 24 vistas em Chromium/WebKit, claro/escuro e 320/768/1280 px, sem overflow nem cartão duplicado; `compact-owner-e2e.xml` |
+| Fluxo completo na fonte final com confirmação limitada | 2/2 Chromium/WebKit, fontes com hashes idênticos durante execução, hold/confirmação e preservação; `compact-owner-final-bounded-e2e.xml` |
+| Indisponibilidade do diagnóstico administrativo | Falha de banco/conexão retorna 503 recuperável, sem fingir ausência de proprietário nem divulgar erro privado; incluída nos 33/33 de `admin-refinement-final-regression.xml` |
+| Espera circular durante edição do profissional | Reproduzida antes da correção por timeout em PostgreSQL real; após a correção, 6/6 casos de criação/confirmação, arquivamento/configuração e seleção múltipla passaram; `professional-contention-before.xml` e recibos `professional-contention-*.xml` |
+| Cancelamento durante confirmação limitada | 1/1: JSON completo do hold preservado, seguido de confirmação direta bem-sucedida; `professional-bounded-confirm-cancellation.xml` |
+| Regressão final de reservas e profissionais | 76/76, incluindo 50 concorrentes no motor direto, catálogo público, arquivamento, recuperação de hold QR e disputa entre conexões; `professional-contention-regressions-final.xml` |
 
 Na primeira suíte DOM ampla, 4 falhas já existiam na base: três guardas Vercel com hash antigo e uma expectativa de nome de cliente. A comparação usou cópia imutável do HEAD original. O merge preservou a correção concorrente da fachada e os três casos Vercel passaram. A suíte ampla não deve ser descrita como totalmente verde.
 

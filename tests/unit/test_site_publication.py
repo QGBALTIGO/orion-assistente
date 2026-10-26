@@ -72,7 +72,7 @@ async def test_an_identified_administrator_needs_no_session_upgrade_lookup(monke
 @pytest.mark.asyncio
 async def test_missing_operator_identity_configuration_is_explained_without_granting_authority(monkeypatch):
     monkeypatch.setattr("app.legacy_admin_identity.enabled", lambda: True)
-    def unavailable(): raise RuntimeError("synthetic-private-connection-must-not-be-disclosed")
+    def unavailable(): raise ValueError("synthetic-private-config-must-not-be-disclosed")
     monkeypatch.setattr("app.catalog_api.support_session_factory", unavailable)
     access = TenantAccess("support")
     result = await _publication_access_details(SimpleNamespace(role="support"), access)
@@ -80,3 +80,30 @@ async def test_missing_operator_identity_configuration_is_explained_without_gran
     assert result["access_reason"] == "administrator_identity_unavailable"
     assert "synthetic-private" not in result["access_message"]
     assert access.role == "support" and access.account_id is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [RuntimeError("private-runtime"), OSError("private-network")])
+async def test_operator_identity_outage_is_retryable_not_a_missing_owner(monkeypatch, failure):
+    monkeypatch.setattr("app.legacy_admin_identity.enabled", lambda: True)
+    def unavailable(): raise failure
+    monkeypatch.setattr("app.catalog_api.support_session_factory", unavailable)
+    with pytest.raises(HTTPException) as exc:
+        await _publication_access_details(SimpleNamespace(role="support"), TenantAccess("support"))
+    assert exc.value.status_code == 503
+    assert "private" not in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_identity_database_unavailability_is_not_converted_to_configuration_diagnostic(monkeypatch):
+    monkeypatch.setattr("app.legacy_admin_identity.enabled", lambda: True)
+    class Session:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+    async def unavailable(db):
+        raise HTTPException(503, "Identidade administrativa temporariamente indisponível")
+    monkeypatch.setattr("app.catalog_api.support_session_factory", lambda: Session)
+    monkeypatch.setattr("app.legacy_admin_identity.lookup_identity", unavailable)
+    with pytest.raises(HTTPException) as exc:
+        await _publication_access_details(SimpleNamespace(role="support"), TenantAccess("support"))
+    assert exc.value.status_code == 503

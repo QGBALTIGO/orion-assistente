@@ -532,8 +532,10 @@ async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=D
                 if payload.start_at.astimezone(zone).date()!=quote['day']:raise HTTPException(422,'O horário não pertence ao dia escolhido')
                 async with get_session_factory()() as engine:
                     hold=await book_appointment(engine,tenant,quote['professional'],engine_services,payload.customer_phone,
-                                                payload.customer_name,payload.start_at,'public:'+quote['nonce'],source='public_site')
-                    result=await confirm_hold(engine,tenant,hold['id'],customer_phone=payload.customer_phone,source='public_site')
+                                                payload.customer_name,payload.start_at,'public:'+quote['nonce'],source='public_site',
+                                                nonblocking_professional_lock=True)
+                    result=await confirm_hold(engine,tenant,hold['id'],customer_phone=payload.customer_phone,source='public_site',
+                                              nonblocking_professional_lock=True)
                 await record_public_booking(guard,tenant,result['id'],selection['shop']['timezone'])
                 visual_site=published
                 if quote.get('publication_version',published['public_version'])!=published['public_version']:

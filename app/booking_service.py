@@ -3,6 +3,7 @@
 Nenhum canal externo grava diretamente em appointments. Operações de escrita
 recebem tenant já autenticado pelo operador (futuramente por webhook assinado).
 """
+import asyncio
 import hashlib
 import json
 import secrets
@@ -35,6 +36,29 @@ async def acquire_professional_lock(s: AsyncSession, tenant: UUID, professional:
     # Todas as mutações de agenda adquirem este lock dentro da transação.
     await s.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:scope, 0))"),
                     {"scope": str(tenant) + ":" + str(professional)})
+
+
+async def _engine_professional_lock(s, tenant, professional, *, nonblocking=False, retry_seconds=0):
+    """Keep the existing lock; public guards must never enter an SQL lock wait.
+
+    A public source guard can hold row locks that a professional editor needs.
+    Waiting here on that editor's advisory lock would make the guard await its
+    own engine forever across connections. Refuse contention before any engine
+    write instead. Direct/internal callers retain their blocking contract.
+    """
+    if not nonblocking:
+        return await acquire_professional_lock(s, tenant, professional)
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + retry_seconds
+    while True:
+        acquired = (await s.execute(text("SELECT pg_try_advisory_xact_lock(hashtextextended(:scope,0))"),
+                                   {"scope": str(tenant) + ":" + str(professional)})).scalar_one()
+        if acquired:
+            return
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            fail(409, "A agenda está sendo atualizada. Consulte o horário novamente em instantes")
+        await asyncio.sleep(min(0.025, remaining))
 
 
 # tenants intentionally grants runtime SELECT only. Read the whole contract in
@@ -468,7 +492,8 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                            start: datetime, idempotency_key: str,
                            now: datetime | None = None, *, replace_hold_id: UUID | None = None,
                            expected_snapshot: str | None = None,
-                           context: LifecycleActor | None = None, source: str = "unknown"):
+                           context: LifecycleActor | None = None, source: str = "unknown",
+                           nonblocking_professional_lock: bool = False):
     """ÚNICA função para criar reservas/holds de todos os canais futuros."""
     supplied_clock = now is not None
     now = now or datetime.now(UTC)
@@ -481,7 +506,7 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
     elif expected_snapshot is not None:
         fail(422, "A substituição exige a reserva temporária")
     async with tenant_transaction(s, tenant):
-        await acquire_professional_lock(s, tenant, professional)
+        await _engine_professional_lock(s, tenant, professional, nonblocking=nonblocking_professional_lock)
         if not supplied_clock:
             now = datetime.now(UTC)
         existing = (await s.execute(text("""
@@ -584,7 +609,8 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
                        now: datetime | None = None, *, customer_phone: str | None = None,
                        expected_snapshot: str | None = None, expected_updated_at: datetime | None = None,
                        idempotency_key: str | None = None,
-                       context: LifecycleActor | None = None, source: str = "unknown"):
+                       context: LifecycleActor | None = None, source: str = "unknown",
+                       nonblocking_professional_lock: bool = False):
     supplied_clock = now is not None
     now = now or datetime.now(UTC)
     expired = False
@@ -596,7 +622,11 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
         """), {"tenant": tenant, "id": item_id})).mappings().first()
         if not row:
             fail(404, "Agendamento não encontrado")
-        await acquire_professional_lock(s, tenant, row["professional_id"])
+        # A competing public hold can briefly win between book and confirm.
+        # Give confirmation a bounded chance to finish its existing hold; never
+        # wait on a database lock or renew/recreate the hold while contended.
+        await _engine_professional_lock(s, tenant, row["professional_id"], nonblocking=nonblocking_professional_lock,
+                                        retry_seconds=1.0 if nonblocking_professional_lock else 0)
         hold = (await s.execute(text("""
             SELECT * FROM appointments WHERE tenant_id=:tenant AND id=:id FOR UPDATE
         """), {"tenant": tenant, "id": item_id})).mappings().one()
