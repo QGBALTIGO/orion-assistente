@@ -635,19 +635,25 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
             raise HTTPException(422, "Este atendimento tem preço fixo e não permite alterar o valor")
         from app.loyalty_rewards import completion_discount
         discount = await completion_discount(db, tenant_id, row, payload.coupon_id, now, gross_cents=gross)
-        percent = (await db.execute(text("""
-            SELECT commission_percent FROM professionals WHERE tenant_id=:tenant AND id=:professional FOR SHARE
-        """), {"tenant": tenant_id, "professional": professional})).scalar_one()
+        from app.commission_policies import compute_completion
+        commission = await compute_completion(db, tenant_id, professional, appointment_id, gross-discount)
+        percent = commission["percent"]
     changed = (await db.execute(text("""
         UPDATE appointments SET status=CAST(:target AS varchar),
             updated_at=GREATEST(:now,updated_at+interval '1 microsecond'),hold_expires_at=NULL,
             commission_percent_snapshot=:percent,
-            commission_cents=CASE WHEN CAST(:target AS varchar)='completed' THEN round(CAST(:net AS numeric) * CAST(:percent AS numeric) / 100)::bigint ELSE NULL END,
+            commission_mode_snapshot=:commission_mode,
+            commission_breakdown=CAST(:commission_breakdown AS jsonb),
+            commission_cents=:commission_cents,
             total_cents=CAST(:net AS integer),original_total_cents=:gross,discount_cents=:discount
         WHERE tenant_id=:tenant AND id=:id AND status=:expected AND start_at<=clock_timestamp()
           AND (NOT :automated OR end_at<=clock_timestamp())
           AND """ + CAS_SQL + " RETURNING *"),
-        {**params, "target": target, "now": now, "percent": percent, "expected": payload.expected_status,
+        {**params, "target": target, "now": now, "percent": percent,
+         "commission_mode": commission["mode"] if target == "completed" else None,
+         "commission_breakdown": json.dumps(commission["breakdown"]) if target == "completed" else "[]",
+         "commission_cents": commission["amount"] if target == "completed" else None,
+         "expected": payload.expected_status,
          "expected_updated_at": payload.expected_updated_at, "net": gross-discount,
          "gross": gross if target == "completed" else None, "discount": discount,
          "automated": automated})).mappings().one_or_none()
@@ -691,16 +697,19 @@ async def commission_report(db, tenant_id, start_date=None, end_date=None):
     period, lower, upper = await period_for(db, tenant_id, start_date, end_date)
     params = {"tenant": tenant_id, "lower": lower, "upper": upper}
     rows = (await db.execute(text("""
-        SELECT p.id,p.name,p.commission_percent,
+        SELECT p.id,p.name,p.commission_percent,p.commission_mode,
             count(a.id) FILTER (WHERE a.status='completed' AND a.start_at>=:lower AND a.start_at<:upper) AS completed,
             COALESCE(sum(a.total_cents) FILTER (WHERE a.status='completed' AND a.start_at>=:lower AND a.start_at<:upper),0) AS revenue_cents,
             COALESCE(sum(""" + COMMISSION_VALUE + """) FILTER (WHERE a.status='completed' AND a.start_at>=:lower AND a.start_at<:upper),0) AS earned_cents,
             COALESCE(sum(""" + COMMISSION_VALUE + """) FILTER (WHERE a.status='completed'),0) AS lifetime_earned_cents,
             count(a.id) FILTER (WHERE a.status='completed' AND a.commission_cents IS NULL AND a.start_at>=:lower AND a.start_at<:upper) AS legacy_rate_estimates,
             COALESCE(sum(round(a.total_cents*p.commission_percent/100)) FILTER
-                (WHERE a.status='confirmed' AND a.start_at>=:lower AND a.start_at<:upper AND a.start_at>=now()),0) AS scheduled_cents
+                (WHERE a.status='confirmed' AND p.commission_mode='percent'
+                  AND a.start_at>=:lower AND a.start_at<:upper AND a.start_at>=now()),0) AS scheduled_cents,
+            count(a.id) FILTER (WHERE a.status='confirmed' AND p.commission_mode='per_service'
+                AND a.start_at>=:lower AND a.start_at<:upper AND a.start_at>=now()) AS unprojected_bookings
         FROM professionals p LEFT JOIN appointments a ON a.tenant_id=p.tenant_id AND a.professional_id=p.id
-        WHERE p.tenant_id=:tenant GROUP BY p.id,p.name,p.commission_percent ORDER BY p.name,p.id
+        WHERE p.tenant_id=:tenant GROUP BY p.id,p.name,p.commission_percent,p.commission_mode ORDER BY p.name,p.id
     """), params)).mappings().all()
     movements = (await db.execute(text("""
         SELECT professional_id,
@@ -730,7 +739,8 @@ async def commission_report(db, tenant_id, start_date=None, end_date=None):
         items.append(item)
     return {"period": period, "items": items, "projection_basis": "completed_daily_average",
             "balance_basis": "all_recorded_completions_minus_paid_advances_and_commissions",
-            "legacy_rate_source": "current_profile", "transfers_enabled": False}
+            "legacy_rate_source": "current_profile", "transfers_enabled": False,
+            "scheduled_per_service_basis": "excluded_until_completed"}
 
 
 async def income_statement(db, tenant_id, start_date=None, end_date=None):

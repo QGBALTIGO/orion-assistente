@@ -22,11 +22,12 @@ from app.management_schemas import (
     FinancePatch, FinanceStatus, GoalCreate, GoalFields, GoalPatch,
     LoyaltyRuleCreate, LoyaltyRuleFields, LoyaltyRulePatch,
     LoyaltyTransactionCreate, MarketingCreate, MarketingFields, MarketingPatch,
-    PaymentMethod, SettlementCreate, SiteSave, VersionedOperation,
+    PaymentMethod, SettlementCreate, SiteSave, VersionedOperation, CommissionPlanUpdate,
 )
 from app.tenant_access import resolve_tenant_access
 from app import loyalty_rewards as rewards
 from app import financial_settlements as settlements
+from app import commission_policies
 from app.qr_api import customer_display_names, whatsapp_name_matches
 
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}/management", tags=["Gestão"])
@@ -184,6 +185,14 @@ async def get_finance_summary(tenant_id: UUID, start_date: date | None = None, e
         period, lower, upper = await data.period_for(db, tenant_id, start_date, end_date)
         where, parameters = data.finance_filter(tenant_id, lower, upper)
         return {"period": period, "summary": await data.finance_summary(db, where, parameters, period["timezone"])}
+
+
+@router.put("/professionals/{professional_id}/commission-plan")
+async def save_professional_commission_plan(tenant_id: UUID, professional_id: UUID,
+                                           payload: CommissionPlanUpdate,
+                                           actor: Actor = Depends(authenticate)):
+    async with management_session(tenant_id, actor, write=True) as db:
+        return await commission_policies.save_plan(db, tenant_id, professional_id, payload)
 
 
 @router.get("/finance/commissions")

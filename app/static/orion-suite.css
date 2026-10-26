@@ -1690,3 +1690,46 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 #osDialog .os-appointment-variable-price .os-field{margin:0}
 @media(max-width:359px){#osDialog .os-service-price-choices{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#osDialog .os-service-price-choice{padding:6px 7px;gap:6px}#osDialog .os-service-price-choice strong{font-size:11px}}
 @media(prefers-reduced-motion:reduce){#osDialog .os-service-price-choice{transition:none}}
+
+
+/* Compact commission model: keep the same density as Orion's service inputs. */
+#osDialog .os-staff-commission-modes{margin:0;padding:0;border:0;min-width:0}
+#osDialog .os-staff-commission-modes>legend{margin:0 0 7px;font:600 13px/19px var(--os-font);color:var(--os-text)}
+#osDialog .os-staff-commission-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#osDialog .os-staff-commission-choices>label{display:flex;align-items:center;gap:8px;min-height:42px;margin:0;padding:9px 11px;border:1px solid var(--os-border);border-radius:11px;background:var(--os-card);cursor:pointer;font:600 12px/18px var(--os-font);color:var(--os-text)}
+#osDialog .os-staff-commission-choices>label:has(input:checked){border-color:var(--os-primary);background:var(--os-tint);color:var(--os-primary)}
+#osDialog .os-staff-commission-choices input{width:15px;height:15px;flex:0 0 15px;accent-color:var(--os-primary);margin:0}
+#osDialog .os-staff-commission-choices>label:focus-within{outline:2px solid color-mix(in srgb,var(--os-primary) 40%,transparent);outline-offset:2px}
+#osDialog #osStaffCommissionHint{margin:8px 0 0;color:var(--os-muted);font:400 11px/17px var(--os-font)}
+#osDialog #osStaffGeneralCommission[hidden]{display:none!important}
+#osDialog .os-staff-services-field{min-width:0;border:0;padding:0;margin:0}
+#osDialog .os-staff-services-field>legend{margin:0 0 8px;font:600 14px/20px var(--os-font);color:var(--os-text)}
+#osDialog .os-staff-service-list{display:grid;gap:1px;min-width:0}
+#osDialog .os-staff-service-row{display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:8px;min-width:0;padding:9px 0;border-bottom:1px solid var(--os-border)}
+#osDialog .os-staff-service-row:last-child{border-bottom:0}
+#osDialog .os-staff-service-check{display:flex;flex:1 1 145px;align-items:center;gap:9px;min-width:0;margin:0;cursor:pointer}
+#osDialog .os-staff-service-check input{flex:0 0 16px;width:16px;height:16px;margin:0;accent-color:var(--os-primary)}
+#osDialog .os-staff-service-check>span{display:grid;gap:2px;min-width:0}
+#osDialog .os-staff-service-check strong{font:500 12px/18px var(--os-font);overflow-wrap:anywhere}
+#osDialog .os-staff-service-check small{font:400 11px/17px var(--os-font);color:var(--os-muted);overflow-wrap:anywhere}
+#osDialog .os-staff-service-rule{display:flex;align-items:center;gap:6px;min-width:0;flex:0 1 175px}
+#osDialog .os-staff-service-rule[hidden]{display:none!important}
+#osDialog .os-staff-service-rule>label{display:block;min-width:0;margin:0}
+#osDialog .os-staff-rule-kind{flex:0 0 69px}
+#osDialog .os-staff-rule-value{flex:1 1 90px}
+#osDialog .os-staff-service-rule :is(select,input){width:100%;min-width:0;height:39px;min-height:39px;margin:0;padding:7px 9px;font:500 13px/20px var(--os-font);border-radius:9px}
+#osDialog .os-staff-service-rule input{font-variant-numeric:tabular-nums}
+#osDialog .os-staff-service-rule :is(select,input):disabled{opacity:.5}
+#osDialog .os-sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.os-appointment-commission-details{margin:10px 0 0;border:1px solid var(--os-border);border-radius:11px;background:var(--os-card);overflow:hidden}
+.os-appointment-commission-details>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:43px;padding:10px 12px;cursor:pointer;list-style:none;font:600 12px/18px var(--os-font)}
+.os-appointment-commission-details>summary::marker{content:''}
+.os-appointment-commission-details>summary::-webkit-details-marker{display:none}
+.os-appointment-commission-lines{display:grid;gap:0;margin:0;padding:0 12px;list-style:none;border-top:1px solid var(--os-border)}
+.os-appointment-commission-lines li{display:flex;align-items:flex-start;justify-content:space-between;gap:9px;padding:9px 0;border-bottom:1px solid var(--os-border)}
+.os-appointment-commission-lines li:last-child{border-bottom:0}
+.os-appointment-commission-lines li>span{display:grid;gap:3px;flex:1;min-width:0;font:500 12px/18px var(--os-font)}
+.os-appointment-commission-lines li small{font:400 11px/17px var(--os-font);color:var(--os-muted)}
+.os-appointment-commission-lines li>strong{font:600 12px/18px var(--os-font);white-space:nowrap;font-variant-numeric:tabular-nums}
+@media(max-width:420px){#osDialog .os-staff-service-row{gap:6px}#osDialog .os-staff-service-check{flex-basis:100%}#osDialog .os-staff-service-rule{flex:1 1 auto;max-width:210px;margin-left:25px}#osDialog .os-staff-commission-choices>label{padding:8px 9px;font-size:12px}}
+@media(prefers-reduced-motion:reduce){#osDialog .os-staff-commission-choices>label{transition:none}}

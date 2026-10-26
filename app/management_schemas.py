@@ -327,6 +327,41 @@ class MarketingPatch(VersionedOperation):
     scheduled_at: AwareDatetime | None = None
 
 
+class CommissionServiceRule(CleanModel):
+    service_id: UUID
+    kind: Literal["percent", "fixed"] | None = None
+    percent: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
+    fixed_cents: StrictInt | None = Field(default=None, ge=0, le=100_000_000)
+
+    @model_validator(mode="after")
+    def validated_rule(self):
+        if self.kind == "percent":
+            if self.percent is None or self.fixed_cents is not None:
+                raise ValueError("Informe somente uma porcentagem válida para este serviço")
+        elif self.kind == "fixed":
+            if self.fixed_cents is None or self.percent is not None:
+                raise ValueError("Informe somente um valor fixo válido em centavos")
+        elif self.percent is not None or self.fixed_cents is not None:
+            raise ValueError("Escolha o tipo de comissão do serviço")
+        return self
+
+
+class CommissionPlanUpdate(CleanModel):
+    mode: Literal["percent", "per_service"]
+    expected_version: StrictInt = Field(ge=1)
+    services: list[CommissionServiceRule] = Field(max_length=250)
+
+    @model_validator(mode="after")
+    def complete_services(self):
+        if len({rule.service_id for rule in self.services}) != len(self.services):
+            raise ValueError("Cada serviço deve aparecer apenas uma vez")
+        if self.mode == "per_service" and (
+            not self.services or any(rule.kind is None for rule in self.services)
+        ):
+            raise ValueError("Defina uma comissão explícita para cada serviço selecionado")
+        return self
+
+
 class AppointmentTransition(CreateOperation):
     expected_status: Literal["confirmed"] = "confirmed"
     coupon_id: UUID | None = None
