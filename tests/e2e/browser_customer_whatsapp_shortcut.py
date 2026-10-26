@@ -67,7 +67,17 @@ def test_whatsapp_shortcut_and_chevron_fit_real_mobile_browser(engine,width):
             assert wa.get_attribute("href")=="https://wa.me/5521997557364"
             wb,ab,cb=wa.bounding_box(),arrow.bounding_box(),card.bounding_box()
             assert all((wb,ab,cb)), "missing visible bounding boxes"
-            assert 43 <= wb["width"] <=45 and 43 <= wb["height"] <=45
+            assert 43 <= wb["width"] <=45 and 43 <= wb["height"] <=45, "invisible 44px touch target"
+            glyph=wa.locator("svg.os-whatsapp-mark")
+            glyph_box=glyph.bounding_box()
+            assert glyph_box is not None
+            assert 18 <= glyph_box["width"] <=20 and 18 <= glyph_box["height"] <=20, "compact 19px icon"
+            styles=wa.evaluate("""el => {
+              const css=getComputedStyle(el);
+              return {background:css.backgroundColor,border:css.borderTopWidth,radius:css.borderRadius}
+            }""")
+            assert styles["background"]=="rgba(0, 0, 0, 0)", styles
+            assert styles["border"]=="0px" and styles["radius"]=="0px", styles
             assert cb["x"] <= wb["x"] and wb["x"]+wb["width"] <= cb["x"]+cb["width"]
             assert wb["x"]+wb["width"] <= ab["x"]+2, "WhatsApp must be left of the chevron"
             assert ab["x"]+ab["width"] <= cb["x"]+cb["width"]
