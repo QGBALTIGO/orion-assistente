@@ -1690,3 +1690,21 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 #osDialog .os-appointment-variable-price .os-field{margin:0}
 @media(max-width:359px){#osDialog .os-service-price-choices{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#osDialog .os-service-price-choice{padding:6px 7px;gap:6px}#osDialog .os-service-price-choice strong{font-size:11px}}
 @media(prefers-reduced-motion:reduce){#osDialog .os-service-price-choice{transition:none}}
+
+/* Professional commissions: compact controls aligned with the native Orion drawer. */
+#osDialog .os-commission-default .os-help{margin:5px 0 0;font:400 11px/17px var(--os-font);color:var(--os-muted)}
+#osDialog .os-commission-services{min-width:0}
+#osDialog .os-commission-services>p.os-help{margin:0 0 7px;font:400 12px/18px var(--os-font)}
+#osDialog .os-commission-service-list{display:grid;gap:0;min-width:0}
+#osDialog .os-commission-service-row{display:grid;gap:5px;min-width:0;padding:10px 0;border-bottom:1px solid var(--os-border)}
+#osDialog .os-commission-service-row:last-child{border-bottom:0}
+#osDialog .os-commission-service-row>.os-check{min-height:26px;margin:0;font-size:13px;line-height:18px}
+#osDialog .os-commission-service-row>.os-check span{min-width:0}
+#osDialog .os-commission-service-row>.os-check small{font-size:11px}
+#osDialog .os-commission-service-controls{display:flex;align-items:center;gap:7px;min-width:0;margin:1px 0 1px 25px}
+#osDialog .os-commission-service-controls select{box-sizing:border-box;width:70px;min-width:70px;height:36px;min-height:36px;margin:0;padding:6px 8px;border:1px solid var(--os-border);border-radius:9px;background:var(--os-card);color:var(--os-text);font:500 12px/18px var(--os-font)}
+#osDialog .os-commission-service-controls input{box-sizing:border-box;flex:0 1 127px;max-width:145px;min-width:0;height:36px;min-height:36px;margin:0;padding:6px 10px;border:1px solid var(--os-border);border-radius:9px;background:var(--os-card);color:var(--os-text);font:500 13px/18px var(--os-font)}
+#osDialog .os-commission-service-controls input:focus-visible,
+#osDialog .os-commission-service-controls select:focus-visible{outline:2px solid var(--os-primary);outline-offset:1px}
+#osDialog .os-commission-service-controls.hidden{display:none}
+@media(max-width:420px){#osDialog .os-commission-service-row{padding:8px 0}#osDialog .os-commission-service-controls select{width:62px;min-width:62px}}

@@ -276,6 +276,8 @@ async def create_item(
     authorize_resource(actor, tenant_id, resource, write=True)
     values = validation(resource_model(resource), payload).model_dump()
     check_resource_values(resource, values)
+    if resource == "professionals" and values["commission_mode"] == "per_service":
+        raise HTTPException(422, "Cadastre comissões por serviço na gestão de profissionais")
     item_id = uuid4()
     bind = {"id": item_id, "tenant_id": tenant_id, **values}
     fields = list(bind)
@@ -309,12 +311,26 @@ async def replace_item(
     values = validation(resource_model(resource), payload).model_dump()
     check_resource_values(resource, values)
     assignments = ", ".join(f"{field} = :{field}" for field in values)
+    if resource == "professionals":
+        assignments += ", commission_config_version=commission_config_version+1"
     bind = {"tenant_id": tenant_id, "id": item_id, **values}
     try:
         factory = get_session_factory()
         async with factory() as session:
             async with tenant_transaction(session, tenant_id):
                 await ensure_tenant(session, tenant_id)
+                if resource == "professionals":
+                    from app.booking_service import acquire_professional_lock
+                    await acquire_professional_lock(session, tenant_id, item_id)
+                    current_mode = (await session.execute(text("""
+                        SELECT commission_mode FROM professionals
+                        WHERE tenant_id=:tenant AND id=:id FOR SHARE
+                    """), {"tenant": tenant_id, "id": item_id})).scalar_one_or_none()
+                    if current_mode is None:
+                        raise HTTPException(404, "Profissional não encontrado")
+                    if "commission_mode" in payload and values["commission_mode"] != current_mode:
+                        raise HTTPException(409, "Altere o modelo de comissão no cadastro de profissionais")
+                    bind["commission_mode"] = current_mode
                 await guard_generated_service(session, tenant_id, resource, item_id, values)
                 from app.management_blocks import guard_catalog_block
                 await guard_catalog_block(session, tenant_id, resource, values=values, item_id=item_id)
