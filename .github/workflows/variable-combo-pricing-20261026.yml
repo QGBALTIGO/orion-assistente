@@ -8,6 +8,7 @@ on:
       - 'app/service_packages_api.py'
       - 'app/static/orion-suite.js'
       - 'tests/integration/test_variable_combo_pricing_pg.py'
+      - 'tests/integration/combo_pre_migration_backfill.py'
       - 'tests/integration/test_variable_service_pricing.py'
       - 'tests/unit/test_variable_combo_release.py'
       - 'ui-tests/package-variable-combo.test.mjs'
@@ -43,6 +44,8 @@ jobs:
       SUPPORT_API_TOKEN: synthetic-combo-test-support-token-123456789
       REQUIRE_POSTGRES_TESTS: "1"
       BUSINESS_PROFILES_ENABLED: "1"
+      ORION_DISPOSABLE_COMBO_CI: "1"
+      ORION_EXPECTED_DATABASE_NAME: "barber_saas"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -63,8 +66,11 @@ jobs:
             -v migrator_password=ci-migrator-only \
             -v support_password=ci-support-only \
             -f infra/postgres/init/001-roles.sql
+          alembic upgrade 0033_professional_commissions
+          python tests/integration/combo_pre_migration_backfill.py seed
           alembic upgrade head
           test "$(psql -h localhost -U postgres -d barber_saas -tAc 'SELECT version_num FROM alembic_version')" = "0034_variable_combo_pricing"
+          python tests/integration/combo_pre_migration_backfill.py check
       - name: Combo variável, RLS, finanças, cotação e regressão
         run: |
           python -m pytest -q -ra \
