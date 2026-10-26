@@ -15,6 +15,10 @@ on:
       - 'app/qr_presentation.py'
       - 'app/qr_profile.py'
       - 'app/qr_ai.py'
+      - 'app/whatsapp_bot.py'
+      - 'app/whatsapp_dialogue.py'
+      - 'app/whatsapp_commands.py'
+      - 'app/qr_information.py'
       - 'app/static/orion-public.js'
       - 'app/static/orion-suite.js'
       - 'app/static/orion-suite.css'
@@ -80,7 +84,11 @@ jobs:
             tests/integration/test_variable_service_pricing.py \
             tests/unit/test_variable_price_copy.py \
             tests/integration/test_catalog.py \
-            tests/integration/test_appointment_lifecycle.py
+            tests/integration/test_appointment_lifecycle.py \
+            tests/unit/test_whatsapp_booking_references.py \
+            tests/unit/test_qr_presentation.py \
+            tests/unit/test_qr_presentation_matrix.py \
+            tests/unit/test_qr_service_menu_presentation.py
   pricing-interface:
     runs-on: ubuntu-24.04
     timeout-minutes: 12

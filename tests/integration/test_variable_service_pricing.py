@@ -86,6 +86,16 @@ async def test_variable_completion_requires_agreed_total_before_revenue_or_commi
             SELECT count(*) FROM appointment_history
             WHERE tenant_id=:tenant AND appointment_id=:id AND event='completed'
         """), {"tenant": d["a"], "id": UUID(visit)})).scalar_one() == 1
+    dashboard = await d["client"].get(d["base"] + "/dashboard", params=d["period"])
+    assert dashboard.status_code == 200, dashboard.text
+    services = dashboard.json()["services"]
+    assert sum(x["revenue_cents"] for x in services) == 15000
+    assert sum(x["gross_revenue_cents"] for x in services) == 15000
+    assert sum(x["discount_cents"] for x in services) == 0
+    history = await d["client"].get(d["base"] + "/customers/" + person["id"] + "/services")
+    assert history.status_code == 200, history.text
+    assert history.json()["items"][0]["total_cents"] == 15000
+    assert history.json()["items"][0]["services"][0]["price_mode_snapshot"] == "from"
     assert (await d["client"].post(endpoint, json={
         "idempotency_key": "variable-agreed", "final_total_cents": 17000})).status_code == 409
 

@@ -56,3 +56,27 @@ def test_invalid_price_kind_fails_closed():
     with pytest.raises(ValueError):
         p.render_slots(["Alisamento"],[datetime(2030,1,5,12,tzinfo=timezone.utc)],
                        timezone="America/Campo_Grande",price_kind="unverified")
+
+
+def test_meta_whatsapp_candidate_and_real_booking_keep_variable_kind():
+    from app.whatsapp_dialogue import summary
+    when = datetime(2030,1,5,12,tzinfo=timezone.utc)
+    data = {"services":["Alisamento"],"start_at":when,
+            "timezone":"America/Campo_Grande","total_cents":8000,
+            "price_mode":"from","duration_min":60,"protocol":"AG-SINTETICO"}
+    candidate = summary(data)
+    assert candidate.price_kind == "from"
+    assert "Valor mínimo previsto" in p.render_summary(candidate)
+    historic = summary({**{k:v for k,v in data.items() if k!="price_mode"},
+                        "items":[{"name_snapshot":"Alisamento",
+                                  "duration_snapshot_min":60,"price_mode_snapshot":"from"}]})
+    assert historic.price_kind == "from"
+
+
+def test_qr_uses_catalog_variable_kind_without_inventing_a_final_total():
+    from app.qr_ai import _catalog_price_kind
+    rows=[{"id":"service-a","price_mode":"fixed"},
+          {"id":"service-b","price_mode":"from"}]
+    assert _catalog_price_kind(rows,["service-a"]) == "fixed"
+    assert _catalog_price_kind(rows,["service-a","service-b"]) == "from"
+    assert _catalog_price_kind(rows,["service-missing"]) == "fixed"
