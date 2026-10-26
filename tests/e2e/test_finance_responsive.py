@@ -3,6 +3,7 @@
 Tests iPhone WebKit + Android/desktop Chromium. No production access required.
 """
 from pathlib import Path
+import os
 import pytest
 from playwright.sync_api import sync_playwright
 
@@ -78,7 +79,11 @@ MOCK = """() => {
 ])
 def test_finance_loses_no_horizontal_content_or_actions(browser_name,width,height,theme):
     with sync_playwright() as playwright:
-        browser=getattr(playwright,browser_name).launch(headless=True)
+        browser=getattr(playwright,browser_name).launch(
+            headless=True,
+            **({"channel":"chrome"} if browser_name=="chromium"
+               and os.getenv("ORION_TEST_SYSTEM_CHROME")=="1" else {})
+        )
         page=browser.new_page(viewport={"width":width,"height":height},device_scale_factor=2)
         errors=[]
         page.on("pageerror",lambda error:errors.append(str(error)))
@@ -103,15 +108,25 @@ def test_finance_loses_no_horizontal_content_or_actions(browser_name,width,heigh
                   const selected=['.os-header','.os-finance-heading','.os-finance-toolbar',
                     '.os-finance-metrics','.os-finance-tabs','.os-finance-layout',
                     '.os-finance-layout>.os-card','.os-series-scroll',
-                    '.os-finance-table-scroll','.os-finance-data-table tbody tr'];
+                    '.os-finance-table-scroll'];
+                  // Native desktop/tablet tables scroll inside their own containers;
+                  // only mobile cards must individually fit the viewport.
+                  if(innerWidth<=767)selected.push('.os-finance-data-table tbody tr');
                   const boxes=selected.flatMap(s=>[...document.querySelectorAll(s)].map(x=>{
                     const box=x.getBoundingClientRect();
                     return {selector:s,left:box.left,right:box.right,width:box.width,scroll:x.scrollWidth,
                       client:x.clientWidth,display:getComputedStyle(x).display};
                   }));
+                  const offenders=[...document.querySelectorAll('body *')].map(node=>{
+                    const rect=node.getBoundingClientRect();
+                    return {tag:node.tagName,cls:String(node.className||'').slice(0,70),
+                      left:Math.round(rect.left),right:Math.round(rect.right),
+                      innerScroll:!!node.closest('.os-finance-table-scroll,.os-series-scroll,.os-horizontal-tabs')};
+                  }).filter(x=>x.right>viewport+2&&!x.innerScroll)
+                    .sort((a,b)=>b.right-a.right).slice(0,12);
                   return {viewport,doc:document.documentElement.scrollWidth,
                     body:document.body.scrollWidth,main:{left:rect.left,right:rect.right,width:rect.width},
-                    boxes};
+                    boxes,offenders};
                 }""")
                 assert geometry["doc"]<=width+2,geometry
                 assert geometry["body"]<=width+2,geometry

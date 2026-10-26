@@ -34,6 +34,23 @@ jobs:
         run: |
           node --check app/static/orion-suite.js
           node --test ui-tests/orion-finance-mobile.test.mjs ui-tests/orion-suite.test.mjs
+  chrome-tablet:
+    name: Chrome real - tablet/desktop sem instalar navegador
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Usar Chrome pré-instalado
+        run: |
+          google-chrome --version
+          python -m pip install -r tests/e2e/requirements.txt pytest
+      - name: Testar widths 360/768/1024/1366 e todas as abas
+        env:
+          ORION_TEST_SYSTEM_CHROME: '1'
+        run: python -m pytest -q -ra tests/e2e/test_finance_responsive.py -k chromium
   browser:
     name: Safari iPhone, Chrome Android, tablet e desktop
     runs-on: ubuntu-24.04
