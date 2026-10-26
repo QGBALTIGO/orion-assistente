@@ -47,6 +47,8 @@ test('every financial metric and all five report tabs render without losing fina
  assert.deepEqual([...tabs].map(el=>el.textContent),['Lançamentos','DRE','Comissões','Vales & Pagamentos','Histórico']);
  const table=h.document.querySelector('.os-finance-ledger-table');
  assert.ok(table);
+ assert.equal(table.querySelector('thead th:last-child').getAttribute('aria-label'),'Ações');
+ assert.equal(table.querySelector('thead .os-sr-only'),null,'Absolute-positioned header hint must not expand tablet document width');
  assert.equal(table.querySelectorAll('tbody>tr').length,2);
  assert.match(table.textContent,/Corte e hidratação/);
  assert.match(table.textContent,/140,00/);

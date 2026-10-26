@@ -796,7 +796,7 @@
   function metric(label,value,symbol,note='',cls=''){return '<div class="os-card os-metric"><div class="os-metric-head"><span>'+esc(label)+'</span>'+icon(symbol)+'</div><strong class="'+cls+'">'+esc(value)+'</strong>'+(note?'<small>'+esc(note)+'</small>':'')+'</div>';}
   function financeTable(data,{history=false,entries=rows(data)}={}){
     // Semantic table on desktop; reflow the same rows as cards on mobile.
-    let html='<div class="os-table-scroll os-finance-table-scroll"><table class="os-table os-finance-data-table os-finance-ledger-table"><thead><tr><th>Descrição</th><th>Data</th><th>Categoria</th><th>Valor</th><th>Status</th><th><span class="os-sr-only">Ações</span></th></tr></thead><tbody>'+
+    let html='<div class="os-table-scroll os-finance-table-scroll"><table class="os-table os-finance-data-table os-finance-ledger-table"><thead><tr><th>Descrição</th><th>Data</th><th>Categoria</th><th>Valor</th><th>Status</th><th aria-label="Ações"></th></tr></thead><tbody>'+
       entries.map(e=>{
         const id=esc(e.id),description=esc(e.description),isExpense=e.kind==='expense';
         return '<tr class="os-finance-entry"><td data-label="Descrição" class="os-finance-primary"><strong>'+description+'</strong><small>'+esc(paymentLabels[e.payment_method]||'')+'</small></td>'+
