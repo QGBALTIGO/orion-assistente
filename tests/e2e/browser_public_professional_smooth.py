@@ -78,7 +78,8 @@ def test_picker_photo_fill_wrapping_and_no_flicker(browser_type,width,theme):
             assert images.count()==2
             page.wait_for_function("""() => [...document.querySelectorAll(
                 '.professional-photo img')].every(img=>img.complete&&img.naturalWidth>0)""")
-            assert len(downloads)==2
+            baseline_downloads=len(downloads)
+            assert baseline_downloads>=2  # Team gallery already renders the same staff photos.
             metrics=page.evaluate("""() => [...document.querySelectorAll('.professional-choice')].map(card => {
               const photo=card.querySelector('.professional-photo');
               const img=photo.querySelector('img');
@@ -128,7 +129,7 @@ def test_picker_photo_fill_wrapping_and_no_flicker(browser_type,width,theme):
             assert requests[-1]['professional_id']==[PRO2]
             assert page.evaluate("""() => window.__photoNodes.every((image,i)=>
                 image===document.querySelectorAll('.professional-photo img')[i])""")
-            assert len(downloads)==2,'New date and professional must not refetch photo'
+            assert len(downloads)==baseline_downloads,'New date and professional must not refetch photo'
             assert page.evaluate('document.documentElement.scrollWidth<=window.innerWidth+2')
             page.locator('#time-slots .slot').click()
             page.locator('#booking-next').click()
@@ -149,6 +150,9 @@ def test_picker_preview_date_change_does_not_remount_photos(browser_type,width):
             is_mobile=(browser_type=='webkit' and width<=390))
         try:
             page.route('**/*',lambda route:route.abort())
+            page.route('https://images.example.invalid/**',
+                lambda route:route.fulfill(
+                    status=200,content_type='image/svg+xml',body=FAKE_IMAGE))
             page.route(preview_url,lambda route:route.fulfill(
                 status=200,content_type='text/html',body=HTML))
             page.route('**/api/v1/tenants/*/management/site/preview',lambda route:route.fulfill(
@@ -161,6 +165,8 @@ def test_picker_preview_date_change_does_not_remount_photos(browser_type,width):
             page.locator('#hero-book').click()
             page.locator('#booking-service-list .service-card').click()
             page.locator('#booking-next').click()
+            page.wait_for_function("""() => [...document.querySelectorAll(
+                '.professional-photo img')].every(img=>img.complete&&img.naturalWidth>0)""")
             page.evaluate("""() => window.__people=[...document.querySelectorAll(
                 '.professional-choice .professional-photo img')]""")
             page.locator('#booking-day-strip .day-button').nth(2).click()
