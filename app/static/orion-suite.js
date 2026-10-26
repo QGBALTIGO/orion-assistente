@@ -1251,6 +1251,12 @@
   }
   function showGoogleAction(action){
     const capability={connect:'can_connect',revoke:'can_disconnect',retry:'can_retry'}[action];if(!googleCan(capability))return;
+    // Vercel proxies this live script. OAuth's registered callback remains on Railway.
+    if(action==='connect'&&location.hostname==='orion-painel-iota.vercel.app'){
+      const originalPanel='https://orion-assistente-production.up.railway.app/panel?aba=agenda&empresa='+encodeURIComponent(state.tenantId);
+      showDialog('google-original-panel','Conectar Google Agenda','<p>Para conectar o Google Agenda, continue no painel original do Orion. Talvez seja necessário entrar novamente.</p><div class="os-form-actions">'+button('Cancelar','close-dialog','os-outline')+'<a class="os-button" href="'+esc(originalPanel)+'">Continuar no painel original</a></div>',{capability});
+      return;
+    }
     const titleText={connect:'Conectar Google Agenda',revoke:'Desconectar Google Agenda',retry:'Repetir sincronização'}[action],description={connect:googleDisclosure,revoke:'A autorização será removida e os novos envios serão interrompidos. Os agendamentos do Orion permanecem registrados. Os eventos já enviados não serão apagados por esta ação.',retry:'As alterações com falha serão reenviadas ao calendário escolhido. O Orion mantém o controle dos eventos para evitar duplicações.'}[action],extra=action==='connect'?'<p>Os eventos são privados e não incluem convidados. Alterações feitas diretamente no Google não voltam para a agenda do Orion.</p><p>'+(state.data.google?.calendar_change_locked?'Reconecte a mesma conta e mantenha o calendário já vinculado.':'Depois da autorização, você escolherá um calendário. Após a primeira ativação, o vínculo permanece nesse calendário.')+'</p>':'';
     showDialog('google-action',titleText,dialogForm('google-action','<div class="os-google-explainer"><p>'+esc(description)+'</p>'+extra+'</div>',action==='connect'?'Continuar com o Google':action==='revoke'?'Confirmar desconexão':'Confirmar nova tentativa'),{action,capability});
   }

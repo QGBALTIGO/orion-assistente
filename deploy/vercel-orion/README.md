@@ -1,68 +1,35 @@
-# Site e painel Orion na Vercel
+# Orion Vercel — fachada sempre atualizada
 
-Projeto `orion-painel`, equipe `team_fQqbFglYR8GWwMJVVF4KIL99`, domínio reservado
-`https://orion-painel-iota.vercel.app`. Esta pasta contém fontes de empacotamento;
-não publique o repositório inteiro nem esta pasta diretamente.
+Projeto `orion-painel`, domínio público `https://orion-painel-iota.vercel.app`, backend e interface atualizados no Railway em `https://orion-assistente-production.up.railway.app`.
 
-O pacote é preparado por `scripts/prepare_vercel_orion.py` em uma pasta externa.
-A lista de arquivos é fechada: configuração, página inicial, uma variante do JS do
-painel e três respostas estáticas. O manifesto registra hashes e fica fora de
-`public/`. Não entram credenciais, documentos de auditoria, backups ou sessões.
+## Como funciona
 
-O site e o painel usam as mesmas APIs no Railway por rewrites nativos. Nenhum
-servidor, banco, worker, bridge QR ou volume é criado na Vercel. A página inicial
-tem metadados do novo domínio. O painel e os demais assets continuam vindo da
-versão atual do Railway, exceto a variante explicitamente gerada do JS.
+A Vercel atua somente como uma camada de roteamento e segurança. **Página inicial, HTML do painel, JavaScript, CSS, mídias, site público e APIs são encaminhados para o Orion atual da Railway.** Não existe cópia própria do painel ou da landing page na Vercel; novas atualizações da Railway ficam visíveis no domínio Vercel na próxima requisição, sem necessidade de novo deploy Vercel. Políticas `no-store` evitam cache desatualizado da borda.
 
-## Origem, sessão e privacidade
+O arquivo `vercel.json` mantém as restrições de host e Origin para operações que escrevem dados, validações de CSRF pelo backend, bloqueios de caminhos internos e proteção contra métodos não permitidos. O Google Agenda continua iniciando autenticação exclusivamente no domínio Railway, pois o OAuth callback registrado pertence a ele; o JavaScript principal detecta o hostname da fachada e orienta o cliente. A homepage Railway utiliza o marcador fixo `x-orion-facade: vercel-iota` para gerar metadados canônicos e Open Graph da Vercel.
 
-Requisições de alteração só seguem ao upstream quando Host e Origin são
-exatamente os do domínio autorizado. Apenas então a origem é traduzida para o
-destino fixo no Railway. Origem ausente, origem diferente e preflight CORS são
-recusados. Cookies e o cabeçalho CSRF continuam sob validação do Orion; não há
-token administrativo no pacote. Uma publicação de teste não pode realizar
-alterações usando seu hostname temporário.
+O banco PostgreSQL, Redis, workers e WhatsApp continuam exclusivos da Railway. Os dois domínios consultam os mesmos dados. Nenhuma mudança de autenticação ou sessão foi introduzida.
 
-O novo domínio exige um login próprio. Não copiar cookies nem invalidar as
-sessões do endereço anterior. Respostas têm cache privado desativado no navegador
-e na CDN. Rotas internas, webhooks, documentação de API e arquivos do repositório
-não são expostos pelo proxy. O destino não pode ser escolhido pelo cliente.
+## Quando publicar a Vercel
 
-A conexão inicial/reconexão do Google Agenda continua pelo painel original. A
-variante do JS mostra um link explícito para a mesma empresa na agenda original;
-não inicia OAuth neste domínio. O callback e a iniciação do Google no novo host
-são bloqueados para não consumir estados com cookies no domínio errado.
-`PANEL_PUBLIC_URL`, Google e links emitidos pelo backend continuam na configuração
-atual. A configuração de campanhas e envios não é alterada.
+**Mudanças normais do Orion não exigem redeploy Vercel.** Apenas alterações na política de roteamento ou nas respostas locais `403`, `404` e `google-origin` requerem um novo artefato Vercel.
 
-## Validação e publicação
+Para preparar esse artefato somente de política:
 
-1. Rodar os testes do pacote e das rotas em ambiente isolado, incluindo contrato
-   real de sessão/CSRF e o limite de imagem do backend com armazenamento fictício.
-2. Preparar o pacote em pasta externa; revisar a lista e hashes. Conferir a
-   identidade/equipe e o projeto explicitamente antes de qualquer publicação.
-3. Conferir os arquivos com `vercel deploy --dry --json`. Publicar para produção
-   com `--skip-domain`, sem conectar o repositório ou importar variáveis Railway.
-4. Conferir a publicação exata: páginas, assets, respostas de autenticação sem
-   sessão, bloqueio de rotas/origens e cache. Promover somente esse artefato.
-5. Abrir o domínio público e conferir o formulário de login; o operador realiza
-   o login. A revisão autenticada é somente leitura e não envia mensagens.
-6. Comparar IDs e configuração dos serviços Railway antes/depois. Não reiniciar
-   o backend nem alterar dados para fazer testes.
+`python -m scripts.prepare_vercel_orion --output <diretorio-fora-do-repositorio>`
 
-Testes estáticos de regras não comprovam o roteamento efetivo da plataforma.
-Testes ASGI com 8 MiB comprovam o backend isolado, e não o tamanho máximo aceito
-pelo proxy na rede. Não usar upload ou formulário de produção como teste desse
-limite. A limitação operacional documentada do proxy é timeout de 120 segundos.
-Envio, entrega, OAuth e transações reais precisam dos aceites próprios da missão.
+O preparador inclui somente quatro arquivos: `vercel.json`, `403.html`, `404.html`, `google-origin.json`. Um manifesto privado registra hashes. O pacote não possui HTML de landing ou JS do painel que possa ficar antigo.
 
-## Reversão
+Antes de trocar a política, validar em preview; conferir rotas, status, headers, cache e ausência de chamadas de OAuth; depois promover em produção. Não executar operações comerciais reais durante os testes.
 
-O endereço Railway continua funcionando independentemente desta publicação.
-Reverter somente a publicação/alias deste projeto Vercel para um deployment
-anterior verificado. Não mudar DNS Railway, variáveis, sessões ou volumes para
-reverter esta frente. Não comprar domínios ou alterar o plano para publicar.
+## Testes e garantia contra regressões
 
-Referências: [rewrites e transformações](https://vercel.com/docs/routing/rewrites),
-[configuração](https://vercel.com/docs/project-configuration/vercel-json),
-[limites](https://vercel.com/docs/limits).
+`pytest -q tests/test_vercel_orion_bundle.py tests/test_vercel_orion_routes.py tests/unit/test_landing_api_unit.py`
+
+`node --test ui-tests/vercel-facade.test.mjs`
+
+O workflow `orion-vercel-parity.yml` realiza comparações somente leitura a cada seis horas e em alterações relevantes na branch main, verificando paridade de bytes do frontend em ambos os hosts. As únicas diferenças previstas são os metadados canônicos do domínio Vercel, gerados na mesma aplicação Railway.
+
+## Recuperação
+
+Uma alteração defeituosa na política de proxy pode ser revertida na Vercel sem tocar em Railway, PostgreSQL, sessões ou uploads. Nunca restaurar política antiga que sirva JavaScript estático congelado.

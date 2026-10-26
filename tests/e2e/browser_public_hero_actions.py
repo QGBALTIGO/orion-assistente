@@ -41,7 +41,7 @@ DATA = {
 
 
 @pytest.mark.parametrize("engine", ["chromium", "webkit"])
-@pytest.mark.parametrize("width", [320, 375, 390, 768, 1024])
+@pytest.mark.parametrize("width", [320, 375, 390, 640, 768, 896, 1024])
 def test_hero_icons_align_and_share_opens_native_api_without_booking(engine, width):
     with sync_playwright() as playwright:
         browser = getattr(playwright, engine).launch()
@@ -98,6 +98,18 @@ def test_hero_icons_align_and_share_opens_native_api_without_booking(engine, wid
             assert booking["x"] + booking["width"] <= location["x"] + 2
             assert location["x"] + location["width"] <= sharing["x"] + 2
             assert sharing["x"] + sharing["width"] <= whole["x"] + whole["width"] + 2
+            # The CTA stays left. On desktop the two utility buttons move as
+            # one group to the far-right edge, rather than staying by the CTA.
+            distance = location["x"] - (booking["x"] + booking["width"])
+            utilities_gap = sharing["x"] - (location["x"] + location["width"])
+            assert 0 <= utilities_gap <= 14
+            if width >= 768:
+                assert distance >= 24, ("Desktop CTA/utility separation", bounds)
+                assert abs((sharing["x"] + sharing["width"]) -
+                           (whole["x"] + whole["width"])) <= 2, (
+                           "Share should align with right end of hero actions", bounds)
+            else:
+                assert distance <= 14, ("Mobile/tablet keeps compact placement", bounds)
             service_meta = page.locator("#services-grid .service-card .service-meta").first
             assert service_meta.locator(".price").count() == 1
             assert service_meta.locator(".service-meta-separator").inner_text() == "•"
@@ -147,5 +159,48 @@ def test_hero_icons_align_and_share_opens_native_api_without_booking(engine, wid
             received = page.evaluate("window.__shareArgs")
             assert received == {"title": DATA["site"]["title"], "url": URL}
             assert not page.locator("#booking-dialog").evaluate("(el)=>el.open")
+        finally:
+            browser.close()
+
+
+@pytest.mark.parametrize("engine", ["chromium", "webkit"])
+@pytest.mark.parametrize("width", [375, 768, 1024])
+def test_hero_share_remains_right_on_desktop_when_map_is_not_available(engine, width):
+    """If no map/address exists, the share button still anchors the right edge."""
+    data = json.loads(json.dumps(DATA))
+    for key in ("address", "city", "state", "postal_code", "maps_url"):
+        data["site"].pop(key, None)
+    with sync_playwright() as playwright:
+        browser = getattr(playwright, engine).launch()
+        page = browser.new_page(
+            viewport={"width": width, "height": 820},
+            device_scale_factor=2, locale="pt-BR",
+            is_mobile=(engine == "webkit" and width <= 390), has_touch=True,
+        )
+        try:
+            page.route("**/*", lambda route: route.abort())
+            page.route(URL, lambda route: route.fulfill(
+                status=200, content_type="text/html", body=HTML))
+            page.route("**/api/v1/public/sites/empresa-sintetica",
+                lambda route: route.fulfill(
+                    status=200, content_type="application/json", body=json.dumps(data)))
+            page.goto(URL, wait_until="domcontentloaded")
+            page.add_style_tag(content=CSS)
+            page.add_script_tag(content=SCRIPT)
+            page.locator("#site-content").wait_for(state="visible")
+            assert not page.locator("#hero-map").is_visible()
+            book = page.locator("#hero-book").bounding_box()
+            share = page.locator("#share-site").bounding_box()
+            actions = page.locator(".hero-actions").bounding_box()
+            assert book and share and actions
+            assert book["x"] >= actions["x"] - 2
+            assert share["x"] > book["x"] + book["width"]
+            if width >= 768:
+                assert abs(share["x"] + share["width"] -
+                           (actions["x"] + actions["width"])) <= 2
+                assert share["x"] - (book["x"] + book["width"]) >= 24
+            else:
+                assert share["x"] - (book["x"] + book["width"]) <= 14
+            assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 2")
         finally:
             browser.close()

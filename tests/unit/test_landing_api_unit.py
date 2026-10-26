@@ -76,3 +76,19 @@ async def test_css_js_mimes_are_exact_and_unknown_assets_fail_closed(tmp_path, m
             assert response.status_code == 200 and response.headers["content-type"].startswith(expected)
             assert response.headers["x-content-type-options"] == "nosniff"
         assert (await c.get("/landing-assets/negocio-barbearia.webp")).status_code == 404
+
+
+async def test_homepage_meta_follows_the_active_railway_source_for_both_origins():
+    upstream = "https://orion-assistente-production.up.railway.app"
+    public = "https://orion-painel-iota.vercel.app"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application()), base_url=upstream) as c:
+        railway = await c.get("/")
+        vercel = await c.get("/", headers={"x-orion-facade": "vercel-iota"})
+        spoofed = await c.get("/", headers={"x-orion-facade": "https://evil.example"})
+    assert railway.status_code == vercel.status_code == spoofed.status_code == 200
+    assert f'rel="canonical" href="{upstream}/"' in railway.text
+    assert f'rel="canonical" href="{public}/"' in vercel.text
+    assert f'property="og:image" content="{public}/landing-assets/orion-social.png"' in vercel.text
+    assert f'property="og:url" content="{public}/"' in vercel.text
+    assert f'rel="canonical" href="{upstream}/"' in spoofed.text
+    assert vercel.text.replace(public, upstream) == railway.text

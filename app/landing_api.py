@@ -5,10 +5,13 @@ import re
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 
 router=APIRouter()
+# Fixed facade host for metadata only; no user-supplied arbitrary origin is accepted.
+RAILWAY_ORIGIN = "https://orion-assistente-production.up.railway.app"
+VERCEL_ORIGIN = "https://orion-painel-iota.vercel.app"
 LANDING_DIR = Path(__file__).resolve().parents[1] / "landing"
 ASSETS = {
     "orion-landing.css": ("assets/orion-landing.css", "text/css"),
@@ -34,8 +37,14 @@ def sales_contact_link():
 
 
 @router.get("/",response_class=HTMLResponse,include_in_schema=False)
-async def landing():
+async def landing(request: Request):
     content = (LANDING_DIR / "index.html").read_text(encoding="utf-8")
+    if request.headers.get("x-orion-facade") == "vercel-iota":
+        # Vercel sets this fixed marker before proxying the homepage.
+        for part in ("/landing-assets/orion-social.png", "/"):
+            content = content.replace(f'content="{RAILWAY_ORIGIN}{part}"', f'content="{VERCEL_ORIGIN}{part}"')
+        content = content.replace(f'rel="canonical" href="{RAILWAY_ORIGIN}/"',
+                                  f'rel="canonical" href="{VERCEL_ORIGIN}/"')
     return HTMLResponse(content.replace("__SALES_CONTACT_LINK__", sales_contact_link()),
         headers={"Cache-Control":"public, max-age=60","X-Content-Type-Options":"nosniff"})
 

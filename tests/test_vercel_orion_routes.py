@@ -251,7 +251,7 @@ def test_raw_encoded_or_literal_traversal_is_denied_before_rewrite(config, path,
 
 
 @pytest.mark.parametrize("method", ["GET", "HEAD"])
-@pytest.mark.parametrize("path", ["/panel", "/auth/me", "/health", "/health/central",
+@pytest.mark.parametrize("path", ["/", "/panel-assets/orion-suite.js", "/panel-assets/orion-suite-live.js", "/panel", "/auth/me", "/health", "/health/central",
     "/api/v1/qr/status", "/api/v1/tenants", "/s/synthetic-studio",
     "/app/site-preview/synthetic-studio", "/brand/orion-symbol.svg",
     "/panel-assets/orion-auth.css", f"/media/{TENANT}/{TENANT}.webp"])
@@ -269,11 +269,22 @@ def test_trailing_slash_is_normalized_inside_the_rewrite(config, path):
     assert decide(config, path).destination == UPSTREAM + path.rstrip("/")
 
 
-def test_landing_and_patched_suite_asset_are_local_before_the_proxy(config):
-    assert decide(config, "/").destination == "/index.html"
-    assert decide(config, "/panel-assets/orion-suite.js").destination == "/orion-suite-vercel.js"
-    assert not decide(config, "/").external
-    assert not decide(config, "/panel-assets/orion-suite.js").external
+@pytest.mark.parametrize("path", ["/", "/panel-assets/orion-suite.js"])
+def test_landing_and_suite_are_live_railway_rewrites(config, bundle_directory, path):
+    decision = decide(config, path)
+    assert decision.external and decision.destination == UPSTREAM + path
+    assert not (bundle_directory / "public/index.html").exists()
+    assert not (bundle_directory / "public/orion-suite-vercel.js").exists()
+
+
+def test_homepage_facade_marker_is_fixed_by_edge(config):
+    decision = decide(config, "/", "GET", [
+        ("host", HOST), ("x-orion-facade", "evil"), ("Forwarded", "host=evil.test"),
+        ("X-Forwarded-Host", "evil.test")])
+    assert decision.external and decision.destination == UPSTREAM + "/"
+    assert _header(decision.request_headers, "x-orion-facade") == "vercel-iota"
+    assert not _header(decision.request_headers, "forwarded")
+    assert not _header(decision.request_headers, "x-forwarded-host")
 
 
 @pytest.mark.parametrize("path,method", [
@@ -487,3 +498,8 @@ async def test_media_csrf_is_checked_before_quota_stream_or_storage(application)
             "origin": FRONT, "content-type": "image/png", "x-orion-image-kind": "service"})
     assert response.status_code == 403
     assert not stored and not quotas and stream.yielded == 0
+
+
+def test_live_suite_alias_never_hits_the_frozen_vercel_asset_rule(config):
+    decision = decide(config, "/panel-assets/orion-suite-live.js")
+    assert decision.external and decision.destination == UPSTREAM + "/panel-assets/orion-suite-live.js"
