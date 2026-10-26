@@ -17,6 +17,7 @@ from app.catalog_api import Actor, authenticate, ensure_tenant
 from app.csv_export import csv_document
 from app.database import get_session_factory, tenant_transaction
 from app import management_models as data
+from app.professional_commissions import ProfessionalConfiguration
 from app.management_schemas import (
     AppointmentTransition, CouponIssue, CustomerCreate, CustomerFields, CustomerPatch, FinanceCreate, FinanceFields,
     FinancePatch, FinanceStatus, GoalCreate, GoalFields, GoalPatch,
@@ -85,6 +86,33 @@ def csv_response(filename, headers, rows):
     return Response(content=csv_document(headers, rows), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="{filename}"',
                              "Cache-Control": "no-store"})
+
+
+@router.get("/professionals/commission-rules")
+async def professional_commission_rules(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+    from app.professional_commissions import list_commission_rules
+    async with management_session(tenant_id, actor) as db:
+        return await list_commission_rules(db, tenant_id)
+
+
+@router.post("/professionals/configure", status_code=201)
+async def create_professional_configuration(
+    tenant_id: UUID, payload: ProfessionalConfiguration,
+    actor: Actor = Depends(authenticate),
+):
+    from app.professional_commissions import save_professional_configuration
+    async with management_session(tenant_id, actor, write=True) as db:
+        return await save_professional_configuration(db, tenant_id, payload)
+
+
+@router.put("/professionals/{professional_id}/configure")
+async def edit_professional_configuration(
+    tenant_id: UUID, professional_id: UUID, payload: ProfessionalConfiguration,
+    actor: Actor = Depends(authenticate),
+):
+    from app.professional_commissions import save_professional_configuration
+    async with management_session(tenant_id, actor, write=True) as db:
+        return await save_professional_configuration(db, tenant_id, payload, professional_id)
 
 
 @router.get("/dashboard")

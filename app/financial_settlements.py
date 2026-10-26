@@ -53,7 +53,7 @@ def allocate_advances(earned_cents, payments_cents, advances):
 async def settlement_preview(db, tenant_id, professional_id):
     await acquire_professional_lock(db, tenant_id, professional_id)
     professional = (await db.execute(text("""
-        SELECT id,name,commission_percent FROM professionals WHERE tenant_id=:tenant AND id=:id FOR SHARE
+        SELECT id,name,commission_percent,commission_mode FROM professionals WHERE tenant_id=:tenant AND id=:id FOR SHARE
     """), {"tenant": tenant_id, "id": professional_id})).mappings().one_or_none()
     if professional is None:
         raise HTTPException(404, "Profissional não encontrado nesta empresa")

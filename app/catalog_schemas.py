@@ -41,6 +41,7 @@ class Professional(StrictModel):
     specialty: str | None = Field(default=None, max_length=120)
     color: str = Field(default="#31ad52", pattern=r"^#[0-9a-fA-F]{6}$")
     commission_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100, max_digits=5, decimal_places=2)
+    commission_mode: Literal["percent", "per_service"] = "percent"
     accepts_appointments: bool = True
     image_url: str | None = Field(default=None, max_length=2048)
 

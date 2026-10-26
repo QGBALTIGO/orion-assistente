@@ -681,7 +681,7 @@
     const list=state.data.professionals||[],can=writable();
     if(state.filters.staffTab==='permissions'){bodyHTML(renderTeam());return;}
     let html='<div class="os-staff-intro"><p>Cadastre e gerencie sua equipe.</p>'+button('Novo funcionário','new-professional','','plus',can?'':'disabled')+'</div>'+renderInvitations(true)+'<div class="os-subsection-title"><h2>PROFISSIONAIS <span class="os-badge os-neutral">'+list.length+'</span></h2></div>';
-    html+=list.length?'<div class="os-cards-grid os-staff-grid">'+list.map(p=>'<article class="os-card os-staff-card"><button class="os-staff-open" type="button" data-os-professional="'+esc(p.id)+'"><span class="os-avatar" style="background:'+cleanColor(p.color,'#31ad52')+'1a;color:'+cleanColor(p.color,'#31ad52')+'">'+(safePublicURL(p.image_url)?'<img src="'+esc(safePublicURL(p.image_url))+'" alt="" loading="lazy" referrerpolicy="no-referrer">':esc(initials(p.name)))+'</span><span><strong>'+esc(p.name)+'</strong><small>'+esc(p.specialty||'Profissional')+'</small></span>'+badge(p.active?'active':'inactive')+'</button><div class="os-staff-details"><span>'+esc(p.accepts_appointments===false?'Sem agendamentos':'Recebe agendamentos')+'</span><span>Comissão '+number(p.commission_percent).toLocaleString('pt-BR')+'%</span></div><div class="os-item-commands"><button class="os-button os-ghost os-small" type="button" data-os-hours="'+esc(p.id)+'">'+icon('clock')+'Horários</button><button class="os-button os-ghost os-small" type="button" data-os-professional="'+esc(p.id)+'">'+icon('edit')+'Editar</button></div></article>').join('')+'</div>':'<div class="os-card">'+empty('users','Nenhum profissional cadastrado','Cadastre um funcionário para definir os serviços e os horários da sua equipe.',button('Novo funcionário','new-professional','','plus',can?'':'disabled'))+'</div>';
+    html+=list.length?'<div class="os-cards-grid os-staff-grid">'+list.map(p=>'<article class="os-card os-staff-card"><button class="os-staff-open" type="button" data-os-professional="'+esc(p.id)+'"><span class="os-avatar" style="background:'+cleanColor(p.color,'#31ad52')+'1a;color:'+cleanColor(p.color,'#31ad52')+'">'+(safePublicURL(p.image_url)?'<img src="'+esc(safePublicURL(p.image_url))+'" alt="" loading="lazy" referrerpolicy="no-referrer">':esc(initials(p.name)))+'</span><span><strong>'+esc(p.name)+'</strong><small>'+esc(p.specialty||'Profissional')+'</small></span>'+badge(p.active?'active':'inactive')+'</button><div class="os-staff-details"><span>'+esc(p.accepts_appointments===false?'Sem agendamentos':'Recebe agendamentos')+'</span><span>'+(p.commission_mode==='per_service'?'Comissão por serviço':'Comissão '+number(p.commission_percent).toLocaleString('pt-BR')+'%')+'</span></div><div class="os-item-commands"><button class="os-button os-ghost os-small" type="button" data-os-hours="'+esc(p.id)+'">'+icon('clock')+'Horários</button><button class="os-button os-ghost os-small" type="button" data-os-professional="'+esc(p.id)+'">'+icon('edit')+'Editar</button></div></article>').join('')+'</div>':'<div class="os-card">'+empty('users','Nenhum profissional cadastrado','Cadastre um funcionário para definir os serviços e os horários da sua equipe.',button('Novo funcionário','new-professional','','plus',can?'':'disabled'))+'</div>';
     bodyHTML(html);
   }
   const teamRoles={owner:'Proprietário',editor:'Editor',viewer:'Leitor'};
@@ -718,7 +718,7 @@
     else html+='<section class="os-card"><div class="os-card-header"><div><h2>Histórico de lançamentos</h2><p>Registros do período, incluindo lançamentos cancelados.</p></div></div>'+(list.length?financeTable(data,{history:true}):'<p class="os-finance-empty">Nenhum lançamento neste período.</p>')+'</section>';
     bodyHTML(html);
   }
-  function renderCommissionReport(){const list=rows(state.data.commissions),can=writable();return '<section class="os-card"><div class="os-card-header"><div><h2>Comissões por profissional</h2><p>Comissões geradas por atendimentos concluídos no período.</p></div></div>'+(list.length?'<div class="os-table-scroll"><table class="os-table"><thead><tr><th>Profissional</th><th>Atendimentos</th><th>Valor vendido</th><th>Comissão</th><th>Vales no período</th><th>Saldo a pagar</th><th></th></tr></thead><tbody>'+list.map(p=>'<tr><td><strong>'+esc(p.name)+'</strong><br><small>Base '+number(p.commission_percent).toLocaleString('pt-BR')+'%</small></td><td>'+number(p.completed)+'</td><td>'+money(p.revenue_cents)+'</td><td>'+money(p.earned_cents)+'</td><td>'+money(p.advances_cents)+'</td><td>'+money(p.payable_cents)+'</td><td>'+button('Conferir quitação','settlement-preview','os-outline os-small','wallet','data-professional="'+esc(p.id)+'" '+(can?'':'disabled'))+'</td></tr>').join('')+'</tbody></table></div>':'<p class="os-finance-empty">Cadastre profissionais para acompanhar as comissões.</p>')+'<p class="os-help" style="margin-top:20px">O saldo a pagar considera todas as comissões registradas, menos os vales e pagamentos já lançados. Valores anteriores ao controle de comissão usam a taxa atual como estimativa.</p></section>';}
+  function renderCommissionReport(){const list=rows(state.data.commissions),can=writable();return '<section class="os-card"><div class="os-card-header"><div><h2>Comissões por profissional</h2><p>Comissões geradas por atendimentos concluídos no período.</p></div></div>'+(list.length?'<div class="os-table-scroll"><table class="os-table"><thead><tr><th>Profissional</th><th>Atendimentos</th><th>Valor vendido</th><th>Comissão</th><th>Vales no período</th><th>Saldo a pagar</th><th></th></tr></thead><tbody>'+list.map(p=>'<tr><td><strong>'+esc(p.name)+'</strong><br><small>'+(p.commission_mode==='per_service'?'Por serviço · % ou R$':'Base '+number(p.commission_percent).toLocaleString('pt-BR')+'%')+'</small></td><td>'+number(p.completed)+'</td><td>'+money(p.revenue_cents)+'</td><td>'+money(p.earned_cents)+'</td><td>'+money(p.advances_cents)+'</td><td>'+money(p.payable_cents)+'</td><td>'+button('Conferir quitação','settlement-preview','os-outline os-small','wallet','data-professional="'+esc(p.id)+'" '+(can?'':'disabled'))+'</td></tr>').join('')+'</tbody></table></div>':'<p class="os-finance-empty">Cadastre profissionais para acompanhar as comissões.</p>')+'<p class="os-help" style="margin-top:20px">O saldo a pagar considera todas as comissões registradas, menos os vales e pagamentos já lançados. Valores anteriores ao controle de comissão usam a taxa atual como estimativa.</p></section>';}
   const settlementLabels={open:'Em aberto',partial:'Parcial',settled:'Quitado'};
   function advanceTable(data){const list=rows(data),can=writable();return list.length?'<div class="os-table-scroll"><table class="os-table"><thead><tr><th>Profissional / descrição</th><th>Data</th><th>Valor do vale</th><th>Compensado</th><th>Em aberto</th><th>Situação</th><th></th></tr></thead><tbody>'+list.map(entry=>'<tr><td><strong>'+esc(entry.professional_name||(state.data.professionals||[]).find(p=>p.id===entry.professional_id)?.name||'Profissional')+'</strong><br><small>'+esc(entry.description)+'</small></td><td>'+fmtDate(dateKey(new Date(entry.occurred_at)))+'</td><td>'+money(entry.amount_cents)+'</td><td>'+money(entry.allocated_cents)+'</td><td>'+money(entry.pending_cents)+'</td><td>'+badge(entry.settlement_status==='settled'?'completed':'pending',settlementLabels[entry.settlement_status]||entry.settlement_status)+'</td><td><button type="button" class="os-icon-button" data-os-finance="'+esc(entry.id)+'" aria-label="Ver vale de '+esc(entry.professional_name||'profissional')+'">'+icon(can&&!number(entry.allocated_cents)?'edit':'chevron')+'</button></td></tr>').join('')+'</tbody></table></div>':'<p class="os-finance-empty">Nenhum vale neste período e situação.</p>';}
   function settlementHistory(){const data=state.data.settlements||{},items=rows(data),offset=state.filters.settlementOffset||0;return '<section class="os-card os-section-gap"><div class="os-card-header"><div><h2>Histórico de quitações</h2><p>Registros do saldo acumulado, em todos os períodos.</p></div></div>'+(items.length?'<div class="os-table-scroll"><table class="os-table"><thead><tr><th>Profissional</th><th>Registrada em</th><th>Vales compensados</th><th>Pagamento</th><th></th></tr></thead><tbody>'+items.map(item=>'<tr><td><strong>'+esc(item.professional_name)+'</strong></td><td>'+fmtDate(dateKey(new Date(item.settled_at)))+'<br><small>'+timeLabel(item.settled_at)+'</small></td><td>'+money(item.allocated_cents)+'</td><td>'+money(item.payment_cents)+'</td><td><button type="button" class="os-button os-ghost os-small" data-os-settlement="'+esc(item.id)+'">Ver registro '+icon('chevron')+'</button></td></tr>').join('')+'</tbody></table></div>':'<p class="os-finance-empty">Nenhuma quitação registrada ainda.</p>')+(number(data.total)>50?'<div class="os-pagination"><span>'+String(offset+1)+'–'+(offset+items.length)+' de '+number(data.total)+'</span><div class="os-actions">'+button('Anterior','settlement-prev','os-outline os-small','left',offset?'':'disabled')+button('Próxima','settlement-next','os-outline os-small','chevron',offset+items.length<number(data.total)?'':'disabled')+'</div></div>':'')+'</section>';}
@@ -738,7 +738,7 @@
   function performanceSeries(){const grouped=new Map(),weekly=state.filters.performanceGroup==='week';for(const row of rows(state.data.performanceDaily)){const day=String(row.date).slice(0,10),key=weekly?shiftDay(day,-((dayDate(day).getUTCDay()+6)%7)):day;if(!grouped.has(key))grouped.set(key,{date:key,completed:0,revenue_cents:0,commission_cents:0});const result=grouped.get(key);['completed','revenue_cents','commission_cents'].forEach(k=>result[k]+=number(row[k]));}return [...grouped.values()].sort((a,b)=>a.date.localeCompare(b.date));}
   function renderPerformance(data,goals=[]){
     const list=rows(data),report=rows(state.data.commissions),sum=(items,key)=>items.reduce((n,x)=>n+number(x[key]),0),revenue=sum(list,'revenue_cents'),completed=sum(list,'completed'),earned=sum(report,'earned_cents'),advances=sum(report,'advances_cents'),payable=sum(report,'payable_cents'),series=performanceSeries();
-    let html='<div class="os-metrics os-performance-metrics">'+metric('Atendimentos',completed,'calendar')+metric('Valor vendido',money(revenue),'wallet')+metric('Comissão bruta',money(earned),'chart',report.length===1?number(report[0].commission_percent).toLocaleString('pt-BR')+'% base':'Taxas por profissional')+metric('Vales no período',money(advances),'credit')+'</div><section class="os-card os-performance-card"><h2>Resumo a receber</h2><div class="os-performance-summary"><div><span>Comissão do período</span><strong>'+money(earned)+'</strong></div><div><span>( − ) Vales no período</span><strong>'+money(advances)+'</strong></div><div><span>Saldo acumulado a pagar</span><strong class="os-positive">'+money(payable)+'</strong></div></div><p class="os-help" style="margin-top:16px">O saldo acumulado considera todas as comissões registradas, os vales e os pagamentos anteriores.</p></section>';
+    let html='<div class="os-metrics os-performance-metrics">'+metric('Atendimentos',completed,'calendar')+metric('Valor vendido',money(revenue),'wallet')+metric('Comissão bruta',money(earned),'chart',report.length===1&&report[0].commission_mode!=='per_service'?number(report[0].commission_percent).toLocaleString('pt-BR')+'% base':'Taxas por profissional')+metric('Vales no período',money(advances),'credit')+'</div><section class="os-card os-performance-card"><h2>Resumo a receber</h2><div class="os-performance-summary"><div><span>Comissão do período</span><strong>'+money(earned)+'</strong></div><div><span>( − ) Vales no período</span><strong>'+money(advances)+'</strong></div><div><span>Saldo acumulado a pagar</span><strong class="os-positive">'+money(payable)+'</strong></div></div><p class="os-help" style="margin-top:16px">O saldo acumulado considera todas as comissões registradas, os vales e os pagamentos anteriores.</p></section>';
     html+='<section class="os-card os-performance-card"><div class="os-card-header"><h2>Receita e comissão</h2><div class="os-pill-tabs" role="tablist" aria-label="Agrupamento do gráfico">'+[['day','Por dia'],['week','Por semana']].map(([v,l])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(state.filters.performanceGroup===v)+'" data-os-performance-group="'+v+'">'+l+'</button>').join('')+'</div></div>'+(series.length?seriesChart(series,[['revenue_cents','Receita','primary'],['commission_cents','Comissão','success']]):'<p class="os-finance-empty">Sem atendimentos concluídos neste período.</p>')+'</section>';
     html+='<section class="os-card os-performance-card"><div class="os-card-header"><h2>Evolução detalhada</h2></div>'+(series.length?'<div class="os-table-scroll"><table class="os-table"><thead><tr><th>'+(state.filters.performanceGroup==='week'?'Semana de':'Dia')+'</th><th>Atendimentos</th><th>Valor vendido</th><th>Comissão</th></tr></thead><tbody>'+series.map(row=>'<tr><td>'+fmtDate(row.date)+'</td><td>'+number(row.completed)+'</td><td>'+money(row.revenue_cents)+'</td><td>'+money(row.commission_cents)+'</td></tr>').join('')+'</tbody><tfoot><tr><th>Total</th><th>'+completed+'</th><th>'+money(revenue)+'</th><th>'+money(earned)+'</th></tr></tfoot></table></div>':'<p class="os-finance-empty">Sem atendimentos concluídos neste período.</p>')+'</section>';
     const movementCard=(title,data,none)=>'<section class="os-card"><div class="os-card-header"><h2>'+title+'</h2></div>'+(rows(data).length?'<div class="os-movement-list">'+rows(data).map(entry=>'<div class="os-summary-row"><span>'+esc((state.data.professionals||[]).find(p=>p.id===entry.professional_id)?.name||'Profissional')+'<small>'+esc(entry.description)+' · '+fmtDate(dateKey(new Date(entry.occurred_at)))+'</small></span><strong>'+money(entry.amount_cents)+'<br>'+badge(entry.settlement_status==='settled'?'completed':'pending',settlementLabels[entry.settlement_status]||statusLabels[entry.status])+'</strong></div>').join('')+'</div>':'<p class="os-finance-empty">'+none+'</p>')+(number(data?.total)>rows(data).length?'<p class="os-help">Mostrando '+rows(data).length+' de '+number(data.total)+' registros. Consulte o histórico completo no Financeiro.</p>':'')+'</section>';
@@ -1424,11 +1424,72 @@
   }
   function updatePackageSummary(){const d=state.dialog,form=$('osDialog')?.querySelector('form');if(d?.type!=='package'||!form)return;const ids=new FormData(form).getAll('service_ids'),services=d.services.filter(s=>ids.includes(s.id)),total=services.reduce((n,s)=>n+number(s.price_cents),0),duration=services.reduce((n,s)=>n+number(s.duration_min),0);$('osPackageSummary').innerHTML='<div class="os-summary-row"><span>Total dos serviços avulsos</span><strong>'+money(total)+'</strong></div><div class="os-summary-row"><span>Duração total</span><strong>'+duration+' min</strong></div>';if(!d.priceTouched)form.elements.price.value=total?currencyInput(total):'';}
   function applyPackageDiscount(percent){const d=state.dialog,form=$('osDialog')?.querySelector('form');if(d?.type!=='package'||!form)return;const ids=new FormData(form).getAll('service_ids'),total=d.services.filter(s=>ids.includes(s.id)).reduce((n,s)=>n+number(s.price_cents),0);form.elements.price.value=currencyInput(Math.round(total*(100-percent)/100));d.priceTouched=true;}
-  async function showProfessional(record=null){const p=record||{},c=context();if(!state.data.services){try{state.data.services=rows(await request(apiPath('/services')));}catch(ex){toast(ex.message,true);return;}if(!current(c))return;}
-    if(!state.data.professionalServices){try{state.data.professionalServices=rows(await request(apiPath('/professional_services')));}catch(ex){toast(ex.message,true);return;}if(!current(c))return;}
-    const selected=(state.data.professionalServices||[]).filter(x=>x.professional_id===p.id).map(x=>x.service_id);
-    const content=field('Nome completo','name','text',p.name||'','required maxlength="120" placeholder="Nome do profissional"')+field('Especialidade','specialty','text',p.specialty||'','maxlength="120" placeholder="Ex.: Cabeleireiro, Terapeuta, Consultor"')+'<div class="os-form-grid">'+colorField('Cor na agenda','color',p.color||'#31ad52')+field('Comissão (%)','commission_percent','number',p.commission_percent||0,'min="0" max="100" step="0.01"')+'</div>'+imageUploadField('Foto do profissional (opcional)','image_url',p.image_url||'','professional')+'<fieldset><legend>Serviços que realiza</legend>'+((state.data.services||[]).length?'<div class="os-form">'+state.data.services.filter(s=>!s.catalog_kind||s.catalog_kind==='base').map(s=>'<label class="os-check"><input type="checkbox" name="service_ids" value="'+esc(s.id)+'" '+(selected.includes(s.id)?'checked':'')+'><span>'+esc(s.name)+' <small>'+number(s.duration_min)+' min · '+esc(priceLabel(s.price_cents,s.price_mode))+'</small></span></label>').join('')+'</div>':'<p class="os-help">Cadastre serviços para vinculá-los ao profissional.</p>')+'</fieldset>'+checkField('Recebe agendamentos','accepts_appointments',p.accepts_appointments!==false)+checkField('Profissional ativo','active',p.active!==false);
-    showDialog('professional',record?'Editar funcionário':'Novo funcionário',dialogForm('professional',content,'Salvar funcionário'),{record,drawer:true});
+  function syncProfessionalCommissionControls(form){
+    if(!form||form.dataset.osForm!=='professional')return;
+    const custom=form.elements.commission_mode.value==='per_service';
+    const section=form.querySelector('[data-os-custom-commission]');
+    if(section)section.classList.toggle('hidden',!custom);
+    const name=form.querySelector('[data-os-default-commission-label]');
+    if(name)name.textContent=custom?'Taxa para outros serviços (%)':'Comissão (%)';
+    const note=form.querySelector('[data-os-default-commission-note]');
+    if(note)note.classList.toggle('hidden',!custom);
+    form.querySelectorAll('[data-os-commission-row]').forEach(row=>{
+      const checked=row.querySelector('input[name="service_ids"]')?.checked;
+      const settings=row.querySelector('[data-os-commission-controls]');
+      const kind=settings?.querySelector('select'),input=settings?.querySelector('input');
+      if(!settings||!kind||!input)return;
+      const visible=custom&&checked;
+      settings.classList.toggle('hidden',!visible);
+      kind.disabled=!visible;input.disabled=!visible;input.required=visible;
+      input.placeholder=kind.value==='fixed'?'0,00':'0';
+      input.setAttribute('aria-label',kind.value==='fixed'?'Comissão em reais':'Comissão em porcentagem');
+    });
+  }
+  async function showProfessional(record=null){
+    const p=record||{},c=context();
+    try{
+      if(!state.data.services)state.data.services=rows(await request(apiPath('/services')));
+      if(!current(c))return;
+      if(!state.data.professionalServices)state.data.professionalServices=rows(await request(apiPath('/professional_services')));
+      if(!current(c))return;
+      state.data.commissionRules=rows(await request(mgmt('/professionals/commission-rules')));
+      if(!current(c))return;
+    }catch(ex){toast(ex.message,true);return;}
+    const selected=(state.data.professionalServices||[]).filter(x=>x.professional_id===p.id).map(x=>x.service_id),
+      rules=(state.data.commissionRules||[]).filter(x=>x.professional_id===p.id),
+      mode=p.commission_mode==='per_service'?'per_service':'percent',
+      custom=mode==='per_service';
+    const services=(state.data.services||[]).filter(service=>!service.catalog_kind||service.catalog_kind==='base');
+    const serviceRows=services.map(service=>{
+      const rule=rules.find(x=>x.service_id===service.id),
+        kind=rule?.commission_kind||'percent',
+        value=rule?(kind==='fixed'?currencyInput(rule.commission_fixed_cents):String(number(rule.commission_percent)).replace('.',',')):String(number(p.commission_percent)).replace('.',',');
+      return '<div class="os-commission-service-row" data-os-commission-row>'+
+        '<label class="os-check"><input type="checkbox" name="service_ids" value="'+esc(service.id)+'" '+(selected.includes(service.id)?'checked':'')+'>'+
+        '<span>'+esc(service.name)+' <small>'+number(service.duration_min)+' min · '+esc(priceLabel(service.price_cents,service.price_mode))+'</small></span></label>'+
+        '<div class="os-commission-service-controls'+(custom&&selected.includes(service.id)?'':' hidden')+'" data-os-commission-controls>'+
+        '<select name="commission_kind_'+esc(service.id)+'" aria-label="Tipo de comissão de '+esc(service.name)+'">'+
+          [['percent','%'],['fixed','R$']].map(([v,t])=>'<option value="'+v+'"'+(kind===v?' selected':'')+'>'+t+'</option>').join('')+
+        '</select><input type="text" inputmode="decimal" autocomplete="off" name="commission_value_'+esc(service.id)+'" value="'+esc(value)+'" placeholder="'+(kind==='fixed'?'0,00':'0')+'" aria-label="Comissão do serviço '+esc(service.name)+'" '+(custom&&selected.includes(service.id)?'required':'disabled')+'></div></div>';
+    }).join('');
+    const content=field('Nome completo','name','text',p.name||'','required maxlength="120" placeholder="Nome do profissional"')+
+      field('Especialidade','specialty','text',p.specialty||'','maxlength="120" placeholder="Ex.: Cabeleireiro, Terapeuta, Consultor"')+
+      '<div class="os-form-grid">'+colorField('Cor na agenda','color',p.color||'#31ad52')+
+      selectField('Modelo de comissão','commission_mode',[['percent','Percentual padrão'],['per_service','Por serviço']],mode)+'</div>'+
+      '<div class="os-field os-commission-default" data-os-default-commission>'+
+        '<label for="osField-commission_percent" data-os-default-commission-label>'+(custom?'Taxa para outros serviços (%)':'Comissão (%)')+'</label>'+
+        '<input id="osField-commission_percent" name="commission_percent" type="number" value="'+esc(number(p.commission_percent))+'" min="0" max="100" step="0.01" required>'+
+        '<p class="os-help'+(custom?'':' hidden')+'" data-os-default-commission-note>Aplicada a combos ou adicionais que ainda não tenham uma comissão específica.</p></div>'+
+      imageUploadField('Foto do profissional (opcional)','image_url',p.image_url||'','professional')+
+      '<fieldset class="os-commission-services"><legend>Serviços que realiza</legend>'+
+        '<p class="os-help'+(custom?'':' hidden')+'" data-os-custom-commission>Escolha % ou R$ para cada serviço realizado por este profissional.</p>'+
+        (services.length?'<div class="os-commission-service-list">'+serviceRows+'</div>':'<p class="os-help">Cadastre serviços para vinculá-los ao profissional.</p>')+
+      '</fieldset>'+
+      checkField('Recebe agendamentos','accepts_appointments',p.accepts_appointments!==false)+
+      checkField('Profissional ativo','active',p.active!==false);
+    showDialog('professional',record?'Editar funcionário':'Novo funcionário',
+      dialogForm('professional',content,'Salvar funcionário'),{record,drawer:true,commissionRules:rules});
+    syncProfessionalCommissionControls($('osDialog')?.querySelector('form'));
   }
   async function showHours(id){const p=(state.data.professionals||[]).find(x=>x.id===id);if(!p)return;const c=context();if(!showDialog('hours','Horários de '+p.name,loading('Carregando expediente…'),{record:p},true))return;const activeDialog=state.dialog;try{const [hours,breaks]=await Promise.all([request(apiPath('/working_hours')),request(apiPath('/working_breaks'))]);if(!stillAccount(c)||state.dialog!==activeDialog)return;state.dialog.hours=rows(hours).filter(h=>h.professional_id===id);state.dialog.breaks=rows(breaks);renderHoursDialog();}catch(ex){if(stillAccount(c)&&state.dialog===activeDialog)$('osDialog').innerHTML='<h2 id="osDialogTitle">Horários de '+esc(p.name)+'</h2>'+errorHTML(ex)+button('Fechar','close-dialog','os-outline');}}
   function renderHoursDialog(){const d=state.dialog;if(!d||d.type!=='hours')return;const days=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo'];const items=d.hours||[];
@@ -1664,11 +1725,51 @@
       if(kind==='service'){const s=d.record,payload=servicePayload(form,s),selected=(new FormData(form).getAll('professional_ids').length?new FormData(form).getAll('professional_ids'):(state.data.professionals||[]).map(pro=>pro.id)),addonIds=new FormData(form).getAll('addon_ids'),addonItems=addonIds.map(id=>({addon_service_id:id,add_duration:form.elements['addon_duration_'+id].checked}));if(addonIds.length>5)throw Error('Escolha no máximo 5 adicionais.');await saveForm(form,async c=>{const id=s?.id||d.savedId,result=await request(apiPath('/services'+(id?'/'+encodeURIComponent(id):'')),id?'PUT':'POST',payload);if(!stillAccount(c))return;d.savedId=result?.id||id;if(!d.savedId)throw Error('O servidor não retornou a identificação do serviço.');try{const links=rows(await request(apiPath('/professional_services'))).filter(l=>l.service_id===d.savedId);for(const professionalId of selected.filter(id=>!links.some(l=>l.professional_id===id))){if(!stillAccount(c))return;await request(apiPath('/professional_services'),'POST',{professional_id:professionalId,service_id:d.savedId});}for(const link of links.filter(l=>!selected.includes(l.professional_id))){if(!stillAccount(c))return;await request(apiPath('/professional_services/'+encodeURIComponent(link.id)),'DELETE');}}catch(ex){throw Error('O serviço foi salvo, mas nem todos os profissionais foram vinculados. Revise os vínculos e tente salvar novamente. '+ex.message);}try{const result=await request(mgmt('/services/'+encodeURIComponent(d.savedId)+'/addons'),'PUT',{expected_version:d.addonVersion,items:addonItems});d.addonVersion=result.version;}catch(ex){throw Error('O serviço foi salvo, mas os adicionais não foram atualizados. '+ex.message);}},s?'Serviço atualizado.':'Serviço cadastrado.');}
       if(kind==='package'){const r=d.record,ids=new FormData(form).getAll('service_ids');if(ids.length<2||ids.length>6)throw Error('Selecione de 2 a 6 serviços para o combo.');const payload={name:f.name.trim(),description:f.description?.trim()||null,service_ids:ids,price_cents:cents(f.price),active:form.elements.active.checked,featured:form.elements.featured.checked,sort_order:number(r?.sort_order),color:r?.color||'#8b5cf6',image_url:f.image_url?.trim()||null};await saveForm(form,()=>request(mgmt('/service-packages'+(r?'/'+encodeURIComponent(r.id):'')),r?'PATCH':'POST',{...payload,...(r?{expected_version:r.version}:{idempotency_key:d.key})}),r?'Combo atualizado.':'Combo criado.');}
       if(kind==='professional'){
-        const p=d.record,payload={name:f.name.trim(),active:form.elements.active.checked,specialty:f.specialty?.trim()||null,color:f.color||'#31ad52',image_url:f.image_url?.trim()||null,commission_percent:Number(f.commission_percent||0),accepts_appointments:form.elements.accepts_appointments.checked};
-        const selected=new FormData(form).getAll('service_ids'),savedId=d.savedId;
-        await saveForm(form,async c=>{const result=await request(apiPath('/professionals'+((p||savedId)?'/'+encodeURIComponent(p?.id||savedId):'')),p||savedId?'PUT':'POST',payload);if(!stillAccount(c))return;const id=result?.id||p?.id||savedId;if(!id)throw Error('O servidor não retornou a identificação do profissional.');d.savedId=id;
-          try{const old=rows(await request(apiPath('/professional_services'))).filter(l=>l.professional_id===id&&(state.data.services||[]).some(service=>service.id===l.service_id&&(!service.catalog_kind||service.catalog_kind==='base')));if(!stillAccount(c))return;for(const serviceId of selected.filter(id=>!old.some(l=>l.service_id===id))){if(!stillAccount(c))return;await request(apiPath('/professional_services'),'POST',{professional_id:id,service_id:serviceId});}for(const link of old.filter(l=>!selected.includes(l.service_id))){if(!stillAccount(c))return;await request(apiPath('/professional_services/'+encodeURIComponent(link.id)),'DELETE');}}
-          catch(ex){throw Error('Os dados do profissional foram salvos, mas nem todos os serviços foram vinculados. Atualize a equipe e revise os vínculos. '+ex.message);}
+        const p=d.record,selected=new FormData(form).getAll('service_ids'),
+          mode=form.elements.commission_mode.value,
+          baseRate=Number(String(form.elements.commission_percent.value).replace(',','.'));
+        if(!Number.isFinite(baseRate)||baseRate<0||baseRate>100||Math.abs(Math.round(baseRate*100)-baseRate*100)>1e-7)
+          throw Error('Informe um percentual padrão válido de 0 a 100, com até duas casas decimais.');
+        const payload={
+          name:f.name.trim(),active:form.elements.active.checked,
+          specialty:f.specialty?.trim()||null,color:f.color||'#31ad52',
+          image_url:f.image_url?.trim()||null,
+          commission_mode:mode,commission_percent:baseRate,
+          accepts_appointments:form.elements.accepts_appointments.checked,
+          service_ids:selected,commission_rules:[]
+        };
+        if(mode==='per_service'){
+          payload.commission_rules=selected.map(serviceId=>{
+            const kind=form.elements['commission_kind_'+serviceId].value,
+              value=String(form.elements['commission_value_'+serviceId].value).trim();
+            if(kind==='fixed'){
+              if(!/^\d{1,8}(?:[.,]\d{1,2})?$/.test(value))throw Error('Informe um valor fixo válido para cada serviço.');
+              const fixed=cents(value);
+              if(fixed>100000000)throw Error('A comissão fixa excede o valor máximo por serviço.');
+              return {service_id:serviceId,commission_kind:'fixed',commission_fixed_cents:fixed};
+            }
+            const percent=Number(value.replace(',','.'));
+            if(!/^\d{1,3}(?:[.,]\d{1,2})?$/.test(value)||!Number.isFinite(percent)||percent<0||percent>100)
+              throw Error('Informe um percentual de 0 a 100 para cada serviço.');
+            return {service_id:serviceId,commission_kind:'percent',commission_percent:percent};
+          });
+        }else{
+          payload.commission_rules=(d.commissionRules||[]).filter(rule=>selected.includes(rule.service_id)).map(rule=>
+            rule.commission_kind==='fixed'
+              ?{service_id:rule.service_id,commission_kind:'fixed',commission_fixed_cents:number(rule.commission_fixed_cents)}
+              :{service_id:rule.service_id,commission_kind:'percent',commission_percent:number(rule.commission_percent)});
+        }
+        if(p?.id)payload.expected_version=number(p.commission_config_version)||1;
+        else payload.idempotency_key=d.key;
+        await saveForm(form,async c=>{
+          const id=p?.id||d.savedId;
+          const result=await request(mgmt('/professionals/'+(id?encodeURIComponent(id)+'/':'')+'configure'),
+            id?'PUT':'POST',payload);
+          if(!stillAccount(c))return;
+          d.savedId=result?.id||id;
+          if(!d.savedId)throw Error('Não foi possível confirmar o cadastro do profissional.');
+          state.data.commissionRules=null;
+          state.data.professionalServices=null;
         },p?'Profissional atualizado.':'Profissional cadastrado.');
       }
       if(kind==='hours'){if(f.start_time>=f.end_time)throw Error('O horário final deve ser posterior ao inicial.');await saveForm(form,()=>request(apiPath('/working_hours'),'POST',{professional_id:d.record.id,weekday:Number(f.weekday),start_time:f.start_time,end_time:f.end_time}),'Horário de atendimento adicionado.');}
@@ -1920,6 +2021,10 @@
     if(el.id==='osCouponStatus'){state.filters.couponStatus=el.value;state.filters.loyaltyOffset=0;await open('fidelizacao',{keepScroll:true});return;}
     if(el.name==='reward_type'&&el.closest('[data-os-form=loyalty-inline]')){const free=el.value==='free_service',value=$('osLoyaltyRewardValue'),service=$('osLoyaltyRewardService');value.classList.toggle('hidden',free);service.classList.toggle('hidden',!free);value.querySelector('input').required=!free;service.querySelector('select').required=free;value.querySelector('label').textContent=el.value==='fixed'?'Valor do cupom (R$)':'Valor do cupom (%)';return;}
     if(state.dialog?.type==='complete-appointment'&&['coupon_id','final_total'].includes(el.name)){updateCompletionSummary();return;}
+    if(state.dialog?.type==='professional'&&
+       (el.name==='commission_mode'||el.name==='service_ids'||el.name.startsWith('commission_kind_'))){
+      syncProfessionalCommissionControls(el.closest('form'));return;
+    }
     if(state.dialog?.type==='service'&&el.name==='price_mode'){updateServicePriceMode(el.closest('form'));return;}
     if(el.id==='osAdvanceStatus'){state.filters.advanceStatus=el.value;state.filters.advanceOffset=0;await open('financeiro',{keepScroll:true});return;}
     if(el.id==='osFinanceKind'){state.filters.financeKind=el.value;await open('financeiro',{keepScroll:true});return;}

@@ -292,7 +292,7 @@ async def read_appointments(s: AsyncSession, tenant: UUID, item_ids: list[UUID])
         SELECT a.id, a.tenant_id, a.customer_id, a.professional_id, a.protocol,
                a.start_at, a.end_at, a.status, a.total_cents, a.hold_expires_at, a.updated_at,
                a.original_total_cents, a.discount_cents,
-               a.commission_percent_snapshot, a.commission_cents,
+               a.commission_percent_snapshot, a.commission_cents, a.commission_mode_snapshot,
                c.name AS customer_name, c.whatsapp_e164 AS customer_phone,
                p.name AS professional_name, p.color AS professional_color, t.timezone,
                cancellation.id AS cancellation_history_id,
@@ -312,7 +312,10 @@ async def read_appointments(s: AsyncSession, tenant: UUID, item_ids: list[UUID])
     """), {"tenant": tenant, "ids": item_ids})).mappings().all()
     items = (await s.execute(text("""
         SELECT appointment_id, service_id, name_snapshot, duration_snapshot_min, price_snapshot_cents,
-               price_mode_snapshot,prep_snapshot_min, cleanup_snapshot_min
+               price_mode_snapshot,prep_snapshot_min, cleanup_snapshot_min,
+               commission_kind_snapshot,commission_source_snapshot,
+               commission_percent_snapshot,commission_fixed_cents_snapshot,
+               commission_base_cents,commission_cents
         FROM appointment_items WHERE tenant_id=:tenant AND appointment_id=ANY(CAST(:ids AS uuid[]))
         ORDER BY appointment_id,item_order
     """), {"tenant": tenant, "ids": item_ids})).mappings().all()
