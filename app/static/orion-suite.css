@@ -2425,7 +2425,7 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 @media(max-width:359px){
   .os-main[data-os-current-route=financeiro]{padding-inline:11px}
   .os-main[data-os-current-route=financeiro] .os-finance-metrics>.os-metric{
-    padding:10px;min-height:96px;
+    padding:10px;min-height:0;
   }
   .os-main[data-os-current-route=financeiro] .os-finance-metrics>.os-metric>strong{
     font-size:16px;line-height:21px;
