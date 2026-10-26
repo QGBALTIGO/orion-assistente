@@ -1887,3 +1887,69 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-site-amenity-copy small{display:block;font-size:11px;line-height:16px;color:var(--os-muted);margin-top:2px;overflow-wrap:anywhere}
 .os-site-amenity-option>input[type=checkbox]{flex:none}
 @media(max-width:650px){.os-site-amenities-grid{grid-template-columns:minmax(0,1fr)}}
+
+
+/* Employee schedule: ordered Monday-Sunday and compact in-place editing. */
+.os-dialog.os-hours-dialog{box-sizing:border-box;width:min(760px,calc(100vw - 28px));max-width:100vw;max-height:92dvh;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;overscroll-behavior:contain;border-radius:20px;padding:24px}
+.os-hours-dialog>h2{font-size:22px;line-height:30px;margin:0 48px 10px 0;overflow-wrap:anywhere}
+.os-hours-description{font-size:13px;line-height:21px;color:var(--os-muted);margin:0 0 18px}
+.os-hours-description strong{font-weight:600;color:var(--os-text);overflow-wrap:anywhere}
+.os-hours-days{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+.os-hours-day{min-width:0;box-sizing:border-box;border:1px solid var(--os-border);border-radius:16px;padding:14px 16px;background:var(--os-card);box-shadow:var(--os-shadow)}
+.os-hours-day-head{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
+.os-hours-day-head>div{min-width:0}
+.os-hours-day-name{font:600 15px/22px var(--os-display);color:var(--os-text);margin:0}
+.os-hours-day-meta{display:block;margin-top:2px;font:400 12px/18px var(--os-font);color:var(--os-muted)}
+.os-hours-day-head .os-hours-add{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:6px 8px;font-size:12px}
+.os-hours-day-head .os-hours-add .os-icon{width:16px;height:16px}
+.os-hours-closed{margin:6px 0 0;font-size:12px;line-height:18px;color:var(--os-muted)}
+.os-hours-shift{min-width:0;border-top:1px solid var(--os-border);margin-top:11px;padding-top:10px}
+.os-hours-shift-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;min-width:0}
+.os-hours-clock{display:inline-flex;align-items:center;gap:5px;font:600 16px/24px var(--os-display);font-variant-numeric:tabular-nums;color:var(--os-text);white-space:nowrap}
+.os-hours-clock>span{color:var(--os-muted);font-weight:400}
+.os-hours-shift-actions,.os-hours-break-actions{display:flex;align-items:center;justify-content:flex-end;gap:4px;min-width:0}
+.os-hours-shift-actions .os-button,.os-hours-break-actions .os-button{min-height:38px;padding:6px 8px;font-size:12px;gap:6px}
+.os-hours-shift-actions .os-button .os-icon,.os-hours-break-actions .os-button .os-icon{width:16px;height:16px}
+.os-hours-dialog .os-hours-trash{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border-radius:10px;color:var(--os-muted)}
+.os-hours-dialog .os-hours-trash:hover{color:var(--os-danger);background:var(--os-danger-bg)}
+.os-hours-dialog .os-hours-trash>.os-icon{width:17px;height:17px}
+.os-hours-break-list{margin:8px 0;display:grid;gap:6px}
+.os-hours-break{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:5px;min-width:0;border:1px solid var(--os-border);border-radius:11px;padding:5px 6px 5px 10px;background:var(--os-bg)}
+.os-hours-break-label{display:flex;align-items:center;gap:8px;min-width:0;color:var(--os-muted);font-size:12px}
+.os-hours-break-label>.os-icon{flex:0 0 15px;width:15px;height:15px}
+.os-hours-break-label strong{color:var(--os-text);font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:500}
+.os-hours-pause-add.os-button{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:5px 8px;color:var(--os-muted);font-size:12px}
+.os-hours-pause-add>.os-icon{width:15px;height:15px}
+.os-hours-editor.os-form{display:grid;gap:10px;box-sizing:border-box;margin:10px 0 2px;padding:12px;border-radius:12px;border:1px solid color-mix(in srgb,var(--os-primary) 36%,var(--os-border));background:color-mix(in srgb,var(--os-tint) 28%,var(--os-card))}
+.os-hours-editor h4{font:600 14px/20px var(--os-display);margin:0;color:var(--os-text)}
+.os-hours-edit-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}
+.os-hours-edit-fields-day{grid-template-columns:minmax(0,1.5fr) repeat(2,minmax(0,1fr))}
+.os-hours-editor .os-field{min-width:0}
+.os-hours-editor .os-field label{font-size:12px;line-height:18px}
+.os-hours-editor .os-field input,.os-hours-editor .os-field select{min-height:44px}
+.os-hours-editor .os-form-message{font-size:12px;line-height:18px;color:var(--os-danger);margin:0}
+.os-hours-editor .os-form-message:empty{display:none}
+.os-hours-editor .os-form-actions{gap:8px;padding-top:0}
+.os-hours-editor .os-form-actions .os-button{min-height:40px;font-size:12px}
+.os-hours-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:18px;padding-top:14px;border-top:1px solid var(--os-border)}
+.os-hours-footer p{margin:0;max-width:500px;font-size:12px;line-height:19px;color:var(--os-muted)}
+.os-hours-footer>.os-button{flex:0 0 auto;min-height:42px}
+@media(max-width:767px){
+ .os-dialog.os-hours-dialog{position:fixed;inset:0;box-sizing:border-box;width:100vw;height:100dvh;max-height:100dvh;margin:0;border:0;border-radius:0;padding:calc(20px + env(safe-area-inset-top,0px)) 16px calc(28px + env(safe-area-inset-bottom,0px));scrollbar-gutter:auto}
+ .os-hours-dialog>h2{font-size:20px;line-height:27px;margin-right:42px}
+ .os-hours-day{padding:13px 12px;border-radius:14px}
+ .os-hours-shift-head{gap:4px}
+ .os-hours-clock{font-size:15px}
+ .os-hours-break{padding:5px}
+ .os-hours-edit-fields-day{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .os-hours-edit-fields-day>.os-field:first-child{grid-column:1/-1}
+ .os-hours-footer{align-items:stretch;flex-direction:column}
+ .os-hours-footer>.os-button{width:100%}
+}
+@media(max-width:359px){
+ .os-hours-day-head .os-hours-add{font-size:11px}
+ .os-hours-shift-actions,.os-hours-break-actions{gap:1px}
+ .os-hours-shift-actions .os-button,.os-hours-break-actions .os-button{font-size:11px;padding:5px}
+ .os-hours-break-label{font-size:11px}
+}
+

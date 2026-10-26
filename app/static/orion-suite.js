@@ -1743,10 +1743,151 @@
       dialogForm('professional',content,'Salvar funcionário'),{record,drawer:true,commissionRules:rules});
     syncProfessionalCommissionControls($('osDialog')?.querySelector('form'));
   }
-  async function showHours(id){const p=(state.data.professionals||[]).find(x=>x.id===id);if(!p)return;const c=context();if(!showDialog('hours','Horários de '+p.name,loading('Carregando expediente…'),{record:p},true))return;const activeDialog=state.dialog;try{const [hours,breaks]=await Promise.all([request(apiPath('/working_hours')),request(apiPath('/working_breaks'))]);if(!stillAccount(c)||state.dialog!==activeDialog)return;state.dialog.hours=rows(hours).filter(h=>h.professional_id===id);state.dialog.breaks=rows(breaks);renderHoursDialog();}catch(ex){if(stillAccount(c)&&state.dialog===activeDialog)$('osDialog').innerHTML='<h2 id="osDialogTitle">Horários de '+esc(p.name)+'</h2>'+errorHTML(ex)+button('Fechar','close-dialog','os-outline');}}
-  function renderHoursDialog(){const d=state.dialog;if(!d||d.type!=='hours')return;const days=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo'];const items=d.hours||[];
-    let content='<p class="os-help">Horários no fuso '+esc(zone())+'. Adicione os períodos em que este profissional atende.</p><div class="os-section-stack">'+items.map(h=>'<div class="os-summary"><div class="os-summary-row"><strong>'+days[h.weekday]+'</strong><span>'+esc(String(h.start_time).slice(0,5)+' – '+String(h.end_time).slice(0,5))+'</span></div>'+d.breaks.filter(b=>b.working_hour_id===h.id).map(b=>'<div class="os-summary-row"><span>Pausa</span><span>'+esc(String(b.start_time).slice(0,5)+' – '+String(b.end_time).slice(0,5))+' <button type="button" class="os-icon-button" data-os-delete-break="'+esc(b.id)+'" aria-label="Excluir pausa" '+(writable()?'':'disabled')+'>'+icon('trash')+'</button></span></div>').join('')+'<div class="os-actions"><button type="button" class="os-button os-ghost os-small" data-os-pause="'+esc(h.id)+'" '+(writable()?'':'disabled')+'>'+icon('plus')+'Adicionar pausa</button><button type="button" class="os-button os-ghost os-small" data-os-delete-hour="'+esc(h.id)+'" '+(writable()?'':'disabled')+'>'+icon('trash')+'Remover horário</button></div></div>').join('')+'</div><form class="os-form" data-os-form="hours" style="margin-top:20px"><div class="os-form-grid">'+selectField('Dia da semana','weekday',days.map((x,i)=>[i,x]),0)+field('Início','start_time','time','09:00','required')+field('Fim','end_time','time','18:00','required')+'</div><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+button('Fechar','close-dialog','os-outline')+'<button type="submit" class="os-button" '+(writable()?'':'disabled')+'>Adicionar horário</button></div></form>';
-    const dialog=$('osDialog');dialog.innerHTML='<button type="button" class="os-icon-button os-close" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Horários de '+esc(d.record.name)+'</h2>'+content;
+
+  const workweekDays=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo'];
+  const shortClock=value=>String(value??'').slice(0,5);
+  function sortedWorkingHours(items){
+    return [...items].sort((a,b)=>Number(a.weekday)-Number(b.weekday)||
+      shortClock(a.start_time).localeCompare(shortClock(b.start_time))||
+      shortClock(a.end_time).localeCompare(shortClock(b.end_time))||String(a.id).localeCompare(String(b.id)));
+  }
+  function hoursEditorForm(editor,record){
+    if(!writable())return '';
+    const mode=editor.mode,isHour=mode==='add-hour'||mode==='edit-hour',
+      editing=mode==='edit-hour'||mode==='edit-break',
+      formKind=isHour?(editing?'hours-edit':'hours'):(editing?'pause-edit':'pause'),
+      first=shortClock(record?.start_time||(isHour?'09:00':'12:00')),
+      last=shortClock(record?.end_time||(isHour?'18:00':'13:00'));
+    const dayField=mode==='edit-hour'
+      ?selectField('Dia da semana','weekday',workweekDays.map((day,index)=>[index,day]),Number(record.weekday),'required')
+      :mode==='add-hour'?'<input type="hidden" name="weekday" value="'+Number(editor.weekday)+'">':'';
+    return '<form class="os-form os-hours-editor" data-os-form="'+formKind+'">'+
+      '<h4>'+esc(editing?(isHour?'Editar horário':'Editar pausa'):(isHour?'Novo horário':'Adicionar pausa'))+'</h4>'+
+      '<div class="os-hours-edit-fields'+(mode==='edit-hour'?' os-hours-edit-fields-day':'')+'">'+dayField+
+      field('Início','start_time','time',first,'required step="60"')+
+      field('Fim','end_time','time',last,'required step="60"')+'</div>'+
+      '<p class="os-form-message" role="alert" aria-live="polite"></p>'+
+      '<div class="os-form-actions"><button type="button" class="os-button os-outline os-small" data-os-hours-cancel>Cancelar</button>'+
+      '<button type="submit" class="os-button os-small">'+(editing?'Salvar alterações':'Adicionar')+'</button></div></form>';
+  }
+  async function showHours(id){
+    const p=(state.data.professionals||[]).find(x=>x.id===id);if(!p)return;
+    const c=context();
+    if(!showDialog('hours','Horários de '+p.name,loading('Carregando expediente…'),{record:p,hoursEditor:null},true))return;
+    $('osDialog').classList.add('os-hours-dialog');
+    const activeDialog=state.dialog;
+    try{
+      const [hours,breaks]=await Promise.all([request(apiPath('/working_hours')),request(apiPath('/working_breaks'))]);
+      if(!current(c)||state.dialog!==activeDialog)return;
+      activeDialog.hours=rows(hours).filter(h=>h.professional_id===id);
+      activeDialog.breaks=rows(breaks);
+      renderHoursDialog();
+    }catch(ex){
+      if(current(c)&&state.dialog===activeDialog)dialogError(ex);
+    }
+  }
+  function renderHoursDialog(){
+    const d=state.dialog;if(!d||d.type!=='hours')return;
+    const dialog=$('osDialog'),lastScroll=dialog.scrollTop,
+      periods=sortedWorkingHours(d.hours||[]),breaks=d.breaks||[],editor=d.hoursEditor,can=writable();
+    const content='<p class="os-hours-description">Organize o expediente no fuso <strong>'+esc(zone())+
+      '</strong>. Os dias seguem de segunda a domingo. Alterações de expediente não remanejam agendamentos já confirmados.</p>'+
+      '<div class="os-hours-days" aria-label="Expediente semanal">'+workweekDays.map((day,weekday)=>{
+        const daily=periods.filter(item=>Number(item.weekday)===weekday);
+        return '<section class="os-hours-day" data-os-hours-weekday="'+weekday+'">'+
+          '<div class="os-hours-day-head"><div><h3 class="os-hours-day-name">'+day+'</h3><span class="os-hours-day-meta">'+
+          (daily.length?daily.length+' período'+(daily.length===1?'':'s'):'Fechado')+'</span></div>'+
+          (can?'<button type="button" class="os-button os-ghost os-small os-hours-add" data-os-hours-add="'+weekday+'" aria-label="Adicionar horário na '+day+'">'+icon('plus')+'Novo horário</button>':'')+'</div>'+
+          (daily.length?daily.map(hour=>{
+            const hourId=esc(hour.id),hourBreaks=breaks.filter(b=>b.working_hour_id===hour.id)
+                .sort((a,b)=>shortClock(a.start_time).localeCompare(shortClock(b.start_time))||String(a.id).localeCompare(String(b.id)));
+            return '<div class="os-hours-shift" data-os-hours-period="'+hourId+'">'+
+              '<div class="os-hours-shift-head"><strong class="os-hours-clock">'+esc(shortClock(hour.start_time))+
+              ' <span aria-hidden="true">–</span> '+esc(shortClock(hour.end_time))+'</strong>'+
+              (can?'<div class="os-hours-shift-actions">'+
+                '<button type="button" class="os-button os-ghost os-small" data-os-edit-hour="'+hourId+'" aria-label="Editar horário de '+day+' das '+esc(shortClock(hour.start_time))+' às '+esc(shortClock(hour.end_time))+'">'+icon('edit')+'Editar</button>'+
+                '<button type="button" class="os-icon-button os-hours-trash" data-os-delete-hour="'+hourId+'" aria-label="Remover horário de '+day+' das '+esc(shortClock(hour.start_time))+' às '+esc(shortClock(hour.end_time))+'">'+icon('trash')+'</button></div>':'')+'</div>'+
+              (editor?.mode==='edit-hour'&&editor.id===hour.id?hoursEditorForm(editor,hour):'')+
+              (hourBreaks.length?'<div class="os-hours-break-list">'+hourBreaks.map(b=>
+                '<div class="os-hours-break" data-os-hours-break="'+esc(b.id)+'">'+
+                '<span class="os-hours-break-label">'+icon('clock')+'<span>Pausa <strong>'+esc(shortClock(b.start_time))+' – '+esc(shortClock(b.end_time))+'</strong></span></span>'+
+                (can?'<div class="os-hours-break-actions"><button type="button" class="os-button os-ghost os-small" data-os-edit-break="'+esc(b.id)+'" aria-label="Editar pausa das '+esc(shortClock(b.start_time))+' às '+esc(shortClock(b.end_time))+'">'+icon('edit')+'Editar</button>'+
+                '<button type="button" class="os-icon-button os-hours-trash" data-os-delete-break="'+esc(b.id)+'" aria-label="Remover pausa das '+esc(shortClock(b.start_time))+' às '+esc(shortClock(b.end_time))+'">'+icon('trash')+'</button></div>':'')+
+                (editor?.mode==='edit-break'&&editor.id===b.id?hoursEditorForm(editor,b):'')+'</div>'
+              ).join('')+'</div>':'')+
+              (can?'<button type="button" class="os-button os-ghost os-small os-hours-pause-add" data-os-pause="'+hourId+'">'+icon('plus')+'Adicionar pausa</button>':'')+
+              (editor?.mode==='add-break'&&editor.id===hour.id?hoursEditorForm(editor):'')+
+              '</div>';
+          }).join(''):'<p class="os-hours-closed">Sem expediente cadastrado</p>')+
+          (editor?.mode==='add-hour'&&editor.weekday===weekday?hoursEditorForm(editor):'')+
+          '</section>';
+      }).join('')+'</div>'+
+      '<div class="os-hours-footer"><p>Horários e pausas atualizam a disponibilidade para novos agendamentos. As reservas existentes são mantidas.</p>'+
+      button('Concluir','close-dialog','os-outline')+'</div>';
+    dialog.innerHTML='<button type="button" class="os-icon-button os-close" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button>'+
+      '<h2 id="osDialogTitle">Horários de '+esc(d.record.name)+'</h2>'+content;
+    dialog.scrollTop=lastScroll;
+  }
+  async function submitHoursEditor(form,kind,values,d){
+    if(d?.type!=='hours'||!writable()||state.busy)return;
+    const edit=d.hoursEditor;
+    const kindToMode={hours:'add-hour','hours-edit':'edit-hour',pause:'add-break','pause-edit':'edit-break'};
+    if(!edit||edit.mode!==kindToMode[kind])return;
+    const isHour=kind==='hours'||kind==='hours-edit',
+      isEdit=kind==='hours-edit'||kind==='pause-edit',
+      start=values.start_time,end=values.end_time;
+    if(!/^\d{2}:\d{2}$/.test(start)||!/^\d{2}:\d{2}$/.test(end)||start>=end)
+      throw Error(isHour?'O horário final deve ser posterior ao inicial.':'O fim da pausa deve ser posterior ao início.');
+    let path,payload;
+    if(isHour){
+      const weekday=Number(values.weekday),original=isEdit?(d.hours||[]).find(h=>h.id===edit.id):null;
+      if(!Number.isInteger(weekday)||weekday<0||weekday>6||isEdit&&!original)throw Error('Dia da semana inválido. Atualize os horários.');
+      if((d.hours||[]).some(h=>(!isEdit||h.id!==original.id)&&Number(h.weekday)===weekday&&
+           start<shortClock(h.end_time)&&end>shortClock(h.start_time)))
+        throw Error('Este horário se sobrepõe a outro período do mesmo dia.');
+      if(isEdit&&(d.breaks||[]).some(b=>b.working_hour_id===original.id&&
+           (shortClock(b.start_time)<start||shortClock(b.end_time)>end)))
+        throw Error('Há pausas fora do novo expediente. Ajuste ou remova essas pausas primeiro.');
+      path=apiPath('/working_hours'+(isEdit?'/'+encodeURIComponent(original.id):''));
+      payload={professional_id:d.record.id,weekday,start_time:start,end_time:end};
+    }else{
+      const previous=isEdit?(d.breaks||[]).find(b=>b.id===edit.id):null,
+        hour=(d.hours||[]).find(h=>h.id===(isEdit?previous?.working_hour_id:edit.id));
+      if(!hour||isEdit&&!previous)throw Error('Este período não está mais disponível. Reabra os horários.');
+      if(start<shortClock(hour.start_time)||end>shortClock(hour.end_time))
+        throw Error('A pausa precisa ficar inteiramente dentro do horário de trabalho.');
+      if((d.breaks||[]).some(b=>b.working_hour_id===hour.id&&(!isEdit||b.id!==previous.id)&&
+           start<shortClock(b.end_time)&&end>shortClock(b.start_time)))
+        throw Error('Esta pausa se sobrepõe a outra pausa do mesmo período.');
+      path=apiPath('/working_breaks'+(isEdit?'/'+encodeURIComponent(previous.id):''));
+      payload={working_hour_id:hour.id,start_time:start,end_time:end};
+    }
+    const c=context(),message=form.querySelector('.os-form-message');
+    if(message)message.textContent='';
+    markBusy(form,true);
+    let changed=false;
+    try{
+      await request(path,isEdit?'PUT':'POST',payload);
+      if(!current(c)||state.dialog!==d)return;
+      changed=true;
+      const [newHours,newBreaks]=await Promise.all([request(apiPath('/working_hours')),request(apiPath('/working_breaks'))]);
+      if(!current(c)||state.dialog!==d)return;
+      d.hours=rows(newHours).filter(h=>h.professional_id===d.record.id);
+      d.breaks=rows(newBreaks);
+      d.hoursEditor=null;
+      toast(isHour?(isEdit?'Horário atualizado.':'Horário cadastrado.'):(isEdit?'Pausa atualizada.':'Pausa adicionada.'));
+    }catch(error){
+      if(current(c)&&state.dialog===d&&message){
+        message.textContent=(changed?'Alteração salva, mas não foi possível atualizar a lista. Feche e reabra os horários. ':'')+
+          (error?.message||'Falha ao salvar.');
+        message.scrollIntoView({block:'nearest'});
+      }
+      return;
+    }finally{
+      if(stillAccount(c)&&state.dialog===d)markBusy(form,false);
+      else state.busy=false;
+    }
+    if(current(c)&&state.dialog===d)renderHoursDialog();
   }
   async function showAppointment(preset={}){if(!writable()){toast('Seu acesso permite apenas consultar agendamentos.',true);return;}const c=context();showDialog('appointment','Novo agendamento',loading('Carregando clientes, serviços e profissionais…'),{serviceIds:[],engineServiceIds:[],addonIds:[],addonCache:{},customerId:'',slots:[],availabilityVersion:0,preset});const activeDialog=state.dialog;
     try{const [customers,services,professionals,links]=await Promise.all([request(mgmt('/customers?limit=200&status=active')),request(apiPath('/services')),request(apiPath('/professionals')),request(apiPath('/professional_services'))]);if(!stillAccount(c)||state.dialog!==activeDialog)return;
@@ -2025,8 +2166,7 @@
           state.data.professionalServices=null;
         },p?'Profissional atualizado.':'Profissional cadastrado.');
       }
-      if(kind==='hours'){if(f.start_time>=f.end_time)throw Error('O horário final deve ser posterior ao inicial.');await saveForm(form,()=>request(apiPath('/working_hours'),'POST',{professional_id:d.record.id,weekday:Number(f.weekday),start_time:f.start_time,end_time:f.end_time}),'Horário de atendimento adicionado.');}
-      if(kind==='pause'){if(f.start_time>=f.end_time)throw Error('O fim da pausa deve ser posterior ao início.');await saveForm(form,()=>request(apiPath('/working_breaks'),'POST',{working_hour_id:d.workingHourId,start_time:f.start_time,end_time:f.end_time}),'Pausa cadastrada.');}
+      if(['hours','hours-edit','pause','pause-edit'].includes(kind)){await submitHoursEditor(form,kind,f,d);return;}
       if(kind==='appointment'){
         const values=d.holdForm||f,customerPhone=phone(values.customer_phone);if(!/^\+55[1-9][0-9]{9,10}$/.test(customerPhone))throw Error('Para agendar, informe o WhatsApp do cliente com DDD.');if(!d.serviceIds.length)throw Error('Selecione ao menos um serviço.');if(!d.holdForm&&!d.slots.includes(values.start_at))throw Error('Selecione um horário disponível.');
         await saveForm(form,async c=>{
@@ -2274,7 +2414,34 @@
       if(el.dataset.osDuration){const form=$('osDialog')?.querySelector('[data-os-form=service]');const input=form?.elements?.duration_min;if(input){input.value=el.dataset.osDuration;syncServiceDurationPresets(form);}return;}
       if(el.dataset.osBookService){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm)return;const id=el.dataset.osBookService;if(d.serviceIds.includes(id))d.serviceIds=d.serviceIds.filter(s=>s!==id);else if(d.serviceIds.length<6)d.serviceIds.push(id);else{toast('Escolha até 6 serviços por agendamento.',true);return;}el.setAttribute('aria-pressed',String(d.serviceIds.includes(id)));await updateAvailability();return;}
       if(el.dataset.osBookCustomer){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm)return;const c=d.customers.find(c=>c.id===el.dataset.osBookCustomer);if(!c)return;const form=$('osDialog').querySelector('form');form.elements.customer_name.value=c.name;form.elements.customer_phone.value=c.phone||'';d.customerId=c.id;$('osBookingCustomers').replaceChildren();$('osBookingCustomerHelp').textContent=c.phone?'Cliente selecionado.':'Este cliente ainda não tem WhatsApp. Ao confirmar, o número informado será salvo neste cadastro.';return;}
-      if(el.dataset.osPause){const old=state.dialog,h=old?.hours?.find(h=>h.id===el.dataset.osPause);if(!h)return;showDialog('pause','Adicionar pausa',dialogForm('pause','<div class="os-form-grid">'+field('Início','start_time','time',String(h.start_time).slice(0,5),'required')+field('Fim','end_time','time',String(h.end_time).slice(0,5),'required')+'</div>','Salvar pausa'),{workingHourId:h.id});return;}
+
+      if(el.dataset.osHoursCancel!==undefined){
+        if(state.dialog?.type==='hours'){state.dialog.hoursEditor=null;renderHoursDialog();}return;
+      }
+      if(el.dataset.osHoursAdd!==undefined||el.dataset.osEditHour||el.dataset.osPause||el.dataset.osEditBreak){
+        const d=state.dialog;if(d?.type!=='hours'||!writable())return;
+        let next;
+        if(el.dataset.osHoursAdd!==undefined){
+          const weekday=Number(el.dataset.osHoursAdd);
+          if(!Number.isInteger(weekday)||weekday<0||weekday>6)return;
+          next={mode:'add-hour',weekday};
+        }else if(el.dataset.osEditHour){
+          if(!(d.hours||[]).some(h=>h.id===el.dataset.osEditHour))return;
+          next={mode:'edit-hour',id:el.dataset.osEditHour};
+        }else if(el.dataset.osPause){
+          if(!(d.hours||[]).some(h=>h.id===el.dataset.osPause))return;
+          next={mode:'add-break',id:el.dataset.osPause};
+        }else{
+          if(!(d.breaks||[]).some(b=>b.id===el.dataset.osEditBreak))return;
+          next={mode:'edit-break',id:el.dataset.osEditBreak};
+        }
+        const prev=d.hoursEditor;
+        d.hoursEditor=prev&&prev.mode===next.mode&&prev.id===next.id&&prev.weekday===next.weekday?null:next;
+        renderHoursDialog();
+        const form=$('osDialog')?.querySelector('.os-hours-editor');
+        if(form){form.scrollIntoView({block:'nearest'});form.querySelector('select,input:not([type=hidden])')?.focus({preventScroll:true});}
+        return;
+      }
       if(el.dataset.osDeleteHour||el.dataset.osDeleteBreak){if(!writable())return;const isBreak=!!el.dataset.osDeleteBreak,id=el.dataset.osDeleteBreak||el.dataset.osDeleteHour,path=apiPath('/'+(isBreak?'working_breaks':'working_hours')+'/'+encodeURIComponent(id));confirmMutation(isBreak?'Remover pausa':'Remover horário','Este período deixará de fazer parte da disponibilidade do profissional.',()=>request(path,'DELETE'),isBreak?'Pausa removida.':'Horário removido.');}
     }catch(ex){toast(ex.message||'Não foi possível concluir a ação.',true);}
   }
