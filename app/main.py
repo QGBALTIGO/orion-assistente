@@ -133,6 +133,7 @@ async def branding(asset: str) -> FileResponse:
 async def panel_asset(asset: str) -> FileResponse:
     """Only the public suite assets; never expose arbitrary application files."""
     allowed = {"orion-suite.css": "text/css", "orion-suite.js": "text/javascript",
+               "orion-suite-live.js": "text/javascript",
                "orion-communication.js": "text/javascript",
                "orion-auth.css": "text/css",
                "orion-invite.css": "text/css", "orion-invite.js": "text/javascript",
@@ -144,7 +145,7 @@ async def panel_asset(asset: str) -> FileResponse:
         from fastapi import HTTPException
         raise HTTPException(404)
     return FileResponse(
-        Path(__file__).parent / "static" / asset,
+        Path(__file__).parent / "static" / ("orion-suite.js" if asset == "orion-suite-live.js" else asset),
         media_type=allowed[asset],
         headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
     )

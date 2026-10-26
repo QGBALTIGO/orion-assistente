@@ -251,7 +251,7 @@ def test_raw_encoded_or_literal_traversal_is_denied_before_rewrite(config, path,
 
 
 @pytest.mark.parametrize("method", ["GET", "HEAD"])
-@pytest.mark.parametrize("path", ["/", "/panel-assets/orion-suite.js", "/panel", "/auth/me", "/health", "/health/central",
+@pytest.mark.parametrize("path", ["/", "/panel-assets/orion-suite.js", "/panel-assets/orion-suite-live.js", "/panel", "/auth/me", "/health", "/health/central",
     "/api/v1/qr/status", "/api/v1/tenants", "/s/synthetic-studio",
     "/app/site-preview/synthetic-studio", "/brand/orion-symbol.svg",
     "/panel-assets/orion-auth.css", f"/media/{TENANT}/{TENANT}.webp"])
@@ -498,3 +498,8 @@ async def test_media_csrf_is_checked_before_quota_stream_or_storage(application)
             "origin": FRONT, "content-type": "image/png", "x-orion-image-kind": "service"})
     assert response.status_code == 403
     assert not stored and not quotas and stream.yielded == 0
+
+
+def test_live_suite_alias_never_hits_the_frozen_vercel_asset_rule(config):
+    decision = decide(config, "/panel-assets/orion-suite-live.js")
+    assert decision.external and decision.destination == UPSTREAM + "/panel-assets/orion-suite-live.js"

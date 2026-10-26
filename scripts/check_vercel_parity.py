@@ -10,6 +10,7 @@ RAILWAY = "https://orion-assistente-production.up.railway.app"
 PATHS = (
     "/panel",
     "/panel-assets/orion-suite.js",
+    "/panel-assets/orion-suite-live.js",
     "/panel-assets/orion-suite.css",
     "/public-assets/orion-public.js",
     "/public-assets/orion-public.css",
