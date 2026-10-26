@@ -60,7 +60,7 @@
   const mainNav=[['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['inbox','chat'],['servicos','scissors'],['funcionarios','users'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','bot'],['plano','credit'],['configuracoes','settings']];
   const legacyPages=new Set(['dispositivo','conversas','ai','empresa','catalogo','cadastros','member']);
   const appPages=new Set([...Object.keys(routeNames),...routeAliases.keys()]);
-  const defaultFilters=()=>({customerQuery:'',customerStatus:'active',customerRisk:30,customerOffset:0,agendaMode:'list',agendaDay:'',agendaTablet:false,agendaProfessional:'',agendaStatus:'all',agendaQuery:'',agendaOffset:0,financeKind:'',financeStatus:'',financeTab:'entries',performancePeriod:'month',performanceGroup:'day',staffTab:'professionals',marketingTab:'overview',marketingQueueStatus:'all',loyaltyTab:'ranking',loyaltyOffset:0,couponStatus:'all',periodStart:'',periodEnd:'',settingsTab:'general',siteRequestStatus:'all',siteRequestIntent:'all',siteRequestQuery:'',siteRequestOffset:0,siteTab:'dashboard',helpQuery:'',helpCategory:'all',helpArticle:'',newsFilter:'all',notificationsUnread:false});
+  const defaultFilters=()=>({customerQuery:'',customerStatus:'active',customerRisk:30,customerOffset:0,agendaMode:'list',agendaDay:'',agendaTablet:false,agendaProfessional:'',agendaStatus:'all',agendaQuery:'',agendaOffset:0,financeKind:'',financeStatus:'',financeTab:'entries',performancePeriod:'month',performanceGroup:'day',staffTab:'professionals',staffStatus:'active',marketingTab:'overview',marketingQueueStatus:'all',loyaltyTab:'ranking',loyaltyOffset:0,couponStatus:'all',periodStart:'',periodEnd:'',settingsTab:'general',siteRequestStatus:'all',siteRequestIntent:'all',siteRequestQuery:'',siteRequestOffset:0,siteTab:'dashboard',helpQuery:'',helpCategory:'all',helpArticle:'',newsFilter:'all',notificationsUnread:false});
   const state={bridge:{},mounted:false,epoch:0,load:0,route:'dashboard',tenantId:'',data:{},filters:defaultFilters(),dialog:null,busy:false,imageUploading:false,searchTimer:null,drawerTrigger:null,observer:null};
   const rows = value => Array.isArray(value)?value:Array.isArray(value?.items)?value.items:[];
   const number = value => Number.isFinite(Number(value))?Number(value):0;
@@ -753,10 +753,33 @@
       '<div id="osPackagesBody">'+loading('Carregando pacotes e combos…')+'</div></section>';bodyHTML(html);void loadPackages();
   }
   function renderProfessionals(){
-    const list=state.data.professionals||[],can=writable();
+    const all=state.data.professionals||[],can=writable();
     if(state.filters.staffTab==='permissions'){bodyHTML(renderTeam());return;}
-    let html='<div class="os-staff-intro"><p>Cadastre e gerencie sua equipe.</p>'+button('Novo funcionário','new-professional','','plus',can?'':'disabled')+'</div>'+renderInvitations(true)+'<div class="os-subsection-title"><h2>PROFISSIONAIS <span class="os-badge os-neutral">'+list.length+'</span></h2></div>';
-    html+=list.length?'<div class="os-cards-grid os-staff-grid">'+list.map(p=>'<article class="os-card os-staff-card"><button class="os-staff-open" type="button" data-os-professional="'+esc(p.id)+'"><span class="os-avatar" style="background:'+cleanColor(p.color,'#31ad52')+'1a;color:'+cleanColor(p.color,'#31ad52')+'">'+(safePublicURL(p.image_url)?'<img src="'+esc(safePublicURL(p.image_url))+'" alt="" loading="lazy" referrerpolicy="no-referrer">':esc(initials(p.name)))+'</span><span><strong>'+esc(p.name)+'</strong><small>'+esc(p.specialty||'Profissional')+'</small></span>'+badge(p.active?'active':'inactive')+'</button><div class="os-staff-details"><span>'+esc(p.accepts_appointments===false?'Sem agendamentos':'Recebe agendamentos')+'</span><span>'+(p.commission_mode==='per_service'?'Comissão por serviço':'Comissão '+number(p.commission_percent).toLocaleString('pt-BR')+'%')+'</span></div><div class="os-item-commands"><button class="os-button os-ghost os-small" type="button" data-os-hours="'+esc(p.id)+'">'+icon('clock')+'Horários</button><button class="os-button os-ghost os-small" type="button" data-os-professional="'+esc(p.id)+'">'+icon('edit')+'Editar</button></div></article>').join('')+'</div>':'<div class="os-card">'+empty('users','Nenhum profissional cadastrado','Cadastre um funcionário para definir os serviços e os horários da sua equipe.',button('Novo funcionário','new-professional','','plus',can?'':'disabled'))+'</div>';
+    const active=all.filter(p=>p.active!==false),inactive=all.filter(p=>p.active===false),
+      isInactive=state.filters.staffStatus==='inactive',list=isInactive?inactive:active;
+    let html='<div class="os-staff-intro"><p>Cadastre e gerencie sua equipe.</p>'+button('Novo funcionário','new-professional','','plus',can?'':'disabled')+'</div>'+
+      (isInactive?'':renderInvitations(true))+
+      '<div class="os-staff-toolbar"><div class="os-subsection-title"><h2>PROFISSIONAIS <span class="os-badge os-neutral">'+list.length+'</span></h2></div>'+
+      '<div class="os-pill-tabs os-staff-status-tabs" role="tablist" aria-label="Situação dos profissionais">'+
+      [['active','Ativos',active.length],['inactive','Inativos',inactive.length]].map(([value,label,count])=>
+        '<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(state.filters.staffStatus===value)+'" data-os-staff-status-filter="'+value+'">'+label+'<span class="os-staff-tab-count">'+count+'</span></button>'
+      ).join('')+'</div></div>';
+    if(isInactive)html+='<p class="os-help os-staff-inactive-note">Os profissionais removidos ficam aqui para consulta ou reativação. Agendamentos anteriores, comissões e histórico financeiro são preservados.</p>';
+    if(list.length){
+      html+='<div class="os-cards-grid os-staff-grid">'+list.map(p=>{
+        const id=esc(p.id),name=esc(p.name),activeStatus=p.active!==false,
+          photo=safePublicURL(p.image_url),
+          statusButton='<button class="os-button os-ghost os-small '+(activeStatus?'os-staff-remove':'os-staff-reactivate')+'" type="button" data-os-professional-status="'+id+'" aria-label="'+(activeStatus?'Remover ':'Reativar ')+name+'" '+(can?'':'disabled')+'>'+icon(activeStatus?'trash':'refresh')+(activeStatus?'Remover':'Reativar')+'</button>';
+        return '<article class="os-card os-staff-card"><button class="os-staff-open" type="button" data-os-professional="'+id+'"><span class="os-avatar" style="background:'+cleanColor(p.color,'#31ad52')+'1a;color:'+cleanColor(p.color,'#31ad52')+'">'+(photo?'<img src="'+esc(photo)+'" alt="" loading="lazy" referrerpolicy="no-referrer">':esc(initials(p.name)))+'</span><span><strong>'+name+'</strong><small>'+esc(p.specialty||'Profissional')+'</small></span>'+badge(activeStatus?'active':'inactive')+'</button>'+
+          '<div class="os-staff-details"><span>'+esc(!activeStatus||p.accepts_appointments===false?'Sem agendamentos':'Recebe agendamentos')+'</span><span>'+(p.commission_mode==='per_service'?'Comissão por serviço':'Comissão '+number(p.commission_percent).toLocaleString('pt-BR')+'%')+'</span></div>'+
+          '<div class="os-item-commands">'+(activeStatus?'<button class="os-button os-ghost os-small" type="button" data-os-hours="'+id+'">'+icon('clock')+'Horários</button>':'')+
+          '<button class="os-button os-ghost os-small" type="button" data-os-professional="'+id+'">'+icon('edit')+'Editar</button>'+statusButton+'</div></article>';
+      }).join('')+'</div>';
+    }else{
+      html+='<div class="os-card">'+(isInactive?
+        empty('users','Nenhum funcionário inativo','Os funcionários removidos aparecerão nesta lista.') :
+        empty('users','Nenhum profissional ativo','Cadastre um funcionário ou reative alguém na aba Inativos.',button('Novo funcionário','new-professional','','plus',can?'':'disabled')))+'</div>';
+    }
     bodyHTML(html);
   }
   const teamRoles={owner:'Proprietário',editor:'Editor',viewer:'Leitor'};
@@ -2011,6 +2034,7 @@
           if(!stillAccount(c))return;
           d.savedId=result?.id||id;
           if(!d.savedId)throw Error('Não foi possível confirmar o cadastro do profissional.');
+          if(state.route==='funcionarios')state.filters.staffStatus=payload.active?'active':'inactive';
           state.data.commissionRules=null;
           state.data.professionalServices=null;
         },p?'Profissional atualizado.':'Profissional cadastrado.');
@@ -2214,6 +2238,23 @@
       if(el.dataset.osCustomerToggle){const c=rows(state.data.customers).find(c=>c.id===el.dataset.osCustomerToggle);if(c)await runInline(()=>request(mgmt('/customers/'+encodeURIComponent(c.id)),'PATCH',{active:!c.active,expected_version:c.version}),c.active?'Cliente inativado.':'Cliente ativado.');return;}
       if(el.dataset.osCustomerDelete){deleteResource('customer',rows(state.data.customers).find(c=>c.id===el.dataset.osCustomerDelete));return;}
       if(el.dataset.osStaffTab){state.filters.staffTab=el.dataset.osStaffTab;document.querySelectorAll('[data-os-staff-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.osStaffTab===state.filters.staffTab)));renderProfessionals();return;}
+       if(el.dataset.osStaffStatusFilter){
+         if(state.route!=='funcionarios'||state.filters.staffTab!=='professionals'||!['active','inactive'].includes(el.dataset.osStaffStatusFilter))return;
+         state.filters.staffStatus=el.dataset.osStaffStatusFilter;renderProfessionals();return;
+       }
+       if(el.dataset.osProfessionalStatus){
+         if(state.route!=='funcionarios'||state.filters.staffTab!=='professionals'||!writable())return;
+         const p=(state.data.professionals||[]).find(item=>item.id===el.dataset.osProfessionalStatus);
+         if(!p)return;
+         const activate=p.active===false,version=Number(p.commission_config_version);
+         if(!Number.isInteger(version)||version<1){toast('Atualize a lista antes de alterar este funcionário.',true);return;}
+         confirmMutation(activate?'Reativar funcionário':'Remover funcionário',
+           activate?'Reativar '+p.name+'? O profissional voltará para a lista de ativos. A disponibilidade continuará respeitando as configurações dos horários e agendamentos.':
+             'Remover '+p.name+' da equipe ativa? Ele irá para Inativos e deixará de aparecer nas opções de novos agendamentos. Os atendimentos, valores e comissões anteriores serão preservados. Se ele tiver acesso ao painel, desative-o também em Equipe & Permissões.',
+           ()=>request(mgmt('/professionals/'+encodeURIComponent(p.id)+'/status'),'PATCH',{active:activate,expected_version:version}),
+           activate?'Profissional reativado.':'Funcionário movido para Inativos.');
+         return;
+       }
       if(el.dataset.osFinanceTab){state.filters.financeTab=el.dataset.osFinanceTab;state.filters.financeOffset=0;await open('financeiro',{keepScroll:true});return;}
       if(el.dataset.osPerformancePeriod){setPerformancePeriod(el.dataset.osPerformancePeriod);await open('desempenho',{keepScroll:true});return;}
       if(el.dataset.osPerformanceGroup){state.filters.performanceGroup=el.dataset.osPerformanceGroup;renderPerformance(state.data.performance,state.data.goals);return;}
