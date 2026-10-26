@@ -85,3 +85,17 @@
   .location-card{padding:16px}
   .location-card .route-action{font-size:13px}
 }
+
+/* Social contacts: icon-only, accessible and theme-aware. */
+.contact-card{display:flex;flex-direction:column;gap:16px}
+.contact-links{display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:12px}
+.contact-social{display:grid;place-items:center;width:52px;height:52px;flex:0 0 52px;border:1px solid var(--border);border-radius:15px;background:var(--soft);color:var(--text);transition:background .15s ease,transform .15s ease,border-color .15s ease}
+.contact-social svg{display:block;width:25px;height:25px}
+.contact-social:hover{background:color-mix(in srgb,var(--primary) 10%,var(--card));border-color:var(--primary);transform:translateY(-2px)}
+.contact-social:focus-visible,.public-theme-control button:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+.public-theme-control{position:fixed;top:calc(env(safe-area-inset-top) + 12px);right:16px;z-index:30}
+.public-theme-control button{display:grid;place-items:center;width:44px;height:44px;border:1px solid var(--border);border-radius:50%;background:var(--card);color:var(--text);box-shadow:0 4px 14px #0002;font-size:22px}
+:root[data-public-theme=dark]{--bg:#0d111a;--card:#171d29;--text:#f1f4fa;--muted:#b0bbce;--border:#354052;--soft:#252e3e;color-scheme:dark}
+:root[data-public-theme=light]{color-scheme:light}
+@media(max-width:359px){.contact-social{width:46px;height:46px;flex-basis:46px}.contact-social svg{width:23px;height:23px}.contact-links{gap:9px}}
+@media(prefers-reduced-motion:reduce){.contact-social{transition:none}}
