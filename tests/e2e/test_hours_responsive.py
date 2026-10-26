@@ -51,13 +51,26 @@ def test_weekly_hours_has_edit_controls_no_horizontal_overflow(browser_name, wid
                 },openLegacy(){},onRouteChange(){}
               });
             }""", {"pro": PRO, "hour": HOUR, "breakId": BREAK})
+            page.wait_for_timeout(600)
+            page.evaluate("""() => {
+              const d=document.querySelector('#osDialog');
+              window.__hourTestCalls=[];
+              document.addEventListener('click',e=>{
+                if(e.target.closest('[data-os-hours]'))window.__hourTestCalls.push('click');
+              },true);
+              const nativeShow=d.showModal.bind(d),nativeClose=d.close.bind(d);
+              d.showModal=function(){window.__hourTestCalls.push('showModal');return nativeShow();};
+              d.close=function(){window.__hourTestCalls.push('close');return nativeClose();};
+            }""")
             page.locator(f'[data-os-hours="{PRO}"]').click()
-            page.wait_for_timeout(200)
+            page.wait_for_timeout(400)
             diagnostic = page.evaluate("""() => ({
               dialog:document.querySelector('#osDialog')?.outerHTML.slice(0,1800),
               open:document.querySelector('#osDialog')?.open,
               hourCount:document.querySelectorAll('[data-os-hours-weekday]').length,
-              currentRoute:document.querySelector('#page-suite')?.dataset.osCurrentRoute
+              currentRoute:document.querySelector('#page-suite')?.dataset.osCurrentRoute,
+              calls:window.__hourTestCalls,
+              toast:document.querySelector('#osToastRegion')?.textContent?.slice(0,250)
             })""")
             assert diagnostic["hourCount"] == 7, f"Rendered schedule unavailable: {diagnostic!r}; browser errors={errors!r}"
             page.locator('[data-os-hours-weekday="6"]').wait_for(timeout=2000)
