@@ -320,7 +320,7 @@ async def catalogue(db,tenant,*,preview=False):
                          'professional_ids':[link['professional_id'] for link in links if link['service_id']==x['addon_service_id']]}
                         for x in addons if x['base_service_id']==row['id']]
         if row['package_id']:
-            item['components']=[dict(x) for x in (await db.execute(text("""SELECT s.name,s.duration_min,i.item_order
+            item['components']=[dict(x) for x in (await db.execute(text("""SELECT i.service_id,s.name,s.duration_min,i.item_order
                 FROM service_package_items i JOIN services s ON s.tenant_id=i.tenant_id AND s.id=i.service_id
                 WHERE i.tenant_id=:tenant AND i.package_id=:package ORDER BY i.item_order"""),
                 {'tenant':tenant,'package':row['package_id']})).mappings().all()]
