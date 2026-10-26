@@ -1,0 +1,98 @@
+name: Orion - comissoes por servico e integridade financeira
+on:
+  push:
+    branches: [main, codex/orion-commission-per-service-20261026]
+    paths:
+      - 'alembic/versions/0033_professional_service_commissions.py'
+      - 'app/commission_policies.py'
+      - 'app/management_api.py'
+      - 'app/management_models.py'
+      - 'app/management_schemas.py'
+      - 'app/booking_service.py'
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-suite.css'
+      - 'tests/unit/test_commission_policies.py'
+      - 'tests/integration/test_service_commissions.py'
+      - 'ui-tests/staff-commissions.test.mjs'
+      - 'scripts/prepare_vercel_orion.py'
+      - '.github/workflows/professional-commissions-20261026.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres-commission:
+    name: RLS, calculo, comissoes, quitação e migração
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: synthetic-commission-test-token-of-at-least-32-characters
+      REQUIRE_POSTGRES_TESTS: '1'
+      BUSINESS_PROFILES_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dependencias e verificacao estrutural
+        run: |
+          python -m pip install -c requirements.lock ".[test]"
+          python -m pip check
+          python -m compileall -q app
+      - name: Preparar papeis do banco descartavel
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas \
+            -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only \
+            -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+      - name: Aplicar migracoes ate 0033
+        run: alembic upgrade head
+      - name: Executar regressao financeira em banco real
+        run: |
+          pytest -q -ra \
+            tests/unit/test_commission_policies.py \
+            tests/integration/test_service_commissions.py \
+            tests/integration/test_management.py \
+            tests/integration/test_variable_service_pricing.py \
+            tests/integration/test_appointment_lifecycle.py
+  commission-ui:
+    name: Mobile, regras e regressao JS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependencias
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Checar sintaxe da interface
+        run: node --check app/static/orion-suite.js
+      - name: Regras de comissão, cadastros e agenda
+        run: |
+          node --test \
+            ui-tests/staff-commissions.test.mjs \
+            ui-tests/services-compact.test.mjs \
+            ui-tests/agenda-lifecycle.test.mjs \
+            ui-tests/dashboard-finance-goals.test.mjs
+      - name: Regressao completa dos formularios
+        run: npm test --prefix ui-tests
