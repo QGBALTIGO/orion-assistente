@@ -128,7 +128,7 @@ def test_finance_loses_no_horizontal_content_or_actions(browser_name,width,heigh
                     body:document.body.scrollWidth,main:{left:rect.left,right:rect.right,width:rect.width},
                     boxes,offenders};
                 }""")
-                assert geometry["doc"]<=width+2,geometry
+                assert geometry["doc"]<=width+2, {"viewport":width,"document":geometry["doc"],"offenders":geometry["offenders"]}
                 assert geometry["body"]<=width+2,geometry
                 assert geometry["main"]["left"]>=-2,geometry
                 assert geometry["main"]["right"]<=width+2,geometry
