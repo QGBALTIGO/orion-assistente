@@ -215,3 +215,17 @@ def test_settlement_contract_requires_a_snapshot_and_has_stable_omitted_timestam
     for changes in ({"expected_snapshot": "incorrect"}, {"amount_cents": 1000}, {"occurred_at": "2026-10-18T10:00:00"}):
         with pytest.raises(ValidationError):
             SettlementCreate(**{**values, **changes})
+
+def test_public_amenities_are_opt_in_and_require_real_boolean_values():
+    fields = ("amenity_wifi", "amenity_parking", "amenity_accessibility", "amenity_children")
+    baseline = SiteSave(expected_version=0)
+    assert all(getattr(baseline, key) is False for key in fields)
+    assert set(fields).issubset(baseline.model_dump())
+    enabled = SiteSave(expected_version=0, amenity_wifi=True, amenity_parking=True,
+                       amenity_accessibility=True, amenity_children=True)
+    assert all(getattr(enabled, key) is True for key in fields)
+    for field in fields:
+        with pytest.raises(ValidationError):
+            SiteSave(expected_version=0, **{field: "true"})
+        with pytest.raises(ValidationError):
+            SiteSave(expected_version=0, **{field: 1})

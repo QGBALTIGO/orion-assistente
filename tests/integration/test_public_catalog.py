@@ -355,3 +355,52 @@ async def test_real_redis_atomic_quota_publication_and_booking(public_db,monkeyp
             key='orion:public-limit:'+category+':'+hashlib.sha256((d['slug']+'|'+peer).encode()).hexdigest()
             await cache.delete(key)
         await cache.aclose()
+
+
+@pytest.mark.asyncio
+async def test_public_amenity_flags_follow_preview_published_snapshot_and_legacy_defaults(public_db):
+    """Only explicitly enabled amenities are public; unpublished edits stay private."""
+    d=public_db
+    client=d['client']
+    keys=('amenity_wifi','amenity_parking','amenity_accessibility','amenity_children')
+
+    # Completely new businesses must advertise no amenities by default.
+    first=(await client.get(d['base']+'/site')).json()
+    assert all(first.get(key) is False for key in keys)
+
+    await save_site(d,amenity_wifi=True,amenity_parking=False,
+                    amenity_accessibility=True,amenity_children=False)
+    preview=(await client.get(d['base']+'/site/preview')).json()
+    assert [preview['site'][key] for key in keys]==[True,False,True,False]
+
+    await publish(d)
+    published=(await client.get(d['public'])).json()
+    assert [published['site'][key] for key in keys]==[True,False,True,False]
+
+    # A saved draft cannot mutate a published snapshot until republished.
+    revised=await save_site(d,amenity_wifi=False,amenity_parking=True,
+                            amenity_accessibility=False,amenity_children=True)
+    assert revised['has_unpublished_changes'] is True
+    assert [(await client.get(d['public'])).json()['site'][key] for key in keys]==[
+        True,False,True,False]
+    assert [(await client.get(d['base']+'/site/preview')).json()['site'][key]
+            for key in keys]==[False,True,False,True]
+
+    await publish(d)
+    assert [(await client.get(d['public'])).json()['site'][key] for key in keys]==[
+        False,True,False,True]
+
+    # Old snapshots have no amenities fields at all; each remains disabled.
+    await save_site(d)
+    await publish(d)
+    async with d['migrator'].begin() as db:
+        await db.execute(text("""
+            UPDATE management_site_preferences
+            SET public_snapshot = public_snapshot - 'amenity_wifi' - 'amenity_parking'
+                               - 'amenity_accessibility' - 'amenity_children'
+            WHERE tenant_id = :tenant
+        """),{'tenant':d['a']})
+    older=(await client.get(d['public'])).json()
+    assert all(older['site'][key] is False for key in keys)
+    status=(await client.get(d['base']+'/site')).json()
+    assert status['has_unpublished_changes'] is False

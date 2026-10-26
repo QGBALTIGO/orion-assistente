@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 from app.media_paths import is_media_url
 from uuid import UUID
 
-from pydantic import AwareDatetime, Field, StrictInt, field_validator, model_validator
+from pydantic import AwareDatetime, Field, StrictBool, StrictInt, field_validator, model_validator
 
 from app.catalog_schemas import StrictModel
 
@@ -278,6 +278,12 @@ class SitePreferences(CleanModel):
     external_url: str | None = Field(default=None, max_length=2048)
     hide_orion_brand: bool = False
     show_prices: bool = True
+    # Public amenities are opt-in: never advertise services that a tenant has
+    # not explicitly enabled in its site configuration.
+    amenity_wifi: StrictBool = False
+    amenity_parking: StrictBool = False
+    amenity_accessibility: StrictBool = False
+    amenity_children: StrictBool = False
 
     _phone = field_validator("contact_phone", "whatsapp_phone")(normalize_phone)
 
