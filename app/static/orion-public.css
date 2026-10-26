@@ -30,6 +30,12 @@
   .hero-actions .hero-icon-action{flex:0 0 auto;width:auto;min-width:46px;padding-inline:14px}
   .hero-actions .hero-action-label{display:inline}
 }
+/* On desktop keep only the CTA on the left; utilities group at the far right.
+   This also works for tenants that have no map configured. Phones are unchanged. */
+@media(min-width:768px){
+  .hero-actions #hero-map:not([hidden]){margin-left:auto}
+  .hero-actions #hero-map[hidden] + #share-site{margin-left:auto}
+}
 @media(max-width:359px){
   .hero-actions{gap:6px}
   .hero-actions .pill{font-size:13px;padding-inline:10px;gap:5px}
