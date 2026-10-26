@@ -9,6 +9,24 @@
   const apiBase = preview ? `/api/v1/tenants/${previewMatch[1]}/management/site/preview` : `/api/v1/public/sites/${slugMatch?.[1] || ''}`;
   let data, category = 'Todos', requestSequence = 0, availabilityController;
   let booking = newBooking();
+  const themeButton=$('public-theme-toggle');
+  let selectedTheme='system';
+  function applyPublicTheme(){
+    const systemDark=window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+    const dark=selectedTheme==='dark'||(selectedTheme==='system'&&systemDark);
+    document.documentElement.dataset.publicTheme=dark?'dark':'light';
+    themeButton.setAttribute('aria-label','Tema: '+(selectedTheme==='system'?'sistema':selectedTheme==='dark'?'escuro':'claro')+'. Toque para alternar.');
+    $('public-theme-symbol').textContent=selectedTheme==='system'?'◐':selectedTheme==='dark'?'☾':'☀';
+  }
+  themeButton.addEventListener('click',()=>{
+    selectedTheme=selectedTheme==='system'?'light':selectedTheme==='light'?'dark':'system';
+    try{localStorage.setItem('orion-public-theme',selectedTheme)}catch{}
+    applyPublicTheme();
+  });
+  try{const stored=localStorage.getItem('orion-public-theme');if(['light','dark','system'].includes(stored))selectedTheme=stored;}catch{}
+  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change',applyPublicTheme);
+  applyPublicTheme();
+
 
   function newBooking() { return { step: 1, service: null, addons: [], professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', consent: false }; }
   function el(tag, cls, value) { const node = document.createElement(tag); if (cls) node.className = cls; if (value !== undefined) node.textContent = value; return node; }
@@ -218,11 +236,36 @@
     renderCats(); renderServiceGrid();
     $('team-grid').replaceChildren(...data.professionals.map(person => { const card = el('article', 'team-card'); const portrait = el('div', 'portrait'); color(portrait, '--person-color', person.color); picture(portrait, person.image_url, initials(person.name)); const info = el('div', 'person-info'); info.append(el('strong', '', person.name)); if (person.specialty) info.append(el('p', '', person.specialty)); card.append(portrait, info); return card; }));
     $('equipe').hidden = !data.professionals.length;
-    const contacts = [];
-    if (/^\+[1-9]\d{9,14}$/.test(site.whatsapp_phone || '')) contacts.push(link('Conversar no WhatsApp', `https://wa.me/${site.whatsapp_phone.slice(1)}`, 'primary'));
-    if (/^\+[1-9]\d{9,14}$/.test(site.contact_phone || '')) { const phone = el('a', 'outline', 'Ligar'); phone.href = `tel:${site.contact_phone}`; phone.setAttribute('aria-label', `Ligar para ${site.contact_phone}`); contacts.push(phone); }
-    for (const [key, name] of [['instagram_url', 'Instagram'], ['facebook_url', 'Facebook'], ['tiktok_url', 'TikTok'], ['external_url', 'Website']]) { const node = link(name, site[key]); if (node) contacts.push(node); }
-    $('contact-links').replaceChildren(...contacts.filter(Boolean)); $('contact-section').hidden = !contacts.length;
+    const contacts=[];
+    const glyphs={
+      Instagram:'<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".9" fill="currentColor" stroke="none"/>',
+      Facebook:'<path d="M15 21v-8h3l.5-4H15V7c0-1.3.4-2 2-2h2V1.5A24 24 0 0 0 16 1c-3.5 0-5 2-5 5v3H8v4h3v8"/>',
+      TikTok:'<path d="M14 3v11.5a4.5 4.5 0 1 1-4.5-4.5"/><path d="M14 3c1 3 3 4.5 6 4.5"/>',
+      WhatsApp:'<path d="M20 11.5a8 8 0 0 1-11.7 7L4 20l1.5-4.3A8 8 0 1 1 20 11.5Z"/><path d="M9 8c.4 3 2.4 5 5.5 6l1.5-1.5"/>',
+      Telefone:'<path d="M7 3 4 6c-.5 5 9 14.5 14 14l3-3-5-4-2 2c-2-1-4-3-5-5l2-2-4-5Z"/>',
+      Site:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c-5 5-5 13 0 18M12 3c5 5 5 13 0 18"/>'
+    };
+    function contactIcon(name,href){
+      const node=el('a','contact-social');
+      node.href=href;node.setAttribute('aria-label',name);node.title=name;
+      if(!href.startsWith('tel:')){node.target='_blank';node.rel='noopener noreferrer';}
+      const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');
+      svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.8');
+      svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');
+      svg.setAttribute('aria-hidden','true');
+      // Fixed trusted SVG paths, never interpolated from tenant content.
+      const fragment=document.createElement('template');fragment.innerHTML='<svg xmlns="http://www.w3.org/2000/svg">'+glyphs[name]+'</svg>';
+      while(fragment.content.firstChild?.firstChild)svg.append(fragment.content.firstChild.firstChild);
+      node.append(svg);return node;
+    }
+    if(/^\+[1-9]\d{9,14}$/.test(site.whatsapp_phone||''))contacts.push(contactIcon('WhatsApp','https://wa.me/'+site.whatsapp_phone.slice(1)));
+    if(/^\+[1-9]\d{9,14}$/.test(site.contact_phone||''))contacts.push(contactIcon('Telefone','tel:'+site.contact_phone));
+    for(const [key,name] of [['instagram_url','Instagram'],['facebook_url','Facebook'],['tiktok_url','TikTok'],['external_url','Site']]){
+      const url=safeHTTPS(site[key]);if(url)contacts.push(contactIcon(name,url));
+    }
+    $('contact-links').replaceChildren(...contacts);
+    $('contact-section').hidden=!contacts.length;
     $('orion-credit').hidden = !!site.hide_orion_brand; $('preview-banner').hidden = !preview;
     $('site-content').hidden = false; $('page-message').hidden = true;
   }
