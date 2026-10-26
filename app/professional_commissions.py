@@ -34,6 +34,12 @@ class CommissionRuleInput(StrictModel):
         return self
 
 
+class ProfessionalStatusChange(StrictModel):
+    """Soft archive/reactivation: financial and appointment links are retained."""
+    active: bool
+    expected_version: int = Field(ge=1)
+
+
 class ProfessionalConfiguration(Professional):
     service_ids: list[UUID] = Field(default_factory=list, max_length=200)
     commission_rules: list[CommissionRuleInput] = Field(default_factory=list, max_length=200)
@@ -291,4 +297,50 @@ async def save_professional_configuration(db, tenant_id, payload, professional_i
                "percent": rule.commission_percent, "fixed": rule.commission_fixed_cents})
     await audit(db, tenant_id, "updated" if payload.expected_version else "created",
                 "professionals", professional_id)
+    return dict(saved)
+
+
+
+async def change_professional_status(db, tenant_id, professional_id, payload: ProfessionalStatusChange):
+    """Hide or restore a professional without deleting history or commission rules."""
+    await acquire_professional_lock(db, tenant_id, professional_id)
+    params = {"tenant": tenant_id, "id": professional_id, "version": payload.expected_version}
+    current = (await db.execute(text("""
+        SELECT id, active, commission_config_version
+        FROM professionals
+        WHERE tenant_id=:tenant AND id=:id FOR UPDATE
+    """), params)).mappings().one_or_none()
+    if current is None:
+        raise HTTPException(404, "Profissional não encontrado nesta empresa")
+    if current["commission_config_version"] != payload.expected_version:
+        raise HTTPException(409, "Os dados deste profissional mudaram. Atualize a lista e tente novamente")
+    if bool(current["active"]) == payload.active:
+        return dict(current)
+
+    if not payload.active:
+        # Confirmed bookings and unexpired holds must be reassigned/cancelled
+        # before archiving; historical bookings and financials remain untouched.
+        pending = (await db.execute(text("""
+            SELECT count(*) FROM appointments
+            WHERE tenant_id=:tenant AND professional_id=:id
+              AND end_at>now()
+              AND (status='confirmed'
+                   OR (status='hold' AND hold_expires_at>now()))
+        """), params)).scalar_one()
+        if pending:
+            raise HTTPException(
+                409,
+                f"Este profissional tem {pending} agendamento(s) em aberto. "
+                "Reagende ou cancele esses atendimentos antes de removê-lo.",
+            )
+
+    saved = (await db.execute(text("""
+        UPDATE professionals
+        SET active=:active,
+            commission_config_version=commission_config_version+1
+        WHERE tenant_id=:tenant AND id=:id
+          AND commission_config_version=:version
+        RETURNING *
+    """), {**params, "active": payload.active})).mappings().one()
+    await audit(db, tenant_id, "updated", "professionals", professional_id)
     return dict(saved)

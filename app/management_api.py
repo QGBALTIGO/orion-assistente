@@ -17,7 +17,7 @@ from app.catalog_api import Actor, authenticate, ensure_tenant
 from app.csv_export import csv_document
 from app.database import get_session_factory, tenant_transaction
 from app import management_models as data
-from app.professional_commissions import ProfessionalConfiguration
+from app.professional_commissions import ProfessionalConfiguration, ProfessionalStatusChange
 from app.management_schemas import (
     AppointmentTransition, CouponIssue, CustomerCreate, CustomerFields, CustomerPatch, FinanceCreate, FinanceFields,
     FinancePatch, FinanceStatus, GoalCreate, GoalFields, GoalPatch,
@@ -113,6 +113,16 @@ async def edit_professional_configuration(
     from app.professional_commissions import save_professional_configuration
     async with management_session(tenant_id, actor, write=True) as db:
         return await save_professional_configuration(db, tenant_id, payload, professional_id)
+
+
+@router.patch("/professionals/{professional_id}/status")
+async def edit_professional_status(
+    tenant_id: UUID, professional_id: UUID, payload: ProfessionalStatusChange,
+    actor: Actor = Depends(authenticate),
+):
+    from app.professional_commissions import change_professional_status
+    async with management_session(tenant_id, actor, write=True) as db:
+        return await change_professional_status(db, tenant_id, professional_id, payload)
 
 
 @router.get("/dashboard")
