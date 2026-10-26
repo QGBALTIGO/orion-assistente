@@ -1,0 +1,94 @@
+name: Orion - comissoes por servico (homologacao isolada)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/professional_commissions.py'
+      - 'app/catalog_api.py'
+      - 'app/catalog_schemas.py'
+      - 'app/management_api.py'
+      - 'app/management_models.py'
+      - 'app/booking_service.py'
+      - 'app/financial_settlements.py'
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-suite.css'
+      - 'alembic/versions/0033_professional_commissions.py'
+      - 'scripts/apply_professional_commission_migration.py'
+      - 'scripts/prepare_vercel_orion.py'
+      - 'tests/integration/test_professional_commissions.py'
+      - 'tests/unit/test_professional_commissions.py'
+      - 'ui-tests/professional-commissions.test.mjs'
+      - '.github/workflows/commissions-20261026.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  commission-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: synthetic-commission-tests-only-replace-in-production-12345678
+      REQUIRE_POSTGRES_TESTS: '1'
+      BUSINESS_PROFILES_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dependencies and syntax
+        run: |
+          python -m pip install -c requirements.lock ".[test]"
+          python -m pip check
+          python -m compileall -q app alembic scripts
+      - name: Isolated roles and schema upgrade 0033
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas \
+            -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only \
+            -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+          alembic upgrade head
+          test "$(psql -h localhost -U postgres -d barber_saas -tAc 'SELECT version_num FROM alembic_version')" = "0033_professional_commissions"
+      - name: Real tenant and finance lifecycle plus pure calculations
+        run: |
+          python -m pytest -q -ra \
+            tests/unit/test_professional_commissions.py \
+            tests/integration/test_professional_commissions.py \
+            tests/integration/test_variable_service_pricing.py \
+            tests/integration/test_management.py \
+            tests/integration/test_appointment_lifecycle.py
+  commission-mobile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install controlled test dependencies
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Syntax and owner/viewer commission dialog tests
+        run: |
+          node --check app/static/orion-suite.js
+          node --test \
+            ui-tests/professional-commissions.test.mjs \
+            ui-tests/services-compact.test.mjs
