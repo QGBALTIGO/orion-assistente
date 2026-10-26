@@ -44,7 +44,13 @@ def test_whatsapp_shortcut_and_chevron_fit_real_mobile_browser(engine,width):
                              device_scale_factor=2,locale="pt-BR",
                              is_mobile=(engine=="webkit"),has_touch=True)
         try:
-            page.set_content(PAGE)
+            # Use an intercepted HTTPS origin, like the real Orion panel.
+            # about:blank is not a secure context and omits crypto.randomUUID
+            # used by the real account dialog; no network request leaves CI.
+            page.route("https://orion.test/**",lambda route:route.abort())
+            page.route("https://orion.test/panel",lambda route:route.fulfill(
+                status=200,content_type="text/html",body=PAGE))
+            page.goto("https://orion.test/panel",wait_until="domcontentloaded")
             page.add_style_tag(content=(ROOT/"app/static/orion-suite.css").read_text())
             page.add_script_tag(content=(ROOT/"app/static/orion-suite.js").read_text())
             page.evaluate(INITIALIZE)
