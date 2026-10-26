@@ -39,7 +39,36 @@
         <div id="services-grid" class="services-grid"></div>
       </section>
       <section id="equipe" aria-labelledby="team-title"><div class="section-heading"><div><h2 id="team-title">Nossa equipe</h2><p class="muted">Conheça quem vai cuidar de você.</p></div></div><div id="team-grid" class="team-grid"></div></section>
-      <section class="info-grid" aria-label="Informações da barbearia"><article id="about-card" class="info-card" hidden><h2>Sobre nós</h2><p id="about-text" class="preserve-lines"></p></article><article id="address-card" class="info-card" hidden><div class="location-mark" aria-hidden="true"><svg class="location-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></div><h2>Onde estamos</h2><p id="full-address" class="preserve-lines"></p><a id="maps-link" class="outline map-action-link" hidden><svg class="inline-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg><span>Abrir no mapa</span></a></article></section>
+      <section class="info-grid" aria-label="Informações da barbearia">
+        <article id="about-card" class="info-card about-card" hidden>
+          <h2>Sobre nós</h2>
+          <p id="about-text" class="preserve-lines"></p>
+        </article>
+        <article id="hours-card" class="info-card hours-card" aria-labelledby="hours-title" hidden>
+          <div class="hours-heading">
+            <span class="section-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+            <div><h2 id="hours-title">Horário de funcionamento</h2><p class="muted">Organize sua visita com tranquilidade.</p></div>
+          </div>
+          <div id="hours-list" class="hours-list" role="list"></div>
+          <p class="hours-note">Horários habituais da equipe. A disponibilidade pode variar por profissional e data.</p>
+        </article>
+        <article id="address-card" class="info-card location-card" aria-labelledby="location-title" hidden>
+          <div class="location-heading">
+            <span class="section-icon" aria-hidden="true"><svg class="location-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></span>
+            <div><h2 id="location-title">Onde estamos</h2><p class="muted">Encontre nosso espaço e venha nos visitar.</p></div>
+          </div>
+          <div class="map-preview" id="map-preview" hidden>
+            <iframe id="location-map" title="Prévia do Google Maps com a localização da barbearia" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe>
+            <span class="map-provider">Google Maps</span>
+          </div>
+          <div class="location-details"><svg class="location-small-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg><p id="full-address" class="preserve-lines"></p></div>
+          <a id="maps-link" class="primary route-action" hidden>
+            <svg class="route-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4h5"/><path d="m9 7 3-4-3-3"/><circle cx="17" cy="17" r="4"/><path d="m16 17 1 1 2-2"/></svg>
+            <span>Traçar rota no Google Maps</span>
+            <svg class="route-external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 5h6v6M19 5l-9 9"/></svg>
+          </a>
+        </article>
+      </section>
       <section id="contact-section" class="contact-card" aria-labelledby="contact-title" hidden><div><h2 id="contact-title">Fale com a gente</h2><p class="muted">Tire suas dúvidas antes do atendimento.</p></div><div id="contact-links" class="contact-links"></div></section>
     </main>
     <footer class="container public-footer"><span id="footer-title"></span><span id="orion-credit">Agendamento com <a href="/" aria-label="Orion">Orion</a></span></footer>

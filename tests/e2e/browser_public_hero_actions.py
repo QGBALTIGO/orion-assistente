@@ -14,6 +14,11 @@ DATA = {
     "timezone": "America/Sao_Paulo",
     "today": "2030-01-07",
     "booking_horizon_days": 60,
+    "opening_hours": [
+        {"weekday":day, "intervals": ([{"open":"09:00","close":"18:00"}] if day<5
+            else [{"open":"09:00","close":"13:00"}] if day==5 else [])}
+        for day in range(7)
+    ],
     "site": {
         "title": "Barbearia de teste", "theme_color": "#ffca00",
         "show_prices": True, "hide_orion_brand": False,
@@ -61,7 +66,9 @@ def test_hero_icons_align_and_share_opens_native_api_without_booking(engine, wid
             share = page.locator("#share-site")
             row = page.locator(".hero-actions")
             assert book.is_visible() and map_link.is_visible() and share.is_visible()
-            assert map_link.get_attribute("href") == DATA["site"]["maps_url"]
+            directions = map_link.get_attribute("href")
+            assert directions.startswith("https://www.google.com/maps/dir/?api=1")
+            assert "dir_action=navigate" in directions
             assert map_link.get_attribute("target") == "_blank"
             assert "noopener" in map_link.get_attribute("rel")
             for selector in ["#hero-map", "#share-site"]:
@@ -98,8 +105,29 @@ def test_hero_icons_align_and_share_opens_native_api_without_booking(engine, wid
                 "(el)=>Array.from(el.children).map(x=>x.className)"
             ) == ["price", "service-meta-separator", "service-duration"]
             assert service_meta.inner_text().find("R$") < service_meta.inner_text().find("40min")
-            assert page.locator("#maps-link svg.inline-action-icon").count() == 1
-            assert page.locator(".location-mark svg.location-icon").count() == 1
+            assert page.locator("#maps-link svg.route-action-icon").count() == 1
+            assert page.locator(".location-heading svg.location-icon").count() == 1
+            assert page.locator("#map-preview iframe").count() == 1
+            about=page.locator("#about-card")
+            hours=page.locator("#hours-card")
+            location=page.locator("#address-card")
+            assert about.is_visible() and hours.is_visible() and location.is_visible()
+            assert about.evaluate("(el)=>el.nextElementSibling.id")=="hours-card"
+            assert hours.evaluate("(el)=>el.nextElementSibling.id")=="address-card"
+            assert "Segunda-feira a sexta-feira" in hours.inner_text()
+            assert "Sábado" in hours.inner_text() and "Domingo" in hours.inner_text()
+            assert "Fechado" in hours.inner_text()
+            frame=page.locator("#location-map")
+            frame_box=frame.bounding_box()
+            assert frame_box and frame_box["height"]>=200 and frame_box["width"]>=200
+            assert frame.get_attribute("loading")=="lazy"
+            assert "output=embed" in frame.get_attribute("src")
+            route=page.locator("#maps-link")
+            assert route.is_visible()
+            assert route.get_attribute("href")==map_link.get_attribute("href")
+            assert "dir_action=navigate" in route.get_attribute("href")
+            assert route.bounding_box()["height"]>=44
+            assert location.evaluate("(el)=>el.scrollWidth<=el.clientWidth+2")
             assert page.locator("#hero-book svg.hero-book-icon").count() == 1
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 2"), "no horizontal overflow"
 

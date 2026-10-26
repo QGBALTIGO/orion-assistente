@@ -11,6 +11,10 @@ export const quote = 'synthetic-quote-with-at-least-forty-characters-0001';
 export function catalogue() {
   return {
     timezone: 'America/Sao_Paulo', today: '2030-01-07', booking_horizon_days: 60,
+    opening_hours: Array.from({length:7}, (_,weekday)=>({
+      weekday,intervals:weekday<5?[{open:'09:00',close:'18:00'}]:
+        weekday===5?[{open:'09:00',close:'13:00'}]:[]
+    })),
     site: { title: 'Empresa sintética', theme_color: '#2e7bf6', show_prices: true, hide_orion_brand: false,
       description: 'Atendimento com horário marcado.', address: 'Endereço sintético', city: 'São Paulo', state: 'SP',
       maps_url: 'https://www.google.com/maps', whatsapp_phone: '+5511999999999' },

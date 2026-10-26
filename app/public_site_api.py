@@ -40,7 +40,7 @@ PUBLIC_FIELDS=('title','description','slug','theme_color','logo_url','cover_url'
                'contact_phone','whatsapp_phone','instagram_url','maps_url','facebook_url','tiktok_url','external_url',
                'hide_orion_brand','show_prices')
 HEADERS={"Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer",
-         "Content-Security-Policy":"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"}
+         "Content-Security-Policy":"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self'; connect-src 'self'; frame-src https://www.google.com https://maps.google.com; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"}
 _booking_capacity=WeakKeyDictionary()
 
 
@@ -196,6 +196,37 @@ async def confirmed_public_replay(db,tenant,quote,payload):
             'timezone':row['timezone'],'professional':row['professional'],'services':services}
 
 
+def public_opening_hours(entries):
+    """Weekly bookable team intervals, without leaking professional IDs.
+
+    Uses 0=Monday like the appointment engine. Merge overlapping intervals
+    but preserve true gaps; dates, breaks and time off remain subject to
+    the actual availability check at booking time.
+    """
+    per_day = [[] for _ in range(7)]
+    for entry in entries:
+        day = int(entry["weekday"])
+        if day not in range(7):
+            continue
+        start, end = str(entry["start_time"])[:5], str(entry["end_time"])[:5]
+        if not (len(start) == len(end) == 5 and start < end):
+            continue
+        per_day[day].append((start, end))
+
+    days = []
+    for weekday, intervals in enumerate(per_day):
+        merged = []
+        for begin, finish in sorted(intervals):
+            if merged and begin <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], finish))
+            else:
+                merged.append((begin, finish))
+        days.append({"weekday": weekday,
+                     "intervals": [{"open": start, "close": finish}
+                                   for start, finish in merged]})
+    return days
+
+
 async def catalogue(db,tenant,*,preview=False):
     site=(await db.execute(text('SELECT * FROM management_site_preferences WHERE tenant_id=:tenant'),{'tenant':tenant})).mappings().one_or_none()
     shop=(await db.execute(text('SELECT name,timezone,booking_horizon_days FROM tenants WHERE id=:tenant'),{'tenant':tenant})).mappings().one()
@@ -204,6 +235,15 @@ async def catalogue(db,tenant,*,preview=False):
     preference.update(title=preference['title'] or shop['name'],theme_color=preference['theme_color'] or '#2e7bf6',
                       show_prices=True if preference['show_prices'] is None else preference['show_prices'])
     professionals=(await db.execute(text("SELECT id,name,specialty,color,image_url FROM professionals WHERE tenant_id=:tenant AND active AND accepts_appointments ORDER BY name,id LIMIT 200"),{'tenant':tenant})).mappings().all()
+    working_rows=(await db.execute(text("""
+        SELECT h.weekday,h.start_time,h.end_time
+        FROM working_hours h
+        JOIN professionals p
+          ON p.tenant_id=h.tenant_id AND p.id=h.professional_id
+        WHERE h.tenant_id=:tenant AND p.active AND p.accepts_appointments
+        ORDER BY h.weekday,h.start_time,h.end_time
+    """), {'tenant':tenant})).mappings().all()
+    public_hours=public_opening_hours(working_rows)
     services=(await db.execute(text("""SELECT s.id,s.name,s.description,s.category,s.color,s.image_url,s.sort_order,s.duration_min,s.price_cents,s.price_mode,s.catalog_kind,
         COALESCE(p.featured,false) AS featured,p.id AS package_id
         FROM services s LEFT JOIN service_packages p ON p.tenant_id=s.tenant_id AND p.synthetic_service_id=s.id AND p.kind='combo'
@@ -232,7 +272,7 @@ async def catalogue(db,tenant,*,preview=False):
                 {'tenant':tenant,'package':row['package_id']})).mappings().all()]
         public_services.append(item)
     return {'site':preference,'services':public_services,'professionals':[dict(x) for x in professionals],
-            'timezone':shop['timezone'],'booking_horizon_days':shop['booking_horizon_days'],
+            'opening_hours':public_hours,'timezone':shop['timezone'],'booking_horizon_days':shop['booking_horizon_days'],
             'today':datetime.now(ZoneInfo(shop['timezone'])).date().isoformat(),'preview':preview,
             'published':bool(site and site['public_enabled']), 'booking_enabled':not preview and bool(site and site['public_enabled'])}
 
