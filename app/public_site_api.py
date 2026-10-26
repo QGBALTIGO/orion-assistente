@@ -182,7 +182,7 @@ async def confirmed_public_replay(db,tenant,quote,payload):
         raise HTTPException(409,'Este resumo já foi utilizado em outro agendamento')
     if row['status']=='hold':return None
     if row['status']!='confirmed':raise HTTPException(409,'Este agendamento já foi alterado. Entre em contato com a barbearia')
-    items=(await db.execute(text('SELECT name_snapshot,catalog_snapshot FROM appointment_items WHERE tenant_id=:tenant AND appointment_id=:id ORDER BY item_order'),
+    items=(await db.execute(text('SELECT name_snapshot,price_mode_snapshot,catalog_snapshot FROM appointment_items WHERE tenant_id=:tenant AND appointment_id=:id ORDER BY item_order'),
                             {'tenant':tenant,'id':row['id']})).mappings().all()
     services=[]
     for item in items:
@@ -191,7 +191,9 @@ async def confirmed_public_replay(db,tenant,quote,payload):
         else:services.append(item['name_snapshot'])
     await record_public_booking(db,tenant,row['id'],row['timezone'],row['updated_at'])
     return {'status':row['status'],'protocol':row['protocol'],'start_at':row['start_at'],'end_at':row['end_at'],
-            'price_cents':row['total_cents'],'timezone':row['timezone'],'professional':row['professional'],'services':services}
+            'price_cents':row['total_cents'],
+            'price_mode':'from' if any(x['price_mode_snapshot']=='from' for x in items) else 'fixed',
+            'timezone':row['timezone'],'professional':row['professional'],'services':services}
 
 
 async def catalogue(db,tenant,*,preview=False):
@@ -202,7 +204,7 @@ async def catalogue(db,tenant,*,preview=False):
     preference.update(title=preference['title'] or shop['name'],theme_color=preference['theme_color'] or '#2e7bf6',
                       show_prices=True if preference['show_prices'] is None else preference['show_prices'])
     professionals=(await db.execute(text("SELECT id,name,specialty,color,image_url FROM professionals WHERE tenant_id=:tenant AND active AND accepts_appointments ORDER BY name,id LIMIT 200"),{'tenant':tenant})).mappings().all()
-    services=(await db.execute(text("""SELECT s.id,s.name,s.description,s.category,s.color,s.image_url,s.sort_order,s.duration_min,s.price_cents,s.catalog_kind,
+    services=(await db.execute(text("""SELECT s.id,s.name,s.description,s.category,s.color,s.image_url,s.sort_order,s.duration_min,s.price_cents,s.price_mode,s.catalog_kind,
         COALESCE(p.featured,false) AS featured,p.id AS package_id
         FROM services s LEFT JOIN service_packages p ON p.tenant_id=s.tenant_id AND p.synthetic_service_id=s.id AND p.kind='combo'
         WHERE s.tenant_id=:tenant AND s.active AND s.catalog_kind IN ('base','combo')
@@ -213,7 +215,7 @@ async def catalogue(db,tenant,*,preview=False):
         JOIN professionals p ON p.tenant_id=ps.tenant_id AND p.id=ps.professional_id
         JOIN services s ON s.tenant_id=ps.tenant_id AND s.id=ps.service_id
         WHERE ps.tenant_id=:tenant AND p.active AND p.accepts_appointments AND s.active AND s.catalog_kind<>'variant'"""),{'tenant':tenant})).mappings().all()
-    addons=(await db.execute(text("""SELECT a.base_service_id,a.addon_service_id,a.add_duration,a.sort_order,s.name,s.price_cents,s.duration_min
+    addons=(await db.execute(text("""SELECT a.base_service_id,a.addon_service_id,a.add_duration,a.sort_order,s.name,s.price_cents,s.price_mode,s.duration_min
         FROM service_addons a JOIN services s ON s.tenant_id=a.tenant_id AND s.id=a.addon_service_id
         WHERE a.tenant_id=:tenant AND s.active ORDER BY a.base_service_id,a.sort_order"""),{'tenant':tenant})).mappings().all()
     public_services=[]
@@ -305,6 +307,7 @@ async def public_availability(slug:str,request:Request,service_id:UUID,professio
                 day,now,strict_errors=True)
             quote=issue_quote(slug,professional_id,day,selection,now) if slots else None
             return {'slots':slots,'availability_reason':availability_reason,'timezone':selection['shop']['timezone'],'price_cents':selection['aggregate']['price_cents'],
+                    'price_mode':selection['aggregate']['price_mode'],
                     'duration_min':selection['aggregate']['duration_min'],'quote':quote,'expires_in':600 if quote else None,
                     'services':[x['name'] for x in selection['items']]}
 
@@ -344,7 +347,8 @@ async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=D
                     result=await confirm_hold(engine,tenant,hold['id'],customer_phone=payload.customer_phone,source='public_site')
                 await record_public_booking(guard,tenant,result['id'],selection['shop']['timezone'])
                 return {'status':result['status'],'protocol':result['protocol'],'start_at':result['start_at'],'end_at':result['end_at'],
-                        'price_cents':result['total_cents'],'timezone':selection['shop']['timezone'],
+                        'price_cents':result['total_cents'],
+                        'price_mode':result['price_mode'],'timezone':selection['shop']['timezone'],
                         'professional':selection['shop']['professional_name'],'services':[x['name'] for x in selection['items']]}
     except (HTTPException,IntegrityError) as exc:
         # A hold left by a failed confirmation expires through the engine's

@@ -59,7 +59,8 @@ def catalog_revision(business: dict, catalog: list[dict], professionals: list[di
 
 
 def quote(items: list[dict], profile: dict, body: str) -> str:
-    verified = [QuoteItem(x["name"], x["price_cents"], duration_min=x["duration_min"]) for x in items]
+    verified = [QuoteItem(x["name"], x["price_cents"], duration_min=x["duration_min"],
+                          price_kind=x.get("price_mode","fixed")) for x in items]
     return render_quote(verified, profile["style_rules"],
                         context=InteractionContext.from_message(body, information_only=True))
 

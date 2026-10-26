@@ -71,7 +71,8 @@ def _summary_requested(body: str) -> bool:
 def _service_quote(ids, catalog, business):
     """Use the same verified service prices as this installation's booking engine."""
     selected = {str(value) for value in ids}
-    items = [presentation.QuoteItem(row["name"], row["price_cents"], duration_min=row["duration_min"])
+    items = [presentation.QuoteItem(row["name"], row["price_cents"], duration_min=row["duration_min"],
+                                    price_kind=row.get("price_mode","fixed"))
              for row in catalog if str(row["id"]) in selected]
     if not items or len(items) != len(selected):
         raise ValueError("Current catalog services required")
@@ -119,7 +120,9 @@ def _summary(state: dict, when: str | datetime, business: dict, catalog: list[di
         tuple(item["name"] for item in catalog if str(item["id"]) in state["services"]),
         datetime.fromisoformat(when) if isinstance(when, str) else when, business["timezone"],
         total_cents if total_cents is not None else state["price"],
-        professional=state.get("professional_name"), duration_min=state.get("duration"), protocol=protocol)
+        professional=state.get("professional_name"), duration_min=state.get("duration"), protocol=protocol,
+        price_kind="from" if any(item.get("price_mode")=="from" for item in catalog
+                            if str(item["id"]) in state["services"]) else "fixed")
 
 
 class Incoming(StrictModel):
@@ -223,7 +226,7 @@ async def tenant_data(tenant: UUID):
             if not business:
                 raise HTTPException(404, "Estabelecimento não disponível")
             services = (await db.execute(text("""
-                SELECT id,name,price_cents,duration_min FROM services
+                SELECT id,name,price_cents,price_mode,duration_min FROM services
                 WHERE tenant_id=:t AND active ORDER BY name LIMIT 60
             """), {"t": tenant})).mappings().all()
             pros = (await db.execute(text("""
@@ -365,7 +368,8 @@ async def offer_slots(tenant: UUID, state: dict, preview: bool):
         state["slot_menu_numbered"] = False
         answer = presentation.render_slots([x["name"] for x in catalog if str(x["id"]) in state["services"]], options,
             _preferences(business), timezone=business["timezone"], day=state["day"], total_cents=state["price"],
-            duration_min=state["duration"], simulation=preview, professional=state.get("professional_name"))
+            duration_min=state["duration"], simulation=preview, professional=state.get("professional_name"),
+            price_kind="from" if any(x.get("price_mode")=="from" for x in catalog if str(x["id"]) in state["services"]) else "fixed")
         if len(slots["slots"]) > len(options):
             answer += f"\n\n_Mostrei {len(options)} de {len(slots['slots'])} horários ao longo do dia. Se preferir outro, diga a hora para eu conferir na agenda._"
         return answer, state
@@ -703,7 +707,8 @@ async def _professionals_availability(tenant, state, inquiry, business, catalog,
                 actual = _slot_result(await list_slots(db, tenant, UUID(str(person["id"])), [UUID(value) for value in ids], day), pricing=True)
                 if actual["slots"]:
                     available.append({"id": str(person["id"]), "name": person["name"], "slots": representative_slots(actual["slots"]),
-                        "price_cents": actual["price_cents"], "duration_min": actual["duration_min"]})
+                        "price_cents": actual["price_cents"], "duration_min": actual["duration_min"],
+                        "price_mode": "from" if any(x.get("price_mode")=="from" for x in catalog if str(x["id"]) in ids) else "fixed"})
     except AVAILABILITY_ERRORS:
         state["availability_query"] = {**inquiry, "waiting_for": "retry"}
         await redis.set(key, json.dumps(state), ex=_remaining_state_ttl(state))
@@ -2493,14 +2498,19 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
                 ids = set(state.get("services", []))
             chosen = [item for item in catalog if str(item["id"]) in ids]
             if chosen:
-                lines = "\n".join(f"• {item['name']}: {format_money(item['price_cents'])} ({item['duration_min']} min)" for item in chosen)
+                lines = "\n".join(f"• {item['name']}: "+("a partir de " if item.get("price_mode")=="from" else "")+
+                    f"{format_money(item['price_cents'])} ({item['duration_min']} min)" for item in chosen)
                 total = sum(item["price_cents"] for item in chosen)
                 duration = sum(item["duration_min"] for item in chosen)
-                answer = f"{lines}\nTotal desses serviços: {format_money(total)}, cerca de {duration} minutos."
+                variable = any(item.get("price_mode")=="from" for item in chosen)
+                answer = (f"{lines}\n"+("Valor mínimo estimado" if variable else "Total desses serviços")+
+                          f": {format_money(total)}, cerca de {duration} minutos."+
+                          (" O preço final depende da avaliação pela equipe." if variable else ""))
             else:
                 answer = ("Para calcular o total certo, confirme quais serviços deseja consultar. " if local_ids == [] else "") + \
                     "Estes são os serviços e valores cadastrados:\n" + "\n".join(
-                    f"• {item['name']}: {format_money(item['price_cents'])} ({item['duration_min']} min)" for item in catalog[:12])
+                    f"• {item['name']}: "+("a partir de " if item.get("price_mode")=="from" else "")+
+                        f"{format_money(item['price_cents'])} ({item['duration_min']} min)" for item in catalog[:12])
             if profile and (chosen or local_ids != []):
                 answer = qr_profile.quote(chosen or catalog[:12], profile, body)
             if not state:

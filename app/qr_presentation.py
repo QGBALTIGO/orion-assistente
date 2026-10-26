@@ -223,6 +223,7 @@ class BookingSummary:
     professional: str | None = None
     duration_min: int | None = None
     protocol: str | None = None
+    price_kind: Literal["fixed", "from"] = "fixed"
 
     def __post_init__(self):
         if not isinstance(self.services, (tuple, list)) or not 1 <= len(self.services) <= 12:
@@ -232,6 +233,8 @@ class BookingSummary:
             raise ValueError("A summary requires a timezone-aware start")
         ZoneInfo(self.timezone)
         _integer(self.total_cents, 0, 100_000_000)
+        if self.price_kind not in {"fixed", "from"}:
+            raise ValueError("Unknown booking price kind")
         if self.professional is not None:
             object.__setattr__(self, "professional", _text(self.professional))
         if self.duration_min is not None:
@@ -367,11 +370,14 @@ def render_service_menu(business_name: str, catalog: Sequence[Mapping], preferen
     for row in catalog[:12]:
         if not isinstance(row, Mapping):
             raise ValueError("Expected a verified service mapping")
-        item = QuoteItem(row["name"], row["price_cents"], duration_min=row["duration_min"])
+        item = QuoteItem(row["name"], row["price_cents"], duration_min=row["duration_min"],
+                         price_kind=row.get("price_mode", "fixed"))
         if item.duration_min is None:
             raise ValueError("A catalog service requires its registered duration")
         marker = service_icon((item.name,)) + " " if prefs.emoji == "light" else "• "
-        blocks.append(f"{marker}*{_label(item.name)}* — *{money(item.unit_price_cents)}*\n"
+        blocks.append(f"{marker}*{_label(item.name)}* — "+
+                      ("a partir de " if item.price_kind=="from" else "")+
+                      f"*{money(item.unit_price_cents)}*\n"
                       + _field("Duração", duration(item.duration_min), light=prefs.emoji == "light"))
     if not blocks:
         return opening + "\n\nNão há serviços no catálogo para exibir.\n\nComo posso ajudar?"
@@ -540,17 +546,24 @@ def _booking_lines(summary: BookingSummary, *, light: bool = False) -> list[str]
                   _field("Horário", _clock(when), light=light)])
     if summary.duration_min:
         lines.append(_field("Duração", duration(summary.duration_min), light=light))
-    lines.extend(["", _field("Total", money(summary.total_cents), light=light)])
+    if summary.price_kind=="from":
+        lines.extend(["", _field("Valor mínimo previsto", "a partir de " + money(summary.total_cents), light=light),
+                      "_O preço final depende da avaliação do serviço e será confirmado pela equipe._"])
+    else:
+        lines.extend(["", _field("Total", money(summary.total_cents), light=light)])
     return lines
 
 
 def render_slots(services: Sequence[str], slots: Sequence[datetime | str], preferences=None, *,
                  timezone: str, day: date | str | None = None, total_cents: int | None = None,
                  duration_min: int | None = None, simulation: bool = False, ask_selection: bool = True,
-                 professional: str | None = None) -> str:
+                 professional: str | None = None,
+                 price_kind: Literal["fixed","from"] = "fixed") -> str:
     """Group only the supplied real slots. Never synthesize intervals between them."""
     prefs, zone = _preferences(preferences), ZoneInfo(timezone)
     names = _labels(services, 12)
+    if price_kind not in {"fixed","from"}:
+        raise ValueError("Unknown price kind")
     if not names or isinstance(slots, (str, bytes)) or not isinstance(slots, Sequence) or len(slots) > 1000:
         raise ValueError("Verified services and real slots are required")
     if type(simulation) is not bool or type(ask_selection) is not bool:
@@ -583,7 +596,10 @@ def render_slots(services: Sequence[str], slots: Sequence[datetime | str], prefe
     if duration_min is not None:
         facts.append(_field("Duração", duration(duration_min), light=light))
     if total_cents is not None:
-        facts.append(_field("Total", money(total_cents), light=light))
+        facts.append(_field("Valor mínimo" if price_kind=="from" else "Total",
+                            ("a partir de " if price_kind=="from" else "")+money(total_cents), light=light))
+        if price_kind=="from":
+            facts.append("_O preço final depende da avaliação do serviço._")
     parts = [("🕒 " if light else "") + f"*{heading}*", "\n".join(facts)]
     count = 6 if prefs.length == "short" else 4
     for index, (on_day, values) in enumerate(sorted(grouped.items())):
@@ -651,7 +667,8 @@ def render_professional_availability(services: Sequence[str], candidates: Sequen
         if len(clocks) > 4:
             block.append(" • ".join(clocks[4:]))
         block.extend([_field("Duração", duration(minutes), light=light),
-                      _field("Total", money(total), light=light)])
+                      _field("Valor mínimo" if row.get("price_mode")=="from" else "Total",
+                             ("a partir de " if row.get("price_mode")=="from" else "")+money(total), light=light)])
         parts.append("\n".join(block))
     if simulation:
         parts.append("_Simulação: nenhum agendamento foi criado._")

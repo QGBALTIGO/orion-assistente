@@ -62,6 +62,7 @@ class Service(StrictModel):
     description: str | None = Field(default=None, max_length=500)
     duration_min: int = Field(ge=1, le=1440)
     price_cents: int = Field(ge=0, le=100_000_000)
+    price_mode: Literal["fixed", "from"] = "fixed"
     prep_min: int = Field(default=0, ge=0, le=240)
     cleanup_min: int = Field(default=0, ge=0, le=240)
     active: bool = True
@@ -71,6 +72,12 @@ class Service(StrictModel):
     sort_order: int = Field(default=0, ge=0, le=1_000_000)
 
     _image = field_validator("image_url")(Professional.safe_image_url.__func__)
+
+    @model_validator(mode="after")
+    def minimum_when_variable(self):
+        if self.price_mode == "from" and self.price_cents == 0:
+            raise ValueError("Informe um valor mínimo maior que zero para serviços 'a partir de'")
+        return self
 
 
 class ProfessionalService(StrictModel):

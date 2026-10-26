@@ -555,6 +555,8 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
     from app.appointment_lifecycle import CAS_SQL, LifecycleActor, allowed_actions, check_expected_updated_at, operation_payload
     if target not in ("completed", "no_show"):
         raise ValueError("Unsupported management appointment transition")
+    if target == "no_show" and payload.final_total_cents is not None:
+        raise HTTPException(422, "O valor final só pode ser informado ao finalizar o atendimento")
     if target == "no_show" and payload.coupon_id is not None:
         raise HTTPException(422, "Cupons só podem ser usados na conclusão de um atendimento")
     params = {"tenant": tenant_id, "id": appointment_id}
@@ -571,10 +573,12 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
                              source="system" if automated else "panel",
                              account_id=None if automated else db.info.get("management_actor_account_id"))
     identity_payload = {"appointment_id": appointment_id, "expected_status": payload.expected_status,
-                        "target": target, "coupon_id": payload.coupon_id}
+                        "target": target, "coupon_id": payload.coupon_id,
+                        "final_total_cents": payload.final_total_cents}
     if payload.expected_updated_at is not None:
         identity_payload = operation_payload(appointment_id, payload.expected_updated_at, context,
-            expected_status=payload.expected_status, target=target, coupon_id=payload.coupon_id)
+            expected_status=payload.expected_status, target=target, coupon_id=payload.coupon_id,
+            final_total_cents=payload.final_total_cents)
     _, replay = await request_identity(db, tenant_id, "appointment_" + target, payload.idempotency_key,
                                       identity_payload, entity_id=appointment_id)
     if replay:
@@ -591,9 +595,25 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
     percent = None
     discount = 0
     gross = row["total_cents"]
+    variable = False
     if target == "completed":
+        variable = (await db.execute(text("""
+            SELECT EXISTS (SELECT 1 FROM appointment_items
+                WHERE tenant_id=:tenant AND appointment_id=:id
+                  AND price_mode_snapshot='from')
+        """), params)).scalar_one()
+        if variable:
+            if automated:
+                raise HTTPException(409, "Preço variável exige confirmação do valor final pela equipe")
+            if payload.final_total_cents is None:
+                raise HTTPException(422, "Informe o valor final combinado com o cliente para este atendimento")
+            if payload.final_total_cents < row["total_cents"]:
+                raise HTTPException(422, "O valor final não pode ser inferior ao mínimo informado no agendamento")
+            gross = payload.final_total_cents
+        elif payload.final_total_cents is not None:
+            raise HTTPException(422, "Este atendimento tem preço fixo e não permite alterar o valor")
         from app.loyalty_rewards import completion_discount
-        discount = await completion_discount(db, tenant_id, row, payload.coupon_id, now)
+        discount = await completion_discount(db, tenant_id, row, payload.coupon_id, now, gross_cents=gross)
         percent = (await db.execute(text("""
             SELECT commission_percent FROM professionals WHERE tenant_id=:tenant AND id=:professional FOR SHARE
         """), {"tenant": tenant_id, "professional": professional})).scalar_one()
@@ -620,7 +640,7 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
         from app.loyalty_rewards import award_completion
         from app.appointment_finance import record_service_receivable
         result["loyalty"] = await award_completion(db, tenant_id, changed, now)
-        if automated:
+        if automated or variable:
             await record_service_receivable(db, tenant_id, changed)
     return result
 
