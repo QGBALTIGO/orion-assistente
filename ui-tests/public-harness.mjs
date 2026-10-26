@@ -34,7 +34,8 @@ export const confirmed = () => ({ status: 'confirmed', protocol: 'SYNTHETIC-1', 
   professional: 'Profissional sintético', services: ['Corte + barba', 'Lavagem'] });
 export const response = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
 
-export async function makePublic({ path = '/s/empresa-sintetica', data = catalogue(), respond } = {}) {
+export async function makePublic({ path = '/s/empresa-sintetica', data = catalogue(), respond,
+  initialTheme, prefersDark = false } = {}) {
   const html = await readFile(new URL('../app/static/orion-public.html', import.meta.url), 'utf8');
   const source = await readFile(new URL('../app/static/orion-public.js', import.meta.url), 'utf8');
   const errors = [], virtualConsole = new VirtualConsole();
@@ -44,6 +45,15 @@ export async function makePublic({ path = '/s/empresa-sintetica', data = catalog
   window.HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
   window.HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new window.Event('close')); };
   window.HTMLElement.prototype.scrollIntoView = () => {};
+  if(initialTheme!==undefined)window.localStorage.setItem('orion-theme',initialTheme);
+  const listeners=new Set();
+  const appearanceMedia={
+    matches:prefersDark,media:'(prefers-color-scheme: dark)',
+    addEventListener(type,handler){if(type==='change')listeners.add(handler);},
+    removeEventListener(type,handler){if(type==='change')listeners.delete(handler);}
+  };
+  window.matchMedia=query=>query==='(prefers-color-scheme: dark)'
+    ?appearanceMedia:{matches:false,media:query,addEventListener(){},removeEventListener(){}};
   window.fetch = async (url, options = {}) => {
     calls.push({ url: String(url), options, body: options.body ? JSON.parse(options.body) : null });
     if (respond) {
@@ -57,5 +67,10 @@ export async function makePublic({ path = '/s/empresa-sintetica', data = catalog
   window.eval(source);
   function click(selector) { const node = document.querySelector(selector); if (!node) throw new Error(`Missing clickable element: ${selector}`); node.click(); return node; }
   function fill(selector, value) { const node = document.querySelector(selector); if (!node) throw new Error(`Missing field: ${selector}`); node.value = value; node.dispatchEvent(new window.Event('input', { bubbles: true })); return node; }
-  return { dom, window, document, calls, errors, click, fill, close() { dom.window.close(); } };
+  return { dom, window, document, calls, errors, click, fill,
+    setSystemDark(value){
+      appearanceMedia.matches=Boolean(value);
+      for(const fn of listeners)fn({matches:appearanceMedia.matches,media:appearanceMedia.media});
+    },
+    close() { dom.window.close(); } };
 }

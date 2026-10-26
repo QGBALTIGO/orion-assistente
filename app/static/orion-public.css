@@ -85,3 +85,127 @@
   .location-card{padding:16px}
   .location-card .route-action{font-size:13px}
 }
+
+/* Public theme settings use the same 'orion-theme' choice as the management
+   panel, without inheriting the panel's styles or switching company colors. */
+@media(prefers-color-scheme:dark){
+  :root:not([data-public-theme="light"]):not([data-public-theme="dark"]){
+    --bg:#0d1422;--card:#182235;--text:#f5f7fc;--muted:#b6c3d6;
+    --border:#35445a;--soft:#243044;color-scheme:dark
+  }
+}
+:root[data-public-theme="dark"]{
+  --bg:#0d1422;--card:#182235;--text:#f5f7fc;--muted:#b6c3d6;
+  --border:#35445a;--soft:#243044;color-scheme:dark
+}
+:root[data-public-theme="light"]{color-scheme:light}
+:root[data-public-theme="dark"] .tag{background:color-mix(in srgb,var(--primary) 14%,var(--card));color:var(--text)}
+:root[data-public-theme="dark"] .preview-banner{background:#1b3150;color:#e1ebfa;border-color:#3a5274}
+:root[data-public-theme="dark"] .booking-steps li.done{background:#173826;color:#84e4ad}
+:root[data-public-theme="dark"] .booking-success{background:var(--card);color:var(--text)}
+:root[data-public-theme="dark"] .error-message{background:#47242b;border-color:#79414a;color:#ffdce0}
+:root[data-public-theme="dark"] .price-disclaimer{background:var(--card);border-color:var(--border);color:var(--muted)}
+:root[data-public-theme="dark"] .identity-card{background:color-mix(in srgb,var(--card) 96%,transparent)}
+:root[data-public-theme="dark"] .map-provider{background:var(--card)}
+:root[data-public-theme="dark"] .theme-selected{background:var(--soft)}
+/* A discreet switcher is accessible on the cover and again in the footer. */
+.hero{position:relative}
+.public-appearance{position:absolute;top:max(14px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));z-index:15}
+.appearance-trigger{
+  box-sizing:border-box;display:grid;place-items:center;width:42px;height:42px;
+  padding:0;border:1px solid #ffffff72;border-radius:13px;
+  background:#0e1c30cc;backdrop-filter:blur(10px);color:white;
+  box-shadow:0 5px 14px #0005;transition:background .15s ease
+}
+.appearance-trigger:hover{background:#0e1c30f2}
+.appearance-trigger:focus-visible{outline:3px solid white;outline-offset:3px}
+.appearance-trigger-icon{display:block;width:20px;height:20px}
+.appearance-menu{
+  position:absolute;right:0;top:calc(100% + 9px);width:190px;padding:8px;
+  border:1px solid var(--border);border-radius:16px;background:var(--card);
+  color:var(--text);box-shadow:0 14px 40px #080f2299
+}
+.appearance-menu-title{display:block;padding:6px 9px 8px;color:var(--muted);font-size:12px;font-weight:600}
+.appearance-menu button{
+  display:flex;align-items:center;gap:10px;width:100%;min-height:40px;
+  padding:8px 10px;background:transparent;color:var(--text);
+  text-align:left;border-radius:10px;font-size:13px;font-weight:550
+}
+.appearance-menu button svg{width:17px;height:17px;flex:none}
+.appearance-menu button[aria-pressed=true]{
+  background:color-mix(in srgb,var(--primary) 12%,var(--card));color:var(--text);
+  box-shadow:inset 3px 0 var(--primary)
+}
+.appearance-menu button:not([aria-pressed=true]):hover{background:var(--soft)}
+.appearance-menu button:focus-visible{outline:2px solid var(--primary);outline-offset:1px}
+.footer-appearance{width:min(100%,365px);display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:10px}
+.footer-appearance>span{font-size:12px;font-weight:600;color:var(--muted)}
+.appearance-segmented{
+  box-sizing:border-box;width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:4px;padding:4px;border-radius:14px;border:1px solid var(--border);background:var(--soft)
+}
+.appearance-segmented button{
+  display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;
+  min-height:40px;padding:8px 6px;border:1px solid transparent;border-radius:10px;
+  background:transparent;color:var(--muted);font-size:12px;font-weight:600;
+  transition:background .15s ease,border-color .15s ease
+}
+.appearance-segmented button svg{display:block;flex:none;width:16px;height:16px}
+.appearance-segmented button[aria-pressed=true]{
+  background:var(--card);border-color:var(--border);color:var(--text);
+  box-shadow:0 2px 7px #060f2510
+}
+.appearance-segmented button:focus-visible{outline:2px solid var(--primary);outline-offset:1px}
+.public-footer{gap:7px}
+/* Compact brand channels replace unrelated CTA button sizes and labels. */
+.contact-card{gap:16px;padding:21px 22px}
+.contact-heading{display:flex;align-items:center;gap:12px;min-width:0}
+.contact-heading>div{min-width:0}
+.contact-heading .section-icon{width:42px;height:42px;flex-basis:42px}
+.contact-heading h2{font-size:20px;line-height:27px}
+.contact-heading p{font-size:13px;line-height:19px;margin:2px 0 0}
+.contact-links{display:flex;flex-wrap:wrap;align-items:center;gap:10px;min-width:0}
+.contact-channel{
+  box-sizing:border-box;display:grid;place-items:center;flex:0 0 50px;
+  width:50px;height:50px;min-width:50px;min-height:50px;
+  border:1px solid var(--border);border-radius:15px;
+  background:var(--card);color:var(--text);
+  box-shadow:0 2px 7px #0714260a;
+  transition:transform .15s ease,background .15s ease,border-color .15s ease,box-shadow .15s ease
+}
+.contact-channel:hover{
+  transform:translateY(-2px);
+  background:color-mix(in srgb,var(--primary) 6%,var(--card));
+  border-color:color-mix(in srgb,var(--primary) 35%,var(--border));
+  box-shadow:0 6px 14px #07142616
+}
+.contact-channel:active{transform:scale(.97)}
+.contact-channel:focus-visible{outline:3px solid var(--primary);outline-offset:2px}
+.contact-glyph{display:block;width:24px;height:24px;flex:none}
+.contact-channel[data-channel=whatsapp]{color:#168c53}
+.contact-channel[data-channel=instagram]{color:#bc3c8e}
+.contact-channel[data-channel=facebook]{color:#1877f2}
+.contact-channel[data-channel=tiktok]{color:var(--text)}
+.contact-channel[data-channel=phone],.contact-channel[data-channel=website]{color:var(--text)}
+:root[data-public-theme=dark] .contact-channel[data-channel=whatsapp]{color:#65dc9b}
+:root[data-public-theme=dark] .contact-channel[data-channel=instagram]{color:#f39fc5}
+:root[data-public-theme=dark] .contact-channel[data-channel=facebook]{color:#75a9ff}
+/* Phone-sized screens retain equal targets, balanced gutters and no clip. */
+@media(max-width:420px){
+  .contact-card{padding:19px 18px}
+  .contact-heading{gap:11px}
+  .contact-links{gap:9px}
+  .contact-channel{width:49px;height:49px;min-width:49px;min-height:49px;flex-basis:49px;border-radius:14px}
+  .contact-glyph{width:23px;height:23px}
+}
+@media(max-width:359px){
+  .contact-heading h2{font-size:18px;line-height:24px}
+  .contact-heading p{font-size:12px}
+  .contact-channel{width:46px;height:46px;flex-basis:46px;min-width:46px;min-height:46px}
+  .contact-links{gap:7px}
+  .appearance-segmented button{gap:4px;font-size:11px}
+  .appearance-segmented button svg{width:14px;height:14px}
+}
+@media(prefers-reduced-motion:reduce){
+  .appearance-trigger,.appearance-segmented button,.contact-channel{transition:none}
+}

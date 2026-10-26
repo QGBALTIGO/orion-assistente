@@ -10,6 +10,115 @@
   let data, category = 'Todos', requestSequence = 0, availabilityController;
   let booking = newBooking();
 
+  const THEME_KEY='orion-theme';
+  const THEME_LABELS={light:'Claro',dark:'Escuro',system:'Sistema'};
+  const scheme=typeof window.matchMedia==='function'?window.matchMedia('(prefers-color-scheme: dark)'):null;
+  let themeChoice='system';
+  function storedTheme(){
+    try{
+      const value=window.localStorage.getItem(THEME_KEY);
+      return value==='light'||value==='dark'?value:'system';
+    }catch{return 'system';}
+  }
+  function closeThemeMenu(focus=false){
+    const menu=$('appearance-menu'),trigger=$('appearance-trigger');
+    const wasOpen=!menu.hidden;
+    menu.hidden=true;
+    trigger.setAttribute('aria-expanded','false');
+    if(wasOpen&&focus)trigger.focus();
+  }
+  function applyTheme(choice,save=false){
+    themeChoice=Object.hasOwn(THEME_LABELS,choice)?choice:'system';
+    const effective=themeChoice==='system'?(scheme?.matches?'dark':'light'):themeChoice;
+    document.documentElement.dataset.publicTheme=effective;
+    document.documentElement.dataset.publicThemePreference=themeChoice;
+    document.querySelectorAll('[data-public-theme-choice]').forEach(button=>{
+      button.setAttribute('aria-pressed',String(button.dataset.publicThemeChoice===themeChoice));
+    });
+    const trigger=$('appearance-trigger');
+    trigger.setAttribute('aria-label','Aparência: '+THEME_LABELS[themeChoice]+'. Escolher tema');
+    trigger.setAttribute('title','Aparência: '+THEME_LABELS[themeChoice]);
+    if(save)try{
+      // Share the Orion administration app's established preference.
+      window.localStorage.setItem(THEME_KEY,themeChoice==='system'?'auto':themeChoice);
+    }catch{ /* Private browsing must remain usable. */ }
+  }
+  function setupTheme(){
+    applyTheme(storedTheme());
+    const widget=$('public-appearance'),trigger=$('appearance-trigger');
+    trigger.addEventListener('click',()=>{
+      const menu=$('appearance-menu');
+      menu.hidden=!menu.hidden;
+      trigger.setAttribute('aria-expanded',String(!menu.hidden));
+    });
+    document.querySelectorAll('[data-public-theme-choice]').forEach(button=>{
+      button.addEventListener('click',()=>{
+        applyTheme(button.dataset.publicThemeChoice,true);
+        closeThemeMenu();
+      });
+    });
+    document.addEventListener('pointerdown',event=>{
+      if(!widget.contains(event.target))closeThemeMenu();
+    });
+    document.addEventListener('keydown',event=>{
+      if(event.key==='Escape')closeThemeMenu(true);
+    });
+    scheme?.addEventListener?.('change',()=>{if(themeChoice==='system')applyTheme('system');});
+  }
+
+  const NETWORK_SVG={
+    instagram:{fill:false,markup:'<rect x="2.5" y="2.5" width="19" height="19" rx="5.5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/>'},
+    whatsapp:{fill:true,markup:'<path d="M17.5 14.4c-.3-.2-1.8-.9-2.1-1s-.5-.1-.7.2l-.9 1.1c-.2.2-.4.2-.7.1a8.9 8.9 0 0 1-2.4-1.5 9.2 9.2 0 0 1-1.6-2c-.2-.3 0-.5.1-.7l.5-.5.3-.5c.1-.2 0-.4 0-.6l-.9-2.2c-.2-.5-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4s-1 1-1 2.5 1.1 2.9 1.2 3.1a12 12 0 0 0 5.1 4.5 4.5 0 0 0 3.6.2c.6-.1 1.8-.7 2.1-1.4.2-.7.2-1.3.1-1.4-.1-.1-.3-.2-.6-.3Zm-5.5-12a9.6 9.6 0 0 0-8.3 14.4A9.5 9.5 0 0 0 12 21.6a9.5 9.5 0 0 0 4.6-1.2L22 22l-1.7-5.2A9.6 9.6 0 0 0 12 2.4Zm0 17.5a7.9 7.9 0 0 1-4.1-1.1l-.3-.2-2.8.7.7-2.7-.2-.3a7.9 7.9 0 1 1 6.7 3.6Z"/>'},
+    facebook:{fill:true,markup:'<path d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.7-3.9 1.1 0 2.3.2 2.3.2v2.5h-1.3c-1.2 0-1.6.8-1.6 1.6V12h2.8l-.4 2.9h-2.4v7A10 10 0 0 0 22 12Z"/>'},
+    tiktok:{fill:true,markup:'<path d="M16 2h-3.4v13a3 3 0 1 1-2.7-3V8.5A6.5 6.5 0 1 0 16 15V9.1a8.7 8.7 0 0 0 5.5 1.8V7.5C18.1 7.5 16 5.5 16 2Z"/>'},
+    phone:{fill:false,markup:'<path d="M21 16.7v2.8a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1A19.3 19.3 0 0 1 4 12.2a19.8 19.8 0 0 1-3.1-8.6A2 2 0 0 1 2.9 1.4h2.8a2 2 0 0 1 2 1.7l.5 2.8a2 2 0 0 1-.6 1.8L6 9.3a16 16 0 0 0 8.7 8.7l1.6-1.6a2 2 0 0 1 1.8-.6l2.8.5a2 2 0 0 1 1.7 2Z" transform="translate(1 1) scale(.92)"/>'},
+    website:{fill:false,markup:'<circle cx="12" cy="12" r="9.5"/><path d="M2.8 12h18.4M12 2.5a16 16 0 0 1 0 19M12 2.5a16 16 0 0 0 0 19"/>'}
+  };
+  function networkIcon(kind){
+    // Only hardcoded, application-owned path definitions are inserted.
+    const item=NETWORK_SVG[kind],ns='http://www.w3.org/2000/svg';
+    const svg=document.createElementNS(ns,'svg');
+    svg.setAttribute('viewBox','0 0 24 24');
+    svg.setAttribute('aria-hidden','true');
+    svg.setAttribute('focusable','false');
+    svg.classList.add('contact-glyph');
+    svg.setAttribute('fill',item.fill?'currentColor':'none');
+    if(!item.fill){
+      svg.setAttribute('stroke','currentColor');
+      svg.setAttribute('stroke-width','1.8');
+      svg.setAttribute('stroke-linecap','round');
+      svg.setAttribute('stroke-linejoin','round');
+    }
+    svg.innerHTML=item.markup;
+    return svg;
+  }
+  function renderContacts(site){
+    const targets=[];
+    const add=(kind,name,href)=>{
+      if(!href)return;
+      const action=el('a','contact-channel');
+      action.dataset.channel=kind;
+      action.setAttribute('aria-label',kind==='phone'?'Ligar para a empresa':'Abrir '+name);
+      action.title=name;
+      action.href=href;
+      if(kind!=='phone'){action.target='_blank';action.rel='noopener noreferrer';}
+      action.append(networkIcon(kind));
+      targets.push(action);
+    };
+    if(/^\+[1-9]\d{9,14}$/.test(site.whatsapp_phone||''))
+      add('whatsapp','WhatsApp','https://wa.me/'+site.whatsapp_phone.slice(1));
+    if(/^\+[1-9]\d{9,14}$/.test(site.contact_phone||''))
+      add('phone','Telefone','tel:'+site.contact_phone);
+    for(const [field,kind,name] of [
+      ['instagram_url','instagram','Instagram'],
+      ['tiktok_url','tiktok','TikTok'],
+      ['facebook_url','facebook','Facebook'],
+      ['external_url','website','Site da empresa']
+    ])add(kind,name,safeHTTPS(site[field]));
+    $('contact-links').replaceChildren(...targets);
+    $('contact-section').hidden=!targets.length;
+  }
+
   function newBooking() { return { step: 1, service: null, addons: [], professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', consent: false }; }
   function el(tag, cls, value) { const node = document.createElement(tag); if (cls) node.className = cls; if (value !== undefined) node.textContent = value; return node; }
   function button(text, cls, handler) { const node = el('button', cls, text); node.type = 'button'; if (handler) node.addEventListener('click', handler); return node; }
@@ -218,11 +327,7 @@
     renderCats(); renderServiceGrid();
     $('team-grid').replaceChildren(...data.professionals.map(person => { const card = el('article', 'team-card'); const portrait = el('div', 'portrait'); color(portrait, '--person-color', person.color); picture(portrait, person.image_url, initials(person.name)); const info = el('div', 'person-info'); info.append(el('strong', '', person.name)); if (person.specialty) info.append(el('p', '', person.specialty)); card.append(portrait, info); return card; }));
     $('equipe').hidden = !data.professionals.length;
-    const contacts = [];
-    if (/^\+[1-9]\d{9,14}$/.test(site.whatsapp_phone || '')) contacts.push(link('Conversar no WhatsApp', `https://wa.me/${site.whatsapp_phone.slice(1)}`, 'primary'));
-    if (/^\+[1-9]\d{9,14}$/.test(site.contact_phone || '')) { const phone = el('a', 'outline', 'Ligar'); phone.href = `tel:${site.contact_phone}`; phone.setAttribute('aria-label', `Ligar para ${site.contact_phone}`); contacts.push(phone); }
-    for (const [key, name] of [['instagram_url', 'Instagram'], ['facebook_url', 'Facebook'], ['tiktok_url', 'TikTok'], ['external_url', 'Website']]) { const node = link(name, site[key]); if (node) contacts.push(node); }
-    $('contact-links').replaceChildren(...contacts.filter(Boolean)); $('contact-section').hidden = !contacts.length;
+    renderContacts(site);
     $('orion-credit').hidden = !!site.hide_orion_brand; $('preview-banner').hidden = !preview;
     $('site-content').hidden = false; $('page-message').hidden = true;
   }
@@ -373,5 +478,6 @@
     try { if (navigator.share) await navigator.share({ title: data.site.title, url: location.href }); else { await navigator.clipboard.writeText(location.href); message.textContent = 'Link copiado.'; message.hidden = false; } }
     catch (error) { if (error.name !== 'AbortError') { message.textContent = 'Copie o endereço do site na barra do navegador para compartilhar.'; message.hidden = false; } }
   });
+  setupTheme();
   api().then(result => { data = result; renderPage(); }).catch(error => { const node = $('page-message'); node.replaceChildren(el('h1', '', error.status === 404 ? 'Página indisponível' : 'Não foi possível carregar o site'), el('p', 'muted', error.status === 404 ? 'Este endereço ainda não foi publicado ou deixou de estar disponível.' : error.message)); });
 })();
