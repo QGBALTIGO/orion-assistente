@@ -353,7 +353,7 @@
        !Number.isSafeInteger(count)||count<0||!Number.isSafeInteger(pending)||pending<0)
       throw Error('Não foi possível confirmar os valores financeiros.');
     const card=(name,value,symbol,css)=>{
-      const textValue=String(value),size=textValue.length>=22?' os-dashboard-finance-extra-long':
+      const textValue=String(value),size=textValue.length>=21?' os-dashboard-finance-extra-long':
         textValue.length>=16?' os-dashboard-finance-long':'';
       return '<div class="os-dashboard-finance-value '+css+'">'+
         '<div class="os-dashboard-finance-label"><span>'+esc(name)+'</span>'+icon(symbol)+'</div>'+
