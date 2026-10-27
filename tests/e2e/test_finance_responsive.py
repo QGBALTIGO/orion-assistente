@@ -160,24 +160,41 @@ def test_finance_loses_no_horizontal_content_or_actions(browser_name,width,heigh
 
             geometry=check_layout()
             if width<=767:
-                compact=page.evaluate("""() => {
+                reference=page.evaluate("""() => {
                   const rect=(selector)=>document.querySelector(selector).getBoundingClientRect();
                   const title=rect('.os-finance-title-line');
                   const heading=rect('.os-finance-heading');
-                  const month=rect('.os-finance-period-row');
+                  const month=rect('.os-month-picker');
+                  const today=rect('[data-os-action=finance-today]');
                   const metrics=[...document.querySelectorAll('.os-finance-metrics>.os-metric')]
                     .map(el=>el.getBoundingClientRect().height);
                   const tabs=rect('.os-finance-tabs');
                   const trigger=rect('.os-finance-add');
                   return {titleTop:title.top,titleBottom:title.bottom,
-                    headingHeight:heading.height,periodTop:month.top,
+                    headingLeft:heading.left,headingRight:heading.right,
+                    monthLeft:month.left,monthRight:month.right,monthTop:month.top,monthBottom:month.bottom,
+                    todayTop:today.top,todayBottom:today.bottom,todayLeft:today.left,todayRight:today.right,
                     metricHeights:metrics,tabsHeight:tabs.height,
-                    triggerRight:trigger.right,triggerWidth:trigger.width};
+                    tabTops:[...document.querySelectorAll('.os-finance-tabs>.os-pill-tab')]
+                      .map(el=>el.getBoundingClientRect().top),
+                    triggerTop:trigger.top,triggerBottom:trigger.bottom,
+                    triggerLeft:trigger.left,triggerRight:trigger.right};
                 }""")
-                assert compact["periodTop"]>=compact["titleBottom"]-2,compact
-                assert max(compact["metricHeights"])<=90,compact
-                assert compact["tabsHeight"]<=82,compact
-                assert compact["triggerRight"]<=width+2,compact
+                # Original composition: title, one compact month/action row, compact cards,
+                # and a single line of tabs that scrolls inside its own container.
+                assert min(reference["monthTop"],reference["todayTop"],reference["triggerTop"])>=reference["titleBottom"]+6,reference
+                month_center=(reference["monthTop"]+reference["monthBottom"])/2
+                today_center=(reference["todayTop"]+reference["todayBottom"])/2
+                trigger_center=(reference["triggerTop"]+reference["triggerBottom"])/2
+                assert abs(month_center-today_center)<=2,reference
+                assert abs(trigger_center-today_center)<=2,reference
+                assert reference["monthRight"]<=reference["todayLeft"]-2,reference
+                assert reference["triggerLeft"]>=reference["todayRight"]+2,reference
+                assert 74<=min(reference["metricHeights"])<=max(reference["metricHeights"])<=90,reference
+                assert max(reference["metricHeights"])-min(reference["metricHeights"])<=2,reference
+                assert 36<=reference["tabsHeight"]<=44,reference
+                assert max(reference["tabTops"])-min(reference["tabTops"])<=2,reference
+                assert reference["triggerRight"]<=width+2,reference
                 tabs=page.locator(".os-finance-tabs>.os-pill-tab")
                 for i in range(5):
                     assert tabs.nth(i).is_visible()
@@ -207,6 +224,11 @@ def test_finance_loses_no_horizontal_content_or_actions(browser_name,width,heigh
                 page.locator(f'[data-os-finance-tab="{value}"]').click()
                 page.locator(selector).wait_for()
                 check_layout()
+                assert page.locator('.os-finance-tabs').evaluate("""bar => {
+                  const active=bar.querySelector('[aria-selected="true"]').getBoundingClientRect();
+                  const viewport=bar.getBoundingClientRect();
+                  return active.left>=viewport.left-2 && active.right<=viewport.right+2;
+                }"""),f"Selected report {value} must remain visible after rendering"
 
             assert not errors,errors
         finally:
