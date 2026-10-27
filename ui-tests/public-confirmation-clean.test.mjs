@@ -28,7 +28,7 @@ test('confirmation is compact, without duplicate price, long checkbox or privacy
   assert.equal(h.document.getElementById('booking-next').textContent,'Confirmar agendamento');
   assert.equal(h.document.getElementById('booking-next').disabled,false);
   assert.deepEqual([...body.querySelectorAll('#customer-form .field')].map(label=>label.textContent.replace(/\s+/g,' ').trim()),
-    ['Nome completo','WhatsApp com DDD Ex.: (86) 97267-6282','Data de nascimento']);
+    ['Nome completo','WhatsApp com DDD','Data de nascimento']);
   const birth=body.querySelector('[name=customer_birth_date]');
   assert.equal(birth.type,'date');assert.equal(birth.required,true);
   assert.equal(birth.min,'1900-01-01');

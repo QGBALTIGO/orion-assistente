@@ -829,7 +829,6 @@
       field.value = spec.key === 'phone' ? formatBrazilPhone(booking.phone) : booking[spec.key];
       if (spec.key === 'phone') {
         field.inputMode = 'tel';
-        field.setAttribute('aria-describedby', 'booking-phone-example');
         field.addEventListener('input', () => {
           const raw = field.value;
           let digitsBefore = (raw.slice(0, field.selectionStart ?? raw.length).match(/\d/g) || []).length;
@@ -856,14 +855,12 @@
         field.addEventListener('input', () => { booking.birthDate = field.value; });
         field.addEventListener('change', () => { booking.birthDate = field.value; });
       } else {
-        field.addEventListener('input', () => { booking.name = field.value; });
+        field.addEventListener('input', () => {
+          booking.name = field.value;
+          field.setCustomValidity('');
+        });
       }
       label.append(field);
-      if (spec.key === 'phone') {
-        const example = el('small', 'booking-phone-example', 'Ex.: (86) 97267-6282');
-        example.id = 'booking-phone-example';
-        label.append(example);
-      }
       form.append(label);
     }
     body.append(form);
@@ -898,7 +895,13 @@
     const form = $('customer-form');
     if (!form || !form.reportValidity()) return;
     const digits = booking.phone.replace(/\D/g, '');
-    if (!booking.name.trim() || !/^[1-9]\d{9,10}$/.test(digits)) {
+    if (!booking.name.trim()) {
+      const nameField = form.elements.customer_name;
+      nameField.setCustomValidity('Informe seu nome completo.');
+      nameField.reportValidity();
+      return;
+    }
+    if (!/^[1-9]\d{9,10}$/.test(digits)) {
       const phoneField = form.elements.customer_phone;
       phoneField.setCustomValidity('Informe um WhatsApp válido com DDD.');
       phoneField.reportValidity();
