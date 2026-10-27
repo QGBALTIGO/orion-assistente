@@ -41,7 +41,7 @@ test('authenticated preview cannot query availability or submit a public reserva
   assert.equal(h.calls.length, 1);
 });
 
-test('public wizard confirms a combo with an untimed addon only after explicit consent', async t => {
+test('public wizard confirms a combo through the explicit button after collecting birth date', async t => {
   const pendingBooking = deferred();
   const h = await makePublic({ respond: url => url.endsWith('/appointments') ? pendingBooking.promise : undefined });
   t.after(() => h.close()); await flush();
@@ -57,11 +57,14 @@ test('public wizard confirms a combo with an untimed addon only after explicit c
   h.fill('[name=customer_name]', ' Cliente sintético '); h.fill('[name=customer_phone]', '(11) 99999-9999');
   h.document.getElementById('customer-form').dispatchEvent(new h.window.Event('submit', { bubbles: true, cancelable: true })); await flush();
   assert.equal(h.calls.some(call => call.options.method === 'POST'), false);
-  h.click('[name=confirmed]'); h.click('#booking-next'); h.click('#booking-next'); await flush();
+  assert.equal(h.document.querySelector('[name=confirmed]'),null);
+  assert.equal(h.document.getElementById('booking-total').hidden,true);
+  h.fill('[name=customer_birth_date]', '1995-08-20');
+  h.click('#booking-next'); h.click('#booking-next'); await flush();
   const posts = h.calls.filter(call => call.options.method === 'POST');
   assert.equal(posts.length, 1);
   assert.equal(posts[0].url, `${publicBase}/appointments`);
-  assert.deepEqual(posts[0].body, { quote, start_at: firstStart, customer_name: 'Cliente sintético', customer_phone: '(11) 99999-9999', confirmed: true });
+  assert.deepEqual(posts[0].body, { quote, start_at: firstStart, customer_name: 'Cliente sintético', customer_phone: '(11) 99999-9999', customer_birth_date: '1995-08-20', confirmed: true });
   assert.equal(h.document.getElementById('close-booking').disabled, true);
   pendingBooking.resolve(response({ status: 'confirmed', protocol: 'SYNTHETIC-1', start_at: firstStart,
     end_at: '2030-01-07T09:50:00-03:00', price_cents: 5200, professional: 'Profissional sintético', services: ['Corte + barba', 'Lavagem'] }, 201));

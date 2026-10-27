@@ -71,6 +71,9 @@ class PublicBooking(CleanModel):
     start_at: AwareDatetime
     customer_name: str=Field(min_length=1,max_length=120)
     customer_phone: str=Field(min_length=10,max_length=40)
+    # Optional at the API boundary to preserve existing integrations;
+    # the new public booking form collects it as a required field.
+    customer_birth_date: date | None=None
     confirmed: StrictBool
 
     @field_validator('customer_phone')
@@ -78,6 +81,13 @@ class PublicBooking(CleanModel):
     def valid_phone(cls,value):
         value=normalize_phone(value)
         if not value:raise ValueError('Informe DDD e telefone')
+        return value
+
+    @field_validator('customer_birth_date')
+    @classmethod
+    def valid_customer_birth_date(cls,value):
+        if value is not None and not date(1900,1,1)<=value<=datetime.now(UTC).date():
+            raise ValueError('Data de nascimento inválida')
         return value
 
     @field_validator('confirmed')
@@ -189,6 +199,23 @@ async def record_public_booking(db,tenant,appointment_id,zone,confirmed_at=None)
             DO UPDATE SET bookings=public_site_daily_metrics.bookings+1"""),{'tenant':tenant,'day':day})
 
 
+async def store_public_birth_date(db,tenant,appointment_id,birth_date):
+    """Fill a missing birthday after confirmation; never rewrite existing PII.
+
+    Only the booked customer's tenant-scoped row may be updated.
+    Public requests do not get access to the customer's existing details.
+    """
+    if birth_date is None:
+        return
+    await db.execute(text("""
+        UPDATE customers AS c
+        SET birth_date=:birth_date,version=c.version+1,updated_at=now()
+        WHERE c.tenant_id=:tenant AND c.birth_date IS NULL
+          AND c.id=(SELECT a.customer_id FROM appointments a
+                    WHERE a.tenant_id=:tenant AND a.id=:appointment_id)
+    """),{'tenant':tenant,'appointment_id':appointment_id,'birth_date':birth_date})
+
+
 async def confirmed_public_replay(db,tenant,quote,payload):
     # Recover an already committed confirmation even if the editable catalogue
     # changed after the first response was lost. The signed nonce, professional,
@@ -225,6 +252,7 @@ async def confirmed_public_replay(db,tenant,quote,payload):
             ORDER BY version DESC LIMIT 1"""),{'tenant':tenant,'stamp':row['created_at']})).scalar_one_or_none()
     ids=quote['services'] if quote['v']==2 else [quote['service'],*quote['addons']]
     labels=published_booking_labels({'public_snapshot':snapshot},quote['professional'],[{'id':item} for item in ids])
+    await store_public_birth_date(db,tenant,row['id'],payload.customer_birth_date)
     await record_public_booking(db,tenant,row['id'],row['timezone'],row['updated_at'])
     return {'status':row['status'],'protocol':row['protocol'],'start_at':row['start_at'],'end_at':row['end_at'],
             'price_cents':row['total_cents'],
@@ -536,6 +564,7 @@ async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=D
                                                 nonblocking_professional_lock=True)
                     result=await confirm_hold(engine,tenant,hold['id'],customer_phone=payload.customer_phone,source='public_site',
                                               nonblocking_professional_lock=True)
+                await store_public_birth_date(guard,tenant,result['id'],payload.customer_birth_date)
                 await record_public_booking(guard,tenant,result['id'],selection['shop']['timezone'])
                 visual_site=published
                 if quote.get('publication_version',published['public_version'])!=published['public_version']:
