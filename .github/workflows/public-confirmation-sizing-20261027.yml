@@ -8,6 +8,7 @@ on:
       - 'app/static/orion-public.css'
       - 'app/static/orion-public.js'
       - 'tests/e2e/browser_public_confirmation_sizing.py'
+      - 'tests/e2e/browser_public_booking_footer.py'
       - '.github/workflows/public-confirmation-sizing-20261027.yml'
   push:
     branches: [main]
@@ -16,6 +17,7 @@ on:
       - 'app/static/orion-public.css'
       - 'app/static/orion-public.js'
       - 'tests/e2e/browser_public_confirmation_sizing.py'
+      - 'tests/e2e/browser_public_booking_footer.py'
       - '.github/workflows/public-confirmation-sizing-20261027.yml'
 
 permissions:
@@ -57,6 +59,8 @@ jobs:
           python -m playwright install --with-deps ${{ matrix.browser }}
       - name: Conferir alturas, larguras, datas e confirmacao
         run: python -m pytest -q -ra tests/e2e/browser_public_confirmation_sizing.py -k ${{ matrix.browser }}
+      - name: Conferir rodape no fundo, rolagem e viewport reduzida
+        run: python -m pytest -q -ra tests/e2e/browser_public_booking_footer.py -k ${{ matrix.browser }}
       - name: Guardar capturas e medidas sem dados reais
         if: always()
         uses: actions/upload-artifact@v4

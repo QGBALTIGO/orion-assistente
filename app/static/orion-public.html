@@ -9,6 +9,17 @@
   <script src="/public-assets/orion-public-theme.js"></script>
   <link rel="stylesheet" href="/public-assets/orion-public.css">
   <style id="booking-confirmation-control-sizing">
+    /* The mobile dialog fills the viewport; its short content must grow above
+       the sticky actions, not leave unused space below them. Keep the dialog
+       itself as the scroll container for long forms and reduced viewports. */
+    #booking-dialog[open]{display:flex;flex-direction:column}
+    #booking-dialog>.booking-header,
+    #booking-dialog>.booking-steps,
+    #booking-dialog>#booking-error,
+    #booking-dialog>.booking-footer{flex:0 0 auto}
+    #booking-dialog>.booking-body{flex:1 0 auto}
+    #booking-dialog>.booking-footer{margin-top:auto}
+
     /* Critical sizing travels with the no-store page, including on iOS where
        native date internals can exceed the input's declared CSS height.
        Scope is deliberately limited to confirmation; other steps keep their UI. */
