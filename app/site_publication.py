@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from app.catalog_api import audit
 from app.database import get_session_factory, tenant_transaction
 from app.tenant_access import resolve_site_access, site_publication_access
+from app.site_slugs import normalize_site_slug, numbered_slug_candidates
 
 
 RESERVED_SLUGS = frozenset({
@@ -71,19 +72,43 @@ async def enable_publication_writer(db):
 
 async def slug_availability(tenant, actor, slug):
     await resolve_site_access(actor, tenant)
+    slug = normalize_site_slug(slug)
+    reason = None
     try:
         validate_slug(slug)
     except HTTPException as exc:
-        return {"slug": slug, "available": False, "reason": exc.detail}
+        reason = exc.detail
+    if not slug:
+        return {"slug": slug, "available": False, "reason": reason, "suggestions": []}
     try:
         async with get_session_factory()() as db:
             async with tenant_transaction(db, tenant):
-                available = (await db.execute(text("SELECT public.public_site_slug_available(:slug,:tenant)"),
-                                             {"slug": slug, "tenant": tenant})).scalar_one()
-        return {"slug": slug, "available": available,
-                **({} if available else {"reason": "Este endereço já está em uso. Escolha outro identificador"})}
+                available = not reason and (await db.execute(text("SELECT public.public_site_slug_available(:slug,:tenant)"),
+                                                              {"slug": slug, "tenant": tenant})).scalar_one()
+                suggestions = [] if available else await available_slug_suggestions(db, tenant, slug)
+        return {"slug": slug, "available": bool(available), "suggestions": suggestions,
+                **({} if available else {"reason": reason or "Este endereço já está em uso. Escolha uma das opções disponíveis"})}
     except SQLAlchemyError:
         raise HTTPException(503, "Não foi possível verificar o endereço agora. Tente novamente") from None
+
+
+async def available_slug_suggestions(db, tenant, slug):
+    # Every candidate uses the existing global reservation function, including
+    # foreign drafts, canonical URLs and durable aliases, without exposing an
+    # owner or creating a reservation during this read-only request.
+    suggestions = []
+    candidates = list(numbered_slug_candidates(slug, count=1024))
+    for offset in range(0, len(candidates), 128):
+        batch = candidates[offset:offset + 128]
+        available = (await db.execute(text("""SELECT candidate FROM unnest(CAST(:candidates AS text[]))
+            WITH ORDINALITY AS proposed(candidate,position)
+            WHERE public.public_site_slug_available(candidate,:tenant)
+            ORDER BY position LIMIT :limit"""),
+            {"candidates": batch, "tenant": tenant, "limit": 3 - len(suggestions)})).scalars().all()
+        suggestions.extend(available)
+        if len(suggestions) == 3:
+            break
+    return suggestions
 
 
 def _issue(code, message, section="config"):
@@ -209,6 +234,7 @@ async def apply_publication(tenant, payload, actor):
 async def _apply_publication(tenant, payload, access):
     from app.management_models import site as read_site
     from app.public_site_api import PUBLIC_FIELDS, catalogue
+    from app.site_address import read_address_fields
     if access.role != "owner":
         raise HTTPException(403, "Somente o proprietário pode publicar ou retirar este site")
     if payload.restore_previous and not payload.enabled:
@@ -222,6 +248,7 @@ async def _apply_publication(tenant, payload, access):
                 if not current or current["version"] != payload.expected_version:
                     raise HTTPException(409, "As preferências mudaram. Salve e atualize antes de publicar")
                 current = dict(current)
+                current.update(await read_address_fields(db, tenant))
                 snapshot = current.get("public_snapshot")
                 slug = current.get("public_slug")
                 if payload.restore_previous:

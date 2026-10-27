@@ -278,7 +278,7 @@ test('choosing a slug checks availability after a debounce and ignores old respo
   assert.equal(h.document.querySelector('#osSiteForm [name=slug]').checkValidity(),false);
   old.resolve({slug:'primeiro-endereco',available:true});await flush();
   assert.match(h.document.getElementById('osSiteSlugStatus').textContent,/Endereço reservado/);
-  h.fill('#osSiteForm [name=slug]','ENDEREÇO INVALIDO');await sleep(340);await flush();
+  h.fill('#osSiteForm [name=slug]','ab');await sleep(340);await flush();
   assert.equal(h.calls.filter(c=>c.path.includes('slug-availability')).length,2,'invalid identifiers are rejected before querying');
   assert.equal(writes(h).length,0);
 });

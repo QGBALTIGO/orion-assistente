@@ -140,8 +140,10 @@ async def save_section(db, tenant_id, section, value, expected):
         raise HTTPException(409, "As preferências mudaram. Atualize antes de salvar")
     content = {"business": current["business"], "automations": current["automations"], section: value}
     await db.execute(text("""INSERT INTO management_preferences(tenant_id,preferences) VALUES(:tenant,CAST(:content AS jsonb))
-        ON CONFLICT(tenant_id) DO UPDATE SET preferences=EXCLUDED.preferences,version=management_preferences.version+1,updated_at=now()"""),
-        {"tenant": tenant_id, "content": json.dumps(content)})
+        ON CONFLICT(tenant_id) DO UPDATE SET
+            preferences=jsonb_set(management_preferences.preferences,ARRAY[CAST(:section AS text)],CAST(:value AS jsonb),true),
+            version=management_preferences.version+1,updated_at=now()"""),
+        {"tenant": tenant_id, "content": json.dumps(content), "section": section, "value": json.dumps(value)})
     await audit(db, tenant_id, "preferences_saved", "management_preferences", tenant_id)
     return await preferences(db, tenant_id)
 

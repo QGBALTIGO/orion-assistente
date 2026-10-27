@@ -218,7 +218,7 @@
   function errorHTML(error){return '<div class="os-notice os-error" role="alert">'+icon('info')+'<p>'+esc(error?.message||'Não foi possível consultar os dados. Tente novamente.')+'</p>'+button('Tentar novamente','reload','os-ghost os-small','refresh')+'</div>';}
   function toast(message,error=false){const r=$('osToastRegion');if(!r)return;const n=document.createElement('div');n.className='os-toast'+(error?' os-error':'');n.innerHTML=icon(error?'info':'check')+'<span>'+esc(message)+'</span>';r.appendChild(n);setTimeout(()=>n.remove(),6000);}
   function title(titleText,subtitle,actions=''){return '<div class="os-title-row"><div><h1>'+esc(titleText)+'</h1>'+(subtitle?'<p>'+esc(subtitle)+'</p>':'')+'</div>'+(actions?'<div class="os-actions">'+actions+'</div>':'')+'</div>';}
-  function bodyHTML(html){window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();const body=$('osPageBody');if(body)body.innerHTML=html;}
+  function bodyHTML(html){clearSiteLookups();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();const body=$('osPageBody');if(body)body.innerHTML=html;}
   function pageHTML(html){$('page-suite').innerHTML=html;}
   function selectedNav(){const activeRoute=state.route==='cadastros'?'configuracoes':state.route,channels=activeRoute==='configuracoes'&&state.filters.settingsTab==='whatsapp'&&!!document.querySelector('#osNav [data-os-action="managed-whatsapp"]');document.querySelectorAll('.os-nav-link').forEach(a=>{if(channels?a.dataset.osAction==='managed-whatsapp':a.dataset.osRoute===activeRoute)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});}
 
@@ -264,11 +264,12 @@
   function setTheme(preference){const original=document.querySelector('.theme-choice[data-theme-choice="'+preference+'"]');if(original)original.click();else{document.documentElement.dataset.themePreference=preference;document.documentElement.dataset.theme=preference==='auto'?(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):preference;try{localStorage.setItem('orion-theme',preference);}catch{}}applyThemeState();$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');}
   function drawer(open){const app=$('appView'),side=$('osSidebar');if(!app||!side)return;app.classList.toggle('os-menu-open',open);$('osMenu').setAttribute('aria-expanded',String(open));if(open){state.drawerTrigger=document.activeElement;side.querySelector('button')?.focus();}else state.drawerTrigger?.focus?.();}
   function resetPeriod(){const today=dateKey(),d=dayDate(today);d.setUTCMonth(d.getUTCMonth()+1,0);state.filters.periodStart=today.slice(0,8)+'01';state.filters.periodEnd=d.toISOString().slice(0,10);state.filters.performancePeriod='month';state.filters.performanceDay=today;}
-  function legacyOpened(route){if(!state.mounted||!legacyPages.has(route))return;state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeNames[route]+' · Orion';}
+  function legacyOpened(route){if(!state.mounted||!legacyPages.has(route))return;clearSiteLookups();state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeNames[route]+' · Orion';}
   async function open(route,options={}){
     route=routeAliases.get(route)||route;
     if(!appPages.has(route))route='dashboard';
     if(state.busy&&!options.force)return;
+    clearSiteLookups();
     window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
     if(!tenant()){
       state.route=route;state.load++;closeNotifications();closeDialog(true);drawer(false);
@@ -1056,22 +1057,111 @@
     if(!versions&&!published&&!access&&!events&&!secondary)return '';
     return '<details id="osSitePublicationOptions" class="os-more-fields"><summary>'+icon('more')+'<span class="os-disclosure-label">Mais opções</span></summary><div class="os-disclosure-body">'+access+'<div>'+published+versions+'</div>'+events+(secondary?'<div class="os-actions">'+secondary+'</div>':'')+'</div></details>';
   }
-  function queueSiteSlugCheck(input){
+  function normalizeSiteSlug(value,editing=false){
+    const slug=String(value||'').normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+/,'').slice(0,80);
+    return editing?slug:slug.replace(/-+$/,'');
+  }
+  function normalizeSiteSlugInput(input,final=false){
+    const raw=input.value,start=input.selectionStart,end=input.selectionEnd,value=normalizeSiteSlug(raw,!final);
+    if(raw!==value){
+      input.value=value;
+      if(start!=null&&end!=null)input.setSelectionRange(Math.min(value.length,normalizeSiteSlug(raw.slice(0,start),true).length),Math.min(value.length,normalizeSiteSlug(raw.slice(0,end),true).length));
+    }
+    const preview=$('osSiteSlugPreview');if(preview)preview.textContent=normalizeSiteSlug(value)?'/s/'+normalizeSiteSlug(value):'/s/seu-negocio';
+    return normalizeSiteSlug(value);
+  }
+  function clearSiteLookups(){
+    clearTimeout(state.siteSlugTimer);state.siteSlugRead=(state.siteSlugRead||0)+1;
+    clearTimeout(state.siteCepTimer);clearTimeout(state.siteCepTimeout);state.siteCepRead=(state.siteCepRead||0)+1;
+    state.siteCepController?.abort();state.siteCepController=null;
+  }
+  function renderSiteSlugSuggestions(values,slug){
+    const host=$('osSiteSlugSuggestions');if(!host)return;
+    const suggestions=[...new Set(rows(values))].filter(value=>typeof value==='string'&&value!==slug&&value.length>=3&&value.length<=80&&/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)).slice(0,3);
+    host.hidden=!suggestions.length;
+    host.innerHTML=suggestions.length?'<p class="os-help">Sugestões disponíveis</p><div class="os-actions">'+suggestions.map(value=>'<button type="button" class="os-button os-outline os-small" data-os-site-slug-suggestion="'+esc(value)+'" aria-label="Usar o link '+esc(value)+'">'+esc(value)+'</button>').join('')+'</div>':'';
+  }
+  function queueSiteSlugCheck(input,delay=300){
+    const form=input.closest('#osSiteForm'),message=$('osSiteSlugStatus');if(!form||!message||!siteCanEdit())return;
     clearTimeout(state.siteSlugTimer);const read=(state.siteSlugRead||0)+1;state.siteSlugRead=read;
-    const form=input.closest('#osSiteForm'),message=$('osSiteSlugStatus'),slug=input.value.trim();
-    input.setCustomValidity('');input.removeAttribute('aria-invalid');if(!form||!message)return;
-    if(!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)||slug.length<3||slug.length>80){message.textContent='Use de 3 a 80 letras minúsculas, números ou hífens, sem hífen nas extremidades.';return;}
+    const slug=normalizeSiteSlugInput(input);form._siteSlugQuery=slug;
+    input.setCustomValidity('');input.removeAttribute('aria-invalid');renderSiteSlugSuggestions([],slug);
+    if(!slug||slug.length<3){message.textContent='Digite um nome com pelo menos 3 letras ou números.';message.dataset.status='invalid';input.setCustomValidity(message.textContent);input.setAttribute('aria-invalid','true');return;}
     message.textContent='Verificando disponibilidade…';message.dataset.status='checking';const c=context();
+    const active=()=>current(c)&&state.siteSlugRead===read&&form.isConnected&&normalizeSiteSlug(input.value)===slug;
     state.siteSlugTimer=setTimeout(async()=>{
+      if(!active())return;
       try{
         const result=await request(mgmt('/site/slug-availability?'+query({slug})));
-        if(!current(c)||state.siteSlugRead!==read||!form.isConnected||input.value.trim()!==slug)return;
+        if(!active())return;
         if(result?.slug!==slug||typeof result.available!=='boolean')throw Error('Resposta de disponibilidade inválida.');
-        const text=result.available?'Endereço disponível.':typeof result.reason==='string'&&result.reason?'Endereço indisponível: '+result.reason:'Este endereço já está em uso ou é reservado. Escolha outro.';
+        const text=result.available?'Endereço disponível.':typeof result.reason==='string'&&result.reason?result.reason:'Este endereço já está em uso. Escolha uma sugestão ou digite outro nome.';
         message.textContent=text;message.dataset.status=result.available?'available':'unavailable';input.setCustomValidity(result.available?'':text);input.setAttribute('aria-invalid',String(!result.available));
-      }catch(error){if(current(c)&&state.siteSlugRead===read&&form.isConnected){message.textContent='Não foi possível conferir a disponibilidade. Ela será validada ao salvar.';message.dataset.status='unknown';}}
-    },300);
+        if(!result.available)renderSiteSlugSuggestions(result.suggestions,slug);
+      }catch(error){if(active()){message.textContent='Não foi possível conferir a disponibilidade. Ela será validada ao salvar.';message.dataset.status='unknown';}}
+    },delay);
   }
+  function finalizeSiteSlug(input){
+    const slug=normalizeSiteSlugInput(input,true),form=input.closest('#osSiteForm');
+    if(form&&form._siteSlugQuery!==slug&&(form._siteSlugQuery!==undefined||slug!==input.defaultValue))queueSiteSlugCheck(input);
+  }
+  function formatSitePostalCode(input){
+    const raw=input.value,caret=input.selectionStart,digits=raw.replace(/\D/g,'').slice(0,8),value=digits.slice(0,5)+(digits.length>5?'-'+digits.slice(5):'');
+    if(value!==raw){input.value=value;if(caret!=null){const count=raw.slice(0,caret).replace(/\D/g,'').length;const position=Math.min(value.length,count+(count>5?1:0));input.setSelectionRange(position,position);}}
+    return digits;
+  }
+  function siteCepStatus(form,text,status,retry=false){
+    const message=form.querySelector('#osSiteCepStatus'),button=form.querySelector('[data-os-action=site-cep-retry]');
+    if(message){message.textContent=text;message.dataset.status=status;}
+    if(button)button.hidden=!retry;
+    form.dataset.cepPending=String(status==='checking');
+    const error=form.querySelector('.os-form-message');if(status!=='checking'&&error?.textContent==='Aguarde a consulta do CEP terminar antes de salvar.')error.textContent='';
+  }
+  function queueSiteCepLookup(input,delay=300){
+    const form=input.closest('#osSiteForm');if(!form||!siteCanEdit())return;
+    clearTimeout(state.siteCepTimer);clearTimeout(state.siteCepTimeout);state.siteCepController?.abort();state.siteCepController=null;
+    const read=(state.siteCepRead||0)+1;state.siteCepRead=read;
+    const cep=formatSitePostalCode(input);form._siteCepQuery=cep;input.removeAttribute('aria-invalid');
+    if(cep.length!==8){siteCepStatus(form,cep?'Complete os 8 dígitos do CEP.':'Digite o CEP para preencher o endereço automaticamente.','idle');return;}
+    const c=context(),fields={address:'logradouro',neighborhood:'bairro',city:'localidade',state:'uf'};
+    const before=Object.fromEntries(Object.keys(fields).map(name=>[name,form.elements[name]?.value||'']));
+    const active=()=>current(c)&&state.siteCepRead===read&&form.isConnected&&input.value.replace(/\D/g,'')===cep;
+    siteCepStatus(form,'Buscando endereço…','checking');
+    state.siteCepTimer=setTimeout(async()=>{
+      if(!active())return;
+      const controller=new AbortController();state.siteCepController=controller;
+      state.siteCepTimeout=setTimeout(()=>controller.abort(),8000);
+      try{
+        const response=await fetch('https://viacep.com.br/ws/'+cep+'/json/',{signal:controller.signal,credentials:'omit',referrerPolicy:'no-referrer'});
+        if(!response.ok)throw Error('Consulta indisponível.');
+        const data=await response.json();if(!active())return;
+        if(data?.erro===true||data?.erro==='true'){siteCepStatus(form,'CEP não encontrado. Confira os números ou preencha o endereço manualmente.','unknown',true);return;}
+        if(!data||typeof data.cep!=='string'||data.cep.replace(/\D/g,'')!==cep||typeof data.localidade!=='string'||!data.localidade.trim()||typeof data.uf!=='string'||!/^[A-Z]{2}$/.test(data.uf))throw Error('Endereço incompleto.');
+        if(state.busy)return;
+        let preserved=false;
+        Object.entries(fields).forEach(([name,key])=>{
+          const field=form.elements[name];if(!field)return;
+          if(field.value!==before[name]){preserved=true;return;}
+          const value=typeof data[key]==='string'?data[key].trim():'';
+          field.value=value.slice(0,field.maxLength>0?field.maxLength:500);
+        });
+        form.dataset.dirty='true';
+        const incomplete=!form.elements.address.value||!form.elements.neighborhood.value;
+        siteCepStatus(form,preserved?'Endereço consultado. Mantivemos os campos que você editou; confira e informe o número.':incomplete?'CEP encontrado. Complete a rua, o bairro e o número do estabelecimento.':'Endereço preenchido. Informe o número do estabelecimento.','found');
+      }catch(error){if(active())siteCepStatus(form,'Não foi possível consultar o CEP agora. Você pode preencher o endereço manualmente.','unknown',true);}
+      finally{if(state.siteCepRead===read){clearTimeout(state.siteCepTimeout);state.siteCepController=null;if(form.dataset.cepPending==='true')form.dataset.cepPending='false';}}
+    },delay);
+  }
+  function syncSiteNumber(form){
+    const input=form.elements.address_number,checked=form.elements.address_no_number?.checked;if(!input)return;
+    input.disabled=!!checked;
+    if(checked){input.dataset.previousNumber=input.value;input.value='';}
+    else if(input.dataset.previousNumber!==undefined){input.value=input.dataset.previousNumber;delete input.dataset.previousNumber;}
+  }
+  function handleSiteFocusOut(event){
+    if(state.mounted&&!state.busy&&siteCanEdit()&&event.target.matches?.('#osSiteForm [name=slug]'))finalizeSiteSlug(event.target);
+  }
+  function handleSiteCompositionEnd(event){if(event.target.closest?.('#osSiteForm'))handleInput(event);}
   function showSitePublication(actionName){
     const data=state.data.site,p=state.data.sitePublication;if(!data||!siteCanPublish())return;
     if(!siteDraftCurrent()){toast('Atualize o estado e confira o rascunho antes de alterar a publicação.',true);return;}
@@ -1123,9 +1213,30 @@
       '</label>').join('')+'</div>'+
       '<p class="os-help os-section-gap">Apenas as comodidades ativadas aparecem no site. Salve e publique as alterações para os clientes.</p>';
   }
+  function siteSlugControls(data){
+    const slug=data.slug||tenant()?.slug||'';
+    return field('Link do site','slug','text',slug,'required minlength="3" maxlength="160" pattern="[a-z0-9]+(?:-[a-z0-9]+)*-?" autocapitalize="none" autocomplete="off" spellcheck="false" aria-describedby="osSiteSlugHelp osSiteSlugStatus"')+
+      '<p id="osSiteSlugHelp" class="os-help os-section-gap">Digite o nome como preferir. Ajustamos maiúsculas, acentos e espaços automaticamente.</p>'+
+      '<p class="os-site-slug-preview"><span>Prévia do link</span><strong id="osSiteSlugPreview">/s/'+esc(slug||'seu-negocio')+'</strong></p>'+
+      '<p id="osSiteSlugStatus" class="os-help os-site-slug-status" role="status" aria-live="polite">A disponibilidade é verificada enquanto você digita.</p>'+
+      '<div id="osSiteSlugSuggestions" class="os-site-slug-suggestions" hidden></div>'+
+      (data.published?'<p class="os-help os-section-gap">O link publicado só muda quando você salvar e publicar as alterações.</p>':'')+siteAddressCard(data,true);
+  }
+  function siteLocationFields(data){
+    return '<div class="os-form os-site-location">'+
+      '<div>'+field('CEP','postal_code','text',data.postal_code||'','maxlength="9" pattern="[0-9]{5}-?[0-9]{3}" inputmode="numeric" autocomplete="postal-code" placeholder="00000-000" aria-describedby="osSiteCepStatus"')+
+      '<p id="osSiteCepStatus" class="os-help os-site-cep-status" role="status" aria-live="polite">Digite o CEP para preencher o endereço automaticamente.</p>'+button('Consultar CEP novamente','site-cep-retry','os-ghost os-small','refresh','hidden')+'</div>'+
+      field('Rua ou avenida','address','text',data.address||'','maxlength="500" autocomplete="address-line1"')+
+      '<div class="os-form-grid"><div class="os-site-number-field">'+field('Número do estabelecimento','address_number','text',data.address_number||'','maxlength="30" placeholder="Ex.: 123 ou 123A" '+(data.address_no_number?'disabled':''))+checkField('Sem número','address_no_number',data.address_no_number===true)+'</div>'+
+      field('Complemento (opcional)','address_complement','text',data.address_complement||'','maxlength="160" autocomplete="address-line2" placeholder="Sala, loja, andar…"')+'</div>'+
+      field('Bairro','neighborhood','text',data.neighborhood||'','maxlength="120" autocomplete="address-level3"')+
+      '<div class="os-form-grid">'+field('Cidade','city','text',data.city||'','maxlength="120" autocomplete="address-level2"')+
+      field('Estado (UF)','state','text',data.state||'','minlength="2" maxlength="2" pattern="[A-Za-z]{2}" autocomplete="address-level1" placeholder="UF"')+'</div>'+
+      field('Link do Google Maps (opcional)','maps_url','url',data.maps_url||'','maxlength="2048" placeholder="https://maps.google.com/…"')+'</div>';
+  }
   function sitePreferencesForm(data){
     const can=siteCanEdit(),section=(symbol,titleText,description,content)=>'<section class="os-card os-site-config-card"><div class="os-card-header"><span class="os-square-icon">'+icon(symbol)+'</span><div><h3>'+titleText+'</h3><p>'+description+'</p></div></div>'+content+'</section>',imageURL=(label,name,value)=>imageUploadField(label,name,value,name==='cover_url'?'cover':'logo');
-    return '<form id="osSiteForm" class="os-form os-site-config" data-os-form="site" data-version="'+number(data.version)+'"><fieldset class="os-form" '+(can?'':'disabled')+'>'+section('globe','Como sua empresa aparece','Nome e contato que os clientes veem no site.','<div class="os-form-grid">'+field('Nome exibido','title','text',data.title||tenant()?.name||'','required maxlength="160"')+field('Telefone de contato (WhatsApp)','contact_phone','tel',data.contact_phone||'','maxlength="40" placeholder="(11) 91234-5678"')+'</div><p class="os-help os-section-gap">O telefone de contato é exibido publicamente.</p>')+section('link','Endereço do site','Escolha o link que você vai divulgar.',field('Link do site','slug','text',data.slug||tenant()?.slug||'','required minlength="3" maxlength="80" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" aria-describedby="osSiteSlugStatus"')+'<p id="osSiteSlugStatus" class="os-help os-site-slug-status" role="status" aria-live="polite">A disponibilidade é verificada ao escolher um endereço.</p><p class="os-help os-section-gap">Apenas letras minúsculas, números e hífens. A página usa o caminho /s/ seguido deste endereço.</p>'+(data.published?'<p class="os-help os-section-gap">Alterar o endereço aqui modifica o rascunho. O link público muda quando você publicar as alterações.</p>':'')+siteAddressCard(data,true))+section('edit','Identidade visual','Personalize a apresentação do seu negócio.','<div class="os-form-grid">'+imageURL('Logotipo','logo_url',data.logo_url)+imageURL('Imagem de capa','cover_url',data.cover_url)+'</div><div class="os-section-gap">'+colorField('Cor principal','theme_color',cleanColor(data.theme_color,'#2e7bf6'))+'</div><div class="os-section-gap">'+textField('Sobre a empresa','description',data.description||'','maxlength="5000"')+'</div>'+checkField('Mostrar os preços dos serviços','show_prices',data.show_prices!==false))+section('check','Comodidades','Mostre apenas o que seu negócio realmente oferece.',siteAmenityControls(data))+section('globe','Endereço & mapa','Ajude seus clientes a encontrar sua empresa.',field('Endereço completo','address','text',data.address||'','maxlength="500"')+'<div class="os-form-grid os-section-gap">'+field('Cidade','city','text',data.city||'','maxlength="120"')+field('Estado','state','text',data.state||'','minlength="2" maxlength="2" pattern="[A-Za-z]{2}" placeholder="UF"')+field('CEP','postal_code','text',data.postal_code||'','maxlength="9" pattern="[0-9]{5}-?[0-9]{3}" inputmode="numeric" placeholder="00000-000"')+field('Link do Google Maps (opcional)','maps_url','url',data.maps_url||'','maxlength="2048" placeholder="https://maps.google.com/…"')+'</div>')+section('instagram','Redes sociais','Links públicos para seus canais de contato.','<div class="os-form-grid">'+field('WhatsApp (com DDD)','whatsapp_phone','tel',data.whatsapp_phone||'','maxlength="40"')+field('Instagram (usuário ou URL)','instagram_url','text',data.instagram_url||'','maxlength="2048" placeholder="@seunegocio"')+field('Facebook (usuário ou URL)','facebook_url','text',data.facebook_url||'','maxlength="2048"')+field('TikTok (usuário ou URL)','tiktok_url','text',data.tiktok_url||'','maxlength="2048"')+'</div><div class="os-section-gap">'+field('Já possui um site? Informe o link aqui.','external_url','url',data.external_url||'','maxlength="2048" placeholder="https://…"')+'</div>')+section('shield','Marca Orion na página','Personalize a identificação no rodapé.',checkField('Ocultar rodapé “Feito com Orion”','hide_orion_brand',data.hide_orion_brand===true))+'</fieldset><div class="os-form-message" role="alert"></div><div class="os-form-actions os-site-save"><p class="os-help">Salvar atualiza o rascunho. A publicação é feita separadamente.</p><button type="submit" class="os-button" '+(can?'':'disabled')+'>'+icon('check')+'Salvar configurações</button></div></form>';
+    return '<form id="osSiteForm" class="os-form os-site-config" data-os-form="site" data-version="'+number(data.version)+'"><fieldset class="os-form" '+(can?'':'disabled')+'>'+section('globe','Como sua empresa aparece','Nome e contato que os clientes veem no site.','<div class="os-form-grid">'+field('Nome exibido','title','text',data.title||tenant()?.name||'','required maxlength="160"')+field('Telefone de contato (WhatsApp)','contact_phone','tel',data.contact_phone||'','maxlength="40" placeholder="(11) 91234-5678"')+'</div><p class="os-help os-section-gap">O telefone de contato é exibido publicamente.</p>')+section('link','Endereço do site','Escolha o link que você vai divulgar.',siteSlugControls(data))+section('edit','Identidade visual','Personalize a apresentação do seu negócio.','<div class="os-form-grid">'+imageURL('Logotipo','logo_url',data.logo_url)+imageURL('Imagem de capa','cover_url',data.cover_url)+'</div><div class="os-section-gap">'+colorField('Cor principal','theme_color',cleanColor(data.theme_color,'#2e7bf6'))+'</div><div class="os-section-gap">'+textField('Sobre a empresa','description',data.description||'','maxlength="5000"')+'</div>'+checkField('Mostrar os preços dos serviços','show_prices',data.show_prices!==false))+section('check','Comodidades','Mostre apenas o que seu negócio realmente oferece.',siteAmenityControls(data))+section('globe','Endereço & mapa','Comece pelo CEP e complete o número do estabelecimento.',siteLocationFields(data))+section('instagram','Redes sociais','Links públicos para seus canais de contato.','<div class="os-form-grid">'+field('WhatsApp (com DDD)','whatsapp_phone','tel',data.whatsapp_phone||'','maxlength="40"')+field('Instagram (usuário ou URL)','instagram_url','text',data.instagram_url||'','maxlength="2048" placeholder="@seunegocio"')+field('Facebook (usuário ou URL)','facebook_url','text',data.facebook_url||'','maxlength="2048"')+field('TikTok (usuário ou URL)','tiktok_url','text',data.tiktok_url||'','maxlength="2048"')+'</div><div class="os-section-gap">'+field('Já possui um site? Informe o link aqui.','external_url','url',data.external_url||'','maxlength="2048" placeholder="https://…"')+'</div>')+section('shield','Marca Orion na página','Personalize a identificação no rodapé.',checkField('Ocultar rodapé “Feito com Orion”','hide_orion_brand',data.hide_orion_brand===true))+'</fieldset><div class="os-form-message" role="alert"></div><div class="os-form-actions os-site-save"><p class="os-help">Salvar atualiza o rascunho. A publicação é feita separadamente.</p><button type="submit" class="os-button" '+(can?'':'disabled')+'>'+icon('check')+'Salvar configurações</button></div></form>';
   }
   function socialURL(value,network){const text=String(value||'').trim();if(!text)return null;if(/^https:\/\//i.test(text))return text;const username=text.replace(/^@/,'');if(!/^[A-Za-z0-9._-]+$/.test(username))throw Error('Informe um usuário ou um link HTTPS válido para '+network+'.');return network==='Instagram'?'https://instagram.com/'+username:network==='Facebook'?'https://facebook.com/'+username:'https://www.tiktok.com/@'+username;}
   const loyaltyTabs=[['ranking','Ranking'],['near','Perto do prêmio'],['coupons','Cupons'],['share','Divulgar'],['ideas','Ideias IA'],['settings','Configurar']];
@@ -2233,7 +2344,7 @@
     if(form.id==='osAgendaFilters'){event.preventDefault();await applyAgendaFilters();return;}
     if(form.id==='osSiteRequestFilters'){event.preventDefault();await applySiteRequestFilters(form);return;}
     if(form.id==='osPeriodForm'){event.preventDefault();const f=getValues(form);if(f.start_date>f.end_date){toast('A data final deve ser igual ou posterior à inicial.',true);return;}state.filters.periodStart=f.start_date;state.filters.periodEnd=f.end_date;state.filters.performancePeriod='custom';closeDialog();await open(state.route,{keepScroll:true});return;}
-    const kind=form.dataset.osForm;if(!kind)return;event.preventDefault();if(state.imageUploading){const message=form.querySelector('.os-form-message');if(message)message.textContent='Aguarde o envio da imagem antes de salvar.';return;}if(!form.reportValidity())return;if(state.busy||!writable())return;
+    const kind=form.dataset.osForm;if(!kind)return;event.preventDefault();if(kind==='site'){if(!siteCanEdit())return;finalizeSiteSlug(form.elements.slug);if(form.dataset.cepPending==='true'){form.querySelector('.os-form-message').textContent='Aguarde a consulta do CEP terminar antes de salvar.';return;}}if(state.imageUploading){const message=form.querySelector('.os-form-message');if(message)message.textContent='Aguarde o envio da imagem antes de salvar.';return;}if(!form.reportValidity())return;if(state.busy||!writable())return;
     const d=state.dialog,f=getValues(form);if(!['site','business-preferences','automations','loyalty-inline','loyalty-ideas','ai-campaign','ai-consultant'].includes(kind)&&(!d||d.epoch!==state.epoch||d.tenantId!==state.tenantId))return;
     try{
       if(kind==='appointment-action'||kind==='complete-appointment'){await submitAppointmentAction(form,d,f);return;}
@@ -2353,7 +2464,7 @@
         if(!Number.isSafeInteger(payload.target_value)||payload.target_value<=0||payload.target_value>1000000000)throw Error('Informe uma meta válida maior que zero.');
         await saveForm(form,()=>request(mgmt('/goals'+(r?'/'+encodeURIComponent(r.id):'')),r?'PATCH':'POST',{...payload,...(r?{expected_version:r.template_version||r.version}:{idempotency_key:requestKey(form,payload)})}),'Meta salva.');
       }
-      if(kind==='site'){if(!siteCanEdit())return;const payload={title:f.title.trim(),description:f.description?.trim()||'',slug:f.slug.trim()||null,theme_color:f.theme_color,logo_url:f.logo_url?.trim()||null,cover_url:f.cover_url?.trim()||null,address:f.address?.trim()||null,city:f.city?.trim()||null,state:f.state?.trim().toUpperCase()||null,postal_code:f.postal_code?.trim()||null,contact_phone:phone(f.contact_phone)||null,whatsapp_phone:phone(f.whatsapp_phone)||null,instagram_url:socialURL(f.instagram_url,'Instagram'),facebook_url:socialURL(f.facebook_url,'Facebook'),tiktok_url:socialURL(f.tiktok_url,'TikTok'),maps_url:f.maps_url?.trim()||null,external_url:f.external_url?.trim()||null,show_prices:form.elements.show_prices.checked,hide_orion_brand:form.elements.hide_orion_brand.checked,amenity_wifi:form.elements.amenity_wifi.checked,amenity_parking:form.elements.amenity_parking.checked,amenity_accessibility:form.elements.amenity_accessibility.checked,amenity_children:form.elements.amenity_children.checked,expected_version:number(form.dataset.version)};await saveForm(form,()=>request(mgmt('/site'),'PUT',payload),'Configurações do site salvas no rascunho.');}
+      if(kind==='site'){if(!siteCanEdit())return;const payload={title:f.title.trim(),description:f.description?.trim()||'',slug:normalizeSiteSlug(f.slug)||null,theme_color:f.theme_color,logo_url:f.logo_url?.trim()||null,cover_url:f.cover_url?.trim()||null,address:f.address?.trim()||null,address_number:form.elements.address_no_number.checked?null:f.address_number?.trim()||null,address_no_number:form.elements.address_no_number.checked,address_complement:f.address_complement?.trim()||null,neighborhood:f.neighborhood?.trim()||null,city:f.city?.trim()||null,state:f.state?.trim().toUpperCase()||null,postal_code:f.postal_code?.trim()||null,contact_phone:phone(f.contact_phone)||null,whatsapp_phone:phone(f.whatsapp_phone)||null,instagram_url:socialURL(f.instagram_url,'Instagram'),facebook_url:socialURL(f.facebook_url,'Facebook'),tiktok_url:socialURL(f.tiktok_url,'TikTok'),maps_url:f.maps_url?.trim()||null,external_url:f.external_url?.trim()||null,show_prices:form.elements.show_prices.checked,hide_orion_brand:form.elements.hide_orion_brand.checked,amenity_wifi:form.elements.amenity_wifi.checked,amenity_parking:form.elements.amenity_parking.checked,amenity_accessibility:form.elements.amenity_accessibility.checked,amenity_children:form.elements.amenity_children.checked,expected_version:number(form.dataset.version)};await saveForm(form,async c=>{try{return await request(mgmt('/site'),'PUT',payload);}catch(error){if(current(c)&&error.status===409&&form.isConnected)queueSiteSlugCheck(form.elements.slug,0);throw error;}},'Configurações do site salvas no rascunho.');}
       if(kind==='site-publication')await saveSitePublication(form,d);
       if(kind==='confirm')await saveForm(form,d.operation,d.success);
     }catch(ex){const target=form.querySelector('.os-form-message');if(target)target.textContent=ex.message;else toast(ex.message,true);}
@@ -2467,6 +2578,7 @@
       case 'publish-site':case 'unpublish-site':case 'restore-site':showSitePublication(name);break;
       case 'site-refresh':if($('osSiteForm')?.dataset.dirty==='true'){toast('Salve as configurações antes de atualizar o estado.',true);return;}closeDialog();await open('site',{keepScroll:true});break;
       case 'site-reauthenticate':if(siteNeedsReauthentication()){if($('osSiteForm')?.dataset.dirty==='true'){toast('Salve as configurações antes de atualizar seu acesso de administrador.',true);return;}if(typeof state.bridge.reauthenticate==='function')await state.bridge.reauthenticate();else toast('Atualize a página para confirmar seu acesso de administrador.',true);}break;
+      case 'site-cep-retry':{const input=$('osSiteForm')?.elements.postal_code;if(input&&siteCanEdit())queueSiteCepLookup(input,0);break;}
       case 'copy-site':{const link=sitePublicLink();if(!link)throw Error('Sua página ainda não foi publicada.');await navigator.clipboard.writeText(link);toast('Link copiado.');break;}
       case 'google-connect':showGoogleAction('connect');break;
       case 'google-email':showGoogleEmailVerification();break;
@@ -2498,6 +2610,7 @@
       if(el.dataset.osHelpArticle){openHelpArticle(el.dataset.osHelpArticle);return;}
       if(el.dataset.osHelpCategory){state.filters.helpCategory=el.dataset.osHelpCategory;state.filters.helpArticle='';renderHelp();return;}
       if(el.dataset.osNewsFilter){state.filters.newsFilter=el.dataset.osNewsFilter;renderNews();return;}
+      if(el.dataset.osSiteSlugSuggestion){if(!siteCanEdit())return;const form=$('osSiteForm'),input=form?.elements.slug;if(!input||!el.closest('#osSiteSlugSuggestions'))return;input.value=el.dataset.osSiteSlugSuggestion;form.dataset.dirty='true';queueSiteSlugCheck(input,0);input.focus({preventScroll:true});return;}
       if(el.dataset.osSiteTab){if($('osSiteForm')?.dataset.dirty==='true'){toast('Salve as configurações antes de mudar de aba.',true);return;}state.filters.siteTab=el.dataset.osSiteTab;renderSite(state.data.site);return;}
       if(el.dataset.osSiteFix){if($('osSiteForm')?.dataset.dirty==='true'){toast('Salve as configurações antes de revisar outra área.',true);return;}const target=el.dataset.osSiteFix;if(target==='site'){state.filters.siteTab='settings';renderSite(state.data.site);}else if(target==='hours'){state.filters.settingsTab='hours';await open('configuracoes');}else if(target==='business')await action('business-setup',el);else await open(target==='services'?'servicos':'funcionarios');return;}
       if(el.dataset.osAutomationTab){state.filters.automationTab=el.dataset.osAutomationTab;renderMarketing(state.data.marketing);return;}
@@ -2598,6 +2711,7 @@
     }catch(ex){toast(ex.message||'Não foi possível concluir a ação.',true);}
   }
   async function handleChange(event){if(!state.mounted)return;const el=event.target;if(el.matches?.('[data-os-image-file]')){await sendImageFile(el);return;}if(state.busy)return;if(el.matches?.('input.os-color-native'))syncColorPicker(el);if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';
+    if(el.closest('#osSiteForm')&&siteCanEdit()){if(el.name==='slug'){finalizeSiteSlug(el);return;}if(el.name==='postal_code'){const form=el.closest('form');if(form._siteCepQuery!==el.value.replace(/\D/g,''))queueSiteCepLookup(el);return;}if(el.name==='address_no_number'){syncSiteNumber(el.closest('form'));return;}if(el.name==='state'){el.value=el.value.toUpperCase();return;}}
     if(el.id==='osAgendaDatePicker'){if(/^\d{4}-\d{2}-\d{2}$/.test(el.value)){state.filters.agendaDay=el.value;state.filters.agendaOffset=0;await open('agenda',{keepScroll:true});$('osAgendaDatePicker')?.focus();}return;}
     if(el.id==='osAgendaProfessional'||el.id==='osAgendaStatus'){state.filters[el.id==='osAgendaProfessional'?'agendaProfessional':'agendaStatus']=el.value;await applyAgendaFilters();return;}
     if(state.dialog?.action==='reschedule'&&el.name==='day'){await loadRescheduleAvailability();return;}
@@ -2631,7 +2745,7 @@
     if(state.dialog?.type==='block'&&el.name==='frequency'){$('osBlockWeekdays').classList.toggle('hidden',el.value!=='weekdays');return;}
     if(state.dialog?.type==='block'&&el.name==='block_type'){$('osBlockHours').classList.toggle('hidden',el.value==='days');$('osBlockDays').classList.toggle('hidden',el.value!=='days');const form=el.closest('form');['day','start_time','end_time'].forEach(name=>form.elements[name].required=el.value==='hours');form.elements.until_date.required=el.value==='hours'&&form.elements.repeat.checked;$('osBlockDays').querySelectorAll('input').forEach(i=>i.required=el.value==='days');}
   }
-  function handleInput(event){if(!state.mounted)return;const el=event.target;if(el.matches?.('#osDialog [data-os-money-mask=whole]'))maskServicePriceInput(el);if(state.dialog?.type==='service'&&el.name==='duration_min')syncServiceDurationPresets(el.closest('form'));if(el.matches?.('input.os-color-native'))syncColorPicker(el);if(el.id==='osAgendaSearch'&&!state.busy){state.filters.agendaQuery=el.value;state.filters.agendaOffset=0;state.agendaRead=(state.agendaRead||0)+1;clearTimeout(state.agendaSearchTimer);state.agendaSearchTimer=setTimeout(()=>void applyAgendaFilters(),250);return;}if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';if(el.matches('#osSiteForm [name=slug]'))queueSiteSlugCheck(el);if(el.id==='osHelpSearch'){state.filters.helpQuery=el.value;renderHelpResults();}if(el.id==='osCustomerSearch'){state.filters.customerQuery=el.value;state.filters.customerOffset=0;state.customerRead=(state.customerRead||0)+1;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);const c=context();state.searchTimer=setTimeout(()=>loadCustomers(c).catch(ex=>{if(current(c))bodyHTML(errorHTML(ex));}),250);}if(el.id==='osResourceSearch')renderServices(el.value);if(el.id==='osBookingCustomer')filterBookingCustomers(el.value);if(state.dialog?.type==='appointment'&&el.name==='customer_phone'&&state.dialog.customerId){$('osBookingCustomerHelp').textContent='Ao confirmar, o WhatsApp informado será salvo no cadastro deste cliente.';}if(state.dialog?.type==='package'&&el.name==='price')state.dialog.priceTouched=true;
+  function handleInput(event){if(!state.mounted)return;const el=event.target;if(el.matches?.('#osDialog [data-os-money-mask=whole]'))maskServicePriceInput(el);if(state.dialog?.type==='service'&&el.name==='duration_min')syncServiceDurationPresets(el.closest('form'));if(el.matches?.('input.os-color-native'))syncColorPicker(el);if(el.id==='osAgendaSearch'&&!state.busy){state.filters.agendaQuery=el.value;state.filters.agendaOffset=0;state.agendaRead=(state.agendaRead||0)+1;clearTimeout(state.agendaSearchTimer);state.agendaSearchTimer=setTimeout(()=>void applyAgendaFilters(),250);return;}if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';if(el.closest('#osSiteForm')&&!state.busy&&siteCanEdit()&&!event.isComposing){if(el.name==='slug')queueSiteSlugCheck(el);if(el.name==='postal_code')queueSiteCepLookup(el);if(el.name==='state')el.value=el.value.toUpperCase();}if(el.id==='osHelpSearch'){state.filters.helpQuery=el.value;renderHelpResults();}if(el.id==='osCustomerSearch'){state.filters.customerQuery=el.value;state.filters.customerOffset=0;state.customerRead=(state.customerRead||0)+1;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);const c=context();state.searchTimer=setTimeout(()=>loadCustomers(c).catch(ex=>{if(current(c))bodyHTML(errorHTML(ex));}),250);}if(el.id==='osResourceSearch')renderServices(el.value);if(el.id==='osBookingCustomer')filterBookingCustomers(el.value);if(state.dialog?.type==='appointment'&&el.name==='customer_phone'&&state.dialog.customerId){$('osBookingCustomerHelp').textContent='Ao confirmar, o WhatsApp informado será salvo no cadastro deste cliente.';}if(state.dialog?.type==='package'&&el.name==='price')state.dialog.priceTouched=true;
     if(state.dialog?.type==='complete-appointment'&&el.name==='final_total')updateCompletionSummary();}
   function handleKeydown(event){if(!state.mounted)return;const serviceGrip=event.target.closest?.('[data-os-service-drag]');if(serviceGrip&&['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();void moveService(serviceGrip.dataset.osServiceDrag,event.key==='ArrowUp'?-1:1);return;}if(event.key==='Escape'){if(state.notificationsOpen){event.preventDefault();closeNotifications(true);}if($('appView').classList.contains('os-menu-open')){event.preventDefault();drawer(false);}if(!$('osThemeMenu').classList.contains('hidden')){$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');$('osThemeToggle').focus();}}
     const agendaTab=event.target.closest('[data-os-day],[data-os-agenda-mode]');
@@ -2643,7 +2757,7 @@
   function sync(bridge={}){
     const oldIdentity=state.bridge.user?.email+'|'+state.bridge.user?.role,oldTenant=state.tenantId,oldReady=state.bridge.businessContextReady,oldError=businessAccessError();state.bridge={...state.bridge,...bridge};
     state.tenantId=accountTenantId();
-    const identity=state.bridge.user?.email+'|'+state.bridge.user?.role;if(oldIdentity!==identity||oldTenant!==state.tenantId){state.epoch++;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);state.data={};state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.filters.agendaDay=dateKey();resetPeriod();closeDialog(true);}
+    const identity=state.bridge.user?.email+'|'+state.bridge.user?.role;if(oldIdentity!==identity||oldTenant!==state.tenantId){state.epoch++;state.imageUploading=false;clearSiteLookups();clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);state.data={};state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.filters.agendaDay=dateKey();resetPeriod();closeDialog(true);}
     if(!state.mounted)return;renderSidebar();if(oldIdentity!==identity||oldTenant!==state.tenantId||oldReady!==state.bridge.businessContextReady||oldError!==businessAccessError())void open(state.route,{replace:true,force:true});
   }
   async function refreshLiveRoute(){
@@ -2660,10 +2774,10 @@
   function mount(bridge){
     if(state.mounted){sync(bridge);return;}
     state.bridge=bridge||{};state.mounted=true;state.epoch++;state.load++;state.tenantId=accountTenantId();state.filters.agendaDay=dateKey();resetPeriod();
-    buildShell();clearInterval(state.liveRefreshTimer);state.liveRefreshTimer=setInterval(()=>{void refreshLiveRoute().catch(()=>{});},30000);document.addEventListener('click',handleClick);document.addEventListener('change',handleChange);document.addEventListener('input',handleInput);document.addEventListener('beforeinput',handleServicePriceBeforeInput);document.addEventListener('submit',submitForm);document.addEventListener('keydown',handleKeydown);document.addEventListener('pointerdown',handleServicePointerDown);document.addEventListener('pointermove',handleServicePointerMove);document.addEventListener('pointerup',handleServicePointerUp);document.addEventListener('pointercancel',clearServiceDrag);$('osDialog').addEventListener('cancel',onDialogCancel);
+    buildShell();clearInterval(state.liveRefreshTimer);state.liveRefreshTimer=setInterval(()=>{void refreshLiveRoute().catch(()=>{});},30000);document.addEventListener('click',handleClick);document.addEventListener('change',handleChange);document.addEventListener('input',handleInput);document.addEventListener('focusout',handleSiteFocusOut);document.addEventListener('compositionend',handleSiteCompositionEnd);document.addEventListener('beforeinput',handleServicePriceBeforeInput);document.addEventListener('submit',submitForm);document.addEventListener('keydown',handleKeydown);document.addEventListener('pointerdown',handleServicePointerDown);document.addEventListener('pointermove',handleServicePointerMove);document.addEventListener('pointerup',handleServicePointerUp);document.addEventListener('pointercancel',clearServiceDrag);$('osDialog').addEventListener('cancel',onDialogCancel);
     state.observer=new MutationObserver(()=>applyThemeState());state.observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-theme-preference']});
     const desired=bridge?.initialRoute||'dashboard';void open(appPages.has(desired)?desired:'dashboard');
   }
-  function destroy(){window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearTimeout(state.siteSlugTimer);state.siteSlugRead=(state.siteSlugRead||0)+1;closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('beforeinput',handleServicePriceBeforeInput);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
+  function destroy(){window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('beforeinput',handleServicePriceBeforeInput);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
   window.OrionSuite=Object.freeze({mount,sync,destroy,open,legacyOpened});
 })();

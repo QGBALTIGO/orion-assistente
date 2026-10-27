@@ -449,7 +449,7 @@ async def get_site_publication(tenant_id: UUID, actor: Actor = Depends(authentic
 
 
 @router.get("/site/slug-availability")
-async def get_site_slug_availability(tenant_id: UUID, slug: str = Query(min_length=1, max_length=80),
+async def get_site_slug_availability(tenant_id: UUID, slug: str = Query(min_length=1, max_length=160),
                                      actor: Actor = Depends(authenticate)):
     from app.site_publication import slug_availability
     return await slug_availability(tenant_id, actor, slug)
@@ -458,7 +458,8 @@ async def get_site_slug_availability(tenant_id: UUID, slug: str = Query(min_leng
 @router.put("/site")
 async def put_site(tenant_id: UUID, payload: SiteSave, actor: Actor = Depends(authenticate)):
     async with management_session(tenant_id, actor, write=True) as db:
-        return await data.save_site(db, tenant_id, values_from(payload), payload.expected_version)
+        return await data.save_site(db, tenant_id, values_from(payload), payload.expected_version,
+                                    provided_fields=payload.model_fields_set)
 
 
 @router.get("/marketing")

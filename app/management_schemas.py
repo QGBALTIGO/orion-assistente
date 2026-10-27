@@ -295,6 +295,10 @@ class SitePreferences(CleanModel):
     logo_url: str | None = Field(default=None, max_length=2048)
     cover_url: str | None = Field(default=None, max_length=2048)
     address: str | None = Field(default=None, max_length=500)
+    address_number: str | None = Field(default=None, max_length=30)
+    address_complement: str | None = Field(default=None, max_length=160)
+    neighborhood: str | None = Field(default=None, max_length=120)
+    address_no_number: StrictBool = False
     city: str | None = Field(default=None, max_length=120)
     state: str | None = Field(default=None, pattern=r"^[A-Z]{2}$")
     postal_code: str | None = Field(default=None, pattern=r"^[0-9]{5}-[0-9]{3}$")
@@ -315,6 +319,31 @@ class SitePreferences(CleanModel):
     amenity_children: StrictBool = False
 
     _phone = field_validator("contact_phone", "whatsapp_phone")(normalize_phone)
+
+    @field_validator("slug", mode="before")
+    @classmethod
+    def normalize_editable_slug(cls, value):
+        if value is None or isinstance(value, str) and not value.strip():
+            return None
+        if isinstance(value, str):
+            from app.site_slugs import normalize_site_slug, SLUG_INPUT_LIMIT
+            if len(value) > SLUG_INPUT_LIMIT:
+                raise ValueError("Use até 160 caracteres para definir o endereço do site")
+            return normalize_site_slug(value)
+        return value
+
+    @field_validator("address_number", "address_complement", "neighborhood", mode="before")
+    @classmethod
+    def optional_address_text(cls, value):
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+    @model_validator(mode="after")
+    def consistent_address_number(self):
+        if self.address_no_number:
+            self.address_number = None
+        return self
 
     @field_validator("state", "postal_code", mode="before")
     @classmethod

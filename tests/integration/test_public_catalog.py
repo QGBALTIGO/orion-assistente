@@ -87,7 +87,7 @@ async def public_db(monkeypatch):
         async with migrator.begin() as db:
             for table in ('public_site_publications','public_site_slugs','public_booking_receipts','public_site_daily_metrics','loyalty_redemptions','loyalty_appointment_awards','loyalty_transactions','loyalty_coupons','commission_advance_allocations','commission_settlements','financial_entries',
                           'calendar_outbox','appointment_history','appointment_items','appointments','customers',
-                          'service_package_items','service_addons','service_packages','management_site_preferences','working_breaks','working_hours','schedule_blocks','time_off','professional_services','services','professionals','usage_counters','tenant_audit','tenant_memberships'):
+                          'service_package_items','service_addons','service_packages','management_site_preferences','management_preferences','working_breaks','working_hours','schedule_blocks','time_off','professional_services','services','professionals','usage_counters','tenant_audit','tenant_memberships'):
                 if (await db.execute(text('SELECT to_regclass(:table)'),{'table':table})).scalar_one():
                     await db.execute(text(f'DELETE FROM {table} WHERE tenant_id IN (:a,:b)'),{'a':ids['a'],'b':ids['b']})
             await db.execute(text('DELETE FROM tenants WHERE id IN (:a,:b)'),{'a':ids['a'],'b':ids['b']})
