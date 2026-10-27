@@ -371,3 +371,116 @@ body{background:var(--bg);color:var(--text);min-width:0}
 @media(prefers-reduced-motion:reduce){
   .booking-body .professional-choice{transition:none}
 }
+
+/* Booking slot groups: Orion presentation of the server-confirmed available times. */
+.booking-body .booking-slots-heading{
+  margin:18px 0 10px;
+  font:700 18px/26px Outfit,Figtree,sans-serif;
+  letter-spacing:-.015em;
+  color:var(--text);
+}
+#time-slots{
+  box-sizing:border-box;min-width:0;width:100%;
+  padding-bottom:12px;
+}
+#time-slots .slots-grid{
+  box-sizing:border-box;
+  display:flex;flex-direction:column;gap:19px;
+  min-width:0;width:100%;
+}
+#time-slots .slot-period-nav{
+  display:flex;flex-wrap:wrap;align-items:center;
+  gap:7px;min-width:0;margin-bottom:0;
+}
+#time-slots .slot-period-chip{
+  display:inline-flex;justify-content:center;align-items:center;
+  min-height:36px;padding:7px 12px;
+  border:1px solid var(--border);border-radius:999px;
+  background:var(--card);color:var(--muted);
+  font:600 12px/19px Figtree,system-ui,sans-serif;
+  transition:background .15s,border-color .15s,color .15s;
+}
+#time-slots .slot-period-chip:hover{
+  color:var(--text);border-color:color-mix(in srgb,var(--primary) 45%,var(--border));
+}
+#time-slots .slot-period-chip[aria-current=location]{
+  color:var(--primary);
+  background:color-mix(in srgb,var(--primary) 9%,var(--card));
+  border-color:color-mix(in srgb,var(--primary) 45%,var(--border));
+}
+#time-slots .slot-period{
+  display:flex;flex-direction:column;min-width:0;
+  scroll-margin-block-start:16px;scroll-margin-block-end:96px;
+}
+#time-slots .slot-period-heading{
+  display:flex;align-items:center;gap:10px;
+  min-width:0;width:100%;margin-bottom:11px;
+}
+#time-slots .slot-period-title{
+  flex:0 0 auto;margin:0;color:var(--text);
+  font:650 15px/22px Outfit,Figtree,sans-serif;
+}
+#time-slots .slot-period-line{
+  height:1px;min-width:5px;flex:1 1 auto;
+  background:var(--border);
+}
+#time-slots .slot-period-count{
+  flex:0 0 auto;
+  max-width:45%;white-space:nowrap;
+  padding:4px 9px;border-radius:999px;
+  background:var(--soft);color:var(--muted);
+  font:600 11px/16px Figtree,system-ui,sans-serif;
+  font-variant-numeric:tabular-nums;
+}
+#time-slots .slot-period-grid{
+  box-sizing:border-box;
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;min-width:0;width:100%;
+}
+#time-slots .slot-period-grid>.slot{
+  box-sizing:border-box;
+  display:inline-flex;align-items:center;justify-content:center;
+  width:100%;min-width:0;min-height:47px;
+  padding:9px 5px;
+  border:1px solid var(--border);
+  border-radius:11px;
+  background:var(--card);color:var(--text);
+  font:650 14px/20px Figtree,system-ui,sans-serif;
+  font-variant-numeric:tabular-nums;
+  box-shadow:none;
+  transition:background .15s,border-color .15s,box-shadow .15s;
+}
+@media(hover:hover) and (pointer:fine){
+  #time-slots .slot-period-grid>.slot:not(:disabled):hover{
+    border-color:color-mix(in srgb,var(--primary) 55%,var(--border));
+    background:color-mix(in srgb,var(--primary) 5%,var(--card));
+  }
+}
+#time-slots .slot-period-grid>.slot[aria-pressed=true]{
+  background:var(--primary);border-color:var(--primary);
+  color:var(--primary-ink);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--primary) 28%,transparent);
+}
+#time-slots .slot-period-grid>.slot[aria-pressed=true]:hover{
+  background:var(--primary);color:var(--primary-ink);
+}
+#time-slots .slot-period-grid>.slot:focus-visible,
+#time-slots .slot-period-chip:focus-visible{
+  outline:3px solid var(--primary);outline-offset:3px;
+}
+@media(min-width:640px){
+  #time-slots .slot-period-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  #time-slots .slot-period-grid>.slot{min-height:46px;font-size:15px}
+}
+@media(min-width:900px){
+  #time-slots .slot-period-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+}
+@media(max-width:359px){
+  #time-slots .slot-period-grid{gap:7px}
+  #time-slots .slot-period-grid>.slot{min-height:45px;font-size:13px}
+  #time-slots .slot-period-heading{gap:7px}
+  #time-slots .slot-period-count{font-size:10px;padding-inline:7px}
+}
+@media(prefers-reduced-motion:reduce){
+  #time-slots .slot-period-chip,#time-slots .slot-period-grid>.slot{transition:none}
+}

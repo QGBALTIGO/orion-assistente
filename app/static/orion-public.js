@@ -540,6 +540,7 @@
     const strip = el('div', 'date-strip'); strip.id = 'booking-day-strip';
     body.append(strip, el('p', 'timezone-note',
       'Horários locais · ' + data.timezone.replaceAll('_', ' ')));
+    body.append(el('h3', 'booking-slots-heading', 'Horários disponíveis'));
     const slots = el('div'); slots.id = 'time-slots';
     slots.setAttribute('aria-live', 'polite');
     body.append(slots);
@@ -575,17 +576,54 @@
     }
   }
 
+  // The server owns availability. These buckets affect presentation only and
+  // must use the business timezone rather than the device's timezone/UTC.
+  const slotPeriods = [
+    { key: 'morning', label: 'Manhã', spoken: 'manhã' },
+    { key: 'afternoon', label: 'Tarde', spoken: 'tarde' },
+    { key: 'evening', label: 'Noite', spoken: 'noite' }
+  ];
+  function groupedAvailableSlots(slots) {
+    const unique = new Map();
+    for (const start of slots) {
+      const date = new Date(start);
+      if (Number.isFinite(date.getTime()) && !unique.has(start)) unique.set(start, date);
+    }
+    const hourFormat = new Intl.DateTimeFormat('en-GB', {
+      timeZone: data.timezone, hour: '2-digit', hourCycle: 'h23'
+    });
+    const groups = slotPeriods.map(period => ({ ...period, starts: [] }));
+    [...unique].sort((a, b) => a[1].getTime() - b[1].getTime())
+      .forEach(([start, date]) => {
+        const hour = Number(hourFormat.format(date));
+        groups[hour < 12 ? 0 : hour < 18 ? 1 : 2].starts.push(start);
+      });
+    return groups.filter(group => group.starts.length);
+  }
+
+  function updateSlotSelection(root, start) {
+    root.querySelectorAll('.slot[data-slot-start]').forEach(node => {
+      const active = node.dataset.slotStart === start;
+      if (node.getAttribute('aria-pressed') !== String(active))
+        node.setAttribute('aria-pressed', String(active));
+    });
+    const period = root.querySelector('.slot[aria-pressed="true"]')
+      ?.closest('[data-slot-period]')?.dataset.slotPeriod;
+    root.querySelectorAll('[data-slot-jump]').forEach(node => {
+      if (period && node.dataset.slotJump === period)
+        node.setAttribute('aria-current', 'location');
+      else node.removeAttribute('aria-current');
+    });
+  }
+
   function chooseSlot(start) {
     if (booking.start === start) return;
     booking.start = start;
     booking.consent = false;
     showError();
-    $('time-slots')?.querySelectorAll('.slot[data-slot-start]').forEach(node => {
-      const active = node.dataset.slotStart === start;
-      if (node.getAttribute('aria-pressed') !== String(active))
-        node.setAttribute('aria-pressed', String(active));
-    });
-    updateFooter(); // No teardown: same hour buttons remain mounted and focused.
+    const root = $('time-slots');
+    if (root) updateSlotSelection(root, start);
+    updateFooter(); // Preserve button/photo nodes and focus.
   }
 
   function renderSlots() {
@@ -623,28 +661,66 @@
       return;
     }
     slotStatus(root, null);
-    const nextTimes = booking.availability.slots;
+    const groups = groupedAvailableSlots(booking.availability.slots);
+    const nextTimes = groups.flatMap(group => group.starts);
     if (!list) {
       list = el('div', 'slots-grid');
       root.append(list);
     }
-    const current = [...list.querySelectorAll('.slot')];
-    if (current.length !== nextTimes.length ||
+    const current = [...list.querySelectorAll('.slot[data-slot-start]')];
+    if (!list.querySelector('.slot-period-nav') ||
+        current.length !== nextTimes.length ||
         current.some((node, index) => node.dataset.slotStart !== nextTimes[index])) {
-      list.replaceChildren(...nextTimes.map(start => {
-        const node = button(slotTime(start), 'slot', () => chooseSlot(start));
-        node.dataset.slotStart = start;
-        node.setAttribute('aria-pressed', String(start === booking.start));
-        return node;
-      }));
+      // Key by server timestamp. Unchanged slots keep their DOM node, handlers,
+      // and focus when the date/professional is refreshed.
+      const oldNodes = new Map(current.map(node => [node.dataset.slotStart, node]));
+      const nav = el('nav', 'slot-period-nav');
+      nav.setAttribute('aria-label', 'Ir para os períodos do dia');
+      const sections = groups.map(group => {
+        const section = el('section', 'slot-period');
+        section.dataset.slotPeriod = group.key;
+        section.id = 'slot-period-' + group.key;
+        section.setAttribute('aria-labelledby', 'slot-period-title-' + group.key);
+        const heading = el('div', 'slot-period-heading');
+        const title = el('h4', 'slot-period-title', group.label);
+        title.id = 'slot-period-title-' + group.key;
+        const line = el('span', 'slot-period-line');
+        line.setAttribute('aria-hidden', 'true');
+        const count = el('span', 'slot-period-count',
+          group.starts.length + ' ' + (group.starts.length === 1 ? 'horário' : 'horários'));
+        heading.append(title, line, count);
+        const grid = el('div', 'slot-period-grid');
+        grid.setAttribute('role', 'group');
+        grid.setAttribute('aria-label', 'Horários da ' + group.spoken);
+        grid.append(...group.starts.map(start => {
+          const existing = oldNodes.get(start);
+          if (existing) return existing;
+          const node = button(slotTime(start), 'slot', () => chooseSlot(start));
+          node.dataset.slotStart = start;
+          node.setAttribute('aria-pressed', String(start === booking.start));
+          return node;
+        }));
+        section.append(heading, grid);
+
+        const jump = button(group.label, 'slot-period-chip', () => {
+          nav.querySelectorAll('[data-slot-jump]').forEach(node =>
+            node.removeAttribute('aria-current'));
+          jump.setAttribute('aria-current', 'location');
+          const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+          section.scrollIntoView({
+            behavior: reduced ? 'auto' : 'smooth', block: 'start'
+          });
+        });
+        jump.dataset.slotJump = group.key;
+        jump.setAttribute('aria-label', 'Ir para os horários da ' + group.spoken);
+        nav.append(jump);
+        return section;
+      });
+      list.replaceChildren(nav, ...sections);
     }
     list.classList.remove('slots-grid-pending');
-    list.querySelectorAll('.slot').forEach(node => {
-      node.disabled = false;
-      const active = node.dataset.slotStart === booking.start;
-      if (node.getAttribute('aria-pressed') !== String(active))
-        node.setAttribute('aria-pressed', String(active));
-    });
+    list.querySelectorAll('.slot').forEach(node => { node.disabled = false; });
+    updateSlotSelection(list, booking.start);
   }
 
   async function loadAvailability() {
