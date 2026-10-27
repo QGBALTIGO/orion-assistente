@@ -17,6 +17,7 @@ from sqlalchemy import text
 from app.catalog_api import audit
 from app.management_schemas import MAX_REPORT_DAYS, SitePreferences
 from app.customer_names import display_customer
+from app import site_branding
 
 WRITE_FIELDS = {
     "customers": frozenset({"name", "whatsapp_e164", "instagram", "neighborhood", "city", "email", "birth_date", "birth_month", "birth_day", "notes", "active", "deleted_at"}),
@@ -761,6 +762,7 @@ async def site(db, tenant_id):
                            {"tenant": tenant_id})).mappings().one_or_none()
     result = clean_row(row) if row else {**SitePreferences().model_dump(), "version": 0}
     result.update(await read_address_fields(db, tenant_id))
+    result["hide_orion_brand"] = site_branding.effective_hide_orion_brand(result.get("hide_orion_brand"))
     snapshot = result.pop("public_snapshot", None)
     published = bool(result.get("public_enabled", False))
     draft = {field: result.get(field) for field in PUBLIC_FIELDS}
@@ -768,6 +770,7 @@ async def site(db, tenant_id):
     # and must not appear as artificial pending draft changes after migration.
     if isinstance(snapshot, dict):
         snapshot = dict(snapshot)
+        snapshot["hide_orion_brand"] = site_branding.effective_hide_orion_brand(snapshot.get("hide_orion_brand"))
         for key in ("amenity_wifi", "amenity_parking", "amenity_accessibility", "amenity_children"):
             snapshot.setdefault(key, False)
         for key, default in ADDRESS_DEFAULTS.items():
@@ -779,6 +782,7 @@ async def site(db, tenant_id):
         current_catalogue = await catalogue(db, tenant_id, preview=True)
         has_changes = visual_catalogue_fingerprint(current_catalogue) != visual_catalogue_fingerprint(snapshot["_catalogue"])
     return {**result, "published": published, "public_enabled": published,
+            "hide_orion_brand_locked": site_branding.ORION_BRAND_HIDING_LOCKED,
             "public_url": f"/s/{result['public_slug']}" if published and result.get("public_slug") else None,
             "preview_url": f"/app/site-preview/{tenant_id}",
             "has_unpublished_changes": has_changes}
@@ -799,6 +803,11 @@ async def save_site(db, tenant_id, values, expected_version, *, provided_fields=
     await enable_publication_writer(db)
     await reserve_slug(db, tenant_id, values["slug"])
     columns = [name for name in values if name not in ADDRESS_FIELDS]
+    # Tolerate cached clients sending the old toggle without changing the saved
+    # choice. New rows use the existing false default; reads apply the lock even
+    # to older drafts and published snapshots that stored true.
+    if site_branding.ORION_BRAND_HIDING_LOCKED:
+        columns.remove("hide_orion_brand")
     if expected_version == 0:
         row = (await db.execute(text("INSERT INTO management_site_preferences (tenant_id," + ",".join(columns) +
             ") VALUES (:tenant," + ",".join(":"+name for name in columns) + ") ON CONFLICT (tenant_id) DO NOTHING RETURNING *"),

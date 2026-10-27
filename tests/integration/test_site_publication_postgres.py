@@ -15,6 +15,65 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.mark.asyncio
+async def test_locked_branding_ignores_old_client_toggle_without_blocking_other_edits(public_db):
+    d = public_db; c = d["client"]; base = d["base"]
+    initial = await save_site(d, hide_orion_brand=True)
+    assert initial["hide_orion_brand"] is False and initial["hide_orion_brand_locked"] is True
+    for role in ("owner", "editor", "support"):
+        current = (await c.get(base + "/site", headers={"x-test-role": role})).json()
+        result = await c.put(base + "/site", headers={"x-test-role": role}, json={
+            "expected_version": current["version"], "slug": d["slug"],
+            "title": "Edição permitida " + role, "hide_orion_brand": True,
+        })
+        assert result.status_code == 200, result.text
+        assert result.json()["title"] == "Edição permitida " + role
+        assert result.json()["hide_orion_brand"] is False
+        assert result.json()["hide_orion_brand_locked"] is True
+    async with d["migrator"].connect() as db:
+        stored = (await db.execute(text("SELECT hide_orion_brand FROM management_site_preferences WHERE tenant_id=:tenant"),
+                                   {"tenant": d["a"]})).scalar_one()
+        assert stored is False
+    await publish(d)
+    assert (await c.get(d["public"])).json()["site"]["hide_orion_brand"] is False
+
+
+@pytest.mark.asyncio
+async def test_locked_branding_preserves_legacy_choices_and_restores_with_credit_visible(public_db):
+    d = public_db; c = d["client"]; base = d["base"]
+    await publish(d)
+    # Model an existing installation without erasing the choice during rollout.
+    async with d["migrator"].begin() as db:
+        await db.execute(text("UPDATE management_site_preferences SET hide_orion_brand=true WHERE tenant_id=:tenant"),
+                         {"tenant": d["a"]})
+    current = (await c.get(base + "/site")).json()
+    assert current["hide_orion_brand"] is False and current["has_unpublished_changes"] is False
+    async with d["migrator"].begin() as db:
+        await db.execute(text("""UPDATE management_site_preferences
+            SET public_snapshot=jsonb_set(public_snapshot,'{hide_orion_brand}','true'::jsonb)
+            WHERE tenant_id=:tenant"""), {"tenant": d["a"]})
+    for path in (base + "/site/preview", d["public"]):
+        assert (await c.get(path)).json()["site"]["hide_orion_brand"] is False
+    for supplied in (False, True):
+        saved = await save_site(d, hide_orion_brand=supplied)
+        assert saved["hide_orion_brand"] is False and saved["has_unpublished_changes"] is False
+    disabled = await c.post(base + "/site/publication", json={"expected_version": saved["version"], "enabled": False})
+    assert disabled.status_code == 200, disabled.text
+    restored = await c.post(base + "/site/publication", json={
+        "expected_version": disabled.json()["version"], "enabled": True, "restore_previous": True,
+    })
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["has_unpublished_changes"] is False
+    assert (await c.get(d["public"])).json()["site"]["hide_orion_brand"] is False
+    async with d["migrator"].connect() as db:
+        stored = (await db.execute(text("""SELECT hide_orion_brand,public_snapshot FROM management_site_preferences
+            WHERE tenant_id=:tenant"""), {"tenant": d["a"]})).mappings().one()
+        restored_snapshot = (await db.execute(text("""SELECT snapshot FROM public_site_publications
+            WHERE tenant_id=:tenant AND action='restore'"""), {"tenant": d["a"]})).scalar_one()
+        assert stored["hide_orion_brand"] is True and stored["public_snapshot"]["hide_orion_brand"] is True
+        assert restored_snapshot["hide_orion_brand"] is True
+
+
+@pytest.mark.asyncio
 async def test_owner_publication_status_history_and_restore_preserve_private_draft(public_db):
     d = public_db; c = d["client"]; base = d["base"]
     initial = (await c.get(base + "/site/publication")).json()

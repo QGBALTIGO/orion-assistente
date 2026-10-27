@@ -114,16 +114,22 @@ test('an unavailable administrator identity offers a read refresh instead of a l
   assert.equal(confirmations,0);assert.equal(writes(h).length,0);
 });
 
-test('server capabilities govern editing and publishing for owners, editors, readers and support',async t=>{
+test('server capabilities govern editing and publishing while footer hiding stays locked for every role',async t=>{
   for(const [role,userRole,canEdit,canPublish] of [['owner','member',true,true],['owner','admin',true,true],['editor','member',true,false],['editor','member',true,true],['viewer','member',false,false],['owner','support',false,false]]){
     await t.test(`${role}/${userRole}/${canEdit}/${canPublish}`,async t=>{
-      const {h}=await setup(t,{role,userRole,status:publication({can_edit:canEdit,can_publish:canPublish})});
+      const {h}=await setup(t,{role,userRole,data:site({hide_orion_brand:true}),status:publication({can_edit:canEdit,can_publish:canPublish})});
       assert.equal(!!h.document.querySelector('[data-os-action=publish-site]'),canPublish);
       h.click('[data-os-site-tab=settings]');
       assert.equal(h.document.querySelector('#osSiteForm [name=title]').matches(':disabled'),!canEdit);
+      const footerLock=h.document.querySelector('#osSiteForm .os-site-brand-lock');
+      assert.ok(footerLock?.disabled,'even an owner/admin cannot hide the footer during the global lock');
+      assert.ok(footerLock.getAttribute('aria-label'),'the disabled icon has an accessible name');
+      assert.equal(h.document.querySelector('#osSiteForm [name=hide_orion_brand]'),null,'legacy true preferences cannot restore an editable switch');
+      footerLock.click();await flush();
       if(!canPublish){const forged=h.document.createElement('button');forged.dataset.osAction='publish-site';h.document.body.append(forged);forged.click();assert.equal(h.document.querySelector('[data-os-form=site-publication]'),null);}
       if(!canEdit){h.submit('#osSiteForm');await flush();}
       assert.equal(writes(h).length,0);
+      assert.equal(h.errors.length,0);
     });
   }
 });
@@ -225,14 +231,18 @@ test('dirty settings cannot publish or be silently discarded by switching tabs',
   assert.match(toast(h),/Salve as configurações/);assert.equal(writes(h).length,0);
 });
 
-test('saving settings writes only the draft and does not publish it automatically',async t=>{
-  const {h}=await setup(t,{respond:(path,method,payload,server)=>{
+test('saving settings writes only the draft and leaves the temporarily locked footer preference untouched',async t=>{
+  const {h,server}=await setup(t,{data:site({hide_orion_brand:true}),respond:(path,method,payload,server)=>{
     if(path===prefix&&method==='PUT'){server.data={...server.data,...payload,version:5};server.status=publication({draft_version:5,state:'draft_saved'});return server.data;}
   }});
   h.click('[data-os-site-tab=settings]');h.fill('#osSiteForm [name=title]','Novo rascunho');h.submit('#osSiteForm');await flush();
   assert.equal(writes(h).length,1);assert.equal(writes(h)[0].path,prefix);assert.equal(writes(h)[0].method,'PUT');
+  assert.equal(Object.hasOwn(writes(h)[0].data,'hide_orion_brand'),false,'saving other fields never overwrites the stored preference');
+  assert.equal(server.data.hide_orion_brand,true);
   assert.equal(h.document.getElementById('osSitePublicationState').textContent,'Rascunho salvo');
   assert.equal(h.document.querySelector('#osSiteForm [name=title]').value,'Novo rascunho');
+  assert.equal(h.document.querySelector('#osSiteForm .os-site-brand-lock').disabled,true);
+  assert.equal(h.errors.length,0);
 });
 
 test('a version mismatch between draft and status blocks publication until both are refreshed',async t=>{

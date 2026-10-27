@@ -34,6 +34,7 @@ from app.service_packages_api import selection_contract, ensure_selection_servic
 from app.tenant_access import resolve_tenant_access
 from app.public_site_rendering import project_catalogue_visuals, public_html, published_booking_labels
 from app.site_address import address_fields, address_display, read_address_fields
+from app.site_branding import effective_hide_orion_brand
 
 router=APIRouter(tags=["Site público"])
 UTC=timezone.utc
@@ -331,6 +332,7 @@ async def catalogue(db,tenant,*,preview=False):
     if preview:
         source = {**(source or {}), **await read_address_fields(db, tenant)}
     preference={key:source.get(key) for key in PUBLIC_FIELDS} if source else {key:None for key in PUBLIC_FIELDS}
+    preference['hide_orion_brand'] = effective_hide_orion_brand(preference.get('hide_orion_brand'))
     preference.update(address_fields(preference))
     preference['address_display'] = address_display(preference)
     preference.update(title=preference['title'] or shop['name'],theme_color=preference['theme_color'] or '#2e7bf6',
