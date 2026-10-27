@@ -68,6 +68,11 @@ class CustomerFields(CleanModel):
 
     @model_validator(mode='after')
     def birthday_pair(self):
+        # A complete date is canonical; day/month remain compatible with older
+        # readers and contacts that never supplied a year.
+        if self.birth_date is not None:
+            self.birth_month = self.birth_date.month
+            self.birth_day = self.birth_date.day
         if (self.birth_month is None)!=(self.birth_day is None):raise ValueError('Informe dia e mês juntos')
         if self.birth_month is not None:date(2000,self.birth_month,self.birth_day)
         return self
@@ -114,6 +119,11 @@ class CustomerPatch(VersionedOperation):
 
     @model_validator(mode="after")
     def required_values(self):
+        if "birth_date" in self.model_fields_set:
+            # Assignment deliberately adds the derived fields to fields_set so
+            # a partial update also persists them (or clears the entire date).
+            self.birth_month = self.birth_date.month if self.birth_date else None
+            self.birth_day = self.birth_date.day if self.birth_date else None
         for field in ("name", "active"):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError(f"{field} não pode ser nulo")

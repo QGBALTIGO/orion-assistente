@@ -212,11 +212,15 @@ async def store_public_birth_date(db,tenant,appointment_id,birth_date):
         return
     await db.execute(text("""
         UPDATE customers AS c
-        SET birth_date=:birth_date,version=c.version+1,updated_at=now()
-        WHERE c.tenant_id=:tenant AND c.birth_date IS NULL
+        SET birth_date=:birth_date,birth_month=:birth_month,birth_day=:birth_day,
+            version=c.version+1,updated_at=now()
+        WHERE c.tenant_id=:tenant AND c.birth_date IS NULL AND c.deleted_at IS NULL
+          AND ((c.birth_month IS NULL AND c.birth_day IS NULL)
+               OR (c.birth_month=:birth_month AND c.birth_day=:birth_day))
           AND c.id=(SELECT a.customer_id FROM appointments a
-                    WHERE a.tenant_id=:tenant AND a.id=:appointment_id)
-    """),{'tenant':tenant,'appointment_id':appointment_id,'birth_date':birth_date})
+                    WHERE a.tenant_id=:tenant AND a.id=:appointment_id AND a.status='confirmed')
+    """),{'tenant':tenant,'appointment_id':appointment_id,'birth_date':birth_date,
+           'birth_month':birth_date.month,'birth_day':birth_date.day})
 
 
 async def confirmed_public_replay(db,tenant,quote,payload):

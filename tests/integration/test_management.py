@@ -357,6 +357,48 @@ async def test_point_ledger_serializes_redemptions_and_prevents_duplicate_credit
 
 
 @pytest.mark.asyncio
+async def test_customer_birth_date_drives_birthday_filters_and_clears_as_one_value(management_db):
+    d = management_db
+    birth = d["now"].astimezone(ZoneInfo("America/Sao_Paulo")).date().replace(year=2000)
+    alternate = birth.replace(month=(birth.month + 5) % 12 + 1, day=1)
+    person = await customer(d, birth_date=birth.isoformat())
+    assert (person["birth_month"], person["birth_day"]) == (birth.month, birth.day)
+    partial = await customer(d, name="Aniversário sem ano", birth_month=birth.month, birth_day=birth.day)
+    await customer(d, other=True, birth_date=birth.isoformat())
+    # A pre-existing stale day/month pair must not hide the canonical DOB.
+    async with d["migrator"].begin() as db:
+        await db.execute(text("UPDATE customers SET birth_month=:month,birth_day=:day WHERE tenant_id=:tenant AND id=:id"),
+                         {"tenant": d["a"], "id": UUID(person["id"]), "month": alternate.month, "day": alternate.day})
+    async def filtered(**params):
+        response = await d["client"].get(d["base"] + "/customers", params=params)
+        assert response.status_code == 200, response.text
+        return {item["id"] for item in response.json()["items"]}
+    assert await filtered(status="birthday") == {person["id"], partial["id"]}
+    assert await filtered(birthday_month=birth.month) == {person["id"], partial["id"]}
+    assert await filtered(birthday_month=alternate.month) == set()
+    changed = await d["client"].patch(d["base"] + "/customers/" + person["id"],
+        json={"expected_version": 1, "birth_date": alternate.isoformat()})
+    assert changed.status_code == 200, changed.text
+    assert (changed.json()["birth_month"], changed.json()["birth_day"]) == (alternate.month, alternate.day)
+    assert await filtered(status="birthday") == {partial["id"]}
+    cleared = await d["client"].patch(d["base"] + "/customers/" + person["id"],
+        json={"expected_version": changed.json()["version"], "birth_date": None})
+    assert cleared.status_code == 200, cleared.text
+    assert all(cleared.json()[key] is None for key in ("birth_date", "birth_month", "birth_day"))
+    assert await filtered(birthday_month=alternate.month) == set()
+    preserved = await d["client"].patch(d["base"] + "/customers/" + partial["id"],
+        json={"expected_version": 1, "notes": "Outro dado atualizado"})
+    assert preserved.status_code == 200, preserved.text
+    assert preserved.json()["birth_date"] is None
+    assert (preserved.json()["birth_month"], preserved.json()["birth_day"]) == (birth.month, birth.day)
+    removed = await d["client"].patch(d["base"] + "/customers/" + partial["id"],
+        json={"expected_version": preserved.json()["version"], "birth_date": None})
+    assert removed.status_code == 200, removed.text
+    assert all(removed.json()[key] is None for key in ("birth_date", "birth_month", "birth_day"))
+    assert await filtered(birthday_month=birth.month) == set()
+
+
+@pytest.mark.asyncio
 async def test_risk_birthday_filters_goals_and_drafts_use_persisted_data(management_db):
     d = management_db
     person = await customer(d, name="Cliente em risco", birth_date=d["now"].astimezone(ZoneInfo("America/Sao_Paulo")).replace(year=2000).date().isoformat())

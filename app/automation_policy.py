@@ -27,7 +27,7 @@ def unavailable_requested(preferences):
 AUDIENCE_SQL = {
     "all_active": "true",
     "inactive_customers": "(SELECT max(a.start_at) FROM appointments a WHERE a.tenant_id=c.tenant_id AND a.customer_id=c.id AND a.status='completed') < now()-interval '60 days' AND NOT EXISTS(SELECT 1 FROM appointments f WHERE f.tenant_id=c.tenant_id AND f.customer_id=c.id AND f.status='confirmed' AND f.start_at>now())",
-    "birthday_month": "coalesce(c.birth_month,EXTRACT(MONTH FROM c.birth_date))=EXTRACT(MONTH FROM now() AT TIME ZONE t.timezone)",
+    "birthday_month": "coalesce(EXTRACT(MONTH FROM c.birth_date),c.birth_month)=EXTRACT(MONTH FROM now() AT TIME ZONE t.timezone)",
     "new_customers": "c.created_at>now()-interval '30 days'",
 }
 
@@ -148,7 +148,7 @@ def schedule_for(event, facts, now, tz_name, recovery_days=60, policy=None):
         expiry = due + timedelta(days=1)
     elif event in {"birthday_7d", "birthday_2d"}:
         birthday = facts.get("birth_date")
-        if facts.get('birth_month') and facts.get('birth_day'):
+        if not birthday and facts.get('birth_month') and facts.get('birth_day'):
             from datetime import date
             try:birthday=date(2000,facts['birth_month'],facts['birth_day'])
             except (ValueError,TypeError):return None
@@ -194,7 +194,8 @@ def schedule_explanation(event,facts,now,tz_name,*,policy=None,recovery_days=60,
             due=facts['start_at']-timedelta(hours=hours)
             expiry=min(due+timedelta(minutes=15),facts['start_at'])
             return None,'expired' if now>=expiry else 'quiet_window_expired'
-    if event.startswith('birthday_') and ((facts.get('birth_month'),facts.get('birth_day'))==(2,29)
-            or facts.get('birth_date') and (facts['birth_date'].month,facts['birth_date'].day)==(2,29)):
-        return None,'birthday_calendar_policy'
+    if event.startswith('birthday_'):
+        birthday=facts.get('birth_date')
+        birthday_pair=(birthday.month,birthday.day) if birthday else (facts.get('birth_month'),facts.get('birth_day'))
+        if birthday_pair==(2,29):return None,'birthday_calendar_policy'
     return None,'not_eligible_or_not_due'
