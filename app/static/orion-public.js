@@ -89,10 +89,11 @@
       row.append(name,times);return row;
     }));
   }
+  function siteAddressLine(site){return site.address_display||site.address;}
   function mapDestination(site){
-    const address=[site.title,site.address,site.city,site.state,site.postal_code,'Brasil']
+    const address=[site.title,siteAddressLine(site),site.city,site.state,site.postal_code,'Brasil']
       .filter(v=>typeof v==='string'&&v.trim()).map(v=>v.trim()).join(', ');
-    const hasAddress=[site.address,site.city,site.postal_code].some(v=>typeof v==='string'&&v.trim());
+    const hasAddress=[siteAddressLine(site),site.city,site.postal_code].some(v=>typeof v==='string'&&v.trim());
     let precise=null,placeId=null;
     const knownURL=safeHTTPS(site.maps_url);
     if(knownURL)try{
@@ -137,7 +138,7 @@
     return {route:route.href,embed:embed.href};
   }
   function renderLocation(site){
-    const address=[site.address,[site.city,site.state].filter(Boolean).join(' — '),site.postal_code]
+    const address=[siteAddressLine(site),[site.city,site.state].filter(Boolean).join(' — '),site.postal_code]
       .filter(Boolean).join('\n');
     const where=$('address-card'),box=$('map-preview'),frame=$('location-map'),target=mapDestination(site);
     $('full-address').textContent=address;
@@ -274,7 +275,7 @@
     const cover = safeImageURL(site.cover_url); if (cover) { const image = el('img'); image.src = cover; image.alt = ''; image.referrerPolicy = 'no-referrer'; image.style.width = '100%'; image.style.height = '100%'; $('cover').replaceChildren(image); }
     picture($('site-logo'), site.logo_url, initials(site.title));
     $('site-title').textContent = site.title; $('footer-title').textContent = site.title;
-    $('hero-address').textContent = [site.address, site.city].filter(Boolean).join(' · ');
+    $('hero-address').textContent = [siteAddressLine(site), site.city].filter(Boolean).join(' · ');
     $('hero-address').hidden = !$('hero-address').textContent;
     $('about-text').textContent = site.description || '';
     $('about-card').hidden = !site.description;
@@ -955,7 +956,7 @@
     const result = booking.result; if (!result) return;
     const escape = value => String(value || '').replaceAll('\\', '\\\\').replaceAll('\n', '\\n').replaceAll(';', '\\;').replaceAll(',', '\\,').replaceAll('\r', '');
     const stamp = value => new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Orion//Agendamento//PT-BR', 'BEGIN:VEVENT', `UID:${escape(result.protocol)}-${stamp(result.start_at)}@orion.invalid`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(result.start_at)}`, `DTEND:${stamp(result.end_at)}`, `SUMMARY:${escape(data.site.title)} — ${escape(result.services.join(' + '))}`, `DESCRIPTION:Protocolo ${escape(result.protocol)}. Profissional: ${escape(result.professional)}.`, `LOCATION:${escape([data.site.address, data.site.city, data.site.state].filter(Boolean).join(', '))}`, 'END:VEVENT', 'END:VCALENDAR'];
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Orion//Agendamento//PT-BR', 'BEGIN:VEVENT', `UID:${escape(result.protocol)}-${stamp(result.start_at)}@orion.invalid`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(result.start_at)}`, `DTEND:${stamp(result.end_at)}`, `SUMMARY:${escape(data.site.title)} — ${escape(result.services.join(' + '))}`, `DESCRIPTION:Protocolo ${escape(result.protocol)}. Profissional: ${escape(result.professional)}.`, `LOCATION:${escape([siteAddressLine(data.site), data.site.city, data.site.state].filter(Boolean).join(', '))}`, 'END:VEVENT', 'END:VCALENDAR'];
     const url = URL.createObjectURL(new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/calendar;charset=utf-8' })); const anchor = el('a'); anchor.href = url; anchor.download = 'agendamento.ics'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 

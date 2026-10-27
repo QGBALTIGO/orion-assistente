@@ -90,6 +90,33 @@ test('mapa incorporado e botões de rota levam ao mesmo destino no Google Maps',
   assert.equal(h.errors.length,0);
 });
 
+test('endereço publicado completo aparece no cartão, destaque e destino do Maps',async t=>{
+  const data=catalogue();
+  data.site.address='Praça da Sé';
+  data.site.address_display='Praça da Sé, 12-A — Sala 2 — Sé';
+  const h=await fixture(t,data);
+  assert.match(h.document.getElementById('full-address').textContent,/Praça da Sé, 12-A — Sala 2 — Sé/);
+  assert.match(h.document.getElementById('hero-address').textContent,/Praça da Sé, 12-A — Sala 2 — Sé/);
+  const destination=new URL(h.document.getElementById('maps-link').href).searchParams.get('destination');
+  assert.ok(destination.includes(data.site.address_display));
+  assert.equal(new URL(h.document.getElementById('location-map').src).searchParams.get('q'),destination);
+  assert.equal(h.errors.length,0);
+});
+
+test('sem número é exibido explicitamente e o endereço legado continua utilizável',async t=>{
+  const data=catalogue();
+  data.site.address='Estrada Rural';
+  data.site.address_display='Estrada Rural, s/n — Bairro Novo';
+  const h=await fixture(t,data);
+  assert.match(h.document.getElementById('full-address').textContent,/Estrada Rural, s\/n — Bairro Novo/);
+  assert.match(new URL(h.document.getElementById('maps-link').href).searchParams.get('destination'),/s\/n/);
+  const old=catalogue();old.site.address='Rua Antiga, 42 - fundos';
+  delete old.site.address_display;
+  const legacy=await fixture(t,old);
+  assert.match(legacy.document.getElementById('full-address').textContent,/Rua Antiga, 42 - fundos/);
+  assert.match(new URL(legacy.document.getElementById('maps-link').href).searchParams.get('destination'),/Rua Antiga, 42 - fundos/);
+});
+
 test('mapas têm destino estável usando coordenadas do próprio link Google Maps',async t=>{
   const data=catalogue();
   data.site.maps_url='https://www.google.com/maps/place/Sintetico/@-16.7153,-43.8613,17z/data=!3d-16.71458!4d-43.86438';

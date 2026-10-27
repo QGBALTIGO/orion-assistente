@@ -1553,7 +1553,18 @@ html:has(.os-professional-history[open]){overflow:hidden}
 .os-site-save p{font-size:11px;line-height:17px;max-width:350px}
 .os-site-slug-status{margin-top:8px;min-height:20px}
 .os-site-slug-status[data-status=unavailable]{color:var(--os-danger)}
+.os-site-slug-status[data-status=invalid]{color:var(--os-danger)}
 .os-site-slug-status[data-status=available]{color:var(--os-success)}
+.os-site-slug-preview{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:12px;font-size:12px;line-height:20px;color:var(--os-muted)}
+.os-site-slug-preview strong{color:var(--os-text);font-weight:500;overflow-wrap:anywhere;min-width:0}
+.os-site-slug-suggestions{margin-top:12px}
+.os-site-slug-suggestions>.os-actions{gap:8px;margin-top:8px}
+.os-site-slug-suggestions .os-button{max-width:100%;overflow-wrap:anywhere;white-space:normal;text-align:left}
+.os-site-cep-status{margin-top:8px;min-height:20px}
+.os-site-cep-status[data-status=found]{color:var(--os-success)}
+.os-site-number-field>.os-check{padding:10px 0 0;font-size:12px}
+.os-site-location [data-os-action=site-cep-retry]{margin-top:4px}
+.os-site-location [data-os-action=site-cep-retry][hidden]{display:none}
 .os-site-metrics-error{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px}
 .os-site-metrics-error p{font-size:13px;line-height:21px;max-width:540px}
 .os-plan-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}

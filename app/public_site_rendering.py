@@ -11,6 +11,7 @@ import json
 import os
 import re
 from urllib.parse import urlsplit
+from app.site_address import address_display
 
 SERVICE_VISUAL_FIELDS = ('name', 'description', 'category', 'color', 'image_url', 'sort_order', 'featured', 'catalog_kind')
 PROFESSIONAL_VISUAL_FIELDS = ('name', 'specialty', 'color', 'image_url')
@@ -121,8 +122,10 @@ def public_html(template, preference, slug):
     structured = {'@context': 'https://schema.org', '@type': 'LocalBusiness',
                   'name': title, 'description': description, 'url': canonical}
     address = {target: preference.get(source) for target, source in
-               (('streetAddress', 'address'), ('addressLocality', 'city'),
+               (('addressLocality', 'city'),
                 ('addressRegion', 'state'), ('postalCode', 'postal_code')) if preference.get(source)}
+    if street := address_display(preference):
+        address['streetAddress'] = street
     if address:
         structured['address'] = {'@type': 'PostalAddress', **address}
     phone = preference.get('contact_phone')

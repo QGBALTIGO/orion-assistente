@@ -33,11 +33,13 @@ from app.panel_auth import _redis, _same_origin
 from app.service_packages_api import selection_contract, ensure_selection_service, digest
 from app.tenant_access import resolve_tenant_access
 from app.public_site_rendering import project_catalogue_visuals, public_html, published_booking_labels
+from app.site_address import address_fields, address_display, read_address_fields
 
 router=APIRouter(tags=["Site público"])
 UTC=timezone.utc
 STATIC=Path(__file__).parent/'static'
 PUBLIC_FIELDS=('title','description','slug','theme_color','logo_url','cover_url','address','city','state','postal_code',
+               'address_number','address_complement','neighborhood','address_no_number',
                'contact_phone','whatsapp_phone','instagram_url','maps_url','facebook_url','tiktok_url','external_url',
                'hide_orion_brand','show_prices',
                'amenity_wifi','amenity_parking','amenity_accessibility','amenity_children')
@@ -326,7 +328,11 @@ async def catalogue(db,tenant,*,preview=False):
     site=(await db.execute(text('SELECT * FROM management_site_preferences WHERE tenant_id=:tenant'),{'tenant':tenant})).mappings().one_or_none()
     shop=(await db.execute(text('SELECT name,timezone,booking_horizon_days FROM tenants WHERE id=:tenant'),{'tenant':tenant})).mappings().one()
     source = site if preview else ((site or {}).get('public_snapshot') or {})
+    if preview:
+        source = {**(source or {}), **await read_address_fields(db, tenant)}
     preference={key:source.get(key) for key in PUBLIC_FIELDS} if source else {key:None for key in PUBLIC_FIELDS}
+    preference.update(address_fields(preference))
+    preference['address_display'] = address_display(preference)
     preference.update(title=preference['title'] or shop['name'],theme_color=preference['theme_color'] or '#2e7bf6',
                       show_prices=True if preference['show_prices'] is None else preference['show_prices'])
     for key in ('amenity_wifi','amenity_parking','amenity_accessibility','amenity_children'):

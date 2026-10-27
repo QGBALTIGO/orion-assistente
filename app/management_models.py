@@ -756,17 +756,22 @@ async def site(db, tenant_id):
     # This local import avoids the public router's management-session dependency
     # forming an import cycle. Both endpoints use the same approved whitelist.
     from app.public_site_api import PUBLIC_FIELDS
+    from app.site_address import ADDRESS_DEFAULTS, read_address_fields
     row = (await db.execute(text("SELECT * FROM management_site_preferences WHERE tenant_id=:tenant"),
                            {"tenant": tenant_id})).mappings().one_or_none()
     result = clean_row(row) if row else {**SitePreferences().model_dump(), "version": 0}
+    result.update(await read_address_fields(db, tenant_id))
     snapshot = result.pop("public_snapshot", None)
     published = bool(result.get("public_enabled", False))
     draft = {field: result.get(field) for field in PUBLIC_FIELDS}
     # Old published snapshots predate amenities; missing flags mean "disabled"
     # and must not appear as artificial pending draft changes after migration.
     if isinstance(snapshot, dict):
+        snapshot = dict(snapshot)
         for key in ("amenity_wifi", "amenity_parking", "amenity_accessibility", "amenity_children"):
             snapshot.setdefault(key, False)
+        for key, default in ADDRESS_DEFAULTS.items():
+            snapshot.setdefault(key, default)
     has_changes = bool(snapshot and draft != {field: snapshot.get(field) for field in PUBLIC_FIELDS})
     if snapshot and snapshot.get("_catalogue") is not None and not has_changes:
         from app.public_site_api import catalogue
@@ -779,14 +784,21 @@ async def site(db, tenant_id):
             "has_unpublished_changes": has_changes}
 
 
-async def save_site(db, tenant_id, values, expected_version):
+async def save_site(db, tenant_id, values, expected_version, *, provided_fields=None):
     from app.site_publication import reserve_slug, release_unused_drafts, enable_publication_writer
+    from app.site_address import ADDRESS_FIELDS, merge_address_fields, read_address_fields, save_address_fields
     allowed = set(SitePreferences.model_fields)
     if set(values) != allowed:
         raise ValueError("Incomplete site preference values")
+    current = (await db.execute(text("SELECT version FROM management_site_preferences WHERE tenant_id=:tenant FOR UPDATE"),
+                                {"tenant": tenant_id})).scalar_one_or_none()
+    if (current or 0) != expected_version:
+        raise HTTPException(409, "As preferências foram alteradas. Atualize antes de salvar")
+    previous_address = await read_address_fields(db, tenant_id)
+    next_address = merge_address_fields(previous_address, values, provided_fields if provided_fields is not None else allowed)
     await enable_publication_writer(db)
     await reserve_slug(db, tenant_id, values["slug"])
-    columns = list(values)
+    columns = [name for name in values if name not in ADDRESS_FIELDS]
     if expected_version == 0:
         row = (await db.execute(text("INSERT INTO management_site_preferences (tenant_id," + ",".join(columns) +
             ") VALUES (:tenant," + ",".join(":"+name for name in columns) + ") ON CONFLICT (tenant_id) DO NOTHING RETURNING *"),
@@ -797,6 +809,8 @@ async def save_site(db, tenant_id, values, expected_version):
             {"tenant": tenant_id, "expected": expected_version, **values})).mappings().one_or_none()
     if row is None:
         raise HTTPException(409, "As preferências foram alteradas. Atualize antes de salvar")
+    if next_address != previous_address:
+        await save_address_fields(db, tenant_id, next_address)
     await release_unused_drafts(db, tenant_id, values["slug"])
     await audit(db, tenant_id, "site_preferences_saved", "management_site_preferences", tenant_id)
     return await site(db, tenant_id)
