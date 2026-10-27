@@ -135,7 +135,7 @@ function harness(){
     location:{search:"",hostname:"localhost",protocol:"https:"},
     navigator:{clipboard:{writeText:async x=>copied.push(x)}},
     Option:class{constructor(label,value){this.label=label;this.value=value}},
-    URLSearchParams,Date:FakeDate,Number,Intl,Math,Object,Array,String,RegExp,Set,Map,JSON,
+    AbortController,URLSearchParams,Date:FakeDate,Number,Intl,Math,Object,Array,String,RegExp,Set,Map,JSON,
     clearInterval(){},clearTimeout(){},
     setInterval(fn,ms){if(ms===1000)timerCallback=fn;return 1},
     setTimeout(){return 1},

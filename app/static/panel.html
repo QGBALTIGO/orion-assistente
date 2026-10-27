@@ -25,6 +25,14 @@ a{color:var(--bright)}h1,h2,h3,p{margin-top:0}
 h1{font-size:clamp(1.8rem,3.8vw,2.65rem);line-height:1.14;letter-spacing:-.035em;margin-bottom:9px}h2{font-size:1.23rem;letter-spacing:-.015em}h3{font-size:1rem}
 p{color:var(--muted)}small{color:var(--muted);font-size:.77rem}
 .hidden{display:none!important}
+/* Keep the first paint neutral until the server has checked the saved session. */
+#sessionBoot{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:24px;background:var(--os-bg,var(--boot-bg,#f5f8fc));color:var(--os-muted,var(--boot-muted,#4e5a72));font:400 14px/1.5 var(--os-font,system-ui,-apple-system,Segoe UI,sans-serif)}
+html[data-theme="dark"] #sessionBoot{--boot-bg:#05080f;--boot-muted:#8a97ac;--boot-border:#1b2437}
+#sessionBoot>div{display:flex;flex-direction:column;align-items:center;gap:16px;width:min(100%,320px);text-align:center}
+#sessionBoot p{margin:0;color:inherit}
+#sessionBootSpinner{width:24px;height:24px;border:2px solid var(--os-border,var(--boot-border,#dce3ee));border-top-color:var(--os-primary,#2e7bf6);border-radius:50%;animation:session-boot-spin .8s linear infinite}
+@keyframes session-boot-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#sessionBootSpinner{animation:none}}
 .action-confirm{width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;padding:26px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:0 24px 90px #0009;overflow-wrap:anywhere}
 .action-confirm::backdrop{background:#000b}
 .confirm-actions{display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-top:24px}
@@ -699,7 +707,15 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 </style>
 </head>
 <body>
-<section id="loginView" aria-label="Acesso à conta Orion">
+<section id="sessionBoot" aria-label="Acesso à Orion" aria-busy="true">
+  <div>
+    <span id="sessionBootSpinner" aria-hidden="true"></span>
+    <p id="sessionBootMessage" role="status" aria-live="polite">Abrindo Orion…</p>
+    <button id="sessionBootRetry" class="os-button os-outline hidden" type="button">Tentar novamente</button>
+    <noscript><style>#sessionBootSpinner,#sessionBootMessage{display:none}</style><p>Ative o JavaScript no navegador para abrir a Orion.</p></noscript>
+  </div>
+</section>
+<section id="loginView" class="hidden" aria-label="Acesso à conta Orion">
   <div class="auth-shell">
     <aside class="auth-visual">
       <a class="auth-visual-logo" href="/" aria-label="Orion, voltar ao site">
@@ -1392,6 +1408,48 @@ const $=id=>document.getElementById(id);
  else if(preferenceQuery.addListener)preferenceQuery.addListener(onSystemTheme);
 
 let authEpoch=0;
+let sessionBootAttempt=null;
+function dismissSessionBoot(){
+ const attempt=sessionBootAttempt;sessionBootAttempt=null;
+ if(attempt){clearTimeout(attempt.timer);attempt.controller.abort();}
+ $("sessionBoot").classList.add("hidden");$("sessionBoot").setAttribute("aria-busy","false");
+}
+async function restoreSession(){
+ if(sessionBootAttempt||$("sessionBoot").classList.contains("hidden"))return;
+ const attempt={epoch:authEpoch,controller:new AbortController(),timer:null};sessionBootAttempt=attempt;
+ const current=()=>sessionBootAttempt===attempt&&attempt.epoch===authEpoch;
+ $("sessionBoot").setAttribute("aria-busy","true");
+ $("sessionBootMessage").textContent="Abrindo Orion…";
+ $("sessionBootSpinner").classList.remove("hidden");
+ $("sessionBootRetry").classList.add("hidden");$("sessionBootRetry").disabled=true;
+ attempt.timer=setTimeout(()=>attempt.controller.abort(),12000);
+ try{
+  const response=await fetch("/auth/me",{method:"GET",headers:{"Accept":"application/json"},credentials:"same-origin",cache:"no-store",signal:attempt.controller.signal});
+  if(!current())return;
+  // An unavailable server is not proof that the saved session has expired.
+  if(response.status===401){showLogin();return;}
+  if(!response.ok)throw Error("session_unavailable");
+  const result=await response.json();
+  if(!current())return;
+  if(result?.authenticated!==true||typeof result.csrf!=="string"||!result.csrf.trim()||!["support","admin","member"].includes(result.role))throw Error("invalid_session_response");
+  csrf=result.csrf;
+  await showApp(result.role,result.name||"",result.email||"");
+ }catch{
+  if(!current())return;
+  $("loginView").classList.add("hidden");$("appView").classList.add("hidden");
+  $("sessionBoot").setAttribute("aria-busy","false");
+  $("sessionBootSpinner").classList.add("hidden");
+  $("sessionBootMessage").textContent=attempt.controller.signal.aborted?"A conexão demorou mais que o esperado. Tente novamente.":"Não foi possível abrir a Orion. Confira sua conexão e tente novamente.";
+  $("sessionBootRetry").disabled=false;$("sessionBootRetry").classList.remove("hidden");
+ }finally{
+  clearTimeout(attempt.timer);
+  if(sessionBootAttempt===attempt)sessionBootAttempt=null;
+ }
+}
+$("sessionBootRetry").addEventListener("click",()=>{void restoreSession()});
+// Returning from an invitation may restore this still-loading document from cache.
+// The guard in restoreSession leaves an already-open app or login untouched.
+window.addEventListener("pageshow",event=>{if(event.persisted)void restoreSession()});
 let suiteUser=null,suiteTenantId="",businessContextReady=false,businessContextError="";
 let setupController=null,setupResolving=0,setupGate=false;
 function setSetupGate(value){setupGate=Boolean(value);$("appView").classList.toggle("ob-gated",setupGate)}
@@ -1669,6 +1727,7 @@ function showLogin(){
  $("loginView").classList.remove("hidden");
  closeAuthTheme();
  authScreenShow("login");
+ dismissSessionBoot();
 }
 async function showApp(role="support",name="",email=""){
  try{const pendingInvite=sessionStorage.getItem("orion_pending_invitation");if(pendingInvite&&/^[A-Za-z0-9_-]{43}$/.test(pendingInvite)){sessionStorage.removeItem("orion_pending_invitation");location.assign("/convite#token="+encodeURIComponent(pendingInvite));return}}catch{}
@@ -1698,6 +1757,7 @@ async function showApp(role="support",name="",email=""){
    $("memberProfileEmail").textContent=email||"—";
  }
  window.OrionSuite?.mount(suiteBridge(desired));
+ dismissSessionBoot();
  if(await loadBusinesses()&&epoch===authEpoch)startBusinessSession();
 }
 async function publicAuth(path,payload){
@@ -1862,14 +1922,7 @@ $("resetForm").addEventListener("submit",async event=>{
  }catch(error){$("resetError").textContent=error.message}
  finally{setAuthBusy("reset",false);if(reset)$("password").focus()}
 });
-(async()=>{
- const epoch=authEpoch;
- try{
-   const result=await api("/auth/me");
-   if(epoch!==authEpoch)return;
-   csrf=result.csrf;showApp(result.role,result.name||"",result.email||"");
- }catch{if(epoch===authEpoch)showLogin()}
-})();
+void restoreSession();
 void authFeatures();
 function openPage(target){
  if(!accountBusiness()){if(businessContextError)showBusinessContextError(businessContextError);else void resolveSetup();return}
