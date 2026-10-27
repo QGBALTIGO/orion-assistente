@@ -298,8 +298,8 @@
     if(state.route==='servicos')html=title('Serviços','Cadastre, ative e organize os serviços oferecidos pela sua empresa.')+readOnly+'<div id="osPageBody">'+loading('Carregando serviços…')+'</div>';
     if(state.route==='funcionarios')html=title('Funcionários','Gerencie os profissionais, a equipe e as permissões de acesso ao painel.')+readOnly+'<div class="os-pill-tabs os-staff-tabs" role="tablist" aria-label="Funcionários">'+[['professionals','Profissionais'],['permissions','Equipe & Permissões']].map(([v,l])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.staffTab===v)+'" data-os-staff-tab="'+v+'">'+l+'</button>').join('')+'</div><div id="osPageBody">'+loading('Carregando profissionais…')+'</div>';
     if(state.route==='financeiro')html='<div class="os-title-row os-finance-heading">'+
-      '<div class="os-finance-title-line"><h1>Financeiro</h1>'+button('Novo lançamento','new-expense','os-finance-add','plus',can?'':'disabled')+'</div>'+
-      '<div class="os-actions os-finance-toolbar os-finance-period-row">'+financeMonthPicker()+button('Hoje','finance-today','os-outline os-small')+'</div></div>'+
+      '<div class="os-finance-title-line"><h1>Financeiro</h1></div>'+
+      '<div class="os-actions os-finance-toolbar os-finance-period-row">'+financeMonthPicker()+button('Hoje','finance-today','os-outline os-small')+button('Novo lançamento','new-expense','os-finance-add','plus',can?'':'disabled')+'</div></div>'+
       readOnly+'<div id="osPageBody">'+loading('Carregando movimentações…')+'</div>';
     if(state.route==='desempenho')html=title('Meu desempenho','Toda a empresa • comissões por profissional')+performancePeriodFilters()+'<div id="osPageBody">'+loading('Calculando o desempenho…')+'</div>';
     if(state.route==='marketing')html=title('Marketing IA','Mensagens automáticas, recuperação de clientes e campanhas em um só lugar')+readOnly+'<div id="osPageBody">'+loading('Carregando campanhas…')+'</div>';
@@ -828,6 +828,13 @@
     else if(tab==='advances')html+=renderAdvances();
     else html+='<section class="os-card"><div class="os-card-header"><div><h2>Histórico de lançamentos</h2><p>Registros do período, incluindo lançamentos cancelados.</p></div></div>'+(list.length?financeTable(data,{history:true}):'<p class="os-finance-empty">Nenhum lançamento neste período.</p>')+'</section>';
     bodyHTML(html);
+    // Keep the selected report visible after rebuilding the horizontal tab strip.
+    const tabs=$('osPageBody')?.querySelector('.os-finance-tabs'),selected=tabs?.querySelector('[aria-selected="true"]');
+    if(tabs&&selected){
+      const viewport=tabs.getBoundingClientRect(),active=selected.getBoundingClientRect();
+      if(active.left<viewport.left)tabs.scrollLeft-=viewport.left-active.left;
+      else if(active.right>viewport.right)tabs.scrollLeft+=active.right-viewport.right;
+    }
   }
   function renderCommissionReport(){const list=rows(state.data.commissions),can=writable();return '<section class="os-card"><div class="os-card-header"><div><h2>Comissões por profissional</h2><p>Comissões geradas por atendimentos concluídos no período.</p></div></div>'+(list.length?'<div class="os-table-scroll os-finance-table-scroll"><table class="os-table os-finance-data-table os-finance-detail-table os-finance-commissions-table"><thead><tr><th>Profissional</th><th>Atendimentos</th><th>Valor vendido</th><th>Comissão</th><th>Vales no período</th><th>Saldo a pagar</th><th></th></tr></thead><tbody>'+list.map(p=>'<tr><td data-label="Profissional" class="os-finance-primary"><strong>'+esc(p.name)+'</strong><br><small>'+(p.commission_mode==='per_service'?'Por serviço · % ou R$':'Base '+number(p.commission_percent).toLocaleString('pt-BR')+'%')+'</small></td><td data-label="Atendimentos">'+number(p.completed)+'</td><td data-label="Valor vendido">'+money(p.revenue_cents)+'</td><td data-label="Comissão">'+money(p.earned_cents)+'</td><td data-label="Vales no período">'+money(p.advances_cents)+'</td><td data-label="Saldo a pagar">'+money(p.payable_cents)+'</td><td data-label="Ações" class="os-finance-actions-cell">'+button('Conferir quitação','settlement-preview','os-outline os-small','wallet','data-professional="'+esc(p.id)+'" '+(can?'':'disabled'))+'</td></tr>').join('')+'</tbody></table></div>':'<p class="os-finance-empty">Cadastre profissionais para acompanhar as comissões.</p>')+'<p class="os-help" style="margin-top:20px">O saldo a pagar considera todas as comissões registradas, menos os vales e pagamentos já lançados. Valores anteriores ao controle de comissão usam a taxa atual como estimativa.</p></section>';}
   const settlementLabels={open:'Em aberto',partial:'Parcial',settled:'Quitado'};
