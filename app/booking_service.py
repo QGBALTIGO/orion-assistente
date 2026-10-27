@@ -517,7 +517,11 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
         if existing:
             if existing["request_fingerprint"] != fp:
                 fail(409, "Chave de idempotência já usada em outra solicitação")
-            return await _hold_proposal(s, tenant, existing["id"])
+            proposal = await _hold_proposal(s, tenant, existing["id"])
+            from app.management_schemas import normalize_phone
+            if proposal["customer_phone"] != normalize_phone(phone):
+                fail(409, "O contato desta reserva foi atualizado. Consulte o atendimento novamente")
+            return proposal
         from app.onboarding_service import require_operational_ready
         await require_operational_ready(s, tenant, "appointments")
         if replace_hold_id is not None:
