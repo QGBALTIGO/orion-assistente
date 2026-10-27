@@ -3,6 +3,7 @@ import base64
 import hashlib
 import json
 import re
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -113,3 +114,39 @@ def test_metadata_never_accepts_untrusted_or_invalid_origin(monkeypatch, origin)
     monkeypatch.setenv('PANEL_PUBLIC_URL', origin)
     with pytest.raises(ValueError):
         public_site_url('empresa-sintetica')
+
+
+def test_initial_html_contains_safe_published_catalogue_without_javascript():
+    template=(Path(__file__).parents[2]/'app/static/orion-public.html').read_text(encoding='utf-8')
+    content={'site':{'title':'Barbearia <segura>','description':'Descrição & contato',
+        'address':'Rua 10','city':'Montes Claros','show_prices':True,'theme_color':'#ffee00',
+        'maps_url':'https://share.google/exemplo','whatsapp_phone':'+5538999990000'},
+        'services':[{'name':'Corte </script><script>evil()</script>', 'description':'<img onerror=evil()>',
+            'price_cents':4000,'duration_min':40,'price_mode':'fixed','image_url':'javascript:evil()'},
+            {'name':'Barba variável','price_cents':3000,'duration_min':40,'price_mode':'from'}],
+        'professionals':[{'name':'Profissional <publicado>','image_url':'https://example.invalid/a.webp'}]}
+    rendered,digest=public_html(template,content['site'],'site-sintetico',catalogue=content)
+    assert '<main id="site-content" hidden' not in rendered
+    assert 'Corte &lt;/script&gt;&lt;script&gt;evil()&lt;/script&gt;' in rendered
+    assert 'R$ 40,00' in rendered and 'A partir de R$ 30,00' in rendered
+    assert 'Profissional &lt;publicado&gt;' in rendered
+    assert '<script>evil()' not in rendered and 'src="javascript:' not in rendered
+    assert 'href="https://share.google/exemplo"' in rendered
+    assert 'href="https://wa.me/5538999990000"' in rendered
+    assert 'data-server-loading' in rendered
+    assert 'Ative o JavaScript para consultar horários' in rendered
+    assert len(re.findall(r'/public-assets/[^"?]+\?v=[0-9a-f]{16}',rendered))==3
+    raw=re.search(r'<script type="application/ld\+json">(.*?)</script>',rendered).group(1)
+    offers=json.loads(raw)['hasOfferCatalog']['itemListElement']
+    assert offers[0]['price']=='40.00' and 'price' not in offers[1]
+    assert base64.b64encode(hashlib.sha256(raw.encode()).digest()).decode()==digest
+
+
+def test_initial_html_respects_hidden_prices_and_rejects_untrusted_map():
+    template=(Path(__file__).parents[2]/'app/static/orion-public.html').read_text(encoding='utf-8')
+    content={'site':{'title':'Público','show_prices':False,'maps_url':'https://evil.invalid/map'},
+        'services':[{'name':'Corte','price_cents':4000,'duration_min':40}], 'professionals':[]}
+    rendered,_=public_html(template,content['site'],'site-sintetico',catalogue=content)
+    assert 'R$ 40,00' not in rendered and 'href="https://evil.invalid' not in rendered
+    raw=re.search(r'<script type="application/ld\+json">(.*?)</script>',rendered).group(1)
+    assert 'price' not in json.loads(raw)['hasOfferCatalog']['itemListElement'][0]

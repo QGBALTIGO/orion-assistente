@@ -15,7 +15,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
-from redis.asyncio import from_url
+from redis.asyncio import Redis, BlockingConnectionPool
 from redis.exceptions import RedisError
 
 router = APIRouter(prefix="/auth", tags=["Sessão do painel"])
@@ -35,8 +35,13 @@ ROUTE_MEMBERSHIP = "orion.verified_route_membership"
 
 
 def _redis():
-    return from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-                    decode_responses=True, socket_timeout=3, max_connections=100)
+    # Queue short Redis operations instead of rejecting legitimate bursts as
+    # soon as the finite connection pool is occupied. Connection and queue
+    # waits remain bounded; the pool is shared only within this API worker.
+    pool=BlockingConnectionPool.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+        decode_responses=True, socket_timeout=3, socket_connect_timeout=3,
+        max_connections=100, timeout=10)
+    return Redis.from_pool(pool)
 
 
 async def start_session_store(application):

@@ -45,6 +45,24 @@ class Database:
         sql = str(statement)
         if "set_config(" in sql:
             self.calls["tenant"] += 1; return Result()
+        if "WITH shift AS" in sql:
+            self.calls["constraints"] += 1
+            assert params["tenant"] == TENANT and params["professional"] == PRO
+            if self.hours is None:
+                return Result()
+            def matching(rows, *, reservations=False):
+                values = [row for row in rows if row.get("tenant", TENANT) == TENANT
+                    and row.get("pro", PRO) == PRO and row["starts_at"] < params["stop"]
+                    and row["ends_at"] > params["begin"]]
+                if reservations:
+                    values = [row for row in values if row["id"] != params["ignored"]
+                        and row["status"] in ("hold", "confirmed")
+                        and (row["status"] != "hold" or row["hold_expires_at"] > params["now"])]
+                return [{key: row[key].isoformat() for key in ("starts_at", "ends_at")} for row in values]
+            return Result([{**self.hours,
+                "pauses": [{key: value.isoformat() for key, value in pause.items()} for pause in self.pauses],
+                "blocks": matching(self.time_off) + matching(self.schedule_blocks),
+                "reservations": matching(self.appointments, reservations=True)}])
         if "jsonb_build_object" in sql:
             self.calls["bundle"] += 1
             if params["bundle_tenant"] != TENANT or params["bundle_professional"] != PRO: return Result()
@@ -84,11 +102,10 @@ async def exhaustive(db, target=DAY, now=NOW):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("step", [5, 15, 30])
-async def test_grid_uses_seven_constant_queries_instead_of_per_candidate_reads(step):
+async def test_grid_uses_three_constant_queries_instead_of_per_candidate_reads(step):
     db = Database(step=step)
     actual = await booking.list_slots(db, TENANT, PRO, [SERVICE], DAY, now=NOW)
-    assert db.calls == Counter({"tenant": 1, "bundle": 1, "working_hours": 1, "working_breaks": 1,
-        "time_off": 1, "schedule_blocks": 1, "appointments": 1})
+    assert db.calls == Counter({"tenant": 1, "bundle": 1, "constraints": 1})
     original_calls = sum(db.calls.values())
     expected = await exhaustive(db)
     assert actual["slots"] == expected and sum(db.calls.values()) > original_calls + 100
@@ -131,7 +148,7 @@ async def test_dst_nonexistent_and_ambiguous_hours_remain_unoffered(target, miss
 async def test_no_shift_is_empty_and_infrastructure_errors_do_not_become_no_availability():
     db = Database(); db.hours = None
     assert (await booking.list_slots(db, TENANT, PRO, [SERVICE], DAY, now=NOW))["slots"] == []
-    assert db.calls == Counter({"tenant": 1, "bundle": 1, "working_hours": 1})
+    assert db.calls == Counter({"tenant": 1, "bundle": 1, "constraints": 1})
     db = Database(); original = db.execute
     async def broken(statement, params):
         if "FROM schedule_blocks" in str(statement): raise ConnectionError("Synthetic database unavailable")
@@ -148,7 +165,7 @@ async def test_second_request_and_mutation_recheck_changed_database_without_reus
     db.schedule_blocks.append(db.interval(14, 15))
     before = sum(db.calls.values())
     second = await booking.list_slots(db, TENANT, PRO, [SERVICE], DAY, now=NOW)
-    assert sum(db.calls.values()) - before == 7 and start.isoformat() not in second["slots"]
+    assert sum(db.calls.values()) - before == 3 and start.isoformat() not in second["slots"]
     shop, items = await booking.load_bundle(db, TENANT, PRO, [SERVICE])
     before = db.calls["schedule_blocks"]
     with pytest.raises(HTTPException) as caught: await booking.check_slot(db, TENANT, PRO, shop, items, start, NOW)
@@ -174,10 +191,10 @@ async def test_minimum_notice_and_horizon_still_restrict_grid_before_any_proposa
     assert datetime.combine(DAY, time(13), tzinfo=ZoneInfo(db.shop["timezone"])).isoformat() in actual["slots"]
     assert all(datetime.fromisoformat(value).hour >= 13 for value in actual["slots"])
     for target in (DAY-timedelta(days=1), DAY+timedelta(days=1)):
-        before = db.calls["working_hours"]
+        before = db.calls["constraints"]
         with pytest.raises(HTTPException) as caught:
             await booking.list_slots(db, TENANT, PRO, [SERVICE], target, now=clock)
-        assert caught.value.status_code == 422 and db.calls["working_hours"] == before
+        assert caught.value.status_code == 422 and db.calls["constraints"] == before
 
 
 @pytest.mark.asyncio
@@ -200,11 +217,10 @@ async def test_public_verified_grid_matches_the_original_write_validator_without
     slots, reason = await booking.verified_slot_grid(
         db, TENANT, PRO, db.shop, [db.item], DAY, NOW, strict_errors=True)
     if case == "no_work":
-        assert db.calls == Counter({"working_hours": 1})
+        assert db.calls == Counter({"constraints": 1})
         assert slots == [] and reason == "no_working_hours"
     else:
-        assert db.calls == Counter({"working_hours": 1, "working_breaks": 1,
-            "time_off": 1, "schedule_blocks": 1, "appointments": 1})
+        assert db.calls == Counter({"constraints": 1})
         assert slots and reason == "available"
     assert slots == await exhaustive(db)
 
