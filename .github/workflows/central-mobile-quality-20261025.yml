@@ -1,5 +1,21 @@
 name: Orion - central atendimento mobile e integridade
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/static/orion-inbox.js'
+      - 'app/static/orion-inbox.css'
+      - 'app/static/orion-conversations.js'
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-flows.js'
+      - 'ui-tests/inbox.test.mjs'
+      - 'ui-tests/conversations.test.mjs'
+      - 'ui-tests/central-redesign.test.mjs'
+      - 'ui-tests/central-mobile-audit.test.mjs'
+      - 'ui-tests/central-mobile-browser.py'
+      - 'ui-tests/central-layout.py'
+      - 'scripts/prepare_vercel_orion.py'
+      - '.github/workflows/central-mobile-quality-20261025.yml'
   push:
     branches: [codex/orion-central-mobile-redesign-20261025, main]
     paths:
@@ -46,7 +62,7 @@ jobs:
       - name: Rodar toda a regressão DOM do painel
         run: npm test --prefix ui-tests
   mobile-browser:
-    name: 320 a 1280px, claro/escuro e navegador iOS
+    name: 320 a 1440px, claro/escuro e navegador iOS
     runs-on: ubuntu-24.04
     timeout-minutes: 18
     steps:
@@ -60,7 +76,7 @@ jobs:
           python -m playwright install --with-deps chromium webkit
       - name: Testar layout real de conversas
         run: python ui-tests/central-layout.py
-      - name: Testar CRM, etiquetas, respostas e simulacoes reais em mobile
+      - name: Testar conversa, controles compactos e rascunhos em mobile
         run: python ui-tests/central-mobile-browser.py
       - uses: actions/upload-artifact@v4
         if: always()
