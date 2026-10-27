@@ -34,13 +34,14 @@ export const confirmed = () => ({ status: 'confirmed', protocol: 'SYNTHETIC-1', 
   professional: 'Profissional sintético', services: ['Corte + barba', 'Lavagem'] });
 export const response = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
 
-export async function makePublic({ path = '/s/empresa-sintetica', data = catalogue(), respond } = {}) {
+export async function makePublic({ path = '/s/empresa-sintetica', data = catalogue(), respond, initialSession = {} } = {}) {
   const html = await readFile(new URL('../app/static/orion-public.html', import.meta.url), 'utf8');
   const source = await readFile(new URL('../app/static/orion-public.js', import.meta.url), 'utf8');
   const errors = [], virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', error => errors.push(error));
   const dom = new JSDOM(html, { url: `https://orion.test${path}`, runScripts: 'outside-only', virtualConsole });
   const { window } = dom, { document } = window, calls = [];
+  for(const [key,value] of Object.entries(initialSession))window.sessionStorage.setItem(key,value);
   window.HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
   window.HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new window.Event('close')); };
   window.HTMLElement.prototype.scrollIntoView = () => {};

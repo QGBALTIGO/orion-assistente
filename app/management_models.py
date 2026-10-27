@@ -304,6 +304,14 @@ async def finance_summary(db, where, parameters, tz):
     result["completed"] = ticket["completed"]
     result["average_ticket_cents"] = int(ticket["revenue_cents"]) // ticket["completed"] if ticket["completed"] else 0
     result["ticket_basis"] = "completed_appointments_in_period"
+    pending=(await db.execute(text('''SELECT a.id,a.protocol,a.professional_id,a.start_at,a.end_at,a.total_cents,
+        count(*) OVER() AS pending_count
+        FROM appointments a WHERE a.tenant_id=:tenant AND a.status='confirmed' AND a.end_at<=now()
+          AND a.start_at>=:lower AND a.start_at<:upper
+          AND EXISTS(SELECT 1 FROM appointment_items i WHERE i.tenant_id=a.tenant_id AND i.appointment_id=a.id
+                     AND i.price_mode_snapshot='from')'''+ticket_scope+''' ORDER BY a.start_at,a.id LIMIT 20'''),parameters)).mappings().all()
+    result['awaiting_final_price_count']=int(pending[0]['pending_count']) if pending else 0
+    result['awaiting_final_price']=[{key:value for key,value in row.items() if key!='pending_count'} for row in pending]
     for column, target in (("category", "by_category"), ("payment_method", "by_payment_method")):
         result[target] = [dict(row) for row in (await db.execute(text(f"SELECT {column}," + FINANCE_TOTALS +
             " FROM financial_entries e WHERE " + where + f" GROUP BY {column} ORDER BY {column}"), parameters)).mappings().all()]
@@ -548,10 +556,12 @@ async def site(db, tenant_id):
         from app.public_site_rendering import visual_catalogue_fingerprint
         current_catalogue = await catalogue(db, tenant_id, preview=True)
         has_changes = visual_catalogue_fingerprint(current_catalogue) != visual_catalogue_fingerprint(snapshot["_catalogue"])
+    from app.site_operational_review import operational_review
+    review=await operational_review(db,tenant_id,result)
     return {**result, "published": published, "public_enabled": published,
             "public_url": f"/s/{result['public_slug']}" if published and result.get("public_slug") else None,
             "preview_url": f"/app/site-preview/{tenant_id}",
-            "has_unpublished_changes": has_changes}
+            "has_unpublished_changes": has_changes,"operational_review":review}
 
 
 async def save_site(db, tenant_id, values, expected_version):

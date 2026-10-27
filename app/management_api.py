@@ -428,6 +428,19 @@ async def get_site(tenant_id: UUID, actor: Actor = Depends(authenticate)):
         return await data.site(db, tenant_id)
 
 
+@router.post("/site/timezone-reviews/{appointment_id}/acknowledge")
+async def acknowledge_timezone_review(tenant_id:UUID,appointment_id:UUID,actor:Actor=Depends(authenticate)):
+    async with management_session(tenant_id,actor,write=True) as db:
+        if db.info.get('management_actor_role')!='owner':
+            raise HTTPException(403,'Somente o proprietário pode registrar a revisão do fuso')
+        row=(await db.execute(text('''UPDATE public_site_timezone_reviews
+            SET acknowledged_at=COALESCE(acknowledged_at,now())
+            WHERE tenant_id=:tenant AND appointment_id=:appointment
+            RETURNING appointment_id,acknowledged_at'''),{'tenant':tenant_id,'appointment':appointment_id})).mappings().one_or_none()
+        if row is None:raise HTTPException(404,'Revisão de fuso não encontrada')
+        return dict(row)
+
+
 @router.get("/site/publication")
 async def get_site_publication(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     from app.site_publication import publication_status

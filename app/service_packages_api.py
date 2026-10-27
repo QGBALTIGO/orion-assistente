@@ -250,10 +250,13 @@ async def selection_contract(db, tenant, base_id, addon_ids, professional, *, lo
     flags={r["addon_service_id"]:r["add_duration"] for r in options}
     if any(x not in flags for x in addon_ids):
         raise HTTPException(422,"Adicional não oferecido para este serviço")
-    available=(await db.execute(text("SELECT id FROM professionals WHERE tenant_id=:tenant AND id=:id AND active AND accepts_appointments"+suffix),
-                                {"tenant":tenant,"id":professional})).scalar_one_or_none()
-    if available is None:
-        raise HTTPException(422,"Profissional indisponível")
+    if lock:
+        available=(await db.execute(text("SELECT id FROM professionals WHERE tenant_id=:tenant AND id=:id AND active AND accepts_appointments FOR SHARE"),
+                                    {"tenant":tenant,"id":professional})).scalar_one_or_none()
+        if available is None:
+            raise HTTPException(422,"Profissional indisponível")
+    # load_bundle freshly checks the same active/bookable professional. Reads
+    # need no duplicate statement; mutations retain the row lock above.
     shop,items=await load_bundle(db,tenant,professional,ids)
     if lock:
         await db.execute(text("SELECT id FROM professional_services WHERE tenant_id=:tenant AND professional_id=:pro AND service_id=ANY(CAST(:ids AS uuid[])) ORDER BY id FOR SHARE"),

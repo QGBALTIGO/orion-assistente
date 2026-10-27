@@ -24,7 +24,7 @@ test('public configuration renders as text, accepts HTTPS links, and filters the
   h.fill('#service-search', 'não existe');
   assert.match(h.document.getElementById('services-grid').textContent, /Nenhum serviço encontrado/);
   assert.equal(h.calls.length, 1);
-  assert.equal(h.calls[0].options.credentials, 'omit');
+  assert.equal(h.calls[0].options.credentials, 'same-origin');
   assert.equal(h.errors.length, 0);
 });
 
@@ -69,7 +69,7 @@ test('public wizard confirms a combo with an untimed addon only after explicit c
   assert.match(h.document.getElementById('booking-body').textContent, /Agendamento confirmado!/);
   assert.match(h.document.getElementById('booking-body').textContent, /SYNTHETIC-1/);
   assert.equal(h.document.querySelector('[name=customer_phone]'), null);
-  assert.ok(h.calls.every(call => call.options.credentials === 'omit'));
+  assert.ok(h.calls.every(call => call.options.credentials === 'same-origin'));
   assert.equal(h.errors.length, 0);
 });
 

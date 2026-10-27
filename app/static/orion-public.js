@@ -1,4 +1,4 @@
-/* Public catalogue data are rendered as text; quotes and contact details stay in memory. */
+/* Public text is escaped. Only quote/start may survive in this tab; contacts stay in memory. */
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
@@ -7,11 +7,27 @@
   const slugMatch = location.pathname.match(/^\/s\/([a-z0-9-]+)\/?$/);
   const preview = !!previewMatch;
   const apiBase = preview ? `/api/v1/tenants/${previewMatch[1]}/management/site/preview` : `/api/v1/public/sites/${slugMatch?.[1] || ''}`;
-  let data, category = 'Todos', requestSequence = 0, availabilityController;
-  let retainedTimeView = null; // Keep photos mounted across wizard step navigation.
+  let data, category = 'Todos', requestSequence = 0, availabilityController, catalogueLoading=false;
+  let retainedTimeView = null, bookingOpener = null; // Keep photos mounted across wizard step navigation.
   let booking = newBooking();
 
-  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', consent: false }; }
+  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', consent: false, recovering: false, pendingAttempt: false, recoverySaved: false }; }
+  const recoveryKey='orion-public-recovery:'+apiBase;
+  function recoveryDraft() {
+    try{
+      const draft=JSON.parse(sessionStorage.getItem(recoveryKey)||'null');
+      return draft&&typeof draft.quote==='string'&&draft.quote.length>=40&&draft.quote.length<=16384
+        &&typeof draft.start_at==='string'&&Number.isFinite(Date.parse(draft.start_at))?
+        {quote:draft.quote,start_at:draft.start_at}:null;
+    }catch{return null;}
+  }
+  function rememberAttempt() {
+    try{sessionStorage.setItem(recoveryKey,JSON.stringify({quote:booking.quote,start_at:booking.start}));return true;}catch{return false;}
+  }
+  function forgetAttempt() {
+    try{sessionStorage.removeItem(recoveryKey);}catch{}
+    $('booking-recovery-banner')?.remove();
+  }
   function el(tag, cls, value) { const node = document.createElement(tag); if (cls) node.className = cls; if (value !== undefined) node.textContent = value; return node; }
   function button(text, cls, handler) { const node = el('button', cls, text); node.type = 'button'; if (handler) node.addEventListener('click', handler); return node; }
   function safeHTTPS(value) { try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null; } catch { return null; } }
@@ -110,7 +126,14 @@
         if(id&&/^[\w-]{6,200}$/.test(id))placeId=id;
       }
     }catch{ /* Invalid Maps URLs fall back to business address. */ }
-    if(!precise&&!hasAddress&&!placeId)return null;
+    let officialShare=null;
+    if(knownURL)try{
+      const shared=new URL(knownURL);
+      if(['share.google','maps.app.goo.gl','goo.gl'].includes(shared.hostname)
+          && (shared.hostname!=='goo.gl'||shared.pathname.startsWith('/maps/')))
+        officialShare=knownURL;
+    }catch{}
+    if(!precise&&!hasAddress&&!placeId&&!officialShare)return null;
     const destination=precise||address;
     const route=new URL('https://www.google.com/maps/dir/');
     route.searchParams.set('api','1');
@@ -134,7 +157,9 @@
       embed.searchParams.set('z','16');
       embed.searchParams.set('output','embed');
     }
-    return {route:route.href,embed:embed.href};
+    // Share URLs identify the owner's exact place. Keep them untouched for
+    // navigation; the address iframe remains only a search preview.
+    return {route:officialShare||route.href,embed:embed.href,searchPreview:!!officialShare};
   }
   function renderLocation(site){
     const address=[site.address,[site.city,site.state].filter(Boolean).join(' — '),site.postal_code]
@@ -148,6 +173,9 @@
       frame.title='Prévia do Google Maps: '+(site.title||'local de atendimento');
       setLink($('maps-link'),target.route);
       setLink($('hero-map'),target.route);
+      $('maps-link').querySelector('span').textContent=target.searchPreview?
+        'Abrir localização oficial no Google Maps':'Traçar rota no Google Maps';
+      if(target.searchPreview)frame.title='Busca pelo endereço informado: '+(site.title||'local de atendimento');
     }else{
       frame.removeAttribute('src');
       setLink($('maps-link'),null);
@@ -187,16 +215,36 @@
       return service.components.map(c => c.service_id);
     return [service.id];
   }
-  function showError(message) { $('booking-error').textContent = message || ''; $('booking-error').hidden = !message; }
+  function showError(message) {
+    const node=$('booking-error');node.textContent=message||'';node.hidden=!message;
+    if(message&&dialog.open){node.tabIndex=-1;node.focus();}
+  }
+  function focusBookingStep() {
+    const heading=$('booking-body').querySelector('h3');
+    if(heading){heading.tabIndex=-1;heading.focus();}
+  }
 
   async function api(path = '', options = {}) {
     const controller = options.signal ? null : new AbortController();
     const timeout = controller && setTimeout(() => controller.abort(), 30000);
     try {
-      const response = await fetch(apiBase + path, { credentials: preview ? 'same-origin' : 'omit', ...options, signal: options.signal || controller?.signal, headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers } });
+      // The anonymous HttpOnly cookie shares abuse budgets across requests.
+      // Public authority still comes from the server-verified slug, never the
+      // account cookies; credentials are sent only to this site's own origin.
+      const response = await fetch(apiBase + path, { credentials: 'same-origin', ...options, signal: options.signal || controller?.signal, headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers } });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) { const error = new Error(typeof body.detail === 'string' ? body.detail : response.status === 422 ? 'Confira os dados e tente novamente.' : 'Não foi possível concluir. Tente novamente.'); error.status = response.status; throw error; }
+      if (!response.ok) {
+        const detail=body.detail;
+        const error = new Error(typeof detail==='string'?detail:detail?.message||
+          (response.status===422?'Confira os dados e tente novamente.':'Não foi possível concluir. Tente novamente.'));
+        error.status=response.status;error.code=detail?.code;error.retryable=detail?.retryable;
+        throw error;
+      }
       return body;
+    } catch(error) {
+      if(error.name==='TypeError'&&!error.status)
+        throw new Error('Não foi possível conectar ao servidor. Confira sua conexão e tente novamente.');
+      throw error;
     } finally { if (timeout) clearTimeout(timeout); }
   }
 
@@ -220,8 +268,9 @@
   }
 
   function renderServiceGrid() {
-    const term = $('service-search').value.trim().toLocaleLowerCase('pt-BR');
-    const items = data.services.filter(s => (category === 'Todos' || (s.category || 'Serviços') === category) && `${s.name} ${s.description || ''}`.toLocaleLowerCase('pt-BR').includes(term));
+    const normalize=value=>String(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
+    const term = normalize($('service-search').value.trim());
+    const items = data.services.filter(s => (category === 'Todos' || (s.category || 'Serviços') === category) && normalize(`${s.name} ${s.description || ''}`).includes(term));
     $('services-grid').replaceChildren(...items.map(s => serviceCard(s, () => openBooking(s.id))));
     if (!items.length) $('services-grid').append(el('p', 'empty', data.services.length ? 'Nenhum serviço encontrado. Tente outra busca.' : 'Não há serviços disponíveis para agendamento neste momento.'));
   }
@@ -269,7 +318,8 @@
     color(document.documentElement, '--primary', site.theme_color);
     const hex = /^#[0-9a-f]{6}$/i.test(site.theme_color || '') ? site.theme_color.slice(1) : '2e7bf6';
     const luminance = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((n, v, i) => n + v * [.2126, .7152, .0722][i], 0);
-    document.documentElement.style.setProperty('--primary-ink', luminance > .179 ? '#0a1425' : '#ffffff');
+    document.documentElement.style.setProperty('--primary-ink', luminance > .179 ? '#000000' : '#ffffff');
+    document.body.style.removeProperty('--primary');document.body.style.removeProperty('--primary-ink');
     document.querySelector('meta[name=theme-color]').content = `#${hex}`;
     const cover = safeImageURL(site.cover_url); if (cover) { const image = el('img'); image.src = cover; image.alt = ''; image.referrerPolicy = 'no-referrer'; image.style.width = '100%'; image.style.height = '100%'; $('cover').replaceChildren(image); }
     picture($('site-logo'), site.logo_url, initials(site.title));
@@ -306,12 +356,35 @@
     $('contact-section').hidden = !contacts.some(Boolean);
     $('orion-credit').hidden = !!site.hide_orion_brand; $('preview-banner').hidden = !preview;
     $('site-content').hidden = false; $('page-message').hidden = true;
+    renderRecoveryBanner();
+    document.querySelectorAll('[data-server-loading]').forEach(node=>{
+      node.disabled=false;node.removeAttribute('data-server-loading');
+    });
+  }
+
+  function renderRecoveryBanner() {
+    if(preview||!recoveryDraft()||$('booking-recovery-banner'))return;
+    const banner=el('section','recovery-banner');banner.id='booking-recovery-banner';
+    banner.setAttribute('aria-label','Confirmação anterior');
+    banner.append(el('strong','','Uma confirmação anterior pode estar pendente.'),
+      el('p','','Consulte o resultado antes de fazer uma nova reserva. Seu nome e telefone não são salvos neste navegador.'),
+      button('Recuperar confirmação anterior','outline',openRecovery));
+    document.querySelector('.public-main').prepend(banner);
+  }
+  function openRecovery() {
+    const draft=recoveryDraft();if(!draft)return;
+    bookingOpener=document.activeElement;booking=newBooking();retainedTimeView=null;
+    booking.recovering=true;booking.step=3;booking.quote=draft.quote;booking.start=draft.start_at;
+    $('booking-shop').textContent=data.site.title;showError();renderBooking();
+    if(!dialog.open)dialog.showModal();document.body.classList.add('booking-open');focusBookingStep();
   }
 
   function openBooking(service = null) {
+    if(!preview&&recoveryDraft()){openRecovery();return;}
+    bookingOpener=document.activeElement;
     booking = newBooking(); retainedTimeView = null; booking.service = service; booking.services = service ? [service] : []; booking.day = data.today;
     $('booking-shop').textContent = data.site.title; showError(); renderBooking();
-    dialog.showModal(); document.body.classList.add('booking-open');
+    dialog.showModal(); document.body.classList.add('booking-open');focusBookingStep();
   }
   function closeBooking() { if (booking.busy) return; availabilityController?.abort(); requestSequence++; dialog.close(); document.body.classList.remove('booking-open'); }
   function invalidateAvailability() { availabilityController?.abort(); requestSequence++; booking.quote = null; booking.start = null; booking.availability = null; booking.availabilityError = null; booking.loading = false; booking.consent = false; }
@@ -412,7 +485,7 @@
 
   function renderBooking() {
     const body = $('booking-body');
-    $('booking-steps').hidden = !!booking.result;
+    $('booking-steps').hidden = !!booking.result||booking.recovering;
     for (const step of $('booking-steps').children) {
       const n = Number(step.dataset.step);
       step.classList.toggle('done', n < booking.step);
@@ -428,6 +501,7 @@
     } else {
       body.replaceChildren();
       if (booking.result) renderSuccess(body);
+      else if(booking.recovering)renderRecovery(body);
       else if (booking.step === 1) renderSelection(body);
       else if (booking.step === 2) {
         renderTime(body);
@@ -435,6 +509,7 @@
       } else renderConfirmation(body);
     }
     updateFooter();
+    if(dialog.open)focusBookingStep();
   }
 
   function renderSelection(body) {
@@ -470,6 +545,7 @@
         el('strong', '', dateLabel(day, { day: '2-digit' })));
       node.setAttribute('aria-label', dateLabel(day, { dateStyle: 'full' }));
       node.setAttribute('aria-pressed', String(day === booking.day));
+      markClosedDay(node,day);
       nodes.push(node);
     }
     strip.replaceChildren(...nodes); // Only if date falls outside the existing 14-day window.
@@ -491,7 +567,20 @@
       const active = node.dataset.day === booking.day;
       if (node.getAttribute('aria-pressed') !== String(active))
         node.setAttribute('aria-pressed', String(active));
+      markClosedDay(node,node.dataset.day);
     });
+  }
+  function isClosedDay(day) {
+    const person=data.professionals.find(p=>p.id===booking.professional);
+    if(!Array.isArray(person?.bookable_weekdays))return false;
+    const weekday=(new Date(day+'T12:00:00Z').getUTCDay()+6)%7;
+    return !person.bookable_weekdays.includes(weekday);
+  }
+  function markClosedDay(node,day) {
+    const closed=isClosedDay(day);node.disabled=closed;
+    node.setAttribute('aria-label',dateLabel(day,{dateStyle:'full'})+(closed?' — Fechado':''));
+    if(closed&&!node.querySelector('.day-closed'))node.append(el('span','day-closed','Fechado'));
+    if(!closed)node.querySelector('.day-closed')?.remove();
   }
 
   function renderTime(body) {
@@ -511,6 +600,7 @@
             option.setAttribute('aria-pressed', String(active));
         });
         showError();
+        refreshDateChoice();
         updateFooter();
         loadAvailability();
       });
@@ -539,7 +629,7 @@
     label.append(input); heading.append(title, label); body.append(heading);
     const strip = el('div', 'date-strip'); strip.id = 'booking-day-strip';
     body.append(strip, el('p', 'timezone-note',
-      'Horários locais · ' + data.timezone.replaceAll('_', ' ')));
+      'Horário local da barbearia. A vaga é garantida após a confirmação.'));
     const slots = el('div'); slots.id = 'time-slots';
     slots.setAttribute('aria-live', 'polite');
     body.append(slots);
@@ -591,6 +681,7 @@
   function renderSlots() {
     const root = $('time-slots');
     if (!root) return;
+    root.querySelector('.availability-alternatives')?.remove();
     let list = root.querySelector('.slots-grid');
     if (preview) {
       root.removeAttribute('aria-busy');
@@ -620,6 +711,17 @@
             'Não há vagas compatíveis com a duração do serviço, o expediente e os intervalos nesta data. Experimente outro dia ou profissional.');
       slotStatus(root, message, booking.availabilityError ? 'slot-message' :
         booking.availability ? 'empty' : 'slot-message', !!booking.availabilityError);
+      if(booking.availability&&!booking.availabilityError){
+        const alternatives=el('div','availability-alternatives');
+        let next=addDays(booking.day,1),max=addDays(data.today,data.booking_horizon_days);
+        while(next<=max&&isClosedDay(next))next=addDays(next,1);
+        if(next<=max)alternatives.append(button('Ver próximo dia de atendimento','outline',()=>selectDay(next)));
+        if(eligibleProfessionals().length>1)alternatives.append(button('Escolher outro profissional','outline',()=>{
+          const option=[...document.querySelectorAll('.professional-choice')].find(node=>node.dataset.professionalId!==booking.professional);
+          option?.focus();option?.scrollIntoView({block:'nearest',inline:'nearest'});
+        }));
+        if(alternatives.children.length)root.append(alternatives);
+      }
       return;
     }
     slotStatus(root, null);
@@ -649,6 +751,10 @@
 
   async function loadAvailability() {
     if (preview || !booking.professional) return;
+    if(isClosedDay(booking.day)){
+      booking.availability={slots:[],availability_reason:'no_working_hours'};
+      booking.loading=false;renderSlots();updateFooter();return;
+    }
     const seq = ++requestSequence;
     availabilityController?.abort();
     const controller = new AbortController();
@@ -711,6 +817,10 @@
   }
   function renderConfirmation(body) {
     body.append(el('h3', '', 'Confira e confirme seu agendamento'), reviewCard());
+    const validSeconds=Number(booking.availability?.expires_in);
+    body.append(el('p','booking-confirmation-note',
+      (validSeconds>0?'A consulta é válida por até '+Math.ceil(validSeconds/60)+' minutos desde a busca. ':'')+
+      'A consulta não reserva a vaga. Se o horário for ocupado ou a consulta expirar, você poderá escolher outro antes de confirmar.'));
     const form = el('form', 'booking-form'); form.id = 'customer-form'; form.addEventListener('submit', event => { event.preventDefault(); submitBooking(); });
     for (const spec of [{ key: 'name', title: 'Seu nome', autocomplete: 'name', type: 'text', max: 120, placeholder: 'Como podemos chamar você?' }, { key: 'phone', title: 'Telefone com DDD', autocomplete: 'tel', type: 'tel', max: 40, placeholder: '(11) 99999-9999' }]) {
       const label = el('label', 'field', spec.title); const field = el('input'); field.name = `customer_${spec.key}`; field.type = spec.type; field.autocomplete = spec.autocomplete; field.maxLength = spec.max; field.required = true; field.placeholder = spec.placeholder; field.value = booking[spec.key]; if (spec.key === 'phone') { field.inputMode = 'tel'; field.minLength = 10; } field.addEventListener('input', () => { booking[spec.key] = field.value; }); label.append(field); form.append(label);
@@ -718,30 +828,96 @@
     const consent = el('label', 'consent-label'); const check = el('input'); check.type = 'checkbox'; check.required = true; check.name = 'confirmed'; check.checked = booking.consent; check.addEventListener('change', () => { booking.consent = check.checked; updateFooter(); }); consent.append(check, el('span', '', 'Conferi os serviços, o profissional, a data, o horário e o valor. Quero confirmar este agendamento.')); form.append(consent, el('p', 'privacy-note',
       'Seu nome e telefone serão usados para identificar o agendamento. Serviços “a partir de” terão o valor final confirmado pela equipe. Nenhum pagamento é cobrado nesta página.')); body.append(form);
   }
+  function renderRecovery(body) {
+    body.append(el('h3','','Recuperar confirmação anterior'),
+      el('p','booking-confirmation-note','Informe o mesmo telefone da tentativa anterior para consultar o resultado. Esta consulta não cria uma nova reserva.'));
+    const form=el('form','booking-form');form.id='customer-form';
+    form.addEventListener('submit',event=>{event.preventDefault();recoverBooking();});
+    const label=el('label','field','Telefone usado no agendamento'),field=el('input');
+    field.type='tel';field.inputMode='tel';field.autocomplete='tel';field.name='customer_phone';
+    field.required=true;field.minLength=10;field.maxLength=40;field.value=booking.phone;
+    field.addEventListener('input',()=>{booking.phone=field.value;updateFooter();});label.append(field);form.append(label);body.append(form);
+    body.append(el('p','privacy-note','Se não conseguir recuperar o resultado, confirme com a equipe antes de iniciar outra reserva.'));
+    const contact=officialBookingContact();if(contact)body.append(contact);
+  }
+  function officialBookingContact() {
+    if(/^\+[1-9]\d{9,14}$/.test(data.site.whatsapp_phone||'')){
+      const link=el('a','outline','Falar com a equipe no WhatsApp');
+      setLink(link,'https://wa.me/'+data.site.whatsapp_phone.slice(1));return link;
+    }
+    if(/^\+[1-9]\d{9,14}$/.test(data.site.contact_phone||'')){
+      const link=el('a','outline','Ligar para a equipe');link.href='tel:'+data.site.contact_phone;return link;
+    }
+    return null;
+  }
+  async function recoverBooking() {
+    if(booking.busy||preview||!booking.recovering)return;
+    if(!$('customer-form').reportValidity())return;
+    if(booking.phone.replace(/\D/g,'').length<10){showError('Informe o mesmo telefone com DDD usado na tentativa.');return;}
+    booking.busy=true;showError();updateFooter();
+    try{
+      const result=await api('/appointments/recover',{method:'POST',body:JSON.stringify({quote:booking.quote,start_at:booking.start,customer_phone:booking.phone})});
+      if(result.status==='pending'){
+        showError('A confirmação ainda está em processamento. Aguarde um pouco e consulte novamente com o mesmo telefone.');return;
+      }
+      if(!result.protocol||!result.start_at)throw new Error('Não foi possível verificar a confirmação. Consulte novamente ou fale com a equipe.');
+      booking.result=result;booking.phone='';booking.quote=null;forgetAttempt();renderBooking();
+    }catch(error){
+      if(error.code==='confirmation_not_found'&&!$('recovery-restart')){
+        const restart=el('section','booking-follow-up');restart.id='recovery-restart';
+        restart.append(el('p','','Se o telefone estiver incorreto, pode existir uma reserva. Confira o contato ou fale com a barbearia antes de iniciar outra.'),
+          button('Iniciar outro agendamento','outline',()=>{
+            forgetAttempt();openBooking();bookingOpener=$('hero-book');
+          }));
+        $('booking-body').append(restart);
+      }
+      showError(error.name==='AbortError'?'A consulta demorou. Tente recuperar novamente com o mesmo telefone.':error.message);
+    }
+    finally{booking.busy=false;updateFooter();}
+  }
   function updateFooter() {
     const next = $('booking-next'), back = $('booking-back'), total = $('booking-total');
-    back.hidden = booking.step === 1 || !!booking.result; back.disabled = booking.busy; $('close-booking').disabled = booking.busy;
+    back.hidden = booking.step === 1 || !!booking.result||booking.recovering; back.disabled = booking.busy||booking.pendingAttempt; $('close-booking').disabled = booking.busy;
+    $('customer-form')?.querySelectorAll('input:not([type=checkbox])').forEach(field=>{field.readOnly=booking.pendingAttempt;});
     total.replaceChildren();
     if (booking.services.length && !booking.result) { const amount = selectionTotal(); total.append(el('span', '', duration(booking.availability?.duration_min ?? amount.minutes))); if (data.site.show_prices || booking.step === 3) total.append(el('strong', '', priceText(booking.availability?.price_cents ?? amount.price,booking.availability?.price_mode || amount.price_mode))); }
-    next.textContent = booking.result ? 'Concluir' : booking.busy ? 'Confirmando…' : booking.step === 3 ? 'Confirmar agendamento' : 'Continuar →';
-    next.disabled = booking.busy || (!booking.result && (booking.step === 1 ? !booking.services.length || !eligibleProfessionals().length : booking.step === 2 ? !booking.start || !booking.quote || booking.loading || preview : !booking.consent));
+    next.textContent = booking.result ? 'Concluir' : booking.busy ? (booking.recovering?'Consultando…':'Confirmando…') : booking.recovering?'Recuperar confirmação':booking.step === 3 ? 'Confirmar agendamento' : 'Continuar →';
+    next.disabled = booking.busy || (!booking.result && (booking.recovering?booking.phone.replace(/\D/g,'').length<10:booking.step === 1 ? !booking.services.length || !eligibleProfessionals().length : booking.step === 2 ? !booking.start || !booking.quote || booking.loading || preview : !booking.consent));
   }
   async function submitBooking() {
     if (booking.busy || !booking.consent || preview || !booking.quote || !booking.start) return;
     const form = $('customer-form'); if (!form.reportValidity()) return;
     if (!booking.name.trim() || booking.phone.replace(/\D/g, '').length < 10) { showError('Informe seu nome e um telefone válido com DDD.'); return; }
-    booking.busy = true; showError(); updateFooter();
+    booking.busy = true;booking.pendingAttempt=true;showError();updateFooter();
+    booking.recoverySaved=rememberAttempt();
     try {
       booking.result = await api('/appointments', { method: 'POST', body: JSON.stringify({ quote: booking.quote, start_at: booking.start, customer_name: booking.name.trim(), customer_phone: booking.phone, confirmed: true }) });
-      booking.name = ''; booking.phone = ''; booking.quote = null; renderBooking();
+      booking.name = ''; booking.phone = ''; booking.quote = null;forgetAttempt();renderBooking();
     } catch (error) {
-      if ([404, 409, 422].includes(error.status)) { invalidateAvailability(); booking.step = 2; renderBooking(); }
-      showError(error.name === 'AbortError' ? 'A resposta demorou. Tente confirmar novamente com os mesmos dados para recuperar o resultado.' : error.message);
+      if(error.code==='appointment_changed'){
+        booking.recovering=true;booking.pendingAttempt=false;renderBooking();renderRecoveryBanner();
+        showError(error.message);return;
+      }
+      const temporary=error.retryable===true||error.code==='agenda_busy'||error.status>=500||!error.status;
+      const definitive=!temporary&&(error.retryable===false||[404,422].includes(error.status)||
+        ['quote_expired','slot_unavailable','selection_changed'].includes(error.code));
+      if(definitive){forgetAttempt();booking.pendingAttempt=false;invalidateAvailability();booking.step=2;renderBooking();loadAvailability();}
+      else renderRecoveryBanner();
+      showError(error.name === 'AbortError' ? 'A resposta demorou. Tente confirmar novamente com os mesmos dados para recuperar o resultado. '+
+        (booking.recoverySaved?'Se fechar ou recarregar a página, use “Recuperar confirmação anterior”.':
+          'Mantenha esta página aberta. Antes de fazer outra reserva, confirme o resultado com a equipe.') : error.message);
     } finally { booking.busy = false; updateFooter(); }
   }
   function renderSuccess(body) {
     const success = el('div', 'success'); success.append(el('div', 'success-check', '✓'), el('h3', '', 'Agendamento confirmado!'), el('p', '', 'Seu horário está reservado. Guarde o protocolo e chegue no horário combinado.'), reviewCard(booking.result));
-    success.append(button('Adicionar ao meu calendário', 'outline', downloadCalendar)); body.append(success);
+    success.append(button('Adicionar ao meu calendário', 'outline', downloadCalendar));
+    const help=el('section','booking-follow-up');
+    help.append(el('h3','','Precisa cancelar ou remarcar?'),
+      el('p','','Entre em contato diretamente com a equipe e informe o protocolo. A alteração depende da confirmação do estabelecimento.'));
+    const contact=officialBookingContact();
+    if(contact)help.append(contact);
+    else help.append(el('p','','Consulte os canais oficiais do estabelecimento nesta página.'));
+    success.append(help);body.append(success);
   }
   function downloadCalendar() {
     const result = booking.result; if (!result) return;
@@ -765,10 +941,11 @@
   $('hero-book').addEventListener('click', () => openBooking());
   $('close-booking').addEventListener('click', closeBooking);
   dialog.addEventListener('cancel', event => { if (booking.busy) event.preventDefault(); });
-  dialog.addEventListener('close', () => { document.body.classList.remove('booking-open'); availabilityController?.abort(); requestSequence++; });
-  $('booking-back').addEventListener('click', () => { if (booking.busy) return; booking.step--; showError(); renderBooking(); });
+  dialog.addEventListener('close', () => { document.body.classList.remove('booking-open'); availabilityController?.abort(); requestSequence++; bookingOpener?.focus(); });
+  $('booking-back').addEventListener('click', () => { if (booking.busy||booking.pendingAttempt) return; booking.step--; showError(); renderBooking(); });
   $('booking-next').addEventListener('click', () => {
     if (booking.result) { closeBooking(); return; }
+    if(booking.recovering){recoverBooking();return;}
     if (booking.step === 3) { submitBooking(); return; }
     if (booking.step === 1) { if (!booking.services.length || !eligibleProfessionals().length) return; booking.professional = eligibleProfessionals()[0].id; booking.step = 2; showError(); renderBooking(); loadAvailability(); }
     else if (booking.start && booking.quote) { booking.step = 3; showError(); renderBooking(); }
@@ -779,5 +956,16 @@
     try { if (navigator.share) await navigator.share({ title: data.site.title, url: location.href }); else { await navigator.clipboard.writeText(location.href); message.textContent = 'Link copiado.'; message.hidden = false; } }
     catch (error) { if (error.name !== 'AbortError') { message.textContent = 'Copie o endereço do site na barra do navegador para compartilhar.'; message.hidden = false; } }
   });
-  api().then(result => { data = result; renderPage(); }).catch(error => { const node = $('page-message'); node.replaceChildren(el('h1', '', error.status === 404 ? 'Página indisponível' : 'Não foi possível carregar o site'), el('p', 'muted', error.status === 404 ? 'Este endereço ainda não foi publicado ou deixou de estar disponível.' : error.message)); });
+  function loadCatalogue() {
+    if(catalogueLoading)return;catalogueLoading=true;
+    $('page-message').querySelector('button')?.setAttribute('disabled','');
+    api().then(result=>{data=result;renderPage();}).catch(error=>{
+      const node=$('page-message');node.hidden=false;
+      node.classList.toggle('catalogue-error',!$('site-content').hidden);
+      node.replaceChildren(el('h1','',error.status===404?'Página indisponível':'Não foi possível carregar os dados de agendamento'),
+        el('p','muted',error.status===404?'Este endereço ainda não foi publicado ou deixou de estar disponível.':error.message),
+        button('Tentar novamente','outline',loadCatalogue));
+    }).finally(()=>{catalogueLoading=false;});
+  }
+  loadCatalogue();
 })();

@@ -371,3 +371,67 @@ body{background:var(--bg);color:var(--text);min-width:0}
 @media(prefers-reduced-motion:reduce){
   .booking-body .professional-choice{transition:none}
 }
+
+/* A brand colour is a fill, not automatically a readable text/focus colour. */
+:root{--accent-text:color-mix(in srgb,var(--primary) 22%,var(--text));--focus-ring:var(--accent-text)}
+.identity-card{container:identity / inline-size}
+.booking-dialog{container:booking / inline-size}
+.tag,.booking-steps li[aria-current=step],.booking-service-list .service-card[aria-pressed=true] .service-arrow,
+.site-logo,.portrait,.service-thumb,.location-mark,.section-icon,.location-small-pin,
+.contact-heading-icon,.amenity-tile[aria-expanded=true]{color:var(--accent-text)}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,
+.hero-actions .hero-icon-action:focus-visible,.appearance-trigger:focus-visible,
+.social-link:focus-visible,.amenity-tile:focus-visible{outline-color:var(--focus-ring)}
+.search-wrap:focus-within{border-color:var(--focus-ring);outline:2px solid var(--focus-ring);outline-offset:2px}
+.booking-body h3:focus,#booking-error:focus{outline:2px solid var(--focus-ring);outline-offset:5px}
+.booking-total{overflow-wrap:anywhere}
+.booking-total strong{white-space:normal;overflow-wrap:anywhere}
+.hero-actions{flex-wrap:wrap}
+.booking-footer{flex-wrap:wrap}
+.booking-total{flex:1 0 160px}
+.booking-footer .primary{max-width:100%;white-space:normal}
+.services-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))}
+.booking-body .services-grid{grid-template-columns:1fr}
+.booking-confirmation-note{font-size:13px;color:var(--muted);margin:0 0 16px}
+.recovery-banner{padding:16px;border:1px solid var(--border);border-radius:16px;background:var(--card);margin-bottom:24px}
+.recovery-banner p{font-size:14px;color:var(--muted);margin:8px 0 12px}
+.page-message.catalogue-error{min-height:0;padding:16px;margin:16px;border:1px solid var(--border);border-radius:16px;background:var(--card)}
+.page-message.catalogue-error h1{font-size:19px}
+.availability-alternatives{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.availability-alternatives .outline{white-space:normal;flex:1}
+.booking-follow-up{margin-top:24px;padding-top:20px;border-top:1px solid var(--border);text-align:left}
+.booking-follow-up h3{font-size:17px;margin-bottom:8px}
+.booking-follow-up p{font-size:14px;color:var(--muted);margin-bottom:12px}
+.booking-follow-up .outline{white-space:normal;text-align:center}
+.day-button:disabled{opacity:1;border-style:dashed;background:var(--bg);color:var(--muted)}
+.day-button:disabled strong{color:var(--muted)}
+.day-closed{display:block;font-size:9px;line-height:14px}
+@media(max-width:639px){
+  .booking-footer{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 12px}
+  .booking-footer .primary{grid-column:1/-1;grid-row:2;width:100%;margin:0;min-width:0;white-space:normal;text-align:center}
+  .booking-footer .outline{grid-column:1;grid-row:1}
+  .booking-total{grid-column:2;grid-row:1;padding:0}
+  .booking-footer:has(.booking-total:empty) .primary{grid-row:1}
+  .booking-footer:has(#booking-back[hidden]) .booking-total{grid-column:1/-1}
+  .slot-message{flex-wrap:wrap;padding:16px 8px}
+}
+@media(max-width:399px){
+  .review-row.total{display:grid;grid-template-columns:minmax(0,1fr);gap:6px}
+  .review-row.total>strong{text-align:right}
+}
+/* Container widths also track content zoom, unlike viewport breakpoints. */
+@container identity (max-width:500px){
+  .hero-actions .pill{flex:1;min-width:0;padding-inline:12px;font-size:14px}
+  .hero-actions .hero-icon-action{flex:0 0 44px;width:44px;min-width:44px;padding:0}
+  .hero-actions .hero-action-label{display:none}
+}
+@container booking (max-width:500px){
+  .booking-footer{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 12px}
+  .booking-footer .primary{grid-column:1/-1;grid-row:2;width:100%;margin:0;min-width:0;white-space:normal;text-align:center}
+  .booking-footer .outline{grid-column:1;grid-row:1}
+  .booking-total{grid-column:2;grid-row:1;padding:0}
+  .booking-footer:has(.booking-total:empty) .primary{grid-row:1}
+  .booking-footer:has(#booking-back[hidden]) .booking-total{grid-column:1/-1}
+  .review-row.total{display:grid;grid-template-columns:minmax(0,1fr);gap:6px}
+  .review-row.total>strong{text-align:right}
+}

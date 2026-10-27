@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import secrets
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from uuid import UUID, uuid4
@@ -26,6 +27,101 @@ from app.customer_names import useful_name
 UTC = timezone.utc
 PROTOCOL_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 HOLD_TTL = timedelta(minutes=5)
+_PUBLIC_TRANSACTION = "orion.public_booking_transaction"
+
+
+@dataclass
+class _PublicBookingTransaction:
+    tenant: UUID
+    professional: UUID
+    day: date
+    timezone: ZoneInfo
+    transaction: object
+    created: int = 0
+
+
+async def _increment_booking_usage(s, tenant, count=1):
+    await s.execute(text("""
+        INSERT INTO usage_counters (tenant_id,period,bookings)
+        VALUES (:tenant,date_trunc('month',CURRENT_DATE)::date,:count)
+        ON CONFLICT (tenant_id,period) DO UPDATE
+        SET bookings=usage_counters.bookings+:count
+    """), {"tenant": tenant, "count": count})
+
+
+def _public_agenda_busy():
+    raise HTTPException(409, {"code": "agenda_busy", "retryable": True,
+                              "message": "A agenda está sendo atualizada. Tente novamente em instantes"})
+
+
+@asynccontextmanager
+async def public_booking_transaction(s: AsyncSession, tenant: UUID, professional: UUID, day: date):
+    """One public creation/confirmation transaction, before any source row locks.
+
+    The shared professional lock conflicts with every existing exclusive engine
+    and editor lock. Public bookings on independent days share that lock, while
+    an exclusive day lock serializes every occupied interval on the chosen day.
+    Contention never waits while holding a published/source contract.
+    """
+    if not isinstance(tenant, UUID) or not isinstance(professional, UUID) or type(day) is not date:
+        raise ValueError("Public booking requires a verified tenant, professional and day")
+    if s.in_transaction() or _PUBLIC_TRANSACTION in s.info:
+        raise ValueError("Public booking transaction must own its session transaction")
+    async with tenant_transaction(s, tenant):
+        scope = str(tenant) + ":" + str(professional)
+        shared = (await s.execute(text("SELECT pg_try_advisory_xact_lock_shared(hashtextextended(:scope,0))"),
+                                  {"scope": scope})).scalar_one()
+        if not shared:
+            _public_agenda_busy()
+        acquired = (await s.execute(text("SELECT pg_try_advisory_xact_lock(hashtextextended(:scope,0))"),
+                                    {"scope": scope + ":" + day.isoformat()})).scalar_one()
+        if not acquired:
+            _public_agenda_busy()
+        zone = (await s.execute(text("SELECT timezone FROM tenants WHERE id=:tenant"),
+                                {"tenant": tenant})).scalar_one_or_none()
+        if zone is None:
+            fail(404, "Estabelecimento indisponível")
+        public_scope = _PublicBookingTransaction(
+            tenant, professional, day, ZoneInfo(zone), s.sync_session.get_transaction())
+        s.info[_PUBLIC_TRANSACTION] = public_scope
+        try:
+            yield
+            # The monthly tenant row must not serialize confirmation/catalogue
+            # reads on independent days. Charge actual creations at the end of
+            # this same atomic transaction; aborted work/replays charge nothing.
+            if public_scope.created:
+                await _increment_booking_usage(s, tenant, public_scope.created)
+        finally:
+            s.info.pop(_PUBLIC_TRANSACTION, None)
+
+
+@asynccontextmanager
+async def _engine_transaction(s, tenant, *, public=False):
+    if not public:
+        async with tenant_transaction(s, tenant):
+            yield None
+        return
+    scope = s.info.get(_PUBLIC_TRANSACTION)
+    if (not isinstance(scope, _PublicBookingTransaction) or scope.tenant != tenant
+            or not s.in_transaction() or scope.transaction is not s.sync_session.get_transaction()):
+        raise ValueError("Public engine call requires its active verified booking transaction")
+    yield scope
+
+
+def _public_day_bounds(scope, professional, start, items=None):
+    if scope.professional != professional:
+        raise ValueError("Public booking transaction belongs to another professional")
+    if start.tzinfo is None or start.utcoffset() is None:
+        fail(422, "Envie data e hora com fuso explícito")
+    if start.astimezone(scope.timezone).date() != scope.day:
+        fail(422, "O horário não pertence ao dia escolhido")
+    begin = datetime.combine(scope.day, time.min, tzinfo=scope.timezone).astimezone(UTC)
+    stop = datetime.combine(scope.day + timedelta(days=1), time.min, tzinfo=scope.timezone).astimezone(UTC)
+    if items is not None:
+        occupied = bounds(start, items)
+        if occupied["occupied_from"] < begin or occupied["occupied_until"] > stop:
+            fail(409, "Atendimento completo e buffers não cabem no dia escolhido")
+    return begin, stop
 
 
 def fail(status: int, message: str):
@@ -170,38 +266,67 @@ class _SlotConstraints:
     reservations: tuple
 
 
-async def _read_slot_constraints(s, tenant, professional, target, tz, now, ignored):
-    """Request-local inputs for a read-only grid; never reused by a mutation."""
-    hours = (await s.execute(text("""
-        SELECT id, start_time, end_time FROM working_hours
+_SLOT_CONSTRAINTS_SQL = text("""
+    WITH shift AS (
+        SELECT id, start_time, end_time
+        FROM working_hours
         WHERE tenant_id=:tenant AND professional_id=:professional AND weekday=:weekday
-    """), {"tenant": tenant, "professional": professional, "weekday": target.weekday()})).mappings().first()
-    if hours is None:
+        LIMIT 1
+    )
+    SELECT h.id, h.start_time, h.end_time,
+        COALESCE((SELECT jsonb_agg(jsonb_build_object(
+            'start_time', b.start_time, 'end_time', b.end_time))
+            FROM working_breaks b
+            WHERE b.tenant_id=:tenant AND b.working_hour_id=h.id), '[]'::jsonb) AS pauses,
+        COALESCE((SELECT jsonb_agg(jsonb_build_object(
+            'starts_at', blocked.starts_at, 'ends_at', blocked.ends_at))
+            FROM (
+                SELECT starts_at, ends_at FROM time_off
+                WHERE tenant_id=:tenant AND professional_id=:professional
+                  AND starts_at < :stop AND ends_at > :begin
+                UNION ALL
+                SELECT starts_at, ends_at FROM schedule_blocks
+                WHERE tenant_id=:tenant AND professional_id=:professional
+                  AND starts_at < :stop AND ends_at > :begin
+            ) blocked), '[]'::jsonb) AS blocks,
+        COALESCE((SELECT jsonb_agg(jsonb_build_object(
+            'starts_at', a.occupied_from, 'ends_at', a.occupied_until))
+            FROM appointments a
+            WHERE a.tenant_id=:tenant AND a.professional_id=:professional
+              AND a.id != :ignored AND a.status IN ('hold','confirmed')
+              AND a.occupied_from < :stop AND a.occupied_until > :begin
+              AND (a.status <> 'hold' OR a.hold_expires_at > :now)), '[]'::jsonb) AS reservations
+    FROM shift h
+""")
+
+
+async def _read_slot_constraints(s, tenant, professional, target, tz, now, ignored):
+    """One fresh statement snapshot for this grid; never reused by a mutation."""
+    # Every accepted occupied interval fits within its local shift/day. Bound
+    # reads to that day using the engine's ZoneInfo semantics, including DST
+    # folds; PostgreSQL AT TIME ZONE resolves ambiguous local times differently.
+    begin = datetime.combine(target, time.min, tzinfo=tz).astimezone(UTC)
+    stop = datetime.combine(target + timedelta(days=1), time.min, tzinfo=tz).astimezone(UTC)
+    row = (await s.execute(_SLOT_CONSTRAINTS_SQL, {
+        "tenant": tenant, "professional": professional, "weekday": target.weekday(),
+        "begin": begin, "stop": stop, "now": now,
+        "ignored": ignored or UUID(int=0),
+    })).mappings().first()
+    if row is None:
         return _SlotConstraints(tenant, professional, target, None, (), (), ())
-    pauses = (await s.execute(text("""
-        SELECT start_time, end_time FROM working_breaks
-        WHERE tenant_id=:tenant AND working_hour_id=:working_hour
-    """), {"tenant": tenant, "working_hour": hours["id"]})).mappings().all()
-    # A valid candidate's complete occupied interval must fit inside this
-    # shift, so intervals outside it cannot reject any candidate in the grid.
-    begin = datetime.combine(target, hours["start_time"], tzinfo=tz).astimezone(UTC)
-    stop = datetime.combine(target, hours["end_time"], tzinfo=tz).astimezone(UTC)
-    parameters = {"tenant": tenant, "professional": professional, "begin": begin, "stop": stop}
-    blocks = []
-    for table in ("time_off", "schedule_blocks"):
-        blocks.extend((await s.execute(text(f"""
-            SELECT starts_at, ends_at FROM {table}
-            WHERE tenant_id=:tenant AND professional_id=:professional
-              AND starts_at < :stop AND ends_at > :begin
-        """), parameters)).mappings().all())
-    reservations = (await s.execute(text("""
-        SELECT occupied_from AS starts_at, occupied_until AS ends_at FROM appointments
-        WHERE tenant_id=:tenant AND professional_id=:professional
-          AND id != :ignored AND status IN ('hold','confirmed')
-          AND occupied_from < :stop AND occupied_until > :begin
-          AND (status <> 'hold' OR hold_expires_at > :now)
-    """), {**parameters, "ignored": ignored or UUID(int=0), "now": now})).mappings().all()
-    return _SlotConstraints(tenant, professional, target, dict(hours), tuple(pauses), tuple(blocks), tuple(reservations))
+    pauses = tuple({key: time.fromisoformat(value) for key, value in entry.items()}
+                   for entry in row["pauses"])
+    def intervals(entries):
+        result = []
+        for entry in entries:
+            parsed = {key: datetime.fromisoformat(value) for key, value in entry.items()}
+            if any(value.tzinfo is None or value.utcoffset() is None for value in parsed.values()):
+                raise ValueError("Slot constraints require timezone-aware database intervals")
+            result.append(parsed)
+        return tuple(result)
+    hours = {key: row[key] for key in ("id", "start_time", "end_time")}
+    return _SlotConstraints(tenant, professional, target, hours, pauses,
+                            intervals(row["blocks"]), intervals(row["reservations"]))
 
 
 async def check_slot(s: AsyncSession, tenant: UUID, professional: UUID,
@@ -271,12 +396,16 @@ async def check_slot(s: AsyncSession, tenant: UUID, professional: UUID,
     return b
 
 
-async def expire_holds(s: AsyncSession, tenant: UUID, professional: UUID, now: datetime):
+async def expire_holds(s: AsyncSession, tenant: UUID, professional: UUID, now: datetime, *, day_bounds=None):
+    suffix = " AND start_at>=:day_begin AND start_at<:day_stop" if day_bounds is not None else ""
+    parameters = {"tenant": tenant, "professional": professional, "now": now}
+    if day_bounds is not None:
+        parameters.update(day_begin=day_bounds[0], day_stop=day_bounds[1])
     rows = (await s.execute(text("""
         UPDATE appointments SET status='cancelled', updated_at=GREATEST(:now,updated_at+interval '1 microsecond')
         WHERE tenant_id=:tenant AND professional_id=:professional AND status='hold'
-          AND hold_expires_at <= :now RETURNING id
-    """), {"tenant": tenant, "professional": professional, "now": now})).scalars().all()
+          AND hold_expires_at <= :now
+    """ + suffix + " RETURNING id"), parameters)).scalars().all()
     for item_id in rows:
         await history(s, tenant, item_id, "hold_expired", context=SYSTEM_ACTOR)
 
@@ -493,7 +622,8 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                            now: datetime | None = None, *, replace_hold_id: UUID | None = None,
                            expected_snapshot: str | None = None,
                            context: LifecycleActor | None = None, source: str = "unknown",
-                           nonblocking_professional_lock: bool = False):
+                           nonblocking_professional_lock: bool = False,
+                           _public_transaction: bool = False):
     """ÚNICA função para criar reservas/holds de todos os canais futuros."""
     supplied_clock = now is not None
     now = now or datetime.now(UTC)
@@ -505,8 +635,13 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                                        "snapshot": expected_snapshot}, sort_keys=True).encode()).hexdigest()
     elif expected_snapshot is not None:
         fail(422, "A substituição exige a reserva temporária")
-    async with tenant_transaction(s, tenant):
-        await _engine_professional_lock(s, tenant, professional, nonblocking=nonblocking_professional_lock)
+    if _public_transaction and (source != "public_site" or replace_hold_id is not None):
+        raise ValueError("Public booking transaction only creates native public bookings")
+    async with _engine_transaction(s, tenant, public=_public_transaction) as public_scope:
+        if public_scope is None:
+            await _engine_professional_lock(s, tenant, professional, nonblocking=nonblocking_professional_lock)
+        else:
+            _public_day_bounds(public_scope, professional, start)
         if not supplied_clock:
             now = datetime.now(UTC)
         existing = (await s.execute(text("""
@@ -526,8 +661,15 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                 now = datetime.now(UTC)
                 if previous["hold_expires_at"] <= now:
                     fail(409, "A reserva temporária expirou. Consulte um novo horário")
-        await expire_holds(s, tenant, professional, now)
-        shop, items = await load_bundle(s, tenant, professional, ids)
+        if public_scope is None:
+            await expire_holds(s, tenant, professional, now)
+            shop, items = await load_bundle(s, tenant, professional, ids)
+        else:
+            shop, items = await load_bundle(s, tenant, professional, ids)
+            if shop["timezone"] != public_scope.timezone.key:
+                fail(409, "O fuso da agenda mudou. Consulte o horário novamente")
+            day_bounds = _public_day_bounds(public_scope, professional, start, items)
+            await expire_holds(s, tenant, professional, now, day_bounds=day_bounds)
         b = await check_slot(s, tenant, professional, shop, items, start, now,
                              ignore_appointment=replace_hold_id)
         if replace_hold_id is not None:
@@ -596,13 +738,12 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                    "cleanup": item["cleanup_min"], "order": order})
         await history(s, tenant, item_id, "hold_created",
                       context=resolved_actor(context, source, customer, verified_customer=True))
-        await s.execute(text("""
-            INSERT INTO usage_counters (tenant_id,period,bookings)
-            VALUES (:tenant,date_trunc('month',CURRENT_DATE)::date,1)
-            ON CONFLICT (tenant_id,period) DO UPDATE
-            SET bookings=usage_counters.bookings+1
-        """),{"tenant":tenant})
-        return await _hold_proposal(s, tenant, item_id)
+        proposal = await _hold_proposal(s, tenant, item_id)
+        if public_scope is None:
+            await _increment_booking_usage(s, tenant)
+        else:
+            public_scope.created += 1
+        return proposal
 
 
 async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
@@ -610,14 +751,17 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
                        expected_snapshot: str | None = None, expected_updated_at: datetime | None = None,
                        idempotency_key: str | None = None,
                        context: LifecycleActor | None = None, source: str = "unknown",
-                       nonblocking_professional_lock: bool = False):
+                       nonblocking_professional_lock: bool = False,
+                       _public_transaction: bool = False):
     supplied_clock = now is not None
     now = now or datetime.now(UTC)
     expired = False
     result = None
-    async with tenant_transaction(s, tenant):
+    if _public_transaction and source != "public_site":
+        raise ValueError("Public booking transaction only confirms native public bookings")
+    async with _engine_transaction(s, tenant, public=_public_transaction) as public_scope:
         row = (await s.execute(text("""
-            SELECT professional_id FROM appointments
+            SELECT professional_id,start_at FROM appointments
             WHERE tenant_id=:tenant AND id=:id
         """), {"tenant": tenant, "id": item_id})).mappings().first()
         if not row:
@@ -625,8 +769,11 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
         # A competing public hold can briefly win between book and confirm.
         # Give confirmation a bounded chance to finish its existing hold; never
         # wait on a database lock or renew/recreate the hold while contended.
-        await _engine_professional_lock(s, tenant, row["professional_id"], nonblocking=nonblocking_professional_lock,
-                                        retry_seconds=1.0 if nonblocking_professional_lock else 0)
+        if public_scope is None:
+            await _engine_professional_lock(s, tenant, row["professional_id"], nonblocking=nonblocking_professional_lock,
+                                            retry_seconds=1.0 if nonblocking_professional_lock else 0)
+        else:
+            _public_day_bounds(public_scope, row["professional_id"], row["start_at"])
         hold = (await s.execute(text("""
             SELECT * FROM appointments WHERE tenant_id=:tenant AND id=:id FOR UPDATE
         """), {"tenant": tenant, "id": item_id})).mappings().one()
@@ -666,6 +813,10 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
                 AND appointment_id=:id ORDER BY item_order
             """), {"tenant": tenant, "id": item_id})).scalars().all()
             shop, items = await load_bundle(s, tenant, hold["professional_id"], list(ids))
+            if public_scope is not None:
+                if shop["timezone"] != public_scope.timezone.key:
+                    fail(409, "O fuso da agenda mudou. Consulte o horário novamente")
+                _public_day_bounds(public_scope, hold["professional_id"], hold["start_at"], items)
             fresh = bounds(hold["start_at"], items)
             # Evitar confirmação usando preço/tempo antigo se catálogo mudou
             if (fresh["end_at"] != hold["end_at"] or

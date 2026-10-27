@@ -1,7 +1,7 @@
 """Real PostgreSQL cross-connection lock ordering, never a production load test.
 
-The public request pins its published/source contract in one connection while
-the booking engine uses another. A professional editor must not trap both.
+The public request owns its professional/day locks before pinning the source
+contract, using a single transaction. Editors serialize without a lock cycle.
 """
 import asyncio
 from datetime import datetime
@@ -31,9 +31,11 @@ async def test_public_booking_does_not_wait_on_editor_blocked_by_its_guard(publi
         quoted = response.json()
     else:
         quoted = await availability(d)
-    guard_ready, writer_has_advisory = asyncio.Event(), asyncio.Event()
+    guard_ready, writer_attempted, writer_has_advisory, release_booking = (asyncio.Event() for _ in range(4))
     original_writer_lock = professional_commissions.acquire_professional_lock
     async def writer_lock(db, tenant, professional):
+        if tenant == d["a"] and professional == d["pro"]:
+            writer_attempted.set()
         await original_writer_lock(db, tenant, professional)
         if tenant == d["a"] and professional == d["pro"]:
             writer_has_advisory.set()
@@ -42,7 +44,7 @@ async def test_public_booking_does_not_wait_on_editor_blocked_by_its_guard(publi
     original_engine = getattr(public_site_api, boundary)
     async def paused_engine(*args, **kwargs):
         guard_ready.set()  # Published/source FOR SHARE locks are held now.
-        await asyncio.wait_for(writer_has_advisory.wait(), timeout=5)
+        await asyncio.wait_for(release_booking.wait(), timeout=5)
         return await original_engine(*args, **kwargs)
     monkeypatch.setattr(public_site_api, boundary, paused_engine)
     tasks = []
@@ -58,24 +60,25 @@ async def test_public_booking_does_not_wait_on_editor_blocked_by_its_guard(publi
                 json={"expected_version": 1, "name": "Profissional sintético",
                       "service_ids": [str(d["cut"])]}))
         tasks.append(edit)
-        await asyncio.wait_for(writer_has_advisory.wait(), timeout=5)
-        # Before the fix this expires: editor owns advisory + waits source row,
-        # engine waits editor advisory, and the idle source guard awaits engine.
-        booked, edited = await asyncio.wait_for(asyncio.gather(booking, edit), timeout=3)
-        assert booked.status_code == 409, booked.text
-        assert "novamente" in booked.text or "instantes" in booked.text
-        assert edited.status_code == (409 if stage == "confirm" and writer == "archive" else 200), edited.text
+        await asyncio.wait_for(writer_attempted.wait(), timeout=5)
+        # The editor is already attempting its exclusive professional lock;
+        # public owns the shared scope before any source row was pinned.
+        assert not writer_has_advisory.is_set()
+        release_booking.set()
+        booked, edited = await asyncio.wait_for(asyncio.gather(booking, edit), timeout=5)
+        assert booked.status_code == 201, booked.text
+        assert edited.status_code == (409 if writer == "archive" else 200), edited.text
+        assert writer_has_advisory.is_set()
         async with d["migrator"].connect() as db:
             rows = (await db.execute(text("SELECT status FROM appointments WHERE tenant_id=:tenant"), {"tenant": d["a"]})).scalars().all()
             customers = (await db.execute(text("SELECT count(*) FROM customers WHERE tenant_id=:tenant AND whatsapp_e164=:phone"),
                 {"tenant": d["a"], "phone": "+5511987654321"})).scalar_one()
-            assert rows == ([] if stage == "book" else ["hold"])
-            assert customers == (0 if stage == "book" else 1)
-            assert (await db.execute(text("SELECT count(*) FROM public_booking_receipts WHERE tenant_id=:tenant"), {"tenant": d["a"]})).scalar_one() == 0
-        if stage == "confirm" and writer == "configuration" and not multiple:
-            # The edited assignment still offers this exact service. Reusing
-            # the original signed nonce resumes its existing hold, then replay
-            # returns the confirmation rather than creating another booking.
+            assert rows == ["confirmed"]
+            assert customers == 1
+            assert (await db.execute(text("SELECT count(*) FROM public_booking_receipts WHERE tenant_id=:tenant"), {"tenant": d["a"]})).scalar_one() == 1
+        if writer == "configuration":
+            # The already committed operation is recoverable even when the
+            # editor has since changed the professional's assignments.
             retry = await client.post(d["public"] + "/appointments", json=book_body(quoted))
             assert retry.status_code == 201, retry.text
             replay = await client.post(d["public"] + "/appointments", json=book_body(quoted))

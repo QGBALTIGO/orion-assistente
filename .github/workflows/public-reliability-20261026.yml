@@ -1,0 +1,319 @@
+name: Orion - public reliability on Linux
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'app/public_*.py'
+      - 'app/booking_service.py'
+      - 'app/database.py'
+      - 'app/health_api.py'
+      - 'app/panel_auth.py'
+      - 'app/main.py'
+      - 'app/metrics_api.py'
+      - 'app/service_packages_api.py'
+      - 'app/site_*.py'
+      - 'app/management_*.py'
+      - 'app/static/orion-public.*'
+      - 'app/static/orion-suite.*'
+      - 'alembic/**'
+      - 'infra/postgres/init/**'
+      - 'scripts/qualification_*.py'
+      - 'scripts/backup_and_migrate_public_runtime.py'
+      - 'scripts/correct_public_site_timezone.py'
+      - 'tests/unit/test_public*.py'
+      - 'tests/unit/test_health.py'
+      - 'tests/unit/test_site_publication*.py'
+      - 'tests/unit/test_variable_combo_release.py'
+      - 'tests/unit/test_panel_session_pool.py'
+      - 'tests/integration/test_panel_session_pool_redis.py'
+      - 'tests/integration/test_booking_slot_constraint_batch.py'
+      - 'tests/integration/test_public*.py'
+      - 'tests/integration/test_runtime_readiness.py'
+      - 'tests/integration/test_site_*.py'
+      - 'tests/integration/test_variable_combo_pricing_pg.py'
+      - 'tests/load/test_qualification_public_booking.py'
+      - 'tests/load/test_qualification_process_limits.py'
+      - 'tests/e2e/browser_public_reliability.py'
+      - 'tests/e2e/requirements.txt'
+      - 'ui-tests/**'
+      - 'pyproject.toml'
+      - 'requirements.lock'
+      - 'compose.yaml'
+      - 'railway.json'
+      - '.github/workflows/public-reliability-20261026.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-reliability-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  focused-contracts:
+    name: Public contracts, PostgreSQL RLS, readiness and real SSR
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: public_reliability_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-public-owner-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d public_reliability_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-public-runtime-only@127.0.0.1:5432/public_reliability_ci
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-public-migrator-only@127.0.0.1:5432/public_reliability_ci
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-public-support-only@127.0.0.1:5432/public_reliability_ci
+      ORION_QUALIFICATION_OWNER_URL: postgresql+psycopg://postgres:ci-public-owner-only@127.0.0.1:5432/postgres
+      ORION_QUALIFICATION_DISPOSABLE: '1'
+      SUPPORT_API_TOKEN: synthetic-public-ci-support-token-of-at-least-32-characters
+      PUBLIC_SITE_SIGNING_KEY: synthetic-public-ci-signing-key-of-at-least-32-characters
+      REDIS_URL: redis://127.0.0.1:6379/15
+      ORION_E2E_REDIS_URL: redis://127.0.0.1:6379/15
+      ORION_E2E_ENABLED: '1'
+      ORION_E2E_ARTIFACTS: artifacts/browser
+      REQUIRE_POSTGRES_TESTS: '1'
+      REQUIRE_REDIS_TESTS: '1'
+      BUSINESS_PROFILES_ENABLED: '1'
+      GROQ_ENABLED: '0'
+      GROQ_PROBE_ON_START: '0'
+      MARKETING_EXECUTION_ENABLED: '0'
+      MARKETING_RECONCILIATION_ENABLED: '0'
+      META_LIVE_SEND: '0'
+      GOOGLE_LIVE_SYNC: '0'
+      PANEL_EMAIL_ENABLED: '0'
+      QR_CHANNELS_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned runtime and isolated browser tools
+        run: |
+          mkdir -p artifacts
+          python -m pip install -c requirements.lock '.[test]' 'psutil==7.1.0' -r tests/e2e/requirements.txt
+          python -m pip check
+          python -m playwright install --with-deps chromium webkit firefox
+      - name: Test public and operational interface contracts
+        run: |
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --check app/static/orion-public.js
+          node --check app/static/orion-suite.js
+          node --test \
+            ui-tests/orion-public.test.mjs \
+            ui-tests/public-reliability.test.mjs \
+            ui-tests/site-publication.test.mjs \
+            ui-tests/site-operational-review.test.mjs \
+            ui-tests/package-variable-combo.test.mjs
+      - name: Use PostgreSQL 16 client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          echo '/usr/lib/postgresql/16/bin' >> "$GITHUB_PATH"
+      - name: Initialize restricted roles and migrate the disposable service database
+        env:
+          PGPASSWORD: ci-public-owner-only
+        run: |
+          psql -h 127.0.0.1 -U postgres -d public_reliability_ci -v ON_ERROR_STOP=1 \
+            -v db_name=public_reliability_ci \
+            -v runtime_password=ci-public-runtime-only \
+            -v migrator_password=ci-public-migrator-only \
+            -v support_password=ci-public-support-only \
+            -f infra/postgres/init/001-roles.sql
+          python -m alembic upgrade head
+      - name: Test public units, guarded releases and load-harness accounting
+        run: |
+          python -m pytest -q -ra --junitxml=artifacts/public-units.xml \
+            tests/unit/test_health.py \
+            tests/unit/test_public_site.py \
+            tests/unit/test_public_opening_hours.py \
+            tests/unit/test_public_site_rendering.py \
+            tests/unit/test_public_site_runtime.py \
+            tests/unit/test_public_runtime_health.py \
+            tests/unit/test_public_runtime_release.py \
+            tests/unit/test_panel_session_pool.py \
+            tests/unit/test_site_publication.py \
+            tests/unit/test_site_publication_release.py \
+            tests/unit/test_variable_combo_release.py \
+            tests/load/test_qualification_public_booking.py \
+            tests/load/test_qualification_process_limits.py
+      - name: Test real booking atomicity, quotas, RLS, history and SSR
+        run: |
+          python -m pytest -q -ra --junitxml=artifacts/public-postgres.xml \
+            tests/integration/test_public_booking_atomic_engine.py \
+            tests/integration/test_booking_slot_constraint_batch.py \
+            tests/integration/test_panel_session_pool_redis.py \
+            tests/integration/test_public_booking_professional_contention.py \
+            tests/integration/test_public_runtime_contract.py \
+            tests/integration/test_runtime_readiness.py \
+            tests/integration/test_public_catalog.py \
+            tests/integration/test_public_site_rendering_postgres.py \
+            tests/integration/test_public_hours_live.py \
+            tests/integration/test_site_publication_postgres.py \
+            tests/integration/test_site_operational_review.py \
+            tests/integration/test_variable_combo_pricing_pg.py
+      - name: Test public recovery in Chromium, WebKit and Firefox
+        run: |
+          python -m pytest -q -ra --junitxml=artifacts/public-browser.xml \
+            tests/e2e/browser_public_reliability.py
+      - name: Keep focused test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-contracts-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/
+          retention-days: 7
+          if-no-files-found: warn
+
+  public-load-1000:
+    name: Real HTTP burst - 1000 users, one Linux API worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: public_reliability_seed
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-public-load-owner-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d public_reliability_seed"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-public-load-runtime-only@127.0.0.1:5432/public_reliability_seed
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-public-load-migrator-only@127.0.0.1:5432/public_reliability_seed
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-public-load-support-only@127.0.0.1:5432/public_reliability_seed
+      ORION_QUALIFICATION_OWNER_URL: postgresql+psycopg://postgres:ci-public-load-owner-only@127.0.0.1:5432/postgres
+      ORION_QUALIFICATION_DISPOSABLE: '1'
+      REDIS_URL: redis://127.0.0.1:6379/15
+      GROQ_ENABLED: '0'
+      GROQ_PROBE_ON_START: '0'
+      MARKETING_EXECUTION_ENABLED: '0'
+      MARKETING_RECONCILIATION_ENABLED: '0'
+      META_LIVE_SEND: '0'
+      GOOGLE_LIVE_SYNC: '0'
+      PANEL_EMAIL_ENABLED: '0'
+      QR_CHANNELS_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the same pinned Linux runtime and resource measurement
+        run: |
+          mkdir -p artifacts
+          python -m pip install -c requirements.lock '.[test]' 'psutil==7.1.0'
+          python -m pip check
+      - name: Use PostgreSQL 16 client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          echo '/usr/lib/postgresql/16/bin' >> "$GITHUB_PATH"
+      - name: Initialize the three restricted roles
+        env:
+          PGPASSWORD: ci-public-load-owner-only
+        run: |
+          psql -h 127.0.0.1 -U postgres -d public_reliability_seed -v ON_ERROR_STOP=1 \
+            -v db_name=public_reliability_seed \
+            -v runtime_password=ci-public-load-runtime-only \
+            -v migrator_password=ci-public-load-migrator-only \
+            -v support_password=ci-public-load-support-only \
+            -f infra/postgres/init/001-roles.sql
+          python -m alembic upgrade head
+      - name: Verify the harness and its refusal boundaries
+        run: |
+          python -m pytest -q -ra --junitxml=artifacts/load-harness.xml \
+            tests/load/test_qualification_public_booking.py \
+            tests/load/test_qualification_process_limits.py
+      - name: Record the Linux environment and require an empty exclusive Redis DB15
+        run: |
+          python - <<'PY'
+          import importlib.metadata as metadata
+          import json
+          import os
+          from pathlib import Path
+          import platform
+          import psutil
+          from redis import Redis
+          import uvloop
+
+          assert platform.system() == 'Linux'
+          assert metadata.version('psutil') == '7.1.0'
+          cache = Redis.from_url(os.environ['REDIS_URL'])
+          try:
+              assert cache.connection_pool.connection_kwargs['db'] == 15
+              assert cache.dbsize() == 0, 'Refuse a Redis DB containing pre-existing state; no flush is permitted'
+          finally:
+              cache.close()
+          Path('artifacts/linux-runtime.json').write_text(json.dumps({
+              'platform': platform.platform(), 'python': platform.python_version(),
+              'logical_cpus': os.cpu_count(), 'available_memory_bytes': psutil.virtual_memory().available,
+              'versions': {name: metadata.version(name) for name in
+                  ('fastapi', 'starlette', 'uvicorn', 'uvloop', 'SQLAlchemy', 'asyncpg', 'redis', 'httpx', 'psutil')},
+              'api_workers': 1, 'requested_api_cpus': 2, 'requested_api_memory_mb': 1024,
+              'memory_limit_semantics': 'Linux RLIMIT_AS limits virtual address space, not cgroup RSS',
+              'railway_or_container_equivalence': False,
+              'scope': 'Finite simultaneous bursts on disposable CI data; not sustained production capacity'
+          }, indent=2), encoding='utf-8')
+          PY
+      - name: Run every real public qualification phase with unchanged targets
+        run: |
+          python -m scripts.qualification_public_booking \
+            --confirm-disposable-local --users 1000 --workers 1 \
+            --api-cpus 2 --api-memory-mb 1024 \
+            --readiness-path /health/ready \
+            --phases navigation availability same_slot different_days distributed_bookings unknown_slugs tenants replay combos dependencies \
+            --output artifacts/public-1000-linux.json
+      - name: Verify complete scope, Linux loop and the applied API envelope
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.qualification_public_booking import PHASES, TARGETS
+
+          report = json.loads(Path('artifacts/public-1000-linux.json').read_text())
+          assert report['users'] == 1000 and report['api']['workers'] == 1
+          assert report['qualification_scope_complete'] and set(report['scenarios']) == set(PHASES)
+          assert report['targets_declared_before_run'] == TARGETS
+          assert report['actual_pool']['event_loop'].startswith('uvloop.')
+          limits = report['api_resource_envelope']
+          assert limits['applied'] and limits['requested_cpus'] == 2 and limits['requested_memory_mb'] == 1024
+          assert limits['effective_logical_processors'] == 2
+          assert limits['effective_address_space_limit_bytes'] == 1024 * 1024 * 1024
+          assert limits['railway_or_container_equivalence'] is False
+          assert report['qualified'] and report['pass']
+          PY
+      - name: Keep complete or failed load evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-load-1000-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/
+          retention-days: 7
+          if-no-files-found: warn

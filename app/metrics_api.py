@@ -1,11 +1,19 @@
 """Consumo por tenant, visível apenas a operador de suporte autorizado."""
 from fastapi import APIRouter,Depends
 from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.catalog_api import Actor,authenticate,support_only,support_session_factory
+from app.public_observability import runtime_snapshot
 
 router=APIRouter(prefix="/api/v1/admin",tags=["Métricas"])
+
+
+@router.get("/public-runtime")
+async def public_runtime(actor:Actor=Depends(authenticate)):
+    support_only(actor)
+    return JSONResponse(runtime_snapshot(), headers={"Cache-Control": "no-store"})
 
 
 @router.get("/usage")

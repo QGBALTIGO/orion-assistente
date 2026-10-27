@@ -11,6 +11,7 @@ import json
 import os
 import re
 from urllib.parse import urlsplit
+from pathlib import Path
 
 SERVICE_VISUAL_FIELDS = ('name', 'description', 'category', 'color', 'image_url', 'sort_order', 'featured', 'catalog_kind')
 PROFESSIONAL_VISUAL_FIELDS = ('name', 'specialty', 'color', 'image_url')
@@ -103,7 +104,99 @@ def public_site_url(slug):
     return origin + '/s/' + slug
 
 
-def public_html(template, preference, slug):
+def _public_image(value):
+    if not isinstance(value,str):return None
+    if re.fullmatch(r'/media/[0-9a-f-]{36}/[0-9a-f-]{36}\.webp',value):return value
+    parsed=urlsplit(value)
+    return value if parsed.scheme=='https' and parsed.hostname and not parsed.username and not parsed.password else None
+
+
+def _server_catalogue(template,content):
+    """Render the SAME public layout before JS; no draft data or JS state blob.
+
+    Availability still requires the live API. Interactive controls are disabled
+    until client initialization, while services and official contact links work
+    without JavaScript and remain readable when that API temporarily fails.
+    """
+    escape=lambda value:html.escape(str(value or ''),quote=True)
+    site=content['site']
+    def slot(source,identity,value):
+        pattern=r'(<(?P<tag>[a-z0-9]+)\b[^>]*\bid="'+re.escape(identity)+r'"[^>]*>).*?(</(?P=tag)>)'
+        return re.sub(pattern,lambda m:m.group(1)+value+m.group(3),source,count=1,flags=re.S)
+    def opening(source,identity,*,show=False,attributes=''):
+        pattern=r'<[a-z0-9]+\b[^>]*\bid="'+re.escape(identity)+r'"[^>]*>'
+        def change(match):
+            value=match.group()
+            if show:value=re.sub(r'\s+hidden(?=[\s>])','',value)
+            return value[:-1]+attributes+'>'
+        return re.sub(pattern,change,source,count=1)
+    result=opening(template,'site-content',show=True)
+    result=opening(result,'page-message',attributes=' hidden')
+    for identity in ('hero-book','service-search','share-site'):
+        result=opening(result,identity,attributes=' disabled data-server-loading')
+    result=slot(result,'site-title',escape(site.get('title')))
+    result=slot(result,'footer-title',escape(site.get('title')))
+    result=slot(result,'hero-address',escape(' · '.join(str(site[k]) for k in ('address','city') if site.get(k))))
+    for identity,field in (('site-logo','logo_url'),('cover','cover_url')):
+        image=_public_image(site.get(field))
+        if not image:continue
+        if identity=='site-logo':result=slot(result,identity,'<img src="'+escape(image)+'" alt="" width="80" height="80">')
+        else:result=opening(result,identity,attributes=' style="background-image:'+escape('url('+json.dumps(image)+')')+'"')
+    brand=site.get('theme_color')
+    if isinstance(brand,str) and re.fullmatch(r'#[0-9a-fA-F]{6}',brand):
+        values=[int(brand[n:n+2],16)/255 for n in (1,3,5)]
+        light=sum(c*w for c,w in zip(values,(.2126,.7152,.0722)))
+        ink='#111827' if light>.55 else '#ffffff'
+        result=result.replace('<body>','<body style="--primary:'+brand+';--primary-ink:'+ink+'">',1)
+    cards=[]
+    for service in content.get('services',[]):
+        image=_public_image(service.get('image_url'))
+        thumb='<span class="service-thumb" aria-hidden="true">'+('<img loading="lazy" src="'+escape(image)+'" alt="">' if image else '')+'</span>'
+        detail='<strong>'+escape(service.get('name'))+'</strong>'
+        if service.get('description'):detail+='<p>'+escape(service['description'])+'</p>'
+        meta=[]
+        if site.get('show_prices',True):
+            amount=int(service.get('price_cents') or 0)
+            price=f'{amount/100:,.2f}'.replace(',','_').replace('.',',').replace('_','.')
+            meta.append('<span class="price">'+('A partir de ' if service.get('price_mode')=='from' else '')+'R$ '+price+'</span>')
+        meta.append('<span class="service-duration">'+escape(service.get('duration_min'))+' min</span>')
+        detail+='<div class="service-meta">'+' · '.join(meta)+'</div>'
+        cards.append('<article class="service-card">'+thumb+'<div class="service-detail">'+detail+'</div></article>')
+    result=slot(result,'services-grid',''.join(cards) or '<p class="empty">Não há serviços disponíveis para agendamento.</p>')
+    result=slot(result,'services-count',str(len(cards)))
+    people=[]
+    for person in content.get('professionals',[]):
+        image=_public_image(person.get('image_url'))
+        portrait='<div class="portrait" aria-hidden="true">'+('<img loading="lazy" src="'+escape(image)+'" alt="">' if image else '')+'</div>'
+        people.append('<article class="team-card">'+portrait+'<div class="person-info"><strong>'+escape(person.get('name'))+'</strong><p>'+escape(person.get('specialty'))+'</p></div></article>')
+    result=slot(result,'team-grid',''.join(people))
+    if site.get('description'):
+        result=opening(result,'about-card',show=True)
+        result=slot(result,'about-text',escape(site['description']))
+    address='\n'.join(str(site[k]) for k in ('address','city','state','postal_code') if site.get(k))
+    if address:
+        result=opening(result,'address-card',show=True)
+        result=slot(result,'full-address',escape(address))
+    maps=site.get('maps_url')
+    if isinstance(maps,str):
+        parsed=urlsplit(maps)
+        if parsed.scheme=='https' and parsed.hostname in ('share.google','maps.app.goo.gl','google.com','www.google.com','maps.google.com') and not parsed.username and not parsed.password:
+            for identity in ('hero-map','maps-link'):
+                result=opening(result,identity,show=True,attributes=' href="'+escape(maps)+'" rel="noopener noreferrer" target="_blank"')
+    links=[]
+    for field,label,scheme in (('whatsapp_phone','WhatsApp','https://wa.me/'),('contact_phone','Ligar','tel:+')):
+        digits=re.sub(r'\D','',str(site.get(field) or ''))
+        if 10<=len(digits)<=15:
+            links.append('<a class="outline" href="'+scheme+digits+'">'+label+'</a>')
+    if links:
+        result=opening(result,'contact-section',show=True)
+        result=slot(result,'contact-links',''.join(links))
+    result=result.replace('Ative o JavaScript para consultar os serviços e os horários disponíveis.',
+        'Os serviços e contatos estão disponíveis acima. Ative o JavaScript para consultar horários e agendar online.')
+    return result
+
+
+def public_html(template, preference, slug, *, catalogue=None):
     """Return escaped metadata and its exact CSP hash; never include draft content."""
     canonical = public_site_url(slug)
     title = str(preference.get('title') or 'Agendamento')[:160]
@@ -128,6 +221,12 @@ def public_html(template, preference, slug):
     phone = preference.get('contact_phone')
     if phone:
         structured['telephone'] = str(phone)
+    if catalogue is not None:
+        structured['hasOfferCatalog']={'@type':'OfferCatalog','name':'Serviços',
+            'itemListElement':[{'@type':'Offer','itemOffered':{'@type':'Service','name':str(item['name'])},
+                **({'priceCurrency':'BRL','price':f"{int(item.get('price_cents') or 0)/100:.2f}"}
+                   if catalogue['site'].get('show_prices',True) and item.get('price_mode')!='from' else {})}
+                for item in catalogue.get('services',[])]}
     for candidate in (preference.get('cover_url'), preference.get('logo_url')):
         if not isinstance(candidate, str):
             continue
@@ -145,4 +244,11 @@ def public_html(template, preference, slug):
     result = re.sub(r'<title>.*?</title>', '', template, count=1, flags=re.S)
     result = re.sub(r'<meta name="description"[^>]*>', '', result, count=1)
     result = result.replace('</head>', '\n'.join(metadata) + '\n</head>', 1)
+    if catalogue is not None:
+        result=_server_catalogue(result,catalogue)
+        # Hashes in the HTML select immutable asset versions. Bare/old queries
+        # remain revalidated; only an exact current hash gets a long cache TTL.
+        for asset in ('orion-public.css','orion-public.js','orion-public-theme.js'):
+            version=hashlib.sha256((Path(__file__).parent/'static'/asset).read_bytes()).hexdigest()[:16]
+            result=result.replace('/public-assets/'+asset+'"','/public-assets/'+asset+'?v='+version+'"')
     return result, digest

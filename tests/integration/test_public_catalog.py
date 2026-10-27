@@ -27,9 +27,24 @@ pytestmark = pytest.mark.integration
 class TestQuotaCache:
     """Deterministic Redis boundary; PostgreSQL and booking engine stay real."""
     __test__ = False
-    def __init__(self): self.counts = {}
+    def __init__(self): self.counts = {}; self.members = {}
     async def ping(self): return True
-    async def eval(self, script, count, key, window):
+    async def eval(self, script, count, *args):
+        keys, values = args[:count], args[count:]
+        if 'ZREMRANGEBYSCORE' in script:
+            now, window, member, *limits = values
+            for key in keys:
+                active = self.members.setdefault(key, {})
+                for value, stamp in list(active.items()):
+                    if stamp <= int(now) - int(window): active.pop(value)
+            if any(member not in self.members[key] and len(self.members[key]) >= int(limit)
+                   for key, limit in zip(keys, limits)):
+                return 0
+            for key in keys:
+                self.members[key].setdefault(member, int(now))
+                self.counts[key] = len(self.members[key])
+            return 1
+        key, = keys
         self.counts[key] = self.counts.get(key, 0) + 1
         return self.counts[key]
     async def aclose(self): pass

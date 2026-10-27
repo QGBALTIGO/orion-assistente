@@ -53,6 +53,9 @@ async def test_session_client_has_a_bounded_pool(monkeypatch):
         assert store.connection_pool.max_connections == 100
         assert store.connection_pool.connection_kwargs["decode_responses"] is True
         assert store.connection_pool.connection_kwargs["socket_timeout"] == 3
+        assert store.connection_pool.connection_kwargs["socket_connect_timeout"] == 3
+        assert store.connection_pool.timeout == 10
+        assert store.auto_close_connection_pool is True
     finally:
         await store.aclose()
 

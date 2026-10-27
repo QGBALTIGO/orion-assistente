@@ -38,12 +38,16 @@ from app.inbox_control import router as inbox_control_router
 from app.inbox_conversations import router as inbox_conversations_router
 from app.communication_api import router as communication_router
 from app.workflow_drafts import router as workflow_drafts_router
+from app.health_api import router as health_router
+from app.public_observability import PublicRuntimeMiddleware
 
 app = FastAPI(
     title="Orion Barbearias",
     description="Agenda SaaS multiempresa — desenvolvimento controlado",
     version="0.8.0",
 )
+app.add_middleware(PublicRuntimeMiddleware)
+app.include_router(health_router)
 
 
 @app.on_event("startup")
