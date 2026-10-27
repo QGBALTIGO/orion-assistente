@@ -11,7 +11,7 @@
   let retainedTimeView = null; // Keep photos mounted across wizard step navigation.
   let booking = newBooking();
 
-  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', consent: false }; }
+  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', birthDate: '', consent: false }; }
   function el(tag, cls, value) { const node = document.createElement(tag); if (cls) node.className = cls; if (value !== undefined) node.textContent = value; return node; }
   function button(text, cls, handler) { const node = el('button', cls, text); node.type = 'button'; if (handler) node.addEventListener('click', handler); return node; }
   function safeHTTPS(value) { try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null; } catch { return null; } }
@@ -412,6 +412,7 @@
 
   function renderBooking() {
     const body = $('booking-body');
+    body.classList.toggle('booking-confirmation-body', booking.step === 3 && !booking.result);
     $('booking-steps').hidden = !!booking.result;
     for (const step of $('booking-steps').children) {
       const n = Number(step.dataset.step);
@@ -785,36 +786,166 @@
       'O valor exibido é inicial. O preço final depende da avaliação do serviço e será confirmado pela equipe. Nenhum pagamento é cobrado nesta página.'));
     return box;
   }
-  function renderConfirmation(body) {
-    body.append(el('h3', '', 'Confira e confirme seu agendamento'), reviewCard());
-    const form = el('form', 'booking-form'); form.id = 'customer-form'; form.addEventListener('submit', event => { event.preventDefault(); submitBooking(); });
-    for (const spec of [{ key: 'name', title: 'Seu nome', autocomplete: 'name', type: 'text', max: 120, placeholder: 'Como podemos chamar você?' }, { key: 'phone', title: 'Telefone com DDD', autocomplete: 'tel', type: 'tel', max: 40, placeholder: '(11) 99999-9999' }]) {
-      const label = el('label', 'field', spec.title); const field = el('input'); field.name = `customer_${spec.key}`; field.type = spec.type; field.autocomplete = spec.autocomplete; field.maxLength = spec.max; field.required = true; field.placeholder = spec.placeholder; field.value = booking[spec.key]; if (spec.key === 'phone') { field.inputMode = 'tel'; field.minLength = 10; } field.addEventListener('input', () => { booking[spec.key] = field.value; }); label.append(field); form.append(label);
-    }
-    const consent = el('label', 'consent-label'); const check = el('input'); check.type = 'checkbox'; check.required = true; check.name = 'confirmed'; check.checked = booking.consent; check.addEventListener('change', () => { booking.consent = check.checked; updateFooter(); }); consent.append(check, el('span', '', 'Conferi os serviços, o profissional, a data, o horário e o valor. Quero confirmar este agendamento.')); form.append(consent, el('p', 'privacy-note',
-      'Seu nome e telefone serão usados para identificar o agendamento. Serviços “a partir de” terão o valor final confirmado pela equipe. Nenhum pagamento é cobrado nesta página.')); body.append(form);
+  function formatBrazilPhone(input) {
+    let digits = String(input || '').replace(/\D/g, '');
+    if (digits.length > 11 && digits.startsWith('55')) digits = digits.slice(2);
+    digits = digits.slice(0, 11);
+    if (!digits) return '';
+    if (digits.length <= 2) return '(' + digits;
+    const local = digits.slice(2);
+    const prefix = '(' + digits.slice(0, 2) + ') ';
+    const left = digits.length === 11 ? 5 : 4;
+    return prefix + (local.length > left ?
+      local.slice(0, left) + '-' + local.slice(left) : local);
   }
+
+  function renderConfirmation(body) {
+    // The confirmation button itself is the affirmative booking action.
+    // No duplicate consent checkbox, price or long explanatory paragraph.
+    body.append(reviewCard());
+    body.append(el('h3', 'booking-contact-heading', 'Seus dados'));
+    const form = el('form', 'booking-form');
+    form.id = 'customer-form';
+    form.addEventListener('submit', event => { event.preventDefault(); submitBooking(); });
+    const fields = [
+      { key: 'name', title: 'Nome completo', name: 'customer_name', autocomplete: 'name',
+        type: 'text', max: 120, placeholder: 'Digite seu nome' },
+      { key: 'phone', title: 'WhatsApp com DDD', name: 'customer_phone',
+        autocomplete: 'tel-national', type: 'tel', max: 15, placeholder: '(86) 97267-6282' },
+      { key: 'birthDate', title: 'Data de nascimento', name: 'customer_birth_date',
+        autocomplete: 'bday', type: 'date', max: 10, placeholder: '' }
+    ];
+    for (const spec of fields) {
+      const label = el('label', 'field', spec.title);
+      label.htmlFor = spec.name;
+      const field = el('input');
+      field.id = spec.name;
+      field.name = spec.name;
+      field.type = spec.type;
+      field.autocomplete = spec.autocomplete;
+      field.maxLength = spec.max;
+      field.required = true;
+      if (spec.placeholder) field.placeholder = spec.placeholder;
+      field.value = spec.key === 'phone' ? formatBrazilPhone(booking.phone) : booking[spec.key];
+      if (spec.key === 'phone') {
+        field.inputMode = 'tel';
+        field.setAttribute('aria-describedby', 'booking-phone-example');
+        field.addEventListener('input', () => {
+          const raw = field.value;
+          let digitsBefore = (raw.slice(0, field.selectionStart ?? raw.length).match(/\d/g) || []).length;
+          if (raw.replace(/\D/g, '').length > 11 && raw.replace(/\D/g, '').startsWith('55')) {
+            digitsBefore = Math.max(0, digitsBefore - 2);
+          }
+          const masked = formatBrazilPhone(raw);
+          field.value = masked;
+          booking.phone = masked;
+          field.setCustomValidity('');
+          let pos = 0, seen = 0;
+          if (digitsBefore > 0) {
+            for (let i = 0; i < masked.length; i++) {
+              if (/\d/.test(masked[i])) seen++;
+              pos = i + 1;
+              if (seen >= digitsBefore) break;
+            }
+          }
+          try { field.setSelectionRange(pos, pos); } catch (_) { /* native phone UI */ }
+        });
+      } else if (spec.key === 'birthDate') {
+        field.min = '1900-01-01';
+        field.max = data.today;
+        field.addEventListener('input', () => { booking.birthDate = field.value; });
+        field.addEventListener('change', () => { booking.birthDate = field.value; });
+      } else {
+        field.addEventListener('input', () => { booking.name = field.value; });
+      }
+      label.append(field);
+      if (spec.key === 'phone') {
+        const example = el('small', 'booking-phone-example', 'Ex.: (86) 97267-6282');
+        example.id = 'booking-phone-example';
+        label.append(example);
+      }
+      form.append(label);
+    }
+    body.append(form);
+  }
+
   function updateFooter() {
     const next = $('booking-next'), back = $('booking-back'), total = $('booking-total');
-    back.hidden = booking.step === 1 || !!booking.result; back.disabled = booking.busy; $('close-booking').disabled = booking.busy;
+    const confirmStep = booking.step === 3 && !booking.result;
+    $('booking-dialog').querySelector('.booking-footer')
+      ?.classList.toggle('booking-footer-confirm', confirmStep);
+    total.hidden = confirmStep || !!booking.result;
+    back.hidden = booking.step === 1 || !!booking.result;
+    back.disabled = booking.busy;
+    $('close-booking').disabled = booking.busy;
     total.replaceChildren();
-    if (booking.services.length && !booking.result) { const amount = selectionTotal(); total.append(el('span', '', duration(booking.availability?.duration_min ?? amount.minutes))); if (data.site.show_prices || booking.step === 3) total.append(el('strong', '', priceText(booking.availability?.price_cents ?? amount.price,booking.availability?.price_mode || amount.price_mode))); }
-    next.textContent = booking.result ? 'Concluir' : booking.busy ? 'Confirmando…' : booking.step === 3 ? 'Confirmar agendamento' : 'Continuar →';
-    next.disabled = booking.busy || (!booking.result && (booking.step === 1 ? !booking.services.length || !eligibleProfessionals().length : booking.step === 2 ? !booking.start || !booking.quote || booking.loading || preview : !booking.consent));
+    if (!total.hidden && booking.services.length) {
+      const amount = selectionTotal();
+      total.append(el('span', '', duration(booking.availability?.duration_min ?? amount.minutes)));
+      if (data.site.show_prices) total.append(el('strong', '',
+        priceText(booking.availability?.price_cents ?? amount.price,
+          booking.availability?.price_mode || amount.price_mode)));
+    }
+    next.textContent = booking.result ? 'Concluir' :
+      booking.busy ? 'Confirmando…' : confirmStep ? 'Confirmar agendamento' : 'Continuar →';
+    next.disabled = booking.busy || (!booking.result &&
+      (booking.step === 1 ? !booking.services.length || !eligibleProfessionals().length :
+       booking.step === 2 ? !booking.start || !booking.quote || booking.loading || preview : preview));
   }
+
   async function submitBooking() {
-    if (booking.busy || !booking.consent || preview || !booking.quote || !booking.start) return;
-    const form = $('customer-form'); if (!form.reportValidity()) return;
-    if (!booking.name.trim() || booking.phone.replace(/\D/g, '').length < 10) { showError('Informe seu nome e um telefone válido com DDD.'); return; }
-    booking.busy = true; showError(); updateFooter();
+    if (booking.busy || booking.step !== 3 || preview || !booking.quote || !booking.start) return;
+    const form = $('customer-form');
+    if (!form || !form.reportValidity()) return;
+    const digits = booking.phone.replace(/\D/g, '');
+    if (!booking.name.trim() || !/^[1-9]\d{9,10}$/.test(digits)) {
+      const phoneField = form.elements.customer_phone;
+      phoneField.setCustomValidity('Informe um WhatsApp válido com DDD.');
+      phoneField.reportValidity();
+      return;
+    }
+    if (!booking.birthDate || booking.birthDate < '1900-01-01' ||
+        booking.birthDate > data.today) {
+      const birth = form.elements.customer_birth_date;
+      birth.setCustomValidity('Informe uma data de nascimento válida.');
+      birth.reportValidity();
+      return;
+    }
+    booking.busy = true;
+    showError();
+    updateFooter();
     try {
-      booking.result = await api('/appointments', { method: 'POST', body: JSON.stringify({ quote: booking.quote, start_at: booking.start, customer_name: booking.name.trim(), customer_phone: booking.phone, confirmed: true }) });
-      booking.name = ''; booking.phone = ''; booking.quote = null; renderBooking();
+      booking.result = await api('/appointments', {
+        method: 'POST',
+        body: JSON.stringify({
+          quote: booking.quote,
+          start_at: booking.start,
+          customer_name: booking.name.trim(),
+          customer_phone: booking.phone,
+          customer_birth_date: booking.birthDate,
+          confirmed: true
+        })
+      });
+      booking.name = '';
+      booking.phone = '';
+      booking.birthDate = '';
+      booking.quote = null;
+      renderBooking();
     } catch (error) {
-      if ([404, 409, 422].includes(error.status)) { invalidateAvailability(); booking.step = 2; renderBooking(); }
-      showError(error.name === 'AbortError' ? 'A resposta demorou. Tente confirmar novamente com os mesmos dados para recuperar o resultado.' : error.message);
-    } finally { booking.busy = false; updateFooter(); }
+      if ([404, 409, 422].includes(error.status)) {
+        invalidateAvailability();
+        booking.step = 2;
+        renderBooking();
+      }
+      showError(error.name === 'AbortError' ?
+        'A resposta demorou. Tente confirmar novamente com os mesmos dados para recuperar o resultado.' :
+        error.message);
+    } finally {
+      booking.busy = false;
+      updateFooter();
+    }
   }
+
   function renderSuccess(body) {
     const success = el('div', 'success'); success.append(el('div', 'success-check', '✓'), el('h3', '', 'Agendamento confirmado!'), el('p', '', 'Seu horário está reservado. Guarde o protocolo e chegue no horário combinado.'), reviewCard(booking.result));
     success.append(button('Adicionar ao meu calendário', 'outline', downloadCalendar)); body.append(success);

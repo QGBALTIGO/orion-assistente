@@ -73,7 +73,8 @@ test('multiple full services use repeated service_ids; confirmed review uses ser
   assert.match(h.document.querySelector('.review-card').textContent,/70,00/);
   h.fill('[name=customer_name]',' Cliente Teste ');
   h.fill('[name=customer_phone]','(11) 99999-9999');
-  h.click('[name=confirmed]');h.click('#booking-next');await flush();
+  h.fill('[name=customer_birth_date]','1990-01-15');
+  h.click('#booking-next');await flush();
   assert.equal(h.calls.filter(x=>x.options.method==='POST').length,1);
   assert.equal(h.errors.length,0);
 });
