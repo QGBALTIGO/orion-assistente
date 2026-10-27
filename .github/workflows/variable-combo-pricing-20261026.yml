@@ -69,7 +69,7 @@ jobs:
           alembic upgrade 0033_professional_commissions
           python tests/integration/combo_pre_migration_backfill.py seed
           alembic upgrade head
-          test "$(psql -h localhost -U postgres -d barber_saas -tAc 'SELECT version_num FROM alembic_version')" = "0034_variable_combo_pricing"
+          python -m alembic current --check-heads
           python tests/integration/combo_pre_migration_backfill.py check
       - name: Combo variável, RLS, finanças, cotação e regressão
         run: |

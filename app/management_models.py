@@ -24,7 +24,7 @@ WRITE_FIELDS = {
     "loyalty_rules": frozenset({"name", "earning_mode", "points_per_visit", "spend_step_cents", "points_per_step", "reward_points", "reward_description", "active",
                               "reward_type", "reward_percent", "reward_value_cents", "reward_service_id", "reward_valid_days"}),
     "loyalty_transactions": frozenset({"customer_id", "rule_id", "appointment_id", "points_delta", "reason"}),
-    "professional_goals": frozenset({"professional_id", "metric", "start_date", "end_date", "target_value", "active"}),
+    "professional_goals": frozenset({"professional_id", "metric", "start_date", "end_date", "target_value", "active", "recurrence", "deleted_at"}),
     "campaigns": frozenset({"name", "message", "audience", "scheduled_at", "template_name", "status"}),
 }
 
@@ -528,26 +528,198 @@ async def record_points(db, tenant_id, values, key):
     return {**dict(row), "balance": balance + values["points_delta"]}
 
 
+def goal_now():
+    """One clock seam for calendar rollover; never reset appointment facts."""
+    return datetime.now(timezone.utc)
+
+
+def month_end(month):
+    return (month.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+
+
+async def goal_calendar(db, tenant_id):
+    tz = (await db.execute(text("SELECT timezone FROM tenants WHERE id=:tenant"), {"tenant": tenant_id})).scalar_one_or_none()
+    if tz is None:
+        raise HTTPException(404, "Empresa não encontrada")
+    now = goal_now()
+    today = now.astimezone(ZoneInfo(tz)).date()
+    month = today.replace(day=1)
+    return {"now": now, "today": today, "month": month, "end": month_end(month), "timezone": tz}
+
+
+def goal_template(row, calendar):
+    result = clean_row(row)
+    result["scope"] = "company" if result["professional_id"] is None else "professional"
+    result["template_version"] = result["version"]
+    result["timezone"] = result.get("timezone") or calendar["timezone"]
+    result["can_edit"] = result.get("deleted_at") is None and (
+        result["recurrence"] == "monthly" or result["end_date"] >= calendar["today"])
+    if result["recurrence"] == "monthly":
+        result["series_start_date"] = result["start_date"]
+        result["start_date"], result["end_date"] = calendar["month"], calendar["end"]
+    return result
+
+
+async def enable_goal_writer(db):
+    await db.execute(text("SELECT set_config('app.monthly_goal_writer','on',true)"))
+
+
+async def reserve_monthly_goal(db, tenant_id, values, *, identity=None):
+    if values["recurrence"] != "monthly" or not values["active"]:
+        return
+    # Different idempotency keys, concurrent workers and company NULL scopes
+    # must all share one slot. The partial unique index is a second invariant.
+    await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+        {"key": f"monthly-goal:{tenant_id}:{values['professional_id'] or 'company'}:{values['metric']}"})
+    duplicate = (await db.execute(text("""
+        SELECT id FROM professional_goals WHERE tenant_id=:tenant
+          AND professional_id IS NOT DISTINCT FROM CAST(:professional AS uuid)
+          AND metric=:metric AND recurrence='monthly' AND active AND deleted_at IS NULL
+          AND id<>CAST(:identity AS uuid)
+    """), {"tenant": tenant_id, "professional": values["professional_id"], "metric": values["metric"],
+             "identity": identity or UUID(int=0)})).scalar_one_or_none()
+    if duplicate is not None:
+        raise HTTPException(409, "Já existe uma meta mensal ativa dessa métrica para a empresa ou profissional")
+
+
+async def append_goal_revision(db, tenant_id, row, calendar):
+    await db.execute(text("""INSERT INTO professional_goal_revisions
+        (tenant_id,goal_id,version,effective_month,professional_id,metric,target_value,active,deleted,timezone)
+        VALUES (:tenant,:id,:version,:month,:professional_id,:metric,:target_value,:active,:deleted,:timezone)
+    """), {"tenant": tenant_id, "id": row["id"], "version": row["version"], "month": calendar["month"],
+             "professional_id": row["professional_id"], "metric": row["metric"], "target_value": row["target_value"],
+             "active": row["active"], "deleted": row["deleted_at"] is not None, "timezone": calendar["timezone"]})
+
+
+async def create_goal(db, tenant_id, values, key):
+    calendar = await goal_calendar(db, tenant_id)
+    # Preserve hashes produced by clients of the former fixed-period endpoint.
+    fingerprint = {name: value for name, value in values.items() if name not in {"scope", "recurrence"}} if values["recurrence"] == "none" else values
+    identity, replay = await request_identity(db, tenant_id, "professional_goals", key, fingerprint)
+    if replay:
+        return goal_template(await get_row(db, tenant_id, "professional_goals", identity), calendar)
+    fields = {name: value for name, value in values.items() if name != "scope"}
+    if fields["recurrence"] == "monthly":
+        if fields["start_date"] not in (None, calendar["month"]) or fields["end_date"] not in (None, calendar["end"]):
+            raise HTTPException(422, "Uma nova meta mensal começa no mês atual da empresa")
+        fields["start_date"], fields["end_date"] = calendar["month"], calendar["end"]
+    await validate_links(db, tenant_id, fields)
+    await reserve_monthly_goal(db, tenant_id, fields)
+    await enable_goal_writer(db)
+    checked_fields("professional_goals", fields)
+    columns = list(fields)
+    row = dict((await db.execute(text("INSERT INTO professional_goals (tenant_id,id," + ",".join(columns) +
+        ") VALUES (:tenant,:id," + ",".join(":" + name for name in columns) + ") RETURNING *"),
+        {"tenant": tenant_id, "id": identity, **fields})).mappings().one())
+    if row["recurrence"] == "monthly":
+        await append_goal_revision(db, tenant_id, row, calendar)
+    await audit(db, tenant_id, "management_created", "professional_goals", identity)
+    return goal_template(row, calendar)
+
+
+async def update_goal(db, tenant_id, current, expected_version, changes, *, delete=False):
+    if current["deleted_at"] is not None:
+        raise HTTPException(404, "Meta excluída")
+    if current["version"] != expected_version:
+        raise HTTPException(409, "O registro foi alterado. Atualize os dados antes de salvar novamente")
+    calendar = await goal_calendar(db, tenant_id)
+    changes = dict(changes)
+    if "scope" in changes:
+        changes.pop("scope")
+        changes.setdefault("professional_id", current["professional_id"])
+    if changes.get("recurrence", current["recurrence"]) != current["recurrence"]:
+        raise HTTPException(422, "Cadastre uma nova meta para mudar o tipo de recorrência")
+    if current["recurrence"] == "monthly":
+        dates = (changes.get("start_date", current["start_date"]), changes.get("end_date", current["end_date"]))
+        if dates not in ((current["start_date"], current["end_date"]), (calendar["month"], calendar["end"])):
+            raise HTTPException(422, "Os ciclos mensais seguem o calendário da empresa")
+        changes.pop("start_date", None)
+        changes.pop("end_date", None)
+        latest_month = (await db.execute(text("""SELECT max(effective_month) FROM professional_goal_revisions
+            WHERE tenant_id=:tenant AND goal_id=:id"""), {"tenant": tenant_id, "id": current["id"]})).scalar_one()
+        if latest_month is not None and calendar["month"] < latest_month:
+            raise HTTPException(409, "O mês atual é anterior à última revisão da meta")
+    elif current["end_date"] < calendar["today"] and not delete:
+        raise HTTPException(409, "Metas de períodos encerrados são apenas para consulta")
+    if delete:
+        changes.update(active=False, deleted_at=calendar["now"])
+    if not changes:
+        raise HTTPException(422, "Informe pelo menos um campo para alterar")
+    values = {**current, **changes}
+    await validate_links(db, tenant_id, values)
+    await reserve_monthly_goal(db, tenant_id, values, identity=current["id"])
+    await enable_goal_writer(db)
+    row = await update_row(db, tenant_id, "professional_goals", current["id"], expected_version, changes)
+    if row["recurrence"] == "monthly":
+        await append_goal_revision(db, tenant_id, row, calendar)
+    return goal_template(row, calendar)
+
+
 async def goals(db, tenant_id, start_date=None, end_date=None):
-    period, _, _ = await period_for(db, tenant_id, start_date, end_date)
+    calendar = await goal_calendar(db, tenant_id)
+    period, _, _ = report_period(start_date, end_date, calendar["timezone"], calendar["now"])
+    parameters = {"tenant": tenant_id, "start_date": period["start_date"], "end_date": period["end_date"],
+                  "tz": period["timezone"]}
+    # Expand only the bounded report months, not every month since creation.
+    # A revision is effective for that month and later months until superseded.
+    # Inactive revisions keep their stopping cycle, but create no later cycles.
     rows = (await db.execute(text("""
-        SELECT g.*,p.name AS professional_name,
-          (SELECT CASE WHEN g.metric='appointments' THEN count(*) ELSE COALESCE(sum(a.total_cents),0) END
-           FROM appointments a WHERE a.tenant_id=g.tenant_id AND a.professional_id=g.professional_id
-           AND a.status='completed'
-           AND a.start_at >= (g.start_date::timestamp AT TIME ZONE :tz)
-           AND a.start_at < ((g.end_date+1)::timestamp AT TIME ZONE :tz)) AS actual_value
-        FROM professional_goals g JOIN professionals p ON p.tenant_id=g.tenant_id AND p.id=g.professional_id
-        WHERE g.tenant_id=:tenant AND g.end_date>=:start_date AND g.start_date<=:end_date
-        ORDER BY g.active DESC,g.start_date DESC,g.id
-    """), {"tenant": tenant_id, "start_date": period["start_date"], "end_date": period["end_date"], "tz": period["timezone"]})).mappings().all()
+        WITH months AS (
+            SELECT generate_series(date_trunc('month',CAST(:start_date AS timestamp)),
+                date_trunc('month',CAST(:end_date AS timestamp)),interval '1 month')::date AS cycle_start
+        ), cycles AS (
+            SELECT g.tenant_id,g.id,g.version,g.created_at,g.updated_at,g.recurrence,g.deleted_at,
+                g.start_date AS series_start_date,r.professional_id,r.metric,m.cycle_start AS start_date,
+                (m.cycle_start+interval '1 month'-interval '1 day')::date AS end_date,
+                r.target_value,r.active,r.version AS cycle_version,r.timezone
+            FROM professional_goals g CROSS JOIN months m
+            JOIN LATERAL (
+                SELECT r.* FROM professional_goal_revisions r
+                WHERE r.tenant_id=g.tenant_id AND r.goal_id=g.id AND r.effective_month<=m.cycle_start
+                ORDER BY r.effective_month DESC,r.version DESC LIMIT 1
+            ) r ON true
+            WHERE g.tenant_id=:tenant AND g.recurrence='monthly' AND NOT r.deleted
+              AND (r.active OR r.effective_month=m.cycle_start)
+            UNION ALL
+            SELECT g.tenant_id,g.id,g.version,g.created_at,g.updated_at,g.recurrence,g.deleted_at,
+                g.start_date,g.professional_id,g.metric,g.start_date,g.end_date,
+                g.target_value,g.active,g.version,CAST(:tz AS varchar)
+            FROM professional_goals g
+            WHERE g.tenant_id=:tenant AND g.recurrence='none'
+              AND g.end_date>=:start_date AND g.start_date<=:end_date
+              AND (g.deleted_at IS NULL OR g.end_date < (g.deleted_at AT TIME ZONE :tz)::date
+                   OR :end_date < (g.deleted_at AT TIME ZONE :tz)::date)
+        ) SELECT c.*,p.name AS professional_name,
+            CASE WHEN c.metric='appointments' THEN actual.appointments ELSE actual.revenue_cents END AS actual_value
+        FROM cycles c LEFT JOIN professionals p ON p.tenant_id=c.tenant_id AND p.id=c.professional_id
+        CROSS JOIN LATERAL (
+            SELECT count(*) AS appointments,COALESCE(sum(a.total_cents),0) AS revenue_cents
+            FROM appointments a WHERE a.tenant_id=c.tenant_id AND a.status='completed'
+              AND (c.professional_id IS NULL OR a.professional_id=c.professional_id)
+              AND a.start_at >= (c.start_date::timestamp AT TIME ZONE c.timezone)
+              AND a.start_at < ((c.end_date+1)::timestamp AT TIME ZONE c.timezone)
+        ) actual ORDER BY c.active DESC,c.start_date DESC,c.id
+    """), parameters)).mappings().all()
     items = []
     for row in rows:
         item = clean_row(row)
+        monthly = item["recurrence"] == "monthly"
+        item["scope"] = "company" if item["professional_id"] is None else "professional"
+        item["template_version"] = item["version"]
+        item["cycle_id"] = f"{item['id']}:{item['start_date']:%Y-%m}" if monthly else str(item["id"])
+        item["is_current_cycle"] = item["start_date"] == calendar["month"] if monthly else item["start_date"] <= calendar["today"] <= item["end_date"]
+        item["can_edit"] = item["deleted_at"] is None and (item["is_current_cycle"] if monthly else item["end_date"] >= calendar["today"])
         item["actual_value"] = int(item["actual_value"])
         item["progress_percent"] = round(item["actual_value"] * 100 / item["target_value"], 2)
         items.append(item)
-    return {"items": items, "period": period}
+    templates = (await db.execute(text("""
+        SELECT g.*,p.name AS professional_name,r.timezone FROM professional_goals g
+        LEFT JOIN professionals p ON p.tenant_id=g.tenant_id AND p.id=g.professional_id
+        JOIN professional_goal_revisions r ON r.tenant_id=g.tenant_id AND r.goal_id=g.id AND r.version=g.version
+        WHERE g.tenant_id=:tenant AND g.recurrence='monthly' AND g.deleted_at IS NULL
+        ORDER BY g.active DESC,g.created_at,g.id
+    """), {"tenant": tenant_id})).mappings().all()
+    return {"items": items, "period": period, "templates": [goal_template(row, calendar) for row in templates]}
 
 
 async def performance(db, tenant_id, start_date=None, end_date=None):
@@ -555,14 +727,21 @@ async def performance(db, tenant_id, start_date=None, end_date=None):
     rows = (await db.execute(text("""
         SELECT p.id,p.name,p.active,count(a.id) AS appointments,
           count(a.id) FILTER (WHERE a.status='completed') AS completed,
-          count(a.id) FILTER (WHERE a.status='cancelled') AS cancelled,
+          count(a.id) FILTER (WHERE a.status='cancelled'
+            AND cancellation.event IS DISTINCT FROM 'hold_expired') AS cancelled,
           count(a.id) FILTER (WHERE a.status='no_show') AS no_show,
           COALESCE(sum(a.total_cents) FILTER (WHERE a.status='completed'),0) AS revenue_cents
         FROM professionals p LEFT JOIN appointments a ON a.tenant_id=p.tenant_id AND a.professional_id=p.id
           AND a.start_at>=:lower AND a.start_at<:upper AND (a.status <> 'hold' OR a.hold_expires_at>now())
+        LEFT JOIN LATERAL (
+          SELECT h.event FROM appointment_history h
+          WHERE a.status='cancelled' AND h.tenant_id=a.tenant_id AND h.appointment_id=a.id
+            AND h.event IN ('cancelled','hold_expired')
+          ORDER BY h.occurred_at DESC,h.id DESC LIMIT 1
+        ) cancellation ON true
         WHERE p.tenant_id=:tenant GROUP BY p.id,p.name,p.active ORDER BY revenue_cents DESC,p.name
     """), {"tenant": tenant_id, "lower": lower, "upper": upper})).mappings().all()
-    targets = (await goals(db, tenant_id, start_date, end_date))["items"]
+    targets = (await goals(db, tenant_id, period["start_date"], period["end_date"]))["items"]
     items = []
     for row in rows:
         item = dict(row)
@@ -570,7 +749,7 @@ async def performance(db, tenant_id, start_date=None, end_date=None):
         item["average_ticket_cents"] = item["revenue_cents"] // item["completed"] if item["completed"] else 0
         item["goals"] = [goal for goal in targets if goal["professional_id"] == item["id"]]
         items.append(item)
-    return {"period": period, "items": items}
+    return {"period": period, "items": items, "company_goals": [goal for goal in targets if goal["scope"] == "company"]}
 
 
 async def site(db, tenant_id):

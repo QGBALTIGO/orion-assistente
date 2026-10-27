@@ -1,6 +1,8 @@
-"""One reviewed 0035 -> 0036 release; verified private backup precedes all DDL.
+"""Reviewed publication release and compatible predeploy dispatch for monthly goals.
 
-Use only as an explicitly configured, temporary release command. This does not
+The historical main() still performs only 0035 -> 0036. The deployed entrypoint
+then dispatches the separately reviewed 0036 -> 0037 release. Both migrations
+require their own verified private backup before DDL. This does not
 publish sites, alter campaigns, send messages or touch WhatsApp sessions. An old
 API can continue public reads after migration; its site writes fail closed until
 the current API starts. Recovery uses a forward fix, not a blind code downgrade.
@@ -104,5 +106,24 @@ def main():
         return 3
 
 
+def predeploy_main():
+    """Keep the configured Railway command while accepting only the reviewed chain."""
+    from scripts import backup_and_migrate_recurring_goals as goals
+    try:
+        raw, _url = connection_values()
+        current = migrated_version(raw)
+        if current == PREVIOUS:
+            result = main()
+            if result:
+                return result
+        elif current not in {TARGET, goals.TARGET}:
+            print("orion_site_publication_unreviewed_schema_revision", file=sys.stderr)
+            return 2
+        return goals.main()
+    except Exception:
+        print("orion_site_publication_predeploy_failed_closed", file=sys.stderr)
+        return 3
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(predeploy_main())
