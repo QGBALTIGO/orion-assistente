@@ -183,8 +183,7 @@ async def _consume_code(session,email,purpose,code):
 
 @router.get("/features")
 async def features():
-    # Sign-up is separate from email delivery: no code is needed at registration.
-    return {"registration":os.getenv("PANEL_REGISTRATION_ENABLED")=="1",
+    return {"registration":os.getenv("PANEL_REGISTRATION_ENABLED")=="1" and mail_ready(),
             "passwordRecovery":mail_ready(),
             "testMode":_test_mode()}
 
@@ -194,20 +193,37 @@ async def register(payload:Register,request:Request):
     _same_origin(request)
     if os.getenv("PANEL_REGISTRATION_ENABLED")!="1":
         raise HTTPException(503,"Cadastro ainda não habilitado")
-    # No SMTP or possession of the email address is required to create
-    # a *member* account. In particular an email alone never grants admin.
+    _require_mail()
+    if not _allowed_recipient(payload.email):
+        raise HTTPException(403, "Cadastro disponível somente para o e-mail de teste")
     await _throttle(request,"register",payload.email,count=3,window=3600)
+    if not await _mail_request_quota(payload.email):
+        raise HTTPException(429, "Aguarde antes de solicitar outro código para este e-mail")
     async with _storage()() as session:
         try:
             async with session.begin():
-                await session.execute(text("""
-                    INSERT INTO panel_accounts(name,email,password_hash,role)
-                    VALUES (:name,:email,:password,'member')
-                """),{"name":payload.name,"email":payload.email,
-                      "password":_hasher.hash(payload.password)})
+                prior = (await session.execute(text("""SELECT id,password_hash,registration_pending
+                    FROM panel_accounts WHERE email=:email FOR UPDATE"""), {"email":payload.email})).mappings().first()
+                if prior:
+                    try:
+                        resume = prior['registration_pending'] and _hasher.verify(prior['password_hash'],payload.password)
+                    except (argon2_errors.VerificationError,argon2_errors.InvalidHashError):
+                        resume = False
+                    if not resume:
+                        raise HTTPException(409, "Já existe uma conta com este e-mail. Entre ou recupere a senha.")
+                    # A deliberate repeat resumes the same pending account. It
+                    # never replaces its password/name or creates another email.
+                else:
+                    account_id = (await session.execute(text("""
+                        INSERT INTO panel_accounts(name,email,password_hash,role,registration_pending)
+                        VALUES (:name,:email,:password,'member',true) RETURNING id
+                    """),{"name":payload.name,"email":payload.email,
+                          "password":_hasher.hash(payload.password)})).scalar_one()
+                    await _issue_token(session,account_id,"verify",payload.email)
         except IntegrityError:
             raise HTTPException(409,"Já existe uma conta com este e-mail. Entre ou recupere a senha.") from None
-    return {"ok":True,"message":"Conta criada! Já pode entrar com seu e-mail e senha."}
+    return {"ok":True,"verificationRequired":True,"codeRequested":not bool(prior),
+            "message":"Confirme seu e-mail para concluir o cadastro. O código pode levar alguns instantes para chegar."}
 
 
 @router.post("/verify")
@@ -218,16 +234,20 @@ async def verify(payload:OneTimeCode,request:Request):
         raise HTTPException(403,"Validação disponível somente para o e-mail de teste")
     await _throttle(request,"verify",payload.email,count=8,window=900)
     account_id=None
+    completed=False
     async with _storage()() as session:
         async with session.begin():
             account_id=await _consume_code(session,payload.email,"verify",payload.code)
             if account_id:
+                completed = (await session.execute(text("SELECT registration_pending FROM panel_accounts WHERE id=:id"),
+                                                   {"id":account_id})).scalar_one()
                 await session.execute(text("""
-                    UPDATE panel_accounts SET verified_at=coalesce(verified_at,now())
+                    UPDATE panel_accounts SET verified_at=coalesce(verified_at,now()),registration_pending=false
                     WHERE id=:id
                 """),{"id":account_id})
     if not account_id:raise HTTPException(400,"Código inválido, expirado ou sem tentativas disponíveis")
-    return {"ok":True,"message":"E-mail confirmado. Agora você pode entrar."}
+    return {"ok":True,"registrationCompleted":completed,
+            "message":"Conta criada e e-mail confirmado. Entre para continuar." if completed else "E-mail confirmado. Agora você pode entrar."}
 
 
 @router.post("/verify/resend")
@@ -281,7 +301,7 @@ async def reset(payload:ResetPassword,request:Request):
             if account_id:
                 version = (await session.execute(text("""
                     UPDATE panel_accounts SET password_hash=:hashed,
-                    verified_at=coalesce(verified_at,now()),
+                    verified_at=coalesce(verified_at,now()),registration_pending=false,
                     auth_version=auth_version+1 WHERE id=:id RETURNING auth_version
                 """),{"hashed":_hasher.hash(payload.password),"id":account_id})).scalar_one()
                 await session.execute(text("""
@@ -298,7 +318,7 @@ async def authenticate_account(email,password):
     if "@" not in email or len(email)>254:return None
     async with _storage()() as session:
         row=(await session.execute(text("""
-            SELECT id,name,email,password_hash,role,auth_version,verified_at
+            SELECT id,name,email,password_hash,role,auth_version,verified_at,registration_pending
             FROM panel_accounts WHERE email=:email
               AND COALESCE(to_jsonb(panel_accounts)->>'auth_provider','password')='password'
         """),{"email":email.strip().lower()})).mappings().first()
@@ -307,6 +327,9 @@ async def authenticate_account(email,password):
     except (argon2_errors.VerificationError,argon2_errors.InvalidHashError):
         accepted=False
     if not row or not accepted:return None
+    if row['registration_pending']:
+        raise HTTPException(403, {"code":"email_confirmation_required",
+            "message":"Confirme seu e-mail para concluir o cadastro.","email":row['email']})
     return {"id":str(row["id"]),"name":row["name"],"email":row["email"],
             "role":row["role"],"version":row["auth_version"]}
 
@@ -314,16 +337,16 @@ async def authenticate_account(email,password):
 async def current_account(account_id,version):
     async with _storage()() as session:
         row=(await session.execute(text("""
-            SELECT role,auth_version,verified_at,name,email FROM panel_accounts WHERE id=:id
+            SELECT role,auth_version,verified_at,name,email,registration_pending FROM panel_accounts WHERE id=:id
               AND COALESCE(to_jsonb(panel_accounts)->>'auth_provider','password')='password'
         """),{"id":UUID(account_id)})).mappings().first()
-    if not row or row["auth_version"]!=version:
+    if not row or row["auth_version"]!=version or row.get('registration_pending',False):
         raise HTTPException(401,"Sua sessão expirou. Entre novamente")
     return row
 
 
 _CURRENT_ACCOUNT_SCOPE_SQL = text("""
-            SELECT a.role,a.auth_version,a.verified_at,a.name,a.email,m.role AS membership_role,
+            SELECT a.role,a.auth_version,a.verified_at,a.name,a.email,a.registration_pending,m.role AS membership_role,
               (SELECT count(*) FROM tenant_memberships all_memberships
                WHERE all_memberships.account_id=a.id AND all_memberships.active) AS active_business_count
             FROM panel_accounts a LEFT JOIN tenant_memberships m
@@ -341,7 +364,7 @@ async def current_account_and_membership(account_id, version, tenant_id):
         await connection.execution_options(isolation_level="AUTOCOMMIT")
         row = (await connection.execute(_CURRENT_ACCOUNT_SCOPE_SQL,
             {"id": UUID(account_id), "tenant": tenant_id})).mappings().first()
-    if not row or row["auth_version"] != version:
+    if not row or row["auth_version"] != version or row.get('registration_pending',False):
         raise HTTPException(401, "Sua sessão expirou. Entre novamente")
     if row.get("active_business_count", 0) > 1:
         reject_multiple_businesses()

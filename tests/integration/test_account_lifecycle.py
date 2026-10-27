@@ -35,7 +35,7 @@ class RedisDouble:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_registration_without_mail_login_and_recovery(monkeypatch):
+async def test_registration_requires_confirmation_then_login_and_recovery(monkeypatch):
     cache=RedisDouble()
     monkeypatch.setattr(panel_auth,"_redis",lambda:cache)
     monkeypatch.setattr(account_auth,"_redis",lambda:cache)
@@ -72,12 +72,18 @@ async def test_registration_without_mail_login_and_recovery(monkeypatch):
     payload={"name":"Pessoa Teste","email":address,"password":"Correct#Secret123"}
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url="https://test") as c:
         feature=(await c.get("/auth/features")).json()
-        assert feature=={"registration":True,"passwordRecovery":False,"testMode":False}
+        assert feature=={"registration":False,"passwordRecovery":False,"testMode":False}
+        assert (await c.post("/auth/register",json=payload,headers=h)).status_code==503
+        monkeypatch.setenv("PANEL_EMAIL_ENABLED","1")
         created=await c.post("/auth/register",json=payload,headers=h)
         assert created.status_code==201,created.text
-        assert not mail
+        assert len(mail)==1 and mail[0][1]=='verify'
+        blocked=await c.post('/auth/login',json={'username':address,'password':payload['password']},headers=h)
+        assert blocked.status_code==403 and blocked.json()['detail']['code']=='email_confirmation_required'
+        assert 'set-cookie' not in blocked.headers
         duplicate=await c.post("/auth/register",json=payload,headers=h)
-        assert duplicate.status_code==409
+        assert duplicate.status_code==201 and len(mail)==1
+        assert (await c.post('/auth/verify',json={'email':address,'code':mail[0][2]},headers=h)).json()['registrationCompleted'] is True
         signed=await c.post("/auth/login",json={
             "username":address,"password":payload["password"],"remember":True},headers=h)
         assert signed.status_code==200,signed.text
@@ -88,17 +94,18 @@ async def test_registration_without_mail_login_and_recovery(monkeypatch):
         assert not bridge
         csrf=signed.json()["csrf"]
         # An email matching PANEL_OWNER_EMAIL can never confer admin automatically.
-        denied=await c.post("/auth/admin/claim",json={"legacy_password":"legacy-proof"},
+        denied=await c.post("/auth/admin/claim",json={"legacy_password":"wrong-proof"},
             headers={**h,"X-Orion-CSRF":csrf})
         assert denied.status_code==403
 
         # Recovery is independent and only works after email delivery is configured.
+        monkeypatch.setenv("PANEL_EMAIL_ENABLED","0")
         assert (await c.post("/auth/password/forgot",json={"email":address},headers=h)).status_code==503
         monkeypatch.setenv("PANEL_EMAIL_ENABLED","1")
         assert (await c.get("/auth/features")).json()["passwordRecovery"] is True
         forgot=await c.post("/auth/password/forgot",json={"email":address},headers=h)
         assert forgot.status_code==200,forgot.text
-        assert len(mail)==1 and mail[-1][1]=="reset"
+        assert len(mail)==2 and mail[-1][1]=="reset"
         code=mail[-1][2]
         assert len(code)==6 and code.isdigit()
         wrong="000000" if code!="000000" else "000001"
@@ -129,13 +136,13 @@ async def test_registration_without_mail_login_and_recovery(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_registration_flag_does_not_depend_on_smtp(monkeypatch):
+async def test_registration_requires_available_email(monkeypatch):
     monkeypatch.setenv("PANEL_EMAIL_ENABLED","0")
     monkeypatch.setenv("PANEL_REGISTRATION_ENABLED","1")
     monkeypatch.setenv("PANEL_TEST_MODE","0")
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url="https://test") as c:
         feature=(await c.get("/auth/features")).json()
-        assert feature=={"registration":True,"passwordRecovery":False,"testMode":False}
+        assert feature=={"registration":False,"passwordRecovery":False,"testMode":False}
     monkeypatch.setenv("PANEL_REGISTRATION_ENABLED","0")
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url="https://test") as c:
         feature=(await c.get("/auth/features")).json()
@@ -148,7 +155,7 @@ async def test_registration_flag_does_not_depend_on_smtp(monkeypatch):
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_resend_test_mode_only_restricts_delivery_not_signups(monkeypatch):
+async def test_resend_test_mode_restricts_new_signups_and_delivery(monkeypatch):
     cache=RedisDouble()
     monkeypatch.setattr(panel_auth,"_redis",lambda:cache)
     monkeypatch.setattr(account_auth,"_redis",lambda:cache)
@@ -170,7 +177,7 @@ async def test_resend_test_mode_only_restricts_delivery_not_signups(monkeypatch)
         created=await c.post("/auth/register",json={
             "name":"Outro Nome","email":email,
             "password":"Correct#Secret123"},headers={"Origin":"https://test"})
-        assert created.status_code==201,created.text
+        assert created.status_code==403,created.text
         assert (await c.post("/auth/verify/resend",json={
             "email":email},headers={"Origin":"https://test"})).status_code==403
         forgot=await c.post("/auth/password/forgot",json={

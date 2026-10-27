@@ -167,6 +167,11 @@
   letter-spacing: -.02em;
 }
 #loginView .auth-card-top p { margin: 0; color: var(--os-muted); font-size: 14px; }
+#loginView .auth-step-label { margin: 0 0 18px; color: var(--os-primary); font-size: 12px; font-weight: 600; }
+#loginView .auth-help { margin: 8px 0 18px; color: var(--os-muted); font-size: 13px; line-height: 1.6; }
+#loginView .auth-email-destination { overflow-wrap: anywhere; }
+#loginView .auth-email-destination strong { color: var(--os-text); font-weight: 600; }
+#loginView .auth-secondary-actions { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
 #loginView .auth-tabs { display: grid; grid-template-columns: 1fr 1fr; width: 100%; margin-bottom: 24px; }
 #loginView .auth-tab { min-height: 44px; }
 #loginView .auth-form:not(.hidden) { animation: os-toast-in .2s ease; }

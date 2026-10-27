@@ -7,17 +7,19 @@ O estado operacional e os critérios de liberação estão em
 
 ## Cadastro e entrada
 
-Com `PANEL_REGISTRATION_ENABLED=1`, `POST /auth/register` cria imediatamente
-uma conta `member` com nome, e-mail e senha de **8 a 128 caracteres**, armazenada
-como hash Argon2id. O cadastro não envia e-mail, não gera código e não exige
-transporte de e-mail configurado. A pessoa pode entrar com e-mail e senha; a
-conta nasce com `verified_at=NULL`.
+Com `PANEL_REGISTRATION_ENABLED=1` e transporte de e-mail disponível,
+`POST /auth/register` inicia um cadastro `member` pendente, com senha de
+**8 a 128 caracteres** armazenada como hash Argon2id. A mesma transação grava
+o código de confirmação e sua mensagem criptografada na fila. O login fica
+bloqueado até a confirmação. A interface avança para “Confirme seu e-mail”,
+no mesmo cartão e com os mesmos componentes da autenticação atual.
 
 Criar uma conta não comprova a posse do endereço e não concede papel
 administrativo, propriedade de empresa ou acesso aos dados de outra empresa.
-A flag de cadastro é independente das flags de envio. `/auth/features` informa
-se cadastro e recuperação estão disponíveis; recuperação depende da
-configuração completa do transporte.
+`/auth/features` informa a disponibilidade: novos cadastros e recuperação
+dependem da configuração completa do transporte. As contas anteriores à
+migração 0039 têm `registration_pending=false`, sem exigir confirmação nova,
+alterar senha, versão ou sessões. O admin legado também permanece preservado.
 
 A sessão é opaca e armazenada no Redis. O cookie `__Host-orion_session` usa
 `Secure`, `HttpOnly`, `SameSite=Strict` e `Path=/`, sem atributo `Domain`.
@@ -29,15 +31,18 @@ substituídas por informações antigas do navegador.
 
 `POST /auth/verify/resend` solicita um código para uma conta existente ainda
 não verificada. Não cria conta e funciona mesmo quando o cadastro público
-está fechado. Abrir um convite ou cadastrar-se não dispara esse pedido.
+está fechado. Abrir um convite não dispara esse pedido. Iniciar um cadastro
+novo gera o primeiro código automaticamente; reenvios exigem clique explícito.
+Retomar um cadastro com a senha correta não cria outra conta nem outro envio.
 
 O código tem **6 dígitos**, expira em **10 minutos** e é de uso único. O banco
 de tokens guarda HMAC-SHA256 com `PANEL_OTP_SECRET`, e não o código legível.
 Cinco erros consomem o token; um novo pedido invalida os tokens anteriores da
 mesma finalidade. Há limites adicionais por IP, destinatário e solicitação.
 
-`POST /auth/verify` valida o código e preenche `verified_at`. Essa confirmação
-preserva senha e sessão, não aceita convites e não concede vínculo com empresa.
+`POST /auth/verify` valida o código, preenche `verified_at` e conclui o cadastro
+pendente. Essa confirmação preserva senha e sessões existentes, não abre uma
+sessão automaticamente, não aceita convites e não concede vínculo com empresa.
 `GET /auth/me` informa `email_verified` a partir do banco atual.
 
 O conteúdo necessário ao envio, inclusive o código, permanece temporariamente
@@ -140,7 +145,7 @@ estáveis entre reinícios e serviços; não gere outra chave a cada deploy.
 O envio normal exige simultaneamente `PANEL_EMAIL_ENABLED=1` e
 `PANEL_EMAIL_LIVE_SEND=1`, além da configuração válida. O exemplo versionado
 mantém ambas em `0` e os segredos vazios. `PANEL_TEST_MODE=1` restringe os
-envios a `PANEL_TEST_EMAIL`, sem impedir o cadastro comum independente.
+envios e novos cadastros a `PANEL_TEST_EMAIL`.
 
 O padrão do Orion é de 2 tentativas de envio por segundo, 100 por dia e 20
 por destinatário por janela diária; pedidos possuem limites separados.
@@ -160,6 +165,17 @@ O runner `scripts/backup_and_migrate_email_outbox.py` exige revisão de origem,
 papel restrito, trava, backup privado com proprietário e ACL preservados,
 checksum e leitura de volta do objeto antes do upgrade. Depois valida revisão
 e contratos antigos e novos. Se já estiver em 0038, apenas verifica o contrato.
+
+A migração aditiva `0039_registration_confirmation` acrescenta o estado de
+cadastro pendente, preservando todas as contas anteriores. O runner
+`scripts/backup_and_migrate_registration.py` exige origem 0038, backup privado
+verificado e papel restrito antes do upgrade. Reexecuções em 0039 apenas
+verificam os contratos. Não reverter para código que ignore cadastros pendentes.
+
+Os seis modelos de e-mail usam a logo oficial existente, renderizada como PNG
+em `/brand/orion-email-logo.png`, com texto alternativo e cores do painel.
+O PNG evita a incompatibilidade de SVG em clientes de e-mail. Mensagens já
+enfileiradas mantêm seu conteúdo congelado para preservar a idempotência.
 A restauração deve ser ensaiada em banco isolado; nunca sobrepor o banco ativo
 para testar. A migração é somente para frente.
 

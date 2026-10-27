@@ -34,6 +34,76 @@ function fillRegistration(h) {
   h.fill('#registerConfirm', 'Synthetic123');
 }
 
+test('verification errors preserve the entered email and require another explicit submit',async t=>{
+  const response=deferred();
+  const h=await makeLogin(t,{respond:(path,method)=>{
+    if(path==='/auth/register'&&method==='POST')return {ok:true,verificationRequired:true};
+    if(path==='/auth/verify'&&method==='POST')return response.promise;
+  }});
+  h.click('#authTabRegister');fillRegistration(h);h.submit('#registerForm');await flush();
+  h.fill('#verifyCode','123');h.submit('#verifyForm');await flush();
+  assert.equal(writes(h).length,1);
+  h.fill('#verifyCode','123456');h.submit('#verifyForm');await flush();h.submit('#verifyForm');await flush();
+  assert.equal(writes(h).length,2);assert.equal(h.element('#authSubmitVerify').disabled,true);
+  response.resolve(jsonResponse({detail:'Código inválido ou expirado'},400));await flush();
+  assert.equal(visible(h.element('#verifyForm')),true);
+  assert.match(h.element('#verifyError').textContent,/inválido|expirado/);
+  assert.equal(h.element('#verifyEmail').value,'pessoa@example.invalid');
+  assert.equal(visible(h.element('#appView')),false);
+  assert.equal(h.element('#authSubmitVerify').disabled,false);
+});
+
+test('resend observes cooldown, sends once and never submits the verification code',async t=>{
+  const pending=deferred();
+  const h=await makeLogin(t,{respond:(path,method)=>{
+    if(path==='/auth/register'&&method==='POST')return {ok:true,verificationRequired:true};
+    if(path==='/auth/verify/resend'&&method==='POST')return pending.promise;
+  }});
+  h.click('#authTabRegister');fillRegistration(h);h.submit('#registerForm');await flush();
+  h.click('#authResendCode');assert.equal(writes(h).length,1);
+  await h.tickClocks(61000);h.click('#authResendCode');await flush();h.click('#authResendCode');await flush();
+  assert.equal(writes(h).length,2);
+  assert.match(h.element('#authResendCode').textContent,/enviando/i);
+  pending.resolve({ok:true});await flush();
+  assert.equal(h.element('#authResendCode').disabled,true);
+  assert.deepEqual(writes(h)[1].data,{email:'pessoa@example.invalid'});
+  assert.equal(writes(h).some(call=>call.path==='/auth/verify'),false);
+});
+
+test('correct login for a pending registration resumes verification without automatic email',async t=>{
+  const h=await makeLogin(t,{respond:(path,method)=>{
+    if(path==='/auth/login'&&method==='POST')return jsonResponse({detail:{code:'email_confirmation_required',email:'pessoa@example.invalid',message:'Confirme seu e-mail'}},403);
+  }});
+  h.fill('#username','pessoa@example.invalid');h.fill('#password','Synthetic123');h.submit('#loginForm');await flush();
+  assert.equal(visible(h.element('#verifyForm')),true);
+  assert.equal(h.element('#verifyEmail').value,'pessoa@example.invalid');
+  assert.equal(h.element('#password').value,'');
+  assert.deepEqual(writes(h).map(c=>c.path),['/auth/login']);
+  h.click('#authChangeEmail');assert.equal(visible(h.element('#registerForm')),true);
+  assert.equal(h.element('#verifyEmail').value,'');assert.equal(h.element('#verifyCode').value,'');
+});
+
+test('resuming an earlier signup allows an explicit resend without pretending another code was sent',async t=>{
+  const h=await makeLogin(t,{respond:(path,method)=>{
+    if(path==='/auth/register'&&method==='POST')return {ok:true,verificationRequired:true,codeRequested:false};
+  }});
+  h.click('#authTabRegister');fillRegistration(h);h.submit('#registerForm');await flush();
+  assert.equal(visible(h.element('#verifyForm')),true);
+  assert.equal(h.element('#authResendCode').disabled,false);
+  assert.deepEqual(writes(h).map(c=>c.path),['/auth/register']);
+});
+
+test('an unavailable confirmation service explains the disabled verification controls',async t=>{
+  const h=await makeLogin(t,{features:{registration:false,passwordRecovery:false},respond:(path,method)=>{
+    if(path==='/auth/login'&&method==='POST')return jsonResponse({detail:{code:'email_confirmation_required',email:'pessoa@example.invalid'}},403);
+  }});
+  h.fill('#username','pessoa@example.invalid');h.fill('#password','Synthetic123');h.submit('#loginForm');await flush();
+  assert.equal(visible(h.element('#verifyForm')),true);
+  assert.equal(h.element('#authSubmitVerify').disabled,true);
+  assert.equal(visible(h.element('#authVerifyAvailability')),true);
+  assert.match(h.element('#authVerifyAvailability').textContent,/confirmação de e-mail temporariamente indisponível/i);
+});
+
 test('support usernames and remember payload survive the redesign while pending login sends only once', async t => {
   const pending = deferred();
   const h = await makeLogin(t, { respond: (path, method) => {
@@ -158,9 +228,10 @@ test('disabled registration and recovery keep their explanation when moving betw
   assert.deepEqual(writes(h), []);
 });
 
-test('a newly created account returns to login and enters only its member area without an OTP step', async t => {
+test('new registration requires explicit email proof before returning to login', async t => {
   const h = await makeLogin(t, { respond: (path, method) => {
-    if (path === '/auth/register' && method === 'POST') return { ok: true, message: 'Conta criada. Faça login.' };
+    if (path === '/auth/register' && method === 'POST') return { ok: true, verificationRequired:true, message: 'Confirme seu e-mail para concluir.' };
+    if (path === '/auth/verify' && method === 'POST') return {ok:true,registrationCompleted:true,message:'Conta criada e e-mail confirmado.'};
     if (path === '/auth/login' && method === 'POST') return {
       ok: true, csrf: 'synthetic-member-csrf', role: 'member', name: 'Pessoa Sintética',
     };
@@ -172,19 +243,26 @@ test('a newly created account returns to login and enters only its member area w
   assert.deepEqual(writes(h), [], 'mismatching passwords never reach registration');
   h.fill('#registerConfirm', 'Synthetic123');
   h.submit('#registerForm'); await flush();
-  assert.equal(visible(h.element('#loginForm')), true);
-  assert.equal(h.element('#username').value, 'pessoa@example.invalid');
-  assert.equal(h.document.activeElement, h.element('#password'));
+  assert.equal(visible(h.element('#verifyForm')), true);
+  assert.equal(visible(h.element('#appView')), false);
+  assert.equal(h.element('#verifyEmail').value, 'pessoa@example.invalid');
+  assert.equal(h.document.activeElement, h.element('#verifyCode'));
   assert.equal(h.element('#registerPassword').value, '');
   assert.equal(h.element('#registerConfirm').value, '');
-  assert.match(h.element('#authGlobalMessage').textContent, /conta criada/i);
+  assert.equal(visible(h.element('#authGlobalMessage')),false);
+  assert.equal(h.element('#verifyDestination').textContent,'pessoa@example.invalid');
+  assert.equal(h.element('#authTabRegister').getAttribute('aria-selected'),'true');
+  assert.equal(h.element('#authResendCode').disabled,true);
+  h.fill('#verifyCode','001289');h.submit('#verifyForm');await flush();
+  assert.equal(visible(h.element('#loginForm')),true);
+  assert.equal(h.element('#username').value,'pessoa@example.invalid');
+  assert.equal(h.element('#verifyCode').value,'');
   h.fill('#password', 'Synthetic123');
   h.submit('#loginForm'); await flush();
   assert.equal(visible(h.element('#appView')), true);
   assert.equal(h.element('#memberProfileName').textContent, 'Pessoa Sintética');
   assert.equal(h.element('#memberProfileEmail').textContent, 'pessoa@example.invalid');
-  assert.deepEqual(writes(h).map(call => call.path), ['/auth/register', '/auth/login']);
-  assert.equal(h.calls.some(call => call.path.includes('/verify')), false);
+  assert.deepEqual(writes(h).map(call => call.path), ['/auth/register', '/auth/verify','/auth/login']);
   assert.equal(h.calls.some(call => call.path.startsWith('/api/v1/qr/')), false);
 });
 

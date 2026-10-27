@@ -117,6 +117,7 @@ async def branding(asset: str) -> FileResponse:
         "orion-brand-dark.svg": "image/svg+xml",
         "orion-brand-light.svg": "image/svg+xml",
         "orion-symbol.svg": "image/svg+xml",
+        "orion-email-logo.png": "image/png",
         "figtree-latin.woff2": "font/woff2",
         "outfit-latin.woff2": "font/woff2",
     }

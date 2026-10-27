@@ -38,6 +38,10 @@ def test_all_templates_have_text_html_canonical_url_and_escape_business(kind):
     assert payload["to"] == ["person@example.test"]
     assert "https://orion.example.test/" in payload["html"] and "https://orion.example.test/" in payload["text"]
     assert "<img src=x" not in payload["html"]
+    assert '<img src="https://orion.example.test/brand/orion-email-logo.png"' in payload['html']
+    assert 'alt="Orion — Recepcionista Digital"' in payload['html']
+    assert '#087c72' not in payload['html'] and '<h1' not in payload['html']
+    assert 'background:#347fff' in payload['html']
     assert "senha" not in payload["subject"].lower() or kind in {"reset", "password_changed"}
     if kind in {"verify", "reset"}:
         assert "012345" in payload["text"] and "012345" in payload["html"]

@@ -118,10 +118,16 @@ def render_message(recipient, kind, *, code=None, invitation_token=None, busines
         body = ("Seu acesso a " + business + " foi aprovado. Entre no Orion para acessar a empresa."
                 if approved else "Seu acesso a " + business + " foi encerrado. Se precisar de esclarecimentos, fale com o proprietário da empresa.")
         content = '<p>' + escape(body) + '</p>'
-    html = ('<!doctype html><html lang="pt-BR"><body style="background:#f3f7f9;color:#15283b;font-family:Arial,sans-serif;padding:24px">'
-            '<main style="max-width:480px;margin:auto;background:white;border-radius:16px;padding:28px">'
-            '<h1 style="color:#087c72">ORION</h1>' + content + '<p><a href="' + escape(link, quote=True)
-            + '">Acessar Orion</a></p><p style="font-size:12px;color:#586a79">Mensagem automática do Orion. Não responda com senhas ou códigos.</p></main></body></html>')
+    html = ('<!doctype html><html lang="pt-BR"><body style="margin:0;background:#f5f8fc;color:#172338;font-family:Arial,sans-serif;line-height:1.6">'
+            '<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td style="padding:24px 16px">'
+            '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:480px;margin:auto;background:#ffffff;border:1px solid #dce4ef;border-radius:16px">'
+            '<tr><td style="padding:28px"><a href="' + escape(canonical, quote=True) + '" style="text-decoration:none">'
+            '<img src="' + escape(canonical, quote=True) + '/brand/orion-email-logo.png" width="176" height="61" '
+            'alt="Orion — Recepcionista Digital" style="display:block;border:0;width:176px;max-width:100%;height:auto;margin:0 0 28px"></a>'
+            + content + '<p style="margin:24px 0"><a href="' + escape(link, quote=True)
+            + '" style="display:inline-block;background:#347fff;color:#ffffff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:bold">Acessar Orion</a></p>'
+            '<p style="margin:24px 0 0;padding-top:20px;border-top:1px solid #dce4ef;font-size:12px;color:#65738a">'
+            'Mensagem automática do Orion. Não responda com senhas ou códigos.</p></td></tr></table></td></tr></table></body></html>')
     return {"from": sender(), "to": [recipient], "subject": subject,
             "text": body + "\n\n" + link + "\n\nEquipe Orion", "html": html}
 

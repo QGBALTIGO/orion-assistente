@@ -749,6 +749,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
         <div id="authGlobalMessage" class="auth-message hidden" role="status" aria-live="polite"></div>
         <div id="authRegisterAvailability" class="auth-availability hidden" role="status" aria-live="polite"></div>
         <div id="authForgotAvailability" class="auth-availability hidden" role="status" aria-live="polite"></div>
+        <div id="authVerifyAvailability" class="auth-availability hidden" role="status" aria-live="polite"></div>
         <form id="loginForm" class="auth-form" autocomplete="on" role="tabpanel" aria-labelledby="authTabLogin" aria-busy="false">
           <label for="username">E-mail ou usuário</label>
           <input id="username" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="seu@email.com" required maxlength="254">
@@ -783,6 +784,19 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
           <button id="authSubmitRegister" class="auth-primary os-button os-full" type="submit" aria-busy="false" disabled><span class="os-spinner hidden" aria-hidden="true"></span><span data-auth-label>Criar minha conta</span><svg class="os-icon auth-submit-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
           <p id="registerError" class="auth-error" role="alert" aria-live="polite"></p>
           
+        </form>
+        <form id="verifyForm" class="auth-form hidden" role="tabpanel" aria-labelledby="authTabRegister" aria-busy="false">
+          <p class="auth-step-label">Etapa 2 de 2</p>
+          <input id="verifyEmail" type="hidden">
+          <p class="auth-help auth-email-destination">Digite o código enviado para <strong id="verifyDestination"></strong>.</p>
+          <label for="verifyCode">Código de confirmação</label>
+          <input id="verifyCode" class="auth-otp-input" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" aria-describedby="verifyHint verifyError" placeholder="000000" required>
+          <p id="verifyHint" class="auth-help">Digite os seis dígitos recebidos por e-mail. O código vale por 10 minutos. Confira também o spam.</p>
+          <button id="authSubmitVerify" class="auth-primary os-button os-full" type="submit" aria-busy="false"><span class="os-spinner hidden" aria-hidden="true"></span><span data-auth-label>Confirmar e concluir cadastro</span></button>
+          <button id="authResendCode" class="auth-text-link auth-back" type="button">Reenviar código</button>
+          <div class="auth-secondary-actions"><button id="authChangeEmail" class="auth-text-link" type="button">Alterar e-mail</button>
+          <button class="auth-text-link" type="button" data-back-login>Voltar para entrar</button></div>
+          <p id="verifyError" class="auth-error" role="alert" aria-live="polite"></p>
         </form>
         <form id="forgotForm" class="auth-form hidden" aria-labelledby="authTitle" aria-busy="false">
           <label for="forgotEmail">E-mail cadastrado</label>
@@ -1543,22 +1557,30 @@ async function uploadImage(url,file,kind){
 }
 let authScreen="login",loginRole="support",authPending=null;
 let authAvailability={registration:null,passwordRecovery:null},authFeaturesFailed=false,authFeaturesSequence=0;
+let authResendAfter=0;
 const authScreens={
  login:{form:"loginForm",button:"authSubmitLogin",title:"Bem-vindo ao Orion",subtitle:"Acesse sua conta para continuar.",label:"Entrar",busy:"Entrando…"},
  register:{form:"registerForm",button:"authSubmitRegister",title:"Crie sua conta",subtitle:"Seu acesso ao Orion começa por aqui.",label:"Criar minha conta",busy:"Criando conta…"},
+ verify:{form:"verifyForm",button:"authSubmitVerify",title:"Confirme seu e-mail",subtitle:"Falta só confirmar seu e-mail para concluir o cadastro.",label:"Confirmar e concluir cadastro",busy:"Confirmando…"},
  forgot:{form:"forgotForm",button:"authSubmitForgot",title:"Recuperar senha",subtitle:"Enviaremos um código de seis dígitos para seu e-mail cadastrado.",label:"Enviar código de recuperação",busy:"Enviando código…"},
  reset:{form:"resetForm",button:"authSubmitReset",title:"Criar nova senha",subtitle:"Digite o código enviado ao seu e-mail e escolha uma nova senha.",label:"Atualizar senha",busy:"Atualizando senha…"}
 };
 function syncAuthAvailability(){
  const busy=authPending!==null;
+ $("verifyDestination").textContent=$("verifyEmail").value;
  document.querySelectorAll("#loginView .auth-form input, #loginView .auth-form button, #authTabs button").forEach(control=>control.disabled=busy);
  $("authSubmitRegister").disabled=busy||authAvailability.registration!==true;
  $("authSubmitForgot").disabled=busy||authAvailability.passwordRecovery!==true;
- for(const [screen,key,id] of [["register","registration","authRegisterAvailability"],["forgot","passwordRecovery","authForgotAvailability"]]){
+ $("authSubmitVerify").disabled=busy||authAvailability.passwordRecovery!==true;
+ const remaining=Math.max(0,Math.ceil((authResendAfter-Date.now())/1000));
+ $("authResendCode").disabled=busy||authAvailability.passwordRecovery!==true||remaining>0;
+ $("authResendCode").textContent=authPending==="verify-resend"?"Enviando código…":remaining?"Reenviar código em "+remaining+"s":"Reenviar código";
+ $("authResendCode").setAttribute("aria-busy",String(authPending==="verify-resend"));
+ for(const [screen,key,id] of [["register","registration","authRegisterAvailability"],["forgot","passwordRecovery","authForgotAvailability"],["verify","passwordRecovery","authVerifyAvailability"]]){
    let notice="";
-   if(authFeaturesFailed)notice=screen==="register"?"Não foi possível verificar a disponibilidade do cadastro. Tente novamente em instantes.":"Não foi possível verificar a recuperação de senha. Tente novamente em instantes.";
+   if(authFeaturesFailed)notice=screen==="register"?"Não foi possível verificar a disponibilidade do cadastro. Tente novamente em instantes.":screen==="verify"?"Não foi possível verificar a confirmação de e-mail. Tente novamente em instantes.":"Não foi possível verificar a recuperação de senha. Tente novamente em instantes.";
    else if(authAvailability[key]===null)notice="Verificando disponibilidade…";
-   else if(!authAvailability[key])notice=screen==="register"?"Cadastro temporariamente indisponível.":"Recuperação de senha temporariamente indisponível. Tente novamente mais tarde.";
+   else if(!authAvailability[key])notice=screen==="register"?"Cadastro temporariamente indisponível.":screen==="verify"?"Confirmação de e-mail temporariamente indisponível. Tente novamente mais tarde.":"Recuperação de senha temporariamente indisponível. Tente novamente mais tarde.";
    $(id).textContent=notice;
    $(id).classList.toggle("hidden",authScreen!==screen||!notice);
  }
@@ -1567,7 +1589,7 @@ function setAuthBusy(screen,busy){
  authPending=busy?screen:null;
  for(const [key,config] of Object.entries(authScreens)){
    const pending=authPending===key,button=$(config.button);
-   $(config.form).setAttribute("aria-busy",String(pending));
+   $(config.form).setAttribute("aria-busy",String(pending||(key==="verify"&&authPending==="verify-resend")));
    button.setAttribute("aria-busy",String(pending));
    button.querySelector("[data-auth-label]").textContent=pending?config.busy:config.label;
    button.querySelector(".os-spinner").classList.toggle("hidden",!pending);
@@ -1612,12 +1634,13 @@ function authScreenShow(screen,{focus=false}={}){
  $("authTitle").textContent=authScreens[screen].title;
  $("authSubtitle").textContent=authScreens[screen].subtitle;
  $("authTabs").classList.toggle("hidden",screen==="forgot"||screen==="reset");
- for(const [button,selected] of [["authTabLogin",screen==="login"],["authTabRegister",screen==="register"]]){
+ for(const [button,selected] of [["authTabLogin",screen==="login"],["authTabRegister",screen==="register"||screen==="verify"]]){
    $(button).classList.toggle("active",selected);
    $(button).setAttribute("aria-selected",String(selected));
    $(button).tabIndex=selected?0:-1;
  }
- for(const id of ["loginError","registerError","forgotError","resetError"]){$(id).textContent=""}
+ $("authTabRegister").setAttribute("aria-controls",screen==="verify"?"verifyForm":"registerForm");
+ for(const id of ["loginError","registerError","verifyError","forgotError","resetError"]){$(id).textContent=""}
  document.querySelectorAll("#loginView [aria-invalid]").forEach(input=>input.removeAttribute("aria-invalid"));
  document.querySelectorAll("[data-password-toggle]").forEach(button=>{
    $(button.dataset.passwordToggle).type="password";
@@ -1681,7 +1704,7 @@ async function publicAuth(path,payload){
  const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},
    credentials:"same-origin",cache:"no-store",body:JSON.stringify(payload)});
  const body=await r.json().catch(()=>({}));
- if(!r.ok)throw Error(errorMessage(body,r.status));
+ if(!r.ok){const error=Error(errorMessage(body,r.status));error.code=body.detail?.code;error.email=body.detail?.email;throw error;}
  return body;
 }
 async function authFeatures(){
@@ -1703,7 +1726,7 @@ async function authFeatures(){
 $("authTabLogin").addEventListener("click",()=>{if(!authPending)authScreenShow("login")});
 $("authTabRegister").addEventListener("click",()=>{
  if(authPending)return;
- authScreenShow("register");
+ authScreenShow($("verifyEmail").value?"verify":"register");
  if(authAvailability.registration!==true)void authFeatures();
 });
 $("authTabs").addEventListener("keydown",event=>{
@@ -1748,7 +1771,12 @@ $("loginForm").addEventListener("submit",async event=>{
   const toggle=document.querySelector('[data-password-toggle="password"]');
   toggle.setAttribute("aria-label","Mostrar senha");toggle.setAttribute("aria-pressed","false");
   showApp(result.role||"support",result.name||"",result.email||payload.username.trim().toLowerCase());
- }catch(error){$("loginError").textContent=error.message}
+ }catch(error){
+  if(error.code==="email_confirmation_required"&&error.email){
+   $("password").value="";$("verifyEmail").value=error.email;$("verifyCode").value="";
+   authScreenShow("verify",{focus:true});
+  }else $("loginError").textContent=error.message;
+ }
  finally{setAuthBusy("login",false)}
 });
 $("registerForm").addEventListener("submit",async event=>{
@@ -1765,12 +1793,41 @@ $("registerForm").addEventListener("submit",async event=>{
  try{
   const result=await publicAuth("/auth/register",payload);
   $("registerPassword").value="";$("registerConfirm").value="";
-  authScreenShow("login");
-  $("username").value=payload.email.trim().toLowerCase();registered=true;
-  messageAuth(result.message||"Conta criada. Faça login com seu e-mail e senha.");
+  $("verifyEmail").value=payload.email.trim().toLowerCase();$("verifyCode").value="";
+  authResendAfter=result.codeRequested===false?0:Date.now()+60000;authScreenShow("verify",{focus:true});registered=true;
  }catch(error){$("registerError").textContent=error.message}
- finally{setAuthBusy("register",false);if(registered)$("password").focus();await authFeatures()}
+ finally{setAuthBusy("register",false);if(registered)$("verifyCode").focus();await authFeatures()}
 });
+$("verifyForm").addEventListener("submit",async event=>{
+ event.preventDefault();$("verifyError").textContent="";
+ if(authPending||$("authSubmitVerify").disabled)return;
+ const email=$("verifyEmail").value,code=$("verifyCode").value;
+ if(!/^[0-9]{6}$/.test(code)){$("verifyError").textContent="Digite os seis dígitos do código.";$("verifyCode").setAttribute("aria-invalid","true");return;}
+ setAuthBusy("verify",true);
+ try{
+  const result=await publicAuth("/auth/verify",{email,code});
+  $("verifyCode").value="";$("verifyEmail").value="";authResendAfter=0;
+  authScreenShow("login",{focus:true});$("username").value=email;
+  messageAuth(result.message||"E-mail confirmado. Entre para continuar.");
+ }catch(error){$("verifyError").textContent=error.message;$("verifyCode").setAttribute("aria-invalid","true");}
+ finally{setAuthBusy("verify",false);}
+});
+$("authResendCode").addEventListener("click",async()=>{
+ if(authPending||$("authResendCode").disabled)return;
+ setAuthBusy("verify-resend",true);$("verifyError").textContent="";
+ try{
+  await publicAuth("/auth/verify/resend",{email:$("verifyEmail").value});
+  authResendAfter=Date.now()+60000;$("verifyCode").value="";
+  messageAuth("Código solicitado. Aguarde alguns instantes e confira seu e-mail.");
+ }catch(error){$("verifyError").textContent=error.message;}
+ finally{setAuthBusy("verify",false);}
+});
+$("authChangeEmail").addEventListener("click",()=>{
+ if(authPending)return;
+ $("registerEmail").value=$("verifyEmail").value;$("verifyEmail").value="";$("verifyCode").value="";
+ authResendAfter=0;authScreenShow("register",{focus:true});$("registerEmail").focus();
+});
+setInterval(()=>{if(authScreen==="verify")syncAuthAvailability();},1000);
 $("forgotForm").addEventListener("submit",async event=>{
  event.preventDefault();$("forgotError").textContent="";
  if(authPending||$("authSubmitForgot").disabled)return;

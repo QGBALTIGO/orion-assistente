@@ -57,6 +57,9 @@ async def test_assets_are_allowlisted_and_svg(monkeypatch):
             assert b"<svg" in r.content
         assert (await client.get("/brand/../panel.html")).status_code in (404,405)
         assert (await client.get("/brand/untrusted.svg")).status_code==404
+        png=await client.get('/brand/orion-email-logo.png')
+        assert png.status_code==200 and png.content.startswith(b'\x89PNG\r\n\x1a\n')
+        assert 'image/png' in png.headers['content-type']
         stylesheet=await client.get("/panel-assets/orion-auth.css")
         assert stylesheet.status_code==200
         assert "text/css" in stylesheet.headers["content-type"]
@@ -124,18 +127,19 @@ def test_desktop_login_uses_the_viewport_and_equal_columns_without_clipping():
     assert "@media(max-width:900px)" in styles
 
 
-def test_signup_is_immediate_and_otp_is_only_for_recovery():
+def test_signup_has_a_matching_email_confirmation_step():
     html=(Path(__file__).resolve().parents[2]/"app/static/panel.html").read_text("utf-8")
     for identity in ("registerForm","resetEmail","resetCode","forgotForm"):
         assert f'id="{identity}"' in html
     for identity in ("verifyForm","authSubmitVerify","authResendCode"):
-        assert f'id="{identity}"' not in html
+        assert f'id="{identity}"' in html
     for route in ('"/auth/register"','"/auth/password/forgot"','"/auth/password/reset"'):
         assert route in html
     assert 'autocomplete="one-time-code"' in html
     assert 'pattern="[0-9]{6}"' in html
-    assert 'Conta criada. Faça login com seu e-mail e senha.' in html
-    assert 'authScreenShow("verify")' not in html
+    assert 'authScreenShow("verify",{focus:true})' in html
+    assert 'Falta só confirmar seu e-mail para concluir o cadastro.' in html
+    assert '"/auth/verify/resend"' in html and '"/auth/verify"' in html
     assert 'token:resetToken' not in html
     assert 'Enviaremos um link seguro' not in html
 
@@ -192,7 +196,7 @@ def test_member_logs_directly_into_normal_dashboard_without_admin_claim():
     assert 'id="sidebarAccountName"' in html
     assert 'id="sidebarAvatarInitial"' in html
     assert 'if(!isAdmin){' in html
-    assert 'openPage("member");' in html
+    assert 'if(await loadBusinesses()&&epoch===authEpoch)startBusinessSession();' in html
     member_block=html.split('if(!isAdmin){',1)[1].split('return;',1)[0]
     assert "updateStatus()" not in member_block
     assert "loadTenants()" not in member_block

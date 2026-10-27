@@ -1,5 +1,6 @@
 """Synthetic-only PostgreSQL/Redis email acceptance; no external provider calls."""
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import json
 import os
@@ -20,6 +21,125 @@ from app import account_auth, panel_auth, management_team, email_outbox as outbo
 from app.catalog_api import support_session_factory
 
 pytestmark = pytest.mark.integration
+
+
+@asynccontextmanager
+async def signup_case(d):
+    address=str(uuid4())+'@example.test'
+    payload={'name':'Synthetic signup','email':address,'password':d['password']}
+    try:
+        yield payload
+    finally:
+        async with d['engine'].begin() as db:
+            identity=(await db.execute(text('SELECT id FROM panel_accounts WHERE email=:e'),{'e':address})).scalar_one_or_none()
+            if identity:
+                await db.execute(text('DELETE FROM panel_email_outbox WHERE account_id=:a'),{'a':identity})
+                await db.execute(text('DELETE FROM panel_email_tokens WHERE account_id=:a'),{'a':identity})
+                await db.execute(text('DELETE FROM panel_accounts WHERE id=:a'),{'a':identity})
+
+
+async def signup_state(d,address):
+    async with d['engine'].connect() as db:
+        account=(await db.execute(text('SELECT * FROM panel_accounts WHERE email=:e'),{'e':address})).mappings().one_or_none()
+        messages=(await db.execute(text('SELECT * FROM panel_email_outbox WHERE account_id=:a ORDER BY created_at,id'),
+                                  {'a':account['id'] if account else None})).mappings().all()
+    return account,messages
+
+
+def signup_code(messages):
+    return __import__('re').search(r'\b([0-9]{6})\b',json.loads(transport.cipher().decrypt(messages[-1]['payload_enc'].encode()))['text'])[1]
+
+
+async def test_new_signup_cannot_login_or_use_forged_session_until_confirmed(mail_db):
+    d=mail_db;c=d['client'];origin={'Origin':'https://orion.example.test'}
+    async with signup_case(d) as payload:
+        created=await c.post('/auth/register',json=payload,headers=origin)
+        assert created.status_code==201 and created.json()['verificationRequired']
+        account,messages=await signup_state(d,payload['email'])
+        assert account['registration_pending'] and account['verified_at'] is None and account['role']=='member'
+        assert len(messages)==1 and messages[0]['kind']=='verify' and messages[0]['status']=='pending'
+        code=signup_code(messages)
+        assert code not in created.text
+        wrong=await c.post('/auth/login',json={'username':payload['email'],'password':'wrong-password'},headers=origin)
+        assert wrong.status_code==401 and 'set-cookie' not in wrong.headers
+        login=await c.post('/auth/login',json={'username':payload['email'],'password':payload['password']},headers=origin)
+        assert login.status_code==403 and login.json()['detail']['code']=='email_confirmation_required'
+        assert 'set-cookie' not in login.headers
+        with pytest.raises(HTTPException):await account_auth.current_account(str(account['id']),account['auth_version'])
+        with pytest.raises(HTTPException):await account_auth.current_account_and_membership(str(account['id']),account['auth_version'],d['tenant'])
+        finished=await c.post('/auth/verify',json={'email':payload['email'],'code':code},headers=origin)
+        assert finished.status_code==200 and finished.json()['registrationCompleted'] is True
+        assert 'set-cookie' not in finished.headers
+        account,_=await signup_state(d,payload['email'])
+        assert account['registration_pending'] is False and account['verified_at'] is not None
+        assert (await c.post('/auth/verify',json={'email':payload['email'],'code':code},headers=origin)).status_code==400
+        login=await c.post('/auth/login',json={'username':payload['email'],'password':payload['password']},headers=origin)
+        assert login.status_code==200 and login.json()['role']=='member'
+        assert (await c.get('/auth/me')).json()['email_verified'] is True
+
+
+async def test_repeating_pending_signup_preserves_password_name_and_single_email(mail_db):
+    d=mail_db;c=d['client'];origin={'Origin':'https://orion.example.test'}
+    async with signup_case(d) as payload:
+        assert (await c.post('/auth/register',json=payload,headers=origin)).status_code==201
+        before,messages=await signup_state(d,payload['email'])
+        assert (await c.post('/auth/register',json={**payload,'name':'A different name'},headers=origin)).status_code==201
+        assert (await c.post('/auth/register',json={**payload,'password':'ChangedWithoutProof123'},headers=origin)).status_code==409
+        after,new_messages=await signup_state(d,payload['email'])
+        assert before==after and len(messages)==len(new_messages)==1
+
+
+@pytest.mark.parametrize('failure',['expired','five_wrong_attempts'])
+async def test_invalid_registration_proof_never_finishes_signup(mail_db,failure):
+    d=mail_db;c=d['client'];origin={'Origin':'https://orion.example.test'}
+    async with signup_case(d) as payload:
+        await c.post('/auth/register',json=payload,headers=origin)
+        account,messages=await signup_state(d,payload['email']);code=signup_code(messages)
+        if failure=='expired':
+            async with d['engine'].begin() as db:
+                await db.execute(text("UPDATE panel_email_tokens SET expires_at=now()-interval '1 second' WHERE account_id=:a"),{'a':account['id']})
+        else:
+            wrong='000000' if code!='000000' else '000001'
+            for _ in range(5):
+                assert (await c.post('/auth/verify',json={'email':payload['email'],'code':wrong},headers=origin)).status_code==400
+        assert (await c.post('/auth/verify',json={'email':payload['email'],'code':code},headers=origin)).status_code==400
+        account,_=await signup_state(d,payload['email'])
+        assert account['registration_pending'] and account['verified_at'] is None
+
+
+async def test_signup_and_token_roll_back_when_enqueue_fails(mail_db,monkeypatch):
+    d=mail_db
+    async def broken(*args,**kwargs):raise RuntimeError('synthetic rollback')
+    monkeypatch.setattr(outbox,'enqueue',broken)
+    async with signup_case(d) as payload:
+        with pytest.raises(RuntimeError,match='synthetic rollback'):
+            await d['client'].post('/auth/register',json=payload,headers={'Origin':'https://orion.example.test'})
+        assert await signup_state(d,payload['email'])==(None,[])
+
+
+async def test_existing_unverified_account_and_session_stay_usable(mail_db):
+    d=mail_db;c=d['client'];origin={'Origin':'https://orion.example.test'}
+    async with d['engine'].begin() as db:
+        await db.execute(text('UPDATE panel_accounts SET verified_at=NULL WHERE id=:id'),{'id':d['guest']})
+    account,_=await signup_state(d,d['guest_email'])
+    assert account['verified_at'] is None and account['registration_pending'] is False
+    login=await c.post('/auth/login',json={'username':d['guest_email'],'password':d['password']},headers=origin)
+    assert login.status_code==200
+    assert (await c.get('/auth/me')).status_code==200
+    assert (await c.post('/auth/register',json={'name':'Other','email':d['guest_email'],'password':d['password']},headers=origin)).status_code==409
+    assert (await c.get('/auth/me')).status_code==200
+
+
+async def test_resend_replaces_pending_signup_code_without_creating_another_account(mail_db):
+    d=mail_db;c=d['client'];origin={'Origin':'https://orion.example.test'}
+    async with signup_case(d) as payload:
+        await c.post('/auth/register',json=payload,headers=origin)
+        original,messages=await signup_state(d,payload['email']);old_code=signup_code(messages)
+        assert (await c.post('/auth/verify/resend',json={'email':payload['email']},headers=origin)).status_code==200
+        account,messages=await signup_state(d,payload['email'])
+        assert account['id']==original['id'] and len(messages)==2
+        assert (await c.post('/auth/verify',json={'email':payload['email'],'code':old_code},headers=origin)).status_code==400
+        assert (await c.post('/auth/verify',json={'email':payload['email'],'code':signup_code(messages)},headers=origin)).status_code==200
 
 
 @pytest_asyncio.fixture
