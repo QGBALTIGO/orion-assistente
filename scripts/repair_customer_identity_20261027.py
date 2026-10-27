@@ -290,6 +290,7 @@ def main(argv=None):
         supplied = (args.tenant_id, args.primary_id, args.secondary_id, args.keep_phone_suffix)
         approved = (str(APPROVED.tenant), str(APPROVED.primary), str(APPROVED.secondary), "64")
         require(supplied == approved if args.apply or any(supplied) else True, "explicit_repair_scope_required")
+        print("orion_customer_repair_started", flush=True)
         raw, url = connection_values()
         require(migrated_version(raw) == SCHEMA, "customer_repair_schema_not_reviewed")
         engine = create_engine(raw, poolclass=NullPool)

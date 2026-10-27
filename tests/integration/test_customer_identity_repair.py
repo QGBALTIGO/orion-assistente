@@ -256,9 +256,10 @@ async def test_operational_cli_defaults_to_read_only_and_requires_verified_backu
     code = await asyncio.to_thread(repair.main, arguments)
     output = capsys.readouterr()
     assert all(value not in output.out + output.err for value in (PHONE64, PHONE94, "Kayky", "1990-05-17"))
+    assert ("orion_customer_repair_started" in output.out) == (mode != "missing_scope")
     if mode == "verified_backup":
         assert code == 0 and events == ["backup", "snapshot"]
-        assert json.loads(output.out)["status"] == "applied"
+        assert json.loads(output.out.splitlines()[-1])["status"] == "applied"
     else:
         assert await current(d) == before
         assert code == {"read_only": 0, "missing_scope": 2, "backup_failure": 3}[mode]
