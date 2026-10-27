@@ -22,10 +22,26 @@ MOCK = """() => {
   const ledger=[
     {id:'57000000-0000-4000-8000-000000000002',kind:'income',
       description:'Atendimento AG-QQS05XW',amount_cents:100000,category:'Serviços',
-      payment_method:'pix',status:'paid',occurred_at:'2026-10-26T11:00:00-04:00',version:2},
+      payment_method:'pix',status:'paid',occurred_at:'2026-10-26T11:00:00-04:00',version:2,
+      customer_display_name:'Kayky Sousa',professional_name:'Profissional de teste',
+      appointment_id:'58000000-0000-4000-8000-000000000001',appointment:{
+        id:'58000000-0000-4000-8000-000000000001',protocol:'AG-QQS05XW',
+        start_at:'2026-10-26T10:00:00-04:00',end_at:'2026-10-26T11:00:00-04:00',
+        timezone:'America/Campo_Grande',services:[
+          {name:'Corte',duration_min:40,price_cents:3500},
+          {name:'Barba',duration_min:20,price_cents:2500}]}},
     {id:'57000000-0000-4000-8000-000000000003',kind:'income',
       description:'Atendimento AG-2H5W3P',amount_cents:10000,category:'Serviços',
-      payment_method:'pix',status:'paid',occurred_at:'2026-10-26T12:00:00-04:00',version:3},
+      payment_method:'pix',status:'paid',occurred_at:'2026-10-26T12:00:00-04:00',version:3,
+      customer_display_name:'Ana Carolina de Albuquerque e Vasconcelos',
+      professional_name:'Pedro Henrique dos Santos Oliveira',
+      appointment_id:'58000000-0000-4000-8000-000000000002',appointment:{
+        id:'58000000-0000-4000-8000-000000000002',protocol:'AG-2H5W3P',
+        start_at:'2026-10-26T11:00:00-04:00',end_at:'2026-10-26T12:00:00-04:00',
+        timezone:'America/Campo_Grande',services:[
+          {name:'Corte com acabamento e alinhamento térmico',duration_min:30,price_cents:5000},
+          {name:'Hidratação e reconstrução dos fios',duration_min:20,price_cents:3000},
+          {name:'Sobrancelhas com navalha',duration_min:10,price_cents:2000}]}},
     {id:'57000000-0000-4000-8000-000000000004',kind:'expense',
       description:'Produtos e materiais',amount_cents:10000,category:'Geral',
       payment_method:'pix',status:'paid',occurred_at:'2026-10-21T12:00:00-04:00',version:1}
@@ -206,6 +222,25 @@ def test_finance_loses_no_horizontal_content_or_actions(browser_name,width,heigh
             else:
                 assert page.locator(".os-finance-ledger-table").evaluate(
                     "(table)=>getComputedStyle(table).display==='table'")
+
+            # The familiar card and pencil stay intact; booking facts live inside editing.
+            first=page.locator('.os-finance-ledger-table tbody tr').first
+            assert first.locator('.os-finance-primary strong').inner_text()=='Atendimento Kayky Sousa'
+            assert 'AG-QQS05XW' not in first.inner_text()
+            assert 'Profissional de teste' not in first.inner_text()
+            assert 'Corte' not in first.inner_text()
+            assert first.locator('[data-os-finance] svg').count()==1
+            page.locator('.os-finance-ledger-table [data-os-finance]').nth(1).click()
+            editor=page.locator('#osDialog')
+            context=editor.locator('[aria-label="Informações do atendimento"]')
+            assert context.is_visible()
+            assert 'Ana Carolina de Albuquerque e Vasconcelos' in context.inner_text()
+            assert 'Pedro Henrique dos Santos Oliveira' in context.inner_text()
+            assert 'Hidratação e reconstrução dos fios' in context.inner_text()
+            assert '11:00' in context.inner_text() and '12:00' in context.inner_text()
+            assert editor.locator('input[name=description]').input_value()=='Atendimento Ana Carolina de Albuquerque e Vasconcelos'
+            assert editor.evaluate('node=>node.scrollWidth<=node.clientWidth+2')
+            editor.locator('button.os-close').click()
 
             # Filters must remain open after an API refresh.
             page.locator('[data-os-action=finance-filters]').click()
