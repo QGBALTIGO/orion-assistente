@@ -1,0 +1,99 @@
+name: Orion - telefone dos profissionais
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/catalog_schemas.py'
+      - 'app/catalog_api.py'
+      - 'app/onboarding_service.py'
+      - 'app/professional_commissions.py'
+      - 'app/static/orion-suite.js'
+      - 'alembic/versions/0040_professional_phone.py'
+      - 'scripts/backup_and_migrate_registration.py'
+      - 'scripts/backup_and_migrate_professional_phone.py'
+      - 'tests/unit/test_professional_phone*.py'
+      - 'tests/integration/test_professional_phone*.py'
+      - 'ui-tests/professional-phone.test.mjs'
+      - '.github/workflows/professional-phone.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/catalog_schemas.py'
+      - 'app/catalog_api.py'
+      - 'app/onboarding_service.py'
+      - 'app/professional_commissions.py'
+      - 'app/static/orion-suite.js'
+      - 'alembic/versions/0040_professional_phone.py'
+      - 'scripts/backup_and_migrate_registration.py'
+      - 'scripts/backup_and_migrate_professional_phone.py'
+      - 'tests/unit/test_professional_phone*.py'
+      - 'tests/integration/test_professional_phone*.py'
+      - 'ui-tests/professional-phone.test.mjs'
+      - '.github/workflows/professional-phone.yml'
+permissions:
+  contents: read
+jobs:
+  postgres:
+    name: Persistencia, isolamento e backup da migracao
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: synthetic-professional-phone-support-token-000000000000000000000
+      REQUIRE_POSTGRES_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar dependencias fixadas
+        run: python -m pip install -c requirements.lock ".[test]"
+      - name: Preparar banco descartavel e migrar
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+          python -m alembic upgrade head
+          python -m alembic current --check-heads
+      - name: Validar contato privado, compatibilidade e publicacao
+        run: |
+          python -m pytest -q -ra \
+            tests/unit/test_professional_phone.py \
+            tests/unit/test_professional_phone_release.py \
+            tests/unit/test_registration_release.py \
+            tests/integration/test_professional_phone_pg.py \
+            tests/integration/test_professional_phone_release_pg.py \
+            tests/integration/test_professional_archival_pg.py \
+            tests/integration/test_commission_lifecycle_pg.py
+  dom:
+    name: Mascara, edicao e permissoes do profissional
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Validar cadastro e mascara com dados sinteticos
+        run: |
+          node --check app/static/orion-suite.js
+          node --test ui-tests/professional-phone.test.mjs \
+            ui-tests/professional-commissions.test.mjs \
+            ui-tests/service-duration-money-mask.test.mjs ui-tests/orion-suite.test.mjs

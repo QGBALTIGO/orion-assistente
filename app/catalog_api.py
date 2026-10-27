@@ -383,16 +383,20 @@ async def replace_item(
                 if resource == "professionals":
                     from app.booking_service import acquire_professional_lock
                     await acquire_professional_lock(session, tenant_id, item_id)
-                    current_mode = (await session.execute(text("""
-                        SELECT commission_mode FROM professionals
+                    current = (await session.execute(text("""
+                        SELECT commission_mode,phone_e164 FROM professionals
                         WHERE tenant_id=:tenant AND id=:id FOR SHARE
-                    """), {"tenant": tenant_id, "id": item_id})).scalar_one_or_none()
-                    if current_mode is None:
+                    """), {"tenant": tenant_id, "id": item_id})).mappings().one_or_none()
+                    if current is None:
                         raise HTTPException(404, "Profissional não encontrado")
+                    current_mode = current["commission_mode"]
                     if "commission_mode" in payload and values["commission_mode"] != current_mode:
                         raise HTTPException(409, "Altere o modelo de comissão no cadastro de profissionais")
                     bind["commission_mode"] = current_mode
                     values["commission_mode"] = current_mode
+                    if "phone_e164" not in payload:
+                        # Preserve a contact saved by a newer version of the UI.
+                        bind["phone_e164"] = values["phone_e164"] = current["phone_e164"]
                 await guard_generated_service(session, tenant_id, resource, item_id, values)
                 from app.management_blocks import guard_catalog_block
                 await guard_catalog_block(session, tenant_id, resource, values=values, item_id=item_id)
