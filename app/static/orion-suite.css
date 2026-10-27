@@ -601,6 +601,9 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 #osDialog.os-customer-dialog .os-client-more[open] .os-client-more-label-expanded{display:inline}
 #osDialog.os-customer-dialog .os-client-more-text small{font:400 12px/18px var(--os-font);color:inherit;opacity:.86}
 #osDialog.os-customer-dialog .os-client-extra-fields{display:grid;gap:18px;padding-top:16px}
+#osDialog.os-customer-dialog .os-client-birthday-legacy{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-top:-8px}
+#osDialog.os-customer-dialog .os-client-birthday-legacy[hidden]{display:none}
+#osDialog.os-customer-dialog .os-client-birthday-legacy>.os-client-hint{flex:1;min-width:160px}
 /* Client totals must remain readable even for long BRL figures on small screens. */
 #osDialog.os-customer-dialog .os-client-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0;width:100%;max-width:100%}
 #osDialog.os-customer-dialog .os-client-stats>.os-stat{box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:5px;min-width:0;max-width:100%;padding:14px;overflow:hidden}

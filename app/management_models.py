@@ -97,12 +97,29 @@ async def get_row(db, tenant_id, table, identity, *, lock=False):
 
 async def insert_row(db, tenant_id, table, values, key, operation=None):
     checked_fields(table, values)
+    if table == "customers" and values.get("whatsapp_e164"):
+        from app.customer_identity import resolve_customer
+        async with db.begin_nested() as attempt:
+            row, created = await resolve_customer(db, tenant_id, values["whatsapp_e164"], values["name"], attributes=values)
+            identity, replay = await request_identity(db, tenant_id, operation or table, key, values, entity_id=row["id"])
+            if replay:
+                # The original customer may have changed phone since this
+                # request. Roll back any tentative insert before its replay.
+                await attempt.rollback()
+            elif row.get("deleted_at") is not None:
+                raise HTTPException(409, "Este telefone já está vinculado a um cliente removido. Revise o cadastro antes de continuar")
+        if replay:
+            return {**await get_row(db, tenant_id, table, identity), "reused_existing": True}
+        if created:
+            await audit(db, tenant_id, "management_created", table, identity)
+        return row if created else {**row, "reused_existing": True}
     if table == "financial_entries":
         from app.financial_settlements import lock_professionals
         await lock_professionals(db, tenant_id, [values.get("professional_id")])
     identity, replay = await request_identity(db, tenant_id, operation or table, key, values)
     if replay:
-        return await get_row(db, tenant_id, table, identity)
+        row = await get_row(db, tenant_id, table, identity)
+        return {**row, "reused_existing": True} if table == "customers" else row
     fields = list(values)
     result = (await db.execute(text(f"INSERT INTO {table} (tenant_id,id,{','.join(fields)}) "
         f"VALUES (:tenant,:id,{','.join(':'+field for field in fields)}) RETURNING *"),
@@ -198,12 +215,12 @@ def customer_filter(tenant_id, q="", status="all", birthday_month=None, risk_day
                 AND (future.status='confirmed' OR (future.status='hold' AND future.hold_expires_at>now())))""")
         parameters["risk_days"] = risk_days
     elif status == "birthday" and birthday_month is None:
-        clauses.append("""coalesce(lpad(c.birth_month::text,2,'0')||'-'||lpad(c.birth_day::text,2,'0'),to_char(c.birth_date,'MM-DD')) IN (
+        clauses.append("""coalesce(to_char(c.birth_date,'MM-DD'),lpad(c.birth_month::text,2,'0')||'-'||lpad(c.birth_day::text,2,'0')) IN (
             SELECT to_char(date(now() AT TIME ZONE t.timezone)
                 - EXTRACT(DOW FROM now() AT TIME ZONE t.timezone)::integer + days.day_offset,'MM-DD')
             FROM tenants t CROSS JOIN generate_series(0,6) AS days(day_offset) WHERE t.id=:tenant)""")
     if birthday_month is not None:
-        clauses.append("coalesce(c.birth_month,EXTRACT(MONTH FROM c.birth_date))=:birthday_month")
+        clauses.append("coalesce(EXTRACT(MONTH FROM c.birth_date),c.birth_month)=:birthday_month")
         parameters["birthday_month"] = birthday_month
     return " AND ".join(clauses), parameters
 

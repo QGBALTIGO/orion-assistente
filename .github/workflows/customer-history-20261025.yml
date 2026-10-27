@@ -5,27 +5,70 @@ on:
     paths:
       - app/management_models.py
       - app/management_api.py
+      - app/management_schemas.py
+      - app/customer_identity.py
+      - app/customer_names.py
+      - app/qr_customer.py
+      - app/booking_service.py
+      - app/public_site_api.py
+      - app/automation_policy.py
       - app/static/orion-suite.js
       - app/static/orion-suite.css
       - tests/integration/test_customer_service_history.py
+      - tests/integration/test_customer_identity.py
+      - tests/integration/test_management.py
+      - tests/integration/test_public_booking_birth_date.py
+      - tests/integration/test_public_catalog.py
+      - tests/integration/test_whatsapp_customer_names.py
+      - tests/unit/test_management_unit.py
+      - tests/unit/test_automation_policy.py
+      - tests/unit/test_contact_preferences.py
+      - tests/unit/test_automation_composition_contract.py
+      - tests/unit/test_whatsapp_customer_names_unit.py
+      - tests/unit/test_ai_customer_flow.py
       - ui-tests/customer-form.test.mjs
       - ui-tests/customer-history.test.mjs
+      - ui-tests/customer-whatsapp-shortcut.test.mjs
+      - ui-tests/orion-suite.test.mjs
       - scripts/prepare_vercel_orion.py
       - .github/workflows/customer-history-20261025.yml
   pull_request:
     paths:
       - app/management_models.py
       - app/management_api.py
+      - app/management_schemas.py
+      - app/customer_identity.py
+      - app/customer_names.py
+      - app/qr_customer.py
+      - app/booking_service.py
+      - app/public_site_api.py
+      - app/automation_policy.py
       - app/static/orion-suite.js
       - app/static/orion-suite.css
       - tests/integration/test_customer_service_history.py
+      - tests/integration/test_customer_identity.py
+      - tests/integration/test_management.py
+      - tests/integration/test_public_booking_birth_date.py
+      - tests/integration/test_public_catalog.py
+      - tests/integration/test_whatsapp_customer_names.py
+      - tests/unit/test_management_unit.py
+      - tests/unit/test_automation_policy.py
+      - tests/unit/test_contact_preferences.py
+      - tests/unit/test_automation_composition_contract.py
+      - tests/unit/test_whatsapp_customer_names_unit.py
+      - tests/unit/test_ai_customer_flow.py
+      - ui-tests/customer-form.test.mjs
       - ui-tests/customer-history.test.mjs
+      - ui-tests/customer-whatsapp-shortcut.test.mjs
+      - ui-tests/orion-suite.test.mjs
+      - scripts/prepare_vercel_orion.py
+      - .github/workflows/customer-history-20261025.yml
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   backend-postgres:
-    name: Historico e RLS no PostgreSQL
+    name: Cadastro, aniversarios, historico e RLS no PostgreSQL
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
@@ -56,7 +99,9 @@ jobs:
         run: |
           python -m pip install -c requirements.lock ".[test]"
           python -m pip check
-          python -m py_compile app/management_models.py app/management_api.py
+          python -m py_compile app/management_models.py app/management_api.py \
+            app/management_schemas.py app/customer_identity.py app/customer_names.py \
+            app/qr_customer.py app/booking_service.py app/public_site_api.py app/automation_policy.py
       - name: Papéis isolados do banco descartável
         env:
           PGPASSWORD: ci-postgres-only
@@ -69,11 +114,20 @@ jobs:
             -f infra/postgres/init/001-roles.sql
       - name: Migracoes em banco de teste
         run: alembic upgrade head
-      - name: Cadastro, historico, permissões, paginacao e integridade
+      - name: Cadastro, identidade, aniversarios, historico e integridade
         run: |
           pytest -q -ra \
             tests/integration/test_customer_service_history.py \
-            tests/integration/test_management.py
+            tests/integration/test_management.py \
+            tests/integration/test_customer_identity.py \
+            tests/integration/test_public_booking_birth_date.py \
+            tests/integration/test_whatsapp_customer_names.py \
+            tests/unit/test_management_unit.py \
+            tests/unit/test_automation_policy.py \
+            tests/unit/test_contact_preferences.py \
+            tests/unit/test_automation_composition_contract.py \
+            tests/unit/test_whatsapp_customer_names_unit.py \
+            tests/unit/test_ai_customer_flow.py
   mobile-and-ui:
     name: Cliente mobile e interface acessivel
     runs-on: ubuntu-24.04
@@ -87,5 +141,6 @@ jobs:
         run: |
           npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
           node --check app/static/orion-suite.js
-          node --test ui-tests/customer-form.test.mjs ui-tests/customer-history.test.mjs ui-tests/orion-suite.test.mjs
+          node --test ui-tests/customer-form.test.mjs ui-tests/customer-history.test.mjs \
+            ui-tests/customer-whatsapp-shortcut.test.mjs ui-tests/orion-suite.test.mjs
           python3 scripts/prepare_vercel_orion.py --help >/dev/null

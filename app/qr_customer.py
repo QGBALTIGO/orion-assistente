@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from app.database import get_session_factory, tenant_transaction
 from app.customer_names import useful_name
+from app.customer_identity import resolve_customer
 
 
 def supplied_name(value: str) -> str | None:
@@ -44,13 +45,13 @@ async def customer_name(tenant: UUID, phone: str) -> str | None:
 async def remember_name(tenant: UUID, phone: str, name: str) -> None:
     async with get_session_factory()() as s:
         async with tenant_transaction(s, tenant):
+            current, created = await resolve_customer(s, tenant, "+" + phone, name, lock=True)
+            if created or current["deleted_at"] is not None or current["name"] == name:
+                return
             await s.execute(text("""
-                INSERT INTO customers (tenant_id,whatsapp_e164,name)
-                VALUES (:tenant,:phone,:name)
-                ON CONFLICT (tenant_id,whatsapp_e164)
-                DO UPDATE SET name=EXCLUDED.name,version=customers.version+1,updated_at=now()
-                WHERE customers.name IS DISTINCT FROM EXCLUDED.name AND customers.deleted_at IS NULL
-            """), {"tenant": tenant, "phone": "+" + phone, "name": name})
+                UPDATE customers SET name=:name,version=version+1,updated_at=now()
+                WHERE tenant_id=:tenant AND id=:id AND deleted_at IS NULL
+            """), {"tenant": tenant, "id": current["id"], "name": name})
 
 
 async def customer_appointments(tenant: UUID, phone: str, limit: int = 8) -> list[dict]:

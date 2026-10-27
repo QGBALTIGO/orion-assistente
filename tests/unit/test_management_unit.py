@@ -12,7 +12,7 @@ from app.catalog_schemas import Professional, Service
 from app import management_api as api
 from app.management_models import customer_filter, report_period
 from app.management_schemas import (
-    AppointmentTransition, CustomerCreate, CustomerPatch, FinanceCreate, FinanceFields,
+    AppointmentTransition, CustomerCreate, CustomerFields, CustomerPatch, FinanceCreate, FinanceFields,
     FinancePatch, GoalCreate, LoyaltyTransactionCreate, MarketingCreate, SettlementCreate, SiteSave,
 )
 
@@ -38,9 +38,34 @@ def test_customer_phone_and_optional_fields_are_normalized_without_changing_book
     assert customer.phone == "+5511912345678"
     assert customer.email == "ana@example.com"
     assert customer.instagram == "@ana"
+    assert (customer.birth_month, customer.birth_day) == (6, 20)
     from app.booking_api import HoldRequest
     assert "customer_phone" in HoldRequest.model_fields
     assert HoldRequest.model_fields["customer_phone"].is_required()
+
+
+def test_complete_customer_birth_date_controls_derived_fields_and_explicit_removal():
+    current = {"name": "Ana", "birth_date": date(1992, 6, 25), "birth_month": 1, "birth_day": 10}
+    changed = api.merged_changes(current, CustomerPatch(birth_date="2000-02-29", expected_version=1), CustomerFields)
+    assert changed == {"birth_date": date(2000, 2, 29), "birth_month": 2, "birth_day": 29}
+    assert api.merged_changes(current, CustomerPatch(notes="Contato atualizado", expected_version=1), CustomerFields) == {"notes": "Contato atualizado"}
+    cleared = api.merged_changes(current, CustomerPatch(birth_date=None, expected_version=1), CustomerFields)
+    assert cleared == {"birth_date": None, "birth_month": None, "birth_day": None}
+    # Old clients can still create month/day-only records without a fake year.
+    partial = CustomerFields(name="Ana", birth_month=2, birth_day=29)
+    assert partial.birth_date is None
+    assert api.merged_changes(partial.model_dump(), CustomerPatch(city="Centro", expected_version=1), CustomerFields) == {"city": "Centro"}
+    assert api.merged_changes(partial.model_dump(), CustomerPatch(birth_date=None, expected_version=1), CustomerFields) == cleared
+
+
+def test_complete_customer_birth_date_takes_precedence_over_old_conflicting_fields():
+    customer = CustomerCreate(name="Ana", birth_date="1992-06-25", birth_month=1, birth_day=10,
+                              idempotency_key="customer-canonical-birthday")
+    assert (customer.birth_month, customer.birth_day) == (6, 25)
+    patch = CustomerPatch(birth_date="1992-06-25", birth_month=1, birth_day=10, expected_version=1)
+    assert patch.model_dump(exclude_unset=True) == {
+        "expected_version": 1, "birth_date": date(1992, 6, 25), "birth_month": 6, "birth_day": 25,
+    }
 
 
 @pytest.mark.parametrize("field,value", [("name", "   "), ("phone", "abc"), ("phone", "+12025550123"),

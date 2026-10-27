@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 from app.catalog_schemas import StrictModel
 from app.database import get_session_factory, tenant_transaction
+from app.customer_identity import resolve_customer
 
 
 PHONE_RE = re.compile(r"^[1-9][0-9]{7,14}$")
@@ -75,18 +76,9 @@ rename, so an editor holding the old version cannot silently overwrite it.
     if pn is None or not CUSTOMER_PHONE_RE.fullmatch(pn) or clean is None:
         return False
     parameters = {"tenant": tenant, "phone": "+" + pn, "name": clean}
-    if create:
-        created = (await db.execute(text("""
-            INSERT INTO customers (tenant_id,whatsapp_e164,name)
-            VALUES (:tenant,:phone,:name)
-            ON CONFLICT (tenant_id,whatsapp_e164) DO NOTHING RETURNING id
-        """), parameters)).scalar_one_or_none()
-        if created is not None:
-            return True
-    current = (await db.execute(text("""
-        SELECT id,name,deleted_at FROM customers
-        WHERE tenant_id=:tenant AND whatsapp_e164=:phone FOR UPDATE
-    """), parameters)).mappings().one_or_none()
+    current, created = await resolve_customer(db, tenant, "+" + pn, clean, create=create, lock=True)
+    if created:
+        return True
     if current is None or current["deleted_at"] is not None or useful_name(current["name"]):
         return False
     await db.execute(text("""

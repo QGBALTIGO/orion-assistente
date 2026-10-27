@@ -83,6 +83,8 @@ def test_recovery_never_sends_to_someone_with_a_future_booking(event, days):
 def test_birthdays_require_registered_date_and_exact_local_day(event, offset):
     target = (NOW+timedelta(days=offset)).date().replace(year=1990)
     assert schedule_for(event, {"birth_date": target}, NOW, "UTC") is not None
+    assert schedule_for(event, {"birth_date": target, "birth_month": 1, "birth_day": 1}, NOW, "UTC") is not None
+    assert schedule_for(event, {"birth_date": target+timedelta(days=1), "birth_month": target.month, "birth_day": target.day}, NOW, "UTC") is None
     assert schedule_for(event, {"birth_date": target+timedelta(days=1)}, NOW, "UTC") is None
     assert schedule_for(event, {}, NOW, "UTC") is None
 

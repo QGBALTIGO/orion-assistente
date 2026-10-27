@@ -22,6 +22,7 @@ from app.appointment_lifecycle import (
     metadata, operation_payload, operation_replayed, public_history, record_operation, resolved_actor,
 )
 from app.customer_names import useful_name
+from app.customer_identity import resolve_customer
 
 UTC = timezone.utc
 PROTOCOL_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -543,14 +544,8 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
             # This cancels an unconfirmed proposal, not a published calendar event.
             await history(s, tenant, replace_hold_id, "cancelled", calendar=False, previous=previous,
                           context=resolved_actor(context, source, previous["customer_id"], verified_customer=True))
-        await s.execute(text("""
-            INSERT INTO customers (tenant_id, whatsapp_e164, name)
-            VALUES (:tenant,:phone,:name)
-            ON CONFLICT (tenant_id,whatsapp_e164) DO NOTHING
-        """), {"tenant": tenant, "phone": phone, "name": customer_name})
-        customer = (await s.execute(text("""
-            SELECT id FROM customers WHERE tenant_id=:tenant AND whatsapp_e164=:phone
-        """), {"tenant": tenant, "phone": phone})).scalar_one()
+        customer_row, _ = await resolve_customer(s, tenant, phone, customer_name)
+        customer = customer_row["id"]
         item_id = uuid4()
         # Retry com SAVEPOINT para colisão estatisticamente improvável do protocolo.
         from sqlalchemy.exc import IntegrityError

@@ -55,6 +55,9 @@ test('novo cliente apresenta campos com ícones, notas visíveis e Mais dados na
   assert.equal(extra.querySelector('summary .os-client-more-icon').getAttribute('aria-hidden'),'true');
   assert.equal(extra.querySelector('[name=email]').type,'email');
   assert.equal(extra.querySelector('[name=birth_date]').type,'date','usa seletor de data nativo');
+  assert.equal(extra.querySelector('label[for=osField-birth_date]').textContent,'Data de nascimento (opcional)');
+  assert.equal(extra.querySelector('[name=birth_day]'),null);
+  assert.equal(extra.querySelector('[name=birth_month]'),null);
   assert.ok(extra.querySelector('.os-client-grid [name=neighborhood]'));
   assert.ok(extra.querySelector('.os-client-grid [name=city]'));
   assert.equal(form.querySelector('[name=notes]').closest('details'),null,'observações ficam visíveis fora de Mais dados');
@@ -85,6 +88,8 @@ test('cadastro envia os mesmos campos mesmo quando Mais dados permanece fechado'
   assert.equal(writes[0].payload.phone,'+5511912345678');
   for(const key of ['instagram','email','birth_date','neighborhood','city','notes'])
     assert.equal(writes[0].payload[key],values[key]);
+  assert.equal(Object.hasOwn(writes[0].payload,'birth_day'),false);
+  assert.equal(Object.hasOwn(writes[0].payload,'birth_month'),false);
   assert.equal(writes[0].payload.active,true);
   assert.match(writes[0].payload.idempotency_key,/^[a-f0-9-]{36}$/i);
   assert.equal(h.errors.length,0);
@@ -117,6 +122,54 @@ test('edição mantém dados, detalhes preenchidos abertos, estatísticas e vers
   assert.equal(writes[0].payload.birth_date,activeRecord.birth_date);
   assert.equal(writes[0].payload.notes,activeRecord.notes);
   assert.equal(writes[0].payload.name,'Cliente atualizado');
+  assert.equal(h.errors.length,0);
+});
+
+test('aniversário antigo sem ano é preservado, completado ou removido sem inventar uma data',async t=>{
+  const legacy={...activeRecord,birth_date:null,birth_month:5,birth_day:15};
+  for(const mode of ['preservar','completar','remover']){
+    await t.test(mode,async t=>{
+      const writes=[],h=await fixture(t,{respond:fakeCustomers([legacy],v=>writes.push(v))});
+      h.click('[data-os-customer="'+customerId+'"]');
+      const input=h.document.querySelector('[name=birth_date]');
+      assert.equal(input.value,'');
+      assert.match(h.document.getElementById('osCustomerLegacyBirthday').textContent,/15\/05/);
+      h.fill('[name=name]','Nome atualizado');
+      if(mode==='completar')h.fill('[name=birth_date]','1995-05-15');
+      if(mode==='remover')h.click('[data-os-action=customer-birth-clear]');
+      h.submit('[data-os-form=customer]');await flush();
+      assert.equal(writes.length,1);
+      const payload=writes[0].payload;
+      if(mode==='preservar')assert.equal(Object.hasOwn(payload,'birth_date'),false,'salvar outro campo não apaga o aniversário parcial');
+      else assert.equal(payload.birth_date,mode==='completar'?'1995-05-15':null);
+      assert.equal(Object.hasOwn(payload,'birth_day'),false);
+      assert.equal(Object.hasOwn(payload,'birth_month'),false);
+      assert.equal(h.errors.length,0);
+    });
+  }
+});
+
+test('apagar a data completa envia null sem reenviar dia e mês antigos',async t=>{
+  const writes=[],h=await fixture(t,{respond:fakeCustomers([{...activeRecord,birth_month:5,birth_day:15}],v=>writes.push(v))});
+  h.click('[data-os-customer="'+customerId+'"]');
+  h.fill('[name=birth_date]','');h.submit('[data-os-form=customer]');await flush();
+  assert.equal(writes.length,1);
+  assert.equal(writes[0].payload.birth_date,null);
+  assert.equal(Object.hasOwn(writes[0].payload,'birth_day'),false);
+  assert.equal(Object.hasOwn(writes[0].payload,'birth_month'),false);
+  assert.equal(h.errors.length,0);
+});
+
+test('cadastro reconhecido pelo telefone informa que o cliente existente foi mantido',async t=>{
+  const h=await fixture(t,{respond:(path,method='GET')=>{
+    if(path.includes('/management/customers')&&method==='POST')return {...activeRecord,reused_existing:true};
+    return fakeCustomers([activeRecord])(path,method);
+  }});
+  h.click('[data-os-action=new-customer]');
+  h.fill('[name=name]','Mesmo cliente');h.fill('[name=phone]','(11) 91234-5678');
+  h.submit('[data-os-form=customer]');await flush();
+  assert.equal(h.document.getElementById('osToastRegion').textContent,'Cliente já cadastrado. Mantivemos as informações existentes.');
+  assert.equal(h.document.querySelectorAll('.os-mobile-customers .os-swipe-row').length,1);
   assert.equal(h.errors.length,0);
 });
 
