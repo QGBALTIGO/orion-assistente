@@ -33,34 +33,51 @@ test('vacancy preference stays an explicit draft even when other marketing rules
   const body=h.document.querySelector('#osPageBody');assert.match(body.textContent,/preenchimento automático de vagas continua em rascunho e não envia convites/);assert.match(body.textContent,/mesmo quando outras rotinas estão autorizadas/);assert.equal(body.querySelector('[name=vacancy_requested]').checked,true);assert.match(body.querySelector('[data-os-form=automations]').textContent,/Rascunho/);assert.doesNotMatch(body.textContent,/Execução autorizada/);assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
 });
 
-async function executionIntegration(uncertain=false) {
+async function marketingWithModules() {
   let enabled=false;
-  const channel='30000000-0000-4000-8000-000000000003';
-  const h=await makeSuite({initialRoute:'marketing',respond(path,method,payload){
+  const h=await makeSuite({initialRoute:'ajuda',respond(path){
     if(path.endsWith('/marketing/automations'))return {configuration:{rules:[],recovery_days:60,vacancy_requested:false},version:5,execution_enabled:enabled};
-    if(path.endsWith('/marketing/execution')){
-      if(method==='PUT'){if(uncertain)throw Error('Resposta incerta');assert.equal(payload.expected_preferences_version,5);enabled=payload.enabled;return {recorded:true};}
-      return {available:true,enabled,version:2,preferences_version:5,daily_limit:20};
-    }
-    if(path.endsWith('/marketing/jobs'))return {items:[]};
-    if(path.endsWith('/qr-channels'))return {items:[{id:channel,label:'Conexão sintética',enabled:true}]};
     return defaultResponse(path);
   }});
-  h.window.eval(await readFile(new URL('../app/static/orion-automations.js',import.meta.url),'utf8'));
-  await flush();h.click('[data-os-marketing-tab=automations]');await flush();
-  const form=h.document.querySelector('[data-oa-form=execution]');form.elements.channel_id.value=channel;form.elements.enabled.checked=true;form.elements.acknowledged.checked=true;
-  h.submit('[data-oa-form=execution]');await flush();await flush();return h;
+  const scripts=await Promise.all(['orion-communication.js','orion-automations.js'].map(name=>readFile(new URL('../app/static/'+name,import.meta.url),'utf8')));
+  for(const script of scripts)h.window.eval(script);
+  await h.window.OrionSuite.open('marketing');await flush();
+  return {...h,setEnabled:value=>{enabled=value;}};
 }
 
-test('known execution authorization refreshes the rules indicator without manual route navigation',async t=>{
-  const h=await executionIntegration();t.after(()=>h.close());
-  assert.match(h.document.querySelector('#osPageBody').textContent,/A execução destas regras foi autorizada pelo proprietário/);assert.match(h.document.querySelector('#osAutomationExecution').textContent,/Envios autorizados/);
-  assert.equal(h.calls.filter(c=>c.method==='PUT').length,1);assert.equal(h.calls.filter(c=>c.path.endsWith('/marketing/automations')).length,2);
+const removedMarketingReads=h=>h.calls.filter(c=>/\/marketing\/(execution|jobs|consent)|\/qr-channels|\/communication\/|\/customers|\/preferences/.test(c.path));
+function noRemovedMarketingTools(h){
+  assert.equal(h.document.querySelector('#osCommunicationTools,#osAutomationExecution,[data-communication-search],[data-oa-form]'),null);
+  assert.doesNotMatch(h.document.querySelector('#osPageBody').textContent,/Conferir mensagens e pendências|Envios revisados/);
+  assert.deepEqual(removedMarketingReads(h),[]);
+  assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);
+}
+
+test('all Marketing tabs remain usable without mounting communication or reviewed-send tools',async t=>{
+  const h=await marketingWithModules();t.after(()=>h.close());
+  assert.equal(typeof h.window.OrionCommunication.mount,'function');
+  assert.equal(typeof h.window.OrionAutomations.mount,'function');
+  const content={overview:'[data-os-action=new-campaign]',automations:'[data-os-form=automations]',campaigns:'[data-os-form=ai-campaign]',queue:'[data-os-queue-status]'};
+  for(const tab of ['overview','automations','campaigns','queue','overview']){
+    h.click('[data-os-marketing-tab='+tab+']');await flush();
+    assert.equal(h.document.querySelector('[data-os-marketing-tab='+tab+']').getAttribute('aria-selected'),'true');
+    assert.ok(h.document.querySelector(content[tab]),tab+' keeps its main content');
+    noRemovedMarketingTools(h);
+  }
+  assert.deepEqual(h.errors,[]);
 });
 
-test('uncertain execution authorization keeps the same pending request without rerendering the rules',async t=>{
-  const h=await executionIntegration(true);t.after(()=>h.close());
-  assert.match(h.document.querySelector('#osPageBody').textContent,/As configurações abaixo são rascunhos/);assert.ok(h.document.querySelector('[data-oa-action=retry]'));assert.equal(h.calls.filter(c=>c.method==='PUT').length,1);assert.equal(h.calls.filter(c=>c.path.endsWith('/marketing/automations')).length,1);
+test('refresh reads the current rule state without authorizing execution or restoring removed tools',async t=>{
+  const h=await marketingWithModules();t.after(()=>h.close());
+  h.click('[data-os-marketing-tab=automations]');await flush();
+  assert.match(h.document.querySelector('#osPageBody').textContent,/As configurações abaixo são rascunhos/);
+  h.setEnabled(true);
+  await h.window.OrionSuite.open('marketing',{keepScroll:true});await flush();
+  assert.match(h.document.querySelector('#osPageBody').textContent,/A execução destas regras foi autorizada pelo proprietário/);
+  assert.match(h.document.querySelector('[data-os-form=automations]').textContent,/Salvar alterações para nova revisão/);
+  assert.equal(h.calls.filter(c=>c.path.endsWith('/marketing/automations')).length,2);
+  noRemovedMarketingTools(h);
+  assert.deepEqual(h.errors,[]);
 });
 
 test('mount preserves original sections, escapes customer content, and is idempotent', async t => {

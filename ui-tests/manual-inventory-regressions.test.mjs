@@ -62,7 +62,8 @@ test('Meta queue distinguishes an uncertain prior attempt from a confirmed failu
   assert.match(rows[0].textContent,/Entrega em verificação/);assert.equal(rows[0].querySelector('.os-badge').classList.contains('os-warning'),true);
   assert.equal(rows[0].querySelector('.os-badge').classList.contains('os-danger'),false);
   assert.match(rows[1].textContent,/Com falha/);assert.equal(rows[1].querySelector('.os-badge').classList.contains('os-danger'),true);
-  assert.match(h.document.querySelector('#osPageBody').textContent,/recibos das campanhas.*Envios revisados/);
+  assert.match(h.document.querySelector('#osPageBody').textContent,/Respostas do atendimento WhatsApp via Meta/);
+  assert.doesNotMatch(h.document.querySelector('#osPageBody').textContent,/Envios revisados/);
   assert.doesNotMatch(h.document.querySelector('#osPageBody').textContent,/campanhas salvas.*continuam em rascunho/);
   assert.deepEqual(writes(h),[]);assert.equal(h.errors.length,0);
 });
