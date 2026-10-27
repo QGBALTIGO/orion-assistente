@@ -1,0 +1,61 @@
+name: Orion - abertura e restauracao de sessao
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/static/panel.html'
+      - 'app/static/orion-auth.css'
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-suite.css'
+      - 'ui-tests/session-bootstrap.test.mjs'
+      - 'ui-tests/panel-harness.mjs'
+      - 'ui-tests/harness.mjs'
+      - 'ui-tests/login-experience.test.mjs'
+      - 'ui-tests/android-agenda-session.test.mjs'
+      - 'ui-tests/onboarding-panel-integration.test.mjs'
+      - 'ui-tests/orion-suite.test.mjs'
+      - 'ui-tests/package.json'
+      - 'ui-tests/package-lock.json'
+      - '.github/workflows/session-bootstrap.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/static/panel.html'
+      - 'app/static/orion-auth.css'
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-suite.css'
+      - 'ui-tests/session-bootstrap.test.mjs'
+      - 'ui-tests/panel-harness.mjs'
+      - 'ui-tests/harness.mjs'
+      - 'ui-tests/login-experience.test.mjs'
+      - 'ui-tests/android-agenda-session.test.mjs'
+      - 'ui-tests/onboarding-panel-integration.test.mjs'
+      - 'ui-tests/orion-suite.test.mjs'
+      - 'ui-tests/package.json'
+      - 'ui-tests/package-lock.json'
+      - '.github/workflows/session-bootstrap.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  session-bootstrap:
+    name: Sessao lenta, falhas, login e navegacao
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Instalar testes isolados de interface
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Validar abertura, autenticacao e integracao do painel
+        run: |
+          node --test \
+            ui-tests/session-bootstrap.test.mjs \
+            ui-tests/login-experience.test.mjs \
+            ui-tests/android-agenda-session.test.mjs \
+            ui-tests/onboarding-panel-integration.test.mjs \
+            ui-tests/orion-suite.test.mjs
