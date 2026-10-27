@@ -45,13 +45,13 @@ test('central launches with a tidy conversation-first workspace, not an administ
   assert.ok(h.host.querySelector('.os-central-list-panel'));
   assert.ok(h.host.querySelector('.os-central-thread-panel'));
   assert.ok(h.host.querySelector('.os-central-placeholder'));
-  assert.ok(h.host.querySelector('[data-inbox-tab=conversations][aria-selected=true]'));
+  assert.ok(h.host.querySelector('.os-inbox-conversations-only'));
   assert.equal(h.host.querySelector('.os-inbox-more'),null,'menu sobreposto não existe');
-  assert.equal(h.host.querySelectorAll('.os-inbox-primary-nav [role=tab]').length,4);
+  assert.equal(h.host.querySelector('[role=tablist],[data-inbox-tab]'),null,'one destination needs no tab bar');
   assert.equal(h.host.querySelector('.os-central-filters').open,false,'filtros começam recolhidos');
   assert.equal(h.host.querySelectorAll('.os-central-thread-item-button').length,1);
   assert.equal(h.calls.some(x=>x.method!=='GET'),false);
-  assert.equal(h.calls.some(x=>x.path===prefix+'/labels'),false,'CRM tools should load only when requested');
+  assert.equal(h.calls.some(x=>/\/labels|\/quick-replies|\/customers|\/workflows/.test(x.path)),false,'removed tools do not load in the background');
 });
 test('selected conversation shows relevant actions while hiding irrelevant ones',async t=>{
   const h=await setup();t.after(()=>h.close());
@@ -75,28 +75,16 @@ test('read-only operators never gain controls or send permissions from the redes
   assert.equal(h.host.querySelector('[data-central-compose] button').disabled,true);
   assert.equal(h.calls.some(x=>x.method!=='GET'),false);
 });
-test('mobile back navigation and supporting tools never send or create records',async t=>{
+test('mobile back navigation returns directly to Conversations without extra destinations',async t=>{
   const h=await setup();t.after(()=>h.close());
   h.host.querySelector('[data-central-phone]').click();await flush();
   assert.ok(h.host.querySelector('.os-central-shell.os-central-show-thread'));
   h.host.querySelector('[data-central-action=back]').click();await flush();
   assert.equal(h.host.querySelector('.os-central-shell.os-central-show-thread'),null);
-  h.host.querySelector('[data-inbox-tab=customers]').click();await flush();
-  assert.ok(h.host.querySelector('[data-inbox-form=search]'));
-  assert.equal(h.calls.some(x=>x.path===prefix+'/labels'),true);
-  h.host.querySelector('[data-inbox-tab=replies]').click();await flush();
-  assert.ok(h.host.querySelector('[data-inbox-action=new-reply]'));
-  assert.match(h.host.textContent,/não enviam automaticamente/i);
+  assert.ok(h.host.querySelector('#centralSearch'));
+  assert.equal(h.host.querySelector('[data-inbox-tab],[data-central-action=customer],.os-central-quick-reply'),null);
+  assert.equal(h.calls.some(x=>/\/labels|\/quick-replies|\/customers|\/workflows/.test(x.path)),false);
   assert.equal(h.calls.some(x=>x.method!=='GET'),false);
 });
-test('real CSS maintains Orion tokens, usable touch targets and single-column mobile inbox',async()=>{
-  const css=await readFile(new URL('../app/static/orion-inbox.css',import.meta.url),'utf8');
-  assert.match(css,/\.os-central-shell\{[^}]*grid-template-columns:minmax\(280px,355px\)/);
-  assert.match(css,/@media\(max-width:767px\)\{/);
-  assert.match(css,/\.os-central-shell:not\(\.os-central-show-thread\) \.os-central-thread-panel\{display:none\}/);
-  assert.match(css,/\.os-central-shell\.os-central-show-thread \.os-central-list-panel\{display:none\}/);
-  assert.match(css,/var\(--os-primary\)/);
-  assert.match(css,/var\(--os-border\)/);
-  assert.match(css,/\.os-central-thread-scroll\{[^}]*overflow-y:auto/);
-  assert.doesNotMatch(css,/\.os-central-grid\{/);
-});
+// Actual geometry, touch targets and collapsed-panel visibility are checked by
+// central-layout.py and central-mobile-browser.py in Chromium and WebKit.

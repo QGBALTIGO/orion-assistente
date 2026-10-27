@@ -4,7 +4,7 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const modes={ai:'IA ativa',human:'Atendimento humano',waiting:'Aguardando cliente',paused:'Pausada',closed:'Encerrada'};
   const receipts={received:'Recebida',queued:'Na fila',sending:'Envio em verificação',uncertain:'Resultado incerto',accepted:'Aceita pelo canal',delivered:'Entregue',read:'Lida',failed:'Não enviada ou recusada pelo canal'};
-  function unmount(){if(active){active.alive=false;active.abort.abort();clearInterval(active.timer);active=null;}}
+  function unmount(){if(active){active.alive=false;active.abort.abort();clearInterval(active.timer);if(active.layoutFrame)window.cancelAnimationFrame?.(active.layoutFrame);active.host.style.removeProperty('--os-central-workspace-height');active.host.style.removeProperty('--os-central-menu-max-height');active.host.removeAttribute('data-central-compact');active=null;}}
   async function mount({host,request,tenantId,canWrite=false,onCustomer,toolsEnabled=false}){
     unmount();const s={host,alive:true,abort:new AbortController(),channels:[],items:[],detail:null,selected:null,channel:'',mode:'',q:'',unread:false,offset:0,more:false,busy:false,seq:0,drafts:new Map(),preserved:new Map(),replies:[],pending:[],positions:new Map(),renderedKey:'',listScroll:0,filtersOpen:false,searchDraft:'',openSections:new Set(),replySelection:'',detailError:null};active=s;
     const current=()=>active===s&&s.alive&&host.isConnected;
@@ -23,14 +23,50 @@
     check:'m5 12 4 4 10-10',
     message:'M6 3h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3ZM8 8h8M8 12h5',
     send:'M22 2 11 13M22 2 15 22l-4-9-9-4 20-7Z',
-    chevron:'m9 6 6 6-6 6'
+    chevron:'m9 6 6 6-6 6',
+    plus:'M12 5v14M5 12h14',
+    minus:'M5 12h14'
   };
   const ico=name=>'<svg class="os-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(glyphs[name]||glyphs.info)+'"/></svg>';
   const initials=value=>String(value||'?').trim().split(/\s+/).slice(0,2).map(part=>Array.from(part)[0]||'').join('').toLocaleUpperCase('pt-BR');
   const clock=value=>{if(!value)return '';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});};
   const modeClass=mode=>['human','waiting'].includes(mode)?'human':mode==='ai'?'ai':mode==='paused'?'paused':'neutral';
+  const contactLabel=value=>{const raw=String(value||'');if(!/^\+55[1-9][0-9]{9,10}$/.test(raw))return raw;const digits=raw.slice(3),split=digits.length===11?7:6;return '('+digits.slice(0,2)+') '+digits.slice(2,split)+'-'+digits.slice(split);};
+  const disclosureLabel=label=>'<span class="os-detail-toggle-icon" aria-hidden="true">'+ico('plus')+ico('minus')+'</span><span>'+esc(label)+'</span>';
+    function closeControls(restoreFocus=false){
+      const menu=host.querySelector('.os-central-control-menu');if(!menu?.open)return;
+      menu.open=false;s.openSections.delete('os-central-control-menu');
+      if(restoreFocus)menu.querySelector('summary')?.focus({preventScroll:true});
+    }
+    function updateLayout(){
+      if(!current())return;
+      const shell=host.querySelector('.os-central-shell');if(!shell)return;
+      const timeline=host.querySelector('.os-central-thread-scroll'),atBottom=!!timeline&&timeline.scrollHeight-timeline.clientHeight-timeline.scrollTop<75,scrollTop=timeline?.scrollTop;
+      const viewport=window.visualViewport,height=viewport?.height||window.innerHeight,offset=viewport?.offsetTop||0;
+      host.toggleAttribute('data-central-compact',height<460);
+      const top=Math.max(offset,shell.getBoundingClientRect().top),available=Math.floor(offset+height-top-12);
+      if(available>0)host.style.setProperty('--os-central-workspace-height',Math.min(790,available)+'px');
+      const editor=host.querySelector('#centralText');
+      if(editor){editor.style.height='auto';editor.style.height=Math.min(height<460?72:120,Math.max(height<460?42:58,editor.scrollHeight+editor.offsetHeight-editor.clientHeight))+'px';}
+      const options=host.querySelector('.os-central-control-menu[open] .os-central-control-options'),composer=host.querySelector('.os-central-compose');
+      if(options&&composer){
+        const limit=Math.min(composer.getBoundingClientRect().top-8,offset+height-12);
+        host.style.setProperty('--os-central-menu-max-height',Math.max(0,Math.floor(limit-options.getBoundingClientRect().top))+'px');
+      }else host.style.removeProperty('--os-central-menu-max-height');
+      if(timeline)timeline.scrollTop=atBottom?timeline.scrollHeight:scrollTop;
+      if(s.focusTarget==='thread'&&s.detail?.control){host.querySelector('.os-central-thread-header')?.focus({preventScroll:true});s.focusTarget=null;}
+      if(s.focusTarget==='list'){[...host.querySelectorAll('[data-central-phone]')].find(node=>node.dataset.centralChannel+':'+node.dataset.centralPhone===s.returnTo)?.focus({preventScroll:true});s.focusTarget=null;}
+      if(s.restoreControlsFocus){host.querySelector('.os-central-control-menu>summary')?.focus({preventScroll:true});s.restoreControlsFocus=false;}
+    }
+    function scheduleLayout(){
+      if(!current())return;
+      if(s.layoutFrame)window.cancelAnimationFrame?.(s.layoutFrame);
+      if(window.requestAnimationFrame)s.layoutFrame=window.requestAnimationFrame(()=>{s.layoutFrame=null;updateLayout();});
+      else updateLayout();
+    }
     function render(){
       if(!current())return;
+      if(!s.focusTarget&&s.renderedKey===key()&&host.contains(document.activeElement)&&document.activeElement?.matches('.os-central-control-menu>summary'))s.restoreControlsFocus=true;
       const previousList=host.querySelector('.os-central-thread-list');
       if(previousList)s.listScroll=previousList.scrollTop;
       const previousTimeline=host.querySelector('.os-central-thread-scroll');
@@ -47,12 +83,12 @@
         'os-central-control-menu','os-central-quick-reply','os-central-history-tools','os-central-preserved','os-central-pending-notices'
       ].find(name=>el.classList.contains(name))).filter(Boolean));
       const oldReply=host.querySelector('[data-central-reply]');if(oldReply)s.replySelection=oldReply.value;
-      const findValue=host.querySelector('#centralFind')?.value||'';
+      const findValue=s.renderedKey===key()?(host.querySelector('#centralFind')?.value||''):'';
       const c=s.detail?.control||null;
       const owned=!!s.account&&!!c&&['human','waiting'].includes(c.mode)&&c.assigned_account_id===s.account;
       const canControl=!!c&&!!s.account&&canWrite&&!s.busy&&!c.pending_operation;
       const selected=s.items.find(x=>s.selected&&x.channel_id===s.selected.channel_id&&x.contact_e164===s.selected.contact_e164)||s.selected;
-      const name=selected?.name||selected?.contact_e164||'Conversa';
+      const name=selected?.name||contactLabel(selected?.contact_e164)||'Conversa';
       const totalUnread=s.items.reduce((sum,x)=>sum+Number(x.unread_count||0),0);
       const modeBtn=(id,label,visible,enabled)=>'<button type="button" class="os-button os-outline os-central-mode-action" data-central-action="mode-'+id+'" '+(!visible?'hidden ':'')+(!enabled?'disabled':'')+'>'+esc(label)+'</button>';
       const list=s.items.map(x=>{
@@ -79,37 +115,38 @@
         '<button class="os-button os-central-filter-submit" type="submit" '+(s.busy?'disabled':'')+'>Aplicar</button></div></div></div></details>'+
       '</form>';
       const listPanel='<aside class="os-central-list-panel" aria-label="Conversas da empresa">'+
-        '<header class="os-central-list-header"><div><p class="os-central-eyebrow">CAIXA DE ENTRADA</p><h2>Conversas</h2><p>'+s.items.length+' conversa'+(s.items.length===1?'':'s')+(totalUnread?' · '+totalUnread+' mensagem'+(totalUnread===1?'':'ens')+' não lida'+(totalUnread===1?'':'s'):'')+'</p></div><button type="button" class="os-icon-button os-central-refresh" data-central-action="refresh" aria-label="Atualizar conversas" title="Atualizar conversas" '+(s.busy?'disabled':'')+'>'+ico('refresh')+'</button></header>'+
+        '<header class="os-central-list-header"><div><h2>Conversas</h2><p>'+s.items.length+' conversa'+(s.items.length===1?'':'s')+(totalUnread?' · '+totalUnread+' '+(totalUnread===1?'mensagem não lida':'mensagens não lidas'):'')+'</p></div><button type="button" class="os-icon-button os-central-refresh" data-central-action="refresh" aria-label="Atualizar conversas" title="Atualizar conversas" '+(s.busy?'disabled':'')+'>'+ico('refresh')+'</button></header>'+
         filters+
         '<ul class="os-central-thread-list" aria-label="Lista de conversas">'+(list||'<li class="os-central-empty-list">'+ico('message')+'<strong>Nenhuma conversa encontrada</strong><span>Revise os filtros ou aguarde novas mensagens.</span></li>')+'</ul>'+
         '<footer class="os-central-pagination"><button type="button" class="os-button os-outline" data-central-action="previous" '+(s.offset===0||s.busy?'disabled':'')+'>Anterior</button><span>Página '+(Math.floor(s.offset/50)+1)+'</span><button type="button" class="os-button os-outline" data-central-action="next" '+(!s.more||s.busy?'disabled':'')+'>Próxima</button></footer></aside>';
       const controlLabel=c?({human:'Humano',waiting:'Em espera',ai:'IA ativa',paused:'Pausado',closed:'Encerrado'}[c.mode]||'Em atendimento'):'Sem status';
-      const ownerText=c?(!s.account?'Disponível somente para consulta':owned?'Atendimento com você':c.assigned_account_id?'Com outro atendente':c.mode==='ai'?'Orion responde automaticamente':c.mode==='closed'?'Atendimento encerrado':'Aguardando alguém assumir'):'';
-      const primary=modeBtn('human',c?.mode==='ai'?'Assumir da IA':'Assumir atendimento',!!c&&!owned&&!!s.account,canControl&&!owned);
-      const management='<details class="os-central-control-menu"'+(s.openSections.has('os-central-control-menu')?' open':'')+'><summary>'+ico('more')+'<span>Gerenciar</span>'+ico('chevron')+'</summary><div class="os-central-control-options">'+
+      const ownerText=c?(!s.account?'Somente consulta':owned?'Atendimento com você':c.assigned_account_id?'Com outro atendente':c.mode==='ai'?'Orion responde automaticamente':c.mode==='closed'?'Atendimento encerrado':c.mode==='paused'?'Atendimento pausado':'Aguardando alguém assumir'):'';
+      const primary=modeBtn('human','Assumir atendimento',!!c&&!owned&&!!s.account,canControl&&!owned);
+      const controlOptions=
         modeBtn('waiting','Aguardar cliente',owned&&c.mode!=='waiting',canControl&&owned&&c.mode!=='waiting')+
         modeBtn('ai','Retomar IA',!!c&&c.mode!=='ai',canControl&&c.mode!=='ai')+
         modeBtn('paused','Pausar atendimento',!!c&&c.mode!=='paused',canControl&&c.mode!=='paused')+
         modeBtn('closed','Encerrar atendimento',!!c&&c.mode!=='closed',canControl&&c.mode!=='closed')+
-        (s.detail?.customer_id&&onCustomer?btn('Abrir ficha do cliente','customer',s.busy):'')+
-        '</div></details>';
+        (s.detail?.customer_id&&onCustomer?btn('Abrir ficha do cliente','customer',s.busy):'');
       const pending=c?.pending_operation?'<div class="os-central-pending" role="status">'+ico('info')+'<span>Há um envio em verificação. O controle da conversa fica protegido até existir um recibo seguro.</span>'+(s.channels.find(x=>x.id===s.selected?.channel_id)?.provider==='qr'?btn('Consultar recibo','reconcile',!canWrite||s.busy):'')+'</div>':'';
-      const readTools='<details class="os-central-history-tools"'+(s.openSections.has('os-central-history-tools')?' open':'')+'><summary>Opções do histórico '+ico('chevron')+'</summary><div class="os-central-history-actions">'+
-        (s.account&&s.detail?.items?.length&&Number(selected?.unread_count||0)>0?btn('Marcar como lida nesta central','read',s.busy):'')+
+      const readTools='<section class="os-central-history-tools" aria-label="Ferramentas do histórico"><h3>Histórico</h3><div class="os-central-history-actions">'+
+        (s.account&&s.detail?.items?.length&&Number(selected?.unread_count||0)>0?btn('Marcar como lida','read',s.busy):'')+
         (s.detail?.preserved_history_available?btn('Consultar histórico do dispositivo','preserved-history',s.busy):'')+
-        '</div><label class="os-central-inthread-search" for="centralFind">'+ico('search')+'<span class="os-sr-only">Buscar nas mensagens carregadas</span><input id="centralFind" type="search" maxlength="100" placeholder="Buscar nesta conversa" value="'+esc(findValue)+'"></label><p>Essas ações não enviam mensagens ao cliente.</p></details>';
+        '</div><label class="os-central-inthread-search" for="centralFind">'+ico('search')+'<span class="os-sr-only">Buscar nas mensagens carregadas</span><input id="centralFind" type="search" maxlength="100" placeholder="Buscar nesta conversa" value="'+esc(findValue)+'"></label></section>';
+      const management='<details class="os-central-control-menu os-compact-disclosure"'+(s.openSections.has('os-central-control-menu')?' open':'')+'><summary aria-label="Detalhes do atendimento">'+disclosureLabel('Detalhes')+'</summary><div class="os-central-control-options"><h3>Atendimento</h3><div class="os-central-mode-options">'+controlOptions+'</div>'+readTools+'</div></details>';
       const historyTools=s.detail?.has_more?'<div class="os-central-timeline-tools">'+btn('Carregar mensagens anteriores','older',s.busy)+'</div>':'';
       const replies=s.replies.length&&s.detail?.customer_id?'<details class="os-central-quick-reply"'+(s.openSections.has('os-central-quick-reply')?' open':'')+'><summary>Usar resposta rápida</summary><div class="os-central-quick-reply-form"><label for="centralReplySelect">Modelo de resposta</label><div><select id="centralReplySelect" data-central-reply><option value="">Escolher resposta salva</option>'+s.replies.map(r=>'<option value="'+esc(r.id)+'" '+(s.replySelection===r.id?'selected':'')+'>'+esc(r.title)+'</option>').join('')+'</select>'+btn('Inserir no texto','prepare',s.busy)+'</div></div></details>':'';
       const composer='<footer class="os-central-compose">'+replies+
-        '<form data-central-compose><label for="centralText">Mensagem</label><textarea id="centralText" name="text" rows="3" maxlength="1200" placeholder="Escreva uma resposta para revisar..." '+(!canWrite?'readonly':'')+'>'+esc(draft().text)+'</textarea><div class="os-central-compose-footer"><span class="os-central-composer-hint">'+esc(!s.sendEnabled?'O envio de mensagens está desativado.':!s.account?'Seu acesso está disponível somente para consulta.':!owned?'Assuma o atendimento para responder.':c?.pending_operation?'Aguarde a verificação do envio.':'Revise o texto antes de enviar.')+'</span><button type="submit" class="os-button" '+(!canWrite||!owned||s.busy||!!c?.pending_operation||!s.sendEnabled?'disabled':'')+'>'+ico('send')+(draft().operation?'Verificar envio':'Enviar mensagem')+'</button></div></form></footer>';
+        '<form data-central-compose><label class="os-sr-only" for="centralText">Mensagem</label><textarea id="centralText" name="text" rows="2" maxlength="1200" placeholder="Escreva uma mensagem…" '+(!canWrite?'readonly':'')+'>'+esc(draft().text)+'</textarea><div class="os-central-compose-footer"><span class="os-central-composer-hint">'+esc(!s.sendEnabled?'O envio de mensagens está desativado.':!s.account?'Seu acesso está disponível somente para consulta.':!owned?'Assuma o atendimento para responder.':c?.pending_operation?'Aguarde a verificação do envio.':'Revise o texto antes de enviar.')+'</span><button type="submit" class="os-button" aria-label="'+(draft().operation?'Verificar envio':'Enviar mensagem')+'" '+(!canWrite||!owned||s.busy||!!c?.pending_operation||!s.sendEnabled?'disabled':'')+'>'+ico('send')+'<span>'+(draft().operation?'Verificar envio':'Enviar')+'</span></button></div></form></footer>';
       const thread=s.selected&&c?'<div class="os-central-thread-body">'+
-        '<header class="os-central-thread-header"><button type="button" class="os-icon-button os-central-back" data-central-action="back" aria-label="Voltar para conversas">'+ico('back')+'</button><span class="os-central-avatar" aria-hidden="true">'+esc(initials(name))+'</span><div class="os-central-selected-copy"><h2>'+esc(name)+'</h2><p>'+esc(selected?.contact_e164||'')+'</p></div><span class="os-central-state-badge os-central-state-'+modeClass(c.mode)+'">'+esc(controlLabel)+'</span></header>'+
-        '<div class="os-central-control-bar"><div><strong>'+esc(ownerText)+'</strong><small>Controle seguro da conversa · revisão '+esc(c.revision)+'</small></div><div class="os-central-control-buttons">'+primary+management+'</div></div>'+
+        '<header class="os-central-thread-header" tabindex="-1" aria-label="Conversa com '+esc(name)+'"><button type="button" class="os-icon-button os-central-back" data-central-action="back" aria-label="Voltar para conversas">'+ico('back')+'</button><span class="os-central-avatar" aria-hidden="true">'+esc(initials(name))+'</span><div class="os-central-selected-copy"><h2 title="'+esc(name)+'">'+esc(name)+'</h2><p>'+esc(contactLabel(selected?.contact_e164))+'</p><small class="os-central-owner">'+esc(ownerText)+'</small></div><span class="os-central-state-badge os-central-state-'+modeClass(c.mode)+'">'+esc(controlLabel)+'</span></header>'+
+        '<div class="os-central-control-bar"><div class="os-central-control-buttons">'+primary+management+'</div></div>'+
         pending+
+        '<div class="os-central-search-active" hidden><span></span><button type="button" data-central-action="clear-find">Limpar busca</button></div>'+
         '<div class="os-central-thread-scroll">'+
         historyTools+
         '<ol class="os-central-messages" aria-label="Histórico da conversa">'+messagesHTML()+'</ol>'+
-        preservedHTML()+pendingHTML()+readTools+
+        preservedHTML()+pendingHTML()+
         '</div>'+composer+'</div>':
         s.selected?'<div class="os-central-loading" role="'+(s.detailError?'alert':'status')+'"><button type="button" class="os-icon-button os-central-back" data-central-action="back" aria-label="Voltar">'+ico('back')+'</button>'+
         '<p>'+esc(s.detailError||'Carregando histórico do atendimento…')+'</p>'+(s.detailError?btn('Tentar novamente','refresh'):'')+'</div>':
@@ -127,7 +164,8 @@
         else updatedTimeline.scrollTop=updatedTimeline.scrollHeight;
       }
       s.renderedKey=identity;
-      if(findValue)host.querySelectorAll('.os-central-message').forEach(node=>{node.hidden=!node.textContent.toLocaleLowerCase().includes(findValue.toLocaleLowerCase());});
+      syncMessageSearch(findValue);
+      scheduleLayout();
     }
     function messagesHTML(){
       let last='';
@@ -190,14 +228,19 @@
         }
       }
     }
+    function syncMessageSearch(value){
+      const search=String(value||'').trim(),match=search.toLocaleLowerCase();
+      host.querySelectorAll('.os-central-message').forEach(message=>{message.hidden=!!match&&!message.textContent.toLocaleLowerCase().includes(match);});
+      const activeSearch=host.querySelector('.os-central-search-active');
+      if(activeSearch){activeSearch.hidden=!search;activeSearch.querySelector('span').textContent=search?'Busca: '+search:'';}
+    }
     host.addEventListener('input',e=>{
       if(e.target.id==='centralFind'){
-        const value=e.target.value.toLocaleLowerCase();
-        host.querySelectorAll('.os-central-message').forEach(m=>{m.hidden=!m.textContent.toLocaleLowerCase().includes(value);});
+        syncMessageSearch(e.target.value);
         return;
       }
       if(e.target.id==='centralSearch'){s.searchDraft=e.target.value;return;}
-      if(e.target.id==='centralText')s.drafts.set(key(),{text:e.target.value,operation:null});
+      if(e.target.id==='centralText'){s.drafts.set(key(),{text:e.target.value,operation:null});scheduleLayout();}
     },{signal:s.abort.signal});
     host.addEventListener('change',e=>{if(e.target.matches('[data-central-reply]'))s.replySelection=e.target.value;},{signal:s.abort.signal});
     host.addEventListener('submit',e=>{
@@ -220,11 +263,13 @@
       const person=e.target.closest('[data-central-phone]');if(person&&!s.busy){
         const row=s.items.find(x=>x.channel_id===person.dataset.centralChannel&&x.contact_e164===person.dataset.centralPhone);
         if(!row)return;
-        s.selected=row;s.detail=null;s.detailError=null;s.openSections.clear();s.replySelection='';
+        s.selected=row;s.detail=null;s.detailError=null;s.openSections.clear();s.replySelection='';s.focusTarget='thread';s.restoreControlsFocus=false;
         void work(load);return;
       }
       const a=e.target.closest('[data-central-action]');if(!a||a.disabled||s.busy)return;const action=a.dataset.centralAction;
-      if(action==='back'){s.selected=null;s.detail=null;s.detailError=null;s.openSections.clear();s.pending=[];render();return;}
+      if(action==='back'){s.returnTo=key();s.selected=null;s.detail=null;s.detailError=null;s.openSections.clear();s.pending=[];s.focusTarget='list';s.restoreControlsFocus=false;render();return;}
+      if(action==='clear-find'){const input=host.querySelector('#centralFind');if(input)input.value='';syncMessageSearch('');host.querySelector('.os-central-thread-header')?.focus({preventScroll:true});return;}
+      if(a.closest('.os-central-control-options'))closeControls(true);
       if(action==='refresh'){void work(load);return;}
       if(action==='clear-filters'){
         s.channel='';s.mode='';s.unread=false;s.q='';s.searchDraft='';s.offset=0;
@@ -239,10 +284,16 @@
       if(action==='older'){void work(async()=>{const older=await request(selectedPath('/messages?phone='+encodeURIComponent(s.selected.contact_e164)+'&before='+encodeURIComponent(s.detail.next_before)));if(current())s.detail={...s.detail,items:[...older.items,...s.detail.items],has_more:older.has_more,next_before:older.next_before};},'Mensagens anteriores carregadas.',false);return;}
       if(action==='prepare'){const id=host.querySelector('[data-central-reply]').value,r=s.replies.find(x=>x.id===id);if(!r)return;void work(async()=>{const prepared=await request(path('/quick-replies/'+encodeURIComponent(id)+'/preview'),'POST',{customer_id:s.detail.customer_id,expected_version:r.version});if(current())s.drafts.set(key(),{text:prepared.text,operation:null});},'Texto preparado. Revise antes de enviar.');}
     },{signal:s.abort.signal});
+    document.addEventListener('click',event=>{if(current()&&!event.target.closest?.('.os-central-control-menu'))closeControls();},{signal:s.abort.signal});
+    host.addEventListener('keydown',event=>{if(event.key==='Escape'&&host.querySelector('.os-central-control-menu[open]')){event.preventDefault();event.stopPropagation();closeControls(true);}},{signal:s.abort.signal});
+    host.addEventListener('toggle',event=>{if(event.target.matches?.('.os-central-control-menu'))scheduleLayout();},{capture:true,signal:s.abort.signal});
+    window.addEventListener('resize',scheduleLayout,{signal:s.abort.signal});
+    window.visualViewport?.addEventListener?.('resize',scheduleLayout,{signal:s.abort.signal});
+    window.visualViewport?.addEventListener?.('scroll',scheduleLayout,{signal:s.abort.signal});
     host.innerHTML='<p role="status">Carregando conversas…</p>';
     try{const config=await request(path('/channels'));if(!current())return;s.channels=config.items;s.account=config.account_id;s.sendEnabled=config.send_enabled;
       if(toolsEnabled)s.replies=(await request(path('/quick-replies'))).items;
-      await load();s.timer=setInterval(()=>{if(current()&&!s.busy&&document.visibilityState!=='hidden'&&!host.querySelector('input:focus,textarea:focus,select:focus'))void load().catch(e=>{if(current())notice(e.message||'Atualização indisponível.',true);});},5000);
+      await load();if(!current())return;s.timer=setInterval(()=>{if(current()&&!s.busy&&document.visibilityState!=='hidden'&&!host.querySelector('input:focus,textarea:focus,select:focus,.os-central-control-menu[open],.os-central-filters[open]'))void load().catch(e=>{if(current())notice(e.message||'Atualização indisponível.',true);});},5000);
     }catch(e){if(current())host.textContent=e.message||'Não foi possível carregar as conversas.';}
   }
   const hasUnsentDraft=()=>!!active&&[...active.drafts.values()].some(item=>!!item.text.trim());

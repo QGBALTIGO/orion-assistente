@@ -15,7 +15,7 @@ suite=(ROOT/'app/static/orion-suite.css').read_text(encoding='utf-8')
 inbox=(ROOT/'app/static/orion-inbox.css').read_text(encoding='utf-8')
 conversations=(ROOT/'app/static/orion-conversations.js').read_text(encoding='utf-8')
 inbox_js=(ROOT/'app/static/orion-inbox.js').read_text(encoding='utf-8')
-html='''<!doctype html><html lang="pt-BR" data-theme="light"><head><meta name="viewport" content="width=device-width,initial-scale=1"><base href="https://orion-preview.invalid/"><style>'''+panel_css+'\n'+suite+'\n'+inbox+'''</style></head><body><div id="appView" class="app orion-suite-enabled"><aside class="sidebar"><div class="brand" style="font-size:20px;color:var(--os-primary);padding:18px">◉ ORION</div><div class="os-sidebar-context"><span class="os-overline">Meu negócio</span><div class="os-tenant-name">Barbearia Orion</div></div><nav class="os-nav"><span class="os-nav-link" style="display:flex">Dashboard</span><span class="os-nav-link">Agenda</span><span class="os-nav-link" aria-current="page">Central de atendimento</span><span class="os-nav-link">Financeiro</span></nav></aside><main class="content"><header class="os-header">ORION · Painel</header><section id="page-suite" class="page os-main" data-os-current-route="inbox"><div class="os-title-row"><div><h1>Central de atendimento</h1><p>Conversas, clientes e respostas com dados reais.</p></div></div><div id="osPageBody"><div id="osInboxHost"></div></div></section></main></div></body></html>'''
+html='''<!doctype html><html lang="pt-BR" data-theme="light"><head><meta name="viewport" content="width=device-width,initial-scale=1"><base href="https://orion-preview.invalid/"><style>'''+panel_css+'\n'+suite+'\n'+inbox+'''</style></head><body><div id="appView" class="app orion-suite-enabled"><aside class="sidebar"><div class="brand" style="font-size:20px;color:var(--os-primary);padding:18px">◉ ORION</div><div class="os-sidebar-context"><span class="os-overline">Meu negócio</span><div class="os-tenant-name">Barbearia Orion</div></div><nav class="os-nav"><span class="os-nav-link" style="display:flex">Dashboard</span><span class="os-nav-link">Agenda</span><span class="os-nav-link" aria-current="page">Central de atendimento</span><span class="os-nav-link">Financeiro</span></nav></aside><main class="content"><header class="os-header">ORION · Painel</header><section id="page-suite" class="page os-main" data-os-current-route="inbox"><div class="os-title-row"><div><h1>Central de atendimento</h1><p>Acompanhe suas conversas e atendimentos.</p></div></div><div id="osPageBody"><div id="osInboxHost"></div></div></section></main></div></body></html>'''
 tenant='40000000-0000-4000-8000-000000000001'
 channel='20000000-0000-4000-8000-000000000001'
 account='30000000-0000-4000-8000-000000000001'
@@ -47,8 +47,8 @@ request_js=r'''async function(path,method='GET',body){
 }'''.replace('ACCOUNT',account).replace('CHANNEL',channel).replace('PHONE',phone).replace('CUSTOMER',customer)
 measurements=[]
 with sync_playwright() as p:
-    engines=[('chromium',(320,375,390,768,1280))]
-    if os.getenv('ORION_CHROME_ONLY')!='1':engines.append(('webkit',(390,)))
+    engines=[('chromium',(320,375,393,768,1024,1440))]
+    if os.getenv('ORION_CHROME_ONLY')!='1':engines.append(('webkit',(393,)))
     for engine,widths in engines:
         launch={'args':['--no-sandbox']} if engine=='chromium' else {}
         if engine=='chromium' and os.getenv('ORION_CHROME_PATH'):launch['executable_path']=os.environ['ORION_CHROME_PATH']
@@ -76,18 +76,19 @@ with sync_playwright() as p:
                 def inspect(label):
                     value=page.evaluate('''() => {
                       const shell=document.querySelector('.os-central-shell').getBoundingClientRect();
-                      const header=document.querySelector('.os-inbox-topbar').getBoundingClientRect();
                       return {viewport:innerWidth,document:document.documentElement.scrollWidth,
                         shellWidth:shell.width,shellLeft:shell.left,shellRight:shell.right,
-                        headerWidth:header.width,hasThread:!!document.querySelector('.os-central-thread-body'),
+                        redundantTabs:document.querySelectorAll('[data-inbox-tab],[role=tablist]').length,
+                        hasThread:!!document.querySelector('.os-central-thread-body'),
                         theme:document.documentElement.dataset.theme};
                     }''')
                     assert value['document']<=width+2,(engine,width,theme,label,value)
                     assert value['shellRight']<=width+2,(engine,width,theme,label,value)
                     assert value['shellLeft']>=-2,(engine,width,theme,label,value)
+                    assert value['redundantTabs']==0,(engine,width,theme,label,value)
                     measurements.append(dict(engine=engine,width=width,view=label,**value))
                 inspect('list')
-                if (engine,width,theme) in [('chromium',390,'light'),('chromium',1280,'light'),('webkit',390,'light')]:
+                if (engine,width,theme) in [('chromium',393,'light'),('chromium',1440,'light'),('webkit',393,'light')]:
                     page.screenshot(path=str(OUT/f'{engine}-{width}-{theme}-list.png'),full_page=True)
                 page.locator('.os-central-thread-item-button').first.click()
                 page.locator('.os-central-thread-body').wait_for()
@@ -95,9 +96,9 @@ with sync_playwright() as p:
                 assert page.locator('[data-central-compose] button').is_enabled()
                 assert page.locator('.os-central-message').count()==3
                 assert page.locator('.os-central-mode-action:visible').count()<=4
-                if (engine,width,theme) in [('chromium',390,'light'),('chromium',1280,'light'),('webkit',390,'light'),('chromium',390,'dark')]:
+                if (engine,width,theme) in [('chromium',393,'light'),('chromium',1440,'light'),('webkit',393,'light'),('chromium',393,'dark')]:
                     page.screenshot(path=str(OUT/f'{engine}-{width}-{theme}-thread.png'),full_page=True)
-                if mobile:
+                if page.locator('[data-central-action=back]').is_visible():
                     page.locator('[data-central-action=back]').click()
                     assert page.locator('.os-central-show-thread').count()==0
                     assert page.locator('.os-central-thread-item-button').first.is_visible()
