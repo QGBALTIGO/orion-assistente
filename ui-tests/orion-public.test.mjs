@@ -91,11 +91,16 @@ test('a late availability response cannot replace slots for the newly selected d
   assert.equal(h.calls.filter(call => call.url.includes('/availability?')).length, 2);
 });
 
-test('serviço variável mostra o preço mínimo no site, no resumo e na confirmação',async t=>{
+test('serviço variável preserva A partir de sem aviso redundante na confirmação e no comprovante',async t=>{
   const data=catalogue();
   data.services[0].price_mode='from';
   const h=await makePublic({data,respond: url=>{
     if(url.includes('/availability?'))return response({...available(),price_mode:'from'});
+    if(url.endsWith('/appointments'))return response({
+      status:'confirmed',protocol:'SYNTHETIC-VARIABLE',start_at:firstStart,
+      end_at:'2030-01-07T09:50:00-03:00',price_cents:5200,price_mode:'from',
+      professional:'Profissional sintético',services:['Corte + barba']
+    },201);
   }});t.after(()=>h.close());await flush();
   assert.match(h.document.querySelector('#services-grid .service-card').textContent,/A partir de R\$\s*45,00/);
   h.click('#services-grid .service-card');
@@ -103,9 +108,23 @@ test('serviço variável mostra o preço mínimo no site, no resumo e na confirm
   h.click('#booking-next');await flush();
   assert.match(h.document.getElementById('booking-total').textContent,/A partir de/);
   h.click('#time-slots .slot');h.click('#booking-next');
-  assert.match(h.document.querySelector('.review-card').textContent,/Valor mínimo previsto/);
-  assert.match(h.document.querySelector('.review-card').textContent,/preço final depende da avaliação/);
+  const assertCleanSummary=()=>{
+    const card=h.document.querySelector('.review-card');
+    assert.match(card.textContent,/Valor mínimo previsto/);
+    assert.match(card.textContent,/A partir de R\$\s*52,00/);
+    assert.equal(card.querySelector('.price-disclaimer'),null);
+    assert.doesNotMatch(card.textContent,/O valor exibido é inicial|preço final depende da avaliação|Nenhum pagamento é cobrado/);
+  };
+  assertCleanSummary();
   assert.equal(h.calls.filter(x=>x.options.method==='POST').length,0);
+  h.fill('[name=customer_name]','Cliente sintético');
+  h.fill('[name=customer_phone]','86972676282');
+  h.fill('[name=customer_birth_date]','1995-08-20');
+  h.click('#booking-next');await flush();
+  assert.equal(h.calls.filter(x=>x.options.method==='POST').length,1);
+  assert.ok(h.document.querySelector('.success'));
+  assert.match(h.document.querySelector('.success').textContent,/SYNTHETIC-VARIABLE/);
+  assertCleanSummary();
   assert.equal(h.errors.length,0);
 });
 
