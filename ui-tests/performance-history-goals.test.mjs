@@ -78,6 +78,17 @@ test('deleted identities stay hidden even when a stale response includes a name 
   assert.match(text,/Cliente excluído/);assert.doesNotMatch(text,/Kayky|5511999990000/);
 });
 
+test('history identifies both local dates for an appointment crossing midnight',async t=>{
+  const h=await suite(t,{respond:path=>path.includes('/performance/professionals/')?history({items:[appointment({start_at:'2026-10-28T02:30:00Z',end_at:'2026-10-28T04:30:00Z'})]}):undefined});
+  h.click('[data-os-performance-history]');await flush();
+  const text=h.document.querySelector('.os-history-item-meta').textContent;
+  assert.match(text,/27\/10\/2026 a 28\/10\/2026/);
+  assert.match(text,/23:30 – 01:30/);
+  assert.equal(h.document.activeElement.id,'osDialogTitle');
+  h.click('#osDialog [data-os-action=close-dialog]');
+  assert.equal(h.document.activeElement.getAttribute('data-os-performance-history'),professional);
+});
+
 test('status and paging preserve the report dates and a new status returns to the first page',async t=>{
   const h=await suite(t,{respond:path=>path.includes('/performance/professionals/')?history({has_more:true,total:51,counts:{all:51,completed:30,cancelled:21}}):undefined});
   h.click('[data-os-performance-period="90"]');await flush();h.click('[data-os-performance-history]');await flush();
@@ -108,6 +119,38 @@ test('late history results cannot overwrite another professional or a newer stat
   oldStatus.resolve(history({items:[appointment({customer_name:'Filtro antigo'})]}));await flush();
   assert.doesNotMatch(h.document.querySelector('#osDialog').textContent,/Filtro antigo/);
   assert.equal(h.document.querySelector('#osProfessionalHistoryStatus').value,'completed');
+  assert.deepEqual(h.errors,[]);
+});
+
+test('closing history restores focus after an in-flight live refresh replaces its trigger',async t=>{
+  const pendingRefresh=deferred(),refreshStarted=deferred(),originalTimeout=globalThis.setTimeout;
+  let reads=0,accelerated=false;
+  // Exercise the real refresh callback without waiting thirty seconds. Only
+  // its first scheduling is accelerated; dialog focus and other timers retain
+  // their normal ordering, and the global hook is restored before assertions.
+  globalThis.setTimeout=(callback,delay,...args)=>originalTimeout(callback,
+    delay===30000&&!accelerated?(accelerated=true,20):delay,...args);
+  t.after(()=>{globalThis.setTimeout=originalTimeout;});
+  const h=await suite(t,{respond:path=>{
+    if(path.includes('/performance?')&&++reads===2){refreshStarted.resolve();return pendingRefresh.promise;}
+  }});
+  let deadline;
+  try{
+    await Promise.race([refreshStarted.promise,new Promise((_,reject)=>{
+      deadline=originalTimeout(()=>reject(Error('Live refresh did not start')),2000);
+    })]);
+  }finally{clearTimeout(deadline);globalThis.setTimeout=originalTimeout;}
+  const trigger=h.document.querySelector('[data-os-performance-history]');
+  trigger.focus();trigger.click();await flush();
+  assert.equal(h.document.querySelector('#osDialog').open,true);
+  pendingRefresh.resolve(performance);await flush();
+  assert.equal(trigger.isConnected,false);
+  const replacement=h.document.querySelector('[data-os-performance-history="'+professional+'"]');
+  assert.ok(replacement);
+  assert.equal(h.document.querySelector('#osDialog').open,true);
+  h.click('#osDialog [data-os-action=close-dialog]');await flush();
+  assert.equal(h.document.activeElement,replacement);
+  assert.deepEqual(writes(h),[]);
   assert.deepEqual(h.errors,[]);
 });
 

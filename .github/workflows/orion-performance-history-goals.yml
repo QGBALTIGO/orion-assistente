@@ -109,20 +109,28 @@ jobs:
           node --test ui-tests/performance-history-goals.test.mjs \
             ui-tests/dashboard-finance-goals.test.mjs ui-tests/orion-suite.test.mjs
   browser:
-    name: Histórico e metas - Safari e Chrome
+    name: Histórico e metas - ${{ matrix.browser }}
     runs-on: ubuntu-24.04
     timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Preparar Safari e usar Chrome pré-instalado
-        run: |
-          google-chrome --version
-          python -m pip install -r tests/e2e/requirements.txt pytest
-          python -m playwright install --with-deps webkit
-      - name: Verificar leitura, detalhes, filtros, paginação e cadastro em sete tamanhos
+      - name: Preparar dependências dos testes
+        run: python -m pip install -r tests/e2e/requirements.txt pytest
+      - name: Verificar Chrome pré-instalado
+        if: matrix.browser == 'chromium'
+        run: google-chrome --version
+      - name: Instalar Safari isolado
+        if: matrix.browser == 'webkit'
+        timeout-minutes: 6
+        run: python -m playwright install --with-deps webkit
+      - name: Verificar leitura, detalhes, filtros, paginação e cadastro
         env:
           ORION_TEST_SYSTEM_CHROME: '1'
-        run: python -m pytest -q -ra tests/e2e/test_performance_history_goals.py
+        run: python -m pytest -q -ra tests/e2e/test_performance_history_goals.py -k "${{ matrix.browser }}"
