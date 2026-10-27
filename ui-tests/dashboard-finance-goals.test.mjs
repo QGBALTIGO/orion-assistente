@@ -115,6 +115,27 @@ test('goal 150 percent shows precise achievement and caps only the colored bar a
   assert.equal(section.querySelector('[role=progressbar] span').style.width,'100%');
 });
 
+test('an explicit company target replaces the summed individual targets for that metric',async t=>{
+  const h=await suite(t,{goals:{items:[
+    {...goal(null,100000,40000),scope:'company'},
+    goal(p1,10000,5000),goal(p2,30000,12000),
+    goal(p1,10,4,{metric:'appointments'}),goal(p2,20,6,{metric:'appointments'})
+  ]}});
+  const section=h.document.querySelector('#osDashboardGoals');
+  assert.match(section.textContent,/Metas da empresa/);assert.match(section.textContent,/Empresa inteira/);
+  const bars=section.querySelectorAll('[role=progressbar]');
+  assert.equal(bars.length,2);assert.equal(bars[0].getAttribute('aria-valuenow'),'40');
+  assert.equal(bars[1].getAttribute('aria-valuenow'),'33');
+  assert.ok(section.textContent.includes(money(100000)));assert.ok(!section.textContent.includes(money(140000)));
+  assert.match(section.textContent,/2 profissionais/);assert.deepEqual(writes(h),[]);
+});
+
+test('a paused company target does not suppress currently active individual targets',async t=>{
+  const h=await suite(t,{goals:{items:[{...goal(null,100000,40000,{active:false}),scope:'company'},goal(p1,10000,6000)]}});
+  assert.equal(h.document.querySelector('#osDashboardGoals [role=progressbar]').getAttribute('aria-valuenow'),'60');
+  assert.match(h.document.querySelector('#osDashboardGoals').textContent,/Meta da equipe/);
+});
+
 test('the Finance summary can fail without inventing zero or hiding available goals',async t=>{
   const h=await suite(t,{respond:path=>{
     if(path.includes('/finance/summary?'))throw new Error('Serviço temporariamente indisponível');

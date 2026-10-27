@@ -73,7 +73,7 @@ jobs:
             -v support_password=ci-support-only \
             -f infra/postgres/init/001-roles.sql
           alembic upgrade head
-          test "$(psql -h localhost -U postgres -d barber_saas -tAc 'SELECT version_num FROM alembic_version')" = "0034_variable_combo_pricing"
+          python -m alembic current --check-heads
       - name: Real tenant and finance lifecycle plus pure calculations
         run: |
           python -m pytest -q -ra \

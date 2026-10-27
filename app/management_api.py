@@ -18,6 +18,7 @@ from app.csv_export import csv_document
 from app.database import get_session_factory, tenant_transaction
 from app import management_models as data
 from app.professional_commissions import ProfessionalConfiguration, ProfessionalStatusChange
+from app.performance_history import HistoryStatus, read_professional_history
 from app.management_schemas import (
     AppointmentTransition, CouponIssue, CustomerCreate, CustomerFields, CustomerPatch, FinanceCreate, FinanceFields,
     FinancePatch, FinanceStatus, GoalCreate, GoalFields, GoalPatch,
@@ -388,24 +389,22 @@ async def list_goals(tenant_id: UUID, start_date: date | None = None, end_date: 
 @router.post("/goals", status_code=201)
 async def create_goal(tenant_id: UUID, payload: GoalCreate, actor: Actor = Depends(authenticate)):
     async with management_session(tenant_id, actor, write=True) as db:
-        values = values_from(payload)
-        await data.validate_links(db, tenant_id, values)
-        return data.clean_row(await data.insert_row(db, tenant_id, "professional_goals", values, payload.idempotency_key))
+        return await data.create_goal(db, tenant_id, values_from(payload), payload.idempotency_key)
 
 
 @router.patch("/goals/{goal_id}")
 async def update_goal(tenant_id: UUID, goal_id: UUID, payload: GoalPatch, actor: Actor = Depends(authenticate)):
     async with management_session(tenant_id, actor, write=True) as db:
-        current = await data.get_row(db, tenant_id, "professional_goals", goal_id)
+        current = await data.get_row(db, tenant_id, "professional_goals", goal_id, lock=True)
         changes = merged_changes(current, payload, GoalFields)
-        await data.validate_links(db, tenant_id, {**current, **changes})
-        return data.clean_row(await data.update_row(db, tenant_id, "professional_goals", goal_id, payload.expected_version, changes))
+        return await data.update_goal(db, tenant_id, current, payload.expected_version, changes)
 
 
 @router.delete("/goals/{goal_id}")
-async def disable_goal(tenant_id: UUID, goal_id: UUID, payload: VersionedOperation, actor: Actor = Depends(authenticate)):
+async def delete_goal(tenant_id: UUID, goal_id: UUID, payload: VersionedOperation, actor: Actor = Depends(authenticate)):
     async with management_session(tenant_id, actor, write=True) as db:
-        return data.clean_row(await data.update_row(db, tenant_id, "professional_goals", goal_id, payload.expected_version, {"active": False}))
+        current = await data.get_row(db, tenant_id, "professional_goals", goal_id, lock=True)
+        return await data.update_goal(db, tenant_id, current, payload.expected_version, {"active": False}, delete=True)
 
 
 @router.get("/performance")
@@ -413,6 +412,21 @@ async def get_performance(tenant_id: UUID, start_date: date | None = None, end_d
                           actor: Actor = Depends(authenticate)):
     async with management_session(tenant_id, actor) as db:
         return await data.performance(db, tenant_id, start_date, end_date)
+
+
+@router.get("/performance/professionals/{professional_id}/history")
+async def get_professional_history(
+    tenant_id: UUID, professional_id: UUID,
+    start_date: date | None = None, end_date: date | None = None,
+    status: HistoryStatus | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=2_147_483_647),
+    actor: Actor = Depends(authenticate),
+):
+    async with management_session(tenant_id, actor) as db:
+        return await read_professional_history(
+            db, tenant_id, professional_id, start_date, end_date, limit, offset, status,
+        )
 
 
 @router.get("/performance/daily")

@@ -119,7 +119,7 @@ jobs:
             -v support_password=ci-support-only \
             -f infra/postgres/init/001-roles.sql
           alembic upgrade head
-          test "$(PGPASSWORD=ci-migrator-only psql -h localhost -U app_migrator -d barber_saas -tAc 'SELECT version_num FROM public.alembic_version')" = "0035_public_amenities"
+          python -m alembic current --check-heads
       - name: Testar flags, publicação e isolamento entre prévia e snapshot
         run: |
           python -m pytest -q -ra tests/unit/test_management_unit.py -k public_amenities

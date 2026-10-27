@@ -1,5 +1,5 @@
 """Validated management contracts; money is always integer BRL cents."""
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import re
 from typing import Literal
@@ -231,17 +231,44 @@ class LoyaltyTransactionCreate(CreateOperation):
 
 
 class GoalFields(CleanModel):
-    professional_id: UUID
+    professional_id: UUID | None = None
+    scope: Literal["company", "professional"] | None = None
     metric: Literal["revenue_cents", "appointments"]
-    start_date: date
-    end_date: date
+    recurrence: Literal["none", "monthly"] = "monthly"
+    start_date: date | None = None
+    end_date: date | None = None
     target_value: StrictInt = Field(ge=1, le=MAX_MONEY)
     active: bool = True
 
+    @model_validator(mode="before")
+    @classmethod
+    def legacy_period_and_scope(cls, values):
+        if isinstance(values, dict):
+            values = dict(values)
+            # Existing clients send explicit intervals and know no recurrence
+            # field. New clients may simply send a monthly target.
+            if "recurrence" not in values and (values.get("start_date") is not None or values.get("end_date") is not None):
+                values["recurrence"] = "none"
+            if values.get("scope") is None:
+                values["scope"] = "professional" if values.get("professional_id") is not None else "company"
+        return values
+
     @model_validator(mode="after")
     def valid_period(self):
-        if not 0 <= (self.end_date - self.start_date).days < MAX_REPORT_DAYS:
+        if (self.scope == "professional") != (self.professional_id is not None):
+            raise ValueError("Informe um profissional para a meta individual, ou nenhum para a meta da empresa")
+        if self.start_date is None and self.end_date is None and self.recurrence == "monthly":
+            return self
+        if self.start_date is None or self.end_date is None or not 0 <= (self.end_date - self.start_date).days < MAX_REPORT_DAYS:
             raise ValueError("A meta exige um período de até 366 dias")
+        if self.start_date.year < 1900 or self.end_date.year > 2100:
+            raise ValueError("O período da meta deve estar entre 1900 e 2100")
+        if self.recurrence == "monthly" and (
+            self.start_date.day != 1 or self.start_date.month != self.end_date.month
+            or self.start_date.year != self.end_date.year
+            or (self.end_date + timedelta(days=1)).day != 1
+        ):
+            raise ValueError("A meta mensal deve cobrir um mês completo")
         return self
 
 
@@ -251,7 +278,9 @@ class GoalCreate(GoalFields, CreateOperation):
 
 class GoalPatch(VersionedOperation):
     professional_id: UUID | None = None
+    scope: Literal["company", "professional"] | None = None
     metric: Literal["revenue_cents", "appointments"] | None = None
+    recurrence: Literal["none", "monthly"] | None = None
     start_date: date | None = None
     end_date: date | None = None
     target_value: StrictInt | None = Field(default=None, ge=1, le=MAX_MONEY)
