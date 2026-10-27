@@ -106,7 +106,7 @@ function panelHarness(){
       })
     })),
     setInterval:()=>1,clearInterval(){},setTimeout:()=>1,clearTimeout(){},
-    confirm:()=>true,URLSearchParams,Intl,console,crypto:{randomUUID},
+    confirm:()=>true,AbortController,URLSearchParams,Intl,console,crypto:{randomUUID},
     location:{search:""},history:{replaceState(){}},Date:class extends Date{static now(){return fakeNow??Date.now()}}
   };
   const source=sections[1][1].replace("renderForm();renderGuide();",`
