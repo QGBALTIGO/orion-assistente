@@ -12,7 +12,7 @@ window.mountPerformanceFixture=()=>{
   window.performanceFixtureCalls=[];
   const request=async(path,method='GET',data)=>{
     window.performanceFixtureCalls.push({path,method,data});
-    const url=new URL(path,location.href),params=url.searchParams;
+    const url=new URL(path,'https://orion-fixture.invalid'),params=url.searchParams;
     if(path.includes('/performance/professionals/')){
       const filtered=appointments.filter(a=>!params.get('status')||a.history_status===params.get('status'));
       const offset=Number(params.get('offset')||0),limit=Number(params.get('limit')||25),p=pros.find(p=>url.pathname.includes(p.id));
