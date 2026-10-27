@@ -782,8 +782,6 @@
     total.append(el('span', '', variable?'Valor mínimo previsto':'Valor do atendimento'),
       el('strong', '', priceText(result?.price_cents ?? estimate.price_cents ?? estimate.price,variable?'from':'fixed')));
     box.append(total);
-    if(variable)box.append(el('p','price-disclaimer',
-      'O valor exibido é inicial. O preço final depende da avaliação do serviço e será confirmado pela equipe. Nenhum pagamento é cobrado nesta página.'));
     return box;
   }
   function formatBrazilPhone(input) {
