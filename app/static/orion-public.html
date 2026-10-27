@@ -8,6 +8,97 @@
   <title>Agendamento • Orion</title>
   <script src="/public-assets/orion-public-theme.js"></script>
   <link rel="stylesheet" href="/public-assets/orion-public.css">
+  <style id="booking-confirmation-control-sizing">
+    /* Critical sizing travels with the no-store page, including on iOS where
+       native date internals can exceed the input's declared CSS height.
+       Scope is deliberately limited to confirmation; other steps keep their UI. */
+    #booking-dialog .booking-confirmation-body{
+      --confirmation-control-height:44px;
+      --confirmation-control-radius:10px;
+      -webkit-text-size-adjust:100%;text-size-adjust:100%;
+    }
+    #booking-dialog .booking-confirmation-body .review-card{
+      padding:14px 16px;margin-bottom:14px;
+    }
+    #booking-dialog .booking-confirmation-body .review-card h3{
+      font-size:16px;line-height:23px;margin-bottom:10px;
+    }
+    #booking-dialog .booking-confirmation-body .booking-contact-heading{
+      font-size:16px;line-height:22px;margin:0 0 10px;
+    }
+    #booking-dialog .booking-confirmation-body .booking-form{gap:12px}
+    #booking-dialog .booking-confirmation-body .booking-form .field{
+      gap:6px;font-size:13px;line-height:18px;font-weight:500;
+    }
+    #booking-dialog .booking-confirmation-body .booking-form .field>input{
+      box-sizing:border-box;display:block;
+      width:100%;min-width:0;max-width:100%;min-inline-size:0;
+      height:var(--confirmation-control-height);
+      min-height:var(--confirmation-control-height);
+      max-height:var(--confirmation-control-height);
+      block-size:var(--confirmation-control-height);
+      min-block-size:var(--confirmation-control-height);
+      max-block-size:var(--confirmation-control-height);
+      margin:0;padding:10px 12px;
+      border-radius:var(--confirmation-control-radius);
+      font-size:16px;line-height:22px;font-weight:400;
+      text-align:start;
+    }
+    #booking-dialog .booking-confirmation-body .booking-form .field>input[type=date]{
+      -webkit-appearance:none;appearance:none;
+      padding-block:0;line-height:normal;
+      -webkit-min-logical-width:0;
+    }
+    #booking-dialog .booking-confirmation-body input[type=date]::-webkit-date-and-time-value{
+      box-sizing:border-box;display:flex;align-items:center;
+      height:42px;min-height:0;max-height:42px;
+      margin:0;padding:0;line-height:22px;text-align:start;
+    }
+    #booking-dialog .booking-confirmation-body input[type=date]::-webkit-datetime-edit{
+      display:inline-flex;align-items:center;
+      min-height:0;margin:0;padding:0;line-height:22px;
+    }
+    #booking-dialog .booking-confirmation-body input[type=date]::-webkit-datetime-edit-fields-wrapper{
+      margin:0;padding:0;
+    }
+    #booking-dialog .booking-confirmation-body input[type=date]::-webkit-calendar-picker-indicator{
+      width:18px;height:18px;margin:0;padding:0;flex:none;
+    }
+    #booking-dialog .booking-footer.booking-footer-confirm{
+      display:flex;align-items:center;justify-content:space-between;
+      flex-wrap:nowrap;gap:12px;
+      padding:12px 16px max(12px,env(safe-area-inset-bottom));
+    }
+    #booking-dialog .booking-footer.booking-footer-confirm>.outline,
+    #booking-dialog .booking-footer.booking-footer-confirm>.primary{
+      box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;
+      flex:0 1 auto;width:auto;min-width:0;
+      height:44px;min-height:44px;max-height:44px;
+      padding:0 14px;border-radius:10px;
+      font-size:14px;line-height:20px;font-weight:600;
+      white-space:nowrap;
+    }
+    #booking-dialog .booking-footer.booking-footer-confirm>.outline{
+      flex-shrink:0;min-width:72px;margin:0;
+    }
+    #booking-dialog .booking-footer.booking-footer-confirm>.primary{
+      max-width:min(224px,calc(100% - 84px));margin:0 0 0 auto;
+    }
+    @media(min-width:640px){
+      #booking-dialog .booking-footer.booking-footer-confirm{padding-inline:24px}
+    }
+    @media(max-width:359px){
+      #booking-dialog .booking-confirmation-body .review-card{padding:12px}
+      #booking-dialog .booking-footer.booking-footer-confirm{gap:8px;padding-inline:12px}
+      #booking-dialog .booking-footer.booking-footer-confirm>.outline,
+      #booking-dialog .booking-footer.booking-footer-confirm>.primary{
+        padding-inline:11px;font-size:13px;
+      }
+      #booking-dialog .booking-footer.booking-footer-confirm>.primary{
+        max-width:calc(100% - 80px);
+      }
+    }
+  </style>
   <script src="/public-assets/orion-public.js" defer></script>
 </head>
 <body>
