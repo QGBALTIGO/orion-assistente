@@ -78,4 +78,23 @@ def main():
         print('orion_registration_predeploy_failed_closed',file=sys.stderr);return 3
 
 
-if __name__=='__main__':raise SystemExit(main())
+def predeploy_main():
+    """Preserve the configured command and dispatch only reviewed schema revisions."""
+    from scripts import backup_and_migrate_professional_phone as contacts
+    try:
+        raw, _url = connection_values()
+        current = migrated_version(raw)
+        if current == PREVIOUS:
+            result = main()
+            if result:
+                return result
+        elif current not in {TARGET, contacts.TARGET}:
+            print('orion_registration_unreviewed_schema_revision', file=sys.stderr)
+            return 2
+        return contacts.main()
+    except Exception:
+        print('orion_registration_predeploy_failed_closed', file=sys.stderr)
+        return 3
+
+
+if __name__=='__main__':raise SystemExit(predeploy_main())

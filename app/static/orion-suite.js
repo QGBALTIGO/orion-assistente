@@ -117,6 +117,51 @@
     return new Date(utc).toISOString();
   }
   function phone(value){const input=String(value||'').trim();let digits=input.replace(/\D/g,'');if(!input.startsWith('+')&&(digits.length===10||digits.length===11))digits='55'+digits;return digits?'+'+digits:'';}
+  function professionalPhoneParts(value){
+    const raw=String(value??'').trim(),digits=raw.replace(/\D/g,'');
+    if(!/^\+?[\d\s().-]*$/.test(raw))return null;
+    if(raw.startsWith('+')||digits.length>11){
+      // A national mask with DDD 55 must not become a country prefix after an extra digit.
+      if(!raw.startsWith('+')&&!/^\d+$/.test(raw))return null;
+      if(!digits.startsWith('55')||![12,13].includes(digits.length))return null;
+      return {digits:digits.slice(2),prefix:2};
+    }
+    return {digits,prefix:0};
+  }
+  function professionalPhoneDisplay(value){
+    const parts=professionalPhoneParts(value);if(!parts)return String(value??'');
+    const digits=parts.digits;if(!digits)return '';
+    if(digits.length<=2)return '('+digits;
+    const local=digits.slice(2),split=local.length>8?5:4;
+    return '('+digits.slice(0,2)+') '+local.slice(0,split)+(local.length>split?'-'+local.slice(split):'');
+  }
+  function professionalPhoneValue(value){
+    if(!String(value??'').trim())return null;
+    const parts=professionalPhoneParts(value);
+    if(!parts||!/^[1-9][0-9]{9,10}$/.test(parts.digits))throw Error('Informe o telefone do profissional com DDD, usando 10 ou 11 dígitos, ou deixe o campo vazio.');
+    return '+55'+parts.digits;
+  }
+  function maskProfessionalPhone(input){
+    const raw=input.value,parts=professionalPhoneParts(raw);
+    input.removeAttribute('aria-invalid');
+    if(!parts)return; // Keep invalid or overlong input visible instead of changing its recipient.
+    const next=professionalPhoneDisplay(raw),start=input.selectionStart??raw.length,end=input.selectionEnd??start;
+    const cursor=position=>moneyCursorAfterDigits(next,Math.max(0,raw.slice(0,position).replace(/\D/g,'').length-parts.prefix));
+    input.value=next;input.setSelectionRange(cursor(start),cursor(end));
+  }
+  function handleProfessionalPhoneBeforeInput(event){
+    const input=event.target,backward=event.inputType==='deleteContentBackward',forward=event.inputType==='deleteContentForward';
+    if(!input?.matches?.('#osDialog [data-os-professional-phone]')||(!backward&&!forward)||input.selectionStart!==input.selectionEnd||!professionalPhoneParts(input.value))return;
+    const caret=input.selectionStart??0,direction=backward?-1:1;
+    let index=backward?caret-1:caret;
+    if(index<0||index>=input.value.length||/\d/.test(input.value[index]))return;
+    while(index>=0&&index<input.value.length&&!/\d/.test(input.value[index]))index+=direction;
+    event.preventDefault();
+    if(index<0||index>=input.value.length){input.setSelectionRange(backward?0:input.value.length,backward?0:input.value.length);return;}
+    input.setRangeText('',index,index+1,'end');
+    if(forward)input.setSelectionRange(caret,caret);
+    maskProfessionalPhone(input);
+  }
   function cents(value){const text=String(value??'').trim();const n=Number(text.includes(',')?text.replace(/\./g,'').replace(',','.'):text);if(!Number.isFinite(n)||n<0)throw Error('Informe um valor válido.');return Math.round(n*100);}
   const currencyInput = value => (number(value)/100).toFixed(2).replace('.',',');
   const currencyInputGrouped = value => (number(value)/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -1963,6 +2008,9 @@
     }).join('');
     const content=field('Nome completo','name','text',p.name||'','required maxlength="120" placeholder="Nome do profissional"')+
       field('Especialidade','specialty','text',p.specialty||'','maxlength="120" placeholder="Ex.: Cabeleireiro, Terapeuta, Consultor"')+
+      '<div class="os-field"><label for="osField-phone_e164">Telefone/WhatsApp (opcional)</label>'+
+        '<input id="osField-phone_e164" name="phone_e164" type="tel" inputmode="tel" autocomplete="tel-national" maxlength="40" data-os-professional-phone aria-describedby="osProfessionalPhoneHelp" placeholder="(00) 00000-0000" value="'+esc(professionalPhoneDisplay(p.phone_e164))+'">'+
+        '<p id="osProfessionalPhoneHelp" class="os-help">Número de contato deste profissional, com DDD.</p></div>'+
       '<div class="os-form-grid">'+colorField('Cor na agenda','color',p.color||'#31ad52')+
       selectField('Modelo de comissão','commission_mode',[['percent','Percentual padrão'],['per_service','Por serviço']],mode)+'</div>'+
       '<div class="os-field os-commission-default" data-os-default-commission>'+
@@ -2376,11 +2424,14 @@
         const p=d.record,selected=new FormData(form).getAll('service_ids'),
           mode=form.elements.commission_mode.value,
           baseRate=Number(String(form.elements.commission_percent.value).replace(',','.'));
+        let professionalPhone;
+        try{professionalPhone=professionalPhoneValue(f.phone_e164);}
+        catch(error){form.elements.phone_e164.setAttribute('aria-invalid','true');form.elements.phone_e164.focus();throw error;}
         if(!Number.isFinite(baseRate)||baseRate<0||baseRate>100||Math.abs(Math.round(baseRate*100)-baseRate*100)>1e-7)
           throw Error('Informe um percentual padrão válido de 0 a 100, com até duas casas decimais.');
         const payload={
           name:f.name.trim(),active:form.elements.active.checked,
-          specialty:f.specialty?.trim()||null,color:f.color||'#31ad52',
+          specialty:f.specialty?.trim()||null,phone_e164:professionalPhone,color:f.color||'#31ad52',
           image_url:f.image_url?.trim()||null,
           commission_mode:mode,commission_percent:baseRate,
           accepts_appointments:form.elements.accepts_appointments.checked,
@@ -2759,7 +2810,7 @@
     if(state.dialog?.type==='block'&&el.name==='frequency'){$('osBlockWeekdays').classList.toggle('hidden',el.value!=='weekdays');return;}
     if(state.dialog?.type==='block'&&el.name==='block_type'){$('osBlockHours').classList.toggle('hidden',el.value==='days');$('osBlockDays').classList.toggle('hidden',el.value!=='days');const form=el.closest('form');['day','start_time','end_time'].forEach(name=>form.elements[name].required=el.value==='hours');form.elements.until_date.required=el.value==='hours'&&form.elements.repeat.checked;$('osBlockDays').querySelectorAll('input').forEach(i=>i.required=el.value==='days');}
   }
-  function handleInput(event){if(!state.mounted)return;const el=event.target;markCustomerBirthChanged(el);if(el.matches?.('#osDialog [data-os-money-mask=whole]'))maskServicePriceInput(el);if(state.dialog?.type==='service'&&el.name==='duration_min')syncServiceDurationPresets(el.closest('form'));if(el.matches?.('input.os-color-native'))syncColorPicker(el);if(el.id==='osAgendaSearch'&&!state.busy){state.filters.agendaQuery=el.value;state.filters.agendaOffset=0;state.agendaRead=(state.agendaRead||0)+1;clearTimeout(state.agendaSearchTimer);state.agendaSearchTimer=setTimeout(()=>void applyAgendaFilters(),250);return;}if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';if(el.closest('#osSiteForm')&&!state.busy&&siteCanEdit()&&!event.isComposing){if(el.name==='slug')queueSiteSlugCheck(el);if(el.name==='postal_code')queueSiteCepLookup(el);if(el.name==='state')el.value=el.value.toUpperCase();}if(el.id==='osHelpSearch'){state.filters.helpQuery=el.value;renderHelpResults();}if(el.id==='osCustomerSearch'){state.filters.customerQuery=el.value;state.filters.customerOffset=0;state.customerRead=(state.customerRead||0)+1;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);const c=context();state.searchTimer=setTimeout(()=>loadCustomers(c).catch(ex=>{if(current(c))bodyHTML(errorHTML(ex));}),250);}if(el.id==='osResourceSearch')renderServices(el.value);if(el.id==='osBookingCustomer')filterBookingCustomers(el.value);if(state.dialog?.type==='appointment'&&el.name==='customer_phone'&&state.dialog.customerId){$('osBookingCustomerHelp').textContent='Ao confirmar, o WhatsApp informado será salvo no cadastro deste cliente.';}if(state.dialog?.type==='package'&&el.name==='price')state.dialog.priceTouched=true;
+  function handleInput(event){if(!state.mounted)return;const el=event.target;markCustomerBirthChanged(el);if(el.matches?.('#osDialog [data-os-professional-phone]')&&!event.isComposing)maskProfessionalPhone(el);if(el.matches?.('#osDialog [data-os-money-mask=whole]'))maskServicePriceInput(el);if(state.dialog?.type==='service'&&el.name==='duration_min')syncServiceDurationPresets(el.closest('form'));if(el.matches?.('input.os-color-native'))syncColorPicker(el);if(el.id==='osAgendaSearch'&&!state.busy){state.filters.agendaQuery=el.value;state.filters.agendaOffset=0;state.agendaRead=(state.agendaRead||0)+1;clearTimeout(state.agendaSearchTimer);state.agendaSearchTimer=setTimeout(()=>void applyAgendaFilters(),250);return;}if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';if(el.closest('#osSiteForm')&&!state.busy&&siteCanEdit()&&!event.isComposing){if(el.name==='slug')queueSiteSlugCheck(el);if(el.name==='postal_code')queueSiteCepLookup(el);if(el.name==='state')el.value=el.value.toUpperCase();}if(el.id==='osHelpSearch'){state.filters.helpQuery=el.value;renderHelpResults();}if(el.id==='osCustomerSearch'){state.filters.customerQuery=el.value;state.filters.customerOffset=0;state.customerRead=(state.customerRead||0)+1;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);const c=context();state.searchTimer=setTimeout(()=>loadCustomers(c).catch(ex=>{if(current(c))bodyHTML(errorHTML(ex));}),250);}if(el.id==='osResourceSearch')renderServices(el.value);if(el.id==='osBookingCustomer')filterBookingCustomers(el.value);if(state.dialog?.type==='appointment'&&el.name==='customer_phone'&&state.dialog.customerId){$('osBookingCustomerHelp').textContent='Ao confirmar, o WhatsApp informado será salvo no cadastro deste cliente.';}if(state.dialog?.type==='package'&&el.name==='price')state.dialog.priceTouched=true;
     if(state.dialog?.type==='complete-appointment'&&el.name==='final_total')updateCompletionSummary();}
   function handleKeydown(event){if(!state.mounted)return;const serviceGrip=event.target.closest?.('[data-os-service-drag]');if(serviceGrip&&['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();void moveService(serviceGrip.dataset.osServiceDrag,event.key==='ArrowUp'?-1:1);return;}if(event.key==='Escape'){if(state.notificationsOpen){event.preventDefault();closeNotifications(true);}if($('appView').classList.contains('os-menu-open')){event.preventDefault();drawer(false);}if(!$('osThemeMenu').classList.contains('hidden')){$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');$('osThemeToggle').focus();}}
     const agendaTab=event.target.closest('[data-os-day],[data-os-agenda-mode]');
@@ -2788,10 +2839,10 @@
   function mount(bridge){
     if(state.mounted){sync(bridge);return;}
     state.bridge=bridge||{};state.mounted=true;state.epoch++;state.load++;state.tenantId=accountTenantId();state.filters.agendaDay=dateKey();resetPeriod();
-    buildShell();clearInterval(state.liveRefreshTimer);state.liveRefreshTimer=setInterval(()=>{void refreshLiveRoute().catch(()=>{});},30000);document.addEventListener('click',handleClick);document.addEventListener('change',handleChange);document.addEventListener('input',handleInput);document.addEventListener('focusout',handleSiteFocusOut);document.addEventListener('compositionend',handleSiteCompositionEnd);document.addEventListener('beforeinput',handleServicePriceBeforeInput);document.addEventListener('submit',submitForm);document.addEventListener('keydown',handleKeydown);document.addEventListener('pointerdown',handleServicePointerDown);document.addEventListener('pointermove',handleServicePointerMove);document.addEventListener('pointerup',handleServicePointerUp);document.addEventListener('pointercancel',clearServiceDrag);$('osDialog').addEventListener('cancel',onDialogCancel);
+    buildShell();clearInterval(state.liveRefreshTimer);state.liveRefreshTimer=setInterval(()=>{void refreshLiveRoute().catch(()=>{});},30000);document.addEventListener('click',handleClick);document.addEventListener('change',handleChange);document.addEventListener('input',handleInput);document.addEventListener('focusout',handleSiteFocusOut);document.addEventListener('compositionend',handleSiteCompositionEnd);document.addEventListener('beforeinput',handleServicePriceBeforeInput);document.addEventListener('beforeinput',handleProfessionalPhoneBeforeInput);document.addEventListener('submit',submitForm);document.addEventListener('keydown',handleKeydown);document.addEventListener('pointerdown',handleServicePointerDown);document.addEventListener('pointermove',handleServicePointerMove);document.addEventListener('pointerup',handleServicePointerUp);document.addEventListener('pointercancel',clearServiceDrag);$('osDialog').addEventListener('cancel',onDialogCancel);
     state.observer=new MutationObserver(()=>applyThemeState());state.observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-theme-preference']});
     const desired=bridge?.initialRoute||'dashboard';void open(appPages.has(desired)?desired:'dashboard');
   }
-  function destroy(){window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('beforeinput',handleServicePriceBeforeInput);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
+  function destroy(){window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('beforeinput',handleServicePriceBeforeInput);document.removeEventListener('beforeinput',handleProfessionalPhoneBeforeInput);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
   window.OrionSuite=Object.freeze({mount,sync,destroy,open,legacyOpened});
 })();

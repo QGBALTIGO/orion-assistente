@@ -1,6 +1,7 @@
 """Schemas da FATIA 1. Nunca aceitar tenant_id, id ou preços arbitrários sem validação."""
 from datetime import datetime, time
 from decimal import Decimal
+import re
 from typing import Literal
 from urllib.parse import urlsplit
 from app.media_paths import is_media_url
@@ -39,11 +40,25 @@ class Professional(StrictModel):
     name: str = Field(min_length=1, max_length=120)
     active: bool = True
     specialty: str | None = Field(default=None, max_length=120)
+    phone_e164: str | None = Field(default=None, max_length=40)
     color: str = Field(default="#31ad52", pattern=r"^#[0-9a-fA-F]{6}$")
     commission_percent: Decimal = Field(default=Decimal("0"), ge=0, le=100, max_digits=5, decimal_places=2)
     commission_mode: Literal["percent", "per_service"] = "percent"
     accepts_appointments: bool = True
     image_url: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("phone_e164")
+    @classmethod
+    def brazilian_phone(cls, value):
+        # Resolve at validation time: management schemas inherit StrictModel.
+        from app.management_schemas import normalize_phone
+        # Formatted national input never loses its DDD, including 55.
+        # A country prefix requires +55 or an unformatted digit-only value.
+        raw = value.strip() if value else ""
+        digits = re.sub(r"\D", "", raw)
+        if not raw.startswith("+") and len(digits) > 11 and raw != digits:
+            raise ValueError("Informe DDD e telefone brasileiro")
+        return normalize_phone(value)
 
     @field_validator("image_url")
     @classmethod

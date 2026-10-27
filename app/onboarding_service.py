@@ -757,8 +757,12 @@ async def save_step(actor, tenant, step, payload):
         raise HTTPException(404, "Etapa desconhecida")
     data = model.model_validate(payload.data)
     # Omission matters on edits: an omitted default preserves the current value.
+    fingerprint_data = data.model_dump(mode="json")
+    if step == "professionals" and "phone_e164" not in data.item.model_fields_set:
+        # Replay professional operations saved before the contact field existed.
+        fingerprint_data["item"].pop("phone_e164", None)
     fingerprint = digest({"actor": actor.account_id, "step": step,
-                          "data": data.model_dump(mode="json"), "supplied": payload.data})
+                          "data": fingerprint_data, "supplied": payload.data})
     try:
         async with access_session(actor, tenant, write=True) as access:
             async with get_session_factory()() as db:

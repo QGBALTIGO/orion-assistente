@@ -205,6 +205,9 @@ async def save_professional_configuration(db, tenant_id, payload, professional_i
             raise HTTPException(422, "Informe uma chave de operação para o novo profissional")
         from app.management_models import request_identity
         identity_payload = payload.model_dump(exclude={"idempotency_key"})
+        # Keep receipts from before the phone field compatible with old callers.
+        if "phone_e164" not in payload.model_fields_set:
+            identity_payload.pop("phone_e164", None)
         identity, replay = await request_identity(
             db, tenant_id, "professional_configuration", payload.idempotency_key,
             identity_payload,
@@ -228,6 +231,9 @@ async def save_professional_configuration(db, tenant_id, payload, professional_i
     else:
         if payload.expected_version is None:
             raise HTTPException(422, "Atualize os dados antes de editar a comissão")
+        # An older/cached form must not erase a phone it never displayed.
+        if "phone_e164" not in payload.model_fields_set:
+            fields.pop("phone_e164", None)
         await acquire_professional_lock(db, tenant_id, professional_id)
         assigns = ",".join(key + "=:" + key for key in fields)
         saved = (await db.execute(text("""
