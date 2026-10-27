@@ -794,11 +794,38 @@
   function showTeamMember(member){if(!state.data.team?.can_manage||member.role==='owner')return;showDialog('team-member','Editar acesso',dialogForm('team-member','<div class="os-person"><span class="os-avatar">'+esc(initials(member.name||member.email))+'</span><div><strong>'+esc(member.name||member.email)+'</strong><small>'+esc(member.email)+'</small></div></div>'+selectField('Perfil de acesso','role',[['editor','Editor'],['viewer','Leitor']],member.role)+checkField('Acesso ativo','active',member.active!==false),'Salvar acesso'),{record:member});}
   const paymentLabels={pix:'Pix',cash:'Dinheiro',credit_card:'Cartão de crédito',debit_card:'Cartão de débito',bank_transfer:'Transferência',other:'Outro'};
   function metric(label,value,symbol,note='',cls=''){return '<div class="os-card os-metric"><div class="os-metric-head"><span>'+esc(label)+'</span>'+icon(symbol)+'</div><strong class="'+cls+'">'+esc(value)+'</strong>'+(note?'<small>'+esc(note)+'</small>':'')+'</div>';}
+  function financeEntryTitle(entry){
+    const description=String(entry.description||'');
+    if(!/^Atendimento\s+AG-[A-Z0-9-]+$/i.test(description.trim()))return description;
+    if(entry.customer_deleted)return 'Atendimento · Cliente excluído';
+    const name=customerName(entry.customer_display_name)||customerName(entry.customer_name);
+    return name?'Atendimento '+name:'Atendimento';
+  }
+  function financeMoment(value,timeZone=zone()){
+    if(!value||!Number.isFinite(Date.parse(value)))return null;
+    try{return {date:dateLabel(value,{timeZone,day:'2-digit',month:'2-digit',year:'numeric'}),
+      time:dateLabel(value,{timeZone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'})};}catch{return null;}
+  }
+  function financeAppointmentSummary(entry){
+    const a=entry.appointment;if(!a&&!entry.appointment_id)return '';
+    const client=entry.customer_deleted?'Cliente excluído':String(entry.customer_display_name||entry.customer_name||'Não informado').replace(/^\+55(\d{2})(\d{4,5})(\d{4})$/,'($1) $2-$3'),
+      services=rows(a?.services).filter(item=>typeof item.name==='string'&&item.name.trim()).map(item=>item.name).join(' + '),
+      start=financeMoment(a?.start_at,a?.timezone||zone()),end=financeMoment(a?.end_at,a?.timezone||zone()),
+      hours=start?start.time+(end?' – '+(end.date!==start.date?end.date+' às ':'')+end.time:''):'';
+    return '<section class="os-summary" aria-label="Informações do atendimento">'+
+      [['Cliente',client],['Serviços',services],['Profissional',entry.professional_name],['Data do atendimento',start?.date],['Horário',hours],...(a?.protocol?[['Referência',a.protocol]]:[])].map(([label,value])=>
+        '<div class="os-summary-row"><span>'+esc(label)+'</span><strong>'+esc(value||'Não informado')+'</strong></div>').join('')+'</section>';
+  }
+  function financeOccurredAt(record,day){
+    // Editing payment or status must preserve the recorded time when the date is unchanged.
+    return record?.occurred_at&&Number.isFinite(Date.parse(record.occurred_at))&&dateKey(new Date(record.occurred_at))===day?
+      record.occurred_at:localISO(day,'12:00');
+  }
   function financeTable(data,{history=false,entries=rows(data)}={}){
     // Semantic table on desktop; reflow the same rows as cards on mobile.
     let html='<div class="os-table-scroll os-finance-table-scroll"><table class="os-table os-finance-data-table os-finance-ledger-table"><thead><tr><th>Descrição</th><th>Data</th><th>Categoria</th><th>Valor</th><th>Status</th><th aria-label="Ações"></th></tr></thead><tbody>'+
       entries.map(e=>{
-        const id=esc(e.id),description=esc(e.description),isExpense=e.kind==='expense';
+        const id=esc(e.id),description=esc(financeEntryTitle(e)),isExpense=e.kind==='expense';
         return '<tr class="os-finance-entry"><td data-label="Descrição" class="os-finance-primary"><strong>'+description+'</strong><small>'+esc(paymentLabels[e.payment_method]||'')+'</small></td>'+
           '<td data-label="Data" class="os-finance-date">'+fmtDate(dateKey(new Date(e.occurred_at)))+(history?'<small>Versão '+number(e.version)+'</small>':'')+'</td>'+
           '<td data-label="Categoria" class="os-finance-category">'+esc(e.category||'Geral')+'</td>'+
@@ -2054,7 +2081,7 @@
   function showFinance(kind='expense',record=null){
     const e=record||{},date=e.occurred_at?dateKey(new Date(e.occurred_at)):dateKey();
     if(['advance','commission_payment'].includes(e.entry_type)){void showStaffFinance(e.entry_type,e.professional_id,e);return;}
-    const content=selectField('Tipo','kind',[['expense','Despesa'],['income','Receita']],e.kind||kind)+field('Categoria','category','text',e.category||'Geral','required maxlength="64" list="osFinanceCategories"')+'<datalist id="osFinanceCategories">'+['Geral','Serviços','Produtos','Aluguel','Materiais','Energia','Internet','Manutenção','Outros'].map(x=>'<option value="'+x+'">').join('')+'</datalist><div class="os-form-grid">'+field('Valor (R$)','amount','text',e.amount_cents!=null?currencyInput(e.amount_cents):'','required inputmode="decimal" placeholder="0,00"')+field('Data','day','date',date,'required')+'</div>'+field('Descrição','description','text',e.description||'','required maxlength="255" placeholder="Descrição do lançamento"')+'<details class="os-more-fields" '+(record?'open':'')+'><summary>'+icon('credit')+'<span class="os-disclosure-label">Pagamento e observações</span></summary><div class="os-disclosure-body"><div class="os-form" style="margin-top:16px">'+selectField('Forma de pagamento','payment_method',Object.entries(paymentLabels),e.payment_method||'pix')+selectField('Situação','status',[['paid','Pago'],['pending','Pendente'],['cancelled','Cancelado']],e.status||'paid')+textField('Observações','notes',e.notes||'','maxlength="5000"')+'</div></div></details>';
+    const content=(record?financeAppointmentSummary(e):'')+selectField('Tipo','kind',[['expense','Despesa'],['income','Receita']],e.kind||kind)+field('Categoria','category','text',e.category||'Geral','required maxlength="64" list="osFinanceCategories"')+'<datalist id="osFinanceCategories">'+['Geral','Serviços','Produtos','Aluguel','Materiais','Energia','Internet','Manutenção','Outros'].map(x=>'<option value="'+x+'">').join('')+'</datalist><div class="os-form-grid">'+field('Valor (R$)','amount','text',e.amount_cents!=null?currencyInput(e.amount_cents):'','required inputmode="decimal" placeholder="0,00"')+field('Data','day','date',date,'required')+'</div>'+field('Descrição','description','text',financeEntryTitle(e),'required maxlength="255" placeholder="Descrição do lançamento"')+'<details class="os-more-fields" '+(record?'open':'')+'><summary>'+icon('credit')+'<span class="os-disclosure-label">Pagamento e observações</span></summary><div class="os-disclosure-body"><div class="os-form" style="margin-top:16px">'+selectField('Forma de pagamento','payment_method',Object.entries(paymentLabels),e.payment_method||'pix')+selectField('Situação','status',[['paid','Pago'],['pending','Pendente'],['cancelled','Cancelado']],e.status||'paid')+textField('Observações','notes',e.notes||'','maxlength="5000"')+'</div></div></details>';
     showDialog('finance',record?'Editar lançamento':'Novo lançamento',dialogForm('finance',content,'Salvar',record&&writable()?button('Cancelar lançamento','delete-finance','os-ghost','trash'):''),{record});
   }
   async function showStaffFinance(entryType,professionalId='',record=null){
@@ -2243,7 +2270,7 @@
       if(kind==='settlement'){const preview=d.preview;if(!preview)return;await saveForm(form,()=>request(mgmt('/finance/settlements'),'POST',{professional_id:d.professionalId,expected_snapshot:preview.snapshot_hash,payment_method:f.payment_method,occurred_at:f.day?localISO(f.day,'12:00'):null,notes:f.notes?.trim()||null,idempotency_key:d.key}),'Quitação registrada no financeiro.');return;}
       if(kind==='staff-finance'){const r=d.record,payload={kind:'expense',entry_type:d.entryType,description:f.description.trim(),amount_cents:cents(f.amount),category:d.entryType==='advance'?'Vale':'Comissão',payment_method:f.payment_method,status:r?.status||'paid',professional_id:f.professional_id,occurred_at:localISO(f.day,'12:00'),notes:f.notes?.trim()||null};if(!payload.amount_cents)throw Error('Informe um valor maior que zero.');await saveForm(form,()=>request(mgmt('/finance'+(r?'/'+encodeURIComponent(r.id):'')),r?'PATCH':'POST',{...payload,...(r?{expected_version:r.version}:{idempotency_key:d.key})}),r?'Lançamento atualizado.':d.entryType==='advance'?'Vale registrado.':'Pagamento registrado.');}
       if(kind==='finance'){
-        const r=d.record,payload={kind:f.kind,description:f.description.trim(),amount_cents:cents(f.amount),category:f.category?.trim()||'Geral',payment_method:f.payment_method,status:f.status,occurred_at:localISO(f.day,'12:00'),notes:f.notes?.trim()||null};
+        const r=d.record,description=f.description.trim(),payload={kind:f.kind,description:r&&description===financeEntryTitle(r)?r.description:description,amount_cents:cents(f.amount),category:f.category?.trim()||'Geral',payment_method:f.payment_method,status:f.status,occurred_at:financeOccurredAt(r,f.day),notes:f.notes?.trim()||null};
         if(!payload.amount_cents)throw Error('O valor do lançamento deve ser maior que zero.');await saveForm(form,()=>request(mgmt('/finance'+(r?'/'+encodeURIComponent(r.id):'')),r?'PATCH':'POST',{...payload,...(r?{expected_version:r.version}:{idempotency_key:d.key})}),r?'Lançamento atualizado.':'Lançamento registrado.');
       }
       if(kind==='delete-series')await saveForm(form,()=>request(mgmt('/block-series/'+encodeURIComponent(d.series.id)+'?'+query({scope:f.scope,occurrence_date:d.occurrenceDate})),'DELETE'),'Bloqueio removido.');

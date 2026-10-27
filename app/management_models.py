@@ -318,13 +318,59 @@ async def finance(db, tenant_id, start_date=None, end_date=None, kind=None, stat
     where, parameters = finance_filter(tenant_id, lower, upper, kind, status, category, payment_method, entry_type, professional_id)
     summary = await finance_summary(db, where, parameters, period["timezone"])
     rows = (await db.execute(text("""
-        SELECT e.*,c.name AS customer_name,p.name AS professional_name
+        SELECT e.*,
+               CASE WHEN c.deleted_at IS NULL THEN c.name END AS customer_name,
+               CASE WHEN c.deleted_at IS NULL THEN c.whatsapp_e164 END AS _customer_phone,
+               c.deleted_at IS NOT NULL AS customer_deleted,
+               p.name AS professional_name,
+               a.id AS _appointment_id,a.protocol AS _appointment_protocol,
+               a.start_at AS _appointment_start_at,a.end_at AS _appointment_end_at
         FROM financial_entries e
-        LEFT JOIN customers c ON c.tenant_id=e.tenant_id AND c.id=e.customer_id
-        LEFT JOIN professionals p ON p.tenant_id=e.tenant_id AND p.id=e.professional_id
+        LEFT JOIN appointments a ON a.tenant_id=e.tenant_id AND a.id=e.appointment_id
+        LEFT JOIN customers c ON c.tenant_id=e.tenant_id AND c.id=COALESCE(e.customer_id,a.customer_id)
+        LEFT JOIN professionals p ON p.tenant_id=e.tenant_id AND p.id=COALESCE(e.professional_id,a.professional_id)
     """ + " WHERE " + where + " ORDER BY e.occurred_at DESC,e.id LIMIT :limit OFFSET :offset"),
         {**parameters, "limit": limit, "offset": offset})).mappings().all()
-    return {"items": [clean_row(row) for row in rows], "total": summary["count"], "limit": limit, "offset": offset,
+
+    # Enrich only the requested ledger page. Historical service snapshots are
+    # fetched once in bulk, never from the current catalog or one query per row.
+    appointment_ids = list(dict.fromkeys(row["_appointment_id"] for row in rows if row["_appointment_id"] is not None))
+    services = {identity: [] for identity in appointment_ids}
+    if appointment_ids:
+        service_rows = (await db.execute(text("""
+            SELECT appointment_id,service_id,name_snapshot,duration_snapshot_min,
+                   price_snapshot_cents,price_mode_snapshot
+            FROM appointment_items
+            WHERE tenant_id=:tenant AND appointment_id=ANY(CAST(:ids AS uuid[]))
+            ORDER BY appointment_id,item_order
+        """), {"tenant": tenant_id, "ids": appointment_ids})).mappings().all()
+        for service in service_rows:
+            services[service["appointment_id"]].append({
+                "service_id": service["service_id"],
+                "name": service["name_snapshot"],
+                "duration_min": service["duration_snapshot_min"],
+                "price_cents": service["price_snapshot_cents"],
+                "price_mode_snapshot": service["price_mode_snapshot"],
+            })
+
+    items = []
+    for row in rows:
+        item = clean_row(row)
+        item["customer_display_name"] = display_customer({
+            "name": item["customer_name"], "phone": item.pop("_customer_phone"),
+        })["display_name"]
+        identity = item.pop("_appointment_id")
+        appointment = {
+            "id": identity,
+            "protocol": item.pop("_appointment_protocol"),
+            "start_at": item.pop("_appointment_start_at"),
+            "end_at": item.pop("_appointment_end_at"),
+            "timezone": period["timezone"],
+            "services": services.get(identity, []),
+        }
+        item["appointment"] = appointment if identity is not None else None
+        items.append(item)
+    return {"items": items, "total": summary["count"], "limit": limit, "offset": offset,
             "summary": summary, "period": period}
 
 

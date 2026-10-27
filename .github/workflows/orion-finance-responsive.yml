@@ -3,22 +3,74 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'app/management_models.py'
       - 'app/static/orion-suite.js'
       - 'app/static/orion-suite.css'
       - 'ui-tests/orion-finance-mobile.test.mjs'
       - 'tests/e2e/test_finance_responsive.py'
+      - 'tests/integration/test_finance_entry_context.py'
       - '.github/workflows/orion-finance-responsive.yml'
   push:
     branches: [main]
     paths:
+      - 'app/management_models.py'
       - 'app/static/orion-suite.js'
       - 'app/static/orion-suite.css'
       - 'ui-tests/orion-finance-mobile.test.mjs'
       - 'tests/e2e/test_finance_responsive.py'
+      - 'tests/integration/test_finance_entry_context.py'
       - '.github/workflows/orion-finance-responsive.yml'
 permissions:
   contents: read
 jobs:
+  context-postgres:
+    name: Contexto financeiro e isolamento por empresa
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: test-support-ci-token-of-64-characters-000000000000000000000000000
+      REQUIRE_POSTGRES_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar dependências fixadas
+        run: |
+          python -m pip install -c requirements.lock ".[test]"
+          python -m pip check
+      - name: Preparar papéis no banco descartável
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas \
+            -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only \
+            -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+          alembic upgrade head
+      - name: Validar histórico, snapshots, valores e isolamento
+        run: |
+          pytest -q -ra \
+            tests/integration/test_finance_entry_context.py \
+            tests/integration/test_management.py
   dom:
     name: Regressão financeira, fluxos, filtros e relatórios
     runs-on: ubuntu-24.04
