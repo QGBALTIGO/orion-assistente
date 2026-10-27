@@ -16,6 +16,7 @@ on:
       - app/static/orion-suite.css
       - tests/integration/test_customer_service_history.py
       - tests/integration/test_customer_identity.py
+      - tests/integration/test_customer_identity_repair.py
       - tests/integration/test_management.py
       - tests/integration/test_public_booking_birth_date.py
       - tests/integration/test_public_catalog.py
@@ -31,6 +32,7 @@ on:
       - ui-tests/customer-whatsapp-shortcut.test.mjs
       - ui-tests/orion-suite.test.mjs
       - scripts/prepare_vercel_orion.py
+      - scripts/repair_customer_identity_20261027.py
       - .github/workflows/customer-history-20261025.yml
   pull_request:
     paths:
@@ -47,6 +49,7 @@ on:
       - app/static/orion-suite.css
       - tests/integration/test_customer_service_history.py
       - tests/integration/test_customer_identity.py
+      - tests/integration/test_customer_identity_repair.py
       - tests/integration/test_management.py
       - tests/integration/test_public_booking_birth_date.py
       - tests/integration/test_public_catalog.py
@@ -62,6 +65,7 @@ on:
       - ui-tests/customer-whatsapp-shortcut.test.mjs
       - ui-tests/orion-suite.test.mjs
       - scripts/prepare_vercel_orion.py
+      - scripts/repair_customer_identity_20261027.py
       - .github/workflows/customer-history-20261025.yml
   workflow_dispatch:
 permissions:
@@ -120,6 +124,7 @@ jobs:
             tests/integration/test_customer_service_history.py \
             tests/integration/test_management.py \
             tests/integration/test_customer_identity.py \
+            tests/integration/test_customer_identity_repair.py \
             tests/integration/test_public_booking_birth_date.py \
             tests/integration/test_whatsapp_customer_names.py \
             tests/unit/test_management_unit.py \
