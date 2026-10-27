@@ -106,6 +106,9 @@ async def panel_actor(request: Request) -> dict:
     if not content:
         raise HTTPException(401, "Sessão expirada, entre novamente")
     data = json.loads(content)
+    # Display metadata is derived from the current database identity, never
+    # trusted from old Redis claims and never used as invitation authority.
+    data["email_verified"] = False
     if data.get("auth_provider") == "legacy_admin":
         from app.legacy_admin_identity import current_identity
         if data.get("role") != "admin" or not data.get("account_id"):
@@ -141,6 +144,7 @@ async def panel_actor(request: Request) -> dict:
         # Return only this account's display identity; never change the privilege role.
         data["name"] = row["name"]
         data["email"] = row["email"]
+        data["email_verified"] = row.get("verified_at") is not None
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         _same_origin(request)
         value = request.headers.get("x-orion-csrf", "")
@@ -214,7 +218,7 @@ async def me(data: dict = Depends(panel_actor)):
     return {"authenticated": True, "role": data["role"], "csrf": data["csrf"],
             "account":bool(data.get("account_id")),
             "name":data.get("name","Administrador"),
-            "email":data.get("email")}
+            "email":data.get("email"),"email_verified":data["email_verified"]}
 
 
 @router.post("/logout")

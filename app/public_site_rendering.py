@@ -8,7 +8,6 @@ import base64
 import hashlib
 import html
 import json
-import os
 import re
 from urllib.parse import urlsplit
 from app.site_address import address_display
@@ -94,11 +93,8 @@ def published_booking_labels(site, professional, items):
 def public_site_url(slug):
     # Never trust Host/X-Forwarded-Host for metadata or redirects. This is the
     # existing, configured shared deployment; custom-domain routing is future work.
-    origin = os.getenv('PANEL_PUBLIC_URL', 'https://orion-assistente-production.up.railway.app').strip().rstrip('/')
-    parsed = urlsplit(origin)
-    if (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password
-            or parsed.path or parsed.query or parsed.fragment):
-        raise ValueError('Invalid configured public site origin')
+    from app.public_origins import canonical_public_origin
+    origin = canonical_public_origin()
     if not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', slug):
         raise ValueError('Invalid canonical slug')
     return origin + '/s/' + slug

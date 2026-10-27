@@ -67,14 +67,12 @@ def require_public_origin(request):
     # This first-party POST requires an Origin even when no session is present.
     # Do not trust browser-supplied Forwarded/X-Forwarded-* headers here.
     origin = checked_origin(request.headers.get("origin", ""))
-    configured = os.getenv("PANEL_PUBLIC_URL", "").strip().rstrip("/")
-    if configured:
-        allowed = checked_origin(configured)
-        if allowed is None or allowed[0] != "https":
-            raise problem(503, "Solicitações temporariamente indisponíveis")
-    else:
-        allowed = checked_origin(str(request.base_url).rstrip("/"))
-    if origin is None or origin != allowed:
+    from app.public_origins import canonical_public_origin, legacy_public_origins
+    try:
+        allowed = {checked_origin(value) for value in (canonical_public_origin(), *legacy_public_origins())}
+    except ValueError:
+        raise problem(503, "Solicitações temporariamente indisponíveis") from None
+    if origin is None or origin not in allowed:
         raise problem(403, "Origem não autorizada")
     if request.headers.get("sec-fetch-site", "same-origin") not in {"same-origin", "none"}:
         raise problem(403, "Origem não autorizada")

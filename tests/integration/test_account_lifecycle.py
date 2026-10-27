@@ -1,9 +1,10 @@
-"""Real PostgreSQL account lifecycle with synthetic SMTP and Redis; no outbound mail."""
+"""Real PostgreSQL account lifecycle with encrypted queued mail; no outbound mail."""
 import secrets
 import pytest
 import httpx
+from cryptography.fernet import Fernet
 
-from app import account_auth,panel_auth,qr_api
+from app import account_auth,panel_auth,qr_api,email_transport
 from app.main import app
 
 
@@ -16,6 +17,13 @@ class RedisDouble:
         n=int(self.entries.get(k,"0"))+1;self.entries[k]=str(n);return n
     async def expire(self,k,s): return True
     async def aclose(self): pass
+    async def eval(self, script, count, *args):
+        keys, limits = args[:count], args[count:]
+        if any(int(self.entries.get(key, "0")) >= int(limits[2*i]) for i, key in enumerate(keys)):
+            return 0
+        for key in keys:
+            await self.incr(key)
+        return 1
     def pipeline(self):
         parent=self
         class Pipe:
@@ -33,9 +41,13 @@ async def test_registration_without_mail_login_and_recovery(monkeypatch):
     monkeypatch.setattr(account_auth,"_redis",lambda:cache)
     monkeypatch.setattr(account_auth,"_password_valid",lambda secret:secret=="legacy-proof")
     monkeypatch.setenv("PANEL_ADMIN_USERNAME","admin")
+    monkeypatch.setenv("SUPPORT_API_TOKEN","synthetic-account-lifecycle-support-token-over-thirty-two")
     monkeypatch.setenv("PANEL_ADMIN_PASSWORD_HASH","ci-only-synthetic")
     monkeypatch.setenv("PANEL_REGISTRATION_ENABLED","1")
     monkeypatch.setenv("PANEL_EMAIL_ENABLED","0")
+    monkeypatch.setenv("PANEL_EMAIL_LIVE_SEND","1")
+    monkeypatch.setenv("PANEL_EMAIL_TRANSPORT","resend_https")
+    monkeypatch.setenv("PANEL_EMAIL_FERNET_KEY",Fernet.generate_key().decode())
     monkeypatch.setenv("PANEL_TEST_MODE","0")
     monkeypatch.setenv("PANEL_SMTP_HOST","smtp.example.test")
     monkeypatch.setenv("PANEL_SMTP_USERNAME","synthetic-user")
@@ -46,8 +58,11 @@ async def test_registration_without_mail_login_and_recovery(monkeypatch):
     address="test-"+secrets.token_hex(10)+"@example.test"
     monkeypatch.setenv("PANEL_OWNER_EMAIL",address)
     mail=[]
-    monkeypatch.setattr(account_auth,"_send_email",
-        lambda recipient,purpose,code,url:mail.append((recipient,purpose,code,url)))
+    original_enqueue=account_auth.email_outbox.enqueue
+    async def captured_enqueue(db, **kwargs):
+        mail.append((kwargs["recipient"],kwargs["kind"],kwargs.get("code"),"https://test"))
+        return await original_enqueue(db, **kwargs)
+    monkeypatch.setattr(account_auth.email_outbox,"enqueue",captured_enqueue)
     bridge=[]
     async def fake_bridge(path,method="GET",payload=None,query=None):
         bridge.append(path)
@@ -139,6 +154,8 @@ async def test_resend_test_mode_only_restricts_delivery_not_signups(monkeypatch)
     monkeypatch.setattr(account_auth,"_redis",lambda:cache)
     monkeypatch.setenv("PANEL_EMAIL_TRANSPORT","resend_https")
     monkeypatch.setenv("PANEL_EMAIL_ENABLED","1")
+    monkeypatch.setenv("PANEL_EMAIL_LIVE_SEND","1")
+    monkeypatch.setenv("PANEL_EMAIL_FERNET_KEY",Fernet.generate_key().decode())
     monkeypatch.setenv("PANEL_TEST_MODE","1")
     monkeypatch.setenv("PANEL_TEST_EMAIL","owner-mailbox@example.test")
     monkeypatch.setenv("PANEL_REGISTRATION_ENABLED","1")
@@ -164,22 +181,32 @@ async def test_resend_test_mode_only_restricts_delivery_not_signups(monkeypatch)
             headers={"Origin":"https://test"})).status_code==403
 
 
-def test_resend_https_api_sends_without_smtp(monkeypatch):
+@pytest.mark.asyncio
+async def test_resend_https_api_sends_without_smtp(monkeypatch):
     monkeypatch.setenv("PANEL_EMAIL_TRANSPORT","resend_https")
     monkeypatch.setenv("PANEL_SMTP_FROM","Orion <onboarding@resend.dev>")
     monkeypatch.setenv("PANEL_SMTP_PASSWORD","ci-only-resend-secret")
     monkeypatch.setenv("PANEL_SMTP_PORT","465")
+    monkeypatch.setenv("PANEL_EMAIL_ENABLED","1")
+    monkeypatch.setenv("PANEL_EMAIL_LIVE_SEND","1")
+    monkeypatch.setenv("PANEL_EMAIL_FERNET_KEY",Fernet.generate_key().decode())
+    monkeypatch.setenv("PANEL_OTP_SECRET","synthetic-only-stable-otp-secret-thirty-two-characters")
+    monkeypatch.setenv("PANEL_TEST_MODE","0")
+    monkeypatch.setenv("PANEL_PUBLIC_URL","https://test")
     responses=[]
     class Response:
         status_code=200
         def json(self):return {"id":"synthetic-provider-uuid"}
-    def fake_post(url,headers,json,timeout):
-        responses.append((url,headers,json,timeout))
-        return Response()
-    monkeypatch.setattr(account_auth.httpx,"post",fake_post)
-    monkeypatch.setattr(account_auth.smtplib,"SMTP_SSL",
-        lambda *a,**kw: (_ for _ in ()).throw(AssertionError("No SMTP requests")))
-    account_auth._send_email("owner-mailbox@example.test","reset","123456","https://test")
+    class Client:
+        def __init__(self,timeout,**kwargs):self.timeout=timeout
+        async def __aenter__(self):return self
+        async def __aexit__(self,*args):pass
+        async def post(self,url,headers,json):
+            responses.append((url,headers,json,self.timeout))
+            return Response()
+    monkeypatch.setattr(email_transport.httpx,"AsyncClient",Client)
+    payload=email_transport.render_message("owner-mailbox@example.test","reset",code="123456")
+    await email_transport.send_message(payload,"synthetic-outbox-uuid")
     assert len(responses)==1
     url,headers,payload,timeout=responses[0]
     assert url=="https://api.resend.com/emails"

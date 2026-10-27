@@ -2,18 +2,12 @@
 
 Only app_support accesses these tables; public registration NEVER creates an admin.
 """
-import asyncio
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
-from urllib.parse import urlparse
 import hashlib
 import hmac
 import os
 import re
 import secrets
-import smtplib
-import ssl
-import httpx
 from uuid import UUID
 
 from argon2 import PasswordHasher, exceptions as argon2_errors
@@ -24,12 +18,11 @@ from sqlalchemy.exc import IntegrityError
 
 from app.panel_auth import _same_origin, _redis, _password_valid, panel_actor
 from app.account_business import reject_multiple_businesses
+from app import email_outbox, email_transport
 
 router = APIRouter(prefix="/auth", tags=["Contas Orion"])
 
 
-class EmailTransportError(Exception):
-    """Provider failure without any message body or credential in logs."""
 _hasher = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2, hash_len=32, salt_len=16)
 # A fake hash makes missing-account timing less distinguishable.
 _FAKE = _hasher.hash("not-a-real-orion-password-value")
@@ -81,11 +74,10 @@ def _storage():
 
 
 def _public_url():
-    value=os.getenv("PANEL_PUBLIC_URL","").strip().rstrip("/")
-    parsed=urlparse(value)
-    if parsed.scheme!="https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path:
-        raise HTTPException(503,"Endereço público para e-mails não configurado")
-    return value
+    try:
+        return email_transport.public_origin()
+    except ValueError:
+        raise HTTPException(503,"Endereço público para e-mails não configurado") from None
 
 
 def _test_mode():
@@ -97,23 +89,11 @@ def _test_email():
 
 
 def _allowed_recipient(email):
-    # Resend shared onboarding@resend.dev sender is restricted to the owner's email.
-    return not _test_mode() or (
-        bool(_test_email()) and hmac.compare_digest(email.strip().lower(),_test_email())
-    )
+    return email_transport.allowed_recipient(email)
 
 
 def mail_ready():
-    transport=os.getenv("PANEL_EMAIL_TRANSPORT","smtp")
-    provider_ready=(bool(os.getenv("PANEL_SMTP_PASSWORD")) and bool(os.getenv("PANEL_SMTP_FROM")))
-    if transport=="smtp":
-        provider_ready=provider_ready and bool(os.getenv("PANEL_SMTP_HOST")) and bool(os.getenv("PANEL_SMTP_USERNAME"))
-    elif transport!="resend_https":
-        provider_ready=False
-    return bool(os.getenv("PANEL_EMAIL_ENABLED")=="1" and provider_ready and
-                len(os.getenv("PANEL_OTP_SECRET",""))>=32 and
-                os.getenv("PANEL_PUBLIC_URL","").startswith("https://") and
-                (not _test_mode() or bool(_test_email())))
+    return email_transport.configured()
 
 
 def _require_mail():
@@ -121,65 +101,12 @@ def _require_mail():
     return _public_url()
 
 
-def _send_email(recipient, purpose, secret, public_url):
-    """SMTP TLS message; only the 6-digit code is revealed to the mailbox owner."""
-    host=os.getenv("PANEL_SMTP_HOST","")
-    port=int(os.getenv("PANEL_SMTP_PORT","465"))
-    if port not in (465,587):raise ValueError("SMTP port not allowed")
-    sender=os.environ["PANEL_SMTP_FROM"]
-    username=os.getenv("PANEL_SMTP_USERNAME","")
-    password=os.environ["PANEL_SMTP_PASSWORD"]
-    if purpose=="verify":
-        subject="Seu código de confirmação — Orion"
-        intro="Para confirmar seu e-mail no Orion, digite o código abaixo."
-        minutes=10
-    else:
-        subject="Seu código para redefinir a senha — Orion"
-        intro="Se você solicitou uma nova senha no Orion, digite este código."
-        minutes=10
-    msg=EmailMessage()
-    msg["From"]=sender;msg["To"]=recipient;msg["Subject"]=subject
-    msg.set_content(
-        intro+"\n\n"+secret+"\n\nO código expira em "+
-        str(minutes)+" minutos e só pode ser usado uma vez. "+
-        "Se não foi você, ignore este e-mail.\n\nEquipe Orion"
-    )
-    html=(
-        '<!doctype html><html lang="pt-BR"><body style="background:#0e172a;padding:32px;'
-        'font-family:Arial,sans-serif;color:#e8f6f3">'
-        '<main style="margin:auto;max-width:430px;background:#12253c;border:1px solid #315568;'
-        'border-radius:16px;padding:28px"><h1 style="color:#34d2b5">ORION</h1>'
-        '<p>'+intro+'</p><div style="background:#ecfff9;color:#095b4e;border-radius:12px;'
-        'text-align:center;font-size:34px;font-weight:bold;letter-spacing:9px;'
-        'padding:18px 6px">'+secret+'</div><p>Válido por 10 minutos · uso único.</p>'
-        '<p style="font-size:13px;color:#a9c9c2">Se não solicitou este código, ignore a mensagem.</p>'
-        '</main></body></html>'
-    )
-    msg.add_alternative(html,subtype="html")
-    if os.getenv("PANEL_EMAIL_TRANSPORT")=="resend_https":
-        # Railway Free/Trial/Hobby blocks outbound SMTP; use HTTPS (port 443).
-        # The existing PANEL_SMTP_PASSWORD holds the Resend sending API key.
-        response=httpx.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization":"Bearer "+password,"Content-Type":"application/json"},
-            json={"from":sender,"to":[recipient],"subject":subject,
-                  "text":msg.get_body(preferencelist=("plain",)).get_content(),
-                  "html":html},
-            timeout=12.0,
-        )
-        if response.status_code<200 or response.status_code>=300:
-            raise EmailTransportError("Resend rejeitou o envio (HTTP "+
-                                      str(response.status_code)+")")
-        if not response.json().get("id"):
-            raise EmailTransportError("Resend não confirmou o identificador do envio")
-        return
-    if port==465:
-        with smtplib.SMTP_SSL(host,port,timeout=12,context=ssl.create_default_context()) as smtp:
-            smtp.login(username,password);smtp.send_message(msg)
-    else:
-        with smtplib.SMTP(host,port,timeout=12) as smtp:
-            smtp.starttls(context=ssl.create_default_context())
-            smtp.login(username,password);smtp.send_message(msg)
+async def _mail_request_quota(email):
+    cache = _redis()
+    try:
+        return await email_outbox.request_quota(cache, email)
+    finally:
+        await cache.aclose()
 
 
 async def _throttle(request, category, subject, count=5, window=900):
@@ -201,30 +128,45 @@ def _digest_code(email, purpose, code):
 
 
 async def _issue_token(session, account_id, purpose, email):
-    code=f"{secrets.randbelow(1_000_000):06d}"
-    duration=timedelta(minutes=10)
+    # Same lock order for issue and consume: account, then token. Serialization
+    # prevents parallel issuance leaving multiple active codes behind.
+    await session.execute(text("SELECT id FROM panel_accounts WHERE id=:id FOR UPDATE"), {"id": account_id})
+    for _ in range(16):
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        digest = _digest_code(email, purpose, code)
+        used = (await session.execute(text("SELECT 1 FROM panel_email_tokens WHERE token_digest=:digest"),
+                                      {"digest": digest})).scalar_one_or_none()
+        if used is None:
+            break
+    else:
+        raise HTTPException(503, "Não foi possível gerar o código. Tente mais tarde")
+    expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
     await session.execute(text("""
         UPDATE panel_email_tokens SET used_at=now()
         WHERE account_id=:id AND purpose=:purpose AND used_at IS NULL
     """),{"id":account_id,"purpose":purpose})
-    await session.execute(text("""
+    token_id = (await session.execute(text("""
         INSERT INTO panel_email_tokens(account_id,token_digest,purpose,expires_at)
-        VALUES (:id,:digest,:purpose,:expiry)
-    """),{"id":account_id,"digest":_digest_code(email,purpose,code),
-          "purpose":purpose,"expiry":datetime.now(timezone.utc)+duration})
+        VALUES (:id,:digest,:purpose,:expiry) RETURNING id
+    """),{"id":account_id,"digest":digest,
+          "purpose":purpose,"expiry":expiry})).scalar_one()
+    await email_outbox.enqueue(session, kind=purpose, recipient=email,
+        dedupe_key="token:" + str(token_id), account_id=account_id,
+        token_id=token_id, expires_at=expiry, code=code)
     return code
 
 
 async def _consume_code(session,email,purpose,code):
+    await session.execute(text("SELECT id FROM panel_accounts WHERE email=:email FOR UPDATE"), {"email": email})
     row=(await session.execute(text("""
-        SELECT t.id,t.account_id,t.token_digest,t.attempts
+        SELECT t.id,t.account_id,t.token_digest,t.attempts,t.expires_at
         FROM panel_email_tokens t
         JOIN panel_accounts a ON a.id=t.account_id
         WHERE a.email=:email AND t.purpose=:purpose AND t.used_at IS NULL
-          AND t.expires_at>now()
+          AND t.expires_at>clock_timestamp()
         ORDER BY t.created_at DESC LIMIT 1 FOR UPDATE OF t
     """),{"email":email,"purpose":purpose})).mappings().first()
-    if not row:return None
+    if not row or row["expires_at"] <= datetime.now(timezone.utc):return None
     accepted=hmac.compare_digest(row["token_digest"],_digest_code(email,purpose,code))
     if not accepted:
         await session.execute(text("""
@@ -291,13 +233,12 @@ async def verify(payload:OneTimeCode,request:Request):
 @router.post("/verify/resend")
 async def resend_verify(payload:RecoveryStart,request:Request):
     _same_origin(request)
-    url=_require_mail()
+    _require_mail()
     if not _allowed_recipient(payload.email):
         raise HTTPException(403,"Reenvio disponível somente para o e-mail de teste")
-    if os.getenv("PANEL_REGISTRATION_ENABLED")!="1" and not _test_mode():
-        raise HTTPException(503,"Cadastros não habilitados")
     await _throttle(request,"resend",payload.email,count=3,window=3600)
-    token=None
+    if not await _mail_request_quota(payload.email):
+        return {"ok":True,"message":"Se a conta aguarda confirmação, um novo código será enviado."}
     async with _storage()() as session:
         async with session.begin():
             account=(await session.execute(text("""
@@ -305,34 +246,24 @@ async def resend_verify(payload:RecoveryStart,request:Request):
                 WHERE email=:email AND verified_at IS NULL FOR UPDATE
             """),{"email":payload.email})).mappings().first()
             if account:
-                token=await _issue_token(session,account["id"],"verify",payload.email)
-    if token:
-        try:await asyncio.to_thread(_send_email,payload.email,"verify",token,url)
-        except (OSError,smtplib.SMTPException,httpx.HTTPError,EmailTransportError,ValueError,TimeoutError):
-            raise HTTPException(503,"Não foi possível reenviar. Tente mais tarde") from None
+                await _issue_token(session,account["id"],"verify",payload.email)
     return {"ok":True,"message":"Se a conta aguarda confirmação, um novo código será enviado."}
 
 
 @router.post("/password/forgot")
 async def forgot(payload:RecoveryStart,request:Request):
     _same_origin(request)
-    url=_require_mail()
+    _require_mail()
     await _throttle(request,"forgot",payload.email,count=3,window=3600)
-    if not _allowed_recipient(payload.email):
+    if not await _mail_request_quota(payload.email) or not _allowed_recipient(payload.email):
         return {"ok":True,"message":"Se esse e-mail estiver cadastrado, enviaremos um código."}
-    token=None
     async with _storage()() as session:
         async with session.begin():
             account=(await session.execute(text("""
-                SELECT id FROM panel_accounts WHERE email=:email
+                SELECT id FROM panel_accounts WHERE email=:email FOR UPDATE
             """),{"email":payload.email})).mappings().first()
             if account:
-                token=await _issue_token(session,account["id"],"reset",payload.email)
-    if token:
-        try:await asyncio.to_thread(_send_email,payload.email,"reset",token,url)
-        except (OSError,smtplib.SMTPException,httpx.HTTPError,EmailTransportError,ValueError,TimeoutError):
-            # Always give the same response whether or not this e-mail exists.
-            pass
+                await _issue_token(session,account["id"],"reset",payload.email)
     return {"ok":True,"message":"Se esse e-mail estiver cadastrado, enviaremos um código."}
 
 
@@ -348,15 +279,17 @@ async def reset(payload:ResetPassword,request:Request):
         async with session.begin():
             account_id=await _consume_code(session,payload.email,"reset",payload.code)
             if account_id:
-                await session.execute(text("""
+                version = (await session.execute(text("""
                     UPDATE panel_accounts SET password_hash=:hashed,
                     verified_at=coalesce(verified_at,now()),
-                    auth_version=auth_version+1 WHERE id=:id
-                """),{"hashed":_hasher.hash(payload.password),"id":account_id})
+                    auth_version=auth_version+1 WHERE id=:id RETURNING auth_version
+                """),{"hashed":_hasher.hash(payload.password),"id":account_id})).scalar_one()
                 await session.execute(text("""
                     UPDATE panel_email_tokens SET used_at=now()
                     WHERE account_id=:id AND used_at IS NULL
                 """),{"id":account_id})
+                await email_outbox.enqueue(session, kind="password_changed", recipient=payload.email,
+                    dedupe_key="password-changed:" + str(account_id) + ":" + str(version), account_id=account_id)
     if not account_id:raise HTTPException(400,"Código inválido, expirado ou sem tentativas disponíveis")
     return {"ok":True,"message":"Senha atualizada. Entre novamente."}
 

@@ -7,6 +7,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
+from app.public_origins import canonical_public_origin
 
 router=APIRouter()
 # Fixed facade host for metadata only; no user-supplied arbitrary origin is accepted.
@@ -39,12 +40,18 @@ def sales_contact_link():
 @router.get("/",response_class=HTMLResponse,include_in_schema=False)
 async def landing(request: Request):
     content = (LANDING_DIR / "index.html").read_text(encoding="utf-8")
-    if request.headers.get("x-orion-facade") == "vercel-iota":
+    if os.getenv("PANEL_PUBLIC_URL", "").strip():
+        try:
+            origin = canonical_public_origin()
+        except ValueError:
+            raise HTTPException(503, "Página temporariamente indisponível") from None
+    else:
         # Vercel sets this fixed marker before proxying the homepage.
-        for part in ("/landing-assets/orion-social.png", "/"):
-            content = content.replace(f'content="{RAILWAY_ORIGIN}{part}"', f'content="{VERCEL_ORIGIN}{part}"')
-        content = content.replace(f'rel="canonical" href="{RAILWAY_ORIGIN}/"',
-                                  f'rel="canonical" href="{VERCEL_ORIGIN}/"')
+        origin = VERCEL_ORIGIN if request.headers.get("x-orion-facade") == "vercel-iota" else RAILWAY_ORIGIN
+    for part in ("/landing-assets/orion-social.png", "/"):
+        content = content.replace(f'content="{RAILWAY_ORIGIN}{part}"', f'content="{escape(origin, quote=True)}{part}"')
+    content = content.replace(f'rel="canonical" href="{RAILWAY_ORIGIN}/"',
+                              f'rel="canonical" href="{escape(origin, quote=True)}/"')
     return HTMLResponse(content.replace("__SALES_CONTACT_LINK__", sales_contact_link()),
         headers={"Cache-Control":"public, max-age=60","X-Content-Type-Options":"nosniff"})
 

@@ -29,6 +29,19 @@ def normalized(value):
     return "".join((value or "").split())
 
 
+RESTORED_CONSTRAINTS = {
+    'ck_goal_revision_metric': "CHECK (((metric)::text = ANY (ARRAY[('revenue_cents'::character varying)::text, ('appointments'::character varying)::text])))",
+    'ck_professional_goal_recurrence': "CHECK (((recurrence)::text = ANY (ARRAY[('none'::character varying)::text, ('monthly'::character varying)::text])))",
+}
+
+
+def constraint_definitions(name, definition):
+    values = {normalized(definition)}
+    if name in RESTORED_CONSTRAINTS:
+        values.add(normalized(RESTORED_CONSTRAINTS[name]))
+    return values
+
+
 @contextmanager
 def release_lock(raw):
     """Serialize this release across simultaneous predeploys without holding a transaction."""
@@ -144,7 +157,7 @@ def schema_contract_ready(raw):
                 'professional_goal_revisions_tenant_id_professional_id_fkey': "FOREIGN KEY (tenant_id, professional_id) REFERENCES professionals(tenant_id, id)",
             }
             if len(constraints) != len(expected_constraints) or any(
-                not valid or normalized(definition) != normalized(expected_constraints.get(name))
+                not valid or name not in expected_constraints or normalized(definition) not in constraint_definitions(name, expected_constraints[name])
                 for name, _kind, valid, definition in constraints
             ):
                 return False

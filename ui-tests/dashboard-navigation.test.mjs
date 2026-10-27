@@ -131,7 +131,7 @@ test('Dashboard viewer can navigate but cannot create or access the WhatsApp ope
   assert.equal(h.calls.some(call => call.method !== 'GET'), false);
 });
 
-test('Customers uses useful manual names before resolved metadata, with safe phone and emoji fallbacks', async t => {
+test('Customers keeps useful names, desktop phone fallback and safe mobile labels and emoji', async t => {
   const items = [
     { ...customer('Nome manual sintético', idFor(1)), display_name: 'Metadado diferente', whatsapp_name: 'Perfil diferente', phone },
     { ...customer('Cliente WhatsApp', idFor(2)), display_name: 'Aline Sintética', whatsapp_name: 'Nome antigo', phone },
@@ -143,16 +143,18 @@ test('Customers uses useful manual names before resolved metadata, with safe pho
     { ...customer('Cliente especial', idFor(8)), whatsapp_name: 'Outro nome', phone },
     { ...customer(null, idFor(9)), display_name: {}, whatsapp_name: [], phone },
   ];
-  const expected = ['Nome manual sintético', 'Aline Sintética', 'Beto Sintético', '👩🏽‍🔧', phone, 'Nome válido', '<img src=x onerror=alert(1)>', 'Cliente especial', phone];
+  const expectedDesktop = ['Nome manual sintético', 'Aline Sintética', 'Beto Sintético', '👩🏽‍🔧', phone, 'Nome válido', '<img src=x onerror=alert(1)>', 'Cliente especial', phone];
+  const expectedMobile = ['Nome manual sintético', 'Aline Sintética', 'Beto Sintético', '👩🏽‍🔧', 'Cliente sem nome', 'Nome válido', '<img src=x onerror=alert(1)>', 'Cliente especial', 'Cliente sem nome'];
   const h = await makeSuite({ respond: customerResponse(items) }); t.after(() => h.close()); await flush();
-  assert.deepEqual(mobileNames(h.document), expected);
-  assert.deepEqual(Array.from(h.document.querySelectorAll('.os-table .os-person strong'), element => element.textContent), expected);
+  assert.deepEqual(mobileNames(h.document), expectedMobile);
+  assert.deepEqual(Array.from(h.document.querySelectorAll('.os-table .os-person strong'), element => element.textContent), expectedDesktop);
   assert.equal(h.document.querySelector('#page-suite img[src=x]'), null);
   assert.doesNotMatch(h.document.getElementById('page-suite').textContent, /\[object Object\]|Cliente WhatsApp/);
   assert.equal(h.document.querySelector(`[data-os-customer="${idFor(2)}"]`).getAttribute('aria-label'), 'Editar Aline Sintética');
   assert.equal(h.document.querySelector(`[data-os-customer-delete="${idFor(3)}"]`).getAttribute('aria-label'), 'Excluir Beto Sintético');
   const phoneRow = h.document.querySelector(`.os-client-mobile-main[data-os-customer="${idFor(5)}"]`);
-  assert.equal(phoneRow.querySelector('small').textContent, 'Nome ainda não informado');
+  assert.doesNotMatch(phoneRow.textContent, /5511912345678|Nome ainda não informado/);
+  assert.equal(phoneRow.parentElement.querySelector('a.os-client-mobile-whatsapp').href, 'https://wa.me/5511912345678');
   assert.ok(phoneRow.querySelector('.os-avatar svg'), 'phone-only records use a neutral avatar');
   const emojiAvatar = h.document.querySelector(`.os-client-mobile-main[data-os-customer="${idFor(4)}"] .os-avatar`).textContent;
   assert.equal(Array.from(emojiAvatar)[0], '👩', 'avatar initials must not split an emoji into a lone surrogate');

@@ -1,4 +1,4 @@
-"""Owner-reviewed team invitations. Creating a link never sends an email."""
+"""Owner-reviewed team invitations, with optional transactional email delivery."""
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -7,7 +7,6 @@ import os
 import re
 import secrets
 from typing import Literal
-from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -18,6 +17,8 @@ from sqlalchemy.exc import IntegrityError
 from app.catalog_api import Actor, authenticate, support_session_factory
 from app.tenant_access import check_access
 from app.account_business import lock_account_business, ensure_membership_target, account_membership_role
+from app import email_outbox, email_transport
+from app.public_origins import canonical_public_origin
 
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}/management/team", tags=["Equipe"])
 invitation_router = APIRouter(prefix="/api/v1/team-invitations", tags=["Convites de equipe"])
@@ -34,10 +35,10 @@ class InvitationCreate(BaseModel):
     def email_address(cls, value):
         if not value:
             return None
-        value = value.lower()
-        if not re.fullmatch(r"[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+", value):
+        try:
+            return email_transport.normalize_recipient(value)
+        except ValueError:
             raise ValueError("Informe um e-mail válido")
-        return value
 
 
 class InvitationReview(BaseModel):
@@ -100,6 +101,9 @@ async def team_session(tenant_id, actor, *, manage=False):
 def clean_invitation(row):
     result = {key: row.get(key) for key in ("id", "email", "role", "status", "expires_at", "created_at", "version", "claimed_by_name")}
     result["expired"] = row["expires_at"] <= datetime.now(timezone.utc)
+    if "email_status" in row:
+        status = {"pending": "queued", "dead": "failed"}.get(row["email_status"], row["email_status"])
+        result["email_delivery"] = email_outbox.delivery_result(status or ("disabled" if row.get("email") else "manual"))
     return result
 
 
@@ -109,6 +113,24 @@ async def membership_event(db, tenant_id, account_id, actor, role, active):
         {"tenant": tenant_id, "account": account_id, "actor": actor.account_id, "role": role, "active": active})
 
 
+async def notify_access(db, tenant_id, account_id, *, active, dedupe_key, invitation_id=None, email=None):
+    if not email_transport.configured():
+        return
+    if account_id:
+        account = (await db.execute(text("SELECT email,verified_at FROM panel_accounts WHERE id=:id"),
+                                    {"id": account_id})).mappings().one_or_none()
+        if account is None or not account["email"] or account["verified_at"] is None:
+            return
+        email = account["email"]
+    if not email:
+        return
+    name = (await db.execute(text("SELECT name FROM tenants WHERE id=:id"), {"id": tenant_id})).scalar_one()
+    await email_outbox.enqueue(db,
+        kind="team_access_approved" if active else "team_access_revoked", recipient=email,
+        account_id=account_id, tenant_id=tenant_id, invitation_id=invitation_id,
+        dedupe_key=dedupe_key, business_name=name)
+
+
 @router.get("")
 async def team(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     async with team_session(tenant_id, actor) as (db, role):
@@ -116,8 +138,10 @@ async def team(tenant_id: UUID, actor: Actor = Depends(authenticate)):
         members = (await db.execute(text("""SELECT m.account_id,a.name,a.email,m.role,m.active,m.updated_at
             FROM tenant_memberships m JOIN panel_accounts a ON a.id=m.account_id
             WHERE m.tenant_id=:tenant ORDER BY m.active DESC,a.name LIMIT 500"""), {"tenant": tenant_id})).mappings().all()
-        invitations = (await db.execute(text("""SELECT i.*,a.name AS claimed_by_name FROM management_team_invitations i
-            LEFT JOIN panel_accounts a ON a.id=i.claimed_by WHERE i.tenant_id=:tenant
+        invitations = (await db.execute(text("""SELECT i.*,a.name AS claimed_by_name,o.status AS email_status FROM management_team_invitations i
+            LEFT JOIN panel_accounts a ON a.id=i.claimed_by
+            LEFT JOIN panel_email_outbox o ON o.invitation_id=i.id AND o.kind='team_invite'
+            WHERE i.tenant_id=:tenant
             ORDER BY i.created_at DESC LIMIT 100"""), {"tenant": tenant_id})).mappings().all() if manage else []
         return {"members": [dict(row) if manage or row["account_id"] == actor.account_id else {**dict(row), "email": None} for row in members],
                 "invitations": [clean_invitation(row) for row in invitations],
@@ -134,7 +158,8 @@ async def invite(tenant_id: UUID, payload: InvitationCreate, response: Response,
         if prior:
             if prior["fingerprint"] != fingerprint:
                 raise HTTPException(409, "Esta chave já foi utilizada com outro convite")
-            return {**clean_invitation(prior), "link": None, "replayed": True}
+            return {**clean_invitation(prior), "link": None, "replayed": True,
+                    "email_delivery": await email_outbox.invitation_delivery(db, prior)}
         count = (await db.execute(text("SELECT count(*) FROM management_team_invitations WHERE tenant_id=:tenant AND status IN ('pending','claimed') AND expires_at>now()"),
             {"tenant": tenant_id})).scalar_one()
         if count >= 50:
@@ -146,11 +171,19 @@ async def invite(tenant_id: UUID, payload: InvitationCreate, response: Response,
             {"tenant": tenant_id, "email": payload.email, "role": payload.role, "digest": hashlib.sha256(token.encode()).hexdigest(),
              "key": payload.idempotency_key, "fingerprint": fingerprint, "expires": datetime.now(timezone.utc) + timedelta(days=7),
              "actor": actor.account_id})).mappings().one()
-        origin = os.getenv("PANEL_PUBLIC_URL", "").rstrip("/")
-        parsed = urlparse(origin)
-        if origin and (parsed.scheme != "https" or not parsed.hostname or parsed.path or parsed.query or parsed.fragment or parsed.username or parsed.password):
-            raise HTTPException(503, "O endereço público de convites está inválido")
-        return {**clean_invitation(row), "link": origin + "/convite#token=" + token, "replayed": False}
+        try:
+            origin = canonical_public_origin()
+        except ValueError:
+            raise HTTPException(503, "O endereço público de convites está inválido") from None
+        delivery = email_outbox.delivery_result("manual")
+        if payload.email:
+            name = (await db.execute(text("SELECT name FROM tenants WHERE id=:id"), {"id": tenant_id})).scalar_one()
+            delivery = await email_outbox.enqueue(db, kind="team_invite", recipient=payload.email,
+                dedupe_key="team-invite:" + str(row["id"]), tenant_id=tenant_id,
+                invitation_id=row["id"], expires_at=row["expires_at"],
+                invitation_token=token, business_name=name)
+        return {**clean_invitation(row), "link": origin + "/convite#token=" + token,
+                "replayed": False, "email_delivery": delivery}
 
 
 @router.patch("/invitations/{invitation_id}")
@@ -192,6 +225,9 @@ async def review(tenant_id: UUID, invitation_id: UUID, payload: InvitationReview
             version=version+1,updated_at=now() WHERE tenant_id=:tenant AND id=:id RETURNING *"""),
             {"tenant": tenant_id, "id": invitation_id, "status": "approved" if payload.action == "approve" else "revoked",
              "actor": actor.account_id})).mappings().one()
+        await notify_access(db, tenant_id, row["claimed_by"], active=payload.action == "approve",
+            invitation_id=row["id"], email=row["email"],
+            dedupe_key="team-review:" + str(row["id"]) + ":" + str(updated["version"]))
         return clean_invitation(updated)
 
 
@@ -215,6 +251,9 @@ async def change_member(tenant_id: UUID, account_id: UUID, payload: MemberChange
             WHERE tenant_id=:tenant AND account_id=:account RETURNING account_id,role,active,updated_at"""),
             {"tenant": tenant_id, "account": account_id, "role": payload.role, "active": payload.active})).mappings().one()
         await membership_event(db, tenant_id, account_id, actor, payload.role, payload.active)
+        if row["active"] != payload.active:
+            await notify_access(db, tenant_id, account_id, active=payload.active,
+                dedupe_key="membership:" + str(tenant_id) + ":" + str(account_id) + ":" + updated["updated_at"].isoformat())
         return dict(updated)
 
 

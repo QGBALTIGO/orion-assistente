@@ -21,6 +21,7 @@ from app.google_oauth import (
     OAUTH_COOKIE, OAUTH_PATH, OAUTH_TTL, candidate_key, connection_fingerprint,
     digest, google_configured, configuration_checklist, make_authorization_url, oauth_config, oauth_redis,
     pending_candidate, request_initiator, validate_initiator, email_confirmation_required,
+    authorization_origin,
 )
 from app.tenant_access import resolve_tenant_access
 
@@ -166,6 +167,7 @@ async def google_status_data(tenant_id, actor, request):
         sync_status = "email_confirmation_required"
     return {
         "configured": configured, "connected": connected, "status": status,
+        "authorization_origin": authorization_origin() if configured else None,
         "sync_enabled": enabled, "sync_status": sync_status,
         "calendar_id": selected, "calendar_name": cached_name,
         "last_synced_at": stats["last_synced_at"], "pending": stats["pending"],

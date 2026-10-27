@@ -21,6 +21,7 @@ from app.auto_completion import scan_due_appointments,process_due_appointment
 from app.billing_worker import reconcile_asaas_job,scan_pending_billing
 from app.automation_runtime import interaction,process_automation_job,reconcile_automation_job,scan_automations
 from app.inbox_runtime import process_inbox_message,scan_inbox
+from app.email_outbox import process_email_outbox,scan_email_outbox
 
 
 async def infrastructure_ping(ctx: dict) -> str:
@@ -111,13 +112,14 @@ async def recover_events(ctx: dict):
 
 
 class WorkerSettings:
-    functions = [infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,process_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message]
+    functions = [infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,process_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message,process_email_outbox]
     cron_jobs = [cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
                  cron(scan_calendar_outbox, minute=set(range(60)), second=10),
                  cron(scan_due_appointments, minute=set(range(60)), second={0,10,20,30,40,50}),
                  cron(scan_pending_billing, minute={3,13,23,33,43,53}, second=0),
                  cron(scan_automations, minute=set(range(60)), second=20),
-                 cron(scan_inbox,minute=set(range(60)),second={5,35})]
+                 cron(scan_inbox,minute=set(range(60)),second={5,35}),
+                 cron(scan_email_outbox,minute=set(range(60)),second={0,15,30,45})]
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
 
 

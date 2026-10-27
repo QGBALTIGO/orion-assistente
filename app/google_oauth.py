@@ -15,6 +15,7 @@ from app.calendar_provider import GOOGLE_SCOPES
 from app.catalog_api import Actor
 from app.panel_auth import COOKIE as SESSION_COOKIE, _hash_cookie
 from app.tenant_access import resolve_tenant_access
+from app.public_origins import checked_public_origin, legacy_public_origins
 
 OAUTH_TTL = 600
 OAUTH_COOKIE = "__Secure-orion_google_oauth"
@@ -34,13 +35,40 @@ def _valid_callback(redirect, public_value):
         return False
 
 
+def _configured_callback_valid(redirect):
+    """Keep an explicitly trusted legacy callback during a public-domain move."""
+    try:
+        explicit = os.getenv("GOOGLE_OAUTH_PUBLIC_ORIGIN", "").strip()
+        public = os.getenv("PANEL_PUBLIC_URL", "").strip()
+        if explicit:
+            origin = checked_public_origin(explicit)
+        elif public:
+            origin = checked_public_origin(public)
+            parsed = urlsplit(redirect)
+            callback_origin = checked_public_origin(parsed.scheme + "://" + parsed.netloc)
+            if callback_origin in legacy_public_origins():
+                origin = callback_origin
+        else:
+            origin = ""  # Preserve the existing optional public-origin contract.
+        return _valid_callback(redirect, origin)
+    except ValueError:
+        return False
+
+
+def authorization_origin():
+    redirect = os.getenv("GOOGLE_REDIRECT_URI", "")
+    if not _configured_callback_valid(redirect):
+        return None
+    parsed = urlsplit(redirect)
+    return checked_public_origin(parsed.scheme + "://" + parsed.netloc)
+
+
 def oauth_config():
     cid = os.getenv("GOOGLE_CLIENT_ID", "")
     secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
     redirect = os.getenv("GOOGLE_REDIRECT_URI", "")
     key = os.getenv("INTEGRATION_FERNET_KEY", "")
-    public_value = os.getenv("PANEL_PUBLIC_URL", "")
-    if not all((cid, secret, redirect, key)) or not _valid_callback(redirect, public_value):
+    if not all((cid, secret, redirect, key)) or not _configured_callback_valid(redirect):
         raise HTTPException(503, "A conexão com o Google ainda precisa ser configurada pela equipe Orion")
     try:
         Fernet(key.encode())
@@ -71,7 +99,7 @@ def configuration_checklist(*, worker=False):
                 ready = False
         checks.append({"id": name, "label": label, "ready": ready})
     if not worker:
-        valid_redirect = _valid_callback(os.getenv("GOOGLE_REDIRECT_URI", ""), os.getenv("PANEL_PUBLIC_URL", ""))
+        valid_redirect = _configured_callback_valid(os.getenv("GOOGLE_REDIRECT_URI", ""))
         checks.append({"id": "GOOGLE_REDIRECT_URI", "label": "Endereço seguro de retorno ao Orion", "ready": valid_redirect})
     configured = all(item["ready"] for item in checks)
     return {"checks": checks, "configured": configured,

@@ -1,208 +1,170 @@
-## Cadastro imediato sem confirmação de e-mail (revisão)
+# Contas, convites e e-mail transacional do Orion
 
-O cadastro cria uma conta `member` imediatamente no PostgreSQL com
-nome, e-mail e hash Argon2id da senha, retornando ao formulário Entrar.
-Não envia código nem requer SMTP; a recuperação de senha é o único
-fluxo novo que envia código de 6 dígitos. Configuração do cadastro:
-`PANEL_REGISTRATION_ENABLED=1`, **somente depois** das migrations.
+Referência do candidato de 27/10/2026. Este documento descreve o código e os
+testes desta tarefa; não confirma publicação nem entrega de e-mail em produção.
+O estado operacional e os critérios de liberação estão em
+[Domínio e e-mail — operação](operations/dominio-email-20261027.md).
 
-Como o endereço não foi comprovado no cadastro, uma conta criada
-com endereço de outra pessoa não representa comprovação de posse do
-e-mail. Ela não recebe papel `admin` e não acessa WhatsApp/recursos
-privilegiados. A prova por e-mail ocorre apenas se o usuário solicitar
-recuperação e efetivamente inserir o código recebido; essa operação
-também invalida sessões antigas.
+## Cadastro e entrada
 
-Em modo de teste do Resend (`PANEL_TEST_MODE=1`), qualquer pessoa
-pode criar uma conta comum se o cadastro estiver habilitado, mas
-recuperação de senha só envia código a `PANEL_TEST_EMAIL`.
-**Não prometer recuperação aos demais usuários antes de verificar
-o domínio remetente.** A interface informa a restrição do piloto.
+Com `PANEL_REGISTRATION_ENABLED=1`, `POST /auth/register` cria imediatamente
+uma conta `member` com nome, e-mail e senha de **8 a 128 caracteres**, armazenada
+como hash Argon2id. O cadastro não envia e-mail, não gera código e não exige
+transporte de e-mail configurado. A pessoa pode entrar com e-mail e senha; a
+conta nasce com `verified_at=NULL`.
 
-# Autenticação Orion 2.0 — cadastro, e-mail, senha e permissões
+Criar uma conta não comprova a posse do endereço e não concede papel
+administrativo, propriedade de empresa ou acesso aos dados de outra empresa.
+A flag de cadastro é independente das flags de envio. `/auth/features` informa
+se cadastro e recuperação estão disponíveis; recuperação depende da
+configuração completa do transporte.
 
-## Experiência visual
+A sessão é opaca e armazenada no Redis. O cookie `__Host-orion_session` usa
+`Secure`, `HttpOnly`, `SameSite=Strict` e `Path=/`, sem atributo `Domain`.
+A duração é de 12 horas ou 30 dias com “Lembrar de mim”. Permissões e versão
+da conta são conferidas no servidor; alterações de senha ou versão não são
+substituídas por informações antigas do navegador.
 
-A rota pública `/panel` mantém a autenticação por sessão HTTP segura.
-No desktop, mostra duas colunas (gradiente turquesa e formulário azul-marinho).
-No tablet/celular, a coluna visual torna-se um cabeçalho compacto.
-O CSS responde a `prefers-color-scheme: light/dark` e escolhe a versão
-de logo apropriada via `picture`. O ZIP oficial do Orion é a referência
-de formas e paleta; os vetores publicados em `app/static/orion-*.svg` incluem
-o símbolo da marca e wordmark vetorizado com legenda tipográfica.
-A mudança Entrar/Criar conta/Esqueci senha usa animação leve; usuários com
-`prefers-reduced-motion` recebem transições desativadas.
+## Confirmação explícita do e-mail
 
-## Regras de contas
+`POST /auth/verify/resend` solicita um código para uma conta existente ainda
+não verificada. Não cria conta e funciona mesmo quando o cadastro público
+está fechado. Abrir um convite ou cadastrar-se não dispara esse pedido.
 
-- **Cadastro comum**: nome, e-mail, senha de 12 a 128 caracteres; grava
-  no PostgreSQL, papel inicial `member`, e envia confirmação SMTP.
-  Não concede acesso ao WhatsApp, cadastros de clientes ou ferramentas internas.
-- **Confirmação de e-mail**: código randômico criptograficamente forte;
-  grava apenas HMAC-SHA256 no PostgreSQL; expira em 10 minutos e pode ser usado uma vez.
-  A conta pode logar imediatamente, sem essa confirmação.
-- **Senha**: hash Argon2id; redefinição com código expirando em 10 min e
-  uso único. Um reset invalida todas as sessões da conta pela versão no banco.
-- **Lembrar de mim**: 30 dias quando marcado; 12h caso contrário.
-  Cookies `__Host-`, `Secure`, `HttpOnly` e `SameSite=Strict`.
-- **Administrador proprietário**: o e-mail reservado é configurado apenas na
-  variável `PANEL_OWNER_EMAIL`. O cadastro inicial **nunca** promove ninguém
-  automaticamente. Após provar posse do e-mail com o código de recuperação,
-  a pessoa deve entrar e comprovar também a senha administrativa legada
-  na tela de vinculação de permissões. A sessão anterior é invalidada após
-  a promoção; é necessário login novamente.
-- **Papéis separados**: \`member\` para contas comuns, \`admin\` para a conta proprietária verificada, \`support\` para o login legado de manutenção. Administradores e suporte mantêm as rotas operacionais atuais; futuras funções exclusivas podem exigir explicitamente \`admin\`.\n- **Admin legado**: login atual permanece funcional. Desativá-lo só depois
-  de uma migração e recuperação proprietária validadas.
+O código tem **6 dígitos**, expira em **10 minutos** e é de uso único. O banco
+de tokens guarda HMAC-SHA256 com `PANEL_OTP_SECRET`, e não o código legível.
+Cinco erros consomem o token; um novo pedido invalida os tokens anteriores da
+mesma finalidade. Há limites adicionais por IP, destinatário e solicitação.
 
-## Configuração necessária para cadastro/recuperação
+`POST /auth/verify` valida o código e preenche `verified_at`. Essa confirmação
+preserva senha e sessão, não aceita convites e não concede vínculo com empresa.
+`GET /auth/me` informa `email_verified` a partir do banco atual.
 
-Por segurança, cadastro público permanece desabilitado se não houver e-mail
-operacional configurado. Adicionar em Railway no serviço da API:
+O conteúdo necessário ao envio, inclusive o código, permanece temporariamente
+criptografado na outbox. Assim, a proteção HMAC da tabela de tokens não deve
+ser confundida com ausência de conteúdo sensível em toda a infraestrutura.
 
-```text
-PANEL_PUBLIC_URL=https://<dominio-oficial-do-orion>
-PANEL_OWNER_EMAIL=<email-do-proprietario-confirmado>
-PANEL_EMAIL_ENABLED=1
-PANEL_REGISTRATION_ENABLED=1
-PANEL_SMTP_HOST=<servidor-smtp-transacional>
-PANEL_SMTP_PORT=465
-PANEL_SMTP_USERNAME=<usuario-smtp>
-PANEL_SMTP_PASSWORD=<senha-smtp>
-PANEL_SMTP_FROM=Orion <no-reply@dominio-verificado>
-```
+## Recuperação de senha
 
-O provedor deve autorizar envio pelo domínio escolhido (SPF/DKIM/DMARC).
-Não é recomendável usar a senha comum de uma caixa pessoal como SMTP.
-Os segredos acima **nunca** entram no repositório. O envio usa SMTP com
-verificação TLS obrigatória (porta 465) ou STARTTLS (587).
-`/auth/features` indica quais fluxos podem ser usados; o formulário não
-simula envios quando o servidor não está configurado.
+“Esqueci minha senha” chama `POST /auth/password/forgot`. A resposta não revela
+se a conta existe. Quando elegível, um código de 6 dígitos é enfileirado para o
+endereço cadastrado, inclusive se a conta ainda não tiver confirmado o e-mail.
+Aplicam-se a validade de 10 minutos, o limite de cinco erros e os limites de
+solicitação; a resposta HTTP não comprova entrega na caixa de entrada.
 
-## Persistência e migração
+`POST /auth/password/reset` exige o código e uma senha de 8 a 128 caracteres.
+O sucesso confirma a posse do e-mail, altera o hash, consome os tokens pendentes
+e incrementa `auth_version`, invalidando as sessões anteriores dessa conta.
+Também registra um aviso transacional de senha alterada. O usuário entra de
+novo; trocar apenas o domínio do painel não executa esse fluxo.
 
-A migration `0008_panel_accounts` adiciona `panel_accounts` e
-`panel_email_tokens`, com RLS FORCE e acesso concedido apenas ao
-papel `app_support`. Conta comum não pode acessar os endpoints
-administrativos. **Esta migração precisa ser aplicada em produção por um
-operador com credencial de migração antes de habilitar o cadastro.**
-O serviço API Railway atual usa um pre-deploy de conectividade com o bridge;
-ele não aplica migrations automaticamente. Evite habilitar SMTP/cadastro
-sem confirmar `alembic upgrade head` aplicado ao banco de produção.
+## Convite para a equipe
 
-## Testes e rollout
+1. O proprietário autorizado cria um convite para sua empresa. Com e-mail e
+   transporte habilitado, o envio entra na fila; sem e-mail, permanece o link
+   manual. A API informa `email_delivery`, sem afirmar entrega.
+2. O destinatário abre `/convite#token=...` e cria uma conta ou entra. O acesso
+   inicial e a prévia não enviam mensagem nem aceitam o convite.
+3. Se necessário, a própria página permite solicitar e informar o código de
+   confirmação. Após verificar, ela consulta `/auth/me` novamente.
+4. A pessoa clica explicitamente para solicitar o acesso. Uma conta não
+   verificada permanece bloqueada. Quando o convite tem e-mail, ele deve
+   corresponder ao da conta verificada.
+5. O proprietário revisa a solicitação e aprova ou rejeita. Só a aprovação
+   válida cria ou ativa o vínculo e as permissões da equipe.
 
-`tests/integration/test_account_lifecycle.py` cobre registro, bloqueio
-antes da verificação, e-mail sintético, token de uso único, login como membro
-sem acesso ao QR, promoção com duas provas, expiração da sessão, reset e
-invalidação de credenciais anteriores. O sistema legado continua coberto
-pelos testes existentes.
+O convite expira em sete dias. O token vai no fragmento do link; não deve
+aparecer em logs, relatórios ou mensagens de erro. Repetir a criação com a
+mesma chave de idempotência não gera outro token nem outro envio; o replay
+retorna `link=null`. Confirmação de e-mail, aceite e aprovação são três ações
+distintas. Essa revisão de equipe não cria uma fila de aprovação global para
+o proprietário publicar o site da própria empresa.
 
-Não executar envios reais ou distribuir links de redefinição em canais
-de teste. Revisar rate limit e monitoração de entregabilidade SMTP antes
-de ativar inscrições públicas. Ativação de cadastro e recuperação deve
-ocorrer somente após teste completo de um endereço controlado e auditoria.
+## Administrador legado e permissões
 
+O login administrativo legado continua usando sua credencial e seu mecanismo
+de sessão existentes. A identidade `auth_provider=legacy_admin` mantém
+**`email=NULL`**; não se inventa um endereço nem se converte essa identidade
+em conta pessoal para permitir envios.
 
-## Resend — códigos numéricos (nova implementação)
+Contas comuns, suporte global e vínculo de proprietário são autorizações
+distintas. Um papel global não equivale a propriedade arbitrária de empresa.
+O fluxo separado de reivindicação de administrador, quando configurado, exige
+e-mail reservado verificado e prova da senha administrativa legada; o cadastro
+comum nunca faz essa promoção. As autorizações de publicação e de equipe
+continuam sendo verificadas pelo backend.
 
-Serviço sugerido: **Resend Free**, com 3.000 envios por mês e limite
-de 100 e-mails por dia (consultar plano atualizado em
-https://resend.com/pricing). Para enviar a qualquer pessoa, primeiro
-**verifique um domínio que você administra** no painel Resend, com seus
-registros DNS/SPF/DKIM. O domínio público da Railway
-`*.up.railway.app` não é um domínio de envio sob seu controle.
+## Fila persistente de e-mail
 
-O Orion aceita o SMTP do Resend sem SDK:
+A API grava o evento e a outbox na mesma transação PostgreSQL. O worker ARQ
+existente processa os envios com Redis para limites atômicos. Não há varredura
+histórica que envie mensagens a todas as contas ou a convites antigos.
 
-```text
-PANEL_SMTP_HOST=smtp.resend.com
-PANEL_SMTP_PORT=465
-PANEL_SMTP_USERNAME=resend
-PANEL_SMTP_PASSWORD=<sua-chave-API-Resend, armazenada somente na Railway>
-PANEL_SMTP_FROM=Orion <acesso@seudominio-verificado.com.br>
-PANEL_OTP_SECRET=<segredo aleatório estável com pelo menos 32 caracteres>
-PANEL_PUBLIC_URL=https://orion-assistente-production.up.railway.app
-PANEL_EMAIL_ENABLED=1
-PANEL_REGISTRATION_ENABLED=1
-```
+| Tipo | Evento |
+| --- | --- |
+| `verify` | Pedido explícito de confirmação de e-mail |
+| `reset` | Pedido explícito de recuperação de senha |
+| `password_changed` | Redefinição de senha concluída |
+| `team_invite` | Novo convite de equipe com e-mail |
+| `team_access_approved` | Aprovação de acesso de equipe |
+| `team_access_revoked` | Revogação de acesso ou convite elegível |
 
-**Não publique o segredo OTP ou a chave Resend no GitHub.** O primeiro
-deve permanecer estável entre reinícios; sua rotação invalida códigos
-pendentes. Configure os dois pelo gerenciador de variáveis da Railway.
+`payload_enc` usa uma chave Fernet dedicada e estável; o destinatário de
+controle usa HMAC. Uma chave única de evento impede duplicação na outbox.
+As tentativas do mesmo item reutilizam o mesmo conteúdo e a mesma chave no
+provedor. O worker confere se o token, convite ou vínculo ainda é atual antes
+de enviar e remove o conteúdo criptografado nos estados terminais.
 
-### Jornada
+Os estados persistidos são `pending`, `accepted`, `dead`, `uncertain`,
+`suppressed` e `expired`. A interface traduz esses estados para fila, aceite,
+falha ou impedimento. **`accepted` significa aceito pelo provedor, não entregue
+ou lido.** Não há comprovação de entrega por webhook nesta implementação.
 
-1. A pessoa preenche nome, e-mail e senha. A conta nasce sem permissão
-   administrativa, com `verified_at=NULL`.
-2. O SMTP entrega um e-mail Orion contendo **um código de 6 dígitos**.
-   A tela passa para “Confirme seu e-mail”, com entrada compatível com
-   autopreenchimento no iPhone/Android.
-3. O código expira após **10 minutos**, é armazenado no banco somente
-   como HMAC-SHA256 (com segredo servidor) e só pode ser aceito uma vez.
-   Cinco tentativas inválidas consomem o código. Há limites adicionais
-   de requisições por IP/e-mail no Redis. O botão “Reenviar código”
-   emite outro e invalida o anterior, com limite horário.
-4. Em “Esqueci minha senha”, a resposta não revela se a conta existe.
-   Se existir e estiver verificada, um segundo código de 6 dígitos
-   permite definir senha nova. O reset aumenta `auth_version`
-   e encerra todas as sessões antigas dessa conta.
+Erros transitórios podem repetir a mesma solicitação com recuo e até oito
+tentativas, respeitando a expiração do evento e uma janela máxima de 23 horas.
+O Resend retém chaves de idempotência por 24 horas. Um item terminal
+`uncertain` não é reenviado automaticamente; exige conferência do recibo antes
+de qualquer decisão manual. [Idempotência no Resend](https://resend.com/docs/dashboard/emails/idempotency-keys).
 
-A migração `0009_email_otp` adiciona o contador transacional de
-tentativas aos tokens; **aplique 0008 e 0009 em produção antes de
-habilitar cadastro e recuperação**.
+## Configuração e limites
 
-### Etapas de ativação real
+O transporte é `resend_https`, pela API HTTPS. Por compatibilidade, a chave
+de envio continua em `PANEL_SMTP_PASSWORD`; isso não significa que o worker
+use SMTP. `PANEL_SMTP_FROM` precisa usar remetente autorizado no provedor.
 
-- Criar a conta gratuita Resend e verificar o domínio remetente.
-- Criar chave de API restrita ao envio de e-mails.
-- Aplicar migrações de banco por processo autorizado.
-- Inserir as variáveis acima no serviço API Railway, sem alterar
-  o bridge WhatsApp.
-- Primeiro testar cadastro e recuperação com um e-mail controlado.
-  Em seguida confirmar SPF/DKIM, caixa de entrada, spam, validade,
-  reenvio, tentativas erradas e bloqueio de acesso sem verificação.
-- Só então ativar inscrição de usuários reais.
+API e worker devem compartilhar `PANEL_PUBLIC_URL`, transporte, remetente,
+credencial, `PANEL_OTP_SECRET` e `PANEL_EMAIL_FERNET_KEY`. O segredo OTP deve
+ter pelo menos 32 caracteres e a chave Fernet deve ser válida. Mantenha ambos
+estáveis entre reinícios e serviços; não gere outra chave a cada deploy.
 
-Enquanto as variáveis não estiverem configuradas, os endpoints
-`/auth/features` reportam `registration=false` e
-`passwordRecovery=false`; nada é enviado e o acesso de suporte
-existente é preservado.
+O envio normal exige simultaneamente `PANEL_EMAIL_ENABLED=1` e
+`PANEL_EMAIL_LIVE_SEND=1`, além da configuração válida. O exemplo versionado
+mantém ambas em `0` e os segredos vazios. `PANEL_TEST_MODE=1` restringe os
+envios a `PANEL_TEST_EMAIL`, sem impedir o cadastro comum independente.
 
+O padrão do Orion é de 2 tentativas de envio por segundo, 100 por dia e 20
+por destinatário por janela diária; pedidos possuem limites separados.
+O plano Free do Resend informa limite de 100 e-mails por dia. São limites
+operacionais, não qualificação para 10 mil usuários simultâneos ou campanhas.
+[Limites do Resend](https://resend.com/pricing).
 
-## Railway Free/Hobby: envio somente por HTTPS
+## Migração, preservação e evidências
 
-Conforme a documentação oficial da Railway, SMTP de saída nas portas
-25/465/587 não está disponível nos planos Free, Trial e Hobby. Portanto,
-a implementação mais recente suporta Resend diretamente pela API HTTPS
-(porta 443), que não depende de upgrade da Railway.
+A migração aditiva `0038_email_outbox`, sobre `0037_recurring_goals`, cria a
+outbox com RLS e FORCE RLS, proprietário `app_migrator` e políticas restritas.
+`app_support` tem apenas SELECT/INSERT/UPDATE; `app_runtime` e PUBLIC não
+recebem acesso. Não há preenchimento retroativo nem envio provocado pela
+migração. Contas, histórico, sessões, QR e IA existentes são preservados.
 
-```text
-PANEL_EMAIL_TRANSPORT=resend_https
-PANEL_SMTP_PASSWORD=<chave Resend já armazenada na Railway>
-PANEL_SMTP_FROM=Orion <onboarding@resend.dev>
-PANEL_EMAIL_ENABLED=1
-PANEL_TEST_MODE=1
-PANEL_TEST_EMAIL=<o endereço do proprietário da conta Resend>
-PANEL_REGISTRATION_ENABLED=0
-PANEL_OTP_SECRET=<segredo criptográfico estável>
-```
+O runner `scripts/backup_and_migrate_email_outbox.py` exige revisão de origem,
+papel restrito, trava, backup privado com proprietário e ACL preservados,
+checksum e leitura de volta do objeto antes do upgrade. Depois valida revisão
+e contratos antigos e novos. Se já estiver em 0038, apenas verifica o contrato.
+A restauração deve ser ensaiada em banco isolado; nunca sobrepor o banco ativo
+para testar. A migração é somente para frente.
 
-A variável antiga `PANEL_SMTP_PASSWORD` contém a chave da API Resend e
-é reaproveitada para a chamada HTTPS. Não é necessário criar, duplicar
-ou divulgar essa chave. O modo de testes restringe cadastro, reenvio e
-recuperação ao destinatário autorizado, **mesmo se** uma flag de cadastro
-público for habilitada acidentalmente. Usuários comuns continuam bloqueados
-até haver domínio verificado.
-
-O script `python -m scripts.preflight_account_email` confere a
-presença das tabelas e do contador de tentativas sem expor conteúdo,
-dados de usuário ou senhas. `ORION_EMAIL_DELIVERY_PROBE=1` autoriza,
-somente na implantação que a flag estiver ativa, uma mensagem de
-diagnóstico sem código para `PANEL_TEST_EMAIL`, via HTTPS. Resposta
-HTTP 200 confirma que o Resend aceitou a mensagem, não que o Gmail a
-entregou. Desabilite a flag depois de um único teste e confirme caixa
-de entrada ou eventos do Resend.
-
-A migração de banco ainda deve ser realizada por credenciais de
-`app_migrator` e verificada antes da ativação da interface. Nenhum
-teste de SMTP é equivalente a uma migração de esquema.
+Nesta tarefa foram executados testes unitários, PostgreSQL isolado, HTTP com
+worker real e provedor falso, restauração de dumps sintéticos e a jornada de
+convite no Chromium e WebKit. Eles demonstram o percurso e a preservação em
+ambiente isolado, sem e-mail real. Os recibos, limites dessa prova e etapas
+pendentes estão no documento operacional.
