@@ -58,19 +58,68 @@ def test_performance_history_goals(browser_name, width, height, theme):
             page.locator(".os-professional-results").scroll_into_view_if_needed()
             assert page.locator("[data-os-performance-history]").count() == 3
             button = page.locator("[data-os-performance-history]").first
+            button.scroll_into_view_if_needed()
             box = button.bounding_box()
-            assert box["width"] >= 40 and box["height"] >= 40
+            typography = button.evaluate("""el=>{
+              const name=el.parentElement.querySelector('strong'),style=getComputedStyle(name);
+              return {font:parseFloat(style.fontSize),line:parseFloat(style.lineHeight)};
+            }""")
+            eye = button.locator("svg").bounding_box()
+            # The affordance should read as a small action beside the name,
+            # while its touch target extends beyond its compact visual box.
+            assert 0 < eye["width"] <= typography["font"] * 1.25
+            assert 0 < eye["height"] <= typography["line"]
+            assert box["width"] <= typography["line"] * 1.6
+            assert box["height"] <= typography["line"] * 1.6
             assert box["x"] >= 0 and box["x"] + box["width"] <= width
-            button.click()
+            hit = {"x": box["x"] + box["width"] / 2, "y": box["y"] - 3}
+            assert button.evaluate("(el,p)=>el.contains(document.elementFromPoint(p.x,p.y))", hit)
+            if width < 768:
+                page.touchscreen.tap(hit["x"], hit["y"])
+            else:
+                page.mouse.click(hit["x"], hit["y"])
             page.wait_for_selector(".os-history-item")
             assert "Histórico · Peixoto" in page.locator("#osDialogTitle").inner_text()
+            page.wait_for_function("document.activeElement===document.getElementById('osDialogTitle')")
             assert "Kayky Sousa" in page.locator(".os-history-item").first.inner_text()
             assert "09:00 – 10:00" in page.locator(".os-history-item").first.inner_text()
             no_horizontal_cut("#osDialog,.os-history-item,.os-history-item-heading,.os-history-amount")
-            page.locator(".os-history-details summary").first.click()
+
+            details = page.locator(".os-history-details").first
+            summary = details.locator("summary")
+            assert summary.inner_text().strip() == "Detalhes"
+            assert not details.evaluate("el=>el.open")
+            markers = summary.evaluate("""el=>({
+              list:getComputedStyle(el).listStyleType,
+              marker:getComputedStyle(el,'::marker').content,
+              after:getComputedStyle(el,'::after').content
+            })""")
+            assert markers["list"] == "none", markers
+            assert markers["marker"] in ('""', "''", "none"), markers
+            assert markers["after"] in ('""', "''", "none", "normal"), markers
+
+            def visible_symbols():
+                return summary.locator("svg").evaluate_all("""nodes=>nodes
+                  .filter(el=>el.getBoundingClientRect().width>0&&getComputedStyle(el).visibility!=='hidden')
+                  .map(el=>[...el.querySelectorAll('path')].map(path=>path.getAttribute('d')).join(' '))""")
+
+            collapsed_symbols = visible_symbols()
+            assert len(collapsed_symbols) == 1, collapsed_symbols
+            summary.focus()
+            page.keyboard.press("Enter")
+            page.wait_for_function("document.querySelector('.os-history-details').open")
             assert page.locator(".os-history-details[open]").count() == 1
             assert "AG-EXEMPLO1" in page.locator(".os-history-details[open]").inner_text()
+            expanded_symbols = visible_symbols()
+            assert len(expanded_symbols) == 1 and expanded_symbols != collapsed_symbols
             no_horizontal_cut(".os-history-details[open],.os-history-details[open] dl,.os-history-details[open] li")
+            page.keyboard.press("Space")
+            page.wait_for_function("!document.querySelector('.os-history-details').open")
+            assert summary.evaluate("el=>document.activeElement===el")
+            assert visible_symbols() == collapsed_symbols
+            page.keyboard.press("Enter")
+            page.wait_for_function("document.querySelector('.os-history-details').open")
+            assert page.locator(".os-history-details[open]").count() == 1
             page.select_option("#osProfessionalHistoryStatus", "cancelled")
             page.wait_for_function("document.querySelectorAll('.os-history-item').length===5")
             assert all("Cancelado pelo cliente" in text for text in page.locator(".os-history-item").all_inner_texts())
@@ -84,6 +133,13 @@ def test_performance_history_goals(browser_name, width, height, theme):
             no_horizontal_cut(".os-history-pagination")
             page.locator("#osDialog [data-os-action=close-dialog]").click()
             assert page.locator("#osDialog").is_visible() is False
+            assert button.evaluate("el=>document.activeElement===el")
+            button.press("Enter")
+            page.wait_for_selector(".os-history-item")
+            page.wait_for_function("document.activeElement===document.getElementById('osDialogTitle')")
+            page.keyboard.press("Escape")
+            page.wait_for_function("!document.querySelector('#osDialog').open")
+            assert button.evaluate("el=>document.activeElement===el")
 
             page.locator("[data-os-action=new-goal]").click()
             page.select_option("#osField-scope", "company")
