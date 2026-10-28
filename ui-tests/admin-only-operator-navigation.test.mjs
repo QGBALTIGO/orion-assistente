@@ -26,8 +26,13 @@ for(const role of ['member','support','editor','viewer']){
     assert.ok(nav.querySelector('[data-os-route=agenda]'));
     assert.ok(nav.querySelector('[data-os-route=configuracoes]'));
     assert.ok(nav.querySelector('[data-os-route=site]'));
-    assert.equal(nav.querySelector('[data-os-action=managed-whatsapp]')===null,false,
-      'normal WhatsApp settings remain available for tenants');
+    if(role==='support'){
+      assert.ok(nav.querySelector('[data-os-route=dispositivo]'),
+        'support still retains its independent connection shortcut');
+    }else{
+      assert.ok(nav.querySelector('[data-os-action=managed-whatsapp]'),
+        'business accounts retain their own WhatsApp settings');
+    }
     for(const route of operatorActions)assert.equal(nav.querySelector('[data-os-route='+route+']'),null);
     for(const route of operatorRoutes){
       await h.window.OrionSuite.open(route);await flush();
