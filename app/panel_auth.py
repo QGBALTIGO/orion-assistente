@@ -97,13 +97,15 @@ async def panel_actor(request: Request) -> dict:
         raise HTTPException(401, "Faça login no painel")
     redis, owned = _request_redis(request)
     maintenance_raw = None
+    maintenance_guard = None
     try:
         content = await redis.get(_hash_cookie(token))
         if content:
             # The temporary maintenance record is bound to this exact admin
             # cookie. It never replaces or exports the original admin claims.
-            maintenance_key = "orion:maintenance:" + hashlib.sha256(token.encode()).hexdigest()
-            maintenance_raw = await redis.get(maintenance_key)
+            digest = hashlib.sha256(token.encode()).hexdigest()
+            maintenance_raw = await redis.get("orion:maintenance:" + digest)
+            maintenance_guard = await redis.get("orion:maintenance-guard:" + digest)
     except (RedisError, OSError):
         raise HTTPException(503, "Sessões indisponíveis") from None
     finally:
@@ -166,8 +168,26 @@ async def panel_actor(request: Request) -> dict:
                 if error.status_code != 401:
                     raise
                 await revoke_invalid_maintenance(request, data, maintenance_raw)
-                # Return the revalidated original admin claims with no target
-                # authority. /auth/me then naturally opens the admin account.
+                if request.url.path != "/auth/me":
+                    raise HTTPException(401, "A manutenção terminou. Volte à administração do Orion.")
+                # Only /auth/me may return the original platform owner after
+                # client revocation. No business mutation can inherit admin.
+                maintenance_raw = None
+    if maintenance_guard and not maintenance_raw:
+        if request.url.path == "/auth/me":
+            redis, owned = _request_redis(request)
+            try:
+                await redis.delete("orion:maintenance-guard:" +
+                                   hashlib.sha256(token.encode()).hexdigest())
+            except (RedisError, OSError):
+                raise HTTPException(503, "Não foi possível concluir a manutenção") from None
+            finally:
+                if owned:
+                    await redis.aclose()
+        elif request.url.path != "/auth/logout":
+            # A tab with a client's cached navigation must not suddenly
+            # issue operations with the original admin account on expiry.
+            raise HTTPException(401, "A manutenção expirou. Atualize o Orion para continuar.")
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         _same_origin(request)
         value = request.headers.get("x-orion-csrf", "")
@@ -253,8 +273,10 @@ async def logout(request: Request, response: Response, _: dict = Depends(panel_a
     redis, owned = _request_redis(request)
     try:
         token = request.cookies[COOKIE]
+        digest = hashlib.sha256(token.encode()).hexdigest()
         await redis.delete(_hash_cookie(token),
-                           "orion:maintenance:" + hashlib.sha256(token.encode()).hexdigest())
+                           "orion:maintenance:" + digest,
+                           "orion:maintenance-guard:" + digest)
     except (RedisError, OSError):
         raise HTTPException(503, "Não foi possível encerrar a sessão") from None
     finally:
