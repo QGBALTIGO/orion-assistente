@@ -81,7 +81,7 @@ jobs:
           python -m pip install -r tests/e2e/requirements.txt pytest
           python -m playwright install --with-deps ${{ matrix.engine }}
       - name: UI real com respostas sinteticas e saidas externas bloqueadas
-        run: python -m pytest -q -ra tests/e2e/browser_whatsapp_connect.py -k '${{ matrix.engine }}'
+        run: python -m pytest -q -ra --maxfail=1 tests/e2e/browser_whatsapp_connect.py -k '${{ matrix.engine }}'
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -240,7 +240,7 @@ def compare_actual_core_components(page, host, panel_factory):
     expect(host.locator('[data-qc-form="pair"]')).to_have_class(re.compile(r'\bos-form\b'))
     assert phone.evaluate("input=>!!input.closest('.os-field')")
     connector = {'button': native_style(submit), 'field': native_style(phone),
-                 'card': native_style(phone.locator('xpath=ancestor::*[contains(concat(" ",normalize-space(@class)," ")," os-card ")][1]'))}
+                 'card': native_style(phone.locator('xpath=ancestor::*[contains(concat(" ",normalize-space(@class)," ")," wizard-card ")][1]'))}
 
     reference = panel_factory('owner', connector=False)
     expect(reference.locator('#page-suite .os-card:visible').first).to_be_visible()
@@ -263,8 +263,6 @@ def compare_actual_core_components(page, host, panel_factory):
     for key in ('fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'color', 'backgroundColor', 'borderRadius', 'borderColor', 'boxShadow'):
         assert connector['field'][key] == core['field'][key], (key, connector, core)
     assert abs(connector['field']['height'] - core['field']['height']) <= 1, (connector, core)
-    for key in ('backgroundColor', 'borderColor', 'borderRadius', 'boxShadow'):
-        assert connector['card'][key] == core['card'][key], (key, connector, core)
     # The actual business-preferences field uses the same os-field/os-form core.
     # The client popup intentionally has pill actions and an icon field wrapper;
     # those context variants are recorded instead of imposed on the connector.
@@ -274,7 +272,8 @@ def compare_actual_core_components(page, host, panel_factory):
     viewport = page.viewport_size
     stem = f'core-components-{engine}-{theme}-{viewport["width"]}x{viewport["height"]}'
     (ARTIFACTS / f'{stem}.json').write_text(json.dumps({'connector': connector, 'actual_core': core,
-        'context_variants': ['Customer popup has pill actions, icon field wrapper and a taller button when its label wraps'],
+        'context_variants': ['Customer popup has pill actions, icon field wrapper and a taller button when its label wraps',
+            'The original connection wizard-card has its own radius and padding; it is compared to the admin wizard-card, not the generic os-card'],
         'reference_form_submitted': False}, ensure_ascii=False, indent=2), encoding='utf-8')
     reference.screenshot(path=str(ARTIFACTS / f'{stem}.png'), full_page=True)
     reference.locator('#osDialog .os-form-actions [data-os-action="close-dialog"]').click()
@@ -288,6 +287,7 @@ def compare_shared_tutorial_components(page, host, panel_factory):
     admin.mouse.move(0, 0)
     page.mouse.move(0, 0)
     report = {}
+    expected_icon_size = 26 if page.viewport_size['width'] <= 640 else 30
     for method in ('qr', 'code'):
         company_method = host.locator(f'[data-qc-method="{method}"]')
         admin_method = admin.locator(f'[data-method="{method}"]')
@@ -299,13 +299,18 @@ def compare_shared_tutorial_components(page, host, panel_factory):
         assert company_method.locator('span').last.inner_text() == admin_method.locator('span').last.inner_text()
         for item in (company_method, admin_method):
             icon = item.locator('.wizard-method-icon svg').bounding_box()
-            assert icon and abs(icon['width'] - 30) <= 1 and abs(icon['height'] - 30) <= 1, icon
+            assert icon and abs(icon['width'] - expected_icon_size) <= 1 and abs(icon['height'] - expected_icon_size) <= 1, icon
         report[method] = {'company': left, 'admin': right}
     expect(host.locator('[data-qc-method]').first).to_have_attribute('data-qc-method', 'qr')
     expect(admin.locator('[data-method]').first).to_have_attribute('data-method', 'qr')
     inspect_tutorial(host.locator('[data-qc-tutorial]'), 'code')
     inspect_tutorial(admin.locator('#guideSteps'), 'code')
     assert host.locator('.wizard-timeline').inner_text() == admin.locator('#guideSteps .wizard-timeline').inner_text()
+    company_card = native_style(host.locator('[data-qc-tutorial]').locator('xpath=ancestor::*[contains(concat(" ",normalize-space(@class)," ")," wizard-card ")][1]'))
+    admin_card = native_style(admin.locator('#wizardCard'))
+    for key in ('fontFamily', 'backgroundColor', 'borderColor', 'borderRadius', 'boxShadow', 'padding'):
+        assert company_card[key] == admin_card[key], (key, company_card, admin_card)
+    report['wizard_cards'] = {'company': company_card, 'admin': admin_card}
     engine = page.context.browser.browser_type.name
     theme = page.locator('html').get_attribute('data-theme')
     viewport = page.viewport_size
