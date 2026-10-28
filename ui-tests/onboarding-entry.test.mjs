@@ -11,6 +11,8 @@ test('disabled rollout and legacy dashboard leave the existing panel intact',asy
 test('new member sees required WhatsApp without a timezone picker or footer and no write on load',async t=>{
   const h=await makeOnboarding({decision:entry({tenant_id:null,businesses:[]})});t.after(()=>h.close());assert.equal(h.element('[name=name]').value,'');assert.equal(h.element('[name=niche]').value,'');assert.equal(h.document.querySelector('[name=timezone]'),null);
   assert.equal(h.element('[name=contact_phone]').required,true);
+  assert.doesNotMatch(h.element('[data-ob-form=create]').textContent,/A conexão do WhatsApp será feita depois/);
+  assert.equal(h.element('[data-ob-form=create]').querySelectorAll('.ob-business-fields > .ob-field').length,5);
   assert.match(h.element('[name=contact_phone]').getAttribute('placeholder'),/\(00\)/);
   assert.doesNotMatch(h.element('#setup').textContent,/Os dados confirmados ficam salvos neste negócio/);assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);assert.equal(h.document.activeElement,h.element('[data-ob-title]'));
 });
