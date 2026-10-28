@@ -18,6 +18,16 @@ test('PUB-01: returning through services preserves the eligible chosen professio
   assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
 });
 
+test('PUB-06: review carries authoritative duration and expected finish',async t=>{
+  const h=await makePublic();t.after(()=>h.close());await flush();
+  h.click('#hero-book');h.click('#booking-service-list button');h.click('#booking-next');await flush();
+  h.click('#time-slots .slot');h.click('#booking-next');
+  const review=h.document.querySelector('.review-card').textContent;
+  assert.match(review,/Duração50 min/);
+  assert.match(review,/Término previsto09:50/);
+  assert.equal(h.document.querySelectorAll('.review-row.total').length,1);
+});
+
 test('PUB-05: explicit day navigation respects bounds and labels months',async t=>{
   const h=await makePublic();t.after(()=>h.close());await flush();
   h.click('#hero-book');h.click('#booking-service-list button');h.click('#booking-next');await flush();

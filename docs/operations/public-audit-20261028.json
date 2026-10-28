@@ -105,10 +105,13 @@
       "id": "PUB-06",
       "title": "A revisão final omite a duração total",
       "severity": "Média",
-      "state": "pendente",
-      "evidence": [],
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-06.json"
+      ],
       "publication": "não publicada",
-      "note": ""
+      "note": "Revisão e comprovante usam duração da disponibilidade/registro, com horário final e preço inicial preservado.",
+      "tests": "21 testes DOM incluindo confirmação sintética; seis tamanhos x dois temas; duração 70 min, término 12:10, campos e ações alcançáveis"
     },
     {
       "id": "PUB-07",

@@ -801,6 +801,14 @@
       [...selectedServices().map(s => s.name), ...selectedAddons().map(a => a.name)];
     const start = result?.start_at || booking.start;
     const lines = [['Serviços', services.filter(Boolean).join(' + ')], ['Profissional', person], ['Data', new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeZone: data.timezone }).format(new Date(start))], ['Horário', slotTime(start)]];
+    const minutes = result?.end_at ?
+      Math.round((new Date(result.end_at) - new Date(start)) / 60000) :
+      (booking.availability?.duration_min ?? selectionTotal().minutes);
+    if (Number.isFinite(minutes) && minutes > 0) {
+      lines.push(['Duração', duration(minutes)]);
+      lines.push([result ? 'Término' : 'Término previsto',
+        slotTime(result?.end_at || new Date(new Date(start).getTime() + minutes * 60000))]);
+    }
     if (result?.protocol) lines.push(['Protocolo', result.protocol]);
     for (const [key, value] of lines) { const row = el('div', 'review-row'); row.append(el('span', '', key), el('strong', '', value)); box.append(row); }
     const estimate = booking.availability || selectionTotal();
