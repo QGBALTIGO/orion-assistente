@@ -1,0 +1,222 @@
+{
+  "base": "cd09ee8a3be19a1e98a75a9977c3b2e9571237d5",
+  "branch": "codex/public-audit-20261028",
+  "order": [
+    "PUB-01",
+    "PUB-02",
+    "PUB-03",
+    "PUB-05",
+    "PUB-06",
+    "PUB-07",
+    "PUB-08",
+    "PUB-09",
+    "PUB-12",
+    "PUB-13",
+    "PUB-14",
+    "PUB-04",
+    "PUB-10",
+    "PUB-11"
+  ],
+  "viewports": [
+    [
+      1440,
+      900
+    ],
+    [
+      1366,
+      768
+    ],
+    [
+      768,
+      1024
+    ],
+    [
+      1024,
+      768
+    ],
+    [
+      390,
+      844
+    ],
+    [
+      360,
+      800
+    ]
+  ],
+  "items": [
+    {
+      "id": "PUB-01",
+      "title": "O profissional escolhido muda ao voltar aos serviços",
+      "severity": "Alta",
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-01.json"
+      ],
+      "publication": "não publicada",
+      "note": "Preserva profissional elegível ao navegar e ao alterar seleção compatível; disponibilidade continua revalidada.",
+      "tests": "11 testes DOM; reprodução original falhava antes e passou depois; Chromium nos seis viewports"
+    },
+    {
+      "id": "PUB-02",
+      "title": "O conflito entre combo e serviço fica invisível e usa a explicação errada",
+      "severity": "Média",
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-02.json"
+      ],
+      "publication": "não publicada",
+      "note": "Aviso central antes do conteúdo, sticky durante a rolagem; mensagens distinguem combo e serviço avulso.",
+      "tests": "15 testes DOM; 12 verificações Chromium: seis viewports, claro/escuro; aviso visível sem sobrepor rodapé"
+    },
+    {
+      "id": "PUB-03",
+      "title": "Amarelo sobre creme perde contraste no tema claro",
+      "severity": "Média",
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-03.json"
+      ],
+      "publication": "não publicada",
+      "note": "Textos sobre fundos suaves usam a cor semântica de texto do tema, mantendo a cor da empresa no destaque e nas bordas.",
+      "tests": "11 testes DOM; seis tamanhos x dois temas; contraste mínimo medido 10,84:1 em selos/etapas/períodos"
+    },
+    {
+      "id": "PUB-04",
+      "title": "A cidade apresentada e o fuso do calendário não são coerentes à primeira vista",
+      "severity": "Verificar primeiro",
+      "state": "pendente",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/production-before.json"
+      ],
+      "publication": "não publicada",
+      "note": "Confirmado por leitura: Montes Claros/MG e America/Campo_Grande ainda publicados. Usuário está tratando o fuso por CEP em outra frente; implementação concorrente preservada.",
+      "tests": "Catálogo público e origem do timezone no backend inspecionados; correção externa ainda não publicada/verificada"
+    },
+    {
+      "id": "PUB-05",
+      "title": "A data escolhida pode ficar cortada na faixa de dias",
+      "severity": "Média",
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-05.json"
+      ],
+      "publication": "não publicada",
+      "note": "Faixa revela seleção sem rolar o diálogo, identifica o mês de cada dia e oferece anterior/próximo com limites.",
+      "tests": "13 testes DOM; seis tamanhos x dois temas; seleção visível, setas funcionais e transição jan/fev"
+    },
+    {
+      "id": "PUB-06",
+      "title": "A revisão final omite a duração total",
+      "severity": "Média",
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-06.json"
+      ],
+      "publication": "não publicada",
+      "note": "Revisão e comprovante usam duração da disponibilidade/registro, com horário final e preço inicial preservado.",
+      "tests": "21 testes DOM incluindo confirmação sintética; seis tamanhos x dois temas; duração 70 min, término 12:10, campos e ações alcançáveis"
+    },
+    {
+      "id": "PUB-07",
+      "title": "A rota ganha destaque principal no fim da página, enquanto agendar desaparece",
+      "severity": "Média",
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-07.json"
+      ],
+      "publication": "não publicada",
+      "note": "Nova ação inferior reutiliza o botão e o mesmo assistente; rota passa ao estilo secundário sem mudar destino.",
+      "tests": "27 testes DOM; seis tamanhos x dois temas; abertura pelo rodapé, Escape e foco de retorno verificados"
+    },
+    {
+      "id": "PUB-08",
+      "title": "Outra data é menor que os campos e ações equivalentes",
+      "severity": "Baixa",
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-08.json"
+      ],
+      "publication": "não publicada",
+      "note": "Ajuste nas regras centrais do site público, sem alterar CSS dos campos do painel.",
+      "tests": "15 testes DOM; seis tamanhos x dois temas; data e períodos mediram 44 px, sem corte interno ou transbordamento"
+    },
+    {
+      "id": "PUB-09",
+      "title": "Nascimento é obrigatório, mas a necessidade e a obrigatoriedade não são explicadas",
+      "severity": "Média",
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-09.json"
+      ],
+      "publication": "não publicada",
+      "note": "Orientação curta explica obrigatoriedade e uso no cadastro de aniversários; regra e dados existentes preservados.",
+      "tests": "10 testes DOM; seis tamanhos x dois temas; três erros em formulário vazio, máscara e preservação ao voltar/avançar"
+    },
+    {
+      "id": "PUB-10",
+      "title": "O endereço textual não informa rua e número",
+      "severity": "Média",
+      "state": "pendente",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/production-before.json"
+      ],
+      "publication": "não publicada",
+      "note": "Componente já compõe endereço completo e preserva legado; publicação real contém apenas São Judas II, sem número. Depende de cadastro factual; não inferir rua pelo CEP.",
+      "tests": "12 testes de endereço/slug aprovados; leitura do catálogo e endereço da página confirmou dado incompleto"
+    },
+    {
+      "id": "PUB-11",
+      "title": "WhatsApp e ligação usam contatos de DDDs diferentes",
+      "severity": "Verificar",
+      "state": "pendente",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/production-before.json"
+      ],
+      "publication": "não publicada",
+      "note": "Links reproduzem os contatos publicados: WhatsApp DDD 38 e ligação DDD 67. Origem é configuração distinta; não há evidência de qual número substituir. Nenhum link de contato foi acionado.",
+      "tests": "16 testes DOM de contatos, tema, localização e horários aprovados; destinos inspecionados sem envio"
+    },
+    {
+      "id": "PUB-12",
+      "title": "O recorte das fotos da equipe corta o topo da cabeça",
+      "severity": "Baixa",
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-12.json"
+      ],
+      "publication": "não publicada",
+      "note": "Recorte superior no card da equipe preserva as cabeças sem trocar imagens, alterar dimensões ou usar regra específica da unidade.",
+      "tests": "11 testes DOM; seis tamanhos x dois temas com cópias locais das fotos públicas reais; seletor de profissionais preservado"
+    },
+    {
+      "id": "PUB-13",
+      "title": "O painel de revisão deixa espaço vazio excessivo em telas altas",
+      "severity": "Baixa",
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-13.json"
+      ],
+      "publication": "não publicada",
+      "note": "Painel usa altura do conteúdo em telas maiores; espaço antes das ações caiu de 211 px para cerca de 12 px, preservando o limite de altura e a rolagem.",
+      "tests": "15 testes DOM; três etapas nos seis tamanhos x dois temas; ações dentro da tela e formulário alcançável"
+    },
+    {
+      "id": "PUB-14",
+      "title": "A escrita da duração muda entre cards e totais",
+      "severity": "Baixa",
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-14.json"
+      ],
+      "publication": "não publicada",
+      "note": "Cards usam o mesmo formatador de duração dos totais e da revisão, sem remover espaços entre valores e unidades.",
+      "tests": "20 testes DOM; seis tamanhos x dois temas; durações curta e longa coerentes e sem cortes nos cards"
+    }
+  ],
+  "integrated_validation": {
+    "dom": "735 testes aprovados após incorporar origin/main 3eceb68",
+    "browser": "12 cenários integrados aprovados: seis tamanhos x claro/escuro no Chromium IAB; navegação, conflito, datas, totais, dados e retorno de foco; nenhum POST real",
+    "production": "publicação ainda não executada",
+    "backend": "50 testes unitários aprovados: catálogo, renderização, expediente, domínio e endereço"
+  }
+}

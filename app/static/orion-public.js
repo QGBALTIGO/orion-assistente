@@ -217,7 +217,7 @@
       separator.setAttribute('aria-hidden', 'true');
       meta.append(separator);
     }
-    meta.append(el('span', 'service-duration', duration(service.duration_min).replace(/(\d)\s+(h|min)\b/g, '$1$2')));
+    meta.append(el('span', 'service-duration', duration(service.duration_min)));
     detail.append(meta); card.append(thumb, detail, el('span', 'service-arrow', isSelected ? '✓' : '›'));
     return card;
   }
@@ -328,7 +328,13 @@
       const candidate = data.services.find(s => s.id === id);
       const used = new Set(selectedServices().flatMap(componentIds));
       if (candidate && componentIds(candidate).some(source => used.has(source))) {
-        showError('Este serviço já está incluído em um dos combos selecionados.');
+        const conflict = selectedServices().find(service =>
+          componentIds(service).some(source => componentIds(candidate).includes(source)));
+        showError(candidate.catalog_kind === 'combo' ?
+          (conflict.catalog_kind === 'combo' ?
+            'Estes combos incluem serviços em comum. Remova o combo anterior para trocar.' :
+            `Este combo já inclui ${conflict.name}. Remova o serviço avulso para selecionar o combo.`) :
+          `${candidate.name} já está incluído no combo ${conflict.name}.`);
         return;
       }
     }
@@ -338,7 +344,8 @@
     booking.services = keep;
     booking.service = keep[0] || null;
     if (removedExtras) booking.addons = [];
-    booking.professional = null;
+    if (!eligibleProfessionals().some(person => person.id === booking.professional))
+      booking.professional = null;
     retainedTimeView = null;
     booking.notice = removedExtras ? 'Adicionais anteriores foram removidos ao combinar serviços completos.' : '';
     showError();
@@ -471,7 +478,8 @@
       const node = button('', 'day-button', () => selectDay(day));
       node.dataset.day = day;
       node.append(el('span', '', dateLabel(day, { weekday: 'short' }).replace('.', '')),
-        el('strong', '', dateLabel(day, { day: '2-digit' })));
+        el('strong', '', dateLabel(day, { day: '2-digit' })),
+        el('span', 'day-month', dateLabel(day, { month: 'short' }).replace('.', '')));
       node.setAttribute('aria-label', dateLabel(day, { dateStyle: 'full' }));
       node.setAttribute('aria-pressed', String(day === booking.day));
       nodes.push(node);
@@ -496,6 +504,16 @@
       if (node.getAttribute('aria-pressed') !== String(active))
         node.setAttribute('aria-pressed', String(active));
     });
+    $('booking-day-prev').disabled = booking.day <= input.min;
+    $('booking-day-next').disabled = booking.day >= input.max;
+    // Reveal only inside the horizontal strip, without moving the dialog or
+    // recreating its photos/slots. This also covers native date input changes.
+    const active = strip.querySelector('[aria-pressed=true]');
+    if (active) {
+      const item = active.getBoundingClientRect(), frame = strip.getBoundingClientRect();
+      if (item.left < frame.left || item.right > frame.right)
+        strip.scrollLeft += item.left - frame.left - (strip.clientWidth - item.width) / 2;
+    }
   }
 
   function renderTime(body) {
@@ -542,7 +560,13 @@
     });
     label.append(input); heading.append(title, label); body.append(heading);
     const strip = el('div', 'date-strip'); strip.id = 'booking-day-strip';
-    body.append(strip, el('p', 'timezone-note',
+    const navigation = el('div', 'date-navigation');
+    const previous = button('‹', 'outline date-nav-button', () => selectDay(addDays(booking.day, -1)));
+    previous.id = 'booking-day-prev'; previous.setAttribute('aria-label', 'Dia anterior');
+    const nextDay = button('›', 'outline date-nav-button', () => selectDay(addDays(booking.day, 1)));
+    nextDay.id = 'booking-day-next'; nextDay.setAttribute('aria-label', 'Próximo dia');
+    navigation.append(previous, strip, nextDay);
+    body.append(navigation, el('p', 'timezone-note',
       'Horários locais · ' + data.timezone.replaceAll('_', ' ')));
     body.append(el('h3', 'booking-slots-heading', 'Horários disponíveis'));
     const slots = el('div'); slots.id = 'time-slots';
@@ -777,6 +801,14 @@
       [...selectedServices().map(s => s.name), ...selectedAddons().map(a => a.name)];
     const start = result?.start_at || booking.start;
     const lines = [['Serviços', services.filter(Boolean).join(' + ')], ['Profissional', person], ['Data', new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeZone: data.timezone }).format(new Date(start))], ['Horário', slotTime(start)]];
+    const minutes = result?.end_at ?
+      Math.round((new Date(result.end_at) - new Date(start)) / 60000) :
+      (booking.availability?.duration_min ?? selectionTotal().minutes);
+    if (Number.isFinite(minutes) && minutes > 0) {
+      lines.push(['Duração', duration(minutes)]);
+      lines.push([result ? 'Término' : 'Término previsto',
+        slotTime(result?.end_at || new Date(new Date(start).getTime() + minutes * 60000))]);
+    }
     if (result?.protocol) lines.push(['Protocolo', result.protocol]);
     for (const [key, value] of lines) { const row = el('div', 'review-row'); row.append(el('span', '', key), el('strong', '', value)); box.append(row); }
     const estimate = booking.availability || selectionTotal();
@@ -792,8 +824,13 @@
     // No duplicate consent checkbox, price or long explanatory paragraph.
     body.append(reviewCard());
     body.append(el('h3', 'booking-contact-heading', 'Seus dados'));
+    const instructions = el('p', 'small muted booking-form-note',
+      'Todos os campos são obrigatórios. O nascimento registra seu aniversário no cadastro do estabelecimento.');
+    instructions.id = 'customer-form-note';
+    body.append(instructions);
     const form = el('form', 'booking-form');
     form.id = 'customer-form';
+    form.setAttribute('aria-describedby', instructions.id);
     form.addEventListener('submit', event => { event.preventDefault(); submitBooking(); });
     const contactFields = [
       { key: 'name', title: 'Nome completo', name: 'customer_name', autocomplete: 'name',
@@ -939,6 +976,7 @@
   });
   $('service-search').addEventListener('input', renderServiceGrid);
   $('hero-book').addEventListener('click', () => openBooking());
+  $('footer-book').addEventListener('click', () => openBooking());
   $('close-booking').addEventListener('click', closeBooking);
   dialog.addEventListener('cancel', event => { if (booking.busy) event.preventDefault(); });
   dialog.addEventListener('close', () => { document.body.classList.remove('booking-open'); availabilityController?.abort(); requestSequence++; });
@@ -946,7 +984,17 @@
   $('booking-next').addEventListener('click', () => {
     if (booking.result) { closeBooking(); return; }
     if (booking.step === 3) { submitBooking(); return; }
-    if (booking.step === 1) { if (!booking.services.length || !eligibleProfessionals().length) return; booking.professional = eligibleProfessionals()[0].id; booking.step = 2; showError(); renderBooking(); loadAvailability(); }
+    if (booking.step === 1) {
+      const people = eligibleProfessionals();
+      if (!booking.services.length || !people.length) return;
+      // Back/Continue is navigation, not a new professional choice. A quote
+      // and start may only survive while they still belong to this person.
+      if (!people.some(person => person.id === booking.professional)) {
+        invalidateAvailability();
+        booking.professional = people[0].id;
+      }
+      booking.step = 2; showError(); renderBooking(); loadAvailability();
+    }
     else if (booking.start && booking.quote) { booking.step = 3; showError(); renderBooking(); }
   });
   $('share-site').addEventListener('click', async () => {

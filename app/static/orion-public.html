@@ -188,7 +188,7 @@
             <iframe id="location-map" title="Prévia do Google Maps com a localização da barbearia" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe>
           </div>
           <div class="location-details"><svg class="location-small-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg><p id="full-address" class="preserve-lines"></p></div>
-          <a id="maps-link" class="primary route-action" hidden>
+          <a id="maps-link" class="outline route-action" hidden>
             <svg class="route-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4h5"/><path d="m9 7 3-4-3-3"/><circle cx="17" cy="17" r="4"/><path d="m16 17 1 1 2-2"/></svg>
             <span>Traçar rota no Google Maps</span>
             <svg class="route-external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 5h6v6M19 5l-9 9"/></svg>
@@ -207,14 +207,18 @@
         </div>
         <nav id="contact-links" class="contact-links" aria-label="Redes sociais e canais de contato"></nav>
       </section>
+      <section class="public-booking-callout" aria-labelledby="footer-booking-title">
+        <h2 id="footer-booking-title">Agende seu próximo atendimento</h2>
+        <button class="primary pill" type="button" id="footer-book">Agendar horário <svg class="hero-book-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+      </section>
     </main>
     <footer class="container public-footer"><span id="footer-title"></span><span id="orion-credit">Agendamento com <a href="/" aria-label="Orion">Orion</a></span></footer>
   </div>
   <dialog id="booking-dialog" class="booking-dialog" aria-labelledby="booking-title">
     <div class="booking-header"><div><p class="eyebrow" id="booking-shop"></p><h2 id="booking-title">Agendar horário</h2></div><button id="close-booking" class="icon-button" type="button" aria-label="Fechar agendamento">×</button></div>
     <ol id="booking-steps" class="booking-steps" aria-label="Etapas do agendamento"><li data-step="1"><span>1</span> Serviço</li><li data-step="2"><span>2</span> Horário</li><li data-step="3"><span>3</span> Confirmar</li></ol>
-    <div id="booking-body" class="booking-body"></div>
     <p id="booking-error" class="error-message" role="alert" hidden></p>
+    <div id="booking-body" class="booking-body"></div>
     <div class="booking-footer"><button id="booking-back" class="outline" type="button">Voltar</button><div id="booking-total" class="booking-total"></div><button id="booking-next" class="primary" type="button">Continuar <span aria-hidden="true">→</span></button></div>
   </dialog>
   <noscript><p class="page-message">Ative o JavaScript para consultar os serviços e os horários disponíveis.</p></noscript>
