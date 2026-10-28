@@ -1,14 +1,17 @@
 # Conexão WhatsApp: administrador e empresas
 
-O formulário usa os componentes existentes do painel: `os-button`, `os-large`,
-`os-card`, `os-form`, `os-field`, `os-service-option` e `os-more-fields`.
-Não há uma folha de estilo independente para o conector. Os canais conservam
-somente regras de organização e adaptação à largura útil do componente.
+O tutorial reutiliza o componente do administrador presente na versão `18a2939`:
+cards de QR/Código com ícone e texto auxiliar, linha vertical de sete passos,
+círculos, títulos, descrições e botão de continuar. Sua implementação é
+compartilhada com as empresas no estilo central do painel, sem folha de estilo
+independente nem uma segunda apresentação para os mesmos passos. Formulários e
+ações continuam usando `os-button`, `os-large`, `os-form` e `os-field`.
 
-Código e QR têm sete passos específicos, visíveis inicialmente e recolhíveis.
+Código e QR têm sete passos específicos, visíveis inicialmente. Continuar abre
+o formulário ou prepara a exibição do QR; voltar permite reler o tutorial.
 Abrir a página, mudar o método ou consultar o estado não inicia pareamento.
 Código expirado é retirado da interface sem repetição automática da operação.
-Atualizações periódicas preservam campos, foco e tutoriais abertos ou fechados.
+Atualizações periódicas preservam campos, foco e a etapa atual.
 
 ## Contrato das empresas
 

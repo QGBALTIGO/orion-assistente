@@ -10,7 +10,7 @@
 .qc-note{margin:16px 0;overflow-wrap:anywhere}.qc-note>div{min-width:0}.qc-note p:first-child{margin-top:0}
 .qc-actions{margin-top:16px}.qc-root textarea[data-qc-phone-list]{white-space:pre-wrap;resize:vertical}.qc-form .qc-actions{margin-top:0}.qc-field>.orion-field-error{margin-top:0}
 .qc-statuses{margin:16px 0}.qc-statuses dd{min-width:0;margin:0;text-align:right}.qc-statuses dt{flex-shrink:0}.qc-main-actions{margin:16px 0}
-.qc-connection{display:grid;gap:16px;margin-top:20px}.qc-connection form{margin:0}.qc-connection>.qc-actions,.qc-connection .qc-note{margin:0}.qc-connection .os-more-fields{margin:0}.qc-qr{text-align:center}.qc-qr .qc-actions{justify-content:center}.qc-countdown{font-variant-numeric:tabular-nums}
+.qc-connection{margin-top:20px}.qc-connection .qc-note{margin:0}.qc-countdown{font-variant-numeric:tabular-nums}
 .qc-authorized{display:flex;flex-wrap:wrap;gap:6px;padding:0;list-style:none;margin:0}.qc-confirm{margin-top:20px}.qc-assistant>p{margin-top:6px}.qc-root[aria-busy=true]{cursor:progress}
 @container orion-channels (max-width:900px){.qc-heading{flex-direction:column}.qc-header-actions{width:100%;align-items:stretch}.qc-header-actions>.os-button{white-space:nowrap;flex:0 0 auto}.qc-layout{grid-template-columns:minmax(0,1fr)}.qc-list{grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr))}}
 @media(max-width:480px){.qc-root,#appView.orion-suite-enabled>.content>.page.qc-root{padding:20px 16px 30px}#osManagedChannels.qc-root{padding:0}.qc-actions>.os-button{flex:1 1 auto}}

@@ -53,6 +53,7 @@ test('pairing phone has one country code for DDD55 and explicit international nu
   for(const [input,expected] of [['+55 (55) 99123-4567','5555991234567'],['+44 20 7946 0958','442079460958']]){
     const writes=[];const h=await makePanel({deviceStatus:'qr_ready',respond:(path,method,data)=>{if(path==='/api/v1/qr/pair'){writes.push(data);return {code:'ABCD-1234',expiresIn:90,status:'pairing'};}}});
     t.after(()=>{h.close();assert.deepEqual(h.errors,[]);});
+    h.click('[data-method=code]');h.click('#wizardNext');await flush();
     h.fill('#pairPhone',input);h.submit('#pairForm');await flush();assert.equal(writes[0].phone,expected);
     h.submit('#pairForm');await flush();assert.equal(writes.length,1,'a pending code cannot be replaced by another submission');
   }

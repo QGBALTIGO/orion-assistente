@@ -76,6 +76,10 @@ test('the top connection entry keeps the pairing wizard, authenticated request a
   } }); t.after(() => h.close());
   h.click('#osNav [data-os-route=dispositivo]'); await flush();
   h.click('[data-method=code]');
+  assert.equal(h.element('#wizardTutorial').classList.contains('hidden'), false);
+  assert.equal(h.document.querySelectorAll('#guideSteps .wizard-timeline-step[role=listitem]').length, 7);
+  assert.deepEqual(writes(h), [], 'reading the original seven steps does not start a pairing attempt');
+  h.click('#wizardNext'); await flush();
   assert.equal(h.element('#wizardCodeInput').classList.contains('hidden'), false);
   assert.equal(h.element('#wizardTutorial').classList.contains('hidden'), true);
   assert.deepEqual(writes(h), [], 'opening the wizard alone does not request a pairing attempt');

@@ -28,14 +28,21 @@ test("a apresentação comum separa sete passos de Código e QR sem instrução 
   vm.runInNewContext(connectView,context);
   const view=context.window.OrionConnectView;
   const code=view.instructions("code"),qr=view.instructions("qr");
-  assert.equal((code.match(/<li>/g)||[]).length,7);
-  assert.equal((qr.match(/<li>/g)||[]).length,7);
+  assert.equal((code.match(/role="listitem"/g)||[]).length,7);
+  assert.equal((qr.match(/role="listitem"/g)||[]).length,7);
+  assert.equal((code.match(/wizard-timeline-dot edge/g)||[]).length,2);
+  assert.equal((code.match(/<strong>/g)||[]).length,7);
+  assert.equal((code.match(/<p>/g)||[]).length,7);
+  for(let step=1;step<=7;step++)assert.match(code,new RegExp('PASSO '+step));
   assert.match(code,/Conectar com número de telefone/);
   assert.doesNotMatch(code,/câmera|escane|QR Code/i);
   assert.match(qr,/câmera.*QR Code/);
   assert.doesNotMatch(qr,/número de telefone/);
   assert.match(view.methods("code"),/data-method="code" aria-pressed="true"/);
   assert.match(view.methods("qr","data-qc-method"),/data-qc-method="qr" aria-pressed="true"/);
+  assert.ok(view.methods("code").indexOf('data-method="qr"')<view.methods("code").indexOf('data-method="code"'));
+  assert.match(view.methods("code"),/Escaneie com seu telefone/);
+  assert.match(view.methods("code"),/Digite no seu telefone/);
   assert.equal(view.normalizeCode("abcdefgh"),"ABCD-EFGH");
   assert.throws(()=>view.normalizeCode("not-a-code"));
   assert.throws(()=>view.instructions("unexpected"));
@@ -192,27 +199,47 @@ function harness(initialStatus="qr_ready",{deferPair=false}={}){
     flush:()=>new Promise(resolve=>setImmediate(resolve))};
 }
 
-test("Código abre o formulário diretamente, sem gerar vínculo na montagem",async()=>{
-  const h=harness();
+async function openCodeForm(h){
+  await h.tabs[1].click();
+  if(!h.byId("wizardTutorial").classList.contains("hidden"))await h.byId("wizardNext").click();
   assert.equal(h.byId("codePanel").classList.contains("hidden"),false);
-  assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
   assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),true);
+}
+
+test("Código inicia no tutorial original sem gerar vínculo nem pedir QR na montagem",async()=>{
+  const h=harness();
+  assert.equal(h.byId("codePanel").classList.contains("hidden"),true);
+  assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
   assert.equal(h.tabs[1].getAttribute("aria-pressed"),"true");
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"||x.url==="/api/v1/qr/pair"),false);
 });
 
-test("o formulário Código inclui tutorial de sete passos aberto por padrão em disclosure nativo",()=>{
+test("o tutorial original mostra sete passos completos e abre o formulário Código com um clique sem POST",async()=>{
   const h=harness();
-  assert.equal((h.byId("codeGuide").innerHTML.match(/<li>/g)||[]).length,7);
-  assert.match(h.byId("codeGuide").innerHTML,/Conectar com número de telefone/);
-  assert.doesNotMatch(h.byId("codeGuide").innerHTML,/câmera|escane|QR Code/i);
-  const guidePosition=html.indexOf('id="codeGuide"');
-  assert.ok(guidePosition>0);
-  const disclosure=html.slice(html.lastIndexOf('<details',guidePosition),guidePosition);
-  assert.match(disclosure,/^<details\b[^>]*\bopen(?:\s|>)/,"O tutorial deve usar details aberto, que permite recolher por teclado e toque");
-  assert.match(disclosure,/<summary\b[^>]*>[\s\S]*Tutorial: 7 passos[\s\S]*<\/summary>/);
+  await h.byId("loginForm").fire("submit");
+  await h.flush();await h.flush();
+  assert.equal((h.byId("guideSteps").innerHTML.match(/role="listitem"/g)||[]).length,7);
+  assert.match(h.byId("guideSteps").innerHTML,/Conectar com número de telefone/);
+  assert.doesNotMatch(h.byId("guideSteps").innerHTML,/câmera|escane|QR Code/i);
+  assert.match(html,/Concluí os passos e estou pronto para prosseguir/);
+  await openCodeForm(h);
   assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"||x.url==="/api/v1/qr/pair"),false);
+});
+
+test("Voltar do formulário Código retorna ao tutorial sem apagar o telefone nem solicitar vínculo",async()=>{
+  const h=harness();
+  await h.byId("loginForm").fire("submit");
+  await h.flush();await h.flush();
+  await openCodeForm(h);
+  h.byId("pairPhone").value="11 99999-9999";
+  await h.byId("wizardCodeBack").click();
+  assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
+  assert.equal(h.byId("codePanel").classList.contains("hidden"),true);
+  await h.byId("wizardNext").click();
+  assert.equal(h.byId("pairPhone").value,"11 99999-9999");
+  assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
+  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/pair"||x.url==="/api/v1/qr/image"),false);
 });
 
 test("QR: sete passos próprios, geração somente após ação explícita e prazo real",async()=>{
@@ -222,7 +249,7 @@ test("QR: sete passos próprios, geração somente após ação explícita e pra
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"),false);
   await h.tabs[0].click();
   assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
-  assert.equal((h.byId("guideSteps").innerHTML.match(/<li>/g)||[]).length,7);
+  assert.equal((h.byId("guideSteps").innerHTML.match(/role="listitem"/g)||[]).length,7);
   assert.match(h.byId("guideSteps").innerHTML,/câmera/);
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"),false);
   await h.byId("wizardNext").click();
@@ -238,7 +265,7 @@ test("Código: número, solicitação única, código e cópia sem QR",async()=>
   const h=harness();
   await h.byId("loginForm").fire("submit");
   await h.flush();await h.flush();
-  await h.tabs[1].click();
+  await openCodeForm(h);
   assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
   h.byId("pairPhone").value="11 99999-9999";
   await h.byId("pairForm").fire("submit");
@@ -256,7 +283,7 @@ test("número inválido não envia solicitação de pareamento",async()=>{
   const h=harness();
   await h.byId("loginForm").fire("submit");
   await h.flush();await h.flush();
-  await h.tabs[1].click();
+  await openCodeForm(h);
   h.byId("pairPhone").value="abc";
   await h.byId("pairForm").fire("submit");
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/pair"),false);
@@ -280,6 +307,7 @@ test("conexão ainda em preparo não libera Gerar nem envia tentativa de pareame
   const h=harness("starting");
   await h.byId("loginForm").fire("submit");
   await h.flush();await h.flush();
+  await openCodeForm(h);
   assert.equal(h.byId("wizardGenerate").disabled,true);
   h.byId("pairPhone").value="5511999999999";
   await h.byId("pairForm").fire("submit");
@@ -291,6 +319,7 @@ test("resposta atrasada de geração não repõe código após sair da conta",as
   const h=harness("qr_ready",{deferPair:true});
   await h.byId("loginForm").fire("submit");
   await h.flush();await h.flush();
+  await openCodeForm(h);
   h.byId("pairPhone").value="5511999999999";
   const pending=h.byId("pairForm").fire("submit");
   await h.flush();
@@ -306,7 +335,7 @@ test("conexão confirmada pelo backend ativa etapa de sucesso, sem envio",async(
   const h=harness();
   await h.byId("loginForm").fire("submit");
   await h.flush();await h.flush();
-  await h.tabs[1].click();
+  await openCodeForm(h);
   h.byId("pairPhone").value="5511999999999";
   await h.byId("pairForm").fire("submit");
   h.connect();
@@ -325,6 +354,7 @@ test("trocar o método oculta o código e permite retomar o mesmo código válid
  const h=harness();
  await h.byId("loginForm").fire("submit");
  await h.flush();await h.flush();
+ await openCodeForm(h);
  h.byId("pairPhone").value="5511999999999";
  await h.byId("pairForm").fire("submit");
  assert.equal(h.byId("codeResult").classList.contains("hidden"),false);
@@ -333,7 +363,7 @@ test("trocar o método oculta o código e permite retomar o mesmo código válid
  assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
  assert.equal(h.byId("codePanel").classList.contains("hidden"),true);
  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"),false);
- await h.tabs[1].click();
+ await openCodeForm(h);
  assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),true);
  assert.equal(h.byId("codeResult").classList.contains("hidden"),false);
  assert.equal(h.byId("pairCode").textContent,"ABCD-EFGH");
@@ -361,7 +391,7 @@ test("código expira e volta ao formulário sem reenviar pedidos automaticamente
  const h=harness();
  await h.byId("loginForm").fire("submit");
  await h.flush();
- await h.tabs[1].click();
+ await openCodeForm(h);
  h.byId("pairPhone").value="5511999999999";
  await h.byId("pairForm").fire("submit");
  assert.equal(h.byId("codeResult").classList.contains("hidden"),false);
@@ -381,11 +411,12 @@ test("CSS garante dispositivos móveis, tablets e redução de movimento",()=>{
  assert.match(connectCSS,/\.os-card\{/);
  assert.match(connectCSS,/\.os-field\{/);
  assert.match(connectCSS,/\.os-service-option\[aria-pressed=true\]/);
- assert.match(connectView,/os-service-option/);
+ assert.match(connectView,/wizard-method/);
  assert.match(html.match(/<form\b[^>]*id="pairForm"[^>]*>/)?.[0]||"",/class="[^"]*\bos-form\b/);
  assert.match(html.match(/<div\b[^>]*id="wizardCard"[^>]*>/)?.[0]||"",/class="[^"]*\bos-card\b/);
  assert.match(connectView,/Conectar com número de telefone/);
- assert.doesNotMatch(connectView,/wizard-timeline-step|wizard-timeline-dot/);
+ assert.match(connectView,/wizard-timeline-step|wizard-timeline-dot/);
+ assert.match(connectCSS,/\.wizard-timeline-step\{/);
  assert.doesNotMatch(html,/Conexão não oficial, limitada ao número que você administra/);
  assert.doesNotMatch(html,/Ambiente de homologação/);
  assert.doesNotMatch(html,/wizardPrevious|wizardTutorialClose|wizardStepCount/);

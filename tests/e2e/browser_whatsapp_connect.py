@@ -150,10 +150,8 @@ def capture(page, selector, name):
         assert control['height'] >= minimum, control
         assert control['x'] >= -1 and control['x'] + control['width'] <= geometry['viewport']['width'] + 1, control
     for method in geometry['methods']:
-        assert 43 <= method['height'] <= 60, method
         assert method['width'] >= 120, 'Connection methods must remain usable inside the actual available content width: ' + str(method)
     if len(geometry['methods']) == 2:
-        assert abs(geometry['methods'][0]['height'] - geometry['methods'][1]['height']) <= 1
         assert abs(geometry['methods'][0]['width'] - geometry['methods'][1]['width']) <= 1
     if selector == '#osManagedChannels':
         assert not geometry['consultantFabVisible'], 'The consultant floating action must not overlap the active WhatsApp connector'
@@ -190,53 +188,50 @@ def assert_phone_focus(input_element):
     assert not metrics['decorated'], metrics
 
 
-def inspect_code_tutorial(page, disclosure, form):
-    """The complete tutorial is visible initially and can collapse independently."""
-    expect(disclosure).to_be_visible()
-    summary = disclosure.locator('summary')
-    expect(summary).to_contain_text('Tutorial: 7 passos')
-    assert disclosure.evaluate('(details)=>details.open') is True
-    steps = disclosure.locator('li')
+def inspect_tutorial(guide, method):
+    """The original seven-step timeline has icons, titles and descriptions."""
+    expect(guide).to_be_visible()
+    expect(guide.locator('.wizard-timeline[role="list"]')).to_have_count(1)
+    steps = guide.locator('.wizard-timeline-step[role="listitem"]')
     expect(steps).to_have_count(7)
     expect(steps.first).to_be_visible()
     expect(steps.last).to_be_visible()
-    text = disclosure.inner_text()
-    assert 'Conectar com número de telefone' in text
-    assert not re.search(r'câmera|escane|QR Code', text, re.I), text
-    before = writes(page)
-    summary.click()
-    assert disclosure.evaluate('(details)=>details.open') is False
-    expect(steps.first).to_be_hidden()
-    expect(form).to_be_visible()
-    summary.click()
-    assert disclosure.evaluate('(details)=>details.open') is True
-    expect(steps.last).to_be_visible()
-    expect(form).to_be_visible()
-    assert writes(page) == before, 'Reading or collapsing tutorial must not create a pairing attempt'
-
-
-def inspect_qr_tutorial(guide):
-    steps = guide.locator('li')
-    expect(steps).to_have_count(7)
-    expect(steps.first).to_be_visible()
-    expect(steps.last).to_be_visible()
+    expect(guide.locator('.wizard-timeline-dot svg')).to_have_count(7)
+    expect(guide.locator('.wizard-timeline-dot.edge')).to_have_count(2)
+    for index in range(7):
+        step = steps.nth(index)
+        expect(step.locator('small')).to_have_text(f'PASSO {index + 1}')
+        assert step.locator('strong').inner_text().strip()
+        assert step.locator('p').inner_text().strip()
     text = guide.inner_text()
-    assert re.search(r'câmera', text, re.I) and 'QR Code' in text, text
-    assert 'Conectar com número de telefone' not in text, text
+    if method == 'code':
+        assert 'Conectar com número de telefone' in text
+        assert not re.search(r'câmera|escane|QR Code', text, re.I), text
+    else:
+        assert re.search(r'câmera', text, re.I) and 'QR Code' in text, text
+        assert 'Conectar com número de telefone' not in text, text
+    rectangles = steps.evaluate_all('(steps)=>steps.map(s=>{const r=s.getBoundingClientRect();return {top:r.top,bottom:r.bottom}})')
+    assert all(rectangles[index]['bottom'] <= rectangles[index + 1]['top'] + 1 for index in range(6)), rectangles
 
 
 def native_style(element):
-    return element.evaluate('''element => {
+    return element.evaluate('''async element => {
+      getComputedStyle(element).backgroundColor;
+      await new Promise(requestAnimationFrame);
+      const animations=element.getAnimations().filter(a=>Number.isFinite(a.effect?.getComputedTiming().endTime));
+      await Promise.all(animations.map(a=>a.finished.catch(()=>{})));
       const s=getComputedStyle(element),r=element.getBoundingClientRect();
       return {classes:element.className,fontFamily:s.fontFamily,fontSize:s.fontSize,
         fontWeight:s.fontWeight,lineHeight:s.lineHeight,color:s.color,
         backgroundColor:s.backgroundColor,borderColor:s.borderColor,
-        borderRadius:s.borderRadius,boxShadow:s.boxShadow,height:r.height};
+        borderRadius:s.borderRadius,boxShadow:s.boxShadow,padding:s.padding,
+        minHeight:s.minHeight,height:r.height,width:r.width};
     }''')
 
 
 def compare_actual_core_components(page, host, panel_factory):
     """Compare shipped UI outside the connector; never submit the client form."""
+    host.locator('[data-qc-title]').focus()
     page.mouse.move(0, 0)
     phone = host.locator('[data-qc-pair-phone]')
     submit = host.locator('[data-qc-form="pair"] button[type="submit"]')
@@ -263,7 +258,8 @@ def compare_actual_core_components(page, host, panel_factory):
             'client_popup_field_variant': native_style(reference.locator('#osDialog #osField-phone'))}
     for key in ('fontFamily', 'fontSize', 'color', 'backgroundColor'):
         assert connector['button'][key] == core['button'][key], (key, connector, core)
-    assert abs(connector['button']['height'] - core['button']['height']) <= 1, (connector, core)
+    assert abs(connector['button']['height'] - 44) <= 1, connector
+    assert core['button']['height'] >= 44, core
     for key in ('fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'color', 'backgroundColor', 'borderRadius', 'borderColor', 'boxShadow'):
         assert connector['field'][key] == core['field'][key], (key, connector, core)
     assert abs(connector['field']['height'] - core['field']['height']) <= 1, (connector, core)
@@ -278,7 +274,7 @@ def compare_actual_core_components(page, host, panel_factory):
     viewport = page.viewport_size
     stem = f'core-components-{engine}-{theme}-{viewport["width"]}x{viewport["height"]}'
     (ARTIFACTS / f'{stem}.json').write_text(json.dumps({'connector': connector, 'actual_core': core,
-        'context_variants': ['Customer popup has pill actions and icon field wrapper'],
+        'context_variants': ['Customer popup has pill actions, icon field wrapper and a taller button when its label wraps'],
         'reference_form_submitted': False}, ensure_ascii=False, indent=2), encoding='utf-8')
     reference.screenshot(path=str(ARTIFACTS / f'{stem}.png'), full_page=True)
     reference.locator('#osDialog .os-form-actions [data-os-action="close-dialog"]').click()
@@ -286,25 +282,73 @@ def compare_actual_core_components(page, host, panel_factory):
     assert not writes(reference), 'Opening and cancelling the actual core reference must not create a client'
 
 
+def compare_shared_tutorial_components(page, host, panel_factory):
+    """Admin and company render the same original method/timeline component."""
+    admin = panel_factory()
+    admin.mouse.move(0, 0)
+    page.mouse.move(0, 0)
+    report = {}
+    for method in ('qr', 'code'):
+        company_method = host.locator(f'[data-qc-method="{method}"]')
+        admin_method = admin.locator(f'[data-method="{method}"]')
+        left, right = native_style(company_method), native_style(admin_method)
+        for key in ('fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'backgroundColor', 'color',
+                    'borderColor', 'borderRadius', 'boxShadow', 'padding', 'minHeight'):
+            assert left[key] == right[key], (method, key, left, right)
+        assert company_method.locator('strong').inner_text() == admin_method.locator('strong').inner_text()
+        assert company_method.locator('span').last.inner_text() == admin_method.locator('span').last.inner_text()
+        for item in (company_method, admin_method):
+            icon = item.locator('.wizard-method-icon svg').bounding_box()
+            assert icon and abs(icon['width'] - 30) <= 1 and abs(icon['height'] - 30) <= 1, icon
+        report[method] = {'company': left, 'admin': right}
+    expect(host.locator('[data-qc-method]').first).to_have_attribute('data-qc-method', 'qr')
+    expect(admin.locator('[data-method]').first).to_have_attribute('data-method', 'qr')
+    inspect_tutorial(host.locator('[data-qc-tutorial]'), 'code')
+    inspect_tutorial(admin.locator('#guideSteps'), 'code')
+    assert host.locator('.wizard-timeline').inner_text() == admin.locator('#guideSteps .wizard-timeline').inner_text()
+    engine = page.context.browser.browser_type.name
+    theme = page.locator('html').get_attribute('data-theme')
+    viewport = page.viewport_size
+    ARTIFACTS.mkdir(parents=True, exist_ok=True)
+    stem = f'shared-tutorial-{engine}-{theme}-{viewport["width"]}x{viewport["height"]}'
+    (ARTIFACTS / f'{stem}.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    assert not writes(admin), 'Comparing the admin tutorial must not start a connection'
+
+
 def start_company(page):
     host = page.locator('#osManagedChannels')
     host.locator('[data-qc-action="connect"]').click()
     expect(host.locator('[data-qc-form="confirm"]')).to_be_visible()
     host.locator('[data-qc-form="confirm"] button[type="submit"]').click()
+    expect(host.locator('[data-qc-tutorial]')).to_be_visible(timeout=12000)
+    return host
+
+
+def open_company_code(page, host):
+    inspect_tutorial(host.locator('[data-qc-tutorial]'), 'code')
+    expect(host.locator('[data-qc-action="tutorial-next"]')).to_have_text('Concluí os passos e estou pronto para prosseguir')
+    before = writes(page)
+    host.locator('[data-qc-action="tutorial-next"]').click()
     expect(host.locator('[data-qc-pair-phone]')).to_be_visible(timeout=12000)
+    assert writes(page) == before, 'Completing the Code tutorial must only open the phone form'
     submit = host.locator('[data-qc-form="pair"] button[type="submit"]')
     expect(submit).to_be_enabled(timeout=12000)
     return host
 
 
-def test_admin_code_and_qr_share_proportions_without_tutorial_gate(panel_factory):
+def test_admin_uses_original_seven_step_tutorial_before_code_or_qr(panel_factory):
     page = panel_factory()
-    expect(page.locator('#pairPhone')).to_be_visible()
-    expect(page.locator('#wizardTutorial')).to_be_hidden()
+    expect(page.locator('#pairPhone')).to_be_hidden()
+    expect(page.locator('#wizardTutorial')).to_be_visible()
     expect(page.locator('[data-method="code"]')).to_have_attribute('aria-pressed', 'true')
     assert not writes(page), 'Opening the connector must not start or reset a session'
     assert not any(call['path'].endswith('/qr/image') for call in calls(page))
-    inspect_code_tutorial(page, page.locator('#wizardCodeInput details'), page.locator('#pairForm'))
+    inspect_tutorial(page.locator('#guideSteps'), 'code')
+    expect(page.locator('#wizardNext')).to_have_text('Concluí os passos e estou pronto para prosseguir')
+    capture(page, '#disconnectedWizard', 'admin-code-tutorial')
+    page.locator('#wizardNext').click()
+    expect(page.locator('#pairPhone')).to_be_visible()
+    assert not writes(page), 'Completing the tutorial must not generate a code'
     assert_phone_focus(page.locator('#pairPhone'))
     capture(page, '#disconnectedWizard', 'admin-code-form')
     page.locator('#pairPhone').fill('11 90000-0001')
@@ -317,14 +361,14 @@ def test_admin_code_and_qr_share_proportions_without_tutorial_gate(panel_factory
     expect(page.locator('#codeResult')).to_be_hidden()
     # Switching method must not issue/reset a pending pairing operation.
     expect(page.locator('#pairCode')).to_have_text('TEST-0001')
-    inspect_qr_tutorial(page.locator('#guideSteps'))
+    inspect_tutorial(page.locator('#guideSteps'), 'qr')
     assert not any(call['path'].endswith('/qr/image') for call in calls(page))
     capture(page, '#disconnectedWizard', 'admin-qr-guide')
     # A live code blocks QR generation until its expiry or explicit preparation.
     expect(page.locator('#wizardNext')).to_be_disabled()
     page = panel_factory()
     page.locator('[data-method="qr"]').click()
-    inspect_qr_tutorial(page.locator('#guideSteps'))
+    inspect_tutorial(page.locator('#guideSteps'), 'qr')
     page.locator('#wizardNext').click()
     expect(page.locator('#qrImage')).to_be_visible()
     expect(page.locator('#qrImage')).to_have_attribute('src', re.compile(r'^data:image/png;base64,'))
@@ -332,6 +376,8 @@ def test_admin_code_and_qr_share_proportions_without_tutorial_gate(panel_factory
     page.locator('#wizardQrBack').click()
     expect(page.locator('#qrImage')).to_be_hidden()
     page.locator('[data-method="code"]').click()
+    inspect_tutorial(page.locator('#guideSteps'), 'code')
+    page.locator('#wizardNext').click()
     expect(page.locator('#pairPhone')).to_be_visible()
     assert len(writes(page, '/pair')) == 0
 
@@ -342,7 +388,9 @@ def test_company_code_is_scoped_and_uses_the_same_controls(panel_factory):
     geometry = capture(page, '#osManagedChannels', 'owner-device-disabled')
     assert len(geometry['headerActions']) == 2, 'Both Add device and Refresh must be measured'
     host = start_company(page)
-    inspect_code_tutorial(page, host.locator('[data-qc-disclosure="instructions"]'), host.locator('[data-qc-form="pair"]'))
+    compare_shared_tutorial_components(page, host, panel_factory)
+    capture(page, '#osManagedChannels', 'owner-code-tutorial')
+    open_company_code(page, host)
     compare_actual_core_components(page, host, panel_factory)
     assert_phone_focus(host.locator('[data-qc-pair-phone]'))
     expect(host.locator('[data-qc-method="code"]')).to_have_attribute('aria-pressed', 'true')
@@ -358,6 +406,8 @@ def test_company_code_is_scoped_and_uses_the_same_controls(panel_factory):
     capture(page, '#osManagedChannels', 'owner-code-result')
     host.locator('[data-qc-method="qr"]').click()
     expect(host.locator('[data-qc-pair-code]')).to_have_count(0)
+    inspect_tutorial(host.locator('[data-qc-tutorial]'), 'qr')
+    host.locator('[data-qc-action="tutorial-next"]').click()
     expect(host.locator('[data-qc-action="qr"]')).to_be_disabled()
     # Displaying QR remains an explicit action; a method switch cannot reset/pair.
     assert len(writes(page, '/pair')) == 1
@@ -368,19 +418,27 @@ def test_company_code_is_scoped_and_uses_the_same_controls(panel_factory):
     page = panel_factory('owner')
     host = start_company(page)
     host.locator('[data-qc-method="qr"]').click()
-    inspect_qr_tutorial(host.locator('[data-qc-disclosure="instructions"]'))
-    host.locator('[data-qc-action="qr"]').click()
+    inspect_tutorial(host.locator('[data-qc-tutorial]'), 'qr')
+    host.locator('[data-qc-action="tutorial-next"]').click()
+    page.wait_for_function('''() => document.querySelector('#osManagedChannels [data-qc-qr] img') ||
+      document.querySelector('#osManagedChannels [data-qc-action="qr"]')''')
+    if host.locator('[data-qc-action="qr"]').count():
+        expect(host.locator('[data-qc-action="qr"]')).to_be_enabled(timeout=12000)
+        host.locator('[data-qc-action="qr"]').click()
     expect(host.locator('[data-qc-qr] img')).to_be_visible()
     capture(page, '#osManagedChannels', 'owner-qr-image')
     host.locator('[data-qc-action="hide-qr"]').click()
     expect(host.locator('[data-qc-qr]')).to_have_count(0)
     host.locator('[data-qc-method="code"]').click()
+    open_company_code(page, host)
     expect(host.locator('[data-qc-pair-phone]')).to_be_visible()
     assert not writes(page, '/pair')
 
 
 def test_expired_code_disappears_and_is_not_automatically_requested_again(panel_factory):
     page = panel_factory('admin', 'expired')
+    inspect_tutorial(page.locator('#guideSteps'), 'code')
+    page.locator('#wizardNext').click()
     page.locator('#pairPhone').fill('11 90000-0001')
     page.locator('#pairForm button[type="submit"]').click()
     expect(page.locator('#codeResult')).to_be_visible()
