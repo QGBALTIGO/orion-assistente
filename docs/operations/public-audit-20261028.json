@@ -183,10 +183,13 @@
       "id": "PUB-13",
       "title": "O painel de revisão deixa espaço vazio excessivo em telas altas",
       "severity": "Baixa",
-      "state": "pendente",
-      "evidence": [],
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-13.json"
+      ],
       "publication": "não publicada",
-      "note": ""
+      "note": "Painel usa altura do conteúdo em telas maiores; espaço antes das ações caiu de 211 px para cerca de 12 px, preservando o limite de altura e a rolagem.",
+      "tests": "15 testes DOM; três etapas nos seis tamanhos x dois temas; ações dentro da tela e formulário alcançável"
     },
     {
       "id": "PUB-14",
