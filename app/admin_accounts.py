@@ -218,5 +218,12 @@ async def manage_account(account_id:UUID,action:str,payload:AccountAction,
             """),{"id":account_id,"state":newstate,"reason":payload.reason})
             await db.execute(text("UPDATE panel_accounts SET auth_version=auth_version+1 WHERE id=:id"),
                              {"id":account_id})
+            if action in {"suspend","archive"}:
+                # No pending verification or reset code survives an access block.
+                # The email worker checks used_at before delivering OTPs.
+                await db.execute(text("""
+                    UPDATE panel_email_tokens SET used_at=now()
+                    WHERE account_id=:id AND used_at IS NULL
+                """),{"id":account_id})
             await _audit(db,admin,account_id,action,payload.reason)
     return {"ok":True,"state":newstate,"reversible_days":30 if action=="archive" else None}
