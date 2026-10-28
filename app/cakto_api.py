@@ -12,6 +12,7 @@ import os
 import re
 import time
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -219,13 +220,23 @@ class CaktoClient:
         raise RuntimeError("Paginação de ofertas ultrapassou o limite seguro")
 
 
+@lru_cache(maxsize=1)
+def cached_cakto_client():
+    return CaktoClient()
+
+
 def match_plans(offers: list) -> list[dict]:
     """Match only exact offer names and cents; never infer an ID from a checkout URL."""
     matches = []
     for plan in PLANS:
         ids = []
         for offer in offers:
-            if not isinstance(offer, dict) or offer.get("name", "").strip().casefold() != plan["name"].casefold():
+            if not isinstance(offer, dict):
+                continue
+            name = offer.get("name")
+            if not isinstance(name, str) or name.strip().casefold() != plan["name"].casefold():
+                continue
+            if offer.get("type") not in ("subscription", None):
                 continue
             try:
                 cents = int(Decimal(str(offer.get("price"))) * 100)
@@ -242,7 +253,7 @@ def match_plans(offers: list) -> list[dict]:
 @router.get("/api/v1/admin/cakto/connection")
 async def admin_cakto_connection(actor: Actor = Depends(authenticate)):
     support_only(actor)
-    client = CaktoClient()
+    client = cached_cakto_client()
     if not client.configured:
         return {"api_connected": False, "webhook_secret_configured": bool(
             os.getenv("CAKTO_WEBHOOK_SECRET")), "offers": []}
@@ -287,7 +298,7 @@ def verify_order_event(event: dict, order: dict) -> str:
 
 async def scan_pending_cakto(_ctx):
     """Worker leases pending receipts; failures retry without acknowledging verification."""
-    client = CaktoClient()
+    client = cached_cakto_client()
     if not client.configured:
         return 0
     async with support_session_factory()() as db:

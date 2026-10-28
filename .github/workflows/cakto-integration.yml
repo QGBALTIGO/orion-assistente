@@ -1,0 +1,62 @@
+name: Cakto — integração isolada e PostgreSQL
+on:
+  pull_request:
+    paths:
+      - "app/cakto_api.py"
+      - "app/main.py"
+      - "app/worker.py"
+      - "alembic/versions/0043_cakto_events.py"
+      - "scripts/backup_and_migrate_cakto.py"
+      - "scripts/backup_and_migrate_registration.py"
+      - "tests/unit/test_cakto_integration.py"
+      - "tests/integration/test_cakto_postgres.py"
+      - ".github/workflows/cakto-integration.yml"
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  cakto:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: test-support-ci-token-of-64-characters-000000000000000000000000000
+      REQUIRE_POSTGRES_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependências de testes
+        run: python -m pip install -c requirements.lock ".[test]"
+      - name: Roles PostgreSQL isoladas
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas \
+            -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only \
+            -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+      - name: Migração aditiva em banco efêmero
+        run: alembic upgrade head
+      - name: Testes sintéticos e PostgreSQL/RLS reais
+        run: |
+          python -m py_compile app/cakto_api.py scripts/backup_and_migrate_cakto.py
+          pytest -q -ra tests/unit/test_cakto_integration.py tests/integration/test_cakto_postgres.py tests/integration/test_billing.py
