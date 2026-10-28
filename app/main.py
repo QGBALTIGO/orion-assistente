@@ -144,6 +144,7 @@ async def panel_asset(asset: str) -> FileResponse:
     allowed = {"orion-suite.css": "text/css", "orion-suite.js": "text/javascript",
                "orion-fields.css": "text/css", "orion-fields.js": "text/javascript",
                "orion-suite-live.js": "text/javascript",
+               "orion-admin-center.js": "text/javascript",
                "orion-communication.js": "text/javascript",
                "orion-auth.css": "text/css",
                "orion-invite.css": "text/css", "orion-invite.js": "text/javascript",
