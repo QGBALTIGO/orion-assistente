@@ -31,7 +31,7 @@
     reactivate:"O acesso à conta será restabelecido.",archive:"A conta ficará bloqueada durante 30 dias. Depois desse prazo, a identidade de acesso será eliminada, respeitando a retenção legal.",
     restore:"O prazo de exclusão será cancelado e o acesso restaurado.",
     hold:"A exclusão definitiva ficará pausada por obrigação legal.",
-    release_hold:"O expurgo poderá continuar quando terminar o prazo de recuperação."};
+    erase_now:"Exclusão irreversível da conta de acesso agora, sem esperar 30 dias. O e-mail ficará disponível para um novo cadastro. Registros exigidos por lei poderão ser preservados."};
   const state={request:null,role:null,onMaintenanceStart:null,epoch:0,seq:0,
     query:"",status:"all",page:1,items:[],stats:null,total:0,selected:null,
     owned:false,modalType:null,modalAction:null,trigger:null,busy:false,timer:null};
@@ -156,7 +156,7 @@
       (a.state==="suspended"?btn("Reativar","account-action",{id:a.id,action:"reactivate",cls:"os-button os-outline",icon:"check",text:"Reativar"}):"")+
       (["active","suspended"].includes(a.state)?btn("Excluir (30 dias)","account-action",{id:a.id,action:"archive",cls:"os-button os-outline os-negative",icon:"trash",text:"Excluir (30 dias)"}):"")+
       (isRecoverable(a)?btn("Restaurar","account-action",{id:a.id,action:"restore",cls:"os-button os-outline",icon:"refresh",text:"Restaurar"}):"")+
-      (a.state==="archived"?btn(a.legal_hold?"Encerrar retenção legal":"Aplicar retenção legal","account-action",{id:a.id,action:a.legal_hold?"release_hold":"hold",cls:"os-button os-outline",icon:"shield",text:a.legal_hold?"Encerrar retenção":"Retenção legal"}):"")+
+      (a.state==="archived"&&!a.legal_hold?btn("Excluir permanentemente","account-action",{id:a.id,action:"erase_now",cls:"os-button os-outline os-negative",icon:"trash",text:"Excluir permanentemente"}):"")+
       '</div>';
     const trace='<details class="os-client-history os-admin-history"><summary>'+
       '<span class="os-client-history-icon">'+icon("clock")+'</span><span class="os-client-history-title"><strong>Histórico de ações</strong>'+
