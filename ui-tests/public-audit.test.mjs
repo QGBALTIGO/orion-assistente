@@ -58,16 +58,30 @@ test('PUB-06: review carries authoritative duration and expected finish',async t
   assert.equal(h.document.querySelectorAll('.review-row.total').length,1);
 });
 
-test('PUB-05: explicit day navigation respects bounds and labels months',async t=>{
+test('PUB-05/PUB-08: scrollable days and native date selection share a compact display',async t=>{
   const h=await makePublic();t.after(()=>h.close());await flush();
   h.click('#hero-book');h.click('#booking-service-list button');h.click('#booking-next');await flush();
-  assert.equal(h.document.querySelector('#booking-day-prev')?.disabled,true);
-  h.click('#booking-day-next');await flush();
-  assert.equal(h.document.querySelector('#booking-day-input').value,'2030-01-08');
-  assert.equal(h.document.querySelector('#booking-day-prev').disabled,false);
+  const input=h.document.querySelector('#booking-day-input');
+  assert.equal(input.type,'date');
+  assert.equal(input.min,'2030-01-07');
+  assert.equal(h.document.querySelector('.booking-date-value')?.textContent,'07/01/2030');
+  assert.equal(h.document.querySelector('#booking-day-prev'),null);
+  assert.equal(h.document.querySelector('#booking-day-next'),null);
+  h.click('#booking-day-strip .day-button:nth-child(2)');await flush();
+  assert.equal(input.value,'2030-01-08');
+  assert.equal(h.document.querySelector('.booking-date-value').textContent,'08/01/2030');
   assert.match(h.document.querySelector('.day-month').textContent,/jan/);
-  h.click('#booking-day-prev');await flush();
-  assert.equal(h.document.querySelector('#booking-day-input').value,'2030-01-07');
+  input.value='2030-02-01';input.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();
+  assert.equal(h.document.querySelector('.booking-date-value').textContent,'01/02/2030');
+  assert.equal(h.document.querySelector('#booking-day-strip [aria-pressed=true]').dataset.day,'2030-02-01');
+  assert.match(h.document.querySelector('#booking-month-heading').textContent,/fevereiro/);
+  input.value='';input.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  assert.equal(input.value,'2030-02-01');
+  assert.equal(h.document.querySelector('.booking-date-value').textContent,'01/02/2030');
+  let opened=0;input.showPicker=()=>{opened++;};
+  const enter=new h.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true});
+  input.dispatchEvent(enter);
+  assert.equal(opened,1);assert.equal(enter.defaultPrevented,true);
 });
 
 test('PUB-02: conflict describes the selected individual service and lives above the list',async t=>{

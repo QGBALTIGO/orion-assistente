@@ -71,3 +71,64 @@ def test_conflict_has_balanced_space_and_stays_visible(fixture_url, engine, widt
             (ARTIFACTS / f'{stem}.json').write_text(json.dumps(metrics, indent=2), encoding='utf-8')
         finally:
             browser.close()
+
+
+@pytest.mark.parametrize('engine', ['chromium', 'webkit'])
+@pytest.mark.parametrize('width,height', SIZES)
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_date_control_is_aligned_and_days_scroll_without_arrows(fixture_url, engine, width, height, theme):
+    ARTIFACTS.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as playwright:
+        browser = getattr(playwright, engine).launch()
+        page = browser.new_page(viewport={'width': width, 'height': height},
+            color_scheme=theme, locale='pt-BR', has_touch=width <= 430,
+            is_mobile=engine == 'webkit' and width <= 430)
+        errors=[]
+        page.on('pageerror', lambda error: errors.append(str(error)))
+        try:
+            page.goto(fixture_url)
+            page.locator('#hero-book').click()
+            page.get_by_role('dialog').get_by_role('button', name='Corte Masculino', exact=False).click()
+            page.locator('#booking-next').click()
+            date=page.get_by_label('Outra data', exact=True)
+            date.fill('2030-02-01')
+            page.evaluate('document.fonts.ready')
+            assert date.input_value()=='2030-02-01'
+            assert page.locator('#booking-day-value').inner_text()=='01/02/2030'
+            assert page.locator('#booking-day-prev, #booking-day-next').count()==0
+            metrics=page.evaluate('''() => {
+              const control=document.querySelector('.booking-date-control').getBoundingClientRect();
+              const input=document.querySelector('#booking-day-input').getBoundingClientRect();
+              const value=document.querySelector('#booking-day-value');
+              const month=document.querySelector('#booking-month-heading').getBoundingClientRect();
+              const heading=document.querySelector('.date-heading').getBoundingClientRect();
+              const strip=document.querySelector('#booking-day-strip').getBoundingClientRect();
+              const day=document.querySelector('#booking-day-strip [aria-pressed=true]').getBoundingClientRect();
+              return {height:control.height,width:control.width,hitHeight:input.height,
+                monthAligned:Math.abs((month.top+month.bottom-control.top-control.bottom)/2)<1,
+                textFits:value.scrollWidth<=value.clientWidth,
+                stripFullWidth:Math.abs(strip.width-heading.width)<1,
+                selectedVisible:day.left>=strip.left-1&&day.right<=strip.right+1,
+                overflow:document.documentElement.scrollWidth>innerWidth};
+            }''')
+            assert abs(metrics['height']-44)<=1 and abs(metrics['hitHeight']-44)<=1, metrics
+            assert metrics['width']<=160 and metrics['textFits'] and metrics['monthAligned'], metrics
+            assert metrics['stripFullWidth'] and metrics['selectedVisible'] and not metrics['overflow'], metrics
+            date.focus()
+            assert page.locator('.booking-date-control').evaluate('(e)=>getComputedStyle(e).outlineStyle')=='solid'
+            date.click()
+            page.keyboard.press('Escape')
+            assert page.locator('#booking-dialog').is_visible()
+            assert date.input_value()=='2030-02-01'
+            date.fill('')
+            assert date.input_value()=='2030-02-01', 'Clear preserves the selected day instead of showing conflicting dates'
+            page.locator('#booking-day-strip .day-button').last.focus()
+            assert page.locator('#booking-day-strip').evaluate('(e)=>e.scrollLeft')>0
+            page.locator('#booking-day-strip .day-button').nth(3).click()
+            assert page.locator('#booking-day-value').inner_text()=='04/02/2030'
+            stem=f'date-{engine}-{theme}-{width}x{height}'
+            page.screenshot(path=str(ARTIFACTS / f'{stem}.png'))
+            (ARTIFACTS / f'{stem}.json').write_text(json.dumps(metrics, indent=2), encoding='utf-8')
+            assert not errors, errors
+        finally:
+            browser.close()

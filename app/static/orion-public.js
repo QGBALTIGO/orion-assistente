@@ -494,6 +494,7 @@
     const month = dateLabel(booking.day, { month: 'long', year: 'numeric' });
     if (heading.textContent !== month) heading.textContent = month;
     if (input.value !== booking.day) input.value = booking.day;
+    $('booking-day-value').textContent = fields.dateDisplay(booking.day);
     const visible = [...strip.querySelectorAll('.day-button')];
     if (!visible.some(node => node.dataset.day === booking.day)) {
       const first = booking.day > addDays(data.today, 13) ? booking.day : data.today;
@@ -504,8 +505,6 @@
       if (node.getAttribute('aria-pressed') !== String(active))
         node.setAttribute('aria-pressed', String(active));
     });
-    $('booking-day-prev').disabled = booking.day <= input.min;
-    $('booking-day-next').disabled = booking.day >= input.max;
     // Reveal only inside the horizontal strip, without moving the dialog or
     // recreating its photos/slots. This also covers native date input changes.
     const active = strip.querySelector('[aria-pressed=true]');
@@ -550,23 +549,36 @@
     const heading = el('div', 'date-heading');
     const title = el('strong');
     title.id = 'booking-month-heading';
-    const label = el('label', '', 'Outra data');
+    const label = el('label', 'booking-date-field', 'Outra data');
+    label.id = 'booking-date-field';
+    const control = el('span', 'booking-date-control');
+    const value = el('span', 'booking-date-value');
+    value.id = 'booking-day-value'; value.setAttribute('aria-hidden', 'true');
+    const calendar = el('span', 'booking-date-icon');
+    calendar.setAttribute('aria-hidden', 'true');
+    calendar.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>';
     const input = el('input');
     input.type = 'date'; input.lang = 'pt-BR'; input.id = 'booking-day-input'; input.dataset.orionField = 'date';
+    input.dataset.fieldErrorTarget = label.id;
     input.min = data.today; input.max = addDays(data.today, data.booking_horizon_days);
     input.value = booking.day;
+    // Keep the real, accessible native picker over a stable date presentation.
+    // iOS's localized date text must not determine this control's dimensions.
+    input.addEventListener('input', () => {
+      value.textContent = input.value ? fields.dateDisplay(input.value) : 'dd/mm/aaaa';
+    });
+    input.addEventListener('keydown', event => {
+      if (!['Enter', ' '].includes(event.key) || typeof input.showPicker !== 'function') return;
+      try { input.showPicker(); event.preventDefault(); } catch { /* Native input remains usable. */ }
+    });
     input.addEventListener('change', () => {
+      if (!input.value) { refreshDateChoice(); return; }
       if (input.value && fields.validate(input) && input.checkValidity()) selectDay(input.value);
     });
-    label.append(input); heading.append(title, label); body.append(heading);
+    control.append(value, calendar, input); label.append(control);
+    heading.append(title, label); body.append(heading);
     const strip = el('div', 'date-strip'); strip.id = 'booking-day-strip';
-    const navigation = el('div', 'date-navigation');
-    const previous = button('‹', 'outline date-nav-button', () => selectDay(addDays(booking.day, -1)));
-    previous.id = 'booking-day-prev'; previous.setAttribute('aria-label', 'Dia anterior');
-    const nextDay = button('›', 'outline date-nav-button', () => selectDay(addDays(booking.day, 1)));
-    nextDay.id = 'booking-day-next'; nextDay.setAttribute('aria-label', 'Próximo dia');
-    navigation.append(previous, strip, nextDay);
-    body.append(navigation, el('p', 'timezone-note',
+    body.append(strip, el('p', 'timezone-note',
       'Horários locais · ' + data.timezone.replaceAll('_', ' ')));
     body.append(el('h3', 'booking-slots-heading', 'Horários disponíveis'));
     const slots = el('div'); slots.id = 'time-slots';
