@@ -8,4 +8,6 @@ test('Google tenant 401 is checked against Orion login before declaring session 
  assert.match(js,/expired=session\?\.authenticated!==true/);
  assert.match(js,/O acesso a esta empresa não pôde ser validado/);
  assert.match(js,/state\.data\.googleAuthExpired=expired/);
+ assert.match(js,/google-reload-context/);
+ assert.match(js,/state\.data\.googleTenantInvalid=error\?\.status===401&&!expired/);
 });
