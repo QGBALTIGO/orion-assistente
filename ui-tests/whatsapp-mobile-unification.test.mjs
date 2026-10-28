@@ -15,6 +15,8 @@ test('revoked WhatsApp session cannot issue stale pairing code',async()=>{
  assert.match(html,/const needsNewLink=\["logged_out","pair_failed"\]\.includes\(result\.status\)/);
  assert.match(html,/\$\("wizardGenerate"\)\.disabled=needsNewLink\|\|result\.status==="connected"/);
  assert.match(html,/Sessão desvinculada\. Use Refazer vínculo/);
+ assert.match(html,/if\(\["logged_out","pair_failed"\]\.includes\(deviceStatus\)\)\{/);
+ assert.match(html,/submit\.disabled=\["logged_out","pair_failed","connected"\]\.includes\(deviceStatus\)/);
 });
 test('member and admin connection cards use same Orion responsive density',async()=>{
  const css=await readFile(new URL('../app/static/orion-channels.css',import.meta.url),'utf8');
