@@ -101,14 +101,28 @@ test('a lost first-creation response verifies the new account binding before rec
  assert.equal(accountReads.length,2);assert.ok(recoveryRead>accountReads[1]);assert.equal(h.errors.length,0);
 });
 
-test('completion keeps real channel statuses visible until the user explicitly opens the panel',async t=>{
- const state=fullState({current_step:'review'});const h=await makePanel({role:'member',initialRoute:'dashboard',respond(path,method){
+for(const activity of ['services','products'])test('completed '+activity+' business goes straight to Dashboard without an extra tap',async t=>{
+ const state=fullState({current_step:'review'});state.configuration.activity=activity;
+ state.steps=state.steps.map(row=>row.id==='catalog'?{...row,id:'profile',label:'Perfil da empresa'}:row.id==='channels'?{...row,id:'goals',label:'Desafios e objetivos'}:row);
+ state.configuration.business_metrics={operating_age:'not_started',team_size:'none',monthly_revenue:'none',monthly_volume:'none'};
+ state.configuration.business_priorities={main_challenge:'whatsapp',desired_outcome:'save_time',respondent_role:'owner'};
+ const h=await makePanel({role:'member',initialRoute:'catalogo',respond(path,method){
   if(path.startsWith('/api/v1/onboarding/entry'))return {enabled:true,kind:'onboarding',tenant_id:tenantA};
   if(path.endsWith('/onboarding'))return state;
   if(path.endsWith('/onboarding/complete')&&method==='POST')return {...state,status:'complete',version:4};
- }});t.after(()=>h.close());await flush();h.element('#orionSetup [name=acknowledged]').checked=true;h.submit('[data-ob-form=complete]');await flush();
- assert.equal(h.element('#appView').classList.contains('ob-gated'),true);assert.match(h.element('#orionSetup').textContent,/WhatsApp|Google/);assert.ok(h.element('[data-ob-action=open-dashboard]'));
- h.click('[data-ob-action=open-dashboard]');await flush();assert.equal(h.element('#appView').classList.contains('ob-gated'),false);assert.equal(h.element('#orionSetup').hidden,true);assert.equal(h.calls.filter(c=>c.method!=='GET').length,1);
+ }});t.after(()=>h.close());await flush();
+ assert.equal(h.element('#appView').classList.contains('ob-gated'),true);
+ h.element('#orionSetup [name=acknowledged]').checked=true;
+ h.submit('[data-ob-form=complete]');await flush();
+ assert.equal(h.element('#appView').classList.contains('ob-gated'),false);
+ assert.equal(h.element('#orionSetup').hidden,true);
+ assert.equal(h.document.querySelector('#page-suite')?.dataset.osCurrentRoute,'dashboard');
+ assert.equal(h.document.querySelector('#page-suite h1')?.textContent,'Dashboard');
+ assert.equal(new URL(h.window.location.href).searchParams.get('aba'),'dashboard');
+ assert.equal(h.calls.filter(c=>c.method!=='GET').length,1);
+ assert.equal(h.calls.filter(c=>/\/commerce\/status/.test(c.path)).length,0);
+ assert.equal(h.calls.filter(c=>/\/business\/profile$/.test(c.path)).length,0);
+ assert.deepEqual(h.errors,[]);
 });
 
 test('WhatsApp settings mounts managed public APIs and navigation discards a late channel status',async t=>{
