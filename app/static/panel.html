@@ -901,6 +901,11 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
     </div>
   </aside>
   <main class="content">
+    <section id="orionMaintenanceBanner" class="os-maintenance-banner hidden" role="status" aria-live="polite" aria-label="Acesso temporário de manutenção">
+      <span class="os-maintenance-indicator" aria-hidden="true"></span>
+      <div class="os-maintenance-copy"><strong>Modo de manutenção</strong><span>Você está acessando <b id="orionMaintenanceCompany">a conta de um cliente</b> <small id="orionMaintenanceUntil"></small></span></div>
+      <button id="orionMaintenanceExit" class="os-button os-outline os-small" type="button">Encerrar manutenção</button>
+    </section>
     <header id="setupHeader" class="ob-shell-header" aria-label="Configuração inicial do Orion">
       <img data-orion-logo src="/brand/orion-brand-dark.svg" alt="Orion — Recepcionista Digital" width="144" height="52">
       <div id="setupTheme" class="os-theme">
@@ -930,35 +935,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
         <div class="member-detail"><span>Nome</span><strong id="memberProfileName">—</strong></div>
         <div class="member-detail"><span>E-mail</span><strong id="memberProfileEmail">—</strong></div>
       </section>
-      <section id="adminClientCenter" class="admin-client-center hidden" aria-label="Administração de clientes">
-        <div class="member-settings-heading"><h2>Central de Administração de Clientes</h2><p>Gerencie contas, suspenda acessos e restaure exclusões em até 30 dias.</p></div>
-        <div class="admin-client-stats" id="adminClientStats" aria-label="Resumo de contas">
-          <div class="admin-client-stat"><span>Total</span><strong data-admin-stat="total">—</strong></div>
-          <div class="admin-client-stat"><span>Ativas</span><strong data-admin-stat="active">—</strong></div>
-          <div class="admin-client-stat"><span>Suspensas</span><strong data-admin-stat="suspended">—</strong></div>
-          <div class="admin-client-stat"><span>Arquivadas</span><strong data-admin-stat="archived">—</strong></div>
-        </div>
-        <form id="adminClientSearch" class="admin-client-search">
-          <input id="adminClientQuery" type="search" placeholder="Buscar por nome, e-mail ou empresa" aria-label="Buscar contas" maxlength="120">
-          <select id="adminClientStatus" aria-label="Situação"><option value="all">Todas</option><option value="active">Ativas</option><option value="suspended">Suspensas</option><option value="archived">Arquivadas</option><option value="erased">Excluídas</option></select>
-          <button type="submit" class="btn">Buscar</button>
-        </form>
-        <p id="adminClientCount" role="status" aria-live="polite"></p>
-        <div id="adminClientResults" class="admin-client-results"></div>
-        <div class="member-settings-actions"><button type="button" id="adminClientMore" class="btn hidden">Carregar mais</button></div>
-        <section id="adminClientDetails" class="member-settings-card hidden" aria-label="Ficha da conta">
-          <h3 id="adminClientTitle">Detalhes da conta</h3>
-          <p id="adminClientCompany"></p>
-          <form id="adminClientEdit" class="member-settings-form">
-            <div class="member-settings-field"><label for="adminClientName">Nome do cliente</label><input id="adminClientName" maxlength="120" required></div>
-            <div class="member-settings-field"><label for="adminClientReason">Motivo da alteração</label><textarea id="adminClientReason" minlength="5" maxlength="500" rows="2" required></textarea></div>
-            <div class="member-settings-actions"><button class="btn" type="submit">Salvar nome</button></div>
-          </form>
-          <div id="adminClientActions" class="admin-client-actions"></div>
-          <p id="adminClientFeedback" role="status" aria-live="polite"></p>
-          <h4>Histórico de ações</h4><div id="adminClientHistory"></div>
-        </section>
-      </section>
+      <section id="adminClientCenter" class="os-admin-center os-main hidden" data-os-current-route="member" aria-label="Administração de clientes"></section>
       <section class="member-settings" aria-label="Configurações da conta e empresa">
         <section class="member-settings-card">
           <div class="member-settings-heading"><h2>Dados da empresa</h2><p>Atualize o nome e o WhatsApp comercial da sua empresa.</p></div>
@@ -1456,6 +1433,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 <script src="/panel-assets/orion-conversations.js"></script>
 <script src="/panel-assets/orion-inbox.js"></script>
 <script src="/panel-assets/orion-suite-live.js"></script>
+<script src="/panel-assets/orion-admin-center.js"></script>
 <script>
 (()=>{
 "use strict";
@@ -1561,7 +1539,7 @@ async function restoreSession(){
   if(!current())return;
   if(result?.authenticated!==true||typeof result.csrf!=="string"||!result.csrf.trim()||!["support","admin","member"].includes(result.role))throw Error("invalid_session_response");
   csrf=result.csrf;
-  await showApp(result.role,result.name||"",result.email||"");
+  await showApp(result.role,result.name||"",result.email||"",result.maintenance||null);
  }catch{
   if(!current())return;
   $("loginView").classList.add("hidden");$("appView").classList.add("hidden");
@@ -1834,120 +1812,6 @@ async function api(url,method="GET",data){
  }
  return response.status===204?null:response.json();
 }
-let adminClientPage=1,adminClientSelected=null,adminClientEpoch=0;
-const adminOnly=()=>loginRole==="admin";
-function adminText(id,value){$(id).textContent=String(value??"");}
-function adminClientButton(label,action){
- const button=document.createElement("button");button.type="button";button.className="btn";
- button.textContent=label;button.addEventListener("click",()=>void adminClientAction(action));return button;
-}
-const accountStateLabels={
- active:"Ativa",suspended:"Suspensa",archived:"Arquivada",
- erased:"Excluída definitivamente"
-};
-async function loadAdminStats(){
- if(!adminOnly())return;
- const epoch=authEpoch;
- try{
-  const data=await api("/api/v1/admin/accounts/stats");
-  if(epoch!==authEpoch||!adminOnly())return;
-  for(const key of ["total","active","suspended","archived"]){
-   const el=document.querySelector('[data-admin-stat="'+key+'"]');
-   if(el)el.textContent=String(data[key]??0);
-  }
- }catch(error){
-  if(epoch===authEpoch)adminText("adminClientFeedback",
-    "Não foi possível consultar os indicadores: "+error.message);
- }
-}
-async function loadAdminClients(append=false){
- if(!adminOnly())return;
- if(!append)void loadAdminStats();
- const epoch=authEpoch,seq=++adminClientEpoch,page=append?adminClientPage+1:1;
- adminText("adminClientCount","Consultando contas…");
- try{
-  const query=new URLSearchParams({q:$("adminClientQuery").value.trim(),
-    status:$("adminClientStatus").value,page:String(page),page_size:"20"});
-  const data=await api("/api/v1/admin/accounts?"+query);
-  if(epoch!==authEpoch||seq!==adminClientEpoch||!adminOnly())return;
-  adminClientPage=page;
-  const host=$("adminClientResults");if(!append)host.replaceChildren();
-  for(const item of data.items){
-   const row=document.createElement("div");row.className="admin-client-row";
-   const info=document.createElement("div"),strong=document.createElement("strong"),small=document.createElement("small");
-   strong.textContent=item.name;small.textContent=[item.email,item.company_name||"Sem empresa",
-    accountStateLabels[item.state]||item.state].join(" · ");
-   info.append(strong,small);
-   const button=document.createElement("button");button.type="button";button.className="btn";
-   button.textContent="Gerenciar";button.addEventListener("click",()=>void openAdminClient(item.id));
-   row.append(info,button);host.append(row);
-  }
-  adminText("adminClientCount",data.total+" conta(s) encontrada(s)");
-  $("adminClientMore").classList.toggle("hidden",page*20>=data.total);
- }catch(error){if(epoch===authEpoch&&seq===adminClientEpoch)adminText("adminClientCount",error.message);}
-}
-async function openAdminClient(id){
- if(!adminOnly())return;
- const epoch=authEpoch;
- try{
-  const data=await api("/api/v1/admin/accounts/"+encodeURIComponent(id));
-  if(epoch!==authEpoch||!adminOnly())return;
-  adminClientSelected=data.account;
-  const a=data.account;
-  $("adminClientDetails").classList.remove("hidden");
-  adminText("adminClientTitle",a.name+" · "+(accountStateLabels[a.state]||a.state));
-  const deadline=a.purge_after?new Date(a.purge_after).toLocaleDateString("pt-BR"):"";
-  const retention=a.state==="archived"?
-    (a.legal_hold?" · Retenção legal ativa":(" · Recuperável até "+deadline)):"";
-  adminText("adminClientCompany",[a.email,a.company_name||"Sem empresa"].join(" · ")+retention);
-  $("adminClientName").value=a.name;
-  $("adminClientReason").value="";
-  const actions=$("adminClientActions");actions.replaceChildren();
-  if(a.state==="active"){actions.append(adminClientButton("Suspender","suspend"),adminClientButton("Excluir (30 dias)","archive"));}
-  if(a.state==="suspended"){actions.append(adminClientButton("Reativar","reactivate"),adminClientButton("Excluir (30 dias)","archive"));}
-  if(a.state==="archived"){
-   actions.append(adminClientButton("Restaurar conta","restore"));
-   actions.append(adminClientButton(a.legal_hold?"Encerrar retenção legal":"Aplicar retenção legal",
-      a.legal_hold?"release_hold":"hold"));
-  }
-  const history=$("adminClientHistory");history.replaceChildren();
-  for(const entry of data.history){
-   const p=document.createElement("p");p.textContent=[entry.action,entry.reason,
-    new Date(entry.occurred_at).toLocaleString("pt-BR")].join(" · ");history.append(p);
-  }
-  adminText("adminClientFeedback","");
- }catch(error){if(epoch===authEpoch)adminText("adminClientFeedback",error.message);}
-}
-async function adminClientAction(action){
- if(!adminOnly()||!adminClientSelected)return;
- const a=adminClientSelected,reason=$("adminClientReason").value.trim();
- if(reason.length<5){adminText("adminClientFeedback","Informe o motivo (mínimo de 5 caracteres).");return;}
- let confirmation=null;
- if(action==="archive"){
-  confirmation=prompt("A conta ficará arquivada por 30 dias. Digite EXCLUIR para confirmar:");
-  if(confirmation!=="EXCLUIR")return;
- }else if(!confirm("Confirma "+action+" para a conta "+a.email+"?"))return;
- const epoch=authEpoch;
- try{
-  await api("/api/v1/admin/accounts/"+encodeURIComponent(a.id)+"/"+action,"POST",
-    {expected_version:a.auth_version,reason,confirmation});
-  if(epoch!==authEpoch)return;
-  await loadAdminClients();await openAdminClient(a.id);
- }catch(error){if(epoch===authEpoch)adminText("adminClientFeedback",error.message);}
-}
-$("adminClientSearch").addEventListener("submit",event=>{event.preventDefault();void loadAdminClients();});
-$("adminClientMore").addEventListener("click",()=>void loadAdminClients(true));
-$("adminClientEdit").addEventListener("submit",async event=>{
- event.preventDefault();if(!adminOnly()||!adminClientSelected)return;
- const a=adminClientSelected,reason=$("adminClientReason").value.trim();
- if(reason.length<5)return;
- try{
-  await api("/api/v1/admin/accounts/"+encodeURIComponent(a.id),"PUT",
-   {name:$("adminClientName").value,expected_version:a.auth_version,reason});
-  await loadAdminClients();await openAdminClient(a.id);
- }catch(error){adminText("adminClientFeedback",error.message);}
-});
-
 let memberBusinessOriginal=null,memberBusinessBusy=false,memberPasswordBusy=false;
 function memberFeedback(id,message,error=false){
  const el=$(id);el.textContent=message;el.dataset.error=String(error);
@@ -2151,6 +2015,8 @@ function authScreenShow(screen,{focus=false}={}){
 }
 function showLogin(){
  ++authEpoch;
+ window.OrionAdminCenter?.reset();
+ $("orionMaintenanceBanner")?.classList.add("hidden");
  ++setupResolving;window.OrionOnboarding?.unmount();setupController=null;setSetupGate(false);
  window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
  window.OrionSuite?.destroy();suiteUser=null;suiteTenantId="";businessContextReady=false;businessContextError="";
@@ -2172,14 +2038,22 @@ function showLogin(){
  authScreenShow("login");
  dismissSessionBoot();
 }
-async function showApp(role="support",name="",email=""){
+async function showApp(role="support",name="",email="",maintenance=null){
  try{const pendingInvite=sessionStorage.getItem("orion_pending_invitation");if(pendingInvite&&/^[A-Za-z0-9_-]{43}$/.test(pendingInvite)){sessionStorage.removeItem("orion_pending_invitation");location.assign("/convite#token="+encodeURIComponent(pendingInvite));return}}catch{}
  const desired=new URLSearchParams(location.search).get("aba");
  const epoch=authEpoch;
  suiteTenantId="";businessRows=[];businessContextReady=false;businessContextError="";
  const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({},"",url.pathname+url.search);
- suiteUser={role,name,email};
+ suiteUser={role,name,email,maintenance};
  loginRole=role;
+ const maintenanceActive=role==="member"&&maintenance?.active===true;
+ $("orionMaintenanceBanner").classList.toggle("hidden",!maintenanceActive);
+ if(maintenanceActive){
+   $("orionMaintenanceCompany").textContent=maintenance.company||"o cliente selecionado";
+   const expiry=new Date(Number(maintenance.expires_at)*1000);
+   $("orionMaintenanceUntil").textContent=Number.isFinite(expiry.getTime())?
+     "· expira às "+expiry.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}):"";
+ }
  const isAdmin=role==="support"||role==="admin";
  // Member accounts get their own normal dashboard, never an admin-password prompt.
  // Protected WhatsApp, contacts and conversations are never fetched for members.
@@ -2384,7 +2258,11 @@ function openPage(target){
   document.querySelector("#page-member .subhead").textContent=platform?
     "Gerencie as contas cadastradas, com histórico e controles de segurança.":
     "Seu espaço para acompanhar sua conta.";
-  if(platform)void loadAdminClients();
+  $("page-member").classList.toggle("os-admin-center-open",platform);
+  if(platform)window.OrionAdminCenter?.open({
+    request:api,role:loginRole,
+    onMaintenanceStart:()=>window.location.assign("/panel?aba=dashboard"),
+  });else window.OrionAdminCenter?.reset();
  }
  if(platformAdminLegacyPages.has(target)&&loginRole!=="admin"){
   // Old deep links and programmatic clicks must also return to the Dashboard.
@@ -2416,6 +2294,18 @@ function openPage(target){
 }
 document.querySelectorAll("[data-page]").forEach(x=>x.addEventListener("click",()=>openPage(x.dataset.page)));
 $("openChats").addEventListener("click",()=>openPage("conversas"));
+$("orionMaintenanceExit").addEventListener("click",async()=>{
+ const button=$("orionMaintenanceExit");if(button.disabled)return;
+ button.disabled=true;button.textContent="Encerrando…";
+ try{
+   await api("/auth/maintenance/end","POST",{});
+   window.location.assign("/panel?aba=member");
+ }catch(error){
+   button.disabled=false;button.textContent="Encerrar manutenção";
+   const note=$("orionMaintenanceUntil");
+   note.textContent="· "+(error.message||"Falha ao encerrar. Atualize a página.");
+ }
+});
 $("logout").addEventListener("click",async()=>{
  try{await api("/auth/logout","POST",{});}finally{showLogin();}
 });
