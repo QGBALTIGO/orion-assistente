@@ -137,3 +137,78 @@ async def test_editor_cannot_request_trial_even_using_owner_payload(trial_db):
           json={"full_name":"Pessoa de Teste","company_name":"Empresa Sintética",
                 "whatsapp":"(67) 99999-2222","privacy_ack":True})
         assert result.status_code==403
+
+
+@pytest.mark.asyncio
+async def test_synthetic_cakto_checkout_activates_only_verified_owner_subscription(trial_db, monkeypatch):
+    """No network/provider charges. Real PostgreSQL transactions and unique indexes."""
+    import hashlib
+    from urllib.parse import urlsplit, parse_qs
+    from app.catalog_api import Actor
+    db, account, tenant, other = trial_db
+    class FakeReadOnlyCakto:
+        async def list_offers(self):
+            return [{
+                "id": "CIProOffer", "name": "Orion Pro", "price": "89.90",
+                "status": "active", "type": "subscription", "recurrence_period": 30,
+            }]
+    monkeypatch.setattr(plan_management, "CaktoClient", FakeReadOnlyCakto)
+    monkeypatch.setenv("CAKTO_BILLING_LIVE_ENABLED", "1")
+    order_id, subscription_id = str(uuid4()), "ci-sub-" + uuid4().hex
+    try:
+        checkout = await plan_management.start_plan_checkout(
+            tenant, plan_management.CheckoutChoice(plan_code="profissional"),
+            Actor("member", account_id=account))
+        assert checkout["monthly_cents"] == 8990
+        assert checkout["status"] == "pending_payment"
+        url = urlsplit(checkout["checkout_url"])
+        assert url.scheme == "https" and url.hostname == "pay.cakto.com.br"
+        assert url.path == "/3652fm4"
+        token = parse_qs(url.query)["callback"][0]
+        event = {
+            "event_type": "purchase_approved",
+            "external_order_id": order_id,
+            "external_offer_id": "CIProOffer",
+            "external_subscription_id": subscription_id,
+            "callback_hash": hashlib.sha256(token.encode()).hexdigest(),
+            "amount_cents": 8990, "currency": "BRL",
+        }
+        order = {
+            "id": order_id, "type": "subscription", "offer_type": "main",
+            "status": "paid", "amount": "89.90", "currency": "BRL",
+            "subscription": subscription_id,
+            "checkoutUrl": checkout["checkout_url"],
+        }
+        assert await plan_management.apply_verified_cakto_payment(
+            {**event, "amount_cents": 7990}, order) == "manual_review"
+        assert await plan_management.apply_verified_cakto_payment(
+            {**event, "external_offer_id": "AnotherOffer"}, order) == "manual_review"
+        assert await plan_management.apply_verified_cakto_payment(
+            event, {**order, "amount": "89.901"}) == "manual_review"
+        async with db.connect() as con:
+            count = (await con.execute(text(
+                "SELECT count(*) FROM subscriptions WHERE tenant_id=:tenant"
+            ), {"tenant": tenant})).scalar_one()
+            assert count == 0
+        assert await plan_management.apply_verified_cakto_payment(event, order) == "activated"
+        assert await plan_management.apply_verified_cakto_payment(event, order) == "already_verified"
+        async with db.connect() as con:
+            rows = (await con.execute(text("""
+                SELECT p.code,p.monthly_cents,p.max_professionals,s.status,
+                       b.external_subscription_id
+                FROM subscriptions s JOIN plans p ON p.id=s.plan_id
+                JOIN orion_cakto_bindings b ON b.subscription_id=s.id
+                WHERE s.tenant_id=:tenant
+            """), {"tenant": tenant})).all()
+            assert len(rows) == 1
+            assert tuple(rows[0]) == ("orion_profissional",8990,6,"active",subscription_id)
+            other_count = (await con.execute(text(
+                "SELECT count(*) FROM subscriptions WHERE tenant_id=:other"
+            ), {"other": other})).scalar_one()
+            assert other_count == 0
+    finally:
+        async with db.begin() as con:
+            await con.execute(text("DELETE FROM orion_cakto_bindings WHERE tenant_id=:t"),
+                              {"t": tenant})
+            await con.execute(text("DELETE FROM subscriptions WHERE tenant_id=:t"),
+                              {"t": tenant})
