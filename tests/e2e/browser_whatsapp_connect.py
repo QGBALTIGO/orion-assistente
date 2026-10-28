@@ -578,6 +578,70 @@ def test_revoked_session_has_clear_recovery_and_no_enabled_generation(panel_fact
     assert not writes(page), 'Inspecting and cancelling recovery must not reset any connection'
 
 
+@pytest.mark.parametrize('connection_state', ['qr_expired', 'qr_delayed'])
+def test_admin_prepares_expired_or_delayed_connection_without_losing_code_form(panel_factory, connection_state):
+    """WA-LIVE-01: offer explicit, confirmed preparation without discarding client input."""
+    page = panel_factory('admin', connection_state)
+    page.locator('[data-method="qr"]').click()
+    inspect_tutorial(page.locator('#guideSteps'), 'qr')
+    page.locator('[data-method="code"]').click()
+    inspect_tutorial(page.locator('#guideSteps'), 'code')
+    page.locator('#wizardNext').click()
+    phone = page.locator('#pairPhone')
+    expect(phone).to_be_visible()
+    phone.fill('11 90000-0001')
+    entered_phone = phone.input_value()
+    generate = page.locator('#pairForm button[type="submit"]')
+    prepare = page.locator('#retryCode')
+    expect(generate).to_be_disabled()
+    expect(prepare).to_be_visible()
+    expect(prepare).to_be_enabled()
+    expect(page.locator('#codeStatus')).to_contain_text('Use Preparar novo código')
+    assert not writes(page), 'Opening an expired/delayed Code form must not prepare or pair automatically'
+    capture(page, '#disconnectedWizard', f'admin-{connection_state}-code-preparation')
+
+    prepare.click()
+    expect(page.locator('#actionConfirm')).to_be_visible()
+    expect(page.locator('#actionConfirmCancel')).to_be_focused()
+    page.keyboard.press('Escape')
+    expect(page.locator('#actionConfirm')).to_be_hidden()
+    expect(prepare).to_be_focused()
+    expect(phone).to_have_value(entered_phone)
+    expect(page.locator('#wizardTutorial')).to_be_hidden()
+    expect(generate).to_be_disabled()
+    assert not writes(page), 'Cancelling preparation must preserve the existing connection'
+
+    prepare.click()
+    expect(page.locator('#actionConfirm')).to_be_visible()
+    before_confirmation = len(calls(page))
+    page.locator('#actionConfirmAccept').click()
+    expect(page.locator('#actionConfirm')).to_be_hidden()
+    expect(phone).to_be_visible()
+    expect(phone).to_have_value(entered_phone)
+    expect(page.locator('#wizardTutorial')).to_be_hidden()
+    expect(generate).to_be_enabled(timeout=12000)
+    operations = calls(page)[before_confirmation:]
+    reconnects = [index for index, call in enumerate(operations)
+                  if call['method'] == 'POST' and call['path'] == '/api/v1/qr/reconnect']
+    assert len(reconnects) == 1, operations
+    index = reconnects[0]
+    assert any(call['method'] == 'GET' and call['path'] == '/api/v1/qr/status' for call in operations[:index]), operations
+    assert any(call['method'] == 'GET' and call['path'] == '/api/v1/qr/status' for call in operations[index + 1:]), operations
+    assert [call['path'] for call in writes(page)] == ['/api/v1/qr/reconnect']
+    assert not writes(page, '/pair') and not writes(page, '/recover')
+
+    # Completing preparation keeps the chosen method and the completed Code tutorial.
+    page.locator('[data-method="qr"]').click()
+    page.locator('[data-method="code"]').click()
+    expect(phone).to_be_visible()
+    expect(phone).to_have_value(entered_phone)
+    expect(page.locator('#wizardTutorial')).to_be_hidden()
+    expect(generate).to_be_enabled()
+    assert not writes(page, '/pair') and not writes(page, '/recover')
+    assert not any(call['path'].startswith('/api/v1/qr/image') for call in calls(page))
+    capture(page, '#disconnectedWizard', f'admin-{connection_state}-code-prepared')
+
+
 def test_reader_does_not_gain_owner_controls_or_global_access(panel_factory):
     page = panel_factory('reader')
     host = page.locator('#osManagedChannels')

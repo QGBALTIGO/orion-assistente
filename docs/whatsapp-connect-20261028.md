@@ -51,3 +51,22 @@ A intenção de novo vínculo existe somente na memória do processo.
 As capturas e os resultados finais de execução pertencem ao workflow e ao
 registro de entrega. Emulação não comprova teclado virtual, iPhone físico,
 entrega real de mensagens ou pareamento com uma conta real.
+
+## WA-LIVE-01: preparação após QR expirado ou demorado
+
+A bateria real encontrou o formulário administrativo com Gerar desabilitado e
+sem orientação quando o estado era `qr_expired` ou `qr_delayed`. Esses estados
+agora oferecem Preparar novo código, com o mesmo diálogo e os componentes do
+painel. Cancelar não envia comandos; confirmar consulta novamente a conexão.
+O caminho de preparação utiliza somente `reconnect`, preserva o telefone e o
+tutorial, e aguarda `qr_ready`. Uma mudança para conexão ativa, pareamento,
+revogação ou estado incerto interrompe a ação, sem escalar para `recover`.
+
+Na versão `672747d`, administrador e empresa de demonstração geraram QR real
+de 370 × 370 e código válido no formato de oito caracteres. Na empresa foram
+conferidos o número canônico da solicitação, ocultar/reexibir sem novo POST e
+expiração sem repetição automática. O dispositivo de teste foi desativado; o
+cadastro anterior manteve revisão e preferências. Nenhum vínculo foi concluído
+no aparelho. A tentativa administrativa terminou com fechamento de transporte
+408/401 e teve o código retirado; o motivo detalhado não foi identificado.
+Geração não constitui confirmação de vínculo nem teste de entrega no celular.
