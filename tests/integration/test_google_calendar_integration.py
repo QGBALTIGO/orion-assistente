@@ -558,11 +558,16 @@ async def test_google_oauth_connects_before_new_company_staff_setup(google_db, m
                "config":json.dumps({"niche":"barbearia","activity":"services",
                                     "modality":"online"})})
     try:
-        # No professional, service or bookable working_hours rows exist.
-        async with d["migrator"].connect() as db:
-            assert (await db.execute(text(
-                "SELECT count(*) FROM professionals WHERE tenant_id=:t"
-            ),{"t":d["a"]})).scalar_one()==0
+        # The fixture has existing staff, but this *new onboarding* is still
+        # incomplete. The operational readiness gate must reject bookings,
+        # while OAuth setup must not be blocked by that same requirement.
+        from app.onboarding_service import require_operational_ready
+        from fastapi import HTTPException
+        async with d["factory"]() as db:
+            with pytest.raises(HTTPException) as blocked:
+                async with tenant_transaction(db,d["a"]):
+                    await require_operational_ready(db,d["a"],"appointments")
+            assert blocked.value.status_code==409
         state, intent=await start(d)
         assert intent["tenant_id"]==str(d["a"])
         result=await d["client"].get("/integrations/google/callback",
