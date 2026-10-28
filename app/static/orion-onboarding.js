@@ -11,8 +11,8 @@
   const rows = value => Array.isArray(value) ? value : [];
   const pick = (value,keys) => Object.fromEntries(keys.filter(key=>Object.prototype.hasOwnProperty.call(value||{},key)).map(key=>[key,value[key]]));
   const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-  const definitions = {business:['Seu negócio','store'],location:['Onde você atende','pin'],professionals:['Quem atende','users'],catalog:['O que você oferece','catalog'],hours:['Quando você atende','clock'],channels:['Recepção e canais','message'],review:['Revisar e concluir','check']};
-  const icons = {store:'M3 10h18M5 10v10h14V10M3 10l2-7h14l2 7M9 20v-6h6v6',pin:'M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Zm-5 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0',users:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M20 21v-2a4 4 0 0 0-3-4M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8',catalog:'M4 4h16v16H4zM8 8h8M8 12h8M8 16h5',clock:'M12 8v5l3 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',message:'M6 3h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3ZM8 8h8M8 12h5',check:'m5 12 4 4L19 6',arrow:'M5 12h14m-5-5 5 5-5 5'};
+  const definitions = {business:['Seu negócio','store'],location:['Onde você atende','pin'],professionals:['Quem atende','users'],profile:['Perfil da empresa','chart'],catalog:['O que você oferece','catalog'],hours:['Quando você atende','clock'],channels:['Recepção e canais','message'],review:['Revisar e concluir','check']};
+  const icons = {store:'M3 10h18M5 10v10h14V10M3 10l2-7h14l2 7M9 20v-6h6v6',pin:'M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Zm-5 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0',users:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M20 21v-2a4 4 0 0 0-3-4M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8',catalog:'M4 4h16v16H4zM8 8h8M8 12h8M8 16h5',chart:'M4 20V12h4v8M10 20V7h4v13M16 20V4h4v16M3 20h18',clock:'M12 8v5l3 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',message:'M6 3h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3ZM8 8h8M8 12h5',check:'m5 12 4 4L19 6',arrow:'M5 12h14m-5-5 5 5-5 5'};
   const icon = name => '<svg class="ob-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="'+(icons[name]||icons.store)+'"/></svg>';
   const button = (label, action, extra='') => '<button type="button" class="ob-button ob-secondary'+(action==='back'?' ob-back':'')+'" data-ob-action="'+esc(action)+'" '+extra+'>'+esc(label)+'</button>';
   const option = (value,label,current,isPrompt=false) => '<option value="'+esc(value)+'"'+(isPrompt?' disabled hidden':'')+(String(current??'')===String(value)?' selected':'')+'>'+esc(label)+'</option>';
@@ -100,7 +100,56 @@
         '</div>'
       );
     }
-    function listItems(items,kind,description) {return rows(items).length?'<div class="ob-list">'+items.map(item=>'<article class="ob-item"><div><strong>'+esc(item.name)+'</strong><p>'+esc(description(item))+'</p></div>'+button('Editar','edit','data-ob-kind="'+kind+'" data-ob-id="'+esc(item.id)+'"')+'</article>').join('')+'</div>':'<div class="ob-empty">Nenhum cadastro nesta etapa. Adicione os dados reais do seu negócio.</div>';}
+  const profileChoices = {
+    operating_age: [
+      ['not_started','Ainda não comecei'], ['under_6_months','Menos de 6 meses'],
+      ['6_to_12_months','De 6 meses a 1 ano'], ['1_to_3_years','De 1 a 3 anos'],
+      ['3_to_5_years','De 3 a 5 anos'], ['over_5_years','Mais de 5 anos']
+    ],
+    team_size: [
+      ['none','Ainda não tenho profissionais'], ['1_2','1 a 2'],
+      ['3_5','3 a 5'], ['6_10','6 a 10'], ['11_20','11 a 20'],
+      ['over_20','Mais de 20']
+    ],
+    monthly_revenue: [
+      ['none','Ainda não tenho faturamento'], ['under_5k','Até R$ 5 mil'],
+      ['5k_10k','R$ 5 mil a R$ 10 mil'], ['10k_25k','R$ 10 mil a R$ 25 mil'],
+      ['25k_50k','R$ 25 mil a R$ 50 mil'], ['50k_100k','R$ 50 mil a R$ 100 mil'],
+      ['over_100k','Acima de R$ 100 mil'], ['prefer_not_to_say','Prefiro não informar']
+    ],
+    monthly_volume: [
+      ['none','Ainda não realizo atendimentos'], ['up_to_50','Até 50'],
+      ['51_100','51 a 100'], ['101_300','101 a 300'], ['301_600','301 a 600'],
+      ['601_1000','601 a 1.000'], ['over_1000','Mais de 1.000']
+    ]
+  };
+  function profileLabel(name,value,activity) {
+    if(name==='team_size'&&activity==='products'&&value==='none')return 'Ainda não tenho colaboradores';
+    if(name==='monthly_volume'&&activity==='products'&&value==='none')return 'Ainda não recebo pedidos';
+    return profileChoices[name]?.find(([key])=>key===value)?.[1]||'Não informado';
+  }
+  function profileSelect(name,label,current,activity,help='') {
+    const id='ob-'+esc(name);
+    const list=profileChoices[name].map(([value,text])=>option(value,profileLabel(name,value,activity),current)).join('');
+    return '<div class="ob-field" data-field-wrapper>'+
+      '<label for="'+id+'">'+esc(label)+'</label>'+
+      '<select id="'+id+'" name="'+esc(name)+'" required'+(help?' aria-describedby="'+id+'-help"':'')+'>'+
+      option('','Selecione uma opção',current,true)+list+'</select>'+
+      (help?'<p id="'+id+'-help" class="ob-help">'+esc(help)+'</p>':'')+'</div>';
+  }
+  function profileForm() {
+    const profile=state.data.configuration?.business_metrics||{};
+    const activity=state.data.configuration?.activity||'services';
+    const productOnly=activity==='products';
+    return form('<div class="ob-fields ob-profile-fields">'+
+      profileSelect('operating_age','Há quanto tempo sua empresa está em atividade?',profile.operating_age,activity)+
+      profileSelect('team_size',productOnly?'Quantas pessoas trabalham na sua empresa?':'Quantos profissionais realizam atendimentos na sua empresa?',profile.team_size,activity)+
+      profileSelect('monthly_revenue','Qual é o faturamento bruto médio mensal da sua empresa?',profile.monthly_revenue,activity,
+        'Uma estimativa é suficiente. Não é necessário informar o valor exato.')+
+      profileSelect('monthly_volume',productOnly?'Aproximadamente quantos pedidos sua empresa recebe por mês?':'Aproximadamente quantos atendimentos sua empresa realiza por mês?',profile.monthly_volume,activity)+
+      '</div>','Salvar e continuar','profile');
+  }
+        function listItems(items,kind,description) {return rows(items).length?'<div class="ob-list">'+items.map(item=>'<article class="ob-item"><div><strong>'+esc(item.name)+'</strong><p>'+esc(description(item))+'</p></div>'+button('Editar','edit','data-ob-kind="'+kind+'" data-ob-id="'+esc(item.id)+'"')+'</article>').join('')+'</div>':'<div class="ob-empty">Nenhum cadastro nesta etapa. Adicione os dados reais do seu negócio.</div>';}
     function professionalForm() {const items=rows(state.data.catalog?.professionals);if(!state.editor)return listItems(items,'professional',item=>item.specialty||'Profissional cadastrado')+button('Adicionar profissional','add-professional','data-ob-write')+'<div class="ob-actions">'+button('Voltar','back')+button('Continuar','next')+'</div>';const item=items.find(row=>row.id===state.editor.id)||{};return '<div class="ob-editor">'+form('<div class="ob-fields">'+field('name','Nome do profissional',item.name||'','required maxlength="120" autocomplete="name"')+field('specialty','Especialidade (opcional)',item.specialty||'','maxlength="120"')+'</div>'+check('active','Usar este profissional',item.requested_active??item.active??true)+check('accepts_appointments','Recebe agendamentos',item.accepts_appointments!==false)+(!item.id?check('self_provider','Eu também realizo atendimentos',false,'Seu nome será apenas uma sugestão revisável. Isso não concede acesso administrativo.'):'')+'<div class="ob-inline-actions">'+button('Cancelar edição','cancel-edit')+'</div>','Salvar profissional','professional')+'</div>';}
     const money = cents => Number.isInteger(cents)?new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(cents/100):'Valor a conferir';
     function catalogForm() {const catalog=state.data.catalog||{},activity=state.data.configuration?.activity;if(!state.editor)return listItems(catalog.services,'service',item=>money(item.price_cents)+' · '+item.duration_min+' min')+listItems(catalog.products,'product',item=>{const variant=rows(item.variants)[0];return variant?.unit_price_cents!=null?money(variant.unit_price_cents):'Confira o preço e as variantes';})+'<div class="ob-inline-actions">'+(activity!=='products'?button('Adicionar serviço','add-service','data-ob-write'):'')+(activity!=='services'?button('Adicionar produto','add-product','data-ob-write'):'')+'</div><div class="ob-actions">'+button('Voltar','back')+button('Continuar','next')+'</div>';
@@ -115,13 +164,55 @@
     function hoursForm() {const catalog=state.data.catalog||{},hours=rows(catalog.hours),chosen=state.editor?.professional_id||rows(catalog.professionals)[0]?.id||'';const existing=hours.filter(row=>row.professional_id===chosen);return form(select('professional_id','Profissional',[['','Selecione'],...rows(catalog.professionals).map(pro=>[pro.id,pro.name])],chosen,'required')+'<div class="ob-list">'+existing.map(row=>'<article class="ob-item"><div><strong>'+esc(days[row.weekday]||'Dia a conferir')+'</strong><p>'+esc(String(row.start_time||'').slice(0,5))+'–'+esc(String(row.end_time||'').slice(0,5))+(rows(row.breaks).length?' · intervalo '+rows(row.breaks).map(pause=>esc(String(pause.start_time).slice(0,5))+'–'+esc(String(pause.end_time).slice(0,5))).join(', '):'')+'</p></div></article>').join('')+'</div><fieldset><legend>Dias para aplicar este horário</legend><div class="ob-days">'+days.map((label,index)=>'<label><input type="checkbox" name="weekdays" value="'+index+'">'+label+'</label>').join('')+'</div></fieldset><div class="ob-fields">'+field('start_time','Abertura','','required type="time"')+field('end_time','Fechamento','','required type="time"')+'</div>'+check('has_break','Adicionar intervalo')+'<div class="ob-fields" data-ob-break>'+field('break_start','Início do intervalo','','type="time"')+field('break_end','Fim do intervalo','','type="time"')+'</div>'+check('replace_existing','Substituir jornadas existentes nos dias selecionados',false,'Os outros dias e profissionais são preservados. Revise os horários acima antes de marcar.')+'<p class="ob-help">A pausa bloqueia a disponibilidade real, incluindo duração, preparação e limpeza. Jornadas atravessando a meia-noite não são aceitas.</p><div class="ob-inline-actions">'+button('Continuar sem alterar horários','next')+'</div>','Salvar horários');}
     function channelRows() {const c=state.data?.channels||{};return [['whatsapp','WhatsApp'],['assistant','Assistente'],['site','Site público'],['google','Google Agenda']].map(([key,label])=>{const item=c[key]||{},status=typeof item==='string'?item:item.status;return '<div class="ob-status"><div><strong>'+label+'</strong><p class="ob-status-description">'+esc(item.message||item.reason||'')+'</p></div><span class="ob-badge">'+esc(statusLabels[status]||'A verificar')+'</span></div>';}).join('');}
     function channelsForm() {const assistant=state.data.channels?.assistant||{},profile=assistant.profile||{},style=profile.style_rules||assistant.style_rules||{},capabilities=rows(profile.capabilities||assistant.capabilities);return '<div class="ob-note">Salvar estas preferências mantém a assistente em rascunho. Conexão, atendimento automático, publicação do site e Google Agenda têm suas próprias autorizações.</div>'+channelRows()+form('<div class="ob-fields">'+field('assistant_name','Nome da assistente (opcional)',profile.assistant_name||assistant.assistant_name||'','maxlength="80"')+select('style','Estilo de atendimento',[['warm','Acolhedor'],['professional','Profissional'],['relaxed','Descontraído'],['direct','Direto']],style.style||'warm')+select('length','Tamanho das respostas',[['short','Curtas'],['balanced','Equilibradas'],['detailed','Detalhadas']],style.length||'balanced')+select('emoji','Emojis',[['none','Sem emojis'],['light','Uso leve']],style.emoji||'none')+'</div><fieldset><legend>Atividades da assistente</legend><div class="ob-checks">'+[['catalog_answers','Responder sobre o catálogo'],['appointments','Receber pedidos de agendamento'],['rescheduling','Ajudar com remarcação'],['product_orders','Receber pedidos de produtos'],['human_handoff_request','Receber pedidos de atendimento humano']].map(([id,label])=>check('capabilities',label,capabilities.includes(id),'',id)).join('')+'</div></fieldset><p class="ob-help">Atividades selecionadas só podem ser ativadas após publicação e configuração do canal.</p>')+(state.data.channels?.whatsapp?.can_connect?'<div class="ob-note">'+button('Conectar WhatsApp no painel','connect-whatsapp')+'<p>Você pode conectar depois e continuar a configuração. Uma conexão não será iniciada automaticamente.</p></div>':'');}
-    function review() {const c=state.data.configuration||{},catalog=state.data.catalog||{},pending=rows(state.data.pending);return '<div class="ob-summary">'+[['business','Negócio',[['Nome',state.data.name],['Nicho',c.niche==='outro'?c.other_niche:c.niche],['Atividade',{services:'Serviços com agendamento',products:'Produtos',both:'Serviços e produtos'}[c.activity]],['Fuso',state.data.timezone]]],['location','Local de atendimento',[['Modalidade',{onsite:'No estabelecimento',online:'Online',client_address:'No endereço do cliente',hybrid:'Híbrido'}[c.modality]],['Endereço',c.private_address?[c.private_address.street,c.private_address.number,c.private_address.city,c.private_address.state].filter(Boolean).join(', ')+' (privado)':'Não informado']]],['catalog','Cadastros',[['Profissionais',String(rows(catalog.professionals).length)],['Serviços',String(rows(catalog.services).length)],['Produtos',String(rows(catalog.products).length)],['Jornadas',String(rows(catalog.hours).length)]]]].map(([id,title,values])=>'<section class="ob-summary-section"><div class="ob-summary-title"><h3>'+title+'</h3>'+button('Editar','review-edit','data-ob-target="'+id+'"')+'</div><dl>'+values.map(([label,value])=>'<dt>'+label+'</dt><dd>'+esc(value||'Não informado')+'</dd>').join('')+'</dl></section>').join('')+'<section class="ob-summary-section"><h3>Canais e publicação</h3>'+channelRows()+'</section></div>'+(pending.length?'<div class="ob-note"><strong>O que falta conferir</strong><ul>'+pending.map(item=>'<li>'+esc(item.message)+'</li>').join('')+'</ul></div>':'')+(state.data.status==='complete'?'<div class="ob-note ob-success"><strong>Cadastro do negócio concluído.</strong><p>Os estados dos canais acima continuam independentes.</p></div><div class="ob-actions">'+button('Abrir painel','open-dashboard')+'</div>':form(check('acknowledged','Revisei os dados reais deste negócio',false,'Concluir disponibiliza os cadastros revisados, mas não conecta WhatsApp, ativa a assistente, publica o site nem autoriza pagamentos.'),'Concluir configuração','complete'));}
+    function review() {
+      const c=state.data.configuration||{},catalog=state.data.catalog||{},pending=rows(state.data.pending);
+      const hasProfile=rows(state.data.steps).some(step=>step.id==='profile');
+      const profile=c.business_metrics||{};
+      const overview=[
+        ['business','Negócio',[
+          ['Nome',state.data.name],['Nicho',c.niche==='outro'?c.other_niche:c.niche],
+          ['Atividade',{services:'Serviços com agendamento',products:'Produtos',both:'Serviços e produtos'}[c.activity]],
+          ['Fuso',state.data.timezone]
+        ]],
+        ['location','Local de atendimento',[
+          ['Modalidade',{onsite:'No estabelecimento',online:'Online',client_address:'No endereço do cliente',hybrid:'Híbrido'}[c.modality]],
+          ['Endereço',c.private_address?[c.private_address.street,c.private_address.number,c.private_address.city,c.private_address.state].filter(Boolean).join(', ')+' (privado)':'Não informado']
+        ]],
+        hasProfile
+          ? ['profile','Perfil da empresa',[
+              ['Tempo de atividade',profileLabel('operating_age',profile.operating_age,c.activity)],
+              [c.activity==='products'?'Pessoas na equipe':'Profissionais',profileLabel('team_size',profile.team_size,c.activity)],
+              ['Faturamento mensal',profileLabel('monthly_revenue',profile.monthly_revenue,c.activity)],
+              [c.activity==='products'?'Pedidos por mês':'Atendimentos por mês',profileLabel('monthly_volume',profile.monthly_volume,c.activity)]
+            ]]
+          : ['catalog','Cadastros',[
+              ['Profissionais',String(rows(catalog.professionals).length)],
+              ['Serviços',String(rows(catalog.services).length)],
+              ['Produtos',String(rows(catalog.products).length)],
+              ['Jornadas',String(rows(catalog.hours).length)]
+            ]]
+      ];
+      return '<div class="ob-summary">'+overview.map(([id,title,values])=>
+        '<section class="ob-summary-section"><div class="ob-summary-title"><h3>'+title+'</h3>'+
+        button('Editar','review-edit','data-ob-target="'+id+'"')+'</div><dl>'+
+        values.map(([label,value])=>'<dt>'+esc(label)+'</dt><dd>'+esc(value||'Não informado')+'</dd>').join('')+
+        '</dl></section>'
+      ).join('')+'<section class="ob-summary-section"><h3>Canais e publicação</h3>'+channelRows()+'</section></div>'+
+      (hasProfile?'<p class="ob-help ob-profile-disclaimer">Serviços, produtos, profissionais e horários podem ser configurados depois, no painel.</p>':'')+
+      (pending.length?'<div class="ob-note"><strong>O que falta conferir</strong><ul>'+
+        pending.map(item=>'<li>'+esc(item.message)+'</li>').join('')+'</ul></div>':'')+
+      (state.data.status==='complete'
+        ?'<div class="ob-note ob-success"><strong>Cadastro do negócio concluído.</strong><p>Os estados dos canais acima continuam independentes.</p></div><div class="ob-actions">'+button('Abrir painel','open-dashboard')+'</div>'
+        :form(check('acknowledged','Revisei os dados reais deste negócio',false,
+          'Concluir não conecta WhatsApp, ativa a assistente, publica o site nem autoriza pagamentos.'),
+          'Concluir configuração','complete'));
+    }
     function render() {
       if(!state.mounted)return;
       if(!state.data){renderEntry();return;}
       const titles=definitions[state.step]||definitions.review;
-      const descriptions={business:'Informe o nome, a atividade e o WhatsApp da empresa.',location:'Diferencie o endereço de operação das informações que serão publicadas.',professionals:'Cadastre quem atende, sem criar acessos de equipe automaticamente.',catalog:'Cadastre valores, duração e vínculos reais. Nenhum exemplo será salvo por você.',hours:'Configure a agenda usada para oferecer horários aos clientes.',channels:'Revise a recepção e confira o que ainda precisa de conexão ou autorização.',review:'Confira os dados salvos e as pendências antes de concluir.'};
-      const forms={business:businessForm,location:addressForm,professionals:professionalForm,catalog:catalogForm,hours:hoursForm,channels:channelsForm,review};
+      const descriptions={business:'Informe o nome, a atividade e o WhatsApp da empresa.',location:'Diferencie o endereço de operação das informações que serão publicadas.',professionals:'Cadastre quem atende, sem criar acessos de equipe automaticamente.',profile:'Quatro respostas rápidas para conhecer o momento do seu negócio.',catalog:'Cadastre valores, duração e vínculos reais. Nenhum exemplo será salvo por você.',hours:'Configure a agenda usada para oferecer horários aos clientes.',channels:'Revise a recepção e confira o que ainda precisa de conexão ou autorização.',review:'Confira os dados salvos e as pendências antes de concluir.'};
+      const forms={business:businessForm,location:addressForm,professionals:professionalForm,profile:profileForm,catalog:catalogForm,hours:hoursForm,channels:channelsForm,review};
       setHTML(header('Vamos configurar seu negócio',descriptions[state.step]||'Revise a configuração.')+navigation()+'<section class="ob-card" aria-labelledby="ob-step-title"><div class="ob-card-head">'+icon(titles[1])+'<h2 id="ob-step-title">'+esc(titles[0])+'</h2></div>'+feedback()+recovery()+(state.data.can_edit===false?'<div class="ob-note">Você pode consultar esta configuração. O proprietário precisa concluir ou alterar os dados.</div>':'')+(forms[state.step]||review)()+'</section></div></div>');conditionalFields();
     }
     const canCreate = () => state.entry?.enabled===true&&state.entry.kind==='onboarding'&&state.entry.create_allowed===true&&!state.entry.tenant_id&&!state.tenantId&&!state.data&&rows(state.entry.businesses).length===0;
@@ -199,6 +290,9 @@
     }
     function price(raw) {return fieldTools.parseMoney(raw,{required:true,min:0,max:100000000});}
     function formData(form) {const data=Object.fromEntries(new FormData(form));const type=form.dataset.obForm;if(type==='business'||type==='create')return {name:businessNameValue(data.name),timezone:state.data?.timezone||startingTimezone,niche:data.niche,other_niche:data.niche==='outro'?data.other_niche?.trim()||null:null,activity:data.activity,contact_phone:fieldTools.phoneValue(data.contact_phone)};if(type==='location'){const result={modality:data.modality};if(['onsite','hybrid'].includes(data.modality))result.address={postal_code:fieldTools.postalCodeValue(data.postal_code),street:addressTextValue(data.street),number:addressNumberValue(data.number),no_number:false,complement:addressTextValue(data.complement)||null,neighborhood:addressTextValue(data.neighborhood),city:addressTextValue(data.city),state:data.state.trim().toUpperCase()};return result;}
+      if(type==='profile')return Object.fromEntries(
+        ['operating_age','team_size','monthly_revenue','monthly_volume'].map(name=>[name,data[name]])
+      );
       if(type==='professional'){const item=rows(state.data.catalog.professionals).find(row=>row.id===state.editor?.id),result={item:{...pick(item,['color','commission_percent','image_url']),name:data.name.trim(),specialty:data.specialty?.trim()||null,active:form.elements.active.checked,accepts_appointments:form.elements.accepts_appointments.checked},self_provider:form.elements.self_provider?.checked===true};if(item)Object.assign(result.item,{id:item.id,expected_fingerprint:item.fingerprint});return result;}
       if(type==='service'){const item=rows(state.data.catalog.services).find(row=>row.id===state.editor?.id),ids=new FormData(form).getAll('professional_ids');if(!ids.length)throw Error('Selecione ao menos um profissional habilitado.');const result={kind:'service',item:{...pick(item,['category','color','image_url','sort_order']),name:data.name.trim(),description:data.description?.trim()||null,price_cents:price(data.price),duration_min:fieldTools.parseDecimal(data.duration_min,{required:true,scale:0,min:1,max:1440}),prep_min:fieldTools.parseDecimal(data.prep_min,{scale:0,min:0,max:240})??0,cleanup_min:fieldTools.parseDecimal(data.cleanup_min,{scale:0,min:0,max:240})??0,active:form.elements.active.checked},professional_ids:ids};if(item)Object.assign(result.item,{id:item.id,expected_fingerprint:item.fingerprint});return result;}
       if(type==='product'){const item=rows(state.data.catalog.products).find(row=>row.id===state.editor?.id),variant=rows(item?.variants).find(row=>row.id===state.editor?.variant_id)||rows(item?.variants)[0],result={kind:'product',item:{...pick(item,['synonyms','faqs','official_benefits']),name:data.name.trim(),description:data.description?.trim()||null,active:form.elements.active.checked},variant:{...pick(variant,['sku','attributes']),name:data.variant_name.trim(),price_kind:data.price_kind,unit_price_cents:['fixed','from'].includes(data.price_kind)?fieldTools.parseMoney(data.price,{required:true,min:0,max:100000000}):null,active:form.elements.variant_active.checked}};if(item)Object.assign(result.item,{id:item.id,expected_fingerprint:item.fingerprint});if(variant)result.variant.id=variant.id;return result;}

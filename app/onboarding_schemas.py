@@ -112,6 +112,28 @@ class VariantItem(Variant):
     active: bool = True
 
 
+class BusinessMetrics(ProfileModel):
+    """Short, estimated company profile collected during onboarding.
+
+    These bands are stable stored identifiers, not customer or financial
+    records. Keep the operational catalogue separate from the quick survey.
+    """
+
+    operating_age: Literal[
+        "not_started", "under_6_months", "6_to_12_months", "1_to_3_years",
+        "3_to_5_years", "over_5_years",
+    ]
+    team_size: Literal["none", "1_2", "3_5", "6_10", "11_20", "over_20"]
+    monthly_revenue: Literal[
+        "none", "under_5k", "5k_10k", "10k_25k", "25k_50k",
+        "50k_100k", "over_100k", "prefer_not_to_say",
+    ]
+    monthly_volume: Literal[
+        "none", "up_to_50", "51_100", "101_300", "301_600",
+        "601_1000", "over_1000",
+    ]
+
+
 class Catalog(ProfileModel):
     _item_fields: set[str] = PrivateAttr(default_factory=set)
     kind: Literal["service", "product"]
@@ -177,7 +199,8 @@ class Review(ProfileModel):
 
 
 STEPS = {"business": Identity, "location": Location, "professionals": Professionals,
-         "catalog": Catalog, "hours": Hours, "channels": Channels, "review": Review}
+         "profile": BusinessMetrics, "catalog": Catalog, "hours": Hours,
+         "channels": Channels, "review": Review}
 
 
 class SaveStep(ProfileModel):

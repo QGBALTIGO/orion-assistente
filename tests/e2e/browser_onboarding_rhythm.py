@@ -126,15 +126,15 @@ METRICS = r"""() => {
       }
     }
   }
-  const firstButton=actions?.querySelector('.ob-button');
+  const actionButtons=actions?[...actions.querySelectorAll('.ob-button')]:[];
   const border=parseFloat(actions?getComputedStyle(actions).borderTopWidth:'0');
   return {
     width:innerWidth,scrollWidth:document.documentElement.scrollWidth,
     fields,rowGaps,
     dividerGap:last&&actions?round(rect(actions).top-rect(last).bottom):null,
     actionsPadding:actions?parseFloat(getComputedStyle(actions).paddingTop):null,
-    afterDivider:actions&&firstButton?
-      round(rect(firstButton).top-rect(actions).top-border):null,
+    afterDivider:actions&&actionButtons.length?
+      round(Math.min(...actionButtons.map(button=>rect(button).top))-rect(actions).top-border):null,
     numberOfActions:actions?.querySelectorAll('button').length??0
   };
 }"""
