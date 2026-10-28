@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {makeSuite,flush,tenantA} from './harness.mjs';
 import {makePanel} from './panel-harness.mjs';
 
-const operatorRoutes=['conversas','ai','empresa','catalogo','cadastros'];
+const operatorRoutes=['conversas','ai','empresa','catalogo'];
 const operatorActions=['conversas','ai','empresa','catalogo'];
 
 for(const role of ['member','support','editor','viewer']){
@@ -40,6 +40,8 @@ for(const role of ['member','support','editor','viewer']){
       assert.equal(new URL(h.window.location.href).searchParams.get('aba'),'dashboard',route);
       assert.equal(h.document.querySelector('[data-os-route='+route+']'),null,route);
     }
+    await h.window.OrionSuite.open('cadastros');await flush();
+    assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'configuracoes');
     await h.window.OrionSuite.open('configuracoes');await flush();
     assert.equal(h.document.querySelector('[data-os-settings=administration]'),null,
       'legacy operator administration is not a business settings option');
@@ -70,8 +72,10 @@ test('admin retains all original operator routes while normal Dashboard remains 
   assert.deepEqual(visited,operatorRoutes);
   assert.ok(nav.querySelector('[data-os-route=dashboard]'));
   await h.window.OrionSuite.open('configuracoes');await flush();
-  assert.ok(h.document.querySelector('[data-os-settings=administration]'),
-    'admin retains attendance administration');
+  assert.equal(h.document.querySelector('[data-os-settings=administration]'),null,
+    'the retired attendance administration is hidden even for platform admin');
+  await h.window.OrionSuite.open('cadastros');await flush();
+  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'configuracoes');
   assert.equal(h.calls.some(c=>c.method!=='GET'),false);
   assert.deepEqual(h.errors,[]);
 });
