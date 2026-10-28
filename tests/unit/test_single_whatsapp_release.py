@@ -10,6 +10,7 @@ from scripts import backup_and_migrate_professional_phone as contacts
 from scripts import backup_and_migrate_quick_onboarding as quick
 from scripts import backup_and_migrate_admin_accounts as accounts
 from scripts import backup_and_migrate_cakto as cakto
+from scripts import backup_and_migrate_plans as plans
 from scripts import wait_for_single_whatsapp_schema as barrier
 
 
@@ -84,34 +85,35 @@ def test_unverified_upgrade_cannot_be_reported_ready(monkeypatch, options):
 
 
 @pytest.mark.parametrize('revision,expected', [
-    (registration.PREVIOUS, ['registration','phone','quick','accounts','cakto','single']),
-    (registration.TARGET, ['phone','quick','accounts','cakto','single']),
-    (contacts.TARGET, ['quick','accounts','cakto','single']),
-    (quick.TARGET, ['quick','accounts','cakto','single']),
-    (accounts.TARGET, ['accounts','cakto','single']),
-    (cakto.TARGET, ['cakto','single']),
-    (release.TARGET, ['single']),
+    (registration.PREVIOUS, ['registration','phone','quick','accounts','cakto','single','plans']),
+    (registration.TARGET, ['phone','quick','accounts','cakto','single','plans']),
+    (contacts.TARGET, ['quick','accounts','cakto','single','plans']),
+    (quick.TARGET, ['quick','accounts','cakto','single','plans']),
+    (accounts.TARGET, ['accounts','cakto','single','plans']),
+    (cakto.TARGET, ['cakto','single','plans']),
+    (release.TARGET, ['single','plans']),
+    (plans.TARGET, ['plans']),
 ])
 def test_all_reviewed_predeploy_origins_reach_single_connection_in_order(monkeypatch, revision, expected):
     calls = []
     monkeypatch.setattr(registration, 'connection_values', lambda: ('synthetic', object()))
     monkeypatch.setattr(registration, 'migrated_version', lambda _: revision)
     for module, name in [(registration,'registration'),(contacts,'phone'),(quick,'quick'),
-                         (accounts,'accounts'),(cakto,'cakto'),(release,'single')]:
+                         (accounts,'accounts'),(cakto,'cakto'),(release,'single'),(plans,'plans')]:
         monkeypatch.setattr(module, 'main', lambda n=name: calls.append(n) or 0)
     assert registration.predeploy_main() == 0 and calls == expected
 
 
-@pytest.mark.parametrize('failed', ['registration','phone','quick','accounts','cakto','single'])
+@pytest.mark.parametrize('failed', ['registration','phone','quick','accounts','cakto','single','plans'])
 def test_predeploy_stops_at_first_failed_stage(monkeypatch, failed):
     calls = []
     monkeypatch.setattr(registration, 'connection_values', lambda: ('synthetic', object()))
     monkeypatch.setattr(registration, 'migrated_version', lambda _: registration.PREVIOUS)
     for module, name in [(registration,'registration'),(contacts,'phone'),(quick,'quick'),
-                         (accounts,'accounts'),(cakto,'cakto'),(release,'single')]:
+                         (accounts,'accounts'),(cakto,'cakto'),(release,'single'),(plans,'plans')]:
         monkeypatch.setattr(module, 'main', lambda n=name: calls.append(n) or (3 if n == failed else 0))
     assert registration.predeploy_main() == 3
-    order = ['registration','phone','quick','accounts','cakto','single']
+    order = ['registration','phone','quick','accounts','cakto','single','plans']
     assert calls == order[:order.index(failed)+1]
 
 
