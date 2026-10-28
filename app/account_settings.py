@@ -81,7 +81,7 @@ async def _business_details(db, account_id):
     """), {"tenant": business["id"]})).mappings().first()
     pref = ((preferences or {}).get("preferences") or {}).get("business") or {}
     phone = config.get("contact_phone") or pref.get("contact_phone")
-    return business, config, phone
+    return business, config, phone, onboarding is not None
 
 
 @router.get("/business-identity")
@@ -89,7 +89,7 @@ async def get_business_identity(data: dict = Depends(panel_actor)):
     account_id = _account_id(data)
     async with _storage()() as db:
         async with db.begin():
-            business, _, phone = await _business_details(db, account_id)
+            business, _, phone, _ = await _business_details(db, account_id)
     return {"name": business["name"], "contact_phone": phone,
             "can_edit": True}
 
@@ -100,14 +100,14 @@ async def update_business_identity(payload: BusinessIdentity,
     account_id = _account_id(data)
     async with _storage()() as db:
         async with db.begin():
-            business, config, phone = await _business_details(db, account_id)
+            business, config, phone, has_onboarding = await _business_details(db, account_id)
             if business["name"] != payload.expected_name or phone != payload.expected_phone:
                 raise HTTPException(409, "Os dados da empresa foram alterados. Atualize antes de salvar.")
             if business["name"] != payload.name:
                 await db.execute(text("""
                     UPDATE tenants SET name=:name WHERE id=:tenant
                 """), {"name": payload.name, "tenant": business["id"]})
-            if config:
+            if has_onboarding:
                 await db.execute(text("""
                     UPDATE business_onboarding
                     SET configuration=jsonb_set(configuration,'{contact_phone}',to_jsonb(CAST(:phone AS text)),true),
