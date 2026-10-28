@@ -78,8 +78,8 @@ test('goals save once with concurrency-safe metadata and preserve legacy channel
   assert.deepEqual(sent[0].data.data,answers);
   assert.match(sent[0].data.idempotency_key,/^[a-f0-9-]{36}$/);
   assert.equal(h.controller.getState().step,'review');
-  assert.deepEqual(h.controller.getState().data.configuration.business_priorities,answers);
-  assert.deepEqual(h.controller.getState().data.configuration.business_metrics,metrics);
+  assert.deepEqual(copy(h.controller.getState().data.configuration.business_priorities),answers);
+  assert.deepEqual(copy(h.controller.getState().data.configuration.business_metrics),metrics);
   assert.equal(writes(h).some(x=>/connect|publish|whatsapp|business\/profile/.test(x.path)),false);
   assert.deepEqual(h.errors,[]);
 });
