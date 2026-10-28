@@ -1822,6 +1822,7 @@ async function api(url,method="GET",data){
  }
  return response.status===204?null:response.json();
 }
+const adminOnly=()=>loginRole==="admin";
 let memberBusinessOriginal=null,memberBusinessBusy=false,memberPasswordBusy=false;
 function memberFeedback(id,message,error=false){
  const el=$(id);el.textContent=message;el.dataset.error=String(error);
