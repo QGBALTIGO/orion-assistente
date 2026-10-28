@@ -86,6 +86,7 @@ def predeploy_main():
     """
     from scripts import backup_and_migrate_professional_phone as contacts
     from scripts import backup_and_migrate_quick_onboarding as quick
+    from scripts import backup_and_migrate_admin_accounts as accounts
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
@@ -93,14 +94,18 @@ def predeploy_main():
             result = main()
             if result:
                 return result
-        elif current not in {TARGET, contacts.TARGET, quick.TARGET}:
+        elif current not in {TARGET, contacts.TARGET, quick.TARGET, accounts.TARGET}:
             print('orion_registration_unreviewed_schema_revision', file=sys.stderr)
             return 2
         if current in {PREVIOUS, TARGET}:
             result = contacts.main()
             if result:
                 return result
-        return quick.main()
+        if current != accounts.TARGET:
+            result = quick.main()
+            if result:
+                return result
+        return accounts.main()
     except Exception:
         print('orion_registration_predeploy_failed_closed', file=sys.stderr)
         return 3
