@@ -6,7 +6,7 @@ de pedidos pelo servidor. A ligação de um checkout a um usuário será entregu
 depois com os cards de planos, sem vincular empresas por e-mail do comprador.
 
 ## Endpoints
-- GET /api/public/cakto/plans — Essencial R$29,90; Pro R$89,90; Elite R$139,90, com os três links públicos.
+- GET /api/public/cakto/plans — Essencial R$29,90; Pro R$89,90; Elite R$139,90. Os links de checkout ficam armazenados no backend, mas não são expostos ao público antes de habilitar as regras de assinaturas.
 - POST /webhooks/cakto — aceita somente HTTPS com HMAC SHA-256 dos cabeçalhos X-Cakto-Timestamp e X-Cakto-Signature e com secret no payload. Formatos V1 e V2. Idempotência via hash do evento do pedido, sem dados pessoais.
 - GET /api/v1/admin/cakto/connection — somente suporte/admin; checa OAuth2 de leitura de ofertas e associação exata de nome/preço. Nunca expõe tokens.
 
