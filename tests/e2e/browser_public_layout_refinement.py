@@ -41,7 +41,9 @@ def test_conflict_has_balanced_space_and_stays_visible(fixture_url, engine, widt
         try:
             page.goto(fixture_url)
             page.locator('#hero-book').click()
+            page.evaluate('document.fonts.ready')
             page.get_by_role('dialog').get_by_role('button', name='Corte Masculino', exact=False).click()
+            before_error=page.locator('#booking-dialog').evaluate('(d)=>d.scrollTop')
             page.get_by_role('dialog').get_by_role('button', name='COMBO EM DESTAQUE', exact=False).click()
             page.evaluate('document.fonts.ready')
             metrics = page.evaluate('''() => {
@@ -51,12 +53,14 @@ def test_conflict_has_balanced_space_and_stays_visible(fixture_url, engine, widt
               const footer=document.querySelector('.booking-footer').getBoundingClientRect();
               return {topGap:alert.top-steps.bottom,bottomGap:intro.top-alert.bottom,
                 aligned:Math.abs(alert.left-intro.left)<1,aboveFooter:alert.bottom<footer.top,
-                overflow:document.documentElement.scrollWidth>innerWidth};
+                overflow:document.documentElement.scrollWidth>innerWidth,
+                scrollTop:document.querySelector('#booking-dialog').scrollTop};
             }''')
             gap = 16 if width < 640 else 24
             assert abs(metrics['topGap'] - gap) <= 1, metrics
             assert abs(metrics['bottomGap'] - gap) <= 1, metrics
             assert metrics['aligned'] and metrics['aboveFooter'] and not metrics['overflow'], metrics
+            assert abs(metrics['scrollTop']-before_error)<=1, 'Showing the warning must not scroll the header away'
             assert page.locator('#booking-service-list [aria-pressed=true]').count() == 1
             page.locator('#booking-dialog').evaluate('(d)=>d.scrollTop+=500')
             assert page.locator('#booking-error').is_visible()

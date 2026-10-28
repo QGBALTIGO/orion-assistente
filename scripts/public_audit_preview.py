@@ -37,6 +37,8 @@ DATA = {
 }
 DATA['services'][2].update(catalog_kind='combo', category='Combos', featured=True,
     components=[dict(service_id=S[i],name=DATA['services'][i]['name']) for i in [0,3,4]])
+DATA['services'][-1].update(name='Tratamento capilar completo com avaliação personalizada',
+    duration_min=180, price_cents=19000, price_mode='from')
 
 class Handler(BaseHTTPRequestHandler):
     def send_body(self, body, mime='application/json', status=200):
