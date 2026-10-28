@@ -19,7 +19,7 @@ from sqlalchemy import text
 
 from app.account_auth import _storage, current_account, current_account_and_membership
 from app.admin_accounts import require_platform_owner
-from app.panel_auth import COOKIE, ROUTE_MEMBERSHIP, VerifiedRouteMembership, _request_redis
+from app.panel_auth import COOKIE, ROUTE_MEMBERSHIP, VerifiedRouteMembership, _request_redis, panel_actor
 
 router = APIRouter(prefix="/auth/maintenance", tags=["Acesso de manutenção"])
 admin_router = APIRouter(prefix="/api/v1/admin/accounts", tags=["Administração de clientes"])
@@ -198,8 +198,7 @@ async def audit_maintenance_request(request: Request, claims: dict):
 
 
 @router.post("/end")
-async def end_maintenance(request: Request, data: dict = Depends(
-        __import__("app.panel_auth", fromlist=["panel_actor"]).panel_actor)):
+async def end_maintenance(request: Request, data: dict = Depends(panel_actor)):
     """Return to original admin identity without logging out or changing passwords."""
     if not data.get("maintenance") or not data.get("maintenance_actor_id"):
         raise HTTPException(409, "Nenhum acesso de manutenção ativo")
