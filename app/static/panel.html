@@ -359,9 +359,6 @@ th{background:var(--table-head);color:var(--text)}
 .device-feature strong svg,.device-actions svg{color:var(--bright)}
 html[data-theme="light"] .dot.green{background:#00a56d;box-shadow:0 0 0 3px #d6f8e5}
 html[data-theme="light"] .device-stat strong,html[data-theme="light"] .device-name{color:var(--text)}
-html[data-theme="light"] .wizard-timeline-dot{color:#ffffff}
-html[data-theme="light"] .wizard-timeline-copy strong{color:var(--text)}
-html[data-theme="light"] .wizard-method-icon{color:var(--bright)}
 html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 @media(max-width:790px){
  .sidebar{position:relative;top:auto;height:auto;gap:12px;padding:12px 16px}
@@ -1805,10 +1802,10 @@ function finishActionConfirmation(accepted){
  if(pending.authEpoch===authEpoch&&pending.trigger?.isConnected!==false&&!pending.trigger?.disabled)pending.trigger?.focus?.();
  pending.resolve(accepted===true);
 }
-function confirmAction(message){
+function confirmAction(message,trigger=document.activeElement){
  if(actionConfirmation)return Promise.resolve(false);
  return new Promise(resolve=>{
-   actionConfirmation={resolve,trigger:document.activeElement,authEpoch};$("actionConfirmText").textContent=message;
+   actionConfirmation={resolve,trigger,authEpoch};$("actionConfirmText").textContent=message;
    try{$("actionConfirm").showModal();$("actionConfirmCancel").focus();}
    catch{actionConfirmation=null;resolve(false);}
  });
@@ -2601,7 +2598,7 @@ $("pairForm").addEventListener("submit",async ev=>{
 });
 async function prepareWizardConnection(recover){
  if(wizardBusy||deviceStatus==="connected")return;
- if(!confirm(recover?"O WhatsApp encerrou o vínculo anterior. Preparar uma nova conexão?":"Preparar uma nova tentativa? O código anterior deixará de funcionar."))return;
+ if(!await confirmAction(recover?"O WhatsApp encerrou o vínculo anterior. Preparar uma nova conexão?":"Preparar uma nova tentativa? O código anterior deixará de funcionar.",$(recover?"wizardRecover":"retryCode")))return;
  const epoch=authEpoch,operation=++wizardOperation,current=()=>epoch===authEpoch&&operation===wizardOperation;
  wizardBusy=true;renderGuide();
  try{

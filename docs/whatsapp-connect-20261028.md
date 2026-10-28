@@ -40,6 +40,10 @@ A intenção de novo vínculo existe somente na memória do processo.
   `fields-panel-legacy.test.mjs`, reproduzidas no commit base `18a2939`:
   os testes ainda navegam para `cadastros`, que foi retirado do produto.
   O novo gate verifica os consumidores atuais sem reabrir essa rota.
+- O harness VM antigo `qr-bridge/test/panel-ui.test.mjs` também mantém 67 falhas
+  de contexto empresarial, com os mesmos 67 títulos na baseline `18a2939` e
+  na versão candidata. Esses casos não constituem fluxos validados. O wizard
+  atual, os testes DOM com sessão empresarial e o navegador têm gates próprios.
 
 As capturas e os resultados finais de execução pertencem ao workflow e ao
 registro de entrega. Emulação não comprova teclado virtual, iPhone físico,

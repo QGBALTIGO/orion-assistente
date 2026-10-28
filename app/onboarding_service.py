@@ -36,7 +36,9 @@ from app.account_business import (
 # Historical operations and catalogue APIs stay available for existing accounts.
 LEGACY_LABELS = {"business": "Empresa", "location": "Atendimento e endereço", "professionals": "Profissionais",
                  "catalog": "Serviços e produtos", "hours": "Expediente", "channels": "Canais independentes", "review": "Revisão"}
-LABELS = {"business": "Empresa", "location": "Atendimento e endereço", "professionals": "Profissionais",
+# The quick company registration does not collect staff records. Owners can
+# register professionals later in the dedicated management area.
+LABELS = {"business": "Empresa", "location": "Atendimento e endereço",
           "profile": "Perfil da empresa", "hours": "Expediente", "goals": "Desafios e objetivos", "review": "Revisão"}
 
 
@@ -460,7 +462,8 @@ async def _state(db, tenant, access):
     step_labels = LABELS if quick_setup else LEGACY_LABELS
     current_step = meta["current_step"] if meta else "business"
     if quick_setup:
-        current_step = {"catalog": "profile", "channels": "goals"}.get(current_step, current_step)
+        current_step = {"catalog": "profile", "channels": "goals",
+                        "professionals": "profile"}.get(current_step, current_step)
         if current_step == "review" and any(item["step"] == "goals" for item in pending):
             current_step = "goals"
     result = {"enabled": enabled(), "tenant_id": tenant, "name": facts["business"]["name"], "timezone": facts["business"]["timezone"],
@@ -814,6 +817,11 @@ async def _apply_step(db, tenant, meta, step, data, access):
             return {"id": str(item_id), "variant_id": str(variant_id)}
         return {"id": str(item_id)}
     elif step == "hours":
+        if isinstance(data, schemas.BusinessOpeningHours):
+            # Public company hours are informational and never overwrite the
+            # independent booking availability of individual professionals.
+            config["business_opening_hours"] = data.model_dump(mode="json")
+            return {}
         return await _save_hours(db, tenant, data)
     elif step == "channels":
         return await _save_channels(db, tenant, data, access)
@@ -822,11 +830,55 @@ async def _apply_step(db, tenant, meta, step, data, access):
     return {}
 
 
+
+async def _save_hours_by_mode(actor, tenant, step, payload):
+    """Validate company hours against the tenant's locked onboarding mode."""
+    require_enabled()
+    try:
+        async with access_session(actor, tenant, write=True) as access:
+            async with get_session_factory()() as db:
+                async with tenant_transaction(db, tenant):
+                    meta = await _lock_meta(db, tenant, actor)
+                    quick = _uses_quick_profile(meta)
+                    model = schemas.BusinessOpeningHours if quick else schemas.Hours
+                    data = model.model_validate(payload.data)
+                    fingerprint = digest({"actor": actor.account_id, "step": step,
+                                          "data": data.model_dump(mode="json"),
+                                          "supplied": payload.data})
+                    replay = await _replay(db, tenant, actor, payload.idempotency_key, fingerprint)
+                    if not replay:
+                        if meta["version"] != payload.expected_version:
+                            conflict()
+                        meta["configuration"]["reviewed"] = False
+                        result = await _apply_step(db, tenant, meta, step, data, access)
+                        pending = readiness(meta["configuration"], await _facts(db, tenant),
+                                            meta["managed_ids"], profile_only=quick,
+                                            goals_required=bool(quick and not meta["completed_at"]))
+                        meta["current_step"] = pending[0]["step"] if pending else "review"
+                        await _persist(db, tenant, actor, meta, payload.idempotency_key,
+                                       fingerprint, step, result)
+                    response = await _state(db, tenant, access)
+                    response["result"] = replay["result"] if replay else result
+                    return response
+    except IntegrityError:
+        conflict("O cadastro já existe ou foi alterado. Atualize antes de repetir o pedido")
+
+
 async def save_step(actor, tenant, step, payload):
     require_enabled()
     model = schemas.STEPS.get(step)
     if model is None:
         raise HTTPException(404, "Etapa desconhecida")
+    # The schema for "hours" depends on the locked tenant onboarding mode.
+    # Validation and fingerprinting happen under the same tenant transaction
+    # to prevent switching between company and professional hours.
+    if step == "hours":
+        # Reject malformed input before opening a DB session, preserving the
+        # existing HTTP 422 contract even when the database is unavailable.
+        candidate = (schemas.BusinessOpeningHours if "days" in payload.data
+                     else schemas.Hours)
+        candidate.model_validate(payload.data)
+        return await _save_hours_by_mode(actor, tenant, step, payload)
     data = model.model_validate(payload.data)
     # Omission matters on edits: an omitted default preserves the current value.
     fingerprint_data = data.model_dump(mode="json")

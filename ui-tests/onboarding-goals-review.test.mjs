@@ -29,6 +29,20 @@ function quickState({step='goals',activity='services',goals=null,pending=[],stat
 }
 const writes=h=>h.calls.filter(call=>call.method!=='GET');
 
+test('quick company setup skips Quem atende and preserves existing professionals',async t=>{
+  const state=quickState({step:'professionals'});
+  const h=await makeOnboarding({data:state});t.after(()=>h.close());
+  assert.equal(h.controller.getState().step,'business');
+  assert.equal(h.document.querySelector('[data-ob-step=professionals]'),null);
+  assert.equal(h.document.querySelector('[data-ob-action=add-professional]'),null);
+  assert.match(h.element('.ob-progress').textContent,/Etapa 1 de 6/);
+  h.click('[data-ob-step=profile]');
+  assert.equal(h.element('#ob-step-title').textContent,'Perfil da empresa');
+  assert.equal(h.document.querySelector('[data-ob-step=professionals]'),null);
+  assert.equal(writes(h).length,0);
+  assert.deepEqual(h.errors,[]);
+});
+
 test('three focused questions replace channels and placeholders never count as answers',async t=>{
   const h=await makeOnboarding({data:quickState()});t.after(()=>h.close());
   assert.equal(h.element('#ob-step-title').textContent,'Desafios e objetivos');
@@ -102,15 +116,15 @@ test('products-only companies see relevant choices without a second questionnair
   assert.equal(h.element('[name=respondent_role] option[value=manager]').textContent,'Gerente / Administrador');
 });
 
-test('new review has four organized editable sections and no technical channel status',async t=>{
+test('new review has five organized editable sections and no technical channel status',async t=>{
   const h=await makeOnboarding({data:quickState({step:'review',goals:answers})});t.after(()=>h.close());
   const root=h.element('.ob-review');
-  const expected=['Empresa','Atendimento','Perfil da empresa','Desafios e objetivos'];
+  const expected=['Empresa','Atendimento','Perfil da empresa','Horário comercial','Desafios e objetivos'];
   assert.deepEqual([...root.querySelectorAll('.ob-review-section-head h3')].map(el=>el.textContent),expected);
-  assert.equal(root.querySelectorAll('.ob-review-section').length,4);
-  assert.equal(root.querySelectorAll('.ob-review-edit').length,4);
-  assert.equal(root.querySelectorAll('.ob-review-section-head .ob-icon').length,4);
-  for(const target of ['business','location','profile','goals']){
+  assert.equal(root.querySelectorAll('.ob-review-section').length,5);
+  assert.equal(root.querySelectorAll('.ob-review-edit').length,5);
+  assert.equal(root.querySelectorAll('.ob-review-section-head .ob-icon').length,5);
+  for(const target of ['business','location','profile','hours','goals']){
     assert.equal(root.querySelector('[data-ob-target='+target+']').getAttribute('aria-label').startsWith('Editar '),true);
   }
   assert.match(root.textContent,/Barbearia/i);

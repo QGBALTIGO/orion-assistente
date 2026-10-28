@@ -41,7 +41,10 @@
     const current = epoch => state.mounted && epoch===state.epoch;
     const base = () => '/api/v1/tenants/'+encodeURIComponent(state.tenantId)+'/onboarding';
     const request = (path,method='GET',payload) => bridge.request(path,method,payload);
-    const stepRows = () => rows(state.data?.steps).filter(step=>definitions[step.id]&&!(state.data?.configuration?.activity==='products'&&['professionals','hours'].includes(step.id)));
+    const stepRows = () => rows(state.data?.steps).filter(step=>definitions[step.id]&&
+      // Quick onboarding collects company profile, not individual professionals.
+      !(rows(state.data?.steps).some(item=>item.id==='goals')&&step.id==='professionals')&&
+      !(state.data?.configuration?.activity==='products'&&['professionals','hours'].includes(step.id)));
     const draftKey = () => (state.tenantId||'new')+':'+state.step+':'+(state.editor?.kind||'')+':'+((state.editor?.id||state.editor?.professional_id||'new')+':'+(state.editor?.variant_id||''));
     function capture() {const form=host.querySelector('form');if(form)state.drafts.set(draftKey(),[...new FormData(form)].map(([name,value])=>[name,String(value)]));}
     function restore() {const form=host.querySelector('form'),draft=state.drafts.get(draftKey());if(!form||!draft)return;for(const element of form.elements){if(!element.name)continue;const values=draft.filter(([name])=>name===element.name).map(([,value])=>value);if(element.type==='checkbox'||element.type==='radio')element.checked=values.includes(element.value);else if(values.length)element.value=values[0];}conditionalFields();}
@@ -161,7 +164,32 @@
       if(kind==='service')fields+='<fieldset><legend>Profissionais habilitados</legend><div class="ob-checks">'+rows(catalog.professionals).map(pro=>check('professional_ids',pro.name,rows(item.professional_ids).includes(pro.id),'',pro.id)).join('')+'</div><p class="ob-help">Selecione quem pode executar este serviço. O vínculo é usado pela agenda real.</p></fieldset>';
       return '<div class="ob-editor">'+form(fields+'<div class="ob-inline-actions">'+button('Cancelar edição','cancel-edit')+'</div>',kind==='service'?'Salvar serviço':'Salvar produto',kind)+'</div>';
     }
-    function hoursForm() {const catalog=state.data.catalog||{},hours=rows(catalog.hours),chosen=state.editor?.professional_id||rows(catalog.professionals)[0]?.id||'';const existing=hours.filter(row=>row.professional_id===chosen);return form(select('professional_id','Profissional',[['','Selecione'],...rows(catalog.professionals).map(pro=>[pro.id,pro.name])],chosen,'required')+'<div class="ob-list">'+existing.map(row=>'<article class="ob-item"><div><strong>'+esc(days[row.weekday]||'Dia a conferir')+'</strong><p>'+esc(String(row.start_time||'').slice(0,5))+'–'+esc(String(row.end_time||'').slice(0,5))+(rows(row.breaks).length?' · intervalo '+rows(row.breaks).map(pause=>esc(String(pause.start_time).slice(0,5))+'–'+esc(String(pause.end_time).slice(0,5))).join(', '):'')+'</p></div></article>').join('')+'</div><fieldset><legend>Dias para aplicar este horário</legend><div class="ob-days">'+days.map((label,index)=>'<label><input type="checkbox" name="weekdays" value="'+index+'">'+label+'</label>').join('')+'</div></fieldset><div class="ob-fields">'+field('start_time','Abertura','','required type="time"')+field('end_time','Fechamento','','required type="time"')+'</div>'+check('has_break','Adicionar intervalo')+'<div class="ob-fields" data-ob-break>'+field('break_start','Início do intervalo','','type="time"')+field('break_end','Fim do intervalo','','type="time"')+'</div>'+check('replace_existing','Substituir jornadas existentes nos dias selecionados',false,'Os outros dias e profissionais são preservados. Revise os horários acima antes de marcar.')+'<p class="ob-help">A pausa bloqueia a disponibilidade real, incluindo duração, preparação e limpeza. Jornadas atravessando a meia-noite não são aceitas.</p><div class="ob-inline-actions">'+button('Continuar sem alterar horários','next')+'</div>','Salvar horários');}
+    const quickBusinessSetup = () => rows(state.data?.steps).some(item=>item.id==='goals');
+    function businessHoursForm() {
+      const saved=rows(state.data?.configuration?.business_opening_hours?.days);
+      const savedByDay=new Map(saved.map(item=>[Number(item.weekday),item]));
+      const cards=days.map((name,index)=>{
+        const day=savedByDay.get(index)||{weekday:index,open:false};
+        const opened=day.open===true;
+        const paused=!!(day.break_start&&day.break_end);
+        const timeInput=(key,label,value)=>{const enabled=opened&&(!key.startsWith('break_')||paused);return '<label class="ob-business-time"><span>'+label+'</span><input type="time" name="hours_'+index+'_'+key+'" value="'+esc(String(value||'').slice(0,5))+'"'+(enabled?' required':' disabled')+'></label>';};
+        return '<div class="ob-business-day'+(opened?' is-open':'')+'" data-ob-business-day="'+index+'">'+
+          '<div class="ob-business-day-head"><label class="ob-business-day-toggle"><input type="checkbox" name="hours_'+index+'_open"'+(opened?' checked':'')+'><span class="ob-business-day-name">'+esc(name)+'</span></label>'+
+          '<span class="ob-business-day-status">'+(opened?'Aberto':'Fechado')+'</span></div>'+
+          '<div class="ob-business-day-times"'+(opened?'':' hidden')+'>'+
+            '<div class="ob-business-time-grid">'+timeInput('start','Abre às',day.start_time)+timeInput('end','Fecha às',day.end_time)+'</div>'+
+            '<label class="ob-business-break-toggle"><input type="checkbox" name="hours_'+index+'_has_break"'+(paused?' checked':'')+'>Tem intervalo (ex.: almoço)</label>'+
+            '<div class="ob-business-break-fields"'+(paused?'':' hidden')+'>'+
+              '<div class="ob-business-time-grid">'+timeInput('break_start','Início do intervalo',day.break_start)+timeInput('break_end','Fim do intervalo',day.break_end)+'</div></div>'+
+          '</div></div>';
+      }).join('');
+      return '<p class="ob-business-hours-intro">Informe o horário comercial da empresa. Os horários individuais de cada profissional são configurados depois, na agenda.</p>'+
+        form('<div class="ob-business-hours" aria-label="Horário comercial da empresa">'+cards+'</div>'+
+          '<p class="ob-help">Marque os dias em que a empresa abre e informe os horários reais. Dias desmarcados ficam fechados.</p>'+
+          '<div class="ob-inline-actions">'+button('Continuar sem definir horários','next')+'</div>',
+          'Salvar horário comercial','business-hours');
+    }
+    function hoursForm() {if(quickBusinessSetup())return businessHoursForm();const catalog=state.data.catalog||{},hours=rows(catalog.hours),chosen=state.editor?.professional_id||rows(catalog.professionals)[0]?.id||'';const existing=hours.filter(row=>row.professional_id===chosen);return form(select('professional_id','Profissional',[['','Selecione'],...rows(catalog.professionals).map(pro=>[pro.id,pro.name])],chosen,'required')+'<div class="ob-list">'+existing.map(row=>'<article class="ob-item"><div><strong>'+esc(days[row.weekday]||'Dia a conferir')+'</strong><p>'+esc(String(row.start_time||'').slice(0,5))+'–'+esc(String(row.end_time||'').slice(0,5))+(rows(row.breaks).length?' · intervalo '+rows(row.breaks).map(pause=>esc(String(pause.start_time).slice(0,5))+'–'+esc(String(pause.end_time).slice(0,5))).join(', '):'')+'</p></div></article>').join('')+'</div><fieldset><legend>Dias para aplicar este horário</legend><div class="ob-days">'+days.map((label,index)=>'<label><input type="checkbox" name="weekdays" value="'+index+'">'+label+'</label>').join('')+'</div></fieldset><div class="ob-fields">'+field('start_time','Abertura','','required type="time"')+field('end_time','Fechamento','','required type="time"')+'</div>'+check('has_break','Adicionar intervalo')+'<div class="ob-fields" data-ob-break>'+field('break_start','Início do intervalo','','type="time"')+field('break_end','Fim do intervalo','','type="time"')+'</div>'+check('replace_existing','Substituir jornadas existentes nos dias selecionados',false,'Os outros dias e profissionais são preservados. Revise os horários acima antes de marcar.')+'<p class="ob-help">A pausa bloqueia a disponibilidade real, incluindo duração, preparação e limpeza. Jornadas atravessando a meia-noite não são aceitas.</p><div class="ob-inline-actions">'+button('Continuar sem alterar horários','next')+'</div>','Salvar horários');}
     const goalsChoices = {
       main_challenge: [
         ['scheduling','Organizar os agendamentos'],
@@ -293,6 +321,16 @@
           ['Faturamento mensal',profileLabel('monthly_revenue',profile.monthly_revenue,activity)],
           [activity==='products'?'Pedidos por mês':'Atendimentos por mês',profileLabel('monthly_volume',profile.monthly_volume,activity)]
         ]),
+        reviewSection('hours','Horário comercial','clock',
+          rows(c.business_opening_hours?.days).length===7
+            ? rows(c.business_opening_hours.days).map(day=>[
+                days[day.weekday]||'Dia',
+                day.open
+                  ? String(day.start_time||'').slice(0,5)+'–'+String(day.end_time||'').slice(0,5)+
+                    (day.break_start?' · intervalo '+String(day.break_start).slice(0,5)+'–'+String(day.break_end).slice(0,5):'')
+                  : 'Fechado'
+              ])
+            : [['Horários','Não configurados']]),
         reviewSection('goals','Desafios e objetivos','target',[
           ['Principal dificuldade',goalsLabel('main_challenge',goals.main_challenge,activity)],
           ['Principal objetivo',goalsLabel('desired_outcome',goals.desired_outcome,activity)],
@@ -409,6 +447,27 @@
       if(type==='professional'){const item=rows(state.data.catalog.professionals).find(row=>row.id===state.editor?.id),result={item:{...pick(item,['color','commission_percent','image_url']),name:data.name.trim(),specialty:data.specialty?.trim()||null,active:form.elements.active.checked,accepts_appointments:form.elements.accepts_appointments.checked},self_provider:form.elements.self_provider?.checked===true};if(item)Object.assign(result.item,{id:item.id,expected_fingerprint:item.fingerprint});return result;}
       if(type==='service'){const item=rows(state.data.catalog.services).find(row=>row.id===state.editor?.id),ids=new FormData(form).getAll('professional_ids');if(!ids.length)throw Error('Selecione ao menos um profissional habilitado.');const result={kind:'service',item:{...pick(item,['category','color','image_url','sort_order']),name:data.name.trim(),description:data.description?.trim()||null,price_cents:price(data.price),duration_min:fieldTools.parseDecimal(data.duration_min,{required:true,scale:0,min:1,max:1440}),prep_min:fieldTools.parseDecimal(data.prep_min,{scale:0,min:0,max:240})??0,cleanup_min:fieldTools.parseDecimal(data.cleanup_min,{scale:0,min:0,max:240})??0,active:form.elements.active.checked},professional_ids:ids};if(item)Object.assign(result.item,{id:item.id,expected_fingerprint:item.fingerprint});return result;}
       if(type==='product'){const item=rows(state.data.catalog.products).find(row=>row.id===state.editor?.id),variant=rows(item?.variants).find(row=>row.id===state.editor?.variant_id)||rows(item?.variants)[0],result={kind:'product',item:{...pick(item,['synonyms','faqs','official_benefits']),name:data.name.trim(),description:data.description?.trim()||null,active:form.elements.active.checked},variant:{...pick(variant,['sku','attributes']),name:data.variant_name.trim(),price_kind:data.price_kind,unit_price_cents:['fixed','from'].includes(data.price_kind)?fieldTools.parseMoney(data.price,{required:true,min:0,max:100000000}):null,active:form.elements.variant_active.checked}};if(item)Object.assign(result.item,{id:item.id,expected_fingerprint:item.fingerprint});if(variant)result.variant.id=variant.id;return result;}
+      if(type==='business-hours'){
+        const configuredDays=Array.from({length:7},(_,weekday)=>{
+          const open=form.elements['hours_'+weekday+'_open'].checked;
+          if(!open)return {weekday,open:false};
+          const start_time=form.elements['hours_'+weekday+'_start'].value;
+          const end_time=form.elements['hours_'+weekday+'_end'].value;
+          const hasBreak=form.elements['hours_'+weekday+'_has_break'].checked;
+          const entry={weekday,open:true,start_time,end_time};
+          if(hasBreak){
+            entry.break_start=form.elements['hours_'+weekday+'_break_start'].value;
+            entry.break_end=form.elements['hours_'+weekday+'_break_end'].value;
+          }
+          if(!start_time||!end_time||start_time>=end_time)
+            throw Error('Confira o horário de abertura e fechamento de '+days[weekday]+'.');
+          if(hasBreak&&(!entry.break_start||!entry.break_end||entry.break_start<=start_time||entry.break_end>=end_time||entry.break_start>=entry.break_end))
+            throw Error('Confira o intervalo de '+days[weekday]+'.');
+          return entry;
+        });
+        if(!configuredDays.some(day=>day.open))throw Error('Selecione pelo menos um dia em que a empresa funciona.');
+        return {days:configuredDays};
+      }
       if(type==='hours'){const weekdays=new FormData(form).getAll('weekdays').map(Number);if(!weekdays.length)throw Error('Selecione os dias de atendimento.');if(data.start_time>=data.end_time)throw Error('A abertura precisa ser anterior ao fechamento, no mesmo dia.');const result={professional_id:data.professional_id,weekdays,start_time:data.start_time,end_time:data.end_time,replace_existing:form.elements.replace_existing.checked,expected_fingerprints:{}};if(form.elements.has_break.checked){if(!data.break_start||!data.break_end||data.break_start>=data.break_end||data.break_start<data.start_time||data.break_end>data.end_time)throw Error('O intervalo precisa ter início anterior ao fim e ficar dentro do expediente.');Object.assign(result,{break_start:data.break_start,break_end:data.break_end});}for(const row of rows(state.data.catalog.hours).filter(row=>row.professional_id===data.professional_id&&weekdays.includes(row.weekday)))result.expected_fingerprints[String(row.weekday)]=row.fingerprint;return result;}
       if(type==='channels'){const assistant=state.data.channels?.assistant||{},generation=assistant.generation??assistant.profile_generation;if(!Number.isSafeInteger(generation))throw Error('Atualize os dados da assistente antes de salvar.');const existing=assistant.profile?.style_rules||assistant.style_rules||{};return {assistant_name:data.assistant_name?.trim()||null,style_rules:{...existing,style:data.style,length:data.length,emoji:data.emoji},capabilities:new FormData(form).getAll('capabilities'),expected_profile_generation:generation};}if(type==='complete'){if(!form.elements.acknowledged.checked)throw Error('Confirme que revisou os dados antes de concluir.');if(typeof state.data.snapshot!=='string'||! /^[a-f0-9]{64}$/.test(state.data.snapshot))throw Error('Atualize a revisão dos dados antes de concluir.');return {activate_catalog:true,acknowledged:true,expected_snapshot:state.data.snapshot};}return {acknowledged:true};
     }
@@ -428,10 +487,24 @@
         number.value=addressNumberValue(number.value);
         number.setCustomValidity(/[0-9]/.test(number.value)?'':'Informe o número do estabelecimento.');
       }
-      if(!fieldTools.validateForm(form)||!form.reportValidity())return;capture();try {const type=form.dataset.obForm,data=formData(form),key=crypto.randomUUID();if(type==='create'){if(!canCreate())return;await operate({path:'/api/v1/onboarding/businesses',method:'POST',payload:{idempotency_key:key,...data},draftKey:draftKey(),create:true});return;}if(!usable())return;const step=type==='professional'?'professionals':['service','product'].includes(type)?'catalog':type;await operate({path:step==='complete'?base()+'/complete':base()+'/steps/'+encodeURIComponent(step),method:step==='complete'?'POST':'PUT',payload:{expected_version:state.data.version,idempotency_key:key,...(step==='complete'?data:{data})},item:['professional','service','product','hours'].includes(type),complete:step==='complete',draftKey:draftKey()});}catch(error){showFeedback(error.message,true);}}
+      if(!fieldTools.validateForm(form)||!form.reportValidity())return;capture();try {const type=form.dataset.obForm,data=formData(form),key=crypto.randomUUID();if(type==='create'){if(!canCreate())return;await operate({path:'/api/v1/onboarding/businesses',method:'POST',payload:{idempotency_key:key,...data},draftKey:draftKey(),create:true});return;}if(!usable())return;const step=type==='business-hours'?'hours':type==='professional'?'professionals':['service','product'].includes(type)?'catalog':type;await operate({path:step==='complete'?base()+'/complete':base()+'/steps/'+encodeURIComponent(step),method:step==='complete'?'POST':'PUT',payload:{expected_version:state.data.version,idempotency_key:key,...(step==='complete'?data:{data})},item:['professional','service','product','hours'].includes(type),complete:step==='complete',draftKey:draftKey()});}catch(error){showFeedback(error.message,true);}}
     async function click(event) {const target=event.target.closest('[data-ob-action],[data-ob-step]');if(!target||!host.contains(target)||state.busy)return;const action=target.dataset.obAction;try {if(target.dataset.obStep){if(state.pending||state.conflict)return;capture();state.step=target.dataset.obStep;state.editor=null;state.feedback='';render();focus();return;}if(action==='cep-retry'){queueCepLookup(host.querySelector('[name=postal_code]'),0);return;}if(action==='refresh'){await refresh();return;}if(action==='retry-operation'){if(state.pending)await operate(state.pending);return;}if(action==='logout'){await bridge.logout?.();return;}if(state.pending||state.conflict)return;if(action==='open-dashboard'){if(state.data?.status==='complete'){if(bridge.onOpenPanel)await notify('onOpenPanel','dashboard',clone(state.data));else await notify('onComplete',clone(state.data));}return;}if(action==='connect-whatsapp'){capture();await bridge.openLegacy?.('dispositivo');return;}if(action==='cancel-edit'){state.drafts.delete(draftKey());state.editor=null;state.feedback='';render();return;}if(action==='add-professional'||action==='add-service'||action==='add-product'||action==='edit'){if(!usable())return;capture();state.editor={kind:action==='edit'?target.dataset.obKind:action.replace('add-',''),id:target.dataset.obId||null};render();host.querySelector('form input')?.focus();return;}if(action==='back'||action==='next'||action==='review-edit'){capture();state.editor=null;const steps=stepRows(),index=steps.findIndex(step=>step.id===state.step);state.step=action==='review-edit'?target.dataset.obTarget:steps[Math.max(0,Math.min(steps.length-1,index+(action==='next'?1:-1)))]?.id||state.step;state.feedback='';render();focus();}}
       catch(error){showFeedback(error.message||'Não foi possível abrir esta etapa.',true);}}
-    function change(event) {if(!host.contains(event.target))return;const element=event.target;if(['street','neighborhood','city','state'].includes(element.name))element.dataset.obEdit=String(Number(element.dataset.obEdit||0)+1);if(element.name==='postal_code'){let cep;try{cep=fieldTools.postalCodeValue(element.value);}catch{}if(cep!==element.dataset.obCepQuery)queueCepLookup(element,0);}if(element.name==='modality'&&!['onsite','hybrid'].includes(element.value))cancelCep();if(element.name==='variant_id'&&state.editor?.kind==='product'){capture();state.editor.variant_id=element.value;render();return;}if(element.name==='self_provider'&&element.checked){const input=host.querySelector('[name=name]');if(input&&!input.value.trim())input.value=bridge.user?.name||'';}if(element.name==='professional_id'&&state.step==='hours'){capture();state.editor={kind:'hours',professional_id:element.value};state.drafts.delete(draftKey());render();return;}conditionalFields();}
+    function change(event) {if(!host.contains(event.target))return;const element=event.target;if(['street','neighborhood','city','state'].includes(element.name))element.dataset.obEdit=String(Number(element.dataset.obEdit||0)+1);if(element.name==='postal_code'){let cep;try{cep=fieldTools.postalCodeValue(element.value);}catch{}if(cep!==element.dataset.obCepQuery)queueCepLookup(element,0);}if(element.name==='modality'&&!['onsite','hybrid'].includes(element.value))cancelCep();if(element.name==='variant_id'&&state.editor?.kind==='product'){capture();state.editor.variant_id=element.value;render();return;}if(element.name==='self_provider'&&element.checked){const input=host.querySelector('[name=name]');if(input&&!input.value.trim())input.value=bridge.user?.name||'';}if(state.step==='hours'&&element.closest('[data-ob-business-day]')){
+        const card=element.closest('[data-ob-business-day]');
+        const opened=card.querySelector('[name$="_open"]').checked;
+        const hasBreak=card.querySelector('[name$="_has_break"]').checked;
+        card.classList.toggle('is-open',opened);
+        card.querySelector('.ob-business-day-status').textContent=opened?'Aberto':'Fechado';
+        card.querySelector('.ob-business-day-times').hidden=!opened;
+        card.querySelector('.ob-business-break-fields').hidden=!opened||!hasBreak;
+        card.querySelectorAll('input[type=time]').forEach(input=>{
+          const isBreak=input.closest('.ob-business-break-fields')!==null;
+          input.disabled=!opened||(isBreak&&!hasBreak);
+          input.required=opened&&(!isBreak||hasBreak);
+        });
+        return;
+      }if(element.name==='professional_id'&&state.step==='hours'){capture();state.editor={kind:'hours',professional_id:element.value};state.drafts.delete(draftKey());render();return;}conditionalFields();}
     function normalizeFieldOnBlur(event){
       const input=event.target;
       if(!host.contains(input))return;

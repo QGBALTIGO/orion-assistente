@@ -6,6 +6,7 @@ import {randomUUID} from "node:crypto";
 
 const panel=fs.readFileSync(new URL("../../app/static/panel.html",import.meta.url),"utf8");
 const fields=fs.readFileSync(new URL("../../app/static/orion-fields.js",import.meta.url),"utf8");
+const connectView=fs.readFileSync(new URL("../../app/static/orion-connect.js",import.meta.url),"utf8");
 const sections=[...panel.matchAll(/<script>([\s\S]*?)<\/script>/g)];
 
 test("painel tem script válido em JavaScript",()=>{
@@ -18,9 +19,9 @@ test("QR indica atraso de 25 segundos, expiração e falha",()=>{
   for(const state of ["qr_delayed","qr_expired","pair_failed","logged_out"]){
     assert.ok(panel.includes(state),state+" missing from UI");
   }
-  assert.match(panel,/Atualizar ou tentar novamente/);
+  assert.match(panel,/<button id="refreshQr"[^>]*>Atualizar conexão<\/button>/);
   assert.match(panel,/Refazer vínculo/);
-  assert.match(panel,/25 segundos/);
+  assert.match(panel,/waitingSeconds>=25/);
 });
 
 test("código não é mantido visível depois que expira",()=>{
@@ -112,11 +113,15 @@ function panelHarness(){
       })
     })),
     setInterval:()=>1,clearInterval(){},setTimeout:()=>1,clearTimeout(){},
-    confirm:()=>true,AbortController,URLSearchParams,Intl,console,crypto:{randomUUID},
-    location:{search:""},history:{replaceState(){}},Date:class extends Date{static now(){return fakeNow??Date.now()}}
+    confirm:()=>true,AbortController,URL,URLSearchParams,Intl,console,crypto:{randomUUID},
+    location:{href:"https://orion.test/panel?aba=dispositivo",pathname:"/panel",search:"?aba=dispositivo",hostname:"orion.test",protocol:"https:"},
+    sessionStorage:{getItem(){return null},removeItem(){}},
+    history:{replaceState(){}},Date:class extends Date{static now(){return fakeNow??Date.now()}}
   };
-  const source=sections[1][1].replace("renderForm();renderGuide();",`
-    renderForm();renderGuide();
+  const initialization="initializeLegacyFields();renderForm();resetWizard();updateAiControls();";
+  assert.ok(sections[1][1].includes(initialization),"instrument the controller's actual initialization once");
+  const source=sections[1][1].replace(initialization,`
+    ${initialization}
     globalThis.panelTest={updateStatus,refreshMessages,selectChat,aiBubble,aiCheckStatus,aiLoadProfiles,aiLoadTenants,showLogin,
       loadBusinessProfile,loadBusinesses,collectBusinessProfile,businessMutation,reviewBusinessVersion,businessChanged,loadBusinessStyleExamples,openBusinessPreview,
       loadCommerceTenant,loadCommerceTenants,commerceSelectProduct,commerceSelectVariant,commerceSave,commerceProductPayload,commerceVariantPayload,commerceStockPayload,commerceAddFields,commerceAddBasket,commerceCalculate,commerceCreateOrder,commerceConfirmOrder,commerceRead,commerceCatalogChanged,commercePlanningChanged,
@@ -127,6 +132,8 @@ function panelHarness(){
       deviceStatus:()=>deviceStatus};
   `);
   vm.runInNewContext(fields,context,{filename:"orion-fields.js"});
+  // Match panel.html's external-script order before its inline controller.
+  vm.runInNewContext(connectView,context,{filename:"orion-connect.js"});
   vm.runInNewContext(source,context);
   const take=(url,method="GET")=>{
     const request=requests.find(r=>!r.taken&&r.url===url&&(r.options.method||"GET")===method);

@@ -98,6 +98,27 @@ const contacts = [
   { phone: phoneA, preview: 'Prévia sintética Alfa' },
   { phone: phoneB, preview: 'Prévia sintética Beta' },
 ];
+
+test('connection recovery uses the Orion dialog and rechecks an intervening connection before any reset', async t => {
+  let status = 'logged_out';
+  const h = await makePanel({respond(path) {
+    if (path === '/api/v1/qr/status') return {status, automaticRepliesEnabled:false};
+  }}); t.after(() => h.close());
+  h.click('#wizardRecover'); await flush();
+  assert.equal(h.element('#actionConfirm').open, true);
+  assert.equal(h.document.activeElement, h.element('#actionConfirmCancel'));
+  h.click('#actionConfirmCancel'); await flush();
+  assert.equal(h.element('#actionConfirm').open, false);
+  assert.equal(h.document.activeElement, h.element('#wizardRecover'));
+  assert.deepEqual(writes(h), [], 'cancelling must never recover or reconnect a session');
+  h.click('#wizardRecover'); await flush();
+  status = 'connected';
+  h.click('#actionConfirmAccept'); await flush();
+  assert.equal(h.element('#connectedCenter').classList.contains('hidden'), false);
+  assert.deepEqual(writes(h), [], 'a connection completed in the meantime must be preserved');
+  assert.deepEqual(h.errors, []);
+});
+
 const incoming = (body, id = 'in:synthetic-mobile') => ({ id, body, direction: 'in', at: 1792202400000 });
 
 test('mobile contact navigation preserves each draft, history and reading position without sending', async t => {
