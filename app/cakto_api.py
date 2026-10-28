@@ -253,10 +253,13 @@ def match_plans(offers: list) -> list[dict]:
             name = offer.get("name")
             if not isinstance(name, str) or name.strip().casefold() != plan["name"].casefold():
                 continue
-            if offer.get("type") not in ("subscription", None):
+            if offer.get("type") != "subscription" or offer.get("recurrence_period") not in {30, "30"}:
                 continue
             try:
-                cents = int(Decimal(str(offer.get("price"))) * 100)
+                raw_cents = Decimal(str(offer.get("price"))) * 100
+                if raw_cents != raw_cents.to_integral_value():
+                    continue
+                cents = int(raw_cents)
             except (ValueError, TypeError, InvalidOperation):
                 continue
             if cents == plan["monthly_cents"] and offer.get("status") == "active":
@@ -332,7 +335,7 @@ async def scan_pending_cakto(_ctx):
                 return 0
             rows = (await db.execute(text("""
                 SELECT delivery_digest,external_order_id,external_offer_id,event_type,
-                       callback_hash,amount_cents,currency
+                       external_subscription_id,callback_hash,amount_cents,currency
                 FROM cakto_webhook_events
                 WHERE verification_state='pending' AND next_attempt_at<=now()
                 ORDER BY received_at LIMIT 30 FOR UPDATE SKIP LOCKED
