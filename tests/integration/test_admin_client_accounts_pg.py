@@ -65,6 +65,20 @@ async def test_legal_hold_blocks_due_erasure_and_release_triggers_irreversible_l
     async with ctx.migration.connect() as db:
         before=(await db.execute(text("SELECT auth_version,email FROM panel_accounts WHERE id=:a"),
                                  {"a":account})).mappings().one()
+    token_id, outbox_id = uuid4(), uuid4()
+    original_token_digest, original_recipient_digest = "f"*64, "e"*64
+    async with ctx.migration.begin() as db:
+        await db.execute(text("""
+            INSERT INTO panel_email_tokens(id,account_id,token_digest,purpose,expires_at)
+            VALUES(:token,:account,:digest,'reset',now()+interval '1 day')
+        """), {"token":token_id,"account":account,"digest":original_token_digest})
+        await db.execute(text("""
+            INSERT INTO panel_email_outbox(id,kind,recipient_digest,account_id,token_id,
+                                           dedupe_key,payload_enc,expires_at)
+            VALUES(:outbox,'reset',:digest,:account,:token,:key,'synthetic-encrypted-payload',
+                   now()+interval '1 day')
+        """), {"outbox":outbox_id,"account":account,"token":token_id,
+                "digest":original_recipient_digest,"key":"erasure-test:"+str(outbox_id)})
     try:
         await admin_accounts.manage_account(
             account,"archive",
@@ -109,6 +123,19 @@ async def test_legal_hold_blocks_due_erasure_and_release_triggers_irreversible_l
             assert erased["archived_at"] is None and erased["purge_after"] is None
             assert erased["active"] is False
             assert erased["auth_version"]==before["auth_version"]+4
+        async with ctx.migration.connect() as db:
+            token=(await db.execute(text("""
+                SELECT used_at,token_digest FROM panel_email_tokens WHERE id=:id
+            """),{"id":token_id})).mappings().one()
+            mail=(await db.execute(text("""
+                SELECT account_id,token_id,recipient_digest,payload_enc,status
+                FROM panel_email_outbox WHERE id=:id
+            """),{"id":outbox_id})).mappings().one()
+        assert token["used_at"] is not None
+        assert token["token_digest"] != original_token_digest
+        assert mail["account_id"] is None and mail["token_id"] is None
+        assert mail["recipient_digest"] == "0"*64
+        assert mail["payload_enc"] is None and mail["status"] == "suppressed"
         with pytest.raises(HTTPException) as blocked:
             await account_auth.current_account(str(account),before["auth_version"]+4)
         assert blocked.value.status_code==401
@@ -126,5 +153,7 @@ async def test_legal_hold_blocks_due_erasure_and_release_triggers_irreversible_l
                                      {"t":ctx.a})).scalar_one()==1
     finally:
         async with ctx.migration.begin() as db:
+            await db.execute(text("DELETE FROM panel_email_outbox WHERE id=:id"),{"id":outbox_id})
+            await db.execute(text("DELETE FROM panel_email_tokens WHERE id=:id"),{"id":token_id})
             await db.execute(text("DELETE FROM admin_account_audit WHERE account_id=:a"),{"a":account})
             await db.execute(text("DELETE FROM admin_account_controls WHERE account_id=:a"),{"a":account})
