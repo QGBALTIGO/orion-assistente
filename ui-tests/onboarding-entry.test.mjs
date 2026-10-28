@@ -27,7 +27,7 @@ test('multiple businesses block entry without offering a choice or another regis
 test('a late read cannot replace refreshed facts for the account business',async t=>{
   const late=deferred();let waiting=true;
   const h=await makeOnboarding({auto:false,respond:path=>path==='/api/v1/tenants/'+tenantA+'/onboarding'?(waiting?late.promise:fullState({name:'Dados atuais'})):undefined});t.after(()=>h.close());
-  const first=h.controller.resolveEntry();await flush();waiting=false;await h.controller.resolveEntry({tenantId:tenantB});late.resolve(fullState({name:'Dados atrasados'}));assert.equal(await first,null);assert.equal(h.controller.getState().tenantId,tenantA);assert.match(h.element('#setup').textContent,/Dados atuais/);assert.doesNotMatch(h.element('#setup').textContent,/Dados atrasados/);assert.deepEqual(h.tenants,[tenantA]);assert.equal(h.completed.length,0);assert.equal(h.calls.some(c=>c.path.includes('tenant_id=')),false);
+  const first=h.controller.resolveEntry();await flush();waiting=false;await h.controller.resolveEntry({tenantId:tenantB});late.resolve(fullState({name:'Dados atrasados'}));assert.equal(await first,null);assert.equal(h.controller.getState().tenantId,tenantA);assert.equal(h.element('[name=name]').value,'Dados atuais');assert.notEqual(h.element('[name=name]').value,'Dados atrasados');assert.deepEqual(h.tenants,[tenantA]);assert.equal(h.completed.length,0);assert.equal(h.calls.some(c=>c.path.includes('tenant_id=')),false);
 });
 
 test('unmount drops private forms and ignores an outstanding read',async t=>{
