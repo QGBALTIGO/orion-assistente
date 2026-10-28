@@ -29,6 +29,14 @@ test('operational capability is discovered by status; the list alone cannot offe
   continueTutorial(h);assert.ok(h.element('[data-qc-form=pair]'));assert.equal(h.element('[data-qc-form=pair] button[type=submit]').disabled,false);
 });
 
+test('the heading describes QR only until code capability becomes available, preserving both seven-step tutorials',async t=>{
+  const row=item({enabled:true});let codeAvailable=false;
+  const h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?status(row,'qr_ready',codeAvailable):undefined});t.after(()=>h.close());
+  const initial=h.element('[data-qc-connection] .wizard-heading');assert.match(initial.querySelector('h2').textContent,/Conectar por QR Code/);assert.match(initial.querySelector('p').textContent,/outro aparelho.*QR Code/);assert.doesNotMatch(initial.querySelector('p').textContent,/código|próprio celular/i);assert.equal(h.document.querySelector('[data-qc-method=code]'),null);assert.equal(h.document.querySelector('[data-qc-form=pair]'),null);assert.equal(stepCount(h),7);
+  codeAvailable=true;await h.tick(5000);const available=h.element('[data-qc-connection] .wizard-heading');assert.equal(available.querySelector('h2').textContent,'Escolha como conectar');assert.match(available.querySelector('p').textContent,/No próprio celular, use o código/);assert.equal(h.element('[data-qc-method=code]').getAttribute('aria-pressed'),'true');assert.equal(stepCount(h),7);assert.equal(h.document.querySelector('[data-qc-form=pair]'),null);assert.deepEqual(writes(h),[]);assert.equal(h.calls.some(call=>/\/(qr|pair)$/.test(call.path)),false);
+  assert.match(h.window.OrionConnectView.heading(),/No próprio celular, use o código/);
+});
+
 test('code generation waits for fresh connection readiness and cannot enable or start a channel',async t=>{
   for(const state of ['connecting','stopped','pairing','pair_failed','pair_expired','logged_out']){
     const row=item({enabled:true}),h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?status(row,state):undefined});

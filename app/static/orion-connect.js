@@ -44,7 +44,7 @@
       '><span class="wizard-method-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+icons[value]+
       '</svg></span><strong>'+(value==='code'?'Código':'QR Code')+'</strong><span>'+(value==='code'?'Digite no seu telefone':'Escaneie com seu telefone')+'</span></button>').join('');
   }
-  function heading(){return '<div class="wizard-heading"><h2>Escolha como conectar</h2><p>No próprio celular, use o código. Se estiver em outro aparelho, escaneie o QR Code.</p></div>';}
+  function heading(codeAvailable=true){return codeAvailable?'<div class="wizard-heading"><h2>Escolha como conectar</h2><p>No próprio celular, use o código. Se estiver em outro aparelho, escaneie o QR Code.</p></div>':'<div class="wizard-heading"><h2>Conectar por QR Code</h2><p>Use o WhatsApp em outro aparelho para escanear o QR Code desta tela.</p></div>';}
   function normalizeCode(value) {
     if(typeof value!=='string'||!/^[A-Z0-9]{4}-?[A-Z0-9]{4}$/i.test(value)) throw Error('O WhatsApp não retornou um código válido.');
     const raw=value.replace('-','').toUpperCase();
