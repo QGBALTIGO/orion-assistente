@@ -2751,3 +2751,6 @@ html:has(.os-professional-history[open]){overflow:hidden}
 @media(prefers-reduced-motion:reduce){
   #adminClientCenter .os-swipe-row{scroll-behavior:auto}
 }
+
+/* Preserve Google's original full-color Calendar mark on both themes. */
+.os-google-mark img{display:block;width:26px;height:26px;max-width:100%;object-fit:contain}
