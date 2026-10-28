@@ -138,7 +138,8 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate)):
                 WHERE s.tenant_id=:tenant
             """), {"tenant": tenant_id})).mappings().first()
             trial = (await db.execute(text("""
-                SELECT id,status,requested_at,started_at,ends_at,version
+                SELECT id,CASE WHEN status='active' AND ends_at<=now() THEN 'expired' ELSE status END AS status,
+                       requested_at,started_at,ends_at,version
                 FROM orion_plan_trial_requests WHERE tenant_id=:tenant
             """), {"tenant": tenant_id})).mappings().first()
     async with get_session_factory()() as runtime:
@@ -213,7 +214,9 @@ async def admin_list_plan_trials(admin: UUID = Depends(require_platform_owner),
     async with support_session_factory()() as db:
         records = (await db.execute(text("""
             SELECT r.id,r.account_id,r.tenant_id,r.full_name,r.company_name,
-                   r.whatsapp_e164,r.status,r.requested_at,r.started_at,r.ends_at,
+                   r.whatsapp_e164,CASE WHEN r.status='active' AND r.ends_at<=now()
+                     THEN 'expired' ELSE r.status END AS status,
+                   r.requested_at,r.started_at,r.ends_at,
                    r.version,t.name AS registered_company
             FROM orion_plan_trial_requests r JOIN tenants t ON t.id=r.tenant_id
             WHERE :status='all' OR r.status=:status
@@ -384,7 +387,10 @@ async def apply_verified_cakto_payment(event: dict, order: dict) -> str:
                     or actual_parts.netloc!=expected_parts.netloc
                     or expected_parts.path!=actual_parts.path):
                 return "manual_review"
-            if (intent["offer_id"] != remote_offer_id or amount != intent["expected_cents"]
+            if (intent["offer_id"] != event.get("external_offer_id")
+                    or (event.get("external_subscription_id") is not None
+                        and event["external_subscription_id"] != subscription_id)
+                    or amount != intent["expected_cents"]
                     or event.get("amount_cents") != intent["expected_cents"]
                     or event.get("currency") != "BRL"
                     or order.get("currency") != "BRL"):
