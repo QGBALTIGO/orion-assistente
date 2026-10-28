@@ -197,7 +197,7 @@ async def connect_google(tenant_id: UUID, request: Request, actor: Actor = Depen
     if request.url.netloc != urlsplit(redirect).netloc:
         raise HTTPException(503, "Abra o painel no endereço configurado para a conexão Google")
     source = request_initiator(request, actor)
-    row = await connection_snapshot(tenant_id, require_ready=True)
+    row = await connection_snapshot(tenant_id)
     state, nonce, verifier = (secrets.token_urlsafe(32) for _ in range(3))
     intent = {"tenant_id": str(tenant_id), "initiator": source, "nonce_hash": digest(nonce),
               "verifier": verifier, "connection_revision": connection_fingerprint(row)}
@@ -239,7 +239,7 @@ async def callback_google(request: Request, state: str = "", code: str | None = 
         if len(nonce) != 43 or not secrets.compare_digest(intent.get("nonce_hash", ""), digest(nonce)):
             raise HTTPException(403, "Esta autorização não pertence a este navegador")
         await validate_initiator(redis, intent, tenant)
-        still_same_connection(intent, await connection_snapshot(tenant, require_ready=True))
+        still_same_connection(intent, await connection_snapshot(tenant))
         consumed = await redis.getdel("google:oauth:" + state)
         if not consumed or not secrets.compare_digest(consumed, raw):
             raise HTTPException(403, "Esta autorização já foi utilizada")
@@ -312,7 +312,7 @@ async def select_google_calendar(tenant_id: UUID, payload: CalendarSelection, re
                                  actor: Actor = Depends(authenticate)):
     await resolve_tenant_access(actor, tenant_id, "publish")
     _, _, _, key = oauth_config()
-    await connection_snapshot(tenant_id, require_ready=True)
+    await connection_snapshot(tenant_id)
     redis = oauth_redis()
     try:
         source, candidate, prior = await authorized_candidate(tenant_id, actor, request, redis)
@@ -339,8 +339,10 @@ async def select_google_calendar(tenant_id: UUID, payload: CalendarSelection, re
                 raise HTTPException(409, "Reconecte a agenda usada anteriormente por este negócio")
         async with get_session_factory()() as db:
             async with tenant_transaction(db, tenant_id):
-                from app.onboarding_service import require_operational_ready
-                await require_operational_ready(db, tenant_id, "google")
+                # OAuth consent is account setup, not a booking operation.
+                # A new business can connect its Google calendar before staff,
+                # services and bookable hours are configured. Those separate
+                # requirements remain enforced when creating appointments.
                 if not await calendar_lock(db, tenant_id):
                     raise HTTPException(409, "Há uma sincronização em andamento. Aguarde alguns segundos e tente novamente")
                 current = await connection_row(db, tenant_id, lock=True)
