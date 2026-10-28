@@ -318,8 +318,9 @@ async def authenticate_account(email,password):
     if "@" not in email or len(email)>254:return None
     async with _storage()() as session:
         row=(await session.execute(text("""
-            SELECT id,name,email,password_hash,role,auth_version,verified_at,registration_pending
-            FROM panel_accounts WHERE email=:email
+            SELECT a.id,a.name,a.email,a.password_hash,a.role,a.auth_version,a.verified_at,a.registration_pending
+            FROM panel_accounts a LEFT JOIN admin_account_controls c ON c.account_id=a.id
+            WHERE COALESCE(c.state,'active')='active' AND a.email=:email
               AND COALESCE(to_jsonb(panel_accounts)->>'auth_provider','password')='password'
         """),{"email":email.strip().lower()})).mappings().first()
     try:
@@ -337,7 +338,9 @@ async def authenticate_account(email,password):
 async def current_account(account_id,version):
     async with _storage()() as session:
         row=(await session.execute(text("""
-            SELECT role,auth_version,verified_at,name,email,registration_pending FROM panel_accounts WHERE id=:id
+            SELECT a.role,a.auth_version,a.verified_at,a.name,a.email,a.registration_pending
+            FROM panel_accounts a LEFT JOIN admin_account_controls c ON c.account_id=a.id
+            WHERE COALESCE(c.state,'active')='active' AND a.id=:id
               AND COALESCE(to_jsonb(panel_accounts)->>'auth_provider','password')='password'
         """),{"id":UUID(account_id)})).mappings().first()
     if not row or row["auth_version"]!=version or row.get('registration_pending',False):
@@ -351,7 +354,8 @@ _CURRENT_ACCOUNT_SCOPE_SQL = text("""
                WHERE all_memberships.account_id=a.id AND all_memberships.active) AS active_business_count
             FROM panel_accounts a LEFT JOIN tenant_memberships m
               ON m.account_id=a.id AND m.tenant_id=:tenant AND m.active
-            WHERE a.id=:id AND COALESCE(to_jsonb(a)->>'auth_provider','password')='password'
+            LEFT JOIN admin_account_controls c ON c.account_id=a.id
+            WHERE COALESCE(c.state,'active')='active' AND a.id=:id AND COALESCE(to_jsonb(a)->>'auth_provider','password')='password'
         """)
 
 
