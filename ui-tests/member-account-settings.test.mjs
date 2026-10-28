@@ -87,6 +87,6 @@ test('successful password change invalidates local view and requires fresh login
  assert.equal(h.element('#loginView').classList.contains('hidden'),false);
  assert.equal(h.element('#memberNewPassword').value,'');
  assert.equal(h.element('#memberCurrentPassword').value,'');
- assert.match(h.element('#authNotice')?.textContent||h.document.body.textContent,/Senha alterada/);
+ assert.match(h.element('#authGlobalMessage').textContent,/Senha alterada/);
  assert.deepEqual(h.errors,[]);
 });
