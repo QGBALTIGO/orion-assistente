@@ -35,7 +35,7 @@
   const state={request:null,role:null,onMaintenanceStart:null,epoch:0,seq:0,
     query:"",status:"all",page:1,items:[],stats:null,total:0,selected:null,
     owned:false,modalType:null,modalAction:null,trigger:null,busy:false,timer:null};
-  const isAdmin=()=>state.role==="admin"&&!$("adminClientCenter")?.classList.contains("hidden");
+  const isAdmin=()=>state.role==="admin"&&!$("page-member")?.classList.contains("hidden")&&!$("adminClientCenter")?.classList.contains("hidden");
   const btn=(title,key,opts={})=>'<button type="button" class="'+(opts.cls||"os-icon-button")+
     '" data-admin-control="'+esc(key)+'"'+(opts.id?' data-account-id="'+esc(opts.id)+'"':"")+
     (opts.action?' data-account-action="'+esc(opts.action)+'"':"")+
@@ -129,7 +129,7 @@
     dialog.innerHTML='<button type="button" class="os-icon-button os-close" data-admin-control="close" aria-label="Fechar">'+icon("close")+'</button>'+
       '<h2 id="osDialogTitle">'+esc(title)+'</h2>'+html;
     window.OrionFields?.refresh(dialog);
-    dialog.showModal();
+    if(!dialog.open)dialog.showModal();
     dialog.querySelector('button:not(.os-close),input:not([type=checkbox]),textarea')?.focus({preventScroll:true});
   }
   function closeDialog(){
@@ -286,6 +286,15 @@
     if(role!=="admin"||typeof request!=="function")return;
     state.request=request;state.role=role;state.onMaintenanceStart=onMaintenanceStart;
     state.epoch++;state.seq++;state.page=1;state.query="";state.status="all";state.stats=null;
+    const dialog=$("osDialog");
+    if(dialog&&!dialog.dataset.osAdminCloseBound){
+      dialog.dataset.osAdminCloseBound="1";
+      dialog.addEventListener("close",()=>{
+        if(!state.owned)return;
+        state.owned=false;state.busy=false;state.selected=null;
+        state.modalType=null;state.modalAction=null;
+      });
+    }
     frame();void load();
   }
   function reset(){
@@ -312,6 +321,5 @@
     const next=event.key==="Home"?0:event.key==="End"?all.length-1:(current+(event.key==="ArrowRight"?1:-1)+all.length)%all.length;
     event.preventDefault();all[next].focus();all[next].click();
   });
-  $("osDialog")?.addEventListener("close",()=>{state.owned=false;state.busy=false;state.selected=null;state.modalType=null;});
   window.OrionAdminCenter=Object.freeze({open,reset});
 })();
