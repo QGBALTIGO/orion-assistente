@@ -41,3 +41,9 @@ Criar checkout com token único de sessão/empresa, validar vínculo no servidor
 (e não por CPF/e-mail/URL aberta), cruzar IDs reais de ofertas/assinaturas, tratar
 mudança de plano, duplicidade, prazo de carência, recorrência e cancelamentos
 antes de habilitar feature gates e criar cards no painel.
+
+Pré-deploy: execute `python -m scripts.backup_and_migrate_cakto` após o
+predeploy já existente, seguido de `python -m scripts.probe_cakto_read_only`.
+A checagem de conexão faz apenas OAuth2 e GET de ofertas e emite somente
+contagens, sem dados de compradores ou IDs de token. Se falhar, bloquear deploy.
+O catálogo continua inativo mesmo com credenciais confirmadas.

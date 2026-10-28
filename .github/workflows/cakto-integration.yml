@@ -8,6 +8,7 @@ on:
       - "alembic/versions/0043_cakto_events.py"
       - "scripts/backup_and_migrate_cakto.py"
       - "scripts/backup_and_migrate_registration.py"
+      - "scripts/probe_cakto_read_only.py"
       - "tests/unit/test_cakto_integration.py"
       - "tests/integration/test_cakto_postgres.py"
       - ".github/workflows/cakto-integration.yml"
@@ -58,5 +59,5 @@ jobs:
         run: alembic upgrade head
       - name: Testes sintéticos e PostgreSQL/RLS reais
         run: |
-          python -m py_compile app/cakto_api.py scripts/backup_and_migrate_cakto.py
+          python -m py_compile app/cakto_api.py scripts/backup_and_migrate_cakto.py scripts/probe_cakto_read_only.py
           pytest -q -ra tests/unit/test_cakto_integration.py tests/integration/test_cakto_postgres.py tests/integration/test_billing.py
