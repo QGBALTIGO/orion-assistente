@@ -2343,10 +2343,14 @@ function openPage(target){
   void window.OrionSuite?.open("dashboard",{force:true});
   return;
  }
- if(!accountBusiness()){if(businessContextError)showBusinessContextError(businessContextError);else void resolveSetup();return}
+ if(!(target==="member"&&adminOnly())&&!accountBusiness()){
+  if(businessContextError)showBusinessContextError(businessContextError);
+  else void resolveSetup();
+  return;
+ }
  if(target!=="empresa"&&target!=="ai"&&target!=="catalogo"&&target!=="cadastros"){
   if(loginRole!=="support"&&loginRole!=="admin")target="member";
-  else if(target==="member")target="dispositivo";
+  else if(target==="member"&&!adminOnly())target="dispositivo";
  }
  page=target;
  document.querySelectorAll(".page").forEach(x=>x.classList.toggle("hidden",x.id!=="page-"+target));
@@ -2358,7 +2362,7 @@ function openPage(target){
  if(target==="empresa")void loadBusinessProfile();
  if(target==="catalogo")void loadCommerceTenants();
  if(target==="cadastros")void loadTenants();
- if(target==="member")void loadMemberBusiness();
+ if(target==="member"&&!adminOnly())void loadMemberBusiness();
  history.replaceState({}, "", "/panel?aba="+encodeURIComponent(target));
  window.OrionSuite?.legacyOpened(target);
 }
