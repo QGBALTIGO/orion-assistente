@@ -61,6 +61,9 @@
   const routeAliases=new Map([['acelerar','dashboard']]);
   const mainNav=[['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['inbox','chat'],['servicos','scissors'],['funcionarios','users'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','bot'],['plano','credit'],['configuracoes','settings']];
   const legacyPages=new Set(['dispositivo','conversas','ai','empresa','catalogo','cadastros','member']);
+  // The original Orion operator console is restricted to the authenticated
+  // platform administrator. Business owners use the regular workspace.
+  const platformAdminOnlyPages=new Set(['conversas','ai','empresa','catalogo','cadastros']);
   const appPages=new Set([...Object.keys(routeNames),...routeAliases.keys()]);
   const defaultFilters=()=>({customerQuery:'',customerStatus:'active',customerRisk:30,customerOffset:0,agendaMode:'list',agendaDay:'',agendaTablet:false,agendaProfessional:'',agendaStatus:'all',agendaQuery:'',agendaOffset:0,financeKind:'',financeStatus:'',financeFiltersOpen:false,financeTab:'entries',performancePeriod:'month',performanceDay:'',performanceGroup:'day',staffTab:'professionals',staffStatus:'active',marketingTab:'overview',marketingQueueStatus:'all',loyaltyTab:'ranking',loyaltyOffset:0,couponStatus:'all',periodStart:'',periodEnd:'',settingsTab:'general',siteRequestStatus:'all',siteRequestIntent:'all',siteRequestQuery:'',siteRequestOffset:0,siteTab:'dashboard',helpQuery:'',helpCategory:'all',helpArticle:'',newsFilter:'all',notificationsUnread:false});
   const state={bridge:{},mounted:false,epoch:0,load:0,route:'dashboard',tenantId:'',data:{},filters:defaultFilters(),dialog:null,busy:false,imageUploading:false,searchTimer:null,drawerTrigger:null,observer:null};
@@ -271,9 +274,11 @@
     const navItem=([route,symbol],extra='')=>'<button type="button" class="os-nav-link'+extra+'" data-os-route="'+route+'" title="'+esc(routeNames[route])+'">'+icon(symbol)+'<span>'+esc(routeNames[route])+'</span></button>';
     let nav=isAdmin?navItem(['dispositivo','phone'],' os-nav-connection'):t?'<button type="button" class="os-nav-link os-nav-connection" data-os-action="managed-whatsapp" title="Conectar WhatsApp">'+icon('phone')+'<span>Conectar WhatsApp</span></button>':'';
     nav+='<div class="os-nav-section">Gestão</div>'+mainNav.map(item=>navItem(item)).join('');
-    nav+='<div class="os-nav-section">Atendimento Orion</div>';
-    const attendance=[['conversas','chat'],['ai','bot'],['empresa','settings'],['catalogo','box']];
-    attendance.forEach(item=>{if(item[0]==='conversas'&&!isAdmin)return;nav+=navItem(item);});
+    if(state.bridge.user?.role==='admin'){
+      nav+='<div class="os-nav-section">Atendimento Orion</div>';
+      const attendance=[['conversas','chat'],['ai','bot'],['empresa','settings'],['catalogo','box']];
+      attendance.forEach(item=>{nav+=navItem(item);});
+    }
     nav+='<div class="os-nav-section">Ajuda e conta</div>'+[['novidades','bell'],['ajuda','book'],['member','shield']].map(([route,symbol])=>'<button type="button" class="os-nav-link os-nav-utility" data-os-route="'+route+'" title="'+esc(routeNames[route])+'">'+icon(symbol)+'<span>'+esc(routeNames[route])+'</span></button>').join('');
     if(t?.role==='owner')nav+='<button type="button" class="os-nav-link os-nav-utility" data-os-action="business-setup">'+icon('settings')+'<span>Configurar negócio</span></button>';$('osNav').innerHTML=nav;selectedNav();
   }
@@ -281,10 +286,13 @@
   function setTheme(preference){const original=document.querySelector('.theme-choice[data-theme-choice="'+preference+'"]');if(original)original.click();else{document.documentElement.dataset.themePreference=preference;document.documentElement.dataset.theme=preference==='auto'?(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):preference;try{localStorage.setItem('orion-theme',preference);}catch{}}applyThemeState();$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');}
   function drawer(open){const app=$('appView'),side=$('osSidebar');if(!app||!side)return;app.classList.toggle('os-menu-open',open);$('osMenu').setAttribute('aria-expanded',String(open));if(open){state.drawerTrigger=document.activeElement;side.querySelector('button')?.focus();}else state.drawerTrigger?.focus?.();}
   function resetPeriod(){const today=dateKey(),d=dayDate(today);d.setUTCMonth(d.getUTCMonth()+1,0);state.filters.periodStart=today.slice(0,8)+'01';state.filters.periodEnd=d.toISOString().slice(0,10);state.filters.performancePeriod='month';state.filters.performanceDay=today;}
-  function legacyOpened(route){if(!state.mounted||!legacyPages.has(route))return;clearSiteLookups();state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeNames[route]+' · Orion';}
+  function legacyOpened(route){if(!state.mounted||!legacyPages.has(route))return;if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin'){void open('dashboard',{force:true});return;}clearSiteLookups();state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeNames[route]+' · Orion';}
   async function open(route,options={}){
     route=routeAliases.get(route)||route;
     if(!appPages.has(route))route='dashboard';
+    // Never open the legacy operator console from a member/support bookmark,
+    // stale URL, programmatic link or previous account's navigation state.
+    if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin')route='dashboard';
     if(state.busy&&!options.force)return;
     clearSiteLookups();
     window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
@@ -297,7 +305,7 @@
       return;
     }
     if(legacyPages.has(route)){
-      if(['dispositivo','conversas'].includes(route)&&!['support','admin'].includes(state.bridge.user?.role)){toast('Seu acesso não inclui a operação do WhatsApp.',true);return;}
+      if(route==='dispositivo'&&!['support','admin'].includes(state.bridge.user?.role)){toast('Seu acesso não inclui a operação do WhatsApp.',true);return;}
       if(route==='member'&&['support','admin'].includes(state.bridge.user?.role)){route='configuracoes';}else{legacyOpened(route);state.bridge.openLegacy?.(route);return;}
     }
     clearTimeout(state.agendaSearchTimer);state.route=route;state.load++;if(route!=='agenda')state.filters.agendaTablet=false;closeNotifications();closeDialog();drawer(false);state.bridge.onRouteChange?.(route);$('page-suite').dataset.osCurrentRoute=route;$('osConsultantFab')?.classList.toggle('hidden',['agenda','inbox'].includes(route));
