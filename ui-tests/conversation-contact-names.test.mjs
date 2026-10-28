@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { flush } from './harness.mjs';
-import { makePanel } from './panel-harness.mjs';
+import { makePanel as createPanel } from './panel-harness.mjs';
+
+// Legacy conversations now run only under the platform-admin account.
+const makePanel=(options={})=>createPanel({role:'admin',...options});
 
 const phoneA = '5511999990001', phoneB = '5511999990002', phoneC = '5511999990003';
 const names = [

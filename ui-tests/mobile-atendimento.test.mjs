@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { flush, deferred } from './harness.mjs';
-import { makePanel } from './panel-harness.mjs';
+import { makePanel as createPanel } from './panel-harness.mjs';
+
+// The operator screens are admin-only; explicit member cases override this role.
+const makePanel=(options={})=>createPanel({role:'admin',...options});
 
 const phoneA = '5511999990001', phoneB = '5511999990002';
 const messagePath = phone => '/api/v1/qr/messages?phone=' + phone;
@@ -53,7 +56,8 @@ test('member deep links and direct navigation never load the global WhatsApp ope
     await h.window.OrionSuite.open(route); await flush();
     assert.notEqual(activePage(h), 'page-' + route);
     h.click('[data-page=' + route + ']'); await flush();
-    assert.equal(activePage(h), 'page-member', 'the legacy controller independently applies the account guard');
+    assert.equal(activePage(h), route==='conversas'?'page-suite':'page-member',
+      'the legacy controller independently redirects forbidden routes');
   }
   assert.equal(h.calls.some(call => call.path.startsWith('/api/v1/qr/')), false);
   assert.equal(h.calls.some(call => call.path === '/api/v1/tenants'), false, 'members only load assigned businesses');
@@ -166,7 +170,7 @@ test('logout clears mobile conversation state and late reads cannot contaminate 
       { items: [incoming(phase === 'new' ? 'Histórico da sessão atual' : 'Histórico da sessão anterior')] };
     if (path === '/api/v1/qr/recipient?phone=' + phoneA) return oldInspection.promise;
     if (path === '/auth/login' && method === 'POST') return { authenticated: true,
-      csrf: 'synthetic-new-session-csrf', role: 'support', name: 'Outra conta sintética',
+      csrf: 'synthetic-new-session-csrf', role: 'admin', name: 'Outra conta sintética',
       email: 'second-mobile-test@example.invalid' };
   } }); t.after(() => h.close());
   h.click('#chat-contact-' + phoneA); await flush();

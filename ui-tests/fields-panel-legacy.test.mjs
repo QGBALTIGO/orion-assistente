@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {makePanel,jsonResponse} from './panel-harness.mjs';
+import {makePanel as createPanel,jsonResponse} from './panel-harness.mjs';
 import {flush,tenantA,deferred} from './harness.mjs';
+
+// The legacy operator pages are now exclusive to platform-admin accounts.
+const makePanel=(options={})=>createPanel({role:'admin',...options});
 
 const productId='40000000-0000-4000-8000-000000000004',variantId='50000000-0000-4000-8000-000000000005';
 const profileId='60000000-0000-4000-8000-000000000006',appointmentId='70000000-0000-4000-8000-000000000007';

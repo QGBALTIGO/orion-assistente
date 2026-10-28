@@ -849,11 +849,11 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
     <nav class="nav" aria-label="Páginas do painel">
       <button class="nav-item hidden" data-page="member" data-member-only> <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M9 21v-7h6v7"/></svg></span>Início</button>
       <button class="nav-item" data-page="dispositivo" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg></span>Conectar dispositivo</button>
-      <button class="nav-item" data-page="conversas" data-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3Z"/><path d="M8 8h8M8 12h5"/></svg></span>Conversas</button>
-      <button class="nav-item hidden" id="aiNav" data-page="ai"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="7" width="18" height="14" rx="3"/><path d="M12 3v4m-5 6h.01M17 13h.01M8 17h8"/></svg></span>Testar atendimento</button>
-      <button id="catalogNav" class="nav-item hidden" data-page="cadastros"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Cadastros</button>
-      <button class="nav-item hidden" id="businessNav" data-page="empresa"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 21h18M5 21V4h14v17M9 8h2m2 0h2m-6 4h2m2 0h2m-6 4h2m2 0h2"/></svg></span>Configurar atendimento</button>
-      <button class="nav-item hidden" id="commerceNav" data-page="catalogo"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 7 9-4 9 4-9 4-9-4Zm0 0v10l9 4 9-4V7M12 11v10"/></svg></span>Catálogo e pedidos</button>
+      <button class="nav-item" data-page="conversas" data-admin-only data-platform-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3Z"/><path d="M8 8h8M8 12h5"/></svg></span>Conversas</button>
+      <button class="nav-item hidden" id="aiNav" data-page="ai" data-platform-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="7" width="18" height="14" rx="3"/><path d="M12 3v4m-5 6h.01M17 13h.01M8 17h8"/></svg></span>Testar atendimento</button>
+      <button id="catalogNav" class="nav-item hidden" data-page="cadastros" data-platform-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Cadastros</button>
+      <button class="nav-item hidden" id="businessNav" data-page="empresa" data-platform-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 21h18M5 21V4h14v17M9 8h2m2 0h2m-6 4h2m2 0h2m-6 4h2m2 0h2"/></svg></span>Configurar atendimento</button>
+      <button class="nav-item hidden" id="commerceNav" data-page="catalogo" data-platform-admin-only><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 7 9-4 9 4-9 4-9-4Zm0 0v10l9 4 9-4V7M12 11v10"/></svg></span>Catálogo e pedidos</button>
     </nav>
     <div class="sidebar-bottom">
       <div class="avatar"><div class="avatar-dot" id="sidebarAvatarInitial">A</div><div><strong id="sidebarAccountName">Administrador</strong><br><small id="sidebarAccountType">Painel Orion</small></div></div>
@@ -1535,6 +1535,16 @@ function startBusinessSession(){
  if(!wizardClocks)wizardClocks=setInterval(updateWizardClocks,1000);
  void updateStatus();
 }
+async function openCompletedBusinessDashboard(epoch,host,{refreshBusinesses=false}={}){
+ // Recheck the tenant binding after completion. A stale session must not
+ // switch companies or reveal a different account's Dashboard.
+ if(epoch!==authEpoch)return;
+ if(refreshBusinesses&&!await loadBusinesses({resolveSetup:false}))return;
+ if(epoch!==authEpoch||!accountBusiness())return;
+ setSetupGate(false);
+ host.hidden=true;
+ await window.OrionSuite?.open("dashboard",{force:true});
+}
 function mountSetup(){
  window.OrionOnboarding?.unmount();
  let host=$("orionSetup");
@@ -1542,8 +1552,8 @@ function mountSetup(){
  const epoch=authEpoch;
  setupController=window.OrionOnboarding?.mount({host,request:api,user:suiteUser,
   async onTenantChange(){if(epoch!==authEpoch)return;await loadBusinesses({resolveSetup:false});startBusinessSession()},
-  async onComplete(){if(epoch!==authEpoch)return;await loadBusinesses({resolveSetup:false})},
-  onOpenPanel(route){if(epoch!==authEpoch||!accountBusiness())return;setSetupGate(false);host.hidden=true;window.OrionSuite?.open(route)},
+  async onComplete(){await openCompletedBusinessDashboard(epoch,host,{refreshBusinesses:true})},
+  async onOpenPanel(){await openCompletedBusinessDashboard(epoch,host)},
   openLegacy(target){if(epoch!==authEpoch||!accountBusiness())return;setSetupGate(false);host.hidden=true;window.OrionSuite?.open(target==="dispositivo"?"configuracoes":target)},
   logout:()=>$("logout")?.click()
  });
@@ -1876,6 +1886,7 @@ async function showApp(role="support",name="",email=""){
  // Member accounts get their own normal dashboard, never an admin-password prompt.
  // Protected WhatsApp, contacts and conversations are never fetched for members.
  document.querySelectorAll("[data-admin-only]").forEach(node=>node.classList.toggle("hidden",!isAdmin));
+ document.querySelectorAll("[data-platform-admin-only]").forEach(node=>node.classList.toggle("hidden",role!=="admin"));
  document.querySelectorAll("[data-member-only]").forEach(node=>node.classList.toggle("hidden",isAdmin));
  $("sidebarLabel").textContent=isAdmin?"Gerenciamento":"Minha área";
  const displayName=isAdmin?"Administrador":(name||"Minha conta");
@@ -2059,7 +2070,13 @@ $("resetForm").addEventListener("submit",async event=>{
 });
 void restoreSession();
 void authFeatures();
+const platformAdminLegacyPages=new Set(["conversas","ai","empresa","catalogo","cadastros"]);
 function openPage(target){
+ if(platformAdminLegacyPages.has(target)&&loginRole!=="admin"){
+  // Old deep links and programmatic clicks must also return to the Dashboard.
+  void window.OrionSuite?.open("dashboard",{force:true});
+  return;
+ }
  if(!accountBusiness()){if(businessContextError)showBusinessContextError(businessContextError);else void resolveSetup();return}
  if(target!=="empresa"&&target!=="ai"&&target!=="catalogo"&&target!=="cadastros"){
   if(loginRole!=="support"&&loginRole!=="admin")target="member";
@@ -2999,12 +3016,14 @@ async function loadBusinesses({resolveSetup:resolveAfter=true}={}){
    const id=rows.length===1?rows[0].id:"";
    if(suiteTenantId!==id){resetBusinessState();resetCommerceState();resetCatalogState();resetAiConversation();clearAiProfileState();window.OrionChannels?.unmount();window.OrionAutomations?.unmount()}
    suiteTenantId=id;businessContextReady=true;businessContextError="";
-   businessRows=rows;$("businessNav").classList.toggle("hidden",!rows.length);$("aiNav").classList.toggle("hidden",!rows.length);$("commerceNav").classList.toggle("hidden",!rows.length);$("catalogNav").classList.toggle("hidden",!rows.length);
+   businessRows=rows;
+   const showOperatorConsole=loginRole==="admin"&&rows.length===1;
+   for(const id of ["businessNav","aiNav","commerceNav","catalogNav"])$(id).classList.toggle("hidden",!showOperatorConsole);
    renderAccountBusiness();
    window.OrionSuite?.sync({user:suiteUser,tenants:rows,tenantId:suiteTenantId,businessContextReady:true,businessContextError:""});
    if(resolveAfter)await resolveSetup();
    if(!businessContextReady)return false;
-   if(accountBusiness()&&(!businessSnapshot||businessLoadedTenant!==suiteTenantId))await loadBusinessProfile();
+   if(loginRole==="admin"&&accountBusiness()&&(!businessSnapshot||businessLoadedTenant!==suiteTenantId))await loadBusinessProfile();
    return true;
  }catch(error){if(requestId===businessListSequence&&epoch===authEpoch){
    blockBusinessContext(error.message);
