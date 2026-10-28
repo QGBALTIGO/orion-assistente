@@ -144,6 +144,13 @@ class IsolatedHTTP:
                 if path == "/api/v1/account/businesses":
                     return self.json(route, [{"id": TENANT, "name": self.onboarding["name"], "role": "owner",
                                              "slug": "empresa-sintetica", "timezone": "America/Cuiaba"}])
+                if path == "/api/v1/account/business-identity":
+                    # The signed-in business-account settings now query the
+                    # canonical identity alongside onboarding. Keep the
+                    # synthetic endpoint explicit: an unknown request still
+                    # fails this isolated network contract.
+                    return self.json(route, {"name": self.onboarding["name"],
+                                             "contact_phone": self.onboarding["configuration"].get("contact_phone")})
                 if path == "/api/v1/onboarding/entry":
                     return self.json(route, ONBOARDING["entry"])
                 if path == BASE + "/onboarding":
