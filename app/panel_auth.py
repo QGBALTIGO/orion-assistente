@@ -96,8 +96,14 @@ async def panel_actor(request: Request) -> dict:
     if not token or len(token) != 43:
         raise HTTPException(401, "Faça login no painel")
     redis, owned = _request_redis(request)
+    maintenance_raw = None
     try:
         content = await redis.get(_hash_cookie(token))
+        if content:
+            # The temporary maintenance record is bound to this exact admin
+            # cookie. It never replaces or exports the original admin claims.
+            maintenance_key = "orion:maintenance:" + hashlib.sha256(token.encode()).hexdigest()
+            maintenance_raw = await redis.get(maintenance_key)
     except (RedisError, OSError):
         raise HTTPException(503, "Sessões indisponíveis") from None
     finally:
@@ -145,11 +151,17 @@ async def panel_actor(request: Request) -> dict:
         data["name"] = row["name"]
         data["email"] = row["email"]
         data["email_verified"] = row.get("verified_at") is not None
+    if maintenance_raw:
+        from app.maintenance_access import effective_maintenance_claims
+        data = await effective_maintenance_claims(request, data, maintenance_raw)
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         _same_origin(request)
         value = request.headers.get("x-orion-csrf", "")
         if not value or not secrets.compare_digest(value, data["csrf"]):
             raise HTTPException(403, "Confirmação de segurança ausente")
+        if data.get("maintenance"):
+            from app.maintenance_access import audit_maintenance_request
+            await audit_maintenance_request(request, data)
     return data
 
 
@@ -218,14 +230,17 @@ async def me(data: dict = Depends(panel_actor)):
     return {"authenticated": True, "role": data["role"], "csrf": data["csrf"],
             "account":bool(data.get("account_id")),
             "name":data.get("name","Administrador"),
-            "email":data.get("email"),"email_verified":data["email_verified"]}
+            "email":data.get("email"),"email_verified":data["email_verified"],
+            "maintenance":data.get("maintenance")}
 
 
 @router.post("/logout")
 async def logout(request: Request, response: Response, _: dict = Depends(panel_actor)):
     redis, owned = _request_redis(request)
     try:
-        await redis.delete(_hash_cookie(request.cookies[COOKIE]))
+        token = request.cookies[COOKIE]
+        await redis.delete(_hash_cookie(token),
+                           "orion:maintenance:" + hashlib.sha256(token.encode()).hexdigest())
     except (RedisError, OSError):
         raise HTTPException(503, "Não foi possível encerrar a sessão") from None
     finally:
