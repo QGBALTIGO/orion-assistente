@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import struct
 import threading
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -102,8 +103,8 @@ def panel_factory(browser, fixture_url, size, theme, request):
                 'theme': theme, 'method': 'browser viewport emulation', 'physical_device': False,
                 'virtual_keyboard_tested': False, 'outside_requests': outside, 'page_errors': errors})
             stem = request.node.name.replace('[', '-').replace(']', '') + f'-{index}'
+            report['capture'] = capture_current_viewport(page, ARTIFACTS / f'{stem}-last.png')
             (ARTIFACTS / f'{stem}-calls.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
-            page.screenshot(path=str(ARTIFACTS / f'{stem}-last.png'), full_page=True)
             assert not outside, 'A browser request tried to leave the synthetic origin'
             assert not errors, errors
             assert not report['unexpected'], report['unexpected']
@@ -120,6 +121,58 @@ def calls(page):
 def writes(page, suffix=None):
     return [call for call in calls(page) if call['method'] != 'GET' and
             (suffix is None or call['path'].endswith(suffix))]
+
+
+def png_dimensions(image_bytes):
+    assert image_bytes[:8] == b'\x89PNG\r\n\x1a\n' and image_bytes[12:16] == b'IHDR'
+    width, height = struct.unpack('!II', image_bytes[16:24])
+    return {'width': width, 'height': height}
+
+
+def view_state(page):
+    return page.evaluate('''() => ({scroll:{x:scrollX,y:scrollY},
+      viewport:{width:innerWidth,height:innerHeight},devicePixelRatio,
+      focus:{id:document.activeElement?.id||'',tag:document.activeElement?.tagName||''}})''')
+
+
+def settle_scroll(page):
+    page.evaluate('''() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))''')
+
+
+def capture_full_page_from_top(page, destination):
+    """Capture fixed/sticky UI from document top, then restore the real view."""
+    before = view_state(page)
+    focus = page.evaluate_handle('document.activeElement')
+    try:
+        page.evaluate('window.scrollTo({left:0,top:0,behavior:"instant"})')
+        settle_scroll(page)
+        at_capture = view_state(page)
+        assert abs(at_capture['scroll']['x']) <= 1 and abs(at_capture['scroll']['y']) <= 1, at_capture
+        image_bytes = page.screenshot(path=str(destination), full_page=True)
+        image_size = png_dimensions(image_bytes)
+    finally:
+        focus.evaluate('''(element,previous) => {
+          const target=element?.isConnected?element:previous.id?document.getElementById(previous.id):null;
+          if(target && target!==document.activeElement)target.focus({preventScroll:true});
+        }''', before['focus'])
+        page.evaluate('''scroll => window.scrollTo({left:scroll.x,top:scroll.y,behavior:"instant"})''', before['scroll'])
+        settle_scroll(page)
+        focus.dispose()
+    restored = view_state(page)
+    return {'protocol': 'full-page from document top after two animation frames; fixed/sticky CSS unchanged',
+            'method': 'browser viewport emulation', 'before': before, 'at_screenshot': at_capture,
+            'screenshot_scroll': at_capture['scroll'], 'restored_scroll': restored['scroll'],
+            'image_pixels': image_size, 'restored': restored,
+            'focus_preserved': before['focus'] == restored['focus']}
+
+
+def capture_current_viewport(page, destination):
+    """The final diagnostic image preserves the actual current scroll position."""
+    before = view_state(page)
+    image_bytes = page.screenshot(path=str(destination), full_page=False)
+    return {'protocol': 'current viewport only; no scroll or CSS changes',
+            'method': 'browser viewport emulation', 'at_screenshot': before,
+            'image_pixels': png_dimensions(image_bytes), 'after': view_state(page)}
 
 
 def capture(page, selector, name):
@@ -142,6 +195,7 @@ def capture(page, selector, name):
         headerActions:[...root.querySelectorAll('header [data-qc-action="new"],header [data-qc-action="refresh"]')].filter(visible).map(rect),
         consultantFabVisible:(()=>{const fab=document.querySelector('#osConsultantFab');return !!fab&&visible(fab)})()};
     }''')
+    geometry['measurement_state'] = view_state(page)
     assert not geometry['horizontalOverflow'], geometry
     assert geometry['root']['x'] >= -1, geometry
     assert geometry['root']['x'] + geometry['root']['width'] <= geometry['viewport']['width'] + 1, geometry
@@ -164,7 +218,7 @@ def capture(page, selector, name):
     theme = page.locator('html').get_attribute('data-theme')
     viewport = geometry['viewport']
     stem = f'{name}-{engine}-{theme}-{viewport["width"]}x{viewport["height"]}'
-    page.screenshot(path=str(ARTIFACTS / f'{stem}.png'), full_page=True)
+    geometry['capture'] = capture_full_page_from_top(page, ARTIFACTS / f'{stem}.png')
     (ARTIFACTS / f'{stem}.json').write_text(json.dumps(geometry, ensure_ascii=False, indent=2), encoding='utf-8')
     return geometry
 
@@ -271,11 +325,12 @@ def compare_actual_core_components(page, host, panel_factory):
     theme = page.locator('html').get_attribute('data-theme')
     viewport = page.viewport_size
     stem = f'core-components-{engine}-{theme}-{viewport["width"]}x{viewport["height"]}'
-    (ARTIFACTS / f'{stem}.json').write_text(json.dumps({'connector': connector, 'actual_core': core,
+    evidence = {'connector': connector, 'actual_core': core,
         'context_variants': ['Customer popup has pill actions, icon field wrapper and a taller button when its label wraps',
             'The original connection wizard-card has its own radius and padding; it is compared to the admin wizard-card, not the generic os-card'],
-        'reference_form_submitted': False}, ensure_ascii=False, indent=2), encoding='utf-8')
-    reference.screenshot(path=str(ARTIFACTS / f'{stem}.png'), full_page=True)
+        'reference_form_submitted': False}
+    evidence['capture'] = capture_full_page_from_top(reference, ARTIFACTS / f'{stem}.png')
+    (ARTIFACTS / f'{stem}.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding='utf-8')
     reference.locator('#osDialog .os-form-actions [data-os-action="close-dialog"]').click()
     expect(reference.locator('#osDialog')).to_be_hidden()
     assert not writes(reference), 'Opening and cancelling the actual core reference must not create a client'

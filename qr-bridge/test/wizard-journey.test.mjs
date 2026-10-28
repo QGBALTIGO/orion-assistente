@@ -413,7 +413,9 @@ test("CSS garante dispositivos móveis, tablets e redução de movimento",()=>{
  assert.match(connectCSS,/\.os-service-option\[aria-pressed=true\]/);
  assert.match(connectView,/wizard-method/);
  assert.match(html.match(/<form\b[^>]*id="pairForm"[^>]*>/)?.[0]||"",/class="[^"]*\bos-form\b/);
- assert.match(html.match(/<div\b[^>]*id="wizardCard"[^>]*>/)?.[0]||"",/class="[^"]*\bos-card\b/);
+ const wizardCardTag=html.match(/<div\b[^>]*id="wizardCard"[^>]*>/)?.[0]||"";
+ assert.match(wizardCardTag,/class="[^"]*\bwizard-card\b/);
+ assert.doesNotMatch(wizardCardTag,/\bos-card\b/,"O tutorial deve usar somente o card original, sem a cascata do card genérico");
  assert.match(connectView,/Conectar com número de telefone/);
  assert.match(connectView,/wizard-timeline-step|wizard-timeline-dot/);
  assert.match(connectCSS,/\.wizard-timeline-step\{/);
