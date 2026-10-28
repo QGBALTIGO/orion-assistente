@@ -275,6 +275,7 @@
     let nav=isAdmin?navItem(['dispositivo','phone'],' os-nav-connection'):t?'<button type="button" class="os-nav-link os-nav-connection" data-os-action="managed-whatsapp" title="Conectar WhatsApp">'+icon('phone')+'<span>Conectar WhatsApp</span></button>':'';
     nav+='<div class="os-nav-section">Gestão</div>'+mainNav.map(item=>navItem(item)).join('');
     if(state.bridge.user?.role==='admin'){
+      nav+='<div class="os-nav-section">Administração</div>'+navItem(['member','users']);
       nav+='<div class="os-nav-section">Atendimento Orion</div>';
       const attendance=[['conversas','chat'],['ai','bot'],['empresa','settings'],['catalogo','box']];
       attendance.forEach(item=>{nav+=navItem(item);});
