@@ -169,10 +169,18 @@ async def _audit(db,admin,account_id,action,reason):
 @router.post("/{account_id}/{action}")
 async def manage_account(account_id:UUID,action:str,payload:AccountAction,
                          admin:UUID=Depends(require_platform_owner)):
-    if action not in ("suspend","reactivate","archive","restore","hold","release_hold"):
+    if action not in ("suspend","reactivate","archive","restore","hold","release_hold","erase_now"):
         raise HTTPException(404,"Ação não encontrada")
     if action=="archive" and payload.confirmation!="EXCLUIR":
         raise HTTPException(422,"Digite EXCLUIR para confirmar")
+    if action=="erase_now":
+        if payload.confirmation!="EXCLUIR PERMANENTEMENTE":
+            raise HTTPException(422,"Digite EXCLUIR PERMANENTEMENTE para confirmar")
+        from app.account_erasure import erase_customer_login_now
+        done=await erase_customer_login_now(account_id,payload.expected_version,admin,payload.reason)
+        if not done:
+            raise HTTPException(409,"Conta alterada, não arquivada ou com retenção legal. Atualize a ficha.")
+        return {"ok":True,"state":"erased","email_reusable":True,"reversible":False}
     async with _storage()() as db:
         async with db.begin():
             row=(await db.execute(text("""
