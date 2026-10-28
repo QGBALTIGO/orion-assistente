@@ -227,9 +227,21 @@ def _fitting_bindings(pros, services, facts):
 
 
 def _uses_quick_profile(meta):
-    """Avoid retroactively changing onboarding already completed on old screens."""
-    return bool(meta and meta["is_new"] and
-                (meta["completed_at"] is None or "business_metrics" in meta["configuration"]))
+    """Keep in-progress catalogue registrations on their original setup path.
+
+    New registrations use the quick profile; old completed businesses and
+    registrations that already staged real services/products are not silently
+    migrated to a different completion contract.
+    """
+    if not meta or not meta["is_new"]:
+        return False
+    if "business_metrics" in meta["configuration"]:
+        return True
+    if meta["completed_at"] is not None:
+        return False
+    managed = meta.get("managed_ids") or {}
+    return not any(managed.get(table) for table in
+                   ("services", "commercial_products", "commercial_variants"))
 
 
 def readiness(configuration, facts, managed=None, *, staged=True, profile_only=False):
