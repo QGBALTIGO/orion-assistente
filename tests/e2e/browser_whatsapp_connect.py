@@ -550,6 +550,9 @@ def test_company_hidden_code_expires_without_reveal_or_an_automatic_new_pair(pan
     expect(host.locator('[data-qc-pair-hidden]')).to_have_count(0, timeout=5000)
     expect(host.locator('[data-qc-action="show-code"]')).to_have_count(0)
     expect(host.locator('[data-qc-pair-code]')).to_have_count(0)
+    expiration_notice = host.locator('[data-qc-form="pair"] [role="status"]')
+    expect(expiration_notice).to_have_count(1)
+    expect(expiration_notice).to_have_text('O código expirou. Solicite outro quando a conexão estiver pronta.')
     assert len(writes(page, '/pair')) == 1
     assert not any(call['path'].startswith('/api/v1/qr/') for call in calls(page))
     capture(page, '#osManagedChannels', 'owner-hidden-code-expired')

@@ -77,6 +77,16 @@ test('expired code disappears and never reissues automatically, even while readi
   await h.tick(15000);assert.equal(pairCalls(h).length,1);assert.match(h.element('#channels').textContent,/código expirou/i);
 });
 
+test('local expiry and later provider expiry show one message while generation waits for readiness',async t=>{
+  const row=item({enabled:true});let phase='qr_ready';
+  const h=await makeChannels({data:listing([row]),respond:(path,method)=>path.endsWith('/pair')&&method==='POST'?(phase='pairing',result(row,{expires_in_ms:1500})):path.endsWith('/status')?status(row,phase):undefined});t.after(()=>h.close());
+  submitPair(h);await flush();await h.tick(1500);
+  const notices=()=>[...h.document.querySelectorAll('[data-qc-form=pair] [role=status]')];
+  assert.equal(h.controller.getState().runtime.status,'pairing');assert.equal(notices().length,1);assert.match(notices()[0].textContent,/O código expirou/);assert.equal(h.element('[data-qc-form=pair] button[type=submit]').disabled,true);assert.equal(h.controller.getState().hasPair,false);
+  phase='pair_expired';await h.tick(5000);assert.equal(h.controller.getState().runtime.status,'pair_expired');assert.equal(notices().length,1);assert.match(notices()[0].textContent,/O código expirou/);assert.equal(h.element('[data-qc-form=pair] button[type=submit]').disabled,true);assert.equal(pairCalls(h).length,1);
+  phase='qr_ready';await h.tick(5000);assert.equal(notices().length,1);assert.equal(h.element('[data-qc-form=pair] button[type=submit]').disabled,false);assert.equal(pairCalls(h).length,1);
+});
+
 test('hiding and revealing a valid code is reversible without requesting the provider or extending its lifetime',async t=>{
   const row=item({enabled:true});let paired=false;
   const h=await makeChannels({data:listing([row]),respond:(path,method)=>path.endsWith('/pair')&&method==='POST'?(paired=true,result(row,{expires_in_ms:79000})):path.endsWith('/status')?status(row,paired?'pairing':'qr_ready'):undefined});t.after(()=>h.close());
