@@ -319,6 +319,16 @@ def check_onboarding(page, network, geometry):
     business = page.locator('[data-ob-form="business"]')
     business.wait_for(state="visible")
     check_setup_chrome(page, test_theme=True)
+    # On both native Chromium and WebKit, the empty label is a prompt,
+    # not a selectable answer when the user reopens the dropdown.
+    for name in ("niche", "activity"):
+        picker = business.locator(f'[name="{name}"]')
+        expect(picker).to_have_attribute("required", "")
+        prompt = picker.locator('option[value=""]')
+        expect(prompt).to_have_attribute("disabled", "")
+        expect(prompt).to_have_attribute("hidden", "")
+        assert picker.evaluate("""element => [...element.options].some(
+            option => option.value !== '' && !option.disabled)""")
     assert business.locator('[name=timezone]').count() == 0
     assert page.get_by_text('Os dados confirmados ficam salvos neste negócio.').count() == 0
     assert page.get_by_text('A conexão do WhatsApp será feita depois.').count() == 0
