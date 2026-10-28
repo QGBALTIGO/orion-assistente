@@ -13,7 +13,7 @@ test('platform admin sees customer center and can inspect without changing data'
   if(path.startsWith('/api/v1/admin/accounts?'))return {items:[account],total:1,page:1,page_size:20};
   if(path==='/api/v1/admin/accounts/'+account.id)return {account,history:[]};
  }});t.after(()=>h.close());await flush();
- h.window.openPage('member');await flush();
+ h.click('#osNav [data-os-route=member]');await flush();
  assert.equal(h.element('#adminClientCenter').classList.contains('hidden'),false);
  assert.equal(h.element('#page-member .member-settings').classList.contains('hidden'),true);
  assert.match(h.element('#adminClientResults').textContent,/Cliente de teste/);
