@@ -18,8 +18,10 @@ pytestmark = pytest.mark.integration
 
 
 async def provision(c, key=None, tenant=None):
-    return await channels.provision_connection(tenant or c.a,
-        channels.ProvisionConnection(idempotency_key=key or uuid4()), Response(), c.actor)
+    target = tenant or c.a
+    actor = c.actor_b if target == c.b else c.actor
+    return await channels.provision_connection(target,
+        channels.ProvisionConnection(idempotency_key=key or uuid4()), Response(), actor)
 
 
 @pytest.mark.asyncio

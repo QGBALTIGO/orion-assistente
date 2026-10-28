@@ -22,29 +22,38 @@ pytestmark = pytest.mark.integration
 @pytest_asyncio.fixture
 async def channel_case(profiles, monkeypatch):
     a, b, account, runtime, migration = profiles
+    account_b = uuid4()
     monkeypatch.setenv("QR_CHANNELS_ENABLED", "1")
     monkeypatch.setenv("BUSINESS_PROFILES_ENABLED", "1")
     monkeypatch.setenv("INTEGRATION_FERNET_KEY", Fernet.generate_key().decode())
     async with migration.begin() as db:
-        for tenant in (a, b):
+        await db.execute(text("INSERT INTO panel_accounts (id,name,email,password_hash) VALUES (:id,'Synthetic account B',:email,'unused-test-hash')"),
+                         {"id": account_b, "email": f"channel-{account_b}@example.test"})
+        for tenant, owner_account in ((a, account), (b, account_b)):
             await db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role,active) VALUES(:tenant,:account,'owner',true)"),
-                             {"tenant": tenant, "account": account})
-    case = SimpleNamespace(a=a, b=b, account=account, runtime=runtime, migration=migration,
-                           support=support_session_factory(), actor=Actor("member", a, account, "owner"))
+                             {"tenant": tenant, "account": owner_account})
+    case = SimpleNamespace(a=a, b=b, account=account, account_b=account_b, runtime=runtime, migration=migration,
+                           support=support_session_factory(), actor=Actor("member", a, account, "owner"),
+                           actor_b=Actor("member", b, account_b, "owner"))
     try:
         yield case
     finally:
         async with migration.begin() as db:
             await db.execute(text("UPDATE tenants SET whatsapp_channel_id=NULL WHERE id IN (:a,:b)"), {"a": a, "b": b})
             await db.execute(text("DELETE FROM qr_channels WHERE tenant_id IN (:a,:b)"), {"a": a, "b": b})
+            await db.execute(text("DELETE FROM tenant_memberships WHERE tenant_id=:tenant AND account_id=:account"),
+                             {"tenant": b, "account": account_b})
+            await db.execute(text("DELETE FROM panel_accounts WHERE id=:account"), {"account": account_b})
 
 
 async def create(case, *, tenant=None, key=None, activate=True):
     payload = channels.CreateChannel(label="Synthetic channel", allowed_senders=["5567999999901"], idempotency_key=key or uuid4())
+    target = tenant or case.a
+    actor = case.actor_b if target == case.b else case.actor
     async with case.support() as db:
-        row = await channels.create_channel(db, tenant or case.a, payload, case.actor)
+        row = await channels.create_channel(db, target, payload, actor)
     if activate and row["credential"]:
-        await channels.change_state(tenant or case.a, row["id"], channels.ChannelState(expected_revision=1, enabled=True), case.actor)
+        await channels.change_state(target, row["id"], channels.ChannelState(expected_revision=1, enabled=True), actor)
     return row, payload
 
 

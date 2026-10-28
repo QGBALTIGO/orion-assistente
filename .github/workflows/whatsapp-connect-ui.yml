@@ -141,6 +141,7 @@ jobs:
           socket.getaddrinfo = getaddrinfo
           raise SystemExit(pytest.main([
               '-q', '-ra', '--maxfail=1',
+              'tests/unit/test_account_business.py',
               'tests/unit/test_qr_single_connection.py',
               'tests/unit/test_qr_admin_identity.py',
               'tests/unit/test_qr_channels.py',
