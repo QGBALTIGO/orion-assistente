@@ -3,7 +3,8 @@
 Only the revalidated legacy administrator may enumerate or change customer
 accounts. Ordinary tenant owners and staff cannot use these endpoints.
 """
-from datetime import timedelta
+import hmac
+import os
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,9 +18,24 @@ router=APIRouter(prefix="/api/v1/admin/accounts",tags=["Administração de clien
 
 
 def require_platform_owner(claims:dict=Depends(panel_actor)):
-    if claims.get("role")!="admin" or claims.get("auth_provider")!="legacy_admin" or not claims.get("account_id"):
+    """Both administrator identities are revalidated by panel_actor on every call.
+
+    The legacy platform operator is bound to the environment credential.
+    A personal admin account additionally requires the verified owner email
+    established by /auth/admin/claim. Support and ordinary members never pass.
+    """
+    if claims.get("role")!="admin" or not claims.get("account_id"):
         raise HTTPException(403,"Somente o administrador principal pode gerenciar contas")
-    return UUID(str(claims["account_id"]))
+    if claims.get("auth_provider")!="legacy_admin":
+        owner=os.getenv("PANEL_OWNER_EMAIL","").strip().lower()
+        email=str(claims.get("email") or "").strip().lower()
+        if not (owner and claims.get("email_verified") is True and
+                hmac.compare_digest(email,owner)):
+            raise HTTPException(403,"Conta não autorizada para administração de clientes")
+    try:
+        return UUID(str(claims["account_id"]))
+    except (ValueError,TypeError):
+        raise HTTPException(403,"Identidade administrativa inválida") from None
 
 
 class AccountEdit(BaseModel):
