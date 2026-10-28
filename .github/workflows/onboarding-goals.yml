@@ -45,6 +45,7 @@ jobs:
         run: |
           node --test \
             ui-tests/onboarding-goals-review.test.mjs \
+            ui-tests/onboarding-business-hours.test.mjs \
             ui-tests/onboarding-profile.test.mjs \
             ui-tests/onboarding-rhythm.test.mjs \
             ui-tests/onboarding-save.test.mjs \
@@ -66,7 +67,8 @@ jobs:
             tests/unit/test_onboarding_goals.py \
             tests/unit/test_onboarding_profile.py \
             tests/unit/test_onboarding.py \
-            tests/unit/test_onboarding_no_professionals_step.py
+            tests/unit/test_onboarding_no_professionals_step.py \
+            tests/unit/test_onboarding_business_hours.py
 
   postgres:
     name: PostgreSQL real - tenant, idempotencia e conclusao
