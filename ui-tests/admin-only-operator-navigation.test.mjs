@@ -40,6 +40,12 @@ for(const role of ['member','support','editor','viewer']){
       assert.equal(new URL(h.window.location.href).searchParams.get('aba'),'dashboard',route);
       assert.equal(h.document.querySelector('[data-os-route='+route+']'),null,route);
     }
+    await h.window.OrionSuite.open('configuracoes');await flush();
+    assert.equal(h.document.querySelector('[data-os-settings=administration]'),null,
+      'legacy operator administration is not a business settings option');
+    assert.equal(h.document.querySelector('#osSettingsSection option[value=administration]'),null);
+    assert.ok(h.document.querySelector('[data-os-settings=general]'));
+    assert.ok(h.document.querySelector('[data-os-settings=whatsapp]'));
     assert.deepEqual(visited,[],'not even programmatic deep links open legacy resources');
     assert.equal(h.calls.some(call=>/\/business\/profile|\/commerce\/|\/qr\/chats/.test(call.path)),false);
     assert.equal(h.calls.some(call=>call.method!=='GET'),false);
@@ -63,6 +69,9 @@ test('admin retains all original operator routes while normal Dashboard remains 
   }
   assert.deepEqual(visited,operatorRoutes);
   assert.ok(nav.querySelector('[data-os-route=dashboard]'));
+  await h.window.OrionSuite.open('configuracoes');await flush();
+  assert.ok(h.document.querySelector('[data-os-settings=administration]'),
+    'admin retains attendance administration');
   assert.equal(h.calls.some(c=>c.method!=='GET'),false);
   assert.deepEqual(h.errors,[]);
 });
