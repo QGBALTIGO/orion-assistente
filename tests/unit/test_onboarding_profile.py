@@ -103,3 +103,15 @@ def test_completed_legacy_onboarding_is_not_forced_to_answer_new_survey():
     assert service._uses_quick_profile(finished_new) is True
     legacy = {"is_new": False, "completed_at": None, "configuration": dict(CONFIG)}
     assert service._uses_quick_profile(legacy) is False
+
+def test_existing_unfinished_catalog_drafts_continue_using_legacy_contract():
+    old_draft = {"is_new": True, "completed_at": None,
+                 "configuration": dict(CONFIG),
+                 "managed_ids": {"services": {str(uuid4()): True}}}
+    assert service._uses_quick_profile(old_draft) is False
+    new_draft = {"is_new": True, "completed_at": None,
+                 "configuration": dict(CONFIG),
+                 "managed_ids": {"professionals": {str(uuid4()): True}}}
+    assert service._uses_quick_profile(new_draft) is True
+    new_draft["configuration"]["business_metrics"] = dict(PROFILE)
+    assert service._uses_quick_profile(new_draft) is True
