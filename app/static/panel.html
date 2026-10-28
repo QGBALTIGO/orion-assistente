@@ -1721,22 +1721,14 @@ let wizardStep="tutorial",wizardAttempted=false,wizardSuccessUntil=0,
     wizardSuccessDone=false,wizardQrDeadline=0,wizardClocks=null,statusSequence=0;
 const steps={
  qr:[
-  ["Abra o WhatsApp","Abra o WhatsApp normal ou o WhatsApp Business no celular."],
-  ["Vá às configurações","No iPhone, abra Configurações. No Android, toque no menu ⋮."],
-  ["Entre em Dispositivos conectados","Veja os dispositivos vinculados à sua conta."],
-  ["Confira conexões anteriores","Se houver uma sessão antiga do Orion, revise antes de adicionar outra."],
-  ["Toque em Conectar dispositivo","Seu WhatsApp abrirá a tela para escanear um QR Code."],
-  ["Deixe o celular pronto","Mantenha o WhatsApp aberto, com a câmera preparada."],
-  ["Pronto para escanear","Clique no botão abaixo para mostrar o QR Code temporário."]
+  ["Abra o WhatsApp","No celular, abra o WhatsApp ou WhatsApp Business."],
+  ["Dispositivos conectados","Acesse Configurações ou menu ⋮ → Dispositivos conectados."],
+  ["Conectar dispositivo","Toque em Conectar dispositivo. Depois, leia o QR Code exibido no Orion."]
  ],
  code:[
-  ["Abra o WhatsApp","Abra o WhatsApp normal ou o WhatsApp Business no celular."],
-  ["Vá às configurações","No iPhone, abra Configurações. No Android, toque no menu ⋮."],
-  ["Entre em Dispositivos conectados","Veja os dispositivos já vinculados à sua conta."],
-  ["Confira conexões anteriores","Se houver uma sessão antiga deste bot, confira antes de adicionar outra."],
-  ["Toque em Conectar dispositivo","Na tela de dispositivos conectados, escolha Conectar dispositivo."],
-  ["Escolha Conectar com número","Toque na opção Conectar com número de telefone."],
-  ["Pronto para gerar o código","Clique no botão abaixo e digite o código gerado no WhatsApp."]
+  ["Abra o WhatsApp","No celular, abra o WhatsApp ou WhatsApp Business."],
+  ["Dispositivos conectados","Acesse Configurações ou menu ⋮ → Dispositivos conectados."],
+  ["Conectar com número","Toque em Conectar dispositivo → Conectar com número de telefone. Depois, digite o código gerado pelo Orion."]
  ]
 };
 const fields={
@@ -2463,6 +2455,12 @@ document.querySelectorAll("[data-method]").forEach(x=>
  x.addEventListener("click",()=>selectWizardMode(x.dataset.method)));
 $("wizardNext").addEventListener("click",async()=>{
  if(wizardStep!=="tutorial")return;
+ if(["logged_out","pair_failed"].includes(deviceStatus)){
+   $("codeStatus").textContent="Refaça o vínculo para iniciar uma sessão nova.";
+   $("wizardRecover").classList.remove("hidden");
+   $("wizardRecoveryArea").classList.remove("hidden");
+   return;
+ }
  if(method==="qr"){
    wizardStep="qr";showQr=true;wizardAttempted=true;renderGuide();
    await attemptQrRefresh();
