@@ -76,16 +76,23 @@ test('an older CEP response cannot replace a newer address or edits made while l
   const first=deferred(),second=deferred();
   const h=await makeOnboarding({data:fullState({current_step:'location'}),postalRespond:url=>url.includes('01001000')?first.promise:second.promise});t.after(()=>h.close());
   h.fill('[name=postal_code]','01001000');await h.tick(300);h.fill('[name=postal_code]','79002000');await h.tick(300);
-  assert.equal(h.postalCalls[0].options.signal.aborted,true);h.fill('[name=street]','Rua escolhida manualmente');h.change('[name=state]','MT');h.fill('[name=number]','10B');h.change('[name=no_number]',true);h.fill('[name=complement]','Fundos');
+  assert.equal(h.postalCalls[0].options.signal.aborted,true);h.fill('[name=street]','Rua escolhida manualmente');h.change('[name=state]','MT');h.fill('[name=number]','10B');assert.equal(h.document.querySelector('[name=no_number]'),null);h.fill('[name=complement]','Fundos');
   second.resolve(campoGrande);await flush();assert.equal(h.element('[name=street]').value,'Rua escolhida manualmente');assert.equal(h.element('[name=state]').value,'MT');assert.equal(h.element('[name=city]').value,'Campo Grande');
-  first.resolve(saoPaulo);await flush();assert.equal(h.element('[name=postal_code]').value,'79002-000');assert.equal(h.element('[name=city]').value,'Campo Grande');assert.equal(h.element('[name=number]').value,'10B');assert.equal(h.element('[name=no_number]').checked,true);assert.equal(h.element('[name=complement]').value,'Fundos');assert.equal(writes(h).length,0);
+  first.resolve(saoPaulo);await flush();assert.equal(h.element('[name=postal_code]').value,'79002-000');assert.equal(h.element('[name=city]').value,'Campo Grande');assert.equal(h.element('[name=number]').value,'10B');assert.equal(h.document.querySelector('[name=no_number]'),null);assert.equal(h.element('[name=complement]').value,'Fundos');assert.equal(writes(h).length,0);
 });
 
 test('CEP lookup failure, unknown codes and generic addresses keep manual editing available',async t=>{
   for(const response of [()=>{throw Error('offline');},()=>({erro:true}),()=>({...saoPaulo,logradouro:'',bairro:''}),()=>({...saoPaulo,uf:'ZZ'})]){
     const h=await makeOnboarding({data:fullState({current_step:'location'}),postalRespond:response});t.after(()=>h.close());h.fill('[name=postal_code]','01001000');await h.tick(300);await flush();
     for(const name of ['postal_code','street','number','complement','neighborhood','city','state'])assert.equal(h.element('[name='+name+']').disabled,false);
-    assert.equal(h.element('[name=number]').value,'1');assert.ok(h.element('#ob-cep-status').textContent.length);assert.equal(writes(h).length,0);
+    assert.equal(h.element('[name=number]').value,'1');const note=h.element('#ob-cep-status');
+    if(note.dataset.status==='found'){
+      assert.equal(note.hidden,true);
+      assert.equal(note.textContent,'');
+    }else{
+      assert.equal(note.hidden,false);
+      assert.ok(note.textContent.length>0);
+    }assert.equal(writes(h).length,0);
   }
 });
 
@@ -147,4 +154,54 @@ test('channel list composition is preserved until completion and a remount has o
   h.controller.unmount();h.window.OrionChannels.mount(h.bridge);await flush();h.click('[data-qc-action=new]');h.fill('[name=label]','Dispositivo');
   const input=h.element('[name=allowed_senders]');input.value='55991234567';input.dispatchEvent(new h.window.InputEvent('input',{bubbles:true,isComposing:true}));assert.equal(input.value,'55991234567');input.dispatchEvent(new h.window.CompositionEvent('compositionend',{bubbles:true}));assert.equal(input.value,'(55) 99123-4567');
   h.submit();await flush();assert.equal(writes(h).length,1);assert.deepEqual(writes(h)[0].data.allowed_senders,['5555991234567']);
+});
+
+
+test('address has no redundant notices and masks text, CEP and establishment number',async t=>{
+  const h=await makeOnboarding({data:fullState({current_step:'location'}),postalRespond:()=>saoPaulo,
+    respond:(path,method,payload,server)=>method==='PUT'?saved(server,payload):undefined});
+  t.after(()=>h.close());
+  const form=h.element('[data-ob-form=location]');
+  for(const notice of [
+    'Endereço operacional privado. Preencher esta etapa não publica seu endereço.',
+    'Digite o CEP para preencher o endereço. Você também pode preencher manualmente.',
+    'Confira os dados e informe o número. O endereço só muda quando você salva.',
+    'Dados salvos.'
+  ])assert.equal(h.element('#setup').textContent.includes(notice),false);
+  assert.equal(h.document.querySelector('[name=no_number]'),null);
+  assert.equal(form.elements.number.required,true);
+  assert.equal(form.elements.number.getAttribute('pattern'),'.*[0-9].*');
+  assert.equal(form.elements.state.querySelector('option[value=""]').disabled,true);
+  assert.equal(form.elements.modality.querySelector('option[value=""]').disabled,true);
+  assert.equal(h.element('#ob-cep-status').hidden,true);
+  h.fill('[name=street]','   Rua    São   José  ');
+  h.element('[name=street]').dispatchEvent(new h.window.FocusEvent('focusout',{bubbles:true}));
+  assert.equal(h.element('[name=street]').value,'Rua São José');
+  h.fill('[name=number]',' 78b ');
+  h.element('[name=number]').dispatchEvent(new h.window.FocusEvent('focusout',{bubbles:true}));
+  assert.equal(h.element('[name=number]').value,'78B');
+  h.fill('[name=postal_code]','01001000');
+  await h.tick(300);await flush();
+  assert.equal(h.element('[name=postal_code]').value,'01001-000');
+  assert.equal(h.element('#ob-cep-status').hidden,true);
+  assert.equal(form.elements.city.value,'São Paulo');
+  h.submit();await flush();
+  assert.equal(writes(h).length,1);
+  assert.equal(writes(h)[0].data.data.address.number,'78B');
+  assert.deepEqual(h.errors,[]);
+});
+
+test('location rejects blank or S/N number, then saves real building number',async t=>{
+  const h=await makeOnboarding({data:fullState({current_step:'location'}),
+    respond:(path,method,payload,server)=>method==='PUT'?saved(server,payload):undefined});
+  t.after(()=>h.close());
+  h.fill('[name=number]','S/N');
+  h.submit();await flush();assert.equal(writes(h).length,0);
+  h.fill('[name=number]','');
+  h.submit();await flush();assert.equal(writes(h).length,0);
+  h.fill('[name=number]','500-A');
+  h.submit();await flush();assert.equal(writes(h).length,1);
+  assert.equal(writes(h)[0].data.data.address.no_number,false);
+  assert.equal(writes(h)[0].data.data.address.number,'500-A');
+  assert.deepEqual(h.errors,[]);
 });
