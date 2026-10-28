@@ -4,6 +4,8 @@ on:
     paths:
       - 'app/admin_accounts.py'
       - 'app/account_auth.py'
+      - 'app/account_erasure.py'
+      - 'app/worker.py'
       - 'app/static/panel.html'
       - 'app/static/orion-suite.js'
       - 'alembic/versions/0042_admin_account_controls.py'
@@ -25,7 +27,7 @@ jobs:
           python-version: '3.12'
       - run: pip install -c requirements.lock '.[test]'
       - run: python -m pytest -q tests/unit/test_admin_accounts.py
-      - run: python -m compileall -q app/admin_accounts.py app/account_auth.py scripts/backup_and_migrate_admin_accounts.py
+      - run: python -m compileall -q app/admin_accounts.py app/account_auth.py app/account_erasure.py app/worker.py scripts/backup_and_migrate_admin_accounts.py
   browser-dom:
     runs-on: ubuntu-24.04
     steps:
