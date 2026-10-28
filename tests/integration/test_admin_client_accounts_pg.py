@@ -94,6 +94,11 @@ async def test_legal_hold_blocks_due_erasure_and_release_triggers_irreversible_l
                 UPDATE admin_account_controls SET purge_after=now()-interval '1 day'
                 WHERE account_id=:a
             """),{"a":account})
+        with pytest.raises(HTTPException) as too_late:
+            await admin_accounts.manage_account(account,"restore",
+                admin_accounts.AccountAction(expected_version=before["auth_version"]+2,
+                    reason="Restauração após o prazo"),administrator)
+        assert too_late.value.status_code==409
         assert await erase_due_account_logins(batch_size=50)==0
         async with ctx.migration.connect() as db:
             still=(await db.execute(text("SELECT email FROM panel_accounts WHERE id=:a"),
