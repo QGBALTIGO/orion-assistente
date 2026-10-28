@@ -1787,7 +1787,13 @@ async function checkSessionAfterUnauthorized(epoch,expectedCsrf){
     if(!response.ok)return "unknown";
     const session=await response.json().catch(()=>null);
     if(session?.authenticated!==true||typeof session.csrf!=="string")return "unknown";
-    return session.csrf===expectedCsrf?"valid":"changed";
+    if(session.csrf!==expectedCsrf)return "changed";
+    // A temporary customer screen cannot inherit platform-admin permissions
+    // after the bound maintenance key expires or is revoked.
+    if(session.role!==loginRole||
+       Boolean(session.maintenance?.active)!==Boolean(suiteUser?.maintenance?.active))
+      return "changed";
+    return "valid";
    }catch{return "unknown";}
   })();
   authProbePending={epoch,csrf:expectedCsrf,probe};
@@ -1795,7 +1801,11 @@ async function checkSessionAfterUnauthorized(epoch,expectedCsrf){
  }
  const result=await authProbePending.probe;
  if(epoch!==authEpoch||csrf!==expectedCsrf)return;
- if(result==="expired"||result==="changed")showLogin();
+ if(result==="expired"||result==="changed"){
+   if(result==="changed"&&suiteUser?.maintenance?.active)
+     window.location.replace("/panel?aba=member");
+   else showLogin();
+ }
 }
 async function api(url,method="GET",data){
  const scoped=url.match(/^\/api\/v1\/tenants\/([^/?]+)/);
@@ -2013,8 +2023,21 @@ function authScreenShow(screen,{focus=false}={}){
  syncAuthAvailability();
  if(focus)$("authTitle").focus({preventScroll:true});
 }
+let maintenanceExpiryTimer=null;
+function setMaintenanceExpiry(maintenance){
+ clearTimeout(maintenanceExpiryTimer);maintenanceExpiryTimer=null;
+ if(!maintenance?.active)return;
+ const expires=Number(maintenance.expires_at)*1000;
+ if(!Number.isFinite(expires))return;
+ const ms=Math.max(0,expires-Date.now()+1000);
+ maintenanceExpiryTimer=setTimeout(()=>{
+   if(suiteUser?.maintenance?.active)
+     window.location.replace("/panel?aba=member");
+ },Math.min(ms,2147483647));
+}
 function showLogin(){
  ++authEpoch;
+ clearTimeout(maintenanceExpiryTimer);maintenanceExpiryTimer=null;
  window.OrionAdminCenter?.reset();
  $("orionMaintenanceBanner")?.classList.add("hidden");
  ++setupResolving;window.OrionOnboarding?.unmount();setupController=null;setSetupGate(false);
@@ -2047,6 +2070,7 @@ async function showApp(role="support",name="",email="",maintenance=null){
  suiteUser={role,name,email,maintenance};
  loginRole=role;
  const maintenanceActive=role==="member"&&maintenance?.active===true;
+ setMaintenanceExpiry(maintenanceActive?maintenance:null);
  $("orionMaintenanceBanner").classList.toggle("hidden",!maintenanceActive);
  if(maintenanceActive){
    $("orionMaintenanceCompany").textContent=maintenance.company||"o cliente selecionado";
