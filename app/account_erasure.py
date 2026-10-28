@@ -58,9 +58,21 @@ async def erase_due_account_logins(_ctx=None, *, batch_size=50):
                         auth_version=auth_version+1
                     WHERE id=:account
                 """),{"account":account})
+                # Stop queued account e-mails and remove recoverable recipient
+                # data before invalidating one-time codes. The outbox worker
+                # also locks outbox rows before their token rows.
                 await session.execute(text("""
-                    UPDATE panel_email_tokens SET used_at=COALESCE(used_at,now())
-                    WHERE account_id=:account AND used_at IS NULL
+                    UPDATE panel_email_outbox SET
+                        status=CASE WHEN status='pending' THEN 'suppressed' ELSE status END,
+                        payload_enc=NULL,recipient_digest=repeat('0',64),
+                        token_id=NULL,account_id=NULL
+                    WHERE account_id=:account
+                """),{"account":account})
+                await session.execute(text("""
+                    UPDATE panel_email_tokens SET
+                        used_at=COALESCE(used_at,now()),
+                        token_digest=md5(gen_random_uuid()::text)||md5(gen_random_uuid()::text)
+                    WHERE account_id=:account
                 """),{"account":account})
                 await session.execute(text("""
                     UPDATE tenant_memberships SET active=false
