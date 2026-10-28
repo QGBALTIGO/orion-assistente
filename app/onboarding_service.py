@@ -462,7 +462,8 @@ async def _state(db, tenant, access):
     step_labels = LABELS if quick_setup else LEGACY_LABELS
     current_step = meta["current_step"] if meta else "business"
     if quick_setup:
-        current_step = {"catalog": "profile", "channels": "goals"}.get(current_step, current_step)
+        current_step = {"catalog": "profile", "channels": "goals",
+                        "professionals": "profile"}.get(current_step, current_step)
         if current_step == "review" and any(item["step"] == "goals" for item in pending):
             current_step = "goals"
     result = {"enabled": enabled(), "tenant_id": tenant, "name": facts["business"]["name"], "timezone": facts["business"]["timezone"],
