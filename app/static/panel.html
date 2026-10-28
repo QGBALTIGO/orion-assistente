@@ -2821,7 +2821,15 @@ $("startQr").addEventListener("click",()=>{showQr=true;attemptQrRefresh();});
 $("refreshQr").addEventListener("click",attemptQrRefresh);
 const normalize=phone=>{try{return (window.OrionFields.phoneValue(phone,{allowInternational:true})||"").replace(/^\+/,"");}catch{return "";}};
 $("pairForm").addEventListener("submit",async ev=>{
- ev.preventDefault();$("codeStatus").textContent="Gerando código, aguarde...";
+ ev.preventDefault();
+ if(["logged_out","pair_failed"].includes(deviceStatus)){
+  $("codeStatus").textContent="Sessão desvinculada. Use Refazer vínculo antes de gerar outro código.";
+  $("wizardGenerate").disabled=true;return;
+ }
+ if(deviceStatus==="connected"){
+  $("codeStatus").textContent="Este WhatsApp já está conectado.";return;
+ }
+ $("codeStatus").textContent="Gerando código, aguarde...";
  $("codeResult").classList.add("hidden");pairExpiresAt=0;
  const submit=$("pairForm").querySelector('button[type="submit"]');submit.disabled=true;
  const phone=normalize($("pairPhone").value);
@@ -2838,7 +2846,7 @@ $("pairForm").addEventListener("submit",async ev=>{
   wizardStep="code_ready";wizardAttempted=true;renderGuide();
   $("codeStatus").textContent="Código solicitado. Digite-o imediatamente em Dispositivos conectados → Conectar com número de telefone. A conexão só é confirmada quando o status mudar para Conectado.";
  }catch(ex){$("codeStatus").textContent=ex.message;}
- finally{submit.disabled=false;}
+ finally{submit.disabled=["logged_out","pair_failed","connected"].includes(deviceStatus);}
 });
 $("retryCode").addEventListener("click",async()=>{
   const button=$("retryCode");
