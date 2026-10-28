@@ -321,7 +321,7 @@ async def authenticate_account(email,password):
             SELECT a.id,a.name,a.email,a.password_hash,a.role,a.auth_version,a.verified_at,a.registration_pending
             FROM panel_accounts a LEFT JOIN admin_account_controls c ON c.account_id=a.id
             WHERE COALESCE(c.state,'active')='active' AND a.email=:email
-              AND COALESCE(to_jsonb(panel_accounts)->>'auth_provider','password')='password'
+              AND COALESCE(to_jsonb(a)->>'auth_provider','password')='password'
         """),{"email":email.strip().lower()})).mappings().first()
     try:
         accepted=_hasher.verify(row["password_hash"] if row else _FAKE,password)
@@ -341,7 +341,7 @@ async def current_account(account_id,version):
             SELECT a.role,a.auth_version,a.verified_at,a.name,a.email,a.registration_pending
             FROM panel_accounts a LEFT JOIN admin_account_controls c ON c.account_id=a.id
             WHERE COALESCE(c.state,'active')='active' AND a.id=:id
-              AND COALESCE(to_jsonb(panel_accounts)->>'auth_provider','password')='password'
+              AND COALESCE(to_jsonb(a)->>'auth_provider','password')='password'
         """),{"id":UUID(account_id)})).mappings().first()
     if not row or row["auth_version"]!=version or row.get('registration_pending',False):
         raise HTTPException(401,"Sua sessão expirou. Entre novamente")
