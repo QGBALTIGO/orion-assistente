@@ -22,6 +22,7 @@ from app.billing_worker import reconcile_asaas_job,scan_pending_billing
 from app.automation_runtime import interaction,process_automation_job,reconcile_automation_job,scan_automations
 from app.inbox_runtime import process_inbox_message,scan_inbox
 from app.email_outbox import process_email_outbox,scan_email_outbox
+from app.account_erasure import erase_due_account_logins
 
 
 async def infrastructure_ping(ctx: dict) -> str:
@@ -119,7 +120,9 @@ class WorkerSettings:
                  cron(scan_pending_billing, minute={3,13,23,33,43,53}, second=0),
                  cron(scan_automations, minute=set(range(60)), second=20),
                  cron(scan_inbox,minute=set(range(60)),second={5,35}),
-                 cron(scan_email_outbox,minute=set(range(60)),second={0,15,30,45})]
+                 cron(scan_email_outbox,minute=set(range(60)),second={0,15,30,45}),
+                 # Retention-aware, irreversible login removal after 30 days.
+                 cron(erase_due_account_logins,minute={17},second=12)]
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
 
 
