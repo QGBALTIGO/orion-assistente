@@ -100,8 +100,10 @@ test('Dashboard keeps management actions and daily totals without pilot banners 
   h.click('#page-suite [data-os-action=new-customer]'); await flush();
   assert.ok(h.document.querySelector('[data-os-form=customer]'));
   await h.window.OrionSuite.open('dashboard');
-  h.click('#osNav [data-os-route=empresa]'); await flush();
-  assert.deepEqual(opened, ['empresa']);
+  assert.equal(h.document.querySelector('#osNav [data-os-route=empresa]'),null);
+  await h.window.OrionSuite.open('empresa'); await flush();
+  assert.deepEqual(opened,[], 'business owners must not open the operator console');
+  assert.equal(page.dataset.osCurrentRoute,'dashboard');
   data = { summary: { appointments: 80, completed: 80, customers: 80 },
     onboarding: { has_appointment: false, scheduling_ready: false, customers_with_phone: 0 } };
   await h.window.OrionSuite.open('dashboard'); await flush();
