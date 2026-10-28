@@ -21,7 +21,8 @@ pytestmark = pytest.mark.integration
 
 def creation(key=None, **changes):
     return schemas.CreateBusiness(name="Empresa sintética onboarding", timezone="America/Cuiaba", niche="outro",
-        other_niche="Serviços sintéticos", activity="services", idempotency_key=key or str(uuid4()), **changes)
+        other_niche="Serviços sintéticos", activity="services", contact_phone="+5567999999901",
+        idempotency_key=key or str(uuid4()), **changes)
 
 
 async def save(ctx, state, step, data, *, key=None, version=None):
