@@ -1540,7 +1540,25 @@
   async function loadGoogle({handleReturn=true}={}){
     const c=context(),read=state.googleRead=(state.googleRead||0)+1;state.data.googleLoading=true;state.data.googleError=null;state.data.googleAuthExpired=false;renderGoogleTargets();
     try{const data=await request(apiPath('/google/status'));if(!current(c)||read!==state.googleRead)return;if(!data||typeof data!=='object'||Array.isArray(data))throw Error('A situação da integração não pôde ser confirmada.');state.data.google=data;}
-    catch(error){if(!current(c)||read!==state.googleRead)return;state.data.googleAuthExpired=error?.status===401||/Sua sessão expirou|Sessão expirada|Faça login no painel|Entre novamente/i.test(String(error?.message||''));state.data.googleError=error.message||'Confira a conexão e tente novamente.';state.data.google=null;}
+    catch(error){
+      if(!current(c)||read!==state.googleRead)return;
+      let expired=error?.status===401;
+      if(expired){
+        // The tenant integration may reject a stale business context while
+        // the first-party Orion login is still valid. Do not log the user out
+        // or incorrectly label that situation as an expired session.
+        try{
+          const response=await fetch('/auth/me',{method:'GET',credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});
+          if(response.ok){const session=await response.json();expired=session?.authenticated!==true;}
+        }catch{expired=false;}
+        if(!current(c)||read!==state.googleRead)return;
+      }
+      state.data.googleAuthExpired=expired;
+      state.data.googleError=expired?'Sua sessão do Orion expirou. Entre novamente.'
+        :error?.status===401?'O acesso a esta empresa não pôde ser validado. Atualize a página para recuperar o contexto da empresa. Se persistir, entre novamente.'
+        :error.message||'Confira a conexão e tente novamente.';
+      state.data.google=null;
+    }
     finally{if(current(c)&&read===state.googleRead){state.data.googleLoading=false;renderGoogleTargets();}}
     if(!current(c)||read!==state.googleRead||!handleReturn||state.route!=='agenda')return;
     const url=new URL(location.href),returned=url.searchParams.get('google');if(!['choose','error'].includes(returned)||!tenant()||state.dialog)return;
