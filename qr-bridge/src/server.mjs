@@ -75,6 +75,7 @@ const authBackup=backupAuth({directory:authDir,backupDirectory:'/data/orion-auth
   secret:KEY,label:'before-transport-diagnostics-v1'});
 console.info('Orion auth backup '+JSON.stringify(authBackup));
 const socketDeviceCaches=new WeakMap();
+let newLinkNoticeAuthDir=null;
 let socket=null,generation=0,timer=null,attempts=0,status="starting",
   connectStartedAt=Date.now(),lastQrAt=0,lastDisconnectCode=null,everConnected=false,
   pairingRequestedForGeneration=-1, pairPhone="",saveQueue=Promise.resolve(),
@@ -224,7 +225,7 @@ function collectBody(req){
     req.on("error",reject);
   });
 }
-function installListeners(client,mine,saveCreds){
+function installListeners(client,mine,saveCreds,notifyNewLink=false){
   // Capture the store for this socket. Old callbacks may never write into a
   // replacement account's registry, including after async PN resolution.
   const namesStore=contactNames;
@@ -512,7 +513,7 @@ function installListeners(client,mine,saveCreds){
       if(update.receivedPendingNotifications===true)pendingNotificationsReceived=true;
       pairedNumber=normalizeFromJid(client.user?.id?.split(":")[0]+"@s.whatsapp.net")||"";
       lastError=null;console.info("Orion QR: dispositivo conectado");
-      if(process.env.ORION_NOTIFY_SELF_ON_LINK==="1" && notifiedGeneration!==mine){
+      if(notifyNewLink && process.env.ORION_NOTIFY_SELF_ON_LINK==="1" && notifiedGeneration!==mine){
         notifiedGeneration=mine;
         // Only the authenticated account receives a one-time confirmation.
         // Never send on QR creation, intermediate pairing or failed login.
@@ -521,6 +522,7 @@ function installListeners(client,mine,saveCreds){
           try{
             await saveQueue;
             if(mine!==generation || status!=="connected")return;
+            if(newLinkNoticeAuthDir===authDir)newLinkNoticeAuthDir=null;
             const result=await sendConnectionNoticeOnce({
               authDir,
               client,
@@ -560,6 +562,7 @@ function installListeners(client,mine,saveCreds){
       lastDisconnectCode=Number.isFinite(code)?code:null;
       console.info("Orion QR: conexão encerrada (código="+(lastDisconnectCode??"desconhecido")+")");
       if(code===DisconnectReason.loggedOut){
+        if(newLinkNoticeAuthDir===authDir)newLinkNoticeAuthDir=null;
         status=everConnected?"logged_out":"pair_failed";
         lastError=everConnected?
           "WhatsApp revogou a conexão. Use Refazer vínculo.":
@@ -633,7 +636,11 @@ async function connect(){
       ...(currentVersion?{version:currentVersion}:{}),
       printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,logger});
     socketDeviceCaches.set(client,deviceCache);
-    socket=client;installListeners(client,mine,saveCreds);
+    // Do not announce a new link while merely restoring registered auth.
+    // The memory-only intent survives Baileys' post-pairing restartRequired.
+    if(state.creds.registered!==true&&process.env.ORION_NOTIFY_SELF_ON_LINK==="1")newLinkNoticeAuthDir=selectedAuthDir;
+    const notifyNewLink=newLinkNoticeAuthDir===selectedAuthDir;
+    socket=client;installListeners(client,mine,saveCreds,notifyNewLink);
   }catch{
     status="error";lastError="Não foi possível iniciar o serviço do WhatsApp.";
     console.warn("Orion QR: erro genérico ao iniciar");

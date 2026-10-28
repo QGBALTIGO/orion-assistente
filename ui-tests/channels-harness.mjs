@@ -18,12 +18,14 @@ export async function makeChannels({data=listing(),respond,hidden=false}={}){
   Object.defineProperty(window.navigator,'clipboard',{value:{writeText:async value=>copied.push(value)}});
   window.fetch=()=>{throw Error('The isolated harness refuses all network requests');};
   window.setTimeout=(fn,delay=0)=>{const id=++timerId;timers.set(id,{fn,at:clock+delay});return id;};window.clearTimeout=id=>timers.delete(id);
+  window.Date.now=()=>clock;
   window.console.log=(...args)=>logs.push(args);window.console.warn=(...args)=>logs.push(args);window.console.error=(...args)=>logs.push(args);
   for(const storage of [window.localStorage,window.sessionStorage]){storage.clear();}
   const server={data:copy(data)};
   const bridge={host:document.getElementById('channels'),tenantId:tenantA,
     async request(path,method='GET',payload){calls.push({path,method,data:copy(payload??null)});const result=await respond?.(path,method,payload,server);if(result!==undefined)return copy(result);if(method!=='GET')throw Error('An explicit response is required for '+method+' '+path);if(path.endsWith('/qr'))return {channel_id:channelA,revision:1,image:png,expires_in_ms:45000};if(path.endsWith('/status')){const id=path.split('/').at(-2),row=server.data.items.find(row=>row.id===id);return runtime(row,row.enabled?'stopped':'disabled');}return copy(server.data);},onLegacy:async()=>legacy.push(true),onStatus:async status=>statuses.push(status)};
   window.eval(await readFile(new URL('../app/static/orion-fields.js',import.meta.url),'utf8'));
+  window.eval(await readFile(new URL('../app/static/orion-connect.js',import.meta.url),'utf8'));
   window.eval(await readFile(new URL('../app/static/orion-channels.js',import.meta.url),'utf8'));const controller=window.OrionChannels.mount(bridge);
   const flush=async()=>{for(let i=0;i<5;i++)await new Promise(resolve=>setImmediate(resolve));};
   function element(selector){const el=document.querySelector(selector);assert.ok(el,'missing '+selector);return el;}

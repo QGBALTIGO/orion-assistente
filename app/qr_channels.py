@@ -10,6 +10,7 @@ import json
 import os
 import re
 import secrets
+from time import monotonic
 from typing import Literal
 from uuid import UUID
 from urllib.parse import urlsplit
@@ -87,6 +88,17 @@ class LeaseRequest(StrictModel):
 
 class ChannelCommand(StrictModel):
     expected_revision: int = Field(strict=True, ge=1)
+
+
+class ChannelPairCommand(ChannelCommand):
+    phone: str = Field(strict=True, min_length=8, max_length=15)
+
+    @field_validator("phone")
+    @classmethod
+    def canonical_phone(cls, value):
+        if not re.fullmatch(r"[1-9][0-9]{7,14}", value):
+            raise ValueError("Informe o número com código do país e DDD, somente dígitos")
+        return value
 
 
 @dataclass(frozen=True)
@@ -203,7 +215,7 @@ async def list_channels(tenant_id: UUID, response: Response, actor: Actor = Depe
             item["allowed_senders"] = row["allowed_senders"]
         items.append(item)
     return jsonable_encoder({"items": items, "access": {"can_manage": can_manage},
-        "capabilities": {"start": can_manage, "stop": can_manage, "qr": can_manage,
+        "capabilities": {"start": can_manage, "stop": can_manage, "qr": can_manage, "pair": can_manage,
             "change_state": can_manage, "edit_label": False, "edit_allowlist": False}})
 
 
@@ -384,7 +396,7 @@ async def _owned_channel(tenant_id, channel_id, actor, expected_revision=None):
             return dict(row)
 
 
-async def _bridge_control(row, action, method):
+async def _bridge_control(row, action, method, payload=None):
     """Private fixed destination; no browser credential, URL or redirect input."""
     raw_url = os.getenv("QR_BRIDGE_URL", "").rstrip("/")
     try:
@@ -405,7 +417,7 @@ async def _bridge_control(row, action, method):
     try:
         async with httpx.AsyncClient(timeout=18, trust_env=False, follow_redirects=False) as client:
             result = await client.request(method, f"{raw_url}/internal/channels/{row['id']}/{action}",
-                headers={"X-Orion-Channel-Key": key}, json={} if method == "POST" else None)
+                headers={"X-Orion-Channel-Key": key}, json=(payload if payload is not None else {}) if method == "POST" else None)
         if result.status_code != 200:
             raise HTTPException(409, "Operação do canal indisponível; atualize o estado")
         if len(result.content) > 256000:
@@ -429,10 +441,21 @@ def _control_result(row, data, action):
         if type(expires) is not int or not 0 <= expires <= 45000 or (image is not None and expires == 0):
             raise HTTPException(503, "QR temporariamente indisponível")
         return {**result, "image": image, "expires_in_ms": expires if image else 0}
+    if action == "pair":
+        code, expires = data.get("code"), data.get("expires_in_ms")
+        if (data.get("status") != "pairing" or not isinstance(code, str)
+                or not re.fullmatch(r"[A-Z0-9]{4}-[A-Z0-9]{4}", code)
+                or type(expires) is not int or not 1 <= expires <= 90000):
+            raise HTTPException(503, "Código de conexão temporariamente indisponível")
+        return {**result, "status": "pairing", "code": code, "expires_in_ms": expires}
     status = data.get("status")
-    if status not in {"stopped", "connecting", "qr_ready", "connected", "disabled"}:
+    if status not in {"stopped", "connecting", "qr_ready", "connected", "disabled", "pairing", "pair_expired", "pair_failed"}:
         raise HTTPException(503, "Estado do canal indisponível")
-    return {**result, "status": status}
+    from app.qr_legacy import is_alias
+    capabilities = data.get("capabilities")
+    available = (isinstance(capabilities, dict) and capabilities.get("pair") is True and row["enabled"] is True
+                 and not is_alias(row["tenant_id"], row["id"]))
+    return {**result, "status": status, "capabilities": {"pair": available}}
 
 
 async def _control(tenant_id, channel_id, actor, action, expected_revision=None):
@@ -459,6 +482,35 @@ async def read_control(tenant_id: UUID, channel_id: UUID, action: str, response:
     if action not in {"status", "qr"}:
         raise HTTPException(404)
     return await _control(tenant_id, channel_id, actor, action)
+
+
+@router.post(BASE + "/{channel_id}/pair")
+async def pair_control(tenant_id: UUID, channel_id: UUID, payload: ChannelPairCommand,
+                       response: Response, actor: Actor = Depends(authenticate)):
+    response.headers["Cache-Control"] = "no-store"
+    row = await _owned_channel(tenant_id, channel_id, actor, payload.expected_revision)
+    from app.qr_legacy import is_alias
+    if is_alias(tenant_id, channel_id):
+        raise HTTPException(409, "A sessão principal existente não precisa de novo vínculo")
+    if not row["enabled"]:
+        raise HTTPException(409, "Habilite e inicie a conexão deste canal antes de gerar o código")
+    # Runtime discovery is read-only and fail-closed with an older bridge.
+    # Pairing never enables, starts or replaces a preserved registered socket.
+    status = await _bridge_control(row, "status", "GET")
+    await _owned_channel(tenant_id, channel_id, actor, row["revision"])
+    if not _control_result(row, status, "status")["capabilities"]["pair"]:
+        raise HTTPException(409, "Conexão por código indisponível; prepare o canal e atualize o estado")
+    started = monotonic()
+    data = await _bridge_control(row, "pair", "POST", {"phone": payload.phone})
+    # Never return a code obtained for a revoked owner or stale revision.
+    await _owned_channel(tenant_id, channel_id, actor, row["revision"])
+    result = _control_result(row, data, "pair")
+    # Conservatively include transit/provider time and the ownership recheck;
+    # a delayed response must never extend the provider's bounded validity.
+    result["expires_in_ms"] -= max(0, int((monotonic()-started)*1000))
+    if result["expires_in_ms"] <= 0:
+        raise HTTPException(409, "O código expirou; atualize o estado do canal")
+    return result
 
 
 @router.post(BASE + "/{channel_id}/{action}")

@@ -19,6 +19,4 @@
   #osDialog .os-commission-service-controls :is(input,select){font-size:16px;line-height:22px;height:42px;min-height:42px}
 }
 
-.wizard-phone-input:focus-within{outline:2px solid var(--os-primary,var(--primary,#2e7bf6));outline-offset:2px}
-.wizard-phone-input:has([aria-invalid=true]){border-color:var(--os-danger,var(--danger,#c1272d))!important}
 .os-field,.os-customer-field{align-content:start}

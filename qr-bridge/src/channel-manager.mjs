@@ -95,7 +95,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     try{
       const session=await createSession({channelId:c.id,tenantId:c.tenant,owner,fence:c.fence,
         directory:c.directory,secret:c.key,assertCurrent,isCurrent,resumeOnly:c.resumeOnly,
-        notifySelf:!c.legacyTransport&&process.env.ORION_NOTIFY_SELF_ON_LINK!=='0',
+        notifySelf:!c.resumeOnly&&!c.legacyTransport&&process.env.ORION_NOTIFY_SELF_ON_LINK!=='0',
+        newLinkNotice:c.newLinkNotice,
         legacyTransport:c.legacyTransport,
         allowedSender:phone=>c.allowed.has(phone),
         assistantEnabled:()=>c.assistant===true,
@@ -182,7 +183,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     const existing=contexts.get(id);
     if(existing){if(!sameKey(existing.key,key))throw Error('channel_unauthorized');await existing.starting;await validate(existing,key);return status(id,key);}
     if(contexts.size>=maxChannels)throw Error('channel_capacity');
-    const c={id,key,resumeOnly,deadline:0,fence:0,stopped:false,generation:0,attempts:0,sent:new Map(),summaryReview:new Map(),
+    const c={id,key,resumeOnly,deadline:0,fence:0,stopped:false,generation:0,attempts:0,sent:new Map(),summaryReview:new Map(),newLinkNotice:{pending:false},
       capacity:makeSendCapacity({now:clock})};contexts.set(id,c);
     c.starting=(async()=>{
       const started=clock(),lease=await broker.lease(id,key,'claim',owner);
@@ -196,10 +197,26 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
   }
   async function status(id,key){
     const c=contexts.get(id);
-    if(!c){await broker.lease(id,key,'inspect',owner);return {channel_id:id,status:'stopped'};}
+    if(!c){await broker.lease(id,key,'inspect',owner);return {channel_id:id,status:'stopped',capabilities:{pair:false}};}
     await validate(c,key);
     return {channel_id:id,status:c.session?.status?.()||'connecting',fence:c.fence,
-      capabilities:{text:true,audio:audioEnabled()===true&&c.assistant===true,reliable_send:true,typing:true}};
+      capabilities:{text:true,audio:audioEnabled()===true&&c.assistant===true,reliable_send:true,typing:true,
+        pair:!c.legacyTransport&&typeof c.session?.pair==='function'&&c.session?.supportsPairing?.()===true}};
+  }
+  async function pair(id,key,{phone}){
+    if(typeof phone!=='string'||phone!==phone.trim()||!/^[1-9]\d{7,14}$/.test(phone))throw Error('invalid_pairing_phone');
+    const c=contexts.get(id);if(!c)throw Error('channel_not_started');
+    if(!sameKey(c.key,key))throw Error('channel_unauthorized');
+    await c.starting;await validate(c,key);
+    const session=c.session,generation=c.generation;
+    if(c.legacyTransport||!session||session.supportsPairing?.()!==true||typeof session.pair!=='function')throw Error('channel_pairing_unavailable');
+    const result=await session.pair(phone),receivedAt=clock();await validate(c,key);
+    if(c.session!==session||c.generation!==generation)throw Error('channel_socket_replaced');
+    if(result?.status!=='pairing'||typeof result.code!=='string'||result.code.length!==9||!(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(result.code))||
+        !Number.isSafeInteger(result.expires_in_ms)||result.expires_in_ms<=0||result.expires_in_ms>90000)throw Error('invalid_pairing_result');
+    const expires=Math.floor(result.expires_in_ms-Math.max(0,clock()-receivedAt));
+    if(expires<=0)throw Error('channel_pairing_expired');
+    return {channel_id:id,status:'pairing',code:result.code,expires_in_ms:expires};
   }
   async function send(id,key,{to,text,operation_id,isCurrent:operationCurrent=()=>true,source='automation',control_revision}){
     const c=contexts.get(id);if(!c)throw Error('channel_not_started');
@@ -255,7 +272,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     }catch(error){if(error.code!=='ENOENT')throw error;}
     return publicSend(operationId,record||{state:'unrecorded',accepted:false,delivery:'unknown'});
   }
-  return {start,status,send,operation,
+  return {start,status,pair,send,operation,
     async resume(){
       if(!resumeStore||resuming)return {resumed:0};
       let resumed=0;resuming=true;

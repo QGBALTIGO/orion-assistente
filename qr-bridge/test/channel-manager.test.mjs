@@ -84,6 +84,56 @@ function connectionNoticeFlag(t,value){
   t.after(()=>{if(previous===undefined)delete process.env.ORION_NOTIFY_SELF_ON_LINK;else process.env.ORION_NOTIFY_SELF_ON_LINK=previous;});
   if(value===undefined)delete process.env.ORION_NOTIFY_SELF_ON_LINK;else process.env.ORION_NOTIFY_SELF_ON_LINK=value;
 }
+
+test('code pairing is explicit and scoped to the current started channel, never the global alias',async t=>{
+  const f=fixture(t),a=f.add(),b=f.add(),m=f.manager(),calls=[];
+  assert.equal((await m.status(a.id,a.key)).capabilities.pair,false);
+  await assert.rejects(m.pair(a.id,a.key,{phone}));assert.equal(f.made.length,0);
+  await m.start(a.id,a.key);await m.start(b.id,b.key);
+  assert.equal((await m.status(a.id,a.key)).capabilities.pair,false);
+  f.made[0].supportsPairing=()=>true;f.made[0].pair=async value=>{calls.push(value);return {status:'pairing',code:'ABCD-EFGH',expires_in_ms:90000,secret:a.key,phone:value};};
+  assert.equal((await m.status(a.id,a.key)).capabilities.pair,true);
+  const value=await m.pair(a.id,a.key,{phone});
+  assert.deepEqual(value,{channel_id:a.id,status:'pairing',code:'ABCD-EFGH',expires_in_ms:90000});
+  assert.deepEqual(calls,[phone]);assert.equal(f.made.length,2);assert.equal(f.made[0].sends.length,0);
+  await assert.rejects(m.pair(a.id,b.key,{phone}));assert.equal(f.made[0].closed,false);
+  for(const invalid of [null,12345678,'+5567999999901','1234567',phone+'\n','0'.repeat(10)])
+    await assert.rejects(m.pair(a.id,a.key,{phone:invalid}));
+  assert.equal(calls.length,1);
+  const legacy=f.add();f.rows.get(legacy.id).legacy_transport=true;await m.start(legacy.id,legacy.key);
+  f.made[2].supportsPairing=()=>true;f.made[2].pair=async()=>assert.fail('legacy cannot request any new pairing code');
+  assert.equal((await m.status(legacy.id,legacy.key)).capabilities.pair,false);
+  await assert.rejects(m.pair(legacy.id,legacy.key,{phone}));assert.equal(f.made.length,3);
+});
+
+test('pairing rechecks lease, tenant and socket generation before returning a private code',async t=>{
+  for(const mode of ['revoked','tenant','disabled','generation']){
+    const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);const session=f.made[0];
+    session.supportsPairing=()=>true;session.pair=async()=>{
+      if(mode==='tenant')f.rows.get(a.id).tenant_id=randomUUID();
+      else if(mode==='generation')session.ctx.onDisconnected('disconnected');
+      else f.rows.get(a.id)[mode]=true;
+      return {status:'pairing',code:'ABCD-EFGH',expires_in_ms:90000};
+    };
+    await assert.rejects(m.pair(a.id,a.key,{phone}));
+    assert.equal(session.closed,true);assert.equal(session.sends.length,0);assert.equal(f.made.length,1);
+  }
+});
+
+test('a delayed lease check cannot extend code validity and malformed session results are refused',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);const session=f.made[0];
+  session.supportsPairing=()=>true;
+  for(const result of [
+    {status:'connected',code:'ABCD-EFGH',expires_in_ms:90000},
+    ...[0,true,90001,'90000'].map(expires_in_ms=>({status:'pairing',code:'ABCD-EFGH',expires_in_ms})),
+    ...['ABCD-EFGH\n','ABCDEFGH','<script>'].map(code=>({status:'pairing',code,expires_in_ms:90000}))
+  ]){session.pair=async()=>result;await assert.rejects(m.pair(a.id,a.key,{phone}));}
+  let checks=0;const lease=f.broker.lease;
+  f.broker.lease=async(...args)=>{if(args[2]==='check'&&++checks===2)f.setTime(2000);return lease(...args);};
+  session.pair=async()=>({status:'pairing',code:'ABCD-EFGH',expires_in_ms:1000});
+  await assert.rejects(m.pair(a.id,a.key,{phone}),/expired/);assert.equal(session.sends.length,0);
+});
+
 for(const flag of [undefined,'0','1'])for(const legacy of [false,true]){
   test(`${legacy?'legacy':'managed'} channel connection notice obeys ${flag===undefined?'existing default':'explicit global '+flag}`,async t=>{
     connectionNoticeFlag(t,flag);const f=fixture(t),a=f.add();f.rows.get(a.id).legacy_transport=legacy;
@@ -93,11 +143,12 @@ for(const flag of [undefined,'0','1'])for(const legacy of [false,true]){
     assert.equal(f.forwards.length,0);assert.equal(f.made[0].sends.length,0);
   });
 }
-test('resuming a preserved managed session honors the global notice opt-out without changing assistant or credentials',async t=>{
-  connectionNoticeFlag(t,'0');const f=fixture(t),a=f.add(),row={id:a.id,tenant:a.tenant,key:a.key};
+for(const flag of [undefined,'0','1'])test(`resuming a preserved managed session never arms a new-link notice with flag ${flag??'default'}`,async t=>{
+  connectionNoticeFlag(t,flag);const f=fixture(t),a=f.add(),row={id:a.id,tenant:a.tenant,key:a.key};
   const resumeStore={list:()=>[row],remember(value){assert.deepEqual(value,row);},forget(){assert.fail('resume must preserve existing session intent');}};
   const m=f.manager({resumeStore});assert.deepEqual(await m.resume(),{resumed:1});const context=f.made[0].ctx;
   assert.equal(context.resumeOnly,true);assert.equal(context.notifySelf,false);assert.equal(context.secret,a.key);
+  assert.equal(context.newLinkNotice.pending,false);
   assert.equal(context.assistantEnabled(),true);context.onConnected();
   assert.equal(f.forwards.length,0);assert.equal(f.made[0].sends.length,0);assert.equal(f.made.length,1);
 });
@@ -356,6 +407,32 @@ test('legacy key is not a channel credential and authority payload fields are re
   assert.equal((await routeCall(route,{url,method:'POST',headers:{'x-orion-bridge-key':'legacy-'.repeat(10)}})).code,401);
   assert.equal((await routeCall(route,{url,method:'POST',headers:{'x-orion-channel-key':'channel-'.repeat(10)},value:{tenant_id:randomUUID()}})).code,409);
   assert.equal(called,0);
+});
+
+test('pair route accepts only a channel key, explicit canonical phone and POST, with no implicit start',async()=>{
+  const id=randomUUID(),key='synthetic-private-'.repeat(3),calls=[];
+  const route=createChannelRoutes({env:{QR_CHANNELS_ENABLED:'1'},brokerFactory:()=>({}),managerFactory:()=>({
+    pair:async(...args)=>{calls.push(args);return {channel_id:id,status:'pairing',code:'ABCD-EFGH',expires_in_ms:90000};},
+    start:()=>assert.fail('pairing must never implicitly start'),send:()=>assert.fail('pairing never sends a message')} )});
+  const url=`/internal/channels/${id}/pair`,headers={'x-orion-channel-key':key};
+  assert.equal((await routeCall(route,{url,headers})).code,405);
+  assert.equal((await routeCall(route,{url,method:'POST',headers:{'x-orion-bridge-key':key},value:{phone}})).code,401);
+  for(const value of [{},{phone:null},{phone:12345678},{phone:phone+'\n'},{phone:'+'+phone},{phone,tenant_id:randomUUID()},
+    {phone,key},{phone,expected_revision:1},{phone,source:'manual'}])
+    assert.equal((await routeCall(route,{url,headers,method:'POST',value})).code,409);
+  assert.equal(calls.length,0);
+  const result=await routeCall(route,{url,headers,method:'POST',value:{phone}});
+  assert.equal(result.code,200);assert.deepEqual(calls,[[id,key,{phone}]]);
+  assert.equal(result.body.code,'ABCD-EFGH');assert.equal(result.headers['Cache-Control'],'no-store');
+  assert.equal(JSON.stringify(result.body).includes(key),false);
+});
+
+test('pairing provider errors are generic and never disclose phone or provider secrets',async()=>{
+  const id=randomUUID(),key='synthetic-private-'.repeat(3);
+  const route=createChannelRoutes({env:{QR_CHANNELS_ENABLED:'1'},brokerFactory:()=>({}),managerFactory:()=>({
+    pair:async()=>{throw Error('provider '+phone+' '+key+' ABCD-EFGH');}})});
+  const result=await routeCall(route,{url:`/internal/channels/${id}/pair`,method:'POST',headers:{'x-orion-channel-key':key},value:{phone}});
+  assert.equal(result.code,409);assert.deepEqual(result.body,{error:'channel_operation_unavailable'});
 });
 test('operation route authenticates and observes only, never dispatches a send',async()=>{
   const id=randomUUID(),op=randomUUID(),key='synthetic-private-'.repeat(3),calls=[];
