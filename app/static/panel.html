@@ -1816,6 +1816,92 @@ async function api(url,method="GET",data){
  }
  return response.status===204?null:response.json();
 }
+let adminClientPage=1,adminClientSelected=null,adminClientEpoch=0;
+const adminOnly=()=>loginRole==="admin";
+function adminText(id,value){$(id).textContent=String(value??"");}
+function adminClientButton(label,action){
+ const button=document.createElement("button");button.type="button";button.className="btn";
+ button.textContent=label;button.addEventListener("click",()=>void adminClientAction(action));return button;
+}
+async function loadAdminClients(append=false){
+ if(!adminOnly())return;
+ const epoch=authEpoch,seq=++adminClientEpoch,page=append?adminClientPage+1:1;
+ adminText("adminClientCount","Consultando contas…");
+ try{
+  const query=new URLSearchParams({q:$("adminClientQuery").value.trim(),
+    status:$("adminClientStatus").value,page:String(page),page_size:"20"});
+  const data=await api("/api/v1/admin/accounts?"+query);
+  if(epoch!==authEpoch||seq!==adminClientEpoch||!adminOnly())return;
+  adminClientPage=page;
+  const host=$("adminClientResults");if(!append)host.replaceChildren();
+  for(const item of data.items){
+   const row=document.createElement("div");row.className="admin-client-row";
+   const info=document.createElement("div"),strong=document.createElement("strong"),small=document.createElement("small");
+   strong.textContent=item.name;small.textContent=[item.email,item.company_name||"Sem empresa",item.state].join(" · ");
+   info.append(strong,small);
+   const button=document.createElement("button");button.type="button";button.className="btn";
+   button.textContent="Gerenciar";button.addEventListener("click",()=>void openAdminClient(item.id));
+   row.append(info,button);host.append(row);
+  }
+  adminText("adminClientCount",data.total+" conta(s) encontrada(s)");
+  $("adminClientMore").classList.toggle("hidden",page*20>=data.total);
+ }catch(error){if(epoch===authEpoch&&seq===adminClientEpoch)adminText("adminClientCount",error.message);}
+}
+async function openAdminClient(id){
+ if(!adminOnly())return;
+ const epoch=authEpoch;
+ try{
+  const data=await api("/api/v1/admin/accounts/"+encodeURIComponent(id));
+  if(epoch!==authEpoch||!adminOnly())return;
+  adminClientSelected=data.account;
+  const a=data.account;
+  $("adminClientDetails").classList.remove("hidden");
+  adminText("adminClientTitle",a.name+" · "+a.state);
+  adminText("adminClientCompany",[a.email,a.company_name||"Sem empresa"].join(" · "));
+  $("adminClientName").value=a.name;
+  $("adminClientReason").value="";
+  const actions=$("adminClientActions");actions.replaceChildren();
+  if(a.state==="active"){actions.append(adminClientButton("Suspender","suspend"),adminClientButton("Excluir (30 dias)","archive"));}
+  if(a.state==="suspended"){actions.append(adminClientButton("Reativar","reactivate"),adminClientButton("Excluir (30 dias)","archive"));}
+  if(a.state==="archived")actions.append(adminClientButton("Restaurar conta","restore"));
+  const history=$("adminClientHistory");history.replaceChildren();
+  for(const entry of data.history){
+   const p=document.createElement("p");p.textContent=[entry.action,entry.reason,
+    new Date(entry.occurred_at).toLocaleString("pt-BR")].join(" · ");history.append(p);
+  }
+  adminText("adminClientFeedback","");
+ }catch(error){if(epoch===authEpoch)adminText("adminClientFeedback",error.message);}
+}
+async function adminClientAction(action){
+ if(!adminOnly()||!adminClientSelected)return;
+ const a=adminClientSelected,reason=$("adminClientReason").value.trim();
+ if(reason.length<5){adminText("adminClientFeedback","Informe o motivo (mínimo de 5 caracteres).");return;}
+ let confirmation=null;
+ if(action==="archive"){
+  confirmation=prompt("A conta ficará arquivada por 30 dias. Digite EXCLUIR para confirmar:");
+  if(confirmation!=="EXCLUIR")return;
+ }else if(!confirm("Confirma "+action+" para a conta "+a.email+"?"))return;
+ const epoch=authEpoch;
+ try{
+  await api("/api/v1/admin/accounts/"+encodeURIComponent(a.id)+"/"+action,"POST",
+    {expected_version:a.auth_version,reason,confirmation});
+  if(epoch!==authEpoch)return;
+  await loadAdminClients();await openAdminClient(a.id);
+ }catch(error){if(epoch===authEpoch)adminText("adminClientFeedback",error.message);}
+}
+$("adminClientSearch").addEventListener("submit",event=>{event.preventDefault();void loadAdminClients();});
+$("adminClientMore").addEventListener("click",()=>void loadAdminClients(true));
+$("adminClientEdit").addEventListener("submit",async event=>{
+ event.preventDefault();if(!adminOnly()||!adminClientSelected)return;
+ const a=adminClientSelected,reason=$("adminClientReason").value.trim();
+ if(reason.length<5)return;
+ try{
+  await api("/api/v1/admin/accounts/"+encodeURIComponent(a.id),"PUT",
+   {name:$("adminClientName").value,expected_version:a.auth_version,reason});
+  await loadAdminClients();await openAdminClient(a.id);
+ }catch(error){adminText("adminClientFeedback",error.message);}
+});
+
 let memberBusinessOriginal=null,memberBusinessBusy=false,memberPasswordBusy=false;
 function memberFeedback(id,message,error=false){
  const el=$(id);el.textContent=message;el.dataset.error=String(error);
@@ -2241,6 +2327,11 @@ void restoreSession();
 void authFeatures();
 const platformAdminLegacyPages=new Set(["conversas","ai","empresa","catalogo","cadastros"]);
 function openPage(target){
+ if(target==="member"){
+  $("adminClientCenter").classList.toggle("hidden",!adminOnly());
+  document.querySelector("#page-member .member-settings").classList.toggle("hidden",adminOnly());
+  if(adminOnly())void loadAdminClients();
+ }
  if(platformAdminLegacyPages.has(target)&&loginRole!=="admin"){
   // Old deep links and programmatic clicks must also return to the Dashboard.
   void window.OrionSuite?.open("dashboard",{force:true});
