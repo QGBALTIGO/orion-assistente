@@ -11,6 +11,8 @@ on:
       - 'tests/e2e/browser_public_*.py'
       - 'tests/e2e/browser_fields_standardization.py'
       - 'tests/e2e/browser_onboarding_rhythm.py'
+      - 'tests/e2e/browser_onboarding_profile.py'
+      - 'tests/unit/test_onboarding_profile.py'
       - 'tests/e2e/browser_fields_access.py'
       - 'tests/e2e/fixtures/fields-panel.js'
       - 'tests/e2e/test_finance_responsive.py'
@@ -33,6 +35,8 @@ on:
       - 'tests/e2e/browser_public_*.py'
       - 'tests/e2e/browser_fields_standardization.py'
       - 'tests/e2e/browser_onboarding_rhythm.py'
+      - 'tests/e2e/browser_onboarding_profile.py'
+      - 'tests/unit/test_onboarding_profile.py'
       - 'tests/e2e/browser_fields_access.py'
       - 'tests/e2e/fixtures/fields-panel.js'
       - 'tests/e2e/test_finance_responsive.py'
@@ -108,6 +112,7 @@ jobs:
             tests/unit/test_commercial_catalog.py \
             tests/unit/test_site_address_slugs.py \
             tests/unit/test_onboarding.py \
+            tests/unit/test_onboarding_profile.py \
             tests/unit/test_management_extras_unit.py
       - name: Inventario reproduzivel do checkout
         run: |
@@ -148,6 +153,7 @@ jobs:
           python -m pytest -q -ra \
             tests/e2e/browser_fields_standardization.py \
             tests/e2e/browser_onboarding_rhythm.py \
+            tests/e2e/browser_onboarding_profile.py \
             tests/e2e/browser_fields_access.py \
             tests/e2e/browser_public_confirmation_sizing.py \
             tests/e2e/browser_public_booking_footer.py \
