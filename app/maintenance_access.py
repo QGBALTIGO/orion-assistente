@@ -34,6 +34,12 @@ def maintenance_key(cookie):
     return "orion:maintenance:" + hashlib.sha256(cookie.encode()).hexdigest()
 
 
+def maintenance_guard_key(cookie):
+    if not cookie or len(cookie) != 43:
+        raise HTTPException(401, "Sessão administrativa inválida")
+    return "orion:maintenance-guard:" + hashlib.sha256(cookie.encode()).hexdigest()
+
+
 def _platform_owner(claims):
     if claims.get("role") != "admin" or not claims.get("account_id"):
         return False
@@ -56,7 +62,9 @@ class MaintenanceStart(BaseModel):
 async def start_maintenance(account_id: UUID, payload: MaintenanceStart, request: Request,
                             admin: UUID = Depends(require_platform_owner)):
     """Explicit, logged confirmation, one target per admin browser session."""
-    key = maintenance_key(request.cookies.get(COOKIE, ""))
+    cookie = request.cookies.get(COOKIE, "")
+    key = maintenance_key(cookie)
+    guard_key = maintenance_guard_key(cookie)
     reason = " ".join(payload.reason.split())
     if len(reason) < 10:
         raise HTTPException(422, "Informe a finalidade da manutenção")
@@ -65,6 +73,14 @@ async def start_maintenance(account_id: UUID, payload: MaintenanceStart, request
     try:
         if await redis.exists(key):
             raise HTTPException(409, "Encerre o atendimento atual antes de acessar outra conta")
+        if await redis.exists(guard_key):
+            raise HTTPException(409, "Atualize o painel após a manutenção anterior")
+        # The guard outlives the 30-minute access for as long as the admin
+        # cookie is valid. A client page must never silently gain the original
+        # admin's permissions when the temporary record expires.
+        parent_ttl = int(await redis.ttl("orion:session:" + hashlib.sha256(cookie.encode()).hexdigest()))
+        if parent_ttl <= 0:
+            raise HTTPException(401, "Sessão de administrador expirada")
         async with _storage()() as db:
             async with db.begin():
                 row = (await db.execute(text("""
@@ -107,6 +123,7 @@ async def start_maintenance(account_id: UUID, payload: MaintenanceStart, request
                 ))
                 if not created:
                     raise HTTPException(409, "Já existe um acesso de manutenção neste navegador")
+                await redis.set(guard_key, "1", ex=max(parent_ttl, MAINTENANCE_SECONDS))
         return {"ok": True, "expires_at": expires,
                 "message": "Acesso de manutenção registrado. Nenhuma senha foi compartilhada."}
     except (RedisError, OSError):
@@ -114,7 +131,7 @@ async def start_maintenance(account_id: UUID, payload: MaintenanceStart, request
     except Exception:
         if created:
             try:
-                await redis.delete(key)
+                await redis.delete(key, guard_key)
             except (RedisError, OSError):
                 pass
         raise
@@ -203,7 +220,8 @@ def end_maintenance_claims(admin_claims: dict, raw: str):
 async def revoke_invalid_maintenance(request: Request, admin_claims: dict, raw: str):
     """An invalid customer must not trap the platform admin inside a dead session."""
     claims = end_maintenance_claims(admin_claims, raw)
-    key = maintenance_key(request.cookies.get(COOKIE, ""))
+    cookie = request.cookies.get(COOKIE, "")
+    key = maintenance_key(cookie)
     redis, owned = _request_redis(request)
     try:
         await redis.delete(key)
@@ -253,11 +271,14 @@ async def end_maintenance(request: Request, data: dict = Depends(panel_actor)):
     """Return to original admin identity without logging out or changing passwords."""
     if not data.get("maintenance") or not data.get("maintenance_actor_id"):
         raise HTTPException(409, "Nenhum acesso de manutenção ativo")
-    key = maintenance_key(request.cookies.get(COOKIE, ""))
+    cookie = request.cookies.get(COOKIE, "")
+    key = maintenance_key(cookie)
+    guard = maintenance_guard_key(cookie)
     redis, owned = _request_redis(request)
     try:
         if not await redis.delete(key):
             raise HTTPException(409, "A sessão de manutenção já terminou")
+        await redis.delete(guard)
     except (RedisError, OSError):
         raise HTTPException(503, "Não foi possível encerrar a manutenção") from None
     finally:
