@@ -314,6 +314,36 @@ def check_setup_chrome(page, test_theme=False):
             'src', '/brand/orion-brand-'+effective+'.svg')
 
 
+def check_setup_form_spacing(page, selector):
+    metrics = page.locator(selector).evaluate("""form => {
+      const shown = el => el && el.getBoundingClientRect().width > 0 &&
+        el.getBoundingClientRect().height > 0;
+      const fieldGap = [];
+      const labelGap = [];
+      for (const grid of form.querySelectorAll('.ob-fields')) {
+        if(shown(grid)) fieldGap.push(parseFloat(getComputedStyle(grid).rowGap));
+      }
+      for (const field of form.querySelectorAll('.ob-field')) {
+        if(!shown(field)) continue;
+        const label=field.querySelector(':scope > label');
+        const control=field.querySelector(':scope > input, :scope > select, :scope > textarea, :scope > .os-field-unit');
+        if(!shown(label)||!shown(control)) continue;
+        labelGap.push({gap:control.getBoundingClientRect().top-label.getBoundingClientRect().bottom,
+          marginTop:parseFloat(getComputedStyle(label).marginTop),
+          marginBottom:parseFloat(getComputedStyle(label).marginBottom)});
+      }
+      const actions=form.querySelector('.ob-actions');
+      return {rowGap:fieldGap,labelGap,
+        divider:shown(actions)?parseFloat(getComputedStyle(actions).marginTop):null,
+        actionGap:shown(actions)?parseFloat(getComputedStyle(actions).paddingTop):null};
+    }""")
+    assert all(20 <= gap <= 24 for gap in metrics['rowGap']), (selector,metrics)
+    assert all(6 <= m['gap'] <= 8.5 and m['marginTop']==0 and m['marginBottom']==0
+               for m in metrics['labelGap']), (selector,metrics)
+    assert 16 <= metrics['divider'] <= 20, (selector,metrics)
+    assert 19 <= metrics['actionGap'] <= 21, (selector,metrics)
+
+
 def check_onboarding(page, network, geometry):
     page.goto(ORIGIN + "/panel?aba=dashboard", wait_until="domcontentloaded")
     business = page.locator('[data-ob-form="business"]')
@@ -378,8 +408,10 @@ def check_onboarding(page, network, geometry):
     phone.fill("+55 (55) 99123-4567")
     expect(phone).to_have_value("(55) 99123-4567")
     geometry('[data-ob-form="business"]', "business")
+    check_setup_form_spacing(page,'[data-ob-form="business"]')
     business.locator("button[type=submit]").click()
-    expect(page.locator('[data-ob-feedback]')).to_contain_text("salv")
+    expect(page.locator('[data-ob-form="location"]')).to_be_visible()
+    expect(page.locator('[data-ob-feedback]')).to_be_hidden()
     sent_business = network.matching(BASE + "/onboarding/steps/business", "PUT")[0]["body"]["data"]
     assert sent_business["contact_phone"] == "+5555991234567"
     assert sent_business["name"] == "Barbearia Áurea"
@@ -387,14 +419,31 @@ def check_onboarding(page, network, geometry):
 
     page.locator('[data-ob-step="location"]').click()
     location = page.locator('[data-ob-form="location"]')
-    location.locator("[name=number]").fill("123A")
+    for text in (
+        "Dados salvos.",
+        "Endereço operacional privado. Preencher esta etapa não publica seu endereço.",
+        "Digite o CEP para preencher o endereço. Você também pode preencher manualmente.",
+        "Confira os dados e informe o número. O endereço só muda quando você salva."
+    ):
+        assert text not in page.locator('#orionSetup').inner_text()
+    assert location.locator('[name=no_number]').count() == 0
+    expect(location.locator('[name=number]')).to_have_attribute('required','')
+    expect(location.locator('[name=number]')).to_have_attribute('pattern','.*[0-9].*')
+    for name in ('modality','state'):
+        expect(location.locator('[name='+name+'] option[value=""]')).to_have_attribute('disabled','')
+    location.locator("[name=number]").fill("")
+    location.locator('button[type=submit]').click()
+    assert not network.matching(BASE + "/onboarding/steps/location", "PUT")
+    location.locator("[name=number]").fill("123a")
     location.locator("[name=complement]").fill("Sala 02")
     location.locator("[name=postal_code]").fill("01001000")
     expect(location.locator("[name=city]")).to_have_value("São Paulo")
     expect(location.locator("[name=postal_code]")).to_have_value("01001-000")
     expect(location.locator("[name=number]")).to_have_value("123A")
     expect(location.locator("[name=complement]")).to_have_value("Sala 02")
+    expect(location.locator('#ob-cep-status')).to_be_hidden()
     geometry('[data-ob-form="location"]', "location-cep")
+    check_setup_form_spacing(page,'[data-ob-form="location"]')
     check_setup_chrome(page)
 
     page.locator('[data-ob-step="catalog"]').click()
@@ -409,6 +458,7 @@ def check_onboarding(page, network, geometry):
     geometry('[data-ob-form="service"]', "catalog-invalid-duration")
     service.locator("[name=duration_min]").fill("40")
     geometry('[data-ob-form="service"]', "catalog-service")
+    check_setup_form_spacing(page,'[data-ob-form="service"]')
     check_setup_chrome(page)
     service.locator("button[type=submit]").click()
     expect(page.locator('[data-ob-feedback]')).to_contain_text("salv")
@@ -420,9 +470,11 @@ def check_onboarding(page, network, geometry):
     hours.locator("[name=end_time]").fill("18:00")
     expect(hours.locator("[name=start_time]")).to_have_attribute("type", "time")
     geometry('[data-ob-form="hours"]', "hours-native")
+    check_setup_form_spacing(page,'[data-ob-form="hours"]')
     check_setup_chrome(page)
     page.locator('[data-ob-step="channels"]').click()
     geometry('[data-ob-form="channels"]', "channels-preferences")
+    check_setup_form_spacing(page,'[data-ob-form="channels"]')
     check_setup_chrome(page)
     for step in ('professionals', 'review'):
         page.locator('[data-ob-step='+step+']').click()
