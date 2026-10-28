@@ -817,6 +817,11 @@ async def _apply_step(db, tenant, meta, step, data, access):
             return {"id": str(item_id), "variant_id": str(variant_id)}
         return {"id": str(item_id)}
     elif step == "hours":
+        if isinstance(data, schemas.BusinessOpeningHours):
+            # Public company hours are informational and never overwrite the
+            # independent booking availability of individual professionals.
+            config["business_opening_hours"] = data.model_dump(mode="json")
+            return {}
         return await _save_hours(db, tenant, data)
     elif step == "channels":
         return await _save_channels(db, tenant, data, access)
@@ -830,6 +835,14 @@ async def save_step(actor, tenant, step, payload):
     model = schemas.STEPS.get(step)
     if model is None:
         raise HTTPException(404, "Etapa desconhecida")
+    # Quick registration asks for company opening hours, not a professional's
+    # schedule. The legacy onboarding flow still accepts professional hours.
+    if step == "hours":
+        async with access_session(actor, tenant, write=False):
+            async with get_session_factory()() as read_db:
+                meta_check = await _read_meta(read_db, tenant, actor)
+                if _uses_quick_profile(meta_check):
+                    model = schemas.BusinessOpeningHours
     data = model.model_validate(payload.data)
     # Omission matters on edits: an omitted default preserves the current value.
     fingerprint_data = data.model_dump(mode="json")
