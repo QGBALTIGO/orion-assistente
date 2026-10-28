@@ -88,6 +88,7 @@ function panelHarness(){
     focus(){this.focusCount++;activeElement=this}
     showModal(){this.open=true;this.modalCalls=(this.modalCalls||0)+1}
     close(){this.open=false}
+    reset(){this.value='';this.checked=false}
     reportValidity(){return true}
     querySelector(){return new Element()}
     querySelectorAll(){return []}
