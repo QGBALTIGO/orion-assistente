@@ -5,6 +5,7 @@ All POSTs fail closed, including appointment confirmation. Assets are read from
 the current checkout on every request so each individual fix can be inspected.
 """
 import json
+import tempfile
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -60,6 +61,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_body(candidates[0].read_bytes(),mime)
         if p.startswith('/media/'):
             portrait='20000000' in p
+            cached = Path(tempfile.gettempdir())/'orion-public-audit-portraits'/p.rsplit('/',1)[-1]
+            if portrait and cached.name in [person+'.webp' for person in P] and cached.is_file():
+                return self.send_body(cached.read_bytes(),'image/webp')
             svg=f'<svg xmlns="http://www.w3.org/2000/svg" width="960" height="1200"><rect width="960" height="1200" fill="#c4ced9"/><circle cx="480" cy="200" r="140" fill="#353f50"/><path d="M80 1200V700Q480 300 880 700V1200" fill="#17233b"/></svg>'
             return self.send_body(svg,'image/svg+xml')
         if p.endswith('/availability'):

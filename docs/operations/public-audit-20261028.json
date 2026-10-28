@@ -171,10 +171,13 @@
       "id": "PUB-12",
       "title": "O recorte das fotos da equipe corta o topo da cabeça",
       "severity": "Baixa",
-      "state": "pendente",
-      "evidence": [],
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-12.json"
+      ],
       "publication": "não publicada",
-      "note": ""
+      "note": "Recorte superior no card da equipe preserva as cabeças sem trocar imagens, alterar dimensões ou usar regra específica da unidade.",
+      "tests": "11 testes DOM; seis tamanhos x dois temas com cópias locais das fotos públicas reais; seletor de profissionais preservado"
     },
     {
       "id": "PUB-13",
