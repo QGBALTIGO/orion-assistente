@@ -10,6 +10,7 @@ from decimal import Decimal
 import hashlib
 import json
 import os
+import re
 from uuid import UUID, uuid4
 
 from asyncpg.pgproto.pgproto import UUID as DriverUUID
@@ -789,6 +790,17 @@ async def save_step(actor, tenant, step, payload):
                             conflict()
                         if step == "business" and data.contact_phone is None:
                             raise HTTPException(422, "Informe o WhatsApp comercial")
+                        # For a new unfinished business, a physical location
+                        # requires a real building number. Legacy addresses
+                        # (including old 'no_number' facts) remain readable;
+                        # successful historical operations replay unchanged.
+                        if (step == "location" and meta.get("is_new")
+                                and not meta.get("completed_at")
+                                and data.modality in {"onsite", "hybrid"}):
+                            address = data.address
+                            if (not address or address.no_number
+                                    or not re.search(r"[0-9]", address.number or "")):
+                                raise HTTPException(422, "Informe o número do estabelecimento")
                         if step != "review":
                             meta["configuration"]["reviewed"] = False
                         result = await _apply_step(db, tenant, meta, step, data, access)
