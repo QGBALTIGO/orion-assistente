@@ -29,9 +29,9 @@ async def test_owner_business_identity_updates_legacy_name_and_phone_atomically(
         async with ctx.migration.connect() as db:
             assert (await db.execute(text("SELECT name FROM tenants WHERE id=:t"),
                                      {"t":ctx.a})).scalar_one()=="Barbearia de Teste"
-            prefs=(await db.execute(text("SELECT preferences FROM management_preferences WHERE tenant_id=:t"),
+            metadata=(await db.execute(text("SELECT configuration FROM business_onboarding WHERE tenant_id=:t"),
                                     {"t":ctx.a})).scalar_one()
-            assert prefs["business"]["contact_phone"]=="+5567999990012"
+            assert metadata["contact_phone"]=="+5567999990012"
         with pytest.raises(HTTPException) as stale:
             await account_settings.update_business_identity(payload,claims)
         assert stale.value.status_code==409
@@ -48,7 +48,7 @@ async def test_owner_business_identity_updates_legacy_name_and_phone_atomically(
         assert editor.value.status_code==403
     finally:
         async with ctx.migration.begin() as db:
-            await db.execute(text("DELETE FROM management_preferences WHERE tenant_id=:t"),{"t":ctx.a})
+            await db.execute(text("DELETE FROM business_onboarding WHERE tenant_id=:t"),{"t":ctx.a})
 
 
 @pytest.mark.asyncio
