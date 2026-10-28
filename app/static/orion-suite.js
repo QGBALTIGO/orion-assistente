@@ -1515,7 +1515,7 @@
     if(state.data.googleError){
       const expired=state.data.googleAuthExpired===true;
       return '<div class="os-google-state os-google-state-error" role="alert"><h3>'+(expired?'Sua sessão do Orion expirou':'Não foi possível consultar o Google Agenda')+'</h3><p>'+esc(expired?'Entre novamente na sua conta para continuar a conexão com o Google. Seus agendamentos permanecem salvos.':state.data.googleError)+'</p>'+
-        (expired?button('Entrar novamente','google-sign-in','','log-in'):button('Tentar novamente','google-refresh','os-outline','refresh'))+'</div>';
+        (expired?button('Entrar novamente','google-sign-in','','log-in'):state.data.googleTenantInvalid?button('Atualizar acesso da empresa','google-reload-context','os-outline','refresh'):button('Tentar novamente','google-refresh','os-outline','refresh'))+'</div>';
     }
     if(!data)return loading('Consultando conexão...');
     const key=googleState(data),descriptions={email_confirmation_required:'Confirme o e-mail da sua conta Orion antes de autorizar o Google Agenda. Seus agendamentos continuam disponíveis.',not_configured:'A integração ainda não está configurada nesta instalação. Os agendamentos do Orion continuam disponíveis.',not_connected:'Conecte uma conta Google e escolha o calendário que receberá os seus agendamentos.',choose_calendar:'Sua conta foi autorizada. Escolha o calendário para ativar a sincronização.',paused:'A conta está conectada, mas a sincronização está pausada nesta instalação.',reauthorization_required:'A autorização precisa ser renovada para retomar a sincronização.',pending:'Há alterações aguardando envio ao Google. A agenda do Orion já contém os dados atuais.',attention:'Algumas alterações não foram sincronizadas. Consulte a situação e tente novamente.',up_to_date:'As alterações enviadas ao Google estão atualizadas.',idle:'Sua conta está conectada. Os agendamentos serão enviados conforme a configuração de sincronização.'};
@@ -1538,7 +1538,7 @@
     if(state.dialog?.type==='google'&&$('osGooglePanel'))$('osGooglePanel').innerHTML=googlePanel();
   }
   async function loadGoogle({handleReturn=true}={}){
-    const c=context(),read=state.googleRead=(state.googleRead||0)+1;state.data.googleLoading=true;state.data.googleError=null;state.data.googleAuthExpired=false;renderGoogleTargets();
+    const c=context(),read=state.googleRead=(state.googleRead||0)+1;state.data.googleLoading=true;state.data.googleError=null;state.data.googleAuthExpired=false;state.data.googleTenantInvalid=false;renderGoogleTargets();
     try{const data=await request(apiPath('/google/status'));if(!current(c)||read!==state.googleRead)return;if(!data||typeof data!=='object'||Array.isArray(data))throw Error('A situação da integração não pôde ser confirmada.');state.data.google=data;}
     catch(error){
       if(!current(c)||read!==state.googleRead)return;
@@ -1554,6 +1554,7 @@
         if(!current(c)||read!==state.googleRead)return;
       }
       state.data.googleAuthExpired=expired;
+      state.data.googleTenantInvalid=error?.status===401&&!expired;
       state.data.googleError=expired?'Sua sessão do Orion expirou. Entre novamente.'
         :error?.status===401?'O acesso a esta empresa não pôde ser validado. Atualize a página para recuperar o contexto da empresa. Se persistir, entre novamente.'
         :error.message||'Confira a conexão e tente novamente.';
@@ -2619,6 +2620,7 @@
       case 'agenda-clear':f.agendaProfessional='';f.agendaStatus='all';f.agendaQuery='';f.agendaOffset=0;await open('agenda',{keepScroll:true});break;
       case 'agenda-page-prev':case 'agenda-page-next':{const result=state.data.agendaResult;if(!result||state.data.agendaError)return;const next=Math.max(0,f.agendaOffset+(name==='agenda-page-prev'?-50:50));if(next>=number(result.total))return;f.agendaOffset=next;await loadAgenda(context(),{catalogue:false});$('osAgendaCount')?.focus();break;}
       case 'agenda-google':await showGoogle();break;
+      case 'google-reload-context':location.reload();break;
       case 'google-refresh':await loadGoogle({handleReturn:false});break;
       case 'google-sign-in':window.location.assign('/panel?aba=agenda');break;
       case 'google-calendars':await showGoogleCalendars();break;
