@@ -31,8 +31,28 @@ test('read-only user cannot submit even a programmatically triggered form',async
 test('online business does not need an address or publish a private address',async t=>{
   const h=await makeOnboarding({data:fullState({current_step:'location'}),respond:(path,method,payload,server)=>method==='PUT'?saved(server,payload,'location'):undefined});t.after(()=>h.close());h.change('[name=modality]','online');assert.equal(h.element('[data-ob-address]').hidden,true);assert.equal(h.element('[name=street]').disabled,true);h.submit();await flush();assert.deepEqual(writes(h)[0].data.data,{modality:'online'});assert.equal(writes(h)[0].path.endsWith('/steps/location'),true);assert.equal(writes(h).some(call=>/publication/.test(call.path)),false);
 });
-test('onsite manual address uses separate fields and explicit no-number, with optional complement',async t=>{
-  const h=await makeOnboarding({data:fullState({current_step:'location'}),respond:(path,method,payload,server)=>method==='PUT'?saved(server,payload,'location'):undefined});t.after(()=>h.close());h.change('[name=no_number]',true);h.fill('[name=complement]','');h.submit();await flush();const address=writes(h)[0].data.data.address;assert.equal(address.no_number,true);assert.equal(address.number,null);assert.equal(address.complement,null);assert.equal(address.street,'Rua sintética');assert.equal(address.state,'MT');assert.match(h.element('#setup').textContent,/cadastro|atende/i);
+test('preserves a legacy unnumbered address until a new required number is supplied',async t=>{
+  const data=fullState({current_step:'location'});
+  data.configuration.private_address.number=null;
+  data.configuration.private_address.no_number=true;
+  const h=await makeOnboarding({data,respond:(path,method,payload,server)=>method==='PUT'?saved(server,payload,'location'):undefined});
+  t.after(()=>h.close());
+  assert.equal(h.document.querySelector('[name=no_number]'),null);
+  assert.equal(h.element('[name=number]').required,true);
+  assert.equal(h.controller.getState().data.configuration.private_address.no_number,true);
+  h.submit();await flush();
+  assert.equal(writes(h).length,0,'missing building number cannot save');
+  h.fill('[name=number]',' 123a ');
+  h.fill('[name=street]','  Rua    sintética  ');
+  h.fill('[name=complement]','  Bloco    B  ');
+  h.submit();await flush();
+  const address=writes(h)[0].data.data.address;
+  assert.equal(address.no_number,false);
+  assert.equal(address.number,'123A');
+  assert.equal(address.street,'Rua sintética');
+  assert.equal(address.complement,'Bloco B');
+  assert.equal(address.state,'MT');
+  assert.equal(writes(h).length,1);
 });
 test('professional self-provider is a revisable suggestion and never grants membership',async t=>{
   const h=await makeOnboarding({data:fullState({current_step:'professionals'}),respond:(path,method,payload,server)=>method==='PUT'?saved(server,payload,'professionals'):undefined});t.after(()=>h.close());h.click('[data-ob-action=add-professional]');h.change('[name=self_provider]',true);assert.equal(h.element('[name=name]').value,'Conta sintética');h.fill('[name=name]','Nome profissional revisado');h.submit();await flush();const payload=writes(h)[0].data.data;assert.equal(payload.self_provider,true);assert.equal(payload.item.name,'Nome profissional revisado');assert.equal('role' in payload,false);assert.equal('account_id' in payload,false);assert.equal(writes(h).some(call=>/membership|invitation/.test(call.path)),false);
