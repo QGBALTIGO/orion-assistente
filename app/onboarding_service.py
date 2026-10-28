@@ -33,8 +33,11 @@ from app.account_business import (
     has_business_history, MULTIPLE_BUSINESSES_MESSAGE, INACTIVE_BUSINESS_MESSAGE,
 )
 
+# Historical operations and catalogue APIs stay available for existing accounts.
+LEGACY_LABELS = {"business": "Empresa", "location": "Atendimento e endereço", "professionals": "Profissionais",
+                 "catalog": "Serviços e produtos", "hours": "Expediente", "channels": "Canais independentes", "review": "Revisão"}
 LABELS = {"business": "Empresa", "location": "Atendimento e endereço", "professionals": "Profissionais",
-          "catalog": "Serviços e produtos", "hours": "Expediente", "channels": "Canais independentes", "review": "Revisão"}
+          "profile": "Perfil da empresa", "hours": "Expediente", "channels": "Canais independentes", "review": "Revisão"}
 
 
 def enabled():
@@ -223,8 +226,12 @@ def _fitting_bindings(pros, services, facts):
     return fitting_services, fitting_professionals
 
 
-def readiness(configuration, facts, managed=None, *, staged=True):
-    """Structural readiness uses real bindings/intervals, not today's occupancy."""
+def readiness(configuration, facts, managed=None, *, staged=True, profile_only=False):
+    """For quick setup, require profile answers; operational gates stay strict.
+
+    With profile_only=False, retain the original real service/provider/hour
+    requirements for booking and product operations.
+    """
     managed = managed or {}
     pending = []
     def add(step, code, message):
@@ -239,6 +246,12 @@ def readiness(configuration, facts, managed=None, *, staged=True):
             schemas.Address.model_validate(configuration.get("private_address"))
         except (ValueError, TypeError):
             add("location", "private_address", "Complete o endereço operacional privado")
+    if profile_only:
+        try:
+            schemas.BusinessMetrics.model_validate(configuration.get("business_metrics"))
+        except (ValueError, TypeError):
+            add("profile", "business_metrics", "Responda às quatro perguntas sobre a empresa")
+        return pending
     activity = configuration.get("activity")
     pros = [p for p in facts.get("professionals", []) if _usable(p, "professionals", managed, staged=staged)
             and p.get("accepts_appointments")]
@@ -382,7 +395,8 @@ async def _state(db, tenant, access):
         configuration = {"niche": categories[0] if len(categories) == 1 else None,
                          "activity": "both" if facts["products"] and facts["services"] else "products" if facts["products"] else "services" if facts["services"] else None,
                          "contact_phone": published.get("contact_phone"), "modality": None, "private_address": None}
-    pending = readiness(configuration, facts, managed)
+    quick_setup = bool(meta and meta["is_new"])
+    pending = readiness(configuration, facts, managed, profile_only=quick_setup)
     configuration.setdefault("private_address", None)
     # SQL details and the route identity must also be ordinary before using
     # already normalized catalog rows in the response. Other input keeps the
@@ -418,6 +432,7 @@ async def _state(db, tenant, access):
             catalog[key].append(row)
     operations = details["operations"]
     missing = {p["step"] for p in pending}
+    step_labels = LABELS if quick_setup else LEGACY_LABELS
     result = {"enabled": enabled(), "tenant_id": tenant, "name": facts["business"]["name"], "timezone": facts["business"]["timezone"],
               "version": meta["version"] if meta else 0, "can_edit": access.role in {"owner", "support", "admin"},
               "status": "legacy" if not meta else "complete" if meta["completed_at"] else "incomplete",
@@ -425,7 +440,7 @@ async def _state(db, tenant, access):
               "current_step": meta["current_step"] if meta else "business", "pending": pending,
               "steps": [{"id": k, "label": label, "required": k not in {"channels", "review"}
                          and (k not in {"hours", "professionals"} or configuration.get("activity") != "products"),
-                         "complete": k not in missing and (k != "review" or bool(configuration.get("reviewed")))} for k, label in LABELS.items()],
+                         "complete": k not in missing and (k != "review" or bool(configuration.get("reviewed")))} for k, label in step_labels.items()],
               "configuration": configuration, "catalog": catalog,
               "snapshot": prepared_digests.snapshot if prepared_digests is not None else _snapshot(configuration, managed, facts),
               "channels": {"assistant": {"status": "draft" if channels.get("draft") else "published" if channels.get("published") else "not_configured",
@@ -703,6 +718,10 @@ async def _apply_step(db, tenant, meta, step, data, access):
                 if business["timezone"] != derived:
                     await db.execute(text("SELECT public.onboarding_update_identity(:t,:name,:tz)"),
                                      {"t": tenant, "name": business["name"], "tz": derived})
+    elif step == "profile":
+        # Save only categorical estimates in the tenant-scoped onboarding
+        # JSON. Never overwrite or invent real services, sales, staff or hours.
+        config["business_metrics"] = data.model_dump(mode="json")
     elif step == "professionals":
         item = data.item.model_dump(mode="json", exclude_unset=bool(data.item.id))
         item_id = await _save_simple(db, tenant, meta, "professionals", item, data.item.expected_fingerprint)
@@ -807,7 +826,8 @@ async def save_step(actor, tenant, step, payload):
                         if step != "review":
                             meta["configuration"]["reviewed"] = False
                         result = await _apply_step(db, tenant, meta, step, data, access)
-                        pending = readiness(meta["configuration"], await _facts(db, tenant), meta["managed_ids"])
+                        pending = readiness(meta["configuration"], await _facts(db, tenant), meta["managed_ids"],
+                                            profile_only=bool(meta["is_new"]))
                         meta["current_step"] = pending[0]["step"] if pending else "review"
                         await _persist(db, tenant, actor, meta, payload.idempotency_key, fingerprint, step, result)
                     response = await _state(db, tenant, access)
@@ -836,7 +856,8 @@ async def complete(actor, tenant, payload):
                 current_facts = await _facts(db, tenant)
                 if payload.expected_snapshot != _snapshot(meta["configuration"], meta["managed_ids"], current_facts):
                     conflict("O catálogo ou expediente mudou. Revise os dados atuais antes de concluir")
-                pending = readiness(meta["configuration"], current_facts, meta["managed_ids"])
+                pending = readiness(meta["configuration"], current_facts, meta["managed_ids"],
+                                    profile_only=bool(meta["is_new"]))
                 if pending:
                     raise HTTPException(409, {"message": "Complete os fatos pendentes antes de concluir", "pending": pending})
                 for table in ("professionals", "services", "commercial_products", "commercial_variants"):
