@@ -319,6 +319,13 @@ def check_onboarding(page, network, geometry):
     business = page.locator('[data-ob-form="business"]')
     business.wait_for(state="visible")
     check_setup_chrome(page, test_theme=True)
+    assert business.locator('[name=timezone]').count() == 0
+    assert page.get_by_text('Os dados confirmados ficam salvos neste negócio.').count() == 0
+    expect(business.locator('[name=contact_phone]')).to_have_attribute('required', '')
+    name_input = business.locator('[name=name]')
+    name_input.fill("  Barbearia    Áurea  ")
+    business.locator('[name=niche]').click()
+    expect(name_input).to_have_value("Barbearia Áurea")
     phone = business.locator("[name=contact_phone]")
     phone.fill("(55) 99123-45678")
     business.locator("button[type=submit]").click()
@@ -330,7 +337,10 @@ def check_onboarding(page, network, geometry):
     geometry('[data-ob-form="business"]', "business")
     business.locator("button[type=submit]").click()
     expect(page.locator('[data-ob-feedback]')).to_contain_text("salv")
-    assert network.matching(BASE + "/onboarding/steps/business", "PUT")[0]["body"]["data"]["contact_phone"] == "+5555991234567"
+    sent_business = network.matching(BASE + "/onboarding/steps/business", "PUT")[0]["body"]["data"]
+    assert sent_business["contact_phone"] == "+5555991234567"
+    assert sent_business["name"] == "Barbearia Áurea"
+    assert sent_business["timezone"] == "America/Cuiaba"
 
     page.locator('[data-ob-step="location"]').click()
     location = page.locator('[data-ob-form="location"]')
