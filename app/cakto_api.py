@@ -41,13 +41,16 @@ PLANS = (
 @router.get("/api/public/cakto/plans")
 async def public_cakto_plans():
     """Only a static catalog; this endpoint NEVER asserts that payment is active."""
-    return {"plans": list(PLANS), "subscription_activation_enabled": False}
+    return {"plans": [{key: value for key, value in plan.items() if key != "checkout_url"}
+                      for plan in PLANS], "subscription_activation_enabled": False}
 
 
 def verify_cakto_signature(raw_body: bytes, timestamp: str | None,
                            signature: str | None, secret: str) -> bool:
     """Only accept current HMAC-SHA256 v1 over timestamp.raw_body."""
-    if not isinstance(secret, str) or len(secret) < 32 or not timestamp or not signature:
+    if (not isinstance(secret, str) or len(secret) < 32 or not timestamp
+            or not isinstance(signature, str)
+            or re.fullmatch(r"v1=[a-f0-9]{64}", signature) is None):
         return False
     if not timestamp.isascii() or not timestamp.isdecimal() or len(timestamp) > 12:
         return False
@@ -303,6 +306,13 @@ async def scan_pending_cakto(_ctx):
         return 0
     async with support_session_factory()() as db:
         async with db.begin():
+            # No event can arrive until the API migration finishes. A parallel
+            # worker deployment must not try to read a non-existent table.
+            ready = (await db.execute(text(
+                "SELECT to_regclass('public.cakto_webhook_events') IS NOT NULL"
+            ))).scalar_one()
+            if not ready:
+                return 0
             rows = (await db.execute(text("""
                 SELECT delivery_digest,external_order_id,external_offer_id,event_type
                 FROM cakto_webhook_events

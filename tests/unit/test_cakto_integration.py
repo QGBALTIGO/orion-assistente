@@ -34,6 +34,8 @@ def test_hmac_raw_timestamp_and_expiry(monkeypatch):
         raw, str(int(time.time())-301), headers["X-Cakto-Signature"], secret
     )
     assert not cakto_api.verify_cakto_signature(raw, None, None, secret)
+    assert not cakto_api.verify_cakto_signature(raw, headers["X-Cakto-Timestamp"],
+                                               "v1=é" + "a"*63, secret)
 
 
 def test_v2_order_bump_and_customer_data_are_not_persisted():
@@ -147,3 +149,16 @@ async def test_api_oauth2_reads_only_offers_and_orders(monkeypatch):
     assert (await cli.list_offers())[0]["id"] == "offer"
     assert sum(1 for method, _ in paths if method == "POST") == 1
     assert not any("/payments/" in url for _, url in paths)
+
+
+@pytest.mark.asyncio
+async def test_checkout_links_are_not_public_before_plan_entitlements():
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/public/cakto/plans")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["subscription_activation_enabled"] is False
+    assert [x["monthly_cents"] for x in payload["plans"]] == [2990, 8990, 13990]
+    assert all("checkout_url" not in item for item in payload["plans"])
