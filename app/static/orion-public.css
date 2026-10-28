@@ -530,6 +530,7 @@ body{background:var(--bg);color:var(--text);min-width:0}
   margin:2px 0 11px;
   font:650 16px/22px Outfit,Figtree,sans-serif;color:var(--text);
 }
+.booking-confirmation-body .booking-form-note{margin:0 0 12px}
 .booking-confirmation-body .booking-form{
   box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr);
   align-items:start;gap:11px;min-width:0;width:100%;margin:0;

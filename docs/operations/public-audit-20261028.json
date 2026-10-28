@@ -141,10 +141,13 @@
       "id": "PUB-09",
       "title": "Nascimento é obrigatório, mas a necessidade e a obrigatoriedade não são explicadas",
       "severity": "Média",
-      "state": "pendente",
-      "evidence": [],
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-09.json"
+      ],
       "publication": "não publicada",
-      "note": ""
+      "note": "Orientação curta explica obrigatoriedade e uso no cadastro de aniversários; regra e dados existentes preservados.",
+      "tests": "10 testes DOM; seis tamanhos x dois temas; três erros em formulário vazio, máscara e preservação ao voltar/avançar"
     },
     {
       "id": "PUB-10",

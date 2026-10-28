@@ -824,8 +824,13 @@
     // No duplicate consent checkbox, price or long explanatory paragraph.
     body.append(reviewCard());
     body.append(el('h3', 'booking-contact-heading', 'Seus dados'));
+    const instructions = el('p', 'small muted booking-form-note',
+      'Todos os campos são obrigatórios. O nascimento registra seu aniversário no cadastro do estabelecimento.');
+    instructions.id = 'customer-form-note';
+    body.append(instructions);
     const form = el('form', 'booking-form');
     form.id = 'customer-form';
+    form.setAttribute('aria-describedby', instructions.id);
     form.addEventListener('submit', event => { event.preventDefault(); submitBooking(); });
     const contactFields = [
       { key: 'name', title: 'Nome completo', name: 'customer_name', autocomplete: 'name',
