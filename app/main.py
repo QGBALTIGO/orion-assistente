@@ -17,6 +17,7 @@ from app.panel_auth import router as panel_auth_router
 from app.account_auth import router as account_auth_router
 from app.account_settings import router as account_settings_router
 from app.admin_accounts import router as admin_accounts_router
+from app.maintenance_access import router as maintenance_router, admin_router as maintenance_admin_router
 from app.groq_api import router as groq_router
 from app.groq_audio import router as groq_audio_router
 from app.groq_probe import probe_groq_provider
@@ -88,6 +89,9 @@ app.include_router(qr_router)
 app.include_router(panel_auth_router)
 app.include_router(account_auth_router)
 app.include_router(account_settings_router)
+# Register the specific maintenance start route before the generic account-action route.
+app.include_router(maintenance_admin_router)
+app.include_router(maintenance_router)
 app.include_router(admin_accounts_router)
 app.include_router(groq_router)
 app.include_router(groq_audio_router)
