@@ -321,6 +321,39 @@ def check_onboarding(page, network, geometry):
     check_setup_chrome(page, test_theme=True)
     assert business.locator('[name=timezone]').count() == 0
     assert page.get_by_text('Os dados confirmados ficam salvos neste negócio.').count() == 0
+    assert page.get_by_text('A conexão do WhatsApp será feita depois.').count() == 0
+    dimensions = business.evaluate("""form => {
+      const visible = [...form.querySelectorAll('.ob-business-fields > .ob-field')]
+        .filter(node => node.getBoundingClientRect().height > 0);
+      const rect = element => element.getBoundingClientRect();
+      const styles = element => getComputedStyle(element);
+      const labelGaps = visible.map(field => {
+        const label=field.querySelector('label');
+        const input=field.querySelector('input,select');
+        return {gap:rect(input).top-rect(label).bottom,
+                marginTop:parseFloat(styles(label).marginTop),
+                marginBottom:parseFloat(styles(label).marginBottom)};
+      });
+      const fieldGaps = [];
+      for(let i=1;i<visible.length;i++){
+        const gap=rect(visible[i]).top-rect(visible[i-1]).bottom;
+        if(gap>=0)fieldGaps.push(gap);
+      }
+      const last=visible[visible.length-1];
+      const actions=form.querySelector('.ob-actions');
+      const button=actions.querySelector('button');
+      return {labelGaps,fieldGaps,
+        finalGap:rect(actions).top-rect(last).bottom,
+        dividerGap:rect(button).top-rect(actions).top,
+        totalWidth:document.documentElement.scrollWidth,
+        viewport:innerWidth};
+    }""")
+    assert dimensions['totalWidth'] <= dimensions['viewport']+2, dimensions
+    assert all(item['marginTop'] == 0 and item['marginBottom'] == 0
+               and 6 <= item['gap'] <= 10 for item in dimensions['labelGaps']), dimensions
+    assert all(18 <= gap <= 24 for gap in dimensions['fieldGaps']), dimensions
+    assert 16 <= dimensions['finalGap'] <= 22, dimensions
+    assert 16 <= dimensions['dividerGap'] <= 24, dimensions
     expect(business.locator('[name=contact_phone]')).to_have_attribute('required', '')
     name_input = business.locator('[name=name]')
     name_input.fill("  Barbearia    Áurea  ")

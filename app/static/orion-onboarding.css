@@ -98,3 +98,19 @@
   .ob-root .ob-heading h1{font-size:clamp(23px,6vw,29px)}
   .ob-root .ob-card-head{margin-bottom:18px}
 }
+
+/* Empresa: neutralize inherited panel label margins. Keep an even 8px
+ * label/input/help rhythm, 20px between fields and 18px around the divider.
+ * Scope the overrides to this step; other onboarding steps are unchanged. */
+.ob-business-fields > .ob-field{
+  align-content:start;
+  row-gap:8px;
+}
+.ob-business-fields > .ob-field > label{
+  margin:0;
+}
+.ob-form[data-ob-form="business"] > fieldset > .ob-actions,
+.ob-form[data-ob-form="create"] > fieldset > .ob-actions{
+  margin-top:18px;
+  padding-top:18px;
+}
