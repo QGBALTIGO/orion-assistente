@@ -35,6 +35,7 @@ async def channel_case(profiles, monkeypatch):
         yield case
     finally:
         async with migration.begin() as db:
+            await db.execute(text("UPDATE tenants SET whatsapp_channel_id=NULL WHERE id IN (:a,:b)"), {"a": a, "b": b})
             await db.execute(text("DELETE FROM qr_channels WHERE tenant_id IN (:a,:b)"), {"a": a, "b": b})
 
 

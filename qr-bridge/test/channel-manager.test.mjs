@@ -14,6 +14,27 @@ import {createChannelResumeStore} from '../src/channel-resume.mjs';
 
 const phone='5567999999901',other='5567999999902';
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
+test('an explicitly empty private policy connects with assistant off but permits no inbound or outbound recipient',async t=>{
+  const f=fixture(t),a=f.add();Object.assign(f.rows.get(a.id),{allowed_senders:[],assistant_enabled:false});
+  const m=f.manager();await m.start(a.id,a.key);
+  assert.equal(f.made[0].ctx.assistantEnabled(),false);assert.equal(f.made[0].ctx.allowedSender(phone),false);
+  await assert.rejects(f.made[0].ctx.onInbound({phone,message_id:'deny-all-1',text:'synthetic'}),/sender_denied/);
+  await assert.rejects(m.send(a.id,a.key,{to:phone,text:'synthetic',operation_id:randomUUID()}),/sender_denied/);
+  assert.equal(f.forwards.length,0);assert.equal(f.made[0].sends.length,0);assert.equal(f.interactions.length,0);
+});
+test('an empty private policy with assistant enabled is rejected before socket construction',async t=>{
+  const f=fixture(t),a=f.add();f.rows.get(a.id).allowed_senders=[];
+  await assert.rejects(f.manager().start(a.id,a.key),/invalid_channel_lease/);assert.equal(f.made.length,0);
+});
+test('channel status discloses only a connected verified PN, never a LID or a prefilled form number',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);
+  f.made[0].phone=()=>phone;let value=await m.status(a.id,a.key);
+  assert.equal(value.phone,phone);assert.equal(value.phone_verified,true);
+  f.made[0].phone=()=> '123456789@lid';value=await m.status(a.id,a.key);
+  assert.equal(value.phone,null);assert.equal(value.phone_verified,false);
+  f.made[0].phone=()=>phone;f.made[0].status=()=> 'qr_ready';value=await m.status(a.id,a.key);
+  assert.equal(value.phone,null);assert.equal(value.phone_verified,false);
+});
 test('assistant-off inbound is journaled before interaction and never forwarded',async t=>{
   const f=fixture(t),a=f.add(),calls=[];Object.assign(f.rows.get(a.id),{inbox_control:true,assistant_enabled:false});
   f.broker.journal=async(id,key,lease,payload)=>{calls.push('journal');assert.equal(id,a.id);assert.equal(payload.text,'Mensagem humana');return {recorded:true};};

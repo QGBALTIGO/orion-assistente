@@ -10,6 +10,7 @@ from app.ops_api import router as ops_router
 from app.landing_api import router as landing_router
 from app.sales_requests_api import router as sales_requests_router
 from app.billing_api import router as billing_router
+from app.cakto_api import router as cakto_router
 from app.metrics_api import router as metrics_router
 from app.advanced_api import router as advanced_router
 from app.qr_api import router as qr_router
@@ -83,6 +84,7 @@ app.include_router(ops_router)
 app.include_router(landing_router)
 app.include_router(sales_requests_router)
 app.include_router(billing_router)
+app.include_router(cakto_router)
 app.include_router(metrics_router)
 app.include_router(advanced_router)
 app.include_router(qr_router)

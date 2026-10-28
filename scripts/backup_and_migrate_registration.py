@@ -82,30 +82,41 @@ def predeploy_main():
     """Preserve the Railway predeploy command and use only reviewed migrations.
 
     Each release verifies its own private backup, schema and role boundaries.
-    A current 0041 deployment performs read-only checks without another DDL.
+    A current 0044 deployment performs read-only checks without another DDL.
     """
     from scripts import backup_and_migrate_professional_phone as contacts
     from scripts import backup_and_migrate_quick_onboarding as quick
     from scripts import backup_and_migrate_admin_accounts as accounts
+    from scripts import backup_and_migrate_single_whatsapp as single
+    from scripts import backup_and_migrate_cakto as cakto
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
+        if current == single.TARGET:
+            return single.main()
         if current == PREVIOUS:
             result = main()
             if result:
                 return result
-        elif current not in {TARGET, contacts.TARGET, quick.TARGET, accounts.TARGET}:
+        elif current not in {TARGET, contacts.TARGET, quick.TARGET, accounts.TARGET, cakto.TARGET}:
             print('orion_registration_unreviewed_schema_revision', file=sys.stderr)
             return 2
         if current in {PREVIOUS, TARGET}:
             result = contacts.main()
             if result:
                 return result
-        if current != accounts.TARGET:
+        if current not in {accounts.TARGET, cakto.TARGET}:
             result = quick.main()
             if result:
                 return result
-        return accounts.main()
+        if current != cakto.TARGET:
+            result = accounts.main()
+            if result:
+                return result
+        result = cakto.main()
+        if result:
+            return result
+        return single.main()
     except Exception:
         print('orion_registration_predeploy_failed_closed', file=sys.stderr)
         return 3

@@ -109,6 +109,8 @@ def test_quick_release_is_in_existing_predeploy_chain_and_rechecks_current_schem
     from scripts import backup_and_migrate_professional_phone as contacts
     from scripts import backup_and_migrate_quick_onboarding as quick
     from scripts import backup_and_migrate_admin_accounts as accounts
+    from scripts import backup_and_migrate_single_whatsapp as single
+    from scripts import backup_and_migrate_cakto as cakto
     from contextlib import contextmanager
 
     calls=[]
@@ -119,8 +121,10 @@ def test_quick_release_is_in_existing_predeploy_chain_and_rechecks_current_schem
     monkeypatch.setattr(contacts,"main",lambda:calls.append("old-phone") or 0)
     monkeypatch.setattr(quick,"main",lambda:calls.append("quick") or 0)
     monkeypatch.setattr(accounts,"main",lambda:calls.append("admin-accounts") or 0)
+    monkeypatch.setattr(single,"main",lambda:calls.append("single-whatsapp") or 0)
+    monkeypatch.setattr(cakto,"main",lambda:calls.append("cakto") or 0)
     assert registration.predeploy_main()==0
-    assert calls==["quick","admin-accounts"]
+    assert calls==["quick","admin-accounts","cakto","single-whatsapp"]
 
     monkeypatch.setattr(quick,"connection_values",lambda:("synthetic",object()))
     monkeypatch.setattr(quick,"migrated_version",lambda _:quick.TARGET)

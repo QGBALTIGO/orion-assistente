@@ -169,7 +169,9 @@ function stats(){
   return {status:phase,hasQr:phase==="qr_ready"&&!!qr&&freshQR(qrAt),
     lastError,disconnectCode:lastDisconnectCode,
     waitingSeconds:Math.floor((Date.now()-connectStartedAt)/1000),
-    phone:status==="connected"?pairedNumber:null,
+    phone:status==="connected"?(pairedNumber||null):null,
+    phone_verified:status==="connected"&&Boolean(pairedNumber),
+    capabilities:{pair:typeof socket?.requestPairingCode==='function'},
     connectionType:"unofficial_linked_device",messagesEnabled:status==="connected",
     retainedMessages:messages.length,paired:!!pairingCode,
     connectionNotice:process.env.ORION_NOTIFY_SELF_ON_LINK==="1" ? noticeState(authDir) : "disabled",
@@ -511,7 +513,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
        void refreshConnectedProfile(client);
       connectedSince=Date.now();inboundSinceConnect=false;
       if(update.receivedPendingNotifications===true)pendingNotificationsReceived=true;
-      pairedNumber=normalizeFromJid(client.user?.id?.split(":")[0]+"@s.whatsapp.net")||"";
+      pairedNumber=normalizeFromJid(client.user?.id)||"";
       lastError=null;console.info("Orion QR: dispositivo conectado");
       if(notifyNewLink && process.env.ORION_NOTIFY_SELF_ON_LINK==="1" && notifiedGeneration!==mine){
         notifiedGeneration=mine;
@@ -882,6 +884,9 @@ const server=http.createServer(async(req,res)=>{
       return reply(res,202,{status:"connecting"});
     }
     if(path==="/internal/reconnect"&&req.method==="POST"){
+      if(req.headers['x-orion-canonical-prepare']==='1'&&
+          !['qr_ready','qr_expired','qr_delayed','pair_expired','stopped'].includes(visibleStatus()))
+        return reply(res,409,{error:"restart_not_allowed"});
       if(status==="connected")return reply(res,409,{error:"already_connected"});
       if(status==="logged_out"||status==="pair_failed")
         return reply(res,409,{error:"not_logged_out"});

@@ -8,9 +8,19 @@ on:
       - 'app/static/orion-channels.*'
       - 'app/static/orion-fields.*'
       - 'app/static/orion-suite.*'
+      - 'app/qr_*.py'
+      - 'alembic/versions/*single_whatsapp*'
+      - 'tests/unit/test_qr_*.py'
+      - 'tests/integration/test_qr_*.py'
+      - 'qr-bridge/src/**'
+      - 'qr-bridge/test/**'
       - 'ui-tests/**'
       - 'qr-bridge/test/wizard-journey.test.mjs'
       - 'scripts/whatsapp_connect_preview.py'
+      - 'scripts/*single_whatsapp*'
+      - 'scripts/backup_and_migrate_registration.py'
+      - 'tests/unit/test_single_whatsapp_release.py'
+      - 'tests/integration/test_single_whatsapp_release_postgres.py'
       - 'tests/e2e/browser_whatsapp_connect.py'
       - '.github/workflows/whatsapp-connect-ui.yml'
   push:
@@ -21,9 +31,19 @@ on:
       - 'app/static/orion-channels.*'
       - 'app/static/orion-fields.*'
       - 'app/static/orion-suite.*'
+      - 'app/qr_*.py'
+      - 'alembic/versions/*single_whatsapp*'
+      - 'tests/unit/test_qr_*.py'
+      - 'tests/integration/test_qr_*.py'
+      - 'qr-bridge/src/**'
+      - 'qr-bridge/test/**'
       - 'ui-tests/**'
       - 'qr-bridge/test/wizard-journey.test.mjs'
       - 'scripts/whatsapp_connect_preview.py'
+      - 'scripts/*single_whatsapp*'
+      - 'scripts/backup_and_migrate_registration.py'
+      - 'tests/unit/test_single_whatsapp_release.py'
+      - 'tests/integration/test_single_whatsapp_release_postgres.py'
       - 'tests/e2e/browser_whatsapp_connect.py'
       - '.github/workflows/whatsapp-connect-ui.yml'
   workflow_dispatch:
@@ -32,6 +52,109 @@ permissions:
   contents: read
 
 jobs:
+  postgres-canonical:
+    name: Conexao unica - PostgreSQL real e isolamento
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: orion_whatsapp_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-whatsapp-postgres-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d orion_whatsapp_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-whatsapp-runtime-only@127.0.0.1:5432/orion_whatsapp_test
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-whatsapp-migrator-only@127.0.0.1:5432/orion_whatsapp_test
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-whatsapp-support-only@127.0.0.1:5432/orion_whatsapp_test
+      SUPPORT_API_TOKEN: synthetic-whatsapp-ci-token-of-at-least-32-characters
+      REQUIRE_POSTGRES_TESTS: '1'
+      REDIS_URL: redis://127.0.0.1:6379/15
+      REQUIRE_REDIS_TESTS: '1'
+      QR_BRIDGE_URL: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dependencias fixadas e cliente PostgreSQL 16
+        run: |
+          python -m pip install -c requirements.lock '.[test]'
+          python -m pip check
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          echo '/usr/lib/postgresql/16/bin' >> "$GITHUB_PATH"
+      - name: Tres papeis no banco descartavel e migration completa
+        env:
+          PGPASSWORD: ci-whatsapp-postgres-only
+        run: |
+          psql -h 127.0.0.1 -U postgres -d orion_whatsapp_test -v ON_ERROR_STOP=1 \
+            -v db_name=orion_whatsapp_test \
+            -v runtime_password=ci-whatsapp-runtime-only \
+            -v migrator_password=ci-whatsapp-migrator-only \
+            -v support_password=ci-whatsapp-support-only \
+            -f infra/postgres/init/001-roles.sql
+          python -m alembic upgrade head
+      - name: Provisao concorrente, historico, autoridade e sessao preservada
+        # Only this Python process is restricted; the runner can still upload
+        # artifacts afterward. No API, worker or WhatsApp bridge is started.
+        run: |
+          python - <<'PY'
+          import ipaddress
+          import socket
+          import pytest
+          original_connect = socket.socket.connect
+          original_connect_ex = socket.socket.connect_ex
+          original_getaddrinfo = socket.getaddrinfo
+          def require_loopback(address):
+              host = address[0] if isinstance(address, tuple) else address
+              if host == 'localhost':
+                  return
+              try:
+                  allowed = ipaddress.ip_address(host).is_loopback
+              except (ValueError, TypeError):
+                  allowed = False
+              if not allowed:
+                  raise AssertionError('Outbound network is blocked in isolated WhatsApp tests')
+          def connect(sock, address):
+              require_loopback(address)
+              return original_connect(sock, address)
+          def connect_ex(sock, address):
+              require_loopback(address)
+              return original_connect_ex(sock, address)
+          def getaddrinfo(host, *args, **kwargs):
+              if host is not None:
+                  require_loopback((host, 0))
+              return original_getaddrinfo(host, *args, **kwargs)
+          socket.socket.connect = connect
+          socket.socket.connect_ex = connect_ex
+          socket.getaddrinfo = getaddrinfo
+          raise SystemExit(pytest.main([
+              '-q', '-ra', '--maxfail=1',
+              'tests/unit/test_qr_single_connection.py',
+              'tests/unit/test_qr_admin_identity.py',
+              'tests/unit/test_qr_channels.py',
+              'tests/unit/test_qr_channels_control.py',
+              'tests/unit/test_qr_channels_scope.py',
+              'tests/unit/test_qr_channels_transaction.py',
+              'tests/unit/test_single_whatsapp_release.py',
+              'tests/integration/test_qr_single_connection_postgres.py',
+              'tests/integration/test_single_whatsapp_release_postgres.py',
+              'tests/integration/test_qr_channels_postgres.py',
+              'tests/integration/test_qr_channels_transaction_postgres.py',
+          ]))
+          PY
+
   dom:
     name: Contratos de apresentacao e operacoes sinteticas
     runs-on: ubuntu-24.04
@@ -46,7 +169,15 @@ jobs:
         run: |
           node --check app/static/orion-connect.js
           node --check app/static/orion-channels.js
-          node --test qr-bridge/test/wizard-journey.test.mjs
+          node --check qr-bridge/src/channel-manager.mjs
+          node --check qr-bridge/src/channel-session.mjs
+          node --check qr-bridge/src/server.mjs
+          node --test \
+            qr-bridge/test/wizard-journey.test.mjs \
+            qr-bridge/test/channel-manager.test.mjs \
+            qr-bridge/test/channel-session.test.mjs \
+            qr-bridge/test/connection-notice-startup.test.mjs \
+            qr-bridge/test/canonical-prepare.test.mjs
       - name: Consumidores afetados, isolamento e navegacao
         # The complete suite is also run during release qualification. Its six
         # pre-existing retired-cadastros failures are recorded separately; this

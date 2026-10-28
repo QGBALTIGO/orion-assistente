@@ -70,7 +70,9 @@ async def test_owner_controls_use_only_fixed_private_route_and_strip_provider_fi
     assert len(network) == 1 and network[0].url.host == "bridge.railway.internal"
     assert network[0].url.path == f"/internal/channels/{control[1]}/{action}"
     if action in {"start", "stop"}: assert network[0].content == b"{}"
-    assert control[3] not in result.text and "phone" not in result.text and "fence" not in result.text
+    assert control[3] not in result.text and "not-for-browser" not in result.text and "fence" not in result.text
+    if action != "qr":
+        assert result.json()["phone"] is None and result.json()["phone_verified"] is False
     assert result.json()["assistant_enabled"] is False
     assert result.json()["revision"] == 3
 
@@ -174,7 +176,7 @@ async def test_disabled_and_legacy_pairing_never_start_or_reset_socket(control, 
     monkeypatch.setattr(qr_legacy, "is_alias", lambda *_: True)
     assert (await call(control, "pair", method="POST", payload=payload)).status_code == 409
     assert not control[5]
-    assert (await call(control, "status")).json()["capabilities"]["pair"] is False
+    assert (await call(control, "status")).status_code == 409
 
 
 @pytest.mark.asyncio
@@ -241,7 +243,7 @@ async def test_status_discloses_pairing_state_without_phone_or_code(control, mon
     monkeypatch.setattr(channels, "_bridge_control", provider)
     body = (await call(control, "status")).json()
     assert body["status"] == status and body["capabilities"] == {"pair": True}
-    assert "code" not in body and "phone" not in body
+    assert "code" not in body and body["phone"] is None and body["phone_verified"] is False
 
 
 @pytest.mark.asyncio
@@ -262,11 +264,13 @@ async def test_list_authority_and_allowlist_are_server_derived(monkeypatch, role
     monkeypatch.setenv("QR_CHANNELS_ENABLED", "1")
     monkeypatch.setattr(channels, "resolve_tenant_access", access)
     monkeypatch.setattr(channels, "support_session_factory", lambda: DB)
+    async def canonical(*args, **kwargs): return rows[0], "ready"
+    monkeypatch.setattr(channels, "_canonical", canonical)
     api = FastAPI(); api.include_router(channels.router); api.dependency_overrides[authenticate] = lambda: actor
     async with CLIENT(transport=httpx.ASGITransport(app=api), base_url="https://test") as client:
         result = await client.get(f"/api/v1/tenants/{tenant}/qr-channels")
     assert result.status_code == 200
     body = result.json(); assert body["access"]["can_manage"] is (role == "owner")
     assert body["capabilities"]["pair"] is (role == "owner")
-    assert ("allowed_senders" in body["items"][0]) is (role == "owner")
-    assert "allowed_senders" not in body["items"][1] and body["items"][1]["can_manage"] is False
+    assert "allowed_senders" not in body["items"][0]
+    assert len(body["items"]) == 1 and body["connection"] == body["items"][0]

@@ -15,6 +15,14 @@ const eventStart=source.indexOf('  client.ev.on("connection.update",update=>{');
 const eventSource=source.slice(eventStart,source.indexOf('\n}\nasync function connect(){',eventStart));
 assert.ok(connectStart>0&&eventStart>0&&eventSource.endsWith('  });'));
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
+test('global open preserves provider PN and never fabricates a phone from a LID',async()=>{
+  const h=harness({registered:true});await h.connect();
+  h.sockets[0].user.id='123456789:8@lid';h.sockets[0].ev.emit('connection.update',{connection:'open'});await flush();
+  assert.equal(h.context.pairedNumber,'');assert.equal(h.notices.length,0);
+  await h.connect();h.sockets[1].user.id='5567999999901:8@s.whatsapp.net';
+  h.sockets[1].ev.emit('connection.update',{connection:'open'});await flush();assert.equal(h.context.pairedNumber,'5567999999901');
+  assert.equal(h.notices.length,0);
+});
 
 function harness(options={}){
   const {registered=true}=options,flag=Object.hasOwn(options,'flag')?options.flag:'1';

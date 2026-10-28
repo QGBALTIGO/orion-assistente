@@ -7,6 +7,12 @@ import path from 'node:path';
 import {createBaileysChannelSession} from '../src/channel-session.mjs';
 
 process.env.ORION_RETRY_TEST_MODE='1';
+test('provider phone is the confirmed PN only after open; LIDs are never relabeled as phone numbers',async t=>{
+  const s=await session(t);assert.equal(s.result.phone(),null);
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();assert.equal(s.result.phone(),self);
+  s.client.user.id='123456789:7@lid';assert.equal(s.result.phone(),null);
+  s.client.user.id=self+':7@s.whatsapp.net';assert.equal(s.result.phone(),self);
+});
 
 const phone='5567999999901',self='5567999999902',flush=()=>new Promise(r=>setImmediate(r));
 async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=false,schedule,cancel,registered=false,resumeOnly=false}={}){

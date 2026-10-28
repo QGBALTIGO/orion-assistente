@@ -58,7 +58,7 @@ def panel_factory(browser, fixture_url, size, theme, request):
     contexts = []
     expected_origin = urlsplit(fixture_url)
 
-    def open_panel(role='admin', state='disconnected', *, connector=True):
+    def open_panel(role='admin', state='disconnected', *, connector=True, connection='existing'):
         width, height = size
         context = instance.new_context(viewport={'width': width, 'height': height},
             color_scheme=theme, locale='pt-BR', has_touch=width <= 390,
@@ -78,7 +78,7 @@ def panel_factory(browser, fixture_url, size, theme, request):
         page.on('pageerror', lambda error: errors.append(str(error)))
         contexts.append((context, page, outside, errors))
         route = 'dispositivo' if role == 'admin' else 'configuracoes'
-        page.goto(f'{fixture_url}/panel?fixtureRole={role}&fixtureState={state}&aba={route}')
+        page.goto(f'{fixture_url}/panel?fixtureRole={role}&fixtureState={state}&fixtureConnection={connection}&aba={route}')
         expect(page.locator('#appView')).to_be_visible()
         if role == 'admin':
             expect(page.locator('#disconnectedWizard' if state != 'connected' else '#connectedCenter')).to_be_visible()
@@ -89,7 +89,8 @@ def panel_factory(browser, fixture_url, size, theme, request):
                     page.locator('#osSettingsSection').select_option('whatsapp')
                 else:
                     page.locator('[data-os-settings="whatsapp"]').click()
-                expect(page.locator('#osManagedChannels [data-qc-channel]')).to_have_count(1)
+                expect(page.locator('#osManagedChannels[data-qc-single]')).to_be_visible()
+                expect(page.locator('#osManagedChannels[data-qc-single]')).not_to_have_attribute('data-qc-canonical-state', 'loading')
         page.evaluate('document.fonts.ready')
         return page
 
@@ -192,7 +193,7 @@ def capture(page, selector, name):
         horizontalOverflow:document.documentElement.scrollWidth>innerWidth+1,
         root:rect(root),controls:[...root.querySelectorAll('button,input,textarea')].filter(visible).map(rect),
         methods:[...root.querySelectorAll('[data-method],[data-qc-method]')].filter(visible).map(rect),
-        headerActions:[...root.querySelectorAll('header [data-qc-action="new"],header [data-qc-action="refresh"]')].filter(visible).map(rect),
+        headerActions:[...root.querySelectorAll('header [data-qc-action="refresh"]')].filter(visible).map(rect),
         consultantFabVisible:(()=>{const fab=document.querySelector('#osConsultantFab');return !!fab&&visible(fab)})()};
     }''')
     geometry['measurement_state'] = view_state(page)
@@ -209,10 +210,10 @@ def capture(page, selector, name):
         assert abs(geometry['methods'][0]['width'] - geometry['methods'][1]['width']) <= 1
     if selector == '#osManagedChannels':
         assert not geometry['consultantFabVisible'], 'The consultant floating action must not overlap the active WhatsApp connector'
+        expect(scope).to_have_attribute('data-qc-single', '')
+        expect(scope.locator('[data-qc-action="new"],[data-qc-channel],[data-qc-form="create"]')).to_have_count(0)
         for action in geometry['headerActions']:
             assert abs(action['height'] - 44) <= 1, action
-        if len(geometry['headerActions']) == 2:
-            assert abs(geometry['headerActions'][0]['height'] - geometry['headerActions'][1]['height']) <= 1
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     engine = page.context.browser.browser_type.name
     theme = page.locator('html').get_attribute('data-theme')
@@ -445,8 +446,7 @@ def test_admin_uses_original_seven_step_tutorial_before_code_or_qr(panel_factory
 def test_company_code_is_scoped_and_uses_the_same_controls(panel_factory):
     page = panel_factory('owner')
     assert not writes(page)
-    geometry = capture(page, '#osManagedChannels', 'owner-device-disabled')
-    assert len(geometry['headerActions']) == 2, 'Both Add device and Refresh must be measured'
+    capture(page, '#osManagedChannels', 'owner-connection-disabled')
     host = start_company(page)
     compare_shared_tutorial_components(page, host, panel_factory)
     capture(page, '#osManagedChannels', 'owner-code-tutorial')
@@ -640,6 +640,78 @@ def test_admin_prepares_expired_or_delayed_connection_without_losing_code_form(p
     assert not writes(page, '/pair') and not writes(page, '/recover')
     assert not any(call['path'].startswith('/api/v1/qr/image') for call in calls(page))
     capture(page, '#disconnectedWizard', f'admin-{connection_state}-code-prepared')
+
+
+@pytest.mark.parametrize('connection_case', ['missing', 'history', 'legacy', 'unsafe_legacy', 'ambiguous', 'unverified'])
+def test_company_exposes_one_connection_and_preserves_existing_records(panel_factory, connection_case):
+    connection = 'existing' if connection_case == 'unverified' else connection_case
+    state = 'disconnected' if connection_case == 'missing' else 'connected_unverified' if connection_case == 'unverified' else 'connected'
+    page = panel_factory('owner', state, connection=connection)
+    host = page.locator('#osManagedChannels')
+    single = host
+    expected_state = 'missing' if connection_case == 'missing' else 'ambiguous' if connection_case in {'ambiguous', 'unsafe_legacy'} else 'ready'
+    expect(single).to_have_attribute('data-qc-canonical-state', expected_state)
+    expect(host.locator('[data-qc-channel],[data-qc-action="new"],[data-qc-form="create"],.qc-list,.qc-count')).to_have_count(0)
+    assert 'WhatsApp sintético da empresa' not in host.inner_text(), 'Stored device labels must not recreate a device list'
+    assert not writes(page), 'Mounting the one-connection view must not provision, start or reset a session'
+    assert not any(call['path'].startswith('/api/v1/qr/') for call in calls(page)), 'A member must never fall back to the global admin API'
+    origin = urlsplit(page.url)
+    report_url = f'{origin.scheme}://{origin.netloc}/__fixture/calls'
+    retained_before = page.request.get(report_url).json()['stored_connection_ids']
+    capture(page, '#osManagedChannels', f'owner-single-{connection_case}')
+
+    if connection_case == 'missing':
+        expect(host.locator('[data-qc-empty]')).to_be_visible()
+        expect(host.locator('[data-qc-connection]')).to_have_count(0)
+        host.locator('[data-qc-action="connect"]').click()
+        expect(host.locator('[data-qc-form="confirm"]')).to_be_visible()
+        host.locator('[data-qc-action="cancel-confirm"]').click()
+        expect(host.locator('[data-qc-form="confirm"]')).to_have_count(0)
+        assert not writes(page), 'Cancelling first connection must not create its database record'
+        host = start_company(page)
+        operations = writes(page)
+        assert [call['path'] for call in operations] == [BASE + '/qr-channels/provision',
+            BASE + '/qr-channels/' + CHANNEL, BASE + '/qr-channels/' + CHANNEL + '/start'], operations
+        assert set(operations[0]['data']) == {'idempotency_key'}
+        assert re.fullmatch(r'[a-fA-F0-9-]{36}', operations[0]['data']['idempotency_key'])
+        assert operations[1]['data'] == {'expected_revision': 1, 'enabled': True}
+        assert operations[2]['data'] == {'expected_revision': 2}
+        expect(host).to_have_attribute('data-qc-canonical-state', 'ready')
+        expect(host.locator('[data-qc-assistant-reason]')).to_be_visible()
+        for control in host.locator('[data-qc-action="assistant_on"]').all():
+            expect(control).to_be_disabled()
+        assert not any(call.get('data', {}).get('assistant_enabled') is True for call in operations)
+        assert not writes(page, '/pair') and not writes(page, '/recover')
+        retained_after = page.request.get(report_url).json()['stored_connection_ids']
+        assert retained_before == [] and retained_after == [CHANNEL]
+        capture(page, '#osManagedChannels', 'owner-single-provisioned')
+    elif connection_case in {'ambiguous', 'unsafe_legacy'}:
+        expect(host.locator('[data-qc-ambiguous]')).to_be_visible()
+        expect(host.locator('[data-qc-connection],[data-qc-number],[data-qc-action="connect"],[data-qc-form]')).to_have_count(0)
+        assert len(retained_before) == (2 if connection_case == 'ambiguous' else 1)
+    elif connection_case == 'legacy':
+        expect(host.locator('[data-qc-status]')).to_have_count(1)
+        expect(host.locator('[data-qc-connection],[data-qc-number],[data-qc-form],[data-qc-action="connect"],[data-qc-action="assistant_on"],[data-qc-action="assistant_off"]')).to_have_count(0)
+        assert not any(re.fullmatch(re.escape(BASE) + r'/qr-channels/[^/]+/(status|qr|pair|start|prepare)', call['path']) for call in calls(page)), 'A member may inspect legacy metadata but cannot query or operate the preserved admin socket'
+    else:
+        expect(host.locator('[data-qc-status]')).to_have_count(1)
+        expect(host.locator('[data-qc-status]')).to_have_text('Conectado')
+        expect(host.locator('[data-qc-connection]')).to_have_count(0)
+        expect(host.locator('[data-qc-assistant]')).to_have_count(1)
+        if connection_case == 'unverified':
+            expect(host.locator('[data-qc-number]')).to_have_count(0)
+        else:
+            number = host.locator('[data-qc-number]')
+            expect(number).to_have_count(1)
+            expect(number).to_be_visible()
+            assert re.sub(r'\D', '', number.inner_text()) in {'5511900000001', '11900000001'}
+        if connection_case == 'history':
+            assert len(retained_before) == 2
+
+    if connection_case != 'missing':
+        assert not writes(page)
+        assert page.request.get(report_url).json()['stored_connection_ids'] == retained_before, 'Read-only UI inspection must preserve stored history'
+    assert not any(call['path'].startswith('/api/v1/qr/') for call in calls(page))
 
 
 def test_reader_does_not_gain_owner_controls_or_global_access(panel_factory):

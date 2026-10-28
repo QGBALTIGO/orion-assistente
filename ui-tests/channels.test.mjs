@@ -1,128 +1,153 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {makeChannels,item,listing,runtime,tenantA,tenantB,channelA,channelB,owner,png,copy,flush,deferred} from './channels-harness.mjs';
-const writes=h=>h.calls.filter(call=>call.method!=='GET');
+import {makeChannels,item,listing,runtime,tenantA,tenantB,channelA,channelB,png,flush,deferred} from './channels-harness.mjs';
 const base='/api/v1/tenants/'+tenantA+'/qr-channels';
-const openQR=h=>h.click(h.document.querySelector('[data-qc-action=tutorial-next]')?'[data-qc-action=tutorial-next]':'[data-qc-action=qr]');
-const secret='synthetic-private-credential-'+'x'.repeat(40);
+const writes=h=>h.calls.filter(call=>call.method!=='GET');
+const state=(row,status='stopped',extra={})=>({...runtime(row,status),...extra});
+const openConfirm=h=>{h.click('[data-qc-action=connect]');h.submit();};
 
-test('preserved primary session offers status and assistant control without reconnect or QR actions',async t=>{
-  const row=item({enabled:true,assistant_enabled:true,legacy_transport:true});
-  const h=await makeChannels({data:listing([row]),respond:(path,method)=>path.endsWith('/status')?runtime(row,'connected'):undefined});
-  t.after(()=>h.close());
-  for(const action of ['start','connect','qr','stop','enable','disable'])assert.equal(h.document.querySelector('[data-qc-action='+action+']'),null);
-  assert.ok(h.document.querySelector('[data-qc-action=status]'));
-  assert.ok(h.document.querySelector('[data-qc-action=assistant_off]'));
-  assert.match(h.element('#channels').textContent,/sessão existente/);
-  assert.deepEqual(writes(h),[]);
+function connectServer({missing=false,loseProvision=false}={}){
+  const row=item({assistant_activation_allowed:false,allowed_senders:[]});let provisioned=!missing,provisions=0;
+  return {row,respond(path,method,data,server){
+    if(path.endsWith('/provision')&&method==='POST'){provisions++;provisioned=true;server.data=listing([row]);if(loseProvision&&provisions===1)throw Error('lost response');return server.data;}
+    if(method==='PATCH'){Object.assign(row,{enabled:data.enabled??row.enabled,assistant_enabled:data.assistant_enabled??row.assistant_enabled,revision:row.revision+1});server.data=listing([row]);return row;}
+    if(path.endsWith('/start')&&method==='POST')return state(row,'connecting',{capabilities:{pair:true}});
+    if(path.endsWith('/status'))return state(row,row.enabled?'stopped':'disabled');
+  }};
+}
+
+test('opening the single canonical connection is read only and never exposes a device list or private policy',async t=>{
+  const row=item({label:'Nome técnico privado',allowed_senders:['5567999999901']}),h=await makeChannels({data:listing([row])});t.after(()=>h.close());
+  assert.ok(h.element('[data-qc-single]'));assert.equal(h.element('[data-qc-single]').dataset.qcCanonicalState,'ready');assert.deepEqual(writes(h),[]);
+  for(const selector of ['[data-qc-channel]','[data-qc-action=new]','[data-qc-form=create]','[name=label]','[name=allowed_senders]','.qc-list','.qc-count'])assert.equal(h.document.querySelector(selector),null,selector);
+  assert.doesNotMatch(h.element('#channels').textContent,/Nome técnico privado|5567999999901|Seus dispositivos|principal|teste/i);assert.equal(JSON.stringify(h.controller.getState()).includes('allowed_senders'),false);
 });
 
-test('connect enables only the selected device then starts with its new revision, never the assistant',async t=>{
-  const row=item(),h=await makeChannels({respond:(path,method,payload)=>method==='PATCH'?item({enabled:true,revision:2}):method==='POST'?runtime(item({enabled:true,revision:2}),'connecting'):undefined});t.after(()=>h.close());
-  h.click('[data-qc-action=connect]');assert.equal(writes(h).length,0);h.submit();h.submit();await flush();
-  assert.deepEqual(writes(h),[{path:base+'/'+channelA,method:'PATCH',data:{expected_revision:1,enabled:true}},
-    {path:base+'/'+channelA+'/start',method:'POST',data:{expected_revision:2}}]);
-  assert.equal(h.controller.getState().runtime.status,'connecting');assert.equal(h.controller.getState().items[0].assistant_enabled,false);
+test('a company without a connection only provisions after explicit confirmation, then enables and starts its one canonical record',async t=>{
+  const server=connectServer({missing:true}),h=await makeChannels({data:listing([]),respond:server.respond});t.after(()=>h.close());
+  assert.ok(h.element('[data-qc-empty]'));assert.deepEqual(writes(h),[]);h.click('[data-qc-action=connect]');h.click('[data-qc-action=cancel-confirm]');assert.deepEqual(writes(h),[]);
+  h.click('[data-qc-action=connect]');const form=h.element('[data-qc-form=confirm]');form.dispatchEvent(new h.window.Event('submit',{bubbles:true,cancelable:true}));form.dispatchEvent(new h.window.Event('submit',{bubbles:true,cancelable:true}));await flush();const calls=writes(h);assert.equal(calls.length,3);assert.equal(calls[0].path,base+'/provision');assert.deepEqual(Object.keys(calls[0].data),['idempotency_key']);assert.match(calls[0].data.idempotency_key,/^[a-f0-9-]{36}$/);
+  assert.deepEqual(calls[1],{path:base+'/'+channelA,method:'PATCH',data:{expected_revision:1,enabled:true}});assert.deepEqual(calls[2],{path:base+'/'+channelA+'/start',method:'POST',data:{expected_revision:2}});
+  assert.equal(h.controller.getState().connection.assistant_enabled,false);assert.equal(h.controller.getState().connection.id,channelA);assert.equal(h.controller.getState().runtime.status,'connecting');assert.equal(h.document.querySelector('[data-qc-empty]'),null);assert.ok(h.element('[data-qc-assistant-reason]'));
+  assert.equal(calls.some(call=>'allowed_senders' in call.data||'phone' in call.data||'assistant_enabled' in call.data),false);
 });
 
-test('uncertain enable or start never automatically repeats either connection operation',async t=>{
-  for(const fail of ['enable','start']){
-    const h=await makeChannels({respond:(path,method)=>{
-      if(method==='PATCH'){if(fail==='enable')throw Error('uncertain');return item({enabled:true,revision:2});}
-      if(method==='POST')throw Error('uncertain');
-    }});t.after(()=>h.close());h.click('[data-qc-action=connect]');h.submit();await flush();
-    assert.equal(h.controller.getState().uncertain,true);const count=writes(h).length;
-    await h.tick(30000);assert.equal(writes(h).length,count);assert.equal(count,fail==='enable'?1:2);
+test('a disabled canonical connection is reused without registering another one',async t=>{
+  const server=connectServer(),h=await makeChannels({data:listing([server.row]),respond:server.respond});t.after(()=>h.close());openConfirm(h);await flush();assert.equal(writes(h).length,2);assert.equal(writes(h).some(call=>call.path.endsWith('/provision')),false);assert.equal(h.controller.getState().connection.id,channelA);
+});
+
+test('an enabled stopped connection starts independently with its current revision',async t=>{
+  const row=item({enabled:true}),h=await makeChannels({data:listing([row]),respond:(path,method)=>method==='POST'?state(row,'connecting'):undefined});t.after(()=>h.close());openConfirm(h);await flush();assert.deepEqual(writes(h),[{path:base+'/'+channelA+'/start',method:'POST',data:{expected_revision:1}}]);
+});
+
+test('an uncertain provisioning response never repeats automatically and an authoritative lookup can resume the same connection',async t=>{
+  const server=connectServer({missing:true,loseProvision:true}),h=await makeChannels({data:listing([]),respond:server.respond});t.after(()=>h.close());openConfirm(h);await flush();assert.equal(h.controller.getState().uncertain,true);await h.tick(20000);assert.equal(writes(h).length,1);
+  h.click('[data-qc-action=refresh]');await flush();assert.equal(h.controller.getState().connection.id,channelA);assert.equal(h.controller.getState().uncertain,false);assert.equal(writes(h).length,1);openConfirm(h);await flush();assert.equal(writes(h).filter(call=>call.path.endsWith('/provision')).length,1);assert.equal(writes(h).length,3);
+});
+
+test('an explicit provisioning retry reuses the exact idempotent intent instead of adding another connection',async t=>{
+  let attempts=0;const row=item({assistant_activation_allowed:false,allowed_senders:[]});
+  const h=await makeChannels({data:listing([]),respond:(path,method,data,server)=>{if(path.endsWith('/provision')){if(++attempts===1)throw Error('unknown');server.data=listing([row]);return server.data;}if(method==='PATCH')return item({enabled:true,revision:2,assistant_activation_allowed:false});if(path.endsWith('/start'))return state(item({enabled:true,revision:2}),'connecting');}});t.after(()=>h.close());
+  openConfirm(h);await flush();h.click('[data-qc-action=retry-provision]');await flush();const requests=writes(h).filter(call=>call.path.endsWith('/provision'));assert.equal(requests.length,2);assert.deepEqual(requests[0],requests[1]);assert.equal(h.controller.getState().connection.id,channelA);
+});
+
+test('uncertain enable or start outcomes cannot automatically repeat commands',async t=>{
+  for(const failure of ['enable','start']){const row=item(),h=await makeChannels({data:listing([row]),respond:(path,method)=>{if(method==='PATCH'){if(failure==='enable')throw Error('unknown');return item({enabled:true,revision:2});}if(method==='POST')throw Error('unknown');}});openConfirm(h);await flush();assert.equal(h.controller.getState().uncertain,true);const count=writes(h).length;await h.tick(30000);assert.equal(writes(h).length,count);h.close();}
+});
+
+test('a delayed provision result cannot enable or start a connection after the company changes',async t=>{
+  const late=deferred(),h=await makeChannels({data:listing([]),respond:(path,method)=>path.endsWith('/provision')?late.promise:path.startsWith('/api/v1/tenants/'+tenantB)?listing([]):undefined});t.after(()=>h.close());openConfirm(h);await flush();await h.controller.setTenant(tenantB);late.resolve(listing([item()]));await flush();assert.equal(writes(h).length,1);assert.equal(h.controller.getState().tenantId,tenantB);assert.equal(h.controller.getState().connection,null);
+});
+
+test('hiding the screen while enable is pending cannot start its session afterward',async t=>{
+  const late=deferred(),h=await makeChannels({respond:(path,method)=>method==='PATCH'?late.promise:undefined});t.after(()=>h.close());openConfirm(h);await flush();await h.visibility(true);late.resolve(item({enabled:true,revision:2}));await flush();assert.equal(writes(h).length,1);assert.equal(writes(h).some(call=>call.path.endsWith('/start')),false);
+});
+
+test('ambiguous or foreign canonical data fails closed without choosing a historical record',async t=>{
+  const a=item({label:'Principal privado'}),b=item({id:channelB,label:'Teste privado'});
+  for(const data of [listing([a,b]),listing([a],{canonical_state:'ambiguous',connection:null,items:[],canonical_id:null}),listing([item({tenant_id:tenantB})])]){
+    const h=await makeChannels({data});assert.equal(h.controller.getState().connection,null);assert.equal(h.document.querySelector('[data-qc-action=connect]'),null);assert.equal(h.document.querySelector('[data-qc-number]'),null);assert.doesNotMatch(h.element('#channels').textContent,/Principal privado|Teste privado/);assert.deepEqual(writes(h),[]);h.close();
   }
 });
 
-test('switching business before enable returns cannot start the old device',async t=>{
-  const late=deferred(),h=await makeChannels({respond:(path,method)=>method==='PATCH'?late.promise:path.includes(tenantB)?listing([item({id:channelB,tenant_id:tenantB})]):undefined});t.after(()=>h.close());
-  h.click('[data-qc-action=connect]');h.submit();await flush();await h.controller.setTenant(tenantB);
-  late.resolve(item({enabled:true,revision:2}));await flush();assert.equal(writes(h).length,1);assert.equal(h.controller.getState().tenantId,tenantB);
+test('a noncanonical compatibility list is rejected rather than selecting its first entry',async t=>{
+  const a=item(),b=item({id:channelB}),h=await makeChannels({data:listing([a],{items:[a,b]})});t.after(()=>h.close());assert.equal(h.controller.getState().connection,null);assert.equal(h.controller.getState().unavailable,true);assert.deepEqual(writes(h),[]);
 });
 
-test('QR is read only after an explicitly started connection and tutorial continuation',async t=>{
-  const row=item({enabled:true});let started=false;
-  const h=await makeChannels({data:listing([row]),respond:(path,method)=>method==='POST'?(started=true,runtime(row,'connecting')):path.endsWith('/status')?runtime(row,started?'qr_ready':'stopped'):undefined});t.after(()=>h.close());
-  assert.equal(h.document.querySelector('[data-qc-qr]'),null);h.click('[data-qc-action=start]');h.submit();await flush();await h.tick(5000);
-  assert.equal(h.document.querySelector('[data-qc-qr] img'),null);openQR(h);await flush();assert.ok(h.document.querySelector('[data-qc-qr] img'));assert.equal(writes(h).length,1);
-  h.click('[data-qc-action=hide-qr]');await h.tick(5000);assert.equal(h.document.querySelector('[data-qc-qr]'),null);
+test('only a provider-verified connected phone is displayed, once',async t=>{
+  const row=item({enabled:true});
+  for(const [status,phone,verified,expected] of [['connected','5511987654321',true,1],['connected','5511987654321',false,0],['pairing','5511987654321',true,0],['connected','abc@lid',true,0]]){
+    const h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?state(row,status,{phone,phone_verified:verified}):undefined});assert.equal(h.document.querySelectorAll('[data-qc-number]').length,expected);if(expected)assert.match(h.element('[data-qc-number]').textContent,/98765-4321/);assert.deepEqual(writes(h),[]);h.close();
+  }
 });
 
-test('opening the list performs no start, activation, send or legacy operation',async t=>{
-  const h=await makeChannels();t.after(()=>h.close());assert.deepEqual(writes(h),[]);assert.equal(h.calls.length,1);assert.match(h.element('#channels').textContent,/Desativado/);assert.match(h.element('#channels').textContent,/Fase privada/);assert.match(h.element('#channels').textContent,/Áudio depende/);assert.ok(h.document.getElementById('legacy'));assert.equal(h.calls.some(call=>call.path.includes('/internal/')||call.path.includes('/api/v1/qr/')),false);
+test('a validated connected legacy binding shows the same one number without provisioning or changing session controls',async t=>{
+  const row=item({enabled:true,legacy_transport:true,assistant_enabled:true}),h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?state(row,'connected',{phone:'5511987654321',phone_verified:true}):undefined});t.after(()=>h.close());assert.ok(h.element('[data-qc-number]'));for(const selector of ['[data-qc-action=connect]','[data-qc-action=stop]','[data-qc-connection]','[data-qc-form=pair]'])assert.equal(h.document.querySelector(selector),null);assert.deepEqual(writes(h),[]);
 });
-test('disabled feature shows unavailable without touching the existing connector',async t=>{
-  const h=await makeChannels({respond:()=>{throw Object.assign(Error('private debug text'),{status:423});}});t.after(()=>h.close());assert.equal(h.controller.getState().unavailable,true);assert.match(h.element('#channels').textContent,/Recurso ainda não disponível/);assert.doesNotMatch(h.element('#channels').textContent,/private debug/);assert.equal(h.calls.length,1);h.click('[data-qc-action=legacy]');await flush();assert.equal(h.legacy.length,1);assert.deepEqual(writes(h),[]);
+
+test('legacy pairing or QR controls require explicit server capability, never the legacy flag alone',async t=>{
+  const row=item({enabled:true,legacy_transport:true});
+  const denied=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?state(row,'qr_ready',{capabilities:{pair:true}}):undefined});assert.equal(denied.document.querySelector('[data-qc-connection]'),null);denied.close();
+  const h=await makeChannels({data:listing([row],{capabilities:{start:true,qr:true,pair:true,stop:false,change_state:false,change_assistant:true}}),respond:path=>path.endsWith('/status')?state(row,'qr_ready',{capabilities:{pair:true}}):undefined});t.after(()=>h.close());assert.ok(h.element('[data-qc-method=code]'));assert.equal(h.document.querySelector('[data-qc-action=connect]'),null);assert.deepEqual(writes(h),[]);
 });
-test('viewers and a different channel owner cannot invoke mutations',async t=>{
-  const h=await makeChannels({data:listing([item({can_manage:false})])});t.after(()=>h.close());assert.equal(h.document.querySelector('[data-qc-action=start]'),null);assert.equal(h.document.querySelector('[data-qc-action=enable]'),null);assert.equal(h.document.querySelector('[data-qc-action=status]'),null);assert.match(h.element('#channels').textContent,/proprietário autorizado/);assert.deepEqual(writes(h),[]);
+
+test('a viewer cannot provision or mutate the connection and never receives private policy in the UI',async t=>{
+  const row=item({can_manage:false}),h=await makeChannels({data:listing([row],{access:{can_manage:false}})});t.after(()=>h.close());for(const action of ['connect','assistant_on','assistant_off','stop'])assert.equal(h.document.querySelector('[data-qc-action='+action+']'),null);assert.doesNotMatch(h.element('#channels').textContent,/99999-9901/);assert.deepEqual(writes(h),[]);
 });
-test('a read-only list has no create or mutation controls',async t=>{
-  const h=await makeChannels({data:listing([item({can_manage:false})],{access:{can_manage:false}})});t.after(()=>h.close());assert.equal(h.document.querySelector('[data-qc-action=new]'),null);assert.equal(h.document.querySelector('[data-qc-action=enable]'),null);assert.deepEqual(writes(h),[]);
+
+test('a registry refresh that revokes management access removes the verified number without another provider read',async t=>{
+  const row=item({enabled:true}),h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?state(row,'connected',{phone:'5511987654321',phone_verified:true}):undefined});t.after(()=>h.close());assert.ok(h.element('[data-qc-number]'));const before=h.calls.filter(call=>call.path.endsWith('/status')).length;h.server.data=listing([item({enabled:true,can_manage:false})],{access:{can_manage:false},capabilities:{}});h.click('[data-qc-action=refresh]');await flush();assert.equal(h.document.querySelector('[data-qc-number]'),null);assert.equal(h.controller.getState().runtime,null);assert.equal(h.calls.filter(call=>call.path.endsWith('/status')).length,before);assert.deepEqual(writes(h),[]);
 });
-test('new channel needs an explicit submit and sends no enabled or assistant flag',async t=>{
-  const h=await makeChannels({respond:(path,method,payload)=>method==='POST'?{...item(),credential:secret,credential_issued:true}:undefined});t.after(()=>h.close());h.click('[data-qc-action=new]');assert.equal(writes(h).length,0);h.fill('[name=label]','Canal revisado');h.fill('[name=allowed_senders]','+55 (67) 99999-9901');h.submit();h.submit();await flush();assert.equal(writes(h).length,1);const sent=writes(h)[0];assert.equal(sent.path,base);assert.deepEqual(sent.data.allowed_senders,['5567999999901']);assert.equal(sent.data.provider,'baileys');assert.equal('enabled' in sent.data,false);assert.equal('assistant_enabled' in sent.data,false);assert.equal('tenant_id' in sent.data,false);assert.equal('credential' in sent.data,false);assert.match(sent.data.idempotency_key,/^[a-f0-9-]{36}$/);assert.equal(h.controller.getState().items[0].enabled,false);assert.equal(h.controller.getState().items[0].assistant_enabled,false);
+
+test('assistant activation remains off when the private policy is unavailable, including injected actions',async t=>{
+  const row=item({enabled:true,assistant_activation_allowed:false,allowed_senders:[]}),h=await makeChannels({data:listing([row])});t.after(()=>h.close());assert.equal(h.element('[data-qc-action=assistant_on]').disabled,true);assert.ok(h.element('[data-qc-assistant-reason]'));const injected=h.document.createElement('button');injected.dataset.qcAction='assistant_on';h.element('#channels').append(injected);injected.click();assert.equal(h.document.querySelector('[data-qc-form=confirm]'),null);assert.deepEqual(writes(h),[]);
 });
-test('allowlist validation rejects duplicates, nonphones, foreign numbers and excess entries before POST',async t=>{
-  const h=await makeChannels();t.after(()=>h.close());h.click('[data-qc-action=new]');h.fill('[name=label]','Novo canal');for(const value of ['+5567999999901\n5567999999901','user@lid','+12025550123',Array.from({length:11},(_,i)=>'55679999999'+String(i).padStart(2,'0')).join('\n')]){h.fill('[name=allowed_senders]',value);h.submit();await flush();assert.equal(writes(h).length,0);}assert.match(h.element('[role=alert]').textContent,/1 a 10/);
+
+test('approved assistant activation requires its own acknowledgement and only changes that flag',async t=>{
+  const row=item({enabled:true}),h=await makeChannels({data:listing([row]),respond:(path,method,data)=>method==='PATCH'?item({enabled:true,assistant_enabled:data.assistant_enabled,revision:2}):undefined});t.after(()=>h.close());h.click('[data-qc-action=assistant_on]');h.submit();await flush();assert.deepEqual(writes(h),[]);h.check('[name=authorize_assistant]');h.submit();await flush();assert.deepEqual(writes(h)[0].data,{expected_revision:1,assistant_enabled:true});assert.equal(writes(h).some(call=>/start|provision|send/.test(call.path)),false);
 });
-test('the one-time credential is absent from state, logs, URLs and persistent browser storage',async t=>{
-  const h=await makeChannels({respond:(path,method)=>method==='POST'?{...item(),credential:secret,credential_issued:true}:undefined});t.after(()=>h.close());h.click('[data-qc-action=new]');h.fill('[name=label]','Canal privado');h.fill('[name=allowed_senders]','5567999999901');h.submit();await flush();assert.equal(h.document.querySelector('[data-qc-secret]'),null);assert.equal(h.element('#channels').textContent.includes(secret),false);assert.equal(JSON.stringify(h.controller.getState()).includes(secret),false);assert.equal(JSON.stringify(h.calls).includes(secret),false);assert.equal(JSON.stringify(h.logs).includes(secret),false);assert.equal(h.window.localStorage.length,0);assert.equal(h.window.sessionStorage.length,0);assert.equal(h.document.querySelector('[data-qc-action=copy-secret]'),null);assert.deepEqual(h.copied,[]);assert.equal(h.document.querySelector('[data-qc-secret]'),null);assert.equal(h.element('#channels').textContent.includes(secret),false);
+
+test('stopping remains explicit and preserves the connection record and assistant preference',async t=>{
+  const row=item({enabled:true,assistant_enabled:true}),h=await makeChannels({data:listing([row]),respond:(path,method)=>method==='POST'?state(row,'stopped'):undefined});t.after(()=>h.close());h.click('[data-qc-action=stop]');h.submit();await flush();assert.deepEqual(writes(h),[{path:base+'/'+channelA+'/stop',method:'POST',data:{expected_revision:1}}]);assert.equal(h.controller.getState().connection.assistant_enabled,true);assert.equal(h.controller.getState().connection.enabled,true);assert.equal(writes(h).some(call=>/delete|logout|disconnect/.test(call.path)),false);
 });
-test('create response loss is recovered only by explicit repetition of the identical intent',async t=>{
-  let attempt=0;const h=await makeChannels({respond:(path,method)=>{if(method==='POST'){if(++attempt===1)throw Error('uncertain transport');return {...item(),credential:null,credential_issued:false};}}});t.after(()=>h.close());h.click('[data-qc-action=new]');h.fill('[name=label]','Canal privado');h.fill('[name=allowed_senders]','5567999999901');h.submit();await flush();assert.equal(h.controller.getState().uncertain,true);assert.equal(writes(h).length,1);h.submit();assert.equal(writes(h).length,1);h.click('[data-qc-action=retry-create]');await flush();assert.deepEqual(writes(h)[0],writes(h)[1]);assert.equal(h.document.querySelector('[data-qc-secret]'),null);assert.match(h.element('#channels').textContent,/Dispositivo recuperado/);
+
+test('stale revisions block authority without retrying or creating an update loop',async t=>{
+  const row=item({enabled:true}),h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?state(item({enabled:true,revision:2}),'connected'):undefined});t.after(()=>h.close());assert.equal(h.controller.getState().stale,true);const count=h.calls.length;await h.tick(30000);assert.equal(h.calls.length,count);assert.deepEqual(writes(h),[]);
 });
-test('canceling creation performs no write and keeps the registered channels',async t=>{
-  const h=await makeChannels();t.after(()=>h.close());h.click('[data-qc-action=new]');h.fill('[name=label]','Descartar');h.click('[data-qc-action=cancel-create]');assert.equal(writes(h).length,0);assert.match(h.element('#channels').textContent,/Canal sintético/);
+
+test('polling is serialized and stops on hidden screens or unmount',async t=>{
+  const h=await makeChannels({data:listing([item({enabled:true})])});t.after(()=>h.close());const count=h.calls.length;await h.tick(10000);assert.equal(h.calls.length,count+2);await h.visibility(true);const hidden=h.calls.length;await h.tick(20000);assert.equal(h.calls.length,hidden);h.controller.unmount();assert.equal(h.timers.size,0);assert.equal(h.element('#channels').childElementCount,0);assert.deepEqual(writes(h),[]);
 });
-test('enabling the channel requires a review and cannot enable the assistant or start a session',async t=>{
-  const h=await makeChannels({respond:(path,method,payload)=>method==='PATCH'?item({enabled:payload.enabled,revision:2}):undefined});t.after(()=>h.close());h.click('[data-qc-action=enable]');assert.equal(writes(h).length,0);assert.match(h.element('.qc-confirm').textContent,/Não inicia uma sessão/);h.submit();await flush();assert.deepEqual(writes(h)[0],{path:base+'/'+channelA,method:'PATCH',data:{expected_revision:1,enabled:true}});assert.equal(h.controller.getState().items[0].assistant_enabled,false);assert.equal(writes(h).some(call=>call.path.endsWith('/start')),false);
+
+test('invalid status responses back off without inventing a connection or recursively reading',async t=>{
+  const h=await makeChannels({data:listing([item({enabled:true})]),respond:path=>path.endsWith('/status')?{channel_id:channelA,status:'connected'}:undefined});t.after(()=>h.close());assert.equal(h.controller.getState().runtime,null);assert.equal(h.calls.length,2);await h.tick(14999);assert.equal(h.calls.length,2);await h.tick(1);assert.equal(h.calls.length,3);assert.deepEqual(writes(h),[]);
 });
-test('start is an independent POST with current revision and no channel secret',async t=>{
-  const row=item({enabled:true});const h=await makeChannels({data:listing([row]),respond:(path,method)=>method==='POST'?runtime(row,'connecting'):undefined});t.after(()=>h.close());h.click('[data-qc-action=start]');assert.equal(writes(h).length,0);h.submit();await flush();assert.deepEqual(writes(h)[0],{path:base+'/'+channelA+'/start',method:'POST',data:{expected_revision:1}});assert.equal(h.controller.getState().runtime.status,'connecting');assert.equal(h.controller.getState().items[0].assistant_enabled,false);
+
+test('a legacy member with metadata-only access never reads or prepares the shared admin session',async t=>{
+  const row=item({enabled:true,legacy_transport:true,can_manage:false}),h=await makeChannels({data:listing([row],{access:{can_manage:false},capabilities:{}})});t.after(()=>h.close());assert.equal(h.calls.length,1);assert.equal(h.document.querySelector('[data-qc-number]'),null);for(const action of ['prepare','recover','connect','assistant_on','stop'])assert.equal(h.document.querySelector('[data-qc-action='+action+']'),null);assert.deepEqual(writes(h),[]);
 });
-test('assistant activation has its own explicit acknowledgement and PATCH',async t=>{
-  const row=item({enabled:true});const h=await makeChannels({data:listing([row]),respond:(path,method,payload)=>method==='PATCH'?item({enabled:true,assistant_enabled:payload.assistant_enabled,revision:2}):undefined});t.after(()=>h.close());h.click('[data-qc-action=assistant_on]');h.submit();await flush();assert.equal(writes(h).length,0);h.check('[name=authorize_assistant]');h.submit();await flush();assert.deepEqual(writes(h)[0].data,{expected_revision:1,assistant_enabled:true});assert.equal('enabled' in writes(h)[0].data,false);assert.equal(writes(h).some(call=>/start|send/.test(call.path)),false);
+
+test('the authorized canonical alias prepares explicitly without global APIs, changing enabled or escalating recovery',async t=>{
+  const row=item({enabled:true,legacy_transport:true});let phase='qr_expired';
+  const caps={prepare:true,recover:true,qr:true,pair:true,start:true,stop:false,change_state:false,change_assistant:true};
+  const h=await makeChannels({data:listing([row],{capabilities:caps}),respond:(path,method,data)=>path.endsWith('/status')?state(row,phase,{capabilities:{pair:true}}):path.endsWith('/prepare')?(phase='connecting',state(row,phase)):undefined});t.after(()=>h.close());
+  h.click('[data-qc-action=prepare]');assert.deepEqual(writes(h),[]);h.click('[data-qc-action=cancel-confirm]');assert.deepEqual(writes(h),[]);h.click('[data-qc-action=prepare]');h.submit();await flush();assert.deepEqual(writes(h),[{path:base+'/'+channelA+'/prepare',method:'POST',data:{expected_revision:1,mode:'reconnect'}}]);assert.equal(h.controller.getState().runtime.status,'connecting');assert.equal(h.calls.some(call=>call.path.startsWith('/api/v1/qr/')||/recover$/.test(call.path)),false);
 });
-test('stop preserves channel/assistant configuration and never calls delete or logout',async t=>{
-  const row=item({enabled:true,assistant_enabled:true});const h=await makeChannels({data:listing([row]),respond:(path,method)=>method==='POST'?runtime(row,'stopped'):undefined});t.after(()=>h.close());h.click('[data-qc-action=stop]');assert.match(h.element('.qc-confirm').textContent,/não desvincula o aparelho/);h.submit();await flush();assert.deepEqual(writes(h)[0],{path:base+'/'+channelA+'/stop',method:'POST',data:{expected_revision:1}});assert.equal(h.controller.getState().items[0].assistant_enabled,true);assert.equal(h.controller.getState().items[0].enabled,true);assert.equal(writes(h).some(call=>call.method==='DELETE'||/logout|disconnect/.test(call.path)),false);
+
+test('a fresh active, pairing, revoked or uncertain alias state interrupts preparation without a different mutation',async t=>{
+  const row=item({enabled:true,legacy_transport:true}),caps={prepare:true,recover:true,qr:true,pair:true,start:true,change_assistant:true};
+  for(const next of ['connected','pairing','logged_out','pair_failed','error']){
+    let phase='qr_expired';const h=await makeChannels({data:listing([row],{capabilities:caps}),respond:path=>path.endsWith('/status')?state(row,phase,{capabilities:{pair:true}}):undefined});h.click('[data-qc-action=prepare]');phase=next;h.submit();await flush();assert.deepEqual(writes(h),[],next);assert.equal(h.controller.getState().runtime.status,next);if(['logged_out','pair_failed'].includes(next))assert.ok(h.element('[data-qc-action=recover]'));h.close();
+  }
 });
-test('a stale-revision rejection never retries the state change automatically',async t=>{
-  const h=await makeChannels({respond:(path,method)=>{if(method==='PATCH')throw Object.assign(Error('stale secret text'),{status:409});}});t.after(()=>h.close());h.click('[data-qc-action=enable]');h.submit();await flush();assert.equal(writes(h).length,1);assert.equal(h.controller.getState().uncertain,false);assert.match(h.element('[role=alert]').textContent,/canal mudou/);assert.doesNotMatch(h.element('#channels').textContent,/stale secret/);await h.tick(20000);assert.equal(writes(h).length,1);
+
+test('recovery of the alias requires its own capability and confirmation and cannot fall back to reconnect',async t=>{
+  const row=item({enabled:true,legacy_transport:true});let phase='logged_out';const caps={prepare:true,recover:true,qr:true,pair:true,start:true,change_assistant:true};
+  const h=await makeChannels({data:listing([row],{capabilities:caps}),respond:(path,method)=>path.endsWith('/status')?state(row,phase):path.endsWith('/prepare')?state(row,'connecting'):undefined});t.after(()=>h.close());h.click('[data-qc-action=recover]');phase='qr_ready';h.submit();await flush();assert.deepEqual(writes(h),[]);
+  phase='logged_out';h.click('[data-qc-action=refresh]');await flush();h.click('[data-qc-action=recover]');h.submit();await flush();assert.deepEqual(writes(h),[{path:base+'/'+channelA+'/prepare',method:'POST',data:{expected_revision:1,mode:'recover'}}]);
 });
-test('status polling is serialized and stops on unmount',async t=>{
-  const h=await makeChannels({data:listing([item({enabled:true})])});t.after(()=>h.close());const initial=h.calls.length;await h.tick(10000);assert.equal(h.calls.length,initial+2);assert.equal(writes(h).length,0);h.controller.unmount();assert.equal(h.timers.size,0);await h.tick(30000);assert.equal(h.calls.length,initial+2);assert.equal(h.element('#channels').childElementCount,0);
-});
-test('hidden or inactive hosts do not poll and discard one-time private content',async t=>{
-  const h=await makeChannels({hidden:true,data:listing([item({enabled:true})])});t.after(()=>h.close());assert.equal(h.calls.length,0);h.element('#channels').hidden=false;await flush();assert.ok(h.calls.length>=2);h.controller.setActive(false);const count=h.calls.length;await h.tick(20000);assert.equal(h.calls.length,count);assert.equal(h.timers.size,0);h.controller.setActive(true);await flush();assert.ok(h.calls.length>count);await h.visibility(true);const hiddenCount=h.calls.length;await h.tick(20000);assert.equal(h.calls.length,hiddenCount);
-});
-test('a delayed status or QR from channel A cannot replace the selected channel B',async t=>{
-  const late=deferred(),a=item({enabled:true}),b=item({id:channelB,label:'Canal B',enabled:true});let waiting=true;
-  const h=await makeChannels({data:listing([a,b]),respond:path=>path.endsWith('/'+channelA+'/qr')&&waiting?late.promise:path.endsWith('/status')?runtime(path.includes(channelB)?b:a,'qr_ready'):undefined});t.after(()=>h.close());openQR(h);await flush();h.click('[data-qc-channel="'+channelB+'"]');await flush();waiting=false;late.resolve({channel_id:channelA,revision:1,image:png,expires_in_ms:45000});await flush();assert.equal(h.controller.getState().selected,channelB);assert.equal(h.controller.getState().hasQR,false);assert.equal(h.document.querySelector('[data-qc-qr]'),null);assert.match(h.element('#channels').textContent,/Canal B/);
-});
-test('tenant switch drops old credentials and refuses a delayed previous-company response',async t=>{
-  const late=deferred();let pendingA=false;const h=await makeChannels({respond:path=>path.startsWith('/api/v1/tenants/'+tenantB)?listing([item({id:channelB,tenant_id:tenantB,label:'Empresa B'})]):pendingA?late.promise:undefined});t.after(()=>h.close());pendingA=true;const old=h.controller.load();await flush();await h.controller.setTenant(tenantB);late.resolve(listing());await old;assert.equal(h.controller.getState().tenantId,tenantB);assert.match(h.element('#channels').textContent,/Empresa B/);assert.doesNotMatch(h.element('#channels').textContent,/Canal sintético/);
-});
-test('QR display accepts only scoped PNG with matching revision and erases it at expiry',async t=>{
-  const row=item({enabled:true});const h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/qr')?{channel_id:channelA,revision:1,image:png,expires_in_ms:1000}:path.endsWith('/status')?runtime(row,'qr_ready'):undefined});t.after(()=>h.close());openQR(h);await flush();assert.ok(h.element('[data-qc-qr] img').src.startsWith('data:image/png;base64,'));await h.tick(1000);assert.equal(h.document.querySelector('[data-qc-qr]'),null);assert.equal(h.controller.getState().hasQR,false);assert.match(h.element('[role=alert]').textContent,/QR expirou/);
-});
-test('foreign, stale or non-PNG QR payloads never become browser images',async t=>{
-  const row=item({enabled:true});let answer={channel_id:channelB,revision:1,image:png,expires_in_ms:45000};const h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/qr')?answer:path.endsWith('/status')?runtime(row,'qr_ready'):undefined});t.after(()=>h.close());for(const invalid of [answer,{channel_id:channelA,revision:2,image:png,expires_in_ms:45000},{channel_id:channelA,revision:1,image:'data:image/svg+xml,<svg onload=alert(1)>',expires_in_ms:45000}]){answer=invalid;openQR(h);await flush();assert.equal(h.document.querySelector('[data-qc-qr] img'),null);}assert.equal(writes(h).length,0);
-});
-test('status failures show unknown rather than inventing a successful disconnection or connection',async t=>{
-  const h=await makeChannels({data:listing([item({enabled:true})]),respond:path=>{if(path.endsWith('/status'))throw Object.assign(Error('token-and-provider-detail'),{status:503});}});t.after(()=>h.close());assert.equal(h.controller.getState().runtime,null);assert.match(h.element('#channels').textContent,/Não verificada/);assert.doesNotMatch(h.element('#channels').textContent,/token-and-provider/);assert.equal(writes(h).length,0);
-});
-test('channel labels cannot inject HTML and no key appears after a replay',async t=>{
-  const h=await makeChannels({data:listing([item({label:'<img src=x onerror=alert(1)>'})])});t.after(()=>h.close());assert.match(h.element('#channels').textContent,/<img/);assert.equal(h.document.querySelector('img[src=x]'),null);assert.equal(h.document.querySelector('[data-qc-secret]'),null);assert.deepEqual(h.errors,[]);
-});
-test('confirmation pauses polling so an acknowledgement cannot be erased by a background response',async t=>{
-  const row=item({enabled:true});const h=await makeChannels({data:listing([row])});t.after(()=>h.close());h.click('[data-qc-action=assistant_on]');h.check('[name=authorize_assistant]');const count=h.calls.length;await h.tick(20000);assert.equal(h.calls.length,count);assert.equal(h.element('[name=authorize_assistant]').checked,true);h.click('[data-qc-action=cancel-confirm]');await h.tick(5000);assert.ok(h.calls.length>count);assert.equal(writes(h).length,0);
-});
-test('a changed server revision blocks old authority and does not start an immediate reload loop',async t=>{
-  const row=item({enabled:true});const h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?runtime(item({enabled:true,revision:2}),'connected'):undefined});t.after(()=>h.close());assert.equal(h.controller.getState().stale,true);assert.equal(h.controller.getState().runtime,null);const count=h.calls.length;await h.tick(30000);assert.equal(h.calls.length,count);h.click('[data-qc-action=start]');assert.equal(h.document.querySelector('[data-qc-form=confirm]'),null);assert.equal(writes(h).length,0);assert.match(h.element('[role=alert]').textContent,/Atualize a lista/);
-});
-test('an invalid status contract backs off without inventing a state or recursive GETs',async t=>{
-  const h=await makeChannels({data:listing([item({enabled:true})]),respond:path=>path.endsWith('/status')?{channel_id:channelA,status:'connected'}:undefined});t.after(()=>h.close());assert.equal(h.controller.getState().runtime,null);assert.equal(h.calls.length,2);await h.tick(14999);assert.equal(h.calls.length,2);await h.tick(1);assert.equal(h.calls.length,3);assert.equal(writes(h).length,0);
+
+test('the legacy assistant uses its specific permission without exposing or changing private allowlists',async t=>{
+  const row=item({enabled:true,legacy_transport:true,assistant_enabled:true}),caps={qr:true,pair:true,change_state:false,change_assistant:true};
+  const h=await makeChannels({data:listing([row],{capabilities:caps}),respond:(path,method,data)=>method==='PATCH'?(Object.assign(row,{assistant_enabled:data.assistant_enabled,revision:2}),row):path.endsWith('/status')?state(row,'connected'):undefined});t.after(()=>h.close());assert.equal(h.element('[data-qc-action=assistant_off]').disabled,false);h.click('[data-qc-action=assistant_off]');h.submit();await flush();assert.deepEqual(writes(h)[0].data,{expected_revision:1,assistant_enabled:false});assert.equal('allowed_senders' in writes(h)[0].data,false);assert.equal(h.controller.getState().connection.legacy_transport,true);
 });

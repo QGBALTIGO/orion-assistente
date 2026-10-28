@@ -26,10 +26,12 @@ import zlib
 ROOT = Path(__file__).resolve().parents[1]
 TENANT = '10000000-0000-4000-8000-000000000001'
 CHANNEL = '30000000-0000-4000-8000-000000000003'
+HISTORICAL_CHANNEL = '30000000-0000-4000-8000-000000000004'
 OWNER = '50000000-0000-4000-8000-000000000005'
 BASE = '/api/v1/tenants/' + TENANT
 ROLES = {'admin', 'owner', 'reader'}
-STATES = {'disconnected', 'logged_out', 'connected', 'expired', 'error', 'uncertain', 'qr_expired', 'qr_delayed'}
+STATES = {'disconnected', 'logged_out', 'connected', 'connected_unverified', 'expired', 'error', 'uncertain', 'qr_expired', 'qr_delayed'}
+CONNECTIONS = {'existing', 'missing', 'legacy', 'unsafe_legacy', 'history', 'ambiguous'}
 COOKIE = 'orion_whatsapp_fixture'
 _sessions: dict[str, dict] = {}
 _lock = threading.Lock()
@@ -60,19 +62,41 @@ def synthetic_png() -> str:
 PNG = synthetic_png()
 
 
-def make_session(role, state):
-    return {'role': role, 'scenario': state, 'status': 'starting' if state in {'disconnected', 'expired', 'uncertain'} else state,
-            'enabled': state in {'logged_out', 'connected'}, 'assistant_enabled': False, 'revision': 1,
+def make_session(role, state, connection='existing'):
+    status = 'starting' if state in {'disconnected', 'expired', 'uncertain'} else 'connected' if state == 'connected_unverified' else state
+    return {'role': role, 'scenario': state, 'status': status,
+            'enabled': state in {'logged_out', 'connected', 'connected_unverified'}, 'assistant_enabled': False, 'revision': 1,
             'csrf': 'synthetic-whatsapp-' + secrets.token_hex(12), 'calls': [], 'unexpected': [], 'dropped': False,
+            'connection': connection, 'exists': connection != 'missing',
+            'assistant_activation_allowed': connection != 'missing',
             'ready_at': time.monotonic() + .05}
 
 
 def channel(session):
-    can = session['role'] in {'admin', 'owner'}
+    can = session['role'] in {'admin', 'owner'} and not (session['connection'] == 'legacy' and session['role'] != 'admin')
+    legacy = session['connection'] == 'legacy'
     return {'id': CHANNEL, 'tenant_id': TENANT, 'owner_account_id': OWNER, 'provider': 'baileys',
             'label': 'WhatsApp sintético da empresa', 'enabled': session['enabled'],
             'assistant_enabled': session['assistant_enabled'], 'revision': session['revision'],
-            'can_manage': can, **({'allowed_senders': ['5511900000001']} if can else {})}
+            'can_manage': can, 'legacy_transport': legacy,
+            'assistant_activation_allowed': can and session['assistant_activation_allowed'],
+            'capabilities': {'start': can, 'stop': can and not legacy, 'qr': can, 'pair': can,
+                             'change_state': can and not legacy,
+                             'change_assistant': can and session['assistant_activation_allowed'],
+                             'prepare': can and legacy and session['role'] == 'admin',
+                             'recover': can and legacy and session['role'] == 'admin'}}
+
+
+def connection_listing(session):
+    can = session['role'] in {'admin', 'owner'} and not (session['connection'] == 'legacy' and session['role'] != 'admin')
+    state = 'ambiguous' if session['connection'] in {'ambiguous', 'unsafe_legacy'} else 'ready' if session['exists'] else 'missing'
+    connection = channel(session) if state == 'ready' else None
+    capabilities = connection['capabilities'] if connection else dict.fromkeys(
+        ('start', 'stop', 'qr', 'pair', 'change_state', 'change_assistant'), False)
+    return {'connection': connection, 'canonical_id': CHANNEL if connection else None, 'canonical_state': state,
+            'items': [connection] if connection else [], 'access': {'can_manage': can},
+            'capabilities': {**capabilities, 'provision': can and state == 'missing',
+                             'edit_label': False, 'edit_allowlist': False}}
 
 
 def runtime(session, scoped=False):
@@ -86,9 +110,11 @@ def runtime(session, scoped=False):
     status = session['status']
     if scoped:
         status = 'disabled' if not session['enabled'] else 'stopped' if status == 'starting' else status
+        verified = status == 'connected' and session['scenario'] != 'connected_unverified'
         return {'channel_id': CHANNEL, 'revision': session['revision'], 'enabled': session['enabled'],
                 'assistant_enabled': session['assistant_enabled'], 'status': status,
-                'capabilities': {'pair': session['enabled'] and status in {'connecting', 'qr_ready', 'pairing', 'pair_expired'}}}
+                'phone': '5511900000001' if verified else None, 'phone_verified': verified,
+                'capabilities': {'pair': session['connection'] != 'legacy' and session['enabled'] and status in {'connecting', 'qr_ready', 'pairing', 'pair_expired'}}}
     return {'status': status, 'phone': '5511900000001' if status == 'connected' else None,
             'ingestion': 'receiving' if status == 'connected' else 'inactive', 'automaticRepliesEnabled': False,
             'profile': {'name': 'Conta WhatsApp sintética', 'phone': '5511900000001', 'image': None},
@@ -137,11 +163,12 @@ class Handler(BaseHTTPRequestHandler):
         if path in {'/', '/panel'}:
             role = query.get('fixtureRole', ['admin'])[0]
             state = query.get('fixtureState', ['disconnected'])[0]
-            if role not in ROLES or state not in STATES:
+            connection = query.get('fixtureConnection', ['existing'])[0]
+            if role not in ROLES or state not in STATES or connection not in CONNECTIONS:
                 return self.body({'detail': 'Unknown synthetic role/state'}, 400)
             token = secrets.token_urlsafe(24)
             with _lock:
-                _sessions[token] = make_session(role, state)
+                _sessions[token] = make_session(role, state, connection)
             return self.body((ROOT / 'app/static/panel.html').read_bytes(), mime='text/html', cookie=token)
         if path.startswith(('/panel-assets/', '/brand/')):
             name = path.rsplit('/', 1)[-1]
@@ -160,6 +187,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.reject(None, 'Open the synthetic panel URL first')
         if path == '/__fixture/calls':
             return self.body({'role': session['role'], 'scenario': session['scenario'],
+                              'connection': session['connection'],
+                              'stored_connection_ids': ([CHANNEL] if session['exists'] else []) +
+                                  ([HISTORICAL_CHANNEL] if session['connection'] in {'history', 'ambiguous'} else []),
                               'calls': session['calls'], 'unexpected': session['unexpected']})
         session['calls'].append({'method': 'GET', 'path': self.path})
         role = session['role']
@@ -201,10 +231,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == BASE + '/management/marketing/execution':
             return self.body({'available': False})
         if path == BASE + '/qr-channels':
-            can = role != 'reader'
-            return self.body({'items': [channel(session)], 'access': {'can_manage': can},
-                              'capabilities': {'start': can, 'stop': can, 'qr': can, 'pair': can, 'change_state': can,
-                                               'edit_label': False, 'edit_allowlist': False}})
+            return self.body(connection_listing(session))
         if path.startswith('/api/v1/qr/'):
             if role != 'admin':
                 return self.reject(session, 'Global connector is admin-only')
@@ -218,8 +245,10 @@ class Handler(BaseHTTPRequestHandler):
             if path in {'/api/v1/qr/chats', '/api/v1/qr/messages'}:
                 return self.body({'items': []})
         if path.startswith(BASE + '/qr-channels/' + CHANNEL + '/'):
-            if role == 'reader':
+            if role == 'reader' or session['connection'] == 'legacy' and role != 'admin':
                 return self.reject(session, 'Channel operation is owner-only')
+            if not session['exists'] or session['connection'] in {'ambiguous', 'unsafe_legacy'}:
+                return self.reject(session, 'A canonical connection is required')
             action = path.rsplit('/', 1)[-1]
             if action == 'status':
                 return self.body(runtime(session, True))
@@ -266,10 +295,24 @@ class Handler(BaseHTTPRequestHandler):
             return self.reject(session, 'Missing synthetic CSRF')
         if session['role'] == 'reader':
             return self.reject(session, 'Read-only synthetic account')
+        if session['connection'] == 'legacy' and session['role'] != 'admin':
+            return self.reject(session, 'Preserved legacy connection is native-admin-only')
         global_action = path.removeprefix('/api/v1/qr/') if path.startswith('/api/v1/qr/') else None
         scoped_action = path.removeprefix(BASE + '/qr-channels/' + CHANNEL + '/') if path.startswith(BASE + '/qr-channels/' + CHANNEL + '/') else None
         if global_action and session['role'] != 'admin':
             return self.reject(session, 'Global connector is admin-only')
+        if self.command == 'POST' and path == BASE + '/qr-channels/provision':
+            if set(payload) != {'idempotency_key'} or not isinstance(payload['idempotency_key'], str) or not re.fullmatch(r'[a-fA-F0-9-]{36}', payload['idempotency_key']):
+                return self.reject(session, 'Provision requires only its synthetic idempotency key')
+            if session['connection'] in {'ambiguous', 'unsafe_legacy'}:
+                return self.body({'detail': 'A conexão existente precisa de revisão antes de continuar.'}, 409)
+            if not session['exists']:
+                session.update(exists=True, enabled=False, assistant_enabled=False, revision=1,
+                               assistant_activation_allowed=False, status='starting')
+            return self.body(connection_listing(session))
+        if path.startswith(BASE + '/qr-channels/' + CHANNEL) and (
+                not session['exists'] or session['connection'] in {'ambiguous', 'unsafe_legacy'}):
+            return self.reject(session, 'A canonical connection is required')
         if self.command == 'PATCH' and path == BASE + '/qr-channels/' + CHANNEL:
             if payload.get('expected_revision') != session['revision']:
                 return self.body({'detail': 'Synthetic revision changed'}, 409)
@@ -279,13 +322,11 @@ class Handler(BaseHTTPRequestHandler):
                 if key in payload:
                     if not isinstance(payload[key], bool):
                         return self.reject(session)
+                    if key == 'assistant_enabled' and payload[key] and not session['assistant_activation_allowed']:
+                        return self.body({'detail': 'A configuração de atendimento precisa ser revisada antes de ativar.'}, 409)
                     session[key] = payload[key]
             session['revision'] += 1
             return self.body(channel(session))
-        if self.command == 'POST' and path == BASE + '/qr-channels':
-            if set(payload) != {'label', 'allowed_senders', 'provider', 'idempotency_key'}:
-                return self.reject(session)
-            return self.body(channel(session), 201)
         if self.command != 'POST' or (global_action not in {'pair', 'reconnect', 'recover'} and scoped_action not in {'start', 'stop', 'pair'}):
             return self.reject(session)
         if scoped_action and payload.get('expected_revision') != session['revision']:
