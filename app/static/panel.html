@@ -283,6 +283,12 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 /* Authentication uses the shared suite tokens in orion-auth.css. */
 
 .admin-client-center{display:grid;gap:20px;max-width:1000px;margin:24px 0}
+.admin-client-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.admin-client-stat{border:1px solid var(--border);border-radius:14px;padding:16px;background:var(--panel)}
+.admin-client-stat span{display:block;color:var(--muted);font-size:.85rem}
+.admin-client-stat strong{display:block;color:var(--text);font-size:1.5rem;margin-top:8px}
+@media(max-width:620px){.admin-client-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 .admin-client-center.hidden{display:none}
 .admin-client-search{display:grid;grid-template-columns:minmax(0,1fr) minmax(130px,180px) auto;gap:12px}
 .admin-client-search input,.admin-client-search select,.admin-client-center textarea{min-width:0;width:100%;border:1px solid var(--border);border-radius:12px;padding:12px;font:inherit;background:var(--panel);color:var(--text)}
@@ -926,9 +932,15 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
       </section>
       <section id="adminClientCenter" class="admin-client-center hidden" aria-label="Administração de clientes">
         <div class="member-settings-heading"><h2>Central de Administração de Clientes</h2><p>Gerencie contas, suspenda acessos e restaure exclusões em até 30 dias.</p></div>
+        <div class="admin-client-stats" id="adminClientStats" aria-label="Resumo de contas">
+          <div class="admin-client-stat"><span>Total</span><strong data-admin-stat="total">—</strong></div>
+          <div class="admin-client-stat"><span>Ativas</span><strong data-admin-stat="active">—</strong></div>
+          <div class="admin-client-stat"><span>Suspensas</span><strong data-admin-stat="suspended">—</strong></div>
+          <div class="admin-client-stat"><span>Arquivadas</span><strong data-admin-stat="archived">—</strong></div>
+        </div>
         <form id="adminClientSearch" class="admin-client-search">
           <input id="adminClientQuery" type="search" placeholder="Buscar por nome, e-mail ou empresa" aria-label="Buscar contas" maxlength="120">
-          <select id="adminClientStatus" aria-label="Situação"><option value="all">Todas</option><option value="active">Ativas</option><option value="suspended">Suspensas</option><option value="archived">Arquivadas</option></select>
+          <select id="adminClientStatus" aria-label="Situação"><option value="all">Todas</option><option value="active">Ativas</option><option value="suspended">Suspensas</option><option value="archived">Arquivadas</option><option value="erased">Excluídas</option></select>
           <button type="submit" class="btn">Buscar</button>
         </form>
         <p id="adminClientCount" role="status" aria-live="polite"></p>
@@ -1823,8 +1835,28 @@ function adminClientButton(label,action){
  const button=document.createElement("button");button.type="button";button.className="btn";
  button.textContent=label;button.addEventListener("click",()=>void adminClientAction(action));return button;
 }
+const accountStateLabels={
+ active:"Ativa",suspended:"Suspensa",archived:"Arquivada",
+ erased:"Excluída definitivamente"
+};
+async function loadAdminStats(){
+ if(!adminOnly())return;
+ const epoch=authEpoch;
+ try{
+  const data=await api("/api/v1/admin/accounts/stats");
+  if(epoch!==authEpoch||!adminOnly())return;
+  for(const key of ["total","active","suspended","archived"]){
+   const el=document.querySelector('[data-admin-stat="'+key+'"]');
+   if(el)el.textContent=String(data[key]??0);
+  }
+ }catch(error){
+  if(epoch===authEpoch)adminText("adminClientFeedback",
+    "Não foi possível consultar os indicadores: "+error.message);
+ }
+}
 async function loadAdminClients(append=false){
  if(!adminOnly())return;
+ if(!append)void loadAdminStats();
  const epoch=authEpoch,seq=++adminClientEpoch,page=append?adminClientPage+1:1;
  adminText("adminClientCount","Consultando contas…");
  try{
@@ -1837,7 +1869,8 @@ async function loadAdminClients(append=false){
   for(const item of data.items){
    const row=document.createElement("div");row.className="admin-client-row";
    const info=document.createElement("div"),strong=document.createElement("strong"),small=document.createElement("small");
-   strong.textContent=item.name;small.textContent=[item.email,item.company_name||"Sem empresa",item.state].join(" · ");
+   strong.textContent=item.name;small.textContent=[item.email,item.company_name||"Sem empresa",
+    accountStateLabels[item.state]||item.state].join(" · ");
    info.append(strong,small);
    const button=document.createElement("button");button.type="button";button.className="btn";
    button.textContent="Gerenciar";button.addEventListener("click",()=>void openAdminClient(item.id));
@@ -1856,14 +1889,21 @@ async function openAdminClient(id){
   adminClientSelected=data.account;
   const a=data.account;
   $("adminClientDetails").classList.remove("hidden");
-  adminText("adminClientTitle",a.name+" · "+a.state);
-  adminText("adminClientCompany",[a.email,a.company_name||"Sem empresa"].join(" · "));
+  adminText("adminClientTitle",a.name+" · "+(accountStateLabels[a.state]||a.state));
+  const deadline=a.purge_after?new Date(a.purge_after).toLocaleDateString("pt-BR"):"";
+  const retention=a.state==="archived"?
+    (a.legal_hold?" · Retenção legal ativa":(" · Recuperável até "+deadline)):"";
+  adminText("adminClientCompany",[a.email,a.company_name||"Sem empresa"].join(" · ")+retention);
   $("adminClientName").value=a.name;
   $("adminClientReason").value="";
   const actions=$("adminClientActions");actions.replaceChildren();
   if(a.state==="active"){actions.append(adminClientButton("Suspender","suspend"),adminClientButton("Excluir (30 dias)","archive"));}
   if(a.state==="suspended"){actions.append(adminClientButton("Reativar","reactivate"),adminClientButton("Excluir (30 dias)","archive"));}
-  if(a.state==="archived")actions.append(adminClientButton("Restaurar conta","restore"));
+  if(a.state==="archived"){
+   actions.append(adminClientButton("Restaurar conta","restore"));
+   actions.append(adminClientButton(a.legal_hold?"Encerrar retenção legal":"Aplicar retenção legal",
+      a.legal_hold?"release_hold":"hold"));
+  }
   const history=$("adminClientHistory");history.replaceChildren();
   for(const entry of data.history){
    const p=document.createElement("p");p.textContent=[entry.action,entry.reason,
