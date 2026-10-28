@@ -226,6 +226,12 @@ def _fitting_bindings(pros, services, facts):
     return fitting_services, fitting_professionals
 
 
+def _uses_quick_profile(meta):
+    """Avoid retroactively changing onboarding already completed on old screens."""
+    return bool(meta and meta["is_new"] and
+                (meta["completed_at"] is None or "business_metrics" in meta["configuration"]))
+
+
 def readiness(configuration, facts, managed=None, *, staged=True, profile_only=False):
     """For quick setup, require profile answers; operational gates stay strict.
 
@@ -395,7 +401,7 @@ async def _state(db, tenant, access):
         configuration = {"niche": categories[0] if len(categories) == 1 else None,
                          "activity": "both" if facts["products"] and facts["services"] else "products" if facts["products"] else "services" if facts["services"] else None,
                          "contact_phone": published.get("contact_phone"), "modality": None, "private_address": None}
-    quick_setup = bool(meta and meta["is_new"])
+    quick_setup = _uses_quick_profile(meta)
     pending = readiness(configuration, facts, managed, profile_only=quick_setup)
     configuration.setdefault("private_address", None)
     # SQL details and the route identity must also be ordinary before using
@@ -437,7 +443,8 @@ async def _state(db, tenant, access):
               "version": meta["version"] if meta else 0, "can_edit": access.role in {"owner", "support", "admin"},
               "status": "legacy" if not meta else "complete" if meta["completed_at"] else "incomplete",
               "required": bool(meta and meta["is_new"] and not meta["completed_at"]),
-              "current_step": meta["current_step"] if meta else "business", "pending": pending,
+              "current_step": ("profile" if quick_setup and meta["current_step"] == "catalog" else meta["current_step"]) if meta else "business",
+              "pending": pending,
               "steps": [{"id": k, "label": label, "required": k not in {"channels", "review"}
                          and (k not in {"hours", "professionals"} or configuration.get("activity") != "products"),
                          "complete": k not in missing and (k != "review" or bool(configuration.get("reviewed")))} for k, label in step_labels.items()],
@@ -827,7 +834,7 @@ async def save_step(actor, tenant, step, payload):
                             meta["configuration"]["reviewed"] = False
                         result = await _apply_step(db, tenant, meta, step, data, access)
                         pending = readiness(meta["configuration"], await _facts(db, tenant), meta["managed_ids"],
-                                            profile_only=bool(meta["is_new"]))
+                                            profile_only=_uses_quick_profile(meta))
                         meta["current_step"] = pending[0]["step"] if pending else "review"
                         await _persist(db, tenant, actor, meta, payload.idempotency_key, fingerprint, step, result)
                     response = await _state(db, tenant, access)
@@ -857,7 +864,7 @@ async def complete(actor, tenant, payload):
                 if payload.expected_snapshot != _snapshot(meta["configuration"], meta["managed_ids"], current_facts):
                     conflict("O catálogo ou expediente mudou. Revise os dados atuais antes de concluir")
                 pending = readiness(meta["configuration"], current_facts, meta["managed_ids"],
-                                    profile_only=bool(meta["is_new"]))
+                                    profile_only=_uses_quick_profile(meta))
                 if pending:
                     raise HTTPException(409, {"message": "Complete os fatos pendentes antes de concluir", "pending": pending})
                 for table in ("professionals", "services", "commercial_products", "commercial_variants"):
