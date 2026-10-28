@@ -95,6 +95,28 @@ async def configured(ctx, *, activity="services", state=None):
 
 
 @pytest.mark.asyncio
+async def test_new_business_requires_whatsapp_and_adopts_timezone_from_private_address(onboarding_db):
+    ctx = new_business_context(onboarding_db)
+    missing = creation().model_copy(update={"contact_phone": None})
+    with pytest.raises(HTTPException) as err:
+        await service.create_business(ctx.actor, missing)
+    assert err.value.status_code == 422
+    first = await service.create_business(ctx.actor, creation())
+    assert first["timezone"] == "America/Cuiaba"
+    state = await save(ctx, first, "location", {
+        "modality": "onsite", "address": {
+            "postal_code": "79002-000", "street": "Rua sintética", "number": "123A",
+            "no_number": False, "neighborhood": "Centro", "city": "Campo Grande", "state": "MS",
+        }
+    })
+    assert state["timezone"] == "America/Campo_Grande"
+    async with ctx.migration.connect() as db:
+        saved_tz = (await db.execute(text("SELECT timezone FROM tenants WHERE id=:t"),
+                                     {"t": UUID(first["tenant_id"])})).scalar_one()
+    assert saved_tz == "America/Campo_Grande"
+
+
+@pytest.mark.asyncio
 async def test_create_unverified_personal_account_is_atomic_paused_and_idempotent(onboarding_db):
     ctx = new_business_context(onboarding_db)
     payload = creation()

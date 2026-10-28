@@ -83,7 +83,7 @@ test('creating the first business binds the verified account and preserves the r
   if(path.startsWith('/api/v1/onboarding/entry'))return {enabled:true,kind:'onboarding',tenant_id:created?tenantA:null,create_allowed:!created,businesses:[]};
   if(path==='/api/v1/onboarding/businesses'&&method==='POST'){created=true;return fullState({tenant_id:tenantA,name:'Meu negócio',current_step:'location'});}
  }});t.after(()=>h.close());await flush();
- for(const [name,value] of Object.entries({name:'Meu negócio',niche:'barbearia',activity:'services',timezone:'America/Cuiaba'}))h.fill('#orionSetup [name='+name+']',value);
+ for(const [name,value] of Object.entries({name:'Meu negócio',niche:'barbearia',activity:'services',contact_phone:'(67) 99999-9901'}))h.fill('#orionSetup [name='+name+']',value);
  h.submit('[data-ob-form=create]');await flush();assert.match(h.element('#orionSetup').textContent,/Onde você atende/);assert.equal(h.element('#businessTenant').value,tenantA);assert.equal(h.element('#appView').classList.contains('ob-gated'),true);assert.equal(h.calls.filter(c=>c.path==='/api/v1/onboarding/businesses').length,1);assert.equal(h.calls.filter(c=>c.path.startsWith('/api/v1/onboarding/entry')).length,1);assert.equal(h.errors.length,0);
 });
 
@@ -94,7 +94,7 @@ test('a lost first-creation response verifies the new account binding before rec
   if(path==='/api/v1/onboarding/businesses'&&method==='POST'){created=true;saved=fullState({tenant_id:tenantA,name:'Meu negócio',current_step:'location',last_operation_key:payload.idempotency_key});return jsonResponse({detail:'Resposta perdida após salvar'},503);}
   if(path.endsWith('/onboarding'))return saved;
  }});t.after(()=>h.close());await flush();
- for(const [name,value] of Object.entries({name:'Meu negócio',niche:'barbearia',activity:'services',timezone:'America/Cuiaba'}))h.fill('#orionSetup [name='+name+']',value);
+ for(const [name,value] of Object.entries({name:'Meu negócio',niche:'barbearia',activity:'services',contact_phone:'(67) 99999-9901'}))h.fill('#orionSetup [name='+name+']',value);
  h.submit('[data-ob-form=create]');await flush();h.click('[data-ob-action=refresh]');await flush();
  assert.equal(h.element('#businessTenant').value,tenantA);assert.match(h.element('#orionSetup').textContent,/servidor confirmou/);assert.equal(h.document.querySelector('[data-ob-action=retry-operation]'),null);assert.equal(h.calls.filter(c=>c.path==='/api/v1/onboarding/businesses').length,1);
  const accountReads=h.calls.map((c,i)=>c.path==='/api/v1/account/businesses'?i:-1).filter(i=>i>=0),recoveryRead=h.calls.findIndex(c=>c.path.endsWith('/onboarding'));
