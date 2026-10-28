@@ -1,8 +1,8 @@
 # Padronização dos campos — cobertura e evidências
 
-Este documento acompanha a implementação solicitada em 28/10/2026. A base de comparação é `ba563ef86680fa47548a4255e91c931ac4ec8a04`, posterior ao levantamento original `6ef8307f69be35af79784a2c546290566839a45e`. O código em edição é a referência para a entrega; as contagens abaixo têm método reproduzível e não representam, sozinhas, aprovação visual ou funcional.
+Este documento acompanha a implementação solicitada em 28/10/2026. A base de comparação é `ba563ef86680fa47548a4255e91c931ac4ec8a04`, posterior ao levantamento original `6ef8307f69be35af79784a2c546290566839a45e`. A revisão validada e o fechamento do PR são as referências para a entrega; as contagens abaixo têm método reproduzível e não representam, sozinhas, aprovação visual ou funcional.
 
-**Estado deste relatório: cobertura consolidada e evidências por revisão, em 28/10/2026.** A execução DOM agregada passou 722/722 testes; a seleção backend/assets passou 285 testes, incluindo requisições HTTP reais via ASGI. O CI confirmou esses mesmos totais na revisão `5379b8d0258623b9d416284a53af48bbfe9ab3f7`. As revisões CUA abaixo ocorreram em uma prévia isolada com dados sintéticos. O fechamento atualizado de Chromium/WebKit, commit integrado e revisão publicada é registrado no [PR #122](https://github.com/QGBALTIGO/orion-assistente/pull/122), para distinguir cada rodada da versão efetivamente entregue.
+**Estado deste relatório: cobertura consolidada e evidências por revisão, em 28/10/2026.** A execução DOM agregada passou 722/722 testes; a seleção backend/assets passou 285 testes, incluindo requisições HTTP reais via ASGI. O gate final [40613103096](https://github.com/QGBALTIGO/orion-assistente/actions/runs/40613103096) aprovou a revisão `4426320c423bb15c19f63d41e7674531eebfaa95`: **722 testes DOM, 285 backend/assets e 331 cenários de navegador (168 Chromium + 163 WebKit), sem falhas**. Os 116 casos focais DOM fazem parte dos 722 e não são somados duas vezes. As revisões CUA abaixo ocorreram em uma prévia isolada com dados sintéticos. O fechamento atualizado de Chromium/WebKit, commit integrado e revisão publicada é registrado no [PR #122](https://github.com/QGBALTIGO/orion-assistente/pull/122), para distinguir cada rodada da versão efetivamente entregue.
 
 Não foi fornecida a planilha `Levantamento_Campos_Orion.xlsx`. Por isso, a referência de cada campo é **arquivo + formulário/escopo + `name`/`id`**, sem IDs `ORI-xxx` inventados. Os 34 grupos deste documento organizam a revisão atual; não estabelecem correspondência com linhas desconhecidas da planilha.
 
@@ -160,16 +160,16 @@ O novo driver da suíte percorre Cliente, Serviço, Financeiro, Profissionais/co
 | Legado | Gate `fields-panel-legacy` e testes existentes do painel | Incluído no agregado final; gate focal de 14/14 também passou com `TZ=UTC`, incluindo fuso da empresa e guarda readonly/disabled |
 | Backend | `test_brazilian_form_contracts` e regressões de telefone/comissão/catálogo/onboarding/site/gestão | **285 aprovados**, 6 avisos de depreciação existentes do FastAPI, sem banco de produção |
 | Assets | `tests/unit/test_fields_assets.py` e `test_live_suite_asset.py` | Incluídos nos 285 aprovados. Variante HTTP via ASGI preservada: allowlists, body/MIME/cache/nosniff, ordem dos scripts e CSP; o resultado final não depende da chamada direta de handlers |
-| Suíte visual | `tests/e2e/browser_fields_standardization.py` + `fixtures/fields-panel.js` | Preparado e compilado; **não executado localmente**. Resultado depende da CI |
-| Público visual | Nove `tests/e2e/browser_public_*.py` | Loaders atualizados para core; três payloads E.164; casos/asserts anteriores preservados. Resultado depende da CI |
-| Acesso visual | `tests/e2e/browser_fields_access.py` | Preparado e compilado: 4 superfícies × 24 estados = 96 casos; fixtures específicas reaproveitam `fullState/entry` do harness; **não executado localmente** |
-| Drivers anteriores da suíte | Financeiro, desempenho, combos, jornada, clientes, endereço/slug e preço do serviço | Sete loaders atualizados para core JS/CSS, sem alterar asserts; incluídos no gate de navegador |
-| Regressões gerais | Todos os `ui-tests/*.test.mjs`; seleção Python do workflow | Local DOM: **722 aprovados, zero falhas, zero pulados**, em 66,8 s. Backend: **285 aprovados** em 5,85 s. As execuções de CI ainda estão pendentes |
+| Suíte visual | `tests/e2e/browser_fields_standardization.py` + `fixtures/fields-panel.js` | **24/24 casos aprovados em CI**; 15 estados por caso, incluindo oito formulários e modalidades. Não houve execução de browser por CLI local |
+| Público visual | Nove `tests/e2e/browser_public_*.py` | Loaders atualizados para core; três payloads E.164; casos/asserts anteriores preservados e aprovados no gate final de CI |
+| Acesso visual | `tests/e2e/browser_fields_access.py` | **96/96 casos aprovados em CI**: 4 superfícies × 24 estados; fixtures específicas reaproveitam `fullState/entry` do harness; não houve browser por CLI local |
+| Drivers anteriores da suíte | Financeiro, desempenho, combos, jornada, clientes, endereço/slug e preço do serviço | Sete loaders atualizados para core JS/CSS e bootstrap correspondente; asserções preservadas e aprovadas no gate final |
+| Regressões gerais | Todos os `ui-tests/*.test.mjs`; seleção Python do workflow | DOM local e CI: **722 aprovados, zero falhas, zero pulados**. Backend local e CI: **285 aprovados**. A rodada local final após os ajustes de CSS passou em 71,08 s; gate final CI `40613103096` aprovado |
 | Revisão manual em prévia | Wrapper isolado com fontes reais e fetch sintético | Cliente/Serviço 390×844 claro, Preferências 390×844 escuro, Público 360×800 e onboarding 768×1024 claro; detalhes e limites abaixo |
 
 ### Execuções locais reproduzíveis
 
-O comando DOM final foi `node --max-old-space-size=4096 --test --test-isolation=none ui-tests/*.test.mjs`. O log `/tmp/orion-fields-dom-verified.log` registra 722 testes, 722 aprovados, zero falhas, zero cancelados e zero pulados. Uma tentativa anterior com heap padrão de aproximadamente 2 GB terminou por falta de memória; ela não foi usada como resultado final. No workflow, a regressão geral continua em `npm test --prefix ui-tests`, com isolamento normal do runner Node e `NODE_OPTIONS=--max-old-space-size=4096`.
+O comando DOM final foi `node --max-old-space-size=4096 --test --test-isolation=none ui-tests/*.test.mjs`. Os logs `/tmp/orion-fields-dom-verified.log` e `/tmp/orion-fields-dom-post-layout.log` registram 722 testes, 722 aprovados, zero falhas, zero cancelados e zero pulados, inclusive após os últimos ajustes de CSS. Uma tentativa anterior com heap padrão de aproximadamente 2 GB terminou por falta de memória; ela não foi usada como resultado final. No workflow, a regressão geral continua em `npm test --prefix ui-tests`, com isolamento normal do runner Node e `NODE_OPTIONS=--max-old-space-size=4096`.
 
 O log `/tmp/orion-fields-backend-full.log` registra 285 testes aprovados em 5,85 s. A seleção é a do job `contracts`: `test_brazilian_form_contracts`, `test_fields_assets`, `test_live_suite_asset`, `test_professional_phone`, `test_professional_commissions`, `test_commercial_catalog`, `test_site_address_slugs`, `test_onboarding` e `test_management_extras_unit`. As rotas de assets foram exercitadas por HTTP via ASGI; nenhuma dependência de produção foi acionada. Os seis avisos são de depreciação de `on_event` no FastAPI.
 
@@ -196,19 +196,19 @@ O teste de alvo do ícone de histórico usa as mesmas asserções, mas agora ser
 
 Os harnesses legados QR passaram a carregar o core real antes do controlador do painel. Os 9 erros novos por dependência ausente foram eliminados. As **73 falhas restantes** coincidem literalmente com os nomes da base `ba563ef`, e as verificações antigas de migração/recorrência/cliente e a coleta sem Playwright têm seus resultados comparados no fechamento do PR. Esses pipelines gerais não devem ser descritos como todos verdes.
 
-O workflow `.github/workflows/fields-standardization.yml` separa DOM, contratos/assets/inventário e navegador Chromium/WebKit. Fixtures não encaminham rede real, usam domínios `orion.test`/`example.invalid`, dados inventados e respostas em memória; nenhum teste exige conta real nem envia mensagem, lead ou agendamento de produção. Os artefatos de navegador registram geometria e capturas. A existência do workflow não significa que a execução passou: anexar o resultado e o SHA efetivo antes de usar esse resultado como gate de publicação.
+O workflow `.github/workflows/fields-standardization.yml` separa DOM, contratos/assets/inventário e navegador Chromium/WebKit. Fixtures não encaminham rede real, usam domínios `orion.test`/`example.invalid`, dados inventados e respostas em memória; nenhum teste exige conta real nem envia mensagem, lead ou agendamento de produção. Os artefatos de navegador registram geometria e capturas. O run final `40613103096` terminou como `success` no commit `4426320`; essa é a evidência usada no gate de publicação. As cargas longas de homologação geral estavam em andamento no fechamento e não foram consideradas aprovadas; os erros históricos dos demais pipelines estão discriminados no PR.
 
 ### Fechamento da entrega
 
 | Informação | Evidência / registro final |
 | --- | --- |
-| Revisões verificadas | Base `ba563ef`; CI DOM/backend em `5379b8d`; revisão final, árvore e merge registrados no PR #122 |
+| Revisões verificadas | Base `ba563ef`; gate final no commit `4426320c423bb15c19f63d41e7674531eebfaa95`, árvore `a3828782e3c6be9b5f0f06a855bcd77de64659e0`. O commit posterior altera apenas este relatório; todos os arquivos de programa permanecem idênticos à revisão aprovada |
 | DOM local | 722/722 aprovados; `/tmp/orion-fields-dom-verified.log` |
 | Backend/assets local | 285 aprovados; `/tmp/orion-fields-backend-full.log` |
-| CI DOM | 116 focais + 722 na regressão completa aprovados no run `40611671455`; resultado da revisão final nos checks do PR |
-| CI backend/assets | 285 aprovados no run `40611671455`; resultado da revisão final nos checks do PR |
-| CI Chromium | Matriz de seis dimensões, dois temas e regressões existentes; resultado final e artefatos vinculados no PR #122 |
-| CI WebKit | Mesma matriz em emulação; resultado final e artefatos vinculados no PR #122 |
+| CI DOM | 116 focais e 722 na regressão completa aprovados; job `122569150315`, run final `40613103096`. Não somar os 116 novamente |
+| CI backend/assets | 285 aprovados; job `122569150222`, run final `40613103096` |
+| CI Chromium | **168 aprovados, zero falhas**; job `122569149986`, 292,81 s; artefato `12783444433` |
+| CI WebKit | **163 aprovados, zero falhas**; job `122569150200`, 709,73 s; artefato `12783664986`. Emulação, sem aparelho físico |
 | Grupos revisados por CUA, dimensões e temas | Cliente/Serviço 390×844 claro; Preferências 390×844 escuro; Público 360×800; onboarding/endereço 768×1024 claro, conforme tabela acima |
 | Browser real físico / autofill de sistema / zoom | Não demonstrado pelo ambiente sintético; não declarar aprovado sem prova adicional |
 | Publicação / smoke no ambiente publicado | O fechamento do PR registra merge, deploy Railway e comparação de assets/HTML/CSP/cache nos três hosts configurados; prévia isolada não substitui essa verificação |
