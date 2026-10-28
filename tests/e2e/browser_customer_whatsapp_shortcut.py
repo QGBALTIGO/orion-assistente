@@ -54,6 +54,7 @@ def test_whatsapp_shortcut_and_chevron_fit_real_mobile_browser(engine,width):
             page.add_style_tag(content=(ROOT/"app/static/orion-suite.css").read_text())
             page.add_style_tag(content=(ROOT/"app/static/orion-fields.css").read_text())
             page.add_script_tag(content=(ROOT/"app/static/orion-fields.js").read_text())
+            page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=(ROOT/"app/static/orion-suite.js").read_text())
             page.evaluate(INITIALIZE)
             card=page.locator(".os-mobile-customers .os-swipe-row").first

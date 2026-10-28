@@ -46,6 +46,7 @@ def test_performance_history_goals(browser_name, width, height, theme):
             page.add_style_tag(content=FIELDS_CSS)
             page.add_script_tag(content="if(!crypto.randomUUID)crypto.randomUUID=()=>String(Math.random()).slice(2)+'-fixture';")
             page.add_script_tag(content=FIELDS_JS)
+            page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=JS)
             page.add_script_tag(content=FIXTURE)
             page.evaluate("mountPerformanceFixture()")

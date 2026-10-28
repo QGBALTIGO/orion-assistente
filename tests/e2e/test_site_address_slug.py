@@ -67,6 +67,7 @@ def test_site_address_slug(browser_name, width, height, theme):
             page.add_style_tag(content=CSS)
             page.add_style_tag(content=FIELDS_CSS)
             page.add_script_tag(content=FIELDS_JS)
+            page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=JS)
             page.add_script_tag(content=FIXTURE)
             page.evaluate("mountSiteAddressFixture()")

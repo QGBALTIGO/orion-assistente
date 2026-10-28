@@ -45,6 +45,7 @@ def test_weekly_hours_has_edit_controls_no_horizontal_overflow(browser_name, wid
             page.add_style_tag(content=CSS)
             page.add_style_tag(content=FIELDS_CSS)
             page.add_script_tag(content=FIELDS_JS)
+            page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=JS)
             page.evaluate("""({pro,hour,breakId}) => {
               const tenant='10000000-0000-4000-8000-000000000001';

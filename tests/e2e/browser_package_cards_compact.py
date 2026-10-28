@@ -78,6 +78,7 @@ def test_package_cards_share_service_geometry_without_nested_surfaces(browser_na
             page.add_style_tag(content=(ROOT/"app/static/orion-suite.css").read_text())
             page.add_style_tag(content=(ROOT/"app/static/orion-fields.css").read_text())
             page.add_script_tag(content=(ROOT/"app/static/orion-fields.js").read_text())
+            page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=(ROOT/"app/static/orion-suite.js").read_text())
             page.evaluate(INITIALIZE)
             first=page.locator('[data-os-package-card="d0000000-0000-4000-8000-000000000001"]')

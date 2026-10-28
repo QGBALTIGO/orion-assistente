@@ -1,5 +1,6 @@
 /* Synthetic bridge shared by the native-field regression. No production fetch. */
 () => {
+  window.OrionFields.bind(document);
   const tenant='10000000-0000-4000-8000-000000000001';
   const professionalId='20000000-0000-4000-8000-000000000001';
   const serviceId='30000000-0000-4000-8000-000000000001';

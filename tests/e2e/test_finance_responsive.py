@@ -113,6 +113,7 @@ def test_finance_loses_no_horizontal_content_or_actions(browser_name,width,heigh
             page.add_style_tag(content=CSS)
             page.add_style_tag(content=FIELDS_CSS)
             page.add_script_tag(content=FIELDS_JS)
+            page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=JS)
             assert page.evaluate("window.isSecureContext && typeof crypto.randomUUID === 'function'")
             page.evaluate(MOCK)

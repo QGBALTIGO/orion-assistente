@@ -71,7 +71,7 @@ jobs:
           node --check landing/assets/orion-landing.js
       - name: Contratos novos de preenchimento
         run: |
-          node --test --test-isolation=none \
+          node --test \
             ui-tests/fields-core.test.mjs \
             ui-tests/fields-integration.test.mjs \
             ui-tests/fields-auth.test.mjs \
