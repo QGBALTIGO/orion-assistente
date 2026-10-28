@@ -873,6 +873,11 @@ async def save_step(actor, tenant, step, payload):
     # Validation and fingerprinting happen under the same tenant transaction
     # to prevent switching between company and professional hours.
     if step == "hours":
+        # Reject malformed input before opening a DB session, preserving the
+        # existing HTTP 422 contract even when the database is unavailable.
+        candidate = (schemas.BusinessOpeningHours if "days" in payload.data
+                     else schemas.Hours)
+        candidate.model_validate(payload.data)
         return await _save_hours_by_mode(actor, tenant, step, payload)
     data = model.model_validate(payload.data)
     # Omission matters on edits: an omitted default preserves the current value.
