@@ -85,9 +85,12 @@
       "title": "A cidade apresentada e o fuso do calendário não são coerentes à primeira vista",
       "severity": "Verificar primeiro",
       "state": "pendente",
-      "evidence": [],
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/production-before.json"
+      ],
       "publication": "não publicada",
-      "note": "Usuário informou outra frente para fuso baseado no CEP. Não alterar essa implementação concorrente."
+      "note": "Confirmado por leitura: Montes Claros/MG e America/Campo_Grande ainda publicados. Usuário está tratando o fuso por CEP em outra frente; implementação concorrente preservada.",
+      "tests": "Catálogo público e origem do timezone no backend inspecionados; correção externa ainda não publicada/verificada"
     },
     {
       "id": "PUB-05",
@@ -154,18 +157,24 @@
       "title": "O endereço textual não informa rua e número",
       "severity": "Média",
       "state": "pendente",
-      "evidence": [],
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/production-before.json"
+      ],
       "publication": "não publicada",
-      "note": "aguarda dados factuais"
+      "note": "Componente já compõe endereço completo e preserva legado; publicação real contém apenas São Judas II, sem número. Depende de cadastro factual; não inferir rua pelo CEP.",
+      "tests": "12 testes de endereço/slug aprovados; leitura do catálogo e endereço da página confirmou dado incompleto"
     },
     {
       "id": "PUB-11",
       "title": "WhatsApp e ligação usam contatos de DDDs diferentes",
       "severity": "Verificar",
       "state": "pendente",
-      "evidence": [],
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/production-before.json"
+      ],
       "publication": "não publicada",
-      "note": "aguarda dados factuais"
+      "note": "Links reproduzem os contatos publicados: WhatsApp DDD 38 e ligação DDD 67. Origem é configuração distinta; não há evidência de qual número substituir. Nenhum link de contato foi acionado.",
+      "tests": "16 testes DOM de contatos, tema, localização e horários aprovados; destinos inspecionados sem envio"
     },
     {
       "id": "PUB-12",
@@ -203,5 +212,11 @@
       "note": "Cards usam o mesmo formatador de duração dos totais e da revisão, sem remover espaços entre valores e unidades.",
       "tests": "20 testes DOM; seis tamanhos x dois temas; durações curta e longa coerentes e sem cortes nos cards"
     }
-  ]
+  ],
+  "integrated_validation": {
+    "dom": "735 testes aprovados após incorporar origin/main 3eceb68",
+    "browser": "12 cenários integrados aprovados: seis tamanhos x claro/escuro no Chromium IAB; navegação, conflito, datas, totais, dados e retorno de foco; nenhum POST real",
+    "production": "publicação ainda não executada",
+    "backend": "50 testes unitários aprovados: catálogo, renderização, expediente, domínio e endereço"
+  }
 }
