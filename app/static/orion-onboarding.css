@@ -114,3 +114,78 @@
   margin-top:18px;
   padding-top:18px;
 }
+
+/* Consistent rhythm across all seven setup steps. Inherited dashboard label
+ * margins formerly added uncontrolled space around each field. */
+.ob-root{
+  --ob-field-gap:22px;
+  --ob-label-gap:8px;
+  --ob-divider-gap:18px;
+  --ob-action-gap:20px;
+}
+.ob-root .ob-form .ob-fields{
+  column-gap:16px;
+  row-gap:var(--ob-field-gap);
+}
+.ob-root .ob-field{
+  align-content:start;
+  row-gap:var(--ob-label-gap);
+}
+.ob-root .ob-field>label{
+  margin:0;
+  padding:0;
+  font-size:14px;
+  line-height:20px;
+}
+.ob-root .ob-field>input,
+.ob-root .ob-field>select,
+.ob-root .ob-field>textarea{
+  min-height:48px;
+  font-size:16px;
+  line-height:24px;
+}
+.ob-root .ob-field>.ob-help{
+  margin:0!important;
+  line-height:18px;
+}
+.ob-root .ob-form>fieldset{min-width:0}
+.ob-root .ob-form>fieldset>:not(.ob-actions)+:not(.ob-actions){
+  margin-top:var(--ob-field-gap);
+}
+.ob-root .ob-form>fieldset>.ob-actions{
+  margin-top:var(--ob-divider-gap);
+  padding-top:var(--ob-action-gap);
+}
+.ob-root .ob-check,
+.ob-root .ob-checks label,
+.ob-root .ob-days label{margin:0}
+.ob-root .ob-card-head{margin-bottom:22px}
+.ob-root .ob-card-head .ob-icon{margin-bottom:10px}
+.ob-root .ob-postal-field{
+  align-content:start;
+  row-gap:var(--ob-label-gap);
+}
+.ob-root .ob-postal-status[hidden],
+.ob-root .ob-postal-field>[hidden]{display:none!important}
+/* Nested location fields span the layout properly even when the onboarding
+ * step navigation changes from a column to compact numbered steps. */
+.ob-root .ob-location-fields>.ob-field:first-child,
+.ob-root .ob-location-fields>.ob-address-panel,
+.ob-root .ob-address-fields>.ob-postal-field,
+.ob-root .ob-address-fields>.ob-field:nth-child(2){
+  grid-column:1 / -1;
+}
+.ob-root .ob-address-panel{min-width:0}
+.ob-root .ob-address-fields .ob-field>input::placeholder{
+  color:var(--ob-muted);
+  opacity:.8;
+}
+@container orion-onboarding (max-width:560px){
+  .ob-root .ob-address-fields,
+  .ob-root .ob-location-fields{grid-template-columns:minmax(0,1fr)}
+  .ob-root .ob-address-fields>.ob-field,
+  .ob-root .ob-address-fields>.ob-postal-field{grid-column:1/-1}
+}
+@media (max-width:480px){
+  .ob-root .ob-form>fieldset>.ob-actions{gap:12px}
+}
