@@ -542,3 +542,39 @@ async def test_two_outboxes_reenqueue_after_connection_busy_despite_arq_retained
             await arq.delete(*keys)
         await arq.delete(queue_name, queue_name + ":health-check")
         await arq.aclose()
+
+
+@pytest.mark.asyncio
+async def test_google_oauth_connects_before_new_company_staff_setup(google_db, monkeypatch):
+    """Regression: a new company must not get HTTP 409 just for missing staff."""
+    d=google_db
+    monkeypatch.setenv("ONBOARDING_ENABLED","1")
+    await as_owner_session(d)
+    async with d["migrator"].begin() as db:
+        await db.execute(text("""
+            INSERT INTO business_onboarding(tenant_id,created_by,is_new,configuration)
+            VALUES (:tenant,:actor,true,CAST(:config AS jsonb))
+        """), {"tenant":d["a"],"actor":d["account"],
+               "config":json.dumps({"niche":"barbearia","activity":"services",
+                                    "modality":"online"})})
+    try:
+        # No professional, service or bookable working_hours rows exist.
+        async with d["migrator"].connect() as db:
+            assert (await db.execute(text(
+                "SELECT count(*) FROM professionals WHERE tenant_id=:t"
+            ),{"t":d["a"]})).scalar_one()==0
+        state, intent=await start(d)
+        assert intent["tenant_id"]==str(d["a"])
+        result=await d["client"].get("/integrations/google/callback",
+                                      params={"state":state,"code":"synthetic-code"})
+        assert result.status_code==303, result.text
+        assert "google=choose" in result.headers["location"]
+        chosen=await d["client"].post(d["google_base"]+"/calendar",
+                                        json={"calendar_id":CALENDAR})
+        assert chosen.status_code==200, chosen.text
+        assert chosen.json()["connected"] is True
+    finally:
+        async with d["migrator"].begin() as db:
+            await db.execute(text(
+                "DELETE FROM business_onboarding WHERE tenant_id=:t"
+            ),{"t":d["a"]})
