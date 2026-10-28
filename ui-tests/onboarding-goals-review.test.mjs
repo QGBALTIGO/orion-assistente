@@ -116,15 +116,15 @@ test('products-only companies see relevant choices without a second questionnair
   assert.equal(h.element('[name=respondent_role] option[value=manager]').textContent,'Gerente / Administrador');
 });
 
-test('new review has four organized editable sections and no technical channel status',async t=>{
+test('new review has five organized editable sections and no technical channel status',async t=>{
   const h=await makeOnboarding({data:quickState({step:'review',goals:answers})});t.after(()=>h.close());
   const root=h.element('.ob-review');
-  const expected=['Empresa','Atendimento','Perfil da empresa','Desafios e objetivos'];
+  const expected=['Empresa','Atendimento','Perfil da empresa','Horário comercial','Desafios e objetivos'];
   assert.deepEqual([...root.querySelectorAll('.ob-review-section-head h3')].map(el=>el.textContent),expected);
-  assert.equal(root.querySelectorAll('.ob-review-section').length,4);
-  assert.equal(root.querySelectorAll('.ob-review-edit').length,4);
-  assert.equal(root.querySelectorAll('.ob-review-section-head .ob-icon').length,4);
-  for(const target of ['business','location','profile','goals']){
+  assert.equal(root.querySelectorAll('.ob-review-section').length,5);
+  assert.equal(root.querySelectorAll('.ob-review-edit').length,5);
+  assert.equal(root.querySelectorAll('.ob-review-section-head .ob-icon').length,5);
+  for(const target of ['business','location','profile','hours','goals']){
     assert.equal(root.querySelector('[data-ob-target='+target+']').getAttribute('aria-label').startsWith('Editar '),true);
   }
   assert.match(root.textContent,/Barbearia/i);
