@@ -328,7 +328,13 @@
       const candidate = data.services.find(s => s.id === id);
       const used = new Set(selectedServices().flatMap(componentIds));
       if (candidate && componentIds(candidate).some(source => used.has(source))) {
-        showError('Este serviço já está incluído em um dos combos selecionados.');
+        const conflict = selectedServices().find(service =>
+          componentIds(service).some(source => componentIds(candidate).includes(source)));
+        showError(candidate.catalog_kind === 'combo' ?
+          (conflict.catalog_kind === 'combo' ?
+            'Estes combos incluem serviços em comum. Remova o combo anterior para trocar.' :
+            `Este combo já inclui ${conflict.name}. Remova o serviço avulso para selecionar o combo.`) :
+          `${candidate.name} já está incluído no combo ${conflict.name}.`);
         return;
       }
     }

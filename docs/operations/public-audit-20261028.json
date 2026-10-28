@@ -60,10 +60,13 @@
       "id": "PUB-02",
       "title": "O conflito entre combo e serviço fica invisível e usa a explicação errada",
       "severity": "Média",
-      "state": "pendente",
-      "evidence": [],
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-02.json"
+      ],
       "publication": "não publicada",
-      "note": ""
+      "note": "Aviso central antes do conteúdo, sticky durante a rolagem; mensagens distinguem combo e serviço avulso.",
+      "tests": "15 testes DOM; 12 verificações Chromium: seis viewports, claro/escuro; aviso visível sem sobrepor rodapé"
     },
     {
       "id": "PUB-03",

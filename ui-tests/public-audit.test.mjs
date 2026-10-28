@@ -17,3 +17,17 @@ test('PUB-01: returning through services preserves the eligible chosen professio
   assert.match(h.calls.filter(c=>c.url.includes('/availability?')).at(-1).url,new RegExp(second));
   assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
 });
+
+test('PUB-02: conflict describes the selected individual service and lives above the list',async t=>{
+  const data=catalogue();
+  data.services[0].catalog_kind='base';data.services[0].name='Corte Masculino';
+  data.services.push({...data.services[0],id:'60000000-0000-4000-8000-000000000022',
+    name:'Corte + Barba',catalog_kind:'combo',components:[{service_id:publicService}]});
+  const h=await makePublic({data});t.after(()=>h.close());await flush();
+  h.click('#hero-book');h.click('#booking-service-list button');
+  h.click('#booking-service-list button:nth-child(2)');
+  const error=h.document.querySelector('#booking-error');
+  assert.match(error.textContent,/combo.*já inclui Corte Masculino/i);
+  assert.ok(error.compareDocumentPosition(h.document.querySelector('#booking-body'))&4);
+  assert.equal(h.document.querySelectorAll('#booking-service-list [aria-pressed=true]').length,1);
+});
