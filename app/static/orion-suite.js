@@ -1426,6 +1426,10 @@
   }
   const settingsSections=[['general','settings','Negócio','Dados operacionais e fiscais'],['hours','clock','Horários','Jornada de trabalho da equipe'],['administration','shield','Administração','Telefones autorizados, folgas e empresas'],['site-requests','mail','Solicitações do site','Contatos e testes solicitados'],['appearance','sun','Aparência','Tema e visual do painel'],['ai','sparkles','Uso de IA','Gerações e limite diário'],['notifications','bell','Notificações','Avisos de agendamentos'],['whatsapp','phone','WhatsApp por empresa','Conexões independentes'],['calendar','calendar','Google Agenda','Sincronização dos horários'],['account','shield','Minha conta','Dados de acesso ao Orion']];
   async function loadSettings(c){
+    // The legacy attendance administration is platform-admin only, including
+    // when a stale settings-tab value survives navigation.
+    if(state.filters.settingsTab==='administration'&&state.bridge.user?.role!=='admin')
+      state.filters.settingsTab='general';
     if(state.filters.settingsTab==='site-requests'){
       if(canManageSiteRequests()){await loadSiteRequests(c);return;}
       state.filters.settingsTab='general';
@@ -1438,7 +1442,11 @@
     if(current(c))renderSettings();
   }
   function renderSettings(){
-    const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role),sections=settingsSections.filter(item=>(item[0]!=='administration'||t||isAdmin)&&(item[0]!=='site-requests'||isAdmin)),tab=sections.some(item=>item[0]===state.filters.settingsTab)?state.filters.settingsTab:'general',definition=sections.find(item=>item[0]===tab)||sections[0];let panel='';
+    const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role),
+      operatorAdmin=state.bridge.user?.role==='admin',
+      sections=settingsSections.filter(item=>(item[0]!=='administration'||operatorAdmin)&&(item[0]!=='site-requests'||isAdmin)),
+      tab=sections.some(item=>item[0]===state.filters.settingsTab)?state.filters.settingsTab:'general',
+      definition=sections.find(item=>item[0]===tab)||sections[0];let panel='';
     if(tab==='site-requests')panel=renderSiteRequests();
     if(tab==='general')panel=t?businessPreferencesForm(state.data.preferences):'<section class="os-card">'+empty('users','Empresa indisponível','Confirme o acesso à sua empresa para consultar as preferências.')+'</section>';
     if(tab==='hours')panel=settingsHours();
