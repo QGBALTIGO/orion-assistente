@@ -289,9 +289,10 @@
   function setTheme(preference){const original=document.querySelector('.theme-choice[data-theme-choice="'+preference+'"]');if(original)original.click();else{document.documentElement.dataset.themePreference=preference;document.documentElement.dataset.theme=preference==='auto'?(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):preference;try{localStorage.setItem('orion-theme',preference);}catch{}}applyThemeState();$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');}
   function drawer(open){const app=$('appView'),side=$('osSidebar');if(!app||!side)return;app.classList.toggle('os-menu-open',open);$('osMenu').setAttribute('aria-expanded',String(open));if(open){state.drawerTrigger=document.activeElement;side.querySelector('button')?.focus();}else state.drawerTrigger?.focus?.();}
   function resetPeriod(){const today=dateKey(),d=dayDate(today);d.setUTCMonth(d.getUTCMonth()+1,0);state.filters.periodStart=today.slice(0,8)+'01';state.filters.periodEnd=d.toISOString().slice(0,10);state.filters.performancePeriod='month';state.filters.performanceDay=today;}
-  function legacyOpened(route){if(!state.mounted||!legacyPages.has(route))return;if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin'){void open('dashboard',{force:true});return;}clearSiteLookups();state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeNames[route]+' · Orion';}
+  function legacyOpened(route){if(route==='cadastros'){void open('configuracoes',{force:true});return;}if(!state.mounted||!legacyPages.has(route))return;if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin'){void open('dashboard',{force:true});return;}clearSiteLookups();state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeNames[route]+' · Orion';}
   async function open(route,options={}){
     route=routeAliases.get(route)||route;
+    if(route==='cadastros')route='configuracoes';
     if(!appPages.has(route))route='dashboard';
     // Never open the legacy operator console from a member/support bookmark,
     // stale URL, programmatic link or previous account's navigation state.
@@ -1435,11 +1436,11 @@
       if(stillAccount(c)&&state.route==='configuracoes'&&state.filters.settingsTab==='site-requests')await open('configuracoes',{keepScroll:true});
     }
   }
-  const settingsSections=[['general','settings','Negócio','Dados operacionais e fiscais'],['hours','clock','Horários','Jornada de trabalho da equipe'],['administration','shield','Administração','Telefones autorizados, folgas e empresas'],['site-requests','mail','Solicitações do site','Contatos e testes solicitados'],['appearance','sun','Aparência','Tema e visual do painel'],['ai','sparkles','Uso de IA','Gerações e limite diário'],['notifications','bell','Notificações','Avisos de agendamentos'],['whatsapp','phone','WhatsApp por empresa','Conexões independentes'],['calendar','calendar','Google Agenda','Sincronização dos horários'],['account','shield','Minha conta','Dados de acesso ao Orion']];
+  const settingsSections=[['general','settings','Negócio','Dados operacionais e fiscais'],['hours','clock','Horários','Jornada de trabalho da equipe'],['site-requests','mail','Solicitações do site','Contatos e testes solicitados'],['appearance','sun','Aparência','Tema e visual do painel'],['ai','sparkles','Uso de IA','Gerações e limite diário'],['notifications','bell','Notificações','Avisos de agendamentos'],['whatsapp','phone','WhatsApp por empresa','Conexões independentes'],['calendar','calendar','Google Agenda','Sincronização dos horários'],['account','shield','Minha conta','Dados de acesso ao Orion']];
   async function loadSettings(c){
-    // The legacy attendance administration is platform-admin only, including
-    // when a stale settings-tab value survives navigation.
-    if(state.filters.settingsTab==='administration'&&state.bridge.user?.role!=='admin')
+    // Old bookmarks and persisted settings must not reopen the retired
+    // Administration section, regardless of account role.
+    if(state.filters.settingsTab==='administration')
       state.filters.settingsTab='general';
     if(state.filters.settingsTab==='site-requests'){
       if(canManageSiteRequests()){await loadSiteRequests(c);return;}
@@ -1454,14 +1455,12 @@
   }
   function renderSettings(){
     const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role),
-      operatorAdmin=state.bridge.user?.role==='admin',
-      sections=settingsSections.filter(item=>(item[0]!=='administration'||operatorAdmin)&&(item[0]!=='site-requests'||isAdmin)),
+      sections=settingsSections.filter(item=>item[0]!=='site-requests'||isAdmin),
       tab=sections.some(item=>item[0]===state.filters.settingsTab)?state.filters.settingsTab:'general',
       definition=sections.find(item=>item[0]===tab)||sections[0];let panel='';
     if(tab==='site-requests')panel=renderSiteRequests();
     if(tab==='general')panel=t?businessPreferencesForm(state.data.preferences):'<section class="os-card">'+empty('users','Empresa indisponível','Confirme o acesso à sua empresa para consultar as preferências.')+'</section>';
     if(tab==='hours')panel=settingsHours();
-    if(tab==='administration')panel='<section class="os-card"><div class="os-card-header"><div><h2>Administração do atendimento</h2><p>Configurações específicas do atendimento Orion.</p></div></div><ul class="os-feature-list"><li>'+icon('phone')+'<span><strong>Telefones autorizados</strong><br>Consulte os acessos da equipe ao atendimento. A edição depende da permissão de proprietário ou administração.</span></li><li>'+icon('calendar')+'<span><strong>Folgas</strong><br>Consulte e organize os períodos de ausência dos profissionais, conforme seu acesso à empresa.</span></li>'+'</ul><div class="os-form-actions">'+routeButton('Administração do atendimento','cadastros','','shield')+'</div></section>';
     if(tab==='calendar')panel='<section class="os-card"><div class="os-card-header"><div><h2>Google Agenda</h2><p>Sincronize os agendamentos com a agenda do seu negócio.</p></div></div><div id="osGoogleStatus">'+loading('Consultando integração…')+'</div></section>';
     if(tab==='whatsapp')panel='<section id="osManagedChannels" class="os-card"></section>';
     if(tab==='appearance')panel='<section class="os-card"><div class="os-card-header"><div><h2>Aparência</h2><p>Escolha como o painel será exibido neste dispositivo.</p></div></div><div class="os-appearance-options">'+[['light','sun','Claro','Painel claro, com fundo suave.'],['dark','moon','Escuro','Painel escuro, com menos luminosidade.'],['auto','monitor','Sistema','Acompanha a aparência do dispositivo.']].map(([value,symbol,label,description])=>'<button type="button" class="os-appearance-option" data-os-theme="'+value+'" aria-pressed="'+((document.documentElement.dataset.themePreference||'auto')===value)+'"><span class="os-theme-preview os-preview-'+value+'"><i></i><span><b></b><em></em><em></em><em></em></span></span><span class="os-theme-caption">'+icon(symbol)+'<strong>'+label+'</strong></span><small>'+description+'</small></button>').join('')+'</div></section>';

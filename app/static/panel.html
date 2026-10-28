@@ -2274,6 +2274,11 @@ void restoreSession();
 void authFeatures();
 const platformAdminLegacyPages=new Set(["conversas","ai","empresa","catalogo","cadastros"]);
 function openPage(target){
+ if(target==="cadastros"){
+  // Retired attendance administration must not be reachable by old links.
+  void window.OrionSuite?.open("configuracoes",{force:true});
+  return;
+ }
  if(target==="member"){
   const platform=adminOnly();
   $("adminClientCenter").classList.toggle("hidden",!platform);
