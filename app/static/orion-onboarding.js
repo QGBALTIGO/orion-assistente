@@ -321,6 +321,16 @@
           ['Faturamento mensal',profileLabel('monthly_revenue',profile.monthly_revenue,activity)],
           [activity==='products'?'Pedidos por mês':'Atendimentos por mês',profileLabel('monthly_volume',profile.monthly_volume,activity)]
         ]),
+        reviewSection('hours','Horário comercial','clock',
+          rows(c.business_opening_hours?.days).length===7
+            ? rows(c.business_opening_hours.days).map(day=>[
+                days[day.weekday]||'Dia',
+                day.open
+                  ? String(day.start_time||'').slice(0,5)+'–'+String(day.end_time||'').slice(0,5)+
+                    (day.break_start?' · intervalo '+String(day.break_start).slice(0,5)+'–'+String(day.break_end).slice(0,5):'')
+                  : 'Fechado'
+              ])
+            : [['Horários','Não configurados']]),
         reviewSection('goals','Desafios e objetivos','target',[
           ['Principal dificuldade',goalsLabel('main_challenge',goals.main_challenge,activity)],
           ['Principal objetivo',goalsLabel('desired_outcome',goals.desired_outcome,activity)],
