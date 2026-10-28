@@ -17,3 +17,12 @@ test('Google OAuth errors are shown accessibly instead of raw HTTP 409',async()=
  assert.match(js,/message\.setAttribute\('role','alert'\)/);
  assert.match(js,/Não foi possível iniciar a conexão por conflito de configuração/);
 });
+
+test('expired Orion session has a re-login action instead of endless Google retries',async()=>{
+ const js=await readFile(new URL('../app/static/orion-suite.js',import.meta.url),'utf8');
+ assert.match(js,/googleAuthExpired=error\?\.status===401/);
+ assert.match(js,/Sua sessão do Orion expirou/);
+ assert.match(js,/button\('Entrar novamente','google-sign-in'/);
+ assert.match(js,/case 'google-sign-in':window\.location\.assign\('\/panel\?aba=agenda'\)/);
+ assert.match(js,/button\('Tentar novamente','google-refresh'/);
+});
