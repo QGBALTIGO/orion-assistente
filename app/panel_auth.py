@@ -152,8 +152,22 @@ async def panel_actor(request: Request) -> dict:
         data["email"] = row["email"]
         data["email_verified"] = row.get("verified_at") is not None
     if maintenance_raw:
-        from app.maintenance_access import effective_maintenance_claims
-        data = await effective_maintenance_claims(request, data, maintenance_raw)
+        from app.maintenance_access import (effective_maintenance_claims,
+                                             end_maintenance_claims,
+                                             revoke_invalid_maintenance)
+        if request.url.path == "/auth/maintenance/end":
+            # Always allow the actual platform owner to end a session, even
+            # when the selected customer was suspended mid-maintenance.
+            data = end_maintenance_claims(data, maintenance_raw)
+        else:
+            try:
+                data = await effective_maintenance_claims(request, data, maintenance_raw)
+            except HTTPException as error:
+                if error.status_code != 401:
+                    raise
+                await revoke_invalid_maintenance(request, data, maintenance_raw)
+                # Return the revalidated original admin claims with no target
+                # authority. /auth/me then naturally opens the admin account.
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         _same_origin(request)
         value = request.headers.get("x-orion-csrf", "")
