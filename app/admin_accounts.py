@@ -93,6 +93,25 @@ async def list_customer_accounts(q:str="",status:str="all",page:int=Query(1,ge=1
     return {"items":[_customer(r) for r in rows],"total":total,"page":page,"page_size":page_size}
 
 
+@router.get("/stats")
+async def account_stats(admin:UUID=Depends(require_platform_owner)):
+    """Read-only platform totals, excluding legacy operator identities."""
+    async with _storage()() as db:
+        records=(await db.execute(text("""
+            SELECT COALESCE(c.state,'active') AS state,count(*) AS total
+            FROM panel_accounts a
+            LEFT JOIN admin_account_controls c ON c.account_id=a.id
+            WHERE a.role='member'
+              AND COALESCE(to_jsonb(a)->>'auth_provider','password')='password'
+            GROUP BY COALESCE(c.state,'active')
+        """))).mappings().all()
+    stats={"active":0,"suspended":0,"archived":0,"erased":0}
+    for item in records:
+        if item["state"] in stats:
+            stats[item["state"]]=item["total"]
+    return {"total":sum(stats.values()),**stats}
+
+
 @router.get("/{account_id}")
 async def account_detail(account_id:UUID,admin:UUID=Depends(require_platform_owner)):
     async with _storage()() as db:
