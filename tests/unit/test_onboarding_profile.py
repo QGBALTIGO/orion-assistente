@@ -92,3 +92,14 @@ async def test_profile_save_changes_only_private_configuration_without_any_catal
     assert meta["configuration"]["custom_field"] == before["configuration"]["custom_field"]
     assert meta["managed_ids"] == before["managed_ids"]
     assert meta["version"] == 5
+
+def test_completed_legacy_onboarding_is_not_forced_to_answer_new_survey():
+    old = {"is_new": True, "completed_at": "historical", "configuration": dict(CONFIG)}
+    assert service._uses_quick_profile(old) is False
+    pending = {"is_new": True, "completed_at": None, "configuration": dict(CONFIG)}
+    assert service._uses_quick_profile(pending) is True
+    finished_new = {"is_new": True, "completed_at": "finished",
+                    "configuration": {**CONFIG, "business_metrics": PROFILE}}
+    assert service._uses_quick_profile(finished_new) is True
+    legacy = {"is_new": False, "completed_at": None, "configuration": dict(CONFIG)}
+    assert service._uses_quick_profile(legacy) is False
