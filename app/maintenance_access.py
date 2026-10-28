@@ -173,6 +173,57 @@ async def effective_maintenance_claims(request: Request, admin_claims: dict, raw
     return result
 
 
+
+def end_maintenance_claims(admin_claims: dict, raw: str):
+    """Permit admin to end maintenance even after target suspension/revocation."""
+    if not _platform_owner(admin_claims):
+        raise HTTPException(403, "Administrador inválido")
+    try:
+        record = json.loads(raw)
+        actor = UUID(record["actor_id"])
+        target = UUID(record["account_id"])
+    except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+        raise HTTPException(401, "Sessão de manutenção inválida") from None
+    if str(actor) != str(admin_claims["account_id"]):
+        raise HTTPException(403, "Acesso de manutenção não autorizado")
+    claims = dict(admin_claims)
+    claims.update({
+        "account_id": str(target),
+        "maintenance_actor_id": str(actor),
+        "maintenance_reason": str(record.get("reason") or "Manutenção administrativa")[:500],
+        "maintenance": {
+            "active": True,
+            "company": str(record.get("company") or "Cliente")[:160],
+            "expires_at": int(record.get("expires_at") or 0),
+        },
+    })
+    return claims
+
+
+async def revoke_invalid_maintenance(request: Request, admin_claims: dict, raw: str):
+    """An invalid customer must not trap the platform admin inside a dead session."""
+    claims = end_maintenance_claims(admin_claims, raw)
+    key = maintenance_key(request.cookies.get(COOKIE, ""))
+    redis, owned = _request_redis(request)
+    try:
+        await redis.delete(key)
+    except (RedisError, OSError):
+        raise HTTPException(503, "Não foi possível revogar a manutenção") from None
+    finally:
+        if owned:
+            await redis.aclose()
+    async with _storage()() as db:
+        async with db.begin():
+            await db.execute(text("""
+                INSERT INTO admin_account_audit(actor_id,account_id,action,reason)
+                VALUES(:actor,:target,'maintenance_auto_end',:reason)
+            """), {
+                "actor": UUID(claims["maintenance_actor_id"]),
+                "target": UUID(claims["account_id"]),
+                "reason": "Acesso encerrado automaticamente por alteração ou indisponibilidade da conta",
+            })
+
+
 async def audit_maintenance_request(request: Request, claims: dict):
     """Log mutating support requests before dispatch; fail closed without audit."""
     if not claims.get("maintenance") or request.method in SAFE_METHODS:
