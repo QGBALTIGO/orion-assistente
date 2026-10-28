@@ -26,12 +26,12 @@
     hold:"Retenção legal",release_hold:"Retenção encerrada",maintenance_start:"Manutenção iniciada",
     maintenance_end:"Manutenção encerrada",maintenance_request:"Ação em manutenção"};
   const names={suspend:"Suspender conta",reactivate:"Reativar conta",archive:"Excluir conta",
-    restore:"Restaurar conta",hold:"Aplicar retenção legal",release_hold:"Encerrar retenção legal"};
+    restore:"Restaurar conta",erase_now:"Excluir permanentemente"};
   const warnings={suspend:"O cliente perderá o acesso imediatamente, inclusive nas sessões abertas.",
     reactivate:"O acesso à conta será restabelecido.",archive:"A conta ficará bloqueada durante 30 dias. Depois desse prazo, a identidade de acesso será eliminada, respeitando a retenção legal.",
     restore:"O prazo de exclusão será cancelado e o acesso restaurado.",
     hold:"A exclusão definitiva ficará pausada por obrigação legal.",
-    release_hold:"O expurgo poderá continuar quando terminar o prazo de recuperação."};
+    erase_now:"Exclusão irreversível da conta de acesso agora, sem esperar 30 dias. O e-mail ficará disponível para um novo cadastro. Registros exigidos por lei poderão ser preservados."};
   const state={request:null,role:null,onMaintenanceStart:null,epoch:0,seq:0,
     query:"",status:"all",page:1,items:[],stats:null,total:0,selected:null,
     owned:false,modalType:null,modalAction:null,trigger:null,busy:false,timer:null};
@@ -156,7 +156,7 @@
       (a.state==="suspended"?btn("Reativar","account-action",{id:a.id,action:"reactivate",cls:"os-button os-outline",icon:"check",text:"Reativar"}):"")+
       (["active","suspended"].includes(a.state)?btn("Excluir (30 dias)","account-action",{id:a.id,action:"archive",cls:"os-button os-outline os-negative",icon:"trash",text:"Excluir (30 dias)"}):"")+
       (isRecoverable(a)?btn("Restaurar","account-action",{id:a.id,action:"restore",cls:"os-button os-outline",icon:"refresh",text:"Restaurar"}):"")+
-      (a.state==="archived"?btn(a.legal_hold?"Encerrar retenção legal":"Aplicar retenção legal","account-action",{id:a.id,action:a.legal_hold?"release_hold":"hold",cls:"os-button os-outline",icon:"shield",text:a.legal_hold?"Encerrar retenção":"Retenção legal"}):"")+
+      (a.state==="archived"&&!a.legal_hold?btn("Excluir permanentemente","account-action",{id:a.id,action:"erase_now",cls:"os-button os-outline os-negative",icon:"trash",text:"Excluir permanentemente"}):"")+
       '</div>';
     const trace='<details class="os-client-history os-admin-history"><summary>'+
       '<span class="os-client-history-icon">'+icon("clock")+'</span><span class="os-client-history-title"><strong>Histórico de ações</strong>'+
@@ -186,13 +186,13 @@
       if(epoch!==state.epoch||!isAdmin()||!result?.account)return;
       const a=result.account;
       openDialog("action",names[action],'<p class="os-help">'+esc(a.name)+' · '+esc(a.company_name||a.email)+'</p>'+
-        '<div class="os-notice '+(action==="archive"?"os-error":"os-warning")+'">'+icon("info")+'<p>'+esc(warnings[action])+'</p></div>'+
+        '<div class="os-notice '+(["archive","erase_now"].includes(action)?"os-error":"os-warning")+'">'+icon("info")+'<p>'+esc(warnings[action])+'</p></div>'+
         '<form class="os-form" data-admin-form="action"><div class="os-field"><label for="adminModalReason">Motivo desta decisão</label>'+
         '<textarea id="adminModalReason" name="reason" rows="3" required minlength="5" maxlength="500" placeholder="Explique a finalidade da alteração"></textarea></div>'+
-        (action==="archive"?'<div class="os-field"><label for="adminModalConfirm">Digite EXCLUIR para confirmar</label><input id="adminModalConfirm" type="text" name="confirmation" required pattern="EXCLUIR" autocomplete="off" placeholder="EXCLUIR"></div>':"")+
+        (["archive","erase_now"].includes(action)?'<div class="os-field"><label for="adminModalConfirm">Digite '+(action==="erase_now"?"EXCLUIR PERMANENTEMENTE":"EXCLUIR")+' para confirmar</label><input id="adminModalConfirm" type="text" name="confirmation" required pattern="'+(action==="erase_now"?"EXCLUIR PERMANENTEMENTE":"EXCLUIR")+'" autocomplete="off" placeholder="'+(action==="erase_now"?"EXCLUIR PERMANENTEMENTE":"EXCLUIR")+'"></div>':"")+
         '<div class="os-form-message" role="alert"></div><div class="os-form-actions">'+
         btn("Cancelar","close",{cls:"os-button os-outline",icon:"close",text:"Cancelar"})+
-        '<button type="submit" class="os-button'+(action==="archive"?" os-danger":"")+'">'+icon("check")+esc(names[action])+'</button></div></form>',a);
+        '<button type="submit" class="os-button'+(["archive","erase_now"].includes(action)?" os-danger":"")+'">'+icon("check")+esc(names[action])+'</button></div></form>',a);
       state.modalAction=action;
     }catch(e){if(epoch===state.epoch)feedback(e.message,true);}
   }
@@ -236,7 +236,7 @@
     }else if(kind==="action"){
       path="/api/v1/admin/accounts/"+encodeURIComponent(a.id)+"/"+state.modalAction;
       method="POST";payload={reason:values.reason.trim(),expected_version:a.auth_version,
-        ...(state.modalAction==="archive"?{confirmation:values.confirmation}:{})};
+        ...(["archive","erase_now"].includes(state.modalAction)?{confirmation:values.confirmation}:{})};
     }else if(kind==="maintenance"){
       if(values.confirmation!=="ACESSAR")return;
       path="/api/v1/admin/accounts/"+encodeURIComponent(a.id)+"/maintenance";

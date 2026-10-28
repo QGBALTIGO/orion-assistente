@@ -21,6 +21,7 @@ on:
       - 'ui-tests/admin-client-center.test.mjs'
       - 'ui-tests/remove-settings-administration.test.mjs'
       - 'tests/integration/test_admin_client_accounts_pg.py'
+      - 'tests/integration/test_admin_early_erasure_pg.py'
       - 'tests/integration/test_admin_maintenance_pg.py'
       - '.github/workflows/admin-client-accounts.yml'
 permissions:
@@ -81,4 +82,4 @@ jobs:
             -v support_password=ci-support \
             -f infra/postgres/init/001-roles.sql
       - run: python -m alembic upgrade head
-      - run: python -m pytest -q -ra tests/integration/test_admin_client_accounts_pg.py tests/integration/test_admin_maintenance_pg.py
+      - run: python -m pytest -q -ra tests/integration/test_admin_client_accounts_pg.py tests/integration/test_admin_maintenance_pg.py tests/integration/test_admin_early_erasure_pg.py

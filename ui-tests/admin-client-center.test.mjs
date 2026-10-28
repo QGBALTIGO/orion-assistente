@@ -70,6 +70,39 @@ test('admin archive confirmation is inside shared modal, not window.confirm or p
   assert.deepEqual(h.errors,[]);
 });
 
+
+test('archived account offers irreversible deletion with reinforced confirmation',async t=>{
+  const archived={...account,state:'archived',auth_version:4,
+    purge_after:'2026-11-27T12:00:00Z',legal_hold:false};
+  const calls=[];
+  const respond=(path,method,data)=>{
+    if(method==='POST'){
+      calls.push({path,method,data});return {ok:true,state:'erased',email_reusable:true};
+    }
+    if(path==='/api/v1/admin/accounts/stats')return {...stats,active:0,archived:1};
+    if(path.startsWith('/api/v1/admin/accounts?'))return {...list,items:[archived]};
+    if(path==='/api/v1/admin/accounts/'+archived.id)return {account:archived,history:[]};
+  };
+  const h=await makePanel({role:'admin',initialRoute:'member',respond});
+  t.after(()=>h.close());await flush();
+  h.click('#osNav [data-os-route=member]');await flush();
+  h.click('#adminClientCenter .os-table [data-admin-control=view]');await flush();
+  assert.match(h.element('#osDialog').textContent,/Excluir permanentemente/);
+  assert.doesNotMatch(h.element('#osDialog').textContent,/Aplicar retenção legal/);
+  h.click('#osDialog [data-account-action=erase_now]');await flush();
+  assert.equal(h.element('#osDialog').open,true);
+  assert.match(h.element('#osDialog').textContent,/EXCLUIR PERMANENTEMENTE/);
+  assert.equal(calls.length,0);
+  h.fill('#adminModalReason','Exclusão definitiva solicitada');
+  h.fill('#adminModalConfirm','EXCLUIR PERMANENTEMENTE');
+  h.submit('#osDialog [data-admin-form=action]');await flush();
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].path,'/api/v1/admin/accounts/'+archived.id+'/erase_now');
+  assert.equal(calls[0].data.confirmation,'EXCLUIR PERMANENTEMENTE');
+  assert.equal(calls[0].data.expected_version,4);
+  assert.deepEqual(h.errors,[]);
+});
+
 test('maintenance requires a reason and explicit checkbox, never obtains a customer password',async t=>{
   const calls=[],started=[];
   const h=await makePanel({role:'admin',initialRoute:'member',respond:read});
