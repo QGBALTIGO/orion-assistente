@@ -10,6 +10,7 @@ on:
       - 'tests/unit/test_fields_assets.py'
       - 'tests/e2e/browser_public_*.py'
       - 'tests/e2e/browser_fields_standardization.py'
+      - 'tests/e2e/browser_onboarding_rhythm.py'
       - 'tests/e2e/browser_fields_access.py'
       - 'tests/e2e/fixtures/fields-panel.js'
       - 'tests/e2e/test_finance_responsive.py'
@@ -31,6 +32,7 @@ on:
       - 'tests/unit/test_fields_assets.py'
       - 'tests/e2e/browser_public_*.py'
       - 'tests/e2e/browser_fields_standardization.py'
+      - 'tests/e2e/browser_onboarding_rhythm.py'
       - 'tests/e2e/browser_fields_access.py'
       - 'tests/e2e/fixtures/fields-panel.js'
       - 'tests/e2e/test_finance_responsive.py'
@@ -145,6 +147,7 @@ jobs:
         run: |
           python -m pytest -q -ra \
             tests/e2e/browser_fields_standardization.py \
+            tests/e2e/browser_onboarding_rhythm.py \
             tests/e2e/browser_fields_access.py \
             tests/e2e/browser_public_confirmation_sizing.py \
             tests/e2e/browser_public_booking_footer.py \
