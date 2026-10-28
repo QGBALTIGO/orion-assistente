@@ -63,6 +63,7 @@ test('PUB-05/PUB-08: scrollable days and native date selection share a compact d
   h.click('#hero-book');h.click('#booking-service-list button');h.click('#booking-next');await flush();
   const input=h.document.querySelector('#booking-day-input');
   assert.equal(input.type,'date');
+  assert.equal(h.document.getElementById(input.getAttribute('aria-labelledby')).textContent,'Outra data');
   assert.equal(input.min,'2030-01-07');
   assert.equal(h.document.querySelector('.booking-date-value')?.textContent,'07/01/2030');
   assert.equal(h.document.querySelector('#booking-day-prev'),null);
