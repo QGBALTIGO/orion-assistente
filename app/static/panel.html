@@ -280,6 +280,68 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 .wizard-timeline-copy p{font-size:.79rem}.wizard-card{padding:16px}}
 
 
+
+/* WhatsApp pairing: compact, keyboard-safe, consistent with Orion's shared
+   light/dark tokens. Only one focus ring is drawn around the phone field. */
+#page-dispositivo .wizard-shell{box-sizing:border-box;width:min(100%,760px);max-width:100%;margin:0 auto 24px;min-width:0}
+#page-dispositivo .wizard-heading{text-align:left;margin:0 0 16px}
+#page-dispositivo .wizard-heading h2{font-size:clamp(1.2rem,3.5vw,1.55rem);line-height:1.25;margin:4px 0}
+#page-dispositivo .wizard-heading p{font-size:.88rem;line-height:1.5}
+#page-dispositivo .wizard-methods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 14px}
+#page-dispositivo .wizard-method{box-sizing:border-box;min-width:0;min-height:96px;padding:12px 9px;border-radius:14px;box-shadow:none}
+#page-dispositivo .wizard-method strong{font-size:.95rem;line-height:1.2}
+#page-dispositivo .wizard-method span:last-child{font-size:.75rem;line-height:1.35}
+#page-dispositivo .wizard-card{box-sizing:border-box;min-width:0;min-height:0;padding:clamp(16px,3vw,22px);border-radius:18px;overflow:visible}
+#page-dispositivo .wizard-card h3{font-size:clamp(1.1rem,3.5vw,1.35rem);margin:7px 0 5px;line-height:1.3}
+#page-dispositivo .wizard-card p{font-size:.86rem;line-height:1.5}
+#page-dispositivo .wizard-timeline{margin:18px 0 0}
+#page-dispositivo .wizard-timeline-step{min-height:0;padding-bottom:14px;grid-template-columns:36px minmax(0,1fr);gap:11px}
+#page-dispositivo .wizard-timeline-step:last-child{padding-bottom:0}
+#page-dispositivo .wizard-timeline-dot{width:36px;height:36px}
+#page-dispositivo .wizard-timeline-step:not(:last-child):before{left:17px;top:35px}
+#page-dispositivo .wizard-timeline-copy small{font-size:.65rem;margin:0 0 3px}
+#page-dispositivo .wizard-timeline-copy strong{font-size:.87rem}
+#page-dispositivo .wizard-timeline-copy p{font-size:.78rem;margin:0}
+#page-dispositivo .wizard-continue{min-height:44px;margin-top:18px;white-space:normal;line-height:1.35;padding:10px 12px}
+#page-dispositivo .wizard-phone-input{display:flex;align-items:center;box-sizing:border-box;min-width:0;width:100%;min-height:48px;padding:0 12px;border:1px solid var(--border);border-radius:13px;background:var(--panel);box-shadow:none;outline:0}
+#page-dispositivo .wizard-phone-input:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 25%,transparent);outline:0}
+#page-dispositivo .wizard-phone-input input,
+#page-dispositivo .wizard-phone-input input:focus,
+#page-dispositivo .wizard-phone-input input:focus-visible,
+#page-dispositivo .wizard-phone-input input.orion-field-valid,
+#page-dispositivo .wizard-phone-input input.orion-field-invalid{
+  box-sizing:border-box!important;min-width:0!important;width:100%!important;
+  height:46px!important;min-height:46px!important;padding:9px 0!important;
+  border:0!important;border-radius:0!important;background:transparent!important;
+  outline:0!important;box-shadow:none!important;-webkit-appearance:none!important;
+  font-size:16px!important;line-height:24px!important;color:var(--text)!important;
+}
+#page-dispositivo #pairForm{display:grid;gap:10px;min-width:0}
+#page-dispositivo #pairForm label{margin:0}
+#page-dispositivo #pairForm small{display:block;margin:0;line-height:1.45}
+#page-dispositivo #pairPhoneError:empty{display:none}
+#page-dispositivo #wizardGenerate{box-sizing:border-box;width:100%;min-height:46px;margin:4px 0 0;padding:10px 12px;white-space:normal;line-height:1.35}
+#page-dispositivo #codeStatus:empty{display:none}
+#page-dispositivo #codeStatus{margin:12px 0 0;min-height:0;overflow-wrap:anywhere}
+#page-dispositivo .wizard-steps-actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+#page-dispositivo .wizard-steps-actions>.btn{flex:1 1 140px;min-height:44px}
+#page-dispositivo .wizard-footer{padding:12px 0 0}
+#page-dispositivo .wizard-qr-wrap{max-width:100%;min-height:0}
+@media(max-width:640px){
+ #page-dispositivo .wizard-shell{width:100%;padding:0}
+ #page-dispositivo .wizard-methods{gap:8px}
+ #page-dispositivo .wizard-method{min-height:94px;padding:10px 6px}
+ #page-dispositivo .wizard-method span:last-child{font-size:.71rem}
+ #page-dispositivo .wizard-card{padding:16px;border-radius:16px}
+ #page-dispositivo .wizard-steps-actions{flex-direction:column-reverse}
+ #page-dispositivo .wizard-steps-actions>.btn{flex:auto;width:100%}
+ #page-dispositivo .wizard-footer{padding-bottom:max(8px,env(safe-area-inset-bottom))}
+}
+@media(max-width:359px){
+ #page-dispositivo .wizard-method strong{font-size:.87rem}
+ #page-dispositivo .wizard-method span:last-child{font-size:.68rem}
+}
+
 /* Authentication uses the shared suite tokens in orion-auth.css. */
 
 .admin-client-center{display:grid;gap:20px;max-width:1000px;margin:24px 0}
@@ -1111,11 +1173,11 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
         <div class="wizard-card" id="wizardCard" aria-live="polite" aria-atomic="false">
           <div id="wizardTutorial" class="wizard-pane">
             <div class="wizard-tutorial-heading">
-              <h3>Prepare o WhatsApp no seu celular</h3>
-              <p>Siga as orientações e continue quando estiver pronto.</p>
+              <h3>Prepare o WhatsApp</h3>
+              <p>Confira as instruções rápidas e continue.</p>
             </div>
             <div id="guideSteps" class="wizard-timeline" role="list" aria-label="Todos os passos para conectar o WhatsApp"></div>
-            <button id="wizardNext" type="button" class="btn wizard-primary full wizard-continue">Concluí os passos e estou pronto para prosseguir</button>
+            <button id="wizardNext" type="button" class="btn wizard-primary full wizard-continue">Continuar para conectar</button>
           </div>
           <div id="qrPanel" class="wizard-pane hidden">
             <span class="wizard-number">ETAPA FINAL • QR CODE</span>
@@ -1142,11 +1204,11 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
             <span class="wizard-number">ETAPA FINAL • CÓDIGO</span>
             <div id="wizardCodeInput">
               <h3>Informe o número do WhatsApp</h3>
-              <p class="wizard-explain">O mesmo número que está no aparelho a conectar, com DDI e DDD.</p>
+              <p class="wizard-explain">Informe o número usado no WhatsApp. Para números brasileiros, basta DDD e telefone.</p>
               <form id="pairForm">
                 <label for="pairPhone">Número do WhatsApp</label>
                 <div class="wizard-phone-input"><input id="pairPhone" type="tel" data-orion-field="phone" data-orion-international="true" data-field-error-target="pairPhoneError" inputmode="tel" autocomplete="tel" required placeholder="(00) 00000-0000"></div><div id="pairPhoneError"></div>
-                <small>Use o DDD. Para outro país, inclua + e o código do país.</small>
+                <small>Exemplo: (67) 98103-0648. Para outro país, inclua + e o DDI.</small>
                 <button id="wizardGenerate" class="btn wizard-primary full" type="submit">Gerar código de emparelhamento</button>
               </form>
             </div>
@@ -1659,22 +1721,14 @@ let wizardStep="tutorial",wizardAttempted=false,wizardSuccessUntil=0,
     wizardSuccessDone=false,wizardQrDeadline=0,wizardClocks=null,statusSequence=0;
 const steps={
  qr:[
-  ["Abra o WhatsApp","Abra o WhatsApp normal ou o WhatsApp Business no celular."],
-  ["Vá às configurações","No iPhone, abra Configurações. No Android, toque no menu ⋮."],
-  ["Entre em Dispositivos conectados","Veja os dispositivos vinculados à sua conta."],
-  ["Confira conexões anteriores","Se houver uma sessão antiga do Orion, revise antes de adicionar outra."],
-  ["Toque em Conectar dispositivo","Seu WhatsApp abrirá a tela para escanear um QR Code."],
-  ["Deixe o celular pronto","Mantenha o WhatsApp aberto, com a câmera preparada."],
-  ["Pronto para escanear","Clique no botão abaixo para mostrar o QR Code temporário."]
+  ["Abra o WhatsApp","No celular, abra o WhatsApp ou WhatsApp Business."],
+  ["Dispositivos conectados","Acesse Configurações ou menu ⋮ → Dispositivos conectados."],
+  ["Conectar dispositivo","Toque em Conectar dispositivo. Depois, leia o QR Code exibido no Orion."]
  ],
  code:[
-  ["Abra o WhatsApp","Abra o WhatsApp normal ou o WhatsApp Business no celular."],
-  ["Vá às configurações","No iPhone, abra Configurações. No Android, toque no menu ⋮."],
-  ["Entre em Dispositivos conectados","Veja os dispositivos já vinculados à sua conta."],
-  ["Confira conexões anteriores","Se houver uma sessão antiga deste bot, confira antes de adicionar outra."],
-  ["Toque em Conectar dispositivo","Na tela de dispositivos conectados, escolha Conectar dispositivo."],
-  ["Escolha Conectar com número","Toque na opção Conectar com número de telefone."],
-  ["Pronto para gerar o código","Clique no botão abaixo e digite o código gerado no WhatsApp."]
+  ["Abra o WhatsApp","No celular, abra o WhatsApp ou WhatsApp Business."],
+  ["Dispositivos conectados","Acesse Configurações ou menu ⋮ → Dispositivos conectados."],
+  ["Conectar com número","Toque em Conectar dispositivo → Conectar com número de telefone. Depois, digite o código gerado pelo Orion."]
  ]
 };
 const fields={
@@ -2401,6 +2455,12 @@ document.querySelectorAll("[data-method]").forEach(x=>
  x.addEventListener("click",()=>selectWizardMode(x.dataset.method)));
 $("wizardNext").addEventListener("click",async()=>{
  if(wizardStep!=="tutorial")return;
+ if(["logged_out","pair_failed"].includes(deviceStatus)){
+   $("codeStatus").textContent="Refaça o vínculo para iniciar uma sessão nova.";
+   $("wizardRecover").classList.remove("hidden");
+   $("wizardRecoveryArea").classList.remove("hidden");
+   return;
+ }
  if(method==="qr"){
    wizardStep="qr";showQr=true;wizardAttempted=true;renderGuide();
    await attemptQrRefresh();
@@ -2660,7 +2720,10 @@ async function updateStatus(){
   $("repairConnection").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
   $("wizardRecover").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
   $("wizardRecoveryArea").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
-  $("refreshQr").disabled=result.status==="connected"||result.status==="pairing";
+  const needsNewLink=["logged_out","pair_failed"].includes(result.status);
+  $("wizardGenerate").disabled=needsNewLink||result.status==="connected";
+  $("wizardGenerate").setAttribute("aria-disabled",String(needsNewLink||active));
+  $("refreshQr").disabled=active||result.status==="pairing"||needsNewLink;
   $("connectedPhone").textContent=result.phone?
     "Dispositivo "+result.phone+" conectado. Você pode ler e enviar mensagens manualmente.":
     "Dispositivo conectado. Você pode ler e enviar mensagens manualmente.";
@@ -2670,7 +2733,8 @@ async function updateStatus(){
     $("codeStatus").textContent="✓ O dispositivo foi conectado.";
   }else if(result.status==="pair_failed"||result.status==="logged_out"){
     pairExpiresAt=0;$("codeResult").classList.add("hidden");
-    $("codeStatus").textContent="O WhatsApp recusou ou revogou esta sessão. Clique em Refazer vínculo para gerar uma sessão nova.";
+    $("codeStatus").textContent="Sessão desvinculada. Use Refazer vínculo para iniciar uma conexão nova.";
+    $("codeStatus").setAttribute("role","alert");
     if(showQr&&method==="qr")await updateQr();
   }else if(result.status==="pair_expired"||
     (result.status==="pairing"&&pairExpiresAt>0&&Date.now()>pairExpiresAt)){

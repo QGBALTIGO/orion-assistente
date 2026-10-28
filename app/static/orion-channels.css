@@ -10,3 +10,60 @@
 @media(max-width:760px){.qc-layout{grid-template-columns:minmax(0,1fr)}.qc-heading{flex-direction:column}.qc-statuses{grid-template-columns:minmax(0,1fr)}.qc-statuses>div{display:flex;align-items:center;justify-content:space-between;gap:12px}.qc-statuses dd{margin:0}.qc-card{padding:20px}.qc-list{grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr))}}
 @media(max-width:480px){.qc-root,#appView.orion-suite-enabled>.content>.page.qc-root{padding:20px 16px 30px}.qc-card{padding:18px 16px}.qc-root h1{font-size:25px}.qc-actions>.qc-button{flex:1}.qc-card-head{flex-wrap:wrap}}
 @media(prefers-reduced-motion:reduce){.qc-root *{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+
+/* Member WhatsApp connection: same density, corners and visual rhythm as the
+   platform-admin pairing flow, while preserving tenant-scoped QR operations. */
+.qc-root{box-sizing:border-box;max-width:1104px;margin:0 auto;min-width:0}
+.qc-root .qc-heading{align-items:flex-start;gap:12px;margin-bottom:16px}
+.qc-root .qc-heading h1{font-size:clamp(24px,4vw,34px);line-height:1.15;letter-spacing:-.025em}
+.qc-root .qc-heading p{line-height:1.5}
+.qc-root .qc-hero>.qc-actions{align-items:center;gap:8px;flex-wrap:wrap}
+.qc-root .qc-card{box-sizing:border-box;min-width:0;border-radius:18px;padding:clamp(16px,3vw,24px)}
+.qc-root .qc-layout{gap:14px;align-items:start;min-width:0}
+.qc-root .qc-card-head{align-items:center;gap:10px}
+.qc-root .qc-card-head h2{font-size:clamp(17px,3vw,20px);line-height:1.3}
+.qc-root .qc-statuses{gap:8px;margin:14px 0}
+.qc-root .qc-statuses>div{min-width:0;border-radius:12px}
+.qc-root .qc-actions{gap:9px;min-width:0;flex-wrap:wrap}
+.qc-root .qc-button{min-height:44px;box-sizing:border-box;border-radius:13px;padding:10px 14px;line-height:1.35;white-space:normal;overflow-wrap:anywhere}
+.qc-root .qc-note{box-sizing:border-box;border-radius:13px;line-height:1.5}
+.qc-root .qc-info{margin-bottom:14px}
+.qc-root .qc-list{gap:8px}
+.qc-root .qc-channel{min-height:58px;border-radius:13px}
+.qc-root .qc-channel strong,.qc-root .qc-channel small{overflow-wrap:anywhere}
+.qc-root .qc-qr{border-radius:16px;margin-top:14px;padding:16px}
+.qc-root .qc-qr img{width:min(100%,270px);max-width:100%;height:auto}
+.qc-root .qc-form{min-width:0}
+.qc-root .qc-field{min-width:0}
+.qc-root .qc-field input,.qc-root .qc-field textarea{
+  box-sizing:border-box;max-width:100%;min-width:0;font-size:16px;border-radius:13px;
+}
+.qc-root .qc-field input:focus-visible,.qc-root .qc-field textarea:focus-visible{
+  outline:0;box-shadow:0 0 0 2px color-mix(in srgb,var(--qc-primary) 25%,transparent);
+  border-color:var(--qc-primary);
+}
+@media(max-width:760px){
+ .qc-root .qc-heading{gap:10px}
+ .qc-root .qc-heading>.qc-actions{width:100%}
+ .qc-root .qc-layout{grid-template-columns:minmax(0,1fr);gap:12px}
+ .qc-root .qc-statuses{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .qc-root .qc-statuses>div{display:block;padding:11px}
+ .qc-root .qc-statuses dd{margin:4px 0 0}
+ .qc-root .qc-statuses>div:last-child{grid-column:1/-1}
+ .qc-root .qc-card{padding:16px}
+ .qc-root .qc-list{grid-template-columns:minmax(0,1fr)}
+ .qc-root .qc-channel{width:100%}
+}
+@media(max-width:480px){
+ .qc-root,#appView.orion-suite-enabled>.content>.page.qc-root{padding:16px}
+ .qc-root .qc-heading h1{font-size:clamp(24px,7vw,30px)}
+ .qc-root .qc-card{padding:16px}
+ .qc-root .qc-actions>.qc-button{flex:1 1 140px}
+ .qc-root .qc-main-actions>.qc-button{flex:1 1 100%}
+ .qc-root .qc-statuses{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:359px){
+ .qc-root .qc-statuses{grid-template-columns:minmax(0,1fr)}
+ .qc-root .qc-statuses>div:last-child{grid-column:auto}
+}
