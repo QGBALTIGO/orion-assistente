@@ -112,7 +112,7 @@ function panelHarness(){
       })
     })),
     setInterval:()=>1,clearInterval(){},setTimeout:()=>1,clearTimeout(){},
-    confirm:()=>true,AbortController,URLSearchParams,Intl,console,crypto:{randomUUID},
+    confirm:()=>true,AbortController,URLSearchParams,URL,Intl,console,crypto:{randomUUID},
     location:{search:""},history:{replaceState(){}},Date:class extends Date{static now(){return fakeNow??Date.now()}}
   };
   const source=sections[1][1].replace("renderForm();renderGuide();",`
@@ -123,11 +123,17 @@ function panelHarness(){
       commerceReadComplements,commerceSaveComplement,commerceFillComplement,
       loadTenants,loadRecords,submitRecord,openPage,confirmAction,
       setRole:value=>{loginRole=value},
+      setBusinessContext:({id='tenant-a',name='Empresa sintética',timezone='America/Sao_Paulo',role='owner'}={})=>{
+        // CI: establish a verified, single-business identity. The real API must still
+        // deny all tenant and QR routes when no authenticated business exists.
+        suiteTenantId=id;businessRows=[{id,name,timezone,role}];businessContextReady=true;businessContextError='';
+      },
       authenticate:()=>{csrf="synthetic-csrf"},
       deviceStatus:()=>deviceStatus};
   `);
   vm.runInNewContext(fields,context,{filename:"orion-fields.js"});
   vm.runInNewContext(source,context);
+  context.panelTest.setBusinessContext();
   const take=(url,method="GET")=>{
     const request=requests.find(r=>!r.taken&&r.url===url&&(r.options.method||"GET")===method);
     assert.ok(request,"missing "+method+" "+url);
