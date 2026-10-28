@@ -186,13 +186,13 @@
       if(epoch!==state.epoch||!isAdmin()||!result?.account)return;
       const a=result.account;
       openDialog("action",names[action],'<p class="os-help">'+esc(a.name)+' · '+esc(a.company_name||a.email)+'</p>'+
-        '<div class="os-notice '+(action==="archive"?"os-error":"os-warning")+'">'+icon("info")+'<p>'+esc(warnings[action])+'</p></div>'+
+        '<div class="os-notice '+(["archive","erase_now"].includes(action)?"os-error":"os-warning")+'">'+icon("info")+'<p>'+esc(warnings[action])+'</p></div>'+
         '<form class="os-form" data-admin-form="action"><div class="os-field"><label for="adminModalReason">Motivo desta decisão</label>'+
         '<textarea id="adminModalReason" name="reason" rows="3" required minlength="5" maxlength="500" placeholder="Explique a finalidade da alteração"></textarea></div>'+
-        (action==="archive"?'<div class="os-field"><label for="adminModalConfirm">Digite EXCLUIR para confirmar</label><input id="adminModalConfirm" type="text" name="confirmation" required pattern="EXCLUIR" autocomplete="off" placeholder="EXCLUIR"></div>':"")+
+        (["archive","erase_now"].includes(action)?'<div class="os-field"><label for="adminModalConfirm">Digite '+(action==="erase_now"?"EXCLUIR PERMANENTEMENTE":"EXCLUIR")+' para confirmar</label><input id="adminModalConfirm" type="text" name="confirmation" required pattern="'+(action==="erase_now"?"EXCLUIR PERMANENTEMENTE":"EXCLUIR")+'" autocomplete="off" placeholder="'+(action==="erase_now"?"EXCLUIR PERMANENTEMENTE":"EXCLUIR")+'"></div>':"")+
         '<div class="os-form-message" role="alert"></div><div class="os-form-actions">'+
         btn("Cancelar","close",{cls:"os-button os-outline",icon:"close",text:"Cancelar"})+
-        '<button type="submit" class="os-button'+(action==="archive"?" os-danger":"")+'">'+icon("check")+esc(names[action])+'</button></div></form>',a);
+        '<button type="submit" class="os-button'+(["archive","erase_now"].includes(action)?" os-danger":"")+'">'+icon("check")+esc(names[action])+'</button></div></form>',a);
       state.modalAction=action;
     }catch(e){if(epoch===state.epoch)feedback(e.message,true);}
   }
@@ -236,7 +236,7 @@
     }else if(kind==="action"){
       path="/api/v1/admin/accounts/"+encodeURIComponent(a.id)+"/"+state.modalAction;
       method="POST";payload={reason:values.reason.trim(),expected_version:a.auth_version,
-        ...(state.modalAction==="archive"?{confirmation:values.confirmation}:{})};
+        ...(["archive","erase_now"].includes(state.modalAction)?{confirmation:values.confirmation}:{})};
     }else if(kind==="maintenance"){
       if(values.confirmation!=="ACESSAR")return;
       path="/api/v1/admin/accounts/"+encodeURIComponent(a.id)+"/maintenance";
