@@ -5,7 +5,7 @@ migration does not cascade-delete any customer, tenant or financial record.
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 revision="0042_admin_account_controls"
 down_revision="0041_quick_onboarding_activation"
@@ -31,7 +31,7 @@ def upgrade():
         sa.Column("action",sa.String(32),nullable=False),
         sa.Column("reason",sa.String(500),nullable=True),
         sa.Column("occurred_at",sa.DateTime(timezone=True),nullable=False,server_default=sa.text("now()")),
-        sa.Column("metadata",sa.JSON(),nullable=False,server_default=sa.text("'{}'::jsonb")),
+        sa.Column("metadata",JSONB(),nullable=False,server_default=sa.text("'{}'::jsonb")),
     )
     op.create_index("ix_admin_controls_purge", "admin_account_controls",["purge_after"],
                     postgresql_where=sa.text("state='archived' AND NOT legal_hold"))
