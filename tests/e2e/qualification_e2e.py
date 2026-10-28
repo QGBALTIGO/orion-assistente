@@ -4,6 +4,8 @@ This filename intentionally does not match default pytest test_*.py collection:
 run it explicitly, with the real services and browser installed. No API is mocked.
 """
 import re
+import json
+from cryptography.fernet import Fernet
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -43,6 +45,18 @@ def test_01_signup_login_and_business_create_are_separate_real_transactions(jour
     account = h.query("SELECT id,role,verified_at FROM panel_accounts WHERE email=%s", (email,))[0]
     assert account["role"] == "member" and account["verified_at"] is None
     assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (account["id"],)) == 0
+    # The real registration now requires a six-digit email proof. Resolve only
+    # this synthetic code from the encrypted outbox in the isolated E2E DB;
+    # no real inbox, external provider or bypass of the verification API.
+    encrypted = h.scalar("SELECT payload_enc FROM panel_email_outbox WHERE account_id=%s AND kind='verify' ORDER BY created_at DESC LIMIT 1", (account["id"],))
+    mail = json.loads(Fernet(h.server.synthetic_mail_key.encode()).decrypt(encrypted.encode()))
+    code = re.search(r"(?m)^\\d{6}$", mail["text"])
+    assert code is not None, "A confirmação real precisa de um código gerado pelo backend"
+    page.locator("#verifyCode").fill(code.group())
+    with page.expect_response(lambda r: urlsplit(r.url).path == "/auth/verify" and r.request.method == "POST") as verified:
+        page.locator("#authSubmitVerify").click()
+    assert verified.value.status == 200
+    assert h.scalar("SELECT verified_at IS NOT NULL AND registration_pending=false FROM panel_accounts WHERE id=%s", (account["id"],)) is True
     h.login({"email": email})
     expect(page.locator('#orionSetup [data-ob-form="create"]')).to_be_visible()
     assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (account["id"],)) == 0
