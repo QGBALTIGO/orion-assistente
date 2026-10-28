@@ -16,6 +16,31 @@ test('new member sees required WhatsApp without a timezone picker or footer and 
   assert.match(h.element('[name=contact_phone]').getAttribute('placeholder'),/\(00\)/);
   assert.doesNotMatch(h.element('#setup').textContent,/Os dados confirmados ficam salvos neste negócio/);assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);assert.equal(h.document.activeElement,h.element('[data-ob-title]'));
 });
+test('nicho e atividade têm placeholders visíveis, mas nunca selecionáveis como respostas',async t=>{
+  for(const [label,decision] of [
+    ['primeira empresa',entry({tenant_id:null,businesses:[]})],
+    ['empresa existente',entry()],
+  ]){
+    const h=await makeOnboarding({decision});t.after(()=>h.close());
+    for(const name of ['niche','activity']){
+      const select=h.element('[name='+name+']'),placeholder=select.options[0],prior=select.value;
+      assert.equal(placeholder.value,'',label+' / '+name);
+      assert.equal(placeholder.disabled,true,label+' / '+name);
+      assert.equal(placeholder.hidden,true,label+' / '+name);
+      assert.equal(select.required,true,label+' / '+name);
+      select.value='';
+      assert.equal(select.checkValidity(),false,'não deve validar a instrução: '+name);
+      const real=[...select.options].find(option=>option.value&&!option.disabled);
+      assert.ok(real,'ao menos uma opção real: '+name);
+      h.change('[name='+name+']',real.value);
+      assert.equal(select.checkValidity(),true,'a opção real deve validar: '+name);
+      if(prior)h.change('[name='+name+']',prior);
+    }
+    assert.equal(h.calls.filter(call=>call.method!=='GET').length,0);
+    assert.deepEqual(h.errors,[]);
+  }
+});
+
 test('pending invitation cannot silently create a business or grant owner access',async t=>{
   const h=await makeOnboarding({decision:entry({kind:'invitation',tenant_id:null,create_allowed:false,invitations:[{tenant_id:tenantA,business_name:'Empresa convidante',status:'pending',role:'editor'}]})});t.after(()=>h.close());assert.match(h.element('#setup').textContent,/Empresa convidante/);assert.equal(h.document.querySelector('[data-ob-form=create]'),null);assert.equal(h.document.querySelector('a[href="/convite"]').textContent,'Ver convite');assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);
 });
