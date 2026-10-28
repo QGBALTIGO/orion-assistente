@@ -134,6 +134,15 @@ def test_date_control_is_aligned_and_days_scroll_without_arrows(fixture_url, eng
             assert date.input_value()=='2030-02-01'
             date.fill('')
             assert date.input_value()=='2030-02-01', 'Clear preserves the selected day instead of showing conflicting dates'
+            page.locator('#time-slots:not([aria-busy=true]) .slot').first.click()
+            assert page.locator('#booking-next').is_enabled()
+            date.fill('10000-01-01')
+            assert page.locator('#booking-day-value').inner_text()=='Data inválida'
+            assert page.locator('#booking-next').is_disabled()
+            assert page.locator('#booking-date-heading .orion-field-error').is_visible()
+            page.locator('#booking-day-strip [aria-pressed=true]').click()
+            assert date.input_value()=='2030-02-01'
+            assert page.locator('#booking-next').is_enabled()
             page.locator('#booking-day-strip .day-button').last.focus()
             assert page.locator('#booking-day-strip').evaluate('(e)=>e.scrollLeft')>0
             page.locator('#booking-day-strip .day-button').nth(3).click()
