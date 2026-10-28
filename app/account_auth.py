@@ -162,7 +162,9 @@ async def _consume_code(session,email,purpose,code):
         SELECT t.id,t.account_id,t.token_digest,t.attempts,t.expires_at
         FROM panel_email_tokens t
         JOIN panel_accounts a ON a.id=t.account_id
-        WHERE a.email=:email AND t.purpose=:purpose AND t.used_at IS NULL
+        LEFT JOIN admin_account_controls access ON access.account_id=a.id
+        WHERE a.email=:email AND COALESCE(access.state,'active')='active'
+          AND t.purpose=:purpose AND t.used_at IS NULL
           AND t.expires_at>clock_timestamp()
         ORDER BY t.created_at DESC LIMIT 1 FOR UPDATE OF t
     """),{"email":email,"purpose":purpose})).mappings().first()
@@ -262,8 +264,10 @@ async def resend_verify(payload:RecoveryStart,request:Request):
     async with _storage()() as session:
         async with session.begin():
             account=(await session.execute(text("""
-                SELECT id FROM panel_accounts
-                WHERE email=:email AND verified_at IS NULL FOR UPDATE
+                SELECT a.id FROM panel_accounts a
+                LEFT JOIN admin_account_controls access ON access.account_id=a.id
+                WHERE a.email=:email AND a.verified_at IS NULL
+                  AND COALESCE(access.state,'active')='active' FOR UPDATE OF a
             """),{"email":payload.email})).mappings().first()
             if account:
                 await _issue_token(session,account["id"],"verify",payload.email)
@@ -280,7 +284,10 @@ async def forgot(payload:RecoveryStart,request:Request):
     async with _storage()() as session:
         async with session.begin():
             account=(await session.execute(text("""
-                SELECT id FROM panel_accounts WHERE email=:email FOR UPDATE
+                SELECT a.id FROM panel_accounts a
+                LEFT JOIN admin_account_controls access ON access.account_id=a.id
+                WHERE a.email=:email AND COALESCE(access.state,'active')='active'
+                FOR UPDATE OF a
             """),{"email":payload.email})).mappings().first()
             if account:
                 await _issue_token(session,account["id"],"reset",payload.email)
@@ -318,9 +325,10 @@ async def authenticate_account(email,password):
     if "@" not in email or len(email)>254:return None
     async with _storage()() as session:
         row=(await session.execute(text("""
-            SELECT id,name,email,password_hash,role,auth_version,verified_at,registration_pending
-            FROM panel_accounts WHERE email=:email
-              AND COALESCE(to_jsonb(panel_accounts)->>'auth_provider','password')='password'
+            SELECT a.id,a.name,a.email,a.password_hash,a.role,a.auth_version,a.verified_at,a.registration_pending
+            FROM panel_accounts a LEFT JOIN admin_account_controls c ON c.account_id=a.id
+            WHERE COALESCE(c.state,'active')='active' AND a.email=:email
+              AND COALESCE(to_jsonb(a)->>'auth_provider','password')='password'
         """),{"email":email.strip().lower()})).mappings().first()
     try:
         accepted=_hasher.verify(row["password_hash"] if row else _FAKE,password)
@@ -337,8 +345,10 @@ async def authenticate_account(email,password):
 async def current_account(account_id,version):
     async with _storage()() as session:
         row=(await session.execute(text("""
-            SELECT role,auth_version,verified_at,name,email,registration_pending FROM panel_accounts WHERE id=:id
-              AND COALESCE(to_jsonb(panel_accounts)->>'auth_provider','password')='password'
+            SELECT a.role,a.auth_version,a.verified_at,a.name,a.email,a.registration_pending
+            FROM panel_accounts a LEFT JOIN admin_account_controls c ON c.account_id=a.id
+            WHERE COALESCE(c.state,'active')='active' AND a.id=:id
+              AND COALESCE(to_jsonb(a)->>'auth_provider','password')='password'
         """),{"id":UUID(account_id)})).mappings().first()
     if not row or row["auth_version"]!=version or row.get('registration_pending',False):
         raise HTTPException(401,"Sua sessão expirou. Entre novamente")
@@ -351,7 +361,8 @@ _CURRENT_ACCOUNT_SCOPE_SQL = text("""
                WHERE all_memberships.account_id=a.id AND all_memberships.active) AS active_business_count
             FROM panel_accounts a LEFT JOIN tenant_memberships m
               ON m.account_id=a.id AND m.tenant_id=:tenant AND m.active
-            WHERE a.id=:id AND COALESCE(to_jsonb(a)->>'auth_provider','password')='password'
+            LEFT JOIN admin_account_controls c ON c.account_id=a.id
+            WHERE COALESCE(c.state,'active')='active' AND a.id=:id AND COALESCE(to_jsonb(a)->>'auth_provider','password')='password'
         """)
 
 

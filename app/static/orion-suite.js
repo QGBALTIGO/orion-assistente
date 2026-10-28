@@ -279,7 +279,10 @@
       const attendance=[['conversas','chat'],['ai','bot'],['empresa','settings'],['catalogo','box']];
       attendance.forEach(item=>{nav+=navItem(item);});
     }
-    nav+='<div class="os-nav-section">Ajuda e conta</div>'+[['novidades','bell'],['ajuda','book'],['member','shield']].map(([route,symbol])=>'<button type="button" class="os-nav-link os-nav-utility" data-os-route="'+route+'" title="'+esc(routeNames[route])+'">'+icon(symbol)+'<span>'+esc(routeNames[route])+'</span></button>').join('');
+    nav+='<div class="os-nav-section">Ajuda e conta</div>'+[['novidades','bell'],['ajuda','book'],['member','shield']].map(([route,symbol])=>{
+      const label=route==='member'&&state.bridge.user?.role==='admin'?'Administração de clientes':routeNames[route];
+      return '<button type="button" class="os-nav-link os-nav-utility" data-os-route="'+route+'" title="'+esc(label)+'">'+icon(symbol)+'<span>'+esc(label)+'</span></button>';
+    }).join('');
     if(t?.role==='owner')nav+='<button type="button" class="os-nav-link os-nav-utility" data-os-action="business-setup">'+icon('settings')+'<span>Configurar negócio</span></button>';$('osNav').innerHTML=nav;selectedNav();
   }
   function applyThemeState(){const pref=document.documentElement.dataset.themePreference||'auto',effective=document.documentElement.dataset.theme||'light';document.querySelectorAll('[data-os-theme]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.osTheme===pref)));const toggle=$('osThemeToggle');if(toggle)toggle.innerHTML=icon(effective==='dark'?'moon':'sun');document.querySelectorAll('.os-mobile-brand [data-orion-logo]').forEach(i=>i.src='/brand/orion-brand-'+effective+'.svg');}
@@ -294,6 +297,14 @@
     // stale URL, programmatic link or previous account's navigation state.
     if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin')route='dashboard';
     if(state.busy&&!options.force)return;
+    // The platform-admin customer directory is account-wide; it must remain
+    // reachable even when the operator has no selected business context.
+    if(route==='member'&&state.bridge.user?.role==='admin'){
+      clearSiteLookups();
+      legacyOpened(route);
+      state.bridge.openLegacy?.(route);
+      return;
+    }
     clearSiteLookups();
     window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
     if(!tenant()){
