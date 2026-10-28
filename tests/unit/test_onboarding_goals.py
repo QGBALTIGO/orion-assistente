@@ -111,6 +111,7 @@ def test_quick_release_is_in_existing_predeploy_chain_and_rechecks_current_schem
     from contextlib import contextmanager
 
     calls=[]
+    original_main=quick.main
     monkeypatch.setattr(registration,"connection_values",lambda:("synthetic",object()))
     monkeypatch.setattr(registration,"migrated_version",lambda _:quick.TARGET)
     monkeypatch.setattr(registration,"main",lambda:calls.append("old-registration") or 0)
@@ -128,7 +129,7 @@ def test_quick_release_is_in_existing_predeploy_chain_and_rechecks_current_schem
     monkeypatch.setattr(quick,"schema_contract_ready",lambda _:True)
     monkeypatch.setattr(quick,"perform_backup",lambda *a,**k:pytest.fail("Unnecessary backup"))
     monkeypatch.setattr(quick.subprocess,"run",lambda *a,**k:pytest.fail("Unexpected DDL"))
-    assert quick.main()==0
+    assert original_main()==0
 
 
 def test_quick_release_refuses_unknown_schema_before_backup_or_migration(monkeypatch):
