@@ -63,7 +63,7 @@ async def list_customer_accounts(q:str="",status:str="all",page:int=Query(1,ge=1
             ) company ON true
             WHERE a.role='member'
               AND COALESCE(to_jsonb(a)->>'auth_provider','password')='password'
-              AND (:status='all' OR COALESCE(c.state,'active')=:status)
+              AND (CAST(:status AS text)='all' OR COALESCE(c.state,'active')=CAST(:status AS text))
               AND (a.name ILIKE :q ESCAPE '\\' OR a.email ILIKE :q ESCAPE '\\'
                    OR COALESCE(company.company_name,'') ILIKE :q ESCAPE '\\')
         """
@@ -157,9 +157,9 @@ async def manage_account(account_id:UUID,action:str,payload:AccountAction,
                       "archive":"archived","restore":"active"}[action]
             await db.execute(text("""
                 INSERT INTO admin_account_controls(account_id,state,reason,archived_at,purge_after)
-                VALUES(:id,:state,:reason,
-                       CASE WHEN :state='archived' THEN now() ELSE NULL END,
-                       CASE WHEN :state='archived' THEN now()+interval '30 days' ELSE NULL END)
+                VALUES(:id,CAST(:state AS varchar(16)),:reason,
+                       CASE WHEN CAST(:state AS varchar(16))='archived' THEN now() ELSE NULL END,
+                       CASE WHEN CAST(:state AS varchar(16))='archived' THEN now()+interval '30 days' ELSE NULL END)
                 ON CONFLICT(account_id) DO UPDATE SET state=EXCLUDED.state,
                     reason=EXCLUDED.reason,archived_at=EXCLUDED.archived_at,
                     purge_after=EXCLUDED.purge_after,updated_at=now()
