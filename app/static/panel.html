@@ -2328,9 +2328,15 @@ void authFeatures();
 const platformAdminLegacyPages=new Set(["conversas","ai","empresa","catalogo","cadastros"]);
 function openPage(target){
  if(target==="member"){
-  $("adminClientCenter").classList.toggle("hidden",!adminOnly());
-  document.querySelector("#page-member .member-settings").classList.toggle("hidden",adminOnly());
-  if(adminOnly())void loadAdminClients();
+  const platform=adminOnly();
+  $("adminClientCenter").classList.toggle("hidden",!platform);
+  document.querySelector("#page-member .member-settings").classList.toggle("hidden",platform);
+  document.querySelector("#page-member .member-overview").classList.toggle("hidden",platform);
+  $("memberWelcome").textContent=platform?"Administração de clientes":"Bem-vindo ao Orion";
+  document.querySelector("#page-member .subhead").textContent=platform?
+    "Gerencie as contas cadastradas, com histórico e controles de segurança.":
+    "Seu espaço para acompanhar sua conta.";
+  if(platform)void loadAdminClients();
  }
  if(platformAdminLegacyPages.has(target)&&loginRole!=="admin"){
   // Old deep links and programmatic clicks must also return to the Dashboard.
