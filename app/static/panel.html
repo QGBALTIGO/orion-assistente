@@ -1783,6 +1783,96 @@ async function api(url,method="GET",data){
  }
  return response.status===204?null:response.json();
 }
+let memberBusinessOriginal=null,memberBusinessBusy=false,memberPasswordBusy=false;
+function memberFeedback(id,message,error=false){
+ const el=$(id);el.textContent=message;el.dataset.error=String(error);
+}
+function memberPhoneDisplay(value){
+ return window.OrionFields?.phoneDisplay(value)||value||"";
+}
+async function loadMemberBusiness(){
+ if(loginRole!=="member"||!accountBusiness())return;
+ const epoch=authEpoch,tenant=suiteTenantId;
+ memberFeedback("memberBusinessFeedback","Consultando dados da empresa…");
+ try{
+  const data=await api("/api/v1/account/business-identity");
+  if(epoch!==authEpoch||tenant!==suiteTenantId)return;
+  memberBusinessOriginal={name:data.name,contact_phone:data.contact_phone||null};
+  $("memberBusinessName").value=data.name||"";
+  $("memberBusinessPhone").value=memberPhoneDisplay(data.contact_phone);
+  memberFeedback("memberBusinessFeedback","");
+ }catch(error){
+  if(epoch===authEpoch&&tenant===suiteTenantId){
+   memberBusinessOriginal=null;
+   memberFeedback("memberBusinessFeedback",error.message||"Não foi possível consultar a empresa.",true);
+  }
+ }
+}
+$("memberBusinessForm").addEventListener("submit",async event=>{
+ event.preventDefault();
+ if(memberBusinessBusy||!memberBusinessOriginal||loginRole!=="member"||!accountBusiness())return;
+ const form=event.currentTarget;
+ if(!window.OrionFields?.validateForm(form)||!form.reportValidity())return;
+ const name=$("memberBusinessName").value.trim().replace(/\s+/g," ");
+ const phone=$("memberBusinessPhone").value;
+ if(!name||!phone)return;
+ const epoch=authEpoch,tenant=suiteTenantId;
+ memberBusinessBusy=true;$("memberBusinessSave").disabled=true;
+ memberFeedback("memberBusinessFeedback","Salvando alterações…");
+ try{
+  const result=await api("/api/v1/account/business-identity","PUT",{
+   name,contact_phone:phone,expected_name:memberBusinessOriginal.name,
+   expected_phone:memberBusinessOriginal.contact_phone
+  });
+  if(epoch!==authEpoch||tenant!==suiteTenantId)return;
+  memberBusinessOriginal={name:result.name,contact_phone:result.contact_phone};
+  $("memberBusinessName").value=result.name;
+  $("memberBusinessPhone").value=memberPhoneDisplay(result.contact_phone);
+  if(accountBusiness())accountBusiness().name=result.name;
+  renderAccountBusiness();
+  window.OrionSuite?.sync({tenants:businessRows});
+  memberFeedback("memberBusinessFeedback","Dados da empresa atualizados com sucesso.");
+ }catch(error){
+  if(epoch===authEpoch&&tenant===suiteTenantId)
+   memberFeedback("memberBusinessFeedback",error.status===409?
+    "Os dados mudaram em outra sessão. Atualize a página antes de tentar novamente.":
+    error.message||"Não foi possível salvar. Tente novamente.",true);
+ }finally{memberBusinessBusy=false;$("memberBusinessSave").disabled=false;}
+});
+$("memberPasswordForm").addEventListener("submit",async event=>{
+ event.preventDefault();
+ if(memberPasswordBusy||loginRole!=="member")return;
+ const form=event.currentTarget;
+ if(!form.reportValidity())return;
+ const current_password=$("memberCurrentPassword").value;
+ const new_password=$("memberNewPassword").value;
+ const confirm_password=$("memberConfirmPassword").value;
+ if(new_password!==confirm_password){
+  memberFeedback("memberPasswordFeedback","As novas senhas não coincidem.",true);
+  $("memberConfirmPassword").focus();return;
+ }
+ if(new_password===current_password){
+  memberFeedback("memberPasswordFeedback","A nova senha precisa ser diferente da atual.",true);return;
+ }
+ const epoch=authEpoch;
+ memberPasswordBusy=true;$("memberPasswordSave").disabled=true;
+ memberFeedback("memberPasswordFeedback","Alterando senha…");
+ try{
+  const result=await api("/auth/account/password","POST",{
+   current_password,new_password,confirm_password
+  });
+  if(epoch!==authEpoch)return;
+  form.reset();
+  showLogin();
+  messageAuth(result.message||"Senha alterada. Entre novamente.");
+ }catch(error){
+  if(epoch===authEpoch){
+   memberFeedback("memberPasswordFeedback",error.message||"Não foi possível alterar a senha.",true);
+   $("memberCurrentPassword").value="";
+  }
+ }finally{memberPasswordBusy=false;$("memberPasswordSave").disabled=false;}
+});
+
 async function uploadImage(url,file,kind){
  const scoped=url.match(/^\/api\/v1\/tenants\/([^/?]+)/);
  if(scoped&&(!accountBusiness()||decodeURIComponent(scoped[1])!==suiteTenantId))throw Error("Não foi possível confirmar a empresa desta conta.");
@@ -1899,6 +1989,8 @@ function showLogin(){
  ++setupResolving;window.OrionOnboarding?.unmount();setupController=null;setSetupGate(false);
  window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
  window.OrionSuite?.destroy();suiteUser=null;suiteTenantId="";businessContextReady=false;businessContextError="";
+ memberBusinessOriginal=null;$("memberBusinessForm").reset();$("memberPasswordForm").reset();
+ memberFeedback("memberBusinessFeedback","");memberFeedback("memberPasswordFeedback","");
  finishActionConfirmation(false);manualSendRequest=null;++manualSendSequence;$("sendButton").disabled=false;
  csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);statusTimer=null;chatTimer=null;wizardClocks=null;
  ++statusSequence;connectedSnapshot=null;wizardSuccessUntil=0;
@@ -1945,7 +2037,10 @@ async function showApp(role="support",name="",email=""){
  }
  window.OrionSuite?.mount(suiteBridge(desired));
  dismissSessionBoot();
- if(await loadBusinesses()&&epoch===authEpoch)startBusinessSession();
+ if(await loadBusinesses()&&epoch===authEpoch){
+  startBusinessSession();
+  if(loginRole==="member")void loadMemberBusiness();
+ }
 }
 async function publicAuth(path,payload){
  const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},
@@ -2133,6 +2228,7 @@ function openPage(target){
  if(target==="empresa")void loadBusinessProfile();
  if(target==="catalogo")void loadCommerceTenants();
  if(target==="cadastros")void loadTenants();
+ if(target==="member")void loadMemberBusiness();
  history.replaceState({}, "", "/panel?aba="+encodeURIComponent(target));
  window.OrionSuite?.legacyOpened(target);
 }
