@@ -7,6 +7,7 @@ import pytest
 from scripts import backup_and_migrate_commissions as common
 from scripts import backup_and_migrate_professional_phone as release
 from scripts import backup_and_migrate_registration as registration
+from scripts import backup_and_migrate_quick_onboarding as quick
 
 
 def configure(monkeypatch, *, current=None, source=True, target=True, backup_error=False,
@@ -99,15 +100,22 @@ def test_existing_registration_contract_is_required_for_source_and_target(monkey
     assert check('synthetic') is False and calls == ['registration']
 
 
-@pytest.mark.parametrize('revision', [registration.PREVIOUS, registration.TARGET, release.TARGET])
+@pytest.mark.parametrize('revision', [
+    registration.PREVIOUS, registration.TARGET, release.TARGET, quick.TARGET,
+])
 def test_current_predeploy_entrypoint_dispatches_only_reviewed_revisions(monkeypatch, revision):
     events = []
     monkeypatch.setattr(registration, 'connection_values', lambda: ('synthetic', object()))
     monkeypatch.setattr(registration, 'migrated_version', lambda _: revision)
     monkeypatch.setattr(registration, 'main', lambda: events.append('registration') or 0)
     monkeypatch.setattr(release, 'main', lambda: events.append('phone') or 0)
+    monkeypatch.setattr(quick, 'main', lambda: events.append('quick') or 0)
     assert registration.predeploy_main() == 0
-    assert events == (['registration', 'phone'] if revision == registration.PREVIOUS else ['phone'])
+    assert events == (
+        ['registration', 'phone', 'quick'] if revision == registration.PREVIOUS else
+        ['phone', 'quick'] if revision == registration.TARGET else
+        ['quick']
+    )
 
 
 def test_failed_prior_release_or_unknown_revision_never_runs_phone_release(monkeypatch):
@@ -117,6 +125,7 @@ def test_failed_prior_release_or_unknown_revision_never_runs_phone_release(monke
     monkeypatch.setattr(registration, 'migrated_version', lambda _: version[0])
     monkeypatch.setattr(registration, 'main', lambda: 3)
     monkeypatch.setattr(release, 'main', lambda: events.append('phone') or 0)
+    monkeypatch.setattr(quick, 'main', lambda: events.append('quick') or 0)
     assert registration.predeploy_main() == 3 and events == []
     version[0] = '0041_unreviewed'
     assert registration.predeploy_main() == 2 and events == []
