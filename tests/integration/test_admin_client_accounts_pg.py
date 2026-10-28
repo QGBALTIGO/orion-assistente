@@ -54,3 +54,77 @@ async def test_platform_admin_can_suspend_archive_restore_without_deleting_custo
         async with ctx.migration.begin() as db:
             await db.execute(text("DELETE FROM admin_account_audit WHERE account_id=:id"),{"id":account})
             await db.execute(text("DELETE FROM admin_account_controls WHERE account_id=:id"),{"id":account})
+
+
+@pytest.mark.asyncio
+async def test_legal_hold_blocks_due_erasure_and_release_triggers_irreversible_login_erasure(onboarding_db):
+    from app.account_erasure import erase_due_account_logins
+    ctx=onboarding_db
+    account=ctx.actor.account_id
+    administrator=uuid4()
+    async with ctx.migration.connect() as db:
+        before=(await db.execute(text("SELECT auth_version,email FROM panel_accounts WHERE id=:a"),
+                                 {"a":account})).mappings().one()
+    try:
+        await admin_accounts.manage_account(
+            account,"archive",
+            admin_accounts.AccountAction(expected_version=before["auth_version"],
+                reason="Pedido de exclusão de conta",confirmation="EXCLUIR"),administrator)
+        hold=await admin_accounts.manage_account(account,"hold",
+            admin_accounts.AccountAction(expected_version=before["auth_version"]+1,
+                reason="Obrigação fiscal pendente"),administrator)
+        assert hold["legal_hold"] is True
+        # Emulate the elapsed recovery period only in this disposable database.
+        async with ctx.migration.begin() as db:
+            await db.execute(text("""
+                UPDATE admin_account_controls SET purge_after=now()-interval '1 day'
+                WHERE account_id=:a
+            """),{"a":account})
+        assert await erase_due_account_logins(batch_size=50)==0
+        async with ctx.migration.connect() as db:
+            still=(await db.execute(text("SELECT email FROM panel_accounts WHERE id=:a"),
+                                    {"a":account})).scalar_one()
+            assert still==before["email"]
+        released=await admin_accounts.manage_account(account,"release_hold",
+            admin_accounts.AccountAction(expected_version=before["auth_version"]+2,
+                reason="Retenção legal encerrada"),administrator)
+        assert released["legal_hold"] is False
+        assert await erase_due_account_logins(batch_size=50)==1
+        assert await erase_due_account_logins(batch_size=50)==0
+        async with ctx.migration.connect() as db:
+            erased=(await db.execute(text("""
+                SELECT a.email,a.name,a.password_hash,a.verified_at,a.auth_version,c.state,c.purged_at,
+                       c.archived_at,c.purge_after,m.active
+                FROM panel_accounts a JOIN admin_account_controls c ON c.account_id=a.id
+                JOIN tenant_memberships m ON m.account_id=a.id
+                WHERE a.id=:a
+            """),{"a":account})).mappings().one()
+            assert erased["email"]!=before["email"]
+            assert erased["email"].endswith("@accounts.invalid")
+            assert erased["name"]=="Conta excluída"
+            assert erased["password_hash"].startswith("!deleted:")
+            assert erased["verified_at"] is None
+            assert erased["state"]=="erased"
+            assert erased["purged_at"] is not None
+            assert erased["archived_at"] is None and erased["purge_after"] is None
+            assert erased["active"] is False
+            assert erased["auth_version"]==before["auth_version"]+4
+        with pytest.raises(HTTPException) as blocked:
+            await account_auth.current_account(str(account),before["auth_version"]+4)
+        assert blocked.value.status_code==401
+        with pytest.raises(HTTPException) as immutable:
+            await admin_accounts.manage_account(account,"restore",
+                admin_accounts.AccountAction(expected_version=before["auth_version"]+4,
+                    reason="Tentativa após prazo"),administrator)
+        assert immutable.value.status_code==409
+        detail=await admin_accounts.account_detail(account,administrator)
+        assert detail["account"]["state"]=="erased"
+        assert detail["history"][0]["action"]=="erase"
+        # The tenant itself remains for its independent legal retention rules.
+        async with ctx.migration.connect() as db:
+            assert (await db.execute(text("SELECT count(*) FROM tenants WHERE id=:t"),
+                                     {"t":ctx.a})).scalar_one()==1
+    finally:
+        async with ctx.migration.begin() as db:
+            await db.execute(text("DELETE FROM admin_account_audit WHERE account_id=:a"),{"a":account})
+            await db.execute(text("DELETE FROM admin_account_controls WHERE account_id=:a"),{"a":account})
