@@ -18,7 +18,7 @@ async def test_platform_admin_can_suspend_archive_restore_without_deleting_custo
                               {"id":account})).scalar_one()
     claims={"role":"admin","auth_provider":"legacy_admin","account_id":str(actor)}
     try:
-        listing=await admin_accounts.list_customer_accounts(admin=actor)
+        listing=await admin_accounts.list_customer_accounts(q='',status='all',page=1,page_size=20,admin=actor)
         assert any(x["id"]==account for x in listing["items"])
         with pytest.raises(HTTPException) as forbidden:
             admin_accounts.require_platform_owner({"role":"member","account_id":str(account)})
