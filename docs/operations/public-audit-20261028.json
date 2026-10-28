@@ -1,0 +1,177 @@
+{
+  "base": "cd09ee8a3be19a1e98a75a9977c3b2e9571237d5",
+  "branch": "codex/public-audit-20261028",
+  "order": [
+    "PUB-01",
+    "PUB-02",
+    "PUB-03",
+    "PUB-05",
+    "PUB-06",
+    "PUB-07",
+    "PUB-08",
+    "PUB-09",
+    "PUB-12",
+    "PUB-13",
+    "PUB-14",
+    "PUB-04",
+    "PUB-10",
+    "PUB-11"
+  ],
+  "viewports": [
+    [
+      1440,
+      900
+    ],
+    [
+      1366,
+      768
+    ],
+    [
+      768,
+      1024
+    ],
+    [
+      1024,
+      768
+    ],
+    [
+      390,
+      844
+    ],
+    [
+      360,
+      800
+    ]
+  ],
+  "items": [
+    {
+      "id": "PUB-01",
+      "title": "O profissional escolhido muda ao voltar aos serviços",
+      "severity": "Alta",
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-01.json"
+      ],
+      "publication": "não publicada",
+      "note": "Preserva profissional elegível ao navegar e ao alterar seleção compatível; disponibilidade continua revalidada.",
+      "tests": "11 testes DOM; reprodução original falhava antes e passou depois; Chromium nos seis viewports"
+    },
+    {
+      "id": "PUB-02",
+      "title": "O conflito entre combo e serviço fica invisível e usa a explicação errada",
+      "severity": "Média",
+      "state": "pendente",
+      "evidence": [],
+      "publication": "não publicada",
+      "note": ""
+    },
+    {
+      "id": "PUB-03",
+      "title": "Amarelo sobre creme perde contraste no tema claro",
+      "severity": "Média",
+      "state": "pendente",
+      "evidence": [],
+      "publication": "não publicada",
+      "note": ""
+    },
+    {
+      "id": "PUB-04",
+      "title": "A cidade apresentada e o fuso do calendário não são coerentes à primeira vista",
+      "severity": "Verificar primeiro",
+      "state": "pendente",
+      "evidence": [],
+      "publication": "não publicada",
+      "note": "Usuário informou outra frente para fuso baseado no CEP. Não alterar essa implementação concorrente."
+    },
+    {
+      "id": "PUB-05",
+      "title": "A data escolhida pode ficar cortada na faixa de dias",
+      "severity": "Média",
+      "state": "pendente",
+      "evidence": [],
+      "publication": "não publicada",
+      "note": ""
+    },
+    {
+      "id": "PUB-06",
+      "title": "A revisão final omite a duração total",
+      "severity": "Média",
+      "state": "pendente",
+      "evidence": [],
+      "publication": "não publicada",
+      "note": ""
+    },
+    {
+      "id": "PUB-07",
+      "title": "A rota ganha destaque principal no fim da página, enquanto agendar desaparece",
+      "severity": "Média",
+      "state": "pendente",
+      "evidence": [],
+      "publication": "não publicada",
+      "note": ""
+    },
+    {
+      "id": "PUB-08",
+      "title": "Outra data é menor que os campos e ações equivalentes",
+      "severity": "Baixa",
+      "state": "pendente",
+      "evidence": [],
+      "publication": "não publicada",
+      "note": ""
+    },
+    {
+      "id": "PUB-09",
+      "title": "Nascimento é obrigatório, mas a necessidade e a obrigatoriedade não são explicadas",
+      "severity": "Média",
+      "state": "pendente",
+      "evidence": [],
+      "publication": "não publicada",
+      "note": ""
+    },
+    {
+      "id": "PUB-10",
+      "title": "O endereço textual não informa rua e número",
+      "severity": "Média",
+      "state": "pendente",
+      "evidence": [],
+      "publication": "não publicada",
+      "note": "aguarda dados factuais"
+    },
+    {
+      "id": "PUB-11",
+      "title": "WhatsApp e ligação usam contatos de DDDs diferentes",
+      "severity": "Verificar",
+      "state": "pendente",
+      "evidence": [],
+      "publication": "não publicada",
+      "note": "aguarda dados factuais"
+    },
+    {
+      "id": "PUB-12",
+      "title": "O recorte das fotos da equipe corta o topo da cabeça",
+      "severity": "Baixa",
+      "state": "pendente",
+      "evidence": [],
+      "publication": "não publicada",
+      "note": ""
+    },
+    {
+      "id": "PUB-13",
+      "title": "O painel de revisão deixa espaço vazio excessivo em telas altas",
+      "severity": "Baixa",
+      "state": "pendente",
+      "evidence": [],
+      "publication": "não publicada",
+      "note": ""
+    },
+    {
+      "id": "PUB-14",
+      "title": "A escrita da duração muda entre cards e totais",
+      "severity": "Baixa",
+      "state": "pendente",
+      "evidence": [],
+      "publication": "não publicada",
+      "note": ""
+    }
+  ]
+}

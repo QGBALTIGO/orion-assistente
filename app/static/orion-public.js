@@ -338,7 +338,8 @@
     booking.services = keep;
     booking.service = keep[0] || null;
     if (removedExtras) booking.addons = [];
-    booking.professional = null;
+    if (!eligibleProfessionals().some(person => person.id === booking.professional))
+      booking.professional = null;
     retainedTimeView = null;
     booking.notice = removedExtras ? 'Adicionais anteriores foram removidos ao combinar serviços completos.' : '';
     showError();
@@ -946,7 +947,17 @@
   $('booking-next').addEventListener('click', () => {
     if (booking.result) { closeBooking(); return; }
     if (booking.step === 3) { submitBooking(); return; }
-    if (booking.step === 1) { if (!booking.services.length || !eligibleProfessionals().length) return; booking.professional = eligibleProfessionals()[0].id; booking.step = 2; showError(); renderBooking(); loadAvailability(); }
+    if (booking.step === 1) {
+      const people = eligibleProfessionals();
+      if (!booking.services.length || !people.length) return;
+      // Back/Continue is navigation, not a new professional choice. A quote
+      // and start may only survive while they still belong to this person.
+      if (!people.some(person => person.id === booking.professional)) {
+        invalidateAvailability();
+        booking.professional = people[0].id;
+      }
+      booking.step = 2; showError(); renderBooking(); loadAvailability();
+    }
     else if (booking.start && booking.quote) { booking.step = 3; showError(); renderBooking(); }
   });
   $('share-site').addEventListener('click', async () => {
