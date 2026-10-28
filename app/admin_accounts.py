@@ -177,7 +177,8 @@ async def manage_account(account_id:UUID,action:str,payload:AccountAction,
         async with db.begin():
             row=(await db.execute(text("""
                 SELECT a.id,a.auth_version,COALESCE(c.state,'active') AS state,
-                       COALESCE(c.legal_hold,false) AS legal_hold
+                       COALESCE(c.legal_hold,false) AS legal_hold,
+                       COALESCE(c.purge_after<=now(),false) AS recovery_expired
                 FROM panel_accounts a LEFT JOIN admin_account_controls c ON c.account_id=a.id
                 WHERE a.id=:id AND a.role='member'
                   AND COALESCE(to_jsonb(a)->>'auth_provider','password')='password'
@@ -188,6 +189,8 @@ async def manage_account(account_id:UUID,action:str,payload:AccountAction,
             allowed={"active":{"suspend","archive"},"suspended":{"reactivate","archive"},
                      "archived":{"restore","hold","release_hold"},"erased":set()}
             if action not in allowed[row["state"]]:raise HTTPException(409,"Transição não permitida")
+            if action=="restore" and row["recovery_expired"]:
+                raise HTTPException(409,"O prazo de recuperação de 30 dias terminou")
             if action=="hold" and row["legal_hold"]:
                 raise HTTPException(409,"A conta já possui retenção legal ativa")
             if action=="release_hold" and not row["legal_hold"]:
