@@ -18,6 +18,18 @@ test('PUB-01: returning through services preserves the eligible chosen professio
   assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
 });
 
+test('PUB-05: explicit day navigation respects bounds and labels months',async t=>{
+  const h=await makePublic();t.after(()=>h.close());await flush();
+  h.click('#hero-book');h.click('#booking-service-list button');h.click('#booking-next');await flush();
+  assert.equal(h.document.querySelector('#booking-day-prev')?.disabled,true);
+  h.click('#booking-day-next');await flush();
+  assert.equal(h.document.querySelector('#booking-day-input').value,'2030-01-08');
+  assert.equal(h.document.querySelector('#booking-day-prev').disabled,false);
+  assert.match(h.document.querySelector('.day-month').textContent,/jan/);
+  h.click('#booking-day-prev');await flush();
+  assert.equal(h.document.querySelector('#booking-day-input').value,'2030-01-07');
+});
+
 test('PUB-02: conflict describes the selected individual service and lives above the list',async t=>{
   const data=catalogue();
   data.services[0].catalog_kind='base';data.services[0].name='Corte Masculino';

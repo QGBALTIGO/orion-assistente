@@ -93,10 +93,13 @@
       "id": "PUB-05",
       "title": "A data escolhida pode ficar cortada na faixa de dias",
       "severity": "Média",
-      "state": "pendente",
-      "evidence": [],
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-05.json"
+      ],
       "publication": "não publicada",
-      "note": ""
+      "note": "Faixa revela seleção sem rolar o diálogo, identifica o mês de cada dia e oferece anterior/próximo com limites.",
+      "tests": "13 testes DOM; seis tamanhos x dois temas; seleção visível, setas funcionais e transição jan/fev"
     },
     {
       "id": "PUB-06",
