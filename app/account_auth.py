@@ -390,3 +390,53 @@ async def claim_owner(payload:ClaimOwner,request:Request,data:dict=Depends(panel
                 UPDATE panel_accounts SET role='admin',auth_version=auth_version+1 WHERE id=:id
             """),{"id":UUID(data["account_id"])})
     return {"ok":True,"reloginRequired":True}
+
+
+class ChangeOwnPassword(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+    confirm_password: str = Field(min_length=8, max_length=128)
+
+
+@router.post("/account/password")
+async def change_own_password(payload: ChangeOwnPassword, request: Request,
+                              data: dict = Depends(panel_actor)):
+    """Self-service change for verified password accounts only.
+
+    The version increment invalidates every existing session, including the
+    current one. Legacy environment-admin credentials cannot be changed here.
+    """
+    if not data.get("account_id") or data.get("auth_provider") == "legacy_admin":
+        raise HTTPException(403, "Esta conta não utiliza senha pessoal")
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(422, "As novas senhas não coincidem")
+    if hmac.compare_digest(payload.current_password, payload.new_password):
+        raise HTTPException(422, "Escolha uma senha diferente da atual")
+    await _throttle(request, "change-password", str(data["account_id"]), count=5, window=900)
+    async with _storage()() as session:
+        async with session.begin():
+            row = (await session.execute(text("""
+                SELECT id,password_hash,email,auth_version,registration_pending
+                FROM panel_accounts WHERE id=:id
+                AND COALESCE(to_jsonb(panel_accounts)->>'auth_provider','password')='password'
+                FOR UPDATE
+            """), {"id": UUID(str(data["account_id"]))})).mappings().first()
+            if not row or row["registration_pending"]:
+                raise HTTPException(403, "Conta indisponível para alteração de senha")
+            try:
+                valid = _hasher.verify(row["password_hash"], payload.current_password)
+            except (argon2_errors.VerificationError, argon2_errors.InvalidHashError):
+                valid = False
+            if not valid:
+                raise HTTPException(403, "Senha atual incorreta")
+            await session.execute(text("""
+                UPDATE panel_accounts SET password_hash=:hash,auth_version=auth_version+1
+                WHERE id=:id
+            """), {"id": row["id"], "hash": _hasher.hash(payload.new_password)})
+            if mail_ready() and row["email"]:
+                await email_outbox.enqueue(session, kind="password_changed",
+                    recipient=row["email"],
+                    dedupe_key="password-changed:" + str(row["id"]) + ":" + str(row["auth_version"] + 1),
+                    account_id=row["id"])
+    return {"ok": True, "requires_login": True,
+            "message": "Senha alterada com sucesso. Entre novamente."}
