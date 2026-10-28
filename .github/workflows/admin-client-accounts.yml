@@ -4,16 +4,23 @@ on:
     paths:
       - 'app/admin_accounts.py'
       - 'app/account_auth.py'
+      - 'app/maintenance_access.py'
+      - 'app/main.py'
+      - 'app/panel_auth.py'
       - 'app/account_erasure.py'
       - 'app/worker.py'
       - 'app/static/panel.html'
+      - 'app/static/orion-admin-center.js'
+      - 'app/static/orion-suite.css'
       - 'app/static/orion-suite.js'
       - 'alembic/versions/0042_admin_account_controls.py'
       - 'scripts/backup_and_migrate_admin_accounts.py'
       - 'scripts/backup_and_migrate_registration.py'
       - 'tests/unit/test_admin_accounts.py'
+      - 'tests/unit/test_maintenance_access.py'
       - 'ui-tests/admin-client-center.test.mjs'
       - 'tests/integration/test_admin_client_accounts_pg.py'
+      - 'tests/integration/test_admin_maintenance_pg.py'
       - '.github/workflows/admin-client-accounts.yml'
 permissions:
   contents: read
@@ -26,8 +33,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -c requirements.lock '.[test]'
-      - run: python -m pytest -q tests/unit/test_admin_accounts.py
-      - run: python -m compileall -q app/admin_accounts.py app/account_auth.py app/account_erasure.py app/worker.py scripts/backup_and_migrate_admin_accounts.py
+      - run: python -m pytest -q tests/unit/test_admin_accounts.py tests/unit/test_maintenance_access.py
+      - run: python -m compileall -q app/admin_accounts.py app/account_auth.py app/account_erasure.py app/panel_auth.py app/maintenance_access.py app/main.py app/worker.py scripts/backup_and_migrate_admin_accounts.py
   browser-dom:
     runs-on: ubuntu-24.04
     steps:
@@ -73,4 +80,4 @@ jobs:
             -v support_password=ci-support \
             -f infra/postgres/init/001-roles.sql
       - run: python -m alembic upgrade head
-      - run: python -m pytest -q -ra tests/integration/test_admin_client_accounts_pg.py
+      - run: python -m pytest -q -ra tests/integration/test_admin_client_accounts_pg.py tests/integration/test_admin_maintenance_pg.py

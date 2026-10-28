@@ -384,6 +384,8 @@ async def current_account_and_membership(account_id, version, tenant_id):
 
 @router.post("/admin/claim")
 async def claim_owner(payload:ClaimOwner,request:Request,data:dict=Depends(panel_actor)):
+    if data.get("maintenance"):
+        raise HTTPException(403,"Operação indisponível durante a manutenção de uma conta")
     if not data.get("account_id"):raise HTTPException(403,"Entre com sua conta verificada")
     owner=os.getenv("PANEL_OWNER_EMAIL","").strip().lower()
     if not owner:raise HTTPException(503,"Identidade proprietária não configurada")
@@ -417,6 +419,8 @@ async def change_own_password(payload: ChangeOwnPassword, request: Request,
     The version increment invalidates every existing session, including the
     current one. Legacy environment-admin credentials cannot be changed here.
     """
+    if data.get("maintenance"):
+        raise HTTPException(403, "Alteração de senha indisponível durante manutenção administrativa")
     if not data.get("account_id") or data.get("auth_provider") == "legacy_admin":
         raise HTTPException(403, "Esta conta não utiliza senha pessoal")
     if payload.new_password != payload.confirm_password:

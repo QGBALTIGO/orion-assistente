@@ -2616,3 +2616,138 @@ html:has(.os-professional-history[open]){overflow:hidden}
     overflow-x:auto;overscroll-behavior-x:contain;
   }
 }
+
+
+/* Platform administration reuses Clientes components, with account-wide scope. */
+.orion-suite-enabled>.content>#page-member.os-admin-center-open{
+  box-sizing:border-box;width:100%;max-width:1104px;padding:40px;margin:0 auto;
+  color:var(--os-text);font:400 14px/1.5 var(--os-font);
+}
+#page-member.os-admin-center-open>.header{display:none}
+#page-member .os-admin-center{display:block;box-sizing:border-box;max-width:100%;padding:0;margin:0;font-family:var(--os-font)}
+#page-member .os-admin-center.hidden{display:none!important}
+#adminClientCenter .os-admin-stats{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;
+  margin:0 0 24px;min-width:0;
+}
+#adminClientCenter .os-admin-stats>.os-stat{min-width:0;padding:17px 18px;border-radius:16px}
+#adminClientCenter .os-admin-stats strong{font:700 clamp(20px,2.4vw,28px)/1.2 var(--os-display);letter-spacing:0;font-variant-numeric:tabular-nums}
+#adminClientCenter .os-admin-stats small{margin-top:6px;color:var(--os-muted)}
+#adminClientCenter .os-client-search{margin-bottom:12px}
+#adminClientCenter .os-client-search input{box-sizing:border-box;min-height:44px;border-radius:16px}
+#adminClientCenter .os-admin-filters{margin:0 0 24px}
+#adminClientCenter .os-table-scroll{width:100%;min-width:0;overflow-x:auto}
+#adminClientCenter .os-table{min-width:735px;table-layout:auto}
+#adminClientCenter .os-table td{vertical-align:middle}
+#adminClientCenter .os-table td:nth-child(2){max-width:240px;overflow-wrap:anywhere}
+#adminClientCenter .os-table .os-person{min-width:175px}
+#adminClientCenter .os-table .os-person strong,
+#adminClientCenter .os-table .os-person small{overflow-wrap:anywhere;word-break:break-word}
+#adminClientCenter .os-table-actions{gap:4px;white-space:nowrap}
+#adminClientCenter .os-table-actions>.os-icon-button{display:grid;place-items:center;flex:0 0 35px;width:35px;height:38px}
+#adminClientCenter .os-table-actions>.os-icon-button>.os-icon{width:18px;height:18px}
+#adminClientCenter .os-icon-button.os-negative{color:var(--os-danger)}
+#adminClientCenter .os-icon-button.os-negative:hover{background:var(--os-danger-bg)}
+#adminClientCenter .os-admin-mobile.os-only-mobile{display:none!important}
+
+/* Details: same Orion Clientes modal, typography, field spacing and actions. */
+#osDialog.os-admin-dialog{width:min(480px,calc(100vw - 24px));max-width:100vw;max-height:92dvh;overflow-y:auto;overscroll-behavior:contain}
+#osDialog.os-admin-dialog .os-admin-account-hero{
+  display:flex;align-items:center;gap:12px;min-width:0;padding:12px 0 18px;
+  border-bottom:1px solid var(--os-border);margin-bottom:16px
+}
+#osDialog.os-admin-dialog .os-admin-account-hero>.os-avatar{flex:0 0 44px;width:44px;height:44px}
+#osDialog.os-admin-dialog .os-admin-account-hero>div{display:grid;gap:3px;flex:1;min-width:0}
+#osDialog.os-admin-dialog .os-admin-account-hero strong{font:600 15px/21px var(--os-display);color:var(--os-text);overflow-wrap:anywhere}
+#osDialog.os-admin-dialog .os-admin-account-hero small{font:400 12px/17px var(--os-font);color:var(--os-muted);overflow-wrap:anywhere}
+#osDialog.os-admin-dialog .os-admin-account-hero .os-badge{padding:4px 9px;font-size:11px;flex-shrink:0}
+#osDialog.os-admin-dialog .os-admin-summary{border:1px solid var(--os-border);border-radius:16px;overflow:hidden;margin:0 0 18px}
+#osDialog.os-admin-dialog .os-admin-summary .os-summary-row{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:11px 13px;
+  border-bottom:1px solid var(--os-border);min-width:0
+}
+#osDialog.os-admin-dialog .os-admin-summary .os-summary-row:last-child{border-bottom:0}
+#osDialog.os-admin-dialog .os-admin-summary .os-summary-row>span{color:var(--os-muted);font-size:12px;flex:0 0 40%}
+#osDialog.os-admin-dialog .os-admin-summary .os-summary-row>strong{
+  min-width:0;text-align:right;overflow-wrap:anywhere;white-space:normal;font:600 12px/19px var(--os-font)
+}
+#osDialog.os-admin-dialog .os-admin-edit-form{display:grid;gap:16px;min-width:0}
+#osDialog.os-admin-dialog .os-admin-edit-form .os-client-form{display:grid;gap:14px}
+#osDialog.os-admin-dialog .os-admin-edit-form .os-client-textarea{min-height:92px}
+#osDialog.os-admin-dialog .os-admin-edit-form .os-client-textarea textarea{min-height:92px}
+#osDialog.os-admin-dialog .os-admin-edit-form .os-form-actions{margin:0;justify-content:flex-end}
+#osDialog.os-admin-dialog .os-admin-modal-controls{
+  display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:18px 0;
+  padding:16px 0;border-top:1px solid var(--os-border);border-bottom:1px solid var(--os-border)
+}
+#osDialog.os-admin-dialog .os-admin-modal-controls .os-button{min-height:44px;flex:1 1 auto;border-radius:14px}
+#osDialog.os-admin-dialog .os-admin-modal-controls .os-button.os-admin-access{flex:1 1 100%}
+#osDialog.os-admin-dialog .os-admin-modal-controls .os-negative{color:var(--os-danger);border-color:color-mix(in srgb,var(--os-danger) 30%,var(--os-border))}
+#osDialog.os-admin-dialog .os-admin-history{margin-top:16px}
+#osDialog.os-admin-dialog .os-admin-history-item{display:grid;gap:3px;padding-bottom:12px;border-bottom:1px solid var(--os-border)}
+#osDialog.os-admin-dialog .os-admin-history-item:last-child{padding-bottom:0;border-bottom:0}
+#osDialog.os-admin-dialog .os-admin-history-item strong{font:600 12px/19px var(--os-font);color:var(--os-text)}
+#osDialog.os-admin-dialog .os-admin-history-item small{font:400 11px/16px var(--os-font);color:var(--os-muted)}
+#osDialog.os-admin-dialog .os-admin-history-item p{margin:0;color:var(--os-muted);font:400 12px/19px var(--os-font);overflow-wrap:anywhere}
+#osDialog.os-admin-dialog .os-notice{margin:0 0 16px;align-items:flex-start}
+#osDialog.os-admin-dialog .os-notice.os-warning{background:var(--os-warning-bg);border-color:color-mix(in srgb,var(--os-warning) 30%,var(--os-border))}
+#osDialog.os-admin-dialog .os-notice.os-warning>.os-icon{color:var(--os-warning)}
+#osDialog.os-admin-dialog .os-notice.os-warning p{color:var(--os-text)}
+#osDialog.os-admin-dialog .os-form-message{min-height:0;color:var(--os-danger);font-size:12px}
+#osDialog.os-admin-dialog .os-form-actions{display:flex;gap:9px;flex-wrap:wrap}
+#osDialog.os-admin-dialog .os-form-actions>.os-button{min-height:44px;border-radius:14px}
+#osDialog.os-admin-dialog .os-form-actions>button[type=submit]{flex:1 1 auto}
+#osDialog.os-admin-dialog .os-check{display:flex;align-items:flex-start;gap:10px;margin:0}
+#osDialog.os-admin-dialog .os-check input{flex:0 0 auto;min-width:18px;min-height:18px;margin-top:3px}
+
+/* Admin-initiated customer login is conspicuous on every page and screen. */
+.orion-suite-enabled .os-maintenance-banner{
+  position:sticky;top:56px;z-index:39;box-sizing:border-box;display:flex;align-items:center;
+  gap:12px;width:100%;padding:11px 24px;background:var(--os-warning-bg);
+  color:var(--os-text);border-bottom:1px solid color-mix(in srgb,var(--os-warning) 40%,var(--os-border));
+  box-shadow:0 2px 8px #00000010;font:400 13px/19px var(--os-font)
+}
+.orion-suite-enabled .os-maintenance-banner.hidden{display:none!important}
+.os-maintenance-indicator{flex:0 0 9px;height:9px;width:9px;border-radius:50%;background:var(--os-warning)}
+.os-maintenance-copy{display:grid;gap:2px;flex:1;min-width:0}
+.os-maintenance-copy strong{font:600 13px/19px var(--os-display)}
+.os-maintenance-copy span{overflow-wrap:anywhere}
+.os-maintenance-copy b{font-weight:600}
+.os-maintenance-copy small{font-size:11px;color:var(--os-muted)}
+.os-maintenance-banner #orionMaintenanceExit{
+  flex:0 0 auto;min-height:40px;border-color:color-mix(in srgb,var(--os-warning) 40%,var(--os-border));
+  border-radius:12px;background:var(--os-card);font-weight:600
+}
+@media(max-width:639px){
+  .orion-suite-enabled>.content>#page-member.os-admin-center-open{padding:16px;max-width:100%}
+  #adminClientCenter .os-admin-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:18px}
+  #adminClientCenter .os-admin-stats>.os-stat{padding:12px}
+  #adminClientCenter .os-admin-filters{margin-bottom:16px;overflow-x:auto}
+  #adminClientCenter .os-admin-filters>.os-pill-tabs{max-width:100%;scrollbar-width:none}
+  #adminClientCenter .os-admin-filters .os-pill-tab{font-size:12px;padding:6px 10px}
+  #adminClientCenter .os-hide-mobile{display:none!important}
+  #adminClientCenter .os-admin-mobile.os-only-mobile{display:grid!important;grid-template-columns:minmax(0,1fr);gap:12px}
+  #adminClientCenter .os-swipe-row{display:flex;min-width:0;overflow-x:auto;scroll-snap-type:x mandatory;border:1px solid var(--os-border);border-radius:16px;background:var(--os-card);scrollbar-width:none}
+  #adminClientCenter .os-client-mobile-front{display:flex;flex:0 0 100%;min-width:100%;width:100%;scroll-snap-align:start}
+  #adminClientCenter .os-client-mobile-main{display:flex;align-items:center;gap:12px;box-sizing:border-box;min-width:0;width:100%;padding:14px;border:0;background:transparent;color:var(--os-text);text-align:left;font:400 14px/20px var(--os-font);cursor:pointer}
+  #adminClientCenter .os-client-mobile-main>span:nth-child(2){display:grid;gap:3px;flex:1;min-width:0}
+  #adminClientCenter .os-client-mobile-main strong{font-weight:600;overflow-wrap:anywhere}
+  #adminClientCenter .os-client-mobile-main small{color:var(--os-muted);font-size:11px;overflow-wrap:anywhere}
+  #adminClientCenter .os-client-mobile-main>.os-icon{width:17px;height:17px}
+  #adminClientCenter .os-swipe-actions{display:flex;align-items:center;gap:5px;min-width:max-content;padding:0 10px;background:var(--os-soft);scroll-snap-align:end}
+  #adminClientCenter .os-swipe-actions>.os-icon-button{width:44px;height:44px;flex:0 0 44px}
+  .orion-suite-enabled .os-maintenance-banner{top:56px;flex-wrap:wrap;gap:8px;padding:10px 14px}
+  .os-maintenance-copy{flex:1 1 calc(100% - 30px)}
+  .os-maintenance-banner #orionMaintenanceExit{width:100%}
+  #osDialog.os-admin-dialog .os-admin-modal-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  #osDialog.os-admin-dialog .os-admin-modal-controls .os-button.os-admin-access{grid-column:1/-1}
+}
+@media(max-width:359px){
+  #osDialog.os-admin-dialog .os-admin-account-hero{gap:8px}
+  #osDialog.os-admin-dialog .os-admin-account-hero .os-badge{padding:4px 6px;font-size:10px}
+  #osDialog.os-admin-dialog .os-admin-modal-controls{grid-template-columns:minmax(0,1fr)}
+  #osDialog.os-admin-dialog .os-admin-modal-controls .os-button.os-admin-access{grid-column:1}
+}
+@media(prefers-reduced-motion:reduce){
+  #adminClientCenter .os-swipe-row{scroll-behavior:auto}
+}

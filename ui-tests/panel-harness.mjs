@@ -85,6 +85,7 @@ export async function makePanel({ role = 'support', tenantRole = 'owner',
   for (const file of ['orion-fields.js','orion-onboarding.js','orion-channels.js','orion-automations.js'])
     window.eval(await readFile(new URL('../app/static/'+file, import.meta.url), 'utf8'));
   window.eval(suite);
+  window.eval(await readFile(new URL('../app/static/orion-admin-center.js', import.meta.url), 'utf8'));
   window.eval(inline[1][1]);
   await flush();
   function element(selector) { const node = document.querySelector(selector); assert.ok(node, 'missing ' + selector); return node; }
