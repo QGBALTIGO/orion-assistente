@@ -20,6 +20,7 @@ test('one shared spacing contract covers all setup forms',async()=>{
   assert.match(css,/\.ob-root \.ob-form \[data-ob-address\] > \.ob-note/);
   assert.match(css,/@container orion-onboarding \(max-width:560px\)/);
   assert.match(css,/@media\(max-width:767px\)/);
+  assert.match(css,/\.ob-root \.ob-location-fields > \[data-ob-address\]\s*\{\s*grid-column:1 \/ -1/);
 });
 
 test('the shared layout applies to each real configuration step without side effects',async()=>{
