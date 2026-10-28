@@ -463,7 +463,29 @@ def test_company_code_is_scoped_and_uses_the_same_controls(panel_factory):
     assert pair[0]['data']['expected_revision'] == 2
     assert not any(call['path'].startswith('/api/v1/qr/') for call in calls(page))
     assert not any(call.get('data', {}).get('assistant_enabled') is True for call in writes(page))
+    original_code = host.locator('[data-qc-pair-code]').inner_text()
+    expect(host.locator('[data-qc-pair-time]')).to_have_text(re.compile(r'\d+ s'))
+    initial_ttl = int(re.search(r'\d+', host.locator('[data-qc-pair-time]').inner_text()).group())
     capture(page, '#osManagedChannels', 'owner-code-result')
+    page.wait_for_function('''initial => {
+      const value=document.querySelector('#osManagedChannels [data-qc-pair-time]')?.textContent.match(/[0-9]+/);
+      return value && Number(value[0])<initial;
+    }''', arg=initial_ttl, timeout=5000)
+    before_hide_ttl = int(re.search(r'\d+', host.locator('[data-qc-pair-time]').inner_text()).group())
+    before_hide_writes = len(writes(page))
+    host.locator('[data-qc-action="cancel-pair"]').click()
+    expect(host.locator('[data-qc-pair-code]')).to_have_count(0)
+    expect(host.locator('[data-qc-pair-hidden]')).to_be_visible()
+    assert original_code not in host.inner_text()
+    hidden_ttl = int(re.search(r'\d+', host.locator('[data-qc-pair-time]').inner_text()).group())
+    assert 0 < hidden_ttl <= before_hide_ttl
+    capture(page, '#osManagedChannels', 'owner-code-hidden')
+    host.locator('[data-qc-action="show-code"]').click()
+    expect(host.locator('[data-qc-pair-code]')).to_have_text(original_code)
+    restored_ttl = int(re.search(r'\d+', host.locator('[data-qc-pair-time]').inner_text()).group())
+    assert 0 < restored_ttl <= hidden_ttl, 'Revealing the same code must not restart its deadline'
+    assert len(writes(page)) == before_hide_writes and len(writes(page, '/pair')) == 1
+    capture(page, '#osManagedChannels', 'owner-code-restored')
     host.locator('[data-qc-method="qr"]').click()
     expect(host.locator('[data-qc-pair-code]')).to_have_count(0)
     inspect_tutorial(host.locator('[data-qc-tutorial]'), 'qr')
@@ -507,6 +529,25 @@ def test_expired_code_disappears_and_is_not_automatically_requested_again(panel_
     expect(page.locator('#codeStatus')).to_contain_text(re.compile(r'expir', re.I))
     assert len(writes(page, '/pair')) == 1
     capture(page, '#disconnectedWizard', 'admin-code-expired')
+
+
+def test_company_hidden_code_expires_without_reveal_or_an_automatic_new_pair(panel_factory):
+    page = panel_factory('owner', 'expired')
+    host = start_company(page)
+    open_company_code(page, host)
+    host.locator('[data-qc-pair-phone]').fill('11 90000-0001')
+    host.locator('[data-qc-form="pair"] button[type="submit"]').click()
+    expect(host.locator('[data-qc-pair-code]')).to_have_text('TEST-0001')
+    host.locator('[data-qc-action="cancel-pair"]').click()
+    expect(host.locator('[data-qc-pair-hidden]')).to_be_visible()
+    expect(host.locator('[data-qc-pair-code]')).to_have_count(0)
+    assert 'TEST-0001' not in host.inner_text()
+    expect(host.locator('[data-qc-pair-hidden]')).to_have_count(0, timeout=5000)
+    expect(host.locator('[data-qc-action="show-code"]')).to_have_count(0)
+    expect(host.locator('[data-qc-pair-code]')).to_have_count(0)
+    assert len(writes(page, '/pair')) == 1
+    assert not any(call['path'].startswith('/api/v1/qr/') for call in calls(page))
+    capture(page, '#osManagedChannels', 'owner-hidden-code-expired')
 
 
 def test_revoked_session_has_clear_recovery_and_no_enabled_generation(panel_factory):

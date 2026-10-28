@@ -19,7 +19,7 @@
     unmount();
     const host=typeof bridge?.host==='string'?document.querySelector(bridge.host):bridge?.host;
     if(!host||typeof bridge?.request!=='function')throw Error('A área dos canais precisa do acesso autenticado ao painel.');
-    const state={mounted:true,active:true,epoch:0,read:0,listRead:0,tenantId:bridge.tenantId||null,items:[],selected:null,access:false,capabilities:{},loaded:false,loading:false,busy:false,stale:false,unavailable:false,feedback:'',error:false,editor:false,createDraft:{label:'',senders:''},confirmation:null,pending:null,runtime:null,qr:null,linkFlow:null,method:'code',pairDraft:'',pair:null,pairExpired:false,tutorialDone:{code:false,qr:false}};
+    const state={mounted:true,active:true,epoch:0,read:0,listRead:0,tenantId:bridge.tenantId||null,items:[],selected:null,access:false,capabilities:{},loaded:false,loading:false,busy:false,stale:false,unavailable:false,feedback:'',error:false,editor:false,createDraft:{label:'',senders:''},confirmation:null,pending:null,runtime:null,qr:null,linkFlow:null,method:'code',pairDraft:'',pair:null,pairHidden:false,pairExpired:false,tutorialDone:{code:false,qr:false}};
     const fieldTools=window.OrionFields,releaseFields=fieldTools.bind(host);
     const connectView=window.OrionConnectView;
     let pollTimer=null,qrTimer=null,pairTimer=null,clockTimer=null,lastHTML=null;
@@ -31,7 +31,7 @@
     const request=(path,method='GET',data)=>bridge.request(path,method,data);
     function feedback(message,error=false){state.feedback=message;state.error=error;const node=host.querySelector('[data-qc-feedback]');if(node){node.hidden=!message;node.className='os-notice qc-note'+(error?' os-error':'');node.textContent=message;if(error){node.tabIndex=-1;node.focus();}}}
     function clearQR(){state.qr=null;clearTimeout(qrTimer);qrTimer=null;host.querySelector('[data-qc-qr]')?.remove();if(!state.pair){clearTimeout(clockTimer);clockTimer=null;}}
-    function clearPair(clearDraft=false){state.pair=null;state.pairExpired=false;clearTimeout(pairTimer);pairTimer=null;host.querySelector('[data-qc-pair-result]')?.remove();if(clearDraft){state.pairDraft='';const input=host.querySelector('[data-qc-pair-phone]');if(input)input.value='';}if(!state.qr){clearTimeout(clockTimer);clockTimer=null;}}
+    function clearPair(clearDraft=false){state.pair=null;state.pairHidden=false;state.pairExpired=false;clearTimeout(pairTimer);pairTimer=null;host.querySelector('[data-qc-pair-result],[data-qc-pair-hidden]')?.remove();if(clearDraft){state.pairDraft='';const input=host.querySelector('[data-qc-pair-phone]');if(input)input.value='';}if(!state.qr){clearTimeout(clockTimer);clockTimer=null;}}
     function pause(clearDraft=true){state.linkFlow=null;clearTimeout(pollTimer);pollTimer=null;state.read++;clearQR();clearPair(clearDraft);if(clearDraft)state.tutorialDone={code:false,qr:false};}
     function allowed(action){if(selected()?.legacy_transport&&['start','stop','qr','pair','enable','disable'].includes(action))return false;const key=['enable','disable','assistant_on','assistant_off','assistant'].includes(action)?'change_state':action;return state.access===true&&selected()?.can_manage===true&&(action==='pair'?state.runtime?.capabilities?.pair===true:state.capabilities[key]!==false);}
     function canItemWrite(){return canWrite()&&selected()?.can_manage===true;}
@@ -64,7 +64,9 @@
       if(!ready)return '<section class="qc-connection wizard-shell" data-qc-connection>'+connectView.heading()+methods+'<div class="wizard-card"><section class="wizard-pane" data-qc-tutorial><div class="wizard-tutorial-heading"><h3>Prepare o WhatsApp no seu celular</h3><p>Siga as orientações e continue quando estiver pronto.</p></div>'+connectView.instructions(mode)+button('Concluí os passos e estou pronto para prosseguir','tutorial-next',locked?'disabled':'','wizard-primary os-full wizard-continue')+'</section></div></section>';
       let content='';
       if(mode==='code'){
-        if(state.pair){
+        if(state.pair&&state.pairHidden){
+          content='<section data-qc-pair-hidden><h3>Código oculto</h3><p>O código continua válido até expirar.</p><p class="wizard-qr-time qc-countdown">Expira em <strong data-qc-pair-time>—</strong></p><div class="os-actions qc-actions">'+button('Mostrar código','show-code',locked?'disabled':'','')+'</div></section>';
+        }else if(state.pair){
           content='<section class="wizard-code-result" data-qc-pair-result><h3>Digite este código no WhatsApp</h3><output class="code-box" data-qc-pair-code>'+esc(state.pair.code)+'</output><p class="wizard-qr-time qc-countdown">Expira em <strong data-qc-pair-time>—</strong></p><div class="os-actions qc-actions">'+button('Copiar código','copy-code',locked?'disabled':'','')+button('Ocultar código','cancel-pair',locked?'disabled':'')+'</div><p class="os-help">A conexão será confirmada pelo WhatsApp.</p></section>';
         }else{
           const waiting=runtime?.status==='connecting'?'Preparando a conexão. Aguarde para gerar o código.':runtime?.status==='pairing'?'Um código já foi solicitado. Confira o WhatsApp ou aguarde a expiração.':runtime?.status==='pair_failed'?'O vínculo não foi confirmado. Aguarde a expiração e consulte o estado.':runtime?.status==='pair_expired'?'O código expirou. Aguardando o WhatsApp liberar uma nova tentativa.':runtime?.status==='logged_out'?'Sessão desvinculada. Atualize o estado para revisar a conexão.':'';
@@ -223,8 +225,9 @@
       if(el.dataset.qcChannel){if(state.pending)return;pause();state.method='code';state.selected=el.dataset.qcChannel;state.confirmation=null;state.runtime=null;state.feedback='';render();if(selected()?.enabled)void loadStatus();return;}
       if(action==='legacy'){await bridge.onLegacy?.();return;}
       if(action==='hide-qr'){state.linkFlow=null;clearQR();render();return;}
-      if(action==='cancel-pair'){clearPair();render();return;}
-      if(action==='copy-code'){const pair=state.pair,epoch=state.epoch;if(!pair||pair.expiresAt<=Date.now()||!visible())return;try{await navigator.clipboard.writeText(pair.code);if(current(epoch)&&visible()&&state.pair===pair)feedback('Código copiado. Cole no WhatsApp.');}catch{if(current(epoch)&&visible()&&state.pair===pair)feedback('Selecione o código para copiar.',true);}return;}
+      if(action==='cancel-pair'){if(!state.pair)return;state.pairHidden=true;render();return;}
+      if(action==='show-code'){if(!state.pair||state.pair.expiresAt<=Date.now()||!visible())return;state.pairHidden=false;render();return;}
+      if(action==='copy-code'){const pair=state.pair,epoch=state.epoch;if(!pair||state.pairHidden||pair.expiresAt<=Date.now()||!visible())return;try{await navigator.clipboard.writeText(pair.code);if(current(epoch)&&visible()&&state.pair===pair)feedback('Código copiado. Cole no WhatsApp.');}catch{if(current(epoch)&&visible()&&state.pair===pair)feedback('Selecione o código para copiar.',true);}return;}
       if(action==='refresh'){await load();return;}if(action==='retry-create'){if(state.pending?.kind==='create')await perform(state.pending);return;}
       if(action==='status'){await loadStatus();return;}if(action==='qr'){await showQR();return;}
       if(action==='cancel-create'){state.editor=false;render();return;}if(action==='cancel-confirm'){state.confirmation=null;render();schedule();return;}

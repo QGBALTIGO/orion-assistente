@@ -69,6 +69,23 @@ test('expired code disappears and never reissues automatically, even while readi
   await h.tick(15000);assert.equal(pairCalls(h).length,1);assert.match(h.element('#channels').textContent,/código expirou/i);
 });
 
+test('hiding and revealing a valid code is reversible without requesting the provider or extending its lifetime',async t=>{
+  const row=item({enabled:true});let paired=false;
+  const h=await makeChannels({data:listing([row]),respond:(path,method)=>path.endsWith('/pair')&&method==='POST'?(paired=true,result(row,{expires_in_ms:79000})):path.endsWith('/status')?status(row,paired?'pairing':'qr_ready'):undefined});t.after(()=>h.close());
+  submitPair(h);await flush();const original=h.element('[data-qc-pair-code]').textContent,callCount=h.calls.length;
+  h.click('[data-qc-action=cancel-pair]');assert.equal(h.controller.getState().hasPair,true);assert.equal(h.document.querySelector('[data-qc-pair-code]'),null);assert.equal(h.element('#channels').textContent.includes(original),false);assert.equal(h.element('[data-qc-pair-time]').textContent,'79 s');assert.equal(h.calls.length,callCount);
+  h.click('[data-qc-action=show-code]');assert.equal(h.element('[data-qc-pair-code]').textContent,original);assert.equal(h.calls.length,callCount);assert.equal(pairCalls(h).length,1);
+  await h.tick(1000);h.click('[data-qc-action=cancel-pair]');assert.equal(h.element('[data-qc-pair-time]').textContent,'78 s');h.click('[data-qc-action=show-code]');assert.equal(h.element('[data-qc-pair-time]').textContent,'78 s');assert.equal(pairCalls(h).length,1);
+});
+
+test('a code that expires while hidden is erased and cannot be revealed or regenerated automatically',async t=>{
+  const row=item({enabled:true});let paired=false;
+  const h=await makeChannels({data:listing([row]),respond:(path,method)=>path.endsWith('/pair')&&method==='POST'?(paired=true,result(row,{expires_in_ms:1500})):path.endsWith('/status')?status(row,paired?'pairing':'qr_ready'):undefined});t.after(()=>h.close());
+  submitPair(h);await flush();h.click('[data-qc-action=cancel-pair]');assert.ok(h.element('[data-qc-pair-hidden]'));await h.tick(1500);
+  assert.equal(h.controller.getState().hasPair,false);assert.equal(h.document.querySelector('[data-qc-pair-hidden]'),null);assert.equal(h.document.querySelector('[data-qc-pair-code]'),null);assert.equal(h.document.querySelector('[data-qc-action=show-code]'),null);assert.equal(h.element('[data-qc-form=pair] button[type=submit]').disabled,true);assert.equal(pairCalls(h).length,1);
+  await h.tick(15000);assert.equal(pairCalls(h).length,1);assert.equal(h.document.querySelector('[data-qc-pair-code]'),null);
+});
+
 test('unchanged polling preserves the phone node, value, selection and expanded preferences',async t=>{
   const row=item({enabled:true}),h=await makeChannels({data:listing([row]),respond:path=>path.endsWith('/status')?status(row):undefined});t.after(()=>h.close());
   continueTutorial(h);const input=h.fill('[data-qc-pair-phone]','(67) 99999-9901');input.focus();input.setSelectionRange(6,9);const details=h.element('[data-qc-disclosure=preferences]');details.open=true;
