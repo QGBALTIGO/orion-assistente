@@ -11,6 +11,7 @@ from scripts import backup_and_migrate_quick_onboarding as quick
 from scripts import backup_and_migrate_admin_accounts as accounts
 from scripts import backup_and_migrate_single_whatsapp as single
 from scripts import backup_and_migrate_cakto as cakto
+from scripts import backup_and_migrate_plans as plans
 
 
 def configure(monkeypatch, *, current=None, source=True, target=True, backup_error=False,
@@ -116,11 +117,12 @@ def test_current_predeploy_entrypoint_dispatches_only_reviewed_revisions(monkeyp
     monkeypatch.setattr(accounts, 'main', lambda: events.append('accounts') or 0)
     monkeypatch.setattr(single, 'main', lambda: events.append('single') or 0)
     monkeypatch.setattr(cakto, 'main', lambda: events.append('cakto') or 0)
+    monkeypatch.setattr(plans, 'main', lambda: events.append('plans') or 0)
     assert registration.predeploy_main() == 0
     assert events == (
-        ['registration', 'phone', 'quick', 'accounts', 'cakto', 'single'] if revision == registration.PREVIOUS else
-        ['phone', 'quick', 'accounts', 'cakto', 'single'] if revision == registration.TARGET else
-        ['quick', 'accounts', 'cakto', 'single']
+        ['registration', 'phone', 'quick', 'accounts', 'cakto', 'single', 'plans'] if revision == registration.PREVIOUS else
+        ['phone', 'quick', 'accounts', 'cakto', 'single', 'plans'] if revision == registration.TARGET else
+        ['quick', 'accounts', 'cakto', 'single', 'plans']
     )
 
 
@@ -135,3 +137,17 @@ def test_failed_prior_release_or_unknown_revision_never_runs_phone_release(monke
     assert registration.predeploy_main() == 3 and events == []
     version[0] = '0041_unreviewed'
     assert registration.predeploy_main() == 2 and events == []
+
+
+@pytest.mark.parametrize('revision,expected', [
+    (single.TARGET,['single','plans']),
+    (plans.TARGET,['plans']),
+])
+def test_current_predeploy_stays_idempotent_after_whatsapp_and_plan_migration(monkeypatch, revision, expected):
+    events = []
+    monkeypatch.setattr(registration,'connection_values',lambda:('synthetic',object()))
+    monkeypatch.setattr(registration,'migrated_version',lambda _:revision)
+    monkeypatch.setattr(single,'main',lambda:events.append('single') or 0)
+    monkeypatch.setattr(plans,'main',lambda:events.append('plans') or 0)
+    assert registration.predeploy_main()==0
+    assert events==expected
