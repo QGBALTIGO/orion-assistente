@@ -101,3 +101,32 @@ async def test_original_catalog_mode_refuses_goals_without_impacting_saved_opera
     current = await service.get_state(ctx.actor, tenant)
     assert current["version"] == state["version"]
     assert "business_priorities" not in current["configuration"]
+
+
+@pytest.mark.asyncio
+async def test_company_hours_save_without_professionals_or_booking_changes(onboarding_db):
+    ctx = new_business_context(onboarding_db)
+    state = await service.create_business(ctx.actor, creation())
+    tenant = UUID(state["tenant_id"])
+    days = [{"weekday": day, "open": day < 5,
+             **({"start_time": "09:00", "end_time": "18:00",
+                 "break_start": "12:00", "break_end": "13:00"}
+                if day < 5 else {})} for day in range(7)]
+    key = str(uuid4())
+    saved = await save(ctx, state, "hours", {"days": days}, key=key)
+    replay = await save(ctx, state, "hours", {"days": days}, key=key)
+    assert saved["version"] == replay["version"] == state["version"] + 1
+    assert saved["configuration"]["business_opening_hours"]["days"][0]["start_time"] == "09:00:00"
+    assert saved["configuration"]["business_opening_hours"]["days"][6]["open"] is False
+    assert saved["last_operation_key"] == key
+    async with ctx.migration.connect() as db:
+        for table in ("professionals", "working_hours", "working_breaks"):
+            assert (await db.execute(text(
+                f"SELECT count(*) FROM {table} WHERE tenant_id=:t"
+            ), {"t": tenant})).scalar_one() == 0
+    with pytest.raises(Exception):
+        await save(ctx, saved, "hours", {"days": [
+            {"weekday": 0, "open": True, "start_time": "20:00", "end_time": "09:00"}
+        ]})
+    refreshed = await service.get_state(ctx.actor, tenant)
+    assert refreshed["version"] == saved["version"]
