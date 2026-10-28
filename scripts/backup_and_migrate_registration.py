@@ -79,8 +79,13 @@ def main():
 
 
 def predeploy_main():
-    """Preserve the configured command and dispatch only reviewed schema revisions."""
+    """Preserve the Railway predeploy command and use only reviewed migrations.
+
+    Each release verifies its own private backup, schema and role boundaries.
+    A current 0041 deployment performs read-only checks without another DDL.
+    """
     from scripts import backup_and_migrate_professional_phone as contacts
+    from scripts import backup_and_migrate_quick_onboarding as quick
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
@@ -88,10 +93,14 @@ def predeploy_main():
             result = main()
             if result:
                 return result
-        elif current not in {TARGET, contacts.TARGET}:
+        elif current not in {TARGET, contacts.TARGET, quick.TARGET}:
             print('orion_registration_unreviewed_schema_revision', file=sys.stderr)
             return 2
-        return contacts.main()
+        if current in {PREVIOUS, TARGET}:
+            result = contacts.main()
+            if result:
+                return result
+        return quick.main()
     except Exception:
         print('orion_registration_predeploy_failed_closed', file=sys.stderr)
         return 3

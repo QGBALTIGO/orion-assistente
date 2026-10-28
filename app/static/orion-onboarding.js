@@ -11,8 +11,8 @@
   const rows = value => Array.isArray(value) ? value : [];
   const pick = (value,keys) => Object.fromEntries(keys.filter(key=>Object.prototype.hasOwnProperty.call(value||{},key)).map(key=>[key,value[key]]));
   const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-  const definitions = {business:['Seu negócio','store'],location:['Onde você atende','pin'],professionals:['Quem atende','users'],profile:['Perfil da empresa','chart'],catalog:['O que você oferece','catalog'],hours:['Quando você atende','clock'],channels:['Recepção e canais','message'],review:['Revisar e concluir','check']};
-  const icons = {store:'M3 10h18M5 10v10h14V10M3 10l2-7h14l2 7M9 20v-6h6v6',pin:'M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Zm-5 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0',users:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M20 21v-2a4 4 0 0 0-3-4M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8',catalog:'M4 4h16v16H4zM8 8h8M8 12h8M8 16h5',chart:'M4 20V12h4v8M10 20V7h4v13M16 20V4h4v16M3 20h18',clock:'M12 8v5l3 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',message:'M6 3h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3ZM8 8h8M8 12h5',check:'m5 12 4 4L19 6',arrow:'M5 12h14m-5-5 5 5-5 5'};
+  const definitions = {business:['Seu negócio','store'],location:['Onde você atende','pin'],professionals:['Quem atende','users'],profile:['Perfil da empresa','chart'],catalog:['O que você oferece','catalog'],hours:['Quando você atende','clock'],channels:['Recepção e canais','message'],goals:['Desafios e objetivos','target'],review:['Revisar e concluir','check']};
+  const icons = {store:'M3 10h18M5 10v10h14V10M3 10l2-7h14l2 7M9 20v-6h6v6',pin:'M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Zm-5 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0',users:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M20 21v-2a4 4 0 0 0-3-4M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8',catalog:'M4 4h16v16H4zM8 8h8M8 12h8M8 16h5',chart:'M4 20V12h4v8M10 20V7h4v13M16 20V4h4v16M3 20h18',clock:'M12 8v5l3 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',message:'M6 3h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3ZM8 8h8M8 12h5',target:'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-5a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-3a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',check:'m5 12 4 4L19 6',arrow:'M5 12h14m-5-5 5 5-5 5'};
   const icon = name => '<svg class="ob-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="'+(icons[name]||icons.store)+'"/></svg>';
   const button = (label, action, extra='') => '<button type="button" class="ob-button ob-secondary'+(action==='back'?' ob-back':'')+'" data-ob-action="'+esc(action)+'" '+extra+'>'+esc(label)+'</button>';
   const option = (value,label,current,isPrompt=false) => '<option value="'+esc(value)+'"'+(isPrompt?' disabled hidden':'')+(String(current??'')===String(value)?' selected':'')+'>'+esc(label)+'</option>';
@@ -55,7 +55,7 @@
       // Navigating forward already confirms a successful save. Keep actionable
       // errors, conflicts and other feedback, but not the generic success tile
       // that used to appear before the address form.
-      const text = state.step==='location'&&!state.error&&state.feedback==='Dados salvos.'?'':state.feedback;
+      const text = (state.step==='location'||state.step==='review')&&!state.error&&state.feedback==='Dados salvos.'?'':state.feedback;
       return '<div data-ob-feedback role="alert" class="ob-note'+(state.error?' ob-error':'')+'"'+(!text?' hidden':'')+'>'+esc(text)+'</div>';
     }
     function recovery() {if(!state.pending&&!state.conflict)return '';return '<div class="ob-note ob-error"><strong>'+(state.pending?'Precisamos conferir o resultado do salvamento.':'Esta configuração mudou em outra aba.')+'</strong><p>Seus dados digitados continuam aqui. Consulte a versão salva antes de continuar.</p><div class="ob-inline-actions">'+button('Conferir dados salvos','refresh')+(state.pending?button('Repetir o mesmo pedido','retry-operation'):'')+'</div></div>';}
@@ -162,9 +162,53 @@
       return '<div class="ob-editor">'+form(fields+'<div class="ob-inline-actions">'+button('Cancelar edição','cancel-edit')+'</div>',kind==='service'?'Salvar serviço':'Salvar produto',kind)+'</div>';
     }
     function hoursForm() {const catalog=state.data.catalog||{},hours=rows(catalog.hours),chosen=state.editor?.professional_id||rows(catalog.professionals)[0]?.id||'';const existing=hours.filter(row=>row.professional_id===chosen);return form(select('professional_id','Profissional',[['','Selecione'],...rows(catalog.professionals).map(pro=>[pro.id,pro.name])],chosen,'required')+'<div class="ob-list">'+existing.map(row=>'<article class="ob-item"><div><strong>'+esc(days[row.weekday]||'Dia a conferir')+'</strong><p>'+esc(String(row.start_time||'').slice(0,5))+'–'+esc(String(row.end_time||'').slice(0,5))+(rows(row.breaks).length?' · intervalo '+rows(row.breaks).map(pause=>esc(String(pause.start_time).slice(0,5))+'–'+esc(String(pause.end_time).slice(0,5))).join(', '):'')+'</p></div></article>').join('')+'</div><fieldset><legend>Dias para aplicar este horário</legend><div class="ob-days">'+days.map((label,index)=>'<label><input type="checkbox" name="weekdays" value="'+index+'">'+label+'</label>').join('')+'</div></fieldset><div class="ob-fields">'+field('start_time','Abertura','','required type="time"')+field('end_time','Fechamento','','required type="time"')+'</div>'+check('has_break','Adicionar intervalo')+'<div class="ob-fields" data-ob-break>'+field('break_start','Início do intervalo','','type="time"')+field('break_end','Fim do intervalo','','type="time"')+'</div>'+check('replace_existing','Substituir jornadas existentes nos dias selecionados',false,'Os outros dias e profissionais são preservados. Revise os horários acima antes de marcar.')+'<p class="ob-help">A pausa bloqueia a disponibilidade real, incluindo duração, preparação e limpeza. Jornadas atravessando a meia-noite não são aceitas.</p><div class="ob-inline-actions">'+button('Continuar sem alterar horários','next')+'</div>','Salvar horários');}
+    const goalsChoices = {
+      main_challenge: [
+        ['scheduling','Organizar os agendamentos'],
+        ['cancellations','Reduzir faltas e cancelamentos'],
+        ['whatsapp','Responder clientes no WhatsApp'],
+        ['finance','Controlar o financeiro'],
+        ['new_customers','Atrair novos clientes'],
+        ['loyalty','Fidelizar os clientes atuais'],
+        ['team','Gerenciar a equipe']
+      ],
+      desired_outcome: [
+        ['save_time','Economizar tempo'],
+        ['grow_revenue','Aumentar o faturamento'],
+        ['professional_service','Profissionalizar o atendimento'],
+        ['automate_whatsapp','Automatizar o WhatsApp'],
+        ['better_control','Ter mais controle da empresa'],
+        ['more_bookings','Aumentar a quantidade de agendamentos']
+      ],
+      respondent_role: [
+        ['owner','Proprietário'],['partner','Sócio'],
+        ['manager','Gerente / Administrador'],['other','Outro']
+      ]
+    };
+    function goalsLabel(field,value,activity) {
+      if(activity==='products'){
+        if(field==='main_challenge'&&value==='scheduling')return 'Organizar os pedidos';
+        if(field==='main_challenge'&&value==='cancellations')return 'Reduzir cancelamentos de pedidos';
+        if(field==='desired_outcome'&&value==='more_bookings')return 'Aumentar a quantidade de pedidos';
+      }
+      return goalsChoices[field]?.find(([id])=>id===value)?.[1]||'Não informado';
+    }
+    function goalsForm() {
+      const c=state.data.configuration||{},answers=c.business_priorities||{},activity=c.activity||'services';
+      const options=name=>[['','Selecione uma opção'],...goalsChoices[name].map(([id])=>[id,goalsLabel(name,id,activity)])];
+      return form('<div class="ob-fields ob-goals-fields">'+
+        select('main_challenge','Qual é a maior dificuldade da sua empresa atualmente?',
+          options('main_challenge'),answers.main_challenge||'','required')+
+        select('desired_outcome','O que você mais espera conquistar utilizando o Orion?',
+          options('desired_outcome'),answers.desired_outcome||'','required')+
+        select('respondent_role','Qual é a sua função na empresa?',
+          options('respondent_role'),answers.respondent_role||'','required')+
+        '</div>','Salvar e continuar','goals');
+    }
+
     function channelRows() {const c=state.data?.channels||{};return [['whatsapp','WhatsApp'],['assistant','Assistente'],['site','Site público'],['google','Google Agenda']].map(([key,label])=>{const item=c[key]||{},status=typeof item==='string'?item:item.status;return '<div class="ob-status"><div><strong>'+label+'</strong><p class="ob-status-description">'+esc(item.message||item.reason||'')+'</p></div><span class="ob-badge">'+esc(statusLabels[status]||'A verificar')+'</span></div>';}).join('');}
     function channelsForm() {const assistant=state.data.channels?.assistant||{},profile=assistant.profile||{},style=profile.style_rules||assistant.style_rules||{},capabilities=rows(profile.capabilities||assistant.capabilities);return '<div class="ob-note">Salvar estas preferências mantém a assistente em rascunho. Conexão, atendimento automático, publicação do site e Google Agenda têm suas próprias autorizações.</div>'+channelRows()+form('<div class="ob-fields">'+field('assistant_name','Nome da assistente (opcional)',profile.assistant_name||assistant.assistant_name||'','maxlength="80"')+select('style','Estilo de atendimento',[['warm','Acolhedor'],['professional','Profissional'],['relaxed','Descontraído'],['direct','Direto']],style.style||'warm')+select('length','Tamanho das respostas',[['short','Curtas'],['balanced','Equilibradas'],['detailed','Detalhadas']],style.length||'balanced')+select('emoji','Emojis',[['none','Sem emojis'],['light','Uso leve']],style.emoji||'none')+'</div><fieldset><legend>Atividades da assistente</legend><div class="ob-checks">'+[['catalog_answers','Responder sobre o catálogo'],['appointments','Receber pedidos de agendamento'],['rescheduling','Ajudar com remarcação'],['product_orders','Receber pedidos de produtos'],['human_handoff_request','Receber pedidos de atendimento humano']].map(([id,label])=>check('capabilities',label,capabilities.includes(id),'',id)).join('')+'</div></fieldset><p class="ob-help">Atividades selecionadas só podem ser ativadas após publicação e configuração do canal.</p>')+(state.data.channels?.whatsapp?.can_connect?'<div class="ob-note">'+button('Conectar WhatsApp no painel','connect-whatsapp')+'<p>Você pode conectar depois e continuar a configuração. Uma conexão não será iniciada automaticamente.</p></div>':'');}
-    function review() {
+    function legacyReview() {
       const c=state.data.configuration||{},catalog=state.data.catalog||{},pending=rows(state.data.pending);
       const hasProfile=rows(state.data.steps).some(step=>step.id==='profile');
       const profile=c.business_metrics||{};
@@ -207,12 +251,78 @@
           'Concluir não conecta WhatsApp, ativa a assistente, publica o site nem autoriza pagamentos.'),
           'Concluir configuração','complete'));
     }
+
+    function reviewSection(id,title,iconName,values) {
+      return '<section class="ob-review-section" aria-labelledby="ob-review-'+esc(id)+'">'+
+        '<div class="ob-review-section-head">'+
+          '<h3 id="ob-review-'+esc(id)+'">'+icon(iconName)+esc(title)+'</h3>'+
+          '<button type="button" class="ob-button ob-secondary ob-small ob-review-edit" '+
+            'data-ob-action="review-edit" data-ob-target="'+esc(id)+'" '+
+            'aria-label="Editar '+esc(title)+'">Editar</button>'+
+        '</div>'+
+        '<dl class="ob-review-data">'+values.map(([label,value])=>
+          '<div class="ob-review-pair"><dt>'+esc(label)+'</dt><dd>'+esc(value??'Não informado')+'</dd></div>'
+        ).join('')+'</dl>'+
+      '</section>';
+    }
+    function quickReview() {
+      const c=state.data.configuration||{},profile=c.business_metrics||{},
+        goals=c.business_priorities||{},activity=c.activity||'services',
+        pending=rows(state.data.pending);
+      const physical=['onsite','hybrid'].includes(c.modality);
+      const address=c.private_address||{};
+      const addressText=[
+        [address.street,address.number].filter(Boolean).join(', '),
+        address.complement,address.neighborhood,
+        [address.city,address.state].filter(Boolean).join(' / ')
+      ].filter(Boolean).join(' · ');
+      const sections=[
+        reviewSection('business','Empresa','store',[
+          ['Nome',state.data.name],
+          ['Nicho',c.niche==='outro'?c.other_niche:c.niche],
+          ['Atividade',{services:'Serviços com agendamento',products:'Produtos',both:'Serviços e produtos'}[c.activity]],
+          ['WhatsApp comercial',fieldTools.phoneDisplay(c.contact_phone||'')||'Não informado']
+        ]),
+        reviewSection('location','Atendimento','pin',[
+          ['Modalidade',{onsite:'No estabelecimento',online:'Online',client_address:'No endereço do cliente',hybrid:'Híbrido'}[c.modality]||'Não informado'],
+          ...(physical?[['Endereço (privado)',addressText||'Não informado']]:[])
+        ]),
+        reviewSection('profile','Perfil da empresa','chart',[
+          ['Tempo de atividade',profileLabel('operating_age',profile.operating_age,activity)],
+          [activity==='products'?'Pessoas na equipe':'Profissionais',profileLabel('team_size',profile.team_size,activity)],
+          ['Faturamento mensal',profileLabel('monthly_revenue',profile.monthly_revenue,activity)],
+          [activity==='products'?'Pedidos por mês':'Atendimentos por mês',profileLabel('monthly_volume',profile.monthly_volume,activity)]
+        ]),
+        reviewSection('goals','Desafios e objetivos','target',[
+          ['Principal dificuldade',goalsLabel('main_challenge',goals.main_challenge,activity)],
+          ['Principal objetivo',goalsLabel('desired_outcome',goals.desired_outcome,activity)],
+          ['Sua função',goalsLabel('respondent_role',goals.respondent_role,activity)]
+        ])
+      ];
+      let result='<div class="ob-review" aria-label="Resumo do cadastro">'+sections.join('')+'</div>';
+      if(state.data.status==='complete'){
+        return result+'<div class="ob-review-complete" role="status"><strong>Cadastro concluído.</strong></div>'+
+          '<div class="ob-actions">'+button('Abrir painel','open-dashboard')+'</div>';
+      }
+      if(pending.length){
+        return result+'<div class="ob-review-pending" role="status">'+
+          '<strong>Complete as informações pendentes:</strong><ul>'+
+          pending.map(item=>'<li>'+esc(item.message)+'</li>').join('')+'</ul></div>'+
+          '<div class="ob-actions">'+button('Voltar','back')+
+          '<button type="button" class="ob-button" disabled aria-disabled="true">Concluir cadastro</button></div>';
+      }
+      return result+form(check('acknowledged','Revisei e confirmo que as informações estão corretas.'),
+        'Concluir cadastro','complete');
+    }
+    function review() {
+      return rows(state.data.steps).some(step=>step.id==='goals')?quickReview():legacyReview();
+    }
     function render() {
       if(!state.mounted)return;
       if(!state.data){renderEntry();return;}
       const titles=definitions[state.step]||definitions.review;
-      const descriptions={business:'Informe o nome, a atividade e o WhatsApp da empresa.',location:'Diferencie o endereço de operação das informações que serão publicadas.',professionals:'Cadastre quem atende, sem criar acessos de equipe automaticamente.',profile:'Quatro respostas rápidas para conhecer o momento do seu negócio.',catalog:'Cadastre valores, duração e vínculos reais. Nenhum exemplo será salvo por você.',hours:'Configure a agenda usada para oferecer horários aos clientes.',channels:'Revise a recepção e confira o que ainda precisa de conexão ou autorização.',review:'Confira os dados salvos e as pendências antes de concluir.'};
-      const forms={business:businessForm,location:addressForm,professionals:professionalForm,profile:profileForm,catalog:catalogForm,hours:hoursForm,channels:channelsForm,review};
+      const descriptions={business:'Informe o nome, a atividade e o WhatsApp da empresa.',location:'Diferencie o endereço de operação das informações que serão publicadas.',professionals:'Cadastre quem atende, sem criar acessos de equipe automaticamente.',profile:'Quatro respostas rápidas para conhecer o momento do seu negócio.',catalog:'Cadastre valores, duração e vínculos reais. Nenhum exemplo será salvo por você.',hours:'Configure a agenda usada para oferecer horários aos clientes.',channels:'Revise a recepção e confira o que ainda precisa de conexão ou autorização.',goals:'Conte o que sua empresa quer melhorar e o que espera conquistar.',review:'Confira os dados salvos e as pendências antes de concluir.'};
+      const forms={business:businessForm,location:addressForm,professionals:professionalForm,profile:profileForm,catalog:catalogForm,hours:hoursForm,channels:channelsForm,goals:goalsForm,review};
       setHTML(header('Vamos configurar seu negócio',descriptions[state.step]||'Revise a configuração.')+navigation()+'<section class="ob-card" aria-labelledby="ob-step-title"><div class="ob-card-head">'+icon(titles[1])+'<h2 id="ob-step-title">'+esc(titles[0])+'</h2></div>'+feedback()+recovery()+(state.data.can_edit===false?'<div class="ob-note">Você pode consultar esta configuração. O proprietário precisa concluir ou alterar os dados.</div>':'')+(forms[state.step]||review)()+'</section></div></div>');conditionalFields();
     }
     const canCreate = () => state.entry?.enabled===true&&state.entry.kind==='onboarding'&&state.entry.create_allowed===true&&!state.entry.tenant_id&&!state.tenantId&&!state.data&&rows(state.entry.businesses).length===0;
@@ -293,13 +403,16 @@
       if(type==='profile')return Object.fromEntries(
         ['operating_age','team_size','monthly_revenue','monthly_volume'].map(name=>[name,data[name]])
       );
+      if(type==='goals')return Object.fromEntries(
+        ['main_challenge','desired_outcome','respondent_role'].map(name=>[name,data[name]])
+      );
       if(type==='professional'){const item=rows(state.data.catalog.professionals).find(row=>row.id===state.editor?.id),result={item:{...pick(item,['color','commission_percent','image_url']),name:data.name.trim(),specialty:data.specialty?.trim()||null,active:form.elements.active.checked,accepts_appointments:form.elements.accepts_appointments.checked},self_provider:form.elements.self_provider?.checked===true};if(item)Object.assign(result.item,{id:item.id,expected_fingerprint:item.fingerprint});return result;}
       if(type==='service'){const item=rows(state.data.catalog.services).find(row=>row.id===state.editor?.id),ids=new FormData(form).getAll('professional_ids');if(!ids.length)throw Error('Selecione ao menos um profissional habilitado.');const result={kind:'service',item:{...pick(item,['category','color','image_url','sort_order']),name:data.name.trim(),description:data.description?.trim()||null,price_cents:price(data.price),duration_min:fieldTools.parseDecimal(data.duration_min,{required:true,scale:0,min:1,max:1440}),prep_min:fieldTools.parseDecimal(data.prep_min,{scale:0,min:0,max:240})??0,cleanup_min:fieldTools.parseDecimal(data.cleanup_min,{scale:0,min:0,max:240})??0,active:form.elements.active.checked},professional_ids:ids};if(item)Object.assign(result.item,{id:item.id,expected_fingerprint:item.fingerprint});return result;}
       if(type==='product'){const item=rows(state.data.catalog.products).find(row=>row.id===state.editor?.id),variant=rows(item?.variants).find(row=>row.id===state.editor?.variant_id)||rows(item?.variants)[0],result={kind:'product',item:{...pick(item,['synonyms','faqs','official_benefits']),name:data.name.trim(),description:data.description?.trim()||null,active:form.elements.active.checked},variant:{...pick(variant,['sku','attributes']),name:data.variant_name.trim(),price_kind:data.price_kind,unit_price_cents:['fixed','from'].includes(data.price_kind)?fieldTools.parseMoney(data.price,{required:true,min:0,max:100000000}):null,active:form.elements.variant_active.checked}};if(item)Object.assign(result.item,{id:item.id,expected_fingerprint:item.fingerprint});if(variant)result.variant.id=variant.id;return result;}
       if(type==='hours'){const weekdays=new FormData(form).getAll('weekdays').map(Number);if(!weekdays.length)throw Error('Selecione os dias de atendimento.');if(data.start_time>=data.end_time)throw Error('A abertura precisa ser anterior ao fechamento, no mesmo dia.');const result={professional_id:data.professional_id,weekdays,start_time:data.start_time,end_time:data.end_time,replace_existing:form.elements.replace_existing.checked,expected_fingerprints:{}};if(form.elements.has_break.checked){if(!data.break_start||!data.break_end||data.break_start>=data.break_end||data.break_start<data.start_time||data.break_end>data.end_time)throw Error('O intervalo precisa ter início anterior ao fim e ficar dentro do expediente.');Object.assign(result,{break_start:data.break_start,break_end:data.break_end});}for(const row of rows(state.data.catalog.hours).filter(row=>row.professional_id===data.professional_id&&weekdays.includes(row.weekday)))result.expected_fingerprints[String(row.weekday)]=row.fingerprint;return result;}
       if(type==='channels'){const assistant=state.data.channels?.assistant||{},generation=assistant.generation??assistant.profile_generation;if(!Number.isSafeInteger(generation))throw Error('Atualize os dados da assistente antes de salvar.');const existing=assistant.profile?.style_rules||assistant.style_rules||{};return {assistant_name:data.assistant_name?.trim()||null,style_rules:{...existing,style:data.style,length:data.length,emoji:data.emoji},capabilities:new FormData(form).getAll('capabilities'),expected_profile_generation:generation};}if(type==='complete'){if(!form.elements.acknowledged.checked)throw Error('Confirme que revisou os dados antes de concluir.');if(typeof state.data.snapshot!=='string'||! /^[a-f0-9]{64}$/.test(state.data.snapshot))throw Error('Atualize a revisão dos dados antes de concluir.');return {activate_catalog:true,acknowledged:true,expected_snapshot:state.data.snapshot};}return {acknowledged:true};
     }
-    async function operate(operation) {if(state.busy)return;cancelCep();const epoch=state.epoch;busy(true);showFeedback('Salvando…');try {const data=await request(operation.path,operation.method,operation.payload);if(!current(epoch))return;const old=state.step;if(operation.create)state.tenantId=null;accept(data,operation.create?undefined:old);state.pending=null;state.conflict=false;state.drafts.delete(operation.draftKey);state.editor=null;state.feedback='Dados salvos.';state.error=false;if(operation.complete){if(data.status!=='complete'){state.step='review';state.feedback='A configuração ainda tem pendências. Confira os dados salvos.';state.error=true;render();return;}state.step='review';render();showFeedback('Cadastro do negócio concluído. Confira abaixo quais canais ainda estão pendentes.');await notify('onComplete',clone(data));return;}if(!operation.item&&!operation.create){const steps=stepRows(),index=steps.findIndex(step=>step.id===old);state.step=steps[index+1]?.id||old;}render();focus();if(operation.create)await notify('onTenantChange',state.tenantId,clone(data));}
+    async function operate(operation) {if(state.busy)return;cancelCep();const epoch=state.epoch;busy(true);showFeedback('Salvando…');try {const data=await request(operation.path,operation.method,operation.payload);if(!current(epoch))return;const old=state.step;if(operation.create)state.tenantId=null;accept(data,operation.create?undefined:old);state.pending=null;state.conflict=false;state.drafts.delete(operation.draftKey);state.editor=null;state.feedback='Dados salvos.';state.error=false;if(operation.complete){if(data.status!=='complete'){state.step='review';state.feedback='A configuração ainda tem pendências. Confira os dados salvos.';state.error=true;render();return;}state.step='review';render();if(!rows(data.steps).some(row=>row.id==='goals'))showFeedback('Cadastro do negócio concluído. Confira abaixo quais canais ainda estão pendentes.');await notify('onComplete',clone(data));return;}if(!operation.item&&!operation.create){const steps=stepRows(),index=steps.findIndex(step=>step.id===old);state.step=steps[index+1]?.id||old;}render();focus();if(operation.create)await notify('onTenantChange',state.tenantId,clone(data));}
       catch(error){if(!current(epoch))return;const status=Number(error.status);state.feedback=error.message||'Não foi possível salvar os dados.';state.error=true;if(status===409){state.conflict=true;state.pending=null;}else if(!status||status>=500){state.pending=operation;}render();showFeedback(state.feedback,true);}finally{if(current(epoch))busy(false);}}
     async function refresh() {if(state.busy)return;capture();const epoch=state.epoch,pending=state.pending;if(!state.tenantId&&!pending){await resolveEntry();return;}busy(true);try {if(!state.tenantId){const entry=await request('/api/v1/onboarding/entry');if(!current(epoch))return;state.entry=entry;if(entry.kind==='business_conflict'||entry.kind==='choose_business'||rows(entry.businesses).length>1){state.entry={...entry,kind:'business_conflict',create_allowed:false,tenant_id:null};renderEntry();return;}if(uuid(entry.tenant_id)){await notify('onTenantChange',entry.tenant_id);if(!current(epoch))return;state.tenantId=entry.tenant_id;}else{state.feedback='O resultado ainda não foi confirmado. Repita somente o mesmo pedido para recuperar o cadastro.';state.error=true;renderEntry();return;}}const data=await request(base());if(!current(epoch))return;accept(data,state.step);const known=pending&&(data.last_operation_key===pending.payload.idempotency_key||rows(data.operations).some(row=>row.key===pending.payload.idempotency_key));state.conflict=false;if(known){state.pending=null;state.drafts.delete(pending.draftKey);state.editor=null;state.feedback='O servidor confirmou que o pedido anterior foi salvo. Confira os dados antes de continuar.';state.error=false;}else{state.feedback=pending?'O resultado desse pedido ainda não foi confirmado. Você pode repetir o mesmo pedido, sem criar outro cadastro.':'Dados atuais carregados. Revise suas alterações antes de salvar novamente.';state.error=!!pending;}render();}catch(error){if(current(epoch))showFeedback(error.message,true);}finally{if(current(epoch))busy(false);}}
     async function submit(event) {const form=event.target.closest('[data-ob-form]');if(!form||!host.contains(form))return;event.preventDefault();if(state.busy||state.pending||state.conflict||state.data?.can_edit===false)return;

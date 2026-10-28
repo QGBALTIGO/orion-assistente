@@ -188,3 +188,163 @@
   grid-column:1 / -1;
   min-width:0;
 }
+
+
+/* Etapa inicial: dificuldades, objetivos e função do responsável.
+ * Mesmas proporções dos campos de Perfil da empresa em todas as telas. */
+.ob-root .ob-goals-fields {
+  grid-template-columns:minmax(0,1fr);
+  gap:var(--ob-field-gap);
+  min-width:0;
+}
+.ob-root .ob-goals-fields > .ob-field {
+  row-gap:var(--ob-control-gap);
+  min-width:0;
+}
+.ob-root .ob-goals-fields > .ob-field > select {
+  display:block;
+  width:100%;
+  min-width:0;
+  min-height:48px;
+  font-size:16px;
+  line-height:24px;
+}
+
+/* Revisão inicial: seções compactas, em vez da lista técnica de canais. */
+.ob-root .ob-review {
+  display:grid;
+  gap:16px;
+  min-width:0;
+  container-type:inline-size;
+  container-name:orion-review;
+}
+.ob-root .ob-review-section {
+  min-width:0;
+  padding:clamp(14px,2vw,18px);
+  border:1px solid var(--ob-border);
+  border-radius:12px;
+  background:var(--ob-bg);
+}
+.ob-root .ob-review-section-head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-width:0;
+  padding-bottom:14px;
+  margin-bottom:14px;
+  border-bottom:1px solid var(--ob-border);
+}
+.ob-root .ob-review-section-head > h3 {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+  margin:0;
+  font-size:16px;
+  line-height:22px;
+  overflow-wrap:anywhere;
+}
+.ob-root .ob-review-section-head > h3 > .ob-icon {
+  display:block;
+  flex:0 0 20px;
+  width:20px;
+  height:20px;
+  margin:0;
+  color:var(--ob-primary);
+}
+.ob-root .ob-review-edit {
+  flex:0 0 auto;
+  min-height:36px;
+  padding:7px 12px;
+  font-size:13px;
+}
+.ob-root .ob-review-data {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:18px 24px;
+  min-width:0;
+  padding:0;
+  margin:0;
+}
+.ob-root .ob-review-pair {
+  display:grid;
+  align-content:start;
+  row-gap:6px;
+  min-width:0;
+  margin:0;
+}
+.ob-root .ob-review-pair > dt {
+  color:var(--ob-muted);
+  font-size:12px;
+  font-weight:500;
+  line-height:18px;
+}
+.ob-root .ob-review-pair > dd {
+  min-width:0;
+  margin:0;
+  color:var(--ob-text);
+  font-size:14px;
+  font-weight:600;
+  line-height:21px;
+  overflow-wrap:anywhere;
+  white-space:normal;
+}
+.ob-root .ob-review + .ob-form {
+  margin-top:var(--ob-field-gap);
+}
+.ob-root .ob-review-pending {
+  margin-top:var(--ob-field-gap);
+  padding:12px 14px;
+  border:1px solid var(--ob-border);
+  border-radius:10px;
+  color:var(--ob-text);
+  font-size:13px;
+  line-height:20px;
+}
+.ob-root .ob-review-pending > strong {
+  display:block;
+  font-weight:650;
+}
+.ob-root .ob-review-pending > ul {
+  margin:8px 0 0;
+  padding-left:20px;
+}
+.ob-root .ob-review-pending li + li {
+  margin-top:5px;
+}
+.ob-root .ob-review-pending + .ob-actions {
+  margin-top:var(--ob-divider-gap);
+}
+.ob-root .ob-review-complete {
+  margin-top:var(--ob-field-gap);
+  font-size:14px;
+  line-height:22px;
+  color:var(--ob-text);
+}
+
+@container orion-review (max-width:560px) {
+  .ob-root .ob-review-data {
+    grid-template-columns:minmax(0,1fr);
+    gap:14px;
+  }
+  .ob-root .ob-review-section-head > h3 {
+    font-size:15px;
+    line-height:21px;
+  }
+  .ob-root .ob-review-section {
+    padding:14px;
+  }
+}
+@container orion-review (max-width:340px) {
+  .ob-root .ob-review-section-head {
+    gap:8px;
+  }
+  .ob-root .ob-review-section-head > h3 {
+    gap:8px;
+  }
+  .ob-root .ob-review-edit {
+    min-height:36px;
+    padding:6px 10px;
+  }
+}

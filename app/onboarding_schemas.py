@@ -180,6 +180,25 @@ class Hours(ProfileModel):
         return self
 
 
+
+class BusinessPriorities(ProfileModel):
+    """Self-reported onboarding answers, not channel or account permissions.
+
+    The company can change these estimates later without granting the person
+    any tenant role or enabling WhatsApp, AI or publication automatically.
+    """
+
+    main_challenge: Literal[
+        "scheduling", "cancellations", "whatsapp", "finance",
+        "new_customers", "loyalty", "team",
+    ]
+    desired_outcome: Literal[
+        "save_time", "grow_revenue", "professional_service",
+        "automate_whatsapp", "better_control", "more_bookings",
+    ]
+    respondent_role: Literal["owner", "partner", "manager", "other"]
+
+
 class Channels(ProfileModel):
     assistant_name: str | None = Field(default=None, min_length=1, max_length=80)
     style_rules: StyleRules
@@ -200,7 +219,7 @@ class Review(ProfileModel):
 
 STEPS = {"business": Identity, "location": Location, "professionals": Professionals,
          "profile": BusinessMetrics, "catalog": Catalog, "hours": Hours,
-         "channels": Channels, "review": Review}
+         "goals": BusinessPriorities, "channels": Channels, "review": Review}
 
 
 class SaveStep(ProfileModel):
