@@ -20,7 +20,7 @@
   "review": "12 cenários integrados com 4h30, preço inicial de R$250, nomes longos, remoção de serviço, preservação do profissional/data e revisão/formulário",
   "tests": "740 testes DOM locais aprovados; regressões geométricas adicionadas ao workflow existente de Chromium/WebKit",
   "evidence_directory": "C:/Users/kayky/Documents/Playground/orion-public-refinement-20261028",
-  "limits": "Chromium IAB com emulação de viewport e temas; sem iPhone físico ou teclado virtual. WebKit é verificado pelo CI, não equivale a Safari em aparelho.",
+  "limits": "Chromium IAB com emulação de viewport e temas; sem iPhone físico ou teclado virtual. WebKit é verificado pelo CI, não equivale a Safari em aparelho. Fechamento do calendário nativo por Escape verificado em Chromium; em WebKit usa clique fora devido à limitação nativa documentada https://bugs.webkit.org/show_bug.cgi?id=261873.",
   "safety": "Fixture local sem banco, credenciais ou saídas externas; todos os POSTs bloqueados. Nenhuma alteração de cadastro, fuso, sessões ou integrações reais.",
   "discarded_hypothesis": "O salto de rolagem observado no clique por seletor da automação não se repetiu com clique direto. Nenhuma alteração do mecanismo de rolagem foi mantida."
 }
