@@ -26,7 +26,7 @@ async function setup(t,{verified=false,authenticated=true,respond}={}){
     const status=typeof result.status==='number'?result.status:200;
     return {ok:status<400,status,json:async()=>result};
   };
-  t.after(()=>window.close());window.eval(js);await flush();
+  t.after(()=>window.close());window.eval(await readFile(new URL('../app/static/orion-fields.js',import.meta.url),'utf8'));window.eval(js);await flush();
   return {window,document,calls,state,errors,click:id=>document.getElementById(id).click(),submit:()=>document.getElementById('inviteVerifyForm').dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true}))};
 }
 
@@ -68,6 +68,44 @@ test('confirming six digits refreshes the same account and still requires explic
   assert.equal(h.window.location.hash,'');
   assert.match(h.document.getElementById('inviteMessage').textContent,/Aguarde a aprovação do proprietário/);
   assert.ok(h.calls.every(c=>c.options.credentials==='same-origin'));
+});
+
+test('a pasted invitation code keeps its leading zero and does not accept or resend automatically',async t=>{
+  const h=await setup(t),code=h.document.getElementById('inviteCode');
+  assert.equal(code.type,'text');assert.equal(code.inputMode,'numeric');
+  assert.equal(code.autocomplete,'one-time-code');assert.equal(code.hasAttribute('maxlength'),false);
+  code.value='012 345';code.dispatchEvent(new h.window.Event('input',{bubbles:true}));
+  assert.equal(code.value,'012345');h.submit();await flush();
+  assert.deepEqual(h.calls.find(c=>c.path==='/auth/verify').body,{email:'synthetic@example.invalid',code:'012345'});
+  assert.equal(h.calls.some(c=>c.path==='/auth/verify/resend'||c.path.endsWith('/accept')),false);
+  assert.equal(h.document.getElementById('inviteAccept').hidden,false);
+  assert.equal(h.window.location.hash,'#token='+invitation);
+  assert.equal(h.errors.length,0);
+});
+
+test('an excessive invitation code remains visible with an accessible error and preserves existing status help',async t=>{
+  const h=await setup(t),code=h.document.getElementById('inviteCode');
+  for(const value of ['0123456','012x45']){
+    code.value=value;code.dispatchEvent(new h.window.Event('input',{bubbles:true}));h.submit();await flush();
+    assert.equal(code.value,value);assert.equal(code.getAttribute('aria-invalid'),'true');
+    const descriptions=code.getAttribute('aria-describedby').split(/\s+/);
+    assert.ok(descriptions.includes('inviteVerifyStatus'));
+    const error=h.document.getElementById(descriptions.find(id=>id!=='inviteVerifyStatus'));
+    assert.ok(error);assert.equal(error.getAttribute('role'),'alert');
+    assert.equal(h.document.querySelectorAll('.orion-field-error').length,1);
+    assert.equal(h.calls.some(c=>c.path==='/auth/verify'||c.path==='/auth/verify/resend'||c.path.endsWith('/accept')),false);
+  }
+  code.value='012345';code.dispatchEvent(new h.window.Event('input',{bubbles:true}));
+  assert.equal(code.getAttribute('aria-describedby'),'inviteVerifyStatus');
+  assert.equal(code.hasAttribute('aria-invalid'),false);
+  assert.equal(h.document.querySelector('.orion-field-error'),null);
+  code.value='01x';h.submit();await flush();
+  h.click('inviteResend');await flush();
+  assert.equal(code.value,'');
+  assert.equal(code.getAttribute('aria-describedby'),'inviteVerifyStatus');
+  assert.equal(code.hasAttribute('aria-invalid'),false);
+  assert.equal(h.document.querySelector('.orion-field-error'),null);
+  assert.equal(h.errors.length,0);
 });
 
 test('invalid or expired OTP retains the invitation and offers correction without an automatic resend',async t=>{

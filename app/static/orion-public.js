@@ -1,6 +1,8 @@
 /* Public catalogue data are rendered as text; quotes and contact details stay in memory. */
 (() => {
   'use strict';
+  const fields = window.OrionFields;
+  fields.bind(document);
   const $ = id => document.getElementById(id);
   const dialog = $('booking-dialog');
   const previewMatch = location.pathname.match(/^\/app\/site-preview\/([0-9a-f-]+)\/?$/i);
@@ -532,11 +534,11 @@
     title.id = 'booking-month-heading';
     const label = el('label', '', 'Outra data');
     const input = el('input');
-    input.type = 'date'; input.id = 'booking-day-input';
+    input.type = 'date'; input.lang = 'pt-BR'; input.id = 'booking-day-input'; input.dataset.orionField = 'date';
     input.min = data.today; input.max = addDays(data.today, data.booking_horizon_days);
     input.value = booking.day;
     input.addEventListener('change', () => {
-      if (input.value && input.checkValidity()) selectDay(input.value);
+      if (input.value && fields.validate(input) && input.checkValidity()) selectDay(input.value);
     });
     label.append(input); heading.append(title, label); body.append(heading);
     const strip = el('div', 'date-strip'); strip.id = 'booking-day-strip';
@@ -785,19 +787,6 @@
     box.append(total);
     return box;
   }
-  function formatBrazilPhone(input) {
-    let digits = String(input || '').replace(/\D/g, '');
-    if (digits.length > 11 && digits.startsWith('55')) digits = digits.slice(2);
-    digits = digits.slice(0, 11);
-    if (!digits) return '';
-    if (digits.length <= 2) return '(' + digits;
-    const local = digits.slice(2);
-    const prefix = '(' + digits.slice(0, 2) + ') ';
-    const left = digits.length === 11 ? 5 : 4;
-    return prefix + (local.length > left ?
-      local.slice(0, left) + '-' + local.slice(left) : local);
-  }
-
   function renderConfirmation(body) {
     // The confirmation button itself is the affirmative booking action.
     // No duplicate consent checkbox, price or long explanatory paragraph.
@@ -806,49 +795,34 @@
     const form = el('form', 'booking-form');
     form.id = 'customer-form';
     form.addEventListener('submit', event => { event.preventDefault(); submitBooking(); });
-    const fields = [
+    const contactFields = [
       { key: 'name', title: 'Nome completo', name: 'customer_name', autocomplete: 'name',
-        type: 'text', max: 120, placeholder: 'Digite seu nome' },
+        type: 'text', fieldKind: 'native', max: 120, placeholder: 'Nome completo' },
       { key: 'phone', title: 'WhatsApp com DDD', name: 'customer_phone',
-        autocomplete: 'tel-national', type: 'tel', max: 15, placeholder: '(86) 97267-6282' },
+        autocomplete: 'tel-national', type: 'tel', fieldKind: 'phone', placeholder: '(00) 00000-0000' },
       { key: 'birthDate', title: 'Data de nascimento', name: 'customer_birth_date',
-        autocomplete: 'bday', type: 'date', max: 10, placeholder: '' }
+        autocomplete: 'bday', type: 'date', fieldKind: 'date', placeholder: '' }
     ];
-    for (const spec of fields) {
+    for (const spec of contactFields) {
       const label = el('label', 'field', spec.title);
+      label.dataset.fieldWrapper = '';
       label.htmlFor = spec.name;
       const field = el('input');
       field.id = spec.name;
       field.name = spec.name;
       field.type = spec.type;
       field.autocomplete = spec.autocomplete;
-      field.maxLength = spec.max;
+      if (spec.max) field.maxLength = spec.max;
+      if (spec.fieldKind) field.dataset.orionField = spec.fieldKind;
       field.required = true;
       if (spec.placeholder) field.placeholder = spec.placeholder;
-      field.value = spec.key === 'phone' ? formatBrazilPhone(booking.phone) : booking[spec.key];
+      field.value = spec.key === 'phone' ? fields.phoneDisplay(booking.phone) : booking[spec.key];
       if (spec.key === 'phone') {
         field.inputMode = 'tel';
-        field.addEventListener('input', () => {
-          const raw = field.value;
-          let digitsBefore = (raw.slice(0, field.selectionStart ?? raw.length).match(/\d/g) || []).length;
-          if (raw.replace(/\D/g, '').length > 11 && raw.replace(/\D/g, '').startsWith('55')) {
-            digitsBefore = Math.max(0, digitsBefore - 2);
-          }
-          const masked = formatBrazilPhone(raw);
-          field.value = masked;
-          booking.phone = masked;
-          field.setCustomValidity('');
-          let pos = 0, seen = 0;
-          if (digitsBefore > 0) {
-            for (let i = 0; i < masked.length; i++) {
-              if (/\d/.test(masked[i])) seen++;
-              pos = i + 1;
-              if (seen >= digitsBefore) break;
-            }
-          }
-          try { field.setSelectionRange(pos, pos); } catch (_) { /* native phone UI */ }
-        });
+        field.addEventListener('input', () => { booking.phone = field.value; });
+        field.addEventListener('change', () => { booking.phone = field.value; });
       } else if (spec.key === 'birthDate') {
+        field.lang = 'pt-BR';
         field.min = '1900-01-01';
         field.max = data.today;
         field.addEventListener('input', () => { booking.birthDate = field.value; });
@@ -863,6 +837,7 @@
       form.append(label);
     }
     body.append(form);
+    fields.refresh(form);
   }
 
   function updateFooter() {
@@ -892,27 +867,19 @@
   async function submitBooking() {
     if (booking.busy || booking.step !== 3 || preview || !booking.quote || !booking.start) return;
     const form = $('customer-form');
-    if (!form || !form.reportValidity()) return;
-    const digits = booking.phone.replace(/\D/g, '');
+    if (!form || !fields.validateForm(form) || !form.reportValidity()) return;
+    // Read the live controls too: password managers/autofill may update without input events.
+    booking.name = form.elements.customer_name.value;
+    booking.phone = form.elements.customer_phone.value;
+    booking.birthDate = form.elements.customer_birth_date.value;
     if (!booking.name.trim()) {
       const nameField = form.elements.customer_name;
       nameField.setCustomValidity('Informe seu nome completo.');
       nameField.reportValidity();
       return;
     }
-    if (!/^[1-9]\d{9,10}$/.test(digits)) {
-      const phoneField = form.elements.customer_phone;
-      phoneField.setCustomValidity('Informe um WhatsApp válido com DDD.');
-      phoneField.reportValidity();
-      return;
-    }
-    if (!booking.birthDate || booking.birthDate < '1900-01-01' ||
-        booking.birthDate > data.today) {
-      const birth = form.elements.customer_birth_date;
-      birth.setCustomValidity('Informe uma data de nascimento válida.');
-      birth.reportValidity();
-      return;
-    }
+    const canonicalPhone = fields.phoneValue(booking.phone, { required: true });
+    const birthDate = fields.dateValue(booking.birthDate, { required: true, min: '1900-01-01', max: data.today });
     booking.busy = true;
     showError();
     updateFooter();
@@ -923,8 +890,8 @@
           quote: booking.quote,
           start_at: booking.start,
           customer_name: booking.name.trim(),
-          customer_phone: booking.phone,
-          customer_birth_date: booking.birthDate,
+          customer_phone: canonicalPhone,
+          customer_birth_date: birthDate,
           confirmed: true
         })
       });

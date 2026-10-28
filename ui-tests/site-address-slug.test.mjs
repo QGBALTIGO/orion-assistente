@@ -211,7 +211,9 @@ test('a timed-out CEP request is aborted and releases the form for manual comple
   h.fill('#osSiteForm [name=address_number]', '17');
   h.fill('#osSiteForm [name=neighborhood]', 'Centro');
   h.fill('#osSiteForm [name=city]', 'São Paulo');
-  h.fill('#osSiteForm [name=state]', 'sp');
+  assert.equal(field(h, 'state').tagName, 'SELECT');
+  assert.equal([...field(h, 'state').options].some(option=>option.value==='ZZ'),false);
+  h.fill('#osSiteForm [name=state]', 'SP');
   h.submit('#osSiteForm'); await flush();
   assert.equal(writes(h).length, 1);
   assert.equal(writes(h)[0].data.address, 'Rua preenchida manualmente');

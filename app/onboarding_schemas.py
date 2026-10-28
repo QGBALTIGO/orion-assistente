@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import Field, PrivateAttr, StrictBool, StrictInt, field_validator, model_validator
 
 from app.business_profile_schemas import ProfileModel, StyleRules, Capability
+from app.brazilian_fields import normalize_postal_code, normalize_state
 from app.catalog_schemas import Business, Professional, Service
 from app.commercial_schemas import Product, Variant, IdempotencyKey
 from app.management_schemas import normalize_phone
@@ -42,6 +43,17 @@ class Address(ProfileModel):
     neighborhood: str = Field(min_length=1, max_length=120)
     city: str = Field(min_length=1, max_length=120)
     state: str = Field(pattern=r"^[A-Z]{2}$")
+
+    _state = field_validator("state", mode="before")(normalize_state)
+
+    @field_validator("postal_code", mode="before")
+    @classmethod
+    def valid_postal_code(cls, value):
+        normalized = normalize_postal_code(value)
+        # Existing setup operation digests include this field's exact wire
+        # representation. Validate both accepted forms without changing a
+        # previously successful eight-digit replay into a different request.
+        return value.strip() if normalized is not None else None
 
     @model_validator(mode="after")
     def street_number(self):

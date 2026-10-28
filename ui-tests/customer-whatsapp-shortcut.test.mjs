@@ -60,7 +60,7 @@ test('mobile: ícone abre apenas WhatsApp e o card/seta continua abrindo o cadas
   await flush();
   assert.equal(h.document.getElementById('osDialog').open,true);
   assert.ok(h.document.querySelector('[data-os-form=customer] [name=phone]'));
-  assert.equal(h.document.querySelector('[data-os-form=customer] [name=phone]').value,'+5521997557364');
+  assert.equal(h.document.querySelector('[data-os-form=customer] [name=phone]').value,'(21) 99755-7364');
   assert.deepEqual(h.errors,[]);
 });
 

@@ -37,7 +37,7 @@ for (const width of [390, 820, 1366]) {
     assert.equal(h.element('#chatTitle').textContent, 'José Andrade');
     assert.equal(h.element('#chatContactPhone').hidden, false);
     assert.equal(h.element('#chatContactPhone').textContent, '+' + phoneA);
-    assert.equal(h.element('#chatPhone').value, phoneA, 'name rendering must not change the recipient');
+    assert.equal(h.element('#chatPhone').value, '(11) 99999-0001', 'name rendering must not change the recipient');
     h.click('#chatNew');
     assert.equal(h.element('#chatContactPhone').hidden, true);
     assert.equal(h.element('#chatContactPhone').textContent, '');
@@ -60,7 +60,7 @@ test('updated contact metadata changes the visible title without disturbing the 
   assert.equal(h.element('#chatTitle').textContent, 'Renata Lima');
   assert.equal(h.element('#chatText').value, 'Meu rascunho continua aqui');
   assert.equal(h.document.activeElement, h.element('#chatText'));
-  assert.equal(h.element('#chatPhone').value, phoneA);
+  assert.equal(h.element('#chatPhone').value, '(11) 99999-0001');
   assert.equal(h.element('#page-conversas').dataset.chatView, 'thread');
   h.click('#logout'); await flush();
   assert.equal(h.element('#chatContactPhone').textContent, '');
@@ -84,11 +84,11 @@ test('equal WhatsApp names keep distinct recipients and untrusted names render o
   h.click('#chatBack'); h.click('#chat-contact-' + phoneB); await flush();
   assert.equal(h.element('#chatTitle').textContent, 'Alex');
   assert.equal(h.element('#chatContactPhone').textContent, '+' + phoneB);
-  assert.equal(h.element('#chatPhone').value, phoneB);
+  assert.equal(h.element('#chatPhone').value, '(11) 99999-0002');
   assert.equal(h.element('#chatText').value, '');
   h.click('#chatBack'); h.click('#chat-contact-' + phoneA); await flush();
   assert.equal(h.element('#chatText').value, 'Rascunho do primeiro Alex');
-  assert.equal(h.element('#chatPhone').value, phoneA);
+  assert.equal(h.element('#chatPhone').value, '(11) 99999-0001');
   assert.deepEqual(h.calls.filter(call => call.method !== 'GET'), []);
   assert.equal(h.errors.length, 0);
 });

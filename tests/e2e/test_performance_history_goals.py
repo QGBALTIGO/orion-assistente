@@ -9,6 +9,8 @@ sync_playwright = pytest.importorskip("playwright.sync_api", reason="Browser dep
 ROOT = Path(__file__).resolve().parents[2]
 CSS = (ROOT / "app/static/orion-suite.css").read_text(encoding="utf-8")
 JS = (ROOT / "app/static/orion-suite.js").read_text(encoding="utf-8")
+FIELDS_CSS = (Path(__file__).resolve().parents[2] / "app/static/orion-fields.css").read_text(encoding="utf-8")
+FIELDS_JS = (Path(__file__).resolve().parents[2] / "app/static/orion-fields.js").read_text(encoding="utf-8")
 FIXTURE = (ROOT / "tests/e2e/fixtures/performance_history_goals.js").read_text(encoding="utf-8")
 HTML = """<!doctype html><html lang="pt-BR" data-theme="dark"><head>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -41,7 +43,9 @@ def test_performance_history_goals(browser_name, width, height, theme):
             page.set_content(HTML)
             page.evaluate("theme=>document.documentElement.dataset.theme=theme", theme)
             page.add_style_tag(content=CSS)
+            page.add_style_tag(content=FIELDS_CSS)
             page.add_script_tag(content="if(!crypto.randomUUID)crypto.randomUUID=()=>String(Math.random()).slice(2)+'-fixture';")
+            page.add_script_tag(content=FIELDS_JS)
             page.add_script_tag(content=JS)
             page.add_script_tag(content=FIXTURE)
             page.evaluate("mountPerformanceFixture()")

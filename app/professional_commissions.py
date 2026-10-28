@@ -8,12 +8,13 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from sqlalchemy import text
 
 from app.catalog_api import audit
 from app.catalog_schemas import Professional, StrictModel
 from app.booking_service import acquire_professional_lock
+from app.brazilian_fields import reject_boolean_money
 
 
 class CommissionRuleInput(StrictModel):
@@ -23,6 +24,8 @@ class CommissionRuleInput(StrictModel):
         default=None, ge=0, le=100, max_digits=5, decimal_places=2
     )
     commission_fixed_cents: int | None = Field(default=None, ge=0, le=100_000_000)
+
+    _fixed = field_validator("commission_fixed_cents", mode="before")(reject_boolean_money)
 
     @model_validator(mode="after")
     def valid_rule(self):

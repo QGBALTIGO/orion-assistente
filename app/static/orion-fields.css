@@ -1,0 +1,23 @@
+/* Shared field states; each Orion surface keeps its own typography and hierarchy. */
+:where(form,fieldset,[data-field-wrapper]){min-inline-size:0}
+:where(form) :where(input,select,textarea){box-sizing:border-box;max-inline-size:100%}
+:where(input,textarea)[data-orion-field]{font-variant-numeric:tabular-nums}
+:where(input,select,textarea)[aria-invalid=true]{border-color:var(--os-danger,var(--danger,#c1272d))!important}
+:where(input,select,textarea)[aria-invalid=true]:focus{box-shadow:0 0 0 2px color-mix(in srgb,var(--os-danger,var(--danger,#c1272d)) 18%,transparent)!important}
+.orion-field-error{display:block;grid-column:1/-1;margin:5px 0 0;color:var(--os-danger,var(--danger,#c1272d));font-family:inherit;font-size:12px;font-weight:400;line-height:18px;overflow-wrap:anywhere}
+:where(input,textarea)[readonly]{cursor:default}
+:where(input,select,textarea):disabled{cursor:not-allowed}
+:where(input[type=date],input[type=time],input[type=month],input[type=datetime-local]){min-inline-size:0;text-align:start}
+:where(input[type=date],input[type=time],input[type=month],input[type=datetime-local])::-webkit-date-and-time-value{text-align:start;min-height:1lh}
+.os-field-unit{position:relative;min-width:0}
+.os-field-unit>span{position:absolute;inset-inline-start:12px;top:50%;transform:translateY(-50%);color:var(--os-muted,var(--muted,#64748b));font-size:14px;line-height:20px;pointer-events:none}
+.os-field-unit>input[data-orion-field=money]{padding-inline-start:39px!important}
+.os-field-unit:has(.orion-field-error)>span{top:20px}
+@media(max-width:767px){
+  .os-main .os-form :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=hidden]),select,textarea){font-size:16px;min-height:42px}
+  .os-dialog .os-form :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=hidden]),select,textarea){font-size:16px;min-height:42px}
+}
+
+.wizard-phone-input:focus-within{outline:2px solid var(--os-primary,var(--primary,#2e7bf6));outline-offset:2px}
+.wizard-phone-input:has([aria-invalid=true]){border-color:var(--os-danger,var(--danger,#c1272d))!important}
+.os-field,.os-customer-field{align-content:start}

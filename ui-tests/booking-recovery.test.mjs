@@ -133,7 +133,9 @@ test('an explicit foreign country code is not rewritten into a Brazilian custome
   await prepareBooking(h, { phone: '+12025550123' });
   h.submit('[data-os-form=appointment]'); await flush();
   assert.equal(h.calls.filter(call => call.method !== 'GET').length, 0);
-  assert.match(h.document.querySelector('[data-os-form=appointment] .os-form-message').textContent, /WhatsApp.*DDD/);
+  const phone=h.document.querySelector('[data-os-form=appointment] [name=customer_phone]');
+  assert.equal(phone.getAttribute('aria-invalid'),'true');
+  assert.ok(phone.getAttribute('aria-describedby').split(/\s+/).some(id=>/telefone.*DDD/.test(h.document.getElementById(id)?.textContent||'')));
 });
 
 test('add-ons use a single server-prepared service id for both availability and the hold', async t => {

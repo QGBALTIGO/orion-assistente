@@ -54,6 +54,7 @@ export async function makePublic({ path = '/s/empresa-sintetica', data = catalog
     if (url.endsWith('/appointments')) return response(confirmed(), 201);
     return response(data);
   };
+  window.eval(await readFile(new URL('../app/static/orion-fields.js', import.meta.url), 'utf8'));
   window.eval(source);
   function click(selector) { const node = document.querySelector(selector); if (!node) throw new Error(`Missing clickable element: ${selector}`); node.click(); return node; }
   function fill(selector, value) { const node = document.querySelector(selector); if (!node) throw new Error(`Missing field: ${selector}`); node.value = value; node.dispatchEvent(new window.Event('input', { bubbles: true })); return node; }

@@ -6,6 +6,8 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[2]
 CSS = (ROOT / "app/static/orion-suite.css").read_text(encoding="utf-8")
 JS = (ROOT / "app/static/orion-suite.js").read_text(encoding="utf-8")
+FIELDS_CSS = (Path(__file__).resolve().parents[2] / "app/static/orion-fields.css").read_text(encoding="utf-8")
+FIELDS_JS = (Path(__file__).resolve().parents[2] / "app/static/orion-fields.js").read_text(encoding="utf-8")
 PRO = "51000000-0000-4000-8000-000000000001"
 HOUR = "51000000-0000-4000-8000-000000000002"
 BREAK = "51000000-0000-4000-8000-000000000003"
@@ -41,6 +43,8 @@ def test_weekly_hours_has_edit_controls_no_horizontal_overflow(browser_name, wid
             ))
             page.goto("https://orion.test/panel")
             page.add_style_tag(content=CSS)
+            page.add_style_tag(content=FIELDS_CSS)
+            page.add_script_tag(content=FIELDS_JS)
             page.add_script_tag(content=JS)
             page.evaluate("""({pro,hour,breakId}) => {
               const tenant='10000000-0000-4000-8000-000000000001';

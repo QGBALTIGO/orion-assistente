@@ -1,5 +1,6 @@
 /* Invitation tokens stay in the URL fragment; OTP values are never persisted. */
 (()=>{'use strict';
+const fields=window.OrionFields;fields.bind(document);
 const $=id=>document.getElementById(id),message=$('inviteMessage');
 let token='',csrf='',busy=false,account=null,invitation=null;
 try{token=new URLSearchParams(location.hash.slice(1)).get('token')||sessionStorage.getItem('orion_pending_invitation')||'';}catch{}
@@ -20,13 +21,13 @@ async function refreshAccount(){
 $('inviteLogin').addEventListener('click',()=>{try{sessionStorage.setItem('orion_pending_invitation',token)}catch{}});
 $('inviteResend').addEventListener('click',async()=>{
  if(busy||!account?.email||account.email_verified===true)return;lock(true);verificationNotice('Solicitando código…');
- try{const d=await api('/auth/verify/resend',{email:account.email});$('inviteCode').value='';verificationNotice(d.message||'Solicitação registrada. Aguarde o código no seu e-mail.');}
+ try{const d=await api('/auth/verify/resend',{email:account.email});$('inviteCode').value='';fields.clearError($('inviteCode'));verificationNotice(d.message||'Solicitação registrada. Aguarde o código no seu e-mail.');}
  catch(error){verificationNotice(error.message,true);}finally{lock(false);}
 });
 $('inviteVerifyForm').addEventListener('submit',async event=>{
- event.preventDefault();const form=event.currentTarget;if(busy||!account?.email||account.email_verified===true||!form.reportValidity())return;
- const email=account.email;lock(true);verificationNotice('Confirmando e-mail…');
- try{await api('/auth/verify',{email,code:$('inviteCode').value.trim()});$('inviteCode').value='';await refreshAccount();
+ event.preventDefault();const form=event.currentTarget;if(busy||!account?.email||account.email_verified===true||!fields.validateForm(form)||!form.reportValidity())return;
+ const email=account.email,code=fields.otpValue($('inviteCode').value,{required:true});lock(true);verificationNotice('Confirmando e-mail…');
+ try{await api('/auth/verify',{email,code});$('inviteCode').value='';fields.clearError($('inviteCode'));await refreshAccount();
   if(account?.email===email&&account.email_verified===true)notice('E-mail confirmado. Confira o convite e clique em Aceitar e solicitar acesso.');
   else notice('Não foi possível confirmar a conta atual. Confira seu acesso e tente novamente.',true);
  }catch(error){verificationNotice(error.message,true);}finally{lock(false);}

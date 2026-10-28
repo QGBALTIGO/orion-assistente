@@ -57,6 +57,8 @@ def test_duration_presets_are_under_minutes_and_currency_formats_native_keyboard
                 status=200,content_type="text/html",body=PAGE))
             page.goto("https://orion.test/panel",wait_until="domcontentloaded")
             page.add_style_tag(content=(ROOT/"app/static/orion-suite.css").read_text())
+            page.add_style_tag(content=(ROOT/"app/static/orion-fields.css").read_text())
+            page.add_script_tag(content=(ROOT/"app/static/orion-fields.js").read_text())
             page.add_script_tag(content=(ROOT/"app/static/orion-suite.js").read_text())
             page.evaluate(INITIALIZE)
 

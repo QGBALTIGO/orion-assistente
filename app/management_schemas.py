@@ -10,6 +10,7 @@ from uuid import UUID
 from pydantic import AwareDatetime, Field, StrictBool, StrictInt, field_validator, model_validator
 
 from app.catalog_schemas import StrictModel
+from app.brazilian_fields import normalize_postal_code, normalize_state
 
 MAX_MONEY = 1_000_000_000
 MAX_REPORT_DAYS = 366
@@ -358,13 +359,7 @@ class SitePreferences(CleanModel):
     @field_validator("state", "postal_code", mode="before")
     @classmethod
     def normalize_location(cls, value, info):
-        if value is None or (isinstance(value, str) and not value.strip()):
-            return None
-        if isinstance(value, str):
-            value = value.strip().upper()
-            if info.field_name == "postal_code" and re.fullmatch(r"[0-9]{8}", value):
-                value = value[:5] + "-" + value[5:]
-        return value
+        return normalize_postal_code(value) if info.field_name == "postal_code" else normalize_state(value)
 
     @field_validator("logo_url", "cover_url", "instagram_url", "maps_url", "facebook_url", "tiktok_url", "external_url")
     @classmethod
