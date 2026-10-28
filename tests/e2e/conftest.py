@@ -26,6 +26,7 @@ from uuid import uuid4
 import zipfile
 
 import pytest
+from cryptography.fernet import Fernet
 
 ROOT = Path(__file__).resolve().parents[2]
 PASSWORD = "Synthetic#E2E-2026-Only"
@@ -112,6 +113,7 @@ def qualification_server(request):
     origin = f"https://127.0.0.1:{port}"
     # Do not inherit provider credentials, public deployment URLs or email flags.
     env = {k: v for k, v in os.environ.items() if k.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "HOME", "LANG", "LC_ALL"}}
+    synthetic_mail_key = Fernet.generate_key().decode('ascii')
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", secrets.token_bytes(32), salt, 200_000)
     env.update({
@@ -121,7 +123,14 @@ def qualification_server(request):
         "SUPPORT_API_TOKEN": "synthetic-e2e-only-00000000000000000000000000000000000000000000000000",
         "PANEL_ADMIN_USERNAME": "synthetic-disabled-operator",
         "PANEL_ADMIN_PASSWORD_HASH": "pbkdf2_sha256$200000$" + base64.urlsafe_b64encode(salt).decode() + "$" + base64.urlsafe_b64encode(digest).decode(),
-        "PANEL_REGISTRATION_ENABLED": "1", "PANEL_EMAIL_ENABLED": "0", "PANEL_TEST_MODE": "0",
+        "PANEL_REGISTRATION_ENABLED": "1", "PANEL_EMAIL_ENABLED": "1", "PANEL_TEST_MODE": "0",
+        # This HTTPS fixture creates only encrypted local outbox rows. It starts
+        # no email worker, uses no provider credential and cannot send mail.
+        "PANEL_EMAIL_LIVE_SEND": "1", "PANEL_EMAIL_TRANSPORT": "resend_https",
+        "PANEL_SMTP_FROM": "Orion E2E <synthetic@example.test>",
+        "PANEL_SMTP_PASSWORD": "synthetic-never-send-only",
+        "PANEL_EMAIL_FERNET_KEY": synthetic_mail_key,
+        "PANEL_OTP_SECRET": secrets.token_urlsafe(48),
         "PANEL_PUBLIC_URL": origin, "ONBOARDING_ENABLED": "1", "BUSINESS_PROFILES_ENABLED": "1",
         "COMMERCIAL_CATALOG_ENABLED": "1", "COMMERCIAL_ORDERS_ENABLED": "0",
         "COMMERCIAL_FULFILLMENT_ENABLED": "0", "QR_CHANNELS_ENABLED": "0",
@@ -167,7 +176,7 @@ def qualification_server(request):
                 else:
                     pytest.fail("Real HTTPS API did not become healthy in 45s")
                 yield SimpleNamespace(origin=origin, dsn=migration_dsn, artifacts=artifacts,
-                                      native_admin=native_admin)
+                                      native_admin=native_admin, synthetic_mail_key=synthetic_mail_key)
             finally:
                 process.terminate()
                 try:
