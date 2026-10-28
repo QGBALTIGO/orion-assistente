@@ -282,6 +282,22 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 
 /* Authentication uses the shared suite tokens in orion-auth.css. */
 
+/* Owner account self-service: same rhythm as business setup, mobile first. */
+.member-settings{display:grid;gap:20px;max-width:690px;margin:24px 0 48px}
+.member-settings-card{background:var(--panel);border:1px solid var(--border);border-radius:22px;padding:clamp(20px,4vw,30px);box-shadow:var(--shadow)}
+.member-settings-heading h2{font-size:1.2rem;margin:0;color:var(--text)}
+.member-settings-heading p{margin:8px 0 0;color:var(--muted);line-height:1.5}
+.member-settings-form{display:grid;gap:22px;margin-top:24px}
+.member-settings-field{display:grid;gap:8px;min-width:0}
+.member-settings-field label{font-weight:600;color:var(--text)}
+.member-settings-field input{width:100%;min-width:0;box-sizing:border-box;padding:12px 14px;min-height:48px;border-radius:12px;border:1px solid var(--border);background:var(--panel);color:var(--text);font:inherit}
+.member-settings-field input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.member-settings-feedback{margin:0;min-height:0;line-height:1.45;color:var(--muted);overflow-wrap:anywhere}
+.member-settings-feedback[data-error="true"]{color:var(--danger,#b42318)}
+.member-settings-actions{border-top:1px solid var(--border);padding-top:20px;display:flex;justify-content:flex-end}
+.member-settings-actions button{min-height:44px;max-width:100%;white-space:normal}
+@media(max-width:560px){.member-settings-actions button{width:100%}}
+
 /* Dedicated non-privileged member dashboard inside the main Orion shell. */
 .member-overview{width:min(100%,690px);background:linear-gradient(140deg,#122923,#101e1a);
   border:1px solid var(--border);border-radius:20px;padding:clamp(20px,4vw,35px);box-shadow:0 14px 38px #0002}
@@ -898,7 +914,32 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
         <div class="member-detail"><span>Nome</span><strong id="memberProfileName">—</strong></div>
         <div class="member-detail"><span>E-mail</span><strong id="memberProfileEmail">—</strong></div>
       </section>
-      <p class="member-next">Os recursos da sua conta aparecerão aqui quando estiverem disponíveis.</p>
+      <section class="member-settings" aria-label="Configurações da conta e empresa">
+        <section class="member-settings-card">
+          <div class="member-settings-heading"><h2>Dados da empresa</h2><p>Atualize o nome e o WhatsApp comercial da sua empresa.</p></div>
+          <form id="memberBusinessForm" class="member-settings-form" autocomplete="on">
+            <div class="member-settings-field"><label for="memberBusinessName">Nome da empresa</label>
+              <input id="memberBusinessName" name="name" type="text" maxlength="160" autocomplete="organization" required placeholder="Nome do seu negócio"></div>
+            <div class="member-settings-field"><label for="memberBusinessPhone">WhatsApp comercial</label>
+              <input id="memberBusinessPhone" name="contact_phone" type="tel" inputmode="tel" autocomplete="tel-national" data-orion-field="phone" placeholder="(00) 00000-0000" required></div>
+            <p id="memberBusinessFeedback" class="member-settings-feedback" role="status" aria-live="polite"></p>
+            <div class="member-settings-actions"><button type="submit" id="memberBusinessSave" class="btn">Salvar alterações</button></div>
+          </form>
+        </section>
+        <section class="member-settings-card">
+          <div class="member-settings-heading"><h2>Segurança da conta</h2><p>Altere sua senha usando a senha atual. Após salvar, será necessário entrar novamente.</p></div>
+          <form id="memberPasswordForm" class="member-settings-form" autocomplete="on">
+            <div class="member-settings-field"><label for="memberCurrentPassword">Senha atual</label>
+              <input id="memberCurrentPassword" name="current_password" type="password" autocomplete="current-password" maxlength="128" required placeholder="Digite sua senha atual"></div>
+            <div class="member-settings-field"><label for="memberNewPassword">Nova senha</label>
+              <input id="memberNewPassword" name="new_password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required placeholder="Mínimo de 8 caracteres"></div>
+            <div class="member-settings-field"><label for="memberConfirmPassword">Confirmar nova senha</label>
+              <input id="memberConfirmPassword" name="confirm_password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required placeholder="Repita a nova senha"></div>
+            <p id="memberPasswordFeedback" class="member-settings-feedback" role="status" aria-live="polite"></p>
+            <div class="member-settings-actions"><button type="submit" id="memberPasswordSave" class="btn">Alterar senha</button></div>
+          </form>
+        </section>
+      </section>
     </section>
     <section id="page-dispositivo" class="page orion-workspace">
       <div class="header">
@@ -1742,6 +1783,96 @@ async function api(url,method="GET",data){
  }
  return response.status===204?null:response.json();
 }
+let memberBusinessOriginal=null,memberBusinessBusy=false,memberPasswordBusy=false;
+function memberFeedback(id,message,error=false){
+ const el=$(id);el.textContent=message;el.dataset.error=String(error);
+}
+function memberPhoneDisplay(value){
+ return window.OrionFields?.phoneDisplay(value)||value||"";
+}
+async function loadMemberBusiness(){
+ if(loginRole!=="member"||!accountBusiness())return;
+ const epoch=authEpoch,tenant=suiteTenantId;
+ memberFeedback("memberBusinessFeedback","Consultando dados da empresa…");
+ try{
+  const data=await api("/api/v1/account/business-identity");
+  if(epoch!==authEpoch||tenant!==suiteTenantId)return;
+  memberBusinessOriginal={name:data.name,contact_phone:data.contact_phone||null};
+  $("memberBusinessName").value=data.name||"";
+  $("memberBusinessPhone").value=memberPhoneDisplay(data.contact_phone);
+  memberFeedback("memberBusinessFeedback","");
+ }catch(error){
+  if(epoch===authEpoch&&tenant===suiteTenantId){
+   memberBusinessOriginal=null;
+   memberFeedback("memberBusinessFeedback",error.message||"Não foi possível consultar a empresa.",true);
+  }
+ }
+}
+$("memberBusinessForm").addEventListener("submit",async event=>{
+ event.preventDefault();
+ if(memberBusinessBusy||!memberBusinessOriginal||loginRole!=="member"||!accountBusiness())return;
+ const form=event.currentTarget;
+ if(!window.OrionFields?.validateForm(form)||!form.reportValidity())return;
+ const name=$("memberBusinessName").value.trim().replace(/\s+/g," ");
+ const phone=$("memberBusinessPhone").value;
+ if(!name||!phone)return;
+ const epoch=authEpoch,tenant=suiteTenantId;
+ memberBusinessBusy=true;$("memberBusinessSave").disabled=true;
+ memberFeedback("memberBusinessFeedback","Salvando alterações…");
+ try{
+  const result=await api("/api/v1/account/business-identity","PUT",{
+   name,contact_phone:phone,expected_name:memberBusinessOriginal.name,
+   expected_phone:memberBusinessOriginal.contact_phone
+  });
+  if(epoch!==authEpoch||tenant!==suiteTenantId)return;
+  memberBusinessOriginal={name:result.name,contact_phone:result.contact_phone};
+  $("memberBusinessName").value=result.name;
+  $("memberBusinessPhone").value=memberPhoneDisplay(result.contact_phone);
+  if(accountBusiness())accountBusiness().name=result.name;
+  renderAccountBusiness();
+  window.OrionSuite?.sync({tenants:businessRows});
+  memberFeedback("memberBusinessFeedback","Dados da empresa atualizados com sucesso.");
+ }catch(error){
+  if(epoch===authEpoch&&tenant===suiteTenantId)
+   memberFeedback("memberBusinessFeedback",error.status===409?
+    "Os dados mudaram em outra sessão. Atualize a página antes de tentar novamente.":
+    error.message||"Não foi possível salvar. Tente novamente.",true);
+ }finally{memberBusinessBusy=false;$("memberBusinessSave").disabled=false;}
+});
+$("memberPasswordForm").addEventListener("submit",async event=>{
+ event.preventDefault();
+ if(memberPasswordBusy||loginRole!=="member")return;
+ const form=event.currentTarget;
+ if(!form.reportValidity())return;
+ const current_password=$("memberCurrentPassword").value;
+ const new_password=$("memberNewPassword").value;
+ const confirm_password=$("memberConfirmPassword").value;
+ if(new_password!==confirm_password){
+  memberFeedback("memberPasswordFeedback","As novas senhas não coincidem.",true);
+  $("memberConfirmPassword").focus();return;
+ }
+ if(new_password===current_password){
+  memberFeedback("memberPasswordFeedback","A nova senha precisa ser diferente da atual.",true);return;
+ }
+ const epoch=authEpoch;
+ memberPasswordBusy=true;$("memberPasswordSave").disabled=true;
+ memberFeedback("memberPasswordFeedback","Alterando senha…");
+ try{
+  const result=await api("/auth/account/password","POST",{
+   current_password,new_password,confirm_password
+  });
+  if(epoch!==authEpoch)return;
+  form.reset();
+  showLogin();
+  messageAuth(result.message||"Senha alterada. Entre novamente.");
+ }catch(error){
+  if(epoch===authEpoch){
+   memberFeedback("memberPasswordFeedback",error.message||"Não foi possível alterar a senha.",true);
+   $("memberCurrentPassword").value="";
+  }
+ }finally{memberPasswordBusy=false;$("memberPasswordSave").disabled=false;}
+});
+
 async function uploadImage(url,file,kind){
  const scoped=url.match(/^\/api\/v1\/tenants\/([^/?]+)/);
  if(scoped&&(!accountBusiness()||decodeURIComponent(scoped[1])!==suiteTenantId))throw Error("Não foi possível confirmar a empresa desta conta.");
@@ -1858,6 +1989,8 @@ function showLogin(){
  ++setupResolving;window.OrionOnboarding?.unmount();setupController=null;setSetupGate(false);
  window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
  window.OrionSuite?.destroy();suiteUser=null;suiteTenantId="";businessContextReady=false;businessContextError="";
+ memberBusinessOriginal=null;$("memberBusinessForm").reset();$("memberPasswordForm").reset();
+ memberFeedback("memberBusinessFeedback","");memberFeedback("memberPasswordFeedback","");
  finishActionConfirmation(false);manualSendRequest=null;++manualSendSequence;$("sendButton").disabled=false;
  csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);statusTimer=null;chatTimer=null;wizardClocks=null;
  ++statusSequence;connectedSnapshot=null;wizardSuccessUntil=0;
@@ -1904,7 +2037,10 @@ async function showApp(role="support",name="",email=""){
  }
  window.OrionSuite?.mount(suiteBridge(desired));
  dismissSessionBoot();
- if(await loadBusinesses()&&epoch===authEpoch)startBusinessSession();
+ if(await loadBusinesses()&&epoch===authEpoch){
+  startBusinessSession();
+  if(loginRole==="member")void loadMemberBusiness();
+ }
 }
 async function publicAuth(path,payload){
  const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},
@@ -2092,6 +2228,7 @@ function openPage(target){
  if(target==="empresa")void loadBusinessProfile();
  if(target==="catalogo")void loadCommerceTenants();
  if(target==="cadastros")void loadTenants();
+ if(target==="member")void loadMemberBusiness();
  history.replaceState({}, "", "/panel?aba="+encodeURIComponent(target));
  window.OrionSuite?.legacyOpened(target);
 }
