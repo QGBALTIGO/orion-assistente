@@ -8,8 +8,11 @@ test('unauthenticated mount makes no request and never creates a business',async
 test('disabled rollout and legacy dashboard leave the existing panel intact',async t=>{
   for(const decision of [entry({enabled:false}),entry({kind:'dashboard'})]){const h=await makeOnboarding({decision});t.after(()=>h.close());assert.equal(h.document.getElementById('setup').hidden,true);assert.equal(h.calls.length,1);assert.ok(h.document.getElementById('existing-panel'));assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);}
 });
-test('new member sees empty real fields, explicit niche and timezone, without a write on page load',async t=>{
-  const h=await makeOnboarding({decision:entry({tenant_id:null,businesses:[]})});t.after(()=>h.close());assert.equal(h.element('[name=name]').value,'');assert.equal(h.element('[name=niche]').value,'');assert.equal(h.element('[name=timezone]').value,'');assert.match(h.element('#setup').textContent,/não conecta o WhatsApp/);assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);assert.equal(h.document.activeElement,h.element('[data-ob-title]'));
+test('new member sees required WhatsApp without a timezone picker or footer and no write on load',async t=>{
+  const h=await makeOnboarding({decision:entry({tenant_id:null,businesses:[]})});t.after(()=>h.close());assert.equal(h.element('[name=name]').value,'');assert.equal(h.element('[name=niche]').value,'');assert.equal(h.document.querySelector('[name=timezone]'),null);
+  assert.equal(h.element('[name=contact_phone]').required,true);
+  assert.match(h.element('[name=contact_phone]').getAttribute('placeholder'),/\(00\)/);
+  assert.doesNotMatch(h.element('#setup').textContent,/Os dados confirmados ficam salvos neste negócio/);assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);assert.equal(h.document.activeElement,h.element('[data-ob-title]'));
 });
 test('pending invitation cannot silently create a business or grant owner access',async t=>{
   const h=await makeOnboarding({decision:entry({kind:'invitation',tenant_id:null,create_allowed:false,invitations:[{tenant_id:tenantA,business_name:'Empresa convidante',status:'pending',role:'editor'}]})});t.after(()=>h.close());assert.match(h.element('#setup').textContent,/Empresa convidante/);assert.equal(h.document.querySelector('[data-ob-form=create]'),null);assert.equal(h.document.querySelector('a[href="/convite"]').textContent,'Ver convite');assert.deepEqual(h.calls.filter(c=>c.method!=='GET'),[]);
@@ -31,7 +34,9 @@ test('unmount drops private forms and ignores an outstanding read',async t=>{
   const late=deferred();const h=await makeOnboarding({auto:false,respond:path=>path.includes('/tenants/')?late.promise:undefined});t.after(()=>h.close());const pending=h.controller.resolveEntry();await flush();h.controller.unmount();late.resolve(fullState());await pending;assert.equal(h.element('#setup').childElementCount,0);assert.equal(h.element('#setup').hidden,true);
 });
 test('business labels and backend messages are rendered as text',async t=>{
-  const payload='<img src=x onerror=alert(1)>';const h=await makeOnboarding({data:fullState({name:payload,pending:[{step:'business',message:payload}]} )});t.after(()=>h.close());assert.match(h.element('[data-ob-title]').textContent,/<img/);assert.equal(h.document.querySelector('img[src=x]'),null);h.click('[data-ob-step=review]');assert.equal(h.document.querySelector('img[src=x]'),null);
+  const payload='<img src=x onerror=alert(1)>';const h=await makeOnboarding({data:fullState({name:payload,pending:[{step:'business',message:payload}]} )});t.after(()=>h.close());assert.equal(h.element('[name=name]').value,payload);
+  assert.match(h.element('[data-ob-title]').textContent,/Vamos configurar/);
+  assert.equal(h.document.querySelector('img[src=x]'),null);h.click('[data-ob-step=review]');assert.equal(h.document.querySelector('img[src=x]'),null);
 });
 test('products-only server steps omit professional scheduling requirements from progress',async t=>{
   const data=fullState();data.configuration.activity='products';data.steps.forEach(s=>{if(['professionals','hours'].includes(s.id))s.required=false;});data.current_step='catalog';
