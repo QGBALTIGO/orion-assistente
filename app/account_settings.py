@@ -114,12 +114,21 @@ async def update_business_identity(payload: BusinessIdentity,
                         version=version+1,updated_at=now()
                     WHERE tenant_id=:tenant
                 """), {"phone": payload.contact_phone, "tenant": business["id"]})
-            # The business phone in management preferences is the operational
-            # contact. Preserve unrelated finance/tax/automation preferences.
+            # Match management_preferences.save_section lock order to avoid
+            # lost updates when the owner edits financial/operational settings.
+            await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:scope,0))"),
+                             {"scope": "management-preferences:" + str(business["id"])})
             await db.execute(text("""
-                UPDATE management_preferences
-                SET preferences=jsonb_set(preferences,'{business,contact_phone}',to_jsonb(CAST(:phone AS text)),true),
-                    version=version+1,updated_at=now()
-                WHERE tenant_id=:tenant
+                INSERT INTO management_preferences(tenant_id,preferences)
+                VALUES(:tenant,jsonb_build_object('business',
+                    jsonb_build_object('contact_phone',CAST(:phone AS text))))
+                ON CONFLICT(tenant_id) DO UPDATE SET
+                    preferences=jsonb_set(
+                        CASE WHEN jsonb_typeof(management_preferences.preferences->'business')='object'
+                        THEN management_preferences.preferences
+                        ELSE jsonb_set(management_preferences.preferences,'{business}','{}'::jsonb,true)
+                        END,
+                        '{business,contact_phone}',to_jsonb(CAST(:phone AS text)),true),
+                    version=management_preferences.version+1,updated_at=now()
             """), {"phone": payload.contact_phone, "tenant": business["id"]})
     return {"ok": True, "name": payload.name, "contact_phone": payload.contact_phone}
