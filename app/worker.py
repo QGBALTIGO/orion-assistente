@@ -19,6 +19,7 @@ from app.whatsapp_bot import reply
 from app.calendar_worker import scan_calendar_outbox,process_calendar_outbox
 from app.auto_completion import scan_due_appointments,process_due_appointment
 from app.billing_worker import reconcile_asaas_job,scan_pending_billing
+from app.cakto_api import scan_pending_cakto
 from app.automation_runtime import interaction,process_automation_job,reconcile_automation_job,scan_automations
 from app.inbox_runtime import process_inbox_message,scan_inbox
 from app.email_outbox import process_email_outbox,scan_email_outbox
@@ -118,6 +119,7 @@ class WorkerSettings:
                  cron(scan_calendar_outbox, minute=set(range(60)), second=10),
                  cron(scan_due_appointments, minute=set(range(60)), second={0,10,20,30,40,50}),
                  cron(scan_pending_billing, minute={3,13,23,33,43,53}, second=0),
+                 cron(scan_pending_cakto, minute={4,14,24,34,44,54}, second=0),
                  cron(scan_automations, minute=set(range(60)), second=20),
                  cron(scan_inbox,minute=set(range(60)),second={5,35}),
                  cron(scan_email_outbox,minute=set(range(60)),second={0,15,30,45}),
