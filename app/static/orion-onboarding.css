@@ -181,3 +181,10 @@
   .ob-root .ob-profile-fields{grid-template-columns:minmax(0,1fr)}
   .ob-root .ob-profile-fields > .ob-field > label{overflow-wrap:anywhere}
 }
+
+/* O endereço ocupa a largura do formulário, sem aninhar duas grades estreitas.
+ * Mantém CEP, rua, bairro, número e cidade legíveis em tablet/desktop. */
+.ob-root .ob-location-fields > [data-ob-address]{
+  grid-column:1 / -1;
+  min-width:0;
+}
