@@ -34,3 +34,37 @@
 @media(max-width:767px){
   .ob-root input:not([type=checkbox]):not([type=radio]),.ob-root select,.ob-root textarea{font-size:16px}
 }
+
+/* Guided setup is a distraction-free view: the authenticated setup gate alone
+ * owns the navigation chrome. Do not override .hidden during login/bootstrap.
+ */
+#appView #setupHeader{display:none!important}
+#appView.ob-gated:not(.hidden){display:block!important;min-height:100dvh;background:var(--os-bg)}
+#appView.ob-gated>.sidebar,
+#appView.ob-gated>.content>#osHeader,
+#appView.ob-gated>#osScrim,
+#appView.ob-gated #osConsultantFab{display:none!important}
+#appView.ob-gated>.content{box-sizing:border-box;display:block;min-width:0;width:100%;max-width:none;margin:0;padding:0;background:var(--os-bg)}
+#appView.ob-gated>.content>#setupHeader{
+  box-sizing:border-box;position:sticky;top:0;z-index:40;
+  display:flex!important;align-items:center;justify-content:space-between;
+  gap:16px;width:100%;min-height:70px;
+  padding:10px max(18px,env(safe-area-inset-right,0px)) 10px max(18px,env(safe-area-inset-left,0px));
+  border-bottom:1px solid var(--os-border);
+  background:var(--os-bg);color:var(--os-text);
+}
+#setupHeader>img{display:block;width:132px;max-width:calc(100% - 72px);height:44px;object-fit:contain;object-position:left center}
+#setupHeader .os-theme{margin-left:auto}
+#setupHeader #setupThemeToggle{display:grid;place-items:center;box-sizing:border-box;width:44px;height:44px;min-height:44px;border-radius:12px}
+#setupHeader #setupThemeToggle .os-icon{width:20px;height:20px}
+#setupHeader .os-theme-menu{top:48px;right:0}
+#setupHeader .os-theme-menu button{min-height:44px}
+#setupHeader #setupThemeToggle:focus-visible,#setupHeader .os-theme-menu button:focus-visible{outline:3px solid var(--os-primary);outline-offset:2px}
+#appView.ob-gated .ob-heading .ob-logo{display:none!important}
+@media(max-width:480px){
+  #appView.ob-gated>.content>#setupHeader{
+    min-height:64px;
+    padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));
+  }
+  #setupHeader>img{width:118px;height:40px}
+}

@@ -333,7 +333,10 @@ test('login theme choices share the saved preference, selected state and logo wi
   const h = await makeLogin(t);
   const root = h.document.documentElement;
   const choices = [...h.document.querySelectorAll('[data-theme-choice]')];
-  assert.equal(choices.length, 6);
+  assert.equal(choices.length, 9, 'login, painel e configuração têm três opções cada');
+  for (const menu of ['#authThemeMenu', '.sidebar .theme-switch', '#setupThemeMenu']) {
+    assert.equal(h.document.querySelectorAll(menu + ' [data-theme-choice]').length, 3);
+  }
   function chooseTheme(value) {
     h.click('#authThemeToggle');
     assert.equal(h.element('#authThemeToggle').getAttribute('aria-expanded'), 'true');

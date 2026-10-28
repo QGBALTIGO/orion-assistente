@@ -869,6 +869,20 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
     </div>
   </aside>
   <main class="content">
+    <header id="setupHeader" class="ob-shell-header" aria-label="Configuração inicial do Orion">
+      <img data-orion-logo src="/brand/orion-brand-dark.svg" alt="Orion — Recepcionista Digital" width="144" height="52">
+      <div id="setupTheme" class="os-theme">
+        <button id="setupThemeToggle" type="button" class="os-icon-button" aria-label="Escolher aparência" aria-controls="setupThemeMenu" aria-expanded="false" aria-haspopup="true" title="Escolher tema">
+          <svg class="os-icon" data-setup-theme-icon="light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
+          <svg class="os-icon hidden" data-setup-theme-icon="dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.3A9 9 0 0 1 9.7 3.5 9 9 0 1 0 20.5 14.3Z"/></svg>
+        </button>
+        <div id="setupThemeMenu" class="os-theme-menu hidden" role="group" aria-label="Aparência da configuração">
+          <button type="button" data-theme-choice="light" aria-label="Tema Claro" aria-pressed="false"><svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>Claro</button>
+          <button type="button" data-theme-choice="dark" aria-label="Tema Escuro" aria-pressed="false"><svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.3A9 9 0 0 1 9.7 3.5 9 9 0 1 0 20.5 14.3Z"/></svg>Escuro</button>
+          <button type="button" data-theme-choice="auto" aria-label="Tema Automático, seguir o dispositivo" aria-pressed="true"><svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>Sistema</button>
+        </div>
+      </div>
+    </header>
     <section id="page-member" class="page hidden" aria-labelledby="memberWelcome">
       <div class="header">
         <div><div class="eyebrow">Orion / Início</div><h1 id="memberWelcome">Bem-vindo ao Orion</h1>
@@ -1368,6 +1382,11 @@ window.OrionFields?.bind(document);
    $("authThemeToggle").setAttribute("aria-expanded","false");
    if(restoreFocus)$("authThemeToggle").focus();
  }
+ function closeSetupTheme(restoreFocus=false){
+   $("setupThemeMenu").classList.add("hidden");
+   $("setupThemeToggle").setAttribute("aria-expanded","false");
+   if(restoreFocus)$("setupThemeToggle").focus();
+ }
  function applyTheme(preference,store=false){
    const safe=["light","dark","auto"].includes(preference)?preference:"auto";
    if(store){try{localStorage.setItem("orion-theme",safe)}catch(_){/* storage blocked */}}
@@ -1381,25 +1400,45 @@ window.OrionFields?.bind(document);
    const meta=$("orionThemeColor");
    if(meta)meta.content=getComputedStyle(document.documentElement).getPropertyValue("--os-bg").trim()||(effective==="dark"?"#05080f":"#f5f8fc");
    choices.forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.themeChoice===safe)));
-   document.querySelectorAll("[data-auth-theme-icon]").forEach(icon=>icon.classList.toggle("hidden",icon.dataset.authThemeIcon!==effective));
+   document.querySelectorAll("[data-auth-theme-icon],[data-setup-theme-icon]").forEach(icon=>{
+     icon.classList.toggle("hidden",(icon.dataset.authThemeIcon||icon.dataset.setupThemeIcon)!==effective);
+   });
  }
  choices.forEach(button=>button.addEventListener("click",()=>{
    applyTheme(button.dataset.themeChoice,true);
    if(button.closest("#authTheme"))closeAuthTheme(true);
+   if(button.closest("#setupTheme"))closeSetupTheme(true);
  }));
+ $("setupThemeToggle").addEventListener("click",()=>{
+   const open=$("setupThemeMenu").classList.contains("hidden");
+   $("setupThemeMenu").classList.toggle("hidden",!open);
+   $("setupThemeToggle").setAttribute("aria-expanded",String(open));
+   if(open)$("setupThemeMenu").querySelector('[aria-pressed="true"]').focus();
+ });
  $("authThemeToggle").addEventListener("click",()=>{
    const open=$("authThemeMenu").classList.contains("hidden");
    $("authThemeMenu").classList.toggle("hidden",!open);
    $("authThemeToggle").setAttribute("aria-expanded",String(open));
    if(open)$("authThemeMenu").querySelector('[aria-pressed="true"]').focus();
  });
- document.addEventListener("click",event=>{if(!event.target.closest("#authTheme"))closeAuthTheme()});
+ document.addEventListener("click",event=>{
+   if(!event.target.closest("#authTheme"))closeAuthTheme();
+   if(!event.target.closest("#setupTheme"))closeSetupTheme();
+ });
  // Safari can blur a button before a tap's click without focusing the next one.
  // Close when focus arrives outside, so a pending theme selection stays clickable.
- document.addEventListener("focusin",event=>{if(!$("authTheme").contains(event.target))closeAuthTheme()});
+ document.addEventListener("focusin",event=>{
+   if(!$("authTheme").contains(event.target))closeAuthTheme();
+   if(!$("setupTheme").contains(event.target))closeSetupTheme();
+ });
  $("authTheme").addEventListener("keydown",event=>{
    if(event.key==="Escape"&&!$("authThemeMenu").classList.contains("hidden")){
      event.preventDefault();closeAuthTheme(true);
+   }
+ });
+ $("setupTheme").addEventListener("keydown",event=>{
+   if(event.key==="Escape"&&!$("setupThemeMenu").classList.contains("hidden")){
+     event.preventDefault();closeSetupTheme(true);
    }
  });
  applyTheme(document.documentElement.dataset.themePreference||"auto");
@@ -1455,7 +1494,17 @@ $("sessionBootRetry").addEventListener("click",()=>{void restoreSession()});
 window.addEventListener("pageshow",event=>{if(event.persisted)void restoreSession()});
 let suiteUser=null,suiteTenantId="",businessContextReady=false,businessContextError="";
 let setupController=null,setupResolving=0,setupGate=false;
-function setSetupGate(value){setupGate=Boolean(value);$("appView").classList.toggle("ob-gated",setupGate)}
+function setSetupGate(value){
+ setupGate=Boolean(value);
+ const app=$("appView");
+ if(setupGate){
+   // Old mobile drawer state cannot lock the configuration viewport.
+   app.classList.remove("os-menu-open","os-tablet-mode");
+   $("osMenu")?.setAttribute("aria-expanded","false");
+ }
+ app.classList.toggle("ob-gated",setupGate);
+ closeSetupTheme();
+}
 function accountBusiness(){return businessContextReady&&businessRows.length===1&&businessRows[0].id===suiteTenantId?businessRows[0]:null}
 function requireAccountBusiness(){const business=accountBusiness();if(!business)throw Error(businessContextError||"Sua conta ainda não possui uma empresa disponível.");return business}
 function renderAccountBusiness(){
