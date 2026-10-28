@@ -129,10 +129,13 @@
       "id": "PUB-08",
       "title": "Outra data é menor que os campos e ações equivalentes",
       "severity": "Baixa",
-      "state": "pendente",
-      "evidence": [],
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-08.json"
+      ],
       "publication": "não publicada",
-      "note": ""
+      "note": "Ajuste nas regras centrais do site público, sem alterar CSS dos campos do painel.",
+      "tests": "15 testes DOM; seis tamanhos x dois temas; data e períodos mediram 44 px, sem corte interno ou transbordamento"
     },
     {
       "id": "PUB-09",
