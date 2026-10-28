@@ -1,4 +1,4 @@
-"""Real responsive onboarding goals and four-section review in Chromium/WebKit.
+"""Real responsive onboarding goals and five-section review in Chromium/WebKit.
 
 Browser state and requests are synthetic; no tenant data is modified.
 """
@@ -103,14 +103,14 @@ def test_onboarding_goals_and_review_are_legible_and_responsive(engine,width,hei
 
             page.locator('[data-ob-step=review]').click()
             page.locator('.ob-review').wait_for(state='visible')
-            assert page.locator('.ob-review-section').count()==4
-            assert page.locator('.ob-review-edit').count()==4
+            assert page.locator('.ob-review-section').count()==5
+            assert page.locator('.ob-review-edit').count()==5
             assert page.locator('[data-ob-form=complete]').count()==1
             assert page.locator('.ob-review .ob-status').count()==0
             assert page.locator('.ob-review [data-ob-target=goals]').count()==1
             assert page.locator('.ob-review').get_attribute('aria-label')=='Resumo do cadastro'
             text=page.locator('.ob-review').inner_text()
-            for snippet in ('Empresa','Atendimento','Perfil da empresa','Desafios e objetivos',
+            for snippet in ('Empresa','Atendimento','Perfil da empresa','Horário comercial','Desafios e objetivos',
                             'Responder clientes no WhatsApp','Automatizar o WhatsApp',
                             'Sócio','R$ 50 mil a R$ 100 mil'):
                 assert snippet in text,(snippet,text)
@@ -144,7 +144,7 @@ def test_onboarding_goals_and_review_are_legible_and_responsive(engine,width,hei
               };
             }""")
             assert layout['scroll']<=width+2,layout
-            assert len(layout['sections'])==4,layout
+            assert len(layout['sections'])==5,layout
             assert all(item['left']>=-2 and item['right']<=width+2
                        for item in layout['elements']),layout
             for section in layout['sections']:

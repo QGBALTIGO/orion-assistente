@@ -181,6 +181,48 @@ class Hours(ProfileModel):
 
 
 
+
+class BusinessDay(ProfileModel):
+    weekday: StrictInt = Field(ge=0, le=6)
+    open: StrictBool
+    start_time: time | None = None
+    end_time: time | None = None
+    break_start: time | None = None
+    break_end: time | None = None
+
+    @model_validator(mode="after")
+    def valid_hours(self):
+        values=(self.start_time,self.end_time,self.break_start,self.break_end)
+        if any(value is not None and value.tzinfo is not None for value in values):
+            raise ValueError("Use horários locais")
+        if not self.open:
+            if any(value is not None for value in values):
+                raise ValueError("Dias fechados não podem conter horários")
+            return self
+        if self.start_time is None or self.end_time is None or self.start_time >= self.end_time:
+            raise ValueError("A abertura deve ser anterior ao fechamento")
+        if (self.break_start is None) != (self.break_end is None):
+            raise ValueError("Informe o início e o fim do intervalo")
+        if self.break_start is not None and not (
+            self.start_time < self.break_start < self.break_end < self.end_time
+        ):
+            raise ValueError("O intervalo deve ficar dentro do expediente")
+        return self
+
+
+class BusinessOpeningHours(ProfileModel):
+    """Company opening hours, not a professional's booking availability."""
+    days: list[BusinessDay] = Field(min_length=7, max_length=7)
+
+    @model_validator(mode="after")
+    def valid_week(self):
+        if {day.weekday for day in self.days} != set(range(7)):
+            raise ValueError("Informe cada dia da semana exatamente uma vez")
+        if not any(day.open for day in self.days):
+            raise ValueError("Selecione ao menos um dia de funcionamento")
+        return self
+
+
 class BusinessPriorities(ProfileModel):
     """Self-reported onboarding answers, not channel or account permissions.
 

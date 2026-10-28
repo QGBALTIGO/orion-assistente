@@ -348,3 +348,33 @@
     padding:6px 10px;
   }
 }
+
+/* Company hours: compact Orion cards, independent of staff booking schedules. */
+.ob-business-hours-intro{font-size:14px;line-height:1.55;margin:0 0 18px!important}
+.ob-business-hours{display:grid;gap:10px;min-width:0}
+.ob-business-day{min-width:0;border:1px solid var(--ob-border);border-radius:14px;background:var(--ob-card);overflow:hidden;transition:border-color .15s ease}
+.ob-business-day.is-open{border-color:color-mix(in srgb,var(--ob-primary) 35%,var(--ob-border))}
+.ob-business-day-head{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:58px;padding:12px 16px}
+.ob-business-day-toggle{display:flex;align-items:center;gap:12px;min-width:0;cursor:pointer}
+.ob-business-day-toggle input{width:20px!important;height:20px!important;flex-shrink:0;margin:0;accent-color:var(--ob-primary)}
+.ob-business-day-name{font-size:14px;font-weight:650;color:var(--ob-text)}
+.ob-business-day-status{font-size:12px;font-weight:600;color:var(--ob-muted);white-space:nowrap}
+.ob-business-day.is-open .ob-business-day-status{color:var(--ob-success)}
+.ob-business-day-times{padding:0 16px 16px;display:grid;gap:14px}
+.ob-business-time-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.ob-business-time{display:grid;gap:7px;min-width:0;font-size:12px;font-weight:600;color:var(--ob-muted)}
+.ob-root .ob-business-time input[type=time]{width:100%;min-width:0;min-height:46px;padding:9px 12px;border-radius:11px;background:var(--ob-bg);font-size:16px;color:var(--ob-text)}
+.ob-business-break-toggle{display:flex;align-items:center;gap:10px;min-height:34px;font-size:13px;color:var(--ob-text);cursor:pointer}
+.ob-business-break-toggle input{width:18px!important;height:18px!important;margin:0;accent-color:var(--ob-primary)}
+.ob-business-break-fields{padding:12px;border-radius:12px;background:var(--ob-bg)}
+.ob-business-break-fields .ob-business-time input{background:var(--ob-card)}
+.ob-business-hours+.ob-help{margin:2px 0 0!important;line-height:1.5}
+@media(max-width:480px){
+ .ob-business-day-head{min-height:54px;padding:11px 12px}
+ .ob-business-day-times{padding:0 12px 12px;gap:12px}
+ .ob-business-time-grid{gap:8px}
+ .ob-business-time{font-size:12px}
+ .ob-root .ob-business-time input[type=time]{padding:9px 8px}
+}
+@media(max-width:350px){.ob-business-time-grid{grid-template-columns:minmax(0,1fr)}}
+@media(prefers-reduced-motion:reduce){.ob-business-day{transition:none}}
