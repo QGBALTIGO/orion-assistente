@@ -277,10 +277,48 @@ def check_auth(page, network, geometry):
     assert network.matching("/auth/password/reset")[0]["body"]["code"] == "001234"
 
 
+def check_setup_chrome(page, test_theme=False):
+    # The wizard uses a dedicated header: the dashboard's rail, menu, bell and
+    # assistant stay inaccessible at every step and at every viewport.
+    expect(page.locator('#appView.ob-gated')).to_be_visible()
+    for target in ('#appView > .sidebar', '#osHeader', '#osMenu',
+                   '#osNotificationsToggle', '#osConsultantFab', '#osScrim',
+                   '.ob-heading .ob-logo'):
+        expect(page.locator(target)).to_be_hidden()
+    expect(page.locator('#setupHeader')).to_be_visible()
+    expect(page.locator('#setupHeader [data-orion-logo]')).to_be_visible()
+    expect(page.locator('#setupThemeToggle')).to_be_visible()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 2')
+    box = page.locator('#setupHeader').evaluate("""el => {
+      const header=el.getBoundingClientRect(),logo=el.querySelector('img').getBoundingClientRect(),
+            toggle=el.querySelector('button').getBoundingClientRect();
+      return {left:header.left,right:header.right,logoRight:logo.right,
+              themeLeft:toggle.left,themeRight:toggle.right};
+    }""")
+    assert box['left'] >= -2 and box['right'] <= page.viewport_size['width'] + 2, box
+    assert box['logoRight'] + 8 <= box['themeLeft'], box
+    assert box['themeRight'] <= page.viewport_size['width'] + 2, box
+    if not test_theme:
+        return
+    original = page.evaluate('document.documentElement.dataset.themePreference')
+    for mode in ('dark', 'light', 'auto', original):
+        page.locator('#setupThemeToggle').click()
+        expect(page.locator('#setupThemeMenu')).to_be_visible()
+        page.locator('#setupThemeMenu [data-theme-choice='+mode+']').click()
+        expect(page.locator('#setupThemeMenu')).to_be_hidden()
+        expect(page.locator('#setupThemeToggle')).to_have_attribute('aria-expanded', 'false')
+        assert page.evaluate('document.documentElement.dataset.themePreference') == mode
+        assert page.evaluate('localStorage.getItem("orion-theme")') == mode
+        effective = page.evaluate('document.documentElement.dataset.theme')
+        expect(page.locator('#setupHeader [data-orion-logo]')).to_have_attribute(
+            'src', '/brand/orion-brand-'+effective+'.svg')
+
+
 def check_onboarding(page, network, geometry):
     page.goto(ORIGIN + "/panel?aba=dashboard", wait_until="domcontentloaded")
     business = page.locator('[data-ob-form="business"]')
     business.wait_for(state="visible")
+    check_setup_chrome(page, test_theme=True)
     phone = business.locator("[name=contact_phone]")
     phone.fill("(55) 99123-45678")
     business.locator("button[type=submit]").click()
@@ -304,6 +342,7 @@ def check_onboarding(page, network, geometry):
     expect(location.locator("[name=number]")).to_have_value("123A")
     expect(location.locator("[name=complement]")).to_have_value("Sala 02")
     geometry('[data-ob-form="location"]', "location-cep")
+    check_setup_chrome(page)
 
     page.locator('[data-ob-step="catalog"]').click()
     page.locator('[data-ob-action="edit"][data-ob-kind="service"]').first.click()
@@ -317,6 +356,7 @@ def check_onboarding(page, network, geometry):
     geometry('[data-ob-form="service"]', "catalog-invalid-duration")
     service.locator("[name=duration_min]").fill("40")
     geometry('[data-ob-form="service"]', "catalog-service")
+    check_setup_chrome(page)
     service.locator("button[type=submit]").click()
     expect(page.locator('[data-ob-feedback]')).to_contain_text("salv")
     assert network.matching(BASE + "/onboarding/steps/catalog", "PUT")[0]["body"]["data"]["item"]["price_cents"] == 123456
@@ -327,8 +367,13 @@ def check_onboarding(page, network, geometry):
     hours.locator("[name=end_time]").fill("18:00")
     expect(hours.locator("[name=start_time]")).to_have_attribute("type", "time")
     geometry('[data-ob-form="hours"]', "hours-native")
+    check_setup_chrome(page)
     page.locator('[data-ob-step="channels"]').click()
     geometry('[data-ob-form="channels"]', "channels-preferences")
+    check_setup_chrome(page)
+    for step in ('professionals', 'review'):
+        page.locator('[data-ob-step='+step+']').click()
+        check_setup_chrome(page)
 
 
 def check_landing(page, network, geometry):
