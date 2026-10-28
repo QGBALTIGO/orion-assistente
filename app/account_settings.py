@@ -80,7 +80,7 @@ async def _business_details(db, account_id):
         SELECT preferences FROM management_preferences WHERE tenant_id=:tenant
     """), {"tenant": business["id"]})).mappings().first()
     pref = ((preferences or {}).get("preferences") or {}).get("business") or {}
-    phone = config.get("contact_phone") or pref.get("contact_phone")
+    phone = pref.get("contact_phone") or config.get("contact_phone")
     return business, config, phone, onboarding is not None
 
 
