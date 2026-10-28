@@ -36,7 +36,9 @@ from app.account_business import (
 # Historical operations and catalogue APIs stay available for existing accounts.
 LEGACY_LABELS = {"business": "Empresa", "location": "Atendimento e endereço", "professionals": "Profissionais",
                  "catalog": "Serviços e produtos", "hours": "Expediente", "channels": "Canais independentes", "review": "Revisão"}
-LABELS = {"business": "Empresa", "location": "Atendimento e endereço", "professionals": "Profissionais",
+# The quick company registration does not collect staff records. Owners can
+# register professionals later in the dedicated management area.
+LABELS = {"business": "Empresa", "location": "Atendimento e endereço",
           "profile": "Perfil da empresa", "hours": "Expediente", "goals": "Desafios e objetivos", "review": "Revisão"}
 
 
