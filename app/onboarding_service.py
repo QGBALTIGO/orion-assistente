@@ -22,6 +22,7 @@ from app.catalog_api import support_session_factory, audit
 from app.database import get_session_factory, tenant_transaction
 from app.tenant_access import TenantAccess, check_access
 from app import onboarding_schemas as schemas
+from app.onboarding_timezone import timezone_from_address
 from app import business_profile_service as profiles
 from app.business_profile_schemas import BusinessProfile
 from app.http_json import ordinary_json_tree
@@ -530,6 +531,10 @@ async def create_business(actor, payload):
                     conflict("A chave já foi usada para outro pedido")
                 tenant = previous["tenant_id"]
             else:
+                # Preserve retries of older confirmed operations; require the
+                # WhatsApp only on new creation intents.
+                if payload.contact_phone is None:
+                    raise HTTPException(422, "Informe o WhatsApp comercial")
                 await ensure_can_create_business(db, actor.account_id)
                 if await _invitations(db, account):
                     conflict("Conclua ou revise o convite pendente antes de criar outra empresa")
@@ -684,6 +689,16 @@ async def _apply_step(db, tenant, meta, step, data, access):
         config.update(data.model_dump(mode="json", exclude={"name", "timezone"}))
     elif step == "location":
         config.update(modality=data.modality, private_address=data.address.model_dump(mode="json") if data.address else None)
+        # Only infer for new, unfinished businesses. Changing the zone of an
+        # operating legacy business could move future appointments unexpectedly.
+        if meta.get("is_new") and not meta.get("completed_at") and data.address:
+            derived = timezone_from_address(data.address.state, data.address.city)
+            if derived:
+                business = (await db.execute(text("SELECT name,timezone FROM tenants WHERE id=:t FOR UPDATE"),
+                                             {"t": tenant})).mappings().one()
+                if business["timezone"] != derived:
+                    await db.execute(text("SELECT public.onboarding_update_identity(:t,:name,:tz)"),
+                                     {"t": tenant, "name": business["name"], "tz": derived})
     elif step == "professionals":
         item = data.item.model_dump(mode="json", exclude_unset=bool(data.item.id))
         item_id = await _save_simple(db, tenant, meta, "professionals", item, data.item.expected_fingerprint)
@@ -772,6 +787,8 @@ async def save_step(actor, tenant, step, payload):
                     if not replay:
                         if meta["version"] != payload.expected_version:
                             conflict()
+                        if step == "business" and data.contact_phone is None:
+                            raise HTTPException(422, "Informe o WhatsApp comercial")
                         if step != "review":
                             meta["configuration"]["reviewed"] = False
                         result = await _apply_step(db, tenant, meta, step, data, access)

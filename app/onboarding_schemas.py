@@ -20,6 +20,15 @@ class Identity(ProfileModel):
     activity: Literal["services", "products", "both"]
     contact_phone: str | None = Field(default=None, max_length=40)
 
+    @field_validator("name")
+    @classmethod
+    def readable_name(cls, value: str) -> str:
+        # Treat a company name as prose, not a numeric mask or forced title case.
+        readable = " ".join(value.split())
+        if not readable:
+            raise ValueError("Informe o nome do negócio")
+        return readable
+
     _phone = field_validator("contact_phone")(normalize_phone)
     _timezone = field_validator("timezone")(Business.known_tz.__func__)
 

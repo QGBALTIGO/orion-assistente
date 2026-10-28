@@ -16,12 +16,27 @@ test('onboarding phone formats DDD 55, keeps leading country code unambiguous an
   }
 });
 
-test('onboarding optional and existing international contacts retain their contracts',async t=>{
-  for(const [raw,expected] of [['',null],['+1 (202) 555-0123','+12025550123']]){
-    const data=fullState();data.configuration.contact_phone=raw;
+test('WhatsApp is required and invalid or foreign numbers do not save a business',async t=>{
+  for(const raw of ['', '+1 (202) 555-0123']){
+    const data=fullState();data.configuration.contact_phone='';
     const h=await makeOnboarding({data,respond:(path,method,payload,server)=>method==='PUT'?saved(server,payload):undefined});t.after(()=>h.close());
-    h.fill('[name=name]','Nome corrigido');h.submit();await flush();assert.equal(writes(h)[0].data.data.contact_phone,expected);
+    const phone=h.fill('[name=contact_phone]',raw);
+    assert.equal(phone.required,true);
+    h.fill('[name=name]','Barbearia Áurea');
+    h.submit();await flush();assert.equal(writes(h).length,0);
   }
+});
+
+test('business name formats repeated whitespace on blur and submission without rewriting a brand',async t=>{
+  const h=await makeOnboarding({respond:(path,method,payload,server)=>method==='PUT'?saved(server,payload):undefined});t.after(()=>h.close());
+  const input=h.fill('[name=name]',"   Studio    D'Ávila-McX   ");
+  input.dispatchEvent(new h.window.FocusEvent('focusout',{bubbles:true}));
+  assert.equal(input.value,"Studio D'Ávila-McX");
+  assert.equal(input.getAttribute('autocapitalize'),'words');
+  h.submit();await flush();
+  assert.equal(writes(h)[0].data.data.name,"Studio D'Ávila-McX");
+  assert.equal(writes(h)[0].data.data.timezone,'America/Cuiaba');
+  assert.deepEqual(h.errors,[]);
 });
 
 test('onboarding invalid phone stays visible, blocks writes and keeps a correction draft',async t=>{

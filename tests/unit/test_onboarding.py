@@ -10,12 +10,31 @@ from fastapi import FastAPI, HTTPException
 from pydantic import ValidationError
 
 from app import onboarding_schemas as schemas, onboarding_service as service
+from app.onboarding_timezone import timezone_from_address
 from app.catalog_api import Actor, authenticate
 from app.onboarding_api import router
 
 
 def identity(**changes):
     return {"name": "Empresa sintética", "timezone": "America/Cuiaba", "niche": "barbearia", "activity": "services", **changes}
+
+
+@pytest.mark.parametrize(("uf","city","expected"), [
+    ("MS","Aquidauana","America/Campo_Grande"),
+    ("MT","Cuiabá","America/Cuiaba"),
+    ("SP","São Paulo","America/Sao_Paulo"),
+    ("AC","Rio Branco","America/Rio_Branco"),
+    ("AM","Manaus","America/Manaus"),
+    ("AM","Eirunepé","America/Eirunepe"),
+    ("AM","SÃO PAULO DE OLIVENÇA","America/Eirunepe"),
+    ("AM","Tabatinga","America/Eirunepe"),
+    ("PE","Fernando de Noronha","America/Noronha"),
+    ("PE","Recife","America/Recife"),
+    ("RO","Porto Velho","America/Porto_Velho"),
+    ("XX","Desconhecida",None),
+])
+def test_timezone_is_derived_from_brazilian_location(uf,city,expected):
+    assert timezone_from_address(uf,city) == expected
 
 
 def facts():

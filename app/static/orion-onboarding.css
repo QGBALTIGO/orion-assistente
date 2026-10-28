@@ -68,3 +68,33 @@
   }
   #setupHeader>img{width:118px;height:40px}
 }
+
+/* First onboarding step: composed around the available width and the
+ * four actual business inputs; preserve the shared Orion form tokens. */
+.ob-business-fields>.ob-field:first-child,
+.ob-business-fields>[data-ob-other-niche],
+.ob-business-fields>.ob-field:last-child{grid-column:1 / -1}
+.ob-business-fields .ob-field>input:not([type=checkbox]),
+.ob-business-fields .ob-field>select{min-height:48px;font-size:16px;line-height:24px}
+.ob-business-fields .ob-field>input::placeholder{color:var(--ob-muted);opacity:.8}
+.ob-business-fields .ob-field>label{font-size:14px;line-height:20px}
+.ob-business-fields .ob-field>p.ob-help{line-height:18px}
+.ob-business-fields{column-gap:16px;row-gap:20px}
+.ob-root .ob-heading h1{font-size:clamp(24px,4vw,32px);line-height:1.16;letter-spacing:-.025em}
+.ob-root .ob-heading>div{min-width:0;max-width:100%}
+.ob-root .ob-heading>div>p:last-child{max-width:660px;line-height:1.55}
+@container orion-onboarding (max-width:760px){
+  /* Seven complete step markers fit without clipped labels or horizontal scroll. */
+  .ob-steps{display:flex;overflow:visible;gap:6px;padding-bottom:0}
+  .ob-steps li{flex:1 1 0;min-width:0}
+  .ob-steps .ob-step{display:flex;align-items:center;justify-content:center;
+    min-width:0;width:100%;min-height:44px;padding:5px 2px;border:1px solid var(--ob-border)}
+  .ob-steps .ob-step[aria-current=step]{border-color:var(--ob-primary)}
+  .ob-steps .ob-step>span:last-child{display:none}
+  .ob-steps .ob-step-number{width:25px;height:25px}
+}
+@container orion-onboarding (max-width:560px){
+  .ob-business-fields>.ob-field{grid-column:1/-1}
+  .ob-root .ob-heading h1{font-size:clamp(23px,6vw,29px)}
+  .ob-root .ob-card-head{margin-bottom:18px}
+}

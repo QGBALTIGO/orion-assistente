@@ -21,7 +21,8 @@ pytestmark = pytest.mark.integration
 
 def creation(key=None, **changes):
     return schemas.CreateBusiness(name="Empresa sintética onboarding", timezone="America/Cuiaba", niche="outro",
-        other_niche="Serviços sintéticos", activity="services", idempotency_key=key or str(uuid4()), **changes)
+        other_niche="Serviços sintéticos", activity="services", contact_phone="+5567999999901",
+        idempotency_key=key or str(uuid4()), **changes)
 
 
 async def save(ctx, state, step, data, *, key=None, version=None):
@@ -91,6 +92,28 @@ async def configured(ctx, *, activity="services", state=None):
     if activity in {"products", "both"}:
         state = await save(ctx, state, "catalog", {"kind": "product", "item": {"name": "Produto sintético"}, "variant": {"name": "Padrão", "price_kind": "on_request"}})
     return state
+
+
+@pytest.mark.asyncio
+async def test_new_business_requires_whatsapp_and_adopts_timezone_from_private_address(onboarding_db):
+    ctx = new_business_context(onboarding_db)
+    missing = creation().model_copy(update={"contact_phone": None})
+    with pytest.raises(HTTPException) as err:
+        await service.create_business(ctx.actor, missing)
+    assert err.value.status_code == 422
+    first = await service.create_business(ctx.actor, creation())
+    assert first["timezone"] == "America/Cuiaba"
+    state = await save(ctx, first, "location", {
+        "modality": "onsite", "address": {
+            "postal_code": "79002-000", "street": "Rua sintética", "number": "123A",
+            "no_number": False, "neighborhood": "Centro", "city": "Campo Grande", "state": "MS",
+        }
+    })
+    assert state["timezone"] == "America/Campo_Grande"
+    async with ctx.migration.connect() as db:
+        saved_tz = (await db.execute(text("SELECT timezone FROM tenants WHERE id=:t"),
+                                     {"t": UUID(first["tenant_id"])})).scalar_one()
+    assert saved_tz == "America/Campo_Grande"
 
 
 @pytest.mark.asyncio
