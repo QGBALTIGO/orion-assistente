@@ -119,8 +119,9 @@ function harness(){
   async function fetch(url,request={}){
     calls.push({url,method:request.method||"GET",body:request.body?JSON.parse(request.body):null});
     let payload={},status=200;
-    if(url==="/auth/me"){status=401;payload={detail:"not authenticated"}}
-    else if(url==="/auth/login"){payload={csrf:"synthetic-csrf"}}
+    if(url==="/auth/me"){payload={authenticated:true,role:"admin",csrf:"synthetic-csrf",name:"Operador sintético"}}
+    else if(url==="/auth/login"){payload={csrf:"synthetic-csrf",role:"admin"}}
+    else if(url==="/api/v1/account/businesses"){payload=[{id:"tenant-a",name:"Empresa sintética",role:"owner",timezone:"America/Sao_Paulo"}]}
     else if(url==="/api/v1/qr/status"){
       payload={status:connectionStatus,phone:"5511999999999",ingestion:"receiving",
         messageStats:{available:false},featureSettings:{},featureCapabilities:{}};
@@ -139,10 +140,10 @@ function harness(){
       setItem:(key,value)=>storage.set(key,value)
     },
     document,fetch,history:{replaceState(){}},
-    location:{search:"",hostname:"localhost",protocol:"https:"},
+    location:{href:"https://localhost/panel",pathname:"/panel",search:"",hostname:"localhost",protocol:"https:"},
     navigator:{clipboard:{writeText:async x=>copied.push(x)}},
     Option:class{constructor(label,value){this.label=label;this.value=value}},
-    AbortController,URLSearchParams,Date:FakeDate,Number,Intl,Math,Object,Array,String,RegExp,Set,Map,JSON,
+    AbortController,URLSearchParams,URL,Date:FakeDate,Number,Intl,Math,Object,Array,String,RegExp,Set,Map,JSON,
     clearInterval(){},clearTimeout(){},
     setInterval(fn,ms){if(ms===1000)timerCallback=fn;return 1},
     setTimeout(){return 1},
@@ -150,7 +151,13 @@ function harness(){
     alert:()=>{},console:{log(){},warn(){},error(){}}
   };
   vm.runInNewContext(fields,context,{filename:"orion-fields.js"});
-  vm.runInNewContext(script,context,{filename:"orion-connected-panel.js"});
+  const instrumented=script.replace("initializeLegacyFields();renderForm();renderGuide();updateAiControls();",
+    "initializeLegacyFields();renderForm();renderGuide();updateAiControls();"+
+    "globalThis.syntheticWizardContext=()=>{csrf='synthetic-csrf';suiteTenantId='tenant-a';"+
+    "businessContextReady=true;businessRows=[{id:'tenant-a',name:'Empresa sintética',role:'owner',timezone:'America/Sao_Paulo'}]};");
+  assert.notEqual(instrumented,script,"A fixture precisa inicializar o estado da empresa autenticada");
+  vm.runInNewContext(instrumented,context,{filename:"orion-connected-panel.js"});
+  context.syntheticWizardContext();
   return {byId,tabs,calls,copied,themeButtons,authThemeButtons,brandImages,root:htmlRoot,storage,
     changeSystem:async matches=>{preferred.matches=matches;systemListener?.({matches})},
     connect:()=>{connectionStatus="connected"},
@@ -161,11 +168,11 @@ function harness(){
 test("QR: modo escolhido, 5 etapas, preparo real somente após clique, contagem verdadeira",async()=>{
   const h=harness();
   assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
-  assert.equal(h.byId("guideSteps").children.length,7);
+  assert.equal(h.byId("guideSteps").children.length,3);
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"),false);
   await h.tabs[0].click();
   assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
-  assert.equal(h.byId("guideSteps").children.length,7);
+  assert.equal(h.byId("guideSteps").children.length,3);
   await h.byId("wizardNext").click();
   await h.flush();await h.flush();
   assert.equal(h.byId("qrPanel").classList.contains("hidden"),false);
@@ -221,15 +228,15 @@ test("conexão confirmada pelo backend ativa etapa de sucesso, sem envio",async(
 });
 
 
-test("tutorial integral mostra sete passos de uma vez e avança com um clique",async()=>{
+test("tutorial compacto mostra três passos de uma vez e avança com um clique",async()=>{
  const h=harness();
  assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
- assert.equal(h.byId("guideSteps").children.length,7);
+ assert.equal(h.byId("guideSteps").children.length,3);
  assert.equal(h.byId("guideSteps").children[0].children[1].children[0].textContent,"PASSO 1");
- assert.equal(h.byId("guideSteps").children[6].children[1].children[0].textContent,"PASSO 7");
+ assert.equal(h.byId("guideSteps").children[2].children[1].children[0].textContent,"PASSO 3");
  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"||x.url==="/api/v1/qr/pair"),false);
  await h.tabs[0].click();
- assert.equal(h.byId("guideSteps").children.length,7);
+ assert.equal(h.byId("guideSteps").children.length,3);
  assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"),false);
  await h.byId("wizardNext").click();
@@ -238,7 +245,7 @@ test("tutorial integral mostra sete passos de uma vez e avança com um clique",a
  assert.ok(h.calls.some(x=>x.url==="/api/v1/qr/image"));
  await h.byId("wizardQrBack").click();
  assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
- assert.equal(h.byId("guideSteps").children.length,7);
+ assert.equal(h.byId("guideSteps").children.length,3);
  await h.tabs[1].click();
  await h.byId("wizardNext").click();
  assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
@@ -322,9 +329,15 @@ test("theme choices are unique in each accessible group and the panel uses offic
    assert.match(html,new RegExp('data-theme-choice="'+item+'"[^>]*aria-label="Tema [^"]+"'));
  const boundary=html.indexOf('<div id="appView"');
  assert.ok(boundary>0);
- for(const section of [html.slice(0,boundary),html.slice(boundary)]){
-   const choices=[...section.matchAll(/data-theme-choice="([^"]+)"/g)].map(match=>match[1]).sort();
-   assert.deepEqual(choices,["auto","dark","light"],"login and administration each have one button per preference");
+ const groups=[
+   html.match(/<div id="authThemeMenu"[^>]*>([\s\S]*?)<\/div>/)?.[1],
+   html.match(/<div class="theme-switch"[^>]*>([\s\S]*?)<\/div>/)?.[1],
+   html.match(/<div id="setupThemeMenu"[^>]*>([\s\S]*?)<\/div>/)?.[1]
+ ];
+ assert.ok(groups.every(Boolean),"login, sidebar e configuração devem possuir grupos de tema");
+ for(const group of groups){
+   const choices=[...group.matchAll(/data-theme-choice="([^"]+)"/g)].map(match=>match[1]).sort();
+   assert.deepEqual(choices,["auto","dark","light"],"cada grupo acessível deve ter exatamente uma opção por preferência");
  }
  assert.match(html,/--sidebar-bg:/);
  assert.match(html,/html\[data-theme="light"\]/);
