@@ -31,7 +31,7 @@ EVENTS = frozenset({
 PLANS = (
     {"code": "essencial", "name": "Orion Essencial", "monthly_cents": 2990,
      "checkout_url": "https://pay.cakto.com.br/3bdhdkc_1219844"},
-    {"code": "pro", "name": "Orion Pro", "monthly_cents": 8990,
+    {"code": "profissional", "name": "Orion Profissional", "monthly_cents": 7990,
      "checkout_url": "https://pay.cakto.com.br/3652fm4"},
     {"code": "elite", "name": "Orion Elite", "monthly_cents": 13990,
      "checkout_url": "https://pay.cakto.com.br/v4md8n3"},
@@ -96,6 +96,17 @@ def normalized_events(payload: dict) -> list[dict]:
         ):
             raise HTTPException(400, "Oferta inválida")
         subscription_id = _subscription_id(item.get("subscription"))
+        callback = item.get("callback")
+        callback_hash = (hashlib.sha256(callback.encode()).hexdigest()
+                         if isinstance(callback, str) and re.fullmatch(r"[A-Za-z0-9._~-]{12,255}", callback)
+                         else None)
+        amount = item.get("amount")
+        try:
+            amount_decimal = Decimal(str(amount))
+            amount_cents = int(amount_decimal * 100) if amount_decimal == Decimal(int(amount_decimal * 100)) / 100 else None
+        except (InvalidOperation, ValueError, TypeError):
+            amount_cents = None
+        currency = item.get("currency") if item.get("currency") == "BRL" else None
         # Stable across retries and new delivery signatures. No PII in the key.
         identity = {
             "event": event, "order_id": order_id, "status": status,
@@ -112,6 +123,8 @@ def normalized_events(payload: dict) -> list[dict]:
             "digest": digest, "event": event, "order_id": order_id,
             "status": status, "offer_id": offer_id,
             "subscription_id": subscription_id,
+            "callback_hash": callback_hash, "amount_cents": amount_cents,
+            "currency": currency,
         })
     return found
 
@@ -125,8 +138,9 @@ async def persist_events(events: list[dict]) -> None:
                 await db.execute(text("""
                     INSERT INTO cakto_webhook_events
                       (delivery_digest,external_order_id,event_type,reported_status,
-                       external_offer_id,external_subscription_id)
-                    VALUES (:digest,:order_id,:event,:status,:offer_id,:subscription_id)
+                       external_offer_id,external_subscription_id,callback_hash,amount_cents,currency)
+                    VALUES (:digest,:order_id,:event,:status,:offer_id,:subscription_id,
+                            :callback_hash,:amount_cents,:currency)
                     ON CONFLICT (delivery_digest) DO NOTHING
                 """), event)
 
@@ -314,7 +328,8 @@ async def scan_pending_cakto(_ctx):
             if not ready:
                 return 0
             rows = (await db.execute(text("""
-                SELECT delivery_digest,external_order_id,external_offer_id,event_type
+                SELECT delivery_digest,external_order_id,external_offer_id,event_type,
+                       callback_hash,amount_cents,currency
                 FROM cakto_webhook_events
                 WHERE verification_state='pending' AND next_attempt_at<=now()
                 ORDER BY received_at LIMIT 30 FOR UPDATE SKIP LOCKED
@@ -333,6 +348,13 @@ async def scan_pending_cakto(_ctx):
         try:
             order = await client.get_order(row["external_order_id"])
             state = verify_order_event(row, order)
+            if state == "verified" and row["callback_hash"] and row["event_type"] == "purchase_approved":
+                from app.plan_management import apply_verified_cakto_payment
+                # No tenancy is derived from buyer details. The callback must
+                # match a server-side owner intent and the exact verified offer.
+                linked = await apply_verified_cakto_payment(row, order)
+                if linked == "manual_review":
+                    state = "manual_review"
         except (httpx.HTTPError, RuntimeError, ValueError):
             continue
         async with support_session_factory()() as db:

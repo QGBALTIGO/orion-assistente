@@ -346,7 +346,7 @@
     if(state.route==='site')html=title('Meu Site','Acompanhe os acessos e agendamentos da sua página.')+readOnly+'<div id="osPageBody">'+loading('Carregando sua página…')+'</div>';
     if(state.route==='fidelizacao')html=title('Fidelização','Programa de pontos, cupons automáticos e ações de retenção para trazer o cliente de volta.')+readOnly+'<div id="osPageBody">'+loading('Carregando o programa de fidelidade…')+'</div>';
     if(state.route==='consultor')html=title('Consultor IA','Encontre oportunidades a partir dos dados do seu negócio.')+'<div id="osPageBody">'+loading('Analisando os dados disponíveis…')+'</div>';
-    if(state.route==='plano')html=title('Plano','Consulte a assinatura vinculada à sua empresa.')+'<div id="osPageBody">'+loading('Consultando assinatura…')+'</div>';
+    if(state.route==='plano')html='<div id="osPageBody">'+loading('Consultando os planos do Orion…')+'</div>';
     if(state.route==='configuracoes')html=title('Configurações','Gerencie sua empresa, horários e preferências.')+'<div id="osPageBody">'+loading('Carregando configurações…')+'</div>';
     if(state.route==='ajuda')html='<div id="osPageBody"></div>';
     if(state.route==='novidades')html=title('Novidades','O que você já pode fazer no seu painel Orion.')+'<div id="osPageBody"></div>';
@@ -1350,14 +1350,31 @@
   function renderConsultor(){const messages=state.data.consultorMessages||[],ready=aiReady(state.data.aiStatus)&&writable();let html='<section class="os-consultor-card"><div class="os-consultor-heading"><span class="os-consultor-avatar">'+icon('bot')+'</span><div><h2>Consultor Orion</h2><p>Uma conversa sobre os resultados e as oportunidades da sua empresa.</p></div>'+button('Nova conversa','consultor-reset','os-ghost os-small','plus')+'</div>'+aiAvailability(state.data.aiStatus)+'<div id="osConsultorMessages" class="os-consultor-messages" role="log" aria-live="polite">';if(!messages.length)html+='<div class="os-consultor-welcome"><span class="os-square-icon">'+icon('sparkles')+'</span><h3>Como posso ajudar seu negócio hoje?</h3><p>Faça uma pergunta sobre seus resultados ou escolha uma sugestão.</p><div class="os-consultor-prompts">'+consultantPrompts.map((prompt,i)=>'<button type="button" data-os-consultor-prompt="'+i+'" '+(ready?'':'disabled')+'>'+esc(prompt)+icon('arrow')+'</button>').join('')+'</div></div>';else html+=messages.map(message=>'<article class="os-consultor-message os-message-'+message.role+'"><span class="os-message-author">'+(message.role==='user'?'Você':'Consultor Orion')+'</span><div class="os-ai-answer">'+esc(message.content)+'</div>'+rows(message.actions).map(action=>'<div class="os-ai-action"><strong>'+esc(action.title)+'</strong><p>'+esc(action.description)+'</p>'+(appPages.has(action.page)?routeButton('Abrir '+routeNames[routeAliases.get(action.page)||action.page],action.page,'os-outline os-small','arrow'):'')+'</div>').join('')+renderAISources(message.sources)+'</article>').join('');html+='</div><form class="os-consultor-form" data-os-form="ai-consultant"><label class="os-sr-only" for="osConsultorQuestion">Sua pergunta</label><textarea id="osConsultorQuestion" name="question" rows="2" required minlength="3" maxlength="2000" placeholder="Pergunte sobre seu negócio…" '+(ready?'':'disabled')+'></textarea><button type="submit" class="os-button" '+(ready?'':'disabled')+' aria-label="Enviar pergunta ao Consultor IA">'+icon('arrow')+'</button><div class="os-form-message" role="alert"></div></form><p class="os-help os-consultor-note">As sugestões usam dados agregados da empresa. Revise as recomendações antes de tomar decisões.</p></section>';bodyHTML(html);$('osConsultorMessages')?.scrollTo({top:$('osConsultorMessages').scrollHeight,behavior:'smooth'});}
   async function generateAI(form,path,payload,apply){if(!aiReady(state.data.aiStatus)||!writable()||state.busy)return;const c=context();markBusy(form,true);const error=form.querySelector('.os-form-message');if(error)error.textContent='';const submit=form.querySelector('button[type=submit]'),oldText=submit?.innerHTML;if(submit)submit.innerHTML='<span class="os-spinner"></span> Gerando…';try{const result=await request(mgmt(path),'POST',payload);if(!stillAccount(c))return;try{state.data.aiStatus=await request(mgmt('/ai/status'));}catch{state.data.aiStatus=null;}if(!current(c))return;markBusy(form,false);apply(result);}catch(ex){if(stillAccount(c)&&error)error.textContent=ex.message||'Não foi possível gerar a resposta.';}finally{if(stillAccount(c)){markBusy(form,false);if(submit?.isConnected)submit.innerHTML=oldText;}else state.busy=false;}}
   async function loadPlan(c){
-    try{const data=await request(mgmt('/subscription'));if(!current(c))return;state.data.plan=data;renderPlan(data);}
-    catch(error){if(!current(c))return;if([403,404].includes(error.status)){bodyHTML('<div class="os-card">'+empty('credit','Assinatura não disponível para consulta','Não há uma assinatura acessível neste painel para a sua empresa.')+'</div>');}else throw error;}
+    try{
+      const data=await request(mgmt('/plan-overview'));
+      if(!current(c))return;
+      state.data.plan=data;
+      renderPlan(data);
+    }catch(error){
+      if(!current(c))return;
+      if([403,404].includes(error.status))bodyHTML('<div class="os-card">'+empty('credit','Assinatura indisponível','Não foi possível consultar os planos desta empresa.')+'</div>');
+      else throw error;
+    }
   }
-  function renderPlan(data){const sub=data.subscription,plans=rows(data.plans),labels={trial:'Em teste',active:'Ativo',past_due:'Pagamento pendente',grace:'Em carência',suspended:'Suspenso',cancelled:'Cancelado',expired:'Encerrado'};let html='';
-    if(sub){const details=[['Mensalidade',money(sub.monthly_cents)],['Profissionais',sub.max_professionals==null?'Conforme contrato':number(sub.max_professionals)],['Mensagens por mês',sub.max_messages_month==null?'Conforme contrato':number(sub.max_messages_month)]];if(sub.trial_ends_at)details.push(['Término do teste',fmtDate(dateKey(new Date(sub.trial_ends_at)))]);if(sub.grace_until)details.push(['Carência até',fmtDate(dateKey(new Date(sub.grace_until)))]);if(sub.last_verified_payment_at)details.push(['Último pagamento verificado',fmtDate(dateKey(new Date(sub.last_verified_payment_at)))]);html+='<section class="os-card os-accent"><div class="os-card-header"><div><p class="os-overline">Seu plano atual</p><h2>'+esc(sub.name||'Assinatura Orion')+'</h2></div>'+badge(sub.status,labels[sub.status]||sub.status)+'</div><div class="os-plan-details">'+details.map(([label,value])=>'<div><small>'+esc(label)+'</small><strong>'+esc(value)+'</strong></div>').join('')+'</div></section>';}
-    else html+='<section class="os-card">'+empty('credit','Nenhuma assinatura vinculada','Sua empresa ainda não possui uma assinatura registrada.')+'</section>';
-    if(plans.length)html+='<div class="os-cards-grid os-section-gap">'+plans.map(plan=>'<section class="os-card"><div class="os-card-header"><h3>'+esc(plan.name)+'</h3>'+(sub?.plan_id===plan.id?badge('active','Atual'):'')+'</div><div class="os-plan-price">'+money(plan.monthly_cents)+'<small> / mês</small></div><ul class="os-feature-list">'+[[plan.max_professionals,'profissionais'],[plan.max_messages_month,'mensagens por mês']].map(([value,label])=>'<li>'+icon('check')+(value==null?'Limite definido no contrato':number(value)+' '+label)+'</li>').join('')+'</ul></section>').join('')+'</div>';
-    if(!data.checkout_enabled)html+='<p class="os-help os-section-gap">A contratação e a mudança de plano ainda não estão disponíveis pelo painel.</p>';bodyHTML(html);
+  function renderPlan(data){
+    bodyHTML('');
+    const root=$('osPageBody');
+    if(!window.OrionPlans){root.innerHTML=errorHTML(new Error('Atualize a página para carregar a nova aba Plano.'));return;}
+    const currentTenant=tenant();
+    const ctx={
+      request:(suffix,method='GET',payload)=>request(mgmt(suffix),method,payload),
+      adminRequest:(path,method='GET',payload)=>request(path,method,payload),
+      user:state.bridge.user,
+      tenant:currentTenant,
+      canManage:writable(true),
+      isAdmin:state.bridge.user?.role==='admin'
+    };
+    window.OrionPlans.mount(root,data,ctx);
   }
   const siteRequestsPath='/api/v1/admin/sales-requests';
   const siteRequestStatuses={new:'Nova',contacted:'Contatada',closed:'Encerrada'};
