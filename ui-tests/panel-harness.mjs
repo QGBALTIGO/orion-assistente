@@ -86,7 +86,11 @@ export async function makePanel({ role = 'support', tenantRole = 'owner',
     window.eval(await readFile(new URL('../app/static/'+file, import.meta.url), 'utf8'));
   window.eval(suite);
   window.eval(await readFile(new URL('../app/static/orion-admin-center.js', import.meta.url), 'utf8'));
-  window.eval(inline[1][1]);
+  // Preserve DOM-level coverage of retired operator helpers without making
+  // those internal pages reachable through customer or administrator navigation.
+  const controllerSource=inline[1][1],catalogInit="initializeLegacyFields();renderForm();renderGuide();updateAiControls();";
+  assert.ok(controllerSource.includes(catalogInit),"the legacy test hook must match the shipped controller");
+  window.eval(controllerSource.replace(catalogInit,catalogInit+"window.__orionLegacyCatalogTest={loadTenants};"));
   await flush();
   function element(selector) { const node = document.querySelector(selector); assert.ok(node, 'missing ' + selector); return node; }
   return { dom, window, document, calls, errors, element,
