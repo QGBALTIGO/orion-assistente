@@ -102,3 +102,45 @@ async def test_saving_answers_touches_only_private_onboarding_configuration():
     assert meta["version"] == previous["version"]
     assert "account_role" not in meta["configuration"]
     assert "channels" not in meta["configuration"]
+
+def test_quick_release_is_in_existing_predeploy_chain_and_rechecks_current_schema(monkeypatch):
+    """The production command dispatches 0041 without re-running old DDL."""
+    from scripts import backup_and_migrate_registration as registration
+    from scripts import backup_and_migrate_professional_phone as contacts
+    from scripts import backup_and_migrate_quick_onboarding as quick
+    from contextlib import contextmanager
+
+    calls=[]
+    monkeypatch.setattr(registration,"connection_values",lambda:("synthetic",object()))
+    monkeypatch.setattr(registration,"migrated_version",lambda _:quick.TARGET)
+    monkeypatch.setattr(registration,"main",lambda:calls.append("old-registration") or 0)
+    monkeypatch.setattr(contacts,"main",lambda:calls.append("old-phone") or 0)
+    monkeypatch.setattr(quick,"main",lambda:calls.append("quick") or 0)
+    assert registration.predeploy_main()==0
+    assert calls==["quick"]
+
+    monkeypatch.setattr(quick,"connection_values",lambda:("synthetic",object()))
+    monkeypatch.setattr(quick,"migrated_version",lambda _:quick.TARGET)
+    @contextmanager
+    def locked(_):
+        yield
+    monkeypatch.setattr(quick,"release_lock",locked)
+    monkeypatch.setattr(quick,"schema_contract_ready",lambda _:True)
+    monkeypatch.setattr(quick,"perform_backup",lambda *a,**k:pytest.fail("Unnecessary backup"))
+    monkeypatch.setattr(quick.subprocess,"run",lambda *a,**k:pytest.fail("Unexpected DDL"))
+    assert quick.main()==0
+
+
+def test_quick_release_refuses_unknown_schema_before_backup_or_migration(monkeypatch):
+    from scripts import backup_and_migrate_quick_onboarding as quick
+    from contextlib import contextmanager
+
+    monkeypatch.setattr(quick,"connection_values",lambda:("synthetic",object()))
+    monkeypatch.setattr(quick,"migrated_version",lambda _:"0042_unreviewed")
+    @contextmanager
+    def locked(_):
+        yield
+    monkeypatch.setattr(quick,"release_lock",locked)
+    monkeypatch.setattr(quick,"perform_backup",lambda *a,**k:pytest.fail("Unreviewed backup"))
+    monkeypatch.setattr(quick.subprocess,"run",lambda *a,**k:pytest.fail("Unreviewed DDL"))
+    assert quick.main()==2
