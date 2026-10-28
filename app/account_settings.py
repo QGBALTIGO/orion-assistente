@@ -76,11 +76,7 @@ async def _business_details(db, account_id):
         SELECT configuration FROM business_onboarding WHERE tenant_id=:tenant
     """), {"tenant": business["id"]})).mappings().first()
     config = onboarding["configuration"] if onboarding else {}
-    preferences = (await db.execute(text("""
-        SELECT preferences FROM management_preferences WHERE tenant_id=:tenant
-    """), {"tenant": business["id"]})).mappings().first()
-    pref = ((preferences or {}).get("preferences") or {}).get("business") or {}
-    phone = pref.get("contact_phone") or config.get("contact_phone")
+    phone = config.get("contact_phone")
     return business, config, phone, onboarding is not None
 
 
@@ -107,28 +103,20 @@ async def update_business_identity(payload: BusinessIdentity,
                 await db.execute(text("""
                     UPDATE tenants SET name=:name WHERE id=:tenant
                 """), {"name": payload.name, "tenant": business["id"]})
-            if has_onboarding:
-                await db.execute(text("""
-                    UPDATE business_onboarding
-                    SET configuration=jsonb_set(configuration,'{contact_phone}',to_jsonb(CAST(:phone AS text)),true),
-                        version=version+1,updated_at=now()
-                    WHERE tenant_id=:tenant
-                """), {"phone": payload.contact_phone, "tenant": business["id"]})
-            # Match management_preferences.save_section lock order to avoid
-            # lost updates when the owner edits financial/operational settings.
-            await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:scope,0))"),
-                             {"scope": "management-preferences:" + str(business["id"])})
+            # The same transaction updates the tenant and its contact number.
+            # For legacy businesses, create the non-onboarding metadata row.
             await db.execute(text("""
-                INSERT INTO management_preferences(tenant_id,preferences)
-                VALUES(:tenant,jsonb_build_object('business',
-                    jsonb_build_object('contact_phone',CAST(:phone AS text))))
+                INSERT INTO business_onboarding(tenant_id,created_by,is_new,
+                                                configuration,current_step,version)
+                VALUES(:tenant,:account,false,
+                       jsonb_build_object('contact_phone',CAST(:phone AS text)),
+                       'review',1)
                 ON CONFLICT(tenant_id) DO UPDATE SET
-                    preferences=jsonb_set(
-                        CASE WHEN jsonb_typeof(management_preferences.preferences->'business')='object'
-                        THEN management_preferences.preferences
-                        ELSE jsonb_set(management_preferences.preferences,'{business}','{}'::jsonb,true)
-                        END,
-                        '{business,contact_phone}',to_jsonb(CAST(:phone AS text)),true),
-                    version=management_preferences.version+1,updated_at=now()
-            """), {"phone": payload.contact_phone, "tenant": business["id"]})
+                    configuration=jsonb_set(
+                        business_onboarding.configuration,
+                        '{contact_phone}',to_jsonb(CAST(:phone AS text)),true),
+                    version=business_onboarding.version+1,
+                    updated_at=now()
+            """), {"phone": payload.contact_phone, "tenant": business["id"],
+                   "account": account_id})
     return {"ok": True, "name": payload.name, "contact_phone": payload.contact_phone}
