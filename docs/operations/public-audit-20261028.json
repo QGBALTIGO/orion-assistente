@@ -72,10 +72,13 @@
       "id": "PUB-03",
       "title": "Amarelo sobre creme perde contraste no tema claro",
       "severity": "Média",
-      "state": "pendente",
-      "evidence": [],
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-03.json"
+      ],
       "publication": "não publicada",
-      "note": ""
+      "note": "Textos sobre fundos suaves usam a cor semântica de texto do tema, mantendo a cor da empresa no destaque e nas bordas.",
+      "tests": "11 testes DOM; seis tamanhos x dois temas; contraste mínimo medido 10,84:1 em selos/etapas/períodos"
     },
     {
       "id": "PUB-04",
