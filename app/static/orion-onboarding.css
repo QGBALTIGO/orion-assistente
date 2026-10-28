@@ -215,6 +215,8 @@
   display:grid;
   gap:16px;
   min-width:0;
+  container-type:inline-size;
+  container-name:orion-review;
 }
 .ob-root .ob-review-section {
   min-width:0;
@@ -321,7 +323,7 @@
   color:var(--ob-text);
 }
 
-@container orion-onboarding (max-width:620px) {
+@container orion-review (max-width:560px) {
   .ob-root .ob-review-data {
     grid-template-columns:minmax(0,1fr);
     gap:14px;
@@ -334,7 +336,7 @@
     padding:14px;
   }
 }
-@container orion-onboarding (max-width:360px) {
+@container orion-review (max-width:340px) {
   .ob-root .ob-review-section-head {
     gap:8px;
   }
