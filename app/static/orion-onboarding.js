@@ -172,7 +172,7 @@
         const day=savedByDay.get(index)||{weekday:index,open:false};
         const opened=day.open===true;
         const paused=!!(day.break_start&&day.break_end);
-        const timeInput=(key,label,value)=>'<label class="ob-business-time"><span>'+label+'</span><input type="time" name="hours_'+index+'_'+key+'" value="'+esc(String(value||'').slice(0,5))+'"'+(opened?' required':' disabled')+'></label>';
+        const timeInput=(key,label,value)=>{const enabled=opened&&(!key.startsWith('break_')||paused);return '<label class="ob-business-time"><span>'+label+'</span><input type="time" name="hours_'+index+'_'+key+'" value="'+esc(String(value||'').slice(0,5))+'"'+(enabled?' required':' disabled')+'></label>';};
         return '<div class="ob-business-day'+(opened?' is-open':'')+'" data-ob-business-day="'+index+'">'+
           '<div class="ob-business-day-head"><label class="ob-business-day-toggle"><input type="checkbox" name="hours_'+index+'_open"'+(opened?' checked':'')+'><span class="ob-business-day-name">'+esc(name)+'</span></label>'+
           '<span class="ob-business-day-status">'+(opened?'Aberto':'Fechado')+'</span></div>'+
