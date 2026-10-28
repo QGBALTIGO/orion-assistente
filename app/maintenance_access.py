@@ -70,6 +70,7 @@ async def start_maintenance(account_id: UUID, payload: MaintenanceStart, request
         raise HTTPException(422, "Informe a finalidade da manutenção")
     redis, owned = _request_redis(request)
     created = False
+    guard_created = False
     try:
         if await redis.exists(key):
             raise HTTPException(409, "Encerre o atendimento atual antes de acessar outra conta")
@@ -117,19 +118,32 @@ async def start_maintenance(account_id: UUID, payload: MaintenanceStart, request
                            CAST(:metadata AS jsonb))
                 """), {"actor": admin, "target": account_id, "reason": reason,
                         "metadata": json.dumps({"expires_at": expires})})
+                # Set the anti-escalation guard BEFORE enabling the target.
+                # If Redis fails between writes, no unguarded maintenance
+                # access can become active.
+                guard_created = bool(await redis.set(
+                    guard_key, "1", ex=max(parent_ttl, MAINTENANCE_SECONDS),
+                    nx=True,
+                ))
+                if not guard_created:
+                    raise HTTPException(409, "Atualize o painel após a manutenção anterior")
                 created = bool(await redis.set(
                     key, json.dumps(session_data, ensure_ascii=False),
                     ex=MAINTENANCE_SECONDS, nx=True,
                 ))
                 if not created:
                     raise HTTPException(409, "Já existe um acesso de manutenção neste navegador")
-                await redis.set(guard_key, "1", ex=max(parent_ttl, MAINTENANCE_SECONDS))
         return {"ok": True, "expires_at": expires,
                 "message": "Acesso de manutenção registrado. Nenhuma senha foi compartilhada."}
     except (RedisError, OSError):
+        if created or guard_created:
+            try:
+                await redis.delete(key, guard_key)
+            except (RedisError, OSError):
+                pass
         raise HTTPException(503, "Acesso temporário indisponível") from None
     except Exception:
-        if created:
+        if created or guard_created:
             try:
                 await redis.delete(key, guard_key)
             except (RedisError, OSError):
