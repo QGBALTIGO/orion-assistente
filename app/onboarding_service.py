@@ -695,7 +695,10 @@ async def _apply_step(db, tenant, meta, step, data, access):
         if meta.get("is_new") and not meta.get("completed_at") and data.address:
             derived = timezone_from_address(data.address.state, data.address.city)
             if derived:
-                business = (await db.execute(text("SELECT name,timezone FROM tenants WHERE id=:t FOR UPDATE"),
+                # Runtime role cannot lock tenants directly. _facts reads the
+                # tenant identity through the existing RLS-safe query, while
+                # onboarding_update_identity performs the scoped write.
+                business = (await db.execute(text("SELECT name,timezone FROM tenants WHERE id=:t"),
                                              {"t": tenant})).mappings().one()
                 if business["timezone"] != derived:
                     await db.execute(text("SELECT public.onboarding_update_identity(:t,:name,:tz)"),
