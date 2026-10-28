@@ -18,6 +18,16 @@ test('PUB-01: returning through services preserves the eligible chosen professio
   assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
 });
 
+test('PUB-07: lower-page booking opens the same wizard and directions stay secondary',async t=>{
+  const h=await makePublic();t.after(()=>h.close());await flush();
+  h.click('#footer-book');
+  assert.ok(h.document.querySelector('#booking-dialog').hasAttribute('open'));
+  assert.ok(h.document.querySelector('#booking-service-list'));
+  assert.ok(h.document.querySelector('#maps-link').classList.contains('outline'));
+  assert.ok(!h.document.querySelector('#maps-link').classList.contains('primary'));
+  assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
+});
+
 test('PUB-06: review carries authoritative duration and expected finish',async t=>{
   const h=await makePublic();t.after(()=>h.close());await flush();
   h.click('#hero-book');h.click('#booking-service-list button');h.click('#booking-next');await flush();

@@ -117,10 +117,13 @@
       "id": "PUB-07",
       "title": "A rota ganha destaque principal no fim da página, enquanto agendar desaparece",
       "severity": "Média",
-      "state": "pendente",
-      "evidence": [],
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-07.json"
+      ],
       "publication": "não publicada",
-      "note": ""
+      "note": "Nova ação inferior reutiliza o botão e o mesmo assistente; rota passa ao estilo secundário sem mudar destino.",
+      "tests": "27 testes DOM; seis tamanhos x dois temas; abertura pelo rodapé, Escape e foco de retorno verificados"
     },
     {
       "id": "PUB-08",

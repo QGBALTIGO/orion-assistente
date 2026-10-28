@@ -971,6 +971,7 @@
   });
   $('service-search').addEventListener('input', renderServiceGrid);
   $('hero-book').addEventListener('click', () => openBooking());
+  $('footer-book').addEventListener('click', () => openBooking());
   $('close-booking').addEventListener('click', closeBooking);
   dialog.addEventListener('cancel', event => { if (booking.busy) event.preventDefault(); });
   dialog.addEventListener('close', () => { document.body.classList.remove('booking-open'); availabilityController?.abort(); requestSequence++; });
