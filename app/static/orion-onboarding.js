@@ -17,11 +17,14 @@
   const button = (label, action, extra='') => '<button type="button" class="ob-button ob-secondary'+(action==='back'?' ob-back':'')+'" data-ob-action="'+esc(action)+'" '+extra+'>'+esc(label)+'</button>';
   const option = (value,label,current,isPrompt=false) => '<option value="'+esc(value)+'"'+(isPrompt?' disabled hidden':'')+(String(current??'')===String(value)?' selected':'')+'>'+esc(label)+'</option>';
   const field = (name,label,value='',attrs='',help='') => {const input='<input id="ob-'+esc(name)+'" name="'+esc(name)+'" value="'+esc(value)+'" '+attrs+(help?' aria-describedby="ob-'+esc(name)+'-help"':'')+'>';return '<div class="ob-field" data-field-wrapper><label for="ob-'+esc(name)+'">'+esc(label)+'</label>'+(attrs.includes('data-orion-field="money"')?'<div class="os-field-unit" data-field-wrapper><span aria-hidden="true">R$</span>'+input+'</div>':input)+(help?'<p id="ob-'+esc(name)+'-help" class="ob-help">'+esc(help)+'</p>':'')+'</div>';};
-  const select = (name,label,choices,current='',attrs='') => '<div class="ob-field"><label for="ob-'+esc(name)+'">'+esc(label)+'</label><select id="ob-'+esc(name)+'" name="'+esc(name)+'" '+attrs+'>'+choices.map(([value,text])=>option(value,text,current,(name==='niche'||name==='activity')&&value==='')).join('')+'</select></div>';
+  const select = (name,label,choices,current='',attrs='') => '<div class="ob-field"><label for="ob-'+esc(name)+'">'+esc(label)+'</label><select id="ob-'+esc(name)+'" name="'+esc(name)+'" '+attrs+'>'+choices.map(([value,text])=>option(value,text,current,value===''&&String(text).startsWith('Selecione '))).join('')+'</select></div>';
   const check = (name,label,checked=false,help='',value='on') => '<label class="ob-check"><input type="checkbox" name="'+esc(name)+'" value="'+esc(value)+'"'+(checked?' checked':'')+'><span><strong>'+esc(label)+'</strong>'+(help?'<small>'+esc(help)+'</small>':'')+'</span></label>';
   const niches = [['','Selecione o nicho'],['barbearia','Barbearia'],['salao','Salão de beleza'],['odontologia','Odontologia'],['estetica','Estética'],['clinica','Clínica'],['pet_shop','Pet shop'],['aulas','Aulas'],['outro','Outro']];
   const startingTimezone = 'America/Sao_Paulo'; // Provisional only until a location is saved.
   const businessNameValue = value => String(value ?? '').normalize('NFC').replace(/\s+/gu,' ').trim();
+  // Address text is not a numeric mask: preserve spelling, accents and street names.
+  const addressTextValue = value => String(value ?? '').normalize('NFC').replace(/\s+/gu,' ').trim();
+  const addressNumberValue = value => addressTextValue(value).toLocaleUpperCase('pt-BR');
   const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
   const days = ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'];
   const statusLabels = {connected:'Conectado',disconnected:'Desconectado',not_connected:'Não conectado',not_configured:'Não configurado',configured:'Configurado',draft:'Em rascunho',active:'Ativo',inactive:'Inativo',disabled:'Desativado',unpublished:'Não publicado',not_published:'Não publicado',published:'Publicado',pending:'Pendente',unknown:'A verificar',unavailable:'Indisponível',paused:'Pausado',not_applicable:'Não se aplica',ready:'Pronto para revisão',choose_calendar:'Escolha um calendário',up_to_date:'Atualizado',attention:'Precisa de atenção'};
@@ -48,7 +51,13 @@
     async function notify(name,...args) {const epoch=state.epoch;try {await bridge[name]?.(...args);}catch {if(current(epoch))showFeedback('Os dados foram conferidos. Atualize o painel para continuar.',false);}}
     function usable() {return state.mounted&&!state.busy&&!state.pending&&!state.conflict&&state.data?.can_edit!==false;}
     function header(title,description) {return '<header class="ob-heading"><div><p class="ob-eyebrow">'+icon('store')+'Configuração do negócio</p><h1 data-ob-title tabindex="-1">'+esc(title)+'</h1><p>'+esc(description)+'</p></div><img class="ob-logo" src="/brand/orion-brand-'+(document.documentElement.dataset.theme==='dark'?'dark':'light')+'.svg" alt="Orion" width="116" height="36"></header>';}
-    function feedback() {return '<div data-ob-feedback role="alert" class="ob-note'+(state.error?' ob-error':'')+'"'+(!state.feedback?' hidden':'')+'>'+esc(state.feedback)+'</div>';}
+    function feedback() {
+      // Navigating forward already confirms a successful save. Keep actionable
+      // errors, conflicts and other feedback, but not the generic success tile
+      // that used to appear before the address form.
+      const text = state.step==='location'&&!state.error&&state.feedback==='Dados salvos.'?'':state.feedback;
+      return '<div data-ob-feedback role="alert" class="ob-note'+(state.error?' ob-error':'')+'"'+(!text?' hidden':'')+'>'+esc(text)+'</div>';
+    }
     function recovery() {if(!state.pending&&!state.conflict)return '';return '<div class="ob-note ob-error"><strong>'+(state.pending?'Precisamos conferir o resultado do salvamento.':'Esta configuração mudou em outra aba.')+'</strong><p>Seus dados digitados continuam aqui. Consulte a versão salva antes de continuar.</p><div class="ob-inline-actions">'+button('Conferir dados salvos','refresh')+(state.pending?button('Repetir o mesmo pedido','retry-operation'):'')+'</div></div>';}
     function setHTML(html) {cancelCep();host.hidden=false;host.innerHTML=html;restore();if(state.data?.can_edit===false)for(const el of host.querySelectorAll('[data-ob-write],form fieldset'))el.disabled=true;fieldTools.refresh(host);}
     function accept(data,preferred) {
@@ -60,7 +69,37 @@
     function navigation() {const steps=stepRows(),index=Math.max(0,steps.findIndex(step=>step.id===state.step));return '<div class="ob-progress"><span>Etapa '+(index+1)+' de '+steps.length+'</span><progress value="'+(index+1)+'" max="'+steps.length+'" aria-label="Progresso das etapas"></progress></div><div class="ob-layout"><nav aria-label="Etapas da configuração"><ol class="ob-steps">'+steps.map((step,i)=>'<li><button type="button" class="ob-step" data-ob-step="'+esc(step.id)+'" data-complete="'+(step.complete===true)+'" aria-label="Etapa '+(i+1)+': '+esc(step.label||definitions[step.id][0])+'"'+(state.step===step.id?' aria-current="step"':'')+'><span class="ob-step-number">'+(step.complete?icon('check'):i+1)+'</span><span>'+esc(step.label||definitions[step.id][0])+'</span></button></li>').join('')+'</ol></nav><div>';}
     function form(body,label='Salvar e continuar',type=state.step) {return '<form class="ob-form" data-ob-form="'+esc(type)+'"><fieldset '+(state.data?.can_edit===false?'disabled':'')+'>'+body+'<div class="ob-actions">'+button('Voltar','back')+'<button type="submit" class="ob-button" data-ob-write>'+esc(label)+'</button></div></fieldset></form>';}
     function businessForm(create=false) {const c=state.data?.configuration||{},name=state.data?.name||'',currentNiche=String(c.niche||'').toLowerCase()==='other'?'outro':c.niche||'',nicheChoices=niches.some(([value])=>value===currentNiche)?niches:[...niches,[currentNiche,currentNiche]];return form('<div class="ob-fields ob-business-fields">'+field('name','Nome do negócio',name,'required maxlength="160" autocomplete="organization" autocapitalize="words" placeholder="Ex.: Barbearia Peixoto" data-ob-business-name','Como sua empresa será identificada no Orion.')+select('niche','Nicho principal',nicheChoices,currentNiche,'required')+'<div class="ob-field" data-ob-other-niche><label for="ob-other_niche">Qual é o seu negócio?</label><input id="ob-other_niche" name="other_niche" maxlength="120" value="'+esc(c.other_niche||'')+'"></div>'+select('activity','O que você oferece',[['','Selecione a atividade'],['services','Serviços com agendamento'],['products','Produtos'],['both','Serviços e produtos']],c.activity||'','required')+field('contact_phone','WhatsApp comercial',c.contact_phone||'','type="tel" required autocomplete="tel" inputmode="tel" placeholder="(00) 00000-0000" data-orion-field="phone"')+'</div>',create?'Criar meu negócio':'Salvar e continuar',create?'create':'business');}
-    function addressForm() {const c=state.data.configuration||{},address=c.private_address||{};return form(select('modality','Como você atende',[['','Selecione a modalidade'],['onsite','No estabelecimento'],['online','Online'],['client_address','No endereço do cliente'],['hybrid','Híbrido']],c.modality||'','required')+'<div data-ob-address><div class="ob-note">Endereço operacional privado. Preencher esta etapa não publica seu endereço.</div><div class="ob-fields"><div class="ob-postal-field">'+field('postal_code','CEP (opcional)',address.postal_code||'','data-orion-field="postal-code" autocomplete="postal-code" aria-describedby="ob-cep-status"')+'<p id="ob-cep-status" class="ob-help ob-postal-status" role="status" aria-live="polite">Digite o CEP para preencher o endereço. Você também pode preencher manualmente.</p>'+button('Consultar CEP novamente','cep-retry','hidden')+'</div>'+field('street','Rua ou avenida',address.street||'','maxlength="160" autocomplete="address-line1"')+field('number','Número',address.number||'','maxlength="30" placeholder="Ex.: 123A"')+check('no_number','Sem número',address.no_number===true)+field('complement','Complemento (opcional)',address.complement||'','maxlength="160" autocomplete="address-line2"')+field('neighborhood','Bairro',address.neighborhood||'','maxlength="120" autocomplete="address-level3"')+field('city','Cidade',address.city||'','maxlength="120" autocomplete="address-level2"')+select('state','Estado (UF)',[['','Selecione o estado'],...states.map(uf=>[uf,uf])],String(address.state||'').toUpperCase(),'autocomplete="address-level1"')+'</div><p class="ob-help">Confira os dados e informe o número. O endereço só muda quando você salva.</p></div>');}
+    function addressForm() {
+      const c=state.data.configuration||{},address=c.private_address||{};
+      return form(
+        '<div class="ob-fields ob-location-fields">'+
+          select('modality','Como você atende',[
+            ['','Selecione a modalidade'],['onsite','No estabelecimento'],
+            ['online','Online'],['client_address','No endereço do cliente'],['hybrid','Híbrido']
+          ],c.modality||'','required')+
+          '<div data-ob-address class="ob-address-panel"><div class="ob-fields ob-address-fields">'+
+            '<div class="ob-postal-field">'+
+              field('postal_code','CEP (opcional)',address.postal_code||'',
+                'data-orion-field="postal-code" autocomplete="postal-code" inputmode="numeric" placeholder="00000-000" aria-describedby="ob-cep-status"')+
+              '<p id="ob-cep-status" class="ob-help ob-postal-status" role="status" aria-live="polite" hidden></p>'+
+              button('Consultar CEP novamente','cep-retry','hidden')+
+            '</div>'+
+            field('street','Rua ou avenida',address.street||'',
+              'required maxlength="160" autocomplete="address-line1" autocapitalize="words" placeholder="Ex.: Rua das Flores" data-ob-address-text')+
+            field('number','Número',address.number||'',
+              'required maxlength="30" pattern=".*[0-9].*" inputmode="text" autocapitalize="characters" placeholder="Ex.: 123A" data-ob-address-number')+
+            field('complement','Complemento (opcional)',address.complement||'',
+              'maxlength="160" autocomplete="address-line2" placeholder="Sala, bloco ou conjunto" data-ob-address-text')+
+            field('neighborhood','Bairro',address.neighborhood||'',
+              'required maxlength="120" autocomplete="address-level3" autocapitalize="words" placeholder="Ex.: Centro" data-ob-address-text')+
+            field('city','Cidade',address.city||'',
+              'required maxlength="120" autocomplete="address-level2" autocapitalize="words" placeholder="Ex.: Campo Grande" data-ob-address-text')+
+            select('state','Estado (UF)',[['','Selecione o estado'],...states.map(uf=>[uf,uf])],
+              String(address.state||'').toUpperCase(),'required autocomplete="address-level1"')+
+          '</div></div>'+
+        '</div>'
+      );
+    }
     function listItems(items,kind,description) {return rows(items).length?'<div class="ob-list">'+items.map(item=>'<article class="ob-item"><div><strong>'+esc(item.name)+'</strong><p>'+esc(description(item))+'</p></div>'+button('Editar','edit','data-ob-kind="'+kind+'" data-ob-id="'+esc(item.id)+'"')+'</article>').join('')+'</div>':'<div class="ob-empty">Nenhum cadastro nesta etapa. Adicione os dados reais do seu negócio.</div>';}
     function professionalForm() {const items=rows(state.data.catalog?.professionals);if(!state.editor)return listItems(items,'professional',item=>item.specialty||'Profissional cadastrado')+button('Adicionar profissional','add-professional','data-ob-write')+'<div class="ob-actions">'+button('Voltar','back')+button('Continuar','next')+'</div>';const item=items.find(row=>row.id===state.editor.id)||{};return '<div class="ob-editor">'+form('<div class="ob-fields">'+field('name','Nome do profissional',item.name||'','required maxlength="120" autocomplete="name"')+field('specialty','Especialidade (opcional)',item.specialty||'','maxlength="120"')+'</div>'+check('active','Usar este profissional',item.requested_active??item.active??true)+check('accepts_appointments','Recebe agendamentos',item.accepts_appointments!==false)+(!item.id?check('self_provider','Eu também realizo atendimentos',false,'Seu nome será apenas uma sugestão revisável. Isso não concede acesso administrativo.'):'')+'<div class="ob-inline-actions">'+button('Cancelar edição','cancel-edit')+'</div>','Salvar profissional','professional')+'</div>';}
     const money = cents => Number.isInteger(cents)?new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(cents/100):'Valor a conferir';
@@ -98,27 +137,34 @@
     function cancelCep() {cepRead++;clearTimeout(cepTimer);clearTimeout(cepTimeout);cepTimer=null;cepTimeout=null;cepController?.abort();cepController=null;}
     function cepStatus(form,message,status,retry=false) {
       const note=form.querySelector('#ob-cep-status'),button=form.querySelector('[data-ob-action=cep-retry]');
-      if(note){note.textContent=message;note.dataset.status=status;}
+      if(note){
+        // Do not occupy field space for idle, loading or successful CEP reads.
+        // An error still explains the problem and offers a manual retry.
+        const visible = status==='unknown' && Boolean(message);
+        note.textContent=visible?message:'';
+        note.hidden=!visible;
+        note.dataset.status=status;
+      }
       if(button)button.hidden=!retry;
     }
     function queueCepLookup(input,delay=300) {
       const form=input?.closest('[data-ob-form=location]');
       if(!form||!host.contains(form)||input.disabled||!usable())return;
       cancelCep();
-      let cep;try{cep=fieldTools.postalCodeValue(input.value);}catch{cepStatus(form,'Complete os 8 dígitos do CEP ou preencha o endereço manualmente.','idle');return;}
-      if(!cep){cepStatus(form,'Digite o CEP para preencher o endereço. Você também pode preencher manualmente.','idle');return;}
+      let cep;try{cep=fieldTools.postalCodeValue(input.value);}catch{cepStatus(form,'','idle');return;}
+      if(!cep){cepStatus(form,'','idle');return;}
       input.dataset.obCepQuery=cep;const read=cepRead,epoch=state.epoch,mapping={street:'logradouro',neighborhood:'bairro',city:'localidade',state:'uf'};
       const before=Object.fromEntries(Object.keys(mapping).map(name=>[name,{value:form.elements[name].value,edit:form.elements[name].dataset.obEdit||''}]));
       const valid=()=>current(epoch)&&cepRead===read&&host.contains(form)&&form.isConnected&&state.step==='location'&&!input.disabled&&usable()&&(()=>{try{return fieldTools.postalCodeValue(input.value)===cep;}catch{return false;}})();
-      cepStatus(form,'Buscando endereço…','checking');
+      cepStatus(form,'','checking');
       cepTimer=setTimeout(async()=>{
         cepTimer=null;if(!valid())return;
-        const controller=new AbortController();cepController=controller;cepTimeout=setTimeout(()=>{if(valid())cepStatus(form,'A consulta demorou mais que o esperado. Você pode preencher o endereço manualmente.','unknown',true);controller.abort();},8000);
+        const controller=new AbortController();cepController=controller;cepTimeout=setTimeout(()=>{if(valid())cepStatus(form,'Consulta do CEP indisponível. Preencha o endereço ou tente novamente.','unknown',true);controller.abort();},8000);
         try{
           const response=await fetch('https://viacep.com.br/ws/'+cep+'/json/',{signal:controller.signal,credentials:'omit',referrerPolicy:'no-referrer'});
           if(!response.ok)throw Error('Consulta indisponível.');
           const data=await response.json();if(!valid()||controller.signal.aborted)return;
-          if(data?.erro===true||data?.erro==='true'){cepStatus(form,'CEP não encontrado. Confira os números ou preencha o endereço manualmente.','unknown',true);return;}
+          if(data?.erro===true||data?.erro==='true'){cepStatus(form,'CEP não encontrado. Confira o número informado.','unknown',true);return;}
           if(!data||typeof data.cep!=='string'||fieldTools.postalCodeValue(data.cep)!==cep||typeof data.localidade!=='string'||!data.localidade.trim()||!states.includes(data.uf))throw Error('Endereço incompleto.');
           const values={};
           for(const [name,key] of Object.entries(mapping)){
@@ -132,18 +178,18 @@
             if(value)field.value=value;
           }
           capture();
-          cepStatus(form,preserved?'Endereço consultado. Mantivemos os campos que você editou. Confira os dados e informe o número.':!values.street||!values.neighborhood?'CEP encontrado. Confira a rua e o bairro e informe o número.':'Endereço preenchido. Confira os dados e informe o número.','found');
-        }catch(error){if(valid())cepStatus(form,'Não foi possível consultar o CEP agora. Você pode preencher o endereço manualmente.','unknown',true);}
+          cepStatus(form,'','found');
+        }catch(error){if(valid())cepStatus(form,'Falha ao consultar CEP. Preencha o endereço ou tente novamente.','unknown',true);}
         finally{if(cepRead===read){clearTimeout(cepTimeout);cepTimeout=null;cepController=null;}}
       },delay);
     }
     function input(event) {
       const element=event.target;if(!host.contains(element)||event.isComposing)return;
-      if(element.hasAttribute('data-ob-business-name'))element.setCustomValidity('');
+      if(element.hasAttribute('data-ob-business-name')||element.hasAttribute('data-ob-address-number'))element.setCustomValidity('');
       if(['street','neighborhood','city','state'].includes(element.name))element.dataset.obEdit=String(Number(element.dataset.obEdit||0)+1);
       if(element.name==='postal_code')queueCepLookup(element);
     }
-    function conditionalFields() {const form=host.querySelector('form');if(!form)return;const elements=form.elements,niche=host.querySelector('[data-ob-other-niche]');if(niche){niche.hidden=elements.niche?.value!=='outro';elements.other_niche.required=!niche.hidden;elements.other_niche.disabled=niche.hidden;}const address=host.querySelector('[data-ob-address]');if(address){address.hidden=!['onsite','hybrid'].includes(elements.modality?.value);for(const input of address.querySelectorAll('input,select'))input.disabled=address.hidden;for(const name of ['street','neighborhood','city','state'])if(elements[name])elements[name].required=!address.hidden;elements.number.disabled=address.hidden||elements.no_number.checked;elements.number.required=!elements.number.disabled;}const pause=host.querySelector('[data-ob-break]');if(pause){pause.hidden=!elements.has_break?.checked;for(const input of pause.querySelectorAll('input')){input.disabled=pause.hidden;input.required=!pause.hidden;}}const price=host.querySelector('[data-ob-product-price]');if(price){price.hidden=!['fixed','from'].includes(elements.price_kind?.value);const input=price.querySelector('input');input.required=!price.hidden;input.disabled=price.hidden;input.dataset.fieldMin='0';if(price.hidden)fieldTools.clearError(input);}}
+    function conditionalFields() {const form=host.querySelector('form');if(!form)return;const elements=form.elements,niche=host.querySelector('[data-ob-other-niche]');if(niche){niche.hidden=elements.niche?.value!=='outro';elements.other_niche.required=!niche.hidden;elements.other_niche.disabled=niche.hidden;}const address=host.querySelector('[data-ob-address]');if(address){address.hidden=!['onsite','hybrid'].includes(elements.modality?.value);for(const input of address.querySelectorAll('input,select'))input.disabled=address.hidden;for(const name of ['street','neighborhood','city','state'])if(elements[name])elements[name].required=!address.hidden;elements.number.disabled=address.hidden;elements.number.required=!address.hidden;}const pause=host.querySelector('[data-ob-break]');if(pause){pause.hidden=!elements.has_break?.checked;for(const input of pause.querySelectorAll('input')){input.disabled=pause.hidden;input.required=!pause.hidden;}}const price=host.querySelector('[data-ob-product-price]');if(price){price.hidden=!['fixed','from'].includes(elements.price_kind?.value);const input=price.querySelector('input');input.required=!price.hidden;input.disabled=price.hidden;input.dataset.fieldMin='0';if(price.hidden)fieldTools.clearError(input);}}
     async function loadTenant(id,preferred,epoch=++state.epoch) {cancelCep();if(!uuid(id))throw Error('Selecione um negócio válido.');state.tenantId=id;state.data=null;state.editor=null;state.pending=null;state.conflict=false;state.feedback='';host.hidden=false;host.innerHTML='<div class="ob-loading" role="status">Conferindo a configuração do negócio…</div>';const data=await request('/api/v1/tenants/'+encodeURIComponent(id)+'/onboarding');if(!current(epoch))return null;accept(data,preferred);render();focus();await notify('onTenantChange',id,clone(data));return data;}
     async function resolveEntry({force=false}={}) {
       if(!state.mounted||!bridge.user||bridge.user.authenticated===false)return {kind:'blocked',reason:'authentication_required'};
@@ -152,7 +198,7 @@
       catch(error){if(current(epoch)){state.entry={kind:'blocked'};state.feedback=error.message||'Não foi possível conferir a configuração.';state.error=true;renderEntry();}throw error;}
     }
     function price(raw) {return fieldTools.parseMoney(raw,{required:true,min:0,max:100000000});}
-    function formData(form) {const data=Object.fromEntries(new FormData(form));const type=form.dataset.obForm;if(type==='business'||type==='create')return {name:businessNameValue(data.name),timezone:state.data?.timezone||startingTimezone,niche:data.niche,other_niche:data.niche==='outro'?data.other_niche?.trim()||null:null,activity:data.activity,contact_phone:fieldTools.phoneValue(data.contact_phone)};if(type==='location'){const result={modality:data.modality};if(['onsite','hybrid'].includes(data.modality))result.address={postal_code:fieldTools.postalCodeValue(data.postal_code),street:data.street.trim(),number:form.elements.no_number.checked?null:data.number.trim(),no_number:form.elements.no_number.checked,complement:data.complement?.trim()||null,neighborhood:data.neighborhood.trim(),city:data.city.trim(),state:data.state.trim().toUpperCase()};return result;}
+    function formData(form) {const data=Object.fromEntries(new FormData(form));const type=form.dataset.obForm;if(type==='business'||type==='create')return {name:businessNameValue(data.name),timezone:state.data?.timezone||startingTimezone,niche:data.niche,other_niche:data.niche==='outro'?data.other_niche?.trim()||null:null,activity:data.activity,contact_phone:fieldTools.phoneValue(data.contact_phone)};if(type==='location'){const result={modality:data.modality};if(['onsite','hybrid'].includes(data.modality))result.address={postal_code:fieldTools.postalCodeValue(data.postal_code),street:addressTextValue(data.street),number:addressNumberValue(data.number),no_number:false,complement:addressTextValue(data.complement)||null,neighborhood:addressTextValue(data.neighborhood),city:addressTextValue(data.city),state:data.state.trim().toUpperCase()};return result;}
       if(type==='professional'){const item=rows(state.data.catalog.professionals).find(row=>row.id===state.editor?.id),result={item:{...pick(item,['color','commission_percent','image_url']),name:data.name.trim(),specialty:data.specialty?.trim()||null,active:form.elements.active.checked,accepts_appointments:form.elements.accepts_appointments.checked},self_provider:form.elements.self_provider?.checked===true};if(item)Object.assign(result.item,{id:item.id,expected_fingerprint:item.fingerprint});return result;}
       if(type==='service'){const item=rows(state.data.catalog.services).find(row=>row.id===state.editor?.id),ids=new FormData(form).getAll('professional_ids');if(!ids.length)throw Error('Selecione ao menos um profissional habilitado.');const result={kind:'service',item:{...pick(item,['category','color','image_url','sort_order']),name:data.name.trim(),description:data.description?.trim()||null,price_cents:price(data.price),duration_min:fieldTools.parseDecimal(data.duration_min,{required:true,scale:0,min:1,max:1440}),prep_min:fieldTools.parseDecimal(data.prep_min,{scale:0,min:0,max:240})??0,cleanup_min:fieldTools.parseDecimal(data.cleanup_min,{scale:0,min:0,max:240})??0,active:form.elements.active.checked},professional_ids:ids};if(item)Object.assign(result.item,{id:item.id,expected_fingerprint:item.fingerprint});return result;}
       if(type==='product'){const item=rows(state.data.catalog.products).find(row=>row.id===state.editor?.id),variant=rows(item?.variants).find(row=>row.id===state.editor?.variant_id)||rows(item?.variants)[0],result={kind:'product',item:{...pick(item,['synonyms','faqs','official_benefits']),name:data.name.trim(),description:data.description?.trim()||null,active:form.elements.active.checked},variant:{...pick(variant,['sku','attributes']),name:data.variant_name.trim(),price_kind:data.price_kind,unit_price_cents:['fixed','from'].includes(data.price_kind)?fieldTools.parseMoney(data.price,{required:true,min:0,max:100000000}):null,active:form.elements.variant_active.checked}};if(item)Object.assign(result.item,{id:item.id,expected_fingerprint:item.fingerprint});if(variant)result.variant.id=variant.id;return result;}
@@ -167,19 +213,34 @@
         const name=form.elements.name;
         if(name){name.value=businessNameValue(name.value);name.setCustomValidity(name.value?'':'Informe o nome do negócio.');}
       }
+      if(form.dataset.obForm==='location'&&['onsite','hybrid'].includes(form.elements.modality.value)){
+        for(const field of form.querySelectorAll('[data-ob-address-text]')){
+          field.value=addressTextValue(field.value);
+        }
+        const number=form.elements.number;
+        number.value=addressNumberValue(number.value);
+        number.setCustomValidity(/[0-9]/.test(number.value)?'':'Informe o número do estabelecimento.');
+      }
       if(!fieldTools.validateForm(form)||!form.reportValidity())return;capture();try {const type=form.dataset.obForm,data=formData(form),key=crypto.randomUUID();if(type==='create'){if(!canCreate())return;await operate({path:'/api/v1/onboarding/businesses',method:'POST',payload:{idempotency_key:key,...data},draftKey:draftKey(),create:true});return;}if(!usable())return;const step=type==='professional'?'professionals':['service','product'].includes(type)?'catalog':type;await operate({path:step==='complete'?base()+'/complete':base()+'/steps/'+encodeURIComponent(step),method:step==='complete'?'POST':'PUT',payload:{expected_version:state.data.version,idempotency_key:key,...(step==='complete'?data:{data})},item:['professional','service','product','hours'].includes(type),complete:step==='complete',draftKey:draftKey()});}catch(error){showFeedback(error.message,true);}}
     async function click(event) {const target=event.target.closest('[data-ob-action],[data-ob-step]');if(!target||!host.contains(target)||state.busy)return;const action=target.dataset.obAction;try {if(target.dataset.obStep){if(state.pending||state.conflict)return;capture();state.step=target.dataset.obStep;state.editor=null;state.feedback='';render();focus();return;}if(action==='cep-retry'){queueCepLookup(host.querySelector('[name=postal_code]'),0);return;}if(action==='refresh'){await refresh();return;}if(action==='retry-operation'){if(state.pending)await operate(state.pending);return;}if(action==='logout'){await bridge.logout?.();return;}if(state.pending||state.conflict)return;if(action==='open-dashboard'){if(state.data?.status==='complete'){if(bridge.onOpenPanel)await notify('onOpenPanel',state.data.configuration?.activity==='products'?'catalogo':'agenda',clone(state.data));else await notify('onComplete',clone(state.data));}return;}if(action==='connect-whatsapp'){capture();await bridge.openLegacy?.('dispositivo');return;}if(action==='cancel-edit'){state.drafts.delete(draftKey());state.editor=null;state.feedback='';render();return;}if(action==='add-professional'||action==='add-service'||action==='add-product'||action==='edit'){if(!usable())return;capture();state.editor={kind:action==='edit'?target.dataset.obKind:action.replace('add-',''),id:target.dataset.obId||null};render();host.querySelector('form input')?.focus();return;}if(action==='back'||action==='next'||action==='review-edit'){capture();state.editor=null;const steps=stepRows(),index=steps.findIndex(step=>step.id===state.step);state.step=action==='review-edit'?target.dataset.obTarget:steps[Math.max(0,Math.min(steps.length-1,index+(action==='next'?1:-1)))]?.id||state.step;state.feedback='';render();focus();}}
       catch(error){showFeedback(error.message||'Não foi possível abrir esta etapa.',true);}}
     function change(event) {if(!host.contains(event.target))return;const element=event.target;if(['street','neighborhood','city','state'].includes(element.name))element.dataset.obEdit=String(Number(element.dataset.obEdit||0)+1);if(element.name==='postal_code'){let cep;try{cep=fieldTools.postalCodeValue(element.value);}catch{}if(cep!==element.dataset.obCepQuery)queueCepLookup(element,0);}if(element.name==='modality'&&!['onsite','hybrid'].includes(element.value))cancelCep();if(element.name==='variant_id'&&state.editor?.kind==='product'){capture();state.editor.variant_id=element.value;render();return;}if(element.name==='self_provider'&&element.checked){const input=host.querySelector('[name=name]');if(input&&!input.value.trim())input.value=bridge.user?.name||'';}if(element.name==='professional_id'&&state.step==='hours'){capture();state.editor={kind:'hours',professional_id:element.value};state.drafts.delete(draftKey());render();return;}conditionalFields();}
-    function businessNameBlur(event){
+    function normalizeFieldOnBlur(event){
       const input=event.target;
-      if(!host.contains(input)||!input.hasAttribute('data-ob-business-name'))return;
-      input.value=businessNameValue(input.value);
-      input.setCustomValidity(input.value?'':'Informe o nome do negócio.');
+      if(!host.contains(input))return;
+      if(input.hasAttribute('data-ob-business-name')){
+        input.value=businessNameValue(input.value);
+        input.setCustomValidity(input.value?'':'Informe o nome do negócio.');
+      }else if(input.hasAttribute('data-ob-address-text')){
+        input.value=addressTextValue(input.value);
+      }else if(input.hasAttribute('data-ob-address-number')){
+        input.value=addressNumberValue(input.value);
+        input.setCustomValidity(/[0-9]/.test(input.value)?'':'Informe o número do estabelecimento.');
+      }
     }
-    host.addEventListener('focusout',businessNameBlur);
+    host.addEventListener('focusout',normalizeFieldOnBlur);
     host.addEventListener('click',click);host.addEventListener('submit',submit);host.addEventListener('change',change);host.addEventListener('input',input);host.addEventListener('compositionend',input);
-    const controller={resolveEntry,unmount(){if(!state.mounted)return;cancelCep();releaseFields();state.mounted=false;state.epoch++;host.removeEventListener('focusout',businessNameBlur);host.removeEventListener('click',click);host.removeEventListener('submit',submit);host.removeEventListener('change',change);host.removeEventListener('input',input);host.removeEventListener('compositionend',input);host.innerHTML='';host.hidden=true;host.classList.remove('ob-root');host.removeAttribute('aria-busy');state.drafts.clear();state.pending=null;},getState(){return clone({tenantId:state.tenantId,step:state.step,busy:state.busy,uncertain:!!state.pending,conflict:state.conflict,data:state.data,entry:state.entry});}};
+    const controller={resolveEntry,unmount(){if(!state.mounted)return;cancelCep();releaseFields();state.mounted=false;state.epoch++;host.removeEventListener('focusout',normalizeFieldOnBlur);host.removeEventListener('click',click);host.removeEventListener('submit',submit);host.removeEventListener('change',change);host.removeEventListener('input',input);host.removeEventListener('compositionend',input);host.innerHTML='';host.hidden=true;host.classList.remove('ob-root');host.removeAttribute('aria-busy');state.drafts.clear();state.pending=null;},getState(){return clone({tenantId:state.tenantId,step:state.step,busy:state.busy,uncertain:!!state.pending,conflict:state.conflict,data:state.data,entry:state.entry});}};
     active=controller;return controller;
   }
   function unmount() {active?.unmount();active=null;}

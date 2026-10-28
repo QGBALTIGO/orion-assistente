@@ -103,6 +103,18 @@ async def test_new_business_requires_whatsapp_and_adopts_timezone_from_private_a
     assert err.value.status_code == 422
     first = await service.create_business(ctx.actor, creation())
     assert first["timezone"] == "America/Cuiaba"
+    old_no_number = {"modality": "onsite", "address": {
+        "street": "Rua sintética", "number": None, "no_number": True,
+        "neighborhood": "Centro", "city": "Campo Grande", "state": "MS"}}
+    with pytest.raises(HTTPException) as blocked:
+        await save(ctx, first, "location", old_no_number)
+    assert blocked.value.status_code == 422
+    with pytest.raises(HTTPException) as blocked_text:
+        await save(ctx, first, "location", {**old_no_number, "address": {
+            **old_no_number["address"], "number": "S/N", "no_number": False}})
+    assert blocked_text.value.status_code == 422
+    unchanged = await service.get_state(ctx.actor, UUID(first["tenant_id"]))
+    assert unchanged["version"] == first["version"]
     state = await save(ctx, first, "location", {
         "modality": "onsite", "address": {
             "postal_code": "79002-000", "street": "Rua sintética", "number": "123A",
