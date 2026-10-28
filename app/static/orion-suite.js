@@ -1436,7 +1436,7 @@
       if(stillAccount(c)&&state.route==='configuracoes'&&state.filters.settingsTab==='site-requests')await open('configuracoes',{keepScroll:true});
     }
   }
-  const settingsSections=[['general','settings','Negócio','Dados operacionais e fiscais'],['hours','clock','Horários','Jornada de trabalho da equipe'],['site-requests','mail','Solicitações do site','Contatos e testes solicitados'],['appearance','sun','Aparência','Tema e visual do painel'],['ai','sparkles','Uso de IA','Gerações e limite diário'],['notifications','bell','Notificações','Avisos de agendamentos'],['whatsapp','phone','WhatsApp por empresa','Conexões independentes'],['calendar','calendar','Google Agenda','Sincronização dos horários'],['account','shield','Minha conta','Dados de acesso ao Orion']];
+  const settingsSections=[['general','settings','Negócio','Dados operacionais e fiscais'],['hours','clock','Horários','Jornada de trabalho da equipe'],['site-requests','mail','Solicitações do site','Contatos e testes solicitados'],['appearance','sun','Aparência','Tema e visual do painel'],['ai','sparkles','Uso de IA','Gerações e limite diário'],['notifications','bell','Notificações','Avisos de agendamentos'],['whatsapp','phone','WhatsApp por empresa','Conexão e atendimento'],['calendar','calendar','Google Agenda','Sincronização dos horários'],['account','shield','Minha conta','Dados de acesso ao Orion']];
   async function loadSettings(c){
     // Old bookmarks and persisted settings must not reopen the retired
     // Administration section, regardless of account role.

@@ -208,6 +208,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   }
   client.ev.on('messages.upsert',receive);
   return {close,status:()=>{expirePairing();return state;},
+    phone:()=>state==='connected'?(normalizeFromJid(client.user?.id)||null):null,
     supportsPairing:()=>current()&&context.resumeOnly!==true&&creds.registered!==true&&state!=='connected'&&typeof client.requestPairingCode==='function',
     qr:()=>{expirePairing();return !pairAttempt&&['qr_ready','pair_expired'].includes(state)&&freshQR(qrAt,now())?
       {value:qrValue,expires_in_ms:Math.max(0,45000-(now()-qrAt))}:null;},

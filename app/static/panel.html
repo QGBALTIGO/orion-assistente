@@ -2192,6 +2192,9 @@ function renderGuide(){
  if($("guideSteps").dataset.guideMethod!==method){$("guideSteps").innerHTML=connectView.instructions(method);$("guideSteps").dataset.guideMethod=method}
  const revoked=["logged_out","pair_failed"].includes(deviceStatus);
  const locked=wizardBusy||wizardUncertain||revoked||deviceStatus==="connected";
+ const qrNeedsPreparation=["qr_expired","qr_delayed"].includes(deviceStatus);
+ const prepareHint="A conexão precisa ser preparada para gerar o código. Use Preparar novo código.";
+ const waitHint="Preparando a conexão. O botão será liberado quando estiver pronta.";
  const panes={tutorial:"wizardTutorial",qr:"qrPanel",code_form:"codePanel",code_ready:"codePanel",success:"wizardSuccess"};
  for(const id of ["wizardTutorial","qrPanel","codePanel","wizardSuccess"])
    $(id).classList.toggle("hidden",(revoked&&!["tutorial","success"].includes(wizardStep))||id!==panes[wizardStep]);
@@ -2211,16 +2214,19 @@ function renderGuide(){
  $("wizardCodeBack").classList.toggle("hidden",!["code_ready","code_form"].includes(wizardStep));
  $("wizardCodeBack").textContent=wizardStep==="code_ready"?"Alterar número":"Voltar";
  $("wizardCodeBack").disabled=wizardBusy||wizardUncertain;
- $("retryCode").classList.toggle("hidden",!(wizardCodeExpired||wizardUncertain||wizardStep==="code_ready"||deviceStatus==="pair_expired"||deviceStatus==="pairing"||deviceStatus==="error"));
- $("retryCode").disabled=wizardBusy||deviceStatus==="connected"||revoked;
+ $("retryCode").classList.toggle("hidden",!(qrNeedsPreparation||wizardCodeExpired||wizardUncertain||wizardStep==="code_ready"||deviceStatus==="pair_expired"||deviceStatus==="pairing"||deviceStatus==="error"));
+ $("retryCode").disabled=wizardBusy||wizardUncertain||deviceStatus==="connected"||deviceStatus==="pairing"||revoked;
  $("copyCode").disabled=wizardBusy||!pairExpiresAt||Date.now()>=pairExpiresAt;
  $("wizardCheckStatus").classList.toggle("hidden",!(wizardUncertain||["starting","connecting","reconnecting","error","pairing"].includes(deviceStatus)));
  $("wizardCheckStatus").disabled=wizardBusy;
  $("wizardNext").disabled=locked||deviceStatus==="pairing";
  $("wizardQrBack").disabled=wizardBusy||wizardUncertain;
  $("refreshQr").disabled=locked||deviceStatus==="pairing";
- if(!$("codeStatus").textContent&&["starting","connecting","reconnecting"].includes(deviceStatus))
-   $("codeStatus").textContent="Preparando a conexão. O botão será liberado quando estiver pronta.";
+ if(wizardStep==="code_form"&&!wizardBusy&&!wizardUncertain){
+   if(qrNeedsPreparation)$("codeStatus").textContent=prepareHint;
+   else if(["starting","connecting","reconnecting"].includes(deviceStatus))$("codeStatus").textContent=waitHint;
+   else if(deviceStatus==="qr_ready"&&!wizardCodeExpired&&[prepareHint,waitHint].includes($("codeStatus").textContent))$("codeStatus").textContent="";
+ }
 }
 function selectWizardMode(next){
  if(!["qr","code"].includes(next)||wizardBusy||wizardUncertain||deviceStatus==="connected"||["logged_out","pair_failed"].includes(deviceStatus))return;
@@ -2440,11 +2446,11 @@ $("deviceSettingsForm").addEventListener("submit",async event=>{
  finally{$("deviceSettingsSave").disabled=false}
 });
 
-async function updateStatus(){
+async function updateStatus({snapshot}={}){
  if(!csrf)return;
  const requestId=++statusSequence,epoch=authEpoch;
  try{
-  const result=await api("/api/v1/qr/status");
+  const result=snapshot||await api("/api/v1/qr/status");
   if(requestId!==statusSequence||epoch!==authEpoch)return; // Ignore another session or an older response.
   const previous=deviceStatus;
   deviceStatus=result.status;lastDeviceStatus=result.status;
@@ -2590,17 +2596,31 @@ $("pairForm").addEventListener("submit",async ev=>{
  finally{if(current()){wizardBusy=false;renderGuide();updateWizardClocks()}}
 });
 async function prepareWizardConnection(recover){
- if(wizardBusy||deviceStatus==="connected")return;
+ if(wizardBusy||wizardUncertain||["connected","pairing"].includes(deviceStatus)||(!recover&&["logged_out","pair_failed"].includes(deviceStatus)))return;
+ const epoch=authEpoch,before=wizardOperation,selectedMethod=method;
  if(!await confirmAction(recover?"O WhatsApp encerrou o vínculo anterior. Preparar uma nova conexão?":"Preparar uma nova tentativa? O código anterior deixará de funcionar.",$(recover?"wizardRecover":"retryCode")))return;
- const epoch=authEpoch,operation=++wizardOperation,current=()=>epoch===authEpoch&&operation===wizardOperation;
+ if(epoch!==authEpoch||before!==wizardOperation||selectedMethod!==method||wizardBusy||wizardUncertain||["connected","pairing"].includes(deviceStatus)||(!recover&&["logged_out","pair_failed"].includes(deviceStatus)))return;
+ const operation=++wizardOperation,current=()=>epoch===authEpoch&&operation===wizardOperation;
  wizardBusy=true;renderGuide();
  try{
    const state=await api("/api/v1/qr/status");if(!current())return;
-   if(state.status==="connected"){await updateStatus();return}
    const revoked=["logged_out","pair_failed"].includes(state.status);
-   await api(revoked?"/api/v1/qr/recover":"/api/v1/qr/reconnect","POST",{});if(!current())return;
+   if(["connected","pairing"].includes(state.status)||(!recover&&revoked)||(recover&&!revoked)){
+     if(state.status==="pairing")$("codeStatus").textContent="Já existe uma tentativa em andamento. Confira o WhatsApp ou aguarde a confirmação.";
+     await updateStatus({snapshot:state});return;
+   }
+   if(!recover){
+     const waiting=["starting","connecting","reconnecting"].includes(state.status);
+     const delayed=state.status!=="starting"&&Number(state.waitingSeconds)>=25;
+     if((waiting&&!delayed)||(state.status==="qr_ready"&&!wizardCodeExpired&&!pairExpiresAt)){
+       await updateStatus({snapshot:state});return;
+     }
+     if(!["qr_expired","qr_delayed","pair_expired","error","qr_ready"].includes(state.status)&&!(waiting&&delayed))throw Error("Não foi possível confirmar se a conexão precisa ser preparada.");
+   }
+   await api(recover?"/api/v1/qr/recover":"/api/v1/qr/reconnect","POST",{});if(!current())return;
    clearWizardCodes();wizardCodeExpired=false;wizardUncertain=false;deviceStatus="connecting";
-   wizardStep="tutorial";wizardTutorialDone={code:false,qr:false};
+   if(recover){wizardStep="tutorial";wizardTutorialDone={code:false,qr:false}}
+   else wizardStep=method==="code"&&wizardTutorialDone.code?"code_form":"tutorial";
    $("codeStatus").textContent="Preparando a conexão. O botão será liberado quando estiver pronta.";
    await updateStatus();
  }catch(ex){if(current()){wizardUncertain=true;$("codeStatus").textContent=ex.message+" Consulte a conexão antes de tentar novamente.";$("qrStatus").textContent=ex.message}}

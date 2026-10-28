@@ -63,6 +63,9 @@ async def native_qr(admin_source, monkeypatch):
     try:
         yield value
     finally:
+        with case.engine.begin() as db:
+            db.execute(text("UPDATE tenants SET whatsapp_channel_id=NULL WHERE id IN (:tenant,:foreign)"),
+                       {"tenant": case.tenant, "foreign": foreign})
         await engine.dispose()
 
 
@@ -86,7 +89,8 @@ async def test_real_native_account_can_own_list_and_change_only_its_qr(native_qr
     listing = await channels.list_channels(case.tenant, Response(), case.actor)
     assert listing["access"]["can_manage"] is True
     assert listing["items"][0]["can_manage"] is True
-    assert listing["items"][0]["allowed_senders"] == ["5567999999901"]
+    assert "allowed_senders" not in listing["items"][0]
+    assert listing["items"][0]["assistant_activation_allowed"] is True
     assert row["credential"] not in str(listing)
     changed = await channels.change_state(case.tenant, row["id"],
                                           channels.ChannelState(expected_revision=1, assistant_enabled=True), case.actor)
@@ -175,13 +179,15 @@ async def test_real_revocation_during_qr_lookup_discards_the_result(native_qr, m
 
 
 @pytest.mark.asyncio
-async def test_real_native_owner_keeps_primary_credentials_and_never_repairs_or_disconnects(native_qr):
+async def test_real_native_owner_keeps_primary_credentials_and_never_repairs_or_disconnects(native_qr, monkeypatch):
     case = native_qr
     row, _ = await create(case)
     alias = qr_legacy.channel_id(case.tenant)
     with case.source.engine.begin() as db:
+        db.execute(text("UPDATE tenants SET whatsapp_channel_id=NULL WHERE id=:tenant"), {"tenant": case.tenant})
         db.execute(text("UPDATE qr_channels SET id=:alias,enabled=true WHERE id=:channel"),
                    {"alias": alias, "channel": row["id"]})
+        db.execute(text("UPDATE tenants SET whatsapp_channel_id=:alias WHERE id=:tenant"), {"alias": alias, "tenant": case.tenant})
         before = db.execute(text("SELECT credential_hash,credential_encrypted,enabled FROM qr_channels WHERE id=:id"),
                             {"id": alias}).mappings().one()
     for action in ("start", "stop", "qr"):
@@ -191,6 +197,8 @@ async def test_real_native_owner_keeps_primary_credentials_and_never_repairs_or_
     with pytest.raises(HTTPException) as caught:
         await channels.change_state(case.tenant, alias, channels.ChannelState(expected_revision=1, enabled=False), case.actor)
     assert caught.value.status_code == 409
+    async def verified_binding(_): return True
+    monkeypatch.setattr(channels, "_legacy_binding_valid", verified_binding)
     assistant = await channels.change_state(case.tenant, alias,
                                             channels.ChannelState(expected_revision=1, assistant_enabled=True), case.actor)
     assert assistant["enabled"] is True and assistant["assistant_enabled"] is True

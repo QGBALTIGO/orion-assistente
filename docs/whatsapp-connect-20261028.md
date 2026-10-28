@@ -27,8 +27,9 @@ ambígua não dispara outra. O prazo máximo é 90 segundos.
 
 ## Preservação de sessões e saídas
 
-Nenhuma migração, alteração de segredo, limpeza de credenciais ou recriação de
-banco faz parte desta mudança. A simples retomada de credenciais registradas
+Não há alteração de segredo, limpeza de credenciais ou recriação de banco.
+A migração aditiva 0044 mantém os registros e vincula uma única identidade por
+empresa, após backup privado verificado. A simples retomada de credenciais registradas
 não emite aviso de novo vínculo, mesmo sem recibo anterior. Um vínculo novo
 conserva a preferência de aviso já existente, inclusive após `restartRequired`.
 A intenção de novo vínculo existe somente na memória do processo.
@@ -51,3 +52,56 @@ A intenção de novo vínculo existe somente na memória do processo.
 As capturas e os resultados finais de execução pertencem ao workflow e ao
 registro de entrega. Emulação não comprova teclado virtual, iPhone físico,
 entrega real de mensagens ou pareamento com uma conta real.
+
+## WA-LIVE-01: preparação após QR expirado ou demorado
+
+A bateria real encontrou o formulário administrativo com Gerar desabilitado e
+sem orientação quando o estado era `qr_expired` ou `qr_delayed`. Esses estados
+agora oferecem Preparar novo código, com o mesmo diálogo e os componentes do
+painel. Cancelar não envia comandos; confirmar consulta novamente a conexão.
+O caminho de preparação utiliza somente `reconnect`, preserva o telefone e o
+tutorial, e aguarda `qr_ready`. Uma mudança para conexão ativa, pareamento,
+revogação ou estado incerto interrompe a ação, sem escalar para `recover`.
+
+Na versão `672747d`, administrador e empresa de demonstração geraram QR real
+de 370 × 370 e código válido no formato de oito caracteres. Na empresa foram
+conferidos o número canônico da solicitação, ocultar/reexibir sem novo POST e
+expiração sem repetição automática. O dispositivo de teste foi desativado; o
+cadastro anterior manteve revisão e preferências. Nenhum vínculo foi concluído
+no aparelho. A tentativa administrativa terminou com fechamento de transporte
+408/401 e teve o código retirado; o motivo detalhado não foi identificado.
+Geração não constitui confirmação de vínculo nem teste de entrega no celular.
+
+## Uma conexão por empresa
+
+A tela mostra somente o estado e, quando confirmado pelo provedor, o número da
+conexão. QR e Código são métodos da mesma identidade. Lista, contador, nomes,
+seleção e criação de dispositivos foram removidos. O tutorial original de sete
+passos e os componentes compartilhados continuam sendo usados.
+
+`GET qr-channels` é somente leitura e devolve `connection`, `canonical_state`
+e uma lista compatível de no máximo um item. `POST qr-channels/provision` é uma
+ação explícita e idempotente sob trava da empresa, mesmo com chaves diferentes.
+Reutiliza a identidade existente, inclusive desativada. Uma nova identidade
+começa desativada, com assistente desligada e política vazia que nega todos os
+destinatários. O número usado no pareamento não é uma política de autorização.
+
+`tenants.whatsapp_channel_id` possui referência composta que impede associação
+entre empresas. Registros históricos, credenciais, recibos e leases permanecem.
+Cadastros ambíguos não são escolhidos silenciosamente. Três triggers impedem
+que réplicas antigas criem, ativem ou reivindiquem uma conexão secundária,
+preservando renovação e encerramento de leases existentes. O alias preservado
+é controlável apenas pelo administrador nativo proprietário confirmado;
+membros recebem somente metadados desse alias.
+
+Publicação: bridge compatível primeiro; API verifica backup e aplica a cadeia
+revisada até 0044; worker usa a barreira de catálogo `wait_for_single_whatsapp_schema`
+com `app_runtime`, sem credenciais de migração ou leitura de linhas privadas.
+A atualização Cakto 0043 anterior é preservada sem habilitar planos ou envios.
+O rollback de esquema recusa transformar políticas vazias em políticas permissivas.
+
+O gate isolado PostgreSQL testa provisionamento concorrente, isolamento,
+histórico, backfill, proteções para processos antigos e as consultas reais dos
+verificadores de publicação. O gate visual cobre 336 casos distribuídos pelos
+seis tamanhos, dois temas e Chromium/WebKit. Os resultados da execução exata
+devem ser consultados antes de considerar a versão qualificada.

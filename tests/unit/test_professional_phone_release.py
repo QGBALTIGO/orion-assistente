@@ -8,6 +8,9 @@ from scripts import backup_and_migrate_commissions as common
 from scripts import backup_and_migrate_professional_phone as release
 from scripts import backup_and_migrate_registration as registration
 from scripts import backup_and_migrate_quick_onboarding as quick
+from scripts import backup_and_migrate_admin_accounts as accounts
+from scripts import backup_and_migrate_single_whatsapp as single
+from scripts import backup_and_migrate_cakto as cakto
 
 
 def configure(monkeypatch, *, current=None, source=True, target=True, backup_error=False,
@@ -110,11 +113,14 @@ def test_current_predeploy_entrypoint_dispatches_only_reviewed_revisions(monkeyp
     monkeypatch.setattr(registration, 'main', lambda: events.append('registration') or 0)
     monkeypatch.setattr(release, 'main', lambda: events.append('phone') or 0)
     monkeypatch.setattr(quick, 'main', lambda: events.append('quick') or 0)
+    monkeypatch.setattr(accounts, 'main', lambda: events.append('accounts') or 0)
+    monkeypatch.setattr(single, 'main', lambda: events.append('single') or 0)
+    monkeypatch.setattr(cakto, 'main', lambda: events.append('cakto') or 0)
     assert registration.predeploy_main() == 0
     assert events == (
-        ['registration', 'phone', 'quick'] if revision == registration.PREVIOUS else
-        ['phone', 'quick'] if revision == registration.TARGET else
-        ['quick']
+        ['registration', 'phone', 'quick', 'accounts', 'cakto', 'single'] if revision == registration.PREVIOUS else
+        ['phone', 'quick', 'accounts', 'cakto', 'single'] if revision == registration.TARGET else
+        ['quick', 'accounts', 'cakto', 'single']
     )
 
 

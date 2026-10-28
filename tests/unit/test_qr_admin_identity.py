@@ -39,6 +39,7 @@ class Database:
         self.memberships = {(tenant, account): "owner"}
         self.rows = {}
         self.calls = []
+        self.canonical = None
 
     def begin(self):
         return self
@@ -57,15 +58,22 @@ class Database:
         if "SELECT role FROM tenant_memberships" in sql:
             assert "AND active" in sql
             return Result(self.memberships.get((params["tenant"], params["account"])))
+        if "SELECT id,status,whatsapp_channel_id FROM tenants" in sql:
+            return Result({"id": self.tenant, "status": "active", "whatsapp_channel_id": self.canonical}) if params["tenant"] == self.tenant else Result(None)
+        if "UPDATE tenants SET whatsapp_channel_id" in sql:
+            self.canonical = params["id"]
+            return Result(None)
+        if "SELECT * FROM qr_channels WHERE tenant_id=:tenant ORDER BY id" in sql:
+            return Result([row for row in self.rows.values() if row["tenant_id"] == params["tenant"]])
         if "SELECT * FROM qr_channels" in sql:
             return Result(next((row for row in self.rows.values()
                                 if row["tenant_id"] == params["tenant"]
                                 and row["idempotency_key"] == params["key"]), None))
         if "INSERT INTO qr_channels" in sql:
             row = {"id": uuid4(), "tenant_id": params["tenant"], "owner_account_id": params["account"],
-                   "provider": params["provider"], "label": params["label"], "enabled": False,
+                   "provider": params.get("provider", "baileys"), "label": params.get("label", "WhatsApp"), "enabled": False,
                    "assistant_enabled": False, "revision": 1,
-                   "allowed_senders": json.loads(params["senders"]),
+                   "allowed_senders": json.loads(params.get("senders", "[]")),
                    "credential_hash": params["digest"], "credential_encrypted": params["encrypted"],
                    "idempotency_key": params["key"], "request_fingerprint": params["fingerprint"]}
             self.rows[row["id"]] = row
@@ -215,8 +223,8 @@ async def test_native_owner_capabilities_and_allowlist_remain_channel_owner_scop
     assert all(listing["capabilities"][key] for key in ("start", "stop", "qr", "change_state"))
     by_id = {item["id"]: item for item in listing["items"]}
     assert by_id[str(own["id"])]["can_manage"] is True
-    assert by_id[str(own["id"])]["allowed_senders"] == ["5567999999901"]
-    assert by_id[str(other_id)]["can_manage"] is False and "allowed_senders" not in by_id[str(other_id)]
+    assert "allowed_senders" not in by_id[str(own["id"])]
+    assert str(other_id) not in by_id
     assert "credential_hash" not in str(listing) and own["credential"] not in str(listing)
     assert all("FOR UPDATE" not in sql for sql, _ in state.db.calls)
 
@@ -361,12 +369,15 @@ async def test_native_admin_cannot_enable_or_disable_primary_session(native, ena
 
 
 @pytest.mark.asyncio
-async def test_native_owner_can_control_primary_assistant_without_repairing_or_disabling_session(native):
+async def test_native_owner_can_control_primary_assistant_without_repairing_or_disabling_session(native, monkeypatch):
     state = native
     row, _ = await registered(state)
     alias = qr_legacy.channel_id(state.tenant)
     original = {**state.db.rows.pop(row["id"]), "id": alias, "enabled": True}
     state.db.rows[alias] = original
+    state.db.canonical = alias
+    async def verified_binding(_): return True
+    monkeypatch.setattr(channels, "_legacy_binding_valid", verified_binding)
     credential_before = (original["credential_hash"], original["credential_encrypted"])
     result = await channels.change_state(state.tenant, alias,
                                          channels.ChannelState(expected_revision=1, assistant_enabled=True), state.actor)

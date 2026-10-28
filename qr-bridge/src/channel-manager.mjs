@@ -24,7 +24,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     if(result?.channel_id!==c.id||result?.owner!==owner||!channelId(result.tenant_id)||
         result.provider!=='baileys'||typeof result.assistant_enabled!=='boolean'||!Number.isSafeInteger(result.fence)||result.fence<1||
         !Number.isFinite(result.expires_in_ms)||result.expires_in_ms<=500||result.expires_in_ms>30000||
-        !Array.isArray(result.allowed_senders)||!result.allowed_senders.length||result.allowed_senders.length>10||
+        !Array.isArray(result.allowed_senders)||result.allowed_senders.length>10||
+        (!result.allowed_senders.length&&result.assistant_enabled!==false)||
         result.allowed_senders.some(p=>typeof p!=='string'||!/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(p))||
         (c.fence&&(result.fence!==c.fence||result.tenant_id!==c.tenant)))throw Error('invalid_channel_lease');
     c.tenant=result.tenant_id;c.fence=result.fence;c.allowed=new Set(result.allowed_senders);c.assistant=result.assistant_enabled;
@@ -199,7 +200,9 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     const c=contexts.get(id);
     if(!c){await broker.lease(id,key,'inspect',owner);return {channel_id:id,status:'stopped',capabilities:{pair:false}};}
     await validate(c,key);
-    return {channel_id:id,status:c.session?.status?.()||'connecting',fence:c.fence,
+    const phase=c.session?.status?.()||'connecting',phone=phase==='connected'?c.session?.phone?.():null;
+    const verified=typeof phone==='string'&&/^[1-9][0-9]{7,14}$/.test(phone);
+    return {channel_id:id,status:phase,fence:c.fence,phone:verified?phone:null,phone_verified:verified,
       capabilities:{text:true,audio:audioEnabled()===true&&c.assistant===true,reliable_send:true,typing:true,
         pair:!c.legacyTransport&&typeof c.session?.pair==='function'&&c.session?.supportsPairing?.()===true}};
   }

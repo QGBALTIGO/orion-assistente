@@ -51,7 +51,7 @@ test("a apresentação comum separa sete passos de Código e QR sem instrução 
 
 function harness(initialStatus="qr_ready",{deferPair=false}={}){
   const elements=new Map(),calls=[],copied=[];
-  let connectionStatus=initialStatus,currentTime=Date.now(),timerCallback=null,activeElement=null,finishPair=null;
+  let connectionStatus=initialStatus,statusFailure=0,waitingSeconds=0,currentTime=Date.now(),timerCallback=null,activeElement=null,finishPair=null;
   function eventTarget(properties){
     const listeners=new Map();
     return Object.assign({
@@ -104,6 +104,8 @@ function harness(initialStatus="qr_ready",{deferPair=false}={}){
     getAttribute(name){return this.attributes[name]??null}
     removeAttribute(name){delete this.attributes[name]}
     focus(){activeElement=this}
+    showModal(){this.open=true}
+    close(){this.open=false}
     closest(selector){
       if(!selector.startsWith("#"))return null;
       for(let current=this;current;current=current.parent)if(current.id===selector.slice(1))return current;
@@ -160,7 +162,10 @@ function harness(initialStatus="qr_ready",{deferPair=false}={}){
     else if(url.endsWith("/business/profile/history")){payload=[]}
     else if(url==="/api/v1/qr/status"){
       payload={status:connectionStatus,phone:"5511999999999",ingestion:"receiving",
-        messageStats:{available:false},featureSettings:{},featureCapabilities:{}};
+        waitingSeconds,messageStats:{available:false},featureSettings:{},featureCapabilities:{}};
+      if(statusFailure){status=statusFailure;payload={detail:"Consulta sintética indisponível"}}
+    }else if(url==="/api/v1/qr/reconnect"||url==="/api/v1/qr/recover"){
+      connectionStatus="connecting";waitingSeconds=0;payload={status:connectionStatus};
     }else if(url==="/api/v1/qr/image"){
       payload={status:"qr_ready",image:"data:image/png;base64,QUJDRA==",expiresIn:44};
     }else if(url==="/api/v1/qr/pair"){
@@ -194,6 +199,8 @@ function harness(initialStatus="qr_ready",{deferPair=false}={}){
   return {byId,tabs,calls,copied,themeButtons,authThemeButtons,brandImages,root:htmlRoot,storage,
     changeSystem:async matches=>{preferred.matches=matches;systemListener?.({matches})},
     connect:()=>{connectionStatus="connected"},
+    setStatus:(status,seconds=0)=>{connectionStatus=status;waitingSeconds=seconds},
+    failStatus:code=>{statusFailure=code},
     finishPair:()=>finishPair?.(),
     advance:ms=>{currentTime+=ms;timerCallback?.()},
     flush:()=>new Promise(resolve=>setImmediate(resolve))};
@@ -313,6 +320,74 @@ test("conexão ainda em preparo não libera Gerar nem envia tentativa de pareame
   await h.byId("pairForm").fire("submit");
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/pair"),false);
   assert.match(h.byId("codeStatus").textContent,/prepar|pronta/i);
+});
+
+test("WA-LIVE-01: QR expirado ou demorado oferece preparo explícito e mantém o formulário até ficar pronto",async()=>{
+  for(const status of ["qr_expired","qr_delayed"]){
+    const h=harness(status);
+    await h.byId("loginForm").fire("submit");await h.flush();await h.flush();await openCodeForm(h);
+    h.byId("pairPhone").value="11 99999-9999";
+    assert.equal(h.byId("wizardGenerate").disabled,true);assert.equal(h.byId("retryCode").classList.contains("hidden"),false);
+    assert.match(h.byId("codeStatus").textContent,/precisa ser preparada.*Preparar novo código/);
+    let pending=h.byId("retryCode").click();await h.flush();assert.equal(h.byId("actionConfirm").open,true);
+    await h.byId("actionConfirmCancel").click();await pending;
+    assert.equal(h.calls.some(x=>/\/qr\/(reconnect|recover|pair)$/.test(x.url)),false);
+    pending=h.byId("retryCode").click();await h.flush();await h.byId("actionConfirmAccept").click();await pending;
+    assert.equal(h.calls.filter(x=>x.url==="/api/v1/qr/reconnect").length,1);
+    assert.equal(h.calls.some(x=>/\/qr\/(recover|pair|image)$/.test(x.url)),false);
+    assert.equal(h.byId("pairPhone").value,"11 99999-9999");assert.equal(h.tabs[1].getAttribute("aria-pressed"),"true");
+    assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),true);assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
+    assert.equal(h.byId("wizardGenerate").disabled,true);assert.match(h.byId("codeStatus").textContent,/Preparando/);
+    h.setStatus("qr_ready");await h.byId("statusRefresh").click();
+    assert.equal(h.byId("wizardGenerate").disabled,false);assert.equal(h.byId("codeStatus").textContent,"");
+    await h.tabs[0].click();await h.tabs[1].click();assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),true);
+    assert.equal(h.calls.filter(x=>x.url==="/api/v1/qr/reconnect").length,1);assert.equal(h.calls.some(x=>/\/qr\/(recover|pair|image)$/.test(x.url)),false);
+  }
+});
+
+test("WA-LIVE-01: a consulta após confirmar interrompe preparo quando a conexão ficou ativa, em pareamento ou revogada",async()=>{
+  for(const next of ["connected","pairing","logged_out","pair_failed"]){
+    const h=harness("qr_expired");await h.byId("loginForm").fire("submit");await h.flush();await h.flush();await openCodeForm(h);
+    h.byId("pairPhone").value="11 99999-9999";const before=h.calls.filter(x=>x.url==="/api/v1/qr/status").length;
+    const pending=h.byId("retryCode").click();await h.flush();assert.equal(h.byId("actionConfirm").open,true);
+    h.setStatus(next);await h.byId("actionConfirmAccept").click();await pending;
+    assert.equal(h.calls.filter(x=>x.url==="/api/v1/qr/status").length,before+1,"A própria consulta validada deve orientar a tela");
+    assert.equal(h.calls.some(x=>/\/qr\/(recover|reconnect|pair|image)$/.test(x.url)),false,next);
+    assert.equal(h.byId("pairPhone").value,"11 99999-9999");assert.equal(h.byId("wizardGenerate").disabled,true);
+    if(next==="connected")assert.equal(h.byId("connectedCenter").classList.contains("hidden"),false);
+    else if(next==="pairing"){assert.match(h.byId("codeStatus").textContent,/tentativa em andamento/);assert.equal(h.byId("retryCode").disabled,true)}
+    else assert.equal(h.byId("wizardRecoveryArea").classList.contains("hidden"),false);
+  }
+});
+
+test("WA-LIVE-01: estado pronto ou espera recente após confirmar não reinicia uma conexão saudável",async()=>{
+  for(const next of ["qr_ready","starting","connecting","reconnecting"]){
+    const h=harness("qr_delayed");await h.byId("loginForm").fire("submit");await h.flush();await h.flush();await openCodeForm(h);
+    h.byId("pairPhone").value="11 99999-9999";const pending=h.byId("retryCode").click();await h.flush();h.setStatus(next,3);
+    await h.byId("actionConfirmAccept").click();await pending;
+    assert.equal(h.calls.some(x=>/\/qr\/(recover|reconnect|pair|image)$/.test(x.url)),false,next);
+    assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),true);assert.equal(h.byId("pairPhone").value,"11 99999-9999");
+    assert.equal(h.byId("wizardGenerate").disabled,next!=="qr_ready");
+    if(next==="qr_ready")assert.equal(h.byId("codeStatus").textContent,"");else assert.match(h.byId("codeStatus").textContent,/Preparando/);
+  }
+});
+
+test("WA-LIVE-01: consulta indisponível ou estado desconhecido não envia preparo e bloqueia repetição incerta",async()=>{
+  for(const failure of ["network","unknown"]){
+    const h=harness("qr_expired");await h.byId("loginForm").fire("submit");await h.flush();await h.flush();await openCodeForm(h);
+    const pending=h.byId("retryCode").click();await h.flush();if(failure==="network")h.failStatus(503);else h.setStatus("unexpected");
+    await h.byId("actionConfirmAccept").click();await pending;
+    assert.equal(h.calls.some(x=>/\/qr\/(recover|reconnect|pair|image)$/.test(x.url)),false);
+    assert.equal(h.byId("wizardGenerate").disabled,true);assert.equal(h.byId("retryCode").disabled,true);assert.equal(h.byId("wizardCheckStatus").classList.contains("hidden"),false);
+    const calls=h.calls.length;await h.byId("retryCode").click();assert.equal(h.calls.length,calls);assert.equal(h.byId("actionConfirm").open,false);
+  }
+});
+
+test("WA-LIVE-01: sair da conta durante a confirmação impede preparo na sessão seguinte",async()=>{
+  const h=harness("qr_expired");await h.byId("loginForm").fire("submit");await h.flush();await h.flush();await openCodeForm(h);
+  const pending=h.byId("retryCode").click();await h.flush();await h.byId("logout").click();
+  await h.byId("actionConfirmAccept").click();await pending;
+  assert.equal(h.calls.some(x=>/\/qr\/(recover|reconnect|pair|image)$/.test(x.url)),false);
 });
 
 test("resposta atrasada de geração não repõe código após sair da conta",async()=>{

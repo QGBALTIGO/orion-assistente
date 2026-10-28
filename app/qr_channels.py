@@ -90,6 +90,14 @@ class ChannelCommand(StrictModel):
     expected_revision: int = Field(strict=True, ge=1)
 
 
+class ProvisionConnection(StrictModel):
+    idempotency_key: UUID
+
+
+class PrepareConnection(ChannelCommand):
+    mode: Literal["reconnect", "recover"]
+
+
 class ChannelPairCommand(ChannelCommand):
     phone: str = Field(strict=True, min_length=8, max_length=15)
 
@@ -160,21 +168,113 @@ async def _owner(db, tenant_id, actor):
         raise HTTPException(403, "Somente o proprietário autenticado")
 
 
+def _canonical_candidate(rows, pointer):
+    """Never use row ordering, labels or phone numbers to choose an identity."""
+    from app.qr_legacy import is_alias
+    if pointer is not None:
+        return next((row for row in rows if row["id"] == pointer), None), "ready"
+    if not rows:
+        return None, "missing"
+    aliases = [row for row in rows if is_alias(row["tenant_id"], row["id"])]
+    active = [row for row in rows if row["enabled"]]
+    if aliases and all(row["id"] == aliases[0]["id"] for row in active):
+        return aliases[0], "ready"
+    if len(rows) == 1:
+        return rows[0], "ready"
+    if len(active) == 1 and not aliases:
+        return active[0], "ready"
+    return None, "ambiguous"
+
+
+async def _legacy_binding_valid(row):
+    from app import qr_legacy
+    try:
+        token = os.getenv("QR_BRIDGE_TOKEN", "")
+        return (qr_legacy.enabled() and qr_legacy.configured_tenant() == row["tenant_id"]
+            and qr_legacy.is_alias(row["tenant_id"], row["id"])
+            and secrets.compare_digest(credential_hash(token), row["credential_hash"])
+            and secrets.compare_digest(_cipher().decrypt(row["credential_encrypted"].encode()).decode(), token)
+            and await qr_legacy.registry_adopted(row["tenant_id"], row["id"]))
+    except (HTTPException, InvalidToken, UnicodeError, ValueError):
+        return False
+
+
+async def _canonical(db, tenant_id, *, lock=False):
+    tenant = (await db.execute(text("""SELECT id,status,whatsapp_channel_id FROM tenants WHERE id=:tenant"""
+        + (" FOR UPDATE" if lock else "")), {"tenant": tenant_id})).mappings().one_or_none()
+    if not tenant or tenant["status"] != "active":
+        raise HTTPException(404, "Empresa indisponível")
+    rows = (await db.execute(text("SELECT * FROM qr_channels WHERE tenant_id=:tenant ORDER BY id"),
+        {"tenant": tenant_id})).mappings().all()
+    row, state = _canonical_candidate(rows, tenant["whatsapp_channel_id"])
+    if row is None and state == "ready":
+        state = "ambiguous"  # A broken binding must never provision a replacement.
+    from app.qr_legacy import is_alias
+    if row is not None and is_alias(tenant_id, row["id"]) and not await _legacy_binding_valid(row):
+        return None, "ambiguous"
+    if row is not None and lock and tenant["whatsapp_channel_id"] is None:
+        await db.execute(text("UPDATE tenants SET whatsapp_channel_id=:id WHERE id=:tenant"),
+            {"id": row["id"], "tenant": tenant_id})
+    return row, state
+
+
+def _connection_dto(row, can_manage):
+    from app.qr_legacy import is_alias
+    item = {key: row[key] for key in SAFE_FIELDS}
+    legacy = is_alias(row["tenant_id"], row["id"])
+    own = can_manage and bool(row.get("_actor_owns", True))
+    item.update(legacy_transport=legacy, can_manage=own,
+        assistant_activation_allowed=own and bool(row["allowed_senders"]),
+        capabilities={"start": own, "stop": own and not legacy, "qr": own, "pair": own,
+                      "change_state": own and not legacy, "change_assistant": own and bool(row["allowed_senders"])})
+    return item
+
+
+def _connection_envelope(row, state, can_manage, actor):
+    if row is not None:
+        row = dict(row)
+        from app.qr_legacy import is_alias
+        if is_alias(row["tenant_id"], row["id"]) and actor.role != "admin":
+            can_manage = False
+        row["_actor_owns"] = row["owner_account_id"] == actor.account_id
+    connection = _connection_dto(row, can_manage) if row else None
+    if connection:
+        connection["capabilities"]["prepare"] = bool(connection["legacy_transport"] and connection["can_manage"] and actor.role == "admin")
+        connection["capabilities"]["recover"] = connection["capabilities"]["prepare"]
+    caps = connection["capabilities"] if connection else dict.fromkeys(("start", "stop", "qr", "pair", "change_state", "change_assistant"), False)
+    return {"connection": connection, "items": [connection] if connection else [],
+        "canonical_id": str(row["id"]) if row else None, "canonical_state": state,
+        "access": {"can_manage": can_manage},
+        "capabilities": {**caps, "provision": can_manage and state == "missing", "edit_label": False, "edit_allowlist": False}}
+
+
+async def _require_canonical(db, tenant_id, channel_id, *, lock=False):
+    row, state = await _canonical(db, tenant_id, lock=lock)
+    if state != "ready" or row is None or row["id"] != channel_id:
+        raise HTTPException(409, "Conexão única indisponível; atualize o estado ou solicite revisão")
+    return row
+
+
 async def create_channel(db, tenant_id, payload, actor):
     fingerprint = hashlib.sha256(json.dumps(payload.model_dump(mode="json"), sort_keys=True).encode()).hexdigest()
     async with db.begin():
         await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:scope,0))"),
                          {"scope": f"qr-channel-create:{tenant_id}:{payload.idempotency_key}"})
         await _owner(db, tenant_id, actor)
+        canonical, state = await _canonical(db, tenant_id, lock=True)
         # The owner row serializes retries for this tenant/account.
         existing = (await db.execute(text("""SELECT * FROM qr_channels
             WHERE tenant_id=:tenant AND idempotency_key=:key"""),
             {"tenant": tenant_id, "key": payload.idempotency_key})).mappings().one_or_none()
         if existing:
+            if state != "ready" or canonical["id"] != existing["id"]:
+                raise HTTPException(409, "Esta operação pertence ao histórico da conexão")
             if existing["request_fingerprint"] != fingerprint or existing["owner_account_id"] != actor.account_id:
                 raise HTTPException(409, "Chave de operação já usada")
             return {**{k: existing[k] for k in SAFE_FIELDS}, "allowed_senders": existing["allowed_senders"],
                     "can_manage": True, "credential": None, "credential_issued": False}
+        if state != "missing":
+            raise HTTPException(409, "A empresa já possui uma conexão WhatsApp")
         credential = secrets.token_urlsafe(48)
         encrypted = _cipher().encrypt(credential.encode()).decode()
         row = (await db.execute(text("""INSERT INTO qr_channels
@@ -183,6 +283,8 @@ async def create_channel(db, tenant_id, payload, actor):
             RETURNING *"""), {"tenant": tenant_id, "account": actor.account_id, "provider": payload.provider,
             "label": payload.label, "digest": credential_hash(credential), "encrypted": encrypted, "senders": json.dumps(payload.allowed_senders),
             "key": payload.idempotency_key, "fingerprint": fingerprint})).mappings().one()
+        await db.execute(text("UPDATE tenants SET whatsapp_channel_id=:id WHERE id=:tenant"),
+            {"id": row["id"], "tenant": tenant_id})
         return {**{k: row[k] for k in SAFE_FIELDS}, "allowed_senders": row["allowed_senders"],
                 "can_manage": True, "credential": credential, "credential_issued": True}
 
@@ -202,21 +304,33 @@ async def list_channels(tenant_id: UUID, response: Response, actor: Actor = Depe
     async with support_session_factory()() as db:
         if actor.role == "admin":
             can_manage = await _owner_authorized(db, tenant_id, actor, lock=False)
-        rows = (await db.execute(text("""SELECT id,tenant_id,owner_account_id,provider,label,enabled,assistant_enabled,revision,allowed_senders
-            FROM qr_channels WHERE tenant_id=:tenant ORDER BY created_at,id LIMIT 100"""), {"tenant": tenant_id})).mappings().all()
-    items = []
-    for row in rows:
-        own = can_manage and row["owner_account_id"] == actor.account_id
-        item = {k: row[k] for k in SAFE_FIELDS}
-        from app.qr_legacy import is_alias
-        item['legacy_transport'] = is_alias(row['tenant_id'], row['id'])
-        item["can_manage"] = own
-        if own:
-            item["allowed_senders"] = row["allowed_senders"]
-        items.append(item)
-    return jsonable_encoder({"items": items, "access": {"can_manage": can_manage},
-        "capabilities": {"start": can_manage, "stop": can_manage, "qr": can_manage, "pair": can_manage,
-            "change_state": can_manage, "edit_label": False, "edit_allowlist": False}})
+        row, state = await _canonical(db, tenant_id)
+    return jsonable_encoder(_connection_envelope(row, state, can_manage, actor))
+
+
+@router.post(BASE + "/provision")
+async def provision_connection(tenant_id: UUID, payload: ProvisionConnection, response: Response,
+                               actor: Actor = Depends(authenticate)):
+    response.headers["Cache-Control"] = "no-store"
+    async with support_session_factory()() as db:
+        async with db.begin():
+            await _owner(db, tenant_id, actor)
+            row, state = await _canonical(db, tenant_id, lock=True)
+            if state == "ambiguous":
+                raise HTTPException(409, "Conexões existentes precisam de revisão; nenhum vínculo foi alterado")
+            if row is None:
+                credential = secrets.token_urlsafe(48)
+                row = (await db.execute(text("""INSERT INTO qr_channels
+                    (tenant_id,owner_account_id,provider,label,credential_hash,credential_encrypted,allowed_senders,idempotency_key,request_fingerprint)
+                    VALUES (:tenant,:account,'baileys','WhatsApp',:digest,:encrypted,'[]'::jsonb,:key,:fingerprint) RETURNING *"""),
+                    {"tenant": tenant_id, "account": actor.account_id, "digest": credential_hash(credential),
+                     "encrypted": _cipher().encrypt(credential.encode()).decode(), "key": payload.idempotency_key,
+                     "fingerprint": hashlib.sha256(b"orion:single-whatsapp-provision:v1").hexdigest()})).mappings().one()
+                await db.execute(text("UPDATE tenants SET whatsapp_channel_id=:id WHERE id=:tenant"),
+                    {"id": row["id"], "tenant": tenant_id})
+            if row["owner_account_id"] != actor.account_id:
+                raise HTTPException(409, "Conexão existente requer revisão do proprietário")
+    return jsonable_encoder(_connection_envelope(row, "ready", True, actor))
 
 
 @router.patch(BASE + "/{channel_id}")
@@ -227,6 +341,11 @@ async def change_state(tenant_id: UUID, channel_id: UUID, payload: ChannelState,
     async with support_session_factory()() as db:
         async with db.begin():
             await _owner(db, tenant_id, actor)
+            current = await _require_canonical(db, tenant_id, channel_id, lock=True)
+            if is_alias(tenant_id, channel_id) and actor.role != "admin":
+                raise HTTPException(403, "A conexão preservada exige o administrador autenticado")
+            if payload.assistant_enabled is True and not current["allowed_senders"]:
+                raise HTTPException(409, "O atendimento privado ainda precisa de uma política autorizada")
             row = (await db.execute(text("""UPDATE qr_channels SET enabled=COALESCE(:enabled,enabled),
                 assistant_enabled=COALESCE(:assistant,assistant_enabled),revision=revision+1,
                 fence=fence+1,lease_owner=NULL,lease_expires_at=NULL,updated_at=clock_timestamp()
@@ -237,7 +356,7 @@ async def change_state(tenant_id: UUID, channel_id: UUID, payload: ChannelState,
                  "assistant": payload.assistant_enabled})).mappings().one_or_none()
             if not row:
                 raise HTTPException(409, "Canal alterado ou indisponível")
-    return jsonable_encoder({**dict(row), "can_manage": True})
+    return jsonable_encoder(_connection_dto(dict(row), True))
 
 
 async def _channel(db, channel_id, credential, *, receipt_only=False):
@@ -281,6 +400,8 @@ async def lease_operation(db, channel_id, credential, payload, operation):
                     "provider": row["provider"], "read_only": True}
         live = row["lease_expires_at"] and row["lease_expires_at"] > row["server_now"]
         if operation == "claim":
+            # Keep existing ambiguous leases alive; never create a second socket.
+            await _require_canonical(db, row["tenant_id"], channel_id, lock=True)
             if live:
                 if row["lease_owner"] != payload.owner:
                     raise HTTPException(409, "Canal em uso")
@@ -386,6 +507,10 @@ async def _owned_channel(tenant_id, channel_id, actor, expected_revision=None):
     async with support_session_factory()() as db:
         async with db.begin():
             await _owner(db, tenant_id, actor)
+            from app.qr_legacy import is_alias
+            if is_alias(tenant_id, channel_id) and actor.role != "admin":
+                raise HTTPException(403, "A conexão preservada exige o administrador autenticado")
+            await _require_canonical(db, tenant_id, channel_id)
             row = (await db.execute(text("""SELECT c.* FROM qr_channels c JOIN tenants t ON t.id=c.tenant_id
                 WHERE c.tenant_id=:tenant AND c.id=:id AND c.owner_account_id=:account AND t.status='active'
                 FOR UPDATE OF c"""), {"tenant": tenant_id, "id": channel_id, "account": actor.account_id})).mappings().one_or_none()
@@ -399,6 +524,13 @@ async def _owned_channel(tenant_id, channel_id, actor, expected_revision=None):
 async def _bridge_control(row, action, method, payload=None):
     """Private fixed destination; no browser credential, URL or redirect input."""
     raw_url = os.getenv("QR_BRIDGE_URL", "").rstrip("/")
+    from app.qr_legacy import is_alias
+    legacy = is_alias(row["tenant_id"], row["id"])
+    if legacy:
+        if not await _legacy_binding_valid(row):
+            raise HTTPException(409, "Vínculo da conexão preservada indisponível")
+        if action not in {"status", "start", "qr", "pair", "reconnect", "recover"}:
+            raise HTTPException(409, "Operação indisponível para a conexão preservada")
     try:
         parsed = urlsplit(raw_url)
         valid = (parsed.scheme == "http" and re.fullmatch(r"[a-z0-9-]+\.railway\.internal", parsed.hostname or "")
@@ -416,15 +548,32 @@ async def _bridge_control(row, action, method, payload=None):
         raise HTTPException(503, "Credencial indisponível") from None
     try:
         async with httpx.AsyncClient(timeout=18, trust_env=False, follow_redirects=False) as client:
-            result = await client.request(method, f"{raw_url}/internal/channels/{row['id']}/{action}",
-                headers={"X-Orion-Channel-Key": key}, json=(payload if payload is not None else {}) if method == "POST" else None)
-        if result.status_code != 200:
+            path = ("/internal/" + ("status" if action == "start" else action)) if legacy else f"/internal/channels/{row['id']}/{action}"
+            result = await client.request("GET" if legacy and action == "start" else method, raw_url + path,
+                headers={"X-Orion-Bridge-Key" if legacy else "X-Orion-Channel-Key": key,
+                    **({"X-Orion-Canonical-Prepare": "1"} if legacy and action in {"reconnect", "recover"} else {})},
+                json=(payload if payload is not None else {}) if method == "POST" and not (legacy and action == "start") else None)
+        if result.status_code not in {200, 202}:
             raise HTTPException(409, "Operação do canal indisponível; atualize o estado")
         if len(result.content) > 256000:
             raise ValueError()
         data = result.json()
         if not isinstance(data, dict):
             raise ValueError()
+        if legacy and action in {"qr", "pair"}:
+            expiry = data.get("expiresIn", 0)
+            if type(expiry) is not int:
+                raise ValueError()
+            data["expires_in_ms"] = expiry * 1000
+        if legacy and data.get("status") == "connected":
+            import hmac
+            phone = data.get("phone")
+            if not isinstance(phone, str) or not re.fullmatch(r"[1-9][0-9]{7,14}", phone):
+                data["phone"] = None
+            else:
+                proof = hmac.new(key.encode(), ("orion:preserved-primary-session:v1\0" + phone).encode(), hashlib.sha256).hexdigest()
+                if not secrets.compare_digest(proof, row["request_fingerprint"]):
+                    raise HTTPException(409, "A identidade da sessão preservada precisa de revisão")
         return data
     except (httpx.RequestError, ValueError):
         raise HTTPException(503, "Serviço WhatsApp temporariamente inacessível") from None
@@ -449,20 +598,20 @@ def _control_result(row, data, action):
             raise HTTPException(503, "Código de conexão temporariamente indisponível")
         return {**result, "status": "pairing", "code": code, "expires_in_ms": expires}
     status = data.get("status")
-    if status not in {"stopped", "connecting", "qr_ready", "connected", "disabled", "pairing", "pair_expired", "pair_failed"}:
+    if status not in {"stopped", "starting", "error", "connecting", "reconnecting", "qr_ready", "qr_delayed", "qr_expired", "connected", "disabled", "pairing", "pair_expired", "pair_failed", "logged_out"}:
         raise HTTPException(503, "Estado do canal indisponível")
-    from app.qr_legacy import is_alias
     capabilities = data.get("capabilities")
-    available = (isinstance(capabilities, dict) and capabilities.get("pair") is True and row["enabled"] is True
-                 and not is_alias(row["tenant_id"], row["id"]))
-    return {**result, "status": status, "capabilities": {"pair": available}}
+    available = isinstance(capabilities, dict) and capabilities.get("pair") is True and row["enabled"] is True
+    phone = data.get("phone")
+    verified = status == "connected" and isinstance(phone, str) and bool(re.fullmatch(r"[1-9][0-9]{7,14}", phone)) and data.get("phone_verified") is True
+    return {**result, "status": status, "capabilities": {"pair": available}, "phone": phone if verified else None, "phone_verified": verified}
 
 
 async def _control(tenant_id, channel_id, actor, action, expected_revision=None):
     row = await _owned_channel(tenant_id, channel_id, actor, expected_revision)
     from app.qr_legacy import is_alias
-    if is_alias(tenant_id, channel_id) and action != 'status':
-        raise HTTPException(409, 'A sessão principal existente não precisa de novo vínculo')
+    if is_alias(tenant_id, channel_id) and action == 'stop':
+        raise HTTPException(409, 'A conexão preservada não pode ser encerrada por este controle')
     if not row["enabled"]:
         if action == "start":
             raise HTTPException(409, "Habilite a conexão deste canal antes de iniciar")
@@ -489,9 +638,6 @@ async def pair_control(tenant_id: UUID, channel_id: UUID, payload: ChannelPairCo
                        response: Response, actor: Actor = Depends(authenticate)):
     response.headers["Cache-Control"] = "no-store"
     row = await _owned_channel(tenant_id, channel_id, actor, payload.expected_revision)
-    from app.qr_legacy import is_alias
-    if is_alias(tenant_id, channel_id):
-        raise HTTPException(409, "A sessão principal existente não precisa de novo vínculo")
     if not row["enabled"]:
         raise HTTPException(409, "Habilite e inicie a conexão deste canal antes de gerar o código")
     # Runtime discovery is read-only and fail-closed with an older bridge.
@@ -511,6 +657,25 @@ async def pair_control(tenant_id: UUID, channel_id: UUID, payload: ChannelPairCo
     if result["expires_in_ms"] <= 0:
         raise HTTPException(409, "O código expirou; atualize o estado do canal")
     return result
+
+
+@router.post(BASE + "/{channel_id}/prepare")
+async def prepare_control(tenant_id: UUID, channel_id: UUID, payload: PrepareConnection,
+                          response: Response, actor: Actor = Depends(authenticate)):
+    response.headers["Cache-Control"] = "no-store"
+    from app.qr_legacy import is_alias
+    row = await _owned_channel(tenant_id, channel_id, actor, payload.expected_revision)
+    # _owned_channel freshly verifies the native admin identity and ownership.
+    if actor.role != "admin" or not is_alias(tenant_id, channel_id) or not await _legacy_binding_valid(row):
+        raise HTTPException(403, "Preparação da conexão não autorizada")
+    state = await _bridge_control(row, "status", "GET")
+    allowed = {"logged_out", "pair_failed"} if payload.mode == "recover" else {"qr_ready", "qr_expired", "qr_delayed", "pair_expired", "stopped"}
+    if state.get("status") not in allowed:
+        raise HTTPException(409, "O estado atual não permite preparar uma nova tentativa")
+    await _owned_channel(tenant_id, channel_id, actor, row["revision"])
+    data = await _bridge_control(row, payload.mode, "POST")
+    await _owned_channel(tenant_id, channel_id, actor, row["revision"])
+    return _control_result(row, data, "status")
 
 
 @router.post(BASE + "/{channel_id}/{action}")

@@ -1,12 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {makeOnboarding, fullState, flush, deferred} from './onboarding-harness.mjs';
-import {makeChannels, item} from './channels-harness.mjs';
+import {makeChannels, item, listing, runtime} from './channels-harness.mjs';
 
 const writes=h=>h.calls.filter(call=>call.method!=='GET');
 const saved=(server,payload)=>({...server.data,version:server.data.version+1,last_operation_key:payload.idempotency_key});
 const saoPaulo={cep:'01001-000',logradouro:'Praça da Sé',bairro:'Sé',localidade:'São Paulo',uf:'SP',complemento:'lado ímpar'};
 const campoGrande={cep:'79002-000',logradouro:'Rua sintética do centro',bairro:'Centro',localidade:'Campo Grande',uf:'MS'};
+
+async function makeCodeConnection(respond){
+  const row=item({enabled:true});
+  const h=await makeChannels({data:listing([row]),respond:async(path,method,payload,server)=>{
+    const response=await respond?.(path,method,payload,server);if(response!==undefined)return response;
+    if(path.endsWith('/status'))return {...runtime(row,'qr_ready'),capabilities:{pair:true}};
+    if(path.endsWith('/pair')&&method==='POST')return {...runtime(row,'pairing'),code:'TEST-0001',expires_in_ms:79000};
+  }});
+  h.click('[data-qc-action=tutorial-next]');
+  return h;
+}
 
 test('onboarding phone formats DDD 55, keeps leading country code unambiguous and sends canonical identity',async t=>{
   for(const raw of ['55991234567','+55 (55) 99123-4567','5555991234567']){
@@ -117,43 +128,48 @@ test('a CEP timeout offers manual entry and ignores a response that arrives afte
   late.resolve(saoPaulo);await flush();assert.equal(h.element('[name=street]').value,'Rua sintética');assert.equal(h.element('[data-ob-action=cep-retry]').hidden,false);assert.equal(writes(h).length,0);
 });
 
-test('channel sender list formats each number, preserves separators and sends canonical Brazilian recipients',async t=>{
-  const h=await makeChannels({respond:(path,method,payload)=>method==='POST'?item({label:payload.label,allowed_senders:payload.allowed_senders}):undefined});t.after(()=>h.close());
-  h.click('[data-qc-action=new]');h.fill('[name=label]','Dispositivo sintético');const input=h.fill('[name=allowed_senders]','+55 (55) 99123-4567, 11987654321;\n+55 (21) 3456-7890');
-  assert.equal(input.value,'(55) 99123-4567, (11) 98765-4321;\n(21) 3456-7890');assert.equal(input.inputMode,'tel');assert.equal(input.maxLength,-1);
-  h.submit();await flush();assert.equal(writes(h).length,1);assert.deepEqual(writes(h)[0].data.allowed_senders,['5555991234567','5511987654321','552134567890']);assert.match(h.element('.qc-authorized').textContent,/\(55\) 99123-4567/);assert.equal(writes(h).some(call=>/send|start|assistant/.test(call.path)),false);
-});
-
-test('sender list leaves an invalid item visible, reports its position and rejects canonical duplicates',async t=>{
-  const h=await makeChannels();t.after(()=>h.close());h.click('[data-qc-action=new]');h.fill('[name=label]','Dispositivo');
-  for(const raw of ['(67) 99999-9901; user@lid','(67) 99999-9901; +12025550123','(67) 99999-9901; (55) 99123-45678']){
-    const input=h.fill('[name=allowed_senders]',raw);h.submit();await flush();assert.equal(writes(h).length,0);assert.equal(input.value,raw);assert.equal(input.getAttribute('aria-invalid'),'true');assert.match(h.element('#qc-senders-error').textContent,/número 2/);assert.match(input.getAttribute('aria-describedby'),/qc-senders-help qc-senders-error/);
+test('single connection phone formats DDD 55 and submits only the canonical pairing identity',async t=>{
+  for(const raw of ['55991234567','+55 (55) 99123-4567','5555991234567']){
+    const h=await makeCodeConnection();t.after(()=>h.close());
+    const input=h.fill('[data-qc-pair-phone]',raw);
+    assert.equal(input.value,'(55) 99123-4567');assert.equal(input.type,'tel');assert.equal(input.inputMode,'tel');assert.equal(input.maxLength,-1);
+    assert.equal(h.document.querySelector('[name=label],[name=allowed_senders],[data-qc-action=new]'),null);assert.deepEqual(writes(h),[]);
+    h.submit();await flush();assert.equal(writes(h).length,1);assert.match(writes(h)[0].path,/\/pair$/);assert.deepEqual(writes(h)[0].data,{expected_revision:1,phone:'5555991234567'});
+    assert.equal(writes(h).some(call=>/send|start|assistant|provision/.test(call.path)),false);assert.deepEqual(h.errors,[]);
   }
-  h.fill('[name=allowed_senders]','(55) 99123-4567\n+55 (55) 99123-4567');h.submit();await flush();assert.match(h.element('#qc-senders-error').textContent,/repetidos/);assert.equal(writes(h).length,0);
-  h.fill('[name=allowed_senders]','(55) 99123-4567');assert.equal(h.document.getElementById('qc-senders-error'),null);assert.equal(h.element('[name=allowed_senders]').getAttribute('aria-invalid'),null);
 });
 
-test('sender list middle editing and punctuation deletion preserve the other recipients and local caret',async t=>{
-  const h=await makeChannels();t.after(()=>h.close());h.click('[data-qc-action=new]');const input=h.fill('[name=allowed_senders]','(67) 99999-9901; (55) 99123-4567');
-  const start=input.value.indexOf('(55)')+1;input.setSelectionRange(start,start+2);input.setRangeText('54',start,start+2,'end');input.dispatchEvent(new h.window.Event('input',{bubbles:true}));
-  assert.equal(input.value,'(67) 99999-9901; (54) 99123-4567');assert.equal(input.selectionStart,start+2);
-  const hyphen=input.value.lastIndexOf('-');input.setSelectionRange(hyphen+1,hyphen+1);const event=new h.window.InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'deleteContentBackward'});input.dispatchEvent(event);
-  assert.equal(event.defaultPrevented,true);assert.ok(input.value.startsWith('(67) 99999-9901; '));assert.equal(input.value.split('; ')[1],'(54) 9912-4567');assert.ok(input.selectionStart>=start&&input.selectionStart<input.value.length);
-  input.setSelectionRange(0,input.value.length);input.setRangeText('',0,input.value.length,'start');input.dispatchEvent(new h.window.Event('input',{bubbles:true}));assert.equal(input.value,'');
+test('single connection phone keeps invalid input visible with an associated error and rejects recipient lists',async t=>{
+  const h=await makeCodeConnection();t.after(()=>h.close());
+  for(const raw of ['user@lid','(55) 99123-45678','(67) 99999-9901; (55) 99123-4567']){
+    const input=h.fill('[data-qc-pair-phone]',raw);h.submit();await flush();assert.equal(writes(h).length,0);assert.equal(input.value,raw);assert.equal(input.getAttribute('aria-invalid'),'true');
+    const described=input.getAttribute('aria-describedby').split(' ');assert.ok(described.includes('qc-pair-help'));const error=h.document.getElementById(described.at(-1));assert.ok(error);assert.ok(error.textContent.length>0);
+  }
+  const corrected=h.fill('[data-qc-pair-phone]','(55) 99123-4567');assert.equal(corrected.getAttribute('aria-invalid'),null);assert.equal(corrected.getAttribute('aria-describedby'),'qc-pair-help');assert.deepEqual(writes(h),[]);
 });
 
-test('channel validation rejection keeps the formatted draft across rerenders without duplicate handlers',async t=>{
-  const h=await makeChannels({respond:(path,method)=>{if(method==='POST')throw Object.assign(Error('Rejeição sintética'),{status:422});}});t.after(()=>h.close());
-  h.click('[data-qc-action=new]');h.fill('[name=label]','Rascunho do canal');h.fill('[name=allowed_senders]','5555991234567; 2134567890');h.submit();await flush();
-  assert.equal(h.element('[name=label]').value,'Rascunho do canal');assert.equal(h.element('[name=allowed_senders]').value,'(55) 99123-4567; (21) 3456-7890');assert.deepEqual(writes(h)[0].data.allowed_senders,['5555991234567','552134567890']);
-  h.click('[data-qc-action=cancel-create]');h.click('[data-qc-action=new]');h.submit();await flush();assert.equal(writes(h).length,2);assert.deepEqual(writes(h)[1].data.allowed_senders,writes(h)[0].data.allowed_senders);assert.deepEqual(h.errors,[]);
+test('single connection phone middle editing and punctuation deletion preserve the local caret',async t=>{
+  const h=await makeCodeConnection();t.after(()=>h.close());const input=h.fill('[data-qc-pair-phone]','(55) 99123-4567');
+  input.setSelectionRange(1,3);input.setRangeText('54',1,3,'end');input.dispatchEvent(new h.window.Event('input',{bubbles:true}));
+  assert.equal(input.value,'(54) 99123-4567');assert.equal(input.selectionStart,3);
+  const hyphen=input.value.indexOf('-');input.setSelectionRange(hyphen+1,hyphen+1);const event=new h.window.InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'deleteContentBackward'});input.dispatchEvent(event);
+  assert.equal(event.defaultPrevented,true);assert.equal(input.value,'(54) 9912-4567');assert.ok(input.selectionStart>3&&input.selectionStart<input.value.length);
+  input.setSelectionRange(0,input.value.length);input.setRangeText('',0,input.value.length,'start');input.dispatchEvent(new h.window.Event('input',{bubbles:true}));assert.equal(input.value,'');assert.deepEqual(writes(h),[]);
 });
 
-test('channel list composition is preserved until completion and a remount has one submit handler',async t=>{
-  const h=await makeChannels({respond:(path,method,payload)=>method==='POST'?item({allowed_senders:payload.allowed_senders}):undefined});t.after(()=>h.close());
-  h.controller.unmount();h.window.OrionChannels.mount(h.bridge);await flush();h.click('[data-qc-action=new]');h.fill('[name=label]','Dispositivo');
-  const input=h.element('[name=allowed_senders]');input.value='55991234567';input.dispatchEvent(new h.window.InputEvent('input',{bubbles:true,isComposing:true}));assert.equal(input.value,'55991234567');input.dispatchEvent(new h.window.CompositionEvent('compositionend',{bubbles:true}));assert.equal(input.value,'(55) 99123-4567');
-  h.submit();await flush();assert.equal(writes(h).length,1);assert.deepEqual(writes(h)[0].data.allowed_senders,['5555991234567']);
+test('pairing validation rejection keeps the formatted phone across rerenders without duplicate handlers',async t=>{
+  const h=await makeCodeConnection((path,method)=>{if(path.endsWith('/pair')&&method==='POST')throw Object.assign(Error('Rejeição sintética'),{status:422});});t.after(()=>h.close());
+  h.fill('[data-qc-pair-phone]','5555991234567');h.submit();await flush();
+  assert.equal(h.element('[data-qc-pair-phone]').value,'(55) 99123-4567');assert.deepEqual(writes(h)[0].data,{expected_revision:1,phone:'5555991234567'});assert.equal(h.controller.getState().uncertain,false);
+  h.click('[data-qc-action=tutorial-back]');h.click('[data-qc-action=tutorial-next]');assert.equal(h.element('[data-qc-pair-phone]').value,'(55) 99123-4567');h.submit();await flush();
+  assert.equal(writes(h).length,2);assert.deepEqual(writes(h)[1].data,writes(h)[0].data);assert.deepEqual(h.errors,[]);
+});
+
+test('pairing phone composition finishes before formatting and remount retains one submit handler',async t=>{
+  const h=await makeCodeConnection();t.after(()=>h.close());
+  h.controller.unmount();h.window.OrionChannels.mount(h.bridge);await flush();h.click('[data-qc-action=tutorial-next]');
+  const input=h.element('[data-qc-pair-phone]');input.value='55991234567';input.dispatchEvent(new h.window.InputEvent('input',{bubbles:true,isComposing:true}));assert.equal(input.value,'55991234567');input.dispatchEvent(new h.window.CompositionEvent('compositionend',{bubbles:true}));assert.equal(input.value,'(55) 99123-4567');
+  h.submit();await flush();assert.equal(writes(h).length,1);assert.deepEqual(writes(h)[0].data,{expected_revision:1,phone:'5555991234567'});assert.deepEqual(h.errors,[]);
 });
 
 
