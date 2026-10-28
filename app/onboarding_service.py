@@ -909,7 +909,16 @@ async def complete(actor, tenant, payload):
                 meta["current_step"] = "review"
                 await _persist(db, tenant, actor, meta, payload.idempotency_key, fingerprint, "complete", {})
                 if meta["is_new"]:
-                    await db.execute(text("SELECT public.onboarding_activate_tenant(:t)"), {"t": tenant})
+                    if quick_setup:
+                        # Completing the private questionnaire may grant access
+                        # to the dashboard before an operational catalog exists.
+                        # Booking, orders and publication still require the
+                        # strict readiness checks in their own API paths.
+                        await db.execute(text("SELECT public.onboarding_activate_quick_tenant(:t)"),
+                                         {"t": tenant})
+                    else:
+                        await db.execute(text("SELECT public.onboarding_activate_tenant(:t)"),
+                                         {"t": tenant})
                 return await _state(db, tenant, access)
 
 
