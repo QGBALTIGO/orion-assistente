@@ -51,12 +51,12 @@ def test_trial_rejects_extra_fields_and_blank_or_unsafe_names():
 
 
 def test_offer_requires_matching_name_cents_monthly_type_and_unique_match():
-    offer={"id":"offer-fake", "name":"Orion Profissional", "price":89.9,
-           "status":"active","type":"subscription","intervalType":"month","interval":1}
+    offer={"id":"offer-fake", "name":"Orion Pro", "price":89.9,
+           "status":"active","type":"subscription","recurrence_period":30}
     assert plans._exact_offer([offer],plans.CODES["profissional"])==offer
-    for change in ({"price":89.9},{"status":"inactive"},
-                   {"intervalType":"year"},{"type":"unique"},
-                   {"name":"Orion Elite"},{"interval":12}):
+    for change in ({"price":79.9},{"status":"inactive"},
+                   {"recurrence_period":365},{"type":"unique"},
+                   {"name":"Orion Elite"},{"recurrence_period":0}):
         assert plans._exact_offer([{**offer,**change}],plans.CODES["profissional"]) is None
     assert plans._exact_offer([offer,dict(offer,id="second")],plans.CODES["profissional"]) is None
 
