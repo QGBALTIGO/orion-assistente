@@ -10,6 +10,8 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[2]
 CSS = (ROOT / "app/static/orion-suite.css").read_text(encoding="utf-8")
 JS = (ROOT / "app/static/orion-suite.js").read_text(encoding="utf-8")
+FIELDS_CSS = (Path(__file__).resolve().parents[2] / "app/static/orion-fields.css").read_text(encoding="utf-8")
+FIELDS_JS = (Path(__file__).resolve().parents[2] / "app/static/orion-fields.js").read_text(encoding="utf-8")
 HTML = """<!doctype html><html lang="pt-BR" data-theme="dark">
 <head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>*{box-sizing:border-box}html,body{margin:0;padding:0}.hidden{display:none!important}</style></head>
 <body><div id="appView" class="app"><aside class="sidebar"><div class="brand">Orion</div></aside>
@@ -109,6 +111,9 @@ def test_finance_loses_no_horizontal_content_or_actions(browser_name,width,heigh
                 body=HTML.replace('data-theme="dark"',f'data-theme="{theme}"')))
             page.goto("https://orion.test/panel")
             page.add_style_tag(content=CSS)
+            page.add_style_tag(content=FIELDS_CSS)
+            page.add_script_tag(content=FIELDS_JS)
+            page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=JS)
             assert page.evaluate("window.isSecureContext && typeof crypto.randomUUID === 'function'")
             page.evaluate(MOCK)

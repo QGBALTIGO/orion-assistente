@@ -1,6 +1,8 @@
 /* Public, illustrative interactions. Only the explicitly submitted contact form calls an API. */
 (() => {
   'use strict';
+  const fields = window.OrionFields;
+  fields.bind(document);
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const reducedMotion = typeof window.matchMedia === 'function'
@@ -83,14 +85,14 @@
 
     form.addEventListener('submit', async event => {
       event.preventDefault();
-      if (busy || !form.reportValidity()) return;
+      if (busy || !fields.validateForm(form) || !form.reportValidity()) return;
       error.hidden = true;
       error.textContent = '';
       const data = new FormData(form);
       const payload = JSON.stringify({
         name: String(data.get('name') || '').trim(),
         email: String(data.get('email') || '').trim(),
-        phone: String(data.get('phone') || '').trim(),
+        phone: fields.phoneValue(data.get('phone')),
         business_name: '',
         segment: String(data.get('segment') || ''),
         intent: String(data.get('intent') || 'trial'),

@@ -698,6 +698,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 </style>
 <link rel="stylesheet" href="/panel-assets/orion-suite.css">
 <link rel="stylesheet" href="/panel-assets/orion-auth.css">
+<link rel="stylesheet" href="/panel-assets/orion-fields.css">
 <link rel="stylesheet" href="/panel-assets/orion-onboarding.css">
 <link rel="stylesheet" href="/panel-assets/orion-channels.css">
 <link rel="stylesheet" href="/panel-assets/orion-inbox.css">
@@ -768,7 +769,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
         <div id="authVerifyAvailability" class="auth-availability hidden" role="status" aria-live="polite"></div>
         <form id="loginForm" class="auth-form" autocomplete="on" role="tabpanel" aria-labelledby="authTabLogin" aria-busy="false">
           <label for="username">E-mail ou usuário</label>
-          <input id="username" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="seu@email.com" required maxlength="254">
+          <input id="username" data-orion-field="native" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Usuário ou nome@email.com" required maxlength="254">
           <label for="password">Senha</label>
           <div class="auth-secret-field">
             <input id="password" type="password" autocomplete="current-password" aria-describedby="loginError" required placeholder="Digite sua senha">
@@ -785,9 +786,9 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
         </form>
         <form id="registerForm" class="auth-form hidden" autocomplete="on" role="tabpanel" aria-labelledby="authTabRegister" aria-busy="false">
           <label for="registerName">Nome completo</label>
-          <input id="registerName" autocomplete="name" maxlength="120" required placeholder="Seu nome completo">
+          <input id="registerName" data-orion-field="native" autocomplete="name" maxlength="120" required placeholder="Seu nome completo">
           <label for="registerEmail">E-mail</label>
-          <input id="registerEmail" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" required placeholder="seu@email.com">
+          <input id="registerEmail" type="email" data-orion-field="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" required placeholder="nome@email.com">
           <label for="registerPassword">Senha <small>mínimo de 8 caracteres</small></label>
           <div class="auth-secret-field">
             <input id="registerPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required placeholder="Crie uma senha forte">
@@ -796,7 +797,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
             </button>
           </div>
           <label for="registerConfirm">Confirmar senha</label>
-          <input id="registerConfirm" type="password" autocomplete="new-password" aria-describedby="registerError" minlength="8" required placeholder="Digite a senha novamente">
+          <input id="registerConfirm" type="password" maxlength="128" autocomplete="new-password" aria-describedby="registerError" minlength="8" required placeholder="Digite a senha novamente">
           <button id="authSubmitRegister" class="auth-primary os-button os-full" type="submit" aria-busy="false" disabled><span class="os-spinner hidden" aria-hidden="true"></span><span data-auth-label>Criar minha conta</span><svg class="os-icon auth-submit-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
           <p id="registerError" class="auth-error" role="alert" aria-live="polite"></p>
           
@@ -806,7 +807,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
           <input id="verifyEmail" type="hidden">
           <p class="auth-help auth-email-destination">Digite o código enviado para <strong id="verifyDestination"></strong>.</p>
           <label for="verifyCode">Código de confirmação</label>
-          <input id="verifyCode" class="auth-otp-input" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" aria-describedby="verifyHint verifyError" placeholder="000000" required>
+          <input id="verifyCode" data-orion-field="otp" class="auth-otp-input" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" aria-describedby="verifyHint verifyError" placeholder="000000" required>
           <p id="verifyHint" class="auth-help">Digite os seis dígitos recebidos por e-mail. O código vale por 10 minutos. Confira também o spam.</p>
           <button id="authSubmitVerify" class="auth-primary os-button os-full" type="submit" aria-busy="false"><span class="os-spinner hidden" aria-hidden="true"></span><span data-auth-label>Confirmar e concluir cadastro</span></button>
           <button id="authResendCode" class="auth-text-link auth-back" type="button">Reenviar código</button>
@@ -816,21 +817,21 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
         </form>
         <form id="forgotForm" class="auth-form hidden" aria-labelledby="authTitle" aria-busy="false">
           <label for="forgotEmail">E-mail cadastrado</label>
-          <input id="forgotEmail" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" aria-describedby="forgotError" required placeholder="seu@email.com">
+          <input id="forgotEmail" type="email" data-orion-field="email" inputmode="email" maxlength="254" autocomplete="email" autocapitalize="none" spellcheck="false" aria-describedby="forgotError" required placeholder="nome@email.com">
           <button id="authSubmitForgot" class="auth-primary os-button os-full" type="submit" aria-busy="false" disabled><span class="os-spinner hidden" aria-hidden="true"></span><span data-auth-label>Enviar código de recuperação</span></button>
           <button class="auth-text-link auth-back" type="button" data-back-login>Voltar para entrar</button>
           <p id="forgotError" class="auth-error" role="alert" aria-live="polite"></p>
         </form>
         <form id="resetForm" class="auth-form hidden" aria-labelledby="authTitle" aria-busy="false">
           <label for="resetEmail">E-mail cadastrado</label>
-          <input id="resetEmail" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" required maxlength="254" placeholder="seu@email.com">
+          <input id="resetEmail" type="email" data-orion-field="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" required maxlength="254" placeholder="nome@email.com">
           <label for="resetCode">Código de recuperação</label>
-          <input id="resetCode" class="auth-otp-input" type="text" inputmode="numeric" autocomplete="one-time-code"
+          <input id="resetCode" data-orion-field="otp" class="auth-otp-input" type="text" inputmode="numeric" autocomplete="one-time-code"
             pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="000000" required>
           <label for="resetPassword">Nova senha</label>
           <input id="resetPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required placeholder="Mínimo de 8 caracteres">
           <label for="resetConfirm">Confirmar nova senha</label>
-          <input id="resetConfirm" type="password" autocomplete="new-password" aria-describedby="resetError" minlength="8" required placeholder="Repita a nova senha">
+          <input id="resetConfirm" type="password" maxlength="128" autocomplete="new-password" aria-describedby="resetError" minlength="8" required placeholder="Repita a nova senha">
           <button id="authSubmitReset" class="auth-primary os-button os-full" type="submit" aria-busy="false"><span class="os-spinner hidden" aria-hidden="true"></span><span data-auth-label>Atualizar senha</span></button>
           <button class="auth-text-link auth-back" type="button" data-back-login>Voltar para entrar</button>
           <p id="resetError" class="auth-error" role="alert" aria-live="polite"></p>
@@ -1067,8 +1068,8 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
               <p class="wizard-explain">O mesmo número que está no aparelho a conectar, com DDI e DDD.</p>
               <form id="pairForm">
                 <label for="pairPhone">Número do WhatsApp</label>
-                <div class="wizard-phone-input"><span aria-hidden="true">+55</span><input id="pairPhone" type="tel" inputmode="tel" autocomplete="tel" required placeholder="11 99999-9999" maxlength="26"></div>
-                <small>Informe seu número completo, incluindo o código do país (+55).</small>
+                <div class="wizard-phone-input"><input id="pairPhone" type="tel" data-orion-field="phone" data-orion-international="true" data-field-error-target="pairPhoneError" inputmode="tel" autocomplete="tel" required placeholder="(00) 00000-0000"></div><div id="pairPhoneError"></div>
+                <small>Use o DDD. Para outro país, inclua + e o código do país.</small>
                 <button id="wizardGenerate" class="btn wizard-primary full" type="submit">Gerar código de emparelhamento</button>
               </form>
             </div>
@@ -1131,7 +1132,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
           <div id="chatBubbles" class="bubbles" aria-live="polite"><p>Escolha uma conversa ou inicie uma nova mensagem.</p></div>
           <form id="sendForm">
             <label for="chatPhone">Número do destinatário (DDI + DDD)</label>
-            <input type="tel" id="chatPhone" inputmode="tel" autocomplete="tel" maxlength="26" placeholder="55 67 99999-9999" required>
+            <input type="tel" id="chatPhone" data-orion-field="phone" data-orion-international="true" inputmode="tel" autocomplete="tel" placeholder="(00) 00000-0000" required>
             <label for="chatText">Mensagem</label>
             <textarea id="chatText" rows="3" maxlength="1200" required placeholder="Escreva sua mensagem..."></textarea>
             <div class="chat-send-actions"><button class="btn" type="submit" id="sendButton">Enviar mensagem</button><small>Até 5 envios por minuto. Cada envio pede sua confirmação.</small></div>
@@ -1346,6 +1347,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
   <h2 id="actionConfirmTitle">Confirmar ação</h2><p id="actionConfirmText"></p>
   <div class="confirm-actions"><button id="actionConfirmCancel" class="btn secondary" type="button">Cancelar</button><button id="actionConfirmAccept" class="btn" type="button">Aceitar</button></div>
 </dialog>
+<script src="/panel-assets/orion-fields.js"></script>
 <script src="/panel-assets/orion-onboarding.js"></script>
 <script src="/panel-assets/orion-channels.js"></script>
 <script src="/panel-assets/orion-communication.js"></script>
@@ -1358,6 +1360,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 (()=>{
 "use strict";
 const $=id=>document.getElementById(id);
+window.OrionFields?.bind(document);
  const preferenceQuery=window.matchMedia("(prefers-color-scheme: dark)");
  const choices=document.querySelectorAll("[data-theme-choice]");
  function closeAuthTheme(restoreFocus=false){
@@ -1557,6 +1560,88 @@ const fields={
 };
 const descriptions={authorized_staff:"Telefones autorizados",professionals:"Profissionais",services:"Serviços",
  professional_services:"Serviços por profissional",working_hours:"Expediente",working_breaks:"Pausas",time_off:"Folgas",schedule_blocks:"Bloqueios"};
+const panelFields=window.OrionFields;
+function legacyDateTime(value){
+ const parts=String(value).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/),date=new Date(value);
+ if(!parts||Number(parts[1])<1||!Number.isFinite(date.getTime())||[date.getFullYear(),date.getMonth()+1,date.getDate(),date.getHours(),date.getMinutes(),date.getSeconds()].some((part,index)=>part!==Number(parts[index+1]||0)))throw Error("Informe uma data e um horário válidos no fuso deste dispositivo.");
+ return date;
+}
+function catalogTimezone(){
+ const business=requireAccountBusiness(),timezone=business.timezone;
+ if(business.id!==$("tenant").value||typeof timezone!=="string"||!timezone.trim())throw Error("O fuso horário da empresa não está disponível. Atualize o cadastro antes de registrar a folga.");
+ try{new Intl.DateTimeFormat("pt-BR",{timeZone:timezone}).format(new Date());}catch{throw Error("O fuso horário da empresa é inválido. Confira o cadastro antes de registrar a folga.");}
+ return timezone;
+}
+function catalogDateTime(value){
+ const timezone=catalogTimezone(),parts=String(value).match(/^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d)(?:\.(\d{1,3}))?)?$/);
+ if(!parts)throw Error("Informe uma data e um horário válidos no fuso da empresa.");
+ panelFields.dateValue(parts[1],{required:true});
+ const wall=Date.parse(parts[1]+"T"+parts[2]+":"+parts[3]+":"+(parts[4]||"00")+"."+(parts[5]||"").padEnd(3,"0")+"Z"),anchor=Math.floor(wall/1000)*1000;
+ const formatter=new Intl.DateTimeFormat("en-CA",{timeZone:timezone,calendar:"gregory",numberingSystem:"latn",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"});
+ const wallAt=instant=>{const p=Object.fromEntries(formatter.formatToParts(new Date(instant)).map(part=>[part.type,part.value])),date=new Date(0);date.setUTCFullYear(Number(p.year),Number(p.month)-1,Number(p.day));date.setUTCHours(Number(p.hour),Number(p.minute),Number(p.second),0);return date.getTime();};
+ // Collect both sides of nearby offset changes, then require an exact round trip.
+ // Gaps have no valid instant; repeated civil times must not pick an occurrence silently.
+ const offsets=new Set([-36,-24,-12,0,12,24,36].map(hours=>{const sample=anchor+hours*3600000;return wallAt(sample)-sample;}));
+ const matches=[...offsets].map(offset=>wall-offset).filter(instant=>wallAt(instant)===anchor);
+ if(!matches.length)throw Error("Esse horário não existe no fuso "+timezone+" devido a uma mudança de horário. Escolha outro horário.");
+ if(matches.length!==1)throw Error("Esse horário ocorre duas vezes no fuso "+timezone+" devido a uma mudança de horário. Escolha um horário sem ambiguidade.");
+ return new Date(matches[0]);
+}
+function configureLegacyField(input,kind,options={}){
+ input.dataset.orionField=kind;Object.assign(input.dataset,options);
+ if(kind==="phone"){input.placeholder="(00) 00000-0000";if(!input.autocomplete)input.autocomplete="tel";}
+ if(kind==="money"&&!input.parentElement?.classList.contains("os-field-unit")){
+  const wrapper=document.createElement("div"),unit=document.createElement("span");wrapper.className="os-field-unit";wrapper.dataset.fieldWrapper="";unit.textContent="R$";unit.setAttribute("aria-hidden","true");input.before(wrapper);wrapper.append(unit,input);
+ }
+ panelFields.refresh(input);
+}
+function initializeLegacyFields(){
+ for(const id of ["bizContact","comContact"])configureLegacyField($(id),"phone",{orionInternational:"true"});
+ configureLegacyField($("comPrice"),"money",{fieldMin:"0",fieldMax:"100000000"});
+ for(const [id,min,max] of [["comStockQuantity",0,10000000],["comBasketQuantity",1,1000],["comValidity",1,60]])configureLegacyField($(id),"decimal",{fieldScale:"0",fieldMin:String(min),fieldMax:String(max)});
+ const callers=$("settingsAllowedCallers");callers.inputMode="tel";callers.spellcheck=false;callers.placeholder="(00) 00000-0000";
+ document.querySelector('label[for="settingsAllowedCallers"]').textContent="Sempre permitir ligações destes números";
+ const help=document.createElement("small");help.id="settingsAllowedCallersHelp";help.textContent="Um número por linha, ou separado por vírgula ou ponto e vírgula. Use DDD; para outro país, inclua + e o código do país.";callers.after(help);callers.setAttribute("aria-describedby",help.id);
+}
+function legacyPhoneListValue(raw){
+ const values=String(raw||"").split(/[\n,;]+/).map(value=>value.trim()).filter(Boolean);
+ if(values.length>30)throw Error("Informe no máximo 30 números permitidos.");
+ const phones=values.map((value,index)=>{try{return panelFields.phoneValue(value,{required:true,allowInternational:true}).slice(1);}catch{throw Error("Confira o número "+(index+1)+": use DDD ou + e o código do país.");}});
+ if(new Set(phones).size!==phones.length)throw Error("Remova os números repetidos da lista.");return phones;
+}
+function formatLegacyPhoneList(input){
+ if(!input||input.disabled||input.matches(":disabled")||input.readOnly)return;
+ const raw=input.value,start=input.selectionStart,end=input.selectionEnd,direction=input.selectionDirection;let result="",offset=0;const positions=[start,end];
+ for(const [index,part] of raw.split(/([\n,;]+)/).entries()){
+  let next=part,project=position=>position;
+  if(index%2===0&&part.trim()){
+   const leading=part.match(/^[ \t\r]*/)[0],trailing=part.match(/[ \t\r]*$/)[0],middle=part.slice(leading.length,part.length-trailing.length),probe=document.createElement("input");
+   probe.type="tel";probe.dataset.orionField="phone";probe.dataset.orionInternational="true";probe.value=middle;
+   const local=position=>Math.max(0,Math.min(middle.length,position-offset-leading.length));probe.setSelectionRange(local(start),local(end),direction);panelFields.formatInput(probe);
+   next=leading+probe.value+trailing;project=(position,which)=>position<=leading.length?position:position>=part.length-trailing.length?next.length-(part.length-position):leading.length+(which===0?probe.selectionStart:probe.selectionEnd);
+  }
+  for(const [which,position] of [start,end].entries())if(position>=offset&&position<=offset+part.length)positions[which]=result.length+project(position-offset,which);
+  result+=next;offset+=part.length;
+ }
+ if(result!==raw){input.value=result;input.setSelectionRange(positions[0],positions[1],direction);}
+}
+function legacyCallerError(message=""){
+ const input=$("settingsAllowedCallers");$("settingsAllowedCallersError")?.remove();input.setCustomValidity(message);input.setAttribute("aria-describedby","settingsAllowedCallersHelp");
+ if(!message){input.removeAttribute("aria-invalid");return;}
+ const error=document.createElement("small");error.id="settingsAllowedCallersError";error.className="orion-field-error";error.setAttribute("role","alert");error.textContent=message;input.after(error);input.setAttribute("aria-invalid","true");input.setAttribute("aria-describedby","settingsAllowedCallersHelp "+error.id);
+}
+for(const event of ["input","change","compositionend"])$("settingsAllowedCallers").addEventListener(event,event=>{const input=event.target;if(input.disabled||input.matches(":disabled")||input.readOnly)return;legacyCallerError();if(!event.isComposing)formatLegacyPhoneList(input);});
+$("settingsAllowedCallers").addEventListener("beforeinput",event=>{
+ const input=event.target,backward=event.inputType==="deleteContentBackward",forward=event.inputType==="deleteContentForward";
+ if(input.disabled||input.matches(":disabled")||input.readOnly||(!backward&&!forward)||input.selectionStart!==input.selectionEnd)return;
+ const caret=input.selectionStart,index=backward?caret-1:caret,raw=input.value;if(index<0||index>=raw.length||/[\d\n,;]/.test(raw[index]))return;
+ let left=index,right=index;while(left>0&&!/[\n,;]/.test(raw[left-1]))left--;while(right<raw.length&&!/[\n,;]/.test(raw[right]))right++;
+ const parts=panelFields.phoneParts(raw.slice(left,right),{allowInternational:true});if(!parts||parts.international)return;
+ let digit=index;while(digit>=left&&digit<right&&!/\d/.test(raw[digit]))digit+=backward?-1:1;event.preventDefault();
+ if(digit<left||digit>=right){input.setSelectionRange(backward?left:right,backward?left:right);return;}
+ input.setRangeText("",digit,digit+1,"end");if(forward)input.setSelectionRange(caret,caret);formatLegacyPhoneList(input);input.dispatchEvent(new Event("input",{bubbles:true}));
+});
+$("settingsAllowedCallers").addEventListener("focusout",()=>{const input=$("settingsAllowedCallers");if(input.disabled||input.matches(":disabled")||input.readOnly)return;try{legacyPhoneListValue(input.value);legacyCallerError();}catch(error){legacyCallerError(error.message);}});
 for(const key of ["authorized_staff","time_off"])$("resource").add(new Option(descriptions[key],key));
 function errorMessage(data,code){return typeof data?.detail==="string"?data.detail:(typeof data?.error==="string"?data.error:
   "O servidor retornou HTTP "+code+".")}
@@ -1699,6 +1784,7 @@ function authScreenShow(screen,{focus=false}={}){
  }
  $("authTabRegister").setAttribute("aria-controls",screen==="verify"?"verifyForm":"registerForm");
  for(const id of ["loginError","registerError","verifyError","forgotError","resetError"]){$(id).textContent=""}
+ document.querySelectorAll("#loginView [data-orion-field]").forEach(input=>window.OrionFields?.clearError(input));
  document.querySelectorAll("#loginView [aria-invalid]").forEach(input=>input.removeAttribute("aria-invalid"));
  document.querySelectorAll("[data-password-toggle]").forEach(button=>{
    $(button.dataset.passwordToggle).type="password";
@@ -1877,7 +1963,7 @@ $("authResendCode").addEventListener("click",async()=>{
  setAuthBusy("verify-resend",true);$("verifyError").textContent="";
  try{
   await publicAuth("/auth/verify/resend",{email:$("verifyEmail").value});
-  authResendAfter=Date.now()+60000;$("verifyCode").value="";
+  authResendAfter=Date.now()+60000;$("verifyCode").value="";window.OrionFields?.clearError($("verifyCode"));
   messageAuth("Código solicitado. Aguarde alguns instantes e confira seu e-mail.");
  }catch(error){$("verifyError").textContent=error.message;}
  finally{setAuthBusy("verify",false);}
@@ -2111,7 +2197,7 @@ function showDeviceSettings(){
  $("settingsBlockCalls").disabled=!caps.callBlocking;
  $("settingsCallReply").checked=!!c.callReply;
  $("settingsReplyText").value=c.callReplyText||"";
- $("settingsAllowedCallers").value=(c.allowedCallers||[]).join("\n");
+ legacyCallerError();$("settingsAllowedCallers").value=(c.allowedCallers||[]).map(phone=>panelFields.phoneDisplay("+"+String(phone).replace(/^\+/,""),{allowInternational:true})).join("\n");
  $("settingsCallSchedule").checked=!!c.callSchedule;
  $("settingsStart").value=c.callHours?.start||"09:00";
  $("settingsEnd").value=c.callHours?.end||"18:00";
@@ -2201,6 +2287,8 @@ $("deviceDiagnosticsClose").addEventListener("click",()=>$("deviceDiagnosticsDia
 $("deviceSettingsForm").addEventListener("submit",async event=>{
  event.preventDefault();
  if(!connectedSnapshot || connectedSnapshot.status!=="connected")return;
+ let allowedCallers;try{allowedCallers=legacyPhoneListValue($("settingsAllowedCallers").value);legacyCallerError();}catch(error){legacyCallerError(error.message);$("settingsAllowedCallers").focus();return;}
+ if(!event.target.reportValidity())return;
  const input={
    chatbot:$("settingsChatbot").checked,
    transcription:$("settingsTranscription").checked,
@@ -2208,7 +2296,7 @@ $("deviceSettingsForm").addEventListener("submit",async event=>{
    callBlocking:$("settingsBlockCalls").checked,
    callReply:$("settingsCallReply").checked,
    callReplyText:$("settingsReplyText").value,
-   allowedCallers:$("settingsAllowedCallers").value.split(/[\s,;]+/).filter(Boolean),
+   allowedCallers,
    callSchedule:$("settingsCallSchedule").checked,
    callHours:{
      start:$("settingsStart").value,end:$("settingsEnd").value,
@@ -2367,13 +2455,12 @@ async function attemptQrRefresh(){
 }
 $("startQr").addEventListener("click",()=>{showQr=true;attemptQrRefresh();});
 $("refreshQr").addEventListener("click",attemptQrRefresh);
-const normalize=phone=>phone.replace(/[()+\s-]/g,"");
+const normalize=phone=>{try{return (window.OrionFields.phoneValue(phone,{allowInternational:true})||"").replace(/^\+/,"");}catch{return "";}};
 $("pairForm").addEventListener("submit",async ev=>{
  ev.preventDefault();$("codeStatus").textContent="Gerando código, aguarde...";
  $("codeResult").classList.add("hidden");pairExpiresAt=0;
  const submit=$("pairForm").querySelector('button[type="submit"]');submit.disabled=true;
- const raw=normalize($("pairPhone").value);
- const phone=/^\d{10,11}$/.test(raw)?"55"+raw:raw;
+ const phone=normalize($("pairPhone").value);
  if(!/^[1-9]\d{7,14}$/.test(phone)){
    $("codeStatus").textContent="Insira o DDI, DDD e número válido.";submit.disabled=false;return;
  }
@@ -2526,7 +2613,7 @@ function selectChat(phone){
   $("chatBubbles").replaceChildren(loading);$("chatBubbles").scrollTop=0;
   $("chatNotice").textContent="";clearRecipientInspection();
  }
- $("chatPhone").readOnly=true;$("chatPhone").value=phone;updateChatIdentity();
+ $("chatPhone").readOnly=true;$("chatPhone").value=window.OrionFields.phoneDisplay("+"+phone,{allowInternational:true});updateChatIdentity();
  renderSendNotice();renderChatList();setChatView("thread");$("chatTitle").focus();
  if(returning)$("chatBubbles").scrollTop=chatSavedScroll;
 }
@@ -2645,11 +2732,16 @@ function renderForm(){
  const form=$("recordFields");form.replaceChildren();
  for(const [name,title,type] of fields[$("resource").value]||[]){
   const label=document.createElement("label");label.textContent=title;
-  const input=document.createElement("input");input.name=name;input.type=type;
+  const input=document.createElement("input");input.id="record-"+name;input.name=name;input.type=type;label.htmlFor=input.id;
   if(type==="checkbox")input.checked=true;
   else if(!["description","reason","prep_min","cleanup_min"].includes(name))input.required=true;
   label.append(input);form.append(label);
+  if(name==="phone_e164"){label.firstChild.textContent="Telefone com DDD";input.autocomplete="tel-national";configureLegacyField(input,"phone");}
+  else if(name==="price_cents"){label.firstChild.textContent="Preço em reais";configureLegacyField(input,"money",{fieldMin:"0",fieldMax:"100000000"});}
+  else if(type==="number"){const limits={duration_min:[1,1440],prep_min:[0,240],cleanup_min:[0,240],weekday:[0,6]},[min,max]=limits[name]||[0,Number.MAX_SAFE_INTEGER];configureLegacyField(input,"decimal",{fieldScale:"0",fieldMin:String(min),fieldMax:String(max)});}
+  else if(["starts_at","ends_at"].includes(name)){input.type="datetime-local";input.step="60";input.setAttribute("aria-describedby","recordTimezone");label.firstChild.textContent=(name==="starts_at"?"Início":"Fim")+" (horário da empresa)";}
  }
+ if(form.querySelector('input[type="datetime-local"]')){const help=document.createElement("p");help.id="recordTimezone";help.className="business-muted";try{help.textContent="Datas e horários no fuso da empresa: "+catalogTimezone()+".";}catch(error){help.textContent=error.message;}form.append(help);}
  const b=document.createElement("button");b.className="btn";b.textContent=$("resource").value==="authorized_staff"?"Autorizar telefone":$("resource").value==="time_off"?"Registrar folga":"Cadastrar registro";form.append(b);
  updateCatalogControls();
 }
@@ -2675,16 +2767,20 @@ $("loadTenants").addEventListener("click",loadTenants);
 $("refresh").addEventListener("click",loadRecords);
 $("resource").addEventListener("change",()=>{renderForm();loadRecords()});
 async function submitRecord(ev){
- ev.preventDefault();if(catalogWriting||catalogLoading||catalogUncertain||!catalogCanWrite()||!ev.target.reportValidity())return;
+ ev.preventDefault();if(catalogWriting||catalogLoading||catalogUncertain||!catalogCanWrite()||!panelFields.validateForm(ev.target)||!ev.target.reportValidity())return;
  const tenant=$("tenant").value,resource=$("resource").value,epoch=authEpoch,role=loginRole,request=++catalogWriteSequence;
  if(!Object.hasOwn(fields,resource))return;
  const current=()=>request===catalogWriteSequence&&epoch===authEpoch&&role===loginRole&&tenant===$("tenant").value&&resource===$("resource").value;
  const data={};try{for(const input of ev.target.querySelectorAll("input")){
   if(input.type==="checkbox")data[input.name]=input.checked;
   else if(!input.value.trim()){if(input.required)throw Error("Preencha os campos obrigatórios. Valor ausente não é zero.");}
+  else if(input.dataset.orionField==="phone")data[input.name]=panelFields.phoneValue(input.value,{required:input.required});
+  else if(input.dataset.orionField==="money")data[input.name]=panelFields.parseMoney(input.value,{required:input.required,min:Number(input.dataset.fieldMin),max:Number(input.dataset.fieldMax)});
+  else if(input.dataset.orionField==="decimal")data[input.name]=panelFields.parseDecimal(input.value,{required:input.required,scale:0,min:Number(input.dataset.fieldMin),max:Number(input.dataset.fieldMax)});
+  else if(input.type==="datetime-local")data[input.name]=catalogDateTime(input.value).toISOString();
   else if(input.type==="number"){const value=Number(input.value);if(!Number.isSafeInteger(value))throw Error("Informe números inteiros válidos.");data[input.name]=value;}
   else data[input.name]=input.value.trim();
- }}catch(error){$("notice").textContent=error.message;return;}
+ }if(data.starts_at&&data.ends_at&&Date.parse(data.starts_at)>=Date.parse(data.ends_at))throw Error("A data final precisa ser posterior à inicial.");}catch(error){$("notice").textContent=error.message;return;}
  catalogWriting=true;updateCatalogControls();
  try{await api("/api/v1/tenants/"+encodeURIComponent(tenant)+"/"+resource,"POST",data);if(!current())return;renderForm();await loadRecords();}
  catch(ex){if(current()){catalogUncertain=ex.status!==422;$("notice").textContent=ex.message+(catalogUncertain?" Consulte a lista antes de tentar cadastrar novamente. Nenhuma nova tentativa será feita automaticamente.":"");}}
@@ -2706,7 +2802,7 @@ let businessEpoch=0,businessListSequence=0,businessExampleSequence=0,businessRev
 function businessUrl(tenant,suffix=""){return "/api/v1/tenants/"+encodeURIComponent(tenant)+"/business/profile"+suffix}
 function resetBusinessState(){
  ++businessEpoch;++businessExampleSequence;++businessReviewSequence;businessSnapshot=null;businessBase=null;businessHistory=[];businessLoadedTenant="";businessDirty=false;businessBusy=false;businessStale=false;businessReviewed=null;businessExamplesPending=false;
- for(const id of Object.values(businessTextFields))$(id).value="";
+ for(const id of Object.values(businessTextFields)){$(id).value="";panelFields.clearError($(id));}
  $("bizCategories").value="";$("bizAvoid").value="";
  for(const id of [...Object.values(businessCaps),...Object.values(businessObjectives),...Object.values(businessFulfillment)])$(id).checked=false;
  for(const [key,config] of Object.entries(businessRepeatConfig)){businessRepeaters[key]=[];$(config.box).replaceChildren()}
@@ -2758,6 +2854,7 @@ function addBusinessRow(key,values={},dirty=true){
 function collectBusinessProfile(){
  const profile=JSON.parse(JSON.stringify(businessBase));
  for(const [field,id] of Object.entries(businessTextFields))profile[field]=$(id).value.trim()||null;
+ profile.contact_phone=panelFields.phoneValue($("bizContact").value,{allowInternational:true});
  profile.categories=$("bizCategories").value.split(",").map(x=>x.trim()).filter(Boolean);
  profile.capabilities=Object.entries(businessCaps).filter(([,id])=>$(id).checked).map(([key])=>key);
  if(Array.isArray(businessSnapshot?.supported_fulfillment_modes))profile.fulfillment={...profile.fulfillment,enabled_modes:Object.entries(businessFulfillment).filter(([key,id])=>businessSnapshot.supported_fulfillment_modes.includes(key)&&$(id).checked).map(([key])=>key)};
@@ -2804,7 +2901,7 @@ async function loadBusinessStyleExamples(){
 }
 function fillBusinessProfile(data,history){
  businessSnapshot=data;businessHistory=history;businessBase=JSON.parse(JSON.stringify(data.draft?.profile||data.published?.profile||data.draft_template));
- for(const [field,id] of Object.entries(businessTextFields))$(id).value=businessBase[field]||"";
+ for(const [field,id] of Object.entries(businessTextFields)){$(id).value=field==="contact_phone"?panelFields.phoneDisplay(businessBase[field],{allowInternational:true}):businessBase[field]||"";panelFields.clearError($(id));}
  $("bizCategories").value=(businessBase.categories||[]).join(", ");
  const style=businessBase.style_rules||{};
  for(const [field,id,fallback] of [["style","bizStyle","warm"],["emoji","bizEmoji","none"],["length","bizLength","balanced"],["formality","bizFormality","neutral"],["commercial_intensity","bizCommercial","none"]])$(id).value=style[field]||fallback;
@@ -2876,7 +2973,8 @@ async function businessMutation(kind){
  const current=()=>epoch===businessEpoch&&tenant===businessLoadedTenant&&tenant===$("businessTenant").value&&accountEpoch===authEpoch&&role===loginRole;
  let payload={expected_generation:generation};
  if(kind==="draft"){
-   if(!$("businessForm").reportValidity())return;payload.profile=collectBusinessProfile();
+   if(!panelFields.validateForm($("businessForm"))||!$("businessForm").reportValidity())return;
+   try{payload.profile=collectBusinessProfile();}catch(error){$("businessFeedback").textContent=error.message;return;}
  }else{
    payload.version_id=kind==="publish"?businessSnapshot.draft?.id:businessReviewed?.id;
    if(!payload.version_id)return;
@@ -2955,6 +3053,7 @@ function commerceLocalDate(value){
  const pad=n=>String(n).padStart(2,"0");return date.getFullYear()+"-"+pad(date.getMonth()+1)+"-"+pad(date.getDate())+"T"+pad(date.getHours())+":"+pad(date.getMinutes());
 }
 function commerceFindVariant(id){for(const product of commerceProducts){const variant=product.variants?.find(v=>v.id===id);if(variant)return {product,variant}}return null}
+function commerceContact(){try{return panelFields.phoneValue($("comContact").value,{allowInternational:true});}catch{return null;}}
 function commerceHasCurrentToken(){return !!commerceQuote&&commerceToken?.quoteId===commerceQuote.id&&typeof commerceToken.value==="string"&&commerceToken.scope===commercePlanScope()}
 function commerceQuoteFresh(){const expires=Date.parse(commerceQuote?.expires_at);return Number.isFinite(expires)&&expires>Date.now()}
 function commerceConfirmationReady(){return commerceCan("can_create_orders")&&!commerceBusy&&!commerceDirty()&&commerceOrder?.status==="draft"&&commerceOrder.quote_id===commerceQuote?.id&&commerceHasCurrentToken()&&commerceQuoteFresh()&&commerceQuote.confirmation_requirements_met===true&&commerceQuote.fulfillment_mode!=="delivery"&&!!commerceQuote.contact_e164}
@@ -2969,17 +3068,17 @@ function updateCommerceControls(){
  $("comOrderCreate").disabled=!orders||blocked||commerceDirty()||!commerceQuote||!commerceHasCurrentToken()||!commerceQuoteFresh()||!!commerceOrder||commerceQuote.fulfillment_mode==="delivery";
  const confirmable=commerceConfirmationReady();$("comAccept").disabled=!confirmable;$("comOrderConfirm").disabled=!confirmable||!$("comAccept").checked;
  $("comReadQuote").disabled=!ready||commerceBusy;$("comReadOrder").disabled=!ready||commerceBusy;$("comReadOrderByQuote").disabled=!ready||commerceBusy;
- const numeric=["fixed","from"].includes($("comPriceKind").value);$("comPrice").disabled=!numeric;$("comPrice").required=numeric;
- const tracked=$("comStockMode").value==="tracked";for(const id of ["comStockQuantity","comStockSource","comStockObserved","comStockUntil"]){$(id).disabled=!tracked;$(id).required=tracked;}
+ const numeric=["fixed","from"].includes($("comPriceKind").value);$("comPrice").disabled=!numeric;$("comPrice").required=numeric;if(!numeric)panelFields.clearError($("comPrice"));
+ const tracked=$("comStockMode").value==="tracked";for(const id of ["comStockQuantity","comStockSource","comStockObserved","comStockUntil"]){$(id).disabled=!tracked;$(id).required=tracked;if(!tracked)panelFields.clearError($(id));}
  const modes=commerceFulfillmentModes(),mode=$("comFulfillmentMode").value,pickup=mode==="pickup"&&modes.includes(mode);
  $("comFulfillmentMode").disabled=!ready||blocked||!modes.length;$("comPickupFields").classList.toggle("hidden",!pickup);
  $("comPickupAppointment").disabled=!pickup||blocked||commercePickupBusy||!commercePickupCandidates.length;
- $("comPickupLoad").disabled=!pickup||!orders||blocked||commercePickupBusy||!/^\+[1-9]\d{7,14}$/.test($("comContact").value.trim());
+ $("comPickupLoad").disabled=!pickup||!orders||blocked||commercePickupBusy||!commerceContact();
  $("comFulfillmentStatus").textContent=!modes.length?"Recebimento de produtos não habilitado no perfil publicado e no servidor.":mode==="delivery"?"Solicitação de entrega para análise da equipe. Frete e prazo não estão configurados; este resumo não confirma entrega, não reserva estoque e não cobra.":mode==="pickup"?"Retirada no estabelecimento. Agendamento é opcional e precisa pertencer a este cliente. Cancelar um pedido não cancela o agendamento, nem o contrário.":"Escolha somente o modo combinado com o cliente. Nenhum modo é selecionado automaticamente.";
 }
 function commerceFulfillmentModes(){const f=commerceState?.fulfillment;return f?.enabled===true?(f.enabled_modes||[]).filter(mode=>["pickup","delivery"].includes(mode)&&f.supported_modes?.includes(mode)):[]}
 function commerceFulfillmentKey(f=commerceState?.fulfillment){return JSON.stringify([f?.enabled===true,f?.profile_version_id||null,f?.profile_revision||0,[...(f?.enabled_modes||[])].sort(),[...(f?.supported_modes||[])].sort()])}
-function commercePlanScope(){return JSON.stringify([$("comContact").value.trim(),$("comFulfillmentMode").value,$("comPickupAppointment").value,commerceFulfillmentKey()])}
+function commercePlanScope(){return JSON.stringify([commerceContact()||$("comContact").value.trim(),$("comFulfillmentMode").value,$("comPickupAppointment").value,commerceFulfillmentKey()])}
 function commerceResetPickup(notice="A retirada pode ser combinada sem agendamento. Produtos não exigem horário nem profissional."){
  ++commercePickupSequence;commercePickupBusy=false;commercePickupCandidates=[];commercePickupScope=null;$("comPickupAppointment").replaceChildren(new Option("Sem agendamento associado",""));$("comPickupStatus").textContent=notice;
 }
@@ -2994,9 +3093,9 @@ function commerceAppointmentLabel(item){
  return [item.protocol||"Sem protocolo",date,item.professional_name||item.professional,(item.services||[]).join(", ")].filter(Boolean).join(" · ");
 }
 async function commerceLoadPickup(){
- const phone=$("comContact").value.trim();if(!commerceCan("can_create_orders")||commerceBusy||commercePickupBusy||$("comFulfillmentMode").value!=="pickup"||!commerceFulfillmentModes().includes("pickup")||!/^\+[1-9]\d{7,14}$/.test(phone))return;
+ const phone=commerceContact();if(!commerceCan("can_create_orders")||commerceBusy||commercePickupBusy||$("comFulfillmentMode").value!=="pickup"||!commerceFulfillmentModes().includes("pickup")||!phone)return;
  commerceResetPickup("Consultando agendamentos confirmados e futuros deste cliente...");commerceClearProposal("Revise o recebimento após consultar os agendamentos.");const context=commerceContext(),sequence=commercePickupSequence,key=commerceFulfillmentKey();commercePickupBusy=true;updateCommerceControls();
- const current=()=>commerceCurrent(context)&&sequence===commercePickupSequence&&phone===$("comContact").value.trim()&&$("comFulfillmentMode").value==="pickup"&&key===commerceFulfillmentKey();
+ const current=()=>commerceCurrent(context)&&sequence===commercePickupSequence&&phone===commerceContact()&&$("comFulfillmentMode").value==="pickup"&&key===commerceFulfillmentKey();
  try{
    const result=await api(commerceUrl("/pickup-appointments?"+new URLSearchParams({contact_e164:phone})));if(!current())return;
    if(result.profile_version_id!==commerceState.fulfillment.profile_version_id||result.profile_revision!==commerceState.fulfillment.profile_revision){commerceInvalidateFulfillment();return;}
@@ -3010,7 +3109,7 @@ function commerceFulfillmentPayload(){
  const mode=$("comFulfillmentMode").value;if(!mode)return null;
  if(!commerceFulfillmentModes().includes(mode))throw Error("Este modo não está habilitado. Atualize o catálogo.");
  const id=mode==="pickup"?$("comPickupAppointment").value:"";
- if(id&&(!commercePickupCandidates.some(item=>item.id===id)||commercePickupScope?.phone!==$("comContact").value.trim()||commercePickupScope?.key!==commerceFulfillmentKey()))throw Error("Consulte novamente os agendamentos deste cliente antes de escolher o vínculo.");
+ if(id&&(!commercePickupCandidates.some(item=>item.id===id)||commercePickupScope?.phone!==commerceContact()||commercePickupScope?.key!==commerceFulfillmentKey()))throw Error("Consulte novamente os agendamentos deste cliente antes de escolher o vínculo.");
  return {mode,pickup_appointment_id:id||null};
 }
 async function commerceRecheckFulfillment(current,mode){
@@ -3029,7 +3128,7 @@ function resetCommerceState(){
  commercePopulateFulfillment();
  commerceProductDirty=false;commerceVariantDirty=false;commerceStockDirty=false;commerceComplementDirty=false;commerceComplements=[];commerceBasket=[];commerceFaqRows=[];commerceAttributeRows=[];
  commerceResetComplements();
- for(const id of ["comProductName","comDescription","comSynonyms","comBenefits","comVariantName","comSku","comPrice","comStockQuantity","comStockSource","comStockObserved","comStockUntil","comCustomer","comContact","comLookupQuote","comLookupOrder"])$(id).value="";
+ for(const id of ["comProductName","comDescription","comSynonyms","comBenefits","comVariantName","comSku","comPrice","comStockQuantity","comStockSource","comStockObserved","comStockUntil","comCustomer","comContact","comLookupQuote","comLookupOrder"]){$(id).value="";panelFields.clearError($(id));}
  $("comProductActive").checked=false;$("comVariantActive").checked=false;$("comPriceKind").value="on_request";$("comStockMode").value="unknown";$("comValidity").value="15";$("comBasketQuantity").value="1";
  for(const id of ["comFaqRows","comAttributeRows","comBasket"])$(id).replaceChildren();
  for(const [id,label] of [["comProduct","Novo produto"],["comVariant","Nova variante"],["comBasketVariant","Escolha um item"]])$(id).replaceChildren(new Option(label,""));
@@ -3084,7 +3183,7 @@ function commerceSelectProduct(id=""){
 function commerceSelectVariant(id=""){
  commerceVariant=commerceProduct?.variants?.find(v=>v.id===id)||null;$("comVariant").value=commerceVariant?.id||"";const variant=commerceVariant||{};
  $("comVariantName").value=variant.name||"";$("comSku").value=variant.sku||"";$("comVariantActive").checked=variant.active===true;$("comPriceKind").value=variant.price_kind||"on_request";
- $("comPrice").value=Number.isSafeInteger(variant.unit_price_cents)?(variant.unit_price_cents/100).toFixed(2).replace(".",","):"";
+ $("comPrice").value=Number.isSafeInteger(variant.unit_price_cents)?panelFields.moneyDisplay(variant.unit_price_cents):"";panelFields.clearError($("comPrice"));panelFields.clearError($("comStockQuantity"));
  commerceAttributeRows=[];$("comAttributeRows").replaceChildren();for(const [key,value] of Object.entries(variant.attributes||{}))commerceAddFields("attribute",{key,value});
  $("comVariantState").textContent=commerceVariant?"Variante salva · revisão "+variant.revision+" · "+commercePrice(variant)+(variant.active?" · ativa":" · inativa"):"Salve uma variante antes de registrar estoque.";
  $("comStockMode").value=variant.stock_mode||"unknown";$("comStockQuantity").value=variant.quantity_on_hand??"";$("comStockSource").value=variant.stock_source||"";$("comStockObserved").value=commerceLocalDate(variant.observed_at);$("comStockUntil").value=commerceLocalDate(variant.valid_until);
@@ -3139,9 +3238,7 @@ function commerceCatalogChanged(kind){
  $("comFeedback").textContent="Há alterações locais ainda não salvas. Salve ou descarte antes de preparar uma proposta.";$("comAccept").checked=false;updateCommerceControls();
 }
 function commerceParsePrice(value){
- const text=String(value).trim();if(!/^(?:0|[1-9]\d*)(?:[.,]\d{1,2})?$/.test(text))throw Error("Informe o valor em reais, por exemplo 29,90. Preço vazio não é zero.");
- const [whole,decimal=""]=text.replace(",",".").split("."),cents=Number(whole)*100+Number(decimal.padEnd(2,"0"));
- if(!Number.isSafeInteger(cents)||cents>100_000_000)throw Error("O preço informado excede o limite do catálogo.");return cents;
+ return panelFields.parseMoney(value,{required:true,min:0,max:100000000});
 }
 function commerceLines(id,max,size){const values=$(id).value.split(/\n/).map(x=>x.trim()).filter(Boolean);if(values.length>max||values.some(x=>x.length>size))throw Error("Revise a lista: até "+max+" linhas, com no máximo "+size+" caracteres por linha.");return values}
 function commerceProductPayload(){
@@ -3154,9 +3251,9 @@ function commerceVariantPayload(){
 }
 function commerceStockPayload(){
  if($("comStockMode").value!=="tracked")return {mode:"unknown",quantity_on_hand:null,observed_at:null,source:null,valid_until:null};
- const quantity=$("comStockQuantity").value.trim(),observed=new Date($("comStockObserved").value),until=new Date($("comStockUntil").value),source=$("comStockSource").value.trim();
- if(!/^\d+$/.test(quantity)||Number(quantity)>10_000_000||!source||!Number.isFinite(observed.getTime())||!Number.isFinite(until.getTime())||until<=observed||until-observed>24*3600*1000)throw Error("Informe quantidade, origem e datas válidas. A observação deve durar até 24 horas após a contagem.");
- return {mode:"tracked",quantity_on_hand:Number(quantity),observed_at:observed.toISOString(),source,valid_until:until.toISOString()};
+ const quantity=panelFields.parseDecimal($("comStockQuantity").value,{required:true,scale:0,min:0,max:10000000}),observed=legacyDateTime($("comStockObserved").value),until=legacyDateTime($("comStockUntil").value),source=$("comStockSource").value.trim();
+ if(!source||!Number.isFinite(observed.getTime())||!Number.isFinite(until.getTime())||until<=observed||until-observed>24*3600*1000)throw Error("Informe quantidade, origem e datas válidas. A observação deve durar até 24 horas após a contagem.");
+ return {mode:"tracked",quantity_on_hand:quantity,observed_at:observed.toISOString(),source,valid_until:until.toISOString()};
 }
 async function commerceRun(action,operation,{planning=false,mutation=false}={}){
  if(!commerceReady()||commerceBusy)return;
@@ -3170,7 +3267,7 @@ async function commerceRun(action,operation,{planning=false,mutation=false}={}){
 async function commerceSave(kind){
  if(!commerceCan("can_edit_catalog")||commerceBusy)return;
  if(kind!=="product"&&commerceProductDirty||kind!=="variant"&&commerceVariantDirty||kind!=="stock"&&commerceStockDirty||commerceComplementDirty){$("comFeedback").textContent="Salve ou descarte a edição da outra seção antes de gravar esta alteração.";return;}
- const form=$(kind==="product"?"comProductForm":kind==="variant"?"comVariantForm":"comStockForm");if(!form.reportValidity())return;
+ const form=$(kind==="product"?"comProductForm":kind==="variant"?"comVariantForm":"comStockForm");if(!panelFields.validateForm(form)||!form.reportValidity())return;
  let body,url,method="PUT",productId=commerceProduct?.id||"",variantId=commerceVariant?.id||"";
  try{
    if(kind==="product"){const product=commerceProductPayload();method=productId?"PUT":"POST";url="/products"+(productId?"/"+encodeURIComponent(productId):"");body=productId?{expected_revision:commerceProduct.revision,product}:product;}
@@ -3189,21 +3286,22 @@ function commercePlanningChanged(){commerceClearProposal("A proposta foi alterad
 function commerceRenderBasket(){
  const box=$("comBasket");box.replaceChildren();if(!commerceBasket.length){const p=document.createElement("p");p.textContent="Nenhum item selecionado.";box.append(p);return;}
  for(const item of commerceBasket){const found=commerceFindVariant(item.variant_id),row=document.createElement("div");row.className="commerce-item";const name=document.createElement("strong");name.textContent=found?found.product.name+" / "+found.variant.name:item.label||"Item indisponível no catálogo atual";row.append(name);
-   const label=document.createElement("label");label.textContent="Quantidade deste item";const quantity=document.createElement("input");quantity.type="number";quantity.min="1";quantity.max="1000";quantity.step="1";quantity.value=String(item.quantity);quantity.addEventListener("input",()=>{item.quantity=quantity.value;commercePlanningChanged()});label.append(quantity);row.append(label);
+   const label=document.createElement("label");label.textContent="Quantidade deste item";const quantity=document.createElement("input");quantity.required=true;quantity.value=String(item.quantity);quantity.addEventListener("input",()=>{item.quantity=quantity.value;commercePlanningChanged()});label.append(quantity);row.append(label);configureLegacyField(quantity,"decimal",{fieldScale:"0",fieldMin:"1",fieldMax:"1000"});
    const remove=document.createElement("button");remove.type="button";remove.className="btn ghost";remove.textContent="Remover item";remove.addEventListener("click",()=>{commerceBasket=commerceBasket.filter(x=>x!==item);commercePlanningChanged();commerceRenderBasket()});row.append(remove);box.append(row);
  }
 }
 function commerceAddBasket(){
  if(!commerceReady()||commerceBusy||commerceStale||commerceDirty())return;
- const id=$("comBasketVariant").value,found=commerceFindVariant(id),raw=$("comBasketQuantity").value.trim();
- if(!found||!found.product.active||!found.variant.active||!/^\d+$/.test(raw)||Number(raw)<1||Number(raw)>1000){$("comFeedback").textContent="Escolha uma variante ativa e quantidade inteira de 1 a 1000.";return;}
+ const id=$("comBasketVariant").value,found=commerceFindVariant(id);let quantity;
+ try{if(!panelFields.validate($("comBasketQuantity")))return;quantity=panelFields.parseDecimal($("comBasketQuantity").value,{required:true,scale:0,min:1,max:1000});}catch(error){$("comFeedback").textContent=error.message;return;}
+ if(!found||!found.product.active||!found.variant.active){$("comFeedback").textContent="Escolha uma variante ativa e quantidade inteira de 1 a 1000.";return;}
  if(commerceBasket.some(item=>item.variant_id===id)){$("comFeedback").textContent="Este item já está na proposta. Ajuste a quantidade na linha existente.";return;}
  if(commerceBasket.length>=30){$("comFeedback").textContent="Uma proposta pode ter até 30 itens diferentes.";return;}
- commerceBasket.push({variant_id:id,quantity:Number(raw),label:found.product.name+" / "+found.variant.name});commercePlanningChanged();commerceRenderBasket();
+ commerceBasket.push({variant_id:id,quantity,label:found.product.name+" / "+found.variant.name});commercePlanningChanged();commerceRenderBasket();
 }
 function commerceItems(){
  if(!commerceBasket.length)throw Error("Adicione pelo menos um item à proposta.");
- return commerceBasket.map(item=>{const quantity=String(item.quantity);if(!/^\d+$/.test(quantity)||Number(quantity)<1||Number(quantity)>1000)throw Error("Cada item deve ter quantidade inteira de 1 a 1000.");return {variant_id:item.variant_id,quantity:Number(quantity)}});
+ return commerceBasket.map(item=>({variant_id:item.variant_id,quantity:panelFields.parseDecimal(String(item.quantity),{required:true,scale:0,min:1,max:1000})}));
 }
 function commerceRenderFulfillment(box,value){
  if(!value.fulfillment_mode){const p=document.createElement("p");p.textContent="Recebimento não informado neste contrato.";box.append(p);return;}
@@ -3247,7 +3345,8 @@ function commerceArmExpiry(){
 }
 async function commerceCalculate(save=false){
  if(!commerceReady()||commerceBusy||commerceStale||commerceDirty()||save&&!commerceCan("can_create_orders"))return;
- let payload;try{payload={items:commerceItems()};const fulfillment=commerceFulfillmentPayload(),contact=$("comContact").value.trim();if(fulfillment){payload.fulfillment=fulfillment;if(contact&&!/^\+[1-9]\d{7,14}$/.test(contact))throw Error("Informe o telefone do cliente com DDI para consultar o recebimento.");if(contact)payload.contact_e164=contact;}if(save){const validity=$("comValidity").value.trim();if(!/^\d+$/.test(validity)||Number(validity)<1||Number(validity)>60||contact&&!/^\+[1-9]\d{7,14}$/.test(contact))throw Error("Informe validade de 1 a 60 minutos e telefone com DDI, ou deixe o telefone vazio apenas para consulta.");payload={...payload,customer_name:$("comCustomer").value.trim()||null,contact_e164:contact||null,validity_minutes:Number(validity)};}}
+ if(!panelFields.validateForm($("comPlanForm"))||!$("comPlanForm").reportValidity())return;
+ let payload;try{payload={items:commerceItems()};const fulfillment=commerceFulfillmentPayload(),contact=panelFields.phoneValue($("comContact").value,{allowInternational:true});if(fulfillment){payload.fulfillment=fulfillment;if(contact)payload.contact_e164=contact;}if(save){const validity=panelFields.parseDecimal($("comValidity").value,{required:true,scale:0,min:1,max:60});payload={...payload,customer_name:$("comCustomer").value.trim()||null,contact_e164:contact,validity_minutes:validity};}}
  catch(error){$("comFeedback").textContent=error.message;return;}
  return commerceRun(save?"Salvando orçamento para revisão...":"Consultando valores e disponibilidade...",async current=>{
    if(payload.fulfillment&&!await commerceRecheckFulfillment(current,payload.fulfillment.mode))return;
@@ -3514,7 +3613,7 @@ $("aiAudioForm").addEventListener("submit",event=>{
  return sendAiPreview("",file);
 });
 
-renderForm();renderGuide();updateAiControls();
+initializeLegacyFields();renderForm();renderGuide();updateAiControls();
 })();
 </script>
 </body></html>

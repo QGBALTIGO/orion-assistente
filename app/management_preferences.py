@@ -6,10 +6,11 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError, ValidationInfo, field_validator, model_validator
 from sqlalchemy import text
 
 from app.catalog_api import Actor, authenticate, audit
+from app.brazilian_fields import normalize_tax_document, reject_boolean_money
 from app.management_api import management_session
 from app.management_schemas import normalize_phone
 from app.tenant_access import resolve_tenant_access
@@ -48,6 +49,7 @@ class BusinessPreferences(StrictModel):
         return sorted(set(approved_host(x) for x in value))
 
     _phone = field_validator("contact_phone")(normalize_phone)
+    _monthly_goal = field_validator("monthly_goal_cents", mode="before")(reject_boolean_money)
 
     @field_validator("google_review_url")
     @classmethod
@@ -60,16 +62,39 @@ class BusinessPreferences(StrictModel):
         return value
 
     @model_validator(mode="after")
-    def document(self):
-        if self.tax_document_kind == "none":
-            if self.tax_document:
-                raise ValueError("Selecione o tipo do documento")
-        elif self.tax_document:
-            digits = "".join(x for x in self.tax_document if x.isdigit())
-            if any(x not in "0123456789./- " for x in self.tax_document) or len(digits) != (11 if self.tax_document_kind == "cpf" else 14):
-                raise ValueError("O documento não corresponde ao tipo selecionado")
-            self.tax_document = digits
+    def document(self, info: ValidationInfo):
+        # This server-only context is used for stored records and exact,
+        # unchanged documents. It never comes from the request body.
+        historical = bool(info.context and info.context.get("existing_tax_document"))
+        self.tax_document = normalize_tax_document(self.tax_document_kind, self.tax_document,
+                                                   check_digits=not historical)
         return self
+
+
+class BusinessPreferencesInput(BusinessPreferences):
+    """Defer checksum validation until the existing document is known under lock."""
+
+    @model_validator(mode="after")
+    def document(self, info: ValidationInfo):
+        # Omission must stay omitted: assigning a default here would add it to
+        # model_fields_set and clear a historical document in a partial PUT.
+        if {"tax_document", "tax_document_kind"} <= self.model_fields_set:
+            self.tax_document = normalize_tax_document(self.tax_document_kind, self.tax_document,
+                                                       check_digits=False)
+        return self
+
+
+def validated_business_update(current: dict, changes: dict) -> dict:
+    """Merge omitted fields and validate changed documents without rewriting history."""
+    candidate = {**current, **changes}
+    kind = candidate.get("tax_document_kind", "none")
+    document = normalize_tax_document(kind, candidate.get("tax_document"), check_digits=False)
+    existing = normalize_tax_document(current.get("tax_document_kind", "none"),
+                                      current.get("tax_document"), check_digits=False)
+    unchanged = (kind == current.get("tax_document_kind", "none")
+                 and document == existing)
+    return BusinessPreferences.model_validate(candidate,
+        context={"existing_tax_document": unchanged}).model_dump()
 
 
 class AutomationRule(StrictModel):
@@ -116,7 +141,7 @@ class AutomationPreferences(StrictModel):
 
 class BusinessSave(StrictModel):
     expected_version: int = Field(ge=0)
-    business: BusinessPreferences
+    business: BusinessPreferencesInput
 
 
 class AutomationsSave(StrictModel):
@@ -128,7 +153,8 @@ async def preferences(db, tenant_id):
     row = (await db.execute(text("SELECT preferences,version,updated_at FROM management_preferences WHERE tenant_id=:tenant"),
                            {"tenant": tenant_id})).mappings().one_or_none()
     stored = row["preferences"] if row else {}
-    return {"business": BusinessPreferences.model_validate(stored.get("business", {})).model_dump(),
+    return {"business": BusinessPreferences.model_validate(stored.get("business", {}),
+                context={"existing_tax_document": True}).model_dump(),
             "automations": AutomationPreferences.model_validate(stored.get("automations", {})).model_dump(),
             "version": row["version"] if row else 0, "updated_at": row["updated_at"] if row else None}
 
@@ -138,6 +164,15 @@ async def save_section(db, tenant_id, section, value, expected):
     current = await preferences(db, tenant_id)
     if expected != current["version"]:
         raise HTTPException(409, "As preferências mudaram. Atualize antes de salvar")
+    if section == "business":
+        try:
+            value = validated_business_update(current["business"], value)
+        except (ValidationError, ValueError) as exc:
+            if isinstance(exc, ValidationError):
+                message = exc.errors()[0]["msg"].removeprefix("Value error, ")
+            else:
+                message = str(exc)
+            raise HTTPException(422, message) from None
     content = {"business": current["business"], "automations": current["automations"], section: value}
     await db.execute(text("""INSERT INTO management_preferences(tenant_id,preferences) VALUES(:tenant,CAST(:content AS jsonb))
         ON CONFLICT(tenant_id) DO UPDATE SET
@@ -163,7 +198,7 @@ async def get_preferences(tenant_id: UUID, actor: Actor = Depends(authenticate))
 async def put_preferences(tenant_id: UUID, payload: BusinessSave, actor: Actor = Depends(authenticate)):
     await resolve_tenant_access(actor, tenant_id, "publish")
     async with management_session(tenant_id, actor, write=True) as db:
-        result = await save_section(db, tenant_id, "business", payload.business.model_dump(), payload.expected_version)
+        result = await save_section(db, tenant_id, "business", payload.business.model_dump(exclude_unset=True), payload.expected_version)
         return {**result, "automation_execution_enabled": await automation_active(db, tenant_id)}
 
 

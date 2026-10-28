@@ -37,6 +37,8 @@ export async function makeSuite({ initialRoute = 'clientes', role = 'owner', res
   const bridge = { user: { role: 'member', name: 'Conta sintética', email: 'synthetic@example.invalid' },
     tenants: [{ id: tenantA, name: 'Empresa A', slug: 'empresa-a', timezone: 'America/Sao_Paulo', role }],
     tenantId: tenantA, initialRoute, request: async (path, method = 'GET', data) => { calls.push({ path, method, data }); return respond(path, method, data); }, openLegacy() {}, onRouteChange() {}, ...extra };
+  window.eval(await readFile(new URL('../app/static/orion-fields.js', import.meta.url), 'utf8'));
+  window.OrionFields.bind(window.document);
   window.eval(await readFile(sourceURL, 'utf8'));
   window.OrionSuite.mount(bridge);
   const document = window.document;

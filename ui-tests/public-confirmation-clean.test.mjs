@@ -43,7 +43,7 @@ test('Brazilian WhatsApp is masked while typing, pasting +55 and using 10-digit 
   const h=await makePublic();t.after(()=>h.close());await confirmStage(h);
   const input=h.document.querySelector('[name=customer_phone]');
   assert.equal(input.type,'tel');
-  assert.equal(input.placeholder,'(86) 97267-6282');
+  assert.equal(input.placeholder,'(00) 00000-0000');
   for(const [typed,shown] of [
     ['86','(86'],['86972','(86) 972'],
     ['86972676282','(86) 97267-6282'],
@@ -56,7 +56,7 @@ test('Brazilian WhatsApp is masked while typing, pasting +55 and using 10-digit 
   assert.equal(h.errors.length,0);
 });
 
-test('submits exactly once with full masked WhatsApp, real birth date and affirmative button',async t=>{
+test('submits exactly once with canonical WhatsApp, real birth date and affirmative button',async t=>{
   const h=await makePublic();t.after(()=>h.close());await confirmStage(h);
   h.fill('[name=customer_name]',' Cliente sintética ');
   h.fill('[name=customer_phone]','86972676282');
@@ -72,7 +72,7 @@ test('submits exactly once with full masked WhatsApp, real birth date and affirm
   assert.equal(posts[0].url,publicBase+'/appointments');
   assert.deepEqual(posts[0].body,{
     quote,start_at:firstStart,customer_name:'Cliente sintética',
-    customer_phone:'(86) 97267-6282',customer_birth_date:'1994-04-09',confirmed:true
+    customer_phone:'+5586972676282',customer_birth_date:'1994-04-09',confirmed:true
   });
   assert.equal(h.document.querySelector('[name=customer_birth_date]'),null);
   assert.match(h.document.getElementById('booking-body').textContent,/Agendamento confirmado!/);

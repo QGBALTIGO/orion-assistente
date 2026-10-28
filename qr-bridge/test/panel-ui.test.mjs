@@ -5,6 +5,7 @@ import vm from "node:vm";
 import {randomUUID} from "node:crypto";
 
 const panel=fs.readFileSync(new URL("../../app/static/panel.html",import.meta.url),"utf8");
+const fields=fs.readFileSync(new URL("../../app/static/orion-fields.js",import.meta.url),"utf8");
 const sections=[...panel.matchAll(/<script>([\s\S]*?)<\/script>/g)];
 
 test("painel tem script válido em JavaScript",()=>{
@@ -72,10 +73,14 @@ function panelHarness(){
         }
       };
     }
-    get textContent(){return this.children.length?this.children.map(child=>typeof child==='string'?child:child?.textContent||'').join(''):this._textContent||''}
-    set textContent(value){this._textContent=String(value);this.children=[]}
+    get textContent(){return (this._textNode?.textContent||'')+this.children.map(child=>typeof child==='string'?child:child?.textContent||'').join('')}
+    set textContent(value){this._textNode=String(value)?{nodeType:3,textContent:String(value)}:null;this.children=[]}
+    get firstChild(){return this._textNode||this.children[0]||null}
     addEventListener(type,callback){(this.listeners[type]??=[]).push(callback)}
     append(...children){this.children.push(...children);for(const child of children)if(typeof child==='object')child.parent=this}
+    get parentElement(){return this.parent||null}
+    before(...children){if(!this.parent)return;const parent=this.parent;parent.children.splice(parent.children.indexOf(this),0,...children);for(const child of children)if(child&&typeof child==='object')child.parent=parent}
+    after(...children){if(!this.parent)return;const parent=this.parent;parent.children.splice(parent.children.indexOf(this)+1,0,...children);for(const child of children)if(child&&typeof child==='object')child.parent=parent}
     replaceChildren(...children){this.children=[];this.options=[];this.textContent="";this.append(...children);for(const child of children)if(child&&Object.hasOwn(child,'value'))this.options.push(child);if(this.options.length)this.value=this.options[0].value}
     remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this)}
     setAttribute(){}
@@ -85,6 +90,7 @@ function panelHarness(){
     close(){this.open=false}
     reportValidity(){return true}
     querySelector(){return new Element()}
+    querySelectorAll(){return []}
     add(option){this.options.push(option);if(this.options.length===1)this.value=option.value}
   }
   const nodes=new Map(),requests=[];let fakeNow;
@@ -120,6 +126,7 @@ function panelHarness(){
       authenticate:()=>{csrf="synthetic-csrf"},
       deviceStatus:()=>deviceStatus};
   `);
+  vm.runInNewContext(fields,context,{filename:"orion-fields.js"});
   vm.runInNewContext(source,context);
   const take=(url,method="GET")=>{
     const request=requests.find(r=>!r.taken&&r.url===url&&(r.options.method||"GET")===method);

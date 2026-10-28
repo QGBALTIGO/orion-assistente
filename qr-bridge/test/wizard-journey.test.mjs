@@ -4,6 +4,7 @@ import fs from "node:fs";
 import vm from "node:vm";
 
 const html=fs.readFileSync(new URL("../../app/static/panel.html",import.meta.url),"utf8");
+const fields=fs.readFileSync(new URL("../../app/static/orion-fields.js",import.meta.url),"utf8");
 const script=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)?.[1];
 assert.ok(script,"O painel deve incluir seu controlador JavaScript");
 const ids=new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]));
@@ -56,6 +57,9 @@ function harness(){
       };
     }
     addEventListener(event,fn){this.listeners.set(event,fn)}
+    get textContent(){return (this._textNode?.textContent||'')+(this.children||[]).map(child=>typeof child==='string'?child:child?.textContent||'').join('')}
+    set textContent(value){this._textNode=String(value)?{nodeType:3,textContent:String(value)}:null;this.children=[]}
+    get firstChild(){return this._textNode||this.children[0]||null}
     async fire(event="click"){
       const fn=this.listeners.get(event);
       if(!fn)throw Error("No listener for "+this.id+" "+event);
@@ -63,6 +67,9 @@ function harness(){
     }
     click(){return this.fire("click")}
     append(...args){this.children??=[];this.children.push(...args);for(const child of args)if(child&&typeof child==="object")child.parent=this}
+    get parentElement(){return this.parent||null}
+    before(...children){if(!this.parent)return;const parent=this.parent;parent.children.splice(parent.children.indexOf(this),0,...children);for(const child of children)if(child&&typeof child==='object')child.parent=parent}
+    after(...children){if(!this.parent)return;const parent=this.parent;parent.children.splice(parent.children.indexOf(this)+1,0,...children);for(const child of children)if(child&&typeof child==='object')child.parent=parent}
     replaceChildren(...args){this.children=[...args]}
     setAttribute(name,v){this.attributes[name]=String(v)}
     getAttribute(name){return this.attributes[name]??null}
@@ -142,6 +149,7 @@ function harness(){
     confirm:()=>true,prompt:()=>null,
     alert:()=>{},console:{log(){},warn(){},error(){}}
   };
+  vm.runInNewContext(fields,context,{filename:"orion-fields.js"});
   vm.runInNewContext(script,context,{filename:"orion-connected-panel.js"});
   return {byId,tabs,calls,copied,themeButtons,authThemeButtons,brandImages,root:htmlRoot,storage,
     changeSystem:async matches=>{preferred.matches=matches;systemListener?.({matches})},

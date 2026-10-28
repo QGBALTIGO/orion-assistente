@@ -147,11 +147,11 @@ test('mobile contact navigation preserves each draft, history and reading positi
   h.fill('#chatPhone', '5511999990003'); h.fill('#chatText', 'Novo destinatário, outro rascunho');
   h.click('#chatBack'); h.click('#chat-contact-' + phoneA); await flush();
   assert.equal(h.element('#chatText').value, 'Rascunho separado Alfa');
-  assert.equal(h.element('#chatPhone').value, phoneA);
+  assert.equal(h.element('#chatPhone').value, '(11) 99999-0001');
   h.click('#chatBack'); h.click('#chat-contact-' + phoneB); await flush();
   assert.equal(h.element('#chatText').value, 'Rascunho separado Beta');
   h.click('#chatNew');
-  assert.equal(h.element('#chatPhone').value, '5511999990003');
+  assert.equal(h.element('#chatPhone').value, '(11) 99999-0003');
   assert.equal(h.element('#chatText').value, 'Novo destinatário, outro rascunho');
   assert.deepEqual(writes(h), []);
   assert.equal(h.errors.length, 0);
@@ -241,7 +241,7 @@ test('manual sending locks only its transport attempt and clears only the review
   }
   h.click('#chat-contact-' + phoneB); h.click('#chatBack'); h.click('#chatNew');
   assert.equal(h.element('#chatTitle').textContent, 'Nova conversa');
-  assert.equal(h.element('#chatPhone').value, phoneA);
+  assert.equal(h.element('#chatPhone').value, '(11) 99999-0001');
   assert.equal(h.element('#chatText').value, reviewedText);
   assert.equal(h.element('#page-conversas').dataset.chatView, 'thread');
 

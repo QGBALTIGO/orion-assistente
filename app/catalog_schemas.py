@@ -5,6 +5,7 @@ import re
 from typing import Literal
 from urllib.parse import urlsplit
 from app.media_paths import is_media_url
+from app.brazilian_fields import reject_boolean_money
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from uuid import UUID
 
@@ -88,6 +89,7 @@ class Service(StrictModel):
     sort_order: int = Field(default=0, ge=0, le=1_000_000)
 
     _image = field_validator("image_url")(Professional.safe_image_url.__func__)
+    _price = field_validator("price_cents", mode="before")(reject_boolean_money)
 
     @model_validator(mode="after")
     def minimum_when_variable(self):

@@ -82,7 +82,7 @@ export async function makePanel({ role = 'support', tenantRole = 'owner',
   const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
   assert.equal(inline.length, 2, 'theme bootstrap and the existing panel controller must remain present');
   window.eval(inline[0][1]);
-  for (const file of ['orion-onboarding.js','orion-channels.js','orion-automations.js'])
+  for (const file of ['orion-fields.js','orion-onboarding.js','orion-channels.js','orion-automations.js'])
     window.eval(await readFile(new URL('../app/static/'+file, import.meta.url), 'utf8'));
   window.eval(suite);
   window.eval(inline[1][1]);

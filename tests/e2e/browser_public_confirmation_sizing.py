@@ -11,12 +11,19 @@ from urllib.parse import urlsplit
 import pytest
 from playwright.sync_api import sync_playwright
 
-from browser_public_confirmation_clean import DATA, HTML, CSS, JS, THEME, ROOT, URL
+from browser_public_confirmation_clean import DATA, HTML, CSS, JS, THEME, ROOT, URL, FIELDS_CSS, FIELDS_JS
 
 ARTIFACTS = ROOT / 'test-artifacts' / 'confirmation-sizing'
 FONTS = {path.name: path for path in (ROOT / 'app').rglob('*.woff2')}
 CASES = [(320, 760, 'dark'), (375, 812, 'light'), (390, 844, 'dark'),
          (430, 932, 'light'), (768, 1024, 'dark'), (1024, 768, 'light')]
+# Preserve the original iPhone regressions and add the agreed six viewports.
+CASES = list(dict.fromkeys(CASES + [
+    (width, height, theme)
+    for width, height in [(360, 800), (390, 844), (430, 932), (768, 1024),
+                          (1024, 768), (1440, 900)]
+    for theme in ('light', 'dark')
+]))
 
 
 @pytest.mark.parametrize('browser_name', ['chromium', 'webkit'])
@@ -41,7 +48,9 @@ def test_native_fields_and_actions_have_one_scale(browser_name, width, height, t
                 content_type='text/html; charset=utf-8', body=HTML))
             assets = {'orion-public.css': ('text/css', CSS),
                       'orion-public.js': ('text/javascript', JS),
-                      'orion-public-theme.js': ('text/javascript', THEME)}
+                      'orion-public-theme.js': ('text/javascript', THEME),
+                      'orion-fields.css': ('text/css', FIELDS_CSS),
+                      'orion-fields.js': ('text/javascript', FIELDS_JS)}
             def asset(route):
                 name = urlsplit(route.request.url).path.rsplit('/', 1)[-1]
                 mime, body = assets[name]
@@ -136,7 +145,7 @@ def test_native_fields_and_actions_have_one_scale(browser_name, width, height, t
             page.locator('.success').wait_for()
             assert len(posts) == 1
             assert posts[0]['customer_birth_date'] == '2000-02-29'
-            assert posts[0]['customer_phone'] == '(86) 97267-6282'
+            assert posts[0]['customer_phone'] == '+5586972676282'
             assert posts[0]['confirmed'] is True
             assert not errors, errors
         finally:

@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "app/static"
 CSS = (STATIC / "orion-suite.css").read_text(encoding="utf-8")
 JS = (STATIC / "orion-suite.js").read_text(encoding="utf-8")
+FIELDS_CSS = (Path(__file__).resolve().parents[2] / "app/static/orion-fields.css").read_text(encoding="utf-8")
+FIELDS_JS = (Path(__file__).resolve().parents[2] / "app/static/orion-fields.js").read_text(encoding="utf-8")
 FIXTURE = (ROOT / "tests/e2e/fixtures/site_address_slug.js").read_text(encoding="utf-8")
 ORIGIN = "https://orion-fixture.invalid"
 HTML = """<!doctype html><html lang="pt-BR"><head>
@@ -63,6 +65,9 @@ def test_site_address_slug(browser_name, width, height, theme):
             page.goto(ORIGIN + "/")
             page.evaluate("theme=>document.documentElement.dataset.theme=theme", theme)
             page.add_style_tag(content=CSS)
+            page.add_style_tag(content=FIELDS_CSS)
+            page.add_script_tag(content=FIELDS_JS)
+            page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=JS)
             page.add_script_tag(content=FIXTURE)
             page.evaluate("mountSiteAddressFixture()")

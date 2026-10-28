@@ -39,6 +39,8 @@ async function fixture(t,{role='owner',phone='+5567912345678'}={}){
     h.click('[data-os-professional="'+id+'"]');await flush();
     const form=h.document.querySelector(formSelector);
     assert.ok(form);
+    // Complete showDialog's initial-focus task before simulating user input.
+    await new Promise(resolve=>h.window.setTimeout(resolve,0));
     return {form,input:form.elements.phone_e164};
   }
   return {h,staff,saves,open};
@@ -114,7 +116,9 @@ test('um dígito excedente no DDD 55 mascarado não muda o destinatário e permi
   h.submit(formSelector);await flush();
   assert.equal(saves.length,0);
   assert.equal(input.getAttribute('aria-invalid'),'true');
-  assert.match(form.querySelector('.os-form-message').textContent,/telefone do profissional com DDD/);
+  const errorIds=input.getAttribute('aria-describedby').split(/\s+/);
+  const fieldError=errorIds.map(id=>form.querySelector('#'+id)).find(el=>el?.classList.contains('orion-field-error'));
+  assert.match(fieldError?.textContent||'',/telefone com DDD/);
   input.setSelectionRange(input.value.length,input.value.length);
   edit(h,input,'deleteContentBackward');
   assert.equal(input.value,'(55) 99123-4567');
@@ -133,7 +137,9 @@ for(const invalid of ['(55) 99123-45678','(55) 99123-456789']){
     h.submit(formSelector);await flush();
     assert.equal(saves.length,0);
     assert.equal(input.getAttribute('aria-invalid'),'true');
-    assert.match(form.querySelector('.os-form-message').textContent,/telefone do profissional com DDD/);
+    const errorIds=input.getAttribute('aria-describedby').split(/\s+/);
+  const fieldError=errorIds.map(id=>form.querySelector('#'+id)).find(el=>el?.classList.contains('orion-field-error'));
+  assert.match(fieldError?.textContent||'',/telefone com DDD/);
   });
 }
 
@@ -177,7 +183,9 @@ test('números inválidos não são truncados nem enviados como outro destinatá
     h.submit(formSelector);await flush();
     assert.equal(saves.length,0);
     assert.equal(input.getAttribute('aria-invalid'),'true');
-    assert.match(form.querySelector('.os-form-message').textContent,/telefone do profissional com DDD/);
+    const errorIds=input.getAttribute('aria-describedby').split(/\s+/);
+  const fieldError=errorIds.map(id=>form.querySelector('#'+id)).find(el=>el?.classList.contains('orion-field-error'));
+  assert.match(fieldError?.textContent||'',/telefone com DDD/);
     assert.equal(h.document.activeElement,input);
   }
   h.fill(phoneSelector,'67912345678');

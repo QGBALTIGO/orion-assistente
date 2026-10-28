@@ -9,6 +9,8 @@ import pytest
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
+FIELDS_CSS=(ROOT/'app/static/orion-fields.css').read_text(encoding='utf-8')
+FIELDS_JS=(ROOT/'app/static/orion-fields.js').read_text(encoding='utf-8')
 HTML = (ROOT / "app/static/orion-public.html").read_text(encoding="utf-8")
 CSS = (ROOT / "app/static/orion-public.css").read_text(encoding="utf-8")
 JS = (ROOT / "app/static/orion-public.js").read_text(encoding="utf-8")
@@ -71,7 +73,9 @@ def test_public_periods_keep_three_mobile_columns_and_booking(browser_type, widt
                        availability)
             page.goto(URL, wait_until="domcontentloaded")
             page.add_style_tag(content=CSS)
+            page.add_style_tag(content=FIELDS_CSS)
             page.add_script_tag(content=THEME)
+            page.add_script_tag(content=FIELDS_JS)
             page.add_script_tag(content=JS)
             page.locator("#site-content").wait_for(state="visible")
             page.locator("#hero-book").click()

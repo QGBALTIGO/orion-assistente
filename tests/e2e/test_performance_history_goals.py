@@ -1,14 +1,22 @@
 """Real layout and form flows with synthetic performance data, on mobile and desktop."""
+import json
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
 sync_playwright = pytest.importorskip("playwright.sync_api", reason="Browser dependencies run in the dedicated UI job").sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
+ARTIFACTS = ROOT / "test-artifacts" / "performance-history-goals"
+BRAND = {name: ROOT / "app/static" / name for name in (
+    "figtree-latin.woff2", "outfit-latin.woff2", "orion-brand-light.svg",
+    "orion-brand-dark.svg", "orion-symbol.svg")}
 CSS = (ROOT / "app/static/orion-suite.css").read_text(encoding="utf-8")
 JS = (ROOT / "app/static/orion-suite.js").read_text(encoding="utf-8")
+FIELDS_CSS = (Path(__file__).resolve().parents[2] / "app/static/orion-fields.css").read_text(encoding="utf-8")
+FIELDS_JS = (Path(__file__).resolve().parents[2] / "app/static/orion-fields.js").read_text(encoding="utf-8")
 FIXTURE = (ROOT / "tests/e2e/fixtures/performance_history_goals.js").read_text(encoding="utf-8")
 HTML = """<!doctype html><html lang="pt-BR" data-theme="dark"><head>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -37,11 +45,26 @@ def test_performance_history_goals(browser_name, width, height, theme):
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         try:
-            page.goto("about:blank")
-            page.set_content(HTML)
+            page.route("**/*", lambda route: route.abort())
+            def brand_asset(route):
+                name = urlsplit(route.request.url).path.rsplit("/", 1)[-1]
+                source = BRAND.get(name)
+                if source is None:
+                    route.abort()
+                else:
+                    route.fulfill(status=200,
+                                  content_type="font/woff2" if name.endswith(".woff2") else "image/svg+xml",
+                                  body=source.read_bytes())
+            page.route("https://orion.test/brand/*", brand_asset)
+            page.route("https://orion.test/panel", lambda route: route.fulfill(
+                status=200, content_type="text/html; charset=utf-8", body=HTML))
+            page.goto("https://orion.test/panel", wait_until="domcontentloaded")
             page.evaluate("theme=>document.documentElement.dataset.theme=theme", theme)
             page.add_style_tag(content=CSS)
+            page.add_style_tag(content=FIELDS_CSS)
             page.add_script_tag(content="if(!crypto.randomUUID)crypto.randomUUID=()=>String(Math.random()).slice(2)+'-fixture';")
+            page.add_script_tag(content=FIELDS_JS)
+            page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=JS)
             page.add_script_tag(content=FIXTURE)
             page.evaluate("mountPerformanceFixture()")
@@ -55,16 +78,65 @@ def test_performance_history_goals(browser_name, width, height, theme):
                     assert -2 <= box["left"] and box["right"] <= width + 2, box
                     assert box["scroll"] <= box["client"] + 2, box
 
+            page.evaluate("() => document.fonts.ready")
             page.locator(".os-professional-results").scroll_into_view_if_needed()
             assert page.locator("[data-os-performance-history]").count() == 3
             button = page.locator("[data-os-performance-history]").first
             button.scroll_into_view_if_needed()
-            box = button.bounding_box()
-            typography = button.evaluate("""el=>{
+            # Keep the geometry and hit test in one frame after fonts and scrolling settle.
+            geometry = button.evaluate("""async el=>{
+              await document.fonts.ready;
+              const rect=node=>{
+                const r=node.getBoundingClientRect();
+                return {x:r.x,y:r.y,left:r.left,top:r.top,right:r.right,bottom:r.bottom,
+                        width:r.width,height:r.height};
+              };
+              const position=()=>{
+                const r=el.getBoundingClientRect(),v=visualViewport;
+                return [r.x,r.y,r.width,r.height,scrollX,scrollY,
+                        v?.offsetLeft||0,v?.offsetTop||0,v?.width||innerWidth,v?.height||innerHeight];
+              };
+              let previous=null,stableFrames=0,frames=0;
+              while(stableFrames<2&&frames<120){
+                await new Promise(resolve=>requestAnimationFrame(resolve));
+                const current=position();
+                stableFrames=previous&&current.every((value,index)=>Math.abs(value-previous[index])<0.05)
+                  ? stableFrames+1 : 0;
+                previous=current;frames++;
+              }
+              const box=rect(el),eye=rect(el.querySelector('svg'));
               const name=el.parentElement.querySelector('strong'),style=getComputedStyle(name);
-              return {font:parseFloat(style.fontSize),line:parseFloat(style.lineHeight)};
+              const hit={x:box.x+box.width/2,y:box.y-3};
+              const target=document.elementFromPoint(hit.x,hit.y),pseudo=getComputedStyle(el,'::before');
+              const ancestors=[];
+              for(let node=el.parentElement;node;node=node.parentElement){
+                const css=getComputedStyle(node);
+                if(css.overflowX!=='visible'||css.overflowY!=='visible')
+                  ancestors.push({tag:node.tagName,className:node.className,box:rect(node),
+                                  overflowX:css.overflowX,overflowY:css.overflowY});
+              }
+              return {box,eye,hit,hitInside:el.contains(target),stableFrames,frames,
+                typography:{font:parseFloat(style.fontSize),line:parseFloat(style.lineHeight),
+                            family:style.fontFamily},
+                target:target?{tag:target.tagName,id:target.id,className:target.getAttribute('class'),
+                               box:rect(target)}:null,
+                pseudo:{content:pseudo.content,top:pseudo.top,right:pseudo.right,bottom:pseudo.bottom,
+                        left:pseudo.left,pointerEvents:pseudo.pointerEvents},ancestors,
+                scroll:{x:scrollX,y:scrollY},viewport:{width:innerWidth,height:innerHeight,
+                  offsetLeft:visualViewport?.offsetLeft,offsetTop:visualViewport?.offsetTop,
+                  widthVisual:visualViewport?.width,heightVisual:visualViewport?.height},
+                fonts:[...document.fonts].map(face=>({family:face.family,status:face.status})),
+                userAgent:navigator.userAgent};
             }""")
-            eye = button.locator("svg").bounding_box()
+            ARTIFACTS.mkdir(parents=True, exist_ok=True)
+            stem = f"{browser_name}-{width}x{height}-{theme}"
+            (ARTIFACTS / f"{stem}.json").write_text(
+                json.dumps(geometry, ensure_ascii=False, indent=2), encoding="utf-8")
+            if not geometry["hitInside"] or geometry["stableFrames"] < 2:
+                page.screenshot(path=str(ARTIFACTS / f"{stem}.png"), full_page=True)
+            assert geometry["stableFrames"] >= 2, geometry
+            assert all(face["status"] == "loaded" for face in geometry["fonts"]), geometry
+            box, typography, eye, hit = (geometry[key] for key in ("box", "typography", "eye", "hit"))
             # The affordance should read as a small action beside the name,
             # while its touch target extends beyond its compact visual box.
             assert 0 < eye["width"] <= typography["font"] * 1.25
@@ -72,8 +144,7 @@ def test_performance_history_goals(browser_name, width, height, theme):
             assert box["width"] <= typography["line"] * 1.6
             assert box["height"] <= typography["line"] * 1.6
             assert box["x"] >= 0 and box["x"] + box["width"] <= width
-            hit = {"x": box["x"] + box["width"] / 2, "y": box["y"] - 3}
-            assert button.evaluate("(el,p)=>el.contains(document.elementFromPoint(p.x,p.y))", hit)
+            assert geometry["hitInside"], geometry
             if width < 768:
                 page.touchscreen.tap(hit["x"], hit["y"])
             else:

@@ -6,6 +6,8 @@ import pytest
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
+FIELDS_CSS=(ROOT/'app/static/orion-fields.css').read_text(encoding='utf-8')
+FIELDS_JS=(ROOT/'app/static/orion-fields.js').read_text(encoding='utf-8')
 HTML = (ROOT / "app/static/orion-public.html").read_text(encoding="utf-8")
 CSS = (ROOT / "app/static/orion-public.css").read_text(encoding="utf-8")
 SCRIPT = (ROOT / "app/static/orion-public.js").read_text(encoding="utf-8")
@@ -60,6 +62,8 @@ def test_hero_icons_align_and_share_opens_native_api_without_booking(engine, wid
                 status=200, content_type="application/json", body=json.dumps(DATA)))
             page.goto(URL, wait_until="domcontentloaded")
             page.add_style_tag(content=CSS)
+            page.add_style_tag(content=FIELDS_CSS)
+            page.add_script_tag(content=FIELDS_JS)
             page.add_script_tag(content=SCRIPT)
             page.locator("#site-content").wait_for(state="visible", timeout=10000)
             book = page.locator("#hero-book")
@@ -186,6 +190,8 @@ def test_hero_share_remains_right_on_desktop_when_map_is_not_available(engine, w
                     status=200, content_type="application/json", body=json.dumps(data)))
             page.goto(URL, wait_until="domcontentloaded")
             page.add_style_tag(content=CSS)
+            page.add_style_tag(content=FIELDS_CSS)
+            page.add_script_tag(content=FIELDS_JS)
             page.add_script_tag(content=SCRIPT)
             page.locator("#site-content").wait_for(state="visible")
             assert not page.locator("#hero-map").is_visible()

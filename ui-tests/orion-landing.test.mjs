@@ -59,7 +59,10 @@ async function makeLanding({ motion = false, saveData = false, width = 390, run 
   window.HTMLMediaElement.prototype.pause = function () { playback.pause++; playing = false; this.dispatchEvent(new window.Event('pause')); };
   const calls = [];
   window.fetch = async (path, options = {}) => { calls.push({ path, options }); return respond(path, options, window); };
-  if (run) window.eval(await readFile(scriptURL, 'utf8'));
+  if (run) {
+    window.eval(await readFile(new URL('../app/static/orion-fields.js', import.meta.url), 'utf8'));
+    window.eval(await readFile(scriptURL, 'utf8'));
+  }
   const element = selector => { const found = document.querySelector(selector); assert.ok(found, `Missing element ${selector}`); return found; };
   return {
     dom, window, document, calls, errors, playback, media,
@@ -316,7 +319,7 @@ test('a confirmed 201 submits once with an idempotency key, freezes the form and
   assert.match(options.headers['Idempotency-Key'], /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
   assert.equal(options.headers['Content-Type'], 'application/json');
   assert.equal(options.credentials, 'omit'); assert.equal(options.cache, 'no-store'); assert.equal(options.redirect, 'error');
-  assert.deepEqual(JSON.parse(options.body), { name: values.name.trim(), email: values.email, phone: values.phone, business_name: '', segment: values.segment, intent: values.intent, consent: true, website: '' });
+  assert.deepEqual(JSON.parse(options.body), { name: values.name.trim(), email: values.email, phone: '+5511912345678', business_name: '', segment: values.segment, intent: values.intent, consent: true, website: '' });
   assert.equal(h.element('.form-submit').disabled, true);
   assert.equal(h.element('#sales-request-form').getAttribute('aria-busy'), 'true');
   for (const field of h.document.querySelectorAll('#sales-request-form input,#sales-request-form select')) assert.equal(field.disabled, true);
@@ -327,6 +330,74 @@ test('a confirmed 201 submits once with an idempotency key, freezes the form and
   assert.equal(h.document.activeElement, h.element('#lead-success'));
   assert.equal(h.element('#lead-name').value, '');
   assert.equal(h.element('#sales-request-form').hasAttribute('aria-busy'), false);
+  assert.equal(h.errors.length, 0);
+});
+
+test('the lead form masks a pasted country code without losing DDD55 and preserves email subdomains and case', async t => {
+  const h = await makeLanding(); t.after(() => h.close());
+  completeForm(h, { name: 'João D’Ávila-Sá', email: 'Contato+Orion@Sub.Example.invalid', phone: '+55 (55) 99123-4567' });
+  const phone = h.element('#lead-phone');
+  assert.equal(phone.value, '(55) 99123-4567');
+  assert.equal(phone.hasAttribute('maxlength'), false);
+  assert.equal(phone.inputMode, 'tel');
+  h.submit(); await flush();
+  assert.equal(h.calls.length, 1);
+  const payload = JSON.parse(h.calls[0].options.body);
+  assert.equal(payload.phone, '+5555991234567');
+  assert.equal(payload.name, 'João D’Ávila-Sá');
+  assert.equal(payload.email, 'Contato+Orion@Sub.Example.invalid');
+  assert.equal(h.errors.length, 0);
+});
+
+test('the lead form blocks a visible excess phone digit and sends null when the optional phone is cleared', async t => {
+  const h = await makeLanding(); t.after(() => h.close());
+  completeForm(h, { phone: '(55) 99123-45678' });
+  h.submit(); await flush();
+  assert.equal(h.calls.length, 0);
+  const phone = h.element('#lead-phone');
+  assert.equal(phone.value, '(55) 99123-45678');
+  assert.equal(phone.getAttribute('aria-invalid'), 'true');
+  const error = h.document.getElementById(phone.getAttribute('aria-describedby'));
+  assert.ok(error);
+  assert.equal(error.parentElement, phone.closest('[data-field-wrapper]'));
+  assert.equal(h.document.activeElement, phone);
+  h.fill('#lead-phone', '');
+  assert.equal(phone.hasAttribute('aria-invalid'), false);
+  h.submit(); await flush();
+  assert.equal(h.calls.length, 1);
+  assert.equal(JSON.parse(h.calls[0].options.body).phone, null);
+  assert.equal(h.errors.length, 0);
+});
+
+test('the lead honeypot stays unmasked and keeps its original contract', async t => {
+  const h = await makeLanding(); t.after(() => h.close());
+  completeForm(h);
+  const trap = h.fill('#lead-website', 'https://example.invalid/55-extra');
+  assert.equal(trap.hasAttribute('data-orion-field'), false);
+  assert.equal(trap.getAttribute('autocomplete'), 'off');
+  assert.equal(trap.tabIndex, -1);
+  assert.equal(trap.maxLength, 200);
+  assert.equal(trap.closest('[aria-hidden]').getAttribute('aria-hidden'), 'true');
+  h.submit(); await flush();
+  assert.equal(h.calls.length, 1);
+  assert.equal(JSON.parse(h.calls[0].options.body).website, 'https://example.invalid/55-extra');
+});
+
+test('required name and segment show associated native errors without changing literal names', async t => {
+  const h = await makeLanding(); t.after(() => h.close());
+  completeForm(h, { name: '' }); h.submit(); await flush();
+  const name = h.element('#lead-name');
+  assert.equal(h.calls.length, 0); assert.equal(name.getAttribute('aria-invalid'), 'true');
+  assert.equal(h.document.getElementById(name.getAttribute('aria-describedby')).parentElement, name.closest('[data-field-wrapper]'));
+  h.fill('#lead-name', "  João D'Ávila-Souza  ");
+  assert.equal(name.value, "  João D'Ávila-Souza  ");
+  const segment = h.fill('#lead-segment', ''); h.submit(); await flush();
+  assert.equal(h.calls.length, 0); assert.equal(segment.getAttribute('aria-invalid'), 'true');
+  assert.equal(h.document.getElementById(segment.getAttribute('aria-describedby')).parentElement, segment.closest('[data-field-wrapper]'));
+  assert.equal(h.document.activeElement, segment);
+  h.fill('#lead-segment', 'barbearia'); h.submit(); await flush();
+  assert.equal(h.calls.length, 1);
+  assert.equal(JSON.parse(h.calls[0].options.body).name, "João D'Ávila-Souza");
   assert.equal(h.errors.length, 0);
 });
 

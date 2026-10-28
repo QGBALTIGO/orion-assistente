@@ -3,9 +3,10 @@ from datetime import datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from app.business_profile_schemas import FAQ, ProfileModel, ShortText
+from app.brazilian_fields import reject_boolean_money
 
 PriceKind = Literal["fixed", "from", "on_request", "custom"]
 IdempotencyKey = Annotated[str, Field(min_length=8, max_length=120, pattern=r"^[a-zA-Z0-9._:-]+$")]
@@ -32,6 +33,8 @@ class Variant(ProfileModel):
     price_kind: PriceKind = "on_request"
     unit_price_cents: int | None = Field(default=None, ge=0, le=100_000_000)
     active: bool = False
+
+    _price = field_validator("unit_price_cents", mode="before")(reject_boolean_money)
 
     @model_validator(mode="after")
     def price_contract(self):
