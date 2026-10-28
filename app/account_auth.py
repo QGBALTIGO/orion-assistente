@@ -162,7 +162,9 @@ async def _consume_code(session,email,purpose,code):
         SELECT t.id,t.account_id,t.token_digest,t.attempts,t.expires_at
         FROM panel_email_tokens t
         JOIN panel_accounts a ON a.id=t.account_id
-        WHERE a.email=:email AND t.purpose=:purpose AND t.used_at IS NULL
+        LEFT JOIN admin_account_controls access ON access.account_id=a.id
+        WHERE a.email=:email AND COALESCE(access.state,'active')='active'
+          AND t.purpose=:purpose AND t.used_at IS NULL
           AND t.expires_at>clock_timestamp()
         ORDER BY t.created_at DESC LIMIT 1 FOR UPDATE OF t
     """),{"email":email,"purpose":purpose})).mappings().first()
@@ -262,8 +264,10 @@ async def resend_verify(payload:RecoveryStart,request:Request):
     async with _storage()() as session:
         async with session.begin():
             account=(await session.execute(text("""
-                SELECT id FROM panel_accounts
-                WHERE email=:email AND verified_at IS NULL FOR UPDATE
+                SELECT a.id FROM panel_accounts a
+                LEFT JOIN admin_account_controls access ON access.account_id=a.id
+                WHERE a.email=:email AND a.verified_at IS NULL
+                  AND COALESCE(access.state,'active')='active' FOR UPDATE OF a
             """),{"email":payload.email})).mappings().first()
             if account:
                 await _issue_token(session,account["id"],"verify",payload.email)
@@ -280,7 +284,10 @@ async def forgot(payload:RecoveryStart,request:Request):
     async with _storage()() as session:
         async with session.begin():
             account=(await session.execute(text("""
-                SELECT id FROM panel_accounts WHERE email=:email FOR UPDATE
+                SELECT a.id FROM panel_accounts a
+                LEFT JOIN admin_account_controls access ON access.account_id=a.id
+                WHERE a.email=:email AND COALESCE(access.state,'active')='active'
+                FOR UPDATE OF a
             """),{"email":payload.email})).mappings().first()
             if account:
                 await _issue_token(session,account["id"],"reset",payload.email)
