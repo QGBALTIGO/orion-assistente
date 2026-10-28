@@ -195,10 +195,13 @@
       "id": "PUB-14",
       "title": "A escrita da duração muda entre cards e totais",
       "severity": "Baixa",
-      "state": "pendente",
-      "evidence": [],
+      "state": "validado",
+      "evidence": [
+        "C:/Users/kayky/Documents/Playground/orion-public-fixes-20261028/PUB-14.json"
+      ],
       "publication": "não publicada",
-      "note": ""
+      "note": "Cards usam o mesmo formatador de duração dos totais e da revisão, sem remover espaços entre valores e unidades.",
+      "tests": "20 testes DOM; seis tamanhos x dois temas; durações curta e longa coerentes e sem cortes nos cards"
     }
   ]
 }

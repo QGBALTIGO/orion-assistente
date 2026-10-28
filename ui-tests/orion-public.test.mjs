@@ -129,7 +129,7 @@ test('serviço variável preserva A partir de sem aviso redundante na confirmaç
 });
 
 
-test('card público mostra primeiro o preço, depois • e a duração compacta', async t => {
+test('card público mostra primeiro o preço, depois • e a duração padronizada', async t => {
   const h = await makePublic(); t.after(() => h.close()); await flush();
   const card = h.document.querySelector('#services-grid .service-card');
   const meta = card.querySelector('.service-meta');
@@ -138,16 +138,16 @@ test('card público mostra primeiro o preço, depois • e a duração compacta'
   assert.match(children[0].textContent, /R\$\s*45,00/);
   assert.equal(children[1].textContent, '•');
   assert.equal(children[1].getAttribute('aria-hidden'), 'true');
-  assert.equal(children[2].textContent, '50min');
-  assert.match(meta.textContent, /R\$\s*45,00•50min/);
+  assert.equal(children[2].textContent, '50 min');
+  assert.match(meta.textContent, /R\$\s*45,00•50 min/);
   card.click(); await flush();
   const selected = h.document.querySelector('#booking-body .service-card .service-meta');
   assert.deepEqual([...selected.children].map(node => node.className), ['price','service-meta-separator','service-duration']);
-  assert.equal(selected.querySelector('.service-duration').textContent, '50min');
+  assert.equal(selected.querySelector('.service-duration').textContent, '50 min');
   assert.equal(h.errors.length,0);
 });
 
-test('serviço com valor variável mantém A partir de e duração de 1h 30min depois do preço', async t => {
+test('serviço com valor variável mantém A partir de e duração de 1 h 30 min depois do preço', async t => {
   const data = catalogue();
   data.services[0].price_mode = 'from';
   data.services[0].duration_min = 90;
@@ -156,8 +156,8 @@ test('serviço com valor variável mantém A partir de e duração de 1h 30min d
   const meta = h.document.querySelector('#services-grid .service-card .service-meta');
   assert.match(meta.querySelector('.price').textContent,/A partir de R\$\s*140,00/);
   assert.equal(meta.querySelector('.service-meta-separator').textContent,'•');
-  assert.equal(meta.querySelector('.service-duration').textContent,'1h 30min');
-  assert.match(meta.textContent,/A partir de R\$\s*140,00•1h 30min/);
+  assert.equal(meta.querySelector('.service-duration').textContent,'1 h 30 min');
+  assert.match(meta.textContent,/A partir de R\$\s*140,00•1 h 30 min/);
   assert.equal(h.errors.length,0);
 });
 
@@ -165,9 +165,9 @@ test('ocultação de preços mostra apenas duração, sem marcador solto', async
   const data = catalogue(); data.site.show_prices = false;
   const h = await makePublic({ data }); t.after(() => h.close()); await flush();
   const meta = h.document.querySelector('#services-grid .service-card .service-meta');
-  assert.equal(meta.textContent,'50min');
+  assert.equal(meta.textContent,'50 min');
   assert.equal(meta.querySelector('.price'), null);
   assert.equal(meta.querySelector('.service-meta-separator'), null);
-  assert.equal(meta.querySelector('.service-duration').textContent,'50min');
+  assert.equal(meta.querySelector('.service-duration').textContent,'50 min');
   assert.equal(h.errors.length,0);
 });

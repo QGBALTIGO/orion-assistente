@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import {makePublic,catalogue,publicProfessional,publicService} from './public-harness.mjs';
 import {flush} from './harness.mjs';
 
+test('PUB-14: service duration uses the same notation as the selected total',async t=>{
+  const data=catalogue();data.services[0].duration_min=90;
+  const h=await makePublic({data});t.after(()=>h.close());await flush();
+  assert.equal(h.document.querySelector('#services-grid .service-duration').textContent,'1 h 30 min');
+  h.click('#hero-book');h.click('#booking-service-list button');
+  assert.equal(h.document.querySelector('#booking-service-list .service-duration').textContent,'1 h 30 min');
+  assert.match(h.document.querySelector('#booking-total').textContent,/1 h 30 min/);
+});
+
 test('PUB-01: returning through services preserves the eligible chosen professional',async t=>{
   const data=catalogue(),second='70000000-0000-4000-8000-000000000027';
   data.professionals.push({id:second,name:'Segundo profissional'});

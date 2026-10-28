@@ -217,7 +217,7 @@
       separator.setAttribute('aria-hidden', 'true');
       meta.append(separator);
     }
-    meta.append(el('span', 'service-duration', duration(service.duration_min).replace(/(\d)\s+(h|min)\b/g, '$1$2')));
+    meta.append(el('span', 'service-duration', duration(service.duration_min)));
     detail.append(meta); card.append(thumb, detail, el('span', 'service-arrow', isSelected ? '✓' : '›'));
     return card;
   }
