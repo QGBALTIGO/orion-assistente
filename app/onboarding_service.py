@@ -36,7 +36,9 @@ from app.account_business import (
 # Historical operations and catalogue APIs stay available for existing accounts.
 LEGACY_LABELS = {"business": "Empresa", "location": "Atendimento e endereço", "professionals": "Profissionais",
                  "catalog": "Serviços e produtos", "hours": "Expediente", "channels": "Canais independentes", "review": "Revisão"}
-LABELS = {"business": "Empresa", "location": "Atendimento e endereço", "professionals": "Profissionais",
+# The quick company registration does not collect staff records. Owners can
+# register professionals later in the dedicated management area.
+LABELS = {"business": "Empresa", "location": "Atendimento e endereço",
           "profile": "Perfil da empresa", "hours": "Expediente", "goals": "Desafios e objetivos", "review": "Revisão"}
 
 
@@ -460,7 +462,8 @@ async def _state(db, tenant, access):
     step_labels = LABELS if quick_setup else LEGACY_LABELS
     current_step = meta["current_step"] if meta else "business"
     if quick_setup:
-        current_step = {"catalog": "profile", "channels": "goals"}.get(current_step, current_step)
+        current_step = {"catalog": "profile", "channels": "goals",
+                        "professionals": "profile"}.get(current_step, current_step)
         if current_step == "review" and any(item["step"] == "goals" for item in pending):
             current_step = "goals"
     result = {"enabled": enabled(), "tenant_id": tenant, "name": facts["business"]["name"], "timezone": facts["business"]["timezone"],

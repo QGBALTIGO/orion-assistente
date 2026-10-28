@@ -41,7 +41,10 @@
     const current = epoch => state.mounted && epoch===state.epoch;
     const base = () => '/api/v1/tenants/'+encodeURIComponent(state.tenantId)+'/onboarding';
     const request = (path,method='GET',payload) => bridge.request(path,method,payload);
-    const stepRows = () => rows(state.data?.steps).filter(step=>definitions[step.id]&&!(state.data?.configuration?.activity==='products'&&['professionals','hours'].includes(step.id)));
+    const stepRows = () => rows(state.data?.steps).filter(step=>definitions[step.id]&&
+      // Quick onboarding collects company profile, not individual professionals.
+      !(rows(state.data?.steps).some(item=>item.id==='goals')&&step.id==='professionals')&&
+      !(state.data?.configuration?.activity==='products'&&['professionals','hours'].includes(step.id)));
     const draftKey = () => (state.tenantId||'new')+':'+state.step+':'+(state.editor?.kind||'')+':'+((state.editor?.id||state.editor?.professional_id||'new')+':'+(state.editor?.variant_id||''));
     function capture() {const form=host.querySelector('form');if(form)state.drafts.set(draftKey(),[...new FormData(form)].map(([name,value])=>[name,String(value)]));}
     function restore() {const form=host.querySelector('form'),draft=state.drafts.get(draftKey());if(!form||!draft)return;for(const element of form.elements){if(!element.name)continue;const values=draft.filter(([name])=>name===element.name).map(([,value])=>value);if(element.type==='checkbox'||element.type==='radio')element.checked=values.includes(element.value);else if(values.length)element.value=values[0];}conditionalFields();}

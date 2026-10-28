@@ -29,6 +29,20 @@ function quickState({step='goals',activity='services',goals=null,pending=[],stat
 }
 const writes=h=>h.calls.filter(call=>call.method!=='GET');
 
+test('quick company setup skips Quem atende and preserves existing professionals',async t=>{
+  const state=quickState({step:'professionals'});
+  const h=await makeOnboarding({data:state});t.after(()=>h.close());
+  assert.equal(h.controller.getState().step,'business');
+  assert.equal(h.document.querySelector('[data-ob-step=professionals]'),null);
+  assert.equal(h.document.querySelector('[data-ob-action=add-professional]'),null);
+  assert.match(h.element('.ob-progress').textContent,/Etapa 1 de 6/);
+  h.click('[data-ob-step=profile]');
+  assert.equal(h.element('#ob-step-title').textContent,'Perfil da empresa');
+  assert.equal(h.document.querySelector('[data-ob-step=professionals]'),null);
+  assert.equal(writes(h).length,0);
+  assert.deepEqual(h.errors,[]);
+});
+
 test('three focused questions replace channels and placeholders never count as answers',async t=>{
   const h=await makeOnboarding({data:quickState()});t.after(()=>h.close());
   assert.equal(h.element('#ob-step-title').textContent,'Desafios e objetivos');

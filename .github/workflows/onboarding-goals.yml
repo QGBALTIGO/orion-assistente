@@ -65,7 +65,8 @@ jobs:
           python -m pytest -q -ra \
             tests/unit/test_onboarding_goals.py \
             tests/unit/test_onboarding_profile.py \
-            tests/unit/test_onboarding.py
+            tests/unit/test_onboarding.py \
+            tests/unit/test_onboarding_no_professionals_step.py
 
   postgres:
     name: PostgreSQL real - tenant, idempotencia e conclusao

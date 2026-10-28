@@ -108,6 +108,7 @@ def test_quick_release_is_in_existing_predeploy_chain_and_rechecks_current_schem
     from scripts import backup_and_migrate_registration as registration
     from scripts import backup_and_migrate_professional_phone as contacts
     from scripts import backup_and_migrate_quick_onboarding as quick
+    from scripts import backup_and_migrate_admin_accounts as accounts
     from contextlib import contextmanager
 
     calls=[]
@@ -117,8 +118,9 @@ def test_quick_release_is_in_existing_predeploy_chain_and_rechecks_current_schem
     monkeypatch.setattr(registration,"main",lambda:calls.append("old-registration") or 0)
     monkeypatch.setattr(contacts,"main",lambda:calls.append("old-phone") or 0)
     monkeypatch.setattr(quick,"main",lambda:calls.append("quick") or 0)
+    monkeypatch.setattr(accounts,"main",lambda:calls.append("admin-accounts") or 0)
     assert registration.predeploy_main()==0
-    assert calls==["quick"]
+    assert calls==["quick","admin-accounts"]
 
     monkeypatch.setattr(quick,"connection_values",lambda:("synthetic",object()))
     monkeypatch.setattr(quick,"migrated_version",lambda _:quick.TARGET)
