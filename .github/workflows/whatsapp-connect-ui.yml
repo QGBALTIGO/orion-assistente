@@ -1,0 +1,91 @@
+name: Orion - conexao WhatsApp
+
+on:
+  pull_request:
+    paths:
+      - 'app/static/panel.html'
+      - 'app/static/orion-connect.*'
+      - 'app/static/orion-channels.*'
+      - 'app/static/orion-fields.*'
+      - 'app/static/orion-suite.*'
+      - 'ui-tests/**'
+      - 'qr-bridge/test/wizard-journey.test.mjs'
+      - 'scripts/whatsapp_connect_preview.py'
+      - 'tests/e2e/browser_whatsapp_connect.py'
+      - '.github/workflows/whatsapp-connect-ui.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/static/panel.html'
+      - 'app/static/orion-connect.*'
+      - 'app/static/orion-channels.*'
+      - 'app/static/orion-fields.*'
+      - 'app/static/orion-suite.*'
+      - 'ui-tests/**'
+      - 'qr-bridge/test/wizard-journey.test.mjs'
+      - 'scripts/whatsapp_connect_preview.py'
+      - 'tests/e2e/browser_whatsapp_connect.py'
+      - '.github/workflows/whatsapp-connect-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dom:
+    name: Contratos de apresentacao e operacoes sinteticas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Sintaxe e jornada sem rede real
+        run: |
+          node --check app/static/orion-connect.js
+          node --check app/static/orion-channels.js
+          node --test qr-bridge/test/wizard-journey.test.mjs
+      - name: Consumidores afetados, isolamento e navegacao
+        # The complete suite is also run during release qualification. Its six
+        # pre-existing retired-cadastros failures are recorded separately; this
+        # new gate covers the current connector and its actual shared consumers.
+        run: |
+          node --test \
+            ui-tests/fields-core.test.mjs \
+            ui-tests/fields-integration.test.mjs \
+            ui-tests/fields-auth.test.mjs \
+            ui-tests/fields-conditional.test.mjs \
+            ui-tests/fields-onboarding-channels.test.mjs \
+            ui-tests/channels.test.mjs \
+            ui-tests/channels-pairing.test.mjs \
+            ui-tests/mobile-atendimento.test.mjs \
+            ui-tests/single-business-context.test.mjs
+
+  browser:
+    name: Seis dimensoes e dois temas - ${{ matrix.engine }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dependencia exclusiva do runner de navegadores
+        run: |
+          python -m pip install -r tests/e2e/requirements.txt pytest
+          python -m playwright install --with-deps ${{ matrix.engine }}
+      - name: UI real com respostas sinteticas e saidas externas bloqueadas
+        run: python -m pytest -q -ra tests/e2e/browser_whatsapp_connect.py -k '${{ matrix.engine }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: whatsapp-connect-${{ matrix.engine }}
+          path: test-artifacts/whatsapp-connect/
+          if-no-files-found: warn
+          retention-days: 7

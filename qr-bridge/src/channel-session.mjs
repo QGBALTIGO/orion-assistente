@@ -26,7 +26,12 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver)});
   const creds=store.get('creds')||mod.initAuthCreds();
   if(context.resumeOnly===true&&creds.registered!==true)throw Error('channel_auth_unavailable');
-  let state='connecting',qrValue=null,qrAt=0,closed=false,queue=Promise.resolve(),identityQueue=Promise.resolve(),pending=0,noticeTimer=null,opened=false;
+  // A new link may require a provider restart before its first open. Carry
+  // only this process's new-link intent; restored registered auth never arms it.
+  const newLinkNotice=context.newLinkNotice||{pending:false};
+  if(context.notifySelf===true&&context.resumeOnly!==true&&creds.registered!==true)newLinkNotice.pending=true;
+  const notifyNewLink=context.notifySelf===true&&context.resumeOnly!==true&&newLinkNotice.pending===true;
+  let state='connecting',qrValue=null,qrAt=0,closed=false,queue=Promise.resolve(),identityQueue=Promise.resolve(),pending=0,noticeTimer=null,opened=false,pairAttempt=null,pairTimer=null;
   const seen=new Set(),metadata=new Map(),typingByPhone=new Map(),typingLeases=new Set(),abort=new AbortController();
   const retryStore=makeEncryptedRetryStore({directory:privateDirectory(path.join(context.directory,'retry-proto')),secret:context.secret,
     serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver),now});
@@ -34,6 +39,24 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const overflowNotices=new Map(),overflowEpoch=new Map();
   const current=()=>!closed&&context.isCurrent();
   const guarded=async()=>{if(!current())throw Error('channel_socket_replaced');await context.assertCurrent();if(!current())throw Error('channel_socket_replaced');};
+  function expirePairing(){
+    if(pairAttempt&&now()>=pairAttempt.expiresAt){
+      cancel(pairTimer);pairTimer=null;
+      pairAttempt.code=null;
+      if(['pairing','pair_failed'].includes(state))state='pair_expired';
+      // A timed-out provider request may still be running. Do not issue a
+      // second request until it has settled, even when its code has expired.
+      if(!pairAttempt.pending){
+        pairAttempt=null;
+        if(state==='pair_expired'&&qrValue&&freshQR(qrAt,now()))state='qr_ready';
+      }
+    }
+  }
+  function pairingResult(attempt){
+    const expires=Math.floor(attempt.expiresAt-now());
+    if(pairAttempt!==attempt||!attempt.code||expires<=0||creds.registered===true||state==='connected')throw Error('channel_pairing_unavailable');
+    return {status:'pairing',code:attempt.code,expires_in_ms:Math.min(90000,expires)};
+  }
   function overflowNotice(message,normalized){
     const peer=String(message.key?.remoteJid||'');
     if(!/^\d{8,20}(?::\d+)?@(s\.whatsapp\.net|lid)$/.test(peer))return;
@@ -70,7 +93,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const client=makeSocket({auth,logger:silent,browser:mod.Browsers.windows('Chrome'),
     printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,userDevicesCache:deviceCache,maxMsgRetryCount:5,
     shouldSyncHistoryMessage:()=>false,getMessage:async key=>{try{await guarded();const message=retryStore.get(key);return current()?message:undefined;}catch{return undefined;}}});
-  const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;cancel(noticeTimer);abort.abort();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
+  const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);abort.abort();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
   const groupSetting=(name,fallback,max)=>{const raw=process.env[name],value=Number(raw);
     return raw!==undefined&&Number.isSafeInteger(value)&&value>=0&&value<=max?value:fallback;};
   const settleMs=groupSetting('QR_AI_GROUP_WAIT_MS',350,2000);
@@ -90,15 +113,15 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   client.ev.on('creds.update',()=>{write(()=>store.set('creds',creds)).catch(close);});
   client.ev.on('connection.update',event=>{
     if(!current())return close();
-    if(event.qr){qrValue=event.qr;qrAt=now();state='qr_ready';}
+    if(event.qr){expirePairing();qrValue=event.qr;qrAt=now();if(!pairAttempt)state='qr_ready';}
     if(event.connection==='open'){
-      state='connected';qrValue=null;
+      state='connected';qrValue=null;pairAttempt=null;cancel(pairTimer);pairTimer=null;
       if(!opened){opened=true;
         void Promise.resolve().then(()=>context.onConnected()).then(()=>{
-          if(context.notifySelf!==true||!current())return;
+          if(!notifyNewLink||!current())return;
           noticeTimer=schedule(async()=>{
             try{
-              await queue;await guarded();
+              await queue;await guarded();newLinkNotice.pending=false;
               await sendConnectionNoticeOnce({authDir:path.join(context.directory,'auth'),client,isCurrent:current,
                 sendText:async(jid,text)=>{
                   await guarded();
@@ -184,8 +207,41 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     }
   }
   client.ev.on('messages.upsert',receive);
-  return {close,status:()=>state,
-    qr:()=>state==='qr_ready'&&freshQR(qrAt,now())?{value:qrValue,expires_in_ms:Math.max(0,45000-(now()-qrAt))}:null,
+  return {close,status:()=>{expirePairing();return state;},
+    supportsPairing:()=>current()&&context.resumeOnly!==true&&creds.registered!==true&&state!=='connected'&&typeof client.requestPairingCode==='function',
+    qr:()=>{expirePairing();return !pairAttempt&&['qr_ready','pair_expired'].includes(state)&&freshQR(qrAt,now())?
+      {value:qrValue,expires_in_ms:Math.max(0,45000-(now()-qrAt))}:null;},
+    async pair(phone){
+      await guarded();expirePairing();
+      if(typeof phone!=='string'||phone!==phone.trim()||!/^[1-9]\d{7,14}$/.test(phone)||creds.registered===true||state==='connected'||
+          context.resumeOnly===true||typeof client.requestPairingCode!=='function')throw Error('channel_pairing_unavailable');
+      if(pairAttempt){
+        if(pairAttempt.phone!==phone)throw Error('channel_pairing_in_progress');
+        if(now()>=pairAttempt.expiresAt)throw Error('channel_pairing_expired');
+        if(pairAttempt.pending)return pairAttempt.promise;
+        return pairingResult(pairAttempt);
+      }
+      if(!qrValue||!freshQR(qrAt,now()))throw Error('channel_pairing_not_ready');
+      const attempt={phone,expiresAt:now()+90000,pending:true,code:null,promise:null};
+      pairAttempt=attempt;state='pairing';
+      pairTimer=schedule(()=>{if(pairAttempt===attempt){attempt.expiresAt=Math.min(attempt.expiresAt,now());expirePairing();}},90000);pairTimer?.unref?.();
+      attempt.promise=(async()=>{
+        try{
+          const raw=await client.requestPairingCode(phone);await guarded();expirePairing();
+          if(typeof raw!=='string'||!((raw.length===8&&/^[A-Za-z0-9]{8}$/.test(raw))||
+              (raw.length===9&&/^[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$/.test(raw))))throw Error('invalid_pairing_code');
+          const code=raw.replace('-','').toUpperCase();attempt.code=code.slice(0,4)+'-'+code.slice(4);
+          return pairingResult(attempt);
+        }catch{
+          attempt.code=null;
+          if(pairAttempt===attempt&&current()&&state!=='connected')state=now()>=attempt.expiresAt?'pair_expired':'pair_failed';
+          // Provider failures can be ambiguous. Retain the attempt until its
+          // bounded expiry; neither polling nor an immediate retry resets auth.
+          throw Error('channel_pairing_unavailable');
+        }finally{attempt.pending=false;expirePairing();}
+      })();
+      return attempt.promise;
+    },
     async send(phone,text,{isCurrent:operationCurrent=()=>true}={}){await guarded();const self=normalizeFromJid(client.user?.id);
       const sendCurrent=()=>{try{return current()&&operationCurrent()===true;}catch{return false;}};
       if(!sendCurrent())throw Error('channel_operation_superseded');

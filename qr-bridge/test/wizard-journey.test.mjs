@@ -5,6 +5,8 @@ import vm from "node:vm";
 
 const html=fs.readFileSync(new URL("../../app/static/panel.html",import.meta.url),"utf8");
 const fields=fs.readFileSync(new URL("../../app/static/orion-fields.js",import.meta.url),"utf8");
+const connectView=fs.readFileSync(new URL("../../app/static/orion-connect.js",import.meta.url),"utf8");
+const connectCSS=fs.readFileSync(new URL("../../app/static/orion-suite.css",import.meta.url),"utf8");
 const script=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)?.[1];
 assert.ok(script,"O painel deve incluir seu controlador JavaScript");
 const ids=new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]));
@@ -16,13 +18,33 @@ test("todos os elementos do wizard existem e cada ID é único",()=>{
   const found=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
   assert.deepEqual(found.filter((x,i)=>found.indexOf(x)!==i),[]);
   for(const id of required)assert.ok(ids.has(id),id+" ausente");
-  assert.match(html,/prefers-reduced-motion/);
-  assert.match(html,/wizard-scan/);
+  assert.match(html,/orion-suite\.css/);
+  assert.doesNotMatch(html,/orion-connect\.css/);
+  assert.match(html,/orion-connect\.js/);
 });
 
-function harness(){
+test("a apresentação comum separa sete passos de Código e QR sem instrução contraditória",()=>{
+  const context={window:{}};
+  vm.runInNewContext(connectView,context);
+  const view=context.window.OrionConnectView;
+  const code=view.instructions("code"),qr=view.instructions("qr");
+  assert.equal((code.match(/<li>/g)||[]).length,7);
+  assert.equal((qr.match(/<li>/g)||[]).length,7);
+  assert.match(code,/Conectar com número de telefone/);
+  assert.doesNotMatch(code,/câmera|escane|QR Code/i);
+  assert.match(qr,/câmera.*QR Code/);
+  assert.doesNotMatch(qr,/número de telefone/);
+  assert.match(view.methods("code"),/data-method="code" aria-pressed="true"/);
+  assert.match(view.methods("qr","data-qc-method"),/data-qc-method="qr" aria-pressed="true"/);
+  assert.equal(view.normalizeCode("abcdefgh"),"ABCD-EFGH");
+  assert.throws(()=>view.normalizeCode("not-a-code"));
+  assert.throws(()=>view.instructions("unexpected"));
+  assert.throws(()=>view.methods("code","onclick"));
+});
+
+function harness(initialStatus="qr_ready",{deferPair=false}={}){
   const elements=new Map(),calls=[],copied=[];
-  let connectionStatus="starting",currentTime=Date.now(),timerCallback=null,activeElement=null;
+  let connectionStatus=initialStatus,currentTime=Date.now(),timerCallback=null,activeElement=null,finishPair=null;
   function eventTarget(properties){
     const listeners=new Map();
     return Object.assign({
@@ -120,15 +142,24 @@ function harness(){
     calls.push({url,method:request.method||"GET",body:request.body?JSON.parse(request.body):null});
     let payload={},status=200;
     if(url==="/auth/me"){status=401;payload={detail:"not authenticated"}}
-    else if(url==="/auth/login"){payload={csrf:"synthetic-csrf"}}
+    else if(url==="/auth/login"){payload={authenticated:true,role:"admin",csrf:"synthetic-csrf"}}
+    else if(url==="/api/v1/account/businesses"||url==="/api/v1/tenants"){
+      payload=[{id:"10000000-0000-4000-8000-000000000001",name:"Empresa sintética",role:"owner"}];
+    }
+    else if(url.endsWith("/business/profile")){
+      payload={generation:0,draft:null,published:null,draft_template:{business_name:"Empresa sintética",timezone:"America/Cuiaba"},
+        supported_capabilities:[],scheduling_timezone:"America/Cuiaba",warnings:[],access:{can_edit_draft:true,can_publish:true}};
+    }
+    else if(url.endsWith("/business/profile/history")){payload=[]}
     else if(url==="/api/v1/qr/status"){
       payload={status:connectionStatus,phone:"5511999999999",ingestion:"receiving",
         messageStats:{available:false},featureSettings:{},featureCapabilities:{}};
     }else if(url==="/api/v1/qr/image"){
       payload={status:"qr_ready",image:"data:image/png;base64,QUJDRA==",expiresIn:44};
     }else if(url==="/api/v1/qr/pair"){
+      if(deferPair)await new Promise(resolve=>{finishPair=resolve});
       payload={status:"pairing",code:"ABCD-EFGH",expiresIn:79};
-    }else if(url==="/api/v1/tenants"){payload=[]}
+    }
     return {ok:status<400,status,json:async()=>payload};
   }
   const context={
@@ -139,10 +170,11 @@ function harness(){
       setItem:(key,value)=>storage.set(key,value)
     },
     document,fetch,history:{replaceState(){}},
-    location:{search:"",hostname:"localhost",protocol:"https:"},
+    location:{href:"https://localhost/panel?aba=dispositivo",pathname:"/panel",search:"?aba=dispositivo",hostname:"localhost",protocol:"https:"},
+    sessionStorage:{getItem(){return null},removeItem(){}},
     navigator:{clipboard:{writeText:async x=>copied.push(x)}},
     Option:class{constructor(label,value){this.label=label;this.value=value}},
-    AbortController,URLSearchParams,Date:FakeDate,Number,Intl,Math,Object,Array,String,RegExp,Set,Map,JSON,
+    AbortController,URL,URLSearchParams,Date:FakeDate,Number,Intl,Math,Object,Array,String,RegExp,Set,Map,JSON,
     clearInterval(){},clearTimeout(){},
     setInterval(fn,ms){if(ms===1000)timerCallback=fn;return 1},
     setTimeout(){return 1},
@@ -150,22 +182,49 @@ function harness(){
     alert:()=>{},console:{log(){},warn(){},error(){}}
   };
   vm.runInNewContext(fields,context,{filename:"orion-fields.js"});
+  vm.runInNewContext(connectView,context,{filename:"orion-connect.js"});
   vm.runInNewContext(script,context,{filename:"orion-connected-panel.js"});
   return {byId,tabs,calls,copied,themeButtons,authThemeButtons,brandImages,root:htmlRoot,storage,
     changeSystem:async matches=>{preferred.matches=matches;systemListener?.({matches})},
     connect:()=>{connectionStatus="connected"},
+    finishPair:()=>finishPair?.(),
     advance:ms=>{currentTime+=ms;timerCallback?.()},
     flush:()=>new Promise(resolve=>setImmediate(resolve))};
 }
 
-test("QR: modo escolhido, 5 etapas, preparo real somente após clique, contagem verdadeira",async()=>{
+test("Código abre o formulário diretamente, sem gerar vínculo na montagem",async()=>{
   const h=harness();
-  assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
-  assert.equal(h.byId("guideSteps").children.length,7);
+  assert.equal(h.byId("codePanel").classList.contains("hidden"),false);
+  assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
+  assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),true);
+  assert.equal(h.tabs[1].getAttribute("aria-pressed"),"true");
+  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"||x.url==="/api/v1/qr/pair"),false);
+});
+
+test("o formulário Código inclui tutorial de sete passos aberto por padrão em disclosure nativo",()=>{
+  const h=harness();
+  assert.equal((h.byId("codeGuide").innerHTML.match(/<li>/g)||[]).length,7);
+  assert.match(h.byId("codeGuide").innerHTML,/Conectar com número de telefone/);
+  assert.doesNotMatch(h.byId("codeGuide").innerHTML,/câmera|escane|QR Code/i);
+  const guidePosition=html.indexOf('id="codeGuide"');
+  assert.ok(guidePosition>0);
+  const disclosure=html.slice(html.lastIndexOf('<details',guidePosition),guidePosition);
+  assert.match(disclosure,/^<details\b[^>]*\bopen(?:\s|>)/,"O tutorial deve usar details aberto, que permite recolher por teclado e toque");
+  assert.match(disclosure,/<summary\b[^>]*>[\s\S]*Tutorial: 7 passos[\s\S]*<\/summary>/);
+  assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
+  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"||x.url==="/api/v1/qr/pair"),false);
+});
+
+test("QR: sete passos próprios, geração somente após ação explícita e prazo real",async()=>{
+  const h=harness();
+  await h.byId("loginForm").fire("submit");
+  await h.flush();await h.flush();
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"),false);
   await h.tabs[0].click();
   assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
-  assert.equal(h.byId("guideSteps").children.length,7);
+  assert.equal((h.byId("guideSteps").innerHTML.match(/<li>/g)||[]).length,7);
+  assert.match(h.byId("guideSteps").innerHTML,/câmera/);
+  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"),false);
   await h.byId("wizardNext").click();
   await h.flush();await h.flush();
   assert.equal(h.byId("qrPanel").classList.contains("hidden"),false);
@@ -175,10 +234,11 @@ test("QR: modo escolhido, 5 etapas, preparo real somente após clique, contagem 
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/pair"),false);
 });
 
-test("Código: tutorial -> número -> geração real -> código -> copiar",async()=>{
+test("Código: número, solicitação única, código e cópia sem QR",async()=>{
   const h=harness();
+  await h.byId("loginForm").fire("submit");
+  await h.flush();await h.flush();
   await h.tabs[1].click();
-  await h.byId("wizardNext").click();
   assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
   h.byId("pairPhone").value="11 99999-9999";
   await h.byId("pairForm").fire("submit");
@@ -189,16 +249,57 @@ test("Código: tutorial -> número -> geração real -> código -> copiar",async
   assert.equal(h.byId("codeResult").classList.contains("hidden"),false);
   await h.byId("copyCode").click();
   assert.deepEqual(h.copied,["ABCDEFGH"]);
+  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"),false);
 });
 
 test("número inválido não envia solicitação de pareamento",async()=>{
   const h=harness();
+  await h.byId("loginForm").fire("submit");
+  await h.flush();await h.flush();
   await h.tabs[1].click();
-  await h.byId("wizardNext").click();
   h.byId("pairPhone").value="abc";
   await h.byId("pairForm").fire("submit");
   assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/pair"),false);
   assert.match(h.byId("codeStatus").textContent,/número válido/);
+});
+
+test("sessão revogada mostra recuperação e bloqueia geração sem reinício automático",async()=>{
+  const h=harness("logged_out");
+  await h.byId("loginForm").fire("submit");
+  await h.flush();await h.flush();
+  assert.equal(h.byId("wizardRecoveryArea").classList.contains("hidden"),false);
+  assert.equal(h.byId("wizardRecover").classList.contains("hidden"),false);
+  assert.equal(h.byId("wizardGenerate").disabled,true);
+  assert.equal(h.byId("codePanel").classList.contains("hidden"),true);
+  h.byId("pairPhone").value="5511999999999";
+  await h.byId("pairForm").fire("submit");
+  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/pair"||x.url==="/api/v1/qr/recover"||x.url==="/api/v1/qr/reconnect"),false);
+});
+
+test("conexão ainda em preparo não libera Gerar nem envia tentativa de pareamento",async()=>{
+  const h=harness("starting");
+  await h.byId("loginForm").fire("submit");
+  await h.flush();await h.flush();
+  assert.equal(h.byId("wizardGenerate").disabled,true);
+  h.byId("pairPhone").value="5511999999999";
+  await h.byId("pairForm").fire("submit");
+  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/pair"),false);
+  assert.match(h.byId("codeStatus").textContent,/prepar|pronta/i);
+});
+
+test("resposta atrasada de geração não repõe código após sair da conta",async()=>{
+  const h=harness("qr_ready",{deferPair:true});
+  await h.byId("loginForm").fire("submit");
+  await h.flush();await h.flush();
+  h.byId("pairPhone").value="5511999999999";
+  const pending=h.byId("pairForm").fire("submit");
+  await h.flush();
+  assert.equal(h.calls.filter(x=>x.url==="/api/v1/qr/pair").length,1);
+  await h.byId("logout").click();
+  h.finishPair();await pending;
+  assert.equal(h.byId("pairCode").textContent,"");
+  assert.equal(h.byId("codeResult").classList.contains("hidden"),true);
+  assert.equal(h.byId("appView").classList.contains("hidden"),true);
 });
 
 test("conexão confirmada pelo backend ativa etapa de sucesso, sem envio",async()=>{
@@ -206,7 +307,6 @@ test("conexão confirmada pelo backend ativa etapa de sucesso, sem envio",async(
   await h.byId("loginForm").fire("submit");
   await h.flush();await h.flush();
   await h.tabs[1].click();
-  await h.byId("wizardNext").click();
   h.byId("pairPhone").value="5511999999999";
   await h.byId("pairForm").fire("submit");
   h.connect();
@@ -221,27 +321,23 @@ test("conexão confirmada pelo backend ativa etapa de sucesso, sem envio",async(
 });
 
 
-test("tutorial integral mostra sete passos de uma vez e avança com um clique",async()=>{
+test("trocar o método oculta o código e permite retomar o mesmo código válido sem novo pedido",async()=>{
  const h=harness();
- assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
- assert.equal(h.byId("guideSteps").children.length,7);
- assert.equal(h.byId("guideSteps").children[0].children[1].children[0].textContent,"PASSO 1");
- assert.equal(h.byId("guideSteps").children[6].children[1].children[0].textContent,"PASSO 7");
- assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"||x.url==="/api/v1/qr/pair"),false);
+ await h.byId("loginForm").fire("submit");
+ await h.flush();await h.flush();
+ h.byId("pairPhone").value="5511999999999";
+ await h.byId("pairForm").fire("submit");
+ assert.equal(h.byId("codeResult").classList.contains("hidden"),false);
+ const calls=h.calls.filter(x=>x.url==="/api/v1/qr/pair").length;
  await h.tabs[0].click();
- assert.equal(h.byId("guideSteps").children.length,7);
  assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
+ assert.equal(h.byId("codePanel").classList.contains("hidden"),true);
  assert.equal(h.calls.some(x=>x.url==="/api/v1/qr/image"),false);
- await h.byId("wizardNext").click();
- await h.flush();
- assert.equal(h.byId("qrPanel").classList.contains("hidden"),false);
- assert.ok(h.calls.some(x=>x.url==="/api/v1/qr/image"));
- await h.byId("wizardQrBack").click();
- assert.equal(h.byId("wizardTutorial").classList.contains("hidden"),false);
- assert.equal(h.byId("guideSteps").children.length,7);
  await h.tabs[1].click();
- await h.byId("wizardNext").click();
- assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),false);
+ assert.equal(h.byId("wizardCodeInput").classList.contains("hidden"),true);
+ assert.equal(h.byId("codeResult").classList.contains("hidden"),false);
+ assert.equal(h.byId("pairCode").textContent,"ABCD-EFGH");
+ assert.equal(h.calls.filter(x=>x.url==="/api/v1/qr/pair").length,calls);
 });
 
 test("QR expira no tempo anunciado e só atualiza ao clicar",async()=>{
@@ -266,7 +362,6 @@ test("código expira e volta ao formulário sem reenviar pedidos automaticamente
  await h.byId("loginForm").fire("submit");
  await h.flush();
  await h.tabs[1].click();
- await h.byId("wizardNext").click();
  h.byId("pairPhone").value="5511999999999";
  await h.byId("pairForm").fire("submit");
  assert.equal(h.byId("codeResult").classList.contains("hidden"),false);
@@ -279,11 +374,18 @@ test("código expira e volta ao formulário sem reenviar pedidos automaticamente
 });
 
 test("CSS garante dispositivos móveis, tablets e redução de movimento",()=>{
- assert.match(html,/@media\(max-width:640px\)/);
- assert.match(html,/@media\(min-width:900px\)/);
- assert.match(html,/prefers-reduced-motion:reduce/);
- assert.match(html,/\.wizard-timeline-step/);
- assert.match(html,/wizard-continue/);
+ assert.match(connectCSS,/@media\(max-width:/);
+ assert.match(connectCSS,/prefers-reduced-motion:reduce/);
+ assert.match(connectCSS,/min-height:44px/);
+ assert.match(connectCSS,/\.os-button\.os-large\{/);
+ assert.match(connectCSS,/\.os-card\{/);
+ assert.match(connectCSS,/\.os-field\{/);
+ assert.match(connectCSS,/\.os-service-option\[aria-pressed=true\]/);
+ assert.match(connectView,/os-service-option/);
+ assert.match(html.match(/<form\b[^>]*id="pairForm"[^>]*>/)?.[0]||"",/class="[^"]*\bos-form\b/);
+ assert.match(html.match(/<div\b[^>]*id="wizardCard"[^>]*>/)?.[0]||"",/class="[^"]*\bos-card\b/);
+ assert.match(connectView,/Conectar com número de telefone/);
+ assert.doesNotMatch(connectView,/wizard-timeline-step|wizard-timeline-dot/);
  assert.doesNotMatch(html,/Conexão não oficial, limitada ao número que você administra/);
  assert.doesNotMatch(html,/Ambiente de homologação/);
  assert.doesNotMatch(html,/wizardPrevious|wizardTutorialClose|wizardStepCount/);
@@ -320,11 +422,11 @@ test("theme switch respects automatic system preference, explicit choice and log
 test("theme choices are unique in each accessible group and the panel uses official logos",()=>{
  for(const item of ["auto","light","dark"])
    assert.match(html,new RegExp('data-theme-choice="'+item+'"[^>]*aria-label="Tema [^"]+"'));
- const boundary=html.indexOf('<div id="appView"');
- assert.ok(boundary>0);
- for(const section of [html.slice(0,boundary),html.slice(boundary)]){
+ const groups=[...html.matchAll(/<div\b[^>]*(?:id="(?:authThemeMenu|setupThemeMenu)"|class="theme-switch")[^>]*>([\s\S]*?)<\/div>/g)].map(match=>match[1]);
+ assert.equal(groups.length,3,"login, setup and sidebar expose independent accessible theme groups");
+ for(const section of groups){
    const choices=[...section.matchAll(/data-theme-choice="([^"]+)"/g)].map(match=>match[1]).sort();
-   assert.deepEqual(choices,["auto","dark","light"],"login and administration each have one button per preference");
+   assert.deepEqual(choices,["auto","dark","light"],"each accessible group has one button per preference");
  }
  assert.match(html,/--sidebar-bg:/);
  assert.match(html,/html\[data-theme="light"\]/);

@@ -1,6 +1,7 @@
 """Owner proxies: real routing/transport validation with no socket or network."""
 from uuid import uuid4
 from types import SimpleNamespace
+import json
 
 from cryptography.fernet import Fernet
 from fastapi import FastAPI, HTTPException
@@ -37,7 +38,11 @@ def control(monkeypatch):
         assert "x-orion-bridge-key" not in request.headers
         if request.url.path.endswith("/qr"):
             return httpx.Response(200, json={"image": "data:image/png;base64,iVBORw0KGgo=", "expires_in_ms": 30000, "credential": key})
-        return httpx.Response(200, json={"status": "connected", "key": key, "phone": "not-for-browser", "fence": 100})
+        if request.url.path.endswith("/pair"):
+            return httpx.Response(200, json={"status": "pairing", "code": "ABCD-EFGH", "expires_in_ms": 90000,
+                                           "credential": key, "phone": "not-for-browser", "fence": 100})
+        return httpx.Response(200, json={"status": "qr_ready", "capabilities": {"pair": True, "secret": key},
+                                       "key": key, "phone": "not-for-browser", "fence": 100})
     monkeypatch.setenv("QR_CHANNELS_ENABLED", "1")
     monkeypatch.setenv("QR_BRIDGE_URL", "http://bridge.railway.internal:3000")
     monkeypatch.setattr(channels, "_cipher", lambda: cipher)
@@ -131,6 +136,115 @@ async def test_invalid_qr_never_reaches_browser(control, monkeypatch, data):
 
 
 @pytest.mark.asyncio
+async def test_pairing_uses_only_owned_channel_and_private_canonical_phone(control):
+    result = await call(control, "pair", method="POST", payload={"expected_revision": 3, "phone": "5567999999901"})
+    assert result.status_code == 200 and result.headers["cache-control"] == "no-store"
+    body = result.json()
+    assert body["status"] == "pairing" and body["code"] == "ABCD-EFGH"
+    assert 0 < body["expires_in_ms"] <= 90000
+    assert body["channel_id"] == str(control[1]) and body["revision"] == 3
+    assert body["enabled"] is True and body["assistant_enabled"] is False
+    assert len(control[4]) == 3 and all(check[-1] == 3 for check in control[4])
+    assert [r.url.path.rsplit("/", 1)[-1] for r in control[5]] == ["status", "pair"]
+    assert json.loads(control[5][-1].content) == {"phone": "5567999999901"}
+    assert control[3] not in result.text and "phone" not in body and "fence" not in body
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [
+    {}, {"expected_revision": 3}, {"expected_revision": 2, "phone": "5567999999901"},
+    {"expected_revision": True, "phone": "5567999999901"},
+    *({"expected_revision": 3, "phone": value} for value in [None, 5567999999901, "", "1234567", "0"*10,
+       "+5567999999901", "(67) 99999-9901", "9"*16, "5567999999901\n"]),
+    {"expected_revision": 3, "phone": "5567999999901", "tenant_id": str(uuid4())},
+    {"expected_revision": 3, "phone": "5567999999901", "key": "injected"},
+])
+async def test_invalid_or_stale_pairing_never_reaches_bridge(control, payload):
+    result = await call(control, "pair", method="POST", payload=payload)
+    assert result.status_code in {409, 422} and not control[5]
+
+
+@pytest.mark.asyncio
+async def test_disabled_and_legacy_pairing_never_start_or_reset_socket(control, monkeypatch):
+    control[2]["enabled"] = False
+    payload = {"expected_revision": 3, "phone": "5567999999901"}
+    assert (await call(control, "pair", method="POST", payload=payload)).status_code == 409
+    control[2]["enabled"] = True
+    from app import qr_legacy
+    monkeypatch.setattr(qr_legacy, "is_alias", lambda *_: True)
+    assert (await call(control, "pair", method="POST", payload=payload)).status_code == 409
+    assert not control[5]
+    assert (await call(control, "status")).json()["capabilities"]["pair"] is False
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_pairing_never_reads_credentials_or_calls_provider(control):
+    result = await call(control, "pair", method="POST", tenant=uuid4(),
+                        payload={"expected_revision": 3, "phone": "5567999999901"})
+    assert result.status_code == 403 and not control[5]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("capabilities", [None, {}, {"pair": False}, {"pair": "true"}, {"pair": 1}])
+async def test_pairing_discovery_fails_closed_with_old_or_unavailable_bridge(control, monkeypatch, capabilities):
+    calls = []
+    async def provider(row, action, method, payload=None):
+        calls.append(action)
+        assert action == "status"
+        return {"status": "qr_ready", "capabilities": capabilities}
+    monkeypatch.setattr(channels, "_bridge_control", provider)
+    result = await call(control, "pair", method="POST", payload={"expected_revision": 3, "phone": "5567999999901"})
+    assert result.status_code == 409 and calls == ["status"]
+    assert (await call(control, "status")).json()["capabilities"]["pair"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("data", [
+    {"status": "pairing", "code": "ABCD-EFGH", "expires_in_ms": value} for value in [None, 0, -1, True, 1.5, 90001, "90000"]
+] + [{"status": "pairing", "code": value, "expires_in_ms": 90000} for value in [None, "abcd-efgh", "ABCDEFGH", "<script>", "ABCD-EFGH\n"]]
+  + [{"status": "connected", "code": "ABCD-EFGH", "expires_in_ms": 90000}])
+async def test_untrusted_pairing_code_or_ttl_is_discarded(control, monkeypatch, data):
+    async def provider(row, action, method, payload=None):
+        return {"status": "qr_ready", "capabilities": {"pair": True}} if action == "status" else data
+    monkeypatch.setattr(channels, "_bridge_control", provider)
+    result = await call(control, "pair", method="POST", payload={"expected_revision": 3, "phone": "5567999999901"})
+    assert result.status_code == 503 and "code" not in result.json()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("revoked_after", [2, 3])
+async def test_owner_or_revision_changed_in_flight_discards_pairing(control, monkeypatch, revoked_after):
+    old = channels._owned_channel
+    async def owned(*args):
+        if len(control[4]) + 1 == revoked_after:
+            raise HTTPException(403)
+        return await old(*args)
+    monkeypatch.setattr(channels, "_owned_channel", owned)
+    result = await call(control, "pair", method="POST", payload={"expected_revision": 3, "phone": "5567999999901"})
+    assert result.status_code == 403 and "code" not in result.json()
+    assert len(control[5]) == revoked_after - 1
+
+
+@pytest.mark.asyncio
+async def test_pairing_code_expired_during_owner_recheck_is_never_returned(control, monkeypatch):
+    ticks = iter([100.0, 191.0])
+    monkeypatch.setattr(channels, "monotonic", lambda: next(ticks))
+    result = await call(control, "pair", method="POST", payload={"expected_revision": 3, "phone": "5567999999901"})
+    assert result.status_code == 409 and "code" not in result.json()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["pairing", "pair_expired", "pair_failed"])
+async def test_status_discloses_pairing_state_without_phone_or_code(control, monkeypatch, status):
+    async def provider(*_):
+        return {"status": status, "capabilities": {"pair": True}, "code": "ABCD-EFGH", "phone": "5567999999901"}
+    monkeypatch.setattr(channels, "_bridge_control", provider)
+    body = (await call(control, "status")).json()
+    assert body["status"] == status and body["capabilities"] == {"pair": True}
+    assert "code" not in body and "phone" not in body
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("role", ["owner", "editor", "viewer", "support"])
 async def test_list_authority_and_allowlist_are_server_derived(monkeypatch, role):
     tenant, account = uuid4(), uuid4()
@@ -153,5 +267,6 @@ async def test_list_authority_and_allowlist_are_server_derived(monkeypatch, role
         result = await client.get(f"/api/v1/tenants/{tenant}/qr-channels")
     assert result.status_code == 200
     body = result.json(); assert body["access"]["can_manage"] is (role == "owner")
+    assert body["capabilities"]["pair"] is (role == "owner")
     assert ("allowed_senders" in body["items"][0]) is (role == "owner")
     assert "allowed_senders" not in body["items"][1] and body["items"][1]["can_manage"] is False

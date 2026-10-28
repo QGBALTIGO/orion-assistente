@@ -50,8 +50,10 @@ test('recovery keeps the reset code textual and rejects a malformed complete pas
 });
 
 test('pairing phone has one country code for DDD55 and explicit international numbers, without real calls',async t=>{
-  const writes=[];const h=await makePanel({respond:(path,method,data)=>{if(path==='/api/v1/qr/pair'){writes.push(data);return {code:'ABCD-1234',expiresIn:90,status:'pair_code'};}}});
-  t.after(()=>{h.close();assert.deepEqual(h.errors,[]);});
-  h.fill('#pairPhone','+55 (55) 99123-4567');h.submit('#pairForm');await flush();assert.equal(writes[0].phone,'5555991234567');
-  h.fill('#pairPhone','+44 20 7946 0958');h.submit('#pairForm');await flush();assert.equal(writes[1].phone,'442079460958');
+  for(const [input,expected] of [['+55 (55) 99123-4567','5555991234567'],['+44 20 7946 0958','442079460958']]){
+    const writes=[];const h=await makePanel({deviceStatus:'qr_ready',respond:(path,method,data)=>{if(path==='/api/v1/qr/pair'){writes.push(data);return {code:'ABCD-1234',expiresIn:90,status:'pairing'};}}});
+    t.after(()=>{h.close();assert.deepEqual(h.errors,[]);});
+    h.fill('#pairPhone',input);h.submit('#pairForm');await flush();assert.equal(writes[0].phone,expected);
+    h.submit('#pairForm');await flush();assert.equal(writes.length,1,'a pending code cannot be replaced by another submission');
+  }
 });

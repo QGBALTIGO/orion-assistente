@@ -28,7 +28,7 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
     const uri=new URL(req.url||'/','http://internal');
     if(!uri.pathname.startsWith('/internal/channels/'))return false;
     if(env.QR_CHANNELS_ENABLED!=='1'){response(res,423,{error:'channels_disabled'});return true;}
-    const match=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(status|start|stop|qr|send|operations\/([0-9a-f-]{36}))$/);
+    const match=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(status|start|stop|qr|pair|send|operations\/([0-9a-f-]{36}))$/);
     if(!match||uri.search){response(res,404,{error:'not_found'});return true;}
     const [,id,action,operationId]=match,key=req.headers['x-orion-channel-key'];
     if(typeof key!=='string'||key.length<32||key.length>256){response(res,401,{error:'channel_unauthorized'});return true;}
@@ -47,12 +47,14 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
         }
       }
       else {
-        const input=await body(req),required=action==='send'?['to','text','operation_id']:[],allowed=[...required,...(action==='send'?['source','control_revision']:[])];
+        const input=await body(req),required=action==='send'?['to','text','operation_id']:action==='pair'?['phone']:[],allowed=[...required,...(action==='send'?['source','control_revision']:[])];
         if(Object.keys(input).some(k=>!allowed.includes(k))||required.some(k=>!(k in input))||
           ('source' in input&&(input.source!=='manual'||!Number.isSafeInteger(input.control_revision)||input.control_revision<1))||
-          ('control_revision' in input&&input.source!=='manual'))throw Error('invalid_channel_request');
+          ('control_revision' in input&&input.source!=='manual')||
+          (action==='pair'&&(typeof input.phone!=='string'||input.phone!==input.phone.trim()||!/^[1-9]\d{7,14}$/.test(input.phone))))throw Error('invalid_channel_request');
         if(action==='start')result=await api.start(id,key);
         else if(action==='stop'){await api.stop(id,key);result={status:'stopped'};}
+        else if(action==='pair')result=await api.pair(id,key,input);
         else result=await api.send(id,key,input);
       }
       response(res,200,result);

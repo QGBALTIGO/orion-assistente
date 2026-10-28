@@ -9,21 +9,21 @@ import {createBaileysChannelSession} from '../src/channel-session.mjs';
 process.env.ORION_RETRY_TEST_MODE='1';
 
 const phone='5567999999901',self='5567999999902',flush=()=>new Promise(r=>setImmediate(r));
-async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=false,schedule,cancel}={}){
+async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=false,schedule,cancel,registered=false,resumeOnly=false}={}){
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-channel-socket-'));fs.chmodSync(directory,0o700);
   t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
   let alive=true,now=100000;const messages=[],sent=[],notices=[];let config;
   const client={ev:new EventEmitter(),user:{id:self+'@s.whatsapp.net'},end(){this.ended=true;},
     onWhatsApp:async pn=>[{exists:true,jid:pn+'@s.whatsapp.net'}],sendMessage:async()=>assert.fail('direct sendMessage is forbidden'),
     relayMessage:async(jid,body,options)=>{sent.push({jid,body,options});}};
-  const context={directory,secret:'synthetic-secret-'.repeat(4),isCurrent:()=>alive,notifySelf,
+  const context={directory,secret:'synthetic-secret-'.repeat(4),isCurrent:()=>alive,notifySelf,resumeOnly,newLinkNotice:{pending:false},
     assertCurrent:async()=>{if(!alive)throw Error('lease lost');},allowedSender:value=>value===phone,
     assistantEnabled:()=>assistant,audioEnabled:()=>audio,
     onInbound:async value=>{notices.push(value);return Object.freeze({revision:notices.length});},
     transcribe:async()=> 'Áudio transcrito sintético',
     onConnected(){},onDisconnected(){},onReceipt:async()=>{},onMessage:async value=>messages.push(value)};
   const mod={
-    default:options=>{config=options;return client;},BufferJSON:{},initAuthCreds:()=>({synthetic:'private-auth'}),
+    default:options=>{config=options;return client;},BufferJSON:{},initAuthCreds:()=>({synthetic:'private-auth',registered}),
     generateMessageIDV2:()=> 'provider-id',generateWAMessage:async(jid,{text})=>({key:{id:'provider-id',remoteJid:jid},message:{conversation:text}}),
     downloadMediaMessage:async()=>Buffer.from('OggS synthetic media'),
     Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},proto:{Message:{AppStateSyncKeyData:{fromObject:v=>v}}}};
@@ -33,6 +33,139 @@ async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=fa
   return {result,client,messages,sent,notices,context,mod,open,get config(){return config;},setTime:value=>{now=value;},revoke:()=>{alive=false;},
     receive:(key,body={conversation:'hello'},time=100000)=>client.ev.emit('messages.upsert',{type:'notify',messages:[{key:{id:'id-'+Math.random(),remoteJid:phone+'@s.whatsapp.net',...key},message:body,messageTimestamp:time/1000}]})};
 }
+
+test('code pairing requires a ready, unregistered channel and never starts or sends a message',async t=>{
+  const s=await session(t),requested=[];
+  assert.equal(s.result.supportsPairing(),false);
+  s.client.requestPairingCode=async number=>{requested.push(number);return 'abcdefgh';};
+  assert.equal(s.result.supportsPairing(),true);
+  await assert.rejects(s.result.pair(phone),/not_ready/);
+  assert.equal(requested.length,0);
+  s.client.ev.emit('connection.update',{qr:'synthetic-qr'});
+  const value=await s.result.pair(phone);
+  assert.deepEqual(value,{status:'pairing',code:'ABCD-EFGH',expires_in_ms:90000});
+  assert.deepEqual(requested,[phone]);assert.equal(s.result.status(),'pairing');assert.equal(s.result.qr(),null);
+  assert.equal(s.sent.length,0);assert.equal(s.messages.length,0);assert.equal(s.client.ended,undefined);
+  assert.equal(JSON.stringify(s.result.status()).includes(value.code),false);
+});
+
+test('concurrent retries share the same code and another phone cannot replace an active attempt',async t=>{
+  const s=await session(t);let requested=0,resolve;
+  s.client.requestPairingCode=async()=>{requested++;return new Promise(done=>{resolve=done;});};
+  s.client.ev.emit('connection.update',{qr:'synthetic-qr'});
+  const a=s.result.pair(phone),b=s.result.pair(phone);await flush();assert.equal(requested,1);
+  await assert.rejects(s.result.pair(self),/in_progress/);
+  resolve('1234ABCD');assert.deepEqual(await a,await b);
+  s.setTime(110000);assert.deepEqual(await s.result.pair(phone),{status:'pairing',code:'1234-ABCD',expires_in_ms:80000});
+  s.client.ev.emit('connection.update',{qr:'rotated-qr'});
+  assert.equal(s.result.status(),'pairing');assert.equal(s.result.qr(),null);assert.equal(requested,1);
+});
+
+test('expired code is discarded and only an explicit request with a fresh QR can create another',async t=>{
+  const s=await session(t);let requested=0;
+  s.client.requestPairingCode=async()=>{requested++;return 'ABCD1234';};
+  s.client.ev.emit('connection.update',{qr:'synthetic-qr'});await s.result.pair(phone);
+  s.setTime(190000);assert.equal(s.result.status(),'pair_expired');assert.equal(s.result.qr(),null);
+  await assert.rejects(s.result.pair(phone),/not_ready/);assert.equal(requested,1);
+  s.client.ev.emit('connection.update',{qr:'fresh-qr'});assert.equal(s.result.status(),'qr_ready');
+  assert.equal((await s.result.pair(self)).code,'ABCD-1234');assert.equal(requested,2);assert.equal(s.sent.length,0);
+});
+
+test('uncertain or malformed provider result is not automatically retried before expiry',async t=>{
+  for(const raw of [null,'123','ABCD-EFGH\n','ABCD-EFGH extra','<script>']){
+    const s=await session(t);let requested=0;
+    s.client.requestPairingCode=async()=>{requested++;if(raw===null)throw Error('secret provider failure');return raw;};
+    s.client.ev.emit('connection.update',{qr:'synthetic-qr'});
+    await assert.rejects(s.result.pair(phone),error=>error.message==='channel_pairing_unavailable');
+    assert.equal(s.result.status(),'pair_failed');
+    s.client.ev.emit('connection.update',{qr:'rotated-qr'});assert.equal(s.result.status(),'pair_failed');
+    await assert.rejects(s.result.pair(phone));assert.equal(requested,1);assert.equal(s.sent.length,0);
+    s.setTime(190000);assert.equal(s.result.status(),'pair_expired');
+  }
+});
+
+test('a provider still pending after expiry blocks duplicate attempts and cannot return a late code',async t=>{
+  const s=await session(t);let requested=0,resolve;
+  s.client.requestPairingCode=async()=>{requested++;return new Promise(done=>{resolve=done;});};
+  s.client.ev.emit('connection.update',{qr:'synthetic-qr'});const pending=s.result.pair(phone);await flush();
+  s.setTime(191000);assert.equal(s.result.status(),'pair_expired');
+  s.client.ev.emit('connection.update',{qr:'fresh-qr'});
+  await assert.rejects(s.result.pair(phone),/expired/);assert.equal(requested,1);
+  const settled=assert.rejects(pending);resolve('ABCD1234');await settled;
+  assert.equal(s.result.status(),'qr_ready');assert.equal(s.sent.length,0);
+});
+
+test('expiry exposes readiness only when a newer internal QR is still fresh',async t=>{
+  const s=await session(t);s.client.requestPairingCode=async()=> 'ABCD1234';
+  s.client.ev.emit('connection.update',{qr:'initial-qr'});await s.result.pair(phone);
+  s.setTime(180000);s.client.ev.emit('connection.update',{qr:'newer-qr'});assert.equal(s.result.status(),'pairing');
+  s.setTime(190000);assert.equal(s.result.status(),'qr_ready');assert.equal(s.result.qr().value,'newer-qr');
+  assert.equal((await s.result.pair(phone)).expires_in_ms,90000);assert.equal(s.sent.length,0);
+});
+
+test('expiry timer clears the code without polling and pairing preserves encrypted auth files',async t=>{
+  const timers=new Map();let serial=0;
+  const s=await session(t,{schedule:(fn,ms)=>{const id=++serial;timers.set(id,{fn,ms});return id;},cancel:id=>timers.delete(id)});
+  s.client.ev.emit('creds.update');await flush();
+  const authDir=path.join(s.context.directory,'auth'),before=fs.readdirSync(authDir).map(name=>[name,fs.readFileSync(path.join(authDir,name)).toString('hex')]);
+  s.client.requestPairingCode=async()=> 'ABCD1234';s.client.ev.emit('connection.update',{qr:'synthetic-qr'});
+  await s.result.pair(phone);assert.equal(timers.size,1);const expiry=[...timers.values()][0];assert.equal(expiry.ms,90000);
+  const after=fs.readdirSync(authDir).map(name=>[name,fs.readFileSync(path.join(authDir,name)).toString('hex')]);
+  assert.deepEqual(after,before);s.setTime(190000);expiry.fn();assert.equal(timers.size,0);
+  assert.equal(s.result.status(),'pair_expired');await assert.rejects(s.result.pair(phone),/not_ready/);assert.equal(s.sent.length,0);
+});
+
+test('registered, resumed, closed and invalid-phone sessions cannot request a code or reset auth',async t=>{
+  for(const mode of ['registered','connected','resume','closed','invalid']){
+    const s=await session(t);let requested=0;
+    s.client.requestPairingCode=async()=>{requested++;return 'ABCDEFGH';};
+    s.client.ev.emit('connection.update',{qr:'synthetic-qr'});
+    if(mode==='registered')s.config.auth.creds.registered=true;
+    if(mode==='connected')s.client.ev.emit('connection.update',{connection:'open'});
+    if(mode==='resume')s.context.resumeOnly=true;
+    if(mode==='closed')s.result.close();
+    for(const value of mode==='invalid'?[null,12345678,'+5567999999901','1234567','0123456789',phone+'\n','١٢٣٤٥٦٧٨']: [phone])
+      await assert.rejects(s.result.pair(value));
+    assert.equal(requested,0);assert.equal(s.sent.length,0);
+    if(mode==='registered')assert.equal(s.config.auth.creds.registered,true);
+    if(mode!=='closed')assert.equal(s.client.ended,undefined);
+  }
+});
+
+test('revocation, closing or connection during provider request discards its late code',async t=>{
+  for(const mode of ['revoked','closed','connected','registered']){
+    const s=await session(t);let resolve;
+    s.client.requestPairingCode=()=>new Promise(done=>{resolve=done;});
+    s.client.ev.emit('connection.update',{qr:'synthetic-qr'});const pending=s.result.pair(phone);await flush();
+    if(mode==='revoked')s.revoke();
+    if(mode==='closed')s.result.close();
+    if(mode==='connected')s.client.ev.emit('connection.update',{connection:'open'});
+    if(mode==='registered')s.config.auth.creds.registered=true;
+    resolve('ABCDEFGH');await assert.rejects(pending);assert.equal(s.sent.length,0);
+  }
+});
+
+for(const resumeOnly of [false,true])test(`registered managed ${resumeOnly?'resume':'explicit start'} never arms a new-link notice, even without any receipt`,async t=>{
+  const timers=[],s=await session(t,{notifySelf:true,registered:true,resumeOnly,
+    schedule:fn=>{timers.push(fn);return timers.length;},cancel(){}});
+  const marker=path.join(s.context.directory,'auth','orion_link_notification.v1.json');
+  assert.equal(fs.existsSync(marker),false);s.client.ev.emit('connection.update',{connection:'open'});await flush();await flush();
+  assert.equal(timers.length,0,'a resumed account must not even schedule sendConnectionNoticeOnce');
+  assert.equal(s.sent.length,0);assert.equal(fs.existsSync(marker),false);assert.equal(s.config.auth.creds.registered,true);
+  assert.equal(s.context.newLinkNotice.pending,false);
+});
+
+test('a fresh managed link retains its notice intent through the provider restart, without persisting the intent',async t=>{
+  const timers=[],s=await session(t,{notifySelf:true,assistant:false,schedule:fn=>{timers.push(fn);return timers.length;},cancel(){}});
+  assert.equal(s.context.newLinkNotice.pending,true);
+  s.config.auth.creds.registered=true;s.client.ev.emit('creds.update');await flush();s.result.close();
+  const reopened=await s.open();t.after(()=>reopened.close());
+  assert.equal(s.config.auth.creds.registered,true);s.client.ev.emit('connection.update',{connection:'open'});await flush();
+  assert.equal(timers.length,1);await timers.shift()();assert.equal(s.sent.length,1);assert.equal(s.context.newLinkNotice.pending,false);
+  s.result.close();reopened.close();s.context.newLinkNotice={pending:false};
+  const boot=await s.open();t.after(()=>boot.close());
+  s.client.ev.emit('connection.update',{connection:'open'});await flush();assert.equal(timers.length,0);assert.equal(s.sent.length,1);
+});
 
 test('managed connection notice goes only to socket self, caches its exact proto and is not repeated after restart',async t=>{
   const timers=[],s=await session(t,{notifySelf:true,assistant:false,schedule:fn=>{timers.push(fn);return timers.length;},cancel(){}});

@@ -244,6 +244,65 @@ async def test_member_owner_flow_does_not_require_native_admin_identity(native):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["member", "admin"])
+async def test_channel_pairing_preserves_real_owner_authorization_and_configuration(native, monkeypatch, role):
+    state = native
+    row, _ = await registered(state)
+    stored = state.db.rows[row["id"]]
+    stored["enabled"] = True
+    before = dict(stored)
+    calls = []
+    async def bridge(owned, action, method, payload=None):
+        calls.append((owned["id"], action, method, payload))
+        if action == "status":
+            return {"status": "qr_ready", "capabilities": {"pair": True}}
+        return {"status": "pairing", "code": "ABCD-EFGH", "expires_in_ms": 90000}
+    monkeypatch.setattr(channels, "_bridge_control", bridge)
+    result = await channels.pair_control(state.tenant, row["id"],
+        channels.ChannelPairCommand(expected_revision=stored["revision"], phone="5567999999901"),
+        Response(), Actor(role, account_id=state.account))
+    assert result["code"] == "ABCD-EFGH" and result["channel_id"] == str(row["id"])
+    assert stored == before
+    assert calls == [(row["id"], "status", "GET", None), (row["id"], "pair", "POST", {"phone": "5567999999901"})]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["status", "pair"])
+async def test_pairing_discards_response_after_real_owner_membership_is_revoked(native, monkeypatch, phase):
+    state = native
+    row, _ = await registered(state)
+    stored = state.db.rows[row["id"]]
+    stored["enabled"] = True
+    calls = []
+    async def bridge(owned, action, method, payload=None):
+        calls.append(action)
+        if action == phase:
+            state.db.memberships[(state.tenant, state.account)] = None
+        if action == "status":
+            return {"status": "qr_ready", "capabilities": {"pair": True}}
+        return {"status": "pairing", "code": "ABCD-EFGH", "expires_in_ms": 90000}
+    monkeypatch.setattr(channels, "_bridge_control", bridge)
+    with pytest.raises(HTTPException) as caught:
+        await channels.pair_control(state.tenant, row["id"],
+            channels.ChannelPairCommand(expected_revision=stored["revision"], phone="5567999999901"), Response(), state.actor)
+    assert caught.value.status_code == 403
+    assert calls == (["status"] if phase == "status" else ["status", "pair"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["editor", "viewer", None])
+async def test_non_owner_cannot_request_code_even_with_admin_session(native, role):
+    state = native
+    row, _ = await registered(state)
+    state.db.rows[row["id"]]["enabled"] = True
+    state.db.memberships[(state.tenant, state.account)] = role
+    with pytest.raises(HTTPException) as caught:
+        await channels.pair_control(state.tenant, row["id"],
+            channels.ChannelPairCommand(expected_revision=1, phone="5567999999901"), Response(), state.actor)
+    assert caught.value.status_code == 403 and not state.network
+
+
+@pytest.mark.asyncio
 async def test_native_admin_cannot_select_another_tenant_or_another_owners_channel(native):
     state = native
     own, _ = await registered(state)

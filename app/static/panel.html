@@ -175,111 +175,6 @@ table{border-collapse:collapse;width:100%;font-size:.83rem}td,th{padding:10px;bo
 @media(max-width:740px){.device-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.device-actions{grid-template-columns:1fr}.device-dialog .form-grid{grid-template-columns:1fr}.device-hero{padding:18px}.device-feature{padding:15px 12px}}
 
 
-/* Orion / guided pairing — mobile-first interactive setup */
-.wizard-shell{--wizard-green:#0dbb8f;--wizard-dark:#07110e;width:min(100%,660px);margin:8px auto 38px;color:#f4fff9}
-.wizard-heading{text-align:center;margin:0 auto 24px}
-.wizard-eyebrow{font-size:.69rem;letter-spacing:.19em;color:#5be2b6;font-weight:800}
-.wizard-heading h2{font-size:clamp(1.5rem,3.4vw,1.95rem);margin:7px 0 4px}
-.wizard-heading p{margin:0;font-size:.9rem;color:#a3b9af}
-.wizard-methods{gap:12px;margin-bottom:17px}
-.wizard-method{min-height:126px;background:#080e0c;border:1px solid #2b443a;color:#e9fff5;border-radius:13px;padding:16px 10px;transition:transform .2s,border-color .2s,box-shadow .2s,background .2s}
-.wizard-method:hover{transform:translateY(-2px);border-color:#22a77f}
-.wizard-method.active{background:#0a2d24;border-color:#10be91;box-shadow:0 0 0 1px #1d8c6a5c}
-.wizard-method-icon{display:grid;place-items:center;color:#36d6ac}
-.wizard-method strong{font-size:.96rem}
-.wizard-method span:last-child{color:#a7b9ae;font-size:.75rem}
-.wizard-card{background:#090f0d;border:1px solid #315346;border-radius:17px;box-shadow:0 20px 55px #0005;padding:clamp(18px,3.8vw,29px);min-height:260px;overflow:hidden}
-.wizard-pane:not(.hidden){animation:wizard-enter .26s ease-out both}
-@keyframes wizard-enter{from{opacity:.1;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
-.wizard-number{color:#49e3b3;font-size:.67rem;font-weight:820;letter-spacing:.17em}
-.wizard-card h3{font-size:clamp(1.17rem,3vw,1.45rem);color:#f3fdf8;line-height:1.3;margin:11px 0 7px}
-.wizard-card p{color:#aac1b5;font-size:.91rem;line-height:1.55}
-.wizard-welcome-symbol{width:66px;height:66px;border-radius:20px;background:#0d3d30;border:1px solid #276b52;color:#61e6ba;display:grid;place-items:center;margin:26px 0 14px}
-.wizard-step-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.wizard-plain{border:0;background:transparent;color:#a4d9c2;font-size:.79rem;padding:7px;cursor:pointer}
-.wizard-progress{margin:14px 0 8px;height:5px;border-radius:6px;background:#1a3329;overflow:hidden}
-.wizard-progress span{display:block;background:linear-gradient(90deg,#13aa7b,#5de9b8);height:100%;width:20%;border-radius:6px;transition:width .3s}
-.wizard-illustration{height:185px;display:grid;place-items:center;border:1px solid #194736;border-radius:15px;background:radial-gradient(ellipse at 50% 45%,#10392c,#07120e 74%);margin:19px 0}
-.wizard-graphic-svg{width:min(100%,340px);height:100%;overflow:visible}
-.wizard-phone{animation:wizard-float 3.2s ease-in-out infinite}
-.wizard-scan{animation:wizard-scan 2.8s linear infinite}
-.wizard-tap{transform-origin:225px 130px;animation:wizard-tap 2.2s ease-in-out infinite}
-@keyframes wizard-float{50%{transform:translateY(-3px)}}
-@keyframes wizard-scan{0%{transform:translateY(-42px);opacity:0}24%{opacity:1}75%{opacity:1}100%{transform:translateY(43px);opacity:0}}
-@keyframes wizard-tap{0%,100%{transform:scale(.98)}50%{transform:scale(1.1)}}
-.wizard-step-copy{min-height:100px}
-.wizard-steps-actions{display:flex;justify-content:space-between;gap:12px;margin-top:22px;flex-wrap:wrap}
-.wizard-primary{background:#0b9d77;color:#ecfff7;border:1px solid #19ac83;box-shadow:0 6px 20px #0b8b6530;font-weight:800}
-.wizard-primary:hover{background:#13ad82}
-.wizard-footer{display:flex;align-items:center;justify-content:center;gap:9px;padding:16px 12px;text-align:center;font-size:.76rem;color:#8da99a}
-.wizard-footer .dot{flex-shrink:0}
-.wizard-explain{margin-top:6px}
-.wizard-qr-wrap{width:min(100%,320px);min-height:280px;display:grid;place-items:center;margin:14px auto;background:#fff;border-radius:13px;padding:12px;box-shadow:0 12px 36px #0004}
-.wizard-qr-wrap img{width:min(100%,290px);aspect-ratio:1;object-fit:contain}
-.wizard-qr-placeholder{color:#20503d;text-align:center;min-height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
-.wizard-qr-placeholder small{color:#4f7565}
-.wizard-qr-time{text-align:center;font-size:.86rem;color:#9ec4b2;margin:9px auto 5px}
-.wizard-qr-time strong{color:#67f4c0;font-size:1.1rem;font-variant-numeric:tabular-nums}
-.wizard-spinner{width:32px;height:32px;border:3px solid #8ad9b8;border-top-color:#0b815a;border-radius:50%;animation:wizard-spin .8s linear infinite}
-@keyframes wizard-spin{to{transform:rotate(360deg)}}
-.wizard-status{color:#65e2b3;min-height:20px;font-size:.9rem;margin:10px 0 0;text-align:center}
-.wizard-hint{text-align:center;font-size:.8rem!important;margin:8px 0}
-.wizard-phone-input{display:flex;gap:8px;align-items:center;border:1px solid #3f6554;border-radius:11px;background:#111b17;padding:0 13px}
-.wizard-phone-input span{font-weight:750;color:#69d4ac;white-space:nowrap}
-.wizard-phone-input input{border:0!important;box-shadow:none!important;background:transparent!important;width:100%;padding:14px 4px;min-width:0}
-.wizard-code-result{text-align:center;margin:14px 0}
-.wizard-code-check{font-size:1.8rem;color:#40dca3}
-.wizard-code-result .code-box{font-size:clamp(1.4rem,5vw,2.25rem);letter-spacing:.15em;border-radius:11px;background:#edf8f1;color:#096b50;border:0}
-.wizard-code-result .btn{max-width:340px;margin:auto}
-.wizard-success{text-align:center;padding:20px 0 12px}
-.wizard-success-ring{width:100px;height:100px;display:grid;place-items:center;margin:10px auto 22px;border-radius:50%;background:#103c2a}
-.wizard-success-ring svg{width:80px;height:80px;fill:none;stroke:#50efaa;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-.wizard-success-ring circle{stroke-dasharray:183;stroke-dashoffset:183;animation:circle-draw .65s ease-out forwards}
-.wizard-success-ring path{stroke-dasharray:55;stroke-dashoffset:55;animation:circle-draw .5s .55s ease-out forwards}
-@keyframes circle-draw{to{stroke-dashoffset:0}}
-.wizard-success h3{margin:17px 0 8px}
-@media(max-width:640px){
- .wizard-shell{width:100%;margin-top:0}
- .wizard-card{border-radius:14px;padding:18px}
- .wizard-methods{gap:9px}
- .wizard-method{padding:13px 7px;min-height:111px}
- .wizard-method-icon svg{width:26px;height:26px}
- .wizard-illustration{height:165px}
- .wizard-steps-actions{flex-direction:column-reverse}
- .wizard-steps-actions>.btn{width:100%;min-height:47px}
- .wizard-card input{font-size:16px}
- .wizard-card .wizard-primary{min-height:46px}
-}
-@media(min-width:900px){.wizard-shell{width:min(100%,700px)}.wizard-illustration{height:200px}}
-@media(prefers-reduced-motion:reduce){
- .wizard-pane:not(.hidden),.wizard-phone,.wizard-scan,.wizard-tap,.wizard-spinner,
- .wizard-success-ring circle,.wizard-success-ring path{animation:none!important}
- .wizard-progress span{transition:none}
- .wizard-success-ring circle,.wizard-success-ring path{stroke-dashoffset:0}
-}
-
-
-/* Tutorial integral em linha do tempo, sem paginação. */
-.wizard-tutorial-heading h3{font-size:clamp(1.05rem,2.7vw,1.2rem);line-height:1.43;margin:0 0 6px}
-.wizard-tutorial-heading p{margin:0;font-size:.82rem}
-.wizard-timeline{display:grid;gap:0;margin:24px 0 8px}
-.wizard-timeline-step{display:grid;grid-template-columns:44px minmax(0,1fr);gap:15px;position:relative;min-height:75px;padding-bottom:20px}
-.wizard-timeline-step:last-child{min-height:57px;padding-bottom:0}
-.wizard-timeline-step:not(:last-child):before{content:"";position:absolute;left:21px;top:42px;bottom:-1px;border-left:2px solid #14765d}
-.wizard-timeline-dot{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;color:#effff7;background:linear-gradient(155deg,#219f86,#096b5b);border:2px solid #0d503e;box-shadow:0 2px 10px #0004;position:relative;z-index:1}
-.wizard-timeline-dot.edge{background:linear-gradient(155deg,#17aa90,#087c68);box-shadow:0 0 0 4px #0e3228,0 3px 12px #0005}
-.wizard-timeline-dot svg{width:19px;height:19px}
-.wizard-timeline-copy{min-width:0;padding-top:2px}
-.wizard-timeline-copy small{display:block;font-size:.67rem;font-weight:850;letter-spacing:.12em;color:#2fcaa0;margin:0 0 5px}
-.wizard-timeline-copy strong{display:block;color:#ecf8f2;font-size:.88rem;margin-bottom:2px}
-.wizard-timeline-copy p{color:#a8bbb0;font-size:.8rem;line-height:1.45;margin:0}
-.wizard-continue{width:100%;min-height:48px;margin-top:22px}
-@media(max-width:640px){.wizard-timeline-step{grid-template-columns:39px minmax(0,1fr);gap:12px;min-height:74px;padding-bottom:18px}
-.wizard-timeline-dot{width:39px;height:39px}
-.wizard-timeline-step:not(:last-child):before{left:19px;top:38px}
-.wizard-timeline-copy p{font-size:.79rem}.wizard-card{padding:16px}}
-
-
 /* Authentication uses the shared suite tokens in orion-auth.css. */
 
 .admin-client-center{display:grid;gap:20px;max-width:1000px;margin:24px 0}
@@ -375,7 +270,7 @@ input[type="checkbox"]{accent-color:var(--accent)}
 .btn.ghost{background:transparent;color:var(--text);border-color:var(--border)}
 .btn.danger{background:rgba(189,61,66,.13);color:var(--danger);border-color:rgba(183,79,86,.35)}
 .btn.secondary:hover:not(:disabled),.btn.ghost:hover:not(:disabled){background:var(--hover-bg)}
-.card,.device-stats,.device-features,.wizard-card,.member-overview{
+.card,.device-stats,.device-features,.member-overview{
  background:var(--panel);color:var(--text);border:1px solid var(--border);box-shadow:var(--shadow)}
 .card{border-radius:var(--radius)}
 .app{grid-template-columns:248px minmax(0,1fr);background:var(--bg)}
@@ -435,24 +330,6 @@ input[type="checkbox"]{accent-color:var(--accent)}
 .device-dialog fieldset,.device-dialog pre{border-color:var(--border)}
 .device-dialog pre{background:var(--panel-low);color:var(--muted)}
 .device-dialog small{color:var(--muted)}
-.wizard-shell{--wizard-green:var(--accent);--wizard-dark:var(--panel-low);color:var(--text)}
-.wizard-card h3,.wizard-timeline-copy strong{color:var(--text)}
-.wizard-heading p,.wizard-card p,.wizard-timeline-copy p{color:var(--muted)}
-.wizard-number,.wizard-eyebrow,.wizard-timeline-copy small{color:var(--bright)}
-.wizard-method{background:var(--panel-low);color:var(--text);border-color:var(--border)}
-.wizard-method strong{color:var(--text)}
-.wizard-method span:last-child{color:var(--muted)}
-.wizard-method:hover,.wizard-method.active{border-color:var(--accent)}
-.wizard-method.active{background:var(--selected-bg);box-shadow:0 0 0 1px var(--soft-accent)}
-.wizard-method-icon,.wizard-welcome-symbol{color:var(--bright)}
-.wizard-phone-input{background:var(--control-bg);border-color:var(--input-border)}
-.wizard-phone-input span,.wizard-status,.wizard-qr-time strong{color:var(--bright)}
-.wizard-primary{background:var(--accent);border:1px solid var(--accent);color:var(--accent-contrast)}
-.wizard-primary:hover{background:var(--accent2);color:#ffffff}
-.wizard-qr-time{color:var(--muted)}
-.wizard-footer{color:var(--muted)}
-.wizard-timeline-step:not(:last-child)::before{border-color:var(--accent)}
-.wizard-timeline-dot,.wizard-timeline-dot.edge{background:var(--accent2);border-color:var(--accent)}
 .step p,.step small{color:var(--muted)}
 .step-mark{background:var(--soft-accent);color:var(--bright);border-color:var(--border)}
 .step:not(:last-child)::before{border-color:var(--accent)}
@@ -513,8 +390,6 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 
 .sidebar-bottom .btn svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
 .orion-list-check svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-.wizard-code-check{display:grid;place-items:center;width:50px;height:50px;margin:0 auto 12px;border-radius:50%;background:var(--soft-accent)}
-.wizard-code-check svg{width:26px;height:26px;stroke:var(--bright);stroke-width:2.5;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .business-steps{display:flex;gap:9px;flex-wrap:wrap;margin:20px 0}.business-steps button[aria-current="step"]{background:var(--selected-bg);border-color:var(--accent2)}
 .business-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.business-grid .wide{grid-column:1/-1}
 .business-fields{border:0;padding:0;margin:0;min-width:0}.business-checks{display:grid;gap:11px;margin:16px 0}.business-checks label{display:flex;align-items:flex-start;gap:10px;margin:0}
@@ -609,34 +484,6 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 #appView .orion-workspace .device-menu nav{max-width:calc(100vw - 48px);border-radius:12px;box-shadow:0 12px 40px #0f1b3320}
 #appView .orion-workspace .device-menu nav button{min-height:44px;font-size:14px}
 #appView .orion-workspace .device-dialog{width:min(640px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);padding:24px;border-radius:16px;font-family:var(--os-font)}
-#appView .orion-workspace .wizard-shell{width:100%;max-width:760px;margin:0 auto 24px}
-#appView .orion-workspace .wizard-heading{text-align:left;margin:0 0 16px}
-#appView .orion-workspace .wizard-heading h2{font-size:20px;line-height:28px}
-#appView .orion-workspace .wizard-heading p{font-size:13px;line-height:20px}
-#appView .orion-workspace .wizard-eyebrow{display:none}
-#appView .orion-workspace .wizard-methods{gap:12px;margin-bottom:16px}
-#appView .orion-workspace .wizard-method{min-width:0;min-height:116px;padding:16px 12px;gap:6px;border-radius:14px;background:var(--os-card)}
-#appView .orion-workspace .wizard-method.active{background:var(--os-tint);border-color:var(--os-primary);box-shadow:0 0 0 1px var(--os-primary)}
-#appView .orion-workspace .wizard-method strong{font-family:var(--os-display);font-size:15px}
-#appView .orion-workspace .wizard-method span:last-child{font-size:12px;line-height:18px;white-space:normal}
-#appView .orion-workspace .wizard-card{padding:24px;min-height:0;border-color:var(--os-border);border-radius:16px;background:var(--os-card);box-shadow:var(--os-shadow)}
-#appView .orion-workspace .wizard-card h3{color:var(--os-text);font-size:20px;line-height:28px}
-#appView .orion-workspace .wizard-card p{font-size:14px;line-height:22px;color:var(--os-muted)}
-#appView .orion-workspace .wizard-timeline{margin:20px 0 0}
-#appView .orion-workspace .wizard-timeline-step{grid-template-columns:36px minmax(0,1fr);gap:12px;min-height:0;padding-bottom:20px}
-#appView .orion-workspace .wizard-timeline-dot{width:36px;height:36px;background:var(--os-tint);color:var(--os-primary);border:1px solid var(--os-border);box-shadow:none}
-#appView .orion-workspace .wizard-timeline-dot.edge{background:var(--os-primary);color:#fff;border-color:var(--os-primary);box-shadow:none}
-#appView .orion-workspace .wizard-timeline-step:not(:last-child)::before{left:17px;top:36px;border-color:var(--os-border)}
-#appView .orion-workspace .wizard-timeline-copy strong{font-size:14px;line-height:20px;color:var(--os-text)}
-#appView .orion-workspace .wizard-timeline-copy p{font-size:13px;line-height:20px}
-#appView .orion-workspace .wizard-timeline-copy small{font-size:10px;line-height:15px;color:var(--os-primary);margin-bottom:4px}
-#appView .orion-workspace .wizard-qr-wrap{max-width:100%;min-height:240px;background:#fff;border:1px solid var(--os-border);border-radius:14px}
-#appView .orion-workspace .wizard-qr-wrap img{max-width:100%;height:auto}
-#appView .orion-workspace .wizard-qr-placeholder{color:#4e5a72}
-#appView .orion-workspace .wizard-phone-input{background:var(--os-card);border-color:var(--os-border)}
-#appView .orion-workspace .wizard-phone-input input{min-width:0;box-shadow:none}
-#appView .orion-workspace .code-box{background:var(--os-tint);border-color:var(--os-border);color:var(--os-primary);padding:18px 12px;letter-spacing:.12em;font-size:clamp(24px,5vw,36px)}
-#appView .orion-workspace .wizard-status{overflow-wrap:anywhere;font-size:13px;line-height:20px}
 
 /* Conversation columns have a zero minimum: previews never resize the viewport. */
 #appView .orion-workspace .chat-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
@@ -700,7 +547,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
  #appView .orion-workspace .header{display:flex;flex-wrap:wrap;margin-bottom:20px;gap:12px}
  #appView .orion-workspace .header>div:first-child{flex-basis:100%}
  #appView .orion-workspace .header .pill{margin:0}
- #appView .orion-workspace :where(.card,.device-hero,.device-stats,.wizard-card){padding:16px}
+ #appView .orion-workspace :where(.card,.device-hero,.device-stats){padding:16px}
  #appView .orion-workspace .chat-grid>.card{padding:16px}
  #appView .orion-workspace .chat-toolbar .btn{flex:1 1 140px}
  #appView .orion-workspace .chat-send-actions .btn{width:100%}
@@ -721,11 +568,6 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
  #appView .orion-workspace .device-dialog{padding:20px}
  #appView .orion-workspace .device-dialog .form-grid{grid-template-columns:minmax(0,1fr)}
  #appView .orion-workspace .device-dialog .modal-actions .btn{flex:1 1 140px}
- #appView .orion-workspace .wizard-card h3{font-size:18px;line-height:25px}
- #appView .orion-workspace .wizard-timeline-step{padding-bottom:18px}
- #appView .orion-workspace .wizard-methods{gap:10px}
- #appView .orion-workspace .wizard-method{padding:14px 8px;min-height:110px}
- #appView .orion-workspace .wizard-method span:last-child{font-size:11px;line-height:16px}
 }
 </style>
 <link rel="stylesheet" href="/panel-assets/orion-suite.css">
@@ -963,13 +805,13 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
         </section>
       </section>
     </section>
-    <section id="page-dispositivo" class="page orion-workspace">
+    <section id="page-dispositivo" class="page os-main">
       <div class="header">
         <div><div class="eyebrow">Atendimento Orion</div><h1>Conectar WhatsApp</h1><p class="subhead">Conecte seu número e acompanhe o atendimento em um só lugar.</p></div>
         <div class="pill"><span id="statusDot" class="dot amber"></span><span id="globalStatus">Verificando conexão</span></div>
       </div>
 
-      <div id="connectedCenter" class="device-hub hidden" aria-label="Central do WhatsApp conectado">
+      <div id="connectedCenter" class="device-hub orion-workspace hidden" aria-label="Central do WhatsApp conectado">
         <div class="device-hero">
           <div class="device-hero-top">
             <div class="device-id">
@@ -1092,89 +934,92 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
         <pre id="deviceDiagnosticsText">Consultando…</pre>
         <div class="modal-actions"><button id="deviceDiagnosticsClose" class="btn secondary" type="button">Fechar</button></div>
       </dialog>
-      <div id="disconnectedWizard" class="wizard-shell">
-        <div class="wizard-heading">
-          <span class="wizard-eyebrow">VINCULAR DISPOSITIVO</span>
+      <div id="disconnectedWizard" class="os-connect">
+        <div class="os-connect-heading">
+          <span class="hidden">VINCULAR DISPOSITIVO</span>
           <h2>Escolha como conectar</h2>
-          <p>No próprio celular, use o código. Se estiver em outro aparelho, escaneie o QR Code.</p>
+          <p>Use o código no próprio celular ou escaneie o QR em outro aparelho.</p>
         </div>
-        <div class="method-selector wizard-methods" role="group" aria-label="Escolha a forma de conexão">
-          <button type="button" class="method wizard-method" data-method="qr" aria-pressed="false">
-            <span class="wizard-method-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.8" y="2.8" width="7" height="7" rx="1"/><rect x="14.2" y="2.8" width="7" height="7" rx="1"/><rect x="2.8" y="14.2" width="7" height="7" rx="1"/><path d="M14.5 14.5h2v2h-2zm4 0H21m-2.5 4H21M14.5 19.5v1.5"/></svg></span>
-            <strong>QR Code</strong><span>Escaneie com seu telefone</span>
+        <div class="os-service-options os-connect-methods" role="group" aria-label="Escolha a forma de conexão">
+          <button type="button" class="os-service-option" data-method="code" aria-pressed="false">
+            <span class="os-actions"><svg class="os-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg><strong>Código</strong></span>
           </button>
-          <button type="button" class="method wizard-method" data-method="code" aria-pressed="false">
-            <span class="wizard-method-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 5h4m-3 14h2"/></svg></span>
-            <strong>Código</strong><span>Digite no seu telefone</span>
+          <button type="button" class="os-service-option" data-method="qr" aria-pressed="false">
+            <span class="os-actions"><svg class="os-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.8" y="2.8" width="7" height="7" rx="1"/><rect x="14.2" y="2.8" width="7" height="7" rx="1"/><rect x="2.8" y="14.2" width="7" height="7" rx="1"/><path d="M14.5 14.5h2v2h-2zm4 0H21m-2.5 4H21M14.5 19.5v1.5"/></svg><strong>QR Code</strong></span>
           </button>
         </div>
-        <div class="wizard-card" id="wizardCard" aria-live="polite" aria-atomic="false">
-          <div id="wizardTutorial" class="wizard-pane">
-            <div class="wizard-tutorial-heading">
-              <h3>Prepare o WhatsApp no seu celular</h3>
-              <p>Siga as orientações e continue quando estiver pronto.</p>
-            </div>
-            <div id="guideSteps" class="wizard-timeline" role="list" aria-label="Todos os passos para conectar o WhatsApp"></div>
-            <button id="wizardNext" type="button" class="btn wizard-primary full wizard-continue">Concluí os passos e estou pronto para prosseguir</button>
+        <div class="os-card" id="wizardCard">
+          <div class="os-notice os-connect-notice hidden" id="wizardRecoveryArea" role="alert">
+            <h3>Prepare um novo vínculo</h3>
+            <p>O WhatsApp encerrou ou recusou a conexão anterior. Prepare o vínculo antes de gerar outro código.</p>
+            <div class="os-actions"><button id="wizardRecover" type="button" class="os-button os-large hidden">Refazer vínculo</button></div>
           </div>
-          <div id="qrPanel" class="wizard-pane hidden">
-            <span class="wizard-number">ETAPA FINAL • QR CODE</span>
+          <div id="wizardTutorial" class="">
+            <div class="os-connect-heading">
+              <h3>Conectar por QR Code</h3>
+              <p>Siga os 7 passos com o WhatsApp do aparelho que será vinculado.</p>
+            </div>
+            <details class="os-more-fields" open><summary>Tutorial: 7 passos</summary><div id="guideSteps" class="os-disclosure-body"></div></details>
+            <button id="wizardNext" type="button" class="os-button os-large os-full">Mostrar QR Code</button>
+          </div>
+          <div id="qrPanel" class="hidden">
+            <span class="hidden">ETAPA FINAL • QR CODE</span>
             <h3>Escaneie o código</h3>
-            <p class="wizard-explain">Abra <strong>Dispositivos conectados</strong> e escaneie usando o WhatsApp do celular.</p>
-            <div class="wizard-qr-time">Tempo restante: <strong id="qrCountdown" aria-live="off">—</strong></div>
-            <div id="qrBox" class="wizard-qr-wrap">
-              <div id="qrEmpty" class="wizard-qr-placeholder">
-                <span class="wizard-spinner" aria-hidden="true"></span>
+            <p class="os-help">Abra <strong>Dispositivos conectados</strong> e escaneie usando o WhatsApp do celular.</p>
+            <div class="os-help os-connect-expiry">Tempo restante: <strong id="qrCountdown" aria-live="off">—</strong></div>
+            <div id="qrBox" class="os-connect-qr">
+              <div id="qrEmpty" class="os-empty os-compact os-connect-placeholder">
+                <span class="os-spinner" aria-hidden="true"></span>
                 <strong>Preparando QR Code…</strong>
-                <small>Essa etapa só começa depois do tutorial.</small>
+                <small>Aguarde a resposta da conexão.</small>
               </div>
               <img id="qrImage" class="hidden" alt="QR Code temporário para vincular seu WhatsApp">
             </div>
-            <p id="qrStatus" class="wizard-status" role="status" aria-live="polite"></p>
-            <p id="qrFeedback" class="wizard-hint" aria-live="polite">Aguardando resposta do WhatsApp…</p>
-            <div class="wizard-steps-actions">
-              <button id="wizardQrBack" class="btn ghost" type="button">Voltar</button>
-              <button id="refreshQr" type="button" class="btn wizard-primary">Atualizar conexão</button>
+            <p id="qrStatus" class="os-help os-connect-feedback" role="status" aria-live="polite"></p>
+            <p id="qrFeedback" class="os-help" aria-live="polite">Aguardando resposta do WhatsApp…</p>
+            <div class="os-form-actions">
+              <button id="wizardQrBack" class="os-button os-large os-ghost" type="button">Voltar</button>
+              <button id="refreshQr" type="button" class="os-button os-large">Atualizar conexão</button>
             </div>
             <button id="startQr" type="button" class="hidden">Preparar QR Code</button>
           </div>
-          <div id="codePanel" class="wizard-pane hidden">
-            <span class="wizard-number">ETAPA FINAL • CÓDIGO</span>
+          <div id="codePanel" class="hidden">
+            <span class="hidden">ETAPA FINAL • CÓDIGO</span>
             <div id="wizardCodeInput">
               <h3>Informe o número do WhatsApp</h3>
-              <p class="wizard-explain">O mesmo número que está no aparelho a conectar, com DDI e DDD.</p>
-              <form id="pairForm">
+              <p class="os-help">Informe o número que usa no aparelho a conectar.</p>
+              <form id="pairForm" class="os-form">
+                <div class="os-field">
                 <label for="pairPhone">Número do WhatsApp</label>
-                <div class="wizard-phone-input"><input id="pairPhone" type="tel" data-orion-field="phone" data-orion-international="true" data-field-error-target="pairPhoneError" inputmode="tel" autocomplete="tel" required placeholder="(00) 00000-0000"></div><div id="pairPhoneError"></div>
-                <small>Use o DDD. Para outro país, inclua + e o código do país.</small>
-                <button id="wizardGenerate" class="btn wizard-primary full" type="submit">Gerar código de emparelhamento</button>
+                <input class="" id="pairPhone" type="tel" data-orion-field="phone" data-orion-international="true" data-field-error-target="pairPhoneError" inputmode="tel" autocomplete="tel" required placeholder="(00) 00000-0000"><div id="pairPhoneError"></div>
+                <small class="os-help">Use o DDD. Para outro país, inclua + e o código do país.</small></div>
+                <button id="wizardGenerate" class="os-button os-large os-full" type="submit">Gerar código</button>
               </form>
+              <details class="os-more-fields" open><summary>Tutorial: 7 passos</summary><div id="codeGuide" class="os-disclosure-body"></div></details>
             </div>
-            <div id="codeResult" class="hidden wizard-code-result">
-              <div class="wizard-code-check" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg></div>
+            <div id="codeResult" class="hidden">
+              <div class="hidden" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6"/></svg></div>
               <h3>Digite este código no WhatsApp</h3>
               <p>Em Dispositivos conectados, escolha <strong>Conectar com número de telefone</strong>.</p>
-              <div class="code-box" id="pairCode" aria-live="polite"></div>
-              <div class="wizard-qr-time">Expira em <strong id="codeCountdown">—</strong></div>
-              <button id="copyCode" class="btn wizard-primary full" type="button">Copiar código</button>
-              <p class="wizard-hint">Aguarde a confirmação automática da conexão.</p>
+              <div class="os-notice os-connect-code" id="pairCode" aria-live="polite"></div>
+              <div class="os-help os-connect-expiry">Expira em <strong id="codeCountdown">—</strong></div>
+              <button id="copyCode" class="os-button os-large os-full" type="button">Copiar código</button>
+              <div id="codeReadyGuide"></div>
             </div>
-            <p id="codeStatus" class="wizard-status" role="status" aria-live="polite"></p>
-            <div class="wizard-steps-actions">
-              <button id="wizardCodeBack" class="btn ghost" type="button">Voltar</button>
-              <button id="retryCode" class="btn secondary" type="button">Solicitar novo código</button>
+            <p id="codeStatus" class="os-help os-connect-feedback" role="status" aria-live="polite"></p>
+            <div class="os-form-actions">
+              <button id="wizardCodeBack" class="os-button os-large os-ghost" type="button">Alterar número</button>
+              <button id="retryCode" class="os-button os-large os-outline" type="button">Preparar novo código</button>
             </div>
           </div>
-          <div id="wizardSuccess" class="wizard-pane hidden wizard-success" role="status" aria-live="polite">
-            <div class="wizard-success-ring"><svg viewBox="0 0 64 64" role="img" aria-label="Conexão concluída"><circle cx="32" cy="32" r="29"/><path d="M18 33l10 10 19-21"/></svg></div>
+          <div id="wizardSuccess" class="hidden os-empty os-compact" role="status" aria-live="polite">
+            <div class="os-square-icon"><svg viewBox="0 0 64 64" role="img" aria-label="Conexão concluída"><circle cx="32" cy="32" r="29"/><path d="M18 33l10 10 19-21"/></svg></div>
             <span class="device-online"><span class="dot green"></span> Conectado com sucesso</span>
             <h3>Seu WhatsApp está pronto!</h3>
             <p>Dispositivo vinculado. A central será aberta em instantes.</p>
-            <button id="wizardOpenCenter" class="btn wizard-primary" type="button">Abrir minha central →</button>
+            <button id="wizardOpenCenter" class="os-button os-large" type="button">Abrir minha central →</button>
           </div>
-        </div>
-        <div class="wizard-footer hidden" id="wizardRecoveryArea">
-          <button id="wizardRecover" type="button" class="btn ghost hidden">Refazer vínculo</button>
+          <button id="wizardCheckStatus" class="os-button os-large os-outline hidden" type="button">Consultar conexão</button>
         </div>
         <div id="wizardLegacySupport" class="hidden" aria-hidden="true">
           <div id="connectedBanner"><span id="connectedPhone"></span><button id="openChats" type="button">Abrir conversas</button></div>
@@ -1425,6 +1270,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
   <div class="confirm-actions"><button id="actionConfirmCancel" class="btn secondary" type="button">Cancelar</button><button id="actionConfirmAccept" class="btn" type="button">Aceitar</button></div>
 </dialog>
 <script src="/panel-assets/orion-fields.js"></script>
+<script src="/panel-assets/orion-connect.js"></script>
 <script src="/panel-assets/orion-onboarding.js"></script>
 <script src="/panel-assets/orion-channels.js"></script>
 <script src="/panel-assets/orion-communication.js"></script>
@@ -1655,28 +1501,10 @@ let csrf="",page="dispositivo",method="code",showQr=false,deviceStatus="starting
 let messageSequence=0,lastPanelSend=null,manualSendRequest=null,manualSendSequence=0;
 let chatRows=[],chatLoadSequence=0,recipientSequence=0,chatSending=false,chatSavedScroll=0;
 const chatDrafts=new Map();
-let wizardStep="tutorial",wizardAttempted=false,wizardSuccessUntil=0,
-    wizardSuccessDone=false,wizardQrDeadline=0,wizardClocks=null,statusSequence=0;
-const steps={
- qr:[
-  ["Abra o WhatsApp","Abra o WhatsApp normal ou o WhatsApp Business no celular."],
-  ["Vá às configurações","No iPhone, abra Configurações. No Android, toque no menu ⋮."],
-  ["Entre em Dispositivos conectados","Veja os dispositivos vinculados à sua conta."],
-  ["Confira conexões anteriores","Se houver uma sessão antiga do Orion, revise antes de adicionar outra."],
-  ["Toque em Conectar dispositivo","Seu WhatsApp abrirá a tela para escanear um QR Code."],
-  ["Deixe o celular pronto","Mantenha o WhatsApp aberto, com a câmera preparada."],
-  ["Pronto para escanear","Clique no botão abaixo para mostrar o QR Code temporário."]
- ],
- code:[
-  ["Abra o WhatsApp","Abra o WhatsApp normal ou o WhatsApp Business no celular."],
-  ["Vá às configurações","No iPhone, abra Configurações. No Android, toque no menu ⋮."],
-  ["Entre em Dispositivos conectados","Veja os dispositivos já vinculados à sua conta."],
-  ["Confira conexões anteriores","Se houver uma sessão antiga deste bot, confira antes de adicionar outra."],
-  ["Toque em Conectar dispositivo","Na tela de dispositivos conectados, escolha Conectar dispositivo."],
-  ["Escolha Conectar com número","Toque na opção Conectar com número de telefone."],
-  ["Pronto para gerar o código","Clique no botão abaixo e digite o código gerado no WhatsApp."]
- ]
-};
+let wizardStep="code_form",wizardAttempted=false,wizardSuccessUntil=0,
+    wizardSuccessDone=false,wizardQrDeadline=0,wizardClocks=null,statusSequence=0,
+    wizardBusy=false,wizardOperation=0,wizardQrRead=0,wizardUncertain=false,wizardCodeExpired=false;
+const connectView=window.OrionConnectView;
 const fields={
  authorized_staff:[["phone_e164","Telefone (+55...)","text"],["role","Papel (owner/barber/assistant)","text"],["active","Ativo","checkbox"]],
  professionals:[["name","Nome do profissional","text"],["active","Ativo","checkbox"]],
@@ -2038,6 +1866,7 @@ function setMaintenanceExpiry(maintenance){
 }
 function showLogin(){
  ++authEpoch;
+ resetWizard();
  clearTimeout(maintenanceExpiryTimer);maintenanceExpiryTimer=null;
  window.OrionAdminCenter?.reset();
  $("orionMaintenanceBanner")?.classList.add("hidden");
@@ -2066,6 +1895,7 @@ async function showApp(role="support",name="",email="",maintenance=null){
  try{const pendingInvite=sessionStorage.getItem("orion_pending_invitation");if(pendingInvite&&/^[A-Za-z0-9_-]{43}$/.test(pendingInvite)){sessionStorage.removeItem("orion_pending_invitation");location.assign("/convite#token="+encodeURIComponent(pendingInvite));return}}catch{}
  const desired=new URLSearchParams(location.search).get("aba");
  const epoch=authEpoch;
+ resetWizard();
  suiteTenantId="";businessRows=[];businessContextReady=false;businessContextError="";
  const url=new URL(location.href);url.searchParams.delete("empresa");history.replaceState({},"",url.pathname+url.search);
  suiteUser={role,name,email,maintenance};
@@ -2339,93 +2169,92 @@ $("orionMaintenanceExit").addEventListener("click",async()=>{
 $("logout").addEventListener("click",async()=>{
  try{await api("/auth/logout","POST",{});}finally{showLogin();}
 });
-function countdownLabel(ms) {
- const seconds=Math.max(0,Math.ceil(ms/1000));
- return seconds?seconds+" s":"expirado";
+function countdownLabel(ms){return connectView.seconds(ms)}
+function clearWizardCodes(){
+ ++wizardQrRead;pairExpiresAt=0;wizardQrDeadline=0;showQr=false;
+ $("pairCode").textContent="";$("qrImage").removeAttribute("src");
+ $("qrImage").classList.add("hidden");$("qrEmpty").classList.remove("hidden");
+}
+function resetWizard(){
+ ++wizardOperation;++statusSequence;wizardBusy=false;wizardUncertain=false;wizardCodeExpired=false;
+ method="code";wizardStep="code_form";wizardAttempted=false;wizardSuccessDone=false;wizardSuccessUntil=0;
+ clearWizardCodes();$("pairPhone").value="";$("codeStatus").textContent="";$("qrStatus").textContent="";
+ $("guideSteps").innerHTML=connectView.instructions("qr");
+ $("codeGuide").innerHTML=connectView.instructions("code");
+ $("codeReadyGuide").innerHTML=connectView.instructions("code");
+ renderGuide();
 }
 function updateWizardClocks(){
  if(wizardStep==="qr"){
-   const expired=wizardQrDeadline>0&&Date.now()>=wizardQrDeadline;
-   $("qrCountdown").textContent=wizardQrDeadline?
-     countdownLabel(wizardQrDeadline-Date.now()):"aguardando";
-   if(expired){
-     $("qrStatus").textContent="QR Code expirado.";
-     $("qrFeedback").textContent="Use Atualizar conexão para solicitar um código novo.";
-     $("qrImage").classList.add("hidden");$("qrEmpty").classList.remove("hidden");
+   $("qrCountdown").textContent=wizardQrDeadline?countdownLabel(wizardQrDeadline-Date.now()):"aguardando";
+   if(wizardQrDeadline>0&&Date.now()>=wizardQrDeadline){
+     showQr=false;$("qrImage").removeAttribute("src");$("qrImage").classList.add("hidden");
+     $("qrEmpty").classList.remove("hidden");$("qrEmpty").classList.add("is-expired");
      $("qrEmpty").querySelector("strong").textContent="O QR expirou";
+     $("qrStatus").textContent="QR Code expirado.";
+     $("qrFeedback").textContent="Use Atualizar conexão para solicitar outro QR.";
    }
  }
- if(wizardStep==="code_ready"){
-   const seconds=pairExpiresAt?countdownLabel(pairExpiresAt-Date.now()):"—";
-   $("codeCountdown").textContent=seconds;
-   if(pairExpiresAt>0&&Date.now()>=pairExpiresAt){
-     pairExpiresAt=0;wizardStep="code_form";renderGuide();
-     $("codeStatus").textContent="O código expirou. Solicite um novo código de pareamento.";
-   }
- }
+ if(pairExpiresAt>0&&Date.now()>=pairExpiresAt){
+   clearWizardCodes();wizardCodeExpired=true;
+   if(method==="code")wizardStep="code_form";
+   $("codeStatus").textContent="O código expirou. Prepare um novo código para continuar.";
+   renderGuide();
+ }else $("codeCountdown").textContent=pairExpiresAt?countdownLabel(pairExpiresAt-Date.now()):"—";
 }
 function renderGuide(){
+ const revoked=["logged_out","pair_failed"].includes(deviceStatus);
+ const locked=wizardBusy||wizardUncertain||revoked||deviceStatus==="connected";
  const panes={tutorial:"wizardTutorial",qr:"qrPanel",code_form:"codePanel",code_ready:"codePanel",success:"wizardSuccess"};
  for(const id of ["wizardTutorial","qrPanel","codePanel","wizardSuccess"])
-   $(id).classList.toggle("hidden",id!==panes[wizardStep]);
+   $(id).classList.toggle("hidden",(revoked&&wizardStep!=="success")||id!==panes[wizardStep]);
  document.querySelectorAll("[data-method]").forEach(x=>{
-   const selected=wizardStep!=="success"&&x.dataset.method===method;
-   x.classList.toggle("active",selected);
-   x.setAttribute("aria-pressed",String(selected));
+   x.setAttribute("aria-pressed",String(wizardStep!=="success"&&x.dataset.method===method));
+   x.disabled=locked;
  });
- if(wizardStep==="tutorial"){
-   const list=$("guideSteps");list.replaceChildren();
-   const items=steps[method];
-   const phoneIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>';
-   const checkIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
-   items.forEach(([title,description],index)=>{
-     const item=document.createElement("div");item.className="wizard-timeline-step";item.setAttribute("role","listitem");
-     const marker=document.createElement("span");marker.className="wizard-timeline-dot"+(index===0||index===items.length-1?" edge":"");
-     marker.innerHTML=index===0||index===items.length-1?phoneIcon:checkIcon;
-     const body=document.createElement("div");body.className="wizard-timeline-copy";
-     const number=document.createElement("small");number.textContent="PASSO "+(index+1);
-     const heading=document.createElement("strong");heading.textContent=title;
-     const summary=document.createElement("p");summary.textContent=description;
-     body.append(number,heading,summary);item.append(marker,body);list.append(item);
-   });
- }
- if(wizardStep==="code_form"||wizardStep==="code_ready"){
-   $("wizardCodeInput").classList.toggle("hidden",wizardStep!=="code_form");
-   $("codeResult").classList.toggle("hidden",wizardStep!=="code_ready");
-   $("retryCode").classList.toggle("hidden",wizardStep!=="code_ready");
- }
- if(wizardStep==="qr"||wizardStep==="code_ready")updateWizardClocks();
+ $("wizardCard").setAttribute("aria-busy",String(wizardBusy));
+ $("wizardRecoveryArea").classList.toggle("hidden",!revoked);
+ $("wizardRecover").classList.toggle("hidden",!revoked);$("wizardRecover").disabled=wizardBusy;
+ $("wizardRecover").textContent=wizardBusy?"Preparando…":"Refazer vínculo";
+ $("wizardCodeInput").classList.toggle("hidden",wizardStep!=="code_form");
+ $("codeResult").classList.toggle("hidden",wizardStep!=="code_ready");
+ $("wizardGenerate").disabled=locked||wizardCodeExpired||deviceStatus!=="qr_ready";
+ $("wizardGenerate").textContent=wizardBusy?"Gerando código…":"Gerar código";
+ $("pairPhone").disabled=locked||deviceStatus==="pairing";
+ $("wizardCodeBack").classList.toggle("hidden",wizardStep!=="code_ready");
+ $("wizardCodeBack").disabled=wizardBusy||wizardUncertain;
+ $("retryCode").classList.toggle("hidden",!(wizardCodeExpired||wizardUncertain||wizardStep==="code_ready"||deviceStatus==="pair_expired"||deviceStatus==="pairing"||deviceStatus==="error"));
+ $("retryCode").disabled=wizardBusy||deviceStatus==="connected"||revoked;
+ $("copyCode").disabled=wizardBusy||!pairExpiresAt||Date.now()>=pairExpiresAt;
+ $("wizardCheckStatus").classList.toggle("hidden",!(wizardUncertain||["starting","connecting","reconnecting","error","pairing"].includes(deviceStatus)));
+ $("wizardCheckStatus").disabled=wizardBusy;
+ $("wizardNext").disabled=locked||deviceStatus==="pairing";
+ $("wizardQrBack").disabled=wizardBusy||wizardUncertain;
+ $("refreshQr").disabled=locked||deviceStatus==="pairing";
+ if(!$("codeStatus").textContent&&["starting","connecting","reconnecting"].includes(deviceStatus))
+   $("codeStatus").textContent="Preparando a conexão. O botão será liberado quando estiver pronta.";
 }
 function selectWizardMode(next){
- if(!["qr","code"].includes(next)||deviceStatus==="connected")return;
- method=next;wizardStep="tutorial";showQr=false;
- $("codeStatus").textContent="";$("qrStatus").textContent="";
- renderGuide();
+ if(!["qr","code"].includes(next)||wizardBusy||wizardUncertain||deviceStatus==="connected"||["logged_out","pair_failed"].includes(deviceStatus))return;
+ method=next;showQr=false;
+ wizardStep=next==="qr"?"tutorial":pairExpiresAt>Date.now()?"code_ready":"code_form";
+ renderGuide();updateWizardClocks();
 }
-document.querySelectorAll("[data-method]").forEach(x=>
- x.addEventListener("click",()=>selectWizardMode(x.dataset.method)));
+document.querySelectorAll("[data-method]").forEach(x=>x.addEventListener("click",()=>selectWizardMode(x.dataset.method)));
 $("wizardNext").addEventListener("click",async()=>{
- if(wizardStep!=="tutorial")return;
- if(method==="qr"){
-   wizardStep="qr";showQr=true;wizardAttempted=true;renderGuide();
-   await attemptQrRefresh();
- }else{wizardStep="code_form";renderGuide();$("pairPhone").focus();}
+ if(wizardStep!=="tutorial"||wizardBusy||wizardUncertain)return;
+ wizardStep="qr";wizardAttempted=true;renderGuide();await attemptQrRefresh();
 });
-$("wizardQrBack").addEventListener("click",()=>{
- showQr=false;wizardStep="tutorial";renderGuide();
-});
+$("wizardQrBack").addEventListener("click",()=>{if(wizardBusy||wizardUncertain)return;showQr=false;wizardStep="tutorial";renderGuide()});
 $("wizardCodeBack").addEventListener("click",()=>{
- if(wizardStep==="code_ready"){wizardStep="code_form"}
- else{wizardStep="tutorial"}
- renderGuide();
+ if(wizardBusy||wizardUncertain)return;
+ wizardStep="code_form";renderGuide();$("pairPhone").focus();
 });
 $("wizardRecover").addEventListener("click",()=>{$("repairConnection").click()});
-$("wizardOpenCenter").addEventListener("click",async()=>{
- wizardSuccessUntil=0;wizardSuccessDone=true;
- await updateStatus();
-});
+$("wizardCheckStatus").addEventListener("click",updateStatus);
+$("wizardOpenCenter").addEventListener("click",async()=>{wizardSuccessUntil=0;wizardSuccessDone=true;await updateStatus()});
 function statusWord(s){
- return ({connected:"Conectado",qr_ready:"Aguardando leitura",qr_expired:"QR expirou",
+ return ({connected:"Conectado",qr_ready:"Pronto para conectar",qr_expired:"QR expirou",
  qr_delayed:"QR demorando a carregar",pair_failed:"Pareamento recusado",pair_expired:"Código expirado",
  connecting:"Preparando",reconnecting:"Reconectando",logged_out:"Sessão desvinculada",
  error:"Falha na conexão",starting:"Iniciando",pairing:"Aguardando código no celular"})[s]||"Aguardando";
@@ -2640,7 +2469,7 @@ async function updateStatus(){
     },2300);
   }
   if(!active&&previous==="connected"){
-    wizardStep="tutorial";wizardSuccessDone=false;
+    wizardStep=method==="code"?"code_form":"tutorial";wizardSuccessDone=false;
     wizardSuccessUntil=0;wizardAttempted=false;showQr=false;renderGuide();
   }
   renderConnectedCenter(result);
@@ -2670,18 +2499,22 @@ async function updateStatus(){
     "Dispositivo "+result.phone+" conectado. Você pode ler e enviar mensagens manualmente.":
     "Dispositivo conectado. Você pode ler e enviar mensagens manualmente.";
   if(active){
-    showQr=false;pairExpiresAt=0;$("qrImage").classList.add("hidden");
+    if(wizardBusy){++wizardOperation;wizardBusy=false}
+    wizardUncertain=false;wizardCodeExpired=false;clearWizardCodes();
     $("qrStatus").textContent="✓ WhatsApp conectado!";
     $("codeStatus").textContent="✓ O dispositivo foi conectado.";
   }else if(result.status==="pair_failed"||result.status==="logged_out"){
-    pairExpiresAt=0;$("codeResult").classList.add("hidden");
+    if(wizardBusy){++wizardOperation;wizardBusy=false}
+    clearWizardCodes();wizardUncertain=false;$("codeResult").classList.add("hidden");
     $("codeStatus").textContent="O WhatsApp recusou ou revogou esta sessão. Clique em Refazer vínculo para gerar uma sessão nova.";
     if(showQr&&method==="qr")await updateQr();
   }else if(result.status==="pair_expired"||
     (result.status==="pairing"&&pairExpiresAt>0&&Date.now()>pairExpiresAt)){
-    pairExpiresAt=0;wizardStep="code_form";renderGuide();
-    $("codeStatus").textContent="Código expirado. Solicite outro código para continuar.";
+    clearWizardCodes();wizardCodeExpired=true;wizardUncertain=false;wizardStep=method==="code"?"code_form":"tutorial";
+    $("codeStatus").textContent="O código expirou. Prepare um novo código para continuar.";
   }else if(showQr&&page==="dispositivo"&&method==="qr")await updateQr();
+  if(result.status==="qr_ready"&&!wizardUncertain&&!wizardCodeExpired&&$("codeStatus").textContent.startsWith("Preparando"))$("codeStatus").textContent="";
+  renderGuide();
  }catch(ex){
   if(requestId!==statusSequence||epoch!==authEpoch)return;
   deviceStatus="error";lastDeviceStatus="error";
@@ -2692,7 +2525,7 @@ async function updateStatus(){
   $("chatDot").className="dot red";
   $("chatConnection").textContent="Conexão não confirmada";
   $("connectedBanner").classList.add("hidden");
-  renderConversationMode({});
+  renderConversationMode({});$("codeStatus").textContent="Não foi possível consultar a conexão. Consulte novamente antes de gerar um código.";renderGuide();
  }
 }
 function renderConversationMode(result){
@@ -2705,115 +2538,94 @@ function renderConversationMode(result){
  $("chatMode").textContent="Leia mensagens recebidas após a conexão e responda manualmente. "+mode;
 }
 async function updateQr(){
+ const epoch=authEpoch,operation=wizardOperation,read=++wizardQrRead;
+ const current=()=>epoch===authEpoch&&operation===wizardOperation&&read===wizardQrRead&&showQr&&method==="qr"&&deviceStatus!=="connected";
  try{
   const info=await api("/api/v1/qr/image");
-  if(info.status==="connected"){showQr=false;updateStatus();return}
-  if(info.image&&info.image.startsWith("data:image/png;base64,")){
-   wizardQrDeadline=Date.now()+Math.max(0,Number(info.expiresIn)||0)*1000;
-   $("qrImage").src=info.image;$("qrImage").classList.remove("hidden");
-   $("qrEmpty").classList.add("hidden");
+  if(!current())return;
+  if(info.status==="connected"){showQr=false;await updateStatus();return}
+  if(typeof info.image==="string"&&/^data:image\/png;base64,[a-zA-Z0-9+/=]+$/.test(info.image)&&Number(info.expiresIn)>0){
+   wizardQrDeadline=Date.now()+Math.min(90,Number(info.expiresIn))*1000;
+   $("qrImage").src=info.image;$("qrImage").classList.remove("hidden");$("qrEmpty").classList.add("hidden");
    $("qrStatus").textContent="QR Code pronto para escanear";
-   $("qrFeedback").textContent="Escaneie pelo WhatsApp do celular. O código é temporário.";
-   updateWizardClocks();
+   $("qrFeedback").textContent="Escaneie pelo WhatsApp do celular.";updateWizardClocks();
   }else{
-   wizardQrDeadline=0;
-   $("qrImage").classList.add("hidden");$("qrEmpty").classList.remove("hidden");
+   wizardQrDeadline=0;$("qrImage").removeAttribute("src");$("qrImage").classList.add("hidden");$("qrEmpty").classList.remove("hidden");
    const failed=["logged_out","pair_failed","error"].includes(info.status);
    const expired=info.status==="qr_expired";
-   const delayed=info.status==="qr_delayed"||
-     (["connecting","reconnecting"].includes(info.status)&&info.waitingSeconds>=25);
-   if(failed){
-     $("qrStatus").textContent="Não foi possível preparar o QR.";
-     $("qrFeedback").textContent=info.lastError||"Sessão recusada ou desconectada. Clique em Refazer vínculo.";
-   }else if(expired||delayed){
-     $("qrStatus").textContent=expired?"O QR anterior expirou.":"Seu QR está demorando mais que o normal.";
-     $("qrFeedback").textContent="Clique em Atualizar ou tentar novamente para abrir uma nova conexão.";
-   }else if(info.status==="pairing"){
-     $("qrStatus").textContent="Aguardando autorização pelo código no celular.";
-     $("qrFeedback").textContent="Não gere outro QR enquanto estiver aguardando a confirmação do código.";
-   }else{
-     $("qrStatus").textContent="Preparando QR Code...";
-     const elapsed=Math.max(0,info.waitingSeconds||0);
-     $("qrFeedback").textContent="Conectando ao WhatsApp ("+elapsed+" s). Se passar de 25 s, você poderá tentar novamente.";
-   }
+   const delayed=info.status==="qr_delayed"||(["connecting","reconnecting"].includes(info.status)&&info.waitingSeconds>=25);
+   $("qrEmpty").classList.toggle("is-expired",failed||expired||delayed);
+   $("qrEmpty").querySelector("strong").textContent=expired?"O QR expirou":failed?"Conexão indisponível":delayed?"QR indisponível":"Preparando QR Code…";
+   $("qrStatus").textContent=failed?"Não foi possível preparar o QR.":expired?"O QR anterior expirou.":delayed?"A conexão está demorando mais que o normal.":info.status==="pairing"?"Aguardando o código no celular.":"Preparando QR Code…";
+   $("qrFeedback").textContent=failed?"Consulte a conexão antes de tentar novamente.":expired||delayed?"Use Atualizar conexão para uma nova tentativa.":info.status==="pairing"?"Conclua a autorização pelo código já solicitado.":"Aguarde a resposta do WhatsApp.";
+   if(failed||expired||delayed)showQr=false;
   }
- }catch(ex){$("qrStatus").textContent=ex.message;}
+ }catch(ex){if(current()){$("qrStatus").textContent=ex.message;$("qrEmpty").classList.add("is-expired")}}
 }
 async function attemptQrRefresh(){
-  if(["logged_out","pair_failed"].includes(deviceStatus)){
-    $("qrFeedback").textContent="Esta sessão foi recusada. Clique em Refazer vínculo.";
-    return;
-  }
-  if(deviceStatus==="connected"||deviceStatus==="pairing")return;
-  const button=$("refreshQr");button.disabled=true;
-  try{
-    const state=await api("/api/v1/qr/status");
-    deviceStatus=state.status;
-    if(["qr_expired","qr_delayed","error","reconnecting","pair_expired"].includes(state.status)||
-      (state.status==="connecting"&&state.waitingSeconds>=25)){
-      await api("/api/v1/qr/reconnect","POST",{});
-      $("qrFeedback").textContent="Criando outra tentativa de conexão. Aguarde até 25 segundos.";
-    }
-    showQr=true;await updateQr();
-  }catch(ex){$("qrStatus").textContent=ex.message;}
-  finally{button.disabled=false;}
+ if(wizardBusy||wizardUncertain||["logged_out","pair_failed","connected","pairing"].includes(deviceStatus))return;
+ const epoch=authEpoch,operation=++wizardOperation,current=()=>epoch===authEpoch&&operation===wizardOperation;
+ wizardBusy=true;renderGuide();
+ try{
+   const state=await api("/api/v1/qr/status");if(!current())return;
+   deviceStatus=state.status;
+   if(["connected","pairing","logged_out","pair_failed"].includes(state.status)){await updateStatus();return}
+   if(["qr_expired","qr_delayed","error","reconnecting","pair_expired"].includes(state.status)||(state.status==="connecting"&&state.waitingSeconds>=25)){
+     await api("/api/v1/qr/reconnect","POST",{});if(!current())return;
+   }
+   showQr=true;$("qrEmpty").classList.remove("is-expired");await updateQr();
+ }catch(ex){if(current()){$("qrStatus").textContent=ex.message;wizardUncertain=true}}
+ finally{if(current()){wizardBusy=false;renderGuide()}}
 }
-$("startQr").addEventListener("click",()=>{showQr=true;attemptQrRefresh();});
+$("startQr").addEventListener("click",attemptQrRefresh);
 $("refreshQr").addEventListener("click",attemptQrRefresh);
 const normalize=phone=>{try{return (window.OrionFields.phoneValue(phone,{allowInternational:true})||"").replace(/^\+/,"");}catch{return "";}};
 $("pairForm").addEventListener("submit",async ev=>{
- ev.preventDefault();$("codeStatus").textContent="Gerando código, aguarde...";
- $("codeResult").classList.add("hidden");pairExpiresAt=0;
- const submit=$("pairForm").querySelector('button[type="submit"]');submit.disabled=true;
+ ev.preventDefault();
+ if(wizardBusy||wizardUncertain||wizardCodeExpired||method!=="code"||deviceStatus!=="qr_ready")return;
  const phone=normalize($("pairPhone").value);
- if(!/^[1-9]\d{7,14}$/.test(phone)){
-   $("codeStatus").textContent="Insira o DDI, DDD e número válido.";submit.disabled=false;return;
- }
+ if(!/^[1-9]\d{7,14}$/.test(phone)){$("codeStatus").textContent="Informe um número válido com DDD.";$("pairPhone").focus();return}
+ const epoch=authEpoch,operation=++wizardOperation,current=()=>epoch===authEpoch&&operation===wizardOperation;
+ wizardBusy=true;clearWizardCodes();$("codeStatus").textContent="Gerando código…";renderGuide();
  try{
-  const r=await api("/api/v1/qr/pair","POST",{phone});
-  if(r.status==="connected"){$("codeStatus").textContent="Este WhatsApp já está conectado.";return}
-  if(typeof r.code!=="string"||!/^[A-Z0-9]{4}-?[A-Z0-9]{4}$/i.test(r.code))
-    throw Error("O WhatsApp não retornou um código válido.");
-  $("pairCode").textContent=r.code;
-  pairExpiresAt=Date.now()+Math.min(90,Math.max(1,Number(r.expiresIn)||90))*1000;
-  wizardStep="code_ready";wizardAttempted=true;renderGuide();
-  $("codeStatus").textContent="Código solicitado. Digite-o imediatamente em Dispositivos conectados → Conectar com número de telefone. A conexão só é confirmada quando o status mudar para Conectado.";
- }catch(ex){$("codeStatus").textContent=ex.message;}
- finally{submit.disabled=false;}
+   const r=await api("/api/v1/qr/pair","POST",{phone});if(!current())return;
+   if(r.status==="connected"){await updateStatus();return}
+   if(r.status!=="pairing")throw Error("O resultado do pareamento não foi confirmado.");
+   const code=connectView.normalizeCode(r.code),ttl=Number(r.expiresIn);
+   if(!Number.isFinite(ttl)||ttl<=0||ttl>90)throw Error("O prazo do código não foi confirmado. Consulte a conexão.");
+   $("pairCode").textContent=code;pairExpiresAt=Date.now()+ttl*1000;
+   deviceStatus="pairing";$("globalStatus").textContent=statusWord(deviceStatus);wizardStep="code_ready";wizardAttempted=true;
+   $("codeStatus").textContent="Aguardando a confirmação no WhatsApp.";
+ }catch(ex){if(current()){wizardUncertain=true;$("codeStatus").textContent=ex.message+" Consulte a conexão antes de tentar novamente."}}
+ finally{if(current()){wizardBusy=false;renderGuide();updateWizardClocks()}}
 });
-$("retryCode").addEventListener("click",async()=>{
-  const button=$("retryCode");
-  if(deviceStatus==="connected"){$("codeStatus").textContent="WhatsApp já conectado.";return;}
-  if(!confirm("Reiniciar a conexão do WhatsApp para gerar outro código?"))return;
-  button.disabled=true;$("codeResult").classList.add("hidden");pairExpiresAt=0;
-  $("codeStatus").textContent="Reiniciando. Aguarde o novo QR interno antes de gerar o código...";
-  try{
-    const state=await api("/api/v1/qr/status");deviceStatus=state.status;
-    const url=["logged_out","pair_failed"].includes(state.status)?
-      "/api/v1/qr/recover":"/api/v1/qr/reconnect";
-    await api(url,"POST",{});
-    $("codeStatus").textContent="Conexão reiniciada. Aguarde alguns segundos e clique novamente em Gerar código.";
-    await updateStatus();
-  }catch(ex){$("codeStatus").textContent=ex.message;}
-  finally{button.disabled=false;}
-});
+async function prepareWizardConnection(recover){
+ if(wizardBusy||deviceStatus==="connected")return;
+ if(!confirm(recover?"O WhatsApp encerrou o vínculo anterior. Preparar uma nova conexão?":"Preparar uma nova tentativa? O código anterior deixará de funcionar."))return;
+ const epoch=authEpoch,operation=++wizardOperation,current=()=>epoch===authEpoch&&operation===wizardOperation;
+ wizardBusy=true;renderGuide();
+ try{
+   const state=await api("/api/v1/qr/status");if(!current())return;
+   if(state.status==="connected"){await updateStatus();return}
+   const revoked=["logged_out","pair_failed"].includes(state.status);
+   await api(revoked?"/api/v1/qr/recover":"/api/v1/qr/reconnect","POST",{});if(!current())return;
+   clearWizardCodes();wizardCodeExpired=false;wizardUncertain=false;deviceStatus="connecting";
+   wizardStep=method==="code"?"code_form":"tutorial";
+   $("codeStatus").textContent="Preparando a conexão. O botão será liberado quando estiver pronta.";
+   await updateStatus();
+ }catch(ex){if(current()){wizardUncertain=true;$("codeStatus").textContent=ex.message+" Consulte a conexão antes de tentar novamente.";$("qrStatus").textContent=ex.message}}
+ finally{if(current()){wizardBusy=false;renderGuide()}}
+}
+$("retryCode").addEventListener("click",()=>prepareWizardConnection(false));
 $("copyCode").addEventListener("click",async()=>{
+ if(wizardBusy||!pairExpiresAt||Date.now()>=pairExpiresAt)return;
+ const epoch=authEpoch,operation=wizardOperation;
  try{await navigator.clipboard.writeText($("pairCode").textContent.replace("-",""));
- $("codeStatus").textContent="Código copiado! Cole no seu WhatsApp.";
- }catch{$("codeStatus").textContent="Não foi possível copiar automaticamente; selecione o código acima."}
+ if(epoch===authEpoch&&operation===wizardOperation)$("codeStatus").textContent="Código copiado. Cole no WhatsApp.";
+ }catch{if(epoch===authEpoch&&operation===wizardOperation)$("codeStatus").textContent="Selecione o código acima para copiar."}
 });
 $("statusRefresh").addEventListener("click",updateStatus);
-$("repairConnection").addEventListener("click",async()=>{
-  if(!confirm("O WhatsApp recusou ou desvinculou a sessão anterior. Preparar uma nova conexão?"))return;
-  $("repairConnection").disabled=true;
-  try{
-    await api("/api/v1/qr/recover","POST",{});
-    method="code";wizardStep="tutorial";
-    showQr=false;renderGuide();await updateStatus();
-    $("qrFeedback").textContent="Sessão renovada. Escaneie o novo QR pelo telefone.";
-  }catch(ex){$("qrFeedback").textContent=ex.message;}
-  finally{$("repairConnection").disabled=false;}
-});
+$("repairConnection").addEventListener("click",()=>prepareWizardConnection(true));
 $("reloadChats").addEventListener("click",loadChats);
 $("chatSearch").addEventListener("input",renderChatList);
 $("chatBack").addEventListener("click",()=>{
@@ -3927,7 +3739,7 @@ $("aiAudioForm").addEventListener("submit",event=>{
  return sendAiPreview("",file);
 });
 
-initializeLegacyFields();renderForm();renderGuide();updateAiControls();
+initializeLegacyFields();renderForm();resetWizard();updateAiControls();
 })();
 </script>
 </body></html>

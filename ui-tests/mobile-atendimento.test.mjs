@@ -34,14 +34,19 @@ test('the single management menu prioritizes WhatsApp and preserves existing ate
   assert.equal(h.element('#aiForm'), simulatorForm, 'navigation does not replace the simulator controller DOM');
 
   h.click('#osNav [data-os-route=configuracoes]'); await flush();
-  const settingsSection = h.element('#osSettingsSection'); settingsSection.value = 'administration';
+  const settingsSection = h.element('#osSettingsSection');
+  assert.equal([...settingsSection.options].some(option=>option.value==='administration'), false,
+    'the retired Administration settings section must not reappear');
+  settingsSection.value = 'administration';
   settingsSection.dispatchEvent(new h.window.Event('change', { bubbles: true })); await flush();
-  const administration = h.element('#page-suite [data-os-route=cadastros]');
-  assert.match(administration.textContent, /Administração do atendimento/);
-  administration.click(); await flush();
-  assert.equal(currentRoute(h), 'cadastros');
-  assert.equal(activePage(h), 'page-cadastros', 'the internal administration link still opens its real controller');
+  assert.equal(h.element('#osSettingsSection').value, 'general', 'stale preferences fall back to the supported business settings');
+  assert.equal(h.document.querySelector('#page-suite [data-os-route=cadastros]'), null);
+  await h.window.OrionSuite.open('cadastros'); await flush();
+  assert.equal(currentRoute(h), 'configuracoes', 'saved legacy record URLs remain safe entry points');
+  assert.equal(activePage(h), 'page-suite');
   assert.equal(h.element('#osNav [aria-current=page]').dataset.osRoute, 'configuracoes');
+  for (const route of ['conversas', 'ai', 'empresa', 'catalogo'])
+    assert.ok(h.document.querySelector('#osNav [data-os-route=' + route + ']'), route + ' remains available to the administrator');
   assert.deepEqual(writes(h), [], 'navigation must not save configuration, generate AI or send WhatsApp messages');
   assert.equal(h.errors.length, 0);
 });
@@ -66,12 +71,13 @@ test('member deep links and direct navigation never load the global WhatsApp ope
 });
 
 test('the top connection entry keeps the pairing wizard, authenticated request and code expiry', async t => {
-  const h = await makePanel({ respond: (path, method) => {
+  const h = await makePanel({ deviceStatus: 'qr_ready', respond: (path, method) => {
     if (path === '/api/v1/qr/pair' && method === 'POST') return { status: 'pairing', code: 'ABCD-1234', expiresIn: 1 };
   } }); t.after(() => h.close());
   h.click('#osNav [data-os-route=dispositivo]'); await flush();
-  h.click('[data-method=code]'); h.click('#wizardNext');
-  assert.equal(h.document.activeElement, h.element('#pairPhone'));
+  h.click('[data-method=code]');
+  assert.equal(h.element('#wizardCodeInput').classList.contains('hidden'), false);
+  assert.equal(h.element('#wizardTutorial').classList.contains('hidden'), true);
   assert.deepEqual(writes(h), [], 'opening the wizard alone does not request a pairing attempt');
   h.fill('#pairPhone', '(11) 99999-0001'); h.submit('#pairForm'); await flush();
   const mutations = writes(h); assert.equal(mutations.length, 1);
@@ -80,7 +86,7 @@ test('the top connection entry keeps the pairing wizard, authenticated request a
   assert.equal(mutations[0].options.credentials, 'same-origin');
   assert.equal(mutations[0].options.headers['X-Orion-CSRF'], 'synthetic-mobile-csrf');
   assert.equal(h.element('#pairCode').textContent, 'ABCD-1234');
-  assert.match(h.element('#codeStatus').textContent, /só é confirmada quando o status mudar/);
+  assert.match(h.element('#codeStatus').textContent, /Aguardando a confirmação no WhatsApp/);
   await h.tickClocks(1100);
   assert.match(h.element('#codeStatus').textContent, /expirou/);
   assert.equal(h.element('#codeResult').classList.contains('hidden'), true);

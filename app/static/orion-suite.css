@@ -99,7 +99,7 @@
 .os-button.os-large{min-height:44px;padding:11px 16px}
 .os-button.os-full{width:100%}
 .os-button:disabled{opacity:.5;cursor:not-allowed}
-.os-button:focus-visible,.os-nav-link:focus-visible,.os-icon-button:focus-visible,.os-main a:focus-visible{outline:3px solid color-mix(in srgb,var(--os-primary) 55%,transparent);outline-offset:3px}
+.os-button:focus-visible,.os-service-option:focus-visible,.os-nav-link:focus-visible,.os-icon-button:focus-visible,.os-main a:focus-visible{outline:3px solid color-mix(in srgb,var(--os-primary) 55%,transparent);outline-offset:3px}
 .os-quick-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}
 .os-quick-action{display:flex;align-items:center;gap:16px;padding:20px;border:1px solid var(--os-border);border-radius:20px;background:var(--os-card);color:var(--os-text)!important;box-shadow:var(--os-shadow);text-align:left;text-decoration:none;font:400 16px/24px var(--os-font);cursor:pointer;transition:transform .2s,box-shadow .25s,border-color .2s}
 .os-quick-action:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 20px #15294b12;border-color:color-mix(in srgb,var(--os-primary) 40%,var(--os-border))}
@@ -171,6 +171,21 @@
 .os-fab-label{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 @media(hover:hover) and (pointer:fine){.os-fab:hover{transform:translateY(-2px);box-shadow:0 10px 28px #2e7bf640}}
 .os-fab:focus-visible{outline:3px solid var(--os-primary);outline-offset:3px}
+/* The connector needs the full width for status, QR and phone controls. */
+.orion-suite-enabled:has(#page-suite[data-os-current-route=configuracoes]:not(.hidden) #osManagedChannels)>.os-fab{display:none}
+/* Connection layout uses the existing os-card, os-button, os-field,
+ * os-service-option and os-more-fields components above. */
+.os-connect{min-width:0;width:100%;max-width:768px;margin:0 auto 24px}
+.os-connect-heading,.os-connect-methods{margin-bottom:16px}.os-connect-heading p{margin-top:4px}
+.os-connect .os-form{margin-top:16px}
+.os-connect .os-form-actions{margin-top:16px}.os-connect .os-form-actions:not(:has(>button:not(.hidden))){display:none}
+.os-connect-guide{display:grid;gap:8px;padding-left:24px;margin:0}.os-connect-notice{display:grid;gap:12px}
+.os-connect-qr{display:grid;place-items:center;width:min(100%,256px);aspect-ratio:1;padding:12px;margin:16px auto;background:#fff;border:1px solid var(--os-border);border-radius:10px}
+.os-connect-qr img{display:block;width:100%;height:auto;aspect-ratio:1;object-fit:contain}.os-connect-qr .os-empty{color:#4e5a72;display:grid;justify-items:center;gap:8px;padding:12px}
+.os-connect-placeholder.is-expired .os-spinner{display:none}
+.os-connect-code{display:block;margin:16px 0;font:600 24px/32px ui-monospace,monospace;letter-spacing:.08em;text-align:center;user-select:all}
+.os-connect-feedback:not(:empty),.os-connect-expiry{margin-top:12px}.os-connect-expiry{text-align:center;font-variant-numeric:tabular-nums}
+.os-connect #wizardCheckStatus{margin-top:12px}
 @media(prefers-reduced-motion:reduce){.os-fab{transition:none}}
 .os-scrim{display:none}
 .os-loading{padding:48px 20px;display:flex;gap:10px;justify-content:center;align-items:center;color:var(--os-muted);font-size:14px;text-align:center}
@@ -741,6 +756,7 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-service-option strong{display:block;font-weight:500}
 .os-service-option small{display:block;font-size:12px;line-height:18px;color:var(--os-muted)}
 .os-service-option[aria-pressed=true]{border-color:var(--os-primary);background:var(--os-tint);box-shadow:0 0 0 1px var(--os-primary)}
+.os-service-option:disabled{opacity:.5;cursor:not-allowed}
 .os-customer-results{max-height:180px;overflow:auto;border:1px solid var(--os-border);border-radius:10px;margin-top:8px;background:var(--os-card)}
 .os-customer-results:empty{border:0;margin:0}
 .os-customer-results button{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;padding:9px 12px;text-align:left;border:0;border-bottom:1px solid var(--os-border);color:var(--os-text);background:transparent;font:400 13px/18px var(--os-font);cursor:pointer}
