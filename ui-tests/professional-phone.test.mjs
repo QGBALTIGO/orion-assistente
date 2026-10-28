@@ -39,6 +39,8 @@ async function fixture(t,{role='owner',phone='+5567912345678'}={}){
     h.click('[data-os-professional="'+id+'"]');await flush();
     const form=h.document.querySelector(formSelector);
     assert.ok(form);
+    // Complete showDialog's initial-focus task before simulating user input.
+    await new Promise(resolve=>h.window.setTimeout(resolve,0));
     return {form,input:form.elements.phone_e164};
   }
   return {h,staff,saves,open};

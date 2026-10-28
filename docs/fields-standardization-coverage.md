@@ -2,7 +2,7 @@
 
 Este documento acompanha a implementação solicitada em 28/10/2026. A base de comparação é `ba563ef86680fa47548a4255e91c931ac4ec8a04`, posterior ao levantamento original `6ef8307f69be35af79784a2c546290566839a45e`. O código em edição é a referência para a entrega; as contagens abaixo têm método reproduzível e não representam, sozinhas, aprovação visual ou funcional.
 
-**Estado deste relatório: cobertura consolidada e validação local concluída em 28/10/2026.** A execução DOM agregada passou 722/722 testes; a seleção backend/assets passou 285 testes, incluindo requisições HTTP reais via ASGI. As revisões CUA abaixo ocorreram em uma prévia isolada com dados sintéticos. CI Chromium/WebKit, SHA do commit e publicação continuam pendentes; os resultados locais não representam aprovação dessas etapas.
+**Estado deste relatório: cobertura consolidada e evidências por revisão, em 28/10/2026.** A execução DOM agregada passou 722/722 testes; a seleção backend/assets passou 285 testes, incluindo requisições HTTP reais via ASGI. O CI confirmou esses mesmos totais na revisão `5379b8d0258623b9d416284a53af48bbfe9ab3f7`. As revisões CUA abaixo ocorreram em uma prévia isolada com dados sintéticos. O fechamento atualizado de Chromium/WebKit, commit integrado e revisão publicada é registrado no [PR #122](https://github.com/QGBALTIGO/orion-assistente/pull/122), para distinguir cada rodada da versão efetivamente entregue.
 
 Não foi fornecida a planilha `Levantamento_Campos_Orion.xlsx`. Por isso, a referência de cada campo é **arquivo + formulário/escopo + `name`/`id`**, sem IDs `ORI-xxx` inventados. Os 34 grupos deste documento organizam a revisão atual; não estabelecem correspondência com linhas desconhecidas da planilha.
 
@@ -180,25 +180,118 @@ O log `/tmp/orion-fields-backend-full.log` registra 285 testes aprovados em 5,85
 | Cliente — 390×844, claro | Telefone formatado preservou DDD 55 e o envio em memória registrou `+5555991234567` | Dados sintéticos; não grava cadastro real |
 | Serviço — 390×844, claro | Entrada `1.234` exibiu `1.234,00`; envio em memória registrou `123400` centavos e a lista mostrou `R$ 1.234,00` | Um caso manual de moeda; os demais modos têm testes DOM próprios |
 | Preferências — 390×844, escuro | CNPJ alfanumérico conferido no formulário com a máscara correspondente | Não substitui execução de toda a matriz de temas/dimensões |
-| Agendamento público — 360×800 | Campo nativo de nascimento preservou a data civil no payload ISO | Chrome em inglês apresentou `MM/DD` no controle nativo; não foi demonstrada apresentação visual `DD/MM/AAAA` nessa sessão |
+| Agendamento público — 360×800 | Campo nativo de nascimento manteve o valor civil ISO; a submissão foi verificada nos testes DOM | Chrome em inglês apresentou `MM/DD` no controle nativo; não foi demonstrada apresentação visual `DD/MM/AAAA` nessa sessão |
 | Onboarding/endereço — 768×1024, claro | Após correção por container query, CEP/rua/número/complemento/bairro/cidade/UF mediram **387,5×44 px** cada. CEP sintético `01001000` preencheu Praça da Sé/Sé/São Paulo/SP e preservou número `123A` | ViaCEP respondido pela fixture; prova de layout e preenchimento, sem consulta externa nem persistência real |
+
+### Correções encontradas na matriz de navegador
+
+A rodada `5379b8d` confirmou 116/116 casos focais DOM, 722/722 na regressão DOM e 285/285 backend/assets. As 96 combinações de acesso (auth, onboarding, landing e convite) passaram em Chromium e WebKit na primeira rodada. O teste do preço do serviço passou nos seis casos de Chromium/WebKit em 320, 390 e 768 px após a fixture carregar o bootstrap real do core.
+
+A matriz ampla identificou dois defeitos de apresentação, corrigidos na revisão seguinte:
+
+- Os controles compactos de comissão tinham regras com ID que prevaleciam sobre o estilo móvel compartilhado. O ajuste específico mantém fonte de **16 px** e altura de **42 px**, confirmado em CUA em 390×844 com percentual e `R$ 1.234,00`.
+- O rótulo acessível absoluto “Ações” da tabela escapava do seu contêiner de rolagem e aumentava a largura do documento no tablet. `.os-table-scroll` agora estabelece `position:relative`, mantendo sua rolagem própria. No painel completo de 768 px, a largura útil/rolagem do documento passou de **753/858 px para 753/753 px**; a tabela continua com 695 px dentro do contêiner de 415 px.
+
+O teste de alvo do ícone de histórico usa as mesmas asserções, mas agora serve as fontes reais em uma origem HTTPS sintética, aguarda fontes e duas amostras estáveis de layout e lê geometria/hit test atomicamente. Os runners anteriores usavam Chrome 155, enquanto o Playwright fixado traz Chromium 141; os diagnósticos registram essa diferença, sem equiparar emulação a aparelho físico. A fixture DOM do profissional também aguarda a tarefa inicial de foco antes de simular interação, preservando a asserção de foco no telefone inválido.
+
+Os harnesses legados QR passaram a carregar o core real antes do controlador do painel. Os 9 erros novos por dependência ausente foram eliminados. As **73 falhas restantes** coincidem literalmente com os nomes da base `ba563ef`, e as verificações antigas de migração/recorrência/cliente e a coleta sem Playwright têm seus resultados comparados no fechamento do PR. Esses pipelines gerais não devem ser descritos como todos verdes.
 
 O workflow `.github/workflows/fields-standardization.yml` separa DOM, contratos/assets/inventário e navegador Chromium/WebKit. Fixtures não encaminham rede real, usam domínios `orion.test`/`example.invalid`, dados inventados e respostas em memória; nenhum teste exige conta real nem envia mensagem, lead ou agendamento de produção. Os artefatos de navegador registram geometria e capturas. A existência do workflow não significa que a execução passou: anexar o resultado e o SHA efetivo antes de usar esse resultado como gate de publicação.
 
 ### Fechamento da entrega
 
-| Informação | Preencher na revisão final |
+| Informação | Evidência / registro final |
 | --- | --- |
-| SHA testado | Árvore de trabalho sobre `ba563ef86680fa47548a4255e91c931ac4ec8a04`; registrar o SHA do commit após congelamento |
+| Revisões verificadas | Base `ba563ef`; CI DOM/backend em `5379b8d`; revisão final, árvore e merge registrados no PR #122 |
 | DOM local | 722/722 aprovados; `/tmp/orion-fields-dom-verified.log` |
 | Backend/assets local | 285 aprovados; `/tmp/orion-fields-backend-full.log` |
-| CI DOM | Pendente |
-| CI backend/assets | Pendente |
-| CI Chromium | Pendente |
-| CI WebKit | Pendente |
+| CI DOM | 116 focais + 722 na regressão completa aprovados no run `40611671455`; resultado da revisão final nos checks do PR |
+| CI backend/assets | 285 aprovados no run `40611671455`; resultado da revisão final nos checks do PR |
+| CI Chromium | Matriz de seis dimensões, dois temas e regressões existentes; resultado final e artefatos vinculados no PR #122 |
+| CI WebKit | Mesma matriz em emulação; resultado final e artefatos vinculados no PR #122 |
 | Grupos revisados por CUA, dimensões e temas | Cliente/Serviço 390×844 claro; Preferências 390×844 escuro; Público 360×800; onboarding/endereço 768×1024 claro, conforme tabela acima |
 | Browser real físico / autofill de sistema / zoom | Não demonstrado pelo ambiente sintético; não declarar aprovado sem prova adicional |
-| Publicação / smoke no ambiente publicado | Pendente; não confundir com prévia ou testes de código |
+| Publicação / smoke no ambiente publicado | O fechamento do PR registra merge, deploy Railway e comparação de assets/HTML/CSP/cache nos três hosts configurados; prévia isolada não substitui essa verificação |
+
+## Arquivos alterados
+
+A comparação com `ba563ef` inclui os seguintes 75 arquivos de implementação, integração, testes e documentação:
+
+- `.github/workflows/fields-standardization.yml`
+- `app/brazilian_fields.py`
+- `app/catalog_schemas.py`
+- `app/commercial_schemas.py`
+- `app/landing_api.py`
+- `app/main.py`
+- `app/management_preferences.py`
+- `app/management_schemas.py`
+- `app/onboarding_schemas.py`
+- `app/professional_commissions.py`
+- `app/public_site_api.py`
+- `app/static/orion-channels.css`
+- `app/static/orion-channels.js`
+- `app/static/orion-fields.css`
+- `app/static/orion-fields.js`
+- `app/static/orion-invite.html`
+- `app/static/orion-invite.js`
+- `app/static/orion-onboarding.css`
+- `app/static/orion-onboarding.js`
+- `app/static/orion-public.html`
+- `app/static/orion-public.js`
+- `app/static/orion-suite.css`
+- `app/static/orion-suite.js`
+- `app/static/panel.html`
+- `docs/fields-standardization-coverage.md`
+- `landing/assets/orion-landing.js`
+- `landing/index.html`
+- `qr-bridge/test/panel-ui.test.mjs`
+- `qr-bridge/test/wizard-journey.test.mjs`
+- `scripts/inventory_fields.py`
+- `tests/e2e/browser_customer_whatsapp_shortcut.py`
+- `tests/e2e/browser_fields_access.py`
+- `tests/e2e/browser_fields_standardization.py`
+- `tests/e2e/browser_package_cards_compact.py`
+- `tests/e2e/browser_public_amenities.py`
+- `tests/e2e/browser_public_booking_footer.py`
+- `tests/e2e/browser_public_confirmation_clean.py`
+- `tests/e2e/browser_public_confirmation_sizing.py`
+- `tests/e2e/browser_public_contact_theme.py`
+- `tests/e2e/browser_public_hero_actions.py`
+- `tests/e2e/browser_public_multiservice.py`
+- `tests/e2e/browser_public_professional_smooth.py`
+- `tests/e2e/browser_public_slot_periods.py`
+- `tests/e2e/browser_service_editor_price.py`
+- `tests/e2e/fixtures/fields-panel.js`
+- `tests/e2e/test_finance_responsive.py`
+- `tests/e2e/test_hours_responsive.py`
+- `tests/e2e/test_performance_history_goals.py`
+- `tests/e2e/test_site_address_slug.py`
+- `tests/unit/test_brazilian_form_contracts.py`
+- `tests/unit/test_fields_assets.py`
+- `tests/unit/test_management_extras_unit.py`
+- `ui-tests/booking-recovery.test.mjs`
+- `ui-tests/channels-harness.mjs`
+- `ui-tests/conversation-contact-names.test.mjs`
+- `ui-tests/customer-whatsapp-shortcut.test.mjs`
+- `ui-tests/fields-auth.test.mjs`
+- `ui-tests/fields-conditional.test.mjs`
+- `ui-tests/fields-core.test.mjs`
+- `ui-tests/fields-integration.test.mjs`
+- `ui-tests/fields-onboarding-channels.test.mjs`
+- `ui-tests/fields-panel-legacy.test.mjs`
+- `ui-tests/fields-public-consumers.test.mjs`
+- `ui-tests/harness.mjs`
+- `ui-tests/invite-verification.test.mjs`
+- `ui-tests/mobile-atendimento.test.mjs`
+- `ui-tests/onboarding-harness.mjs`
+- `ui-tests/onboarding-save.test.mjs`
+- `ui-tests/orion-landing.test.mjs`
+- `ui-tests/orion-public.test.mjs`
+- `ui-tests/panel-harness.mjs`
+- `ui-tests/professional-phone.test.mjs`
+- `ui-tests/public-confirmation-clean.test.mjs`
+- `ui-tests/public-harness.mjs`
+- `ui-tests/site-address-slug.test.mjs`
 
 <!-- GENERATED_FIELD_INDEX_BEGIN -->
 

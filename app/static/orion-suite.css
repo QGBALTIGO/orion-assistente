@@ -497,7 +497,8 @@ html[data-theme=dark] .os-status-hold{--os-status-color:#dfc892;--os-status-bg:#
 .os-professional-columns{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}
 .os-professional-heading{display:flex;align-items:center;gap:10px;padding:16px;border-bottom:1px solid var(--os-border);font:600 16px/24px var(--os-display)}
 .os-avatar{display:grid;place-items:center;flex-shrink:0;height:40px;width:40px;background:var(--os-tint);color:var(--os-primary);border-radius:50%;font:600 14px/20px var(--os-font)}
-.os-table-scroll{min-width:0;max-width:100%;overflow:auto;scrollbar-width:thin;overscroll-behavior:contain}
+/* Keep absolute accessible labels inside the table's horizontal scroll area. */
+.os-table-scroll{position:relative;min-width:0;max-width:100%;overflow:auto;scrollbar-width:thin;overscroll-behavior:contain}
 .os-table{border-collapse:collapse;width:100%;font:400 14px/20px var(--os-font);color:var(--os-text);min-width:600px}
 .os-table th{padding:12px 20px;background:var(--os-bg);color:var(--os-muted);font-size:12px;font-weight:500;text-align:left;white-space:nowrap;border-bottom:1px solid var(--os-border)}
 .os-table td{padding:16px 20px;vertical-align:middle;border-bottom:1px solid var(--os-border);text-align:left}

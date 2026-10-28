@@ -16,6 +16,7 @@
 @media(max-width:767px){
   .os-main .os-form :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=hidden]),select,textarea){font-size:16px;min-height:42px}
   .os-dialog .os-form :is(input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([type=hidden]),select,textarea){font-size:16px;min-height:42px}
+  #osDialog .os-commission-service-controls :is(input,select){font-size:16px;line-height:22px;height:42px;min-height:42px}
 }
 
 .wizard-phone-input:focus-within{outline:2px solid var(--os-primary,var(--primary,#2e7bf6));outline-offset:2px}
