@@ -26,7 +26,7 @@
     hold:"Retenção legal",release_hold:"Retenção encerrada",maintenance_start:"Manutenção iniciada",
     maintenance_end:"Manutenção encerrada",maintenance_request:"Ação em manutenção"};
   const names={suspend:"Suspender conta",reactivate:"Reativar conta",archive:"Excluir conta",
-    restore:"Restaurar conta",hold:"Aplicar retenção legal",release_hold:"Encerrar retenção legal"};
+    restore:"Restaurar conta",erase_now:"Excluir permanentemente"};
   const warnings={suspend:"O cliente perderá o acesso imediatamente, inclusive nas sessões abertas.",
     reactivate:"O acesso à conta será restabelecido.",archive:"A conta ficará bloqueada durante 30 dias. Depois desse prazo, a identidade de acesso será eliminada, respeitando a retenção legal.",
     restore:"O prazo de exclusão será cancelado e o acesso restaurado.",
