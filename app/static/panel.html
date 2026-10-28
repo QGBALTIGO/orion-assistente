@@ -2722,7 +2722,10 @@ async function updateStatus(){
   $("repairConnection").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
   $("wizardRecover").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
   $("wizardRecoveryArea").classList.toggle("hidden",!["logged_out","pair_failed"].includes(result.status));
-  $("refreshQr").disabled=result.status==="connected"||result.status==="pairing";
+  const needsNewLink=["logged_out","pair_failed"].includes(result.status);
+  $("wizardGenerate").disabled=needsNewLink||result.status==="connected";
+  $("wizardGenerate").setAttribute("aria-disabled",String(needsNewLink||active));
+  $("refreshQr").disabled=active||result.status==="pairing"||needsNewLink;
   $("connectedPhone").textContent=result.phone?
     "Dispositivo "+result.phone+" conectado. Você pode ler e enviar mensagens manualmente.":
     "Dispositivo conectado. Você pode ler e enviar mensagens manualmente.";
@@ -2732,7 +2735,8 @@ async function updateStatus(){
     $("codeStatus").textContent="✓ O dispositivo foi conectado.";
   }else if(result.status==="pair_failed"||result.status==="logged_out"){
     pairExpiresAt=0;$("codeResult").classList.add("hidden");
-    $("codeStatus").textContent="O WhatsApp recusou ou revogou esta sessão. Clique em Refazer vínculo para gerar uma sessão nova.";
+    $("codeStatus").textContent="Sessão desvinculada. Use Refazer vínculo para iniciar uma conexão nova.";
+    $("codeStatus").setAttribute("role","alert");
     if(showQr&&method==="qr")await updateQr();
   }else if(result.status==="pair_expired"||
     (result.status==="pairing"&&pairExpiresAt>0&&Date.now()>pairExpiresAt)){
