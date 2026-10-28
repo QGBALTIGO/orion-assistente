@@ -87,7 +87,7 @@
             field('street','Rua ou avenida',address.street||'',
               'required maxlength="160" autocomplete="address-line1" autocapitalize="words" placeholder="Ex.: Rua das Flores" data-ob-address-text')+
             field('number','Número',address.number||'',
-              'required maxlength="30" pattern=".*[0-9].*" placeholder="Ex.: 123A" data-ob-address-number')+
+              'required maxlength="30" pattern=".*[0-9].*" inputmode="text" autocapitalize="characters" placeholder="Ex.: 123A" data-ob-address-number')+
             field('complement','Complemento (opcional)',address.complement||'',
               'maxlength="160" autocomplete="address-line2" placeholder="Sala, bloco ou conjunto" data-ob-address-text')+
             field('neighborhood','Bairro',address.neighborhood||'',
@@ -225,15 +225,22 @@
     async function click(event) {const target=event.target.closest('[data-ob-action],[data-ob-step]');if(!target||!host.contains(target)||state.busy)return;const action=target.dataset.obAction;try {if(target.dataset.obStep){if(state.pending||state.conflict)return;capture();state.step=target.dataset.obStep;state.editor=null;state.feedback='';render();focus();return;}if(action==='cep-retry'){queueCepLookup(host.querySelector('[name=postal_code]'),0);return;}if(action==='refresh'){await refresh();return;}if(action==='retry-operation'){if(state.pending)await operate(state.pending);return;}if(action==='logout'){await bridge.logout?.();return;}if(state.pending||state.conflict)return;if(action==='open-dashboard'){if(state.data?.status==='complete'){if(bridge.onOpenPanel)await notify('onOpenPanel',state.data.configuration?.activity==='products'?'catalogo':'agenda',clone(state.data));else await notify('onComplete',clone(state.data));}return;}if(action==='connect-whatsapp'){capture();await bridge.openLegacy?.('dispositivo');return;}if(action==='cancel-edit'){state.drafts.delete(draftKey());state.editor=null;state.feedback='';render();return;}if(action==='add-professional'||action==='add-service'||action==='add-product'||action==='edit'){if(!usable())return;capture();state.editor={kind:action==='edit'?target.dataset.obKind:action.replace('add-',''),id:target.dataset.obId||null};render();host.querySelector('form input')?.focus();return;}if(action==='back'||action==='next'||action==='review-edit'){capture();state.editor=null;const steps=stepRows(),index=steps.findIndex(step=>step.id===state.step);state.step=action==='review-edit'?target.dataset.obTarget:steps[Math.max(0,Math.min(steps.length-1,index+(action==='next'?1:-1)))]?.id||state.step;state.feedback='';render();focus();}}
       catch(error){showFeedback(error.message||'Não foi possível abrir esta etapa.',true);}}
     function change(event) {if(!host.contains(event.target))return;const element=event.target;if(['street','neighborhood','city','state'].includes(element.name))element.dataset.obEdit=String(Number(element.dataset.obEdit||0)+1);if(element.name==='postal_code'){let cep;try{cep=fieldTools.postalCodeValue(element.value);}catch{}if(cep!==element.dataset.obCepQuery)queueCepLookup(element,0);}if(element.name==='modality'&&!['onsite','hybrid'].includes(element.value))cancelCep();if(element.name==='variant_id'&&state.editor?.kind==='product'){capture();state.editor.variant_id=element.value;render();return;}if(element.name==='self_provider'&&element.checked){const input=host.querySelector('[name=name]');if(input&&!input.value.trim())input.value=bridge.user?.name||'';}if(element.name==='professional_id'&&state.step==='hours'){capture();state.editor={kind:'hours',professional_id:element.value};state.drafts.delete(draftKey());render();return;}conditionalFields();}
-    function businessNameBlur(event){
+    function normalizeFieldOnBlur(event){
       const input=event.target;
-      if(!host.contains(input)||!input.hasAttribute('data-ob-business-name'))return;
-      input.value=businessNameValue(input.value);
-      input.setCustomValidity(input.value?'':'Informe o nome do negócio.');
+      if(!host.contains(input))return;
+      if(input.hasAttribute('data-ob-business-name')){
+        input.value=businessNameValue(input.value);
+        input.setCustomValidity(input.value?'':'Informe o nome do negócio.');
+      }else if(input.hasAttribute('data-ob-address-text')){
+        input.value=addressTextValue(input.value);
+      }else if(input.hasAttribute('data-ob-address-number')){
+        input.value=addressNumberValue(input.value);
+        input.setCustomValidity(/[0-9]/.test(input.value)?'':'Informe o número do estabelecimento.');
+      }
     }
-    host.addEventListener('focusout',businessNameBlur);
+    host.addEventListener('focusout',normalizeFieldOnBlur);
     host.addEventListener('click',click);host.addEventListener('submit',submit);host.addEventListener('change',change);host.addEventListener('input',input);host.addEventListener('compositionend',input);
-    const controller={resolveEntry,unmount(){if(!state.mounted)return;cancelCep();releaseFields();state.mounted=false;state.epoch++;host.removeEventListener('focusout',businessNameBlur);host.removeEventListener('click',click);host.removeEventListener('submit',submit);host.removeEventListener('change',change);host.removeEventListener('input',input);host.removeEventListener('compositionend',input);host.innerHTML='';host.hidden=true;host.classList.remove('ob-root');host.removeAttribute('aria-busy');state.drafts.clear();state.pending=null;},getState(){return clone({tenantId:state.tenantId,step:state.step,busy:state.busy,uncertain:!!state.pending,conflict:state.conflict,data:state.data,entry:state.entry});}};
+    const controller={resolveEntry,unmount(){if(!state.mounted)return;cancelCep();releaseFields();state.mounted=false;state.epoch++;host.removeEventListener('focusout',normalizeFieldOnBlur);host.removeEventListener('click',click);host.removeEventListener('submit',submit);host.removeEventListener('change',change);host.removeEventListener('input',input);host.removeEventListener('compositionend',input);host.innerHTML='';host.hidden=true;host.classList.remove('ob-root');host.removeAttribute('aria-busy');state.drafts.clear();state.pending=null;},getState(){return clone({tenantId:state.tenantId,step:state.step,busy:state.busy,uncertain:!!state.pending,conflict:state.conflict,data:state.data,entry:state.entry});}};
     active=controller;return controller;
   }
   function unmount() {active?.unmount();active=null;}
