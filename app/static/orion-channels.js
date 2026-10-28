@@ -225,8 +225,8 @@
       if(el.dataset.qcChannel){if(state.pending)return;pause();state.method='code';state.selected=el.dataset.qcChannel;state.confirmation=null;state.runtime=null;state.feedback='';render();if(selected()?.enabled)void loadStatus();return;}
       if(action==='legacy'){await bridge.onLegacy?.();return;}
       if(action==='hide-qr'){state.linkFlow=null;clearQR();render();return;}
-      if(action==='cancel-pair'){if(!state.pair)return;state.pairHidden=true;render();return;}
-      if(action==='show-code'){if(!state.pair||state.pair.expiresAt<=Date.now()||!visible())return;state.pairHidden=false;render();return;}
+      if(action==='cancel-pair'){if(!state.pair)return;state.pairHidden=true;render();host.querySelector('[data-qc-action=show-code]')?.focus({preventScroll:true});return;}
+      if(action==='show-code'){if(!state.pair||state.pair.expiresAt<=Date.now()||!visible())return;state.pairHidden=false;render();host.querySelector('[data-qc-action=cancel-pair]')?.focus({preventScroll:true});return;}
       if(action==='copy-code'){const pair=state.pair,epoch=state.epoch;if(!pair||state.pairHidden||pair.expiresAt<=Date.now()||!visible())return;try{await navigator.clipboard.writeText(pair.code);if(current(epoch)&&visible()&&state.pair===pair)feedback('Código copiado. Cole no WhatsApp.');}catch{if(current(epoch)&&visible()&&state.pair===pair)feedback('Selecione o código para copiar.',true);}return;}
       if(action==='refresh'){await load();return;}if(action==='retry-create'){if(state.pending?.kind==='create')await perform(state.pending);return;}
       if(action==='status'){await loadStatus();return;}if(action==='qr'){await showQR();return;}

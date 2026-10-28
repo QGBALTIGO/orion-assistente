@@ -86,6 +86,17 @@ test('hiding and revealing a valid code is reversible without requesting the pro
   await h.tick(1000);h.click('[data-qc-action=cancel-pair]');assert.equal(h.element('[data-qc-pair-time]').textContent,'78 s');h.click('[data-qc-action=show-code]');assert.equal(h.element('[data-qc-pair-time]').textContent,'78 s');assert.equal(pairCalls(h).length,1);
 });
 
+test('focused hide and reveal buttons transfer focus to the equivalent action without requesting scroll',async t=>{
+  const row=item({enabled:true});let paired=false;
+  const h=await makeChannels({data:listing([row]),respond:(path,method)=>path.endsWith('/pair')&&method==='POST'?(paired=true,result(row)):path.endsWith('/status')?status(row,paired?'pairing':'qr_ready'):undefined});t.after(()=>h.close());
+  submitPair(h);await flush();const count=h.calls.length,ttl=h.element('[data-qc-pair-time]').textContent,focusCalls=[];
+  const originalFocus=h.window.HTMLElement.prototype.focus;
+  h.window.HTMLElement.prototype.focus=function(options){if(this.dataset.qcAction)focusCalls.push({action:this.dataset.qcAction,preventScroll:options?.preventScroll});return originalFocus.call(this,options);};
+  const hide=h.element('[data-qc-action=cancel-pair]');assert.equal(hide.tabIndex,0);hide.focus();assert.equal(h.document.activeElement,hide);hide.click();
+  const show=h.element('[data-qc-action=show-code]');assert.equal(show.tabIndex,0);assert.equal(h.document.activeElement,show);assert.deepEqual(focusCalls.at(-1),{action:'show-code',preventScroll:true});
+  show.click();assert.equal(h.document.activeElement,h.element('[data-qc-action=cancel-pair]'));assert.deepEqual(focusCalls.at(-1),{action:'cancel-pair',preventScroll:true});assert.equal(h.calls.length,count);assert.equal(h.element('[data-qc-pair-time]').textContent,ttl);assert.equal(pairCalls(h).length,1);
+});
+
 test('a code that expires while hidden is erased and cannot be revealed or regenerated automatically',async t=>{
   const row=item({enabled:true});let paired=false;
   const h=await makeChannels({data:listing([row]),respond:(path,method)=>path.endsWith('/pair')&&method==='POST'?(paired=true,result(row,{expires_in_ms:1500})):path.endsWith('/status')?status(row,paired?'pairing':'qr_ready'):undefined});t.after(()=>h.close());
