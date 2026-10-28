@@ -117,11 +117,11 @@ def test_hero_icons_align_and_share_opens_native_api_without_booking(engine, wid
             service_meta = page.locator("#services-grid .service-card .service-meta").first
             assert service_meta.locator(".price").count() == 1
             assert service_meta.locator(".service-meta-separator").inner_text() == "•"
-            assert service_meta.locator(".service-duration").inner_text() == "40min"
+            assert service_meta.locator(".service-duration").inner_text() == "40 min"
             assert service_meta.evaluate(
                 "(el)=>Array.from(el.children).map(x=>x.className)"
             ) == ["price", "service-meta-separator", "service-duration"]
-            assert service_meta.inner_text().find("R$") < service_meta.inner_text().find("40min")
+            assert service_meta.inner_text().find("R$") < service_meta.inner_text().find("40 min")
             assert page.locator("#maps-link svg.route-action-icon").count() == 1
             assert page.locator(".location-heading svg.location-icon").count() == 1
             assert page.locator("#map-preview iframe").count() == 1
