@@ -38,7 +38,7 @@ async def inspect(page,width,mode):
       window.OrionPlans.mount(document.querySelector('#osPageBody'),{
         plans:[
           {code:'essencial',name:'Orion Essencial',monthly_cents:2990,max_professionals:2},
-          {code:'profissional',name:'Orion Profissional',monthly_cents:7990,max_professionals:6},
+          {code:'profissional',name:'Orion Profissional',monthly_cents:8990,max_professionals:6},
           {code:'elite',name:'Orion Elite',monthly_cents:13990,max_professionals:10}
         ],subscription:null,trial:null,active_professionals:0,can_manage_plan:true,
         checkout_enabled:false
@@ -72,7 +72,7 @@ async def inspect(page,width,mode):
     assert await page.locator("#opFullName").input_value()=="Pessoa Sintética"
     assert await page.locator("#opCompanyName").input_value()=="Empresa Sintética"
     assert await page.locator("[name=privacy_ack]").count()==1
-    await page.locator(".op-dialog [data-op-close]").click()
+    await page.locator(".op-dialog .op-dialog-close").click()
     assert await page.locator(".op-dialog").count()==0,(width,mode,"dialog close")
 
 

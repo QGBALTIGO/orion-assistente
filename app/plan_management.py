@@ -32,10 +32,10 @@ CODES = {
     "essencial": {"name": "Orion Essencial", "price_cents": 2990, "max_professionals": 2,
                   "db_code": "orion_essencial", "offer_names": ("Orion Essencial",),
                   "checkout_url": "https://pay.cakto.com.br/3bdhdkc_1219844"},
-    "profissional": {"name": "Orion Profissional", "price_cents": 7990, "max_professionals": 6,
+    "profissional": {"name": "Orion Profissional", "price_cents": 8990, "max_professionals": 6,
                     "db_code": "orion_profissional",
                     "offer_names": ("Orion Profissional", "Orion Pro"),
-                    "checkout_url": None},  # The old R$89,90 link is NOT the R$79,90 plan.
+                    "checkout_url": "https://pay.cakto.com.br/3652fm4"},
     "elite": {"name": "Orion Elite", "price_cents": 13990, "max_professionals": 10,
               "db_code": "orion_elite", "offer_names": ("Orion Elite",),
               "checkout_url": "https://pay.cakto.com.br/v4md8n3"},
@@ -263,16 +263,17 @@ def _exact_offer(offers: list, plan: dict):
             continue
         # Cakto subscription uses a 30-day recurrence_period. intervalType
         # describes one-time offers and must not be used to claim monthly billing.
-        if (offer.get("recurrence_period") not in {30, "30"}
-                and not (offer.get("intervalType") in {"month","monthly"}
-                         and offer.get("interval") in {1, "1"})):
+        if offer.get("recurrence_period") not in {30, "30"}:
             continue
         if not isinstance(offer.get("name"), str):
             continue
         if offer["name"].strip().casefold() not in {n.casefold() for n in plan["offer_names"]}:
             continue
         try:
-            cents = int(Decimal(str(offer.get("price"))) * 100)
+            raw_cents = Decimal(str(offer.get("price"))) * 100
+            if raw_cents != raw_cents.to_integral_value():
+                continue
+            cents = int(raw_cents)
         except (ValueError, InvalidOperation, TypeError):
             continue
         if cents == plan["price_cents"] and isinstance(offer.get("id"), str):
@@ -297,11 +298,8 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
     offer = _exact_offer(offers, plan)
     if offer is None:
         raise HTTPException(409, "A oferta mensal deste plano ainda não corresponde ao valor apresentado. Nenhuma cobrança foi iniciada.")
-    # Never forward a buyer to the old R$89,90 "Orion Pro" checkout.
-    checkout = (os.getenv("CAKTO_PROFISSIONAL_CHECKOUT_URL","").strip()
-                if payload.plan_code == "profissional" else plan["checkout_url"])
-    if not checkout:
-        raise HTTPException(409, "O checkout Profissional de R$ 79,90 ainda precisa ser atualizado na Cakto. Nenhuma cobrança foi iniciada.")
+    # An explicit allowlist is checked after the offer name, price and recurrence.
+    checkout = plan["checkout_url"]
     # Only approved checkout host and path are redirectable.
     parts = urlsplit(checkout)
     if (parts.scheme != "https" or parts.netloc != "pay.cakto.com.br"
@@ -356,7 +354,10 @@ async def apply_verified_cakto_payment(event: dict, order: dict) -> str:
     if remote_offer_id is not None and remote_offer_id != event.get("external_offer_id"):
         return "manual_review"
     try:
-        amount = int(Decimal(str(order.get("amount"))) * 100)
+        raw_cents = Decimal(str(order.get("amount"))) * 100
+        if raw_cents != raw_cents.to_integral_value():
+            return "manual_review"
+        amount = int(raw_cents)
     except (InvalidOperation, ValueError, TypeError):
         return "manual_review"
     # Require both webhook and GET to match the agreed full BRL monthly amount.
@@ -373,9 +374,7 @@ async def apply_verified_cakto_payment(event: dict, order: dict) -> str:
                 return "already_verified"
             if intent["state"] != "pending" or intent["expires_at"] < datetime.now(timezone.utc):
                 return "manual_review"
-            expected_checkout = (os.getenv("CAKTO_PROFISSIONAL_CHECKOUT_URL","").strip()
-                                 if intent["plan_code"]=="profissional"
-                                 else CODES[intent["plan_code"]]["checkout_url"])
+            expected_checkout = CODES[intent["plan_code"]]["checkout_url"]
             actual_checkout = order.get("checkoutUrl")
             if not isinstance(actual_checkout, str) or not expected_checkout:
                 return "manual_review"

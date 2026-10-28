@@ -73,7 +73,7 @@ def schema_ready(raw):
                 WHERE code IN ('orion_essencial','orion_profissional','orion_elite')
             """)).all()
             return sorted(tuple(x) for x in plans)==sorted([
-                ("orion_essencial",2990,2),("orion_profissional",7990,6),
+                ("orion_essencial",2990,2),("orion_profissional",8990,6),
                 ("orion_elite",13990,10)])
     finally:
         engine.dispose()

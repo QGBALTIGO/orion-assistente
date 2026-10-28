@@ -15,8 +15,8 @@ from app import cakto_api
 def test_offered_plan_prices_and_staff_limits_never_drift():
     assert [(code,item["price_cents"],item["max_professionals"])
             for code,item in plans.CODES.items()] == [
-       ("essencial",2990,2),("profissional",7990,6),("elite",13990,10)]
-    assert "89.90" not in str(plans._catalog())
+       ("essencial",2990,2),("profissional",8990,6),("elite",13990,10)]
+    assert "79.90" not in str(plans._catalog())
     assert list(plans._catalog()[1].values())[:2] == ["profissional", "Orion Profissional"]
 
 
@@ -51,7 +51,7 @@ def test_trial_rejects_extra_fields_and_blank_or_unsafe_names():
 
 
 def test_offer_requires_matching_name_cents_monthly_type_and_unique_match():
-    offer={"id":"offer-fake", "name":"Orion Profissional", "price":79.9,
+    offer={"id":"offer-fake", "name":"Orion Profissional", "price":89.9,
            "status":"active","type":"subscription","intervalType":"month","interval":1}
     assert plans._exact_offer([offer],plans.CODES["profissional"])==offer
     for change in ({"price":89.9},{"status":"inactive"},
@@ -65,14 +65,14 @@ def test_cakto_callbacks_are_hashed_without_buyers_card_data_or_order_bump():
     payload={"event":"purchase_approved","data":[
         {"id":"fake-order","status":"paid","offer_type":"main",
          "offer":{"id":"fake-offer"},"callback":"callback_synthetic_012345",
-         "amount":79.9,"currency":"BRL",
+         "amount":89.9,"currency":"BRL",
          "customer":{"email":"secret@example.test"},"card":{"lastDigits":"1234"}},
         {"id":"bump","status":"paid","offer_type":"orderbump",
          "callback":"callback_synthetic_012345"}]}
     rows=cakto_api.normalized_events(payload)
     assert len(rows)==1
     assert rows[0]["callback_hash"]==hashlib.sha256(b"callback_synthetic_012345").hexdigest()
-    assert rows[0]["amount_cents"]==7990
+    assert rows[0]["amount_cents"]==8990
     assert rows[0]["currency"]=="BRL"
     assert rows==cakto_api.normalized_events(payload)
     assert "secret@example.test" not in str(rows)
@@ -104,7 +104,7 @@ async def test_checkout_denied_when_billing_flag_is_disabled(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_professional_checkout_does_not_use_legacy_8990_link_even_if_feature_flag_enabled(monkeypatch):
+async def test_professional_checkout_requires_exact_active_offer_even_when_flag_enabled(monkeypatch):
     from app.catalog_api import Actor
     account_id=uuid4()
     tenant=uuid4()
@@ -112,22 +112,22 @@ async def test_professional_checkout_does_not_use_legacy_8990_link_even_if_featu
         return SimpleNamespace(role="owner",account_id=account_id)
     class ReadOnlyCakto:
         async def list_offers(self):
-            return [{"id":"synthetic-offer","name":"Orion Profissional","price":79.90,
+            return [{"id":"synthetic-offer","name":"Orion Pro","price":79.90,
                      "status":"active","type":"subscription","recurrence_period":30}]
     monkeypatch.setattr(plans,"resolve_tenant_access",granted)
     monkeypatch.setattr(plans,"CaktoClient",ReadOnlyCakto)
     monkeypatch.setenv("CAKTO_BILLING_LIVE_ENABLED","1")
-    monkeypatch.delenv("CAKTO_PROFISSIONAL_CHECKOUT_URL",raising=False)
+    
     with pytest.raises(HTTPException) as error:
         await plans.start_plan_checkout(
             tenant,plans.CheckoutChoice(plan_code="profissional"),
             Actor("member",account_id=account_id))
     assert error.value.status_code==409
-    assert "79,90" in error.value.detail
+    assert "valor apresentado" in error.value.detail
 
 
 def test_recurring_monthly_cakto_offer_uses_30_day_period_not_unique_interval():
-    offer={"id":"monthly-synthetic","name":"Orion Profissional","price":"79.90",
+    offer={"id":"monthly-synthetic","name":"Orion Profissional","price":"89.90",
            "status":"active","type":"subscription","recurrence_period":30,
            "intervalType":"week","interval":7}
     assert plans._exact_offer([offer],plans.CODES["profissional"])==offer

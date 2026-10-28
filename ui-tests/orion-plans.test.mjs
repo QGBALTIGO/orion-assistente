@@ -8,7 +8,7 @@ const css=fs.readFileSync(new URL('../app/static/orion-plans.css',import.meta.ur
 const base={
  plans:[
  {code:'essencial',name:'Orion Essencial',monthly_cents:2990,max_professionals:2},
- {code:'profissional',name:'Orion Profissional',monthly_cents:7990,max_professionals:6},
+ {code:'profissional',name:'Orion Profissional',monthly_cents:8990,max_professionals:6},
  {code:'elite',name:'Orion Elite',monthly_cents:13990,max_professionals:10}],
  subscription:null,trial:null,active_professionals:0,can_manage_plan:true,checkout_enabled:false,
  trial_scope:['Agenda','Clientes'],trial_requires_team_activation:true
@@ -43,7 +43,7 @@ test('three actual card prices, limits, recommendation and explicit AI separatio
  try{
   assert.equal(f.root.querySelectorAll('.op-plan').length,3);
   assert.match(f.root.textContent,/R\$\s*29,90/);
-  assert.match(f.root.textContent,/R\$\s*79,90/);
+  assert.match(f.root.textContent,/R\$\s*89,90/);
   assert.match(f.root.textContent,/R\$\s*139,90/);
   assert.match(f.root.querySelector('.op-profissional .op-recommended').textContent,/Recomendado/);
   assert.match(f.root.querySelector('.op-essencial').textContent,/até 2 profissionais/i);
@@ -84,7 +84,7 @@ test('trial modal reuses account/company, has consent, phone validation, no inst
 test('current paid subscription does not offer a second purchase',()=>{
  const f=fixture({subscription:{
   id:'sub-test',code:'orion_profissional',name:'Orion Profissional',
-  status:'active',monthly_cents:7990,max_professionals:6
+  status:'active',monthly_cents:8990,max_professionals:6
  },active_professionals:2});
  try{
   const cards=f.root.querySelectorAll('[data-op-checkout]');

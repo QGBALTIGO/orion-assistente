@@ -31,7 +31,7 @@ EVENTS = frozenset({
 PLANS = (
     {"code": "essencial", "name": "Orion Essencial", "monthly_cents": 2990,
      "checkout_url": "https://pay.cakto.com.br/3bdhdkc_1219844"},
-    {"code": "profissional", "name": "Orion Profissional", "monthly_cents": 7990,
+    {"code": "profissional", "name": "Orion Pro", "monthly_cents": 8990,
      "checkout_url": "https://pay.cakto.com.br/3652fm4"},
     {"code": "elite", "name": "Orion Elite", "monthly_cents": 13990,
      "checkout_url": "https://pay.cakto.com.br/v4md8n3"},
@@ -322,9 +322,12 @@ async def scan_pending_cakto(_ctx):
         async with db.begin():
             # No event can arrive until the API migration finishes. A parallel
             # worker deployment must not try to read a non-existent table.
-            ready = (await db.execute(text(
-                "SELECT to_regclass('public.cakto_webhook_events') IS NOT NULL"
-            ))).scalar_one()
+            ready = (await db.execute(text("""
+                SELECT to_regclass('public.cakto_webhook_events') IS NOT NULL
+                 AND (SELECT count(*) FROM information_schema.columns
+                      WHERE table_schema='public' AND table_name='cakto_webhook_events'
+                      AND column_name IN ('callback_hash','amount_cents','currency'))=3
+            """))).scalar_one()
             if not ready:
                 return 0
             rows = (await db.execute(text("""

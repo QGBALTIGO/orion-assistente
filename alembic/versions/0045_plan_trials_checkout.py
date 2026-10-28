@@ -90,7 +90,7 @@ def upgrade():
     # the feature gate and contract for usage will be designed separately.
     for code,name,cents,staff in (
         ("orion_essencial","Orion Essencial",2990,2),
-        ("orion_profissional","Orion Profissional",7990,6),
+        ("orion_profissional","Orion Profissional",8990,6),
         ("orion_elite","Orion Elite",13990,10),
     ):
         op.get_bind().execute(sa.text("""

@@ -105,9 +105,9 @@ def test_verification_requires_order_and_matching_state():
 
 def test_catalog_prices_links_are_only_read_only():
     assert [(x["code"], x["monthly_cents"]) for x in cakto_api.PLANS] == [
-        ("essencial", 2990), ("profissional", 7990), ("elite", 13990)]
+        ("essencial", 2990), ("profissional", 8990), ("elite", 13990)]
     assert cakto_api.match_plans([
-        {"id": "verified-id", "name": "Orion Profissional", "price": "79.90",
+        {"id": "verified-id", "name": "Orion Profissional", "price": "89.90",
          "status": "active"},
         {"id": "fake-offer", "name": "Orion Elite", "price": "120.00",
          "status": "active"},
@@ -160,5 +160,5 @@ async def test_checkout_links_are_not_public_before_plan_entitlements():
     assert response.status_code == 200
     payload = response.json()
     assert payload["subscription_activation_enabled"] is False
-    assert [x["monthly_cents"] for x in payload["plans"]] == [2990, 7990, 13990]
+    assert [x["monthly_cents"] for x in payload["plans"]] == [2990, 8990, 13990]
     assert all("checkout_url" not in item for item in payload["plans"])

@@ -77,7 +77,7 @@ async def test_real_postgres_pending_duplicate_owner_only_admin_start_3_days(tri
         catalog=initial.json()
         assert catalog["subscription"] is None and catalog["trial"] is None
         assert [(p["monthly_cents"],p["max_professionals"]) for p in catalog["plans"]]==[
-            (2990,2),(7990,6),(13990,10)]
+            (2990,2),(8990,6),(13990,10)]
         assert not catalog["checkout_enabled"] and catalog["can_manage_plan"]
         assert (await client.post(base+"/plan-trial",
             json={**req,"privacy_ack":False})).status_code==422
