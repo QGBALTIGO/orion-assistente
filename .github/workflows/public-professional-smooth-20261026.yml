@@ -8,6 +8,7 @@ on:
       - 'app/static/orion-public.css'
       - 'ui-tests/public-professional-smooth.test.mjs'
       - 'tests/e2e/browser_public_professional_smooth.py'
+      - 'tests/e2e/browser_public_layout_refinement.py'
       - '.github/workflows/public-professional-smooth-20261026.yml'
   pull_request:
     branches: [main]
@@ -16,6 +17,7 @@ on:
       - 'app/static/orion-public.css'
       - 'ui-tests/public-professional-smooth.test.mjs'
       - 'tests/e2e/browser_public_professional_smooth.py'
+      - 'tests/e2e/browser_public_layout_refinement.py'
 
 permissions:
   contents: read
@@ -58,4 +60,13 @@ jobs:
           python -m pytest -q -ra \
             tests/e2e/browser_public_professional_smooth.py \
             tests/e2e/browser_public_multiservice.py \
-            tests/e2e/browser_public_contact_theme.py
+            tests/e2e/browser_public_contact_theme.py \
+            tests/e2e/browser_public_layout_refinement.py
+      - name: Guardar capturas e medidas das regressões de layout
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-layout-refinement
+          path: test-artifacts/public-layout-refinement/
+          if-no-files-found: warn
+          retention-days: 7
