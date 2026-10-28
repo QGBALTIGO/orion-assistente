@@ -10,6 +10,7 @@ on:
       - 'scripts/backup_and_migrate_admin_accounts.py'
       - 'scripts/backup_and_migrate_registration.py'
       - 'tests/unit/test_admin_accounts.py'
+      - 'tests/integration/test_admin_client_accounts_pg.py'
       - '.github/workflows/admin-client-accounts.yml'
 permissions:
   contents: read
@@ -33,3 +34,40 @@ jobs:
           node-version: '22'
       - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
       - run: node --test ui-tests/admin-only-operator-navigation.test.mjs ui-tests/dashboard-navigation.test.mjs
+  postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: orion_admin_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-admin-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d orion_admin_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime@localhost:5432/orion_admin_ci
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator@localhost:5432/orion_admin_ci
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support@localhost:5432/orion_admin_ci
+      REQUIRE_POSTGRES_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -c requirements.lock '.[test]'
+      - name: Provisionar papéis isolados
+        env:
+          PGPASSWORD: ci-admin-only
+        run: |
+          psql -h localhost -U postgres -d orion_admin_ci -v ON_ERROR_STOP=1 \
+            -v db_name=orion_admin_ci \
+            -v runtime_password=ci-runtime \
+            -v migrator_password=ci-migrator \
+            -v support_password=ci-support \
+            -f infra/postgres/init/001-roles.sql
+      - run: python -m alembic upgrade head
+      - run: python -m pytest -q -ra tests/integration/test_admin_client_accounts_pg.py
