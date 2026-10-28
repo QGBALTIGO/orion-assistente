@@ -12,6 +12,8 @@ on:
       - 'app/static/panel.html'
       - 'app/static/orion-admin-center.js'
       - 'app/static/orion-suite.css'
+      - 'app/static/orion-channels.css'
+      - 'ui-tests/whatsapp-mobile-unification.test.mjs'
       - 'app/static/orion-suite.js'
       - 'alembic/versions/0042_admin_account_controls.py'
       - 'scripts/backup_and_migrate_admin_accounts.py'
@@ -43,7 +45,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
-      - run: node --test ui-tests/admin-only-operator-navigation.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/admin-client-center.test.mjs
+      - run: node --test ui-tests/admin-only-operator-navigation.test.mjs ui-tests/dashboard-navigation.test.mjs ui-tests/admin-client-center.test.mjs ui-tests/whatsapp-mobile-unification.test.mjs
   postgres:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
