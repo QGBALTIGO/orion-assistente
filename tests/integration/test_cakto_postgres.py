@@ -80,3 +80,50 @@ async def test_signed_receipts_deduplicate_without_pii_or_entitlement(monkeypatc
                 DELETE FROM cakto_webhook_events WHERE external_order_id=:order_id
             """), {"order_id": order})
         await engine.dispose()
+
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_lifecycle_receipts_stay_pending_without_financial_release_flag(monkeypatch):
+    """Never mark a renewal processed while renewal reconciliation is disabled.
+
+    All records are generated inside the ephemeral PostgreSQL CI database.
+    No provider call, invoice, subscription or real customer is involved.
+    """
+    from app import cakto_api
+    db_url=os.getenv("MIGRATION_DATABASE_URL")
+    if not db_url:
+        if os.getenv("REQUIRE_POSTGRES_TESTS")=="1":
+            pytest.fail("PostgreSQL de testes é obrigatório")
+        pytest.skip("PostgreSQL indisponível")
+    db=create_async_engine(db_url.replace(
+        "postgresql+psycopg://","postgresql+asyncpg://",1))
+    digest=hashlib.sha256(("synthetic-lifecycle-"+str(uuid4())).encode()).hexdigest()
+    order_id="synthetic-renewal-"+str(uuid4())
+    class NoProviderRequests:
+        configured=True
+        async def get_order(self,*args,**kwargs):
+            raise AssertionError("A renewal must never be queried while disabled")
+    monkeypatch.setattr(cakto_api,"cached_cakto_client",lambda:NoProviderRequests())
+    monkeypatch.delenv("ORION_CAKTO_LIFECYCLE_ENABLED",raising=False)
+    try:
+        async with db.begin() as con:
+            await con.execute(text("""
+                INSERT INTO cakto_webhook_events (
+                    delivery_digest,external_order_id,event_type,reported_status
+                ) VALUES (:digest,:order,'subscription_renewed','paid')
+            """),{"digest":digest,"order":order_id})
+        assert await cakto_api.scan_pending_cakto({})==0
+        async with db.connect() as con:
+            record=(await con.execute(text("""
+                SELECT verification_state, attempts
+                FROM cakto_webhook_events WHERE delivery_digest=:digest
+            """),{"digest":digest})).one()
+            assert tuple(record)==("pending",0)
+    finally:
+        async with db.begin() as con:
+            await con.execute(text("""
+                DELETE FROM cakto_webhook_events WHERE delivery_digest=:digest
+            """),{"digest":digest})
+        await db.dispose()
