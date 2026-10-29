@@ -27,7 +27,7 @@ from app.catalog_api import Actor, authenticate, support_session_factory
 from app.database import get_session_factory, tenant_transaction
 from app.cakto_api import CaktoClient
 from app.account_business import account_membership_role
-from app.tenant_access import resolve_tenant_access
+from app.tenant_access import resolve_site_access
 from app.admin_accounts import require_platform_owner
 
 router = APIRouter(tags=["Planos Orion"])
@@ -99,7 +99,7 @@ class TrialDecision(BaseModel):
 
 
 def _owner_account(access, actor) -> UUID:
-    if (actor.role != "member" or access.role != "owner"
+    if (actor.role not in {"member", "admin"} or access.role != "owner"
             or not isinstance(access.account_id, UUID)):
         raise HTTPException(403, "Somente o proprietário da empresa pode solicitar este serviço")
     return access.account_id
@@ -131,7 +131,7 @@ def _subscription_name(row):
 
 @router.get("/api/v1/tenants/{tenant_id}/management/plan-overview")
 async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate)):
-    access = await resolve_tenant_access(actor, tenant_id, "read")
+    access = await resolve_site_access(actor, tenant_id)
     async with support_session_factory()() as db:
         async with db.begin():
             row = (await db.execute(text("""
@@ -160,7 +160,7 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate)):
         "subscription": _subscription_name(row),
         "trial": dict(trial) if trial else None,
         "active_professionals": used,
-        "can_manage_plan": actor.role == "member" and access.role == "owner",
+        "can_manage_plan": actor.role in {"member","admin"} and access.role == "owner",
         "checkout_enabled": os.getenv("CAKTO_BILLING_LIVE_ENABLED", "0") == "1",
         "trial_scope": TRIAL_SCOPE,
         "trial_requires_team_activation": True,
@@ -170,7 +170,7 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate)):
 @router.post("/api/v1/tenants/{tenant_id}/management/plan-trial", status_code=201)
 async def request_plan_trial(tenant_id: UUID, payload: TrialRequest,
                              actor: Actor = Depends(authenticate)):
-    access = await resolve_tenant_access(actor, tenant_id, "publish")
+    access = await resolve_site_access(actor, tenant_id)
     account_id = _owner_account(access, actor)
     if payload.privacy_ack is not True:
         raise HTTPException(422, "É necessário aceitar o uso do contato para o teste")
@@ -305,7 +305,7 @@ def _exact_offer(offers: list, plan: dict):
 @router.post("/api/v1/tenants/{tenant_id}/management/plan-checkout")
 async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
                               actor: Actor = Depends(authenticate)):
-    access = await resolve_tenant_access(actor, tenant_id, "publish")
+    access = await resolve_site_access(actor, tenant_id)
     account_id = _owner_account(access, actor)
     plan = CODES.get(payload.plan_code)
     if not plan:

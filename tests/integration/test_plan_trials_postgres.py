@@ -121,6 +121,25 @@ async def test_real_postgres_pending_duplicate_owner_only_admin_start_3_days(tri
 
 
 @pytest.mark.asyncio
+async def test_platform_admin_may_manage_only_the_business_they_personally_own(trial_db):
+    db, account, tenant, other = trial_db
+    app=FastAPI()
+    app.include_router(plan_management.router)
+    app.dependency_overrides[authenticate] = lambda: Actor("admin",account_id=account)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="https://test") as client:
+        own = await client.get("/api/v1/tenants/"+str(tenant)+"/management/plan-overview")
+        assert own.status_code == 200, own.text
+        assert own.json()["can_manage_plan"] is True
+        not_owned = await client.get("/api/v1/tenants/"+str(other)+"/management/plan-overview")
+        assert not_owned.status_code == 200, not_owned.text
+        assert not_owned.json()["can_manage_plan"] is False
+        denied = await client.post("/api/v1/tenants/"+str(other)+"/management/plan-checkout",
+                                   json={"plan_code":"profissional"})
+        assert denied.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_editor_cannot_request_trial_even_using_owner_payload(trial_db):
     db,account,tenant,_=trial_db
     async with db.begin() as con:
