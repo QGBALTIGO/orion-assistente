@@ -414,16 +414,29 @@ async def apply_verified_cakto_payment(event: dict, order: dict) -> str:
                 return "already_verified"
             if intent["state"] != "pending" or intent["expires_at"] < datetime.now(timezone.utc):
                 return "manual_review"
-            expected_checkout = CODES[intent["plan_code"]]["checkout_url"]
-            actual_checkout = order.get("checkoutUrl")
-            if not isinstance(actual_checkout, str) or not expected_checkout:
-                return "manual_review"
-            expected_parts, actual_parts = urlsplit(expected_checkout), urlsplit(actual_checkout)
-            if (expected_parts.scheme!="https" or actual_parts.scheme!="https"
-                    or expected_parts.netloc!="pay.cakto.com.br"
-                    or actual_parts.netloc!=expected_parts.netloc
-                    or expected_parts.path!=actual_parts.path):
-                return "manual_review"
+            # A direct API charge does not necessarily carry a hosted checkoutUrl.
+            # A unique support-only reservation must match this exact order first.
+            direct_attempt = (await db.execute(text("""
+                SELECT external_order_id,method,state
+                FROM orion_direct_payment_attempts WHERE intent_id=:intent FOR UPDATE
+            """), {"intent": intent["id"]})).mappings().first()
+            if direct_attempt:
+                expected_method = "pix" if direct_attempt["method"] == "pix" else "threeDs"
+                if (direct_attempt["state"] != "created"
+                        or direct_attempt["external_order_id"] != order_id
+                        or order.get("paymentMethod") not in (expected_method,None)):
+                    return "manual_review"
+            else:
+                expected_checkout = CODES[intent["plan_code"]]["checkout_url"]
+                actual_checkout = order.get("checkoutUrl")
+                if not isinstance(actual_checkout, str) or not expected_checkout:
+                    return "manual_review"
+                expected_parts, actual_parts = urlsplit(expected_checkout), urlsplit(actual_checkout)
+                if (expected_parts.scheme!="https" or actual_parts.scheme!="https"
+                        or expected_parts.netloc!="pay.cakto.com.br"
+                        or actual_parts.netloc!=expected_parts.netloc
+                        or expected_parts.path!=actual_parts.path):
+                    return "manual_review"
             if (intent["offer_id"] != event.get("external_offer_id")
                     or (event.get("external_subscription_id") is not None
                         and event["external_subscription_id"] != subscription_id)
