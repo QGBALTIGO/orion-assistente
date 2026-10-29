@@ -59,6 +59,9 @@ function renderCard(def, server, currentCode, currentActive, allowed, ctx) {
    +'<div class="op-plan-bottom"><button class="op-btn '+(def.code==='profissional'?'op-btn-primary':'op-btn-secondary')+'" type="button" data-op-checkout="'+def.code+'" '+disabled+'>'+escapeHTML(actionLabel)+'</button>'
    +(same?'<span class="op-plan-caption">Sua assinatura verificada</span>':'<span class="op-plan-caption">Pagamento pela Cakto. Confirmação após validação.</span>')+'</div></article>';
 }
+function hasPlanDifference(feature){
+ return feature[1]!==feature[2]||feature[2]!==feature[3];
+}
 function renderComparison(plans){
  const tiers=[
   {code:'essencial',title:'Essencial',short:'Essencial'},
@@ -73,23 +76,52 @@ function renderComparison(plans){
    +'<span class="op-matrix-tier-price">'+escapeHTML(display)+'</span></th>';
  }).join('');
  const sections=comparisons.map(([category,features],groupIndex)=>{
-  const header='<tr class="op-matrix-category"><th scope="rowgroup" colspan="4">'
-   +'<button type="button" data-op-category-toggle="'+groupIndex+'" aria-expanded="true">'
-   +'<span>'+escapeHTML(category)+'</span><span class="op-matrix-category-meta">'+features.length+' recursos '+ic('chevron')+'</span></button></th></tr>';
-  const body=features.map(([name,essencial,profissional,elite],index)=>
-   '<tr class="op-matrix-row'+(index%2?' op-matrix-alt':'')+'"><th scope="row">'+escapeHTML(name)+'</th>'
-   +[essencial,profissional,elite].map((value,i)=>'<td'+(i===1?' class="op-matrix-popular"':'')+'>'
-     +compareCell(value)+'</td>').join('')+'</tr>').join('');
+  const header='<tr class="op-matrix-category"><th scope="rowgroup" colspan="4"><span class="op-matrix-category-label">'+escapeHTML(category)+'</span></th></tr>';
+  const body=features.map(feature=>{
+   const [name,essencial,profissional,elite]=feature;
+   return '<tr class="op-matrix-row" data-op-different="'+String(hasPlanDifference(feature))+'"><th scope="row">'+escapeHTML(name)+'</th>'
+    +[essencial,profissional,elite].map((value,i)=>'<td'+(i===1?' class="op-matrix-popular"':'')+'>'+compareCell(value)+'</td>').join('')+'</tr>';
+  }).join('');
   return '<tbody data-op-category="'+groupIndex+'">'+header+body+'</tbody>';
  }).join('');
+ const mobileSections=comparisons.map(([category,features],groupIndex)=>{
+  const groupId='opMobileCategory'+groupIndex;
+  const items=features.map(feature=>{
+   const [name,...values]=feature;
+   const cells=tiers.map((tier,i)=>'<div class="op-mobile-value'+(tier.code==='profissional'?' op-mobile-value-pro':'')+'" role="listitem">'
+    +'<span class="op-mobile-tier">'+escapeHTML(tier.short)+'</span>'+compareCell(values[i])+'</div>').join('');
+   return '<div class="op-mobile-feature" data-op-different="'+String(hasPlanDifference(feature))+'">'
+    +'<div class="op-mobile-feature-label">'+escapeHTML(name)+'</div>'
+    +'<div class="op-mobile-values" role="list" aria-label="Comparação de '+escapeHTML(name)+'">'+cells+'</div></div>';
+  }).join('');
+  return '<section class="op-mobile-group" data-op-mobile-category="'+groupIndex+'" aria-labelledby="'+groupId+'">'
+   +'<h3 id="'+groupId+'">'+escapeHTML(category)+'</h3><div class="op-mobile-features">'+items+'</div></section>';
+ }).join('');
  return '<section class="op-compare" aria-labelledby="opCompareTitle">'
-  +'<div class="op-section-title"><h2 id="opCompareTitle">Compare os planos</h2>'
-  +'<p>Uma comparação direta: veja o que cada plano oferece, recurso por recurso.</p></div>'
+  +'<div class="op-compare-header"><div class="op-section-title"><h2 id="opCompareTitle">Compare os planos</h2>'
+  +'<p>Veja o que muda entre Essencial, Pro e Elite.</p></div>'
+  +'<label class="op-compare-switch"><input type="checkbox" data-op-only-differences checked>'
+  +'<span>Mostrar apenas diferenças</span></label></div>'
+  +'<p class="op-compare-basics">Todos os planos incluem agenda online, cadastro de clientes, serviços e página de agendamento.</p>'
+  +'<p class="op-visually-hidden" role="status" aria-live="polite" data-op-compare-state></p>'
   +'<div class="op-matrix-frame"><table class="op-matrix" aria-label="Comparação de funcionalidades dos três planos do Orion">'
   +'<colgroup><col class="op-matrix-feature-col"><col class="op-matrix-tier-col"><col class="op-matrix-tier-col"><col class="op-matrix-tier-col"></colgroup>'
   +'<thead><tr><th scope="col">Funcionalidades</th>'+tierHead+'</tr></thead>'
- +sections+'</table></div></section>';
+  +sections+'</table></div>'
+  +'<div class="op-mobile-comparison" aria-label="Comparação dos recursos por plano">'+mobileSections+'</div></section>';
 }
+function applyComparisonFilter(root,onlyDifferences){
+ const toggle=root.querySelector('[data-op-only-differences]');
+ if(toggle)toggle.checked=onlyDifferences;
+ root.querySelectorAll('[data-op-category],[data-op-mobile-category]').forEach(group=>{
+  const rows=[...group.querySelectorAll('[data-op-different]')];
+  rows.forEach(row=>{row.hidden=onlyDifferences&&row.dataset.opDifferent!=='true';});
+  group.hidden=!rows.some(row=>!row.hidden);
+ });
+ const state=root.querySelector('[data-op-compare-state]');
+ if(state)state.textContent=onlyDifferences?'Exibindo somente diferenças entre os planos.':'Exibindo todos os recursos dos planos.';
+}
+
 function subscriptionBanner(data){
  const sub=data.subscription,trial=data.trial;
  if(sub){
@@ -197,6 +229,7 @@ function render(root,data,ctx){
  +renderTrial(data,canManage)
  +renderComparison(plans)
  +'</div>';
+ applyComparisonFilter(root,root.dataset.opOnlyDifferences!=='false');
 }
 function mount(root,data,ctx){
  if(!root||!ctx?.request)return;
@@ -206,21 +239,21 @@ function mount(root,data,ctx){
  render(root,data,ctx);
  root.addEventListener('click',root._orionPlansClick=async event=>{
   const trial=event.target.closest('[data-op-trial]'),checkoutButton=event.target.closest('[data-op-checkout]');
-  const toggle=event.target.closest('[data-op-category-toggle]');
-  if(toggle){
-   event.preventDefault();
-   const open=toggle.getAttribute('aria-expanded')==='true';
-   toggle.setAttribute('aria-expanded',String(!open));
-   toggle.closest('tbody')?.querySelectorAll('.op-matrix-row').forEach(row=>{row.hidden=open;});
-   return;
-  }
   if(trial&&!trial.disabled){event.preventDefault();renderTrialDialog(root,data,ctx);}
   if(checkoutButton&&!checkoutButton.disabled){event.preventDefault();await checkout(root,checkoutButton.dataset.opCheckout,ctx);}
+ });
+ root.addEventListener('change',root._orionPlansChange=event=>{
+  if(!event.target.matches('[data-op-only-differences]'))return;
+  const only=event.target.checked;
+  root.dataset.opOnlyDifferences=String(only);
+  applyComparisonFilter(root,only);
  });
 }
 function unmount(){
  if(mounted?.root?._orionPlansClick)mounted.root.removeEventListener('click',mounted.root._orionPlansClick);
  if(mounted?.root)delete mounted.root._orionPlansClick;
+ if(mounted?.root?._orionPlansChange)mounted.root.removeEventListener('change',mounted.root._orionPlansChange);
+ if(mounted?.root)delete mounted.root._orionPlansChange;
  mounted=null;
 }
 window.OrionPlans=Object.freeze({mount,unmount});
