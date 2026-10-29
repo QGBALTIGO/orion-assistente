@@ -72,11 +72,13 @@ class MemoryBucket:
     def __init__(self):
         self.items = {}
         self.uploads = []
+        self.reads = 0
     def put_object(self, **kwargs):
         self.uploads.append(kwargs)
         self.items[kwargs["Key"]] = bytes(kwargs["Body"])
         return {"ETag": '"test"'}
     def get_object(self, **kwargs):
+        self.reads += 1
         key = kwargs["Key"]
         if key not in self.items:
             from botocore.exceptions import ClientError
@@ -164,3 +166,34 @@ async def test_quota_denies_upload_before_writing(monkeypatch,server):
                                    content=photo(),headers={"content-type":"image/png","x-orion-image-kind":"logo"})
     assert response.status_code==429
     assert bucket.uploads==[]
+
+
+@pytest.mark.asyncio
+async def test_public_display_variants_are_smaller_and_cached(server):
+    app, bucket = server
+    tenant, image = uuid4(), uuid4()
+    url = f"/media/{tenant}/{image}.webp"
+    original = media._encode(photo(size=(1800, 1200)), "cover")
+    bucket.items[media_key(tenant, image)] = original
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="https://orion.test") as client:
+        thumb = await client.get(url + "?variant=thumb")
+        assert thumb.status_code == 200
+        assert "immutable" in thumb.headers["cache-control"]
+        with Image.open(io.BytesIO(thumb.content)) as decoded:
+            assert decoded.format == "WEBP"
+            assert decoded.width <= 320 and decoded.height <= 320
+        before = bucket.reads
+        again = await client.get(url + "?variant=thumb")
+        assert again.content == thumb.content
+        assert bucket.reads == before  # A second viewer needs no S3 round trip.
+
+        hero = await client.get(url + "?variant=hero")
+        assert hero.status_code == 200
+        with Image.open(io.BytesIO(hero.content)) as decoded:
+            assert decoded.width <= 1600 and decoded.height <= 960
+
+        original_response = await client.get(url)
+        assert original_response.status_code == 200
+        assert original_response.content == original
+        assert (await client.get(url + "?variant=unbounded")).status_code == 422
