@@ -312,3 +312,26 @@ async def test_embedded_checkout_rejects_unverified_webhook_before_billing(monke
     with pytest.raises(HTTPException) as invalid_result:
         await direct.require_verified_webhooks(ReadOnlyClient())
     assert invalid_result.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_embedded_checkout_hides_processor_diagnostic_from_owner(monkeypatch):
+    from app import orion_direct_checkout as direct
+    from app.catalog_api import Actor
+    async def allowed(*args, **kwargs):
+        return uuid4()
+    async def ready(*args, **kwargs):
+        return None
+    async def unavailable(*args, **kwargs):
+        raise HTTPException(503, "Nao foi possivel consultar ofertas na Cakto")
+    monkeypatch.setattr(direct, "require_enabled", lambda: None)
+    monkeypatch.setattr(direct, "owner", allowed)
+    monkeypatch.setattr(direct, "require_verified_webhooks", ready)
+    monkeypatch.setattr(direct, "start_plan_checkout", unavailable)
+    with pytest.raises(HTTPException) as failure:
+        await direct.direct_prepare(uuid4(),
+                                    direct.DirectPrepare(plan_code="essencial"),
+                                    Actor("member", account_id=uuid4()))
+    assert failure.value.status_code == 503
+    assert "Cakto" not in failure.value.detail
+    assert "pagamento" in failure.value.detail
