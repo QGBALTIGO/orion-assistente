@@ -38,6 +38,22 @@ com a cobertura verificada, sem segredos nem dados pessoais. Isso não substitui
 uma **entrega real de evento de teste assinado**, que ainda é necessária para
 homologar a entrada em produção.
 
+**Webhook V2 criado no painel:** a listagem `GET /public_api/webhook/`
+pode não conter esse cadastro. Quando não houver 3/3 no inventário V1, o
+Orion consulta o histórico oficial de entregas
+`GET /public_api/webhook/event_history/` (somente leitura). A alternativa
+V2 só passa após encontrar **todos os seis eventos financeiros necessários**
+com HTTP 2xx, segredo correspondente, destino HTTPS exato, produto associado
+às três ofertas e prova de entrega nos últimos 90 dias. O histórico pode
+conter CPF, e-mail e dados de venda: nenhum corpo, token ou identificador
+é registrado em logs ou armazenado pelo diagnóstico.
+
+As flags `ORION_DIRECT_PAYMENTS_ENABLED` e
+`ORION_DIRECT_RECURRING_VERIFIED` permanecem **desativadas** durante a
+homologação. O histórico V2 validado não ativa cobranças por si só.
+É obrigatório substituir qualquer chave de webhook exposta antes de receber
+pagamentos reais de clientes e refazer o teste da entrega assinada.
+
 A UI de produção usa identidade Orion. Os dados do cartão são tokenizados
 **no navegador pelo SDK**; o servidor Orion nunca recebe PAN/CVV.
 Revisar eventual necessidade de campos hospedados para reduzir escopo PCI.
