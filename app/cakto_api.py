@@ -366,7 +366,13 @@ async def scan_pending_cakto(_ctx):
                 from app.plan_management import apply_verified_cakto_payment
                 # No tenancy is derived from buyer details. The callback must
                 # match a server-side owner intent and the exact verified offer.
-                linked = await apply_verified_cakto_payment(row, order)
+                subscription_id = _subscription_id(order.get("subscription"))
+                if subscription_id and ORDER_ID.fullmatch(subscription_id):
+                    subscription = await client._get("/subscriptions/"+subscription_id+"/")
+                    linked = await apply_verified_cakto_payment(
+                        row, order, subscription=subscription)
+                else:
+                    linked = "manual_review"
                 if linked == "retry_later":
                     # A direct PSP response may still be recording its order ID.
                     # Preserve pending receipt; the bounded worker will retry.
