@@ -110,6 +110,8 @@ app.include_router(management_ai_router)
 app.include_router(management_team_router)
 app.include_router(invitation_router)
 app.include_router(management_preferences_router)
+from app.appointment_access_api import router as appointment_access_router
+app.include_router(appointment_access_router)
 app.include_router(public_site_router)
 app.include_router(service_packages_router)
 app.include_router(qr_channels_router)
