@@ -8,6 +8,7 @@ import asyncio
 import sys
 from app.cakto_api import CaktoClient, match_plans
 from scripts.probe_orion_webhooks_read_only import probe as probe_orion_webhooks
+from scripts.probe_orion_webhook_history_read_only import probe as probe_delivery_history
 
 
 async def check():
@@ -47,6 +48,20 @@ async def check():
         # A missing read-webhooks scope must not expose secrets or prevent
         # the safe UI-only rollout. Direct charging remains fail-closed.
         print("cakto_orion_webhook_read_not_verified", flush=True)
+    try:
+        receipt = await probe_delivery_history(client, offers)
+        # Provider history can contain full buyer information. Never print it.
+        print("cakto_delivery_history_diagnostics="
+              + "offers:" + str(receipt["offer_matches"])
+              + ";targeted:" + str(receipt["targeted_deliveries"])
+              + ";http_2xx:" + str(receipt["http_2xx_deliveries"])
+              + ";secret_matched:" + str(receipt["secret_matched_deliveries"])
+              + ";recent_verified:" + str(receipt["recent_verified_deliveries"])
+              + ";product_coverage:" + str(receipt["product_coverage"])
+              + ";required_event_coverage:" + str(receipt["required_event_coverage"]),
+              flush=True)
+    except Exception:
+        print("cakto_delivery_history_read_not_verified", flush=True)
     return 0
 
 

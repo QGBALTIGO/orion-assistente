@@ -370,3 +370,88 @@ def test_webhook_diagnostics_distinguish_no_registration_disabled_and_wrong_url(
     assert wrong_url["webhook_ready"]==0
     assert key not in str(wrong_url)
     assert product not in str(wrong_url)
+
+
+def test_panel_v2_webhook_history_proves_one_product_three_offers():
+    from datetime import datetime, timezone
+    from scripts.probe_orion_webhook_history_read_only import history_coverage
+    from scripts.probe_orion_webhooks_read_only import REQUIRED_EVENTS
+    secret="synthetic-webhook-secret-for-ci-32-char-minimum"
+    now=datetime(2026,10,29,15,0,tzinfo=timezone.utc)
+    product="product-shared-orion-test"
+    offers=[{
+        "id":f"offer-{i}","name":name,"price":value,
+        "type":"subscription","recurrence_period":30,"status":"active",
+        "product":product,
+    } for i,(name,value) in enumerate((
+        ("Orion Essencial",29.9),("Orion Pro",89.9),("Orion Elite",139.9)
+    ))]
+    records=[]
+    for event in REQUIRED_EVENTS:
+        records.append({
+            "app":{"status":"active",
+                   "url":"https://orionagenda.pro/webhooks/cakto",
+                   "products":[product],"fields":{"secret":secret}},
+            "url":"https://orionagenda.pro/webhooks/cakto",
+            "payload":{"event":event,"secret":secret,
+                       "data":[{"id":"synthetic-order"}]},
+            "event_id":event, "event_status":200,
+            "sentAt":"2026-10-29T14:45:00+00:00",
+        })
+    complete=history_coverage(offers,records,secret,now=now)
+    assert complete["offer_matches"]==3
+    assert complete["targeted_deliveries"]==6
+    assert complete["http_2xx_deliveries"]==6
+    assert complete["secret_matched_deliveries"]==6
+    assert complete["recent_verified_deliveries"]==6
+    assert complete["product_coverage"]==3
+    assert complete["required_event_coverage"]==3
+    assert complete["webhook_ready"]==3
+    assert secret not in str(complete)
+    assert product not in str(complete)
+
+    incomplete=history_coverage(offers,records[:-1],secret,now=now)
+    assert incomplete["product_coverage"]==3
+    assert incomplete["required_event_coverage"]==0
+    assert history_coverage(offers,records,"another-secret-with-32-characters-minimum",now=now)["webhook_ready"]==0
+    assert history_coverage(offers,[{**r,"event_status":401} for r in records],secret,now=now)["webhook_ready"]==0
+    assert history_coverage(offers,[{**r,"sentAt":"2026-10-27T14:00:00+00:00"} for r in records],secret,now=now)["webhook_ready"]==0
+    assert history_coverage(offers,[{**r,"url":"https://orionagenda.pro.attacker.test/webhooks/cakto"} for r in records],secret,now=now)["webhook_ready"]==0
+    assert history_coverage(offers,[{**r,"app":{**r["app"],"products":["another-product"]}} for r in records],secret,now=now)["webhook_ready"]==0
+
+
+@pytest.mark.asyncio
+async def test_panel_v2_history_probe_is_read_only_and_bounded(monkeypatch):
+    from datetime import datetime,timezone
+    from scripts.probe_orion_webhook_history_read_only import probe
+    from scripts.probe_orion_webhooks_read_only import REQUIRED_EVENTS
+    secret="synthetic-webhook-secret-for-ci-32-char-minimum"
+    monkeypatch.setenv("CAKTO_WEBHOOK_SECRET",secret)
+    now=datetime(2026,10,29,15,0,tzinfo=timezone.utc)
+    product="shared-orion-product"
+    offers=[{
+        "id":f"offer-{i}","name":name,"price":value,
+        "type":"subscription","recurrence_period":30,"status":"active",
+        "product":product,
+    } for i,(name,value) in enumerate((
+        ("Orion Essencial",29.9),("Orion Pro",89.9),("Orion Elite",139.9)
+    ))]
+    records=[{"app":{"status":"active",
+                     "url":"https://orionagenda.pro/webhooks/cakto",
+                     "products":[{"id":product}],"fields":{"secret":secret}},
+              "url":"https://orionagenda.pro/webhooks/cakto",
+              "event_id":event,
+              "payload":{"event":event,"secret":secret,"data":[]},
+              "event_status":200,
+              "sentAt":"2026-10-29T14:59:00+00:00"} for event in REQUIRED_EVENTS]
+    class Client:
+        def __init__(self):self.calls=[]
+        async def _get(self,path,**params):
+            self.calls.append((path,params))
+            return {"results":records,"next":None}
+    client=Client()
+    result=await probe(client,offers,now=now)
+    assert client.calls==[("/webhook/event_history/",{"page":1,"limit":100,"search":"orionagenda.pro"})]
+    assert result["webhook_ready"]==3
+    assert "customer" not in str(result)
+    assert secret not in str(result)
