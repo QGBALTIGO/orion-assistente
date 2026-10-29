@@ -186,3 +186,58 @@ async def test_public_checkout_availability_tracks_real_server_flag(monkeypatch)
     assert all("checkout_url" not in x for x in result["plans"])
     monkeypatch.setenv("CAKTO_BILLING_LIVE_ENABLED", "0")
     assert (await cakto_api.public_cakto_plans())["subscription_activation_enabled"] is False
+
+
+def test_webhook_audit_requires_exact_domain_product_events_and_matching_secret():
+    from scripts.probe_orion_webhooks_read_only import coverage, REQUIRED_EVENTS
+    synthetic_secret = "synthetic-webhook-secret-for-ci-32-char-minimum"
+    plans = [
+        {"id":f"offer-{i}", "name":name, "type":"subscription",
+         "price":price, "recurrence_period":30, "status":"active",
+         "product":f"product-{i}"}
+        for i,(name,price) in enumerate([
+            ("Orion Essencial",29.9), ("Orion Pro",89.9), ("Orion Elite",139.9)])
+    ]
+    hooks = [{
+        "status":"active","url":"https://orionagenda.pro/webhooks/cakto",
+        "products":[{"id":f"product-{i}"}],
+        "events":[{"custom_id":event} for event in REQUIRED_EVENTS],
+        "fields":{"secret":synthetic_secret}
+    } for i in range(3)]
+    assert coverage(plans,hooks,synthetic_secret)["webhook_ready"]==3
+    assert coverage(plans,hooks,"incorrect-secret-at-least-32-characters")["webhook_ready"]==0
+    assert coverage(plans,[{**hooks[0],"url":"https://orionagenda.pro.evil.test/webhooks/cakto"},*hooks[1:]],synthetic_secret)["webhook_ready"]==2
+    assert coverage(plans,[{**hooks[0],"events":[]},*hooks[1:]],synthetic_secret)["webhook_ready"]==2
+    assert coverage(plans,[{**hooks[0],"status":"disabled"},*hooks[1:]],synthetic_secret)["webhook_ready"]==2
+    assert coverage(plans,[{**hooks[0],"products":[{"id":"other-product"}]},*hooks[1:]],synthetic_secret)["webhook_ready"]==2
+
+
+@pytest.mark.asyncio
+async def test_webhook_read_probe_only_gets_provider_data_and_exposes_counts(monkeypatch):
+    from scripts.probe_orion_webhooks_read_only import probe, REQUIRED_EVENTS
+    offers = [
+        {"id":f"offer-{i}", "name":name, "type":"subscription","price":price,
+         "recurrence_period":30,"status":"active","product":f"product-{i}"}
+        for i,(name,price) in enumerate([
+            ("Orion Essencial",29.9),("Orion Pro",89.9),("Orion Elite",139.9)])
+    ]
+    secret = "synthetic-webhook-secret-for-ci-32-char-minimum"
+    monkeypatch.setenv("CAKTO_WEBHOOK_SECRET",secret)
+    class ReadOnly:
+        def __init__(self):
+            self.calls=[]
+        async def _get(self,path,**params):
+            self.calls.append((path,params))
+            assert path=="/webhook/"
+            assert params["page"]==1
+            return {"results":[{"status":"active",
+                       "url":"https://orionagenda.pro/webhooks/cakto",
+                       "products":[{"id":f"product-{i}"}],
+                       "fields":{"secret":secret},
+                       "events":[{"custom_id":event} for event in REQUIRED_EVENTS]}
+                      for i in range(3)],"next":None}
+    client=ReadOnly()
+    result=await probe(client,offers)
+    assert result=={"offer_matches":3,"webhook_ready":3,"expected":3}
+    assert client.calls==[("/webhook/",{"page":1,"limit":100})]
+    assert secret not in str(result)
