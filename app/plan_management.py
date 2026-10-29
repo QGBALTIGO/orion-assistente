@@ -425,7 +425,7 @@ async def apply_verified_cakto_payment(event: dict, order: dict) -> str:
                 # Keep it pending until the charge reservation records its order ID.
                 if direct_attempt["state"] == "reserved":
                     return "retry_later"
-                expected_method = "pix" if direct_attempt["method"] == "pix" else "threeDs"
+                expected_method = "pix_auto" if direct_attempt["method"] == "pix" else "threeDs"
                 if (direct_attempt["state"] != "created"
                         or direct_attempt["external_order_id"] != order_id
                         or order.get("paymentMethod") not in (expected_method,None)):
