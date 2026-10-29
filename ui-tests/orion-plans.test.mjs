@@ -70,7 +70,7 @@ test('comparison is one aligned four-column table with expandable categories',()
   assert.equal(rows[0].querySelectorAll('th,td').length,4);
   assert.equal(rows[0].querySelectorAll('td').length,3);
   assert.equal(table.querySelectorAll('thead th').length,4);
-  assert.match(table.querySelector('thead').textContent,/R\\$\\s*89,90/);
+  assert.match(table.querySelector('thead').textContent,/R\$\s*89,90/);
   const toggle=group.querySelector('[data-op-category-toggle]');
   assert.equal(toggle.getAttribute('aria-expanded'),'true');
   toggle.click();
