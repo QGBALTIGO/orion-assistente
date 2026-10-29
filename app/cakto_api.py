@@ -379,7 +379,7 @@ async def scan_pending_cakto(_ctx):
                     continue
                 if linked == "manual_review":
                     state = "manual_review"
-            if row["event_type"] in {
+            if os.getenv("ORION_CAKTO_LIFECYCLE_ENABLED", "0") == "1" and row["event_type"] in {
                     "subscription_renewed", "subscription_canceled",
                     "purchase_refused", "refund", "chargeback"}:
                 from app.cakto_subscription_lifecycle import (
