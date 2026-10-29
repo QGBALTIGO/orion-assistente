@@ -67,6 +67,8 @@ async def eligibility(db, tenant, job):
     if settings['version']!=job['settings_version'] or settings['channel_id']!=job['channel_id']:return 'settings_changed',None,None,None
     row=await read_appointment(db,tenant,job['appointment_id'])
     if row['updated_at']!=job['appointment_version']:return 'appointment_changed',None,None,None
+    channel=(await db.execute(text('SELECT whatsapp_channel_id FROM tenants WHERE id=:t'),{'t':tenant})).scalar_one_or_none()
+    if channel is not None and channel!=job['channel_id']:return 'channel_changed',None,None,None
     expected='completed' if job['event']=='review' else 'cancelled' if 'cancelled' in job['event'] else 'confirmed'
     if row['status']!=expected:return 'appointment_changed',None,None,None
     now=(await db.execute(text('SELECT clock_timestamp()'))).scalar_one()
@@ -132,6 +134,25 @@ async def process_notification(ctx,tenant_id,notification_id):
             if not senders or phone.lstrip('+') not in senders:
                 await db.execute(text("UPDATE appointment_notifications SET status='failed',last_error='transport_recipient_not_authorized' WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':identity})
                 return 'transport_recipient_not_authorized'
+            if ctx.get('appointment_sender') is None:
+                # An observed offline channel is a definite no-send. Only this
+                # preflight can be retried; ambiguous HTTP sends never are.
+                try:
+                    from app.qr_channels import _canonical, _bridge_control, _control_result
+                    async with support_session_factory()() as registry:
+                        channel,state=await _canonical(registry,tenant)
+                    if channel is None or state!='ready' or channel['id']!=job['channel_id']:
+                        raise ValueError('channel_changed')
+                    observed=_control_result(channel,await _bridge_control(channel,'status','GET'),'status')
+                    if observed['status']!='connected' or not observed.get('phone_verified'):
+                        raise ValueError('channel_offline')
+                except Exception:
+                    await db.execute(text("""UPDATE appointment_notifications SET
+                        status=CASE WHEN attempts>=4 OR clock_timestamp()+interval '30 seconds'>=expires_at THEN 'failed' ELSE 'pending' END,
+                        attempts=attempts+1,due_at=LEAST(clock_timestamp()+interval '30 seconds',expires_at-interval '1 microsecond'),
+                        last_error='channel_unavailable',updated_at=clock_timestamp()
+                        WHERE tenant_id=:t AND id=:id"""),{'t':tenant,'id':identity})
+                    return 'channel_unavailable'
             try:body=await prepare_body(db,tenant,job,row,settings)
             except (ValueError,KeyError):
                 await db.execute(text("UPDATE appointment_notifications SET status='failed',last_error='message_facts_invalid' WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':identity})
@@ -202,4 +223,8 @@ async def reconcile_notification(ctx,tenant_id,notification_id):
                 await db.execute(text("UPDATE appointment_notifications SET status=:status,last_error=NULL,provider_id=:provider,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id AND status IN ('accepted','unknown','delivered')"),
                     {'t':tenant,'id':identity,'status':status,'provider':str(identity)})
         return status
-    except Exception:return 'unknown'
+    except Exception:
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db,tenant):
+                await db.execute(text("UPDATE appointment_notifications SET updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id AND status IN ('accepted','unknown','delivered')"),{'t':tenant,'id':identity})
+        return 'unknown'

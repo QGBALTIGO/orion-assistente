@@ -65,7 +65,7 @@ def upgrade():
           OR (n.status='sending' AND n.attempted_at<now()-interval '2 minutes')
           OR (n.status IN ('accepted','unknown','delivered') AND n.attempted_at>now()-interval '7 days'
             AND n.updated_at<now()-interval '5 minutes'))
-        ORDER BY n.due_at,n.id LIMIT LEAST(GREATEST($1,1),100)
+        ORDER BY CASE WHEN n.status='pending' THEN 0 WHEN n.status='sending' THEN 1 ELSE 2 END,n.updated_at,n.due_at,n.id LIMIT LEAST(GREATEST($1,1),100)
       $$;
       REVOKE ALL ON FUNCTION orion_due_appointment_notifications(integer) FROM PUBLIC,app_runtime;
       GRANT EXECUTE ON FUNCTION orion_due_appointment_notifications(integer) TO app_support;''')

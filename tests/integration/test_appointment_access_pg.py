@@ -80,3 +80,36 @@ async def test_phone_edit_invalidates_link_and_future_review_is_unavailable(book
         async with tenant_transaction(db,d['a']):
             with pytest.raises(HTTPException):
                 await access.verify(db,d['a'],digest)
+
+
+@pytest.mark.asyncio
+async def test_real_public_api_rejects_early_review_and_duplicate_review(booking_db,monkeypatch):
+    import httpx
+    from app.main import app
+    from app import appointment_access_api as api
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
+    monkeypatch.setattr(api,'get_session_factory',lambda:booking_db['factory'])
+    d=booking_db;a=await prepare(d)
+    async with d['factory']() as db:
+        async with tenant_transaction(db,d['a']):
+            link=await access.issue(db,d['a'],a['id'])
+    token=link.split('#')[1]
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='https://orionagenda.pro') as client:
+        view=await client.post('/api/appointment-access',json={'token':token})
+        assert view.status_code==200 and view.json()['protocol']==a['protocol']
+        assert view.headers['referrer-policy']=='no-referrer' and view.headers['cache-control']=='no-store'
+        assert (await client.post('/api/appointment-access',json={'token':token,'action':'review','rating':5})).status_code==409
+        assert (await client.post('/api/appointment-access',headers={'Origin':'https://evil.example'},json={'token':token})).status_code==403
+        # A synthetic team-recorded completion. Automated completion alone is
+        # deliberately insufficient for a review even if status says completed.
+        async with d['migrator'].begin() as db:
+            await db.execute(text("UPDATE appointments SET status='completed' WHERE tenant_id=:t AND id=:id"),{'t':d['a'],'id':a['id']})
+        assert (await client.post('/api/appointment-access',json={'token':token,'action':'review','rating':5})).status_code==409
+        async with d['migrator'].begin() as db:
+            await db.execute(text("""INSERT INTO appointment_history(tenant_id,appointment_id,event,operator,details)
+                VALUES(:t,:id,'completed','owner',CAST(:details AS jsonb))"""),
+                {'t':d['a'],'id':a['id'],'details':'{"v":1,"source":"panel","actor":{"role":"owner"}}'})
+        valid=await client.post('/api/appointment-access',json={'token':token,'action':'review','rating':5,'comment':'<script>alert(1)</script>'})
+        assert valid.status_code==200 and valid.json()['review']['rating']==5
+        assert (await client.post('/api/appointment-access',json={'token':token,'action':'review','rating':1})).status_code==409
+        assert (await client.post('/api/appointment-access',json={'token':token,'action':'review','rating':0})).status_code==422

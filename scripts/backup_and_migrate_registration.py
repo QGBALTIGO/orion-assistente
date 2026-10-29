@@ -91,11 +91,15 @@ def predeploy_main():
     from scripts import backup_and_migrate_cakto as cakto
     from scripts import backup_and_migrate_plans as plans
     from scripts import backup_and_migrate_direct_checkout as direct
+    from scripts import backup_and_migrate_appointment_communications as appointment
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
+        if current == appointment.TARGET:
+            return appointment.main()
         if current == direct.TARGET:
-            return direct.main()
+            result=direct.main()
+            return result if result else appointment.main()
         if current == plans.TARGET:
             result = plans.main()
             return result if result else direct.main()
