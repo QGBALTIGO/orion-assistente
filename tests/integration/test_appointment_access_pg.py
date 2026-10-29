@@ -43,6 +43,8 @@ async def test_customer_contact_tracks_verified_channel_and_never_site_appearanc
                 identity=await access.verify(db,d['a'],digest)
                 view=await customer_view(db,identity)
                 assert view['contact_phone']==('+'+connected if connected else None)
+    async with d['migrator'].begin() as db:
+        await db.execute(text('DELETE FROM management_site_preferences WHERE tenant_id=:t'),{'t':d['a']})
 
 
 @pytest.mark.asyncio

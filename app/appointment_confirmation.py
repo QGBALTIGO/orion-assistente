@@ -24,9 +24,11 @@ def detected_protocol(body):
 
 @sanitized_database_errors
 async def confirmation_reply(tenant,phone,body,channel_key,message_id):
-    if not access.tenant_enabled(tenant) or not access.recipient_allowed(phone):return None
+    if not access.tenant_enabled(tenant):return None
     protocol=detected_protocol(body)
     if protocol is None:return None
+    # A recognized protocol must never fall through to a generic AI reply.
+    if not access.recipient_allowed(phone):return GENERIC
     if not isinstance(message_id,str) or not 1<=len(message_id)<=200:return GENERIC
     phone='+'+phone.lstrip('+')
     async with get_session_factory()() as db:
