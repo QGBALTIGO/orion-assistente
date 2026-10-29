@@ -208,9 +208,15 @@ async def direct_prepare(tenant_id: UUID, payload: DirectPrepare,
     await require_verified_webhooks(CaktoClient())
     # Existing reviewed endpoint checks monthly offer, price, owner, current
     # subscription and ensures only one tenant/account checkout intent.
-    internal = await start_plan_checkout(tenant_id,
-                                         CheckoutChoice(plan_code=payload.plan_code),
-                                         actor)
+    try:
+        internal = await start_plan_checkout(tenant_id,
+                                             CheckoutChoice(plan_code=payload.plan_code),
+                                             actor)
+    except HTTPException as exc:
+        # Keep payment-provider diagnostics private in Orion's own checkout UI.
+        if exc.status_code >= 500:
+            raise HTTPException(503, "Não foi possível confirmar o pagamento no momento.") from None
+        raise
     from urllib.parse import urlsplit, parse_qs
     token = parse_qs(urlsplit(internal["checkout_url"]).query).get("sck", [None])[0]
     if not token:
