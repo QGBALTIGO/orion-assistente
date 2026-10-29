@@ -108,6 +108,13 @@ def test_shipped_panel_plan_permissions(browser, fixture_url, size, theme, scena
             expect(history.locator('.os-disclosure-body')).to_be_visible()
             expect(history).to_contain_text('Liberação sintética para validação visual')
             expect(history).to_contain_text('Orion Elite')
+            history_data=page.request.get(fixture_url+PLAN_PATH).json()['history'][0]
+            assert history_data['actor_id'] and not history_data.get('actor_name')
+            expect(history).to_contain_text('Administrador: Administrador geral')
+            expect(history).not_to_contain_text(history_data['actor_id'])
+            administrator=history.locator('.os-help').last
+            administrator.scroll_into_view_if_needed()
+            expect(administrator).to_be_in_viewport(ratio=1)
             evidence['history']={'geometry':assert_geometry(page,size,modal=True),'capture':capture(page,ARTIFACTS/f'{label}-history.png',size)}
             page.keyboard.press('Escape')
             expect(page.locator('#osDialog')).not_to_be_visible()

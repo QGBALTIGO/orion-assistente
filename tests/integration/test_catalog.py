@@ -24,6 +24,8 @@ def pgurl(s):
 
 @pytest_asyncio.fixture
 async def setup_catalog(monkeypatch):
+    from plan_fixtures import seed_fixture_plan, clear_fixture_plans
+    plan_admin=None
     runtime_url = os.getenv("APP_DATABASE_URL")
     mig_url = os.getenv("MIGRATION_DATABASE_URL")
     support_url = os.getenv("SUPPORT_DATABASE_URL")
@@ -49,6 +51,7 @@ async def setup_catalog(monkeypatch):
                     INSERT INTO tenants (id, name, slug)
                     VALUES (:id, :name, :slug)
                 """), dict(id=t, name="Barbearia Teste Sintética", slug=f"test-{t}"))
+            plan_admin=await seed_fixture_plan(con,(a,b),"essencial")
         yield a, b, runtime, migrator
     finally:
         async with migrator.begin() as con:
@@ -60,6 +63,7 @@ async def setup_catalog(monkeypatch):
                 await con.execute(text(
                     f"DELETE FROM {table} WHERE tenant_id IN (:a, :b)"
                 ), dict(a=a, b=b))
+            await clear_fixture_plans(con,(a,b),(plan_admin,))
             await con.execute(
                 text("DELETE FROM tenants WHERE id IN (:a, :b)"), dict(a=a, b=b)
             )

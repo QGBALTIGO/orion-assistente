@@ -59,7 +59,7 @@ jobs:
           python tests/run_isolated_plan_tests.py -q -ra \
             tests/unit/test_plan_permissions.py tests/unit/test_plan_routing.py \
             tests/unit/test_appointment_pilot.py tests/unit/test_onboarding_goals.py tests/unit/test_professional_phone_release.py \
-            tests/unit/test_plan_permissions_release.py \
+            tests/unit/test_plan_permissions_release.py tests/unit/test_single_whatsapp_release.py \
             tests/unit/test_plan_preview_fixture.py tests/unit/test_management_unit.py tests/unit/test_automation_composition_contract.py \
             tests/load/test_qualification_plan_fixture.py \
             tests/unit/test_plan_runtime_enforcement.py tests/unit/test_manual_plan_management.py \
@@ -136,7 +136,8 @@ jobs:
             tests/integration/test_qr_single_connection_postgres.py \
             tests/integration/test_billing.py tests/integration/test_booking.py \
             tests/integration/test_onboarding_postgres.py tests/integration/test_management.py \
-            tests/integration/test_professional_archival_pg.py tests/integration/test_public_catalog.py \
+            tests/integration/test_professional_archival_pg.py tests/integration/test_public_catalog.py tests/integration/test_catalog.py \
+            tests/integration/test_performance_history.py \
             tests/integration/test_admin_maintenance_pg.py
   browser-responsive:
     name: Painel real — ${{ matrix.engine }}

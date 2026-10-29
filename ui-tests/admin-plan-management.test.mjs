@@ -5,8 +5,8 @@ import {planState,tenantA,flush,deferred} from './harness.mjs';
 
 const account={id:'90000000-0000-4000-8000-000000000009',company_id:tenantA,can_manage_plan:true,name:'Responsável sintético',company_name:'Empresa sintética',email:'plan@example.invalid',state:'active',auth_version:7,created_at:'2026-10-01T00:00:00Z'};
 const path='/api/v1/admin/accounts/'+account.id+'/companies/'+tenantA+'/plan';
-async function fixture({state=planState('essencial',{revision:'a'.repeat(64),version:0}),save}={}){
-  const value={company:{id:tenantA,name:'Empresa sintética',active_professionals:2},effective_plan:state,history:[]};
+async function fixture({state=planState('essencial',{revision:'a'.repeat(64),version:0}),save,history=[]}={}){
+  const value={company:{id:tenantA,name:'Empresa sintética',active_professionals:2},effective_plan:state,history};
   const h=await makePanel({role:'admin',initialRoute:'member',respond:async(url,method,data)=>{
     if(url===path){if(method==='GET')return value;if(save)return save(url,method,data,value);value.effective_plan=planState(method==='DELETE'?'essencial':data.plan_code,{revision:'b'.repeat(64),version:1});return value;}
     if(url==='/api/v1/admin/accounts/stats')return {total:1,active:1};
@@ -21,6 +21,21 @@ test('existing administration exposes plan filters and opens the shared modal wi
   const h=await fixture();t.after(()=>h.close());await open(h);
   assert.ok(h.element('#osDialog').classList.contains('os-admin-dialog'));assert.equal(h.element('#adminManualPlan').value,'essencial');assert.match(h.element('#osDialog').textContent,/Assinatura comercial|Profissionais ativos|Histórico de planos/);assert.equal(mutations(h).length,0);
   h.click('#osDialog [data-admin-control=close]');const select=h.element('[data-admin-plan-filter=source]');select.value='manual';select.dispatchEvent(new h.window.Event('change',{bubbles:true}));await flush();assert.ok(h.calls.some(call=>call.path.includes('source=manual')));
+});
+
+test('plan history shows an administrator name or the general administrator label without exposing its audit UUID',async t=>{
+  const actorId='ef606263-1000-4000-8000-000000000001';
+  for(const actorName of [undefined,'Ana Administradora']){
+    const history=[{action:'manual_assign',occurred_at:'2026-10-29T12:00:00Z',actor_id:actorId,
+      ...(actorName?{actor_name:actorName}:{}),reason:'Liberação de teste',
+      previous_plan:{name:'Orion Essencial'},new_plan:{name:'Orion Elite'}}];
+    const h=await fixture({history});t.after(()=>h.close());await open(h);
+    const text=h.element('#osDialog .os-disclosure-body').textContent;
+    assert.ok(text.includes('Administrador: '+(actorName||'Administrador geral')));
+    assert.equal(text.includes(actorId),false);
+    assert.equal(h.value.history[0].actor_id,actorId);
+    assert.equal(mutations(h).length,0);
+  }
 });
 
 test('manual assignment requires review and sends the company-scoped CAS without payments or account version changes',async t=>{

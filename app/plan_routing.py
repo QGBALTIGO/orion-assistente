@@ -127,12 +127,15 @@ async def enforce_endpoint_plan(request: Request, tenant_id: UUID, actor: Actor 
     relative = path.split(TENANT_PREFIX, 1)[-1] if TENANT_PREFIX in path else "/" + request.url.path.partition("/tenants/")[2].partition("/")[2]
     template = "/{resource}/{item_id}" if "item_id" in request.path_params and "resource" in request.path_params else "/{resource}" if "resource" in request.path_params else relative
     feature = feature_for_path(template, request.method, resource=request.path_params.get("resource"), step_id=request.path_params.get("step_id"))
-    if feature is None:
-        raise HTTPException(403, "Recurso indisponível para este plano")
     from app.catalog_api import authorize
     # Other endpoints also recheck publication/membership/owner rules. This
     # prevents disclosing plan state for a tenant not owned by this request.
     authorize(actor, tenant_id, write=False)
+    if feature is None:
+        from app.catalog_schemas import RESOURCE_MODELS
+        if template in {"/{resource}", "/{resource}/{item_id}"} and request.path_params.get("resource") not in RESOURCE_MODELS:
+            raise HTTPException(404, "Recurso não encontrado")
+        raise HTTPException(403, "Recurso indisponível para este plano")
     bypass = actor.role in {"admin", "support"} and not getattr(actor, "maintenance", False)
     token = bind_feature(tenant_id, feature,
         exclusive=exclusive_professional_operation(relative, request.method, request.path_params), bypass=bypass)
