@@ -262,16 +262,17 @@ def test_direct_payment_payload_offer_tracking_and_amount_are_verified():
                confirmed_monthly=True,consent_to_processor=True)
     intent={"offer_id":"synthetic-offer","expected_cents":8990}
     payload=direct.provider_request(intent,charge,"synthetic-checkout-binding")
-    assert payload["paymentMethod"]=="pix"
+    assert payload["paymentMethod"]=="pix_auto"
     assert payload["items"][0]["offerId"]=="synthetic-offer"
     assert payload["metadata"]["sck"]=="synthetic-checkout-binding"
     assert "card" not in payload
     assert "cvv" not in str(payload)
-    ok={"id":"synthetic-order","paymentMethod":"pix","offer":{"id":"synthetic-offer"},
+    ok={"id":"synthetic-order","paymentMethod":"pix_auto","offer":{"id":"synthetic-offer"},
         "amount":"89.90","status":"waiting_payment",
         "pix":{"qrCode":"synthetic-qr-code-" + "0" * 100}}
     assert direct.verified_creation(ok,intent,"pix")
     assert not direct.verified_creation({**ok,"amount":"88.90"},intent,"pix")
     assert not direct.verified_creation({**ok,"offer":{"id":"other"}},intent,"pix")
     assert not direct.verified_creation({**ok,"paymentMethod":"threeDs"},intent,"pix")
+    assert not direct.verified_creation({**ok,"paymentMethod":"pix"},intent,"pix")
     assert not direct.verified_creation({**ok,"pix":{}},intent,"pix")
