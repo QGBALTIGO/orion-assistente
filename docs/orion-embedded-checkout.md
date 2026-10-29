@@ -48,6 +48,7 @@ Revisar eventual necessidade de campos hospedados para reduzir escopo PCI.
   de uma reserva que corresponda exatamente ao mesmo pedido e ofertar uma
   assinatura válida; um pedido avulso não libera plano.
 - QR Pix gerado localmente com `qrcode` no servidor. Sem serviço externo de QR.
+- Assinaturas mensais por Pix usam `pix_auto` (Pix Automático), nunca `pix` pontual. O cliente autoriza débitos futuros no banco, e um evento `purchase_approved` ainda precisa de reconciliação antes de ativar o acesso.
 
 ## Migração e lançamento
 
