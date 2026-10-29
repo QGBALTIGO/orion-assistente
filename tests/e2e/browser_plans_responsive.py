@@ -126,7 +126,45 @@ async def inspect(page,width,mode):
     assert await page.locator(".op-payment-summary").count()==1,(width,mode)
     await page.locator(".op-payment-body").wait_for(state="visible")
     assert await page.locator(".op-payment-submit").is_disabled(),(width,mode,"fail closed")
-    await page.locator(".op-checkout-dialog .op-dialog-close").click()
+    assert await page.locator('[name=doc_type]').count()==0,(width,mode)
+    assert await page.locator('[name=doc_number]').count()==1,(width,mode)
+    await page.locator('[name=doc_number]').fill('52998224725')
+    assert await page.locator('[name=doc_number]').input_value()=='529.982.247-25',(width,mode)
+    await page.locator('[name=doc_number]').fill('11444777000161')
+    assert await page.locator('[name=doc_number]').input_value()=='11.444.777/0001-61',(width,mode)
+    await page.locator('[data-op-payment-method=card]').click()
+    assert await page.locator('.op-payment-card-fields').is_visible(),(width,mode)
+    assert await page.locator('.op-payment-submit').is_disabled(),(width,mode)
+    for name in ('zip','state','city','street','number','complement'):
+        assert await page.locator('.op-checkout-dialog [name='+name+']').count()==0,(width,mode,name)
+    layout=await page.evaluate("""()=>{
+        const dlg=document.querySelector('.op-checkout-dialog');
+        const fields=[...dlg.querySelectorAll('.op-payment-field input')]
+            .filter(el=>!el.disabled);
+        const pair=dlg.querySelector('.op-payment-card-row');
+        const [expiry,cvv]=[...pair.querySelectorAll('input')].map(el=>el.getBoundingClientRect());
+        const rect=dlg.getBoundingClientRect();
+        return {
+            pageScroll:document.documentElement.scrollWidth,
+            modalScroll:dlg.scrollWidth,modalClient:dlg.clientWidth,
+            rectLeft:rect.left,rectRight:rect.right,rectTop:rect.top,rectBottom:rect.bottom,
+            innerWidth:window.innerWidth,innerHeight:window.innerHeight,
+            fieldMin:Math.min(...fields.map(el=>el.getBoundingClientRect().width)),
+            fontSize:parseFloat(getComputedStyle(fields[0]).fontSize),
+            sameRow:Math.abs(expiry.y-cvv.y)<2,
+            expiryWidth:expiry.width,cvvWidth:cvv.width
+        };
+    }""")
+    assert layout['pageScroll']<=width+1,(width,mode,'page overflow',layout)
+    assert layout['modalScroll']<=layout['modalClient']+1,(width,mode,'modal overflow',layout)
+    assert layout['rectLeft']>=-1 and layout['rectRight']<=width+1,(width,mode,layout)
+    assert layout['rectTop']>=-1 and layout['rectBottom']<=850+1,(width,mode,layout)
+    assert layout['fieldMin']>=96,(width,mode,'input too small',layout)
+    assert layout['sameRow'] and layout['expiryWidth']>=96 and layout['cvvWidth']>=96,(width,mode,'card row',layout)
+    if width<=600:
+        assert layout['fontSize']>=16,(width,mode,'iOS zoom font',layout)
+    await page.locator('.op-checkout-dialog').evaluate('(dialog)=>dialog.scrollTop=dialog.scrollHeight')
+    await page.locator('.op-checkout-dialog .op-dialog-close').click()
     assert await page.locator(".op-checkout-dialog").count()==0,(width,mode,"checkout close")
 
 
