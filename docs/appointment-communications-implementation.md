@@ -4,6 +4,8 @@ Base auditada: `76e02ed9b650d8fc84dbb2e272312c78149ef832`.
 
 ## Atualização de publicação — piloto do administrador
 
+A revisão visual do piloto encontrou a cor amarela configurada com texto branco nos botões da página individual. O texto agora utiliza preto ou branco conforme a luminância da cor da empresa, e a identificação da empresa usa a cor de texto do tema. Os testes de Chromium/WebKit medem contraste mínimo de 4,5:1 em ações, nome da empresa e estrelas selecionadas, com marca clara/escura e ambos os temas.
+
 O piloto foi publicado na aplicação existente, preservando contas, agendamentos, sessão e volume do WhatsApp. A API e o worker no commit `73c9904f1c38a4703d8b49ec20172f4aa00d7376` chegaram a `SUCCESS` em 29/10/2026 às 17h22 (America/Campo_Grande). O bridge permaneceu no deploy `152facbb-1cb0-4cf6-b7c8-01c88a9d5c3d`, com a mesma sessão e volume `/data`. PostgreSQL e Redis permaneceram online.
 
 A migração aditiva chegou a `0049_preserved_phone_guard`, após backup privado confirmado pelo marcador `orion_appointment_0049_backup_schema_verified`. Foram preservados os guards normais; a exceção para o PN antigo do próprio aparelho exige a prova HMAC da sessão, propriedade atual, tenant, destinatário autorizado, lease e fence.

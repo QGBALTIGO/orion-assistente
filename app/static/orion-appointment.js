@@ -19,9 +19,16 @@ async function request(action,extra={}){
 async function run(fn){if(busy)return;busy=true;document.querySelector('main').setAttribute('aria-busy','true');document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();}catch(e){showError(e);}finally{busy=false;document.querySelector('main').setAttribute('aria-busy','false');document.querySelectorAll('button').forEach(b=>b.disabled=false);$('confirm-reschedule').disabled=!$('slot').value;}}
 function button(text,fn,secondary=false){const n=node('button',text);n.type='button';if(secondary)n.className='secondary';n.onclick=fn;return n;}
 function link(text,url){if(!url)return;try{const u=new URL(url,location.origin);if(u.protocol!=='https:'||u.username||u.password)return;const n=node('a',text);n.href=u.href;n.className='action';n.rel='noreferrer noopener';return n;}catch{}}
+function accent(value){
+ const color=/^#[0-9a-f]{6}$/i.test(value||'')?value:'#2e7bf6';
+ const rgb=[1,3,5].map(i=>parseInt(color.slice(i,i+2),16)/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);
+ const luminance=.2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2];
+ document.documentElement.style.setProperty('--primary',color);
+ document.documentElement.style.setProperty('--primary-ink',luminance>.179?'#000':'#fff');
+}
 function render(data){
  if(navigating||token!==location.hash.slice(1))return;
- current=data;operation=null;if(/^#[0-9a-f]{6}$/i.test(data.brand_color||''))document.documentElement.style.setProperty('--primary',data.brand_color);const logo=$('company-logo');logo.hidden=!(data.logo_url&&/^\/media\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/.test(data.logo_url));if(!logo.hidden){logo.src=data.logo_url;logo.alt=data.company;}else logo.removeAttribute('src');$('company').textContent=data.company;$('title').textContent=statusNames[data.status]||'Seu agendamento';
+ current=data;operation=null;accent(data.brand_color);const logo=$('company-logo');logo.hidden=!(data.logo_url&&/^\/media\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/.test(data.logo_url));if(!logo.hidden){logo.src=data.logo_url;logo.alt=data.company;}else logo.removeAttribute('src');$('company').textContent=data.company;$('title').textContent=statusNames[data.status]||'Seu agendamento';
  $('message').textContent=data.status==='completed'?`Obrigado pela visita, ${data.customer.split(' ')[0]}! Foi um prazer receber você.`:data.can_change?'Você pode cancelar ou remarcar até 1 hora antes do atendimento.':data.status==='confirmed'?'Seu agendamento está próximo e não pode mais ser alterado por esta página. Para solicitar ajuda, entre em contato com a empresa.':'Confira abaixo o estado atual do seu atendimento.';
  const when=new Date(data.start_at);const date=new Intl.DateTimeFormat('pt-BR',{dateStyle:'long',timeZone:data.timezone}).format(when);const time=new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:data.timezone}).format(when);
  $('details').replaceChildren();for(const [key,value] of [['Cliente',data.customer],['Serviço',data.services.join(' + ')],['Profissional',data.professional],['Data',date],['Horário',time],['Duração',data.duration_min+' minutos'],['Protocolo',data.protocol],['Endereço',data.address]]){if(!value)continue;const row=node('div','');row.append(node('dt',key),node('dd',value));$('details').append(row);}
