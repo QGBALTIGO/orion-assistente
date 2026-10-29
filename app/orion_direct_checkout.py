@@ -169,20 +169,41 @@ async def owner(tenant_id: UUID, actor: Actor):
 
 
 async def require_verified_webhooks(client: CaktoClient) -> None:
-    # Read-only check: verify that every actual Orion offer has an active
-    # HMAC-matching subscription webhook to the exact HTTPS callback URL.
-    # Never display the provider's secret, webhook body or customer data.
-    from scripts.probe_orion_webhooks_read_only import probe
+    """Accept verified V1 configuration OR provider-confirmed V2 delivery history.
+
+    Cakto's public webhook inventory need not list panel-created V2 hooks.
+    Its authenticated history includes V1 and V2 deliveries. Both proof paths
+    require 3 exact monthly offers, matching product, secret and event coverage.
+    All checks are read-only; a failure prevents billing.
+    """
+    from scripts.probe_orion_webhooks_read_only import probe as inventory_probe
+    from scripts.probe_orion_webhook_history_read_only import probe as history_probe
+
     try:
         offers = await client.list_offers()
-        result = await probe(client, offers)
-        if not isinstance(result, dict):
-            raise ValueError("provider webhook probe response invalid")
     except Exception:
-        # No billing when the read-only preflight returns a malformed response.
-        raise HTTPException(503, "A confirmação segura de pagamentos ainda não foi verificada.") from None
-    if result.get("offer_matches") != 3 or result.get("webhook_ready") != 3:
-        raise HTTPException(409, "A confirmação segura de pagamentos ainda não está configurada.")
+        raise HTTPException(503, "Não foi possível verificar a confirmação dos pagamentos.") from None
+    try:
+        inventory = await inventory_probe(client, offers)
+    except Exception:
+        inventory = None
+    if (isinstance(inventory, dict)
+            and inventory.get("offer_matches") == 3
+            and inventory.get("webhook_ready") == 3):
+        return
+    try:
+        history = await history_probe(client, offers)
+    except Exception:
+        raise HTTPException(503, "Não foi possível verificar a confirmação dos pagamentos.") from None
+    if (not isinstance(history, dict)
+            or history.get("offer_matches") != 3
+            or history.get("webhook_ready") != 3
+            or history.get("required_event_coverage") != 3
+            or history.get("product_coverage") != 3
+            or history.get("recent_verified_deliveries", 0) < 6):
+        raise HTTPException(
+            409, "A confirmação segura de pagamentos ainda não está validada.",
+        )
 
 
 @router.get("/api/v1/tenants/{tenant_id}/management/plan-direct-config")
