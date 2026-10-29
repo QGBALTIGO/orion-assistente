@@ -1,5 +1,5 @@
 /* Browser-only synthetic fixture. Never loaded by the application. */
-window.mountPerformanceFixture=()=>{
+window.mountPerformanceFixture=effectivePlan=>{
   const tenant='10000000-0000-4000-8000-000000000001',professional='51000000-0000-4000-8000-000000000001';
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const start=today.slice(0,8)+'01',end=new Date(Date.UTC(Number(today.slice(0,4)),Number(today.slice(5,7)),0,12)).toISOString().slice(0,10);
@@ -12,6 +12,7 @@ window.mountPerformanceFixture=()=>{
   window.performanceFixtureCalls=[];
   const request=async(path,method='GET',data)=>{
     window.performanceFixtureCalls.push({path,method,data});
+    if(path.endsWith('/management/permissions')&&method==='GET')return {effective_plan:effectivePlan};
     const url=new URL(path,'https://orion-fixture.invalid'),params=url.searchParams;
     if(path.includes('/performance/professionals/')){
       const filtered=appointments.filter(a=>!params.get('status')||a.history_status===params.get('status'));

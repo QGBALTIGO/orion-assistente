@@ -337,6 +337,9 @@ async def provision_connection(tenant_id: UUID, payload: ProvisionConnection, re
 
 @router.patch(BASE + "/{channel_id}")
 async def change_state(tenant_id: UUID, channel_id: UUID, payload: ChannelState, actor: Actor = Depends(authenticate)):
+    if payload.assistant_enabled is True:
+        from app.plan_permissions import require_tenant_feature
+        await require_tenant_feature(tenant_id, "reception.ai")
     from app.qr_legacy import is_alias
     if is_alias(tenant_id, channel_id) and payload.enabled is not None:
         raise HTTPException(409, 'A sessão principal é preservada; use o controle da assistente ou do atendimento')

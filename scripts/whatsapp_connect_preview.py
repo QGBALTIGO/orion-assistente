@@ -23,6 +23,8 @@ import time
 from urllib.parse import parse_qs, urlsplit
 import zlib
 
+from scripts.plan_fixture import synthetic_plan_state
+
 ROOT = Path(__file__).resolve().parents[1]
 TENANT = '10000000-0000-4000-8000-000000000001'
 CHANNEL = '30000000-0000-4000-8000-000000000003'
@@ -219,6 +221,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.body({'configured': False, 'enabled': False, 'remaining_today': 0, 'daily_limit': 0})
         if path == BASE + '/management/dashboard':
             return self.body({'summary': {'appointments': 0, 'completed': 0, 'customers': 0}})
+        if path == BASE + '/management/permissions':
+            return self.body({'effective_plan': synthetic_plan_state(TENANT)})
         if path == BASE + '/management/preferences':
             return self.body({'version': 1, 'can_save': role != 'reader', 'business': {
                 'contact_phone': '+5511900000001', 'trade_name': business['name'], 'legal_name': business['name'],

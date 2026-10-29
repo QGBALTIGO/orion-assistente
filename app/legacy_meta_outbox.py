@@ -17,6 +17,9 @@ UNVERIFIED=('delivery_unverified','prior_attempt_unverified')
 
 
 async def reason(db,tenant,item):
+    from app.plan_permissions import has_feature
+    if not await has_feature(db, tenant, "reception.ai"):
+        return 'plan_feature_unavailable'
     if not isinstance(item['body'],str) or not item['body'].strip() or message_units(item['body'])>1200:
         return 'payload_not_approved'
     if (await db.execute(text('SELECT public.inbox_meta_guard(:t,:c,true)'),
@@ -66,6 +69,13 @@ async def process(ctx,tenant_id,outbox_id):
             await db.execute(text("UPDATE message_outbox SET status='dead',last_error=:error,attempts=attempts+:attempt WHERE tenant_id=:t AND id=:id"),
                 {'t':tenant,'id':identity,'error':blocked or 'delivery_unverified','attempt':0 if blocked else 1})
     if blocked:return 'verification_required' if blocked in UNVERIFIED else 'suppressed'
+    from app.plan_permissions import tenant_has_feature
+    if not await tenant_has_feature(tenant, "reception.ai"):
+        async with factory() as db:
+            async with tenant_transaction(db, tenant):
+                await db.execute(text("UPDATE message_outbox SET last_error='plan_feature_unavailable' WHERE tenant_id=:t AND id=:id AND status='dead'"),
+                                 {'t':tenant,'id':identity})
+        return 'suppressed'
     # Reservation has committed. A crash before/during/after I/O cannot replay it.
     try:
         external=await (ctx.get('legacy_meta_sender') or CloudApiProvider().send_text)(

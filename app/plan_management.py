@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -29,20 +29,10 @@ from app.cakto_api import CaktoClient, _subscription_id
 from app.account_business import account_membership_role
 from app.tenant_access import resolve_site_access
 from app.admin_accounts import require_platform_owner
+from app.plan_catalog import CODES, PLAN_FEATURES, feature_catalog
+from app.plan_permissions import plan_state, lock_plan
 
 router = APIRouter(tags=["Planos Orion"])
-CODES = {
-    "essencial": {"name": "Orion Essencial", "price_cents": 2990, "max_professionals": 2,
-                  "db_code": "orion_essencial", "offer_names": ("Orion Essencial",),
-                  "checkout_url": "https://pay.cakto.com.br/3bdhdkc_1219844"},
-    "profissional": {"name": "Orion Profissional", "price_cents": 8990, "max_professionals": 6,
-                    "db_code": "orion_profissional",
-                    "offer_names": ("Orion Profissional", "Orion Pro"),
-                    "checkout_url": "https://pay.cakto.com.br/3652fm4"},
-    "elite": {"name": "Orion Elite", "price_cents": 13990, "max_professionals": 10,
-              "db_code": "orion_elite", "offer_names": ("Orion Elite",),
-              "checkout_url": "https://pay.cakto.com.br/v4md8n3"},
-}
 BRAZIL_DDDS = frozenset({
     "11","12","13","14","15","16","17","18","19","21","22","24","27","28",
     "31","32","33","34","35","37","38","41","42","43","44","45","46","47","48","49",
@@ -112,9 +102,28 @@ async def _ensure_owner(db, tenant_id: UUID, account_id: UUID):
         raise HTTPException(403, "O vínculo de proprietário não está mais ativo")
 
 
+async def require_checkout_available(db, tenant_id: UUID, account_id: UUID):
+    """A manual grant has priority; a new payment cannot replace it."""
+    state = await plan_state(db, tenant_id, lock="shared")
+    await _ensure_owner(db, tenant_id, account_id)
+    manual = state.get("manual_assignment")
+    if isinstance(manual, dict) and manual.get("active") is True:
+        raise HTTPException(409, {"code": "MANUAL_PLAN_ACTIVE", "message":
+            "Esta empresa possui uma atribuição manual ativa. Peça ao administrador do Orion para removê-la antes de contratar pela Cakto."})
+    return state
+
+
+async def check_new_checkout_access(tenant_id: UUID, account_id: UUID):
+    """Read-only preflight; the writer rechecks under its own shared lock."""
+    async with support_session_factory()() as db:
+        async with db.begin():
+            await require_checkout_available(db, tenant_id, account_id)
+
+
 def _catalog():
     return [{"code": key, "name": plan["name"], "monthly_cents": plan["price_cents"],
-             "max_professionals": plan["max_professionals"]} for key, plan in CODES.items()]
+             "max_professionals": plan["max_professionals"],
+             "feature_ids": sorted(PLAN_FEATURES[key])} for key, plan in CODES.items()]
 
 
 def _subscription_name(row):
@@ -130,10 +139,13 @@ def _subscription_name(row):
 
 
 @router.get("/api/v1/tenants/{tenant_id}/management/plan-overview")
-async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate)):
+async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate), response: Response = None):
+    if response is not None:
+        response.headers["Cache-Control"] = "no-store"
     access = await resolve_site_access(actor, tenant_id)
     async with support_session_factory()() as db:
         async with db.begin():
+            effective = await plan_state(db, tenant_id)
             row = (await db.execute(text("""
                 SELECT s.id,s.status,s.trial_ends_at,s.grace_until,
                        s.last_verified_payment_at,p.name,p.code,p.monthly_cents,p.max_professionals
@@ -145,26 +157,40 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate)):
                        requested_at,started_at,ends_at,version
                 FROM orion_plan_trial_requests WHERE tenant_id=:tenant
             """), {"tenant": tenant_id})).mappings().first()
-    async with get_session_factory()() as runtime:
-        async with tenant_transaction(runtime, tenant_id):
-            used = (await runtime.execute(text("""
-                SELECT count(*) FROM professionals
-                WHERE tenant_id=:tenant AND active
-            """), {"tenant": tenant_id})).scalar_one()
     if trial and trial["status"] == "active" and trial["ends_at"] and (
         trial["ends_at"] <= datetime.now(timezone.utc)
     ):
         trial = {**trial, "status": "expired"}
     return {
         "plans": _catalog(),
+        "feature_catalog": feature_catalog(),
+        "effective_plan": effective,
+        "manual_assignment": effective["manual_assignment"],
+        "permissions": effective["permissions"],
+        "limits": effective["limits"],
         "subscription": _subscription_name(row),
         "trial": dict(trial) if trial else None,
-        "active_professionals": used,
+        "active_professionals": effective["limits"]["active_professionals"],
         "can_manage_plan": actor.role in {"member","admin"} and access.role == "owner",
         "checkout_enabled": os.getenv("CAKTO_BILLING_LIVE_ENABLED", "0") == "1",
         "trial_scope": TRIAL_SCOPE,
         "trial_requires_team_activation": True,
     }
+
+
+@router.get("/api/v1/tenants/{tenant_id}/management/permissions")
+async def permissions(tenant_id: UUID, response: Response, actor: Actor = Depends(authenticate)):
+    """Entitlements and regularization remain readable even without a plan."""
+    response.headers["Cache-Control"] = "no-store"
+    await resolve_site_access(actor, tenant_id)
+    async with support_session_factory()() as db:
+        async with db.begin():
+            state = await plan_state(db, tenant_id)
+            if actor.role == "member" and isinstance(actor.account_id, UUID) and not getattr(actor, "maintenance", False):
+                await db.execute(text("""UPDATE panel_accounts SET last_access_at=now()
+                    WHERE id=:account AND (last_access_at IS NULL OR last_access_at<now()-interval '5 minutes')"""),
+                    {"account": actor.account_id})
+    return {"effective_plan": state}
 
 
 @router.post("/api/v1/tenants/{tenant_id}/management/plan-trial", status_code=201)
@@ -177,7 +203,10 @@ async def request_plan_trial(tenant_id: UUID, payload: TrialRequest,
     async with support_session_factory()() as db:
         try:
             async with db.begin():
+                current_access = await plan_state(db, tenant_id, lock="exclusive")
                 await _ensure_owner(db, tenant_id, account_id)
+                if current_access["source"] in {"manual", "cakto", "platform_admin"} and current_access["active"]:
+                    raise HTTPException(409, "Sua empresa já possui acesso ativo ao Orion")
                 tenant = (await db.execute(text("""
                     SELECT name FROM tenants WHERE id=:id FOR SHARE
                 """), {"id": tenant_id})).scalar_one_or_none()
@@ -235,6 +264,11 @@ async def admin_decide_trial(trial_id: UUID, decision: TrialDecision,
         raise HTTPException(422, "Decisão inválida")
     async with support_session_factory()() as db:
         async with db.begin():
+            tenant_id = (await db.execute(text("SELECT tenant_id FROM orion_plan_trial_requests WHERE id=:id"),
+                                          {"id": trial_id})).scalar_one_or_none()
+            if tenant_id is None:
+                raise HTTPException(404, "Solicitação não encontrada")
+            current_access = await plan_state(db, tenant_id, lock="exclusive")
             row = (await db.execute(text("""
                 SELECT id,tenant_id,status,version FROM orion_plan_trial_requests
                 WHERE id=:id FOR UPDATE
@@ -243,6 +277,9 @@ async def admin_decide_trial(trial_id: UUID, decision: TrialDecision,
                 raise HTTPException(404, "Solicitação não encontrada")
             if row["status"] != "pending" or row["version"] != decision.expected_version:
                 raise HTTPException(409, "Solicitação alterada; atualize a lista")
+            if (decision.action == "activate" and current_access["source"] in {"manual", "cakto", "platform_admin"}
+                    and current_access["active"]):
+                raise HTTPException(409, "Empresa já possui acesso ativo; o teste não foi consumido")
             existing = (await db.execute(text("""
                 SELECT 1 FROM subscriptions WHERE tenant_id=:tenant
                   AND status IN ('active','trialing') LIMIT 1
@@ -312,6 +349,7 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
         raise HTTPException(422, "Escolha um plano válido")
     if os.getenv("CAKTO_BILLING_LIVE_ENABLED", "0") != "1":
         raise HTTPException(409, "Contratações em preparação. A integração de pagamentos ainda está em homologação.")
+    await check_new_checkout_access(tenant_id, account_id)
     try:
         offers = await CaktoClient().list_offers()
     except (httpx.HTTPError, ValueError, RuntimeError):
@@ -328,11 +366,11 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
         raise HTTPException(503, "Checkout seguro não configurado")
     async with support_session_factory()() as db:
         async with db.begin():
-            await _ensure_owner(db, tenant_id, account_id)
+            await require_checkout_available(db, tenant_id, account_id)
             await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                              {"key": "orion-checkout:" + str(tenant_id)})
             subscription = (await db.execute(text("""
-                SELECT status FROM subscriptions WHERE tenant_id=:tenant FOR UPDATE
+                SELECT status FROM subscriptions WHERE tenant_id=:tenant
             """), {"tenant": tenant_id})).scalar_one_or_none()
             if subscription is not None:
                 raise HTTPException(409, "Esta empresa já possui um registro de assinatura. Regularização ou troca exige confirmação específica.")
@@ -436,6 +474,11 @@ async def apply_verified_cakto_payment(event: dict, order: dict,
     # Require both webhook and GET to match the agreed full BRL monthly amount.
     async with support_session_factory()() as db:
         async with db.begin():
+            target = (await db.execute(text("SELECT tenant_id FROM orion_cakto_checkout_intents WHERE callback_hash=:hash"),
+                                      {"hash": token_hash})).scalar_one_or_none()
+            if target is None:
+                return "unlinked"
+            await lock_plan(db, target, exclusive=True)
             intent = (await db.execute(text("""
                 SELECT id,tenant_id,account_id,plan_code,offer_id,expected_cents,
                        state,expires_at FROM orion_cakto_checkout_intents
@@ -443,6 +486,8 @@ async def apply_verified_cakto_payment(event: dict, order: dict,
             """), {"hash": token_hash})).mappings().first()
             if not intent:
                 return "unlinked"
+            if intent["tenant_id"] != target:
+                return "manual_review"
             if intent["state"] == "verified":
                 return "already_verified"
             if intent["state"] != "pending" or intent["expires_at"] < datetime.now(timezone.utc):

@@ -40,6 +40,7 @@ def async_url(value): return value.replace('postgresql+psycopg://', 'postgresql+
 
 @pytest_asyncio.fixture
 async def public_db(monkeypatch):
+    from plan_fixtures import seed_fixture_plan, clear_fixture_plans
     if not all(os.getenv(k) for k in ('APP_DATABASE_URL','MIGRATION_DATABASE_URL','SUPPORT_DATABASE_URL')):
         if os.getenv('REQUIRE_POSTGRES_TESTS') == '1': pytest.fail('Public catalogue requires PostgreSQL roles and migrations')
         pytest.skip('Requires local PostgreSQL')
@@ -66,6 +67,7 @@ async def public_db(monkeypatch):
     async with migrator.begin() as db:
         for tenant in (ids['a'],ids['b']):
             await db.execute(text("INSERT INTO tenants(id,name,slug,timezone) VALUES(:id,'Nome interno privado',:slug,'America/Sao_Paulo')"),{'id':tenant,'slug':'tenant-'+tenant.hex})
+        plan_admin=await seed_fixture_plan(db,(ids['a'],ids['b']),"essencial")
         for key in ('owner','editor','viewer'):
             await db.execute(text("INSERT INTO panel_accounts(id,name,email,password_hash) VALUES(:id,'Conta privada',:email,'test-only-not-a-hash')"),{'id':ids[key],'email':ids[key].hex+'@example.invalid'})
             await db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role) VALUES(:tenant,:id,:role)"),{'tenant':ids['a'],'id':ids[key],'role':key})
@@ -90,6 +92,7 @@ async def public_db(monkeypatch):
                           'service_package_items','service_addons','service_packages','management_site_preferences','management_preferences','working_breaks','working_hours','schedule_blocks','time_off','professional_services','services','professionals','usage_counters','tenant_audit','tenant_memberships'):
                 if (await db.execute(text('SELECT to_regclass(:table)'),{'table':table})).scalar_one():
                     await db.execute(text(f'DELETE FROM {table} WHERE tenant_id IN (:a,:b)'),{'a':ids['a'],'b':ids['b']})
+            await clear_fixture_plans(db,(ids['a'],ids['b']),(plan_admin,))
             await db.execute(text('DELETE FROM tenants WHERE id IN (:a,:b)'),{'a':ids['a'],'b':ids['b']})
             await db.execute(text('DELETE FROM panel_accounts WHERE id=ANY(CAST(:ids AS uuid[]))'),{'ids':[ids[x] for x in ('owner','editor','viewer')]})
         await migrator.dispose();await runtime.dispose();await support.dispose()

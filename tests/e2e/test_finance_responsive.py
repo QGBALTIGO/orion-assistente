@@ -6,6 +6,7 @@ from pathlib import Path
 import os
 import pytest
 from playwright.sync_api import sync_playwright
+from scripts.plan_fixture import synthetic_plan_state
 
 ROOT = Path(__file__).resolve().parents[2]
 CSS = (ROOT / "app/static/orion-suite.css").read_text(encoding="utf-8")
@@ -18,7 +19,7 @@ HTML = """<!doctype html><html lang="pt-BR" data-theme="dark">
 <main class="content"><section id="page-original" class="page">Original</section></main>
 </div></body></html>"""
 
-MOCK = """() => {
+MOCK = """({effectivePlan}) => {
   const tenant='10000000-0000-4000-8000-000000000001';
   const person='57000000-0000-4000-8000-000000000001';
   const ledger=[
@@ -52,6 +53,7 @@ MOCK = """() => {
      commission_percent:10,completed:2,revenue_cents:110000,earned_cents:11000,
      advances_cents:1000,payable_cents:10000};
   const request=async (path,method='GET',data)=>{
+    if(path.endsWith('/management/permissions')&&method==='GET')return {effective_plan:effectivePlan};
     if(path.includes('/management/finance/summary'))return {
       summary:{income_cents:110000,expense_cents:10000,balance_cents:100000,count:3,
         average_ticket_cents:4125,by_category:[{category:'Serviços',income_cents:110000,expense_cents:0},
@@ -116,7 +118,7 @@ def test_finance_loses_no_horizontal_content_or_actions(browser_name,width,heigh
             page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=JS)
             assert page.evaluate("window.isSecureContext && typeof crypto.randomUUID === 'function'")
-            page.evaluate(MOCK)
+            page.evaluate(MOCK, {"effectivePlan": synthetic_plan_state('10000000-0000-4000-8000-000000000001')})
             page.locator(".os-finance-ledger-table tbody tr").first.wait_for()
             assert page.locator(".os-finance-metrics>.os-metric").count()==6
             assert page.locator(".os-finance-tabs>.os-pill-tab").count()==5

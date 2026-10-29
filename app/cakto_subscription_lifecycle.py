@@ -14,6 +14,7 @@ from sqlalchemy import text
 from app.catalog_api import support_session_factory
 from app.cakto_api import ORDER_ID, _subscription_id
 from app.plan_management import CODES, _exact_offer
+from app.plan_permissions import lock_plan
 
 
 LIFECYCLE_EVENTS = frozenset({
@@ -127,6 +128,11 @@ async def reconcile_existing_cakto_subscription(event: dict, order: dict, client
     offers = await client.list_offers()
     async with support_session_factory()() as db:
         async with db.begin():
+            tenant = (await db.execute(text("SELECT tenant_id FROM orion_cakto_bindings WHERE external_subscription_id=:subscription"),
+                                       {"subscription":subscription_id})).scalar_one_or_none()
+            if tenant is None:
+                return "unlinked"
+            await lock_plan(db, tenant, exclusive=True)
             binding = (await db.execute(text("""
                 SELECT b.tenant_id,b.subscription_id,b.external_subscription_id,
                        b.plan_code,b.last_order_id,b.last_verified_at,
@@ -141,6 +147,8 @@ async def reconcile_existing_cakto_subscription(event: dict, order: dict, client
             """),{"subscription":subscription_id})).mappings().first()
             if not binding:
                 return "unlinked"
+            if binding["tenant_id"] != tenant:
+                return "manual_review"
             plan = CODES.get(binding["plan_code"])
             if not plan:
                 return "manual_review"
@@ -157,9 +165,9 @@ async def reconcile_existing_cakto_subscription(event: dict, order: dict, client
             new_status = {"renewed":"active","canceled":"canceled",
                           "suspended":"suspended","past_due":"past_due"}[action]
             await db.execute(text("""
-                UPDATE subscriptions SET status=:status, updated_at=now(),
+                UPDATE subscriptions SET status=CAST(:status AS varchar(20)), updated_at=now(),
                     last_verified_payment_at=CASE
-                        WHEN :status='active' THEN :paid_at
+                        WHEN CAST(:status AS varchar(20))='active' THEN :paid_at
                         ELSE last_verified_payment_at END
                 WHERE id=:id AND tenant_id=:tenant
             """),{

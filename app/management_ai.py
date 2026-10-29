@@ -202,11 +202,34 @@ def public_run(row):
     return {key: row[key] for key in ("id", "task", "status", "model", "output", "sources", "usage", "created_at", "finished_at", "error_code")}
 
 
+async def _finalize_plan_revoked(tenant_id, identity, digest, usage):
+    """Close one already-reserved run without granting an advanced operation.
+
+    This narrowly scoped metadata cleanup deliberately uses only tenant RLS.
+    It cannot generate output, call a provider, start a job, change a plan or
+    refund the recorded attempt from the daily quota.
+    """
+    if not isinstance(tenant_id, UUID) or not isinstance(identity, UUID):
+        raise ValueError("Verified run identity required")
+    async with get_session_factory()() as db:
+        async with db.begin():
+            await db.execute(text("SELECT set_config('app.tenant_id', :tenant, true)"),
+                             {"tenant": str(tenant_id)})
+            await db.execute(text("""UPDATE management_ai_runs SET status='failed',
+                output=NULL,usage=CAST(:usage AS jsonb),finished_at=now(),error_code=403
+                WHERE tenant_id=:tenant AND id=:id AND fingerprint=:fingerprint
+                  AND status='processing'"""),
+                {"tenant":tenant_id,"id":identity,"fingerprint":digest,"usage":json.dumps(usage)})
+
+
 async def process(tenant_id, actor, task, payload):
     config, key = configuration()
     request = jsonable_encoder(payload.model_dump(exclude={"idempotency_key"}))
     digest = hashlib.sha256(json.dumps({"task": task, "request": request}, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     async with management_session(tenant_id, actor, write=True) as db:
+        from app.plan_permissions import require_feature
+        feature = {"campaign": "marketing.ai", "consultant": "consultant.ai", "loyalty": "loyalty.manage"}[task]
+        await require_feature(db, tenant_id, feature)
         await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:scope,0))"), {"scope": "management-ai:" + str(tenant_id)})
         prior = (await db.execute(text("SELECT * FROM management_ai_runs WHERE tenant_id=:tenant AND idempotency_key=:key"),
             {"tenant": tenant_id, "key": payload.idempotency_key})).mappings().one_or_none()
@@ -233,15 +256,24 @@ async def process(tenant_id, actor, task, payload):
         output, usage = await generate(task=task, request=request, sources=sources, key=key, model=config["model"])
     except HTTPException as exc:
         failure, output, usage = exc, None, {}
-    async with get_session_factory()() as db:
-        async with tenant_transaction(db, tenant_id):
-            row = (await db.execute(text("""UPDATE management_ai_runs SET status=:status,output=CAST(:output AS jsonb),
-                usage=CAST(:usage AS jsonb),finished_at=now(),error_code=:error
-                WHERE tenant_id=:tenant AND id=:id AND fingerprint=:fingerprint AND status='processing' RETURNING *"""),
-                {"tenant": tenant_id, "id": identity, "fingerprint": digest, "status": "failed" if failure else "succeeded",
-                 "output": json.dumps(output) if output is not None else None, "usage": json.dumps(usage),
-                 "error": failure.status_code if failure else None})).mappings().one()
+    from app.plan_permissions import require_tenant_feature
+    try:
+        await require_tenant_feature(tenant_id, feature)
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db, tenant_id):
+                row = (await db.execute(text("""UPDATE management_ai_runs SET status=:status,output=CAST(:output AS jsonb),
+                    usage=CAST(:usage AS jsonb),finished_at=now(),error_code=:error
+                    WHERE tenant_id=:tenant AND id=:id AND fingerprint=:fingerprint AND status='processing' RETURNING *"""),
+                    {"tenant": tenant_id, "id": identity, "fingerprint": digest, "status": "failed" if failure else "succeeded",
+                     "output": json.dumps(output) if output is not None else None, "usage": json.dumps(usage),
+                     "error": failure.status_code if failure else None})).mappings().one()
+    except HTTPException as exc:
+        if isinstance(exc.detail, dict) and ((exc.status_code == 403 and exc.detail.get("code") == "PLAN_FEATURE_UNAVAILABLE")
+                or (exc.status_code == 409 and exc.detail.get("code") == "TENANT_INACTIVE")):
+            await _finalize_plan_revoked(tenant_id, identity, digest, usage)
+        raise
     await resolve_tenant_access(actor, tenant_id, "read")
+    await require_tenant_feature(tenant_id, feature)
     if failure:
         raise failure
     return {**public_run(row), "replayed": False}

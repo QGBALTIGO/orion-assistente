@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 import pytest
 from playwright.sync_api import expect, sync_playwright
+from scripts.plan_fixture import synthetic_plan_state
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -141,6 +142,11 @@ class IsolatedHTTP:
             return self.json(route, {"ok": True, "request_id": "70000000-0000-4000-8000-000000000007"}, 201)
         if self.surface == "onboarding":
             if method == "GET":
+                if path == BASE + "/management/permissions":
+                    return self.json(route, {"effective_plan": synthetic_plan_state(TENANT)})
+                if path == "/api/v1/account/business-identity":
+                    return self.json(route, {"name": self.onboarding["name"],
+                                             "contact_phone": self.onboarding["configuration"]["contact_phone"]})
                 if path == "/api/v1/account/businesses":
                     return self.json(route, [{"id": TENANT, "name": self.onboarding["name"], "role": "owner",
                                              "slug": "empresa-sintetica", "timezone": "America/Cuiaba"}])

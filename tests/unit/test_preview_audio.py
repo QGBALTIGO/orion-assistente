@@ -75,11 +75,13 @@ class MemoryRedis:
 
 @pytest.fixture
 def preview(monkeypatch):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch,"elite")
     import redis.asyncio as redis_asyncio
     original_client = httpx.AsyncClient
     redis = MemoryRedis()
     tenant, account = uuid4(), uuid4()
-    actor = Actor("member", account_id=account)
+    actor = Actor("member", tenant, account, "owner")
     events, provider_calls, turns = [], [], []
     provider_payload = {"text": " Quanto custa cabelo e barba? ", "duration": 2.8}
     monkeypatch.setenv("GROQ_PREVIEW_ENABLED", "1")
@@ -309,7 +311,7 @@ async def test_cookie_auth_keeps_account_identity_and_requires_csrf_before_previ
     claims = {"role": "member", "account_id": str(account), "auth_version": 4, "csrf": "synthetic-csrf"}
     class SessionRedis:
         async def get(self, key):
-            return json.dumps(claims)
+            return json.dumps(claims) if key == panel_auth._hash_cookie("x" * 43) else None
         async def aclose(self):
             pass
     monkeypatch.setattr(panel_auth, "_redis", SessionRedis)

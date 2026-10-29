@@ -21,6 +21,7 @@ from app.qr_understanding import build_plan
 from app.whatsapp_commands import try_command
 from app.whatsapp_dialogue import checked, consent, owned_booking, preferences, summary
 from app.communication_events import summary_was_accepted
+from app.plan_execution import requires_plan
 
 TTL = 1800
 
@@ -35,6 +36,7 @@ def number_choice(value: str, upper: int) -> int | None:
     return None
 
 
+@requires_plan("reception.ai")
 async def reply(tenant: UUID, channel: UUID, sender: str, body: str, redis, *, message_id: str | None = None) -> str | None:
     from app.inbox_control import assistant_turn
     async with assistant_turn(tenant, channel, sender, redis, state_key(str(tenant), str(channel), sender)) as authority:
@@ -95,7 +97,8 @@ async def _reply(tenant, channel, sender, body, redis, key, state, prefs, messag
         return answer
     async with get_session_factory()() as db:
         async with tenant_transaction(db, tenant):
-            inactive = (await db.execute(text("SELECT 1 FROM subscriptions WHERE tenant_id=:t AND status IN ('suspended','canceled') LIMIT 1"), {"t": tenant})).first()
+            from app.plan_permissions import has_feature
+            inactive = not await has_feature(db, tenant, "reception.ai")
             settings = (await db.execute(text("""SELECT c.bot_enabled AND t.bot_enabled AS enabled,t.timezone
                 FROM whatsapp_channels c JOIN tenants t ON t.id=c.tenant_id
                 WHERE c.tenant_id=:t AND c.id=:c"""), {"t": tenant, "c": channel})).mappings().first()

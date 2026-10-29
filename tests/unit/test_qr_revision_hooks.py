@@ -48,6 +48,8 @@ class RevisionRedis(MemoryRedis):
 
 @pytest.fixture
 def fenced(monkeypatch):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch,"elite")
     import redis.asyncio as redis_asyncio
     monkeypatch.setenv("QR_AI_INTAKE_REVISION_ENABLED", "1")
     redis=RevisionRedis();tenant=uuid4();writes=[];turns=[]

@@ -43,6 +43,8 @@ class ScopedRedis(RevisionRedis):
 
 @pytest.fixture
 def ingress(monkeypatch):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch,"elite")
     import redis.asyncio as redis_asyncio
     from app import automation_runtime
     a = identity(); b = replace(a, channel_id=uuid4())
@@ -336,6 +338,8 @@ async def test_domain_idempotency_and_receipt_identity_differ_between_channels_w
 @pytest.mark.asyncio
 @pytest.mark.parametrize("active", [True, False, None])
 async def test_managed_readiness_uses_authenticated_tenant_and_assistant_capability(monkeypatch, active):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch,"elite")
     from app import onboarding_service
     channel = identity(); seen = []
     class DB:

@@ -6,7 +6,7 @@ VIEWER só enxerga VIEWER_TENANT_ID configurado no servidor, nunca no payload.
 """
 import os
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -33,6 +33,7 @@ class Actor:
     tenant_id: UUID | None = None
     account_id: UUID | None = None
     membership_role: str | None = None
+    maintenance: bool = False
 
 
 async def scoped_account_actor(role: str, account_id: UUID | None, route_tenant, *, checked=None) -> Actor:
@@ -78,9 +79,10 @@ async def authenticate(request: Request, authorization: str | None = Header(defa
             verified_account = UUID(str(account_id)) if account_id else None
         except ValueError:
             raise HTTPException(401, "Sessão inválida") from None
-        return await scoped_account_actor(session["role"], verified_account,
-                                          request.path_params.get("tenant_id"),
-                                          checked=request.scope.get(ROUTE_MEMBERSHIP))
+        scoped = await scoped_account_actor(session["role"], verified_account,
+                                           request.path_params.get("tenant_id"),
+                                           checked=request.scope.get(ROUTE_MEMBERSHIP))
+        return replace(scoped, maintenance=bool((session.get("maintenance") or {}).get("active")))
     raise HTTPException(401, "Credenciais de operador inválidas", headers={"WWW-Authenticate": "Bearer"})
 
 
@@ -325,6 +327,12 @@ async def create_item(
         factory = get_session_factory()
         async with factory() as session:
             async with tenant_transaction(session, tenant_id):
+                if resource == "professionals":
+                    from app.plan_limits import ensure_professional_activation
+                    await ensure_professional_activation(session, tenant_id, values["active"])
+                    if {"commission_mode", "commission_percent"} & payload.keys():
+                        from app.plan_permissions import require_feature
+                        await require_feature(session, tenant_id, "commissions.advanced", lock="exclusive")
                 await ensure_tenant(session, tenant_id)
                 if resource == "professional_services":
                     from app.booking_service import acquire_professional_lock
@@ -379,12 +387,18 @@ async def replace_item(
         factory = get_session_factory()
         async with factory() as session:
             async with tenant_transaction(session, tenant_id):
+                if resource == "professionals":
+                    from app.plan_limits import ensure_professional_activation
+                    await ensure_professional_activation(session, tenant_id, values["active"], item_id)
+                    if {"commission_mode", "commission_percent"} & payload.keys():
+                        from app.plan_permissions import require_feature
+                        await require_feature(session, tenant_id, "commissions.advanced", lock="exclusive")
                 await ensure_tenant(session, tenant_id)
                 if resource == "professionals":
                     from app.booking_service import acquire_professional_lock
                     await acquire_professional_lock(session, tenant_id, item_id)
                     current = (await session.execute(text("""
-                        SELECT commission_mode,phone_e164 FROM professionals
+                        SELECT commission_mode,commission_percent,phone_e164 FROM professionals
                         WHERE tenant_id=:tenant AND id=:id FOR SHARE
                     """), {"tenant": tenant_id, "id": item_id})).mappings().one_or_none()
                     if current is None:
@@ -394,6 +408,8 @@ async def replace_item(
                         raise HTTPException(409, "Altere o modelo de comissão no cadastro de profissionais")
                     bind["commission_mode"] = current_mode
                     values["commission_mode"] = current_mode
+                    if "commission_percent" not in payload:
+                        bind["commission_percent"] = values["commission_percent"] = current["commission_percent"]
                     if "phone_e164" not in payload:
                         # Preserve a contact saved by a newer version of the UI.
                         bind["phone_e164"] = values["phone_e164"] = current["phone_e164"]

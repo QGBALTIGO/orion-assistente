@@ -1,6 +1,6 @@
 """API Orion: oito fatias técnicas, integrações externas opt-in."""
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 from app.catalog_api import router as catalog_router, list_services
 from app.booking_api import router as bookings_router
@@ -44,6 +44,7 @@ from app.inbox_control import router as inbox_control_router
 from app.inbox_conversations import router as inbox_conversations_router
 from app.communication_api import router as communication_router
 from app.workflow_drafts import router as workflow_drafts_router
+from app.plan_routing import include_plan_router, enforce_endpoint_plan
 
 app = FastAPI(
     title="Orion Barbearias",
@@ -76,57 +77,57 @@ async def health() -> dict[str, str]:
 
 
 app.add_api_route("/api/v1/tenants/{tenant_id}/services", list_services,
-                  methods=["GET"], tags=["Operação interna"])
-app.include_router(bookings_router)
-app.include_router(onboarding_router)
-app.include_router(commercial_router)
-app.include_router(whatsapp_router)
-app.include_router(integrations_router)
-app.include_router(ops_router)
-app.include_router(landing_router)
-app.include_router(sales_requests_router)
-app.include_router(billing_router)
-app.include_router(cakto_router)
-app.include_router(plan_management_router)
-app.include_router(direct_checkout_router)
-app.include_router(metrics_router)
-app.include_router(advanced_router)
-app.include_router(qr_router)
-app.include_router(panel_auth_router)
-app.include_router(account_auth_router)
-app.include_router(account_settings_router)
+                  methods=["GET"], tags=["Operação interna"], dependencies=[Depends(enforce_endpoint_plan)])
+include_plan_router(app, bookings_router)
+include_plan_router(app, onboarding_router)
+include_plan_router(app, commercial_router)
+include_plan_router(app, whatsapp_router)
+include_plan_router(app, integrations_router)
+include_plan_router(app, ops_router)
+include_plan_router(app, landing_router)
+include_plan_router(app, sales_requests_router)
+include_plan_router(app, billing_router)
+include_plan_router(app, cakto_router)
+include_plan_router(app, plan_management_router)
+include_plan_router(app, direct_checkout_router)
+include_plan_router(app, metrics_router)
+include_plan_router(app, advanced_router)
+include_plan_router(app, qr_router)
+include_plan_router(app, panel_auth_router)
+include_plan_router(app, account_auth_router)
+include_plan_router(app, account_settings_router)
 # Register the specific maintenance start route before the generic account-action route.
-app.include_router(maintenance_admin_router)
-app.include_router(maintenance_router)
-app.include_router(admin_accounts_router)
-app.include_router(groq_router)
-app.include_router(groq_audio_router)
-app.include_router(qr_ai_router)
-app.include_router(business_profile_router)
-app.include_router(account_business_router)
-app.include_router(management_router)
-app.include_router(management_blocks_router)
-app.include_router(management_ai_router)
-app.include_router(management_team_router)
-app.include_router(invitation_router)
-app.include_router(management_preferences_router)
+include_plan_router(app, maintenance_admin_router)
+include_plan_router(app, maintenance_router)
+include_plan_router(app, admin_accounts_router)
+include_plan_router(app, groq_router)
+include_plan_router(app, groq_audio_router)
+include_plan_router(app, qr_ai_router)
+include_plan_router(app, business_profile_router)
+include_plan_router(app, account_business_router)
+include_plan_router(app, management_router)
+include_plan_router(app, management_blocks_router)
+include_plan_router(app, management_ai_router)
+include_plan_router(app, management_team_router)
+include_plan_router(app, invitation_router)
+include_plan_router(app, management_preferences_router)
 from app.appointment_access_api import router as appointment_access_router
-app.include_router(appointment_access_router)
+include_plan_router(app, appointment_access_router)
 from app.appointment_communications_api import router as appointment_communications_router
-app.include_router(appointment_communications_router)
-app.include_router(public_site_router)
-app.include_router(service_packages_router)
-app.include_router(qr_channels_router)
-app.include_router(automation_router)
-app.include_router(qr_channel_audio_router)
-app.include_router(media_router)
-app.include_router(inbox_router)
-app.include_router(inbox_control_router)
-app.include_router(inbox_conversations_router)
-app.include_router(communication_router)
-app.include_router(workflow_drafts_router)
+include_plan_router(app, appointment_communications_router)
+include_plan_router(app, public_site_router)
+include_plan_router(app, service_packages_router)
+include_plan_router(app, qr_channels_router)
+include_plan_router(app, automation_router)
+include_plan_router(app, qr_channel_audio_router)
+include_plan_router(app, media_router)
+include_plan_router(app, inbox_router)
+include_plan_router(app, inbox_control_router)
+include_plan_router(app, inbox_conversations_router)
+include_plan_router(app, communication_router)
+include_plan_router(app, workflow_drafts_router)
 # Specific management paths must precede the legacy two-segment catalog path.
-app.include_router(catalog_router)
+include_plan_router(app, catalog_router)
 
 
 @app.get("/brand/{asset}", include_in_schema=False)

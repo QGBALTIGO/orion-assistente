@@ -101,7 +101,9 @@ async def test_ambiguous_registry_does_not_choose_or_create(native):
 
 
 @pytest.mark.asyncio
-async def test_deny_all_policy_cannot_activate_assistant(native):
+async def test_deny_all_policy_cannot_activate_assistant(native,monkeypatch):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch,"elite")
     state = native
     body = await channels.provision_connection(state.tenant, channels.ProvisionConnection(idempotency_key=uuid4()), Response(), state.actor)
     identity = state.db.canonical

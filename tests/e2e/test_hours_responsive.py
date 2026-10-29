@@ -2,6 +2,7 @@
 from pathlib import Path
 import pytest
 from playwright.sync_api import sync_playwright
+from scripts.plan_fixture import synthetic_plan_state
 
 ROOT = Path(__file__).resolve().parents[2]
 CSS = (ROOT / "app/static/orion-suite.css").read_text(encoding="utf-8")
@@ -47,13 +48,14 @@ def test_weekly_hours_has_edit_controls_no_horizontal_overflow(browser_name, wid
             page.add_script_tag(content=FIELDS_JS)
             page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=JS)
-            page.evaluate("""({pro,hour,breakId}) => {
+            page.evaluate("""({pro,hour,breakId,effectivePlan}) => {
               const tenant='10000000-0000-4000-8000-000000000001';
               window.OrionSuite.mount({
                 user:{role:'member',name:'Conta sintética',email:'test@example.invalid'},
                 tenants:[{id:tenant,name:'Empresa sintética',slug:'sintetica',timezone:'America/Campo_Grande',role:'owner'}],
                 tenantId:tenant,initialRoute:'funcionarios',
                 request:async (path,method='GET',data) => {
+                  if(path.endsWith('/management/permissions')&&method==='GET')return {effective_plan:effectivePlan};
                   if(path.endsWith('/professionals'))return [{id:pro,name:'Guilherme',active:true,commission_percent:0}];
                   if(path.endsWith('/working_hours'))return [
                     {id:hour,professional_id:pro,weekday:0,start_time:'09:00:00',end_time:'18:00:00'},
@@ -64,7 +66,8 @@ def test_weekly_hours_has_edit_controls_no_horizontal_overflow(browser_name, wid
                   return [];
                 },openLegacy(){},onRouteChange(){}
               });
-            }""", {"pro": PRO, "hour": HOUR, "breakId": BREAK})
+            }""", {"pro": PRO, "hour": HOUR, "breakId": BREAK,
+                    "effectivePlan": synthetic_plan_state('10000000-0000-4000-8000-000000000001')})
             assert page.evaluate("window.isSecureContext === true")
             assert page.evaluate("typeof crypto.randomUUID === 'function'")
             page.locator(f'[data-os-hours="{PRO}"]').click()

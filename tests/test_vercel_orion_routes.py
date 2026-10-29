@@ -308,11 +308,26 @@ class MemoryRedis:
         self.values[key] = value
         return True
 
-    async def delete(self, key):
-        self.values.pop(key, None)
+    async def delete(self, *keys):
+        removed = 0
+        for key in keys:
+            if key in self.values:
+                del self.values[key]
+                removed += 1
+        return removed
 
     async def aclose(self):
         pass
+
+
+class MemoryStorage:
+    """An in-memory S3 write sink, including the derived thumbnail write."""
+    def __init__(self):
+        self.objects = {}
+
+    def put_object(self, *, Bucket, Key, Body, ContentType, CacheControl):
+        self.objects[(Bucket, Key)] = {"Body": Body, "ContentType": ContentType,
+                                       "CacheControl": CacheControl}
 
 
 class RouteProxy:
@@ -363,7 +378,8 @@ def application(monkeypatch, config):
     redis = MemoryRedis()
     monkeypatch.setattr(panel_auth, "_redis", lambda: redis)
     stored, quotas = [], []
-    monkeypatch.setattr(media_api, "_storage", lambda: (object(), "synthetic-memory-only"))
+    storage = MemoryStorage()
+    monkeypatch.setattr(media_api, "_storage", lambda: (storage, "synthetic-memory-only"))
 
     async def quota(tenant):
         quotas.append(tenant)

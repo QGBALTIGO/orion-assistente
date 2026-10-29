@@ -37,6 +37,8 @@ class Rows(list):
 
 @pytest.fixture
 def meta(monkeypatch):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch,"elite")
     tenant,channel=uuid4(),uuid4()
     phone="+5567999999901"
     catalog=[{"id":uuid4(),"name":"Corte","duration_min":40,"price_cents":3500},

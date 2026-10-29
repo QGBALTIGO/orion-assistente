@@ -370,6 +370,8 @@ async def test_native_admin_cannot_enable_or_disable_primary_session(native, ena
 
 @pytest.mark.asyncio
 async def test_native_owner_can_control_primary_assistant_without_repairing_or_disabling_session(native, monkeypatch):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch,"elite")
     state = native
     row, _ = await registered(state)
     alias = qr_legacy.channel_id(state.tenant)

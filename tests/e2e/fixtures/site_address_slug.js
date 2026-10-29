@@ -3,7 +3,7 @@
   const originalFetch = window.fetch.bind(window);
   const copy = value => JSON.parse(JSON.stringify(value));
 
-  window.mountSiteAddressFixture = () => {
+  window.mountSiteAddressFixture = effectivePlan => {
     const tenant = '10000000-0000-4000-8000-000000000001';
     const prefix = '/api/v1/tenants/' + tenant + '/management/site';
     const fixture = window.siteAddressFixture = {
@@ -60,6 +60,7 @@
 
     const request = async (path, method = 'GET', data) => {
       fixture.calls.push({path, method, ...(data === undefined ? {} : {data: copy(data)})});
+      if(path.endsWith('/management/permissions')&&method==='GET')return {effective_plan:effectivePlan};
       const url = new URL(path, 'https://orion-fixture.invalid');
       if (url.pathname === prefix + '/publication' && method === 'GET') {
         return {state: 'ready', can_edit: true, can_publish: true, ready: true,

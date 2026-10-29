@@ -32,6 +32,7 @@ async def automation_db(monkeypatch):
     migration = create_async_engine(urls[1].replace("postgresql+psycopg://", "postgresql+asyncpg://", 1).replace("postgresql://", "postgresql+asyncpg://", 1), poolclass=NullPool)
     factory = async_sessionmaker(runtime_engine, expire_on_commit=False)
     tenant, other, account, channel, customer, campaign = (uuid4() for _ in range(6))
+    plan_admin = uuid4()
     offset = datetime.now(timezone.utc).hour-14
     zone = "Etc/GMT"+("+"+str(offset) if offset>0 else str(offset) if offset else "")
     for flag in ("MARKETING_EXECUTION_ENABLED", "BUSINESS_PROFILES_ENABLED"):
@@ -41,9 +42,15 @@ async def automation_db(monkeypatch):
     support_session_factory.cache_clear()
     preferences = {"automations": {"rules": [{"event": "loyalty_reward", "requested_enabled": True, "template": "Seu cupom: {cupom}"}]}, "business": {}}
     async with migration.begin() as db:
+        await db.execute(text("INSERT INTO panel_accounts(id,name,email,password_hash,role) VALUES(:id,'Admin de plano sintético',:email,'unused-synthetic','admin')"),
+                         {"id":plan_admin,"email":f"plan-admin-{plan_admin}@example.test"})
         await db.execute(text("INSERT INTO panel_accounts(id,name,email,password_hash) VALUES(:id,'Pessoa sintética',:email,'unused-synthetic')"), {"id": account, "email": f"automation-{account}@example.test"})
         for t in (tenant, other):
             await db.execute(text("INSERT INTO tenants(id,name,slug,timezone) VALUES(:id,'Empresa sintética',:slug,:zone)"), {"id": t, "slug": "automation-"+t.hex, "zone": zone})
+            await db.execute(text("""INSERT INTO tenant_plan_controls
+                (tenant_id,manual_plan_code,manual_started_at,manual_actor_id)
+                VALUES(:t,'profissional',clock_timestamp()-interval '1 day',:admin)"""),
+                {"t":t,"admin":plan_admin})
         await db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role) VALUES(:t,:a,'owner')"), {"t": tenant, "a": account})
         await db.execute(text("""INSERT INTO qr_channels(id,tenant_id,owner_account_id,provider,label,credential_hash,credential_encrypted,
             allowed_senders,enabled,idempotency_key,request_fingerprint) VALUES(:id,:t,:a,'baileys','Canal sintético',:hash,'unused',CAST(:senders AS jsonb),true,:key,:hash)"""),
@@ -65,13 +72,15 @@ async def automation_db(monkeypatch):
     finally:
         async with migration.begin() as db:
             for t in (tenant, other):
+                await db.execute(text("UPDATE tenants SET whatsapp_channel_id=NULL WHERE id=:t"),{"t":t})
                 for table in ("communication_pending", "automation_jobs", "automation_contact_state", "automation_execution", "loyalty_coupons", "loyalty_rules",
                               "campaign_recipients", "campaigns", "contact_consents", "management_requests", "management_preferences",
                               "tenant_audit", "qr_channels", "tenant_memberships", "appointment_history", "calendar_outbox",
-                              "appointment_items", "appointments", "professionals", "customers"):
+                              "appointment_items", "appointments", "professionals", "customers", "tenant_plan_audit", "tenant_plan_controls"):
                     await db.execute(text(f"DELETE FROM {table} WHERE tenant_id=:t"), {"t": t})
                 await db.execute(text("DELETE FROM tenants WHERE id=:t"), {"t": t})
             await db.execute(text("DELETE FROM panel_accounts WHERE id=:a"), {"a": account})
+            await db.execute(text("DELETE FROM panel_accounts WHERE id=:a"), {"a": plan_admin})
         await runtime_engine.dispose(); await migration.dispose(); support_session_factory.cache_clear()
 
 
@@ -91,6 +100,23 @@ async def queue(ctx, key=None, *, event="campaign", facts=None, labels=None):
 
 async def process(ctx, item, sender=None):
     return await runtime.process_automation_job({"automation_sender": sender or ctx.sender}, str(ctx.tenant), str(item["id"]))
+
+
+@pytest.mark.asyncio
+async def test_persisted_campaign_downgrade_cancels_job_without_outbound_attempt(automation_db):
+    ctx = automation_db
+    created,item = await queue(ctx,"synthetic-plan-downgrade")
+    assert created and item["status"] == "pending"
+    async with ctx.migration.begin() as db:
+        await db.execute(text("""UPDATE tenant_plan_controls SET manual_plan_code='essencial',
+            version=version+1,updated_at=clock_timestamp() WHERE tenant_id=:t"""),{"t":ctx.tenant})
+    assert await process(ctx,item) == "plan_feature_unavailable"
+    assert not ctx.sent
+    async with ctx.migration.connect() as db:
+        row=(await db.execute(text("SELECT status,last_error,attempted_at FROM automation_jobs WHERE tenant_id=:t AND id=:id"),
+            {"t":ctx.tenant,"id":item["id"]})).mappings().one()
+    assert row["status"] == "cancelled" and row["last_error"] == "plan_feature_unavailable"
+    assert row["attempted_at"] is None
 
 
 @pytest.mark.asyncio

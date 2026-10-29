@@ -257,6 +257,40 @@ def distribute(index, companies, wide=False):
     return (index // 5) % min(5, companies) if index % 5 < 2 else index % companies
 
 
+def seed_fixture_plans(sandbox, db, tenants):
+    """License synthetic tenants only in this newly created disposable database.
+
+    Historical migration fixtures have no plan table and remain unchanged.
+    This is fixture data, never an exception to the production plan resolver.
+    """
+    if db.execute(text("SELECT to_regclass('public.tenant_plan_controls') IS NOT NULL")).scalar_one() is not True:
+        return 0
+    if (not isinstance(sandbox, DisposableDatabase) or not isinstance(sandbox.oid, int)
+            or not re.fullmatch(r"orion_qualification_[0-9a-f]{32}", sandbox.name)
+            or db.engine is not sandbox.engine):
+        raise ValueError("Synthetic plan grants require a created disposable database")
+    local_url(sandbox.engine.url, role="postgres", database=sandbox.name)
+    identity = db.execute(text("""SELECT current_database() AS database_name,
+        current_user AS role_name,oid,pg_get_userbyid(datdba) AS owner_name
+        FROM pg_database WHERE datname=current_database()""")).mappings().one()
+    if (identity["database_name"] != sandbox.name or identity["oid"] != sandbox.oid
+            or identity["role_name"] != "postgres" or identity["owner_name"] != "postgres"):
+        raise ValueError("Disposable database identity changed; refusing synthetic grants")
+    if db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() != "0050_plan_permissions":
+        raise ValueError("Synthetic plan fixture requires its reviewed schema")
+    actor = uuid4()
+    db.execute(text("""INSERT INTO panel_accounts(id,name,email,password_hash,role)
+        VALUES(:id,'Synthetic qualification plan administrator',:email,'fixture-only-no-login','admin')"""),
+        {"id":actor,"email":f"qualification-plan-{actor.hex}@example.test"})
+    for tenant in tenants:
+        db.execute(text("""INSERT INTO tenant_plan_controls
+            (tenant_id,manual_plan_code,manual_started_at,manual_actor_id,manual_reason)
+            VALUES(:tenant,'elite',clock_timestamp()-interval '1 day',:actor,
+                'Explicit synthetic qualification fixture; no billing or provider activity')"""),
+            {"tenant":tenant,"actor":actor})
+    return len(tenants)
+
+
 def seed_database(sandbox, users, companies, wide=False, *, simulated_channels=False):
     tenants = [uuid4() for _ in range(companies)]
     services = [uuid4() for _ in tenants]
@@ -274,6 +308,7 @@ def seed_database(sandbox, users, companies, wide=False, *, simulated_channels=F
             db.execute(text("""INSERT INTO commercial_variants(id,tenant_id,product_id,name,price_kind,unit_price_cents,active)
                 VALUES(:id,:t,:p,'Synthetic variant','fixed',2500,true)"""), {"id":variants[n],"t":tenant,"p":product})
             db.execute(text("INSERT INTO commercial_inventory(tenant_id,variant_id) VALUES(:t,:v)"), {"t":tenant,"v":variants[n]})
+        licensed = seed_fixture_plans(sandbox, db, tenants)
         for n in range(users):
             company = distribute(n, companies, wide); tenant = tenants[company]
             account, professional = uuid4(), uuid4()
@@ -318,12 +353,15 @@ def seed_database(sandbox, users, companies, wide=False, *, simulated_channels=F
                     VALUES(:t,:a,:s,'Synthetic appointment',30,3500,0,0,0)"""), {"t": tenant, "a": appointment, "s": services[n]})
                 db.execute(text("INSERT INTO appointment_history(tenant_id,appointment_id,event,operator) VALUES(:t,:a,'confirmed','system')"), {"t": tenant, "a": appointment})
     distribution = Counter(distribute(n, companies, wide) for n in range(users))
-    return people, {"companies": companies, "operators": users, "professionals": users,
+    inventory = {"companies": companies, "operators": users, "professionals": users,
                     "services": companies, "products": companies, "historical_appointments": companies*10,
                     "distribution_version": 2, "concentrated_additional_companies": None if wide else min(5, companies),
                     "operators_per_company": [distribution[index] for index in range(companies)],
                     "simulated_disabled_channel_records":companies*2 if simulated_channels else 0,
                     "actual_whatsapp_sessions": 0, "audio_percent": 0, "external_provider_requests": 0}
+    if licensed:
+        inventory["fixture_plan"] = {"code":"elite","source":"manual","companies":licensed,"synthetic_admin":True}
+    return people, inventory
 
 
 async def request(client, metrics, stage, person, operation, method, path, *, body=None, expected=(200,), due=None):

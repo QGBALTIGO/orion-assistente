@@ -510,6 +510,8 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
     elif expected_snapshot is not None:
         fail(422, "A substituição exige a reserva temporária")
     async with tenant_transaction(s, tenant):
+        from app.plan_permissions import require_feature
+        await require_feature(s, tenant, "agenda.manage")
         await _engine_professional_lock(s, tenant, professional, nonblocking=nonblocking_professional_lock)
         if not supplied_clock:
             now = datetime.now(UTC)
@@ -618,6 +620,8 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
     expired = False
     result = None
     async with tenant_transaction(s, tenant):
+        from app.plan_permissions import require_feature
+        await require_feature(s, tenant, "agenda.manage")
         row = (await s.execute(text("""
             SELECT professional_id FROM appointments
             WHERE tenant_id=:tenant AND id=:id

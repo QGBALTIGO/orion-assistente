@@ -123,8 +123,13 @@ def test_quick_release_is_in_existing_predeploy_chain_and_rechecks_current_schem
     monkeypatch.setattr(accounts,"main",lambda:calls.append("admin-accounts") or 0)
     monkeypatch.setattr(single,"main",lambda:calls.append("single-whatsapp") or 0)
     monkeypatch.setattr(cakto,"main",lambda:calls.append("cakto") or 0)
+    from scripts import backup_and_migrate_plans as plans, backup_and_migrate_direct_checkout as direct
+    from scripts import backup_and_migrate_appointment_communications as appointment, backup_and_migrate_plan_permissions as permissions
+    monkeypatch.setenv('ORION_RUN_APPOINTMENT_COMMUNICATION_MIGRATION','1')
+    for module,label in ((plans,'plans'),(direct,'direct'),(appointment,'appointment'),(permissions,'permissions')):
+        monkeypatch.setattr(module,'main',lambda label=label:calls.append(label) or 0)
     assert registration.predeploy_main()==0
-    assert calls==["quick","admin-accounts","cakto","single-whatsapp"]
+    assert calls==["quick","admin-accounts","cakto","single-whatsapp","plans","direct","appointment","permissions"]
 
     monkeypatch.setattr(quick,"connection_values",lambda:("synthetic",object()))
     monkeypatch.setattr(quick,"migrated_version",lambda _:quick.TARGET)

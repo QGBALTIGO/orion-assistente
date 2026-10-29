@@ -1,103 +1,172 @@
-name: Orion — Plano/Cakto e teste grátis
+name: Orion — Planos, permissões e preservação
 on:
   pull_request:
     paths:
-      - "app/plan_management.py"
-      - "app/cakto_api.py"
-      - "app/main.py"
-      - "app/static/orion-plans.js"
-      - "app/static/orion-plans.css"
-      - "app/static/orion-suite.js"
-      - "app/static/panel.html"
-      - "alembic/versions/0045_plan_trials_checkout.py"
-      - "scripts/backup_and_migrate_plans.py"
+      - "app/**"
+      - "alembic/versions/*plan*.py"
+      - "scripts/*plan*.py"
       - "scripts/backup_and_migrate_registration.py"
-      - "tests/unit/test_plan_management.py"
-      - "tests/integration/test_plan_trials_postgres.py"
-      - "ui-tests/orion-plans.test.mjs"
-      - "tests/e2e/browser_plans_responsive.py"
+      - "scripts/backup_and_migrate_cakto.py"
+      - "scripts/backup_and_migrate_direct_checkout.py"
+      - "scripts/start_api.py"
+      - "tests/**"
+      - "ui-tests/**"
       - ".github/workflows/orion-plans-review.yml"
   push:
     branches: [main]
 permissions:
   contents: read
+env:
+  CAKTO_BILLING_LIVE_ENABLED: '0'
+  ORION_DIRECT_PAYMENTS_ENABLED: '0'
+  META_LIVE_SEND: '0'
+  QR_BRIDGE_URL: ''
+  QR_AI_ENABLED: '0'
+  INBOX_SEND_ENABLED: '0'
+  MARKETING_EXECUTION_ENABLED: '0'
+  ORION_AUTO_COMPLETE_APPOINTMENTS: '0'
+  PYTHONUTF8: '1'
 jobs:
   unit-ui:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 12
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Python dependencies
-        run: python -m pip install -c requirements.lock ".[test]"
-      - name: JavaScript syntax / native DOM
-        run: |
-          node --check app/static/orion-plans.js
-          node --check app/static/orion-suite.js
-          npm ci --prefix ui-tests --no-audit --no-fund
-          node --test ui-tests/orion-plans.test.mjs
-      - name: Billing and plan isolated unit contracts
-        run: |
-          python -m py_compile app/cakto_api.py app/plan_management.py scripts/backup_and_migrate_plans.py
-          pytest -q -ra tests/unit/test_cakto_integration.py tests/unit/test_plan_management.py
-  postgres:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 17
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: barber_saas
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ci-postgres-only
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U postgres -d barber_saas"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 20
-    env:
-      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
-      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
-      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
-      SUPPORT_API_TOKEN: test-support-ci-token-of-64-characters-000000000000000000000000000
-      REQUIRE_POSTGRES_TESTS: "1"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Python dependencies
-        run: python -m pip install -c requirements.lock ".[test]"
-      - name: PostgreSQL restricted roles
-        env:
-          PGPASSWORD: ci-postgres-only
-        run: |
-          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
-            -v db_name=barber_saas -v runtime_password=ci-runtime-only \
-            -v migrator_password=ci-migrator-only -v support_password=ci-support-only \
-            -f infra/postgres/init/001-roles.sql
-      - name: Apply all migrations, including plan schema
-        run: alembic upgrade head
-      - name: PostgreSQL real RLS and trial lifecycle without real customers
-        run: pytest -q -ra tests/integration/test_plan_trials_postgres.py tests/integration/test_cakto_postgres.py tests/integration/test_billing.py
-
-  browser-responsive:
+    name: Resolver, políticas, runtime e DOM sintético
     runs-on: ubuntu-24.04
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Install isolated Playwright browser
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependências fixadas
         run: |
-          python -m pip install -r tests/e2e/requirements.txt
-          python -m playwright install --with-deps chromium
-      - name: Verify real Chromium at seven widths in light and dark
+          python -m pip install -c requirements.lock '.[test]'
+          python -m pip check
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Sintaxe Python e JavaScript
+        run: |
+          python -m compileall -q app scripts/plans_preview.py scripts/backup_and_migrate_plan_permissions.py scripts/wait_for_plan_permissions_schema.py tests/run_isolated_plan_tests.py
+          node --check app/static/orion-plans.js
+          node --check app/static/orion-suite.js
+          node --check app/static/orion-admin-center.js
+          node --check app/static/orion-appointment-communications.js
+      - name: DOM dos componentes e consumidores relacionados
+        run: |
+          node --test ui-tests/orion-plans.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/admin-plan-management.test.mjs ui-tests/fields-core.test.mjs ui-tests/fields-auth.test.mjs ui-tests/fields-onboarding-channels.test.mjs ui-tests/onboarding-panel-integration.test.mjs ui-tests/mobile-atendimento.test.mjs ui-tests/channels.test.mjs ui-tests/channels-pairing.test.mjs
+      - name: Unidades com rede externa bloqueada
+        run: |
+          python tests/run_isolated_plan_tests.py -q -ra \
+            tests/unit/test_plan_permissions.py tests/unit/test_plan_routing.py \
+            tests/unit/test_appointment_pilot.py tests/unit/test_onboarding_goals.py tests/unit/test_professional_phone_release.py \
+            tests/unit/test_plan_permissions_release.py \
+            tests/unit/test_plan_preview_fixture.py tests/unit/test_management_unit.py tests/unit/test_automation_composition_contract.py \
+            tests/load/test_qualification_plan_fixture.py \
+            tests/unit/test_plan_runtime_enforcement.py tests/unit/test_manual_plan_management.py \
+            tests/unit/test_maintenance_access.py tests/unit/test_plan_management.py \
+            tests/unit/test_checkout_manual_priority.py \
+            tests/unit/test_cakto_integration.py tests/unit/test_automation_runtime.py \
+            tests/unit/test_automation_policy.py tests/unit/test_automation_api.py \
+            tests/unit/test_automation_transport.py tests/unit/test_professional_commissions.py \
+            tests/unit/test_onboarding_gates.py tests/unit/test_brazilian_form_contracts.py \
+            tests/unit/test_preview_audio.py tests/unit/test_qr_channels_scope.py \
+            tests/unit/test_qr_channels_human_pause.py tests/unit/test_qr_multi_flow.py \
+            tests/unit/test_qr_followup_context.py tests/unit/test_qr_revision_hooks.py \
+            tests/unit/test_qr_cancellation.py tests/unit/test_whatsapp_dialogue.py \
+            tests/unit/test_unified_inbox.py
+  postgres:
+    name: PostgreSQL 16 real, concorrência, downgrade e release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: orion_plans_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-plans-postgres-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d orion_plans_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-plans-runtime-only@127.0.0.1:5432/orion_plans_test
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-plans-migrator-only@127.0.0.1:5432/orion_plans_test
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-plans-support-only@127.0.0.1:5432/orion_plans_test
+      SUPPORT_API_TOKEN: synthetic-plan-ci-support-token-of-at-least-32-characters
+      REQUIRE_POSTGRES_TESTS: '1'
+      REDIS_URL: redis://127.0.0.1:6379/15
+      REQUIRE_REDIS_TESTS: '1'
+      ORION_MIGRATION_TEST_OWNER_URL: postgresql+psycopg://postgres:ci-plans-postgres-only@127.0.0.1:5432/postgres
+      ORION_REQUIRE_MIGRATION_OPS_TEST: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dependências fixadas
+        run: |
+          python -m pip install -c requirements.lock '.[test]'
+          python -m pip check
+      - name: Papéis separados e cadeia completa de migrations
+        env:
+          PGPASSWORD: ci-plans-postgres-only
+        run: |
+          psql -h 127.0.0.1 -U postgres -d orion_plans_test -v ON_ERROR_STOP=1 \
+            -v db_name=orion_plans_test -v runtime_password=ci-plans-runtime-only \
+            -v migrator_password=ci-plans-migrator-only -v support_password=ci-plans-support-only \
+            -f infra/postgres/init/001-roles.sql
+          python -m alembic upgrade head
+      - name: Release e bootstrap reais primeiro, em processo separado
+        run: python tests/run_isolated_plan_tests.py -q -ra --maxfail=1 tests/integration/test_plan_permissions_release_postgres.py
+      - name: RLS, ativação atômica e filas sem saídas externas
+        run: |
+          python tests/run_isolated_plan_tests.py -q -ra \
+            tests/integration/test_manual_plan_permissions_postgres.py \
+            tests/integration/test_manual_checkout_priority_postgres.py \
+            tests/integration/test_qualification_plan_fixture_postgres.py \
+            tests/integration/test_plan_runtime_postgres.py tests/integration/test_automation_postgres.py \
+            tests/integration/test_plan_trials_postgres.py tests/integration/test_cakto_postgres.py \
+            tests/integration/test_qr_single_connection_postgres.py \
+            tests/integration/test_billing.py tests/integration/test_booking.py \
+            tests/integration/test_onboarding_postgres.py tests/integration/test_management.py \
+            tests/integration/test_professional_archival_pg.py tests/integration/test_public_catalog.py \
+            tests/integration/test_admin_maintenance_pg.py
+  browser-responsive:
+    name: Painel real — ${{ matrix.engine }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Navegador isolado e dependências E2E
+        run: |
+          python -m pip install -r tests/e2e/requirements.txt pytest
+          python -m playwright install --with-deps ${{ matrix.engine }}
+      - name: Seis dimensões e dois temas, contas e planos sintéticos
+        env:
+          PLAN_EVIDENCE_DIR: ${{ runner.temp }}/orion-plan-permissions
+        run: python -m pytest -q -ra --maxfail=1 tests/e2e/browser_plan_permissions.py -k '${{ matrix.engine }}'
+      - name: Preservar smoke existente do catálogo em sete larguras
+        if: matrix.engine == 'chromium'
         run: python tests/e2e/browser_plans_responsive.py
+      - name: Capturas e metadados do viewport efetivo
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orion-plan-permissions-${{ matrix.engine }}
+          path: ${{ runner.temp }}/orion-plan-permissions/
+          if-no-files-found: error
+          retention-days: 7

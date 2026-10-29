@@ -1,5 +1,6 @@
 from datetime import datetime,timedelta,timezone,date
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 import pytest
 
@@ -101,6 +102,8 @@ def test_approved_literal_custom_link_keeps_exact_custom_body():
 
 @pytest.mark.asyncio
 async def test_human_notice_goes_to_team_only_without_send_or_customer_job(monkeypatch):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch, "essencial")
     from app import automation_runtime as runtime
     calls=[]
     class DB:
@@ -113,7 +116,7 @@ async def test_human_notice_goes_to_team_only_without_send_or_customer_job(monke
     monkeypatch.setattr(runtime,'datetime',Clock)
     async def contact(*args):return {'operational_opt_in':True},{'human_paused':True}
     monkeypatch.setattr(runtime,'contact_facts',contact)
-    result=await runtime.queue_notification(DB(),'tenant',{'timezone':'UTC','approved_at':NOW-timedelta(minutes=1)},
+    result=await runtime.queue_notification(DB(),uuid4(),{'timezone':'UTC','approved_at':NOW-timedelta(minutes=1)},
         {'preferences':{'automations':{'rules':[{'event':'cancelled','requested_enabled':True,'template':'{protocolo}'}]}}},
         {'whatsapp_e164':'+5567999999901'},'cancelled','cancel-synthetic',{'status':'cancelled','occurred_at':NOW},FACTS)
     assert result is False

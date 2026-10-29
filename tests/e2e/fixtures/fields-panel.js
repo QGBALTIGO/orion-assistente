@@ -1,5 +1,5 @@
 /* Synthetic bridge shared by the native-field regression. No production fetch. */
-() => {
+({effectivePlan}) => {
   window.OrionFields.bind(document);
   const tenant='10000000-0000-4000-8000-000000000001';
   const professionalId='20000000-0000-4000-8000-000000000001';
@@ -33,6 +33,7 @@
     throw Error('Unexpected fetch in isolated fields fixture: '+url.pathname);
   };
   const request=async(path,method='GET',data)=>{
+    if(path.endsWith('/management/permissions')&&method==='GET')return {effective_plan:effectivePlan};
     if(method!=='GET'){
       writes.push({path,method,data:structuredClone(data)});
       if(path.includes('/customers/'))return Object.assign(customer,data,{version:customer.version+1});

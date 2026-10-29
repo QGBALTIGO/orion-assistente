@@ -53,6 +53,11 @@ async def test_structured_address_persists_and_legacy_put_does_not_erase_new_fie
 @pytest.mark.asyncio
 async def test_address_namespace_and_business_automation_writes_compose_concurrently(public_db):
     d = public_db
+    # This composition scenario edits monthly goals and recovery settings in
+    # addition to the Essencial site fields covered by the remaining tests.
+    async with d["migrator"].begin() as db:
+        await db.execute(text("UPDATE tenant_plan_controls SET manual_plan_code='profissional',version=version+1 WHERE tenant_id=:tenant"),
+                         {"tenant":d["a"]})
     business = BusinessPreferences(monthly_goal_cents=10000, legal_name="Empresa privada").model_dump()
     first = await preference_section(d, "business", business, 0)
     await save_site(d, address="Rua Primeira", address_number="10", neighborhood="Centro")

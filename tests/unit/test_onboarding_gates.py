@@ -101,6 +101,8 @@ async def test_real_order_validation_calls_guard_even_without_fulfillment_select
 
 @pytest.mark.asyncio
 async def test_new_booking_gate_precedes_customer_hold_or_expiration_writes(monkeypatch):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch,"essencial")
     from app import booking_service as booking
     queries = []
     class BookingDB:

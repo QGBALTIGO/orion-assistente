@@ -460,6 +460,8 @@ async def test_real_cancel_turn_cannot_accept_same_ingress_id_or_write_in_previe
 
 @pytest.mark.asyncio
 async def test_cancel_completed_before_late_ingress_is_preserved_in_receipt_not_replayed(routed_cancellation, monkeypatch):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch,"elite")
     import redis.asyncio as redis_asyncio
     from test_qr_revision_hooks import RevisionRedis
     from app import qr_operation_receipt

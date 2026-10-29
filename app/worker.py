@@ -5,6 +5,7 @@ canal conectado, token por canal decifrado e janela Meta permitida. Não há
 broadcast nem envio automático de templates fora da janela nesta versão.
 """
 import os
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -114,7 +115,18 @@ async def recover_events(ctx: dict):
     return len(pending)
 
 
+async def startup_plan_permissions(ctx):
+    # ARQ awaits this before consuming jobs; API predeploy performs the only
+    # privileged migration/bootstrap. Existing workers continue normally.
+    from scripts.wait_for_agenda_schema import Settings
+    from scripts.wait_for_plan_permissions_schema import wait_for_schema
+    await wait_for_schema(Settings.from_environment())
+    ctx['plan_permissions_ready'] = True
+    logging.getLogger(__name__).info('orion_plan_permissions_0050_worker_ready')
+
+
 class WorkerSettings:
+    on_startup = startup_plan_permissions
     functions = [func(process_appointment_notification,name='process_appointment_notification'),infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,process_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message,process_email_outbox]
     cron_jobs = [cron(cleanup_notification_payloads, minute={13}, second={10}),cron(scan_appointment_notifications, minute=set(range(60)), second={0,15,30,45}),
                  cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
@@ -177,6 +189,9 @@ def bounded_answer(answer):
 
 
 async def _event_answer(tenant,event,claim,redis):
+    from app.plan_permissions import tenant_has_feature
+    if not await tenant_has_feature(tenant, "reception.ai"):
+        return None
     from app.communication_events import bind_meta,event_reply,needs_review,invalidate_proposal
     from app.whatsapp_bot import state_key
     from fastapi import HTTPException
@@ -195,6 +210,8 @@ async def _event_answer(tenant,event,claim,redis):
                     if needs_review(meta) or repair:
                         await invalidate_proposal(redis,state_key(str(tenant),str(claim['channel_id']),claim['sender_e164']))
                     answer=repair if repair is not None else await reply(tenant,claim['channel_id'],claim['sender_e164'],claim['message_text'],redis,message_id=str(event))
+                    if not await tenant_has_feature(tenant, "reception.ai"):
+                        return None
                     async with get_session_factory()() as db:
                         async with tenant_transaction(db,tenant):pass
                     return answer or None
@@ -204,4 +221,7 @@ async def _event_answer(tenant,event,claim,redis):
                 raise
     except HTTPException as exc:
         if exc.status_code==409: return None
+        if (exc.status_code==403 and isinstance(exc.detail,dict)
+                and exc.detail.get("code")=="PLAN_FEATURE_UNAVAILABLE"):
+            return None
         raise

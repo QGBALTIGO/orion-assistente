@@ -29,6 +29,9 @@ async def test_quick_goals_are_required_then_saved_once_and_completed_without_fa
     ctx = new_business_context(onboarding_db)
     created = await service.create_business(ctx.actor, creation())
     tenant = UUID(created["tenant_id"])
+    from plan_fixtures import seed_fixture_plan
+    async with ctx.migration.begin() as db:
+        ctx.plan_admins.append(await seed_fixture_plan(db,(tenant,),"essencial"))
     address = await save(ctx, created, "location", {"modality": "online"})
     profiled = await save(ctx, address, "profile", METRICS)
     assert profiled["current_step"] == "goals"

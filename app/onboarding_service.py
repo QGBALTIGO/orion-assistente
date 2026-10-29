@@ -647,7 +647,11 @@ async def _edit_guard(db, tenant, table, item_id, expected):
 
 
 async def _save_simple(db, tenant, meta, table, data, expected=None):
+    if table == "professionals":
+        from app.plan_limits import lock_professionals
+        await lock_professionals(db, tenant, setup_draft=not meta.get("completed_at"))
     values = dict(data)
+    current = None
     item_id = values.pop("id", None)
     values.pop("expected_fingerprint", None)
     if item_id:
@@ -661,6 +665,19 @@ async def _save_simple(db, tenant, meta, table, data, expected=None):
     if str(item_id) in meta["managed_ids"].get(table, {}) and not meta["completed_at"]:
         meta["managed_ids"][table][str(item_id)] = requested_active
         values["active"] = False
+    if table == "professionals":
+        from decimal import Decimal
+        changes_commission = (
+            "commission_mode" in values and values["commission_mode"] != (current["commission_mode"] if current else "percent")
+            or "commission_percent" in values and Decimal(str(values["commission_percent"])) != Decimal(str(current["commission_percent"] if current else 0))
+        )
+        if changes_commission:
+            from app.plan_permissions import require_feature
+            await require_feature(db, tenant, "commissions.advanced", lock="exclusive")
+        from app.plan_limits import ensure_professional_activation
+        await ensure_professional_activation(db, tenant, values.get("active", current["active"] if current else False),
+                                             item_id if data.get("id") else None,
+                                             setup_draft=not meta.get("completed_at"))
     params = {**values, "t": tenant, "id": item_id}
     fields = list(values)
     if isinstance(params.get("commission_percent"), str):
@@ -933,6 +950,8 @@ async def complete(actor, tenant, payload):
     async with access_session(actor, tenant, write=True) as access:
         async with get_session_factory()() as db:
             async with tenant_transaction(db, tenant):
+                from app.plan_permissions import lock_plan
+                await lock_plan(db, tenant, exclusive=True)
                 meta = await _lock_meta(db, tenant, actor)
                 if await _replay(db, tenant, actor, payload.idempotency_key, fingerprint):
                     return await _state(db, tenant, access)
@@ -952,6 +971,8 @@ async def complete(actor, tenant, payload):
                                     goals_required=bool(quick_setup and not meta["completed_at"]))
                 if pending:
                     raise HTTPException(409, {"message": "Complete os fatos pendentes antes de concluir", "pending": pending})
+                from app.plan_limits import ensure_professional_batch
+                await ensure_professional_batch(db, tenant, meta["managed_ids"].get("professionals", {}), setup_activation=True)
                 for table in ("professionals", "services", "commercial_products", "commercial_variants"):
                     for item_id, requested in meta["managed_ids"].get(table, {}).items():
                         await db.execute(text(f"UPDATE {table} SET active=:active WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": UUID(item_id), "active": bool(requested)})
@@ -971,6 +992,12 @@ async def complete(actor, tenant, payload):
                     else:
                         await db.execute(text("SELECT public.onboarding_activate_tenant(:t)"),
                                          {"t": tenant})
+                # A new business is intentionally paused while drafts are
+                # prepared. The activation and entitlement/capacity check are
+                # one transaction: no grant or an expired grant rolls back
+                # every staged activation and keeps the company paused.
+                from app.plan_permissions import require_feature
+                await require_feature(db, tenant, "professionals.manage", lock="exclusive")
                 return await _state(db, tenant, access)
 
 

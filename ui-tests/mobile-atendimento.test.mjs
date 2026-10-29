@@ -269,7 +269,8 @@ test('manual sending locks only its transport attempt and clears only the review
   h.submit('#sendForm'); await flush(); h.click('#actionConfirmAccept'); await flush();
   const transport = writes(h); assert.equal(transport.length, 1);
   assert.equal(transport[0].path, '/api/v1/qr/send');
-  assert.deepEqual(transport[0].data, { phone: phoneA, text: reviewedText });
+  assert.deepEqual(transport[0].data, { phone: phoneA, text: reviewedText, operation_id: transport[0].data.operation_id });
+  assert.match(transport[0].data.operation_id,/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.equal(transport[0].options.headers['X-Orion-CSRF'], 'synthetic-mobile-csrf');
   for (const id of ['chatPhone', 'chatText', 'chatBack', 'chatNew', 'chatSearch']) {
     assert.equal(h.element('#' + id).disabled, true, id + ' remains locked until the attempted transport resolves');

@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 
 import pytest
 from playwright.sync_api import expect, sync_playwright
+from scripts.plan_fixture import synthetic_plan_state
 
 from test_finance_responsive import HTML
 
@@ -54,7 +55,7 @@ def test_native_fields_units_errors_and_all_visible_control_geometry(engine,widt
                 page.add_style_tag(content=(ROOT/'app/static'/name).read_text(encoding='utf-8'))
             for name in ('orion-fields.js','orion-suite.js'):
                 page.add_script_tag(content=(ROOT/'app/static'/name).read_text(encoding='utf-8'))
-            page.evaluate(INITIALIZE)
+            page.evaluate(INITIALIZE, {"effectivePlan": synthetic_plan_state('10000000-0000-4000-8000-000000000001')})
 
             def form(kind):
                 node=page.locator(f'[data-os-form="{kind}"]')

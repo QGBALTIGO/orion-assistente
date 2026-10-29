@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { JSDOM, VirtualConsole } from 'jsdom';
-import { defaultResponse, flush, tenantA } from './harness.mjs';
+import { defaultResponse, flush, tenantA, planState } from './harness.mjs';
 
 // The complete shipped DOM and both controllers run here. Only browser
 // primitives and HTTP responses are synthetic; no request reaches a network.
@@ -12,7 +12,7 @@ export const jsonResponse = (body, status = 200) => new Response(
 );
 
 export async function makePanel({ role = 'support', tenantRole = 'owner',
-  initialRoute = 'dispositivo', width = 390, deviceStatus = 'starting', respond } = {}) {
+  initialRoute = 'dispositivo', width = 390, deviceStatus = 'starting', permissions=planState(), respond } = {}) {
   const html = await readFile(new URL('../app/static/panel.html', import.meta.url), 'utf8');
   const suite = await readFile(new URL('../app/static/orion-suite.js', import.meta.url), 'utf8');
   const virtualConsole = new VirtualConsole(), errors = [], calls = [], intervals = new Map();
@@ -71,7 +71,7 @@ export async function makePanel({ role = 'support', tenantRole = 'owner',
     const path = url.pathname + url.search, method = options.method || 'GET';
     const data = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
     const call = { path, method, data, options }; calls.push(call);
-    const supplied = await respond?.(path, method, data, options);
+    const supplied = path.endsWith('/management/permissions')?(typeof permissions==='function'?await permissions(path):{effective_plan:permissions}):await respond?.(path, method, data, options);
     if (method !== 'GET' && supplied === undefined && path !== '/auth/logout') {
       const error = new Error('An explicit synthetic response is required for ' + method + ' ' + path);
       errors.push(error); throw error;
