@@ -24,14 +24,14 @@ def _recent(value: object, now: datetime) -> bool:
         recorded = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if recorded.tzinfo is None:
             return False
-        return now - timedelta(hours=24) <= recorded <= now + timedelta(minutes=5)
+        return now - timedelta(days=90) <= recorded <= now + timedelta(minutes=5)
     except (ValueError, TypeError, OverflowError):
         return False
 
 
 def history_coverage(offers: list, history: list, secret: str,
                      *, now: datetime | None = None) -> dict:
-    """Only counts. A positive result needs recent, signed, provider-recorded 2xx.
+    """Only counts. A positive result needs recent (90-day), signed, provider-recorded 2xx.
 
     A V2 webhook is registered for a product, not once per offer. Three offers
     attached to one product can all be covered by the same real delivery.
