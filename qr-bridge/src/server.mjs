@@ -430,6 +430,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
             seen.add(key);
             if(seen.size>2000)seen.delete(seen.values().next().value);
             try{
+              if(legacyCentral.configured())await legacyCentral.resume();
               const sent=await send(phone,replyText,{waitForCapacity:true,
                 isCurrent:()=>intakeCurrent()});
               transport.record(sent?.accepted?'trigger_test_relay_accepted':'trigger_test_unconfirmed',traceId);
