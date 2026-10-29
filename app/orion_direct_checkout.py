@@ -6,6 +6,8 @@ ORION_DIRECT_PAYMENTS_ENABLED is OFF by default, until banking, payment/tokeniza
 scopes, recurring orders and signed webhooks have been confirmed in provider staging.
 """
 from __future__ import annotations
+import base64
+import io
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
 import os
@@ -14,6 +16,7 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 import httpx
+import qrcode
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import text
@@ -335,6 +338,11 @@ async def direct_charge(tenant_id: UUID, data: DirectCharge,
                      "intent_id":str(data.intent_id),"method":data.method}
     if data.method=="pix":
         response_data["pix_code"]=result["pix"]["qrCode"]
+        # QR is generated locally; the Pix code is never transmitted to a third-party renderer.
+        pixels = qrcode.make(result["pix"]["qrCode"])
+        buffer = io.BytesIO()
+        pixels.save(buffer, format="PNG")
+        response_data["pix_qr_data_uri"] = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
         response_data["expires_at"]=result["pix"].get("expirationDate")
     return response_data
 
