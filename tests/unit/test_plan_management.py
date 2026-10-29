@@ -186,7 +186,8 @@ def test_admin_can_buy_only_when_explicit_business_owner_membership_was_verified
 def test_direct_checkout_never_enables_without_explicit_live_and_processor_flags(monkeypatch):
     from app import orion_direct_checkout as direct
     for key in ("ORION_DIRECT_PAYMENTS_ENABLED", "CAKTO_BILLING_LIVE_ENABLED",
-                "CAKTO_CLIENT_ID", "CAKTO_CLIENT_SECRET", "CAKTO_WEBHOOK_SECRET"):
+                "CAKTO_CLIENT_ID", "CAKTO_CLIENT_SECRET", "CAKTO_WEBHOOK_SECRET",
+                 "ORION_DIRECT_RECURRING_VERIFIED"):
         monkeypatch.delenv(key, raising=False)
     assert not direct.checkout_enabled()
     monkeypatch.setenv("ORION_DIRECT_PAYMENTS_ENABLED", "1")
@@ -263,6 +264,7 @@ def test_direct_payment_payload_offer_tracking_and_amount_are_verified():
     intent={"offer_id":"synthetic-offer","expected_cents":8990}
     payload=direct.provider_request(intent,charge,"synthetic-checkout-binding")
     assert payload["paymentMethod"]=="pix_auto"
+    assert payload["pixExpiresIn"] == 900  # Explicitly 15-minute Pix Auto authorization
     assert payload["items"][0]["offerId"]=="synthetic-offer"
     assert payload["metadata"]["sck"]=="synthetic-checkout-binding"
     assert "card" not in payload
@@ -304,3 +306,9 @@ async def test_embedded_checkout_rejects_unverified_webhook_before_billing(monke
         await direct.require_verified_webhooks(ReadOnlyClient())
     assert unavailable.value.status_code == 503
     assert "synthetic" not in str(unavailable.value.detail)
+    async def malformed(*args):
+        return None
+    monkeypatch.setattr(audit, "probe", malformed)
+    with pytest.raises(HTTPException) as invalid_result:
+        await direct.require_verified_webhooks(ReadOnlyClient())
+    assert invalid_result.value.status_code == 503

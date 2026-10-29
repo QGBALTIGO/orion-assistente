@@ -176,7 +176,10 @@ async def require_verified_webhooks(client: CaktoClient) -> None:
     try:
         offers = await client.list_offers()
         result = await probe(client, offers)
-    except (httpx.HTTPError, ValueError, RuntimeError):
+        if not isinstance(result, dict):
+            raise ValueError("provider webhook probe response invalid")
+    except Exception:
+        # No billing when the read-only preflight returns a malformed response.
         raise HTTPException(503, "A confirmação segura de pagamentos ainda não foi verificada.") from None
     if result.get("offer_matches") != 3 or result.get("webhook_ready") != 3:
         raise HTTPException(409, "A confirmação segura de pagamentos ainda não está configurada.")
@@ -242,7 +245,7 @@ def provider_request(intent, data: DirectCharge, callback: str) -> dict:
         "items":[{"offerId":intent["offer_id"],"quantity":1,"offerType":"main"}],
         "metadata":{"sck":callback},
     }
-    if method == "pix":
+    if method == "pix_auto":
         payment["pixExpiresIn"] = 900
     else:
         payment["card"] = {"token":data.card_token}
