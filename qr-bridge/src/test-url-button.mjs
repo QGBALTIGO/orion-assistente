@@ -39,6 +39,12 @@ export function makeTestCloudCtaPayload(phone, text) {
   };
 }
 
+export function selectTestCtaMode(env = {}) {
+  const requested = env.QR_TRIGGER_CTA_PROVIDER === 'meta';
+  const ready = requested && Boolean(env.META_CLOUD_ACCESS_TOKEN && env.META_CLOUD_PHONE_NUMBER_ID);
+  return { useMeta: ready, metaNotConfigured: requested && !ready };
+}
+
 export async function sendTestCloudCta({phone, text, accessToken, phoneNumberId,
   apiVersion = 'v25.0', fetchImpl = fetch}) {
   const payload = makeTestCloudCtaPayload(phone, text);
