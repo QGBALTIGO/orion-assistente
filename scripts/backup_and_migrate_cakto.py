@@ -42,7 +42,7 @@ def main() -> int:
         current = migrated_version(raw)
         # The existing Railway predeploy also calls this verifier after the
         # reviewed WhatsApp migration. Never replay 0043 DDL on that schema.
-        if current in {TARGET, "0044_single_whatsapp_connection"}:
+        if current in {TARGET, "0044_single_whatsapp_connection", "0045_plan_trials_checkout"}:
             return 0 if schema_ready(raw) else 3
         if current != PREVIOUS:
             print("orion_cakto_unreviewed_database_revision", file=sys.stderr)

@@ -11,6 +11,7 @@ from app.landing_api import router as landing_router
 from app.sales_requests_api import router as sales_requests_router
 from app.billing_api import router as billing_router
 from app.cakto_api import router as cakto_router
+from app.plan_management import router as plan_management_router
 from app.metrics_api import router as metrics_router
 from app.advanced_api import router as advanced_router
 from app.qr_api import router as qr_router
@@ -85,6 +86,7 @@ app.include_router(landing_router)
 app.include_router(sales_requests_router)
 app.include_router(billing_router)
 app.include_router(cakto_router)
+app.include_router(plan_management_router)
 app.include_router(metrics_router)
 app.include_router(advanced_router)
 app.include_router(qr_router)
@@ -144,6 +146,7 @@ async def branding(asset: str) -> FileResponse:
 async def panel_asset(asset: str) -> FileResponse:
     """Only the public suite assets; never expose arbitrary application files."""
     allowed = {"orion-suite.css": "text/css", "orion-suite.js": "text/javascript",
+               "orion-plans.css": "text/css", "orion-plans.js": "text/javascript",
                "orion-fields.css": "text/css", "orion-fields.js": "text/javascript",
                "orion-suite-live.js": "text/javascript",
                "orion-admin-center.js": "text/javascript",

@@ -1,0 +1,103 @@
+name: Orion — Plano/Cakto e teste grátis
+on:
+  pull_request:
+    paths:
+      - "app/plan_management.py"
+      - "app/cakto_api.py"
+      - "app/main.py"
+      - "app/static/orion-plans.js"
+      - "app/static/orion-plans.css"
+      - "app/static/orion-suite.js"
+      - "app/static/panel.html"
+      - "alembic/versions/0045_plan_trials_checkout.py"
+      - "scripts/backup_and_migrate_plans.py"
+      - "scripts/backup_and_migrate_registration.py"
+      - "tests/unit/test_plan_management.py"
+      - "tests/integration/test_plan_trials_postgres.py"
+      - "ui-tests/orion-plans.test.mjs"
+      - "tests/e2e/browser_plans_responsive.py"
+      - ".github/workflows/orion-plans-review.yml"
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  unit-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Python dependencies
+        run: python -m pip install -c requirements.lock ".[test]"
+      - name: JavaScript syntax / native DOM
+        run: |
+          node --check app/static/orion-plans.js
+          node --check app/static/orion-suite.js
+          npm ci --prefix ui-tests --no-audit --no-fund
+          node --test ui-tests/orion-plans.test.mjs
+      - name: Billing and plan isolated unit contracts
+        run: |
+          python -m py_compile app/cakto_api.py app/plan_management.py scripts/backup_and_migrate_plans.py
+          pytest -q -ra tests/unit/test_cakto_integration.py tests/unit/test_plan_management.py
+  postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 17
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: test-support-ci-token-of-64-characters-000000000000000000000000000
+      REQUIRE_POSTGRES_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python dependencies
+        run: python -m pip install -c requirements.lock ".[test]"
+      - name: PostgreSQL restricted roles
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+      - name: Apply all migrations, including plan schema
+        run: alembic upgrade head
+      - name: PostgreSQL real RLS and trial lifecycle without real customers
+        run: pytest -q -ra tests/integration/test_plan_trials_postgres.py tests/integration/test_cakto_postgres.py tests/integration/test_billing.py
+
+  browser-responsive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install isolated Playwright browser
+        run: |
+          python -m pip install -r tests/e2e/requirements.txt
+          python -m playwright install --with-deps chromium
+      - name: Verify real Chromium at seven widths in light and dark
+        run: python tests/e2e/browser_plans_responsive.py

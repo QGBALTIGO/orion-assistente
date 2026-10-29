@@ -105,15 +105,15 @@ def test_verification_requires_order_and_matching_state():
 
 def test_catalog_prices_links_are_only_read_only():
     assert [(x["code"], x["monthly_cents"]) for x in cakto_api.PLANS] == [
-        ("essencial", 2990), ("pro", 8990), ("elite", 13990)]
+        ("essencial", 2990), ("profissional", 8990), ("elite", 13990)]
     assert cakto_api.match_plans([
         {"id": "verified-id", "name": "Orion Pro", "price": "89.90",
-         "status": "active"},
+         "status": "active", "type": "subscription", "recurrence_period": 30},
         {"id": "fake-offer", "name": "Orion Elite", "price": "120.00",
          "status": "active"},
     ]) == [
         {"code": "essencial", "found": False, "offer_id": None, "ambiguous": False},
-        {"code": "pro", "found": True, "offer_id": "verified-id", "ambiguous": False},
+        {"code": "profissional", "found": True, "offer_id": "verified-id", "ambiguous": False},
         {"code": "elite", "found": False, "offer_id": None, "ambiguous": False},
     ]
 
