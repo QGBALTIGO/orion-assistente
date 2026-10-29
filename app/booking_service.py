@@ -20,6 +20,7 @@ from app.database import tenant_transaction
 from app.appointment_lifecycle import (
     CAS_SQL, LifecycleActor, SYSTEM_ACTOR, check_expected_updated_at,
     metadata, operation_payload, operation_replayed, public_history, record_operation, resolved_actor,
+    require_customer_deadline,
 )
 from app.customer_names import useful_name
 from app.customer_identity import resolve_customer
@@ -750,13 +751,16 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
             return await read_appointment(s, tenant, item_id)
         if entry["status"] not in ("confirmed", "hold"):
             fail(409, "Agendamento não pode ser cancelado neste estado")
+        await require_customer_deadline(s, entry, context)
         changed = (await s.execute(text("""
             UPDATE appointments SET status='cancelled', hold_expires_at=NULL,
                 updated_at=GREATEST(clock_timestamp(),updated_at+interval '1 microsecond') WHERE tenant_id=:tenant AND id=:id
                 AND (:future_only=false OR start_at>clock_timestamp())
+                AND (:is_customer=false OR start_at>=clock_timestamp()+interval '60 minutes')
                 AND """ + CUSTOMER_MATCH_SQL + " AND " + CAS_SQL + " RETURNING id"),
             {"tenant": tenant, "id": item_id, "customer_phone": customer_phone,
-             "future_only": future_only, "expected_updated_at": expected_updated_at})).scalar_one_or_none()
+             "future_only": future_only, "is_customer": context.role == "customer",
+             "expected_updated_at": expected_updated_at})).scalar_one_or_none()
         if changed is None:
             fail(409, "A reserva mudou. Confira um novo resumo antes de cancelar")
         await history(s, tenant, item_id, "cancelled", context=context, requested_by=details["requested_by"],
@@ -826,6 +830,7 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
         check_expected_updated_at(row, expected_updated_at)
         if row["status"] != "confirmed":
             fail(409, "Somente reservas confirmadas podem ser remarcadas")
+        await require_customer_deadline(s, row, context)
         from app.onboarding_service import require_operational_ready
         await require_operational_ready(s, tenant, "rescheduling")
         ids = list((await s.execute(text("""
@@ -850,8 +855,10 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
                 occupied_from=:occupied_from,occupied_until=:occupied_until,
                 total_cents=:total_cents,updated_at=GREATEST(:now,updated_at+interval '1 microsecond')
             WHERE tenant_id=:tenant AND id=:id
+              AND (:is_customer=false OR start_at>=clock_timestamp()+interval '60 minutes')
               AND """ + BUNDLE_MATCH_SQL + " AND " + CUSTOMER_MATCH_SQL + " AND " + CAS_SQL + " RETURNING id"),
-            {"tenant": tenant, "id": item_id, "now": now, "expected_updated_at": expected_updated_at, **b,
+            {"tenant": tenant, "id": item_id, "now": now, "expected_updated_at": expected_updated_at,
+             "is_customer": context.role == "customer", **b,
              **bundle_guard_parameters(tenant, row["professional_id"], ids, shop, items, customer_phone)})).scalar_one_or_none()
         if changed is None:
             fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de remarcar")
