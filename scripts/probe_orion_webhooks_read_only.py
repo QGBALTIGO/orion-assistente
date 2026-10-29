@@ -30,11 +30,14 @@ def _product_id(value):
 def _exact_target(value):
     if not isinstance(value, str):
         return False
-    parts = urlsplit(value)
-    return (parts.scheme == "https" and parts.hostname == "orionagenda.pro"
-            and parts.port is None and parts.path == "/webhooks/cakto"
-            and not parts.query and not parts.fragment and not parts.username
-            and not parts.password)
+    try:
+        parts = urlsplit(value)
+        return (parts.scheme == "https" and parts.hostname == "orionagenda.pro"
+                and parts.port is None and parts.path == "/webhooks/cakto"
+                and not parts.query and not parts.fragment and not parts.username
+                and not parts.password)
+    except ValueError:
+        return False
 
 
 def coverage(offers: list, hooks: list, secret: str) -> dict:
