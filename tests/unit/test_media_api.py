@@ -94,6 +94,8 @@ def server(monkeypatch):
     app=FastAPI()
     app.include_router(media.router)
     app.dependency_overrides[authenticate] = lambda: Actor("support")
+    media._get_cached.cache_clear()
+    media._get_thumbnail_cached.cache_clear()
     return app,bucket
 
 
@@ -109,7 +111,9 @@ async def test_auth_upload_writes_opaque_tenant_prefix_and_serves_webp(server):
         url=result["url"]
         assert is_media_url(url)
         assert result["content_type"] == "image/webp"
-        assert len(bucket.uploads)==1
+        assert len(bucket.uploads)==2
+        assert bucket.uploads[1]["Key"].endswith("-thumb.webp")
+        assert bucket.uploads[1]["ContentType"]=="image/webp"
         assert bucket.uploads[0]["Bucket"]=="unit-test-bucket"
         assert bucket.uploads[0]["Key"].startswith(f"tenant/{tenant}/media/")
         assert bucket.uploads[0]["ContentType"]=="image/webp"
@@ -164,3 +168,27 @@ async def test_quota_denies_upload_before_writing(monkeypatch,server):
                                    content=photo(),headers={"content-type":"image/png","x-orion-image-kind":"logo"})
     assert response.status_code==429
     assert bucket.uploads==[]
+
+
+@pytest.mark.asyncio
+async def test_small_thumbnails_are_created_and_legacy_photos_backfilled(server):
+    app, bucket = server
+    tenant, old_photo = uuid4(), uuid4()
+    original = media._encode(photo(size=(1100, 850)), "service")
+    bucket.items[media_key(tenant, old_photo)] = original
+    url = f"/media/{tenant}/{old_photo}/thumb.webp"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="https://orion.test") as client:
+        first = await client.get(url)
+        assert first.status_code == 200
+        assert "immutable" in first.headers["cache-control"]
+        with Image.open(io.BytesIO(first.content)) as image:
+            assert max(image.size) <= media.THUMBNAIL_EDGE
+        assert len(first.content) < len(original)
+        key = media._thumbnail_key(tenant, old_photo)
+        assert bucket.items[key] == first.content
+        second = await client.get(url)
+        assert second.content == first.content  # Served from the hot cache.
+        assert len(bucket.uploads) == 1  # Backfilled the variant only once.
+        full = await client.get(f"/media/{tenant}/{old_photo}.webp")
+        assert full.content == original

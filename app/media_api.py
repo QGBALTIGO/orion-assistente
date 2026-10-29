@@ -9,6 +9,7 @@ import asyncio
 import io
 import os
 from functools import lru_cache
+from time import monotonic
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -108,6 +109,13 @@ def _put(tenant: UUID, image: UUID, data: bytes) -> None:
 
 
 def _get(tenant: UUID, image: UUID) -> bytes:
+    # Public media URLs are immutable; keep a small, five-minute hot-object cache.
+    # The time bucket ensures deleted/revoked objects are not served indefinitely.
+    return _get_cached(tenant, image, int(monotonic() // 300))
+
+
+@lru_cache(maxsize=24)
+def _get_cached(tenant: UUID, image: UUID, _window: int) -> bytes:
     client, bucket = _storage()
     try:
         stream = client.get_object(Bucket=bucket, Key=media_key(tenant, image))["Body"]
@@ -122,6 +130,67 @@ def _get(tenant: UUID, image: UUID) -> bytes:
         if ex.response.get("Error", {}).get("Code") in {"NoSuchKey", "404", "NotFound"}:
             raise HTTPException(404, "Imagem não encontrada") from None
         raise
+
+
+# Cards render photos at 64-172 CSS pixels; downloading their original 1200px
+# WebP files is wasteful, especially over mobile connections. A 384px variant
+# retains enough resolution for retina professional photos without bloating bytes.
+THUMBNAIL_EDGE = 384
+
+
+def _thumbnail_key(tenant: UUID, image: UUID) -> str:
+    return media_key(tenant, image).removesuffix(".webp") + "-thumb.webp"
+
+
+def _make_thumbnail(data: bytes) -> bytes:
+    try:
+        with Image.open(io.BytesIO(data)) as source:
+            if max(source.size) <= THUMBNAIL_EDGE:
+                return data
+            photo = source.copy()
+            photo.thumbnail((THUMBNAIL_EDGE, THUMBNAIL_EDGE), Image.Resampling.LANCZOS)
+            out = io.BytesIO()
+            photo.save(out, format="WEBP", quality=76, method=3, exif=b"")
+            return out.getvalue()
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning,
+            UnidentifiedImageError, OSError, ValueError):
+        raise HTTPException(503, "Foto temporariamente indisponível") from None
+
+
+def _put_thumbnail(tenant: UUID, image: UUID, data: bytes) -> None:
+    client, bucket = _storage()
+    client.put_object(Bucket=bucket, Key=_thumbnail_key(tenant, image),
+                      Body=data, ContentType="image/webp",
+                      CacheControl="public, max-age=31536000, immutable")
+
+
+def _get_thumbnail(tenant: UUID, image: UUID) -> bytes:
+    return _get_thumbnail_cached(tenant, image, int(monotonic() // 300))
+
+
+@lru_cache(maxsize=96)
+def _get_thumbnail_cached(tenant: UUID, image: UUID, _window: int) -> bytes:
+    client, bucket = _storage()
+    try:
+        stream = client.get_object(Bucket=bucket, Key=_thumbnail_key(tenant, image))["Body"]
+    except ClientError as ex:
+        if ex.response.get("Error", {}).get("Code") not in {"NoSuchKey", "404", "NotFound"}:
+            raise
+        # Older tenant photos do not yet have variants. Generate one on demand,
+        # store it for the next visitor, but never break the original URL.
+        thumb = _make_thumbnail(_get(tenant, image))
+        try:
+            _put_thumbnail(tenant, image, thumb)
+        except (ClientError, BotoCoreError, OSError):
+            pass  # The derived version still works for this request.
+        return thumb
+    try:
+        body = stream.read(MAX_RESULT + 1)
+    finally:
+        stream.close()
+    if not body or len(body) > MAX_RESULT:
+        raise HTTPException(404, "Imagem indisponível")
+    return body
 
 
 @router.post("/api/v1/tenants/{tenant_id}/media", status_code=201)
@@ -160,6 +229,13 @@ async def upload_media(tenant_id: UUID, request: Request,
             raise
         except (ClientError, BotoCoreError, OSError):
             raise HTTPException(503, "Falha ao guardar a foto. Tente novamente.") from None
+        try:
+            thumbnail = await asyncio.to_thread(_make_thumbnail, image_bytes)
+            await asyncio.to_thread(_put_thumbnail, tenant_id, media_id, thumbnail)
+        except (HTTPException, ClientError, BotoCoreError, OSError):
+            # A thumbnail failure must never turn a successful original upload
+            # into an error. The public endpoint can derive it on first request.
+            pass
     return {"url": f"/media/{tenant_id}/{media_id}.webp",
             "content_type": "image/webp", "bytes": len(image_bytes)}
 
@@ -169,6 +245,21 @@ async def serve_media(tenant_id: UUID, media_id: UUID):
     # IDs must be unpredictable; these files are intended for public catalogues.
     try:
         body = await asyncio.to_thread(_get, tenant_id, media_id)
+    except HTTPException:
+        raise
+    except (ClientError, BotoCoreError, OSError):
+        raise HTTPException(503, "Foto temporariamente indisponível") from None
+    return Response(content=body, media_type="image/webp",
+                    headers={"Cache-Control": "public, max-age=31536000, immutable",
+                             "X-Content-Type-Options": "nosniff",
+                             "Content-Security-Policy": "default-src 'none'",
+                             "Referrer-Policy": "no-referrer"})
+
+
+@router.get("/media/{tenant_id}/{media_id}/thumb.webp", include_in_schema=False)
+async def serve_media_thumbnail(tenant_id: UUID, media_id: UUID):
+    try:
+        body = await asyncio.to_thread(_get_thumbnail, tenant_id, media_id)
     except HTTPException:
         raise
     except (ClientError, BotoCoreError, OSError):
