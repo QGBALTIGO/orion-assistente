@@ -2790,6 +2790,8 @@ html:has(.os-professional-history[open]){overflow:hidden}
 .os-google-mark img{display:block;width:26px;height:26px;max-width:100%;object-fit:contain}
 
 /* Appointment communication uses the suite's existing fields, toggles and buttons. */
+.os-appointment-comms,.os-appointment-comms *{box-sizing:border-box}
+.os-appointment-comms{font:400 14px/1.5 var(--os-font)}
 .os-appointment-comms .os-card>h3{margin:0 0 8px}
 .os-appointment-comms .os-card>.os-help{margin:0 0 20px}
 .os-appointment-comms .os-comm-options{display:grid;gap:0;min-width:0}

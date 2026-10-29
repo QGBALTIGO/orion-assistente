@@ -115,6 +115,7 @@ def main():
       page.evaluate('document.fonts.ready')
       assert page.get_by_text('<script>alert(1)</script>',exact=True).count()==1
       assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),(engine,width,theme,'settings overflow')
+      assert page.locator('.os-appointment-comms .os-field input').evaluate_all("inputs => inputs.every(input => {const field=input.parentElement.getBoundingClientRect(), rect=input.getBoundingClientRect();return rect.left>=field.left-1 && rect.right<=field.right+1})"),(engine,width,theme,'field overflow')
       page.screenshot(path=str(OUT/f'{engine}-{width}-{theme}-settings.png'),full_page=True)
       page.get_by_role('button',name='Salvar comunicação',exact=True).click()
       page.wait_for_function('window._settingsSaved !== null')

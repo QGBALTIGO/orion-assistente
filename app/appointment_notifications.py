@@ -228,7 +228,13 @@ async def reconcile_notification(ctx,tenant_id,notification_id):
             from app.automation_transport import inspect_automation
             reader=inspect_automation
         receipt=await reader(tenant,row['channel_id'],str(identity))
-        if receipt.get('operation_id')!=str(identity) or receipt.get('accepted') is not True:return 'unknown'
+        if receipt.get('operation_id')!=str(identity) or receipt.get('accepted') is not True:
+            # An unconfirmed inspection is not evidence of delivery. Advance
+            # its inspection time so other unknown receipts get a fair turn.
+            async with get_session_factory()() as db:
+                async with tenant_transaction(db,tenant):
+                    await db.execute(text("UPDATE appointment_notifications SET updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id AND status IN ('accepted','unknown','delivered')"),{'t':tenant,'id':identity})
+            return 'unknown'
         status=receipt['delivery'] if receipt.get('delivery') in {'read','delivered'} else 'accepted'
         if row['status']=='delivered' and status=='accepted':status='delivered'
         async with get_session_factory()() as db:

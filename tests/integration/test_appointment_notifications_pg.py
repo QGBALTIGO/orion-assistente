@@ -176,6 +176,19 @@ async def test_missing_professional_phone_never_falls_back_to_owner(comm_db):
 
 
 @pytest.mark.asyncio
+async def test_unknown_receipt_inspection_never_claims_delivery_and_does_not_starve_others(comm_db):
+    d=comm_db;await booking(d)
+    notice=next(r for r in await jobs(d) if r['event']=='professional_new')
+    async with d['migrator'].begin() as db:
+        await db.execute(text("UPDATE appointment_notifications SET status='unknown',attempted_at=now()-interval '10 minutes',updated_at=now()-interval '10 minutes' WHERE id=:id"),{'id':notice['id']})
+    before=next(r for r in await jobs(d) if r['id']==notice['id'])['updated_at']
+    async def inspect(*args):return {'operation_id':str(notice['id']),'accepted':False,'delivery':'delivered'}
+    assert await notifications.reconcile_notification({'appointment_inspector':inspect},str(d['a']),str(notice['id']))=='unknown'
+    after=next(r for r in await jobs(d) if r['id']==notice['id'])
+    assert after['status']=='unknown' and after['updated_at']>before
+
+
+@pytest.mark.asyncio
 async def test_anonymous_booking_response_cannot_issue_customer_capability(comm_db,monkeypatch):
     from app import public_site_api
     d=comm_db;a=await booking(d)
