@@ -196,6 +196,8 @@ def test_direct_checkout_never_enables_without_explicit_live_and_processor_flags
     monkeypatch.setenv("CAKTO_CLIENT_SECRET", "synthetic-secret")
     assert not direct.checkout_enabled()
     monkeypatch.setenv("CAKTO_WEBHOOK_SECRET", "synthetic-secret-for-ci-only-32-characters-minimum")
+    assert not direct.checkout_enabled()
+    monkeypatch.setenv("ORION_DIRECT_RECURRING_VERIFIED", "1")
     assert direct.checkout_enabled()
 
 
