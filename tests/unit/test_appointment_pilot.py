@@ -52,3 +52,10 @@ def test_old_self_pn_needs_preserved_session_hmac_and_never_invents_ninth_digit(
     assert qr_legacy.verified_self_phone({**row,'tenant_id':uuid4()}) is None
     monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','5567981234567')
     assert qr_legacy.verified_self_phone(row) is None
+
+
+def test_worker_registration_uses_the_exact_persistent_queue_function_name():
+    from app.worker import WorkerSettings
+    from arq import func
+    names=[func(f).name for f in WorkerSettings.functions]
+    assert names.count('process_appointment_notification')==1
