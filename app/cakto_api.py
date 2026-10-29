@@ -334,6 +334,7 @@ async def scan_pending_cakto(_ctx):
             # worker deployment must not try to read a non-existent table.
             ready = (await db.execute(text("""
                 SELECT to_regclass('public.cakto_webhook_events') IS NOT NULL
+                 AND to_regclass('public.orion_direct_payment_attempts') IS NOT NULL
                  AND (SELECT count(*) FROM information_schema.columns
                       WHERE table_schema='public' AND table_name='cakto_webhook_events'
                       AND column_name IN ('callback_hash','amount_cents','currency'))=3
