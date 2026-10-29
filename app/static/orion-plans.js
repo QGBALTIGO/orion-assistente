@@ -229,7 +229,7 @@ function render(root,data,ctx){
  +renderTrial(data,canManage)
  +renderComparison(plans)
  +'</div>';
- applyComparisonFilter(root,root.dataset.opOnlyDifferences!=='false');
+ applyComparisonFilter(root,root.dataset.opCompareOnly!=='false');
 }
 function mount(root,data,ctx){
  if(!root||!ctx?.request)return;
@@ -245,7 +245,7 @@ function mount(root,data,ctx){
  root.addEventListener('change',root._orionPlansChange=event=>{
   if(!event.target.matches('[data-op-only-differences]'))return;
   const only=event.target.checked;
-  root.dataset.opOnlyDifferences=String(only);
+  root.dataset.opCompareOnly=String(only);
   applyComparisonFilter(root,only);
  });
 }
