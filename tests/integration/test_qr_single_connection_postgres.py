@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException, Response
 import pytest
+import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -15,6 +16,19 @@ from test_qr_channels_postgres import channel_case  # noqa: F401
 from test_business_profiles_postgres import profiles  # noqa: F401
 
 pytestmark = pytest.mark.integration
+
+
+@pytest_asyncio.fixture
+async def licensed_channel_case(channel_case):
+    from plan_fixtures import seed_fixture_plan, clear_fixture_plans
+    c=channel_case
+    async with c.migration.begin() as db:
+        actor=await seed_fixture_plan(db,(c.a,),"elite")
+    try:
+        yield c
+    finally:
+        async with c.migration.begin() as db:
+            await clear_fixture_plans(db,(c.a,),(actor,))
 
 
 async def provision(c, key=None, tenant=None):
@@ -54,8 +68,8 @@ async def test_disabled_existing_connection_is_reused_without_replacing_identity
 
 
 @pytest.mark.asyncio
-async def test_binding_fk_cannot_cross_tenants_and_policy_constraint_denies_unrestricted_activation(channel_case):
-    c = channel_case
+async def test_binding_fk_cannot_cross_tenants_and_policy_constraint_denies_unrestricted_activation(licensed_channel_case):
+    c = licensed_channel_case
     a, b = await provision(c), await provision(c, tenant=c.b)
     async with c.migration.begin() as db:
         with pytest.raises(DBAPIError):
