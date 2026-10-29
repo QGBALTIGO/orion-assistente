@@ -276,3 +276,4 @@ def test_direct_payment_payload_offer_tracking_and_amount_are_verified():
     assert not direct.verified_creation({**ok,"paymentMethod":"threeDs"},intent,"pix")
     assert not direct.verified_creation({**ok,"paymentMethod":"pix"},intent,"pix")
     assert not direct.verified_creation({**ok,"pix":{}},intent,"pix")
+    assert not direct.verified_creation({**ok,"pix":{**ok["pix"],"user_journey":"UNKNOWN"}},intent,"pix")
