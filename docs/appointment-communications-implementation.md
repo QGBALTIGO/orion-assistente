@@ -2,6 +2,26 @@
 
 Base auditada: `76e02ed9b650d8fc84dbb2e272312c78149ef832`.
 
+## Atualização de publicação — piloto do administrador
+
+O piloto foi publicado na aplicação existente, preservando contas, agendamentos, sessão e volume do WhatsApp. A API e o worker no commit `73c9904f1c38a4703d8b49ec20172f4aa00d7376` chegaram a `SUCCESS` em 29/10/2026 às 17h22 (America/Campo_Grande). O bridge permaneceu no deploy `152facbb-1cb0-4cf6-b7c8-01c88a9d5c3d`, com a mesma sessão e volume `/data`. PostgreSQL e Redis permaneceram online.
+
+A migração aditiva chegou a `0049_preserved_phone_guard`, após backup privado confirmado pelo marcador `orion_appointment_0049_backup_schema_verified`. Foram preservados os guards normais; a exceção para o PN antigo do próprio aparelho exige a prova HMAC da sessão, propriedade atual, tenant, destinatário autorizado, lease e fence.
+
+O piloto continua limitado à empresa do admin e aos números de teste explicitamente autorizados. A identidade do número conectado é independente da autorização do telefone que solicita a confirmação. Protocolos só liberam detalhes quando o remetente verificado corresponde ao cliente atual do agendamento. Uma tentativa real com números diferentes foi recusada; uma nova solicitação válida recebeu confirmação automática com recibo **entregue às 17h23**. Não houve troca de dispositivo ou migração para Meta.
+
+Outras verificações reais no admin: reserva pública persistida e protocolo copiado; `wa.me` para o número conectado; aviso ao profissional sintético aceito; remarcações pela equipe e pelo cliente; versões antigas de lembretes canceladas; um lembrete válido aceito às 17h00; bloqueio de alterações após o limite; conclusão explícita do atendimento sintético e convite de avaliação aceito após o intervalo. Aceite do transporte continua diferente de entrega ou leitura. Profissionais sem telefone produziram falha controlada, sem fallback para o proprietário.
+
+A recuperação administrativa de confirmação usa uma mensagem realmente recebida nas últimas 24h, o telefone cadastrado, a propriedade do canal e uma operação única na Central. Não aceita telefone, texto de resposta ou URL do navegador. O contato da página individual consulta o canal atual verificado, com limite de dois segundos, sem aproveitar telefones visuais do site.
+
+A rodada [40956418796](https://github.com/QGBALTIGO/orion-assistente/actions/runs/40956418796) aprovou **195 testes focados**, **42 regressões PostgreSQL**, **436 testes de transporte QR**, **três lotes de concorrência** e **24 contextos de interface** (seis dimensões, dois temas, Chromium/WebKit). A suíte unitária ampla da mesma implementação teve **5.061 aprovados, 62 falhas e um skip**: as 62 falhas são as mesmas da base auditada, sem falhas novas nessa comparação. A recuperação foi qualificada com conta nativa e um canal preservado com credencial criptografada e registro canônico reais no PostgreSQL de teste.
+
+A auditoria final acrescenta revalidação da credencial quando um segundo link de agendamento muda o fragmento na mesma aba: a página anterior é ocultada e o novo token é autenticado em uma página nova. A matriz visual inclui ida e volta entre dois tokens, sem manter dados ou ações do atendimento anterior.
+
+PRs de publicação e correções: [171](https://github.com/QGBALTIGO/orion-assistente/pull/171), [172](https://github.com/QGBALTIGO/orion-assistente/pull/172), [173](https://github.com/QGBALTIGO/orion-assistente/pull/173), [174](https://github.com/QGBALTIGO/orion-assistente/pull/174) e [175](https://github.com/QGBALTIGO/orion-assistente/pull/175). A primeira tentativa de publicar 0049 foi bloqueada pelo reconhecimento incompleto da revisão anterior no predeploy; a versão anterior continuou online, o entrypoint foi corrigido e passou a ser exercitado contra PostgreSQL real. Falhas de fixtures detectadas nas rodadas intermediárias foram corrigidas sem reduzir os guards de autorização.
+
+**A liberação geral e o escopo integral do pedido não estão declarados concluídos.** As lacunas funcionais e de qualificação do item 9 continuam registradas. O teste restrito do admin não comprova capacidade de mil usuários simultâneos, suporte oficial Meta, todos os papéis granulares de profissionais ou execução em celulares físicos. Rollback preferencial: desativar a nova comunicação na API e no worker, preservando tabelas, histórico e sessão; uma versão anterior do binário pode recusar a revisão mais nova no predeploy, exigindo correção compatível em vez de downgrade destrutivo.
+
 ## Inventário anterior às alterações
 
 | Fluxo | Código real | Contrato a preservar |
@@ -54,9 +74,9 @@ O transporte não será ampliado além das permissões reais do canal. Testes re
 
 ## Relatório de implementação e homologação
 
-Data de referência: 29/10/2026. PR em rascunho: [#171](https://github.com/QGBALTIGO/orion-assistente/pull/171).
+Registro inicial de homologação, anterior à liberação do piloto documentada no topo desta página.
 
-**Situação: implementação em branch de homologação, sem publicação desta mudança. Não é uma declaração de conclusão integral do escopo.** A funcionalidade permanece desativada por padrão. A ausência de números de teste explicitamente autorizados impede a homologação real do WhatsApp. Além disso, o transporte QR atual restringe contatos a uma allowlist de até dez números; um lançamento para clientes em geral exige uma solução autorizada para essa limitação. Há lacunas funcionais e de qualificação discriminadas abaixo, sem simulação apresentada como integração validada.
+**Registro histórico da rodada inicial.** O estado operacional, a publicação e os testes reais posteriores de WhatsApp estão descritos na atualização do topo. As limitações do lançamento geral permanecem discriminadas abaixo.
 
 ### 1. Funcionalidades implementadas
 
@@ -275,7 +295,7 @@ tests.unit.test_single_whatsapp_release::test_all_reviewed_predeploy_origins_rea
 - Verificação OTP para um remetente diferente do cadastro não foi implantada; não havia canal de autenticação de cliente aprovado disponível. O acesso permanece negado, com orientação para utilizar o contato cadastrado ou atendimento da empresa.
 - Domínio personalizado por empresa não foi configurado: não foi encontrado um cadastro confiável de domínios hospedados. Links usam a origem canônica configurada, sem confiar no Host da requisição.
 - Não há autenticação de cliente no site público para reaproveitamento de nome/telefone em nova reserva. Serviço/profissional são pré-selecionados sem PII na URL e podem ser alterados.
-- Política automatizada específica de retenção/purga das novas mensagens criptografadas e revisão jurídica de finalidades não foram concluídas. Expiração/revogação das capacidades e cascata na exclusão do atendimento estão implementadas; não equivalem a uma política completa de retenção.
+- A retenção técnica de payloads foi implementada com limpeza em lotes após 90 dias, preservando o histórico de agendamentos e a idempotência. A revisão jurídica específica das finalidades e a qualificação integral da política de retenção permanecem pendentes.
 - Migração, backup e restauração da produção, rollout, smoke tests autenticados após deploy e piloto real permanecem pendentes. Nenhuma validação de CI é apresentada como resultado em produção.
 
 ### 10. Concorrência
@@ -345,7 +365,7 @@ Não aplicável: nenhum deploy desta mudança ocorreu. Os testes isolados da age
 5. Publicar primeiro com flags desligadas, backup privado verificável, revisão de variáveis/volumes e confirmação do commit exato; habilitar piloto restrito só após homologação aprovada.
 6. Verificar pós-deploy API, worker, bridge, banco, Redis, migrações, logs e fluxos anteriores. Recuar desativando as flags e preservando tabelas/sessão se houver regressão.
 
-A flag global `APPOINTMENT_COMMUNICATIONS_ENABLED` deve estar coerente na API e no worker; a configuração por empresa também inicia desligada. A flag `ORION_RUN_APPOINTMENT_COMMUNICATION_MIGRATION` libera somente a migração no predeploy e é retirada do processo da API pelo launcher. Não foi habilitada em Railway.
+A flag global `APPOINTMENT_COMMUNICATIONS_ENABLED` deve estar coerente na API e no worker; a configuração por empresa também inicia desligada. A flag `ORION_RUN_APPOINTMENT_COMMUNICATION_MIGRATION` libera somente a migração no predeploy e é retirada do processo da API pelo launcher. Foi habilitada na publicação controlada do piloto e descartada do processo normal da API pelo launcher.
 
 ### 18. Evidências e reprodução
 

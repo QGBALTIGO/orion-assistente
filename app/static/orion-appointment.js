@@ -2,7 +2,10 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const token=location.hash.slice(1);
-let current=null,busy=false,operation=null;
+let current=null,busy=false,operation=null,navigating=false;
+// A second WhatsApp link can reuse this tab with a different fragment. Clear
+// the old view immediately and authenticate the new capability in a fresh page.
+window.addEventListener('hashchange',()=>{navigating=true;current=null;document.querySelector('main').hidden=true;location.reload();});
 let theme=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
 document.documentElement.dataset.theme=theme;
 $('theme').onclick=()=>{theme=theme==='dark'?'light':'dark';document.documentElement.dataset.theme=theme;};
@@ -17,6 +20,7 @@ async function run(fn){if(busy)return;busy=true;document.querySelector('main').s
 function button(text,fn,secondary=false){const n=node('button',text);n.type='button';if(secondary)n.className='secondary';n.onclick=fn;return n;}
 function link(text,url){if(!url)return;try{const u=new URL(url,location.origin);if(u.protocol!=='https:'||u.username||u.password)return;const n=node('a',text);n.href=u.href;n.className='action';n.rel='noreferrer noopener';return n;}catch{}}
 function render(data){
+ if(navigating||token!==location.hash.slice(1))return;
  current=data;operation=null;if(/^#[0-9a-f]{6}$/i.test(data.brand_color||''))document.documentElement.style.setProperty('--primary',data.brand_color);const logo=$('company-logo');logo.hidden=!(data.logo_url&&/^\/media\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/.test(data.logo_url));if(!logo.hidden){logo.src=data.logo_url;logo.alt=data.company;}else logo.removeAttribute('src');$('company').textContent=data.company;$('title').textContent=statusNames[data.status]||'Seu agendamento';
  $('message').textContent=data.status==='completed'?`Obrigado pela visita, ${data.customer.split(' ')[0]}! Foi um prazer receber você.`:data.can_change?'Você pode cancelar ou remarcar até 1 hora antes do atendimento.':data.status==='confirmed'?'Seu agendamento está próximo e não pode mais ser alterado por esta página. Para solicitar ajuda, entre em contato com a empresa.':'Confira abaixo o estado atual do seu atendimento.';
  const when=new Date(data.start_at);const date=new Intl.DateTimeFormat('pt-BR',{dateStyle:'long',timeZone:data.timezone}).format(when);const time=new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:data.timezone}).format(when);
