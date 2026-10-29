@@ -61,6 +61,7 @@ jobs:
             tests/unit/test_appointment_pilot.py tests/unit/test_onboarding_goals.py tests/unit/test_professional_phone_release.py \
             tests/unit/test_plan_permissions_release.py \
             tests/unit/test_plan_preview_fixture.py tests/unit/test_management_unit.py tests/unit/test_automation_composition_contract.py \
+            tests/load/test_qualification_plan_fixture.py \
             tests/unit/test_plan_runtime_enforcement.py tests/unit/test_manual_plan_management.py \
             tests/unit/test_maintenance_access.py tests/unit/test_plan_management.py \
             tests/unit/test_checkout_manual_priority.py \
@@ -102,6 +103,8 @@ jobs:
       REQUIRE_POSTGRES_TESTS: '1'
       REDIS_URL: redis://127.0.0.1:6379/15
       REQUIRE_REDIS_TESTS: '1'
+      ORION_MIGRATION_TEST_OWNER_URL: postgresql+psycopg://postgres:ci-plans-postgres-only@127.0.0.1:5432/postgres
+      ORION_REQUIRE_MIGRATION_OPS_TEST: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -127,6 +130,7 @@ jobs:
           python tests/run_isolated_plan_tests.py -q -ra \
             tests/integration/test_manual_plan_permissions_postgres.py \
             tests/integration/test_manual_checkout_priority_postgres.py \
+            tests/integration/test_qualification_plan_fixture_postgres.py \
             tests/integration/test_plan_runtime_postgres.py tests/integration/test_automation_postgres.py \
             tests/integration/test_plan_trials_postgres.py tests/integration/test_cakto_postgres.py \
             tests/integration/test_billing.py tests/integration/test_booking.py \

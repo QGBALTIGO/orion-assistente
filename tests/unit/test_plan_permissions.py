@@ -91,12 +91,27 @@ def test_context_cannot_change_tenant_or_invent_feature():
 
 
 @pytest.mark.asyncio
+async def test_valid_plan_on_paused_business_explains_operational_state_without_selling_upgrade(monkeypatch):
+    from app import plan_permissions as permissions
+    state=derive_plan(snapshot('essencial',tenant_status='paused'),NOW)
+    async def read(*args,**kwargs): return state
+    monkeypatch.setattr(permissions,'plan_state',read)
+    with pytest.raises(HTTPException) as error:
+        await permissions.require_feature(object(),uuid4(),'agenda.manage')
+    assert error.value.status_code==409
+    assert error.value.detail['code']=='TENANT_INACTIVE'
+    assert 'plano' not in error.value.detail['message'].lower()
+
+
+@pytest.mark.asyncio
 async def test_transaction_rechecks_after_work_and_rolls_back_if_expired(monkeypatch):
     from app import plan_permissions as permissions
     tenant=uuid4();values=[True,False];locks=[]
     async def state(db,who,lock=None):
         assert who==tenant
-        return {"code":"elite","source":"manual","permissions":{"reception.ai":values.pop(0)}}
+        data=snapshot('elite',tenant_id=str(tenant))
+        if not values.pop(0): data['manual']['expires_at']=NOW.isoformat()
+        return derive_plan(data,NOW)
     async def lock(db,who,exclusive=False): locks.append(exclusive)
     monkeypatch.setattr(permissions,"plan_state",state)
     monkeypatch.setattr(permissions,"lock_plan",lock)

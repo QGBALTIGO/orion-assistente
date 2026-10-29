@@ -144,6 +144,9 @@ class IsolatedHTTP:
             if method == "GET":
                 if path == BASE + "/management/permissions":
                     return self.json(route, {"effective_plan": synthetic_plan_state(TENANT)})
+                if path == "/api/v1/account/business-identity":
+                    return self.json(route, {"name": self.onboarding["name"],
+                                             "contact_phone": self.onboarding["configuration"]["contact_phone"]})
                 if path == "/api/v1/account/businesses":
                     return self.json(route, [{"id": TENANT, "name": self.onboarding["name"], "role": "owner",
                                              "slug": "empresa-sintetica", "timezone": "America/Cuiaba"}])

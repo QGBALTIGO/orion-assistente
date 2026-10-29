@@ -35,7 +35,7 @@ class PlanDB:
     async def begin(self): yield self
     def snapshot(self):
         now = datetime.now(timezone.utc)
-        return {"tenant_id": str(self.tenant), "tenant_status": "active",
+        return {"tenant_id": str(self.tenant), "tenant_status": getattr(self, 'tenant_status', 'active'),
             "platform_workspace": self.platform,
             "manual": {"plan_code": self.code, "started_at": now-timedelta(days=1),
                        "expires_at": None} if self.code else None,
@@ -349,7 +349,8 @@ def management_generation(monkeypatch):
     async def context(*args): return {"revenue_cents":0}
     async def generate(**kwargs):
         db.provider_calls += 1
-        db.code = "essencial"
+        if getattr(db,'revoke',None)=='pause': db.tenant_status='paused'
+        else: db.code = "essencial"
         return {"answer":"obsolete paid suggestion","actions":[]}, {"total_tokens":39}
     monkeypatch.setattr(ai, "management_session", management_session)
     monkeypatch.setattr(ai, "get_session_factory", lambda: lambda: db)
@@ -372,8 +373,10 @@ async def test_management_generation_rejected_before_reservation_or_provider(man
 
 
 @pytest.mark.asyncio
-async def test_management_inflight_downgrade_finishes_failed_without_output_or_quota_refund(management_generation):
+@pytest.mark.parametrize('revocation',['downgrade','pause'])
+async def test_management_inflight_downgrade_finishes_failed_without_output_or_quota_refund(management_generation,revocation):
     ai, db = management_generation
+    db.revoke=revocation
     token = permissions.bind_feature(db.tenant, "consultant.ai")
     try:
         with pytest.raises(HTTPException) as error:
@@ -381,7 +384,7 @@ async def test_management_inflight_downgrade_finishes_failed_without_output_or_q
                 ai.ConsultantRequest(question="Como foi o mês?",idempotency_key="synthetic-request-1"))
     finally:
         permissions.reset_feature(token)
-    assert error.value.status_code == 403 and db.provider_calls == 1
+    assert error.value.status_code == (409 if revocation=='pause' else 403) and db.provider_calls == 1
     assert db.run["status"] == "failed" and db.run["output"] is None
     assert db.run["usage"] == {"total_tokens":39} and db.run["error_code"] == 403
     assert any("INSERT INTO management_ai_runs" in sql for sql,_ in db.queries)

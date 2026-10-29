@@ -141,6 +141,9 @@ async def require_feature(db, tenant_id, feature, lock="shared"):
         raise HTTPException(403, "Funcionalidade não disponível")
     state = await plan_state(db, tenant_id, lock=lock)
     if not _bypass(tenant_id) and not state["permissions"].get(feature, False):
+        if state["status"] == "tenant_inactive":
+            raise HTTPException(409, {"code": "TENANT_INACTIVE", "message":
+                "Esta empresa ainda não está ativa para operar. Confira a configuração ou fale com a administração."})
         raise HTTPException(403, {"code": "PLAN_FEATURE_UNAVAILABLE", "feature": feature,
             "message": "Este recurso não está disponível no plano da sua empresa.",
             "plan_code": state["code"], "source": state["source"]})

@@ -268,7 +268,8 @@ async def process(tenant_id, actor, task, payload):
                      "output": json.dumps(output) if output is not None else None, "usage": json.dumps(usage),
                      "error": failure.status_code if failure else None})).mappings().one()
     except HTTPException as exc:
-        if exc.status_code == 403 and isinstance(exc.detail, dict) and exc.detail.get("code") == "PLAN_FEATURE_UNAVAILABLE":
+        if isinstance(exc.detail, dict) and ((exc.status_code == 403 and exc.detail.get("code") == "PLAN_FEATURE_UNAVAILABLE")
+                or (exc.status_code == 409 and exc.detail.get("code") == "TENANT_INACTIVE")):
             await _finalize_plan_revoked(tenant_id, identity, digest, usage)
         raise
     await resolve_tenant_access(actor, tenant_id, "read")
