@@ -47,21 +47,27 @@ def upgrade():
     CREATE INDEX ix_appointment_notifications_due ON appointment_notifications(status,due_at,id);
     CREATE TABLE appointment_confirmation_receipts (
       tenant_id uuid NOT NULL REFERENCES tenants(id),channel_key varchar(200) NOT NULL,
-      message_id varchar(200) NOT NULL,appointment_version timestamptz NOT NULL,body_encrypted text NOT NULL,
+      message_id varchar(200) NOT NULL,appointment_id uuid NOT NULL,appointment_version timestamptz NOT NULL,body_encrypted text NOT NULL,
+      FOREIGN KEY(tenant_id,appointment_id) REFERENCES appointments(tenant_id,id) ON DELETE CASCADE,
       created_at timestamptz NOT NULL DEFAULT clock_timestamp(),PRIMARY KEY(tenant_id,channel_key,message_id)
     );''')
     op.execute('''CREATE TABLE appointment_change_proposals (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenants(id),
       appointment_id uuid NOT NULL,appointment_version timestamptz NOT NULL,new_start_at timestamptz NOT NULL,
-      actor_account_id uuid REFERENCES panel_accounts(id),actor_role varchar(16) NOT NULL,
+      actor_account_id uuid REFERENCES panel_accounts(id) ON DELETE SET NULL,actor_role varchar(16) NOT NULL,
       idempotency_key varchar(120) NOT NULL,UNIQUE(tenant_id,appointment_id,idempotency_key),
       expires_at timestamptz NOT NULL,status varchar(16) NOT NULL DEFAULT 'pending'
         CHECK(status IN ('pending','accepted','declined','superseded')),
       created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
       FOREIGN KEY(tenant_id,appointment_id) REFERENCES appointments(tenant_id,id) ON DELETE CASCADE
     ); CREATE INDEX ix_appointment_change_pending ON appointment_change_proposals(tenant_id,appointment_id,status);''')
+    op.execute('''CREATE TABLE appointment_return_intervals (
+      tenant_id uuid NOT NULL REFERENCES tenants(id),service_id uuid NOT NULL,
+      days integer CHECK(days BETWEEN 1 AND 730),updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+      PRIMARY KEY(tenant_id,service_id),FOREIGN KEY(tenant_id,service_id) REFERENCES services(tenant_id,id) ON DELETE CASCADE
+    );''')
     setting="(SELECT NULLIF(current_setting('app.tenant_id',true),'')::uuid)"
-    for table in ('appointment_communication_settings','appointment_notifications','appointment_confirmation_receipts','appointment_change_proposals'):
+    for table in ('appointment_communication_settings','appointment_notifications','appointment_confirmation_receipts','appointment_change_proposals','appointment_return_intervals'):
         op.execute(f'ALTER TABLE {table} ENABLE ROW LEVEL SECURITY')
         op.execute(f'ALTER TABLE {table} FORCE ROW LEVEL SECURITY')
         op.execute(f'CREATE POLICY {table}_runtime ON {table} FOR ALL TO app_runtime USING(tenant_id={setting}) WITH CHECK(tenant_id={setting})')

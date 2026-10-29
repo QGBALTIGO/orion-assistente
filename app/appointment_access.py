@@ -65,7 +65,7 @@ async def verify(db, tenant, digest):
         JOIN appointments a ON a.tenant_id=l.tenant_id AND a.id=l.appointment_id AND a.customer_id=l.customer_id
         JOIN tenants t ON t.id=l.tenant_id
         WHERE l.tenant_id=:t AND l.token_hash=:hash AND l.revoked_at IS NULL
-          AND l.expires_at>clock_timestamp() AND c.version=l.customer_version
+          AND l.expires_at>clock_timestamp() AND NOT a.customer_access_blocked AND c.version=l.customer_version
           AND c.active AND c.deleted_at IS NULL AND t.status='active'
         FOR SHARE OF l'''), {'t': tenant, 'hash': digest})).mappings().first()
     if row is None:
@@ -86,7 +86,7 @@ async def issue(db, tenant, appointment):
     require_enabled()
     row = (await db.execute(text('''SELECT a.customer_id,a.end_at,c.version FROM appointments a
         JOIN customers c ON c.tenant_id=a.tenant_id AND c.id=a.customer_id
-        WHERE a.tenant_id=:t AND a.id=:id AND c.active AND c.deleted_at IS NULL'''),
+        WHERE a.tenant_id=:t AND a.id=:id AND NOT a.customer_access_blocked AND c.active AND c.deleted_at IS NULL'''),
         {'t': tenant, 'id': appointment})).mappings().first()
     if row is None:
         raise HTTPException(404, UNAVAILABLE)

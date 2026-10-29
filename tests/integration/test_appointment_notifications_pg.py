@@ -38,7 +38,7 @@ async def comm_db(booking_db,monkeypatch):
     try:yield d
     finally:
         async with d['migrator'].begin() as db:
-            for table in ('appointment_change_proposals','appointment_confirmation_receipts','appointment_notifications','appointment_communication_settings','contact_consents','qr_channels','tenant_memberships'):
+            for table in ('appointment_return_intervals','appointment_change_proposals','appointment_confirmation_receipts','appointment_notifications','appointment_communication_settings','contact_consents','qr_channels','tenant_memberships'):
                 await db.execute(text(f'DELETE FROM {table} WHERE tenant_id=:t'),{'t':d['a']})
             await db.execute(text('DELETE FROM panel_accounts WHERE id=:id'),{'id':account})
 
@@ -134,3 +134,69 @@ async def test_staff_proposal_retains_original_until_verified_customer_accepts(c
             context=customer_actor(a['customer_id'],'public_site'),proposal_id=proposal['pending_change']['id'])
     assert changed['start_at']==payload.start_at
     assert any(r['event']=='professional_rescheduled' for r in await jobs(d))
+
+
+@pytest.mark.asyncio
+async def test_owner_diagnostics_show_current_recipient_without_tokens_and_disable_pending_jobs(comm_db):
+    from app.appointment_communications_api import configuration,save_configuration,Settings
+    from app.catalog_api import Actor
+    d=comm_db;await booking(d)
+    data=await configuration(d['a'],Actor('support'))
+    assert data['timezone']=='America/Campo_Grande'
+    assert any((n['recipient_label'] or '').casefold()=='cliente sintético' for n in data['notifications'] if n['recipient_kind']=='customer')
+    assert 'body_encrypted' not in json.dumps(data) and 'token_hash' not in json.dumps(data)
+    saved=await save_configuration(d['a'],Settings(expected_version=1,enabled=False,channel_id=d['channel']),Actor('support'))
+    assert saved['version']==2
+    assert all(item['status']=='cancelled' for item in await jobs(d))
+
+
+@pytest.mark.asyncio
+async def test_offline_preflight_retries_only_definite_no_send_with_limit(comm_db,monkeypatch):
+    d=comm_db;await booking(d)
+    monkeypatch.delenv('QR_BRIDGE_URL',raising=False)
+    staff=next(r for r in await jobs(d) if r['event']=='professional_new')
+    assert await notifications.process_notification({},str(d['a']),str(staff['id']))=='channel_unavailable'
+    retry=next(r for r in await jobs(d) if r['id']==staff['id'])
+    assert retry['status']=='pending' and retry['attempts']==1
+    async with d['migrator'].begin() as db:
+        await db.execute(text("UPDATE appointment_notifications SET attempts=4,due_at=now()-interval '1 second' WHERE id=:id"),{'id':staff['id']})
+    assert await notifications.process_notification({},str(d['a']),str(staff['id']))=='channel_unavailable'
+    failed=next(r for r in await jobs(d) if r['id']==staff['id'])
+    assert failed['status']=='failed' and failed['attempts']==5
+
+
+@pytest.mark.asyncio
+async def test_missing_professional_phone_never_falls_back_to_owner(comm_db):
+    d=comm_db;await booking(d)
+    async with d['migrator'].begin() as db:
+        await db.execute(text('UPDATE professionals SET phone_e164=NULL WHERE tenant_id=:t AND id=:id'),{'t':d['a'],'id':d['pro']})
+    staff=next(r for r in await jobs(d) if r['event']=='professional_new')
+    async def forbidden(*args):pytest.fail('No fallback recipient may be contacted')
+    assert await notifications.process_notification({'appointment_sender':forbidden},str(d['a']),str(staff['id']))=='professional_contact_unavailable'
+
+
+@pytest.mark.asyncio
+async def test_anonymous_booking_response_cannot_issue_customer_capability(comm_db,monkeypatch):
+    from app import public_site_api
+    d=comm_db;a=await booking(d)
+    async def resolve(_slug):return d['a']
+    monkeypatch.setattr(public_site_api,'resolve_public',resolve)
+    async def denied(*args):pytest.fail('Anonymous caller must not get an existing customer capability')
+    monkeypatch.setattr(confirmation.access,'issue',denied)
+    followup=await confirmation.public_followup('synthetic',a,phone(920))
+    assert 'management_url' not in followup
+
+
+@pytest.mark.asyncio
+async def test_return_interval_must_belong_to_the_authorized_company(comm_db):
+    from app.appointment_communications_api import configuration,save_configuration,Settings
+    from app.catalog_api import Actor
+    from fastapi import HTTPException
+    d=comm_db
+    with pytest.raises(HTTPException) as error:
+        await save_configuration(d['a'],Settings(expected_version=1,enabled=False,channel_id=d['channel'],return_intervals={uuid4():21}),Actor('support'))
+    assert error.value.status_code==422
+    await save_configuration(d['a'],Settings(expected_version=1,enabled=False,channel_id=d['channel'],return_intervals={d['cut']:21}),Actor('support'))
+    data=await configuration(d['a'],Actor('support'))
+    rule=next(item for item in data['return_services'] if item['id']==str(d['cut']))
+    assert rule['days']==21

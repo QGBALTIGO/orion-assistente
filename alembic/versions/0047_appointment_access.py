@@ -11,6 +11,7 @@ def upgrade():
     op.execute("SET LOCAL lock_timeout='5s'")
     op.execute("SET LOCAL statement_timeout='30s'")
     op.execute('''
+        ALTER TABLE appointments ADD COLUMN customer_access_blocked boolean NOT NULL DEFAULT false;
         CREATE TABLE appointment_access (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
           tenant_id uuid NOT NULL REFERENCES tenants(id),

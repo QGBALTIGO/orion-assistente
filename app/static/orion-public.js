@@ -1004,9 +1004,7 @@
     if (booking.result.whatsapp_confirmation_url && /^https:\/\/wa\.me\/[1-9][0-9]{7,14}\?text=/.test(booking.result.whatsapp_confirmation_url)) {
       const wa=el('a','pill','Receber confirmação no WhatsApp');wa.href=booking.result.whatsapp_confirmation_url;wa.target='_blank';wa.rel='noopener noreferrer';success.append(wa);
     }
-    if (booking.result.management_url) {
-      const manage=el('a','pill outline','Gerenciar agendamento');manage.href=booking.result.management_url;manage.rel='noreferrer';success.append(manage);
-    }
+
     success.append(button('Copiar protocolo', 'outline', async()=>{try{await navigator.clipboard.writeText(booking.result.protocol);showError('Protocolo copiado. Seu agendamento está salvo.');}catch{showError('Guarde o protocolo: '+booking.result.protocol);}}));
     success.append(button('Adicionar ao meu calendário', 'outline', downloadCalendar)); body.append(success);
   }
@@ -1057,5 +1055,12 @@
     try { if (navigator.share) await navigator.share({ title: data.site.title, url: location.href }); else { await navigator.clipboard.writeText(location.href); message.textContent = 'Link copiado.'; message.hidden = false; } }
     catch (error) { if (error.name !== 'AbortError') { message.textContent = 'Copie o endereço do site na barra do navegador para compartilhar.'; message.hidden = false; } }
   });
-  api().then(result => { data = result; renderPage(); }).catch(error => { const node = $('page-message'); node.replaceChildren(el('h1', '', error.status === 404 ? 'Página indisponível' : 'Não foi possível carregar o site'), el('p', 'muted', error.status === 404 ? 'Este endereço ainda não foi publicado ou deixou de estar disponível.' : error.message)); });
+  api().then(result => { data = result; renderPage();
+    const params=new URLSearchParams(location.search),ids=(params.get('servicos')||'').split(',').filter(Boolean);
+    if(!preview&&ids.length&&ids.length<=6&&new Set(ids).size===ids.length&&ids.every(id=>data.services.some(s=>s.id===id))){
+      openBooking(ids[0]);booking.services=ids;
+      const professional=params.get('profissional');if(eligibleProfessionals().some(p=>p.id===professional))booking.professional=professional;
+      renderBooking();
+    }
+  }).catch(error => { const node = $('page-message'); node.replaceChildren(el('h1', '', error.status === 404 ? 'Página indisponível' : 'Não foi possível carregar o site'), el('p', 'muted', error.status === 404 ? 'Este endereço ainda não foi publicado ou deixou de estar disponível.' : error.message)); });
 })();

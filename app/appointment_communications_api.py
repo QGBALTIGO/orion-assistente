@@ -1,10 +1,11 @@
 """Owner-scoped configuration and bounded diagnostics; never sends on a GET."""
 import re
 from uuid import UUID
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
-from pydantic import Field, StrictBool, field_validator
+from pydantic import Field, StrictBool, StrictInt, field_validator
 from sqlalchemy import text
 
 from app import appointment_access as access
@@ -33,6 +34,7 @@ class Settings(StrictModel):
     return_invitation:StrictBool=False
     review_delay_min:int=Field(default=15,ge=1,le=1440,strict=True)
     signature:str=Field(default='Orion Agenda',min_length=1,max_length=80)
+    return_intervals:dict[UUID,Annotated[StrictInt,Field(ge=1,le=730)]|None]=Field(default_factory=dict,max_length=200)
     acknowledged:StrictBool=False
 
     @field_validator('signature')
@@ -47,11 +49,18 @@ async def configuration(tenant_id:UUID,actor:Actor=Depends(authenticate)):
     await resolve_tenant_access(actor,tenant_id)
     if not access.enabled():return {'available':False,'settings':DEFAULTS,'notifications':[],'reviews':[]}
     async with management_session(tenant_id,actor) as db:
+        zone=(await db.execute(text('SELECT timezone FROM tenants WHERE id=:t'),{'t':tenant_id})).scalar_one()
         settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant_id})).mappings().first()
         notifications=(await db.execute(text('''SELECT n.id,n.event,n.recipient_kind,n.status,n.due_at,n.attempted_at,
-            n.updated_at,n.last_error,n.attempts,a.protocol FROM appointment_notifications n
+            n.updated_at,n.last_error,n.attempts,a.protocol,CASE WHEN n.recipient_kind='professional' THEN
+            (SELECT p.name FROM professionals p WHERE p.tenant_id=n.tenant_id AND p.id=n.recipient_id) ELSE
+            (SELECT c.name FROM customers c WHERE c.tenant_id=n.tenant_id AND c.id=n.recipient_id) END AS recipient_label
+            FROM appointment_notifications n
             JOIN appointments a ON a.tenant_id=n.tenant_id AND a.id=n.appointment_id
             WHERE n.tenant_id=:t ORDER BY n.created_at DESC LIMIT 100'''),{'t':tenant_id})).mappings().all()
+        services=(await db.execute(text('''SELECT s.id,s.name,r.days FROM services s
+            LEFT JOIN appointment_return_intervals r ON r.tenant_id=s.tenant_id AND r.service_id=s.id
+            WHERE s.tenant_id=:t AND s.active AND s.catalog_kind<>'variant' ORDER BY s.name,s.id LIMIT 200'''),{'t':tenant_id})).mappings().all()
         reviews=(await db.execute(text('''SELECT r.rating,r.comment,r.created_at,a.protocol,p.name AS professional
             FROM appointment_reviews r JOIN appointments a ON a.tenant_id=r.tenant_id AND a.id=r.appointment_id
             JOIN professionals p ON p.tenant_id=r.tenant_id AND p.id=r.professional_id
@@ -59,8 +68,8 @@ async def configuration(tenant_id:UUID,actor:Actor=Depends(authenticate)):
     async with support_session_factory()() as registry:
         from app.qr_channels import _canonical
         channel,state=await _canonical(registry,tenant_id)
-    return jsonable_encoder({'available':True,'settings':dict(settings) if settings else DEFAULTS,
-        'canonical_channel_id':channel['id'] if channel is not None and state=='ready' else None,
+    return jsonable_encoder({'available':True,'timezone':zone,'settings':dict(settings) if settings else DEFAULTS,
+        'return_services':[dict(x) for x in services],'canonical_channel_id':channel['id'] if channel is not None and state=='ready' else None,
         'notifications':[dict(x) for x in notifications],'reviews':[dict(x) for x in reviews],
         'transport_limit':'Envio restrito aos contatos autorizados no canal QR; API oficial não ativada por este fluxo.'})
 
@@ -80,7 +89,15 @@ async def save_configuration(tenant_id:UUID,payload:Settings,actor:Actor=Depends
         await db.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:key,0))'),{'key':'appointment-settings:'+str(tenant_id)})
         current=(await db.execute(text('SELECT version FROM appointment_communication_settings WHERE tenant_id=:t FOR UPDATE'),{'t':tenant_id})).scalar_one_or_none()
         if (current or 0)!=payload.expected_version:raise HTTPException(409,'A configuração mudou. Atualize antes de salvar')
-        fields=payload.model_dump(exclude={'expected_version','acknowledged'})
+        fields=payload.model_dump(exclude={'expected_version','acknowledged','return_intervals'})
+        ids=list(payload.return_intervals)
+        if ids:
+            count=(await db.execute(text('SELECT count(*) FROM services WHERE tenant_id=:t AND id=ANY(CAST(:ids AS uuid[])) AND active'),{'t':tenant_id,'ids':ids})).scalar_one()
+            if count!=len(ids):raise HTTPException(422,'Revise os serviços da sua empresa antes de salvar')
+            for service,days in payload.return_intervals.items():
+                await db.execute(text('''INSERT INTO appointment_return_intervals(tenant_id,service_id,days)
+                    VALUES(:t,:id,:days) ON CONFLICT(tenant_id,service_id) DO UPDATE SET days=EXCLUDED.days,updated_at=clock_timestamp()'''),
+                    {'t':tenant_id,'id':service,'days':days})
         # Columns are server-defined Pydantic fields, never free SQL identifiers.
         columns=list(fields)
         await db.execute(text('INSERT INTO appointment_communication_settings(tenant_id,'+','.join(columns)+') VALUES(:tenant,'+

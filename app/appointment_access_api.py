@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app import appointment_access as access
+from app.appointment_errors import sanitized_database_errors
 from app.appointment_lifecycle import customer_actor, customer_can_change, require_customer_deadline
 from app.booking_service import cancel_appointment, reschedule_appointment, read_appointment, list_slots
 from app.catalog_api import Actor, authenticate
@@ -54,10 +55,11 @@ async def customer_view(db, identity):
     shop = (await db.execute(text('''SELECT t.name,p.public_slug,p.public_enabled,p.address,p.city,p.state,
         p.whatsapp_phone,p.contact_phone FROM tenants t LEFT JOIN management_site_preferences p
         ON p.tenant_id=t.id WHERE t.id=:t'''), {'t': tenant})).mappings().one()
-    actual_completion = (await db.execute(text("""SELECT EXISTS(SELECT 1 FROM appointment_history
+    completed_at = (await db.execute(text("""SELECT max(occurred_at) FROM appointment_history
         WHERE tenant_id=:t AND appointment_id=:id AND event='completed'
-          AND details->>'source'='panel' AND details->'actor'->>'role' IN ('owner','editor','admin','support'))"""),
+          AND details->>'source'='panel' AND details->'actor'->>'role' IN ('owner','editor','admin','support')"""),
         {'t':tenant,'id':identity.appointment_id})).scalar_one()
+    actual_completion=completed_at is not None
     review = (await db.execute(text('''SELECT rating,comment FROM appointment_reviews
         WHERE tenant_id=:t AND appointment_id=:id'''), {'t': tenant, 'id': identity.appointment_id})).mappings().first()
     future = (await db.execute(text('''SELECT EXISTS(SELECT 1 FROM appointments WHERE tenant_id=:t
@@ -65,6 +67,25 @@ async def customer_view(db, identity):
         {'t': tenant, 'customer': identity.customer_id, 'id': identity.appointment_id})).scalar_one()
     booking_url = (canonical_public_origin()+'/s/'+shop['public_slug']
         if shop.get('public_slug') and shop['public_enabled'] else None)
+    services=(await db.execute(text('''SELECT COALESCE(p.base_service_id,i.service_id) AS public_id,
+        i.name_snapshot,r.days FROM appointment_items i LEFT JOIN service_packages p
+        ON p.tenant_id=i.tenant_id AND p.synthetic_service_id=i.service_id AND p.kind='variant'
+        LEFT JOIN appointment_return_intervals r ON r.tenant_id=i.tenant_id
+          AND r.service_id=COALESCE(p.base_service_id,i.service_id)
+        WHERE i.tenant_id=:t AND i.appointment_id=:id ORDER BY i.item_order'''),
+        {'t':tenant,'id':identity.appointment_id})).mappings().all()
+    suggestions=[]
+    return_enabled=(await db.execute(text('SELECT return_invitation FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).scalar_one_or_none()
+    if booking_url and row['status']=='completed' and not future:
+        from urllib.parse import urlencode
+        ids=list(dict.fromkeys(str(item['public_id']) for item in services))
+        booking_url+='?'+urlencode({'servicos':','.join(ids),'profissional':str(row['professional_id'])})
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+        for item in services:
+            if item['days'] and actual_completion and return_enabled:
+                target=(completed_at+timedelta(days=item['days'])).astimezone(ZoneInfo(row['timezone'])).date()
+                suggestions.append({'service':item['name_snapshot'],'from_date':target.isoformat()})
     pending=(await db.execute(text("""SELECT id,new_start_at,expires_at FROM appointment_change_proposals
         WHERE tenant_id=:t AND appointment_id=:id AND appointment_version=:version
           AND status='pending' AND expires_at>clock_timestamp() ORDER BY created_at DESC LIMIT 1"""),
@@ -77,7 +98,7 @@ async def customer_view(db, identity):
         'can_change': customer_can_change(row, now), 'pending_change':dict(pending) if pending and row['status']=='confirmed' else None,
         'can_review': row['status']=='completed' and actual_completion and review is None,
         'review': dict(review) if review else None, 'has_future_booking': future,
-        'new_booking_url': booking_url, 'contact_phone': shop['whatsapp_phone'] or shop['contact_phone'],
+        'new_booking_url': booking_url, 'return_suggestions':suggestions, 'contact_phone': shop['whatsapp_phone'] or shop['contact_phone'],
         'address': ', '.join(str(shop[k]) for k in ('address','city','state') if shop.get(k))}
 
 
@@ -97,6 +118,7 @@ async def appointment_asset(asset: str):
 
 
 @router.post('/api/appointment-access')
+@sanitized_database_errors
 async def customer_action(payload: CustomerAction, request: Request):
     access.require_enabled()
     _same_origin(request)
@@ -183,6 +205,7 @@ async def revoke_links(tenant_id: UUID, appointment_id: UUID, actor: Actor=Depen
         await read_appointment(db, tenant_id, appointment_id)
         await db.execute(text('''UPDATE appointment_access SET revoked_at=clock_timestamp()
             WHERE tenant_id=:t AND appointment_id=:id AND revoked_at IS NULL'''), {'t':tenant_id,'id':appointment_id})
+        await db.execute(text('UPDATE appointments SET customer_access_blocked=true WHERE tenant_id=:t AND id=:id'),{'t':tenant_id,'id':appointment_id})
         from app.catalog_api import audit
         await audit(db, tenant_id, 'revoke_appointment_links', 'appointments', appointment_id)
     return {'revoked':True}

@@ -26,7 +26,7 @@ function render(data){
  if(data.can_change){actions.append(button('Remarcar atendimento',()=>{$('reschedule').hidden=false;$('day').focus();}),button('Cancelar agendamento',()=>$('confirmation').showModal(),true));}
  if(data.review)actions.append(node('p','Sua avaliação foi recebida. Obrigado!'));
  if(data.status==='completed'&&data.has_future_booking)actions.append(node('p','Seu próximo horário já está garantido!'));
- else if(['completed','cancelled','no_show'].includes(data.status)){const next=link('Agendar novamente',data.new_booking_url);if(next)actions.append(next);}
+ else if(['completed','cancelled','no_show'].includes(data.status)){for(const suggestion of data.return_suggestions||[]){actions.append(node('p',suggestion.service+': retorno sugerido a partir de '+new Intl.DateTimeFormat('pt-BR',{dateStyle:'long',timeZone:'UTC'}).format(new Date(suggestion.from_date+'T12:00:00Z'))));}const next=link('Agendar novamente',data.new_booking_url);if(next)actions.append(next);}
  if(data.contact_phone&&/^\+55[1-9][0-9]{9,10}$/.test(data.contact_phone)){const contact=link('Falar com a empresa','https://wa.me/'+data.contact_phone.slice(1));if(contact){contact.classList.add('secondary');actions.append(contact);}}
 }
 $('confirmation').addEventListener('close',()=>{if($('confirmation').returnValue!=='cancel')return;void run(async()=>{operation=operation||crypto.randomUUID();render(await request('cancel',{expected_updated_at:current.updated_at,idempotency_key:operation}));});});

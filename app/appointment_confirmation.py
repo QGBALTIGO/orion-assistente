@@ -5,6 +5,7 @@ from urllib.parse import quote
 
 from sqlalchemy import text
 from app import appointment_access as access
+from app.appointment_errors import sanitized_database_errors
 from app.appointment_notifications import cipher
 from app.appointment_messages import compose
 from app.booking_service import read_appointment
@@ -21,6 +22,7 @@ def detected_protocol(body):
     return matches[0].upper() if len(set(m.upper() for m in matches))==1 else None
 
 
+@sanitized_database_errors
 async def confirmation_reply(tenant,phone,body,channel_key,message_id):
     if not access.enabled():return None
     protocol=detected_protocol(body)
@@ -42,11 +44,11 @@ async def confirmation_reply(tenant,phone,body,channel_key,message_id):
             # Membership, channel fencing and any human pause remain guarded by
             # the existing ingress's transaction context around this operation.
             appointment=await read_appointment(db,tenant,row['id'])
-            previous=(await db.execute(text('''SELECT body_encrypted,appointment_version FROM appointment_confirmation_receipts
+            previous=(await db.execute(text('''SELECT body_encrypted,appointment_version,appointment_id FROM appointment_confirmation_receipts
                 WHERE tenant_id=:t AND channel_key=:channel AND message_id=:message'''),
                 {'t':tenant,'channel':channel_key,'message':message_id})).mappings().first()
             if previous:
-                return cipher().decrypt(previous['body_encrypted'].encode()).decode() if previous['appointment_version']==appointment['updated_at'] else ''
+                return cipher().decrypt(previous['body_encrypted'].encode()).decode() if previous['appointment_version']==appointment['updated_at'] and previous['appointment_id']==appointment['id'] else ''
             company=(await db.execute(text('SELECT name FROM tenants WHERE id=:t'),{'t':tenant})).scalar_one()
             link=await access.issue(db,tenant,row['id'])
             if appointment['status']=='confirmed':
@@ -54,9 +56,9 @@ async def confirmation_reply(tenant,phone,body,channel_key,message_id):
             else:
                 labels={'cancelled':'cancelado','completed':'concluído','no_show':'registrado como ausência','hold':'em reserva temporária'}
                 answer='Seu atendimento está '+labels.get(appointment['status'],'em atualização')+'.\n\nConfira o estado atual pelo seu link exclusivo:\n'+link+'\n\n🤖 Orion Agenda'
-            await db.execute(text('''INSERT INTO appointment_confirmation_receipts(tenant_id,channel_key,message_id,appointment_version,body_encrypted)
-                VALUES(:t,:channel,:message,:version,:body)'''),{'t':tenant,'channel':channel_key,'message':message_id,
-                'version':appointment['updated_at'],'body':cipher().encrypt(answer.encode()).decode()})
+            await db.execute(text('''INSERT INTO appointment_confirmation_receipts(tenant_id,channel_key,message_id,appointment_id,appointment_version,body_encrypted)
+                VALUES(:t,:channel,:message,:id,:version,:body)'''),{'t':tenant,'channel':channel_key,'message':message_id,
+                'id':appointment['id'],'version':appointment['updated_at'],'body':cipher().encrypt(answer.encode()).decode()})
             return answer
 
 
@@ -73,7 +75,9 @@ async def public_followup(slug,result,phone):
                 AND a.protocol=:protocol AND c.whatsapp_e164=:phone AND a.status='confirmed' '''),
                 {'t':tenant,'protocol':result['protocol'],'phone':phone})).scalar_one_or_none()
             if appointment is None:return {}
-            output['management_url']=await access.issue(db,tenant,appointment)
+            # An anonymous booking can use an existing customer's phone.
+            # Only a verified inbound contact may receive a capability; never
+            # return it to the anonymous booking caller.
             requested=(await db.execute(text('SELECT enabled AND confirmation FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).scalar_one_or_none()
             if requested is not True:return output
     # Only the authenticated current channel identity supplies the destination.

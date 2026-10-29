@@ -31,6 +31,7 @@ async def enqueue_event(db, tenant, appointment, event, details):
         await db.execute(text("""UPDATE appointment_notifications SET status='cancelled',
         last_error='appointment_changed',updated_at=clock_timestamp()
         WHERE tenant_id=:t AND appointment_id=:id AND status='pending'"""), {'t':tenant,'id':appointment})
+    if event=='cancelled' and (details.get('previous') or {}).get('status')!='confirmed':return
     settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
     if not settings or not settings['enabled'] or not settings['channel_id']:return
     row=(await db.execute(text('SELECT * FROM appointments WHERE tenant_id=:t AND id=:id'),{'t':tenant,'id':appointment})).mappings().one()
@@ -77,6 +78,10 @@ async def eligibility(db, tenant, job):
             AND appointment_id=:id AND id=CAST(:proposal AS uuid) AND status='pending' AND expires_at>clock_timestamp()"""),
             {'t':tenant,'id':job['appointment_id'],'proposal':job['previous'].get('proposal_id')})).first()
         if proposal is None:return 'proposal_changed',None,None,None
+    if job['event'] in {'review','customer_rescheduled','customer_proposal'}:
+        blocked=(await db.execute(text('SELECT customer_access_blocked FROM appointments WHERE tenant_id=:t AND id=:id'),
+            {'t':tenant,'id':job['appointment_id']})).scalar_one()
+        if blocked:return 'customer_link_revoked',None,None,None
     expected='completed' if job['event']=='review' else 'cancelled' if 'cancelled' in job['event'] else 'confirmed'
     if row['status']!=expected:return 'appointment_changed',None,None,None
     now=(await db.execute(text('SELECT clock_timestamp()'))).scalar_one()

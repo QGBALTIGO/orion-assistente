@@ -95,6 +95,29 @@ def main():
       page.reload();page.get_by_text('Seu agendamento está próximo',exact=False).wait_for()
       assert page.get_by_role('button',name='Remarcar atendimento',exact=True).count()==0
       assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+      # Settings use the existing suite CSS and a deliberately synthetic API.
+      page.set_content('<!doctype html><html data-theme="'+theme+'"><head><base href="'+BASE+'"><link rel="stylesheet" href="/panel-assets/orion-suite.css"></head><body><main id="settings-host" style="max-width:900px;margin:auto;padding:16px"></main></body></html>')
+      page.add_script_tag(url=BASE+'/panel-assets/orion-appointment-communications.js')
+      page.evaluate("""async () => {
+        const fixture={available:true,timezone:'America/Campo_Grande',canonical_channel_id:'00000000-0000-4000-8000-000000000010',
+          settings:{enabled:false,version:1,confirmation:true,professional_notice:true,cancellation:true,rescheduling:true,
+            reschedule_acceptance:false,reminder:true,review:false,return_invitation:false,review_delay_min:15,signature:'Orion Agenda'},
+          return_services:[{id:'00000000-0000-4000-8000-000000000011',name:'Corte',days:21}],
+          notifications:[{id:'notice',event:'professional_new',protocol:'AG-TEST22',recipient_kind:'professional',recipient_label:'Profissional sintético',
+            status:'unknown',due_at:'2026-11-15T18:00:00Z',attempted_at:'2026-11-15T18:00:00Z',last_error:'transport_result_unknown'}],
+          reviews:[{rating:5,professional:'Profissional sintético',comment:'<script>alert(1)</script>'}],transport_limit:'Teste sintético de interface.'};
+        window._settingsSaved=null;
+        await window.OrionAppointmentCommunications.mount({host:document.getElementById('settings-host'),tenantId:'tenant',canWrite:true,
+          request:async(path,method,body)=>{if(method==='PUT'){window._settingsSaved=body;fixture.settings.version++;return {saved:true};}return fixture;}});
+      }""")
+      page.get_by_role('heading',name='Comunicação de agendamentos',exact=True).wait_for()
+      assert page.get_by_text('<script>alert(1)</script>',exact=True).count()==1
+      assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),(engine,width,theme,'settings overflow')
+      page.screenshot(path=str(OUT/f'{engine}-{width}-{theme}-settings.png'),full_page=True)
+      page.get_by_role('button',name='Salvar comunicação',exact=True).click()
+      page.wait_for_function('window._settingsSaved !== null')
+      assert page.evaluate('window._settingsSaved.signature')=='Orion Agenda'
+      assert not errors,errors
       results.append({'engine':engine,'viewport':[width,height],'theme':theme,'result':'passed','synthetic_ui':True})
       context.close()
     browser.close()

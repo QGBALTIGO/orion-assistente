@@ -113,3 +113,14 @@ async def test_real_public_api_rejects_early_review_and_duplicate_review(booking
         assert valid.status_code==200 and valid.json()['review']['rating']==5
         assert (await client.post('/api/appointment-access',json={'token':token,'action':'review','rating':1})).status_code==409
         assert (await client.post('/api/appointment-access',json={'token':token,'action':'review','rating':0})).status_code==422
+
+
+@pytest.mark.asyncio
+async def test_revocation_cannot_be_bypassed_by_requesting_a_new_token(booking_db,monkeypatch):
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
+    d=booking_db;a=await prepare(d)
+    async with d['migrator'].begin() as db:
+        await db.execute(text('UPDATE appointments SET customer_access_blocked=true WHERE tenant_id=:t AND id=:id'),{'t':d['a'],'id':a['id']})
+    async with d['factory']() as db:
+        async with tenant_transaction(db,d['a']):
+            with pytest.raises(HTTPException):await access.issue(db,d['a'],a['id'])
