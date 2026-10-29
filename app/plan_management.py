@@ -421,6 +421,10 @@ async def apply_verified_cakto_payment(event: dict, order: dict) -> str:
                 FROM orion_direct_payment_attempts WHERE intent_id=:intent FOR UPDATE
             """), {"intent": intent["id"]})).mappings().first()
             if direct_attempt:
+                # A signed webhook may arrive before the provider POST response.
+                # Keep it pending until the charge reservation records its order ID.
+                if direct_attempt["state"] == "reserved":
+                    return "retry_later"
                 expected_method = "pix" if direct_attempt["method"] == "pix" else "threeDs"
                 if (direct_attempt["state"] != "created"
                         or direct_attempt["external_order_id"] != order_id
