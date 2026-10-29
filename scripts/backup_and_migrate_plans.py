@@ -84,7 +84,7 @@ def main():
         raw,url=connection_values()
         with _lock(raw):
             current=migrated_version(raw)
-            if current==TARGET:
+            if current in {TARGET,"0046_orion_direct_checkout"}:
                 return 0 if schema_ready(raw) else 3
             if current!=PREVIOUS or not cakto_ready(raw):
                 print("orion_plan_unreviewed_source",file=sys.stderr)

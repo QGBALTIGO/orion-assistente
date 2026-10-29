@@ -29,7 +29,16 @@ function fixture(overrides={},options={}){
   request:async(path,method='GET',data)=>{calls.push({path,method,data});
    if(path==='/plan-trial'){overview.trial={status:'pending',started_at:null,ends_at:null};return{status:'pending',message:'Solicitação recebida!'};}
    if(path==='/plan-overview')return overview;
-   if(path==='/plan-checkout')throw Error('Contratações em preparação.');
+   if(path==='/plan-direct-config')return options.directConfig||{available:false,methods:[],sdk_client_id:null};
+   if(path==='/plan-direct-prepare' && options.directConfig?.available)
+    return {status:'ready',intent_id:'synthetic-intent-id',plan_code:data.plan_code,
+            monthly_cents:overview.plans.find(plan=>plan.code===data.plan_code).monthly_cents};
+   if(path==='/plan-direct-charge' && options.directConfig?.available)
+    return {status:'pending_confirmation',intent_id:'synthetic-intent-id',
+            pix_code:'00020126580014br.gov.bcb.pix.synthetic-example',
+            pix_qr_data_uri:'data:image/png;base64,c3ludGhldGlj'};
+   if(path.startsWith('/plan-direct-status?') && options.directConfig?.available)
+    return {status:'pending'};
    throw Error('Caminho não permitido: '+path);
   }};
  const root=window.document.getElementById('host');
@@ -158,14 +167,116 @@ test('current paid subscription does not offer a second purchase',()=>{
  }finally{f.close();}
 });
 
-test('checkout failure remains visible without falsely starting a paid subscription',async()=>{
+test('clicking subscribe never navigates away; integrated Orion modal is fail closed',async()=>{
  const f=fixture();
  try{
   f.root.querySelector('[data-op-checkout=profissional]').click();
   await tick();await tick();
-  assert.equal(f.calls.filter(c=>c.path==='/plan-checkout').length,1);
-  assert.match(f.root.querySelector('#opPlanFeedback').textContent,/preparação/);
+  const dialog=f.root.querySelector('.op-checkout-dialog');
+  assert.ok(dialog && dialog.open);
+  assert.match(dialog.textContent,/Finalizar assinatura/);
+  assert.match(dialog.textContent,/R\$\s*89,90/);
+  assert.match(dialog.textContent,/temporariamente indisponível/);
+  assert.equal(f.calls.filter(c=>c.path==='/plan-direct-config').length,1);
+  assert.equal(f.calls.filter(c=>c.path==='/plan-direct-charge').length,0);
+  assert.equal(f.calls.filter(c=>c.path==='/plan-checkout').length,0);
   assert.equal(f.root.querySelector('.op-account-state'),null);
+  assert.doesNotMatch(dialog.textContent,/cakto/i);
+  assert.doesNotMatch(code,/window\.location\.assign\s*\(/);
+  dialog.querySelector('[data-op-checkout-close]').click();
+  assert.equal(f.root.querySelector('.op-checkout-dialog'),null);
+ }finally{f.close();}
+});
+
+test('Pix result stays in Orion with local QR and copy code, never activates without backend',async()=>{
+ const f=fixture({}, {directConfig:{available:true,methods:['pix','card'],sdk_client_id:'synthetic-sdk-id'}});
+ try{
+  f.root.querySelector('[data-op-checkout=essencial]').click();
+  await tick();await tick();
+  const dialog=f.root.querySelector('.op-checkout-dialog');
+  assert.ok(dialog && dialog.open);
+  assert.equal(dialog.querySelector('[data-op-payment-body]').hidden,false);
+  const form=dialog.querySelector('[data-op-payment-form]');
+  form.elements.namedItem('name').value='Pessoa Sintética';
+  form.elements.namedItem('email').value='synthetic@example.test';
+  form.elements.namedItem('phone').value='(67) 99999-1111';
+  form.elements.namedItem('doc_number').value='52998224725';
+  form.elements.namedItem('monthly_ack').checked=true;
+  form.elements.namedItem('processor_ack').checked=true;
+  form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));
+  await tick();await tick();await tick();
+  const prepared=f.calls.filter(c=>c.path==='/plan-direct-prepare');
+  const charged=f.calls.filter(c=>c.path==='/plan-direct-charge');
+  assert.equal(prepared.length,1);
+  assert.equal(charged.length,1);
+  assert.equal(charged[0].data.method,'pix');
+  assert.equal(charged[0].data.card_token,null);
+  assert.deepEqual(JSON.parse(JSON.stringify(charged[0].data.three_ds)),null);
+  assert.equal(dialog.querySelector('[data-op-payment-result]').hidden,false);
+  assert.equal(dialog.querySelector('[data-op-pix-code]').value,'00020126580014br.gov.bcb.pix.synthetic-example');
+  assert.ok(dialog.querySelector('img.op-payment-qr').getAttribute('src').startsWith('data:image/png;base64,'));
+  assert.equal(f.root.querySelector('.op-account-state'),null);
+  dialog.querySelector('[data-op-checkout-close]').click();
+  assert.equal(f.root.querySelector('.op-checkout-dialog'),null);
+ }finally{f.close();}
+});
+
+test('card mode never sends raw PAN/CVV to application without tokenization',async()=>{
+ const f=fixture({}, {directConfig:{available:true,methods:['pix','card'],sdk_client_id:'synthetic-sdk-id'}});
+ try{
+  f.root.querySelector('[data-op-checkout=elite]').click();
+  await tick();await tick();
+  const dialog=f.root.querySelector('.op-checkout-dialog');
+  dialog.querySelector('[data-op-payment-method=card]').click();
+  assert.equal(dialog.querySelector('[data-op-card-fields]').hidden,false);
+  assert.ok(dialog.querySelector('[name=card_number]').required);
+  assert.ok(dialog.querySelector('[name=cvv]').required);
+  assert.ok(dialog.querySelector('[name=card_number]').disabled===false);
+  assert.equal(f.calls.filter(c=>c.path==='/plan-direct-charge').length,0);
+  dialog.querySelector('[data-op-checkout-close]').click();
+ }finally{f.close();}
+});
+
+test('credit card SDK tokenizes in browser and Orion API receives only token, not PAN/CVV',async()=>{
+ const f=fixture({}, {directConfig:{available:true,methods:['pix','card'],sdk_client_id:'synthetic-sdk-id'}});
+ let tokenized=false,challenged=false;
+ try{
+  f.window.Cakto={CaktoSDK:class{
+   constructor(settings){assert.equal(settings.client_id,'synthetic-sdk-id');}
+   async initAntifraud(){}
+   async createToken(card){tokenized=card.cardNumber==='4111111111111111'&&card.cvv==='123';return{cardToken:'synthetic-card-token-01234567890'};}
+   async authenticate3DS(data){challenged=data.customer.amount===8990;return{success:true,cavv:'synthetic-cavv',eci:'05',xid:'synthetic-xid',referenceId:'synthetic-ref',version:'2.2.0'};}
+   async completeAntifraudProfile(){}
+   getAntifraudReference(){return 'synthetic-antifraud-reference';}
+  }};
+  f.root.querySelector('[data-op-checkout=profissional]').click();
+  await tick();await tick();
+  const dlg=f.root.querySelector('.op-checkout-dialog');
+  dlg.querySelector('[data-op-payment-method=card]').click();
+  const form=dlg.querySelector('form');
+  const fill=(key,value)=>{form.elements.namedItem(key).value=value;};
+  fill('name','Pessoa Sintética');fill('email','synthetic@example.test');
+  fill('phone','(67) 99999-1111');fill('doc_number','52998224725');
+  fill('holder','Pessoa Sintética');fill('card_number','4111111111111111');
+  fill('expiry','12/30');fill('cvv','123');
+  fill('zip','79000-000');fill('state','MS');fill('city','Campo Grande');
+  fill('street','Rua Exemplo');fill('number','100');
+  form.elements.namedItem('monthly_ack').checked=true;
+  form.elements.namedItem('processor_ack').checked=true;
+  form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));
+  for(let i=0;i<6;i++)await tick();
+  assert.equal(tokenized,true);
+  assert.equal(challenged,true);
+  const charge=f.calls.find(c=>c.path==='/plan-direct-charge');
+  assert.ok(charge,'synthetic card token charge created');
+  assert.equal(charge.data.method,'card');
+  assert.equal(charge.data.card_token,'synthetic-card-token-01234567890');
+  assert.equal(charge.data.three_ds.eci,'05');
+  assert.equal(charge.data.antifraud_reference,'synthetic-antifraud-reference');
+  assert.equal(form.elements.namedItem('card_number').value,'');
+  assert.equal(form.elements.namedItem('cvv').value,'');
+  assert.doesNotMatch(JSON.stringify(charge.data),/4111111111111111|(?:\\b|")cvv(?:\\b|")/i);
+  dlg.querySelector('[data-op-checkout-close]').click();
  }finally{f.close();}
 });
 

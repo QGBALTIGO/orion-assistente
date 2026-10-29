@@ -57,7 +57,7 @@ function renderCard(def, server, currentCode, currentActive, allowed, ctx) {
    +'<p class="op-per-company">por empresa · até '+def.professionals+' profissionais</p>'
    +'<div class="op-plan-divider"></div><ul class="op-plan-features">'+features+'</ul>'
    +'<div class="op-plan-bottom"><button class="op-btn '+(def.code==='profissional'?'op-btn-primary':'op-btn-secondary')+'" type="button" data-op-checkout="'+def.code+'" '+disabled+'>'+escapeHTML(actionLabel)+'</button>'
-   +(same?'<span class="op-plan-caption">Sua assinatura verificada</span>':'<span class="op-plan-caption">Pagamento pela Cakto. Confirmação após validação.</span>')+'</div></article>';
+   +(same?'<span class="op-plan-caption">Sua assinatura verificada</span>':'<span class="op-plan-caption">Pagamento protegido. Confirmação após validação.</span>')+'</div></article>';
 }
 function hasPlanDifference(feature){
  return feature[1]!==feature[2]||feature[2]!==feature[3];
@@ -201,19 +201,267 @@ function renderTrialDialog(root,data,ctx){
  dialog.showModal();
  dialog.querySelector('#opFullName')?.focus({preventScroll:true});
 }
+
+const checkoutPrices={essencial:2990,profissional:8990,elite:13990};
+const checkoutNames={essencial:'Essencial',profissional:'Profissional',elite:'Elite'};
+let checkoutSDKPromise=null;
+
+function loadCheckoutSDK(){
+ if(window.Cakto?.CaktoSDK)return Promise.resolve(window.Cakto.CaktoSDK);
+ if(checkoutSDKPromise)return checkoutSDKPromise;
+ checkoutSDKPromise=new Promise((resolve,reject)=>{
+  const script=document.createElement('script');
+  script.src='https://cakto-sdk.pages.dev/cakto-sdk.min.js';
+  script.async=true;
+  script.referrerPolicy='no-referrer';
+  script.onload=()=>window.Cakto?.CaktoSDK?resolve(window.Cakto.CaktoSDK):reject(Error('Tokenização segura indisponível.'));
+  script.onerror=()=>reject(Error('Não foi possível carregar o sistema seguro de cartão.'));
+  document.head.appendChild(script);
+ }).catch(error=>{checkoutSDKPromise=null;throw error;});
+ return checkoutSDKPromise;
+}
+function checkoutField(name,label,type='text',attributes=''){
+ return '<label class="op-payment-field"><span>'+label+'</span><input name="'+name+'" type="'+type+'" '+attributes+'></label>';
+}
+function renderCheckoutDialog(root,code,ctx,amount){
+ const title=checkoutNames[code];
+ const modal=document.createElement('dialog');
+ modal.className='os-dialog op-dialog op-checkout-dialog';
+ modal.setAttribute('aria-label','Assinatura Orion '+title);
+ modal.innerHTML='<button type="button" class="op-dialog-close" data-op-checkout-close aria-label="Fechar">'+ic('close')+'</button>'
+  +'<div class="op-payment-heading"><div class="op-payment-symbol">'+ic('shield')+'</div><div><span class="op-eyebrow">ASSINATURA ORION</span>'
+  +'<h2>Finalizar assinatura</h2><p>'+escapeHTML(title)+' · Até '+({essencial:2,profissional:6,elite:10}[code])+' profissionais</p></div></div>'
+  +'<div class="op-payment-summary"><span>Orion '+escapeHTML(title)+'<small>Mensalidade por empresa</small></span><strong>'+price(amount)+'<small>/mês</small></strong></div>'
+  +'<div class="op-payment-banner" role="status" aria-live="polite" data-op-payment-info>Verificando a disponibilidade do pagamento…</div>'
+  +'<div class="op-payment-body" data-op-payment-body hidden>'
+  +'<div class="op-payment-methods" role="group" aria-label="Forma de pagamento">'
+  +'<button type="button" class="op-payment-method active" data-op-payment-method="pix" aria-pressed="true">'+ic('credit')+' Pix Automático</button>'
+  +'<button type="button" class="op-payment-method" data-op-payment-method="card" aria-pressed="false">'+ic('shield')+' Cartão de crédito</button></div>'
+  +'<form class="op-payment-form" data-op-payment-form novalidate>'
+  +'<div class="op-payment-fields">'
+  +checkoutField('name','Nome completo','text','autocomplete="name" required minlength="3" maxlength="120" placeholder="Nome e sobrenome"')
+  +checkoutField('email','E-mail','email','autocomplete="email" required maxlength="254" placeholder="seuemail@exemplo.com"')
+  +checkoutField('phone','Celular com DDD','tel','autocomplete="tel" inputmode="tel" required maxlength="20" placeholder="(00) 00000-0000"')
+  +'<div class="op-payment-document">'
+  +'<label class="op-payment-field"><span>Tipo de documento</span><select name="doc_type"><option value="cpf">CPF</option><option value="cnpj">CNPJ</option></select></label>'
+  +checkoutField('doc_number','CPF ou CNPJ','text','required inputmode="numeric" minlength="11" maxlength="18" placeholder="Somente números"')+'</div></div>'
+  +'<div class="op-payment-card-fields" data-op-card-fields hidden>'
+  +'<div class="op-payment-card-title">'+ic('shield')+' Dados do cartão (tokenizados no navegador)</div>'
+  +checkoutField('holder','Nome no cartão','text','autocomplete="cc-name" minlength="3" maxlength="120" placeholder="Como está no cartão"')
+  +checkoutField('card_number','Número do cartão','text','autocomplete="cc-number" inputmode="numeric" maxlength="23" placeholder="0000 0000 0000 0000"')
+  +'<div class="op-payment-card-row">'+checkoutField('expiry','Validade (MM/AA)','text','autocomplete="cc-exp" inputmode="numeric" maxlength="7" placeholder="MM/AA"')
+  +checkoutField('cvv','CVV','password','autocomplete="cc-csc" inputmode="numeric" maxlength="4" placeholder="•••"')+'</div>'
+  +'<p class="op-payment-subtitle">Endereço do titular para autenticação com o banco</p>'
+  +'<div class="op-payment-card-row">'+checkoutField('zip','CEP','text','autocomplete="postal-code" inputmode="numeric" maxlength="9" placeholder="00000-000"')
+  +checkoutField('state','UF','text','autocomplete="address-level1" maxlength="2" placeholder="MS"')+'</div>'
+  +'<div class="op-payment-card-row">'+checkoutField('city','Cidade','text','autocomplete="address-level2" maxlength="70" placeholder="Cidade"')
+  +checkoutField('street','Rua','text','autocomplete="address-line1" maxlength="120" placeholder="Logradouro"')+'</div>'
+  +'<div class="op-payment-card-row">'+checkoutField('number','Número','text','maxlength="12" placeholder="Número"')
+  +checkoutField('complement','Complemento','text','autocomplete="address-line2" maxlength="90" placeholder="Opcional"')+'</div></div>'
+  +'<label class="op-payment-consent"><input type="checkbox" name="monthly_ack" required><span>Confirmo o valor de <strong>'+price(amount)+'</strong> pela assinatura mensal Orion '+escapeHTML(title)+'.</span></label>'
+  +'<label class="op-payment-consent"><input type="checkbox" name="processor_ack" required><span>Autorizo o processamento seguro e a criação de uma assinatura com renovações mensais pelo método escolhido.</span></label>'
+  +'<div class="op-payment-error" data-op-payment-error role="alert" aria-live="polite"></div>'
+  +'<button type="submit" class="op-btn op-btn-primary op-payment-submit" data-op-payment-submit>Gerar Pix Automático</button>'
+  +'<p class="op-payment-secure">'+ic('shield')+' A assinatura é confirmada somente após verificação bancária. Seus dados de cartão não são armazenados pelo Orion.</p>'
+  +'</form></div><div class="op-payment-result" data-op-payment-result hidden></div>';
+ root.appendChild(modal);
+ modal.showModal();
+ modal.querySelector('[name=name]').value=ctx.user?.name||'';
+ modal.querySelector('[name=email]').value=ctx.user?.email||'';
+ modal.querySelector('[name=phone]').value=window.OrionFields?.phoneDisplay(ctx.user?.phone||ctx.tenant?.contact_phone||'')||'';
+ return modal;
+}
 async function checkout(root,code,ctx){
- const action=root.querySelector('[data-op-checkout="'+code+'"]'),message=root.querySelector('#opPlanFeedback');
- if(!action||action.disabled||root.dataset.busy==='true')return;
- root.dataset.busy='true';action.disabled=true;message.hidden=false;message.textContent='Conferindo a oferta e os dados da assinatura…';
+ const action=root.querySelector('[data-op-checkout="'+code+'"]');
+ if(!action||action.disabled||root.dataset.busy==='true'||!checkoutPrices[code])return;
+ if(root.querySelector('.op-checkout-dialog'))return;
+ const modal=renderCheckoutDialog(root,code,ctx,checkoutPrices[code]);
+ const status=modal.querySelector('[data-op-payment-info]');
+ const body=modal.querySelector('[data-op-payment-body]');
+ const feedback=modal.querySelector('[data-op-payment-error]');
+ const resultBox=modal.querySelector('[data-op-payment-result]');
+ const form=modal.querySelector('[data-op-payment-form]');
+ const submit=modal.querySelector('[data-op-payment-submit]');
+ let method='pix',busy=false,finished=false,config=null,intent=null,ticker=null;
+ const close=()=>{
+  if(busy)return;
+  if(ticker)window.clearInterval(ticker);
+  modal.close();modal.remove();
+  action.focus({preventScroll:true});
+ };
+ modal.addEventListener('click',event=>{
+  if(event.target.closest('[data-op-checkout-close]')){event.preventDefault();close();return;}
+  const methodButton=event.target.closest('[data-op-payment-method]');
+  if(methodButton&&!busy){
+   method=methodButton.dataset.opPaymentMethod;
+   modal.querySelectorAll('[data-op-payment-method]').forEach(button=>{
+    button.classList.toggle('active',button===methodButton);
+    button.setAttribute('aria-pressed',String(button===methodButton));
+   });
+   const card=modal.querySelector('[data-op-card-fields]');
+   card.hidden=method!=='card';
+   card.querySelectorAll('input').forEach(input=>{input.disabled=method!=='card';input.required=method==='card'&&input.name!=='complement';});
+   submit.textContent=method==='pix'?'Gerar Pix Automático':'Pagar com cartão';
+  }
+  const copy=event.target.closest('[data-op-copy-pix]');
+  if(copy){
+   event.preventDefault();
+   const text=resultBox.querySelector('[data-op-pix-code]')?.value;
+   if(!text)return;
+   if(navigator.clipboard?.writeText){
+    navigator.clipboard.writeText(text).then(()=>{copy.textContent='Copiado!';}).catch(()=>{
+     resultBox.querySelector('[data-op-pix-code]').select();
+    });
+   }else resultBox.querySelector('[data-op-pix-code]').select();
+  }
+  if(event.target.closest('[data-op-check-status]')){event.preventDefault();void pollStatus();}
+ });
+ modal.addEventListener('cancel',event=>{event.preventDefault();close();});
+ modal.querySelector('[data-op-card-fields]').querySelectorAll('input').forEach(el=>{el.disabled=true;});
+ modal.addEventListener('input',event=>{
+  const input=event.target;
+  if(input.name==='phone'){try{input.value=window.OrionFields?.phoneDisplay(input.value)||input.value;}catch{}}
+  if(input.name==='doc_number'){
+   const digits=input.value.replace(/\D/g,'').slice(0,14);
+   input.value=digits.length<=11
+    ?digits.replace(/^(\d{3})(\d)/,'$1.$2').replace(/^(\d{3}\.\d{3})(\d)/,'$1.$2').replace(/^(\d{3}\.\d{3}\.\d{3})(\d)/,'$1-$2')
+    :digits.replace(/^(\d{2})(\d)/,'$1.$2').replace(/^(\d{2}\.\d{3})(\d)/,'$1.$2').replace(/^(\d{2}\.\d{3}\.\d{3})(\d)/,'$1/$2').replace(/^(\d{2}\.\d{3}\.\d{3}\/\d{4})(\d)/,'$1-$2');
+  }
+  if(input.name==='expiry'){
+   const digits=input.value.replace(/\D/g,'').slice(0,4);
+   input.value=digits.length>2?digits.slice(0,2)+'/'+digits.slice(2):digits;
+  }
+  if(input.name==='card_number'){
+   input.value=input.value.replace(/\D/g,'').slice(0,19).replace(/(.{4})/g,'$1 ').trim();
+  }
+  if(input.name==='zip'){
+   const digits=input.value.replace(/\D/g,'').slice(0,8);
+   input.value=digits.length>5?digits.slice(0,5)+'-'+digits.slice(5):digits;
+  }
+  if(input.name==='state')input.value=input.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,2);
+ });
+ const pollStatus=async()=>{
+  if(!intent||finished||!modal.isConnected)return;
+  try{
+   const answer=await ctx.request('/plan-direct-status?intent_id='+encodeURIComponent(intent.intent_id));
+   if(!modal.isConnected)return;
+   if(answer.status==='active'){
+    finished=true;if(ticker)window.clearInterval(ticker);
+    resultBox.innerHTML='<div class="op-payment-success">'+ic('check')+'<h3>Assinatura confirmada</h3><p>Seu acesso está sendo atualizado.</p></div>';
+    const data=await ctx.request('/plan-overview');
+    if(modal.isConnected){close();render(root,data,ctx);}
+   }else if(answer.status==='review_required'){
+    if(ticker)window.clearInterval(ticker);
+    status.textContent='Pagamento em verificação. Não tente pagar novamente enquanto conferimos sua solicitação.';
+   }else if(answer.status==='declined'){
+    if(ticker)window.clearInterval(ticker);
+    status.textContent='Pagamento recusado. Entre em contato com o suporte antes de outra tentativa.';
+   }else status.textContent='Aguardando confirmação do pagamento.';
+  }catch{status.textContent='Aguardando confirmação. Você pode verificar novamente pelo botão abaixo.';}
+ };
+ form.addEventListener('submit',async event=>{
+  event.preventDefault();
+  if(busy||finished||!config?.available)return;
+  feedback.textContent='';
+  if(!form.reportValidity())return;
+  const v=name=>form.elements.namedItem(name).value.trim();
+  let cardToken=null,threeDSecure=null,antifraud_reference=null;
+  busy=true;submit.disabled=true;modal.querySelectorAll('[data-op-payment-method]').forEach(b=>b.disabled=true);
+  status.textContent='Preparando seu pagamento seguro…';
+  try{
+   // All network calls are scoped to the logged-in business and verified owner.
+   const prepared=await ctx.request('/plan-direct-prepare','POST',{plan_code:code});
+   if(prepared.plan_code!==code||prepared.monthly_cents!==checkoutPrices[code]||prepared.status!=='ready')throw Error('Não foi possível confirmar o valor da assinatura.');
+   intent=prepared;
+   const payer={name:v('name'),email:v('email'),phone:v('phone'),doc_type:v('doc_type'),
+    doc_number:v('doc_number'),fingerprint:'orion_'+(window.crypto?.randomUUID?.()||String(Date.now())+'_checkout_012345')};
+   if(method==='card'){
+    status.textContent='Validando o cartão com segurança…';
+    const SDK=await loadCheckoutSDK();
+    const sdk=new SDK({client_id:config.sdk_client_id});
+    await sdk.initAntifraud();
+    const expiry=v('expiry').split('/');
+    if(expiry.length!==2||!/^(0[1-9]|1[0-2])$/.test(expiry[0])||!/^[0-9]{2,4}$/.test(expiry[1]))
+     throw Error('Informe a validade no formato MM/AA.');
+    const card={holderName:v('holder'),cardNumber:v('card_number').replace(/\D/g,''),
+     cvv:v('cvv'),expMonth:expiry[0],expYear:expiry[1]};
+    const token=await sdk.createToken(card);
+    cardToken=token?.cardToken;
+    // Sensitive inputs are cleared as soon as tokenization finishes.
+    for(const name of ['card_number','cvv'])form.elements.namedItem(name).value='';
+    if(!cardToken)throw Error('Não foi possível tokenizar o cartão.');
+    status.textContent='Aguardando autenticação do seu banco…';
+    const auth=await sdk.authenticate3DS({card,customer:{amount:checkoutPrices[code],currency:'BRL',
+     email:payer.email,name:payer.name,phone:payer.phone.slice(2),paymentMethod:'credit',
+     address:{street:v('street'),number:v('number'),complement:v('complement'),
+      city:v('city'),state:v('state').toUpperCase(),zipcode:v('zip')}}});
+    if(!auth?.success)throw Error('A autenticação bancária não foi concluída.');
+    await sdk.completeAntifraudProfile();
+    antifraud_reference=sdk.getAntifraudReference();
+    threeDSecure={cavv:auth.cavv,eci:auth.eci,xid:auth.xid,
+     referenceId:auth.referenceId,version:auth.version};
+   }
+   status.textContent=method==='pix'?'Gerando código Pix…':'Encaminhando pagamento protegido…';
+   const payload={intent_id:prepared.intent_id,method,payer,
+    confirmed_monthly:true,consent_to_processor:true,
+    card_token:cardToken,antifraud_reference,three_ds:threeDSecure};
+   const result=await ctx.request('/plan-direct-charge','POST',payload);
+   if(!modal.isConnected)return;
+   if(result.intent_id!==prepared.intent_id||result.status!=='pending_confirmation')
+    throw Error('Pagamento em análise. Consulte o suporte antes de tentar novamente.');
+   form.hidden=true;body.hidden=true;
+   resultBox.hidden=false;
+   if(method==='pix'&&result.pix_code){
+    resultBox.innerHTML='<div class="op-payment-pix"><span class="op-eyebrow">PIX GERADO</span><h3>Pague usando seu banco</h3>'
+     +'<p>Autorize no aplicativo do seu banco os pagamentos mensais pelo Pix Automático. O QR Code expira; o acesso só será liberado após a confirmação.</p>'
+     +(String(result.pix_qr_data_uri||'').startsWith('data:image/png;base64,')?'<img class="op-payment-qr" alt="QR Code Pix do seu pagamento" src="'+escapeHTML(result.pix_qr_data_uri)+'">':'')
+     +'<label class="op-payment-field"><span>Pix copia e cola</span><textarea data-op-pix-code readonly rows="3">'+escapeHTML(result.pix_code)+'</textarea></label>'
+     +'<button type="button" class="op-btn op-btn-primary" data-op-copy-pix>Copiar código Pix</button>'
+     +'<button type="button" class="op-btn op-btn-secondary" data-op-check-status>Verificar pagamento</button></div>';
+   }else{
+    resultBox.innerHTML='<div class="op-payment-pending">'+ic('shield')+'<h3>Pagamento em análise</h3>'
+      +'<p>A confirmação será exibida no Orion após validação bancária.</p>'
+      +'<button type="button" class="op-btn op-btn-secondary" data-op-check-status>Verificar pagamento</button></div>';
+   }
+   status.textContent='Aguardando confirmação do pagamento.';
+   // Keep the result visible; do not start or grant subscriptions on the client.
+   ticker=window.setInterval(()=>{if(!document.hidden)void pollStatus();},12000);
+  }catch(error){
+   if(!modal.isConnected)return;
+   feedback.textContent=error.message||'Não foi possível preparar o pagamento.';
+   status.textContent='Pagamento não concluído.';
+   // A timed-out provider call may already have created a charge. Do not enable retry.
+   if(intent&&/não gere outra cobrança|revisão|em análise|não repita/i.test(feedback.textContent)){
+    submit.disabled=true;modal.dataset.paymentLocked='true';
+   }
+  }finally{
+   busy=false;
+   if(modal.isConnected&&!modal.dataset.paymentLocked){
+    submit.disabled=finished||form.hidden;
+    modal.querySelectorAll('[data-op-payment-method]').forEach(b=>b.disabled=form.hidden);
+   }
+  }
+ });
  try{
-  const result=await ctx.request('/plan-checkout','POST',{plan_code:code});
-  if(root!==mounted?.root)return;
-  const url=new URL(result.checkout_url);
-  if(url.protocol!=='https:'||url.hostname!=='pay.cakto.com.br'||result.plan_code!==code||result.status!=='pending_payment')throw Error('Checkout não verificado. Nenhuma contratação foi confirmada.');
-  message.textContent='Abrindo checkout seguro da Cakto. A assinatura será ativada somente após o pagamento confirmado.';
-  window.location.assign(url.href);
- }catch(error){if(root===mounted?.root)message.textContent=error.message||'A contratação ainda não está disponível para este plano.';}
- finally{root.dataset.busy='false';if(action.isConnected)action.disabled=false;}
+  config=await ctx.request('/plan-direct-config');
+  if(!modal.isConnected)return;
+  if(!config?.available||!config.methods?.includes('pix')||!config.methods?.includes('card')){
+   status.textContent='A contratação integrada está temporariamente indisponível. Nenhuma cobrança será feita.';
+   body.hidden=false;
+   submit.disabled=true;
+   submit.textContent='Pagamento indisponível';
+   return;
+  }
+  status.textContent='Escolha como deseja pagar. A confirmação ocorrerá após verificação.';
+  body.hidden=false;
+ }catch{
+  if(modal.isConnected){
+   status.textContent='Não foi possível verificar o pagamento integrado. Nenhuma cobrança foi criada.';
+   body.hidden=false;
+   submit.disabled=true;
+   submit.textContent='Pagamento indisponível';
+  }
+ }
 }
 
 function render(root,data,ctx){

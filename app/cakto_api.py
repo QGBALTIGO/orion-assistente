@@ -334,6 +334,7 @@ async def scan_pending_cakto(_ctx):
             # worker deployment must not try to read a non-existent table.
             ready = (await db.execute(text("""
                 SELECT to_regclass('public.cakto_webhook_events') IS NOT NULL
+                 AND to_regclass('public.orion_direct_payment_attempts') IS NOT NULL
                  AND (SELECT count(*) FROM information_schema.columns
                       WHERE table_schema='public' AND table_name='cakto_webhook_events'
                       AND column_name IN ('callback_hash','amount_cents','currency'))=3
@@ -366,6 +367,10 @@ async def scan_pending_cakto(_ctx):
                 # No tenancy is derived from buyer details. The callback must
                 # match a server-side owner intent and the exact verified offer.
                 linked = await apply_verified_cakto_payment(row, order)
+                if linked == "retry_later":
+                    # A direct PSP response may still be recording its order ID.
+                    # Preserve pending receipt; the bounded worker will retry.
+                    continue
                 if linked == "manual_review":
                     state = "manual_review"
         except (httpx.HTTPError, RuntimeError, ValueError):

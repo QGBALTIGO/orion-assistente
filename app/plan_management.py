@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.catalog_api import Actor, authenticate, support_session_factory
 from app.database import get_session_factory, tenant_transaction
-from app.cakto_api import CaktoClient
+from app.cakto_api import CaktoClient, _subscription_id
 from app.account_business import account_membership_role
 from app.tenant_access import resolve_site_access
 from app.admin_accounts import require_platform_owner
@@ -374,7 +374,7 @@ async def apply_verified_cakto_payment(event: dict, order: dict) -> str:
     if not token_hash or event.get("event_type") != "purchase_approved":
         return "unlinked"
     order_id = event.get("external_order_id")
-    subscription_id = order.get("subscription")
+    subscription_id = _subscription_id(order.get("subscription"))
     if (not isinstance(subscription_id, str) or not subscription_id or len(subscription_id) > 120
             or not isinstance(order_id, str) or order.get("status") != "paid"
             or order.get("type") != "subscription" or order.get("offer_type") != "main"):
@@ -414,16 +414,33 @@ async def apply_verified_cakto_payment(event: dict, order: dict) -> str:
                 return "already_verified"
             if intent["state"] != "pending" or intent["expires_at"] < datetime.now(timezone.utc):
                 return "manual_review"
-            expected_checkout = CODES[intent["plan_code"]]["checkout_url"]
-            actual_checkout = order.get("checkoutUrl")
-            if not isinstance(actual_checkout, str) or not expected_checkout:
-                return "manual_review"
-            expected_parts, actual_parts = urlsplit(expected_checkout), urlsplit(actual_checkout)
-            if (expected_parts.scheme!="https" or actual_parts.scheme!="https"
-                    or expected_parts.netloc!="pay.cakto.com.br"
-                    or actual_parts.netloc!=expected_parts.netloc
-                    or expected_parts.path!=actual_parts.path):
-                return "manual_review"
+            # A direct API charge does not necessarily carry a hosted checkoutUrl.
+            # A unique support-only reservation must match this exact order first.
+            direct_attempt = (await db.execute(text("""
+                SELECT external_order_id,method,state
+                FROM orion_direct_payment_attempts WHERE intent_id=:intent FOR UPDATE
+            """), {"intent": intent["id"]})).mappings().first()
+            if direct_attempt:
+                # A signed webhook may arrive before the provider POST response.
+                # Keep it pending until the charge reservation records its order ID.
+                if direct_attempt["state"] == "reserved":
+                    return "retry_later"
+                expected_method = "pix_auto" if direct_attempt["method"] == "pix" else "threeDs"
+                if (direct_attempt["state"] != "created"
+                        or direct_attempt["external_order_id"] != order_id
+                        or order.get("paymentMethod") not in (expected_method,None)):
+                    return "manual_review"
+            else:
+                expected_checkout = CODES[intent["plan_code"]]["checkout_url"]
+                actual_checkout = order.get("checkoutUrl")
+                if not isinstance(actual_checkout, str) or not expected_checkout:
+                    return "manual_review"
+                expected_parts, actual_parts = urlsplit(expected_checkout), urlsplit(actual_checkout)
+                if (expected_parts.scheme!="https" or actual_parts.scheme!="https"
+                        or expected_parts.netloc!="pay.cakto.com.br"
+                        or actual_parts.netloc!=expected_parts.netloc
+                        or expected_parts.path!=actual_parts.path):
+                    return "manual_review"
             if (intent["offer_id"] != event.get("external_offer_id")
                     or (event.get("external_subscription_id") is not None
                         and event["external_subscription_id"] != subscription_id)
