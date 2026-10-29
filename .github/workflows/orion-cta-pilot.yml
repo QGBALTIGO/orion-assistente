@@ -1,0 +1,31 @@
+name: Orion - CTA do WhatsApp (piloto)
+on:
+  pull_request:
+    paths:
+      - 'qr-bridge/src/server.mjs'
+      - 'qr-bridge/src/test-url-button.mjs'
+      - 'qr-bridge/src/trigger-test.mjs'
+      - 'qr-bridge/test/test-url-button.test.mjs'
+      - 'qr-bridge/test/trigger-test.test.mjs'
+      - '.github/workflows/orion-cta-pilot.yml'
+  workflow_dispatch:
+
+jobs:
+  pilot-contracts:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax validation (no live sending)
+        run: |
+          node --check qr-bridge/src/server.mjs
+          node --check qr-bridge/src/test-url-button.mjs
+          node --check qr-bridge/src/trigger-test.mjs
+      - name: Allowlist, URL fallback and official CTA contracts
+        run: node --test qr-bridge/test/trigger-test.test.mjs qr-bridge/test/test-url-button.test.mjs
