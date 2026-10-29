@@ -806,7 +806,7 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
                                  new_start: datetime, now: datetime | None = None, *,
                                  expected_snapshot: str | None = None, customer_phone: str | None = None,
                                  expected_updated_at: datetime | None = None, idempotency_key: str | None = None,
-                                 context: LifecycleActor | None = None, source: str = "unknown"):
+                                 context: LifecycleActor | None = None, source: str = "unknown", proposal_id: UUID | None = None):
     supplied_clock = now is not None
     now = now or datetime.now(UTC)
     async with tenant_transaction(s, tenant):
@@ -826,6 +826,14 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
         if customer_phone is not None:
             await verify_customer_snapshot(s, tenant, row, customer_phone, None)
         context = resolved_actor(context, source, row["customer_id"], verified_customer=customer_phone is not None)
+        if proposal_id is not None:
+            if context.role!='customer':fail(403,'O aceite exige autorização do cliente')
+            proposal=(await s.execute(text("""SELECT * FROM appointment_change_proposals
+                WHERE tenant_id=:t AND appointment_id=:id AND id=:proposal AND status='pending'
+                  AND expires_at>clock_timestamp() FOR UPDATE"""),{'t':tenant,'id':item_id,'proposal':proposal_id})).mappings().first()
+            if proposal is None or proposal['appointment_version']!=row['updated_at']:
+                fail(409,'Esta proposta expirou ou o agendamento mudou. O horário anterior foi preservado')
+            new_start=proposal['new_start_at']
         receipt = operation_payload(item_id, expected_updated_at, context, start_at=new_start.astimezone(UTC))
         if await operation_replayed(s, tenant, "agenda_reschedule", idempotency_key, receipt):
             return await read_appointment(s, tenant, item_id)
@@ -876,6 +884,8 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
                    "name": item["name"], "duration": item["duration_min"],
                    "price": item["price_cents"], "price_mode": item["price_mode"], "prep": item["prep_min"],
                    "cleanup": item["cleanup_min"]})
+        if proposal_id is not None:
+            await s.execute(text("UPDATE appointment_change_proposals SET status='accepted' WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':proposal_id})
         await history(s, tenant, item_id, "rescheduled", context=context, previous=row)
         await record_operation(s, tenant, item_id, "agenda_reschedule", idempotency_key, receipt)
         return await read_appointment(s, tenant, item_id)

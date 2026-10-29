@@ -18,6 +18,7 @@ def upgrade():
       professional_notice boolean NOT NULL DEFAULT true,
       cancellation boolean NOT NULL DEFAULT true,
       rescheduling boolean NOT NULL DEFAULT true,
+      reschedule_acceptance boolean NOT NULL DEFAULT false,
       reminder boolean NOT NULL DEFAULT true,
       review boolean NOT NULL DEFAULT false,
       return_invitation boolean NOT NULL DEFAULT false,
@@ -49,8 +50,18 @@ def upgrade():
       message_id varchar(200) NOT NULL,appointment_version timestamptz NOT NULL,body_encrypted text NOT NULL,
       created_at timestamptz NOT NULL DEFAULT clock_timestamp(),PRIMARY KEY(tenant_id,channel_key,message_id)
     );''')
+    op.execute('''CREATE TABLE appointment_change_proposals (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenants(id),
+      appointment_id uuid NOT NULL,appointment_version timestamptz NOT NULL,new_start_at timestamptz NOT NULL,
+      actor_account_id uuid REFERENCES panel_accounts(id),actor_role varchar(16) NOT NULL,
+      idempotency_key varchar(120) NOT NULL,UNIQUE(tenant_id,appointment_id,idempotency_key),
+      expires_at timestamptz NOT NULL,status varchar(16) NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending','accepted','declined','superseded')),
+      created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+      FOREIGN KEY(tenant_id,appointment_id) REFERENCES appointments(tenant_id,id) ON DELETE CASCADE
+    ); CREATE INDEX ix_appointment_change_pending ON appointment_change_proposals(tenant_id,appointment_id,status);''')
     setting="(SELECT NULLIF(current_setting('app.tenant_id',true),'')::uuid)"
-    for table in ('appointment_communication_settings','appointment_notifications','appointment_confirmation_receipts'):
+    for table in ('appointment_communication_settings','appointment_notifications','appointment_confirmation_receipts','appointment_change_proposals'):
         op.execute(f'ALTER TABLE {table} ENABLE ROW LEVEL SECURITY')
         op.execute(f'ALTER TABLE {table} FORCE ROW LEVEL SECURITY')
         op.execute(f'CREATE POLICY {table}_runtime ON {table} FOR ALL TO app_runtime USING(tenant_id={setting}) WITH CHECK(tenant_id={setting})')

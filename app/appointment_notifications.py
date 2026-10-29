@@ -27,7 +27,8 @@ def cipher():
 async def enqueue_event(db, tenant, appointment, event, details):
     if not access.enabled():return
     # Every committed mutation invalidates old pending facts in this SAME tx.
-    await db.execute(text("""UPDATE appointment_notifications SET status='cancelled',
+    if event in {'confirmed','cancelled','rescheduled','completed','no_show','hold_expired'}:
+        await db.execute(text("""UPDATE appointment_notifications SET status='cancelled',
         last_error='appointment_changed',updated_at=clock_timestamp()
         WHERE tenant_id=:t AND appointment_id=:id AND status='pending'"""), {'t':tenant,'id':appointment})
     settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
@@ -41,6 +42,8 @@ async def enqueue_event(db, tenant, appointment, event, details):
     if event=='confirmed' and settings['professional_notice']:add('professional_new','professional')
     if event=='cancelled' and settings['cancellation']:
         add('professional_cancelled' if customer else 'customer_cancelled','professional' if customer else 'customer')
+    if event=='reschedule_proposed' and settings['rescheduling']:add('customer_proposal','customer')
+    if event=='reschedule_declined' and settings['rescheduling']:add('professional_proposal_declined','professional')
     if event=='rescheduled' and settings['rescheduling']:
         add('professional_rescheduled' if customer else 'customer_rescheduled','professional' if customer else 'customer')
     if row['status']=='confirmed' and event in {'confirmed','rescheduled'} and settings['reminder']:
@@ -51,7 +54,7 @@ async def enqueue_event(db, tenant, appointment, event, details):
         due=now+timedelta(minutes=settings['review_delay_min'])
         add('review','customer',due,due+timedelta(hours=24))
     for kind,recipient,recipient_id,due,expiry in events:
-        key=event+':'+str(appointment)+':'+row['updated_at'].isoformat()+':'+kind
+        key=event+':'+str(appointment)+':'+row['updated_at'].isoformat()+':'+kind+':'+str((details.get('previous') or {}).get('proposal_id',''))
         await db.execute(text('''INSERT INTO appointment_notifications
           (tenant_id,appointment_id,appointment_version,event,recipient_kind,recipient_id,channel_id,settings_version,
            event_key,previous,due_at,expires_at)
@@ -69,6 +72,11 @@ async def eligibility(db, tenant, job):
     if row['updated_at']!=job['appointment_version']:return 'appointment_changed',None,None,None
     channel=(await db.execute(text('SELECT whatsapp_channel_id FROM tenants WHERE id=:t'),{'t':tenant})).scalar_one_or_none()
     if channel is not None and channel!=job['channel_id']:return 'channel_changed',None,None,None
+    if job['event']=='customer_proposal':
+        proposal=(await db.execute(text("""SELECT 1 FROM appointment_change_proposals WHERE tenant_id=:t
+            AND appointment_id=:id AND id=CAST(:proposal AS uuid) AND status='pending' AND expires_at>clock_timestamp()"""),
+            {'t':tenant,'id':job['appointment_id'],'proposal':job['previous'].get('proposal_id')})).first()
+        if proposal is None:return 'proposal_changed',None,None,None
     expected='completed' if job['event']=='review' else 'cancelled' if 'cancelled' in job['event'] else 'confirmed'
     if row['status']!=expected:return 'appointment_changed',None,None,None
     now=(await db.execute(text('SELECT clock_timestamp()'))).scalar_one()
@@ -96,7 +104,7 @@ async def prepare_body(db,tenant,job,row,settings):
     shop=(await db.execute(text('''SELECT t.name,p.public_slug,p.public_enabled,p.address,p.city,p.state
         FROM tenants t LEFT JOIN management_site_preferences p ON p.tenant_id=t.id WHERE t.id=:t'''),{'t':tenant})).mappings().one()
     customer_link=None
-    if job['recipient_kind']=='customer' and job['event'] in {'customer_rescheduled','review'}:
+    if job['recipient_kind']=='customer' and job['event'] in {'customer_rescheduled','customer_proposal','review'}:
         customer_link=await access.issue(db,tenant,job['appointment_id'])
     from app.public_origins import canonical_public_origin
     booking_link=canonical_public_origin()+'/s/'+shop['public_slug'] if shop.get('public_slug') and shop['public_enabled'] else None
@@ -220,8 +228,8 @@ async def reconcile_notification(ctx,tenant_id,notification_id):
         if row['status']=='delivered' and status=='accepted':status='delivered'
         async with get_session_factory()() as db:
             async with tenant_transaction(db,tenant):
-                await db.execute(text("UPDATE appointment_notifications SET status=:status,last_error=NULL,provider_id=:provider,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id AND status IN ('accepted','unknown','delivered')"),
-                    {'t':tenant,'id':identity,'status':status,'provider':str(identity)})
+                await db.execute(text("UPDATE appointment_notifications SET status=:status,last_error=NULL,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id AND status IN ('accepted','unknown','delivered')"),
+                    {'t':tenant,'id':identity,'status':status})
         return status
     except Exception:
         async with get_session_factory()() as db:

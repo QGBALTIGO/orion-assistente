@@ -110,3 +110,27 @@ async def test_reschedule_creates_new_version_and_cancels_old_reminder(comm_db):
     reminders=[r for r in items if r['event']=='reminder']
     assert len(reminders)==2 and sum(r['status']=='pending' for r in reminders)==1
     assert any(r['event']=='professional_rescheduled' and r['recipient_id']==d['pro'] for r in items)
+
+
+@pytest.mark.asyncio
+async def test_staff_proposal_retains_original_until_verified_customer_accepts(comm_db):
+    from app.appointment_changes import propose_if_required
+    from app.appointment_lifecycle import LifecycleActor
+    from app.booking_api import RescheduleRequest
+    d=comm_db;a=await booking(d)
+    async with d['migrator'].begin() as db:
+        await db.execute(text('UPDATE appointment_communication_settings SET reschedule_acceptance=true WHERE tenant_id=:t'),{'t':d['a']})
+    payload=RescheduleRequest(start_at=start_at(d['day'],14),expected_updated_at=a['updated_at'],idempotency_key='proposal-test-one')
+    actor=LifecycleActor(role='owner',source='panel',account_id=d['account'])
+    async with d['factory']() as db:proposal=await propose_if_required(db,d['a'],a['id'],payload,actor)
+    assert proposal['start_at']==a['start_at'] and proposal['change_status']=='pending_customer_acceptance'
+    async with d['factory']() as db:replay=await propose_if_required(db,d['a'],a['id'],payload,actor)
+    assert replay['pending_change']['id']==proposal['pending_change']['id']
+    items=await jobs(d)
+    assert sum(r['event']=='customer_proposal' for r in items)==1
+    assert any(r['event']=='reminder' and r['status']=='pending' for r in items)
+    async with d['factory']() as db:
+        changed=await reschedule_appointment(db,d['a'],a['id'],start_at(d['day'],12),
+            context=customer_actor(a['customer_id'],'public_site'),proposal_id=proposal['pending_change']['id'])
+    assert changed['start_at']==payload.start_at
+    assert any(r['event']=='professional_rescheduled' for r in await jobs(d))

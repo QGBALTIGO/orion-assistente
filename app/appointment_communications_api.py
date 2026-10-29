@@ -15,7 +15,7 @@ from app.tenant_access import resolve_tenant_access
 
 router=APIRouter(prefix='/api/v1/tenants/{tenant_id}/appointment-communications',tags=['Comunicação de agendamentos'])
 DEFAULTS={'enabled':False,'channel_id':None,'confirmation':True,'professional_notice':True,'cancellation':True,
-    'rescheduling':True,'reminder':True,'review':False,'return_invitation':False,'review_delay_min':15,
+    'rescheduling':True,'reschedule_acceptance':False,'reminder':True,'review':False,'return_invitation':False,'review_delay_min':15,
     'signature':'Orion Agenda','version':0}
 
 
@@ -27,6 +27,7 @@ class Settings(StrictModel):
     professional_notice:StrictBool=True
     cancellation:StrictBool=True
     rescheduling:StrictBool=True
+    reschedule_acceptance:StrictBool=False
     reminder:StrictBool=True
     review:StrictBool=False
     return_invitation:StrictBool=False

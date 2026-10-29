@@ -30,9 +30,10 @@ PRIVATE_HEADERS = {'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'
 
 class CustomerAction(StrictModel):
     token: str = Field(max_length=80)
-    action: Literal['view', 'slots', 'cancel', 'reschedule', 'review'] = 'view'
+    action: Literal['view', 'slots', 'cancel', 'reschedule', 'review', 'accept_change', 'decline_change'] = 'view'
     expected_updated_at: AwareDatetime | None = None
     idempotency_key: UUID | None = None
+    proposal_id: UUID | None = None
     day: date | None = None
     start_at: AwareDatetime | None = None
     rating: int | None = Field(default=None, ge=1, le=5, strict=True)
@@ -64,12 +65,16 @@ async def customer_view(db, identity):
         {'t': tenant, 'customer': identity.customer_id, 'id': identity.appointment_id})).scalar_one()
     booking_url = (canonical_public_origin()+'/s/'+shop['public_slug']
         if shop.get('public_slug') and shop['public_enabled'] else None)
+    pending=(await db.execute(text("""SELECT id,new_start_at,expires_at FROM appointment_change_proposals
+        WHERE tenant_id=:t AND appointment_id=:id AND appointment_version=:version
+          AND status='pending' AND expires_at>clock_timestamp() ORDER BY created_at DESC LIMIT 1"""),
+        {'t':tenant,'id':identity.appointment_id,'version':row['updated_at']})).mappings().first()
     return {'company': shop['name'], 'customer': row['customer_name'], 'professional': row['professional_name'],
         'status': row['status'], 'protocol': row['protocol'], 'start_at': row['start_at'], 'end_at': row['end_at'],
         'timezone': row['timezone'], 'updated_at': row['updated_at'],
         'services': [i['name_snapshot'] for i in row['items']],
         'duration_min': sum(i['duration_snapshot_min'] for i in row['items']),
-        'can_change': customer_can_change(row, now),
+        'can_change': customer_can_change(row, now), 'pending_change':dict(pending) if pending and row['status']=='confirmed' else None,
         'can_review': row['status']=='completed' and actual_completion and review is None,
         'review': dict(review) if review else None, 'has_future_booking': future,
         'new_booking_url': booking_url, 'contact_phone': shop['whatsapp_phone'] or shop['contact_phone'],
@@ -103,7 +108,7 @@ async def customer_action(payload: CustomerAction, request: Request):
         async with tenant_transaction(db, tenant):
             identity = await access.verify(db, tenant, digest)
     with access.bind(identity):
-        if payload.action in {'cancel', 'reschedule'}:
+        if payload.action in {'cancel', 'reschedule', 'accept_change'}:
             if payload.expected_updated_at is None or payload.idempotency_key is None:
                 raise HTTPException(422, 'Atualize o agendamento antes de confirmar a alteração')
             async with get_session_factory()() as db:
@@ -113,9 +118,12 @@ async def customer_action(payload: CustomerAction, request: Request):
                     if payload.action == 'cancel':
                         await cancel_appointment(db, tenant, identity.appointment_id, **kwargs)
                     else:
-                        if payload.start_at is None:
+                        if payload.action=='accept_change' and payload.proposal_id is None:
+                            raise HTTPException(422,'Escolha a proposta atual')
+                        if payload.start_at is None and payload.action!='accept_change':
                             raise HTTPException(422, 'Escolha o novo horário')
-                        await reschedule_appointment(db, tenant, identity.appointment_id, payload.start_at, **kwargs)
+                        await reschedule_appointment(db, tenant, identity.appointment_id, payload.start_at or datetime.now(timezone.utc),
+                            proposal_id=payload.proposal_id if payload.action=='accept_change' else None, **kwargs)
                 except IntegrityError:
                     raise HTTPException(409, 'O horário acabou de ser ocupado. Escolha outro horário.') from None
         if payload.action == 'slots':
@@ -131,6 +139,16 @@ async def customer_action(payload: CustomerAction, request: Request):
             return JSONResponse(jsonable_encoder(result), headers=PRIVATE_HEADERS)
         async with get_session_factory()() as db:
             async with tenant_transaction(db, tenant):
+                if payload.action=='decline_change':
+                    if payload.proposal_id is None:raise HTTPException(422,'Escolha a proposta atual')
+                    declined=(await db.execute(text("""UPDATE appointment_change_proposals SET status='declined'
+                        WHERE tenant_id=:t AND appointment_id=:id AND id=:proposal AND status='pending'
+                          AND expires_at>clock_timestamp() RETURNING id"""),
+                        {'t':tenant,'id':identity.appointment_id,'proposal':payload.proposal_id})).scalar_one_or_none()
+                    if declined:
+                        from app.appointment_notifications import enqueue_event
+                        await enqueue_event(db,tenant,identity.appointment_id,'reschedule_declined',
+                            {'requested_by':'customer','source':'public_site','previous':{'proposal_id':str(declined)}})
                 if payload.action == 'review':
                     if payload.rating is None:
                         raise HTTPException(422, 'Escolha de 1 a 5 estrelas')

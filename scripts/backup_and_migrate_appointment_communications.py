@@ -15,7 +15,7 @@ from scripts.backup_and_migrate_direct_checkout import schema_ready as previous_
 PREVIOUS='0046_orion_direct_checkout'
 TARGET='0048_appointment_notifications'
 TABLES=('appointment_access','appointment_reviews','appointment_communication_settings',
-    'appointment_notifications','appointment_confirmation_receipts')
+    'appointment_notifications','appointment_confirmation_receipts','appointment_change_proposals')
 
 
 @contextmanager

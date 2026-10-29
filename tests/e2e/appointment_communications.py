@@ -53,6 +53,8 @@ def main():
        elif data['action']=='cancel':state.update(status='cancelled',can_change=False);result=state.copy()
        elif data['action']=='review':state.update(can_review=False,review={'rating':data['rating'],'comment':data.get('comment')});result=state.copy()
        elif data['action']=='reschedule':state.update(start_at=data['start_at']);result=state.copy()
+       elif data['action']=='accept_change':state.update(start_at=state['pending_change']['new_start_at'],pending_change=None);result=state.copy()
+       elif data['action']=='decline_change':state.update(pending_change=None);result=state.copy()
        route.fulfill(status=200,content_type='application/json',body=json.dumps(result))
       page.route('**/api/appointment-access',respond)
       page.goto(BASE+'/a#'+TOKEN);page.get_by_role('heading',name='Agendamento confirmado!',exact=True).wait_for()
@@ -69,6 +71,14 @@ def main():
       page.get_by_role('button',name='Confirmar cancelamento',exact=True).click()
       page.get_by_role('heading',name='Agendamento cancelado',exact=True).wait_for()
       assert calls.count('cancel')==1
+      state.update(status='confirmed',can_change=True,pending_change={'id':'00000000-0000-4000-8000-000000000002','new_start_at':'2026-11-17T18:00:00Z','expires_at':'2026-11-16T18:00:00Z'})
+      page.reload();page.get_by_role('button',name='Manter meu horário',exact=True).click()
+      page.get_by_role('button',name='Cancelar agendamento',exact=True).wait_for()
+      assert calls.count('decline_change')==1
+      state.update(pending_change={'id':'00000000-0000-4000-8000-000000000003','new_start_at':'2026-11-18T18:00:00Z','expires_at':'2026-11-17T18:00:00Z'})
+      page.reload();page.get_by_role('button',name='Aceitar novo horário',exact=True).click()
+      page.get_by_role('button',name='Cancelar agendamento',exact=True).wait_for()
+      assert calls.count('accept_change')==1
       state.update(status='completed',can_change=False,can_review=True,review=None)
       page.reload();page.get_by_role('heading',name='Atendimento concluído!',exact=True).wait_for()
       assert page.get_by_role('button',name='Cancelar agendamento',exact=True).count()==0

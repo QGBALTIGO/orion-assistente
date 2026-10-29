@@ -35,10 +35,18 @@ def compose(event, row, *, company, signature='Orion Agenda', customer_link=None
         parts+=['Até breve! 😊']
     elif event.startswith('professional_'):
         title={'professional_new':'📅 NOVO AGENDAMENTO!','professional_cancelled':'❌ AGENDAMENTO CANCELADO',
-               'professional_rescheduled':'🔄 AGENDAMENTO REMARCADO','professional_reassigned':'🔄 RESPONSÁVEL ALTERADO'}[event]
+               'professional_rescheduled':'🔄 AGENDAMENTO REMARCADO','professional_reassigned':'🔄 RESPONSÁVEL ALTERADO','professional_proposal_declined':'📋 PROPOSTA DE REMARCAÇÃO RECUSADA'}[event]
         # A phone number is available behind the authenticated panel link.
         parts=[title,f'Olá, {pro}!','👤 Cliente: '+label(row.get('customer_name')),details]
         if event=='professional_new':parts += ['⏱️ Duração: '+str(sum(i['duration_snapshot_min'] for i in row['items']))+' minutos']
+    elif event=='customer_proposal':
+        from datetime import datetime
+        proposed=datetime.fromisoformat(previous['new_start_at']).astimezone(ZoneInfo(row['timezone']))
+        expiry=datetime.fromisoformat(previous['expires_at']).astimezone(ZoneInfo(row['timezone']))
+        parts=['🔄 PROPOSTA DE ALTERAÇÃO',f'Olá, {first}! A equipe propôs um novo horário.',details,
+            f'Novo horário proposto: {proposed:%d/%m/%Y às %H:%M}',
+            f'Responda pelo link até {expiry:%d/%m/%Y às %H:%M}. O horário original permanece válido até seu aceite. O novo horário será conferido ao confirmar.']
+        if safe_link(customer_link):parts+=['🔗 CONFERIR PROPOSTA\n'+customer_link]
     elif event=='customer_cancelled':
         parts=[f'Olá, {first}! 👋','Seu agendamento foi cancelado pela equipe.',details,'Pedimos desculpas pelo inconveniente.']
     elif event=='customer_rescheduled':
