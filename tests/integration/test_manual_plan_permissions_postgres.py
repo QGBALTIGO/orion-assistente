@@ -147,10 +147,12 @@ async def test_verified_cakto_renewal_and_replay_keep_manual_elite_then_removal_
     order={"id":current_order,"subscription":subscription_id,"type":"subscription","offer_type":"main","currency":"BRL",
         "status":"paid","amount":29.9,"paidAt":datetime.now(timezone.utc).isoformat()}
     class ReadOnlyProvider:
+        def __init__(self,status="active"):
+            self.status=status
         async def _get(self,path):
             assert path=="/subscriptions/"+subscription_id+"/"
             return {"id":subscription_id,"offer":"synthetic-essential-offer","recurrence_period":30,
-                    "paymentMethod":"credit_card","status":"active","amount":29.9}
+                    "paymentMethod":"credit_card","status":self.status,"amount":29.9}
         async def list_offers(self):
             return [{"id":"synthetic-essential-offer","name":"Orion Essencial","price":29.9,"status":"active","type":"subscription","recurrence_period":30}]
     assert await reconcile_existing_cakto_subscription(event,order,ReadOnlyProvider())=="reconciled"
@@ -162,6 +164,22 @@ async def test_verified_cakto_renewal_and_replay_keep_manual_elite_then_removal_
     result=await c.client.request("DELETE",c.path,json=removal)
     assert result.status_code==200,result.text
     assert result.json()["effective_plan"]["source"]=="cakto" and result.json()["effective_plan"]["code"]=="essencial"
+    # A verified cancellation also updates the commercial record while manual
+    # access remains authoritative; its NULL paid_at must preserve the receipt.
+    paid_at=result.json()["effective_plan"]["commercial_subscription"]["last_verified_payment_at"]
+    assert (await c.client.put(c.path,json=await assignment(c))).status_code==200
+    assert await reconcile_existing_cakto_subscription(
+        {**event,"event_type":"subscription_canceled"},order,ReadOnlyProvider("canceled"))=="reconciled"
+    state=(await c.client.get(c.path)).json()["effective_plan"]
+    assert state["source"]=="manual" and state["code"]=="elite"
+    assert state["commercial_subscription"]["status"]=="canceled"
+    assert state["commercial_subscription"]["last_verified_payment_at"]==paid_at
+    removal={"expected_version":state["version"],"expected_revision":state["revision"],
+        "operation_id":str(uuid4()),"confirmation":"REMOVER ATRIBUIÇÃO"}
+    result=await c.client.request("DELETE",c.path,json=removal)
+    assert result.status_code==200,result.text
+    assert result.json()["effective_plan"]["source"]=="none"
+    assert result.json()["effective_plan"]["status"]=="canceled"
 
 
 @pytest.mark.asyncio

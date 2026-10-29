@@ -27,7 +27,7 @@ def feature_for_path(relative, method="GET", *, resource=None, step_id=None):
         return {"professionals": "professionals.manage", "services": "services.manage",
             "professional_services": "services.manage", "working_hours": "agenda.manage",
             "working_breaks": "agenda.manage", "time_off": "agenda.manage",
-            "authorized_staff": "settings.manage"}.get(resource, "workspace.access")
+            "schedule_blocks": "agenda.manage", "authorized_staff": "settings.manage"}.get(resource)
     if relative in {"/services"}:
         return "services.manage"
     if relative.startswith(("/availability", "/appointments", "/export/appointments", "/management/appointments", "/management/block-series", "/management/booking-selection")):

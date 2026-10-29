@@ -5,6 +5,7 @@ No authenticated account, production APIs or WhatsApp URL are contacted.
 from pathlib import Path
 import pytest
 from playwright.sync_api import sync_playwright
+from scripts.plan_fixture import synthetic_plan_state
 
 ROOT=Path(__file__).resolve().parents[2]
 PAGE="""<!doctype html><html lang="pt-BR" data-theme="light"><head>
@@ -13,7 +14,7 @@ PAGE="""<!doctype html><html lang="pt-BR" data-theme="light"><head>
 <aside class="sidebar"><div class="brand">Orion</div></aside>
 <main class="content"><section id="page-original" class="page">Área original</section></main>
 </div></body></html>"""
-INITIALIZE=r"""() => {
+INITIALIZE=r"""({effectivePlan}) => {
   const customer={id:'30000000-0000-4000-8000-000000000003',
     name:'Cliente sintético',phone:'+5521997557364',active:true,
     version:1,created_at:'2026-10-17T13:12:00Z',
@@ -25,6 +26,7 @@ INITIALIZE=r"""() => {
     tenantId:'10000000-0000-4000-8000-000000000001',
     initialRoute:'clientes',
     request:async(path,method='GET')=>{
+      if(path.endsWith('/management/permissions')&&method==='GET')return {effective_plan:effectivePlan};
       if(path.includes('/management/customers'))return {items:[customer],total:1};
       if(path.endsWith('/management/team'))return {can_manage:true,members:[],invitations:[]};
       return [];
@@ -56,7 +58,7 @@ def test_whatsapp_shortcut_and_chevron_fit_real_mobile_browser(engine,width):
             page.add_script_tag(content=(ROOT/"app/static/orion-fields.js").read_text())
             page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=(ROOT/"app/static/orion-suite.js").read_text())
-            page.evaluate(INITIALIZE)
+            page.evaluate(INITIALIZE, {"effectivePlan": synthetic_plan_state('10000000-0000-4000-8000-000000000001')})
             card=page.locator(".os-mobile-customers .os-swipe-row").first
             card.wait_for(state="visible",timeout=10000)
             name=card.locator(".os-client-mobile-main strong")

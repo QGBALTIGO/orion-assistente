@@ -2,8 +2,12 @@
 from pathlib import Path
 from playwright.async_api import async_playwright
 import asyncio
+import sys
 
 ROOT=Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from app.plan_catalog import feature_catalog
+from scripts.plan_fixture import synthetic_plan_state
 WIDTHS=(320,375,390,430,768,1024,1440)
 COLORS={
     "light":{"bg":"#f5f8fd","card":"#ffffff","text":"#15213b","muted":"#536079","border":"#dbe3ef"},
@@ -32,7 +36,7 @@ async def inspect(page,width,mode):
     }""",palette)
     await page.add_style_tag(path=str(ROOT/"app/static/orion-plans.css"))
     await page.add_script_tag(path=str(ROOT/"app/static/orion-plans.js"))
-    await page.evaluate("""()=>{
+    await page.evaluate("""fixture=>{
       window.OrionFields={phoneDisplay:value=>value,
         phoneValue:()=>'+5567999991111'};
       window.OrionPlans.mount(document.querySelector('#osPageBody'),{
@@ -41,13 +45,15 @@ async def inspect(page,width,mode):
           {code:'profissional',name:'Orion Profissional',monthly_cents:8990,max_professionals:6},
           {code:'elite',name:'Orion Elite',monthly_cents:13990,max_professionals:10}
         ],subscription:null,trial:null,active_professionals:0,can_manage_plan:true,
+        effective_plan:fixture.effective_plan,feature_catalog:fixture.feature_catalog,
         checkout_enabled:false
       },{
         canManage:true,isAdmin:false,user:{name:'Pessoa Sintética'},
         tenant:{name:'Empresa Sintética',timezone:'America/Campo_Grande'},
         request:async()=>{throw Error('Blocked in synthetic browser test');}
       });
-    }""")
+    }""",{'effective_plan':synthetic_plan_state('synthetic-plan-smoke',None),
+            'feature_catalog':feature_catalog()})
     assert await page.locator(".op-plan").count()==3, (width,mode)
     assert await page.locator(".op-matrix-footnote, .op-admin-trials, .op-legal-foot").count()==0, (width,mode)
     assert await page.evaluate("() => document.querySelector('.op-page').lastElementChild.classList.contains('op-compare')"), (width,mode)
@@ -70,8 +76,9 @@ async def inspect(page,width,mode):
     # Each category is a static heading. No expandable accordion or navigation.
     assert await page.locator('[data-op-category-toggle]').count()==0, (width,mode)
     assert await page.locator('[data-op-only-differences]').is_checked(), (width,mode)
-    assert await page.locator('.op-matrix-row:not([hidden])').count()==15, (width,mode)
-    assert await page.locator('.op-mobile-feature:not([hidden])').count()==15, (width,mode)
+    assert await page.locator('.op-matrix-row:not([hidden])').count()==14, (width,mode)
+    assert await page.locator('.op-mobile-feature:not([hidden])').count()==14, (width,mode)
+    assert await page.locator('[data-op-unavailable]').inner_text() == 'Suporte prioritário: Não há um fluxo de suporte prioritário implementado no painel.', (width,mode)
     if width<768:
         assert not await page.locator('.op-matrix-frame').is_visible(), (width,mode)
         assert await page.locator('.op-mobile-comparison').is_visible(), (width,mode)
@@ -87,7 +94,7 @@ async def inspect(page,width,mode):
         assert geometry["left"]>=-1 and geometry["right"]<=width+1,(width,mode,geometry)
         assert geometry["cellWidth"]>=60,(width,mode,geometry)
         assert geometry["labelSize"]>=12,(width,mode,geometry)
-        assert await page.locator('.op-mobile-group:visible').count()==9, (width,mode)
+        assert await page.locator('.op-mobile-group:visible').count()==8, (width,mode)
     else:
         assert await page.locator('.op-matrix-frame').is_visible(), (width,mode)
         assert not await page.locator('.op-mobile-comparison').is_visible(), (width,mode)
@@ -105,11 +112,11 @@ async def inspect(page,width,mode):
         assert geometry["right"]<=width+1,(width,mode,geometry)
         assert all(abs(a-b)<2 for a,b in zip(geometry["headerX"],geometry["rowX"])),(width,mode,geometry)
     await page.locator('[data-op-only-differences]').uncheck()
-    assert await page.locator('.op-matrix-row:not([hidden])').count()==25, (width,mode)
-    assert await page.locator('.op-mobile-feature:not([hidden])').count()==25, (width,mode)
+    assert await page.locator('.op-matrix-row:not([hidden])').count()==24, (width,mode)
+    assert await page.locator('.op-mobile-feature:not([hidden])').count()==24, (width,mode)
     await page.locator('[data-op-only-differences]').check()
-    assert await page.locator('.op-matrix-row:not([hidden])').count()==15, (width,mode)
-    assert await page.locator('.op-mobile-feature:not([hidden])').count()==15, (width,mode)
+    assert await page.locator('.op-matrix-row:not([hidden])').count()==14, (width,mode)
+    assert await page.locator('.op-mobile-feature:not([hidden])').count()==14, (width,mode)
     await page.locator("[data-op-trial]").click()
     await page.locator(".op-dialog").wait_for(state="visible")
     rect=await page.locator(".op-dialog").bounding_box()

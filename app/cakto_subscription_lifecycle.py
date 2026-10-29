@@ -165,9 +165,9 @@ async def reconcile_existing_cakto_subscription(event: dict, order: dict, client
             new_status = {"renewed":"active","canceled":"canceled",
                           "suspended":"suspended","past_due":"past_due"}[action]
             await db.execute(text("""
-                UPDATE subscriptions SET status=:status, updated_at=now(),
+                UPDATE subscriptions SET status=CAST(:status AS varchar(20)), updated_at=now(),
                     last_verified_payment_at=CASE
-                        WHEN :status='active' THEN :paid_at
+                        WHEN CAST(:status AS varchar(20))='active' THEN :paid_at
                         ELSE last_verified_payment_at END
                 WHERE id=:id AND tenant_id=:tenant
             """),{

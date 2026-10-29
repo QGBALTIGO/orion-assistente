@@ -6,6 +6,7 @@ credentials, external APIs or real customer/business data are used.
 from pathlib import Path
 import pytest
 from playwright.sync_api import sync_playwright
+from scripts.plan_fixture import synthetic_plan_state
 
 ROOT=Path(__file__).resolve().parents[2]
 PAGE="""<!doctype html><html lang="pt-BR" data-theme="light"><head>
@@ -14,7 +15,7 @@ PAGE="""<!doctype html><html lang="pt-BR" data-theme="light"><head>
 <aside class="sidebar"><div class="brand">Orion</div></aside>
 <main class="content"><section id="page-original" class="page">Área original</section></main>
 </div></body></html>"""
-INITIALIZE=r"""() => {
+INITIALIZE=r"""({effectivePlan}) => {
   const id='a0000000-0000-4000-8000-000000000010';
   const service={id,name:'Corte Masculino',duration_min:40,price_cents:4000,
       price_mode:'fixed',sort_order:0,active:true,color:'#8b5cf6'};
@@ -26,6 +27,7 @@ INITIALIZE=r"""() => {
     tenantId:'10000000-0000-4000-8000-000000000001',
     initialRoute:'servicos',
     request:async(path,method='GET',payload)=>{
+      if(path.endsWith('/management/permissions')&&method==='GET')return {effective_plan:effectivePlan};
       if(path.endsWith('/services')&&method==='GET')return [service];
       if(path.endsWith('/professionals')||path.endsWith('/professional_services'))return [];
       if(path.endsWith('/management/service-packages'))return {items:[]};
@@ -61,7 +63,7 @@ def test_duration_presets_are_under_minutes_and_currency_formats_native_keyboard
             page.add_script_tag(content=(ROOT/"app/static/orion-fields.js").read_text())
             page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=(ROOT/"app/static/orion-suite.js").read_text())
-            page.evaluate(INITIALIZE)
+            page.evaluate(INITIALIZE, {"effectivePlan": synthetic_plan_state('10000000-0000-4000-8000-000000000001')})
 
             edit=page.locator('[data-os-service="a0000000-0000-4000-8000-000000000010"]')
             edit.wait_for(state="visible",timeout=10000)

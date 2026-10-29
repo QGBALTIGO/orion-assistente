@@ -569,6 +569,9 @@ async def test_signed_phone_scopes_customer_cancel_and_reschedule(booking_db):
     sender=phone(432)
     other=phone(433)
     async with d["migrator"].begin() as s:
+        # This scenario exercises the WhatsApp assistant as well as booking.
+        await s.execute(text("UPDATE tenant_plan_controls SET manual_plan_code='elite',version=version+1 WHERE tenant_id=:tenant"),
+                        {"tenant":d["a"]})
         await s.execute(text("""INSERT INTO whatsapp_channels
             (id,tenant_id,phone_number_id,business_number,status)
             VALUES(:id,:tenant,:number,'+5567999999900','testing')"""),

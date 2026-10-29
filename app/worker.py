@@ -5,6 +5,7 @@ canal conectado, token por canal decifrado e janela Meta permitida. Não há
 broadcast nem envio automático de templates fora da janela nesta versão.
 """
 import os
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -120,6 +121,8 @@ async def startup_plan_permissions(ctx):
     from scripts.wait_for_agenda_schema import Settings
     from scripts.wait_for_plan_permissions_schema import wait_for_schema
     await wait_for_schema(Settings.from_environment())
+    ctx['plan_permissions_ready'] = True
+    logging.getLogger(__name__).info('orion_plan_permissions_0050_worker_ready')
 
 
 class WorkerSettings:

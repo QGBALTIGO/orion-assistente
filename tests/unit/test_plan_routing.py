@@ -28,6 +28,13 @@ def test_unclassified_new_route_prevents_application_start():
     with pytest.raises(RuntimeError): plan_routing.include_plan_router(app,router)
 
 
+def test_all_dynamic_resources_need_explicit_policy_and_unknown_resource_is_denied():
+    from app.catalog_schemas import RESOURCE_MODELS
+    for resource in RESOURCE_MODELS:
+        assert plan_routing.feature_for_path('/{resource}',resource=resource) is not None,resource
+    assert plan_routing.feature_for_path('/{resource}',resource='future_unreviewed_resource') is None
+
+
 @pytest.mark.asyncio
 async def test_real_included_route_dependency_denies_premium_before_handler_and_honors_target(monkeypatch):
     tenant,foreign,account=uuid4(),uuid4(),uuid4();called=[];locks=[]

@@ -177,6 +177,8 @@ async def test_tenant_authorization_precedes_database_access(monkeypatch, actor,
 
 @pytest.mark.asyncio
 async def test_viewer_in_own_scope_cannot_create_or_transition(monkeypatch):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch, "essencial")
     app = FastAPI()
     app.include_router(api.router)
     tenant = uuid4()

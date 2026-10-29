@@ -64,8 +64,10 @@ async def test_arq_startup_awaits_readonly_barrier(monkeypatch):
     monkeypatch.setattr(Settings,"from_environment",lambda:"synthetic-runtime")
     async def wait(settings): called.append(settings)
     monkeypatch.setattr(barrier,"wait_for_schema",wait)
-    await WorkerSettings.on_startup({})
+    context={}
+    await WorkerSettings.on_startup(context)
     assert called==["synthetic-runtime"]
+    assert context['plan_permissions_ready'] is True
 
 
 def test_current_release_never_reruns_applied_earlier_migrations(monkeypatch):

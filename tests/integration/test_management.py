@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.catalog_api import Actor, authenticate, router as catalog_router, support_session_factory
 from app.database import get_engine
 from app.management_api import router
+from app.plan_routing import include_plan_router
 
 pytestmark = pytest.mark.integration
 
@@ -33,8 +34,8 @@ async def management_db(monkeypatch):
             pytest.fail("Management tests require real PostgreSQL runtime/migrator/support URLs")
         pytest.skip("Requires PostgreSQL with the management migration")
     app = FastAPI()
-    app.include_router(router)
-    app.include_router(catalog_router)
+    include_plan_router(app, router)
+    include_plan_router(app, catalog_router)
     monkeypatch.setenv("SUPPORT_API_TOKEN", "management-test-support-token-of-at-least-32-characters")
     monkeypatch.setenv("VIEWER_API_TOKEN", "management-test-viewer-token-of-at-least-32-characters")
     monkeypatch.setenv("BUSINESS_PROFILES_ENABLED", "1")
@@ -214,10 +215,15 @@ async def test_management_roles_and_verified_membership_scope(management_db):
     assert (await c.get(base + "/dashboard", headers=viewer)).status_code == 200
     assert (await c.get(d["other_base"] + "/dashboard", headers=viewer)).status_code == 403
     assert (await c.post(base + "/customers", headers=viewer, json={"name": "No", "idempotency_key": "viewer-blocked-key"})).status_code == 403
-    # Even a forged cached actor scope is ignored in favor of the persisted membership.
+    # The route guard rejects a forged cached scope before opening the domain
+    # transaction. A correctly authenticated scope still rechecks membership.
     async def member_actor():
         return Actor("member", tenant_id=d["b"], account_id=d["account"], membership_role="owner")
     d["app"].dependency_overrides[authenticate] = member_actor
+    assert (await c.get(base + "/subscription")).status_code == 403
+    async def verified_member_actor():
+        return Actor("member", tenant_id=d["a"], account_id=d["account"], membership_role="owner")
+    d["app"].dependency_overrides[authenticate] = verified_member_actor
     assert (await c.get(base + "/subscription")).status_code == 200
     assert (await c.get(d["other_base"] + "/subscription")).status_code == 403
     result = await c.post(base + "/customers", json={"name": "Membro autorizado", "idempotency_key": "member-allowed-key"})

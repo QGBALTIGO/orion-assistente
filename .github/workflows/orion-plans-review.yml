@@ -56,10 +56,11 @@ jobs:
           node --test ui-tests/orion-plans.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/admin-plan-management.test.mjs ui-tests/fields-core.test.mjs ui-tests/fields-auth.test.mjs ui-tests/fields-onboarding-channels.test.mjs ui-tests/onboarding-panel-integration.test.mjs ui-tests/mobile-atendimento.test.mjs ui-tests/channels.test.mjs ui-tests/channels-pairing.test.mjs
       - name: Unidades com rede externa bloqueada
         run: |
-          python tests/run_isolated_plan_tests.py -q -ra --maxfail=1 \
+          python tests/run_isolated_plan_tests.py -q -ra \
             tests/unit/test_plan_permissions.py tests/unit/test_plan_routing.py \
             tests/unit/test_appointment_pilot.py tests/unit/test_onboarding_goals.py tests/unit/test_professional_phone_release.py \
             tests/unit/test_plan_permissions_release.py \
+            tests/unit/test_plan_preview_fixture.py tests/unit/test_management_unit.py tests/unit/test_automation_composition_contract.py \
             tests/unit/test_plan_runtime_enforcement.py tests/unit/test_manual_plan_management.py \
             tests/unit/test_maintenance_access.py tests/unit/test_plan_management.py \
             tests/unit/test_checkout_manual_priority.py \
@@ -123,7 +124,7 @@ jobs:
         run: python tests/run_isolated_plan_tests.py -q -ra --maxfail=1 tests/integration/test_plan_permissions_release_postgres.py
       - name: RLS, ativação atômica e filas sem saídas externas
         run: |
-          python tests/run_isolated_plan_tests.py -q -ra --maxfail=1 \
+          python tests/run_isolated_plan_tests.py -q -ra \
             tests/integration/test_manual_plan_permissions_postgres.py \
             tests/integration/test_manual_checkout_priority_postgres.py \
             tests/integration/test_plan_runtime_postgres.py tests/integration/test_automation_postgres.py \

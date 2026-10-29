@@ -6,13 +6,14 @@ with an in-memory fixture and exercise real WebKit/Chromium CSS layout.
 from pathlib import Path
 import pytest
 from playwright.sync_api import sync_playwright
+from scripts.plan_fixture import synthetic_plan_state
 
 ROOT=Path(__file__).resolve().parents[2]
 HTML="""<!doctype html><html lang="pt-BR" data-theme="light"><head>
 <meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body><div id="appView" class="app"><aside class="sidebar"><div class="brand">Orion</div></aside>
 <main class="content"><section id="page-original" class="page">Original</section></main></div></body></html>"""
-INITIALIZE=r"""() => {
+INITIALIZE=r"""({effectivePlan}) => {
   const ids={
     cut:'c0000000-0000-4000-8000-000000000001',
     hair:'c0000000-0000-4000-8000-000000000003'
@@ -48,6 +49,7 @@ INITIALIZE=r"""() => {
     tenantId:'10000000-0000-4000-8000-000000000001',
     initialRoute:'servicos',
     request:async(path,method='GET')=>{
+      if(path.endsWith('/management/permissions')&&method==='GET')return {effective_plan:effectivePlan};
       if(path.endsWith('/services')&&method==='GET')return services;
       if(path.endsWith('/management/service-packages')&&method==='GET')return {items:combo};
       if(path.endsWith('/professionals')||path.endsWith('/professional_services'))return [];
@@ -80,7 +82,7 @@ def test_package_cards_share_service_geometry_without_nested_surfaces(browser_na
             page.add_script_tag(content=(ROOT/"app/static/orion-fields.js").read_text())
             page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=(ROOT/"app/static/orion-suite.js").read_text())
-            page.evaluate(INITIALIZE)
+            page.evaluate(INITIALIZE, {"effectivePlan": synthetic_plan_state('10000000-0000-4000-8000-000000000001')})
             first=page.locator('[data-os-package-card="d0000000-0000-4000-8000-000000000001"]')
             variable=page.locator('[data-os-package-card="d0000000-0000-4000-8000-000000000002"]')
             first.wait_for(state="visible",timeout=12000)

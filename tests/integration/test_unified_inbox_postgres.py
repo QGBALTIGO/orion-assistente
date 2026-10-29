@@ -34,10 +34,18 @@ async def assume(c,channel=None):
     return await control.change_control(c.tenant,channel or c.channel,control.Change(contact_e164=PHONE,expected_revision=2,mode='human'),c.actor)
 
 
+async def grant_reception_plan(c):
+    # Manual inbox scenarios retain Profissional; only these AI scenarios own Elite.
+    async with c.migration.begin() as db:
+        await db.execute(text("UPDATE tenant_plan_controls SET manual_plan_code='elite',version=version+1 WHERE tenant_id=:tenant"),
+                         {"tenant":c.tenant})
+
+
 async def test_explicit_ai_resume_invalidates_only_old_proposals_once(central,isolated_redis):
     import json
     from types import SimpleNamespace
     c=central;redis,key=isolated_redis
+    await grant_reception_plan(c)
     await assume(c)
     await control.change_control(c.tenant,c.channel,control.Change(contact_e164=PHONE,expected_revision=3,mode='ai'),c.actor)
     revision=await control.assistant_revision(c.tenant,c.channel,PHONE)
@@ -176,7 +184,9 @@ async def test_customer_request_during_pending_send_pauses_ai_without_releasing_
 
 @pytest.mark.parametrize('revoke',['membership','password','control'])
 async def test_revalidation_before_transport_cancels_revoked_or_obsolete_manual_work(central,revoke):
-    c=central;await assume(c);operation,_=await enqueue(c)
+    c=central
+    await grant_reception_plan(c)
+    await assume(c);operation,_=await enqueue(c)
     if revoke=='control':
         await control.change_control(c.tenant,c.channel,control.Change(contact_e164=PHONE,expected_revision=3,mode='ai'),c.actor)
     else:
@@ -289,6 +299,7 @@ async def test_meta_domain_transaction_rejects_stale_generation_after_operator_t
 async def test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_outbox(meta,isolated_redis,monkeypatch,handoff,legacy_pending):
     from app import worker
     c=meta;event=uuid4()
+    await grant_reception_plan(c)
     monkeypatch.setattr(worker,'get_session_factory',lambda:c.factory)
     async with c.migration.begin() as db:
         if legacy_pending:

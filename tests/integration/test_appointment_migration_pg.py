@@ -60,13 +60,28 @@ def test_populated_upgrade_preserves_rows_registry_and_restorable_backup(tmp_pat
                 for table in release.TABLES:
                     assert db.exec_driver_sql('SELECT count(*) FROM '+table).scalar_one() == 0
             assert release.schema_ready(source.environment()['MIGRATION_DATABASE_URL'])
-            # Execute Railway's actual predeploy entrypoint against the newly
-            # upgraded real database, including all read-only schema checks.
+            # This historical 0049 release still verifies read-only. The new
+            # complete runtime intentionally refuses 0049 without authorized
+            # 0050 bootstrap; do not weaken that barrier for the old harness.
             from scripts import backup_and_migrate_registration as entry
+            from scripts import backup_and_migrate_plan_permissions as permissions
             raw=source.environment()['MIGRATION_DATABASE_URL']
             monkeypatch.setattr(entry,'connection_values',lambda:(raw,raw))
             monkeypatch.setattr(release,'connection_values',lambda:(raw,raw))
-            assert entry.predeploy_main()==0
+            monkeypatch.setattr(permissions,'connection_values',lambda:(raw,raw))
+            monkeypatch.delenv('ORION_RUN_PLAN_PERMISSIONS_MIGRATION',raising=False)
+            assert release.main()==0
+            assert entry.predeploy_main()==3
+            # Prove the actual additive plan DDL against populated business,
+            # booking and registry rows, beyond the empty-schema unit fixture.
+            source.migrate(permissions.TARGET)
+            with source.engine.connect() as db:
+                assert row_digests(db, projection)==before
+                assert privileges(db, projection)==grants
+                assert db.exec_driver_sql('SELECT count(*) FROM tenant_plan_controls').scalar_one()==0
+                assert db.exec_driver_sql('SELECT count(*) FROM tenant_plan_audit').scalar_one()==0
+                assert db.exec_driver_sql('SELECT public.orion_plan_release_ready()').scalar_one() is False
+                assert db.execute(text("SELECT public.orion_plan_snapshot(:tenant)->>'tenant_status'"),{'tenant':people[0]['tenant']}).scalar_one()=='active'
             # The previous runtime write contract still works after upgrade.
             with source.engine.begin() as db:
                 db.exec_driver_sql('SET LOCAL ROLE app_runtime')
@@ -78,7 +93,9 @@ def test_populated_upgrade_preserves_rows_registry_and_restorable_backup(tmp_pat
         'rows_preserved':sum(item['count'] for item in before.values()), 'backup_sha256':digest,
         'backup_bytes':len(envelope), 'restore_rows_and_grants_verified':True,
         'registry_rows_preserved':inventory['simulated_disabled_channel_records'],
-        'actual_whatsapp_sessions':0, 'old_binary_executed':False, 'production_modified':False}
+        'actual_whatsapp_sessions':0, 'old_binary_executed':False, 'production_modified':False,
+        'plan_schema_0050_populated_rows_and_prior_grants_preserved':True,
+        'plan_bootstrap_requires_operator_authorization':True}
     directory = Path('test-results/appointment-communications'); directory.mkdir(parents=True, exist_ok=True)
     (directory/('migration-preservation-'+revision+'.json')).write_text(json.dumps(result, indent=2))
     print(json.dumps(result))

@@ -4,6 +4,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
+from scripts.plan_fixture import synthetic_plan_state
 
 playwright_api = pytest.importorskip(
     "playwright.sync_api", reason="Browser dependencies run in the dedicated UI job"
@@ -70,7 +71,7 @@ def test_site_address_slug(browser_name, width, height, theme):
             page.evaluate("() => { window.OrionFields.bind(document); }")
             page.add_script_tag(content=JS)
             page.add_script_tag(content=FIXTURE)
-            page.evaluate("mountSiteAddressFixture()")
+            page.evaluate("effectivePlan=>mountSiteAddressFixture(effectivePlan)", synthetic_plan_state('10000000-0000-4000-8000-000000000001'))
             page.locator("[data-os-site-tab=settings]").click()
             form = page.locator("#osSiteForm")
             expect(form).to_be_visible()
