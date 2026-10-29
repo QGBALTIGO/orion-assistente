@@ -338,3 +338,30 @@ async def test_preserved_manual_adapter_records_one_message_and_respects_pause(c
     assert state['mode']=='human' and state['assigned_account_id']==str(c.account)
     await control.change_control(c.tenant,c.channel,control.Change(contact_e164=PHONE,expected_revision=state['revision'],mode='paused'),c.actor)
     with pytest.raises(HTTPException):await api.enqueue_preserved_manual(c.tenant,c.channel,PHONE,'Novo teste',uuid4(),c.actor)
+
+
+async def test_preserved_old_pn_guard_requires_current_proof_tenant_policy_and_lease(inbox_db):
+    from app import automation_runtime
+    c=inbox_db;owner=uuid4();phone='556781234567';proof='b'*64
+    async with c.migration.begin() as db:
+        await db.execute(text("""UPDATE qr_channels SET allowed_senders=jsonb_build_array(CAST(:phone AS text)),
+            request_fingerprint=:proof,lease_owner=:owner,fence=3,lease_expires_at=clock_timestamp()+interval '30 seconds'
+            WHERE tenant_id=:t AND id=:c"""),{'t':c.tenant,'c':c.channel,'phone':phone,'proof':proof,'owner':owner})
+    values={'tenant':c.tenant,'channel':c.channel,'account':c.account,'owner':owner,'fence':3,
+        'sender':phone,'session_proof':proof}
+    async with c.factory() as db:
+        async with tenant_transaction(db,c.tenant):
+            await automation_runtime._notice_guard(db,values)
+            # The existing strict guard does not gain this exceptional scope.
+            ordinary={k:v for k,v in values.items() if k!='session_proof'}
+            assert (await db.execute(text('SELECT public.automation_notice_guard(:tenant,:channel,:account,:owner,:fence,:sender)'),ordinary)).scalar_one() is False
+    for change in ({'session_proof':'c'*64},{'sender':'556781234568'},{'fence':2},{'owner':uuid4()},
+        {'account':uuid4()},{'tenant':c.other}):
+        async with c.factory() as db:
+            with pytest.raises(HTTPException):
+                async with tenant_transaction(db,c.tenant):await automation_runtime._notice_guard(db,{**values,**change})
+    async with c.migration.begin() as db:
+        await db.execute(text("UPDATE qr_channels SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=:c"),{'c':c.channel})
+    async with c.factory() as db:
+        with pytest.raises(HTTPException):
+            async with tenant_transaction(db,c.tenant):await automation_runtime._notice_guard(db,values)
