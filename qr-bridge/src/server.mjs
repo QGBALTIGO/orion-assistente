@@ -40,6 +40,7 @@ import {createChannelRoutes} from './channel-routes.mjs';
 import {createBaileysChannelSession} from './channel-session.mjs';
 import {createLegacyCentral} from './legacy-central.mjs';
 import {testReplyFor} from './trigger-test.mjs';
+import {makeTestButtonPayload} from './test-url-button.mjs';
 
 const legacyCentral=createLegacyCentral({
   start:(id,key)=>channelRoutes.adopt(id,key),send:(id,key,payload)=>channelRoutes.send(id,key,payload),
@@ -755,11 +756,7 @@ async function sendTestUrlButton(phone,text,{isCurrent=()=>true}={}){
     enabled:false,socket:selectedSocket,deviceCache:socketDeviceCaches.get(selectedSocket),isCurrent:current});
   if(!current())throw Error('test_button_connection_changed');
   // Legacy hydrated template URL button; WhatsApp clients may suppress it.
-  const result=await selectedSocket.sendMessage(proof.jid,{
-    text:text.split('🔗 *VER AGENDAMENTO*')[0].trim(),
-    footer:'Orion • Demonstração',
-    templateButtons:[{index:1,urlButton:{displayText:'VER AGENDAMENTO',url:'https://orionagenda.pro'}}]
-  });
+  const result=await selectedSocket.sendMessage(proof.jid,makeTestButtonPayload(text));
   if(!result?.key?.id||!result?.message)return {accepted:false,delivery:'unconfirmed'};
   retryStore.save(result.key,result.message);
   const id='out:'+result.key.id;
