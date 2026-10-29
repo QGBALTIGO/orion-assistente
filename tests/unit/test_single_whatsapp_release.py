@@ -11,6 +11,9 @@ from scripts import backup_and_migrate_quick_onboarding as quick
 from scripts import backup_and_migrate_admin_accounts as accounts
 from scripts import backup_and_migrate_cakto as cakto
 from scripts import backup_and_migrate_plans as plans
+from scripts import backup_and_migrate_direct_checkout as direct
+from scripts import backup_and_migrate_appointment_communications as appointment
+from scripts import backup_and_migrate_plan_permissions as permissions
 from scripts import wait_for_single_whatsapp_schema as barrier
 
 
@@ -85,35 +88,43 @@ def test_unverified_upgrade_cannot_be_reported_ready(monkeypatch, options):
 
 
 @pytest.mark.parametrize('revision,expected', [
-    (registration.PREVIOUS, ['registration','phone','quick','accounts','cakto','single','plans']),
-    (registration.TARGET, ['phone','quick','accounts','cakto','single','plans']),
-    (contacts.TARGET, ['quick','accounts','cakto','single','plans']),
-    (quick.TARGET, ['quick','accounts','cakto','single','plans']),
-    (accounts.TARGET, ['accounts','cakto','single','plans']),
-    (cakto.TARGET, ['cakto','single','plans']),
-    (release.TARGET, ['single','plans']),
-    (plans.TARGET, ['plans']),
+    (registration.PREVIOUS, ['registration','phone','quick','accounts','cakto','single','plans','direct','appointment','permissions']),
+    (registration.TARGET, ['phone','quick','accounts','cakto','single','plans','direct','appointment','permissions']),
+    (contacts.TARGET, ['quick','accounts','cakto','single','plans','direct','appointment','permissions']),
+    (quick.TARGET, ['quick','accounts','cakto','single','plans','direct','appointment','permissions']),
+    (accounts.TARGET, ['accounts','cakto','single','plans','direct','appointment','permissions']),
+    (cakto.TARGET, ['cakto','single','plans','direct','appointment','permissions']),
+    (release.TARGET, ['single','plans','direct','appointment','permissions']),
+    (plans.TARGET, ['plans','direct','appointment','permissions']),
+    (direct.TARGET, ['direct','appointment','permissions']),
+    (appointment.COMMUNICATIONS_PREVIOUS, ['appointment','permissions']),
+    (appointment.TARGET, ['appointment','permissions']),
+    (permissions.TARGET, ['permissions']),
 ])
 def test_all_reviewed_predeploy_origins_reach_single_connection_in_order(monkeypatch, revision, expected):
     calls = []
+    monkeypatch.setenv('ORION_RUN_APPOINTMENT_COMMUNICATION_MIGRATION','1')
     monkeypatch.setattr(registration, 'connection_values', lambda: ('synthetic', object()))
     monkeypatch.setattr(registration, 'migrated_version', lambda _: revision)
     for module, name in [(registration,'registration'),(contacts,'phone'),(quick,'quick'),
-                         (accounts,'accounts'),(cakto,'cakto'),(release,'single'),(plans,'plans')]:
+                         (accounts,'accounts'),(cakto,'cakto'),(release,'single'),(plans,'plans'),
+                         (direct,'direct'),(appointment,'appointment'),(permissions,'permissions')]:
         monkeypatch.setattr(module, 'main', lambda n=name: calls.append(n) or 0)
     assert registration.predeploy_main() == 0 and calls == expected
 
 
-@pytest.mark.parametrize('failed', ['registration','phone','quick','accounts','cakto','single','plans'])
+@pytest.mark.parametrize('failed', ['registration','phone','quick','accounts','cakto','single','plans','direct','appointment','permissions'])
 def test_predeploy_stops_at_first_failed_stage(monkeypatch, failed):
     calls = []
+    monkeypatch.setenv('ORION_RUN_APPOINTMENT_COMMUNICATION_MIGRATION','1')
     monkeypatch.setattr(registration, 'connection_values', lambda: ('synthetic', object()))
     monkeypatch.setattr(registration, 'migrated_version', lambda _: registration.PREVIOUS)
     for module, name in [(registration,'registration'),(contacts,'phone'),(quick,'quick'),
-                         (accounts,'accounts'),(cakto,'cakto'),(release,'single'),(plans,'plans')]:
+                         (accounts,'accounts'),(cakto,'cakto'),(release,'single'),(plans,'plans'),
+                         (direct,'direct'),(appointment,'appointment'),(permissions,'permissions')]:
         monkeypatch.setattr(module, 'main', lambda n=name: calls.append(n) or (3 if n == failed else 0))
     assert registration.predeploy_main() == 3
-    order = ['registration','phone','quick','accounts','cakto','single','plans']
+    order = ['registration','phone','quick','accounts','cakto','single','plans','direct','appointment','permissions']
     assert calls == order[:order.index(failed)+1]
 
 

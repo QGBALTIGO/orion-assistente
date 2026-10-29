@@ -36,6 +36,31 @@ def test_all_dynamic_resources_need_explicit_policy_and_unknown_resource_is_deni
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("method",["GET","POST"])
+@pytest.mark.parametrize("item",[False,True])
+async def test_unknown_catalog_resource_is404_only_after_tenant_authorization_without_binding_or_handler(monkeypatch,method,item):
+    tenant,foreign,account=uuid4(),uuid4(),uuid4()
+    app=FastAPI();router=APIRouter();called=[]
+    suffix="/{item_id}" if item else ""
+    @router.api_route("/api/v1/tenants/{tenant_id}/{resource}"+suffix,methods=["GET","POST"])
+    async def endpoint(tenant_id:UUID,resource:str,item_id:UUID|None=None):
+        called.append((tenant_id,resource));pytest.fail("Unknown resource reached domain handler")
+    plan_routing.include_plan_router(app,router)
+    app.dependency_overrides[authenticate]=lambda:Actor("member",tenant,account,"owner")
+    def forbidden(*args,**kwargs): pytest.fail("Unknown resource opened a plan binding or entitlement transaction")
+    monkeypatch.setattr(plan_routing,"bind_feature",forbidden)
+    monkeypatch.setattr(plan_routing,"require_tenant_feature",forbidden)
+    tail="/"+str(uuid4()) if item else ""
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url="https://test") as client:
+        assert (await client.request(method,f"/api/v1/tenants/{tenant}/nonexistent-resource"+tail)).status_code==404
+        assert (await client.request(method,f"/api/v1/tenants/{foreign}/nonexistent-resource"+tail)).status_code==403
+        with monkeypatch.context() as missing_policy:
+            missing_policy.setattr(plan_routing,"feature_for_path",lambda *args,**kwargs:None)
+            assert (await client.request(method,f"/api/v1/tenants/{tenant}/professionals"+tail)).status_code==403
+    assert called==[] and plan_permissions._scope.get() is None
+
+
+@pytest.mark.asyncio
 async def test_real_included_route_dependency_denies_premium_before_handler_and_honors_target(monkeypatch):
     tenant,foreign,account=uuid4(),uuid4(),uuid4();called=[];locks=[]
     state={"tenant_id":str(tenant),"tenant_status":"active","manual":{"plan_code":"essencial",

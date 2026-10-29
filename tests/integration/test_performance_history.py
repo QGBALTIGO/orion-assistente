@@ -337,6 +337,9 @@ async def test_history_api_allows_viewers_and_verifies_current_membership_before
     async def cached_member():
         return Actor("member", tenant_id=d["b"], account_id=d["account"], membership_role="owner")
 
+    async def stale_role_member():
+        return Actor("member", tenant_id=d["a"], account_id=d["account"], membership_role="owner")
+
     async def stranger():
         return Actor("member", tenant_id=d["a"], account_id=uuid4(), membership_role="owner")
 
@@ -345,7 +348,13 @@ async def test_history_api_allows_viewers_and_verifies_current_membership_before
             await db.execute(text("UPDATE tenant_memberships SET role='viewer' WHERE tenant_id=:tenant AND account_id=:id"),
                              {"tenant": d["a"], "id": d["account"]})
         d["app"].dependency_overrides[authenticate] = cached_member
-        assert (await d["client"].get(path, params=d["period"])).status_code == 200
+        # Authentication cannot carry tenant B into a request for A. With the
+        # correct scope, the domain still rechecks a stale cached owner role.
+        assert (await d["client"].get(path, params=d["period"])).status_code == 403
+        d["app"].dependency_overrides[authenticate] = stale_role_member
+        current_viewer = await d["client"].get(path, params=d["period"])
+        assert current_viewer.status_code == 200
+        assert current_viewer.json()["items"][0]["allowed_actions"] == []
         assert (await d["client"].get(other_path, params=d["period"])).status_code == 403
         async with d["migrator"].begin() as db:
             await db.execute(text("UPDATE tenant_memberships SET active=false WHERE tenant_id=:tenant AND account_id=:id"),
