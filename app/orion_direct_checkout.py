@@ -44,6 +44,7 @@ def checkout_enabled() -> bool:
             # A previously shown webhook key must be rotated before real charging.
             # Never infer that source-control CI or a sample delivery is proof.
             and os.getenv("ORION_WEBHOOK_SECRET_ROTATED_CONFIRMED", "0") == "1"
+            and os.getenv("ORION_CAKTO_LIFECYCLE_ENABLED", "0") == "1"
             and os.getenv("CAKTO_BILLING_LIVE_ENABLED", "0") == "1"
             and len(os.getenv("CAKTO_WEBHOOK_SECRET", "")) >= 32
             and bool(os.getenv("CAKTO_CLIENT_ID"))
