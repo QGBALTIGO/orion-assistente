@@ -12,6 +12,7 @@ from scripts import backup_and_migrate_admin_accounts as accounts
 from scripts import backup_and_migrate_single_whatsapp as single
 from scripts import backup_and_migrate_cakto as cakto
 from scripts import backup_and_migrate_plans as plans
+from scripts import backup_and_migrate_direct_checkout as direct
 
 
 def configure(monkeypatch, *, current=None, source=True, target=True, backup_error=False,
@@ -118,11 +119,12 @@ def test_current_predeploy_entrypoint_dispatches_only_reviewed_revisions(monkeyp
     monkeypatch.setattr(single, 'main', lambda: events.append('single') or 0)
     monkeypatch.setattr(cakto, 'main', lambda: events.append('cakto') or 0)
     monkeypatch.setattr(plans, 'main', lambda: events.append('plans') or 0)
+    monkeypatch.setattr(direct, 'main', lambda: events.append('direct') or 0)
     assert registration.predeploy_main() == 0
     assert events == (
-        ['registration', 'phone', 'quick', 'accounts', 'cakto', 'single', 'plans'] if revision == registration.PREVIOUS else
-        ['phone', 'quick', 'accounts', 'cakto', 'single', 'plans'] if revision == registration.TARGET else
-        ['quick', 'accounts', 'cakto', 'single', 'plans']
+        ['registration', 'phone', 'quick', 'accounts', 'cakto', 'single', 'plans', 'direct'] if revision == registration.PREVIOUS else
+        ['phone', 'quick', 'accounts', 'cakto', 'single', 'plans', 'direct'] if revision == registration.TARGET else
+        ['quick', 'accounts', 'cakto', 'single', 'plans', 'direct']
     )
 
 
@@ -140,8 +142,9 @@ def test_failed_prior_release_or_unknown_revision_never_runs_phone_release(monke
 
 
 @pytest.mark.parametrize('revision,expected', [
-    (single.TARGET,['single','plans']),
-    (plans.TARGET,['plans']),
+    (single.TARGET,['single','plans','direct']),
+    (plans.TARGET,['plans','direct']),
+    (direct.TARGET,['direct']),
 ])
 def test_current_predeploy_stays_idempotent_after_whatsapp_and_plan_migration(monkeypatch, revision, expected):
     events = []
@@ -149,5 +152,6 @@ def test_current_predeploy_stays_idempotent_after_whatsapp_and_plan_migration(mo
     monkeypatch.setattr(registration,'migrated_version',lambda _:revision)
     monkeypatch.setattr(single,'main',lambda:events.append('single') or 0)
     monkeypatch.setattr(plans,'main',lambda:events.append('plans') or 0)
+    monkeypatch.setattr(direct,'main',lambda:events.append('direct') or 0)
     assert registration.predeploy_main()==0
     assert events==expected
