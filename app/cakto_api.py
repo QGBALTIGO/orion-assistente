@@ -346,8 +346,14 @@ async def scan_pending_cakto(_ctx):
                        external_subscription_id,callback_hash,amount_cents,currency
                 FROM cakto_webhook_events
                 WHERE verification_state='pending' AND next_attempt_at<=now()
+                  AND (:lifecycle_enabled
+                       OR event_type NOT IN (
+                          'subscription_renewed','subscription_canceled',
+                          'purchase_refused','refund','chargeback'))
                 ORDER BY received_at LIMIT 30 FOR UPDATE SKIP LOCKED
-            """))).mappings().all()
+            """), {"lifecycle_enabled":
+                    os.getenv("ORION_CAKTO_LIFECYCLE_ENABLED", "0") == "1"}
+            )).mappings().all()
             for row in rows:
                 await db.execute(text("""
                     UPDATE cakto_webhook_events
