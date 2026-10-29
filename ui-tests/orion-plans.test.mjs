@@ -91,7 +91,7 @@ test('plan comparison ends the page without instructional legend, admin requests
    assert.ok(page.lastElementChild.classList.contains('op-compare'));
    for(const selector of ['.op-matrix-footnote','.op-admin-trials','.op-legal-foot'])
     assert.equal(f.root.querySelector(selector),null,selector);
-   assert.doesNotMatch(f.root.textContent,/Toque em uma categoria para recolher ou expandir\\.|Solicitações de teste grátis|Preços mensais por empresa/);
+   assert.doesNotMatch(f.root.textContent,/Toque em uma categoria para recolher ou expandir|Solicitações de teste grátis|Preços mensais por empresa/);
    assert.ok(f.root.querySelector('.op-free-trial'), 'trial application remains available');
   }finally{f.close();}
  }
