@@ -40,6 +40,7 @@ STATES = {"waiting_payment", "pending", "processing", "paid", "declined", "refus
 
 def checkout_enabled() -> bool:
     return (os.getenv("ORION_DIRECT_PAYMENTS_ENABLED", "0") == "1"
+            and os.getenv("ORION_DIRECT_RECURRING_VERIFIED", "0") == "1"
             and os.getenv("CAKTO_BILLING_LIVE_ENABLED", "0") == "1"
             and len(os.getenv("CAKTO_WEBHOOK_SECRET", "")) >= 32
             and bool(os.getenv("CAKTO_CLIENT_ID"))
