@@ -42,6 +42,8 @@ class Database:
         self.professionals, self.memberships, self.membership_role = 1, 1, "owner"
         self.audits, self.calls, self.access_updates = [], [], []
         self.account_rows = []
+        self.company_rows = []
+        self.owner_status = "unassigned"
     async def __aenter__(self): return self
     async def __aexit__(self, *_): pass
     def begin(self): return Transaction(self)
@@ -54,6 +56,11 @@ class Database:
         sql = str(query)
         self.calls.append((sql, params))
         if "pg_advisory_xact_lock" in sql: return Result()
+        if "FROM tenants t" in sql and "AS plan_snapshot" in sql: return Result(self.company_rows)
+        if "NULL::uuid AS account_id" in sql:
+            if params != {"tenant":self.tenant}: return Result()
+            return Result({"id":self.tenant,"name":"Empresa Sintética","status":"active",
+                           "account_id":None,"owner_status":self.owner_status})
         if "AS plan_snapshot" in sql: return Result(self.account_rows)
         if "m.role AS membership_role" in sql:
             if params != {"account": self.account, "tenant": self.tenant}: return Result()
@@ -272,6 +279,26 @@ async def test_admin_search_keeps_wildcards_and_quotes_as_bound_literal_data(cas
 
 
 @pytest.mark.asyncio
+async def test_expired_filter_includes_ended_commercial_subscription_under_manual_access_and_expired_access(case):
+    db=case
+    manual=deepcopy(db.snapshot())
+    manual["manual"]["plan_code"]="elite"
+    manual["commercial"]={"code":"orion_profissional","status":"expired","cakto_bound":True,
+        "last_verified_payment_at":datetime.now(timezone.utc)-timedelta(days=30)}
+    expired=deepcopy(db.snapshot())
+    expired["tenant_id"]=str(uuid4())
+    expired["manual"]["expires_at"]=datetime.now(timezone.utc)-timedelta(minutes=1)
+    db.account_rows=[customer_row(manual),customer_row(expired),customer_row(db.snapshot())]
+    result=await admin.list_customer_accounts(page=1,page_size=20,admin=db.operator,subscription_status="expired")
+    assert result["total"]==2
+    active=next(row for row in result["items"] if row["effective_plan"]["code"]=="elite")
+    assert active["effective_plan"]["status"]=="active" and active["effective_plan"]["source"]=="manual"
+    assert active["commercial_subscription"]["status"]=="expired"
+    assert any(row["effective_plan"]["status"]=="expired" for row in result["items"])
+    assert len(db.calls)==1 and not db.audits
+
+
+@pytest.mark.asyncio
 async def test_active_manual_access_cannot_consume_a_trial(case, monkeypatch):
     async def owner(*_): pass
     monkeypatch.setattr(plans,"_ensure_owner",owner)
@@ -280,3 +307,87 @@ async def test_active_manual_access_cannot_consume_a_trial(case, monkeypatch):
         await plans.request_plan_trial(case.tenant,request,Actor("member",account_id=case.account))
     assert caught.value.status_code==409
     assert not any("INSERT INTO orion_plan_trial_requests" in sql for sql,_ in case.calls)
+
+
+@pytest.mark.asyncio
+async def test_direct_company_plan_reuses_cas_audit_and_replay_without_account_or_membership_writes(case):
+    db=case
+    payload=change(db)
+    first=await admin._change_company_plan(None,db.tenant,payload,db.operator,"manual_assign")
+    replay=await admin._change_company_plan(None,db.tenant,payload,db.operator,"manual_assign")
+    assert first["company"]["account_id"] is None and first["company"]["owner_status"]=="unassigned"
+    assert first["company"]["can_manage_plan"] is True and first["effective_plan"]["code"]=="elite"
+    assert replay["replayed"] and len(db.audits)==1
+    with pytest.raises(HTTPException) as stale:
+        await admin._change_company_plan(None,db.tenant,change(db,expected_version=1),db.operator,"manual_assign")
+    assert stale.value.status_code==409
+    state=db.state()
+    removal=admin.ManualPlanRemoval(expected_version=state["version"],expected_revision=state["revision"],
+        operation_id=uuid4(),confirmation="REMOVER ATRIBUIÇÃO")
+    removed=await admin._change_company_plan(None,db.tenant,removal,db.operator,"manual_remove")
+    assert removed["effective_plan"]["source"]=="none" and len(db.audits)==2
+    assert (await admin._change_company_plan(None,db.tenant,removal,db.operator,"manual_remove"))["replayed"]
+    assert any("FOR SHARE OF t" in sql for sql,_ in db.calls)
+    assert not any(any(write in sql for write in ("UPDATE panel_accounts","INSERT INTO panel_accounts",
+        "UPDATE tenant_memberships","INSERT INTO tenant_memberships","UPDATE subscriptions")) for sql,_ in db.calls)
+
+
+@pytest.mark.asyncio
+async def test_direct_company_plan_preserves_platform_and_reports_new_owner_without_switching_target(case):
+    db=case;db.owner_status="assigned"
+    info=await admin.company_plan(db.tenant,Response(),db.operator)
+    assert info["company"]["account_id"] is None and info["company"]["owner_status"]=="assigned"
+    db.platform=True
+    info=await admin.company_plan(db.tenant,Response(),db.operator)
+    assert info["company"]["can_manage_plan"] is False
+    with pytest.raises(HTTPException) as protected:
+        await admin._change_company_plan(None,db.tenant,change(db),db.operator,"manual_assign")
+    assert protected.value.status_code==409 and not db.audits
+    with pytest.raises(HTTPException) as missing:
+        await admin.company_plan(uuid4(),Response(),db.operator)
+    assert missing.value.status_code==404
+
+
+@pytest.mark.asyncio
+async def test_unassigned_company_dto_excludes_effective_platform_and_erased_account_action(case):
+    db=case
+    platform=deepcopy(db.snapshot());platform["platform_workspace"]=True
+    db.company_rows=[{"id":db.tenant,"name":"Empresa Sintética","status":"active","plan_snapshot":db.snapshot()},
+        {"id":uuid4(),"name":"Plataforma","status":"active","plan_snapshot":platform}]
+    response=Response()
+    result=await admin.unassigned_company_plans(response,db.operator)
+    assert len(result["companies"])==1
+    company=result["companies"][0]
+    assert company["id"]==str(db.tenant) and company["owner_status"]=="unassigned" and company["can_manage_plan"]
+    assert company["effective_plan"]["code"]=="essencial" and company["active_professionals"]==1
+    assert response.headers["cache-control"]=="no-store" and len(db.calls)==1
+    assert admin._customer(customer_row(db.snapshot(),state="erased"))["can_manage_plan"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role",["member","support","admin"])
+async def test_direct_company_routes_require_platform_owner_before_storage(case,role):
+    from app.panel_auth import panel_actor
+    db=case;api=FastAPI();api.include_router(admin.router)
+    api.dependency_overrides[panel_actor]=lambda:{"role":role,"account_id":str(db.account)}
+    base=f"/api/v1/admin/accounts/companies/{db.tenant}/plan"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api),base_url="https://test") as client:
+        for method,path in (("GET","/api/v1/admin/accounts/companies/unassigned"),("GET",base),("PUT",base),("DELETE",base)):
+            result=await client.request(method,path,json=change(db).model_dump(mode="json") if method=="PUT" else
+                {"expected_version":1,"expected_revision":db.state()["revision"],"operation_id":str(uuid4()),
+                 "confirmation":"REMOVER ATRIBUIÇÃO"} if method=="DELETE" else None)
+            assert result.status_code==403
+    assert db.calls==[]
+
+
+@pytest.mark.asyncio
+async def test_direct_company_http_routes_are_unambiguous_and_uuid_validated(case):
+    db=case;api=FastAPI();api.include_router(admin.router)
+    api.dependency_overrides[admin.require_platform_owner]=lambda:db.operator
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api),base_url="https://test") as client:
+        assert (await client.get("/api/v1/admin/accounts/companies/unassigned")).json()=={"companies":[]}
+        result=await client.get(f"/api/v1/admin/accounts/companies/{db.tenant}/plan")
+        assert result.status_code==200 and result.json()["company"]["account_id"] is None
+        before=len(db.calls)
+        assert (await client.get("/api/v1/admin/accounts/companies/not-a-uuid/plan")).status_code==422
+        assert len(db.calls)==before

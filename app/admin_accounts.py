@@ -122,6 +122,20 @@ ACCOUNT_QUERY = """
 """
 
 
+# Match the existing account action, independently of list filters or pages.
+MANAGEABLE_COMPANY_OWNER = """EXISTS (
+    SELECT 1 FROM panel_accounts owner_account
+    JOIN tenant_memberships owner_membership ON owner_membership.account_id=owner_account.id
+    LEFT JOIN admin_account_controls owner_control ON owner_control.account_id=owner_account.id
+    WHERE owner_membership.tenant_id=t.id AND owner_membership.active AND owner_membership.role='owner'
+      AND owner_account.role='member'
+      AND COALESCE(to_jsonb(owner_account)->>'auth_provider','password')='password'
+      AND COALESCE(owner_control.state,'active')<>'erased'
+      AND (SELECT count(*) FROM tenant_memberships active_memberships
+           WHERE active_memberships.account_id=owner_account.id AND active_memberships.active)=1
+)"""
+
+
 def _customer(row,now=None):
     result = {key:row[key] for key in ("id","name","email","created_at","verified_at",
                                      "registration_pending","auth_version","state",
@@ -138,6 +152,7 @@ def _customer(row,now=None):
         plan_source=state["source"] if state else "none",
         subscription_status=commercial.get("status") if commercial else "none",
         can_manage_plan=bool(state and row.get("company_count")==1 and row.get("company_role")=="owner"
+                             and row.get("state")!="erased"
                              and not state["platform_workspace"]))
     return result
 
@@ -179,7 +194,7 @@ async def list_customer_accounts(q:str="",status:str="all",page:int=Query(1,ge=1
                 except ValueError: grace=None
             return bool(commercial.get("status")=="past_due" and grace and grace.tzinfo and grace>now)
         if subscription_status=="expired":
-            return effective.get("status")=="expired"
+            return effective.get("status")=="expired" or commercial.get("status")=="expired"
         return subscription_status=="all" or item["subscription_status"]==subscription_status
     items=[item for item in items if matches(item)]
     offset=(page-1)*page_size
@@ -205,6 +220,25 @@ async def account_stats(admin:UUID=Depends(require_platform_owner)):
     return {"total":sum(stats.values()),**stats}
 
 
+@router.get("/companies/unassigned")
+async def unassigned_company_plans(response:Response,admin:UUID=Depends(require_platform_owner)):
+    response.headers["Cache-Control"]="no-store"
+    async with _storage()() as db:
+        rows=(await db.execute(text("""SELECT t.id,t.name,t.status,
+            public.orion_plan_snapshot(t.id) AS plan_snapshot FROM tenants t
+            WHERE NOT """+MANAGEABLE_COMPANY_OWNER+" ORDER BY lower(t.name),t.id"))).mappings().all()
+    now=datetime.now(timezone.utc)
+    companies=[]
+    for row in rows:
+        state=derive_plan(row["plan_snapshot"],now=now)
+        if state["platform_workspace"]:
+            continue
+        companies.append({"id":row["id"],"name":row["name"],"status":row["status"],
+            "effective_plan":state,"active_professionals":state["limits"]["active_professionals"],
+            "owner_status":"unassigned","can_manage_plan":True})
+    return jsonable_encoder({"companies":companies})
+
+
 @router.get("/{account_id}")
 async def account_detail(account_id:UUID,admin:UUID=Depends(require_platform_owner),response:Response=None):
     if response is not None:
@@ -220,6 +254,14 @@ async def account_detail(account_id:UUID,admin:UUID=Depends(require_platform_own
 
 
 async def _plan_company(db, account_id, tenant_id, *, lock=False):
+    if account_id is None:
+        row=(await db.execute(text("""SELECT t.id,t.name,t.status,NULL::uuid AS account_id,
+            CASE WHEN """+MANAGEABLE_COMPANY_OWNER+""" THEN 'assigned' ELSE 'unassigned' END AS owner_status
+            FROM tenants t WHERE t.id=:tenant"""+(" FOR SHARE OF t" if lock else "")),
+            {"tenant":tenant_id})).mappings().one_or_none()
+        if row is None:
+            raise HTTPException(404,"Empresa não encontrada")
+        return dict(row)
     row = (await db.execute(text("""SELECT t.id,t.name,t.status,a.id AS account_id,
             m.role AS membership_role,COALESCE(c.state,'active') AS account_state,
             (SELECT count(*) FROM tenant_memberships active_memberships
@@ -249,26 +291,38 @@ async def _plan_history(db, tenant_id):
 
 
 async def _plan_envelope(db, company, state, *, replayed=False):
-    return {"company": {"id": company["id"], "name": company["name"], "status": company["status"],
-                        "account_id": company["account_id"],
-                        "active_professionals": state["limits"]["active_professionals"]},
+    company_view={"id":company["id"],"name":company["name"],"status":company["status"],
+        "account_id":company["account_id"],"active_professionals":state["limits"]["active_professionals"],
+        "can_manage_plan":not state["platform_workspace"]}
+    if company["account_id"] is None:
+        company_view["owner_status"]=company["owner_status"]
+    return {"company":company_view,
             "effective_plan": state, "history": await _plan_history(db, company["id"]), "replayed": replayed}
+
+
+async def _get_company_plan(account_id,tenant_id):
+    async with _storage()() as db:
+        async with db.begin():
+            company=await _plan_company(db,account_id,tenant_id)
+            state=await plan_state(db,tenant_id)
+            return await _plan_envelope(db,company,state)
+
+
+@router.get("/companies/{tenant_id}/plan")
+async def company_plan(tenant_id:UUID,response:Response,admin:UUID=Depends(require_platform_owner)):
+    response.headers["Cache-Control"]="no-store"
+    return jsonable_encoder(await _get_company_plan(None,tenant_id))
 
 
 @router.get("/{account_id}/companies/{tenant_id}/plan")
 async def account_company_plan(account_id:UUID,tenant_id:UUID,response:Response,
                                admin:UUID=Depends(require_platform_owner)):
     response.headers["Cache-Control"]="no-store"
-    async with _storage()() as db:
-        async with db.begin():
-            company = await _plan_company(db, account_id, tenant_id)
-            state = await plan_state(db, tenant_id)
-            result = await _plan_envelope(db, company, state)
-    return jsonable_encoder(result)
+    return jsonable_encoder(await _get_company_plan(account_id,tenant_id))
 
 
 def _plan_fingerprint(account_id, tenant_id, action, payload):
-    body = {"account_id":str(account_id),"tenant_id":str(tenant_id),"action":action,
+    body = {"account_id":str(account_id) if account_id is not None else None,"tenant_id":str(tenant_id),"action":action,
             "payload":payload.model_dump(mode="json")}
     return hashlib.sha256(json.dumps(body,sort_keys=True,separators=(",", ":")).encode()).hexdigest()
 
@@ -280,7 +334,8 @@ async def _change_company_plan(account_id, tenant_id, payload, admin, action):
             async with db.begin():
                 # Membership writers use this account lock too. The plan lock
                 # then serializes grants, removals and protected domain writes.
-                await lock_account_business(db, account_id)
+                if account_id is not None:
+                    await lock_account_business(db, account_id)
                 await lock_plan(db, tenant_id, exclusive=True)
                 company = await _plan_company(db, account_id, tenant_id, lock=True)
                 previous = await plan_state(db, tenant_id, lock=None)
@@ -347,6 +402,20 @@ async def remove_company_plan(account_id:UUID,tenant_id:UUID,payload:ManualPlanR
                               admin:UUID=Depends(require_platform_owner)):
     response.headers["Cache-Control"]="no-store"
     return jsonable_encoder(await _change_company_plan(account_id,tenant_id,payload,admin,"manual_remove"))
+
+
+@router.put("/companies/{tenant_id}/plan")
+async def assign_direct_company_plan(tenant_id:UUID,payload:ManualPlanAssignment,response:Response,
+                                     admin:UUID=Depends(require_platform_owner)):
+    response.headers["Cache-Control"]="no-store"
+    return jsonable_encoder(await _change_company_plan(None,tenant_id,payload,admin,"manual_assign"))
+
+
+@router.delete("/companies/{tenant_id}/plan")
+async def remove_direct_company_plan(tenant_id:UUID,payload:ManualPlanRemoval,response:Response,
+                                     admin:UUID=Depends(require_platform_owner)):
+    response.headers["Cache-Control"]="no-store"
+    return jsonable_encoder(await _change_company_plan(None,tenant_id,payload,admin,"manual_remove"))
 
 
 @router.put("/{account_id}")

@@ -18,6 +18,7 @@ export function planState(code='elite',overrides={}){
 }
 
 export function defaultResponse(path) {
+  if(path==='/api/v1/admin/accounts/companies/unassigned')return {companies:[]};
   if(path.endsWith('/management/permissions'))return {effective_plan:planState()};
   if (path.includes('/management/dashboard')) return { summary: { appointments: 0, completed: 0, customers: 0 } };
   if (path.includes('/management/customers')) return { items: [], total: 0 };

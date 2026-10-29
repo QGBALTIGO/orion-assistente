@@ -38,11 +38,12 @@
     hold:"A exclusão definitiva ficará pausada por obrigação legal.",
     erase_now:"Exclusão irreversível da conta de acesso agora, sem esperar 30 dias. O e-mail ficará disponível para um novo cadastro. Registros exigidos por lei poderão ser preservados."};
   const state={request:null,role:null,onMaintenanceStart:null,epoch:0,seq:0,
-    query:"",status:"all",plan:'all',source:'all',subscriptionStatus:'all',page:1,items:[],stats:null,total:0,selected:null,planEnvelope:null,planDraft:null,planIntent:null,modalRead:0,
+    query:"",status:"all",plan:'all',source:'all',subscriptionStatus:'all',page:1,items:[],companies:[],companyError:null,stats:null,total:0,selected:null,planEnvelope:null,planDraft:null,planIntent:null,modalRead:0,
     owned:false,modalType:null,modalAction:null,trigger:null,returnTrigger:null,busy:false,timer:null};
   const isAdmin=()=>state.role==="admin"&&!$("page-member")?.classList.contains("hidden")&&!$("adminClientCenter")?.classList.contains("hidden");
   const btn=(title,key,opts={})=>'<button type="button" class="'+(opts.cls||"os-icon-button")+
     '" data-admin-control="'+esc(key)+'"'+(opts.id?' data-account-id="'+esc(opts.id)+'"':"")+
+    (opts.companyId?' data-company-id="'+esc(opts.companyId)+'" data-plan-target="company"':"")+
     (opts.action?' data-account-action="'+esc(opts.action)+'"':"")+
     ' aria-label="'+esc(title)+'" title="'+esc(title)+'">'+icon(opts.icon||"eye")+(opts.text?'<span>'+esc(opts.text)+'</span>':"")+'</button>';
   const initials=value=>String(value||"C").trim().split(/\s+/).slice(0,2).map(p=>[...p][0]||"").join("").toUpperCase();
@@ -72,8 +73,8 @@
       [["all","Todas"],["active","Ativas"],["suspended","Suspensas"],["archived","Arquivadas"],["erased","Excluídas"]].map(([k,text])=>
         '<button type="button" class="os-pill-tab" role="tab" data-admin-status="'+k+'" aria-selected="'+(state.status===k)+'">'+text+'</button>').join("")+
       '</div></div><div class="os-filter-row" aria-label="Filtros de plano">'+
-      [['plan','Plano',[['all','Todos'],['none','Sem plano'],...Object.entries(planNames)]],['source','Origem',[['all','Todas'],['manual','Manual'],['cakto','Cakto'],['trial','Teste grátis'],['none','Sem acesso']]],['subscriptionStatus','Assinatura',[['all','Todas'],['active','Ativa'],['trialing','Em teste'],['past_due','Pagamento pendente'],['grace','Em carência'],['suspended','Suspensa'],['canceled','Cancelada'],['expired','Encerrada']]]].map(([key,title,options])=>'<div class="os-field"><label for="adminPlanFilter-'+key+'">'+title+'</label><select id="adminPlanFilter-'+key+'" data-admin-plan-filter="'+key+'">'+options.map(([value,text])=>'<option value="'+value+'">'+text+'</option>').join('')+'</select></div>').join('')+'</div><div id="adminAccountsResults" aria-live="polite">'+
-      '<div class="os-loading" role="status">Consultando contas…</div></div>';
+      [['plan','Plano',[['all','Todos'],['none','Sem plano'],...Object.entries(planNames)]],['source','Origem',[['all','Todas'],['manual','Manual'],['cakto','Cakto'],['trial','Teste grátis'],['none','Sem acesso']]],['subscriptionStatus','Assinatura',[['all','Todas'],['active','Ativa'],['trialing','Em teste'],['past_due','Pagamento pendente'],['grace','Em carência'],['suspended','Suspensa'],['canceled','Cancelada'],['expired','Encerrada']]]].map(([key,title,options])=>'<div class="os-field"><label for="adminPlanFilter-'+key+'">'+title+'</label><select id="adminPlanFilter-'+key+'" data-admin-plan-filter="'+key+'">'+options.map(([value,text])=>'<option value="'+value+'">'+text+'</option>').join('')+'</select></div>').join('')+'</div><div class="os-space"><div id="adminAccountsResults" aria-live="polite">'+
+      '<div class="os-loading" role="status">Consultando contas…</div></div><section id="adminUnassignedCompanies" class="os-space" aria-live="polite" hidden></section></div>';
     updateStats();
   }
   function updateStats(){
@@ -111,24 +112,60 @@
     if(prev)prev.disabled=state.page<=1;
     if(next)next.disabled=from+list.length>=total;
   }
+  const companyStatus=c=>({active:'Ativa',paused:'Pausada',inactive:'Inativa',suspended:'Suspensa',archived:'Arquivada'})[c.status]||'Estado não confirmado';
+  function companyMatches(c){
+    const p=effective(c),sub=p.commercial_subscription;
+    const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+    if(state.query&&!normalize(c.name).includes(normalize(state.query.trim())))return false;
+    if(state.plan!=='all'&&(p.code||'none')!==state.plan)return false;
+    if(state.source!=='all'&&(p.source||'none')!==state.source)return false;
+    if(state.subscriptionStatus==='all')return true;
+    if(state.subscriptionStatus==='grace')return sub?.status==='past_due'&&Date.parse(sub.grace_until)>Date.now();
+    if(state.subscriptionStatus==='expired')return p.status==='expired'||sub?.status==='expired';
+    return sub?.status===state.subscriptionStatus;
+  }
+  function renderCompanies(){
+    const host=$('adminUnassignedCompanies');if(!host)return;
+    const represented=new Set(state.items.filter(a=>a.can_manage_plan===true).map(a=>a.company_id).filter(Boolean));
+    const all=state.companies.filter(c=>!represented.has(c.id));
+    host.hidden=!all.length&&!state.companyError;
+    if(host.hidden){host.innerHTML='';return;}
+    const list=all.filter(companyMatches);
+    const heading='<div class="os-title-row"><div><h2>Empresas com vínculo pendente</h2><p>Gerencie o plano das empresas sem uma conta de proprietário disponível na lista acima. Alterar o plano não muda o responsável.</p><p class="os-help">A busca e os filtros de plano também se aplicam a estas empresas. As abas de situação acima se referem às contas.</p></div><span class="os-badge os-neutral">'+list.length+' empresa'+(list.length===1?'':'s')+'</span></div>';
+    if(state.companyError){host.innerHTML=heading+'<div class="os-notice os-error" role="alert"><p>'+esc(state.companyError)+'</p></div>'+btn('Tentar novamente','refresh',{cls:'os-button os-outline os-small',icon:'refresh',text:'Tentar novamente'});return;}
+    host.innerHTML=heading+(list.length?'<div class="os-cards-grid">'+list.map(c=>
+      '<article class="os-card os-item-card" data-admin-company-id="'+esc(c.id)+'"><div class="os-item-top"><div><h3>'+esc(c.name)+'</h3><p class="os-help">Conta de proprietário indisponível na lista</p></div><span class="os-badge '+(c.status==='active'?'os-success':'os-warning')+'">'+esc(companyStatus(c))+'</span></div>'+
+      '<div class="os-summary-row"><span>Plano liberado</span><strong>'+esc(effective(c).name||'Sem plano ativo')+'</strong></div><div class="os-summary-row"><span>Origem</span><strong>'+esc(sourceNames[effective(c).source]||'Não informado')+'</strong></div>'+
+      (effective(c).valid_until?'<div class="os-summary-row"><span>Vencimento</span><strong>'+when(effective(c).valid_until)+'</strong></div>':'')+
+      '<div class="os-summary-row"><span>Assinatura</span><strong>'+esc(billingStatus(c))+'</strong></div><div class="os-summary-row"><span>Profissionais ativos</span><strong>'+esc(c.active_professionals??effective(c).limits?.active_professionals??0)+'</strong></div><div class="os-item-commands">'+
+      (c.can_manage_plan===true?btn('Gerenciar plano','plan',{companyId:c.id,cls:'os-button os-outline os-large',icon:'shield',text:'Gerenciar plano'}):'<p class="os-help">Gerenciamento de plano indisponível para esta empresa.</p>')+'</div></article>').join('')+'</div>':'<p class="os-client-empty">Nenhuma empresa com vínculo pendente corresponde à busca ou aos filtros de plano.</p>');
+  }
   async function load(){
     if(!isAdmin())return;
     const epoch=state.epoch,seq=++state.seq;
     const params=new URLSearchParams({q:state.query,status:state.status,page:String(state.page),page_size:"20"});
     for(const [key,value] of [['plan',state.plan],['source',state.source],['subscription_status',state.subscriptionStatus]])if(value!=='all')params.set(key,value);
-    try{
-      const results=await Promise.all([
-        state.request("/api/v1/admin/accounts?"+params),
-        state.stats?Promise.resolve(state.stats):state.request("/api/v1/admin/accounts/stats")
-      ]);
-      if(epoch!==state.epoch||seq!==state.seq||!isAdmin())return;
-      const [data,stats]=results;state.items=data.items||[];state.total=Number(data.total||0);state.stats=stats;
-      updateStats();renderRows();
-    }catch(error){
-      if(epoch!==state.epoch||seq!==state.seq||!isAdmin())return;
-      $("adminAccountsResults").innerHTML='<div class="os-notice os-error" role="alert">'+icon("info")+
-        '<p>'+esc(error.message||"Falha ao consultar contas")+'</p></div>'+btn("Tentar novamente","refresh",{cls:"os-button os-outline os-small",icon:"refresh",text:"Tentar novamente"});
-    }
+    const current=()=>epoch===state.epoch&&seq===state.seq&&isAdmin();
+    await Promise.all([
+      (async()=>{
+        try{
+          const [data,stats]=await Promise.all([state.request("/api/v1/admin/accounts?"+params),state.stats?Promise.resolve(state.stats):state.request("/api/v1/admin/accounts/stats")]);
+          if(!current())return;state.items=data.items||[];state.total=Number(data.total||0);state.stats=stats;
+          updateStats();renderRows();renderCompanies();
+        }catch(error){
+          if(!current())return;state.items=[];
+          $("adminAccountsResults").innerHTML='<div class="os-notice os-error" role="alert">'+icon("info")+'<p>'+esc(error.message||"Falha ao consultar contas")+'</p></div>'+btn("Tentar novamente","refresh",{cls:"os-button os-outline os-small",icon:"refresh",text:"Tentar novamente"});renderCompanies();
+        }
+      })(),
+      (async()=>{
+        try{
+          const data=await state.request('/api/v1/admin/accounts/companies/unassigned');if(!current())return;
+          if(!Array.isArray(data?.companies))throw Error('Não foi possível confirmar a lista de empresas com vínculo pendente.');
+          const unique=new Map();for(const c of data.companies)if(c?.id&&c.owner_status==='unassigned')unique.set(c.id,c);
+          state.companies=[...unique.values()];state.companyError=null;renderCompanies();
+        }catch(error){if(current()){state.companies=[];state.companyError=error.message||'Não foi possível consultar as empresas com vínculo pendente.';renderCompanies();}}
+      })()
+    ]);
   }
   function openDialog(type,title,html,record){
     const dialog=$("osDialog");if(!dialog)return;
@@ -227,11 +264,23 @@
         '<button type="submit" class="os-button os-admin-access">'+icon("shield")+'Acessar conta</button></div></form>',a);
     }catch(e){if(epoch===state.epoch)feedback(e.message,true);}
   }
-  function planPath(a){return '/api/v1/admin/accounts/'+encodeURIComponent(a.id)+'/companies/'+encodeURIComponent(a.company_id)+'/plan';}
-  function validPlanEnvelope(value,a){return value?.company?.id===a.company_id&&value.effective_plan&&Number.isInteger(value.effective_plan.version)&&/^[a-f0-9]{64}$/.test(value.effective_plan.revision);}
-  function planSummary(value){
+  function planTarget(kind,id){
+    if(kind==='company'){
+      const c=state.companies.find(item=>item.id===id);
+      if(c?.can_manage_plan===true)return {kind:'company',companyId:c.id};
+    }else if(kind==='account'){
+      const a=state.items.find(item=>item.id===id)||(state.selected?.id===id?state.selected:null);
+      if(a?.company_id&&a.can_manage_plan===true)return {kind:'account',accountId:a.id,companyId:a.company_id};
+    }else return null;
+    const selected=state.selected;
+    return selected?.kind===kind&&(kind==='company'?selected.companyId:selected.accountId)===id?selected:null;
+  }
+  function planPath(target){return '/api/v1/admin/accounts/'+(target.kind==='account'?encodeURIComponent(target.accountId)+'/':'')+'companies/'+encodeURIComponent(target.companyId)+'/plan';}
+  function planControl(target){return btn('Conferir estado','plan',{...(target.kind==='company'?{companyId:target.companyId}:{id:target.accountId}),cls:'os-button os-outline',icon:'refresh',text:'Conferir estado'});}
+  function validPlanEnvelope(value,target){return target&&value?.company?.id===target.companyId&&(target.kind==='company'?value.company.account_id===null:value.company.account_id===target.accountId)&&value.company.can_manage_plan!==false&&value.effective_plan&&Number.isInteger(value.effective_plan.version)&&/^[a-f0-9]{64}$/.test(value.effective_plan.revision);}
+  function planSummary(value,target){
     const p=value.effective_plan,c=value.company,subscription=p.commercial_subscription;
-    return '<div class="os-summary">'+[['Empresa',c.name],['Plano liberado',p.name||'Sem plano ativo'],['Origem',sourceNames[p.source]||p.source],['Situação do acesso',p.active?'Ativo':'Sem acesso ativo'],['Assinatura comercial',subscription?.name||subscription?.plan_code||'Sem assinatura'],['Situação da assinatura',subscriptionLabel(subscription)],['Profissionais ativos',String(p.limits?.active_professionals??c.active_professionals??0)+' / '+String(p.limits?.max_professionals??'—')]].map(([key,text])=>'<div class="os-summary-row"><span>'+esc(key)+'</span><strong>'+esc(text||'—')+'</strong></div>').join('')+'</div>';
+    return '<div class="os-summary">'+[['Empresa',c.name],...(target?.kind==='company'?[['Situação da empresa',companyStatus(c)],['Vínculo do proprietário',({assigned:'Conta de proprietário disponível',unassigned:'Conta de proprietário indisponível'})[c.owner_status]||'Vínculo não confirmado']]:[]),['Plano liberado',p.name||'Sem plano ativo'],['Origem',sourceNames[p.source]||p.source],['Situação do acesso',p.active?'Ativo':'Sem acesso ativo'],['Assinatura comercial',subscription?.name||subscription?.plan_code||'Sem assinatura'],['Situação da assinatura',subscriptionLabel(subscription)],['Profissionais ativos',String(p.limits?.active_professionals??c.active_professionals??0)+' / '+String(p.limits?.max_professionals??'—')]].map(([key,text])=>'<div class="os-summary-row"><span>'+esc(key)+'</span><strong>'+esc(text||'—')+'</strong></div>').join('')+'</div>';
   }
   function renderPlanForm(a,value,draft){
     const assignment=value.effective_plan.manual_assignment;
@@ -239,7 +288,7 @@
     const expiryInput=expiry&&!Number.isNaN(expiry.getTime())?new Date(expiry.getTime()-expiry.getTimezoneOffset()*60000).toISOString().slice(0,16):'';
     draft=draft||{plan_code:assignment?.plan_code||value.effective_plan.code||'essencial',access_type:assignment?.expires_at?'temporary':'indefinite',expires_at:expiryInput,reason:''};
     const history=value.history||[];
-    openDialog('plan','Gerenciar plano',planSummary(value)+'<form class="os-form" data-admin-form="plan">'+
+    openDialog('plan','Gerenciar plano',planSummary(value,a)+'<form class="os-form" data-admin-form="plan">'+
       '<div class="os-field"><label for="adminManualPlan">Plano</label><select id="adminManualPlan" name="plan_code" required>'+Object.entries(planNames).map(([code,name])=>'<option value="'+code+'"'+(code===draft.plan_code?' selected':'')+'>'+name+'</option>').join('')+'</select></div>'+
       '<div class="os-field"><label for="adminManualAccess">Tipo de liberação</label><select id="adminManualAccess" name="access_type"><option value="indefinite"'+(draft.access_type==='indefinite'?' selected':'')+'>Acesso manual sem prazo definido</option><option value="temporary"'+(draft.access_type==='temporary'?' selected':'')+'>Acesso manual temporário</option></select></div>'+
       '<div class="os-field" data-admin-expiration '+(draft.access_type==='temporary'?'':'hidden')+'><label for="adminManualExpires">Expiração (data e hora no seu fuso)</label><input id="adminManualExpires" type="datetime-local" name="expires_at" value="'+esc(draft.expires_at)+'" '+(draft.access_type==='temporary'?'required':'disabled')+'></div>'+
@@ -249,9 +298,8 @@
       '<details class="os-more-fields"><summary>Histórico de planos</summary><div class="os-disclosure-body">'+(history.length?history.map(event=>'<div class="os-summary-row"><span>'+esc(event.action==='manual_remove'?'Atribuição removida':'Plano alterado')+' · '+esc(new Date(event.occurred_at).toLocaleString('pt-BR'))+'</span><strong>'+esc(event.previous_plan?.name||'Sem acesso')+' → '+esc(event.new_plan?.name||'Sem acesso')+'</strong></div><p class="os-help">'+esc(event.reason||'Sem motivo informado')+' · Administrador: '+esc(event.actor_name||'Administrador geral')+(event.expires_at?' · até '+esc(new Date(event.expires_at).toLocaleString('pt-BR')):'')+'</p>').join(''):'<p class="os-help">Nenhuma alteração manual registrada.</p>')+'</div></details>',a);
     state.planEnvelope=value;state.planDraft=draft;state.planIntent=null;
   }
-  async function showPlan(id){
-    const a=state.items.find(item=>item.id===id)||state.selected;
-    if(!a?.company_id||a.can_manage_plan!==true||a.id!==id)return;
+  async function showPlan(kind,id){
+    const a=planTarget(kind,id);if(!a)return;
     const epoch=state.epoch,read=++state.modalRead;
     try{const value=await state.request(planPath(a));if(epoch!==state.epoch||read!==state.modalRead||!isAdmin())return;if(!validPlanEnvelope(value,a))throw Error('Não foi possível confirmar o plano da empresa selecionada.');renderPlanForm(a,value);}
     catch(error){if(epoch===state.epoch&&read===state.modalRead)feedback(error.message,true);}
@@ -267,7 +315,7 @@
     }
     state.planDraft=draft;
     const payload={expected_version:value.effective_plan.version,expected_revision:value.effective_plan.revision,operation_id:crypto.randomUUID(),confirmation:remove?'REMOVER ATRIBUIÇÃO':'ALTERAR PLANO',reason:(draft.reason||'').trim(),...(!remove?{plan_code:draft.plan_code,access_type:draft.access_type,expires_at:expires}:{})};
-    openDialog('plan-review',remove?'Remover atribuição manual?':'Confirmar alteração de plano',planSummary(value)+'<div class="os-notice"><p>'+esc(remove?'O plano será recalculado pela assinatura comercial ou pelo teste grátis válido.':'A empresa receberá o plano '+planNames[draft.plan_code]+(expires?' até '+new Date(expires).toLocaleString('pt-BR'): ' sem prazo definido')+'.')+'</p></div><p class="os-help">Os dados da empresa e a assinatura comercial serão preservados. Nenhuma cobrança será gerada.</p><form class="os-form" data-admin-form="plan-confirm"><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+btn('Voltar','plan-back',{cls:'os-button os-outline',icon:'left',text:'Voltar'})+'<button type="submit" class="os-button">'+(remove?'Confirmar remoção':'Confirmar alteração')+'</button></div></form>',a);
+    openDialog('plan-review',remove?'Remover atribuição manual?':'Confirmar alteração de plano',planSummary(value,a)+'<div class="os-notice"><p>'+esc(remove?'O plano será recalculado pela assinatura comercial ou pelo teste grátis válido.':'A empresa receberá o plano '+planNames[draft.plan_code]+(expires?' até '+new Date(expires).toLocaleString('pt-BR'): ' sem prazo definido')+'.')+'</p></div><p class="os-help">Os dados da empresa, o vínculo do proprietário e a assinatura comercial serão preservados. Nenhuma cobrança será gerada.</p><form class="os-form" data-admin-form="plan-confirm"><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+btn('Voltar','plan-back',{cls:'os-button os-outline',icon:'left',text:'Voltar'})+'<button type="submit" class="os-button">'+(remove?'Confirmar remoção':'Confirmar alteração')+'</button></div></form>',a);
     state.planIntent={path:planPath(a),method:remove?'DELETE':'PUT',payload};
   }
   async function savePlan(form){
@@ -276,11 +324,11 @@
     try{
       const value=await state.request(intent.path,intent.method,intent.payload);
       if(epoch!==state.epoch||!isAdmin())return;if(!validPlanEnvelope(value,a))throw Error('Resultado ainda não confirmado. Confira o estado antes de repetir.');
-      state.busy=false;closeDialog();state.stats=null;await load();window.dispatchEvent(new Event('orion:plan-changed'));if(typeof window.BroadcastChannel==='function'){try{const channel=new BroadcastChannel('orion-plan-access');channel.postMessage({type:'changed',tenantId:a.company_id});channel.close();}catch{}}
+      state.busy=false;closeDialog();state.stats=null;window.dispatchEvent(new Event('orion:plan-changed'));if(typeof window.BroadcastChannel==='function'){try{const channel=new BroadcastChannel('orion-plan-access');channel.postMessage({type:'changed',tenantId:a.companyId});channel.close();}catch{}}if(epoch===state.epoch&&isAdmin())await load();
     }catch(error){
       if(epoch!==state.epoch||!isAdmin())return;state.busy=false;form.setAttribute('aria-busy','false');feedback(error.message||'Não foi possível salvar a alteração.',true);
       const status=Number(error.status);if(status&&status<500&&status!==409){form.querySelectorAll('button').forEach(button=>button.disabled=false);}
-      else{state.planIntent=null;form.querySelector('.os-form-actions').insertAdjacentHTML('beforeend',btn('Conferir estado','plan',{id:a.id,cls:'os-button os-outline',icon:'refresh',text:'Conferir estado'}));}
+      else{state.planIntent=null;form.querySelector('.os-form-actions').insertAdjacentHTML('beforeend',planControl(a));}
     }
   }
   function feedback(message,error=false){
@@ -337,7 +385,7 @@
     event.preventDefault();state.trigger=button;
     if(key==="close"){closeDialog();return;}
     if(key==="view"){await view(id);return;}
-    if(key==='plan'){await showPlan(id);return;}
+    if(key==='plan'){const kind=button.dataset.planTarget||'account';await showPlan(kind,kind==='company'?button.dataset.companyId:id);return;}
     if(key==='remove-plan'){reviewPlan(true);return;}
     if(key==='plan-back'){renderPlanForm(state.selected,state.planEnvelope,state.planDraft);return;}
     if(key==="maintenance"){await showMaintenance(id);return;}
@@ -358,7 +406,7 @@
   function open({request,role,onMaintenanceStart}){
     if(role!=="admin"||typeof request!=="function")return;
     state.request=request;state.role=role;state.onMaintenanceStart=onMaintenanceStart;
-    state.epoch++;state.seq++;state.modalRead++;state.page=1;state.query="";state.status="all";state.plan='all';state.source='all';state.subscriptionStatus='all';state.stats=null;
+    state.epoch++;state.seq++;state.modalRead++;state.page=1;state.query="";state.status="all";state.plan='all';state.source='all';state.subscriptionStatus='all';state.stats=null;state.companies=[];state.companyError=null;
     const dialog=$("osDialog");
     if(dialog&&!dialog.dataset.osAdminCloseBound){
       dialog.dataset.osAdminCloseBound="1";
@@ -369,12 +417,13 @@
         state.modalType=null;state.modalAction=null;
       });
     }
-    frame();void load();
+    frame();const epoch=state.epoch;
+    queueMicrotask(()=>{if(epoch===state.epoch)void load();});
   }
   function reset(){
     state.epoch++;state.seq++;state.modalRead++;state.planEnvelope=null;state.planDraft=null;state.planIntent=null;clearTimeout(state.timer);state.timer=null;
     if(state.owned){state.busy=false;closeDialog();}
-    state.request=null;state.role=null;state.selected=null;state.items=[];state.stats=null;
+    state.request=null;state.role=null;state.selected=null;state.items=[];state.companies=[];state.companyError=null;state.stats=null;
   }
   document.addEventListener("click",event=>{
     if(event.target.closest("#adminClientCenter")||(state.owned&&event.target.closest("#osDialog")))

@@ -6,7 +6,7 @@ import {planState,tenantA,flush,deferred} from './harness.mjs';
 const account={id:'90000000-0000-4000-8000-000000000009',company_id:tenantA,can_manage_plan:true,name:'Responsável sintético',company_name:'Empresa sintética',email:'plan@example.invalid',state:'active',auth_version:7,created_at:'2026-10-01T00:00:00Z'};
 const path='/api/v1/admin/accounts/'+account.id+'/companies/'+tenantA+'/plan';
 async function fixture({state=planState('essencial',{revision:'a'.repeat(64),version:0}),save,history=[]}={}){
-  const value={company:{id:tenantA,name:'Empresa sintética',active_professionals:2},effective_plan:state,history};
+  const value={company:{id:tenantA,name:'Empresa sintética',account_id:account.id,active_professionals:2},effective_plan:state,history};
   const h=await makePanel({role:'admin',initialRoute:'member',respond:async(url,method,data)=>{
     if(url===path){if(method==='GET')return value;if(save)return save(url,method,data,value);value.effective_plan=planState(method==='DELETE'?'essencial':data.plan_code,{revision:'b'.repeat(64),version:1});return value;}
     if(url==='/api/v1/admin/accounts/stats')return {total:1,active:1};
