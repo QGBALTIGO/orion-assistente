@@ -72,6 +72,11 @@ async def check():
               + ";confirmed:" + str(int(methods["methods_confirmed"])), flush=True)
     except Exception:
         print("cakto_orion_payment_methods_unverified", flush=True)
+    if __import__("os").getenv("ORION_CAKTO_SYNTHETIC_WEBHOOK_TEST", "0") == "1":
+        # One-time opt-in provider synthetic test only: no real order or
+        # payment. Do not print any secret, provider body or webhook ID.
+        from scripts.test_cakto_webhook_rotation_once import run
+        await run()
     return 0
 
 
