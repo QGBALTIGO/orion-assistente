@@ -235,7 +235,7 @@ function renderCheckoutDialog(root,code,ctx,amount){
   +'<div class="op-payment-banner" role="status" aria-live="polite" data-op-payment-info>Verificando a disponibilidade do pagamento…</div>'
   +'<div class="op-payment-body" data-op-payment-body hidden>'
   +'<div class="op-payment-methods" role="group" aria-label="Forma de pagamento">'
-  +'<button type="button" class="op-payment-method active" data-op-payment-method="pix" aria-pressed="true">'+ic('credit')+' Pix</button>'
+  +'<button type="button" class="op-payment-method active" data-op-payment-method="pix" aria-pressed="true">'+ic('credit')+' Pix Automático</button>'
   +'<button type="button" class="op-payment-method" data-op-payment-method="card" aria-pressed="false">'+ic('shield')+' Cartão de crédito</button></div>'
   +'<form class="op-payment-form" data-op-payment-form novalidate>'
   +'<div class="op-payment-fields">'
@@ -259,9 +259,9 @@ function renderCheckoutDialog(root,code,ctx,amount){
   +'<div class="op-payment-card-row">'+checkoutField('number','Número','text','maxlength="12" placeholder="Número"')
   +checkoutField('complement','Complemento','text','autocomplete="address-line2" maxlength="90" placeholder="Opcional"')+'</div></div>'
   +'<label class="op-payment-consent"><input type="checkbox" name="monthly_ack" required><span>Confirmo o valor de <strong>'+price(amount)+'</strong> pela assinatura mensal Orion '+escapeHTML(title)+'.</span></label>'
-  +'<label class="op-payment-consent"><input type="checkbox" name="processor_ack" required><span>Autorizo o processamento seguro desta transação para pagamento e verificação.</span></label>'
+  +'<label class="op-payment-consent"><input type="checkbox" name="processor_ack" required><span>Autorizo o processamento seguro e a criação de uma assinatura com renovações mensais pelo método escolhido.</span></label>'
   +'<div class="op-payment-error" data-op-payment-error role="alert" aria-live="polite"></div>'
-  +'<button type="submit" class="op-btn op-btn-primary op-payment-submit" data-op-payment-submit>Gerar Pix</button>'
+  +'<button type="submit" class="op-btn op-btn-primary op-payment-submit" data-op-payment-submit>Gerar Pix Automático</button>'
   +'<p class="op-payment-secure">'+ic('shield')+' A assinatura é confirmada somente após verificação bancária. Seus dados de cartão não são armazenados pelo Orion.</p>'
   +'</form></div><div class="op-payment-result" data-op-payment-result hidden></div>';
  root.appendChild(modal);
@@ -301,7 +301,7 @@ async function checkout(root,code,ctx){
    const card=modal.querySelector('[data-op-card-fields]');
    card.hidden=method!=='card';
    card.querySelectorAll('input').forEach(input=>{input.disabled=method!=='card';input.required=method==='card'&&input.name!=='complement';});
-   submit.textContent=method==='pix'?'Gerar Pix':'Pagar com cartão';
+   submit.textContent=method==='pix'?'Gerar Pix Automático':'Pagar com cartão';
   }
   const copy=event.target.closest('[data-op-copy-pix]');
   if(copy){
@@ -413,7 +413,7 @@ async function checkout(root,code,ctx){
    resultBox.hidden=false;
    if(method==='pix'&&result.pix_code){
     resultBox.innerHTML='<div class="op-payment-pix"><span class="op-eyebrow">PIX GERADO</span><h3>Pague usando seu banco</h3>'
-     +'<p>Escaneie o QR Code ou copie o código Pix abaixo.</p>'
+     +'<p>Autorize no aplicativo do seu banco os pagamentos mensais pelo Pix Automático. O QR Code expira; o acesso só será liberado após a confirmação.</p>'
      +(String(result.pix_qr_data_uri||'').startsWith('data:image/png;base64,')?'<img class="op-payment-qr" alt="QR Code Pix do seu pagamento" src="'+escapeHTML(result.pix_qr_data_uri)+'">':'')
      +'<label class="op-payment-field"><span>Pix copia e cola</span><textarea data-op-pix-code readonly rows="3">'+escapeHTML(result.pix_code)+'</textarea></label>'
      +'<button type="button" class="op-btn op-btn-primary" data-op-copy-pix>Copiar código Pix</button>'
