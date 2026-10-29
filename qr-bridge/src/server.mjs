@@ -39,6 +39,7 @@ import {backupAuth} from "./auth-backup.mjs";
 import {createChannelRoutes} from './channel-routes.mjs';
 import {createBaileysChannelSession} from './channel-session.mjs';
 import {createLegacyCentral} from './legacy-central.mjs';
+import {testReplyFor} from './trigger-test.mjs';
 
 const legacyCentral=createLegacyCentral({
   start:(id,key)=>channelRoutes.adopt(id,key),send:(id,key,payload)=>channelRoutes.send(id,key,payload),
@@ -416,6 +417,27 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       // never supplies a telephone number. Authorization still occurs below.
       const conversationKey=String(mine)+':'+(pilotNumber()||remote[1]+'@'+remote[2]);
       const normalized=normalizeInbound(message);if(normalized.silent)continue;
+      // Explicit opt-in pilot: exact keyword, one verified phone, never fromMe.
+      // Do not forward the test command to the customer-facing assistant.
+      if(normalized.text?.trim().toUpperCase()==='ORIONTESTE' &&
+          process.env.QR_TRIGGER_TEST_PHONE){
+        const phone=await resolveMessagePhone(message.key,client);
+        const replyText=testReplyFor({text:normalized.text,phone,
+          allowedPhone:process.env.QR_TRIGGER_TEST_PHONE,fromMe:message.key.fromMe});
+        if(replyText){
+          const key='test:'+traceId;
+          if(!seen.has(key)){
+            seen.add(key);
+            if(seen.size>2000)seen.delete(seen.values().next().value);
+            try{
+              const sent=await send(phone,replyText,{waitForCapacity:true,
+                isCurrent:()=>intakeCurrent()});
+              transport.record(sent?.accepted?'trigger_test_relay_accepted':'trigger_test_unconfirmed',traceId);
+            }catch(error){transport.record('trigger_test_send_failed',traceId);}
+          }
+          continue;
+        }
+      }
       if(revisionEnabled&&noticePending>=40){enqueueOverflow(message,normalized,conversationKey);continue;}
       const epoch=rejectedEpoch.get(conversationKey)||0;
       const metadata={allowed:false,phone:null,jid:message.key.remoteJid,...(normalized.special?{event:normalized.event}:{})};
