@@ -269,7 +269,7 @@ def test_direct_payment_payload_offer_tracking_and_amount_are_verified():
     assert "cvv" not in str(payload)
     ok={"id":"synthetic-order","paymentMethod":"pix_auto","offer":{"id":"synthetic-offer"},
         "amount":"89.90","status":"waiting_payment",
-        "pix":{"qrCode":"synthetic-qr-code-" + "0" * 100}}
+        "pix":{"qrCode":"synthetic-qr-code-" + "0" * 100,"user_journey":"JORNADA_1"}}
     assert direct.verified_creation(ok,intent,"pix")
     assert not direct.verified_creation({**ok,"amount":"88.90"},intent,"pix")
     assert not direct.verified_creation({**ok,"offer":{"id":"other"}},intent,"pix")
