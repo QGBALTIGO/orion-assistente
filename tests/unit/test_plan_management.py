@@ -277,3 +277,30 @@ def test_direct_payment_payload_offer_tracking_and_amount_are_verified():
     assert not direct.verified_creation({**ok,"paymentMethod":"pix"},intent,"pix")
     assert not direct.verified_creation({**ok,"pix":{}},intent,"pix")
     assert not direct.verified_creation({**ok,"pix":{**ok["pix"],"user_journey":"UNKNOWN"}},intent,"pix")
+
+
+
+@pytest.mark.asyncio
+async def test_embedded_checkout_rejects_unverified_webhook_before_billing(monkeypatch):
+    from app import orion_direct_checkout as direct
+    from scripts import probe_orion_webhooks_read_only as audit
+    class ReadOnlyClient:
+        async def list_offers(self):
+            return []
+    async def not_ready(*args):
+        return {"offer_matches": 3, "webhook_ready": 2, "expected": 3}
+    monkeypatch.setattr(audit, "probe", not_ready)
+    with pytest.raises(HTTPException) as rejected:
+        await direct.require_verified_webhooks(ReadOnlyClient())
+    assert rejected.value.status_code == 409
+    async def ready(*args):
+        return {"offer_matches": 3, "webhook_ready": 3, "expected": 3}
+    monkeypatch.setattr(audit, "probe", ready)
+    assert await direct.require_verified_webhooks(ReadOnlyClient()) is None
+    async def forbidden(*args):
+        raise RuntimeError("synthetic forbidden read")
+    monkeypatch.setattr(audit, "probe", forbidden)
+    with pytest.raises(HTTPException) as unavailable:
+        await direct.require_verified_webhooks(ReadOnlyClient())
+    assert unavailable.value.status_code == 503
+    assert "synthetic" not in str(unavailable.value.detail)
