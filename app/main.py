@@ -110,6 +110,10 @@ app.include_router(management_ai_router)
 app.include_router(management_team_router)
 app.include_router(invitation_router)
 app.include_router(management_preferences_router)
+from app.appointment_access_api import router as appointment_access_router
+app.include_router(appointment_access_router)
+from app.appointment_communications_api import router as appointment_communications_router
+app.include_router(appointment_communications_router)
 app.include_router(public_site_router)
 app.include_router(service_packages_router)
 app.include_router(qr_channels_router)
@@ -153,6 +157,7 @@ async def panel_asset(asset: str) -> FileResponse:
                "orion-suite-live.js": "text/javascript",
                "orion-admin-center.js": "text/javascript",
                "orion-communication.js": "text/javascript",
+               "orion-appointment-communications.js": "text/javascript",
                "orion-auth.css": "text/css",
                "orion-invite.css": "text/css", "orion-invite.js": "text/javascript",
                "orion-onboarding.css": "text/css", "orion-onboarding.js": "text/javascript",

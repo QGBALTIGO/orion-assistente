@@ -529,8 +529,7 @@ async def public_availability(slug:str,request:Request,professional_id:UUID,day:
                                 {'services':[x['name'] for x in selection['items']]})['services']}
 
 
-@router.post('/api/v1/public/sites/{slug}/appointments',status_code=201)
-async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=Depends(booking_capacity)):
+async def _public_book_saved(slug:str,payload:PublicBooking,request:Request,_capacity=Depends(booking_capacity)):
     _same_origin(request)
     checked_slug(slug)
     quote=read_quote(payload.quote,slug)
@@ -596,6 +595,18 @@ async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=D
         # a read-then-cancel cleanup in this anonymous endpoint.
         if isinstance(exc,IntegrityError):raise HTTPException(409,'O horário acabou de ser reservado. Escolha outro horário') from None
         raise
+
+
+@router.post('/api/v1/public/sites/{slug}/appointments',status_code=201)
+async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=Depends(booking_capacity)):
+    result=await _public_book_saved(slug,payload,request,_capacity)
+    from app.appointment_confirmation import public_followup
+    try:
+        followup=await public_followup(slug,result,payload.customer_phone)
+    except Exception:
+        # A communication failure never undoes or hides a committed booking.
+        followup={'communication_state':'unavailable'}
+    return {**result,**followup}
 
 
 @router.get('/api/v1/tenants/{tenant_id}/management/site/metrics')

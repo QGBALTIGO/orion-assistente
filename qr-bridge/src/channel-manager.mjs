@@ -26,7 +26,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         !Number.isFinite(result.expires_in_ms)||result.expires_in_ms<=500||result.expires_in_ms>30000||
         !Array.isArray(result.allowed_senders)||result.allowed_senders.length>10||
         (!result.allowed_senders.length&&result.assistant_enabled!==false)||
-        result.allowed_senders.some(p=>typeof p!=='string'||!/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(p))||
+        result.allowed_senders.some(p=>typeof p!=='string'||(!/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(p)&&
+          !(result.legacy_transport===true&&p===result.verified_self_phone&&/^55[1-9]\d[2-9]\d{7}$/.test(p))))||
         (c.fence&&(result.fence!==c.fence||result.tenant_id!==c.tenant)))throw Error('invalid_channel_lease');
     c.tenant=result.tenant_id;c.fence=result.fence;c.allowed=new Set(result.allowed_senders);c.assistant=result.assistant_enabled;
     if(c.legacyTransport!==undefined&&c.legacyTransport!==(result.legacy_transport===true))throw Error('channel_transport_changed');

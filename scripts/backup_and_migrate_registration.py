@@ -91,19 +91,26 @@ def predeploy_main():
     from scripts import backup_and_migrate_cakto as cakto
     from scripts import backup_and_migrate_plans as plans
     from scripts import backup_and_migrate_direct_checkout as direct
+    from scripts import backup_and_migrate_appointment_communications as appointment
+    def finish_direct():
+        result=direct.main()
+        if result:return result
+        return appointment.main() if os.getenv('ORION_RUN_APPOINTMENT_COMMUNICATION_MIGRATION')=='1' else 0
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
+        if current == appointment.TARGET:
+            return appointment.main()
         if current == direct.TARGET:
-            return direct.main()
+            return finish_direct()
         if current == plans.TARGET:
             result = plans.main()
-            return result if result else direct.main()
+            return result if result else finish_direct()
         if current == single.TARGET:
             result = single.main()
             if result: return result
             result = plans.main()
-            return result if result else direct.main()
+            return result if result else finish_direct()
         if current == PREVIOUS:
             result = main()
             if result:
@@ -129,7 +136,7 @@ def predeploy_main():
         result = single.main()
         if result: return result
         result = plans.main()
-        return result if result else direct.main()
+        return result if result else finish_direct()
     except Exception:
         print('orion_registration_predeploy_failed_closed', file=sys.stderr)
         return 3

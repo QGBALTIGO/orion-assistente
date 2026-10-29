@@ -20,6 +20,7 @@ from app.database import tenant_transaction
 from app.appointment_lifecycle import (
     CAS_SQL, LifecycleActor, SYSTEM_ACTOR, check_expected_updated_at,
     metadata, operation_payload, operation_replayed, public_history, record_operation, resolved_actor,
+    require_customer_deadline,
 )
 from app.customer_names import useful_name
 from app.customer_identity import resolve_customer
@@ -290,6 +291,8 @@ async def history(s: AsyncSession, tenant: UUID, appointment: UUID, event: str, 
         VALUES (:tenant,:appointment,:event,:operator,CAST(:details AS jsonb),clock_timestamp())
     """), {"tenant": tenant, "appointment": appointment, "event": event,
            "operator": details["actor"]["role"], "details": json.dumps(details, ensure_ascii=False)})
+    from app.appointment_notifications import enqueue_event
+    await enqueue_event(s, tenant, appointment, event, details)
     if calendar:
         from app.calendar_sync import enqueue_calendar_sync
         await enqueue_calendar_sync(s, tenant, appointment, event)
@@ -750,13 +753,16 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
             return await read_appointment(s, tenant, item_id)
         if entry["status"] not in ("confirmed", "hold"):
             fail(409, "Agendamento não pode ser cancelado neste estado")
+        await require_customer_deadline(s, entry, context)
         changed = (await s.execute(text("""
             UPDATE appointments SET status='cancelled', hold_expires_at=NULL,
                 updated_at=GREATEST(clock_timestamp(),updated_at+interval '1 microsecond') WHERE tenant_id=:tenant AND id=:id
                 AND (:future_only=false OR start_at>clock_timestamp())
+                AND (:is_customer=false OR start_at>=clock_timestamp()+interval '60 minutes')
                 AND """ + CUSTOMER_MATCH_SQL + " AND " + CAS_SQL + " RETURNING id"),
             {"tenant": tenant, "id": item_id, "customer_phone": customer_phone,
-             "future_only": future_only, "expected_updated_at": expected_updated_at})).scalar_one_or_none()
+             "future_only": future_only, "is_customer": context.role == "customer" and entry["status"] != "hold",
+             "expected_updated_at": expected_updated_at})).scalar_one_or_none()
         if changed is None:
             fail(409, "A reserva mudou. Confira um novo resumo antes de cancelar")
         await history(s, tenant, item_id, "cancelled", context=context, requested_by=details["requested_by"],
@@ -800,7 +806,7 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
                                  new_start: datetime, now: datetime | None = None, *,
                                  expected_snapshot: str | None = None, customer_phone: str | None = None,
                                  expected_updated_at: datetime | None = None, idempotency_key: str | None = None,
-                                 context: LifecycleActor | None = None, source: str = "unknown"):
+                                 context: LifecycleActor | None = None, source: str = "unknown", proposal_id: UUID | None = None):
     supplied_clock = now is not None
     now = now or datetime.now(UTC)
     async with tenant_transaction(s, tenant):
@@ -820,12 +826,21 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
         if customer_phone is not None:
             await verify_customer_snapshot(s, tenant, row, customer_phone, None)
         context = resolved_actor(context, source, row["customer_id"], verified_customer=customer_phone is not None)
+        if proposal_id is not None:
+            if context.role!='customer':fail(403,'O aceite exige autorização do cliente')
+            proposal=(await s.execute(text("""SELECT * FROM appointment_change_proposals
+                WHERE tenant_id=:t AND appointment_id=:id AND id=:proposal AND status='pending'
+                  AND expires_at>clock_timestamp() FOR UPDATE"""),{'t':tenant,'id':item_id,'proposal':proposal_id})).mappings().first()
+            if proposal is None or proposal['appointment_version']!=row['updated_at']:
+                fail(409,'Esta proposta expirou ou o agendamento mudou. O horário anterior foi preservado')
+            new_start=proposal['new_start_at']
         receipt = operation_payload(item_id, expected_updated_at, context, start_at=new_start.astimezone(UTC))
         if await operation_replayed(s, tenant, "agenda_reschedule", idempotency_key, receipt):
             return await read_appointment(s, tenant, item_id)
         check_expected_updated_at(row, expected_updated_at)
         if row["status"] != "confirmed":
             fail(409, "Somente reservas confirmadas podem ser remarcadas")
+        await require_customer_deadline(s, row, context)
         from app.onboarding_service import require_operational_ready
         await require_operational_ready(s, tenant, "rescheduling")
         ids = list((await s.execute(text("""
@@ -833,6 +848,10 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
             AND appointment_id=:id ORDER BY item_order
         """), {"tenant": tenant, "id": item_id})).scalars().all())
         shop, items = await load_bundle(s, tenant, row["professional_id"], ids)
+        if proposal_id is not None:
+            # PostgreSQL returns timestamptz in UTC. The slot engine validates
+            # the submitted local offset, so restore the business IANA zone.
+            new_start=new_start.astimezone(ZoneInfo(shop['timezone']))
         if expected_snapshot is not None:
             if not customer_phone:
                 fail(403, "Confirmação exige o contato autenticado")
@@ -850,8 +869,10 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
                 occupied_from=:occupied_from,occupied_until=:occupied_until,
                 total_cents=:total_cents,updated_at=GREATEST(:now,updated_at+interval '1 microsecond')
             WHERE tenant_id=:tenant AND id=:id
+              AND (:is_customer=false OR start_at>=clock_timestamp()+interval '60 minutes')
               AND """ + BUNDLE_MATCH_SQL + " AND " + CUSTOMER_MATCH_SQL + " AND " + CAS_SQL + " RETURNING id"),
-            {"tenant": tenant, "id": item_id, "now": now, "expected_updated_at": expected_updated_at, **b,
+            {"tenant": tenant, "id": item_id, "now": now, "expected_updated_at": expected_updated_at,
+             "is_customer": context.role == "customer", **b,
              **bundle_guard_parameters(tenant, row["professional_id"], ids, shop, items, customer_phone)})).scalar_one_or_none()
         if changed is None:
             fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de remarcar")
@@ -867,6 +888,8 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
                    "name": item["name"], "duration": item["duration_min"],
                    "price": item["price_cents"], "price_mode": item["price_mode"], "prep": item["prep_min"],
                    "cleanup": item["cleanup_min"]})
+        if proposal_id is not None:
+            await s.execute(text("UPDATE appointment_change_proposals SET status='accepted' WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':proposal_id})
         await history(s, tenant, item_id, "rescheduled", context=context, previous=row)
         await record_operation(s, tenant, item_id, "agenda_reschedule", idempotency_key, receipt)
         return await read_appointment(s, tenant, item_id)

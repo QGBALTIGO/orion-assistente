@@ -114,9 +114,11 @@
         '<div><button type="button" class="os-central-clear-filters" data-central-action="clear-filters">Limpar</button>'+
         '<button class="os-button os-central-filter-submit" type="submit" '+(s.busy?'disabled':'')+'>Aplicar</button></div></div></div></details>'+
       '</form>';
+      const newConversation=(canWrite&&s.account?'<button type="button" class="os-button os-outline" data-central-action="new" '+(s.busy?'disabled':'')+'>Nova conversa</button>':'')+
+        (s.newOpen?'<form data-central-new-contact class="os-form os-central-new-form"><div class="os-field"><label for="centralNewPhone">WhatsApp com DDD</label><input id="centralNewPhone" name="phone" type="tel" autocomplete="tel" maxlength="24" required value="'+esc(s.newPhone||'')+'"></div><div class="os-field"><label for="centralNewChannel">Canal</label><select id="centralNewChannel" name="channel">'+s.channels.filter(x=>x.provider==='qr'&&x.enabled).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.label)+'</option>').join('')+'</select></div><p class="os-help">Abrir a conversa não envia mensagens. Use apenas contatos autorizados no canal.</p><button type="submit" class="os-button" '+(s.busy?'disabled':'')+'>Abrir conversa</button></form>':'');
       const listPanel='<aside class="os-central-list-panel" aria-label="Conversas da empresa">'+
         '<header class="os-central-list-header"><div><h2>Conversas</h2><p>'+s.items.length+' conversa'+(s.items.length===1?'':'s')+(totalUnread?' · '+totalUnread+' '+(totalUnread===1?'mensagem não lida':'mensagens não lidas'):'')+'</p></div><button type="button" class="os-icon-button os-central-refresh" data-central-action="refresh" aria-label="Atualizar conversas" title="Atualizar conversas" '+(s.busy?'disabled':'')+'>'+ico('refresh')+'</button></header>'+
-        filters+
+        newConversation+filters+
         '<ul class="os-central-thread-list" aria-label="Lista de conversas">'+(list||'<li class="os-central-empty-list">'+ico('message')+'<strong>Nenhuma conversa encontrada</strong><span>Revise os filtros ou aguarde novas mensagens.</span></li>')+'</ul>'+
         '<footer class="os-central-pagination"><button type="button" class="os-button os-outline" data-central-action="previous" '+(s.offset===0||s.busy?'disabled':'')+'>Anterior</button><span>Página '+(Math.floor(s.offset/50)+1)+'</span><button type="button" class="os-button os-outline" data-central-action="next" '+(!s.more||s.busy?'disabled':'')+'>Próxima</button></footer></aside>';
       const controlLabel=c?({human:'Humano',waiting:'Em espera',ai:'IA ativa',paused:'Pausado',closed:'Encerrado'}[c.mode]||'Em atendimento'):'Sem status';
@@ -239,12 +241,19 @@
         syncMessageSearch(e.target.value);
         return;
       }
+      if(e.target.id==='centralNewPhone'){s.newPhone=e.target.value;return;}
       if(e.target.id==='centralSearch'){s.searchDraft=e.target.value;return;}
       if(e.target.id==='centralText'){s.drafts.set(key(),{text:e.target.value,operation:null});scheduleLayout();}
     },{signal:s.abort.signal});
     host.addEventListener('change',e=>{if(e.target.matches('[data-central-reply]'))s.replySelection=e.target.value;},{signal:s.abort.signal});
     host.addEventListener('submit',e=>{
       e.preventDefault();if(s.busy)return;const f=e.target;
+      if(f.matches('[data-central-new-contact]')&&canWrite&&s.account){
+        const v=Object.fromEntries(new FormData(f));
+        let phone;try{phone=window.OrionFields?.phoneValue(v.phone)||('+'+String(v.phone).replace(/\D/g,''));}catch{notice('Revise o WhatsApp com DDD.',true);return;}
+        if(!/^\+55[1-9][0-9]{9,10}$/.test(phone)){notice('Informe o WhatsApp brasileiro com DDD.',true);return;}
+        void work(async()=>{const opened=await request(path('/channels/'+encodeURIComponent(v.channel)+'/conversations'),'POST',{contact_e164:phone});if(!current())return;s.selected=opened;s.detail=null;s.newOpen=false;s.newPhone='';s.focusTarget='thread';},'Conversa aberta. Assuma o atendimento para enviar.');return;
+      }
       if(f.matches('[data-central-search]')){
         const v=Object.fromEntries(new FormData(f));
         s.channel=v.channel||'';s.mode=v.mode||'';s.q=(v.q||'').trim();
@@ -270,6 +279,7 @@
       if(action==='back'){s.returnTo=key();s.selected=null;s.detail=null;s.detailError=null;s.openSections.clear();s.pending=[];s.focusTarget='list';s.restoreControlsFocus=false;render();return;}
       if(action==='clear-find'){const input=host.querySelector('#centralFind');if(input)input.value='';syncMessageSearch('');host.querySelector('.os-central-thread-header')?.focus({preventScroll:true});return;}
       if(a.closest('.os-central-control-options'))closeControls(true);
+      if(action==='new'){s.newOpen=!s.newOpen;render();return;}
       if(action==='refresh'){void work(load);return;}
       if(action==='clear-filters'){
         s.channel='';s.mode='';s.unread=false;s.q='';s.searchDraft='';s.offset=0;

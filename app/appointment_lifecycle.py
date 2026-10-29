@@ -4,7 +4,7 @@ These helpers do not open transactions or contact another service. Context is
 constructed by authenticated adapters, never deserialized from a request body.
 """
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 from uuid import UUID
@@ -29,6 +29,22 @@ class LifecycleActor:
 
 
 SYSTEM_ACTOR = LifecycleActor(role="system", source="system")
+
+
+def customer_can_change(appointment, now):
+    """Inclusive deadline. The caller supplies a trusted server/database clock."""
+    if now.tzinfo is None or appointment["start_at"].tzinfo is None:
+        raise ValueError("aware_clock_required")
+    return (appointment["status"] == "confirmed"
+            and now <= appointment["start_at"] - timedelta(minutes=60))
+
+
+async def require_customer_deadline(db, appointment, context):
+    if context.role != "customer" or appointment["status"] == "hold":
+        return
+    now = (await db.execute(text("SELECT clock_timestamp()"))).scalar_one()
+    if not customer_can_change(appointment, now):
+        raise HTTPException(409, "Seu agendamento está próximo e não pode mais ser alterado por esta página. Para solicitar ajuda, entre em contato com a empresa.")
 
 
 def panel_actor(actor):

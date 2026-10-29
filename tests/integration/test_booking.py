@@ -699,3 +699,30 @@ async def test_staff_commands_are_phone_bound_and_block_availability(booking_db)
             "SELECT bot_enabled FROM whatsapp_channels WHERE id=:c"
         ),{"c":channel})).scalar_one()
     assert active is False
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('operation', ['cancel', 'reschedule'])
+async def test_customer_one_hour_rule_is_enforced_in_engine(booking_db, operation):
+    from app.appointment_lifecycle import customer_actor
+    d = booking_db
+    async with d['factory']() as s:
+        held = await book_appointment(s, d['a'], d['pro'], [d['cut']], phone(919),
+            'Cliente sintético', start_at(d['day'], 10), 'deadline-' + operation)
+        booking = await confirm_hold(s, d['a'], held['id'])
+    async with d['migrator'].begin() as s:
+        await s.execute(text("""UPDATE appointments SET start_at=now()+interval '59 minutes',
+            end_at=now()+interval '99 minutes',occupied_from=now()+interval '54 minutes',
+            occupied_until=now()+interval '109 minutes' WHERE tenant_id=:t AND id=:id"""),
+            {'t': d['a'], 'id': booking['id']})
+    async with d['factory']() as s:
+        with pytest.raises(HTTPException) as exc:
+            if operation == 'cancel':
+                await cancel_appointment(s, d['a'], booking['id'],
+                    context=customer_actor(booking['customer_id'], 'public_site'))
+            else:
+                await reschedule_appointment(s, d['a'], booking['id'], start_at(d['day'], 14),
+                    context=customer_actor(booking['customer_id'], 'public_site'))
+        assert exc.value.status_code == 409
+    async with d['migrator'].begin() as s:
+        assert (await s.execute(text('SELECT status FROM appointments WHERE id=:id'),
+            {'id': booking['id']})).scalar_one() == 'confirmed'

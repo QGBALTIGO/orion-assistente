@@ -6,6 +6,7 @@ import {createBaileysChannelSession} from '../src/channel-session.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {createHmac} from 'node:crypto';
 
 const id='10000000-0000-4000-8000-000000000001',tenant='20000000-0000-4000-8000-000000000001';
 const phone='5567999999901',key='synthetic-primary-key-0000000000000000000000000000';
@@ -124,4 +125,18 @@ for(const pause of [false,true])test(`full managed pipeline preserves the legacy
   assert.deepEqual(calls,['journal','interaction','forward','authorize']);
   assert.equal(raw,pause?0:1);assert.equal(finished,pause?0:1);assert.equal(result.accepted,!pause);
   assert.equal(central.health().connected,true);
+});
+
+test('old self PN requires HMAC correspondence with the preserved physical session',async()=>{
+  const old='556781234567',proof=createHmac('sha256',key).update('orion:preserved-primary-session:v1\0'+old).digest('hex');
+  for(const valid of [false,true]){
+    let starts=0;
+    const central=createLegacyCentral({env:{QR_LEGACY_CENTRAL_ENABLED:'1',QR_CHANNEL_BROKER_URL:'http://api.railway.internal',QR_BRIDGE_TOKEN:key},
+      sessionDigest:()=>proof,status:()=> 'connected',
+      fetchImpl:async()=>({ok:true,json:async()=>({legacy_transport:true,channel_id:id,tenant_id:tenant,
+        session_digest:valid?proof:'a'.repeat(64),allowed_senders:[old],verified_self_phone:old})}),
+      start:async()=>{starts++;},send:async()=>assert.fail('No bootstrap message'),rawSend:async()=>assert.fail('No raw send')});
+    if(valid){await central.resume();assert.equal(starts,1);}
+    else {await assert.rejects(central.resume(),/invalid_legacy_adoption/);assert.equal(starts,0);}
+  }
 });

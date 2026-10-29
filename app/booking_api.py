@@ -149,6 +149,10 @@ async def reschedule(
     authorize(actor, tenant_id, write=True)
     async with get_session_factory()() as session:
         try:
+            from app.appointment_changes import propose_if_required
+            proposal=await propose_if_required(session,tenant_id,appointment_id,payload,panel_actor(actor))
+            if proposal is not None:
+                return json_response(appointment_payload(proposal,actor,tenant_id))
             result = await reschedule_appointment(
                 session, tenant_id, appointment_id, payload.start_at,
                 expected_updated_at=payload.expected_updated_at, idempotency_key=payload.idempotency_key,

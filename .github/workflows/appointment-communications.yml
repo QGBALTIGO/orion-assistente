@@ -1,0 +1,119 @@
+name: Appointment communications — PostgreSQL regression
+on:
+  push:
+    branches: [codex/appointment-communications-20261029]
+  pull_request:
+    paths-ignore: ['docs/**']
+concurrency:
+  group: appointment-communications-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  pytest:
+    runs-on: ubuntu-24.04
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: test-support-ci-token-of-64-characters-000000000000000000000000000
+      REQUIRE_POSTGRES_TESTS: "1"
+      ORION_INTAKE_TEST_REDIS_URL: redis://localhost:6379/15
+      ORION_REQUIRE_INTAKE_REDIS_TEST: "1"
+      REDIS_URL: redis://localhost:6379/15
+      REQUIRE_REDIS_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependências
+        run: |
+          python -m pip install -c requirements.lock ".[test]"
+          python -m pip check
+      - name: Cliente PostgreSQL 16 para validar backup e restauração isolados
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          echo '/usr/lib/postgresql/16/bin' >> "$GITHUB_PATH"
+          /usr/lib/postgresql/16/bin/pg_dump --version
+          /usr/lib/postgresql/16/bin/pg_restore --version
+      - name: Validar sintaxe do serviço privado de transcrição
+        run: python -m py_compile qr-transcriber/app.py
+      - name: Validar transporte QR, isolamento e preservação da sessão
+        # The historical panel VM harness is compared separately against baseline.
+        # Current panel behavior is exercised below in real Chromium/WebKit.
+        run: |
+          python - <<'PYTEST'
+          import subprocess
+          from pathlib import Path
+          paths=sorted(str(p) for p in Path('qr-bridge/test').glob('*.test.mjs') if p.name!='panel-ui.test.mjs')
+          subprocess.run(['node','--test',*paths],check=True)
+          PYTEST
+      - name: Provisionar papéis separados
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas \
+            -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only \
+            -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+      - name: Aplicar migration
+        run: alembic upgrade head
+      - name: Testar pg_dump/restore em banco efêmero
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          pg_dump -h localhost -U postgres -d barber_saas -Fc -f /tmp/orion-smoke.dump
+          createdb -h localhost -U postgres orion_restore
+          pg_restore -h localhost -U postgres -d orion_restore --no-owner --no-acl --exit-on-error /tmp/orion-smoke.dump
+          test "$(psql -h localhost -U postgres -d orion_restore -tAc 'SELECT count(*) FROM alembic_version')" = "1"
+          dropdb -h localhost -U postgres orion_restore
+          rm -f /tmp/orion-smoke.dump
+      - name: Rodar suite incluindo RLS real
+        timeout-minutes: 12
+        env:
+          ORION_MIGRATION_TEST_OWNER_URL: postgresql+psycopg://postgres:ci-postgres-only@localhost:5432/postgres
+          ORION_REQUIRE_MIGRATION_OPS_TEST: "1"
+        run: pytest -q -ra tests/unit/test_appointment_pilot.py tests/unit/test_qr_channels.py tests/unit/test_qr_api.py tests/unit/test_unified_inbox.py tests/unit/test_customer_deadline.py tests/unit/test_appointment_access.py tests/unit/test_appointment_messages.py tests/integration/test_appointment_access_pg.py tests/integration/test_appointment_notifications_pg.py tests/integration/test_booking.py tests/integration/test_rls.py tests/integration/test_appointment_lifecycle.py tests/integration/test_appointment_migration_pg.py tests/integration/test_unified_inbox_postgres.py
+      - name: Regressão da publicação pública, automações e conexão WhatsApp canônica
+        timeout-minutes: 12
+        run: pytest -q -ra tests/integration/test_public_catalog.py tests/integration/test_automation_postgres.py tests/integration/test_qr_single_connection_postgres.py
+      - name: Carga limitada ao banco isolado (100, 500 e 1000 tentativas)
+        env:
+          ORION_APPOINTMENT_LOAD: "1"
+        run: pytest -q -s tests/integration/test_appointment_load_pg.py
+      - name: Instalar navegadores de teste
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium webkit
+      - name: Interface em seis tamanhos, Chromium e WebKit
+        run: python tests/e2e/appointment_communications.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: appointment-communications-evidence
+          path: test-results/appointment-communications

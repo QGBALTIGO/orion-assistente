@@ -597,3 +597,16 @@ test('only an accepted current response clears summary review; an uncertain send
     assert.equal(f.forwards[1].payload.require_summary_review,!accepted);
   }
 });
+
+test('old mobile PN is allowed only as the explicitly verified self number of the preserved session',async t=>{
+  const f=fixture(t),a=f.add(),old='556781234567';
+  Object.assign(f.rows.get(a.id),{allowed_senders:[old],assistant_enabled:false});
+  const m=f.manager();await assert.rejects(m.start(a.id,a.key),/invalid_channel_lease/);
+  Object.assign(f.rows.get(a.id),{legacy_transport:true,verified_self_phone:old});
+  await m.start(a.id,a.key);
+  assert.equal(f.made[0].ctx.allowedSender(old),true);
+  assert.equal(f.made[0].ctx.allowedSender('5567981234567'),false);
+  const result=await m.send(a.id,a.key,{to:old,text:'synthetic self test',operation_id:randomUUID()});
+  assert.equal(result.accepted,true);
+  assert.equal(f.made[0].sends[0].to,old);
+});

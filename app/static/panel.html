@@ -578,6 +578,7 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 #appView.ob-gated .content > .page,#appView.ob-gated #osConsultantFab{display:none!important}
 #orionSetup[hidden]{display:none!important}
 </style>
+<script src="/panel-assets/orion-appointment-communications.js" defer></script>
 </head>
 <body>
 <section id="sessionBoot" aria-label="Acesso à Orion" aria-busy="true">
@@ -1488,7 +1489,7 @@ function suiteBridge(initialRoute){
 }
 let csrf="",page="dispositivo",method="code",showQr=false,deviceStatus="starting",lastDeviceStatus="starting",pairExpiresAt=0,
     statusTimer=null,chatTimer=null,selectedPhone="",chatsBusy=false;
-let messageSequence=0,lastPanelSend=null,manualSendRequest=null,manualSendSequence=0;
+let messageSequence=0,lastPanelSend=null,manualSendRequest=null,manualSendSequence=0,manualSendIdentity=null;
 let chatRows=[],chatLoadSequence=0,recipientSequence=0,chatSending=false,chatSavedScroll=0;
 const chatDrafts=new Map();
 let wizardStep="tutorial",wizardAttempted=false,wizardSuccessUntil=0,
@@ -1865,7 +1866,7 @@ function showLogin(){
  window.OrionSuite?.destroy();suiteUser=null;suiteTenantId="";businessContextReady=false;businessContextError="";
  memberBusinessOriginal=null;$("memberBusinessForm").reset();$("memberPasswordForm").reset();
  memberFeedback("memberBusinessFeedback","");memberFeedback("memberPasswordFeedback","");
- finishActionConfirmation(false);manualSendRequest=null;++manualSendSequence;$("sendButton").disabled=false;
+ finishActionConfirmation(false);manualSendRequest=null;manualSendIdentity=null;++manualSendSequence;$("sendButton").disabled=false;
  csrf="";clearInterval(statusTimer);clearInterval(chatTimer);clearInterval(wizardClocks);statusTimer=null;chatTimer=null;wizardClocks=null;
  ++statusSequence;connectedSnapshot=null;wizardSuccessUntil=0;
  $("realWhatsAppPhoto").removeAttribute("src");$("realWhatsAppName").textContent="";$("realWhatsAppPhone").textContent="";$("connectedPhone").textContent="";
@@ -2825,9 +2826,18 @@ $("sendForm").addEventListener("submit",async ev=>{
  try{
   if(!await confirmAction("Enviar esta mensagem para +"+phone+" pelo WhatsApp conectado?")||!current())return;
   $("chatNotice").textContent="Enviando...";setChatSending(true);
-  const result=await api("/api/v1/qr/send","POST",{phone,text});
+  if(!manualSendIdentity||manualSendIdentity.phone!==phone||manualSendIdentity.text!==text)manualSendIdentity={phone,text,id:crypto.randomUUID()};
+  const operation_id=manualSendIdentity.id;
+  const result=await api("/api/v1/qr/send","POST",{phone,text,operation_id});
   if(!active())return;
+  if(result.managed===true){
+   manualSendIdentity=null;
+   $("chatText").value="";chatDrafts.delete(conversation);
+   $("chatNotice").textContent="Solicitação registrada na Central. Consulte o histórico para confirmar o envio e a entrega.";
+   await window.OrionSuite?.open("inbox",{force:true});return;
+  }
   if(!result.accepted)throw Error("O WhatsApp não confirmou a aceitação. Aguarde antes de tentar novamente.");
+  manualSendIdentity=null;
   lastPanelSend={phone,id:result.id,delivery:result.delivery};
   setChatSending(false);
   selectChat(phone);if(conversation===phone)$("chatText").value="";chatDrafts.delete(conversation);

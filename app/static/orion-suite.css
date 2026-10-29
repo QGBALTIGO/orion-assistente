@@ -2788,3 +2788,23 @@ html:has(.os-professional-history[open]){overflow:hidden}
 
 /* Preserve Google's original full-color Calendar mark on both themes. */
 .os-google-mark img{display:block;width:26px;height:26px;max-width:100%;object-fit:contain}
+
+/* Appointment communication uses the suite's existing fields, toggles and buttons. */
+.os-appointment-comms,.os-appointment-comms *{box-sizing:border-box}
+.os-appointment-comms{font:400 14px/1.5 var(--os-font)}
+.os-appointment-comms .os-card>h3{margin:0 0 8px}
+.os-appointment-comms .os-card>.os-help{margin:0 0 20px}
+.os-appointment-comms .os-comm-options{display:grid;gap:0;min-width:0}
+.os-appointment-comms .os-comm-options .os-toggle{min-height:48px;border-bottom:1px solid var(--os-border);margin:0}
+.os-appointment-comms .os-comm-options .os-toggle>span{min-width:0;flex:1}
+.os-appointment-comms .os-comm-intervals{border:1px solid var(--os-border);border-radius:12px;padding:14px;min-width:0}
+.os-appointment-comms .os-comm-intervals summary{font:500 14px/20px var(--os-font);cursor:pointer;color:var(--os-text)}
+.os-appointment-comms .os-comm-intervals .os-field{margin-top:16px}
+.os-appointment-comms .os-comm-intervals .os-help{margin:14px 0 0}
+.os-appointment-comms .os-comm-notification,.os-appointment-comms .os-comm-review{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;padding:16px 0;border-bottom:1px solid var(--os-border)}
+.os-appointment-comms .os-comm-notification>div{min-width:0}
+.os-appointment-comms .os-summary-row strong,.os-appointment-comms .os-summary-row small{display:block;text-align:left}
+.os-appointment-comms .os-summary-row p{margin:6px 0 0}
+.os-appointment-comms .os-summary-row small{margin-top:6px}
+.os-appointment-comms .os-comm-review:last-child,.os-appointment-comms .os-comm-notification:last-child{border:0;padding-bottom:0}
+@media(max-width:540px){.os-appointment-comms .os-comm-notification,.os-appointment-comms .os-comm-review{grid-template-columns:minmax(0,1fr);gap:8px}.os-appointment-comms .os-form-actions>.os-button{width:100%;min-height:44px}}
