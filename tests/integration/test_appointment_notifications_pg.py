@@ -38,7 +38,7 @@ async def comm_db(booking_db,monkeypatch):
     try:yield d
     finally:
         async with d['migrator'].begin() as db:
-            for table in ('appointment_confirmation_receipts','appointment_notifications','appointment_communication_settings','contact_consents','qr_channels','tenant_memberships'):
+            for table in ('appointment_change_proposals','appointment_confirmation_receipts','appointment_notifications','appointment_communication_settings','contact_consents','qr_channels','tenant_memberships'):
                 await db.execute(text(f'DELETE FROM {table} WHERE tenant_id=:t'),{'t':d['a']})
             await db.execute(text('DELETE FROM panel_accounts WHERE id=:id'),{'id':account})
 

@@ -848,6 +848,10 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
             AND appointment_id=:id ORDER BY item_order
         """), {"tenant": tenant, "id": item_id})).scalars().all())
         shop, items = await load_bundle(s, tenant, row["professional_id"], ids)
+        if proposal_id is not None:
+            # PostgreSQL returns timestamptz in UTC. The slot engine validates
+            # the submitted local offset, so restore the business IANA zone.
+            new_start=new_start.astimezone(ZoneInfo(shop['timezone']))
         if expected_snapshot is not None:
             if not customer_phone:
                 fail(403, "Confirmação exige o contato autenticado")

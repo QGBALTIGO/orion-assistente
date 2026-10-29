@@ -66,7 +66,7 @@ def compose(event, row, *, company, signature='Orion Agenda', customer_link=None
         old=old.astimezone(ZoneInfo(row['timezone']))
         parts+= [f'Horário anterior: {old:%d/%m/%Y às %H:%M}']
     if event.startswith('professional_'):
-        parts+=['🔗 GERENCIAR ATENDIMENTO\n'+canonical_public_origin()+'/panel#agenda']
+        parts+=['🔗 GERENCIAR ATENDIMENTO\n'+canonical_public_origin()+'/panel?aba=agenda&agendamento='+str(row['id'])]
     elif event=='customer_rescheduled' and safe_link(customer_link):parts+=['🔗 VER AGENDAMENTO ATUALIZADO\n'+customer_link]
     elif event=='customer_cancelled' and safe_link(booking_link):parts+=['🔗 AGENDAR NOVAMENTE\n'+booking_link]
     parts+=['🤖 '+label(signature,80)]

@@ -31,4 +31,4 @@ def test_labels_cannot_inject_links_or_whatsapp_markup():
 def test_staff_link_requires_panel_auth_and_does_not_reuse_customer_token(monkeypatch):
     monkeypatch.setenv('PANEL_PUBLIC_URL','https://orionagenda.pro')
     result=compose('professional_new',row(),company='Barbearia',customer_link='https://orionagenda.pro/a#secret')
-    assert '/panel#agenda' in result and '#secret' not in result
+    assert '/panel?aba=agenda&agendamento=' in result and '#secret' not in result

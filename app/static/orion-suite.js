@@ -326,6 +326,13 @@
     try{const url=new URL(location.href);url.searchParams.set('aba',route);url.searchParams.delete('empresa');history.replaceState({orionSuite:route},'',url.pathname+url.search);}catch{}
     if(!options.keepScroll)window.scrollTo({top:0,behavior:'instant'});
     renderRoute();await loadRoute();
+    if(route==='agenda'&&tenant()){
+      const target=new URLSearchParams(location.search).get('agendamento');
+      if(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target||'')){
+        const url=new URL(location.href);url.searchParams.delete('agendamento');history.replaceState({},'',url.pathname+url.search);
+        await showAppointmentDetail(target);
+      }
+    }
   }
   function renderRoute(){
     const f=state.filters,can=writable();$('appView').classList.toggle('os-tablet-mode',state.route==='agenda'&&f.agendaTablet);clearInterval(state.clockTimer);

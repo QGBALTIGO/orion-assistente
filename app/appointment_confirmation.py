@@ -37,6 +37,8 @@ async def confirmation_reply(tenant,phone,body,channel_key,message_id):
                 WHERE a.tenant_id=:t AND a.protocol=:protocol AND c.whatsapp_e164=:phone
                   AND c.active AND c.deleted_at IS NULL'''),{'t':tenant,'protocol':protocol,'phone':phone})).mappings().first()
             if row is None:return GENERIC
+            requested=(await db.execute(text('SELECT enabled AND confirmation FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).scalar_one_or_none()
+            if requested is not True:return ''
             # Membership, channel fencing and any human pause remain guarded by
             # the existing ingress's transaction context around this operation.
             appointment=await read_appointment(db,tenant,row['id'])
@@ -72,6 +74,8 @@ async def public_followup(slug,result,phone):
                 {'t':tenant,'protocol':result['protocol'],'phone':phone})).scalar_one_or_none()
             if appointment is None:return {}
             output['management_url']=await access.issue(db,tenant,appointment)
+            requested=(await db.execute(text('SELECT enabled AND confirmation FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).scalar_one_or_none()
+            if requested is not True:return output
     # Only the authenticated current channel identity supplies the destination.
     # A contact number in a site's appearance settings is not proof of a channel.
     try:
