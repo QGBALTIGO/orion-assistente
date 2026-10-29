@@ -123,15 +123,16 @@ async def inspect(page,width,mode):
 
 async def main():
     async with async_playwright() as driver:
-        browser=await driver.chromium.launch(headless=True)
-        try:
-            page=await browser.new_page()
-            for mode in COLORS:
-                for width in WIDTHS:
-                    await inspect(page,width,mode)
-            print("orion_plans_browser_7_widths_2_themes_pass")
-        finally:
-            await browser.close()
+        for engine in ("chromium","webkit"):
+            browser=await getattr(driver,engine).launch(headless=True)
+            try:
+                page=await browser.new_page()
+                for mode in COLORS:
+                    for width in WIDTHS:
+                        await inspect(page,width,mode)
+                print(f"orion_plans_{engine}_7_widths_2_themes_pass")
+            finally:
+                await browser.close()
 
 
 if __name__=="__main__":
