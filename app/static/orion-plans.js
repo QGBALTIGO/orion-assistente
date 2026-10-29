@@ -284,7 +284,7 @@ async function checkout(root,code,ctx){
  const submit=modal.querySelector('[data-op-payment-submit]');
  let method='pix',busy=false,finished=false,config=null,intent=null,ticker=null;
  const close=()=>{
-  if(busy||modal.dataset.paymentLocked==='true')return;
+  if(busy)return;
   if(ticker)window.clearInterval(ticker);
   modal.close();modal.remove();
   action.focus({preventScroll:true});
