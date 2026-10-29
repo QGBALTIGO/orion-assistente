@@ -283,35 +283,78 @@ def test_direct_payment_payload_offer_tracking_and_amount_are_verified():
 
 
 @pytest.mark.asyncio
-async def test_embedded_checkout_rejects_unverified_webhook_before_billing(monkeypatch):
+async def test_embedded_checkout_accepts_verified_v2_history_and_denies_unproved_charges(monkeypatch):
     from app import orion_direct_checkout as direct
-    from scripts import probe_orion_webhooks_read_only as audit
+    from scripts import probe_orion_webhooks_read_only as inventory
+    from scripts import probe_orion_webhook_history_read_only as history
+
     class ReadOnlyClient:
         async def list_offers(self):
-            return []
-    async def not_ready(*args):
-        return {"offer_matches": 3, "webhook_ready": 2, "expected": 3}
-    monkeypatch.setattr(audit, "probe", not_ready)
-    with pytest.raises(HTTPException) as rejected:
+            return [{"id": "synthetic-offer"}]
+
+    calls=[]
+    async def inventory_missing(*args):
+        calls.append("inventory")
+        return {"offer_matches":3,"webhook_ready":0,"expected":3}
+    async def inventory_ready(*args):
+        calls.append("inventory")
+        return {"offer_matches":3,"webhook_ready":3,"expected":3}
+    async def history_ready(*args):
+        calls.append("history")
+        return {"offer_matches":3,"webhook_ready":3,
+                "required_event_coverage":3,"product_coverage":3,
+                "recent_verified_deliveries":6}
+    async def history_missing(*args):
+        calls.append("history")
+        return {"offer_matches":3,"webhook_ready":0,
+                "required_event_coverage":2,"product_coverage":3,
+                "recent_verified_deliveries":5}
+
+    monkeypatch.setattr(inventory,"probe",inventory_missing)
+    monkeypatch.setattr(history,"probe",history_missing)
+    with pytest.raises(HTTPException) as absent:
         await direct.require_verified_webhooks(ReadOnlyClient())
-    assert rejected.value.status_code == 409
-    async def ready(*args):
-        return {"offer_matches": 3, "webhook_ready": 3, "expected": 3}
-    monkeypatch.setattr(audit, "probe", ready)
+    assert absent.value.status_code == 409
+
+    calls.clear()
+    monkeypatch.setattr(history,"probe",history_ready)
     assert await direct.require_verified_webhooks(ReadOnlyClient()) is None
-    async def forbidden(*args):
-        raise RuntimeError("synthetic forbidden read")
-    monkeypatch.setattr(audit, "probe", forbidden)
+    assert calls == ["inventory","history"]
+
+    calls.clear()
+    monkeypatch.setattr(inventory,"probe",inventory_ready)
+    assert await direct.require_verified_webhooks(ReadOnlyClient()) is None
+    assert calls == ["inventory"]  # Valid V1 never needs to fetch buyer history
+
+    calls.clear()
+    async def broken_inventory(*args):
+        raise RuntimeError("synthetic inventory unavailable")
+    monkeypatch.setattr(inventory,"probe",broken_inventory)
+    assert await direct.require_verified_webhooks(ReadOnlyClient()) is None
+    assert calls == ["history"]  # V2 still works without V1 listing
+
+    async def invalid_history(*args):
+        return None
+    monkeypatch.setattr(history,"probe",invalid_history)
+    with pytest.raises(HTTPException) as invalid:
+        await direct.require_verified_webhooks(ReadOnlyClient())
+    assert invalid.value.status_code == 409
+
+    async def forbidden_history(*args):
+        raise RuntimeError("synthetic failed history")
+    monkeypatch.setattr(history,"probe",forbidden_history)
     with pytest.raises(HTTPException) as unavailable:
         await direct.require_verified_webhooks(ReadOnlyClient())
     assert unavailable.value.status_code == 503
     assert "synthetic" not in str(unavailable.value.detail)
-    async def malformed(*args):
-        return None
-    monkeypatch.setattr(audit, "probe", malformed)
-    with pytest.raises(HTTPException) as invalid_result:
-        await direct.require_verified_webhooks(ReadOnlyClient())
-    assert invalid_result.value.status_code == 503
+
+    class UnauthorizedOffers:
+        async def list_offers(self):
+            raise RuntimeError("synthetic provider credentials")
+    with pytest.raises(HTTPException) as no_credentials:
+        await direct.require_verified_webhooks(UnauthorizedOffers())
+    assert no_credentials.value.status_code == 503
+    assert "synthetic" not in str(no_credentials.value.detail)
 
 
 @pytest.mark.asyncio
