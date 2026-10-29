@@ -241,3 +241,89 @@ async def test_webhook_read_probe_only_gets_provider_data_and_exposes_counts(mon
     assert result=={"offer_matches":3,"webhook_ready":3,"expected":3}
     assert client.calls==[("/webhook/",{"page":1,"limit":100})]
     assert secret not in str(result)
+
+
+
+def test_one_product_webhook_covers_three_distinct_orion_subscription_offers():
+    from scripts.probe_orion_webhooks_read_only import (
+        coverage, detailed_coverage, REQUIRED_EVENTS,
+    )
+    secret = "synthetic-webhook-secret-for-ci-32-char-minimum"
+    product_id = "synthetic-orion-master-product"
+    offers = [
+        {"id":f"orion-offer-{i}","name":name,"price":cents/100,
+         "type":"subscription","recurrence_period":30,"status":"active",
+         "product":product_id}
+        for i,(name,cents) in enumerate((
+            ("Orion Essencial",2990),("Orion Pro",8990),("Orion Elite",13990)
+        ))
+    ]
+    hook = {
+        "status":"active",
+        "url":"https://orionagenda.pro/webhooks/cakto",
+        "products":[{"id":product_id,"name":"ORION RECEPCIONISTA DIGITAL"}],
+        "events":[{"custom_id":event} for event in REQUIRED_EVENTS],
+        "fields":{"secret":secret},
+    }
+    assert coverage(offers,[hook],secret) == {
+        "offer_matches":3,"webhook_ready":3,"expected":3}
+    complete = detailed_coverage(offers,[hook],secret)
+    assert complete["distinct_products"] == 1
+    assert complete["active_target_hooks"] == 1
+    assert complete["product_coverage"] == 3
+    assert complete["secret_coverage"] == 3
+    assert complete["event_coverage"] == 3
+
+    mismatched_secret = detailed_coverage(
+        offers,[hook],"a-different-synthetic-secret-value-32-chars")
+    assert mismatched_secret["product_coverage"] == 3
+    assert mismatched_secret["event_coverage"] == 3
+    assert mismatched_secret["secret_coverage"] == 0
+    assert mismatched_secret["webhook_ready"] == 0
+
+    missing_event = detailed_coverage(
+        offers,[{**hook,"events":[{"custom_id":"purchase_approved"}]}],secret)
+    assert missing_event["secret_coverage"] == 3
+    assert missing_event["event_coverage"] == 0
+    assert missing_event["webhook_ready"] == 0
+
+    wrong_product = detailed_coverage(
+        offers,[{**hook,"products":[{"id":"another-product"}]}],secret)
+    assert wrong_product["active_target_hooks"] == 1
+    assert wrong_product["product_coverage"] == 0
+    assert wrong_product["webhook_ready"] == 0
+    assert secret not in str(complete)
+    assert product_id not in str(complete)
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_webhook_probe_uses_only_get_and_returns_safe_counts(monkeypatch):
+    from scripts.probe_orion_webhooks_read_only import probe, REQUIRED_EVENTS
+    secret = "synthetic-webhook-secret-for-ci-32-char-minimum"
+    monkeypatch.setenv("CAKTO_WEBHOOK_SECRET",secret)
+    product_id = "synthetic-single-product"
+    offers = [
+        {"id":f"offer-{i}","name":name,"price":price,"type":"subscription",
+         "recurrence_period":30,"status":"active","product":product_id}
+        for i,(name,price) in enumerate((
+            ("Orion Essencial",29.90),("Orion Pro",89.90),("Orion Elite",139.90)
+        ))
+    ]
+    class ReadOnly:
+        def __init__(self): self.calls = []
+        async def _get(self,path,**kwargs):
+            self.calls.append((path,kwargs))
+            return {"results":[{
+                "status":"active",
+                "url":"https://orionagenda.pro/webhooks/cakto",
+                "fields":{"secret":secret},
+                "products":[{"id":product_id}],
+                "events":[{"custom_id":e} for e in REQUIRED_EVENTS]}],
+                "next":None}
+    client = ReadOnly()
+    result = await probe(client,offers,detailed=True)
+    assert result["webhook_ready"] == 3
+    assert result["distinct_products"] == 1
+    assert client.calls == [("/webhook/",{"page":1,"limit":100})]
+    assert secret not in str(result)
+    assert product_id not in str(result)

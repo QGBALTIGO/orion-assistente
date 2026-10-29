@@ -26,9 +26,19 @@ async def check():
           "/3;cakto_ambiguous_matches=" + str(sum(plan["ambiguous"] for plan in matched)),
           flush=True)
     try:
-        audit = await probe_orion_webhooks(client, offers)
+        audit = await probe_orion_webhooks(client, offers, detailed=True)
         print("cakto_orion_webhook_coverage=" + str(audit["webhook_ready"]) +
               "/3", flush=True)
+        # Counts only: no URLs, product IDs, webhook IDs or secrets.
+        print("cakto_webhook_diagnostics="
+              + "offers:" + str(audit["offer_matches"])
+              + ";product_links:" + str(audit["offer_product_links"])
+              + ";distinct_products:" + str(audit["distinct_products"])
+              + ";active_target_hooks:" + str(audit["active_target_hooks"])
+              + ";product_coverage:" + str(audit["product_coverage"])
+              + ";secret_coverage:" + str(audit["secret_coverage"])
+              + ";event_coverage:" + str(audit["event_coverage"]),
+              flush=True)
     except Exception:
         # A missing read-webhooks scope must not expose secrets or prevent
         # the safe UI-only rollout. Direct charging remains fail-closed.
