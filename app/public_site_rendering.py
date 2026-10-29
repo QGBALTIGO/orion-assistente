@@ -137,6 +137,23 @@ def public_html(template, preference, slug):
             structured['image'] = candidate
             metadata.append(f'<meta property="og:image" content="{escaped(candidate)}">')
             break
+    # Start the hero request during HTML parsing instead of waiting for
+    # JavaScript, a catalogue API round trip, and client-side DOM rendering.
+    # Use the same URL as the browser's eventual <img> to reuse the preload.
+    for field, variant in (('cover_url', 'hero'), ('logo_url', 'logo')):
+        candidate = preference.get(field)
+        if not isinstance(candidate, str):
+            continue
+        if re.fullmatch(r'/media/[0-9a-f-]{36}/[0-9a-f-]{36}\\.webp', candidate):
+            href = candidate + '?variant=' + variant
+        else:
+            parsed = urlsplit(candidate)
+            if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password:
+                continue
+            href = candidate
+        metadata.append(f'<link rel="preload" as="image" href="{escaped(href)}"'
+                        ' fetchpriority="high" referrerpolicy="no-referrer">')
+        break
     schema = json.dumps(structured, ensure_ascii=False, separators=(',', ':'))
     schema = schema.replace('&', '\\u0026').replace('<', '\\u003c').replace('>', '\\u003e')
     digest = base64.b64encode(hashlib.sha256(schema.encode()).digest()).decode()
