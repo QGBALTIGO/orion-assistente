@@ -440,8 +440,9 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
                 transport.record(sent?.accepted?'trigger_test_cta_api_accepted':'trigger_test_cta_api_rejected',traceId);
               }else{
                 if(metaNotConfigured)transport.record('trigger_test_cta_not_configured',traceId);
-                if(legacyCentral.configured())await legacyCentral.resume();
-                const sent=await send(phone,makeTestFallbackText(replyText),{
+                // Authorized one-number pilot: direct established QR text transport.
+                // The managed-channel adoption may still be pending after a restart.
+                const sent=await sendLegacyRaw(phone,makeTestFallbackText(replyText),{
                   waitForCapacity:true,isCurrent:()=>intakeCurrent()});
                 transport.record(sent?.accepted?'trigger_test_qr_link_accepted':'trigger_test_qr_link_unconfirmed',traceId);
               }
