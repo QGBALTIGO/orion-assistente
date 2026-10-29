@@ -285,6 +285,70 @@ test('credit card SDK tokenizes in browser and Orion API receives only token, no
  }finally{f.close();}
 });
 
+test('one CPF/CNPJ field applies both masks and derives the correct payment document kind',async()=>{
+ for(const [raw,display,kind] of [
+  ['52998224725','529.982.247-25','cpf'],
+  ['11444777000161','11.444.777/0001-61','cnpj']
+ ]){
+  const f=fixture({}, {directConfig:{available:true,methods:['pix','card'],sdk_client_id:'synthetic'}});
+  try{
+   f.root.querySelector('[data-op-checkout=essencial]').click();
+   await tick();await tick();
+   const dlg=f.root.querySelector('.op-checkout-dialog'),form=dlg.querySelector('form');
+   assert.equal(dlg.querySelector('[name=doc_type]'),null);
+   assert.equal(dlg.querySelectorAll('[name=doc_number]').length,1);
+   const doc=form.elements.namedItem('doc_number');
+   doc.value=raw;
+   doc.dispatchEvent(new f.window.Event('input',{bubbles:true}));
+   assert.equal(doc.value,display);
+   form.elements.namedItem('name').value='Pessoa Sintética';
+   form.elements.namedItem('email').value='synthetic@example.test';
+   form.elements.namedItem('phone').value='(67) 99999-1111';
+   form.elements.namedItem('monthly_ack').checked=true;
+   form.elements.namedItem('processor_ack').checked=true;
+   form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));
+   for(let i=0;i<5;i++)await tick();
+   const charged=f.calls.filter(x=>x.path==='/plan-direct-charge');
+   assert.equal(charged.length,1);
+   assert.equal(charged[0].data.payer.doc_type,kind);
+   assert.equal(charged[0].data.payer.doc_number,raw);
+   dlg.querySelector('[data-op-checkout-close]').click();
+  }finally{f.close();}
+ }
+});
+
+test('incomplete CPF or CNPJ blocks preparing and charging',async()=>{
+ const f=fixture({}, {directConfig:{available:true,methods:['pix','card'],sdk_client_id:'synthetic'}});
+ try{
+  f.root.querySelector('[data-op-checkout=elite]').click();
+  await tick();await tick();
+  const dlg=f.root.querySelector('.op-checkout-dialog'),form=dlg.querySelector('form');
+  form.elements.namedItem('name').value='Pessoa Sintética';
+  form.elements.namedItem('email').value='synthetic@example.test';
+  form.elements.namedItem('phone').value='(67) 99999-1111';
+  form.elements.namedItem('doc_number').value='123456789012';
+  form.elements.namedItem('monthly_ack').checked=true;
+  form.elements.namedItem('processor_ack').checked=true;
+  form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));
+  await tick();await tick();
+  assert.equal(f.calls.filter(x=>x.path==='/plan-direct-prepare').length,0);
+  assert.equal(f.calls.filter(x=>x.path==='/plan-direct-charge').length,0);
+  assert.equal(form.elements.namedItem('doc_number').validity.customError,true);
+  dlg.querySelector('[data-op-checkout-close]').click();
+ }finally{f.close();}
+});
+
+test('checkout layout respects Orion tokens and has no redundant address or selector',()=>{
+ assert.match(css,/\.op-payment-top\{/);
+ assert.match(css,/\.op-payment-method\.active\{/);
+ assert.match(css,/\.op-payment-actions\{/);
+ assert.match(css,/@media\(max-width:600px\)/);
+ assert.match(css,/--os-primary/);
+ assert.doesNotMatch(code,/Tipo de documento|Endereço do titular para autenticação com o banco/);
+ assert.doesNotMatch(code,/checkoutField\('(zip|state|city|street|number|complement)'/);
+ assert.doesNotMatch(css,/\.op-payment-document/);
+});
+
 test('no horizontal-scroll-prone three-column layout on mobile screens',()=>{
  const widths=[320,375,390,430,768,1024,1440];
  for(const width of widths){
