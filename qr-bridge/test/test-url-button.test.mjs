@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeTestFallbackText, makeTestCloudCtaPayload, sendTestCloudCta } from '../src/test-url-button.mjs';
+import { makeTestFallbackText, makeTestCloudCtaPayload, sendTestCloudCta, selectTestCtaMode } from '../src/test-url-button.mjs';
 
 const text='🧪 *TESTE ORION — AGENDAMENTO FICTÍCIO*\n\nServiço: Corte masculino\n\n🔗 *VER AGENDAMENTO*\nhttps://orionagenda.pro\n\nMensagem automática de teste do Orion.';
 const phone='5521997557364';
@@ -59,4 +59,11 @@ test('No Cloud credentials: block HTTP request',async()=>{
   let count=0;
   await assert.rejects(()=>sendTestCloudCta({phone,text,accessToken:'',phoneNumberId:'123456789',fetchImpl:async()=>{count++;}}),/cloud_cta_not_configured/);
   assert.equal(count,0);
+});
+
+test('selector keeps QR fallback unless Meta is explicitly enabled and configured',()=>{
+  assert.deepEqual(selectTestCtaMode({}),{useMeta:false,metaNotConfigured:false});
+  assert.deepEqual(selectTestCtaMode({QR_TRIGGER_CTA_PROVIDER:'meta'}),{useMeta:false,metaNotConfigured:true});
+  assert.deepEqual(selectTestCtaMode({QR_TRIGGER_CTA_PROVIDER:'meta',META_CLOUD_ACCESS_TOKEN:'abc',META_CLOUD_PHONE_NUMBER_ID:'1234567'}),{useMeta:true,metaNotConfigured:false});
+  assert.deepEqual(selectTestCtaMode({QR_TRIGGER_CTA_PROVIDER:'qr_link',META_CLOUD_ACCESS_TOKEN:'abc',META_CLOUD_PHONE_NUMBER_ID:'1234567'}),{useMeta:false,metaNotConfigured:false});
 });
