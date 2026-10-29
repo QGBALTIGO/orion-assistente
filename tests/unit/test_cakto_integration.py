@@ -543,3 +543,24 @@ async def test_cakto_rotation_one_shot_posts_only_checkout_abandonment_synthetic
     monkeypatch.delenv("ORION_CAKTO_SYNTHETIC_WEBHOOK_TEST")
     assert await synthetic.run()==0
     assert len(actions)==1
+
+
+@pytest.mark.asyncio
+async def test_webhook_missing_secret_returns_503_without_leaking_secret(caplog,monkeypatch):
+    """Diagnose configuration failure without returning 200 or exposing secrets."""
+    import json
+    import httpx
+    import logging
+    from app.cakto_api import cakto_webhook
+    from fastapi import Request, HTTPException
+    secret="short"
+    monkeypatch.setenv("CAKTO_WEBHOOK_SECRET",secret)
+    async def receive():
+        return {"type":"http.request","body":b"{}","more_body":False}
+    request=Request(scope={"type":"http","method":"POST","path":"/webhooks/cakto","headers":[]},receive=receive)
+    with caplog.at_level(logging.ERROR,logger="orion.cakto"):
+        with pytest.raises(HTTPException) as exc:
+            await cakto_webhook(request)
+    assert exc.value.status_code==503
+    assert "cakto_webhook_503_secret_not_configured" in caplog.text
+    assert secret not in caplog.text

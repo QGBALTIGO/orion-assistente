@@ -156,6 +156,9 @@ async def persist_events(events: list[dict]) -> None:
 async def cakto_webhook(request: Request):
     secret = os.getenv("CAKTO_WEBHOOK_SECRET", "")
     if len(secret) < 32:
+        # Deliberately never log the secret or its actual length.
+        import logging
+        logging.getLogger("orion.cakto").error("cakto_webhook_503_secret_not_configured")
         raise HTTPException(503, "Integração Cakto não configurada")
     raw = await request.body()
     if len(raw) > 131072:
@@ -178,6 +181,10 @@ async def cakto_webhook(request: Request):
     try:
         await persist_events(events)
     except (SQLAlchemyError, RuntimeError):
+        # Distinguish storage unavailability from a missing HMAC secret.
+        # Never log the exception (it may contain financial identifiers).
+        import logging
+        logging.getLogger("orion.cakto").error("cakto_webhook_503_receipt_store_unavailable")
         # Cakto will retry on non-2xx; never ACK a lost financial event.
         raise HTTPException(503, "Recebimento temporariamente indisponível") from None
     return {"received": True}

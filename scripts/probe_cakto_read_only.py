@@ -72,6 +72,14 @@ async def check():
               + ";confirmed:" + str(int(methods["methods_confirmed"])), flush=True)
     except Exception:
         print("cakto_orion_payment_methods_unverified", flush=True)
+    import os
+    # Only a Boolean is logged. Never print/reveal any value, token or length.
+    print("cakto_webhook_secret_min_length_ready="
+          + str(int(len(os.getenv("CAKTO_WEBHOOK_SECRET", "")) >= 32)),
+          flush=True)
+    print("orion_direct_billing_gated="
+          + str(int(os.getenv("ORION_DIRECT_PAYMENTS_ENABLED", "0") != "1")),
+          flush=True)
     if __import__("os").getenv("ORION_CAKTO_SYNTHETIC_WEBHOOK_TEST", "0") == "1":
         # One-time opt-in provider synthetic test only: no real order or
         # payment. Do not print any secret, provider body or webhook ID.
