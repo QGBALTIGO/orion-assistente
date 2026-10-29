@@ -144,7 +144,7 @@ def public_html(template, preference, slug):
         candidate = preference.get(field)
         if not isinstance(candidate, str):
             continue
-        if re.fullmatch(r'/media/[0-9a-f-]{36}/[0-9a-f-]{36}\\.webp', candidate):
+        if re.fullmatch(r'/media/[0-9a-f-]{36}/[0-9a-f-]{36}\.webp', candidate):
             href = candidate + '?variant=' + variant
         else:
             parsed = urlsplit(candidate)
