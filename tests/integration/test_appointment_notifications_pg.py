@@ -39,6 +39,7 @@ async def comm_db(booking_db,monkeypatch):
     try:yield d
     finally:
         async with d['migrator'].begin() as db:
+            await db.execute(text('UPDATE tenants SET whatsapp_channel_id=NULL WHERE id=:t'),{'t':d['a']})
             for table in ('inbox_reads','inbox_provider_receipts','inbox_messages','inbox_control_events','inbox_controls','inbox_channel_links',
                 'appointment_return_intervals','appointment_change_proposals','appointment_confirmation_receipts','appointment_notifications','appointment_communication_settings','contact_consents','qr_channels','tenant_memberships'):
                 await db.execute(text(f'DELETE FROM {table} WHERE tenant_id=:t'),{'t':d['a']})
@@ -105,8 +106,8 @@ async def test_confirmation_requires_matching_phone_and_does_not_return_foreign_
 
 @pytest.mark.asyncio
 async def test_admin_recovers_only_verified_recent_inbound_once_with_real_native_owner(comm_db,monkeypatch):
-    import base64
-    from app import appointment_communications_api as api,inbox_runtime,management_api,qr_legacy,legacy_admin_identity
+    import base64,hashlib,os
+    from app import appointment_communications_api as api,inbox_runtime,inbox_control,management_api,qr_legacy,legacy_admin_identity
     from app.catalog_api import Actor
     from fastapi import HTTPException
     d=comm_db;a=await booking(d)
@@ -121,12 +122,20 @@ async def test_admin_recovers_only_verified_recent_inbound_once_with_real_native
     encoded='pbkdf2_sha256$200000$'+base64.b64encode(b'synthetic-salt').decode()+'$'+base64.b64encode(b'x'*32).decode()
     monkeypatch.setenv('PANEL_ADMIN_PASSWORD_HASH',encoded)
     username,digest=legacy_admin_identity.configuration_binding()
+    bridge_key='synthetic-recovery-bridge-key-'+'x'*40
+    monkeypatch.setenv('QR_BRIDGE_TOKEN',bridge_key)
+    credential=Fernet(os.environ['INTEGRATION_FERNET_KEY'].encode()).encrypt(bridge_key.encode()).decode()
     async with d['migrator'].begin() as db:
         await db.execute(text("""UPDATE panel_accounts SET role='admin',auth_provider='legacy_admin',email=NULL,password_hash=NULL,
             legacy_username=:username,legacy_credential_digest=:digest WHERE id=:a"""),{'a':d['account'],'username':username,'digest':digest})
+        await db.execute(text('UPDATE qr_channels SET credential_hash=:hash,credential_encrypted=:encrypted WHERE id=:c'),
+            {'hash':hashlib.sha256(bridge_key.encode()).hexdigest(),'encrypted':credential,'c':d['channel']})
+        await db.execute(text('UPDATE tenants SET whatsapp_channel_id=:c WHERE id=:t'),{'t':d['a'],'c':d['channel']})
     monkeypatch.setattr(qr_legacy,'channel_id',lambda t:d['channel'] if t==d['a'] else uuid4())
     monkeypatch.setattr(management_api,'get_session_factory',lambda:d['factory'])
     monkeypatch.setattr(inbox_runtime,'get_session_factory',lambda:d['factory'])
+    async with d['factory']() as db:
+        async with tenant_transaction(db,d['a']):await inbox_control.register_channel(db,d['a'],d['channel'])
     actor=Actor('admin',account_id=d['account']);payload=api.RecoverConfirmation(protocol=a['protocol'])
     with pytest.raises(HTTPException) as missing:await api.recover_confirmation(d['a'],payload,actor)
     assert missing.value.status_code==404
