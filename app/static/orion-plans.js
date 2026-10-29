@@ -398,8 +398,9 @@ async function checkout(root,code,ctx){
     if(!auth?.success)throw Error('A autenticação bancária não foi concluída.');
     await sdk.completeAntifraudProfile();
     antifraud_reference=sdk.getAntifraudReference();
-    threeDSecure={cavv:auth.cavv,eci:auth.eci,xid:auth.xid,
+    threeDSecure={cavv:auth.cavv,eci:auth.eci,
      referenceId:auth.referenceId,version:auth.version};
+    if(typeof auth.xid==='string'&&auth.xid)threeDSecure.xid=auth.xid;
    }
    status.textContent=method==='pix'?'Gerando código Pix…':'Encaminhando pagamento protegido…';
    const payload={intent_id:prepared.intent_id,method,payer,

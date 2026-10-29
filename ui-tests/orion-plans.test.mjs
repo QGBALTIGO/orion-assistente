@@ -245,7 +245,7 @@ test('credit card SDK tokenizes in browser and Orion API receives only token, no
    constructor(settings){assert.equal(settings.client_id,'synthetic-sdk-id');}
    async initAntifraud(){}
    async createToken(card){tokenized=card.cardNumber==='4111111111111111'&&card.cvv==='123';return{cardToken:'synthetic-card-token-01234567890'};}
-   async authenticate3DS(data){challenged=data.customer.amount===8990;return{success:true,cavv:'synthetic-cavv',eci:'05',xid:'synthetic-xid',referenceId:'synthetic-ref',version:'2.2.0'};}
+   async authenticate3DS(data){challenged=data.customer.amount===8990;return{success:true,cavv:'synthetic-cavv',eci:'05',referenceId:'synthetic-ref',version:'2.2.0'};}
    async completeAntifraudProfile(){}
    getAntifraudReference(){return 'synthetic-antifraud-reference';}
   }};
@@ -272,6 +272,7 @@ test('credit card SDK tokenizes in browser and Orion API receives only token, no
   assert.equal(charge.data.method,'card');
   assert.equal(charge.data.card_token,'synthetic-card-token-01234567890');
   assert.equal(charge.data.three_ds.eci,'05');
+  assert.equal(Object.prototype.hasOwnProperty.call(charge.data.three_ds,'xid'),false);
   assert.equal(charge.data.antifraud_reference,'synthetic-antifraud-reference');
   assert.equal(form.elements.namedItem('card_number').value,'');
   assert.equal(form.elements.namedItem('cvv').value,'');
