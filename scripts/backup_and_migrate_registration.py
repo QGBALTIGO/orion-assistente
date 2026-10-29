@@ -90,14 +90,20 @@ def predeploy_main():
     from scripts import backup_and_migrate_single_whatsapp as single
     from scripts import backup_and_migrate_cakto as cakto
     from scripts import backup_and_migrate_plans as plans
+    from scripts import backup_and_migrate_direct_checkout as direct
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
+        if current == direct.TARGET:
+            return direct.main()
         if current == plans.TARGET:
-            return plans.main()
+            result = plans.main()
+            return result if result else direct.main()
         if current == single.TARGET:
             result = single.main()
-            return result if result else plans.main()
+            if result: return result
+            result = plans.main()
+            return result if result else direct.main()
         if current == PREVIOUS:
             result = main()
             if result:
@@ -121,7 +127,9 @@ def predeploy_main():
         if result:
             return result
         result = single.main()
-        return result if result else plans.main()
+        if result: return result
+        result = plans.main()
+        return result if result else direct.main()
     except Exception:
         print('orion_registration_predeploy_failed_closed', file=sys.stderr)
         return 3
