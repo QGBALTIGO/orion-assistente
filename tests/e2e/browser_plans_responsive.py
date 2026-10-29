@@ -119,6 +119,14 @@ async def inspect(page,width,mode):
     assert await page.locator("[name=privacy_ack]").count()==1
     await page.locator(".op-dialog .op-dialog-close").click()
     assert await page.locator(".op-dialog").count()==0,(width,mode,"dialog close")
+    await page.locator('[data-op-checkout="profissional"]').click()
+    await page.locator(".op-checkout-dialog").wait_for(state="visible")
+    checkout=await page.locator(".op-checkout-dialog").bounding_box()
+    assert checkout and checkout["x"]>=0 and checkout["x"]+checkout["width"]<=width+1,(width,mode,"checkout dialog",checkout)
+    assert await page.locator(".op-payment-summary").count()==1,(width,mode)
+    assert not await page.locator(".op-payment-body").is_visible(),(width,mode,"fail closed")
+    await page.locator(".op-checkout-dialog .op-dialog-close").click()
+    assert await page.locator(".op-checkout-dialog").count()==0,(width,mode,"checkout close")
 
 
 async def main():
