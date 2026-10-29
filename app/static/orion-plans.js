@@ -455,7 +455,12 @@ async function checkout(root,code,ctx){
   status.textContent='Escolha como deseja pagar. A confirmação ocorrerá após verificação.';
   body.hidden=false;
  }catch{
-  if(modal.isConnected)status.textContent='Não foi possível verificar o pagamento integrado. Nenhuma cobrança foi criada.';
+  if(modal.isConnected){
+   status.textContent='Não foi possível verificar o pagamento integrado. Nenhuma cobrança foi criada.';
+   body.hidden=false;
+   submit.disabled=true;
+   submit.textContent='Pagamento indisponível';
+  }
  }
 }
 
