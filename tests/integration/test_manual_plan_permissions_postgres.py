@@ -263,3 +263,136 @@ async def test_runtime_can_read_only_its_effective_projection_and_support_cannot
                 with pytest.raises(DBAPIError):
                     async with db.begin_nested():
                         await db.execute(text(query),{"tenant":c.tenant})
+
+
+async def company_assignment(c,code="elite",**extra):
+    path=f"/api/v1/admin/accounts/companies/{c.tenant}/plan"
+    response=await c.client.get(path)
+    assert response.status_code==200,response.text
+    state=response.json()["effective_plan"]
+    return {"expected_version":state["version"],"expected_revision":state["revision"],
+        "operation_id":str(uuid4()),"confirmation":"ALTERAR PLANO","plan_code":code,"access_type":"indefinite",**extra}
+
+
+@pytest.mark.asyncio
+async def test_orphan_company_plan_read_grant_change_remove_replay_and_cas_preserve_accounts_memberships_and_billing(manual_db):
+    c=manual_db;path=f"/api/v1/admin/accounts/companies/{c.tenant}/plan"
+    async with c.engine.begin() as db:
+        await db.execute(text("DELETE FROM tenant_memberships WHERE tenant_id=:tenant"),{"tenant":c.tenant})
+        accounts=(await db.execute(text("SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM panel_accounts a"))).scalar_one()
+        members=(await db.execute(text("SELECT jsonb_agg(to_jsonb(m) ORDER BY tenant_id,account_id) FROM tenant_memberships m"))).scalar_one()
+    listing=await c.client.get("/api/v1/admin/accounts/companies/unassigned")
+    assert listing.status_code==200 and listing.headers["cache-control"]=="no-store"
+    ids={row["id"] for row in listing.json()["companies"]}
+    assert str(c.tenant) in ids and str(c.other) not in ids
+    before=await c.client.get(path)
+    assert before.json()["company"]["account_id"] is None
+    assert before.json()["company"]["owner_status"]=="unassigned" and before.json()["company"]["can_manage_plan"]
+    payload=await company_assignment(c)
+    results=await asyncio.gather(*(c.client.put(path,json=payload) for _ in range(8)))
+    assert all(r.status_code==200 for r in results),[(r.status_code,r.text) for r in results]
+    assert sum(not r.json()["replayed"] for r in results)==1
+    stale={**payload,"operation_id":str(uuid4()),"plan_code":"essencial"}
+    assert (await c.client.put(path,json=stale)).status_code==409
+    changed=await c.client.put(path,json=await company_assignment(c,"profissional"))
+    assert changed.status_code==200 and changed.json()["effective_plan"]["code"]=="profissional"
+    state=changed.json()["effective_plan"]
+    removal={"expected_version":state["version"],"expected_revision":state["revision"],
+        "operation_id":str(uuid4()),"confirmation":"REMOVER ATRIBUIÇÃO"}
+    removed=await c.client.request("DELETE",path,json=removal)
+    assert removed.status_code==200 and removed.json()["effective_plan"]["source"]=="none"
+    assert (await c.client.request("DELETE",path,json=removal)).json()["replayed"]
+    assert (await c.client.get(f"/api/v1/admin/accounts/companies/{uuid4()}/plan")).status_code==404
+    async with c.engine.connect() as db:
+        assert (await db.execute(text("SELECT count(*) FROM tenant_plan_audit WHERE tenant_id=:tenant"),{"tenant":c.tenant})).scalar_one()==3
+        assert (await db.execute(text("SELECT count(*) FROM subscriptions WHERE tenant_id=:tenant"),{"tenant":c.tenant})).scalar_one()==0
+        assert (await db.execute(text("SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM panel_accounts a"))).scalar_one()==accounts
+        assert (await db.execute(text("SELECT jsonb_agg(to_jsonb(m) ORDER BY tenant_id,account_id) FROM tenant_memberships m"))).scalar_one()==members
+
+
+@pytest.mark.asyncio
+async def test_direct_and_account_plan_routes_share_one_serialized_control_and_explicit_target(manual_db):
+    c=manual_db;direct=f"/api/v1/admin/accounts/companies/{c.tenant}/plan"
+    first=await assignment(c)
+    second={**first,"operation_id":str(uuid4()),"plan_code":"profissional"}
+    results=await asyncio.gather(c.client.put(c.path,json=first),c.client.put(direct,json=second))
+    assert sorted(r.status_code for r in results)==[200,409]
+    own=await c.client.get(direct)
+    assert own.json()["company"]["account_id"] is None and own.json()["company"]["owner_status"]=="assigned"
+    listing=(await c.client.get("/api/v1/admin/accounts/companies/unassigned")).json()["companies"]
+    assert str(c.tenant) not in {row["id"] for row in listing}
+    async with c.engine.connect() as db:
+        assert (await db.execute(text("SELECT count(*) FROM tenant_plan_audit WHERE tenant_id=:tenant"),{"tenant":c.tenant})).scalar_one()==1
+        assert (await db.execute(text("SELECT count(*) FROM tenant_plan_controls WHERE tenant_id=:tenant"),{"tenant":c.tenant})).scalar_one()==1
+
+
+@pytest.mark.asyncio
+async def test_unassigned_listing_uses_global_manageable_owner_not_account_filter_page_or_invalid_platform_marker(manual_db):
+    c=manual_db;listing="/api/v1/admin/accounts/companies/unassigned"
+    async def identifiers():
+        result=await c.client.get(listing)
+        assert result.status_code==200,result.text
+        return {row["id"] for row in result.json()["companies"]}
+    assert not {str(c.tenant),str(c.other)} & await identifiers()
+    filtered=await c.client.get("/api/v1/admin/accounts",params={"q":"no-such-account","page":3,"page_size":1})
+    assert filtered.status_code==200 and filtered.json()["items"]==[]
+    assert not {str(c.tenant),str(c.other)} & await identifiers()
+    try:
+        async with c.engine.begin() as db:
+            await db.execute(text("INSERT INTO admin_account_controls(account_id,state,purged_at) VALUES(:account,'erased',now())"),{"account":c.account})
+        assert str(c.tenant) in await identifiers() and str(c.other) not in await identifiers()
+        account=(await c.client.get("/api/v1/admin/accounts",params={"status":"erased"})).json()["items"]
+        assert next(row for row in account if row["id"]==str(c.account))["can_manage_plan"] is False
+        async with c.engine.begin() as db:
+            await db.execute(text("UPDATE admin_account_controls SET state='active',purged_at=NULL WHERE account_id=:account"),{"account":c.account})
+            await db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role,active) VALUES(:other,:account,'viewer',true)"),
+                {"other":c.other,"account":c.account})
+            await db.execute(text("INSERT INTO tenant_plan_controls(tenant_id,platform_account_id) VALUES(:tenant,:admin)"),{"tenant":c.tenant,"admin":c.operator})
+        # An invalid marker grants no platform access and cannot hide a company.
+        assert str(c.tenant) in await identifiers() and str(c.other) not in await identifiers()
+        direct=await c.client.get(f"/api/v1/admin/accounts/companies/{c.tenant}/plan")
+        assert direct.json()["effective_plan"]["platform_workspace"] is False
+    finally:
+        async with c.engine.begin() as db:
+            await db.execute(text("DELETE FROM admin_account_controls WHERE account_id=:account"),{"account":c.account})
+
+
+@pytest.mark.asyncio
+async def test_direct_company_plan_preserves_valid_platform_workspace_without_creating_people(manual_db):
+    c=manual_db;path=f"/api/v1/admin/accounts/companies/{c.tenant}/plan"
+    async with c.engine.begin() as db:
+        await db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role,active) VALUES(:tenant,:admin,'owner',true)"),{"tenant":c.tenant,"admin":c.operator})
+        await db.execute(text("INSERT INTO tenant_plan_controls(tenant_id,platform_account_id) VALUES(:tenant,:admin)"),{"tenant":c.tenant,"admin":c.operator})
+        before=(await db.execute(text("SELECT to_jsonb(c) FROM tenant_plan_controls c WHERE tenant_id=:tenant"),{"tenant":c.tenant})).scalar_one()
+    state=(await c.client.get(path)).json()
+    assert state["effective_plan"]["platform_workspace"] and state["company"]["can_manage_plan"] is False
+    assert str(c.tenant) not in {row["id"] for row in (await c.client.get("/api/v1/admin/accounts/companies/unassigned")).json()["companies"]}
+    assert (await c.client.put(path,json=await company_assignment(c))).status_code==409
+    effective=state["effective_plan"]
+    removed=await c.client.request("DELETE",path,json={"expected_version":effective["version"],"expected_revision":effective["revision"],
+        "operation_id":str(uuid4()),"confirmation":"REMOVER ATRIBUIÇÃO"})
+    assert removed.status_code==409
+    async with c.engine.connect() as db:
+        assert (await db.execute(text("SELECT to_jsonb(c) FROM tenant_plan_controls c WHERE tenant_id=:tenant"),{"tenant":c.tenant})).scalar_one()==before
+        assert (await db.execute(text("SELECT count(*) FROM tenant_plan_audit WHERE tenant_id=:tenant"),{"tenant":c.tenant})).scalar_one()==0
+
+
+@pytest.mark.asyncio
+async def test_direct_company_plan_http_requires_platform_admin_and_valid_uuid(manual_db):
+    from app.panel_auth import panel_actor
+    c=manual_db;path=f"/api/v1/admin/accounts/companies/{c.tenant}/plan"
+    payload=await company_assignment(c)
+    assert (await c.client.get("/api/v1/admin/accounts/companies/invalid-uuid/plan")).status_code==422
+    c.api.dependency_overrides.pop(admin_accounts.require_platform_owner)
+    for role in ("member","support","admin"):
+        c.api.dependency_overrides[panel_actor]=lambda role=role:{"role":role,"account_id":str(c.account)}
+        assert (await c.client.get("/api/v1/admin/accounts/companies/unassigned")).status_code==403
+        assert (await c.client.get(path)).status_code==403
+        assert (await c.client.put(path,json=payload)).status_code==403
+        assert (await c.client.request("DELETE",path,json={"expected_version":0,"expected_revision":payload["expected_revision"],
+            "operation_id":str(uuid4()),"confirmation":"REMOVER ATRIBUIÇÃO"})).status_code==403
+    c.api.dependency_overrides.pop(panel_actor)
+    assert (await c.client.get(path)).status_code==401
+    async with c.engine.connect() as db:
+        assert (await db.execute(text("SELECT count(*) FROM tenant_plan_controls WHERE tenant_id=:tenant"),{"tenant":c.tenant})).scalar_one()==0
+        assert (await db.execute(text("SELECT count(*) FROM tenant_plan_audit WHERE tenant_id=:tenant"),{"tenant":c.tenant})).scalar_one()==0

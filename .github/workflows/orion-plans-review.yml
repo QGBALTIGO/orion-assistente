@@ -53,7 +53,7 @@ jobs:
           node --check app/static/orion-appointment-communications.js
       - name: DOM dos componentes e consumidores relacionados
         run: |
-          node --test ui-tests/orion-plans.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/admin-plan-management.test.mjs ui-tests/fields-core.test.mjs ui-tests/fields-auth.test.mjs ui-tests/fields-onboarding-channels.test.mjs ui-tests/onboarding-panel-integration.test.mjs ui-tests/mobile-atendimento.test.mjs ui-tests/channels.test.mjs ui-tests/channels-pairing.test.mjs
+          node --test ui-tests/orion-plans.test.mjs ui-tests/plan-permissions.test.mjs ui-tests/admin-plan-management.test.mjs ui-tests/admin-client-center.test.mjs ui-tests/admin-unassigned-plan.test.mjs ui-tests/fields-core.test.mjs ui-tests/fields-auth.test.mjs ui-tests/fields-onboarding-channels.test.mjs ui-tests/onboarding-panel-integration.test.mjs ui-tests/mobile-atendimento.test.mjs ui-tests/channels.test.mjs ui-tests/channels-pairing.test.mjs
       - name: Unidades com rede externa bloqueada
         run: |
           python tests/run_isolated_plan_tests.py -q -ra \

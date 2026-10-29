@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 from playwright.sync_api import expect, sync_playwright
 import pytest
 
-from scripts.plans_preview import Handler, PLAN_PATH
+from scripts.plans_preview import Handler, PLAN_PATH, COMPANY_PLAN_PATH, UNASSIGNED_COMPANY
 
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS = Path(os.getenv('PLAN_EVIDENCE_DIR', str(ROOT.parent / 'orion-plans-evidence-20261029' / 'browser')))
@@ -43,7 +43,7 @@ def browser(request):
 
 @pytest.mark.parametrize('size', SIZES, ids=lambda size: f'{size[0]}x{size[1]}')
 @pytest.mark.parametrize('theme', ['light', 'dark'])
-@pytest.mark.parametrize('scenario', ['admin', 'essencial', 'profissional', 'elite', 'none'])
+@pytest.mark.parametrize('scenario', ['admin', 'essencial', 'profissional', 'elite', 'none', 'unassigned'])
 def test_shipped_panel_plan_permissions(browser, fixture_url, size, theme, scenario):
     engine, instance = browser
     context = instance.new_context(viewport={'width': size[0], 'height': size[1]},
@@ -65,9 +65,17 @@ def test_shipped_panel_plan_permissions(browser, fixture_url, size, theme, scena
     source_hashes={name:hashlib.sha256((ROOT/'app'/'static'/name).read_bytes()).hexdigest() for name in source_files}
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     try:
-        role, plan, tab = ('admin', 'essencial', 'member') if scenario == 'admin' else ('owner', scenario, 'plano')
-        page.goto(f'{fixture_url}/panel?fixtureRole={role}&fixturePlan={plan}&aba={tab}')
-        if scenario == 'admin':
+        role, plan, tab = ('admin', 'essencial', 'plano' if scenario == 'unassigned' else 'member') if scenario in {'admin','unassigned'} else ('owner', scenario, 'plano')
+        extra = '&fixtureUnassigned=1&fixtureDelay=1' if scenario == 'unassigned' else ''
+        page.goto(f'{fixture_url}/panel?fixtureRole={role}&fixturePlan={plan}&aba={tab}{extra}')
+        if scenario == 'unassigned':
+            expect(page.locator('[data-op-effective-plan]')).to_be_visible()
+            assert not any(call['path'].startswith('/api/v1/admin/accounts') for call in page.request.get(fixture_url+'/__fixture/calls').json()['calls'])
+            destination=page.locator('#osNav [data-os-route=member]')
+            if not destination.is_visible():
+                page.locator('#osMenu').click()
+            destination.click()
+        if scenario in {'admin','unassigned'}:
             expect(page.locator('#adminClientCenter')).to_be_visible()
             expect(page.locator('#orionSetupAccess')).not_to_be_visible()
             assert page.locator('#orionSetupAccess').evaluate('n=>getComputedStyle(n).display')=='none'
@@ -132,6 +140,8 @@ def test_shipped_panel_plan_permissions(browser, fixture_url, size, theme, scena
             writes=[call for call in snapshot['calls'] if call['method']!='GET']
             assert len(writes)==2 and writes[-1]['path']==PLAN_PATH and writes[-1]['method']=='DELETE'
             assert page.request.get(fixture_url+'/auth/me').json()['role']=='admin'
+            if scenario == 'unassigned':
+                snapshot=exercise_unassigned_company(page,fixture_url,size,evidence,label)
         else:
             expect(page.locator('[data-op-effective-plan]')).to_be_visible()
             for target in ['marketing', 'desempenho', 'consultor', 'fidelizacao']:
@@ -166,6 +176,78 @@ def test_shipped_panel_plan_permissions(browser, fixture_url, size, theme, scena
             'limitations': ['synthetic state only', 'viewport emulation', 'no physical device or keyboard', 'no provider or payment']}, indent=2), encoding='utf-8')
     finally:
         context.close()
+
+
+def exercise_unassigned_company(page,fixture_url,size,evidence,label):
+    section=page.locator('#adminUnassignedCompanies')
+    expect(section).to_be_visible()
+    expect(section).to_contain_text('Empresas com vínculo pendente')
+    expect(section.locator('[data-admin-company-id]')).to_have_count(5)
+    assert section.locator('[data-account-id],[data-admin-control=maintenance],[data-account-action]').count()==0
+    section.scroll_into_view_if_needed()
+    evidence['company_list']={'geometry':assert_geometry(page,size),'capture':capture(page,ARTIFACTS/f'{label}-companies.png',size)}
+    page.locator('#adminAccountsSearch').fill('pausada sintética')
+    expect(section.locator('[data-admin-company-id]')).to_have_count(1)
+    expect(page.locator('#adminAccountsCount')).to_contain_text('0 contas')
+    card=section.locator(f'[data-admin-company-id="{UNASSIGNED_COMPANY}"]')
+    expect(card).to_contain_text('Pausada')
+    trigger=card.locator('[data-admin-control=plan]')
+    trigger.click()
+    expect(page.locator('#adminManualPlan')).to_be_visible()
+    expect(page.locator('#osDialog')).to_contain_text('Conta de proprietário indisponível')
+    expect(page.locator('#osDialog')).to_contain_text('Pausada')
+    page.select_option('#adminManualPlan','elite')
+    page.fill('#adminManualReason','Liberação sintética da empresa com vínculo pendente')
+    page.locator('#osDialog').evaluate('n=>n.scrollTo(0,0)')
+    evidence['company_form']={'geometry':assert_geometry(page,size,modal=True),'capture':capture(page,ARTIFACTS/f'{label}-company-form.png',size)}
+    page.locator('[data-admin-form=plan] [type=submit]').click()
+    expect(page.locator('[data-admin-form=plan-confirm]')).to_be_visible()
+    before=page.request.get(fixture_url+'/__fixture/calls').json()
+    assert len([c for c in before['calls'] if c['method']!='GET'])==2
+    expect(page.locator('#osDialog')).to_contain_text('vínculo do proprietário')
+    evidence['company_review']={'geometry':assert_geometry(page,size,modal=True),'capture':capture(page,ARTIFACTS/f'{label}-company-review.png',size)}
+    page.locator('[data-admin-form=plan-confirm] [type=submit]').click()
+    expect(page.locator('#osDialog')).not_to_be_visible()
+    expect(card).to_contain_text('Orion Elite')
+    expect(card).to_contain_text('Pausada')
+    granted=page.request.get(fixture_url+COMPANY_PLAN_PATH).json()
+    assert granted['company']['account_id'] is None and granted['company']['status']=='paused'
+    assert granted['effective_plan']['code']=='elite' and granted['effective_plan']['active'] is False
+    assert len(granted['history'])==1
+    trigger=card.locator('[data-admin-control=plan]');trigger.click()
+    history=page.locator('#osDialog details.os-more-fields').last
+    history.locator('summary').click()
+    expect(history).to_contain_text('Orion Elite')
+    expect(history).to_contain_text('Administrador: Administrador geral')
+    expect(history).not_to_contain_text(granted['history'][0]['actor_id'])
+    history.locator('.os-help').last.scroll_into_view_if_needed()
+    expect(history.locator('.os-help').last).to_be_in_viewport(ratio=1)
+    evidence['company_history']={'geometry':assert_geometry(page,size,modal=True),'capture':capture(page,ARTIFACTS/f'{label}-company-history.png',size)}
+    page.keyboard.press('Escape');expect(page.locator('#osDialog')).not_to_be_visible();expect(trigger).to_be_focused()
+    trigger.click();page.locator('[data-admin-control=remove-plan]').click()
+    expect(page.locator('[data-admin-form=plan-confirm]')).to_be_visible()
+    evidence['company_removal']={'geometry':assert_geometry(page,size,modal=True),'capture':capture(page,ARTIFACTS/f'{label}-company-removal.png',size)}
+    page.locator('[data-admin-form=plan-confirm] [type=submit]').click()
+    expect(page.locator('#osDialog')).not_to_be_visible()
+    expect(card).to_contain_text('Sem plano ativo');expect(card).to_contain_text('Pausada')
+    removed=page.request.get(fixture_url+COMPANY_PLAN_PATH).json()
+    assert removed['company']['account_id'] is None and removed['company']['status']=='paused'
+    assert removed['effective_plan']['code'] is None and removed['effective_plan']['active'] is False
+    assert len(removed['history'])==2
+    normal=page.request.get(fixture_url+PLAN_PATH).json()
+    assert normal['company']['account_id'] and normal['effective_plan']['code']=='essencial'
+    # The fixture retains its existing authenticated cookie, company data and
+    # delayed reads; direct navigation must not need a second click or Refresh.
+    page.goto(fixture_url+'/panel?aba=member')
+    expect(page.locator('#adminAccountsCount')).to_contain_text('1 conta')
+    expect(page.locator('#adminUnassignedCompanies [data-admin-company-id]')).to_have_count(5)
+    expect(page.locator(f'[data-admin-company-id="{UNASSIGNED_COMPANY}"]')).to_contain_text('Sem plano ativo')
+    evidence['company_reload']={'geometry':assert_geometry(page,size),'capture':capture(page,ARTIFACTS/f'{label}-company-reload.png',size)}
+    snapshot=page.request.get(fixture_url+'/__fixture/calls').json()
+    writes=[c for c in snapshot['calls'] if c['method']!='GET']
+    assert [(c['method'],c['path']) for c in writes]==[('PUT',PLAN_PATH),('DELETE',PLAN_PATH),('PUT',COMPANY_PLAN_PATH),('DELETE',COMPANY_PLAN_PATH)]
+    assert not snapshot['unexpected']
+    return snapshot
 
 
 def capture(page,path,size):

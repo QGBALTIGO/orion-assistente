@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {makePanel} from './panel-harness.mjs';
-import {flush} from './harness.mjs';
+import {flush,deferred} from './harness.mjs';
 
 const account={
   id:'10000000-0000-4000-8000-000000000001',name:'Cliente de teste',
@@ -19,6 +19,24 @@ const read=(path)=>{
     {action:'edit',reason:'Nome atualizado pelo proprietário',occurred_at:'2026-10-18T12:00:00Z'},
   ]};
 };
+
+test('the first entry from Plano loads the directory after page visibility, including delayed reads without Refresh',async t=>{
+  const directory=deferred(),statsRead=deferred(),companies=deferred();
+  const h=await makePanel({role:'admin',initialRoute:'plano',respond:path=>{
+    if(path.startsWith('/api/v1/admin/accounts?'))return directory.promise;
+    if(path==='/api/v1/admin/accounts/stats')return statsRead.promise;
+    if(path==='/api/v1/admin/accounts/companies/unassigned')return companies.promise;
+  }});t.after(()=>h.close());await flush();
+  assert.equal(h.calls.some(c=>c.path.startsWith('/api/v1/admin/accounts')),false);
+  h.click('#osNav [data-os-route=member]');await flush();
+  assert.equal(h.calls.filter(c=>c.path.startsWith('/api/v1/admin/accounts?')).length,1);
+  assert.equal(h.calls.filter(c=>c.path==='/api/v1/admin/accounts/companies/unassigned').length,1);
+  directory.resolve(list);statsRead.resolve(stats);await flush();
+  assert.match(h.element('#adminAccountsResults').textContent,/Cliente de teste/);
+  companies.resolve({companies:[]});await flush();
+  assert.match(h.element('#adminAccountsResults').textContent,/Cliente de teste/);
+  assert.equal(h.document.querySelector('#adminAccountsResults .os-loading'),null);
+});
 
 test('platform admin uses Clientes design, list, mobile swipe and shared customer modal',async t=>{
   const h=await makePanel({role:'admin',initialRoute:'member',respond:read,width:390});
