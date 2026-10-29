@@ -57,28 +57,49 @@ test('three actual card prices, limits, recommendation and explicit AI separatio
  }finally{f.close();}
 });
 
-test('comparison is one aligned four-column table with expandable categories',()=>{
+test('desktop matrix and mobile comparison are always expanded with no category buttons',()=>{
  const f=fixture();
  try{
   const table=f.root.querySelector('.op-matrix');
   assert.ok(table);
   assert.equal(table.querySelectorAll('colgroup col').length,4);
-  assert.equal(table.querySelectorAll('thead tr').length,1);
-  const group=table.querySelector('[data-op-category="0"]');
-  const rows=group.querySelectorAll('.op-matrix-row');
-  assert.ok(rows.length>=3);
-  assert.equal(rows[0].querySelectorAll('th,td').length,4);
-  assert.equal(rows[0].querySelectorAll('td').length,3);
   assert.equal(table.querySelectorAll('thead th').length,4);
+  assert.equal(table.querySelectorAll('tbody[data-op-category]').length,10);
+  assert.equal(f.root.querySelectorAll('.op-mobile-group').length,10);
+  assert.equal(f.root.querySelectorAll('[data-op-category-toggle]').length,0);
+  assert.equal(f.root.querySelectorAll('.op-matrix-category button').length,0);
   assert.match(table.querySelector('thead').textContent,/R\$\s*89,90/);
-  const toggle=group.querySelector('[data-op-category-toggle]');
-  assert.equal(toggle.getAttribute('aria-expanded'),'true');
+  assert.equal(table.querySelector('[data-op-category="0"] .op-matrix-category-label').textContent,'Gestão e agenda');
+  assert.equal(table.querySelector('[data-op-category="0"] .op-matrix-row').querySelectorAll('th,td').length,4);
+  assert.ok(f.root.querySelector('.op-mobile-feature .op-mobile-values[role=list]'));
+  assert.equal(f.root.querySelector('.op-mobile-feature .op-mobile-values').children.length,3);
+  assert.equal(f.root.querySelectorAll('.op-mobile-tier').length,f.root.querySelectorAll('.op-mobile-feature').length*3);
+ }finally{f.close();}
+});
+
+test('show only differences is default, reversible and synchronized across mobile and desktop',()=>{
+ const f=fixture();
+ try{
+  const toggle=f.root.querySelector('[data-op-only-differences]');
+  assert.ok(toggle.checked);
+  assert.equal(f.root.querySelectorAll('[data-op-only-differences]').length,1);
+  const table=f.root.querySelector('.op-matrix');
+  const mobile=f.root.querySelector('.op-mobile-comparison');
+  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,15);
+  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,15);
+  assert.equal(table.querySelectorAll('tbody:not([hidden])').length,9);
+  assert.equal(mobile.querySelectorAll('.op-mobile-group:not([hidden])').length,9);
+  assert.ok(table.querySelector('[data-op-category="2"]').hidden,'identical section hidden');
   toggle.click();
-  assert.equal(toggle.getAttribute('aria-expanded'),'false');
-  assert.ok([...rows].every(row=>row.hidden));
+  assert.equal(toggle.checked,false);
+  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,25);
+  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,25);
+  assert.equal(table.querySelectorAll('tbody:not([hidden])').length,10);
+  assert.equal(mobile.querySelectorAll('.op-mobile-group:not([hidden])').length,10);
   toggle.click();
-  assert.equal(toggle.getAttribute('aria-expanded'),'true');
-  assert.ok([...rows].every(row=>!row.hidden));
+  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,15);
+  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,15);
+  assert.match(f.root.querySelector('[data-op-compare-state]').textContent,/somente diferenças/);
  }finally{f.close();}
 });
 
@@ -93,6 +114,7 @@ test('plan comparison ends the page without instructional legend, admin requests
     assert.equal(f.root.querySelector(selector),null,selector);
    assert.doesNotMatch(f.root.textContent,/Toque em uma categoria para recolher ou expandir|Solicitações de teste grátis|Preços mensais por empresa/);
    assert.ok(f.root.querySelector('.op-free-trial'), 'trial application remains available');
+   assert.ok(f.root.querySelector('.op-compare-switch'), 'comparison filter remains before the end');
   }finally{f.close();}
  }
 });

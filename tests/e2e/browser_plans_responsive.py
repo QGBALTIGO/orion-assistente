@@ -67,25 +67,49 @@ async def inspect(page,width,mode):
         assert card["left"]>=-1 and card["right"]<=width+1,(width,mode,"card",card)
     if width>=1200:
         assert max(state["buttons"])-min(state["buttons"])<2,(width,mode,"footer alignment")
-    # Real browser: every feature stays aligned under the same three tier columns.
-    geometry=await page.evaluate("""()=>{
-      const matrix=document.querySelector('.op-matrix');
-      const header=[...matrix.querySelectorAll('thead th')];
-      const row=matrix.querySelector('.op-matrix-row');
-      const cells=[...row.children];
-      return {columns:header.length,bodyColumns:cells.length,
-              widths:header.map(n=>n.getBoundingClientRect().width),
-              headerX:header.map(n=>n.getBoundingClientRect().x),
-              rowX:cells.map(n=>n.getBoundingClientRect().x),
-              right:matrix.getBoundingClientRect().right};
-    }""")
-    assert geometry["columns"]==geometry["bodyColumns"]==4,(width,mode,geometry)
-    assert geometry["right"]<=width+1,(width,mode,geometry)
-    assert all(abs(a-b)<2 for a,b in zip(geometry["headerX"],geometry["rowX"])),(width,mode,geometry)
-    await page.locator('[data-op-category-toggle="0"]').click()
-    assert await page.locator('[data-op-category="0"] .op-matrix-row:visible').count()==0
-    await page.locator('[data-op-category-toggle="0"]').click()
-    assert await page.locator('[data-op-category="0"] .op-matrix-row:visible').count()>0
+    # Each category is a static heading. No expandable accordion or navigation.
+    assert await page.locator('[data-op-category-toggle]').count()==0, (width,mode)
+    assert await page.locator('[data-op-only-differences]').is_checked(), (width,mode)
+    assert await page.locator('.op-matrix-row:not([hidden])').count()==15, (width,mode)
+    assert await page.locator('.op-mobile-feature:not([hidden])').count()==15, (width,mode)
+    if width<768:
+        assert not await page.locator('.op-matrix-frame').is_visible(), (width,mode)
+        assert await page.locator('.op-mobile-comparison').is_visible(), (width,mode)
+        geometry=await page.evaluate("""()=>{
+            const cards=[...document.querySelectorAll('.op-mobile-feature:not([hidden])')];
+            const values=[...document.querySelectorAll('.op-mobile-feature:not([hidden]) .op-mobile-value')];
+            const rects=cards.map(el=>el.getBoundingClientRect());
+            return {left:Math.min(...rects.map(r=>r.left)),
+                    right:Math.max(...rects.map(r=>r.right)),
+                    cellWidth:Math.min(...values.map(el=>el.getBoundingClientRect().width)),
+                    labelSize:parseFloat(getComputedStyle(cards[0].querySelector('.op-mobile-feature-label')).fontSize)};
+        }""")
+        assert geometry["left"]>=-1 and geometry["right"]<=width+1,(width,mode,geometry)
+        assert geometry["cellWidth"]>=60,(width,mode,geometry)
+        assert geometry["labelSize"]>=12,(width,mode,geometry)
+        assert await page.locator('.op-mobile-group:visible').count()==9, (width,mode)
+    else:
+        assert await page.locator('.op-matrix-frame').is_visible(), (width,mode)
+        assert not await page.locator('.op-mobile-comparison').is_visible(), (width,mode)
+        geometry=await page.evaluate("""()=>{
+            const matrix=document.querySelector('.op-matrix');
+            const header=[...matrix.querySelectorAll('thead th')];
+            const row=matrix.querySelector('.op-matrix-row:not([hidden])');
+            const cells=[...row.children];
+            return {columns:header.length,bodyColumns:cells.length,
+                    headerX:header.map(n=>n.getBoundingClientRect().x),
+                    rowX:cells.map(n=>n.getBoundingClientRect().x),
+                    right:matrix.getBoundingClientRect().right};
+        }""")
+        assert geometry["columns"]==geometry["bodyColumns"]==4,(width,mode,geometry)
+        assert geometry["right"]<=width+1,(width,mode,geometry)
+        assert all(abs(a-b)<2 for a,b in zip(geometry["headerX"],geometry["rowX"])),(width,mode,geometry)
+    await page.locator('[data-op-only-differences]').uncheck()
+    assert await page.locator('.op-matrix-row:not([hidden])').count()==25, (width,mode)
+    assert await page.locator('.op-mobile-feature:not([hidden])').count()==25, (width,mode)
+    await page.locator('[data-op-only-differences]').check()
+    assert await page.locator('.op-matrix-row:not([hidden])').count()==15, (width,mode)
+    assert await page.locator('.op-mobile-feature:not([hidden])').count()==15, (width,mode)
     await page.locator("[data-op-trial]").click()
     await page.locator(".op-dialog").wait_for(state="visible")
     rect=await page.locator(".op-dialog").bounding_box()
