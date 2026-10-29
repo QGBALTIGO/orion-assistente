@@ -1,6 +1,9 @@
 """Stable registry alias for the existing socket; never copies session material."""
 import os
 import secrets
+import hashlib
+import hmac
+import re
 from uuid import UUID, NAMESPACE_URL, uuid5
 from fastapi import HTTPException, Request
 from sqlalchemy import text
@@ -19,6 +22,22 @@ def configured_tenant():
         return UUID(os.environ['QR_AI_TENANT_ID'])
     except (ValueError, KeyError):
         raise HTTPException(503, 'Sessão principal ainda não vinculada à central') from None
+
+
+def verified_self_phone(row):
+    """Exceptional old PN is authorized only by the preserved session's HMAC.
+
+    Never insert a ninth digit or allow an arbitrary old mobile through the
+    private channel policy. Keep this binding across feature-flag rollback.
+    """
+    phone=os.getenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','')
+    key=os.getenv('QR_BRIDGE_TOKEN','')
+    if not re.fullmatch(r'55[1-9][0-9][2-9][0-9]{7}',phone) or len(key)<32:return None
+    try:
+        if row['tenant_id']!=configured_tenant() or not is_alias(row['tenant_id'],row['id']):return None
+        digest=hmac.new(key.encode(),('orion:preserved-primary-session:v1\0'+phone).encode(),hashlib.sha256).hexdigest()
+        return phone if secrets.compare_digest(digest,row['request_fingerprint']) else None
+    except (HTTPException,KeyError,TypeError):return None
 
 
 def enabled():
@@ -70,4 +89,5 @@ async def bootstrap(request: Request):
     if row is None:
         raise HTTPException(409, 'Preparação da sessão principal pendente')
     return {'channel_id': str(row['id']), 'tenant_id': str(tenant),
+        'verified_self_phone':verified_self_phone(row),
         'legacy_transport': True, 'allowed_senders': row['allowed_senders'], 'session_digest':row['request_fingerprint']}

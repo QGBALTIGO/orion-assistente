@@ -429,6 +429,7 @@ async def lease_operation(db, channel_id, credential, payload, operation):
                 "owner": str(payload.owner), "fence": row["fence"], "expires_in_ms": remaining,
                 "allowed_senders": row["allowed_senders"], "assistant_enabled": row["assistant_enabled"],
                 "legacy_transport": legacy,
+                "verified_self_phone":qr_legacy.verified_self_phone(row) if legacy else None,
                 **({"inbox_control": True} if central or os.getenv("INBOX_CONTROL_ENABLED", "0") == "1" else {})}
 
 
@@ -446,13 +447,24 @@ async def authenticated_channel(request: Request, *, phone: str | None = None) -
         fence = int(request.headers["x-orion-channel-fence"])
         if fence < 1 or fence > 2**63-1:
             raise ValueError()
-        sender = normalize_sender(phone) if phone is not None else None
+        sender=None
+        if phone is not None:
+            try:sender=normalize_sender(phone)
+            except ValueError:
+                if not isinstance(phone,str):raise
+                sender=phone.removeprefix('+')
+                if sender!=os.getenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','') or not re.fullmatch(r'55[1-9][0-9][2-9][0-9]{7}',sender):raise ValueError()
     except (KeyError, ValueError, TypeError):
         raise HTTPException(401, "Canal não autorizado") from None
     async with support_session_factory()() as db:
         async with db.begin():
             row = await _channel(db, channel_id, request.headers.get("x-orion-channel-key"))
             _current(row, owner, fence)
+            if sender is not None:
+                try:normalize_sender(sender)
+                except ValueError:
+                    from app.qr_legacy import verified_self_phone
+                    if sender!=verified_self_phone(row):raise HTTPException(403,'Identidade do número não autorizada') from None
             allowed = sender is not None and sender in row["allowed_senders"]
             if sender is not None and not allowed:
                 raise HTTPException(403, "Remetente não autorizado neste canal")

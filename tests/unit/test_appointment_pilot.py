@@ -38,3 +38,17 @@ async def test_managed_manual_send_denies_generic_support_and_requires_operation
         (Actor('admin',account_id=uuid4()),qr_api.SendPayload(phone='5567999999901',text='Teste'),422)]:
         with pytest.raises(HTTPException) as error:await qr_api.qr_send(payload,actor)
         assert error.value.status_code==code
+
+
+def test_old_self_pn_needs_preserved_session_hmac_and_never_invents_ninth_digit(monkeypatch):
+    import hmac,hashlib
+    tenant=uuid4();number='556781234567';key='synthetic-preserved-key-'+'x'*32
+    monkeypatch.setenv('QR_AI_TENANT_ID',str(tenant));monkeypatch.setenv('QR_BRIDGE_TOKEN',key)
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE',number)
+    row={'tenant_id':tenant,'id':qr_legacy.channel_id(tenant),'request_fingerprint':hmac.new(key.encode(),('orion:preserved-primary-session:v1\0'+number).encode(),hashlib.sha256).hexdigest()}
+    assert qr_legacy.verified_self_phone(row)==number
+    with pytest.raises(ValueError):qr_channels.normalize_sender(number)
+    assert qr_legacy.verified_self_phone({**row,'request_fingerprint':'a'*64}) is None
+    assert qr_legacy.verified_self_phone({**row,'tenant_id':uuid4()}) is None
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','5567981234567')
+    assert qr_legacy.verified_self_phone(row) is None

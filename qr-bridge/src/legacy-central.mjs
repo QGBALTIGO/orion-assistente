@@ -1,7 +1,7 @@
 /** Adapts the existing socket to the managed broker. Never constructs a socket,
  * reads/writes credentials, emits a connection notice or copies an auth folder.
  */
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHmac} from 'node:crypto';
 import {channelId} from './channel-storage.mjs';
 
 export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,status,sessionDigest,rawSend,now=Date.now}){
@@ -21,10 +21,13 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
         headers:{'X-Orion-Bridge-Key':env.QR_BRIDGE_TOKEN},signal:AbortSignal.timeout(5000)});
       if(!response.ok)throw Error('legacy_adoption_not_ready');
       const row=await response.json();
+      const self=row?.verified_self_phone;
+      const selfProof=typeof self==='string'&&/^55[1-9]\d[2-9]\d{7}$/.test(self)&&
+        createHmac('sha256',env.QR_BRIDGE_TOKEN).update('orion:preserved-primary-session:v1\0'+self).digest('hex')===row.session_digest;
       if(row?.legacy_transport!==true||!channelId(row.channel_id)||!channelId(row.tenant_id)||
           typeof row.session_digest!=='string'||!/^[a-f0-9]{64}$/.test(row.session_digest)||
           !Array.isArray(row.allowed_senders)||!row.allowed_senders.length||row.allowed_senders.length>10||
-          row.allowed_senders.some(p=>typeof p!=='string'||!/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(p))||
+          row.allowed_senders.some(p=>typeof p!=='string'||(!/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/.test(p)&&!(selfProof&&p===self)))||
           (env.QR_AI_PILOT_NUMBER&&!row.allowed_senders.includes(env.QR_AI_PILOT_NUMBER))||
           (identity&&identity.channel_id!==row.channel_id))throw Error('invalid_legacy_adoption');
       identity=row;
