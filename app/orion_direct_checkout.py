@@ -253,6 +253,9 @@ def verified_creation(result: dict, intent: dict, method: str) -> bool:
         if not isinstance(pix,dict) or not isinstance(pix.get("qrCode"),str):
             return False
         if not 60 <= len(pix["qrCode"]) <= 4096: return False
+        # A Pix Auto authorization declares the bank-specific authorization journey.
+        if pix.get("user_journey") not in {"JORNADA_1","JORNADA_2","JORNADA_3","JORNADA_4"}:
+            return False
     return True
 
 
