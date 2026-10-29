@@ -54,6 +54,33 @@ homologação. O histórico V2 validado não ativa cobranças por si só.
 É obrigatório substituir qualquer chave de webhook exposta antes de receber
 pagamentos reais de clientes e refazer o teste da entrega assinada.
 
+## Proteções adicionais antes de cobranças reais
+
+Para liberar a cobrança direta, todas estas variáveis devem estar explicitamente
+aprovadas e ativadas pelo operador após homologação:
+
+- `ORION_DIRECT_PAYMENTS_ENABLED=1` — último comando, após validação completa.
+- `ORION_DIRECT_RECURRING_VERIFIED=1` — confirmação de Pix Automático e cartão 3DS
+  em staging, com contrato e renovação verificáveis.
+- `ORION_WEBHOOK_SECRET_ROTATED_CONFIRMED=1` — somente após regenerar no Painel
+  a chave que foi exposta e atualizar `CAKTO_WEBHOOK_SECRET` no Railway.
+- `ORION_CAKTO_LIFECYCLE_ENABLED=1` — apenas após homologar renovação, recusa,
+  reembolso, cancelamento e chargeback com testes sintéticos e provedor real.
+- `CAKTO_BILLING_LIVE_ENABLED=1` e credenciais OAuth válidas permanecem
+  pré-requisitos.
+
+`scripts.probe_orion_payment_methods_read_only` verifica por GET se o produto
+único das três ofertas mensais está ativo e permite `pix_auto` e cartão. O
+resultado só contém contagens/booleanos, sem dados pessoais. A primeira
+assinatura exige confirmação de `GET /subscriptions/{id}/`, mesmo após o
+webhook assinado e a leitura do pedido. O worker pode reconciliar renovações e
+cancelamentos apenas quando a flag de ciclo de vida estiver habilitada.
+
+**Publicação da interface não é habilitação financeira.** Sem homologação
+com credenciais de staging e rotação do segredo, o checkout continua
+visualmente acessível, mas sem efetuar cobrança. Não enviar cartões reais,
+CPFs, Pix ou tokens para testes automáticos em produção.
+
 A UI de produção usa identidade Orion. Os dados do cartão são tokenizados
 **no navegador pelo SDK**; o servidor Orion nunca recebe PAN/CVV.
 Revisar eventual necessidade de campos hospedados para reduzir escopo PCI.

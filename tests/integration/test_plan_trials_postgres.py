@@ -210,21 +210,28 @@ async def test_synthetic_cakto_checkout_activates_only_verified_owner_subscripti
             "subscription": subscription_id,
             "checkoutUrl": checkout["checkout_url"], "sck": token,
         }
+        remote_sub = {
+            "id":subscription_id, "offer":"CIProOffer", "amount":"89.90",
+            "recurrence_period":30, "status":"active",
+            "parent_order":order_id, "paymentMethod":"threeDs",
+        }
+        async def confirm(evt, checked_order):
+            return await plan_management.apply_verified_cakto_payment(
+                evt, checked_order, subscription=remote_sub)
         assert await plan_management.apply_verified_cakto_payment(
-            {**event, "amount_cents": 7990}, order) == "manual_review"
-        assert await plan_management.apply_verified_cakto_payment(
-            {**event, "external_offer_id": "AnotherOffer"}, order) == "manual_review"
-        assert await plan_management.apply_verified_cakto_payment(
-            event, {**order, "amount": "89.901"}) == "manual_review"
-        assert await plan_management.apply_verified_cakto_payment(
-            event, {**order, "sck": "other-synthetic-sck"}) == "manual_review"
+            event, order, subscription={**remote_sub,"status":"inactive"}
+        ) == "manual_review"
+        assert await confirm({**event, "amount_cents": 7990}, order) == "manual_review"
+        assert await confirm({**event, "external_offer_id": "AnotherOffer"}, order) == "manual_review"
+        assert await confirm(event, {**order, "amount": "89.901"}) == "manual_review"
+        assert await confirm(event, {**order, "sck": "other-synthetic-sck"}) == "manual_review"
         async with db.connect() as con:
             count = (await con.execute(text(
                 "SELECT count(*) FROM subscriptions WHERE tenant_id=:tenant"
             ), {"tenant": tenant})).scalar_one()
             assert count == 0
-        assert await plan_management.apply_verified_cakto_payment(event, order) == "activated"
-        assert await plan_management.apply_verified_cakto_payment(event, order) == "already_verified"
+        assert await confirm(event, order) == "activated"
+        assert await confirm(event, order) == "already_verified"
         async with db.connect() as con:
             rows = (await con.execute(text("""
                 SELECT p.code,p.monthly_cents,p.max_professionals,s.status,
@@ -245,3 +252,29 @@ async def test_synthetic_cakto_checkout_activates_only_verified_owner_subscripti
                               {"t": tenant})
             await con.execute(text("DELETE FROM subscriptions WHERE tenant_id=:t"),
                               {"t": tenant})
+
+
+
+@pytest.mark.asyncio
+async def test_0046_direct_payment_attempts_are_support_only_without_sensitive_fields(trial_db):
+    db, account, tenant, other = trial_db
+    async with db.connect() as con:
+        privileges=(await con.execute(text("""
+            SELECT relrowsecurity, relforcerowsecurity,
+                   has_table_privilege('app_support',oid,'SELECT,INSERT,UPDATE'),
+                   has_table_privilege('app_runtime',oid,'SELECT,INSERT,UPDATE,DELETE')
+            FROM pg_class WHERE oid='public.orion_direct_payment_attempts'::regclass
+        """))).one()
+        assert tuple(privileges)==(True,True,True,False)
+        names=set((await con.execute(text("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='orion_direct_payment_attempts'
+        """))).scalars().all())
+        assert names=={
+            'id','intent_id','tenant_id','account_id','method','state',
+            'external_order_id','created_at','updated_at',
+        }
+        assert not names.intersection({
+            'email','cpf','cnpj','document','cvv','card_number','card_token',
+            'phone','payment_payload','raw_payload',
+        })

@@ -9,6 +9,7 @@ import sys
 from app.cakto_api import CaktoClient, match_plans
 from scripts.probe_orion_webhooks_read_only import probe as probe_orion_webhooks
 from scripts.probe_orion_webhook_history_read_only import probe as probe_delivery_history
+from scripts.probe_orion_payment_methods_read_only import probe as probe_payment_methods
 
 
 async def check():
@@ -62,6 +63,15 @@ async def check():
               flush=True)
     except Exception:
         print("cakto_delivery_history_read_not_verified", flush=True)
+    try:
+        methods = await probe_payment_methods(client, offers)
+        print("cakto_orion_payment_methods="
+              + "one_product:" + str(int(methods["offers_one_product"]))
+              + ";pix_auto:" + str(int(methods["pix_auto"]))
+              + ";card:" + str(int(methods["card"]))
+              + ";confirmed:" + str(int(methods["methods_confirmed"])), flush=True)
+    except Exception:
+        print("cakto_orion_payment_methods_unverified", flush=True)
     return 0
 
 
