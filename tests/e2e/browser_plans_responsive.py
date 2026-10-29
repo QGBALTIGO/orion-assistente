@@ -124,7 +124,7 @@ async def inspect(page,width,mode):
     checkout=await page.locator(".op-checkout-dialog").bounding_box()
     assert checkout and checkout["x"]>=0 and checkout["x"]+checkout["width"]<=width+1,(width,mode,"checkout dialog",checkout)
     assert await page.locator(".op-payment-summary").count()==1,(width,mode)
-    assert await page.locator(".op-payment-body").is_visible(),(width,mode,"Orion payment form")
+    await page.locator(".op-payment-body").wait_for(state="visible")
     assert await page.locator(".op-payment-submit").is_disabled(),(width,mode,"fail closed")
     await page.locator(".op-checkout-dialog .op-dialog-close").click()
     assert await page.locator(".op-checkout-dialog").count()==0,(width,mode,"checkout close")
