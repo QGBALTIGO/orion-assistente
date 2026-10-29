@@ -210,6 +210,8 @@ test('Pix result stays in Orion with local QR and copy code, never activates wit
   assert.equal(prepared.length,1);
   assert.equal(charged.length,1);
   assert.equal(charged[0].data.method,'pix');
+  assert.equal(charged[0].data.payer.doc_type,'cpf');
+  assert.equal(charged[0].data.payer.doc_number,'52998224725');
   assert.equal(charged[0].data.card_token,null);
   assert.deepEqual(JSON.parse(JSON.stringify(charged[0].data.three_ds)),null);
   assert.equal(dialog.querySelector('[data-op-payment-result]').hidden,false);
@@ -229,6 +231,9 @@ test('card mode never sends raw PAN/CVV to application without tokenization',asy
   const dialog=f.root.querySelector('.op-checkout-dialog');
   dialog.querySelector('[data-op-payment-method=card]').click();
   assert.equal(dialog.querySelector('[data-op-card-fields]').hidden,false);
+  assert.equal(dialog.querySelector('[name=doc_type]'),null);
+  for(const field of ['zip','state','city','street','number','complement'])
+   assert.equal(dialog.querySelector('[name='+field+']'),null,field);
   assert.ok(dialog.querySelector('[name=card_number]').required);
   assert.ok(dialog.querySelector('[name=cvv]').required);
   assert.ok(dialog.querySelector('[name=card_number]').disabled===false);
@@ -245,7 +250,7 @@ test('credit card SDK tokenizes in browser and Orion API receives only token, no
    constructor(settings){assert.equal(settings.client_id,'synthetic-sdk-id');}
    async initAntifraud(){}
    async createToken(card){tokenized=card.cardNumber==='4111111111111111'&&card.cvv==='123';return{cardToken:'synthetic-card-token-01234567890'};}
-   async authenticate3DS(data){challenged=data.customer.amount===8990;return{success:true,cavv:'synthetic-cavv',eci:'05',referenceId:'synthetic-ref',version:'2.2.0'};}
+   async authenticate3DS(data){challenged=data.customer.amount===8990&&!('address' in data.customer);return{success:true,cavv:'synthetic-cavv',eci:'05',referenceId:'synthetic-ref',version:'2.2.0'};}
    async completeAntifraudProfile(){}
    getAntifraudReference(){return 'synthetic-antifraud-reference';}
   }};
@@ -259,8 +264,7 @@ test('credit card SDK tokenizes in browser and Orion API receives only token, no
   fill('phone','(67) 99999-1111');fill('doc_number','52998224725');
   fill('holder','Pessoa Sintética');fill('card_number','4111111111111111');
   fill('expiry','12/30');fill('cvv','123');
-  fill('zip','79000-000');fill('state','MS');fill('city','Campo Grande');
-  fill('street','Rua Exemplo');fill('number','100');
+  
   form.elements.namedItem('monthly_ack').checked=true;
   form.elements.namedItem('processor_ack').checked=true;
   form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));
