@@ -34,7 +34,24 @@
     node.innerHTML = CONTACT_ICONS[kind]; // Fixed local SVGs; untrusted site data never enters markup.
     return node;
   }
-  function picture(container, url, initials) { const safe = safeImageURL(url); container.textContent = initials; if (safe) { const img = el('img'); img.src = safe; img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.addEventListener('error', () => { container.textContent = initials; }, { once: true }); container.replaceChildren(img); } }
+  function optimizedImageURL(url, variant) {
+    const safe = safeImageURL(url);
+    // Only Orion-owned immutable photos support backend display-sized variants.
+    return safe && safe.startsWith('/media/') ? safe + '?variant=' + variant : safe;
+  }
+  function picture(container, url, placeholder, variant = 'thumb', eager = false) {
+    const safe = optimizedImageURL(url, variant);
+    container.textContent = placeholder;
+    if (!safe) return;
+    const img = el('img');
+    img.alt = ''; // Decorative image: the service/person name is adjacent.
+    img.loading = eager ? 'eager' : 'lazy';
+    img.decoding = 'async';
+    img.referrerPolicy = 'no-referrer';
+    img.addEventListener('error', () => { container.textContent = placeholder; }, { once: true });
+    img.src = safe;
+    container.replaceChildren(img);
+  }
   function initials(name) { return String(name || '').trim().split(/\s+/).slice(0, 2).map(p => p[0] || '').join('').toUpperCase(); }
   function money(cents) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(cents) / 100); }
   function priceText(cents, mode) { return (mode === 'from' ? 'A partir de ' : '') + money(cents); }
@@ -203,9 +220,9 @@
     } finally { if (timeout) clearTimeout(timeout); }
   }
 
-  function serviceCard(service, handler, isSelected = false) {
+  function serviceCard(service, handler, isSelected = false, eager = false) {
     const card = button('', 'service-card', handler); card.setAttribute('aria-pressed', String(isSelected));
-    const thumb = el('span', 'service-thumb'); color(thumb, '--service-color', service.color); picture(thumb, service.image_url, '✂');
+    const thumb = el('span', 'service-thumb'); color(thumb, '--service-color', service.color); picture(thumb, service.image_url, '✂', 'thumb', eager);
     const detail = el('span', 'service-detail');
     if (service.catalog_kind === 'combo') detail.append(el('span', 'tag', service.featured ? 'COMBO EM DESTAQUE' : 'COMBO'));
     detail.append(el('strong', '', service.name));
@@ -225,7 +242,7 @@
   function renderServiceGrid() {
     const term = $('service-search').value.trim().toLocaleLowerCase('pt-BR');
     const items = data.services.filter(s => (category === 'Todos' || (s.category || 'Serviços') === category) && `${s.name} ${s.description || ''}`.toLocaleLowerCase('pt-BR').includes(term));
-    $('services-grid').replaceChildren(...items.map(s => serviceCard(s, () => openBooking(s.id))));
+    $('services-grid').replaceChildren(...items.map((s, i) => serviceCard(s, () => openBooking(s.id), false, i < 3)));
     if (!items.length) $('services-grid').append(el('p', 'empty', data.services.length ? 'Nenhum serviço encontrado. Tente outra busca.' : 'Não há serviços disponíveis para agendamento neste momento.'));
   }
 
@@ -274,8 +291,20 @@
     const luminance = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((n, v, i) => n + v * [.2126, .7152, .0722][i], 0);
     document.documentElement.style.setProperty('--primary-ink', luminance > .179 ? '#0a1425' : '#ffffff');
     document.querySelector('meta[name=theme-color]').content = `#${hex}`;
-    const cover = safeImageURL(site.cover_url); if (cover) { const image = el('img'); image.src = cover; image.alt = ''; image.referrerPolicy = 'no-referrer'; image.style.width = '100%'; image.style.height = '100%'; $('cover').replaceChildren(image); }
-    picture($('site-logo'), site.logo_url, initials(site.title));
+    const cover = optimizedImageURL(site.cover_url, 'hero');
+    if (cover) {
+      const image = el('img');
+      image.alt = '';
+      image.loading = 'eager';
+      image.fetchPriority = 'high';
+      image.decoding = 'async';
+      image.referrerPolicy = 'no-referrer';
+      image.style.width = '100%';
+      image.style.height = '100%';
+      image.src = cover;
+      $('cover').replaceChildren(image);
+    }
+    picture($('site-logo'), site.logo_url, initials(site.title), 'logo', true);
     $('site-title').textContent = site.title; $('footer-title').textContent = site.title;
     $('hero-address').textContent = [siteAddressLine(site), site.city].filter(Boolean).join(' · ');
     $('hero-address').hidden = !$('hero-address').textContent;
@@ -290,7 +319,7 @@
     $('categories').hidden = cats.length <= 2;
     function renderCats() { $('categories').replaceChildren(...cats.map(name => { const node = button(name, 'category', () => { category = name; renderCats(); renderServiceGrid(); }); node.setAttribute('aria-pressed', String(name === category)); return node; })); }
     renderCats(); renderServiceGrid();
-    $('team-grid').replaceChildren(...data.professionals.map(person => { const card = el('article', 'team-card'); const portrait = el('div', 'portrait'); color(portrait, '--person-color', person.color); picture(portrait, person.image_url, initials(person.name)); const info = el('div', 'person-info'); info.append(el('strong', '', person.name)); if (person.specialty) info.append(el('p', '', person.specialty)); card.append(portrait, info); return card; }));
+    $('team-grid').replaceChildren(...data.professionals.map(person => { const card = el('article', 'team-card'); const portrait = el('div', 'portrait'); color(portrait, '--person-color', person.color); picture(portrait, person.image_url, initials(person.name), 'portrait'); const info = el('div', 'person-info'); info.append(el('strong', '', person.name)); if (person.specialty) info.append(el('p', '', person.specialty)); card.append(portrait, info); return card; }));
     $('equipe').hidden = !data.professionals.length;
     const contacts = [];
     if (/^\+[1-9]\d{9,14}$/.test(site.whatsapp_phone || ''))
@@ -541,7 +570,7 @@
       node.title = person.name;
       node.setAttribute('aria-label', 'Agendar com ' + person.name);
       const face = el('span', 'mini-portrait professional-photo');
-      picture(face, person.image_url, initials(person.name));
+      picture(face, person.image_url, initials(person.name), 'portrait', true);
       const name = el('span', 'professional-name', person.name);
       node.append(face, name);
       picker.append(node);
