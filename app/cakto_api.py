@@ -42,7 +42,7 @@ PLANS = (
 async def public_cakto_plans():
     """Only a static catalog; this endpoint NEVER asserts that payment is active."""
     return {"plans": [{key: value for key, value in plan.items() if key != "checkout_url"}
-                      for plan in PLANS], "subscription_activation_enabled": False}
+                      for plan in PLANS], "subscription_activation_enabled": os.getenv("CAKTO_BILLING_LIVE_ENABLED", "0") == "1"}
 
 
 def verify_cakto_signature(raw_body: bytes, timestamp: str | None,
