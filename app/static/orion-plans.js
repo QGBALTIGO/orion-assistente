@@ -318,6 +318,28 @@ async function checkout(root,code,ctx){
  });
  modal.addEventListener('cancel',event=>{event.preventDefault();close();});
  modal.querySelector('[data-op-card-fields]').querySelectorAll('input').forEach(el=>{el.disabled=true;});
+ modal.addEventListener('input',event=>{
+  const input=event.target;
+  if(input.name==='phone'){try{input.value=window.OrionFields?.phoneDisplay(input.value)||input.value;}catch{}}
+  if(input.name==='doc_number'){
+   const digits=input.value.replace(/\\D/g,'').slice(0,14);
+   input.value=digits.length<=11
+    ?digits.replace(/^(\\d{3})(\\d)/,'$1.$2').replace(/^(\\d{3}\\.\\d{3})(\\d)/,'$1.$2').replace(/^(\\d{3}\\.\\d{3}\\.\\d{3})(\\d)/,'$1-$2')
+    :digits.replace(/^(\\d{2})(\\d)/,'$1.$2').replace(/^(\\d{2}\\.\\d{3})(\\d)/,'$1.$2').replace(/^(\\d{2}\\.\\d{3}\\.\\d{3})(\\d)/,'$1/$2').replace(/^(\\d{2}\\.\\d{3}\\.\\d{3}\\/\\d{4})(\\d)/,'$1-$2');
+  }
+  if(input.name==='expiry'){
+   const digits=input.value.replace(/\\D/g,'').slice(0,4);
+   input.value=digits.length>2?digits.slice(0,2)+'/'+digits.slice(2):digits;
+  }
+  if(input.name==='card_number'){
+   input.value=input.value.replace(/\\D/g,'').slice(0,19).replace(/(.{4})/g,'$1 ').trim();
+  }
+  if(input.name==='zip'){
+   const digits=input.value.replace(/\\D/g,'').slice(0,8);
+   input.value=digits.length>5?digits.slice(0,5)+'-'+digits.slice(5):digits;
+  }
+  if(input.name==='state')input.value=input.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,2);
+ });
  const pollStatus=async()=>{
   if(!intent||finished||!modal.isConnected)return;
   try{
@@ -425,6 +447,9 @@ async function checkout(root,code,ctx){
   if(!modal.isConnected)return;
   if(!config?.available||!config.methods?.includes('pix')||!config.methods?.includes('card')){
    status.textContent='A contratação integrada está temporariamente indisponível. Nenhuma cobrança será feita.';
+   body.hidden=false;
+   submit.disabled=true;
+   submit.textContent='Pagamento indisponível';
    return;
   }
   status.textContent='Escolha como deseja pagar. A confirmação ocorrerá após verificação.';
