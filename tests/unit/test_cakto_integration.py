@@ -162,3 +162,16 @@ async def test_checkout_links_are_not_public_before_plan_entitlements():
     assert payload["subscription_activation_enabled"] is False
     assert [x["monthly_cents"] for x in payload["plans"]] == [2990, 8990, 13990]
     assert all("checkout_url" not in item for item in payload["plans"])
+
+
+def test_signed_cakto_callback_is_reconciled_even_without_sck():
+    from app import cakto_api
+    import hashlib
+    payload = {"event": "purchase_approved", "data": {
+        "id": "synthetic-first-order", "status": "paid", "offer_type": "main",
+        "offer": {"id": "synthetic-offer-id"}, "callback": "tenant-callback-0123456789",
+        "amount": 29.9, "currency": "BRL"}}
+    normalized = cakto_api.normalized_events(payload)
+    assert len(normalized) == 1
+    assert normalized[0]["callback_hash"] == hashlib.sha256(b"tenant-callback-0123456789").hexdigest()
+    assert normalized[0]["amount_cents"] == 2990

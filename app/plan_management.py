@@ -5,10 +5,13 @@ is awarded by a redirect, an email address, a trial request or a checkout click.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import os
 import re
 import secrets
+from uuid import uuid4
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
@@ -257,6 +260,21 @@ async def admin_decide_trial(trial_id: UUID, decision: TrialDecision,
     return dict(result)
 
 
+def _replayable_checkout_token(tenant_id: UUID, intent_id: UUID, plan_code: str) -> str:
+    """Domain-separated HMAC for repeatable checkout links; never stores the raw token."""
+    key = os.getenv("INTEGRATION_FERNET_KEY", "")
+    if len(key) < 32:
+        raise HTTPException(503, "Proteção do checkout indisponível")
+    body = ("orion-cakto-v1:" + str(tenant_id) + ":" + str(intent_id) + ":" + plan_code).encode()
+    signature = hmac.new(key.encode(), body, hashlib.sha256).digest()
+    return "orion_" + base64.urlsafe_b64encode(signature).decode().rstrip("=")
+
+
+def _checkout_url(base_url: str, token: str) -> str:
+    # Cakto documents both callback for reconciliation and sck for tracking.
+    return base_url + "?callback=" + token + "&sck=" + token
+
+
 def _exact_offer(offers: list, plan: dict):
     matched = []
     for offer in offers:
@@ -319,21 +337,33 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
             if subscription is not None:
                 raise HTTPException(409, "Esta empresa já possui um registro de assinatura. Regularização ou troca exige confirmação específica.")
             previous = (await db.execute(text("""
-                SELECT 1 FROM orion_cakto_checkout_intents
+                SELECT id,account_id,plan_code,offer_id,expected_cents,callback_hash
+                FROM orion_cakto_checkout_intents
                 WHERE tenant_id=:tenant AND state='pending' AND expires_at>now()
-                LIMIT 1 FOR UPDATE
-            """), {"tenant": tenant_id})).scalar_one_or_none()
+                ORDER BY created_at DESC LIMIT 1 FOR UPDATE
+            """), {"tenant": tenant_id})).mappings().first()
             if previous:
-                raise HTTPException(409, "Já existe uma tentativa de contratação em andamento. Aguarde ou entre em contato com o suporte.")
-            token = secrets.token_urlsafe(24)
-            digest = hashlib.sha256(token.encode()).hexdigest()
-            await db.execute(text("""
-                INSERT INTO orion_cakto_checkout_intents
-                  (tenant_id,account_id,plan_code,offer_id,expected_cents,callback_hash,expires_at)
-                VALUES (:tenant,:account,:plan,:offer,:cents,:digest,now()+INTERVAL '1 hour')
-            """), {"tenant": tenant_id, "account": account_id, "plan": payload.plan_code,
-                   "offer": offer["id"], "cents": plan["price_cents"], "digest": digest})
-    return {"checkout_url": checkout + "?sck=" + token,
+                if (previous["account_id"] != account_id
+                        or previous["plan_code"] != payload.plan_code
+                        or previous["offer_id"] != offer["id"]
+                        or previous["expected_cents"] != plan["price_cents"]):
+                    raise HTTPException(409, "Existe uma contratação diferente em andamento. Confirme com o suporte antes de trocar.")
+                token = _replayable_checkout_token(tenant_id, previous["id"], payload.plan_code)
+                if not secrets.compare_digest(hashlib.sha256(token.encode()).hexdigest(),
+                                               previous["callback_hash"]):
+                    raise HTTPException(409, "Uma tentativa anterior precisa de revisão. Entre em contato com o suporte.")
+            else:
+                intent_id = uuid4()
+                token = _replayable_checkout_token(tenant_id, intent_id, payload.plan_code)
+                digest = hashlib.sha256(token.encode()).hexdigest()
+                await db.execute(text("""
+                    INSERT INTO orion_cakto_checkout_intents
+                      (id,tenant_id,account_id,plan_code,offer_id,expected_cents,callback_hash,expires_at)
+                    VALUES (:id,:tenant,:account,:plan,:offer,:cents,:digest,now()+INTERVAL '7 days')
+                """), {"id": intent_id, "tenant": tenant_id, "account": account_id,
+                       "plan": payload.plan_code, "offer": offer["id"],
+                       "cents": plan["price_cents"], "digest": digest})
+    return {"checkout_url": _checkout_url(checkout, token),
             "plan_code": payload.plan_code, "monthly_cents": plan["price_cents"],
             "status": "pending_payment"}
 

@@ -36,7 +36,7 @@ const comparisons=[
  ['Equipe e profissionais',[['Profissionais permitidos','Até 2','Até 6','Até 10'],['Relatórios por profissional',false,true,true]]],
  ['Suporte',[['Suporte padrão',true,true,true],['Suporte prioritário e configuração assistida',false,false,true]]]
 ];
-function compareCell(value){return value===true?'<span class="op-yes">'+ic('check')+'Incluído</span>':value===false?'<span class="op-no">—</span>':'<span class="op-comparison-value">'+escapeHTML(value)+'</span>';}
+function compareCell(value){return value===true?'<span class="op-yes" aria-label="Incluído">'+ic('check')+'<span class="op-cell-word">Incluído</span></span>':value===false?'<span class="op-no" aria-label="Não incluído">—</span>':'<span class="op-comparison-value">'+escapeHTML(value)+'</span>';}
 function canonical(code){const s=String(code||'').toLowerCase();return s.includes('essencial')?'essencial':s.includes('profissional')||s==='pro'||s.includes('_pro')?'profissional':s.includes('elite')?'elite':'';}
 function statusOf(sub){if(!sub)return 'Sem assinatura';return ({active:'Ativa',trialing:'Em teste',trial:'Em teste',past_due:'Pagamento pendente',grace:'Em carência',suspended:'Suspensa',canceled:'Cancelada',cancelled:'Cancelada',expired:'Encerrada'})[sub.status]||'Estado não confirmado';}
 let mounted=null;
@@ -59,15 +59,36 @@ function renderCard(def, server, currentCode, currentActive, allowed, ctx) {
    +'<div class="op-plan-bottom"><button class="op-btn '+(def.code==='profissional'?'op-btn-primary':'op-btn-secondary')+'" type="button" data-op-checkout="'+def.code+'" '+disabled+'>'+escapeHTML(actionLabel)+'</button>'
    +(same?'<span class="op-plan-caption">Sua assinatura verificada</span>':'<span class="op-plan-caption">Pagamento pela Cakto. Confirmação após validação.</span>')+'</div></article>';
 }
-function renderComparison(){
- return '<section class="op-compare" aria-labelledby="opCompareTitle"><div class="op-section-title"><h2 id="opCompareTitle">Compare os planos</h2><p>Veja as diferenças por categoria.</p></div>'
- +'<div class="op-compare-head" aria-hidden="true"><span>Funcionalidade</span><span>Essencial</span><span>Profissional</span><span>Elite</span></div>'
- +comparisons.map((group,index)=>'<details class="op-compare-group" '+(index===0?'open':'')+'><summary><span>'+escapeHTML(group[0])+'</span>'+ic('chevron')+'</summary><div class="op-comparison-rows">'
- +group[1].map(row=>'<div class="op-compare-row"><div class="op-compare-label">'+escapeHTML(row[0])+'</div>'
- +'<div class="op-compare-value" data-op-label="Essencial">'+compareCell(row[1])+'</div>'
- +'<div class="op-compare-value" data-op-label="Profissional">'+compareCell(row[2])+'</div>'
- +'<div class="op-compare-value" data-op-label="Elite">'+compareCell(row[3])+'</div></div>').join('')
- +'</div></details>').join('')+'</section>';
+function renderComparison(plans){
+ const tiers=[
+  {code:'essencial',title:'Essencial',short:'Essencial'},
+  {code:'profissional',title:'Profissional',short:'Pro'},
+  {code:'elite',title:'Elite',short:'Elite'}
+ ];
+ const tierHead=tiers.map((tier,i)=>{
+  const found=plans.find(plan=>plan.code===tier.code);
+  const display=Number.isInteger(found?.monthly_cents)?price(found.monthly_cents):'—';
+  return '<th class="op-matrix-tier '+(i===1?'op-matrix-popular':'')+'" scope="col" aria-label="Orion '+tier.title+'">'
+   +'<span class="op-matrix-tier-name"><span class="op-matrix-full">'+tier.title+'</span><span class="op-matrix-short">'+tier.short+'</span></span>'
+   +'<span class="op-matrix-tier-price">'+escapeHTML(display)+'</span></th>';
+ }).join('');
+ const sections=comparisons.map(([category,features],groupIndex)=>{
+  const header='<tr class="op-matrix-category"><th scope="rowgroup" colspan="4">'
+   +'<button type="button" data-op-category-toggle="'+groupIndex+'" aria-expanded="true">'
+   +'<span>'+escapeHTML(category)+'</span><span class="op-matrix-category-meta">'+features.length+' recursos '+ic('chevron')+'</span></button></th></tr>';
+  const body=features.map(([name,essencial,profissional,elite],index)=>
+   '<tr class="op-matrix-row'+(index%2?' op-matrix-alt':'')+'"><th scope="row">'+escapeHTML(name)+'</th>'
+   +[essencial,profissional,elite].map((value,i)=>'<td'+(i===1?' class="op-matrix-popular"':'')+'>'
+     +compareCell(value)+'</td>').join('')+'</tr>').join('');
+  return '<tbody data-op-category="'+groupIndex+'">'+header+body+'</tbody>';
+ }).join('');
+ return '<section class="op-compare" aria-labelledby="opCompareTitle">'
+  +'<div class="op-section-title"><h2 id="opCompareTitle">Compare os planos</h2>'
+  +'<p>Uma comparação direta: veja o que cada plano oferece, recurso por recurso.</p></div>'
+  +'<div class="op-matrix-frame"><table class="op-matrix" aria-label="Comparação de funcionalidades dos três planos do Orion">'
+  +'<colgroup><col class="op-matrix-feature-col"><col class="op-matrix-tier-col"><col class="op-matrix-tier-col"><col class="op-matrix-tier-col"></colgroup>'
+  +'<thead><tr><th scope="col">Funcionalidades</th>'+tierHead+'</tr></thead>'
+  +sections+'</table></div><p class="op-matrix-footnote">'+ic('check')+' Incluído <span aria-hidden="true">·</span> — Não incluído <span aria-hidden="true">·</span> Toque em uma categoria para recolher ou expandir.</p></section>';
 }
 function subscriptionBanner(data){
  const sub=data.subscription,trial=data.trial;
@@ -157,7 +178,7 @@ async function checkout(root,code,ctx){
   if(root!==mounted?.root)return;
   const url=new URL(result.checkout_url);
   if(url.protocol!=='https:'||url.hostname!=='pay.cakto.com.br'||result.plan_code!==code||result.status!=='pending_payment')throw Error('Checkout não verificado. Nenhuma contratação foi confirmada.');
-  message.textContent='Pagamento autorizado pela Cakto. A assinatura só será ativada após confirmação verificada.';
+  message.textContent='Abrindo checkout seguro da Cakto. A assinatura será ativada somente após o pagamento confirmado.';
   window.location.assign(url.href);
  }catch(error){if(root===mounted?.root)message.textContent=error.message||'A contratação ainda não está disponível para este plano.';}
  finally{root.dataset.busy='false';if(action.isConnected)action.disabled=false;}
@@ -207,7 +228,7 @@ function render(root,data,ctx){
  +'<section aria-label="Assinaturas mensais"><div class="op-plans-grid">'+defs.map(def=>renderCard(def,plans,currentCode,currentActive,canManage,ctx)).join('')+'</div>'
  +'<p class="op-footnote">*Recursos de mensagens, automações e IA exigem configuração, canal conectado e disponibilidade da funcionalidade. O Marketing IA e o Consultor IA não realizam agendamentos pelo WhatsApp; essa recepcionista é exclusiva do Elite.</p></section>'
  +renderTrial(data,canManage)
- +renderComparison()
+ +renderComparison(plans)
  +(ctx.isAdmin?'<section class="op-admin-trials" aria-labelledby="opAdminTrialsTitle"><div class="op-section-title"><h2 id="opAdminTrialsTitle">Solicitações de teste grátis</h2><p>Somente a administração do Orion pode ativar o período de 3 dias.</p></div><div id="opAdminTrials"></div></section>':'')
  +'<p class="op-legal-foot">Preços mensais por empresa. Nenhuma contratação ou teste é ativado apenas ao clicar. Cobranças e acesso dependem de confirmação do servidor. Não há cobrança automática ao fim do teste.</p></div>';
 }
@@ -222,6 +243,14 @@ function mount(root,data,ctx){
   const trial=event.target.closest('[data-op-trial]'),checkoutButton=event.target.closest('[data-op-checkout]');
   const decision=event.target.closest('[data-op-decision]');
   if(decision){event.preventDefault();await decideTrial(root,decision,ctx);return;}
+  const toggle=event.target.closest('[data-op-category-toggle]');
+  if(toggle){
+   event.preventDefault();
+   const open=toggle.getAttribute('aria-expanded')==='true';
+   toggle.setAttribute('aria-expanded',String(!open));
+   toggle.closest('tbody')?.querySelectorAll('.op-matrix-row').forEach(row=>{row.hidden=open;});
+   return;
+  }
   if(trial&&!trial.disabled){event.preventDefault();renderTrialDialog(root,data,ctx);}
   if(checkoutButton&&!checkoutButton.disabled){event.preventDefault();await checkout(root,checkoutButton.dataset.opCheckout,ctx);}
  });

@@ -154,6 +154,7 @@ async def test_synthetic_cakto_checkout_activates_only_verified_owner_subscripti
             }]
     monkeypatch.setattr(plan_management, "CaktoClient", FakeReadOnlyCakto)
     monkeypatch.setenv("CAKTO_BILLING_LIVE_ENABLED", "1")
+    monkeypatch.setenv("INTEGRATION_FERNET_KEY", "synthetic-domain-separated-checkout-key-for-ci-only-12345")
     order_id, subscription_id = str(uuid4()), "ci-sub-" + uuid4().hex
     try:
         checkout = await plan_management.start_plan_checkout(
@@ -165,6 +166,17 @@ async def test_synthetic_cakto_checkout_activates_only_verified_owner_subscripti
         assert url.scheme == "https" and url.hostname == "pay.cakto.com.br"
         assert url.path == "/3652fm4"
         token = parse_qs(url.query)["sck"][0]
+        assert parse_qs(url.query)["callback"][0] == token
+        # Repeated clicks reopen the same pending checkout, without a second intent.
+        retry = await plan_management.start_plan_checkout(
+            tenant, plan_management.CheckoutChoice(plan_code="profissional"),
+            Actor("member", account_id=account))
+        assert retry["checkout_url"] == checkout["checkout_url"]
+        async with db.connect() as con:
+            count = (await con.execute(text(
+                "SELECT count(*) FROM orion_cakto_checkout_intents WHERE tenant_id=:tenant"
+            ), {"tenant": tenant})).scalar_one()
+            assert count == 1
         event = {
             "event_type": "purchase_approved",
             "external_order_id": order_id,

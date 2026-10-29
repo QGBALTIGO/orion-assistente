@@ -135,11 +135,32 @@ def test_recurring_monthly_cakto_offer_uses_30_day_period_not_unique_interval():
                               plans.CODES["profissional"]) is None
 
 
-def test_cakto_uses_documented_sck_instead_of_arbitrary_checkout_callback():
-    payload={"event":"purchase_approved","data":{"id":"synthetic-order","offer_type":"main",
-        "status":"paid","callback":"fake_unused_checkout_param_2134",
-        "sck":"synthetic_sck_key_0123456","amount":89.90,"offer":{"id":"CIProOffer"}}}
-    event=cakto_api.normalized_events(payload)[0]
-    assert event["callback_hash"]==hashlib.sha256(b"synthetic_sck_key_0123456").hexdigest()
-    assert event["amount_cents"]==8990
-    assert event["currency"] is None
+def test_cakto_uses_documented_callback_and_sck_for_tenant_binding():
+    token = "synthetic_same_token_01234567"
+    payload = {"event": "purchase_approved", "data": {
+        "id": "synthetic-order", "offer_type": "main", "status": "paid",
+        "callback": token, "sck": token, "amount": 89.90,
+        "offer": {"id": "CIProOffer"}}}
+    row = cakto_api.normalized_events(payload)[0]
+    assert row["callback_hash"] == hashlib.sha256(token.encode()).hexdigest()
+    assert row["amount_cents"] == 8990
+    assert row["currency"] is None
+    payload["data"]["sck"] = "mismatched-checkout-token-123456"
+    assert cakto_api.normalized_events(payload)[0]["callback_hash"] is None
+    payload["data"].pop("sck")
+    assert cakto_api.normalized_events(payload)[0]["callback_hash"] == hashlib.sha256(token.encode()).hexdigest()
+
+
+def test_checkout_token_is_replayable_for_same_tenant_and_unguessable(monkeypatch):
+    from uuid import uuid4
+    monkeypatch.setenv("INTEGRATION_FERNET_KEY", "synthetic-domain-separated-checkout-key-for-ci-only-12345")
+    tenant, intent = uuid4(), uuid4()
+    first = plans._replayable_checkout_token(tenant, intent, "profissional")
+    assert first == plans._replayable_checkout_token(tenant, intent, "profissional")
+    assert first != plans._replayable_checkout_token(uuid4(), intent, "profissional")
+    assert first != plans._replayable_checkout_token(tenant, intent, "elite")
+    assert first.startswith("orion_") and len(first) > 38
+    url = plans._checkout_url("https://pay.cakto.com.br/3652fm4", first)
+    from urllib.parse import urlsplit, parse_qs
+    params = parse_qs(urlsplit(url).query)
+    assert params["callback"] == params["sck"] == [first]
