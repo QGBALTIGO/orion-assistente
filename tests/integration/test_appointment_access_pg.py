@@ -24,6 +24,30 @@ async def prepare(d):
 
 
 @pytest.mark.asyncio
+async def test_customer_contact_tracks_verified_channel_and_never_site_appearance_phone(booking_db,monkeypatch):
+    from app import appointment_confirmation as confirmation
+    d=booking_db;a=await prepare(d)
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY','0')
+    async with d['migrator'].begin() as db:
+        await db.execute(text("""INSERT INTO management_site_preferences(tenant_id,contact_phone,whatsapp_phone)
+            VALUES(:t,'+5511999999901','+5511999999902')"""),{'t':d['a']})
+    async with d['factory']() as db:
+        async with tenant_transaction(db,d['a']):link=await access.issue(db,d['a'],a['id'])
+    _,digest=access.parse_token(link.split('#')[1])
+    for connected in ('556781234567','5567999999903',None):
+        async def current(t):assert t==d['a'];return connected
+        monkeypatch.setattr(confirmation,'connected_channel_phone',current)
+        async with d['factory']() as db:
+            async with tenant_transaction(db,d['a']):
+                identity=await access.verify(db,d['a'],digest)
+                view=await customer_view(db,identity)
+                assert view['contact_phone']==('+'+connected if connected else None)
+    async with d['migrator'].begin() as db:
+        await db.execute(text('DELETE FROM management_site_preferences WHERE tenant_id=:t'),{'t':d['a']})
+
+
+@pytest.mark.asyncio
 async def test_link_only_hash_is_stored_and_other_tenant_cannot_read(booking_db,monkeypatch):
     monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
     monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY','0')

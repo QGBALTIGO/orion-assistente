@@ -1,7 +1,7 @@
 """Owner-scoped configuration and bounded diagnostics; never sends on a GET."""
 import re
 import os
-from uuid import UUID
+from uuid import UUID,uuid5,NAMESPACE_URL
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -80,6 +80,48 @@ async def configuration(tenant_id:UUID,actor:Actor=Depends(authenticate)):
 
 class PilotPreparation(StrictModel):
     acknowledged:StrictBool
+
+
+class RecoverConfirmation(StrictModel):
+    protocol:str=Field(pattern=r'^AG-[A-HJ-NP-Z2-9]{6}$')
+
+    @field_validator('protocol',mode='before')
+    @classmethod
+    def normalize_protocol(cls,value):
+        return value.strip().upper() if isinstance(value,str) else value
+
+
+@router.post('/recover-confirmation')
+async def recover_confirmation(tenant_id:UUID,payload:RecoverConfirmation,actor:Actor=Depends(authenticate)):
+    """Admin recovery of a real, recent inbound; never accepts a phone or URL."""
+    access.require_tenant(tenant_id)
+    if actor.role!='admin' or not isinstance(actor.account_id,UUID):
+        raise HTTPException(403,'A confirmação manual exige o administrador autenticado')
+    from app.qr_legacy import configured_tenant,channel_id
+    from app.qr_channels import _owned_channel
+    from app.appointment_confirmation import confirmation_reply,detected_protocol,GENERIC
+    from app.inbox_conversations import enqueue_preserved_manual
+    if configured_tenant()!=tenant_id:raise HTTPException(403,'Use a conexão do admin')
+    channel=channel_id(tenant_id)
+    await _owned_channel(tenant_id,channel,actor)
+    async with management_session(tenant_id,actor) as db:
+        incoming=(await db.execute(text("""SELECT m.id,m.body,c.contact_e164 FROM inbox_messages m
+            JOIN inbox_controls c ON c.tenant_id=m.tenant_id AND c.id=m.control_id
+            JOIN appointments a ON a.tenant_id=c.tenant_id AND a.protocol=:protocol
+            JOIN customers k ON k.tenant_id=a.tenant_id AND k.id=a.customer_id AND k.whatsapp_e164=c.contact_e164
+            WHERE m.tenant_id=:t AND c.channel_id=:channel AND m.direction='in' AND m.source='customer'
+              AND m.kind='text' AND m.external_id IS NOT NULL AND k.active AND k.deleted_at IS NULL
+              AND m.created_at>clock_timestamp()-interval '24 hours'
+              AND position(:protocol IN upper(m.body))>0 ORDER BY m.created_at DESC,m.id DESC LIMIT 1"""),
+            {'t':tenant_id,'channel':channel,'protocol':payload.protocol})).mappings().first()
+    if not incoming or detected_protocol(incoming['body'])!=payload.protocol:
+        raise HTTPException(404,'Não há uma solicitação recente desse protocolo pelo contato cadastrado')
+    if not access.recipient_allowed(incoming['contact_e164']):
+        raise HTTPException(403,'O contato ainda não está autorizado para o piloto')
+    operation=uuid5(NAMESPACE_URL,'orion:appointment-confirmation-recovery:'+str(tenant_id)+':'+str(incoming['id']))
+    answer=await confirmation_reply(tenant_id,incoming['contact_e164'],incoming['body'],'qr:'+str(channel),'recovery:'+str(incoming['id']))
+    if not answer or answer==GENERIC:raise HTTPException(409,'Atualize as permissões e os dados do agendamento antes de confirmar')
+    return await enqueue_preserved_manual(tenant_id,channel,incoming['contact_e164'],answer,operation,actor)
 
 
 @router.post('/prepare-admin-pilot')

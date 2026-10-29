@@ -39,7 +39,9 @@ async def comm_db(booking_db,monkeypatch):
     try:yield d
     finally:
         async with d['migrator'].begin() as db:
-            for table in ('appointment_return_intervals','appointment_change_proposals','appointment_confirmation_receipts','appointment_notifications','appointment_communication_settings','contact_consents','qr_channels','tenant_memberships'):
+            await db.execute(text('UPDATE tenants SET whatsapp_channel_id=NULL WHERE id=:t'),{'t':d['a']})
+            for table in ('inbox_reads','inbox_provider_receipts','inbox_messages','inbox_control_events','inbox_controls','inbox_channel_links',
+                'appointment_return_intervals','appointment_change_proposals','appointment_confirmation_receipts','appointment_notifications','appointment_communication_settings','contact_consents','qr_channels','tenant_memberships'):
                 await db.execute(text(f'DELETE FROM {table} WHERE tenant_id=:t'),{'t':d['a']})
             await db.execute(text('DELETE FROM panel_accounts WHERE id=:id'),{'id':account})
 
@@ -100,6 +102,71 @@ async def test_confirmation_requires_matching_phone_and_does_not_return_foreign_
     async with d['factory']() as db:
         await cancel_appointment(db,d['a'],a['id'],context=customer_actor(a['customer_id'],'public_site'))
     assert await confirmation.confirmation_reply(d['a'],phone(920),body,'qr-test','message2')==''
+
+
+@pytest.mark.asyncio
+async def test_admin_recovers_only_verified_recent_inbound_once_with_real_native_owner(comm_db,monkeypatch):
+    import base64,hashlib,os
+    from app import appointment_communications_api as api,inbox_runtime,inbox_control,management_api,qr_legacy,legacy_admin_identity
+    from app.catalog_api import Actor
+    from fastapi import HTTPException
+    d=comm_db;a=await booking(d)
+    for flag in ('INBOX_CONTROL_ENABLED','INBOX_SEND_ENABLED','QR_CHANNELS_ENABLED','QR_LEGACY_CENTRAL_ENABLED','PANEL_LEGACY_ADMIN_IDENTITY_ENABLED'):
+        monkeypatch.setenv(flag,'1')
+    monkeypatch.setenv('QR_AI_TENANT_ID',str(d['a']))
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY','1')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_TENANT_ID',str(d['a']))
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','556781234567')
+    monkeypatch.delenv('APPOINTMENT_COMMUNICATIONS_PILOT_CUSTOMER_PHONES',raising=False)
+    monkeypatch.setenv('PANEL_ADMIN_USERNAME','synthetic-protocol-admin')
+    encoded='pbkdf2_sha256$200000$'+base64.b64encode(b'synthetic-salt').decode()+'$'+base64.b64encode(b'x'*32).decode()
+    monkeypatch.setenv('PANEL_ADMIN_PASSWORD_HASH',encoded)
+    username,digest=legacy_admin_identity.configuration_binding()
+    bridge_key='synthetic-recovery-bridge-key-'+'x'*40
+    monkeypatch.setenv('QR_BRIDGE_TOKEN',bridge_key)
+    credential=Fernet(os.environ['INTEGRATION_FERNET_KEY'].encode()).encrypt(bridge_key.encode()).decode()
+    async with d['migrator'].begin() as db:
+        await db.execute(text("""UPDATE panel_accounts SET role='admin',auth_provider='legacy_admin',email=NULL,password_hash=NULL,
+            legacy_username=:username,legacy_credential_digest=:digest WHERE id=:a"""),{'a':d['account'],'username':username,'digest':digest})
+        await db.execute(text('UPDATE qr_channels SET credential_hash=:hash,credential_encrypted=:encrypted WHERE id=:c'),
+            {'hash':hashlib.sha256(bridge_key.encode()).hexdigest(),'encrypted':credential,'c':d['channel']})
+        await db.execute(text('UPDATE tenants SET whatsapp_channel_id=:c WHERE id=:t'),{'t':d['a'],'c':d['channel']})
+    monkeypatch.setattr(qr_legacy,'channel_id',lambda t:d['channel'] if t==d['a'] else uuid4())
+    monkeypatch.setattr(management_api,'get_session_factory',lambda:d['factory'])
+    monkeypatch.setattr(inbox_runtime,'get_session_factory',lambda:d['factory'])
+    async with d['factory']() as db:
+        async with tenant_transaction(db,d['a']):await inbox_control.register_channel(db,d['a'],d['channel'])
+    actor=Actor('admin',account_id=d['account']);payload=api.RecoverConfirmation(protocol=a['protocol'])
+    with pytest.raises(HTTPException) as missing:await api.recover_confirmation(d['a'],payload,actor)
+    assert missing.value.status_code==404
+    body='Olá, Orion! Protocolo: '+a['protocol']
+    async with d['factory']() as db:
+        async with tenant_transaction(db,d['a']):
+            await inbox_runtime.record_inbound(db,d['a'],d['channel'],phone(921),'other-contact',body)
+    with pytest.raises(HTTPException) as wrong:await api.recover_confirmation(d['a'],payload,actor)
+    assert wrong.value.status_code==404
+    async with d['factory']() as db:
+        async with tenant_transaction(db,d['a']):
+            await inbox_runtime.record_inbound(db,d['a'],d['channel'],phone(920),'verified-contact',body)
+    with pytest.raises(HTTPException) as unapproved:await api.recover_confirmation(d['a'],payload,actor)
+    assert unapproved.value.status_code==403
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_CUSTOMER_PHONES',phone(920).lstrip('+'))
+    first=await api.recover_confirmation(d['a'],payload,actor)
+    assert first['status']=='queued' and not first['accepted']
+    assert await api.recover_confirmation(d['a'],payload,actor)==first
+    sent=[]
+    async def sender(t,c,op,*,message):
+        assert (t,c,message['to'])==(d['a'],d['channel'],phone(920).lstrip('+'))
+        assert a['protocol'] in message['text'] and '/a#' in message['text']
+        sent.append(op);return {'accepted':True,'state':'accepted','provider_id':'synthetic-provider-id'}
+    context={'inbox_qr_sender':sender}
+    assert await inbox_runtime.process_inbox_message(context,str(d['a']),str(first['operation_id']))=='accepted'
+    assert await inbox_runtime.process_inbox_message(context,str(d['a']),str(first['operation_id']))=='already_claimed'
+    assert len(sent)==1
+    async with d['factory']() as db:
+        async with tenant_transaction(db,d['a']):
+            assert (await db.execute(text("SELECT count(*) FROM inbox_messages WHERE tenant_id=:t AND direction='out'"),{'t':d['a']})).scalar_one()==1
+            assert (await db.execute(text('SELECT count(*) FROM appointment_access WHERE tenant_id=:t'),{'t':d['a']})).scalar_one()==1
 
 
 @pytest.mark.asyncio

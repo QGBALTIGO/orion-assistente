@@ -42,8 +42,14 @@ def tenant_enabled(tenant):
 
 def recipient_allowed(phone):
     if not pilot_only():return True
+    if not isinstance(phone,str):return False
     configured=os.getenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','')
-    return bool(re.fullmatch(r'55[1-9][0-9]{9,10}',configured)) and phone.lstrip('+')==configured
+    # The connected self PN remains a separate HMAC/session binding. Explicit
+    # test customers never replace it or widen a channel's transport allowlist.
+    customers=os.getenv('APPOINTMENT_COMMUNICATIONS_PILOT_CUSTOMER_PHONES','').split(',')
+    if len(customers)>10:return False
+    allowed={configured,*[p.strip() for p in customers if p.strip()]}
+    return phone.lstrip('+') in allowed and bool(re.fullmatch(r'55[1-9][0-9]{9,10}',phone.lstrip('+')))
 
 
 def require_tenant(tenant):

@@ -1,7 +1,5 @@
 name: Appointment communications — PostgreSQL regression
 on:
-  push:
-    branches: [codex/appointment-communications-20261029]
   pull_request:
     paths-ignore: ['docs/**']
 concurrency:

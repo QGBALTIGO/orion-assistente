@@ -99,16 +99,16 @@ def main():
       page.set_content('<!doctype html><html data-theme="'+theme+'"><head><base href="'+BASE+'"><link rel="stylesheet" href="/panel-assets/orion-suite.css"><style>*{box-sizing:border-box}</style></head><body class="orion-suite-enabled" style="margin:0;font:400 16px/1.5 var(--os-font)"><main class="os-main" id="settings-host" style="max-width:900px;margin:auto;padding:16px"></main></body></html>')
       page.add_script_tag(url=BASE+'/panel-assets/orion-appointment-communications.js')
       page.evaluate("""async () => {
-        const fixture={available:true,timezone:'America/Campo_Grande',canonical_channel_id:'00000000-0000-4000-8000-000000000010',
+        const fixture={available:true,pilot_only:true,timezone:'America/Campo_Grande',canonical_channel_id:'00000000-0000-4000-8000-000000000010',
           settings:{enabled:false,version:1,confirmation:true,professional_notice:true,cancellation:true,rescheduling:true,
             reschedule_acceptance:false,reminder:true,review:false,return_invitation:false,review_delay_min:15,signature:'Orion Agenda'},
           return_services:[{id:'00000000-0000-4000-8000-000000000011',name:'Corte',days:21}],
           notifications:[{id:'notice',event:'professional_new',protocol:'AG-TEST22',recipient_kind:'professional',recipient_label:'Profissional sintético',
             status:'unknown',due_at:'2026-11-15T18:00:00Z',attempted_at:'2026-11-15T18:00:00Z',last_error:'transport_result_unknown'}],
           reviews:[{rating:5,professional:'Profissional sintético',comment:'<script>alert(1)</script>'}],transport_limit:'Teste sintético de interface.'};
-        window._settingsSaved=null;
+        window._settingsSaved=null;window._recoveryCount=0;
         await window.OrionAppointmentCommunications.mount({host:document.getElementById('settings-host'),tenantId:'tenant',canWrite:true,
-          request:async(path,method,body)=>{if(method==='PUT'){window._settingsSaved=body;fixture.settings.version++;return {saved:true};}return fixture;}});
+          request:async(path,method,body)=>{if(path.endsWith('/recover-confirmation')){window._recoveryCount++;return {status:'queued',accepted:false};}if(method==='PUT'){window._settingsSaved=body;fixture.settings.version++;return {saved:true};}return fixture;}});
       }""")
       page.get_by_role('heading',name='Comunicação de agendamentos',exact=True).wait_for()
       page.wait_for_function("getComputedStyle(document.querySelector('#settings-host .os-button')).borderRadius === '10px'")
@@ -116,6 +116,10 @@ def main():
       assert page.get_by_text('<script>alert(1)</script>',exact=True).count()==1
       assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),(engine,width,theme,'settings overflow')
       assert page.locator('.os-appointment-comms .os-field input').evaluate_all("inputs => inputs.every(input => {const field=input.parentElement.getBoundingClientRect(), rect=input.getBoundingClientRect();return rect.left>=field.left-1 && rect.right<=field.right+1})"),(engine,width,theme,'field overflow')
+      page.get_by_label('Protocolo recebido',exact=True).fill('AG-TEST22')
+      page.get_by_role('button',name='Confirmar protocolo',exact=True).click()
+      page.get_by_text('Confirmação registrada na Central.',exact=False).wait_for()
+      assert page.evaluate('window._recoveryCount')==1
       page.screenshot(path=str(OUT/f'{engine}-{width}-{theme}-settings.png'),full_page=True)
       page.get_by_role('button',name='Salvar comunicação',exact=True).click()
       page.wait_for_function('window._settingsSaved !== null')

@@ -6,6 +6,7 @@ from app.catalog_api import Actor
 
 
 def test_pilot_fails_closed_and_restricts_tenant_and_recipient(monkeypatch):
+    monkeypatch.delenv('APPOINTMENT_COMMUNICATIONS_PILOT_CUSTOMER_PHONES',raising=False)
     tenant=uuid4();monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
     monkeypatch.delenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY',raising=False)
     monkeypatch.delenv('APPOINTMENT_COMMUNICATIONS_PILOT_TENANT_ID',raising=False)
@@ -14,6 +15,40 @@ def test_pilot_fails_closed_and_restricts_tenant_and_recipient(monkeypatch):
     monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','5567999999901')
     assert access.tenant_enabled(tenant) and not access.tenant_enabled(uuid4())
     assert access.recipient_allowed('+5567999999901') and not access.recipient_allowed('+5567999999902')
+
+
+def test_pilot_test_customer_never_replaces_connected_self_identity(monkeypatch):
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY','1')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','556781234567')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_CUSTOMER_PHONES','5567999999902')
+    assert access.recipient_allowed('+5567999999902') and access.recipient_allowed('+556781234567')
+    assert not access.recipient_allowed('+5567999999903') and not access.recipient_allowed(None)
+    assert not access.recipient_allowed('5567999999902@g.us')
+    assert qr_legacy.verified_self_phone({'tenant_id':uuid4(),'id':uuid4(),'request_fingerprint':'a'*64}) is None
+
+
+@pytest.mark.asyncio
+async def test_protocol_outside_pilot_never_falls_back_to_general_ai(monkeypatch):
+    from app import appointment_confirmation as confirmation
+    tenant=uuid4()
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY','1')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_TENANT_ID',str(tenant))
+    monkeypatch.delenv('APPOINTMENT_COMMUNICATIONS_PILOT_CUSTOMER_PHONES',raising=False)
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','556781234567')
+    def forbidden():pytest.fail('Unapproved sender must not query an appointment')
+    monkeypatch.setattr(confirmation,'get_session_factory',forbidden)
+    assert await confirmation.confirmation_reply(tenant,'5567999999902','Protocolo: AG-TEST22','qr','event')==confirmation.GENERIC
+
+
+@pytest.mark.asyncio
+async def test_recovery_denies_non_admin_before_reading_any_conversation(monkeypatch):
+    from app import appointment_communications_api as api
+    tenant=uuid4();monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY','0')
+    with pytest.raises(HTTPException) as exc:
+        await api.recover_confirmation(tenant,api.RecoverConfirmation(protocol=' ag-test22 '),Actor('support'))
+    assert exc.value.status_code==403
 
 
 @pytest.mark.asyncio
@@ -95,3 +130,22 @@ def test_full_predeploy_routes_existing_appointment_schema_to_its_release(monkey
         import importlib
         monkeypatch.setattr(importlib.import_module('scripts.backup_and_migrate_'+module),'main',unexpected)
     assert entry.predeploy_main()==0 and calls==['appointment']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('state,status,verified,expected',[
+    ('ready','connected',True,'556781234567'),('ready','connected',False,None),
+    ('ready','stopped',True,None),('ambiguous','connected',True,None)])
+async def test_contact_destination_uses_only_current_verified_channel(monkeypatch,state,status,verified,expected):
+    from contextlib import asynccontextmanager
+    from app import appointment_confirmation as confirmation,catalog_api
+    tenant=uuid4();channel={'id':uuid4(),'revision':1,'enabled':True,'assistant_enabled':False};calls=[]
+    @asynccontextmanager
+    async def registry():yield object()
+    async def canonical(db,t):assert t==tenant;return channel,state
+    async def observed(row,action,method):
+        calls.append((action,method));return {'status':status,'phone':'556781234567','phone_verified':verified}
+    monkeypatch.setattr(catalog_api,'support_session_factory',lambda:registry)
+    monkeypatch.setattr(qr_channels,'_canonical',canonical);monkeypatch.setattr(qr_channels,'_bridge_control',observed)
+    assert await confirmation.connected_channel_phone(tenant)==expected
+    assert calls==([('status','GET')] if state=='ready' else [])
