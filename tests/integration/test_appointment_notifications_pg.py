@@ -249,3 +249,32 @@ async def test_retention_removes_old_payloads_without_erasing_booking_history(co
     async with d['migrator'].connect() as db:
         assert (await db.execute(text('SELECT status FROM appointments WHERE id=:id'),{'id':a['id']})).scalar_one()=='confirmed'
         assert (await db.execute(text('SELECT count(*) FROM appointment_history WHERE appointment_id=:id'),{'id':a['id']})).scalar_one()>0
+
+
+@pytest.mark.asyncio
+async def test_real_arq_dispatches_persistent_notifications_once(comm_db):
+    import os
+    from arq.connections import create_pool,RedisSettings
+    from arq.worker import Worker
+    from app.worker import WorkerSettings
+    d=comm_db;await booking(d)
+    notice=next(r for r in await jobs(d) if r['event']=='professional_new')
+    queue='arq:appointment-test:'+str(uuid4())
+    pool=await create_pool(RedisSettings.from_dsn(os.environ['REDIS_URL']))
+    sent=[]
+    async def sender(*args):sent.append(args);return {'state':'accepted','accepted':True}
+    try:
+        for _ in range(2):
+            await pool.enqueue_job('process_appointment_notification',str(d['a']),str(notice['id']),_queue_name=queue,_job_id='appointment-test-'+str(uuid4()))
+        worker=Worker(WorkerSettings.functions,redis_pool=pool,queue_name=queue,burst=True,handle_signals=False,
+            max_jobs=1,poll_delay=.01,keep_result=0,ctx={'appointment_sender':sender})
+        try:
+            await asyncio.wait_for(worker.async_run(),15)
+            assert worker.jobs_complete==2 and worker.jobs_failed==0
+            assert len(sent)==1
+            assert next(r for r in await jobs(d) if r['id']==notice['id'])['status']=='accepted'
+        finally:await worker.close()
+    finally:
+        # Only this test's randomly named queue is eligible for removal.
+        cleanup=await create_pool(RedisSettings.from_dsn(os.environ['REDIS_URL']))
+        await cleanup.delete(queue);await cleanup.aclose()
