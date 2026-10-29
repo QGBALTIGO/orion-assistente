@@ -43,6 +43,9 @@ def test_authorized_bootstrap_is_atomic_idempotent_preserves_records_and_marks_a
         db.execute(text("INSERT INTO tenants(id,name,slug,status) VALUES(:id,'Plano sintético',:slug,:status)"),{"id":tenant,"slug":"release-"+str(tenant),"status":status})
         db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role,active) VALUES(:t,:a,'owner',true)"),{"t":tenant,"a":admin if tenant==a else owner})
     db.execute(text("INSERT INTO professionals(tenant_id,name,active) VALUES(:t,'Preservado',true)"),{"t":b})
+    db.execute(text("""INSERT INTO business_onboarding(tenant_id,created_by,is_new,configuration,current_step)
+        VALUES(:tenant,:owner,false,'{"contact_phone":"+5567999999901"}'::jsonb,'review')"""),{"tenant":b,"owner":owner})
+    assert db.execute(text("SELECT public.orion_plan_snapshot(:t)->>'contact_phone'"),{"t":b}).scalar_one()=='+5567999999901'
     before_accounts=db.execute(text("SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM panel_accounts a")).scalar_one()
     before_tenants=db.execute(text("SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM tenants t")).scalar_one()
     before_staff=db.execute(text("SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM professionals p")).scalar_one()

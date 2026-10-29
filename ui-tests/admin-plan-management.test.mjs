@@ -51,3 +51,8 @@ test('Escape cannot close a pending save and reset discards a late administrativ
   const event=new h.window.Event('cancel',{cancelable:true});h.element('#osDialog').dispatchEvent(event);assert.equal(event.defaultPrevented,true);assert.equal(h.element('#osDialog').open,true);
   h.window.OrionAdminCenter.reset();pending.resolve(h.value);await flush();assert.equal(h.element('#osDialog').open,false);assert.equal(mutations(h).length,1);
 });
+
+test('the plan modal opened from account details returns keyboard focus to the persistent account row',async t=>{
+  const h=await fixture();t.after(()=>h.close());const origin=h.element('#adminClientCenter .os-table [data-admin-control=view]');origin.focus();h.click('#adminClientCenter .os-table [data-admin-control=view]');await flush();
+  h.click('#osDialog [data-admin-control=plan]');await flush();h.element('#osDialog').dispatchEvent(new h.window.Event('cancel',{cancelable:true}));assert.equal(h.element('#osDialog').open,false);assert.equal(h.document.activeElement,origin);
+});

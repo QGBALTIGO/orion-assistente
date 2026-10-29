@@ -136,8 +136,6 @@ jobs:
     name: Painel real — ${{ matrix.engine }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
-    env:
-      PLAN_EVIDENCE_DIR: ${{ runner.temp }}/orion-plan-permissions
     strategy:
       fail-fast: false
       matrix:
@@ -152,6 +150,8 @@ jobs:
           python -m pip install -r tests/e2e/requirements.txt pytest
           python -m playwright install --with-deps ${{ matrix.engine }}
       - name: Seis dimensões e dois temas, contas e planos sintéticos
+        env:
+          PLAN_EVIDENCE_DIR: ${{ runner.temp }}/orion-plan-permissions
         run: python -m pytest -q -ra --maxfail=1 tests/e2e/browser_plan_permissions.py -k '${{ matrix.engine }}'
       - name: Preservar smoke existente do catálogo em sete larguras
         if: matrix.engine == 'chromium'

@@ -6,6 +6,7 @@ The HTTP fixture has no database, billing client, worker or external provider.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import struct
 from pathlib import Path
@@ -60,6 +61,8 @@ def test_shipped_panel_plan_permissions(browser, fixture_url, size, theme, scena
     page = context.new_page();page.on('pageerror', lambda error: console_errors.append(str(error)))
     label = f'{engine}-{size[0]}x{size[1]}-{theme}-{scenario}'
     evidence={}
+    source_files=['panel.html','orion-suite.js','orion-admin-center.js','orion-plans.js','orion-appointment-communications.js','orion-suite.css','orion-plans.css']
+    source_hashes={name:hashlib.sha256((ROOT/'app'/'static'/name).read_bytes()).hexdigest() for name in source_files}
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     try:
         role, plan, tab = ('admin', 'essencial', 'member') if scenario == 'admin' else ('owner', scenario, 'plano')
@@ -77,6 +80,8 @@ def test_shipped_panel_plan_permissions(browser, fixture_url, size, theme, scena
             page.fill('#adminManualExpires', '2099-11-01T12:00')
             page.fill('#adminManualReason', 'Liberação sintética para validação visual')
             evidence['form']={'geometry':assert_geometry(page,size,modal=True),'capture':capture(page,ARTIFACTS/f'{label}-form.png',size)}
+            page.locator('#osDialog').evaluate('n=>n.scrollTo(0,0)')
+            evidence['form_top']={'geometry':assert_geometry(page,size,modal=True),'capture':capture(page,ARTIFACTS/f'{label}-form-top.png',size)}
             page.locator('[data-admin-form=plan] [type=submit]').click()
             expect(page.locator('[data-admin-form=plan-confirm]')).to_be_visible()
             snapshot = page.request.get(fixture_url + '/__fixture/calls').json()
@@ -96,6 +101,30 @@ def test_shipped_panel_plan_permissions(browser, fixture_url, size, theme, scena
             snapshot = page.request.get(fixture_url + '/__fixture/calls').json()
             writes = [call for call in snapshot['calls'] if call['method'] != 'GET']
             assert len(writes) == 1 and writes[0]['path'] == PLAN_PATH and writes[0]['method'] == 'PUT'
+            origin=page.locator('#adminClientCenter [data-admin-control=view]:visible').first
+            origin.click();page.locator('#osDialog [data-admin-control=plan]').click()
+            history=page.locator('#osDialog details.os-more-fields').last
+            history.locator('summary').click()
+            expect(history.locator('.os-disclosure-body')).to_be_visible()
+            expect(history).to_contain_text('Liberação sintética para validação visual')
+            expect(history).to_contain_text('Orion Elite')
+            evidence['history']={'geometry':assert_geometry(page,size,modal=True),'capture':capture(page,ARTIFACTS/f'{label}-history.png',size)}
+            page.keyboard.press('Escape')
+            expect(page.locator('#osDialog')).not_to_be_visible()
+            expect(origin).to_be_focused()
+            origin.click();page.locator('#osDialog [data-admin-control=plan]').click()
+            page.locator('[data-admin-control=remove-plan]').click()
+            expect(page.locator('#osDialog')).to_contain_text('recalculado pela assinatura comercial')
+            snapshot=page.request.get(fixture_url+'/__fixture/calls').json()
+            assert len([call for call in snapshot['calls'] if call['method']!='GET'])==1
+            evidence['removal_review']={'geometry':assert_geometry(page,size,modal=True),'capture':capture(page,ARTIFACTS/f'{label}-removal.png',size)}
+            page.locator('[data-admin-form=plan-confirm] [type=submit]').click()
+            expect(page.locator('#osDialog')).not_to_be_visible()
+            expect(page.locator('#adminAccountsResults')).to_contain_text('Orion Essencial')
+            snapshot=page.request.get(fixture_url+'/__fixture/calls').json()
+            writes=[call for call in snapshot['calls'] if call['method']!='GET']
+            assert len(writes)==2 and writes[-1]['path']==PLAN_PATH and writes[-1]['method']=='DELETE'
+            assert page.request.get(fixture_url+'/auth/me').json()['role']=='admin'
         else:
             expect(page.locator('[data-op-effective-plan]')).to_be_visible()
             for target in ['marketing', 'desempenho', 'consultor', 'fidelizacao']:
@@ -124,8 +153,9 @@ def test_shipped_panel_plan_permissions(browser, fixture_url, size, theme, scena
         assert not unexpected_network, unexpected_network
         assert not console_errors, console_errors
         assert not snapshot['unexpected'], snapshot['unexpected']
+        assert source_hashes=={name:hashlib.sha256((ROOT/'app'/'static'/name).read_bytes()).hexdigest() for name in source_files},'UI assets changed during the evidence capture'
         (ARTIFACTS / f'{label}.json').write_text(json.dumps({'engine': engine, 'viewport': size, 'theme': theme,
-            'scenario': scenario, 'measured_states':evidence, 'calls': snapshot['calls'], 'external_requests': unexpected_network,
+            'scenario': scenario, 'source_hashes':source_hashes, 'measured_states':evidence, 'calls': snapshot['calls'], 'external_requests': unexpected_network,
             'limitations': ['synthetic state only', 'viewport emulation', 'no physical device or keyboard', 'no provider or payment']}, indent=2), encoding='utf-8')
     finally:
         context.close()
@@ -135,7 +165,7 @@ def capture(page,path,size):
     raw=page.screenshot(path=str(path),full_page=False)
     assert raw[:8]==b'\x89PNG\r\n\x1a\n' and raw[12:16]==b'IHDR'
     png=struct.unpack('>II',raw[16:24])
-    measured=page.evaluate('''() => ({width:innerWidth,height:innerHeight,scrollX,scrollY,dpr:devicePixelRatio,fonts:document.fonts.status,focus:{tag:document.activeElement?.tagName,id:document.activeElement?.id,name:document.activeElement?.getAttribute('name')}})''')
+    measured=page.evaluate('''() => {const dialog=document.querySelector('#osDialog[open]');return {width:innerWidth,height:innerHeight,scrollX,scrollY,dpr:devicePixelRatio,fonts:document.fonts.status,theme:document.documentElement.dataset.theme,dialog_scroll:dialog?{top:dialog.scrollTop,left:dialog.scrollLeft,height:dialog.scrollHeight,client_height:dialog.clientHeight}:null,focus:{tag:document.activeElement?.tagName,id:document.activeElement?.id,name:document.activeElement?.getAttribute('name')}}}''')
     assert (measured['width'],measured['height'])==size
     assert png==(round(measured['width']*measured['dpr']),round(measured['height']*measured['dpr'])),(png,measured)
     return {'file':str(path),'png_width':png[0],'png_height':png[1],**measured}
@@ -145,7 +175,7 @@ def assert_geometry(page, size, modal=False):
     measured = page.evaluate('''() => {
       const d=document.querySelector('#osDialog[open]'),r=d?.getBoundingClientRect();
       return {width:innerWidth,height:innerHeight,scroll:document.documentElement.scrollWidth,
-        modal:r?{left:r.left,right:r.right,top:r.top,bottom:r.bottom,scroll:d.scrollWidth,client:d.clientWidth}:null,
+        modal:r?{left:r.left,right:r.right,top:r.top,bottom:r.bottom,scroll:d.scrollWidth,client:d.clientWidth,scrollTop:d.scrollTop,scrollHeight:d.scrollHeight,clientHeight:d.clientHeight}:null,
         inputs:d?[...d.querySelectorAll('input:not([type=checkbox]):not([disabled]),select,textarea')].filter(n=>n.getClientRects().length).map(n=>({width:n.getBoundingClientRect().width,scroll:n.scrollWidth,client:n.clientWidth})):[]};
     }''')
     assert (measured['width'], measured['height']) == size

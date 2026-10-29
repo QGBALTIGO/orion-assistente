@@ -39,7 +39,7 @@
     erase_now:"Exclusão irreversível da conta de acesso agora, sem esperar 30 dias. O e-mail ficará disponível para um novo cadastro. Registros exigidos por lei poderão ser preservados."};
   const state={request:null,role:null,onMaintenanceStart:null,epoch:0,seq:0,
     query:"",status:"all",plan:'all',source:'all',subscriptionStatus:'all',page:1,items:[],stats:null,total:0,selected:null,planEnvelope:null,planDraft:null,planIntent:null,modalRead:0,
-    owned:false,modalType:null,modalAction:null,trigger:null,busy:false,timer:null};
+    owned:false,modalType:null,modalAction:null,trigger:null,returnTrigger:null,busy:false,timer:null};
   const isAdmin=()=>state.role==="admin"&&!$("page-member")?.classList.contains("hidden")&&!$("adminClientCenter")?.classList.contains("hidden");
   const btn=(title,key,opts={})=>'<button type="button" class="'+(opts.cls||"os-icon-button")+
     '" data-admin-control="'+esc(key)+'"'+(opts.id?' data-account-id="'+esc(opts.id)+'"':"")+
@@ -132,6 +132,7 @@
   }
   function openDialog(type,title,html,record){
     const dialog=$("osDialog");if(!dialog)return;
+    if(!state.owned||state.trigger?.closest('#adminClientCenter'))state.returnTrigger=state.trigger;
     state.owned=true;state.modalType=type;state.selected=record;state.busy=false;
     dialog.className="os-dialog os-customer-dialog os-admin-dialog";
     dialog.innerHTML='<button type="button" class="os-icon-button os-close" data-admin-control="close" aria-label="Fechar">'+icon("close")+'</button>'+
@@ -145,7 +146,7 @@
     state.modalRead++;
     const dialog=$("osDialog");if(state.owned&&dialog?.open)dialog.close();
     state.owned=false;state.selected=null;state.modalType=null;state.modalAction=null;
-    const trigger=state.trigger;state.trigger=null;
+    const trigger=state.returnTrigger||state.trigger;state.trigger=null;state.returnTrigger=null;
     if(trigger?.isConnected)trigger.focus({preventScroll:true});
   }
   function details(a,history){

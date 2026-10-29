@@ -120,7 +120,7 @@ def upgrade():
           'trial',CASE WHEN r.id IS NULL THEN NULL ELSE jsonb_build_object('id',r.id,
             'status',r.status,'started_at',r.started_at,'ends_at',r.ends_at,'version',r.version) END,
           'active_professionals',(SELECT count(*) FROM public.professionals pr WHERE pr.tenant_id=t.id AND pr.active),
-          'contact_phone',(SELECT bs.config->>'contact_phone' FROM public.business_settings bs WHERE bs.tenant_id=t.id)
+          'contact_phone',(SELECT bs.configuration->>'contact_phone' FROM public.business_onboarding bs WHERE bs.tenant_id=t.id)
         ) FROM public.tenants t LEFT JOIN public.tenant_plan_controls c ON c.tenant_id=t.id
           LEFT JOIN public.panel_accounts a ON a.id=c.platform_account_id
           LEFT JOIN public.admin_account_controls ac ON ac.account_id=a.id
