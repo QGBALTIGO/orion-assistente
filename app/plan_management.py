@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.catalog_api import Actor, authenticate, support_session_factory
 from app.database import get_session_factory, tenant_transaction
-from app.cakto_api import CaktoClient
+from app.cakto_api import CaktoClient, _subscription_id
 from app.account_business import account_membership_role
 from app.tenant_access import resolve_site_access
 from app.admin_accounts import require_platform_owner
@@ -374,7 +374,7 @@ async def apply_verified_cakto_payment(event: dict, order: dict) -> str:
     if not token_hash or event.get("event_type") != "purchase_approved":
         return "unlinked"
     order_id = event.get("external_order_id")
-    subscription_id = order.get("subscription")
+    subscription_id = _subscription_id(order.get("subscription"))
     if (not isinstance(subscription_id, str) or not subscription_id or len(subscription_id) > 120
             or not isinstance(order_id, str) or order.get("status") != "paid"
             or order.get("type") != "subscription" or order.get("offer_type") != "main"):
