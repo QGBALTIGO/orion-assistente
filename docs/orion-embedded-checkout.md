@@ -6,7 +6,7 @@ O frontend não contém links para o checkout hospedado.
 
 ## Segurança e habilitação
 
-**Fail closed**: `ORION_DIRECT_PAYMENTS_ENABLED=0` por padrão. A flag legada
+**Fail closed**: `ORION_DIRECT_PAYMENTS_ENABLED=0` e `ORION_DIRECT_RECURRING_VERIFIED=0` por padrão. A flag legada
 `CAKTO_BILLING_LIVE_ENABLED`, o segredo de webhook HMAC e o OAuth ativo também
 são obrigatórios. Até a homologação real, a tela mostra "Pagamento integrado
 temporariamente indisponível" e não envia `POST /payments/`.
