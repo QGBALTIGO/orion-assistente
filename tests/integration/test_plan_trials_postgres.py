@@ -164,7 +164,7 @@ async def test_synthetic_cakto_checkout_activates_only_verified_owner_subscripti
         url = urlsplit(checkout["checkout_url"])
         assert url.scheme == "https" and url.hostname == "pay.cakto.com.br"
         assert url.path == "/3652fm4"
-        token = parse_qs(url.query)["callback"][0]
+        token = parse_qs(url.query)["sck"][0]
         event = {
             "event_type": "purchase_approved",
             "external_order_id": order_id,
@@ -177,7 +177,7 @@ async def test_synthetic_cakto_checkout_activates_only_verified_owner_subscripti
             "id": order_id, "type": "subscription", "offer_type": "main",
             "status": "paid", "amount": "89.90", "currency": "BRL",
             "subscription": subscription_id,
-            "checkoutUrl": checkout["checkout_url"],
+            "checkoutUrl": checkout["checkout_url"], "sck": token,
         }
         assert await plan_management.apply_verified_cakto_payment(
             {**event, "amount_cents": 7990}, order) == "manual_review"
@@ -185,6 +185,8 @@ async def test_synthetic_cakto_checkout_activates_only_verified_owner_subscripti
             {**event, "external_offer_id": "AnotherOffer"}, order) == "manual_review"
         assert await plan_management.apply_verified_cakto_payment(
             event, {**order, "amount": "89.901"}) == "manual_review"
+        assert await plan_management.apply_verified_cakto_payment(
+            event, {**order, "sck": "other-synthetic-sck"}) == "manual_review"
         async with db.connect() as con:
             count = (await con.execute(text(
                 "SELECT count(*) FROM subscriptions WHERE tenant_id=:tenant"

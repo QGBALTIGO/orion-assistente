@@ -64,11 +64,11 @@ def test_offer_requires_matching_name_cents_monthly_type_and_unique_match():
 def test_cakto_callbacks_are_hashed_without_buyers_card_data_or_order_bump():
     payload={"event":"purchase_approved","data":[
         {"id":"fake-order","status":"paid","offer_type":"main",
-         "offer":{"id":"fake-offer"},"callback":"callback_synthetic_012345",
+         "offer":{"id":"fake-offer"},"sck":"callback_synthetic_012345",
          "amount":89.9,"currency":"BRL",
          "customer":{"email":"secret@example.test"},"card":{"lastDigits":"1234"}},
         {"id":"bump","status":"paid","offer_type":"orderbump",
-         "callback":"callback_synthetic_012345"}]}
+         "sck":"callback_synthetic_012345"}]}
     rows=cakto_api.normalized_events(payload)
     assert len(rows)==1
     assert rows[0]["callback_hash"]==hashlib.sha256(b"callback_synthetic_012345").hexdigest()
@@ -133,3 +133,13 @@ def test_recurring_monthly_cakto_offer_uses_30_day_period_not_unique_interval():
     assert plans._exact_offer([offer],plans.CODES["profissional"])==offer
     assert plans._exact_offer([{**offer,"recurrence_period":365}],
                               plans.CODES["profissional"]) is None
+
+
+def test_cakto_uses_documented_sck_instead_of_arbitrary_checkout_callback():
+    payload={"event":"purchase_approved","data":{"id":"synthetic-order","offer_type":"main",
+        "status":"paid","callback":"fake_unused_checkout_param_2134",
+        "sck":"synthetic_sck_key_0123456","amount":89.90,"offer":{"id":"CIProOffer"}}}
+    event=cakto_api.normalized_events(payload)[0]
+    assert event["callback_hash"]==hashlib.sha256(b"synthetic_sck_key_0123456").hexdigest()
+    assert event["amount_cents"]==8990
+    assert event["currency"] is None

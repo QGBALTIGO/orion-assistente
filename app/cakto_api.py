@@ -96,7 +96,8 @@ def normalized_events(payload: dict) -> list[dict]:
         ):
             raise HTTPException(400, "Oferta inválida")
         subscription_id = _subscription_id(item.get("subscription"))
-        callback = item.get("callback")
+        # The Cakto checkout propagates its documented "sck" tracking field.
+        callback = item.get("sck")
         callback_hash = (hashlib.sha256(callback.encode()).hexdigest()
                          if isinstance(callback, str) and re.fullmatch(r"[A-Za-z0-9._~-]{12,255}", callback)
                          else None)

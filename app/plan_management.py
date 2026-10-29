@@ -333,7 +333,7 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
                 VALUES (:tenant,:account,:plan,:offer,:cents,:digest,now()+INTERVAL '1 hour')
             """), {"tenant": tenant_id, "account": account_id, "plan": payload.plan_code,
                    "offer": offer["id"], "cents": plan["price_cents"], "digest": digest})
-    return {"checkout_url": checkout + "?callback=" + token,
+    return {"checkout_url": checkout + "?sck=" + token,
             "plan_code": payload.plan_code, "monthly_cents": plan["price_cents"],
             "status": "pending_payment"}
 
@@ -348,6 +348,13 @@ async def apply_verified_cakto_payment(event: dict, order: dict) -> str:
     if (not isinstance(subscription_id, str) or not subscription_id or len(subscription_id) > 120
             or not isinstance(order_id, str) or order.get("status") != "paid"
             or order.get("type") != "subscription" or order.get("offer_type") != "main"):
+        return "manual_review"
+    order_tracking = order.get("sck")
+    if order_tracking is not None and (
+        not isinstance(order_tracking, str)
+        or not secrets.compare_digest(
+            hashlib.sha256(order_tracking.encode()).hexdigest(), token_hash)
+    ):
         return "manual_review"
     remote_offer = order.get("offer")
     remote_offer_id = remote_offer.get("id") if isinstance(remote_offer, dict) else None
@@ -392,8 +399,8 @@ async def apply_verified_cakto_payment(event: dict, order: dict) -> str:
                         and event["external_subscription_id"] != subscription_id)
                     or amount != intent["expected_cents"]
                     or event.get("amount_cents") != intent["expected_cents"]
-                    or event.get("currency") != "BRL"
-                    or order.get("currency") != "BRL"):
+                    or event.get("currency") not in (None, "BRL")
+                    or order.get("currency") not in (None, "BRL")):
                 return "manual_review"
             await _ensure_owner(db, intent["tenant_id"], intent["account_id"])
             other = (await db.execute(text("""

@@ -47,3 +47,5 @@ predeploy já existente, seguido de `python -m scripts.probe_cakto_read_only`.
 A checagem de conexão faz apenas OAuth2 e GET de ofertas e emite somente
 contagens, sem dados de compradores ou IDs de token. Se falhar, bloquear deploy.
 Os preços comerciais da Cakto são R$ 29,90, R$ 89,90 (Orion Pro/Profissional) e R$ 139,90. Habilite os checkouts apenas após validação da entrega de webhooks e das permissões de assinatura.
+
+O checkout carrega o identificador opaco no parâmetro **sck** documentado pela Cakto (não em callback). Apenas o hash é gravado e é validado com o evento assinado, o valor e o pedido consultado pela API. Não vincular compras por e-mail ou telefone.
