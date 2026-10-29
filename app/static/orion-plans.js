@@ -88,7 +88,7 @@ function renderComparison(plans){
   +'<div class="op-matrix-frame"><table class="op-matrix" aria-label="Comparação de funcionalidades dos três planos do Orion">'
   +'<colgroup><col class="op-matrix-feature-col"><col class="op-matrix-tier-col"><col class="op-matrix-tier-col"><col class="op-matrix-tier-col"></colgroup>'
   +'<thead><tr><th scope="col">Funcionalidades</th>'+tierHead+'</tr></thead>'
-  +sections+'</table></div><p class="op-matrix-footnote">'+ic('check')+' Incluído <span aria-hidden="true">·</span> — Não incluído <span aria-hidden="true">·</span> Toque em uma categoria para recolher ou expandir.</p></section>';
+ +sections+'</table></div></section>';
 }
 function subscriptionBanner(data){
  const sub=data.subscription,trial=data.trial;
@@ -184,39 +184,6 @@ async function checkout(root,code,ctx){
  finally{root.dataset.busy='false';if(action.isConnected)action.disabled=false;}
 }
 
-async function loadAdminTrials(root,ctx){
- if(!ctx.isAdmin||!ctx.adminRequest)return;
- const destination=root.querySelector('#opAdminTrials');
- if(!destination)return;
- destination.innerHTML='<p class="op-admin-status">Consultando solicitações de teste…</p>';
- try{
-   const data=await ctx.adminRequest('/api/v1/admin/plan-trials');
-   if(root!==mounted?.root)return;
-   const items=Array.isArray(data.items)?data.items:[];
-   if(!items.length){destination.innerHTML='<p class="op-admin-status">Nenhuma solicitação de teste registrada.</p>';return;}
-   destination.innerHTML=items.map(item=>'<article class="op-admin-item"><div class="op-admin-detail"><strong>'+escapeHTML(item.full_name)+'</strong><span>'+escapeHTML(item.company_name)+' · '+escapeHTML(item.whatsapp_e164)+'</span><small>Solicitado em '+escapeHTML(localDate(item.requested_at))+' · '+escapeHTML(item.status==='pending'?'Pendente':item.status==='active'?'Ativo':item.status==='expired'?'Encerrado':'Recusado')+(item.ends_at?' · até '+escapeHTML(localDate(item.ends_at)):'')+'</small></div>'+(item.status==='pending'?'<div class="op-admin-buttons"><button class="op-btn op-btn-secondary" type="button" data-op-decision="reject" data-op-id="'+escapeHTML(item.id)+'" data-op-version="'+Number(item.version)+'">Recusar</button><button class="op-btn op-btn-primary" type="button" data-op-decision="activate" data-op-id="'+escapeHTML(item.id)+'" data-op-version="'+Number(item.version)+'">Ativar 3 dias</button></div>':'')+'</article>').join('');
- }catch(error){
-   if(root===mounted?.root)destination.innerHTML='<p class="op-admin-status">Solicitações indisponíveis neste acesso administrativo.</p>';
- }
-}
-async function decideTrial(root,button,ctx){
- if(!ctx.isAdmin||!ctx.adminRequest||root.dataset.busy==='true')return;
- const action=button.dataset.opDecision,id=button.dataset.opId,version=Number(button.dataset.opVersion);
- if(!['activate','reject'].includes(action)||!/^[0-9a-f-]{36}$/i.test(id)||!Number.isInteger(version))return;
- const message=action==='activate'?'Ativar 3 dias a partir de agora?':'Recusar esta solicitação de teste?';
- if(!window.confirm(message))return;
- root.dataset.busy='true';
- const buttons=[...root.querySelectorAll('[data-op-decision]')];
- buttons.forEach(element=>element.disabled=true);
- try{
-   await ctx.adminRequest('/api/v1/admin/plan-trials/'+encodeURIComponent(id),'POST',{expected_version:version,action});
-   if(root===mounted?.root)await loadAdminTrials(root,ctx);
- }catch(error){
-   const destination=root.querySelector('#opAdminTrials');
-   if(destination){const p=document.createElement('p');p.className='op-admin-error';p.textContent=error.message||'Não foi possível concluir a revisão.';destination.prepend(p);}
- }finally{root.dataset.busy='false';buttons.forEach(element=>{if(element.isConnected)element.disabled=false;});}
-}
-
 function render(root,data,ctx){
  if(!root.isConnected)return;
  const plans=Array.isArray(data.plans)?data.plans:[],sub=data.subscription,
@@ -229,8 +196,7 @@ function render(root,data,ctx){
  +'<p class="op-footnote">*Recursos de mensagens, automações e IA exigem configuração, canal conectado e disponibilidade da funcionalidade. O Marketing IA e o Consultor IA não realizam agendamentos pelo WhatsApp; essa recepcionista é exclusiva do Elite.</p></section>'
  +renderTrial(data,canManage)
  +renderComparison(plans)
- +(ctx.isAdmin?'<section class="op-admin-trials" aria-labelledby="opAdminTrialsTitle"><div class="op-section-title"><h2 id="opAdminTrialsTitle">Solicitações de teste grátis</h2><p>Somente a administração do Orion pode ativar o período de 3 dias.</p></div><div id="opAdminTrials"></div></section>':'')
- +'<p class="op-legal-foot">Preços mensais por empresa. Nenhuma contratação ou teste é ativado apenas ao clicar. Cobranças e acesso dependem de confirmação do servidor. Não há cobrança automática ao fim do teste.</p></div>';
+ +'</div>';
 }
 function mount(root,data,ctx){
  if(!root||!ctx?.request)return;
@@ -238,11 +204,8 @@ function mount(root,data,ctx){
  mounted={root,ctx};
  timezone=ctx.tenant?.timezone||'America/Sao_Paulo';
  render(root,data,ctx);
- if(ctx.isAdmin)void loadAdminTrials(root,ctx);
  root.addEventListener('click',root._orionPlansClick=async event=>{
   const trial=event.target.closest('[data-op-trial]'),checkoutButton=event.target.closest('[data-op-checkout]');
-  const decision=event.target.closest('[data-op-decision]');
-  if(decision){event.preventDefault();await decideTrial(root,decision,ctx);return;}
   const toggle=event.target.closest('[data-op-category-toggle]');
   if(toggle){
    event.preventDefault();

@@ -13,7 +13,7 @@ const base={
  subscription:null,trial:null,active_professionals:0,can_manage_plan:true,checkout_enabled:false,
  trial_scope:['Agenda','Clientes'],trial_requires_team_activation:true
 };
-function fixture(overrides={}){
+function fixture(overrides={},options={}){
  const dom=new JSDOM('<!doctype html><html lang="pt-BR"><body><div id="host"></div></body></html>',
     {url:'https://orionagenda.pro/panel',runScripts:'dangerously'});
  const {window}=dom;
@@ -25,7 +25,7 @@ function fixture(overrides={}){
  };
  window.eval(code);
  const calls=[],overview={...base,...overrides};
- const ctx={user:{name:'Pessoa Sintética'},tenant:{name:'Empresa Sintética'},canManage:true,isAdmin:false,
+ const ctx={user:{name:'Pessoa Sintética'},tenant:{name:'Empresa Sintética'},canManage:true,isAdmin:!!options.isAdmin,
   request:async(path,method='GET',data)=>{calls.push({path,method,data});
    if(path==='/plan-trial'){overview.trial={status:'pending',started_at:null,ends_at:null};return{status:'pending',message:'Solicitação recebida!'};}
    if(path==='/plan-overview')return overview;
@@ -80,6 +80,21 @@ test('comparison is one aligned four-column table with expandable categories',()
   assert.equal(toggle.getAttribute('aria-expanded'),'true');
   assert.ok([...rows].every(row=>!row.hidden));
  }finally{f.close();}
+});
+
+test('plan comparison ends the page without instructional legend, admin requests card or billing disclaimer',()=>{
+ for(const isAdmin of [false,true]){
+  const f=fixture({}, {isAdmin});
+  try{
+   const page=f.root.querySelector('.op-page');
+   assert.ok(page);
+   assert.ok(page.lastElementChild.classList.contains('op-compare'));
+   for(const selector of ['.op-matrix-footnote','.op-admin-trials','.op-legal-foot'])
+    assert.equal(f.root.querySelector(selector),null,selector);
+   assert.doesNotMatch(f.root.textContent,/Toque em uma categoria para recolher ou expandir|Solicitações de teste grátis|Preços mensais por empresa/);
+   assert.ok(f.root.querySelector('.op-free-trial'), 'trial application remains available');
+  }finally{f.close();}
+ }
 });
 
 test('trial modal reuses account/company, has consent, phone validation, no instant trial',async()=>{
