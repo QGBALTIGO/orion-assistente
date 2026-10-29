@@ -756,7 +756,7 @@ async function sendTestUrlButton(phone,text,{isCurrent=()=>true}={}){
   if(!current())throw Error('test_button_connection_changed');
   // Legacy hydrated template URL button; WhatsApp clients may suppress it.
   const result=await selectedSocket.sendMessage(proof.jid,{
-    text:text.replace(/\\n🔗 \\*VER AGENDAMENTO\\*\\nhttps:\\/\\/orionagenda\\.pro/,''),
+    text:text.split('🔗 *VER AGENDAMENTO*')[0].trim(),
     footer:'Orion • Demonstração',
     templateButtons:[{index:1,urlButton:{displayText:'VER AGENDAMENTO',url:'https://orionagenda.pro'}}]
   });
