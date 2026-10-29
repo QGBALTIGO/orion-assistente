@@ -28,6 +28,16 @@ Para habilitar é obrigatório comprovar:
    obrigatórios de operador e privacidade. Não falsificar informações em
    comprovantes, política de privacidade ou autenticação bancária.
 
+A disponibilidade também executa uma **checagem somente de leitura** em
+`GET /public_api/webhook/`. Ela exige um webhook ativo com destino exato
+`https://orionagenda.pro/webhooks/cakto`, segredo coincidente e os eventos
+necessários para os três produtos vinculados às ofertas mensais. Sem cobertura
+3/3 ou se a leitura falhar, a cobrança direta é recusada, mesmo com as flags
+ativadas. `scripts.probe_cakto_read_only` imprime somente o número de planos
+com a cobertura verificada, sem segredos nem dados pessoais. Isso não substitui
+uma **entrega real de evento de teste assinado**, que ainda é necessária para
+homologar a entrada em produção.
+
 A UI de produção usa identidade Orion. Os dados do cartão são tokenizados
 **no navegador pelo SDK**; o servidor Orion nunca recebe PAN/CVV.
 Revisar eventual necessidade de campos hospedados para reduzir escopo PCI.
