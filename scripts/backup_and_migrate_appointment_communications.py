@@ -44,6 +44,11 @@ def schema_ready(raw):
                     has_table_privilege('app_runtime',oid,'UPDATE'),has_table_privilege('app_support',oid,'SELECT')
                     FROM pg_class WHERE oid=to_regclass(:table)'''),{'table':'public.'+table}).first()
                 if row is None or tuple(row)!=(True,True,True,True,True,False):return False
+            required=(('appointments','customer_access_blocked'),('appointment_change_proposals','actor_account_id'),
+                      ('appointment_change_proposals','idempotency_key'),('appointment_communication_settings','reschedule_acceptance'))
+            for table,column in required:
+                exists=db.execute(text("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=:table AND column_name=:column)"),{'table':table,'column':column}).scalar_one()
+                if not exists:return False
             return previous_ready(raw)
     finally:engine.dispose()
 

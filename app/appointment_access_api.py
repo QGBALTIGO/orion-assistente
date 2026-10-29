@@ -53,7 +53,7 @@ async def customer_view(db, identity):
     tenant = identity.tenant_id
     now = (await db.execute(text('SELECT clock_timestamp()'))).scalar_one()
     shop = (await db.execute(text('''SELECT t.name,p.public_slug,p.public_enabled,p.address,p.city,p.state,
-        p.whatsapp_phone,p.contact_phone FROM tenants t LEFT JOIN management_site_preferences p
+        p.whatsapp_phone,p.contact_phone,p.logo_url,p.theme_color FROM tenants t LEFT JOIN management_site_preferences p
         ON p.tenant_id=t.id WHERE t.id=:t'''), {'t': tenant})).mappings().one()
     completed_at = (await db.execute(text("""SELECT max(occurred_at) FROM appointment_history
         WHERE tenant_id=:t AND appointment_id=:id AND event='completed'
@@ -90,7 +90,13 @@ async def customer_view(db, identity):
         WHERE tenant_id=:t AND appointment_id=:id AND appointment_version=:version
           AND status='pending' AND expires_at>clock_timestamp() ORDER BY created_at DESC LIMIT 1"""),
         {'t':tenant,'id':identity.appointment_id,'version':row['updated_at']})).mappings().first()
-    return {'company': shop['name'], 'customer': row['customer_name'], 'professional': row['professional_name'],
+    import re
+    from app.media_paths import is_media_url
+    logo=shop.get('logo_url')
+    if not is_media_url(logo) or not logo.startswith('/media/'+str(tenant)+'/'):logo=None
+    brand=shop.get('theme_color')
+    if not isinstance(brand,str) or not re.fullmatch(r'#[0-9A-Fa-f]{6}',brand):brand='#2e7bf6'
+    return {'logo_url':logo,'brand_color':brand,'company': shop['name'], 'customer': row['customer_name'], 'professional': row['professional_name'],
         'status': row['status'], 'protocol': row['protocol'], 'start_at': row['start_at'], 'end_at': row['end_at'],
         'timezone': row['timezone'], 'updated_at': row['updated_at'],
         'services': [i['name_snapshot'] for i in row['items']],

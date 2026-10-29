@@ -124,3 +124,11 @@ async def test_revocation_cannot_be_bypassed_by_requesting_a_new_token(booking_d
     async with d['factory']() as db:
         async with tenant_transaction(db,d['a']):
             with pytest.raises(HTTPException):await access.issue(db,d['a'],a['id'])
+
+
+@pytest.mark.asyncio
+async def test_release_verifier_checks_real_additive_schema(booking_db):
+    import asyncio
+    import os
+    from scripts.backup_and_migrate_appointment_communications import schema_ready
+    assert await asyncio.to_thread(schema_ready,os.environ['MIGRATION_DATABASE_URL'])
