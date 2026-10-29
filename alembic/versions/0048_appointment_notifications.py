@@ -86,6 +86,35 @@ def upgrade():
       $$;
       REVOKE ALL ON FUNCTION orion_due_appointment_notifications(integer) FROM PUBLIC,app_runtime;
       GRANT EXECUTE ON FUNCTION orion_due_appointment_notifications(integer) TO app_support;''')
+    op.execute('''CREATE INDEX ix_appointment_receipts_retention ON appointment_confirmation_receipts(created_at);
+      CREATE INDEX ix_appointment_access_retention ON appointment_access(expires_at);
+      CREATE INDEX ix_appointment_notice_retention ON appointment_notifications(created_at);
+      CREATE INDEX ix_inbox_appointment_link_retention ON inbox_messages(created_at,id) WHERE position('/a#' in body)>0;
+      CREATE FUNCTION orion_clean_appointment_payloads(batch_limit integer) RETURNS integer
+      LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+      DECLARE affected integer; total integer:=0;
+      BEGIN
+        IF batch_limit IS NULL OR batch_limit NOT BETWEEN 1 AND 1000 THEN RETURN 0; END IF;
+        UPDATE public.appointment_notifications SET body_encrypted=NULL,recipient_hash=NULL,provider_id=NULL,previous='{}'::jsonb
+          WHERE id IN (SELECT id FROM public.appointment_notifications WHERE created_at<now()-interval '90 days'
+            AND expires_at<now() AND status IN ('accepted','delivered','read','failed','unknown','cancelled')
+            AND (body_encrypted IS NOT NULL OR recipient_hash IS NOT NULL OR provider_id IS NOT NULL OR previous<>'{}'::jsonb)
+            ORDER BY created_at,id LIMIT batch_limit);
+        GET DIAGNOSTICS affected=ROW_COUNT;total:=total+affected;
+        UPDATE public.inbox_messages SET body='[Conteúdo de agendamento removido após o prazo de retenção]'
+          WHERE id IN (SELECT id FROM public.inbox_messages WHERE created_at<now()-interval '90 days'
+            AND position('/a#' in body)>0 ORDER BY created_at,id LIMIT batch_limit);
+        GET DIAGNOSTICS affected=ROW_COUNT;total:=total+affected;
+        DELETE FROM public.appointment_confirmation_receipts WHERE (tenant_id,channel_key,message_id) IN
+          (SELECT tenant_id,channel_key,message_id FROM public.appointment_confirmation_receipts
+           WHERE created_at<now()-interval '90 days' ORDER BY created_at LIMIT batch_limit);
+        GET DIAGNOSTICS affected=ROW_COUNT;total:=total+affected;
+        DELETE FROM public.appointment_access WHERE id IN (SELECT id FROM public.appointment_access
+          WHERE expires_at<now()-interval '90 days' ORDER BY expires_at,id LIMIT batch_limit);
+        GET DIAGNOSTICS affected=ROW_COUNT;RETURN total+affected;
+      END $$;
+      REVOKE ALL ON FUNCTION orion_clean_appointment_payloads(integer) FROM PUBLIC,app_runtime;
+      GRANT EXECUTE ON FUNCTION orion_clean_appointment_payloads(integer) TO app_support;''')
 
 
 def downgrade():

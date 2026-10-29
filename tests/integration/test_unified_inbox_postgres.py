@@ -315,3 +315,26 @@ async def test_meta_worker_prepares_under_authority_and_never_dispatches_legacy_
             original=(await db.execute(text("SELECT body,provider_at FROM inbox_messages WHERE tenant_id=:t AND external_id='synthetic-meta-in'"),{'t':c.tenant})).mappings().one()
             assert original['body']=='Olá Meta'
             if legacy_pending:assert original['provider_at'] is None
+
+
+async def test_open_authorized_contact_never_sends_or_creates_customer(central):
+    c=central
+    opened=await api.open_conversation(c.tenant,c.channel,api.OpenConversation(contact_e164=PHONE),c.actor)
+    assert opened['sent'] is False
+    assert (await api.open_conversation(c.tenant,c.channel,api.OpenConversation(contact_e164=PHONE),c.actor))==opened
+    for tenant,phone in [(c.other,PHONE),(c.tenant,'+5567999999902')]:
+        with pytest.raises(HTTPException):await api.open_conversation(tenant,c.channel,api.OpenConversation(contact_e164=phone),c.actor)
+
+
+async def test_preserved_manual_adapter_records_one_message_and_respects_pause(central):
+    c=central;operation=uuid4()
+    response=await api.enqueue_preserved_manual(c.tenant,c.channel,PHONE,'Teste do adaptador',operation,c.actor)
+    assert response=={'managed':True,'operation_id':operation,'status':'queued','accepted':False}
+    assert await api.enqueue_preserved_manual(c.tenant,c.channel,PHONE,'Teste do adaptador',operation,c.actor)==response
+    with pytest.raises(HTTPException):await api.enqueue_preserved_manual(c.tenant,c.channel,PHONE,'Outro texto',operation,c.actor)
+    item=await row(c,operation)
+    assert item['source']=='manual' and item['status']=='queued'
+    state=await control.get_control(c.tenant,c.channel,PHONE,c.actor)
+    assert state['mode']=='human' and state['assigned_account_id']==str(c.account)
+    await control.change_control(c.tenant,c.channel,control.Change(contact_e164=PHONE,expected_revision=state['revision'],mode='paused'),c.actor)
+    with pytest.raises(HTTPException):await api.enqueue_preserved_manual(c.tenant,c.channel,PHONE,'Novo teste',uuid4(),c.actor)

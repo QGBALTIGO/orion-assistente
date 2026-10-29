@@ -467,3 +467,7 @@
 [data-central-compact] .os-central-composer-hint{font-size:10px;line-height:14px}
 [data-central-compact] .os-central-compose textarea{max-height:72px}
 [data-central-compact] .os-central-thread-scroll{padding-top:8px;padding-bottom:8px}
+
+.os-central-new-form{padding:16px;border-bottom:1px solid var(--os-border);min-width:0;max-width:100%;box-sizing:border-box}.os-central-new-form input,.os-central-new-form select{box-sizing:border-box}
+
+.os-central-new-form{flex-shrink:0;min-height:0;max-height:60%;overflow:auto}.os-central-list-panel>[data-central-action=new]{margin:0 16px 8px;flex-shrink:0}

@@ -25,7 +25,7 @@ def cipher():
 
 
 async def enqueue_event(db, tenant, appointment, event, details):
-    if not access.enabled():return
+    if not access.tenant_enabled(tenant):return
     # Every committed mutation invalidates old pending facts in this SAME tx.
     if event in {'confirmed','cancelled','rescheduled','completed','no_show','hold_expired'}:
         await db.execute(text("""UPDATE appointment_notifications SET status='cancelled',
@@ -67,7 +67,7 @@ async def enqueue_event(db, tenant, appointment, event, details):
 
 async def eligibility(db, tenant, job):
     settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
-    if not access.enabled() or not settings or not settings['enabled']:return 'execution_paused',None,None,None
+    if not access.tenant_enabled(tenant) or not settings or not settings['enabled']:return 'execution_paused',None,None,None
     if settings['version']!=job['settings_version'] or settings['channel_id']!=job['channel_id']:return 'settings_changed',None,None,None
     row=await read_appointment(db,tenant,job['appointment_id'])
     if row['updated_at']!=job['appointment_version']:return 'appointment_changed',None,None,None
@@ -100,6 +100,7 @@ async def eligibility(db, tenant, job):
         if not contact or contact['operational_opt_in'] is not True:return 'communication_not_authorized',None,None,None
         if job['event']=='review' and contact['marketing_opt_in'] is not True:return 'review_not_authorized',None,None,None
         phone=contact['whatsapp_e164']
+    if not access.recipient_allowed(phone):return 'pilot_recipient_not_authorized',None,None,None
     digest=hashlib.sha256(phone.encode()).hexdigest()
     if job.get('recipient_hash') and job['recipient_hash']!=digest:return 'contact_changed',None,None,None
     return None,row,phone,settings
@@ -211,6 +212,14 @@ async def scan_notifications(ctx):
         await ctx['redis'].enqueue_job('process_appointment_notification',str(job['tenant_id']),str(job['id']),
             _job_id='appointment-notice:'+str(job['id'])+':'+str(int(datetime.now(timezone.utc).timestamp()//30)))
     return len(jobs)
+
+
+async def cleanup_notification_payloads(ctx):
+    if not access.enabled():return 0
+    from app.catalog_api import support_session_factory
+    async with support_session_factory()() as db:
+        async with db.begin():
+            return (await db.execute(text('SELECT public.orion_clean_appointment_payloads(1000)'))).scalar_one()
 
 
 async def reconcile_notification(ctx,tenant_id,notification_id):

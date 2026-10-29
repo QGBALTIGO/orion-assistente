@@ -26,6 +26,7 @@ async def prepare(d):
 @pytest.mark.asyncio
 async def test_link_only_hash_is_stored_and_other_tenant_cannot_read(booking_db,monkeypatch):
     monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY','0')
     d=booking_db
     a=await prepare(d)
     async with d['factory']() as db:
@@ -68,6 +69,7 @@ async def test_link_only_hash_is_stored_and_other_tenant_cannot_read(booking_db,
 @pytest.mark.asyncio
 async def test_phone_edit_invalidates_link_and_future_review_is_unavailable(booking_db,monkeypatch):
     monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY','0')
     d=booking_db;a=await prepare(d)
     async with d['factory']() as db:
         async with tenant_transaction(db,d['a']):
@@ -88,6 +90,7 @@ async def test_real_public_api_rejects_early_review_and_duplicate_review(booking
     from app.main import app
     from app import appointment_access_api as api
     monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY','0')
     monkeypatch.setattr(api,'get_session_factory',lambda:booking_db['factory'])
     d=booking_db;a=await prepare(d)
     async with d['factory']() as db:
@@ -118,6 +121,7 @@ async def test_real_public_api_rejects_early_review_and_duplicate_review(booking
 @pytest.mark.asyncio
 async def test_revocation_cannot_be_bypassed_by_requesting_a_new_token(booking_db,monkeypatch):
     monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY','0')
     d=booking_db;a=await prepare(d)
     async with d['migrator'].begin() as db:
         await db.execute(text('UPDATE appointments SET customer_access_blocked=true WHERE tenant_id=:t AND id=:id'),{'t':d['a'],'id':a['id']})

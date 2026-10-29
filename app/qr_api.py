@@ -11,7 +11,7 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -220,6 +220,13 @@ class ConfirmDisconnect(BaseModel):
 class SendPayload(BaseModel):
     phone:str=Field(pattern=r"^[1-9]\d{7,14}$")
     text:str=Field(min_length=1,max_length=1200)
+    operation_id: UUID | None = None
+
+    @field_validator('text')
+    @classmethod
+    def valid_text(cls,value):
+        from app.inbox_conversations import Message
+        return Message.bounded_text(value)
 
 
 class ContactName(WhatsAppProfile):
@@ -382,8 +389,16 @@ async def qr_send(data:SendPayload,actor:Actor=Depends(authenticate)):
     from app.inbox_control import enabled
     from app.qr_legacy import require_managed_path
     if enabled() or await require_managed_path():
-        raise HTTPException(423,"Use o canal gerenciado na central de atendimento")
-    return await _bridge("/internal/send","POST",data.model_dump())
+        if actor.role!='admin' or not isinstance(actor.account_id,UUID):
+            raise HTTPException(403,'Entre com a conta de admin para usar o canal gerenciado')
+        if data.operation_id is None:raise HTTPException(422,'Atualize a página antes de enviar')
+        from app.qr_legacy import configured_tenant,channel_id
+        from app.qr_channels import _owned_channel
+        tenant=configured_tenant();channel=channel_id(tenant)
+        await _owned_channel(tenant,channel,actor)
+        from app.inbox_conversations import enqueue_preserved_manual
+        return await enqueue_preserved_manual(tenant,channel,'+'+data.phone,data.text,data.operation_id,actor)
+    return await _bridge("/internal/send","POST",data.model_dump(exclude={'operation_id'}))
 
 
 @router.get("/conectar-whatsapp",include_in_schema=False)

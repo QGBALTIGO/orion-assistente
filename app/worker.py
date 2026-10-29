@@ -24,7 +24,7 @@ from app.automation_runtime import interaction,process_automation_job,reconcile_
 from app.inbox_runtime import process_inbox_message,scan_inbox
 from app.email_outbox import process_email_outbox,scan_email_outbox
 from app.account_erasure import erase_due_account_logins
-from app.appointment_notifications import process_notification as process_appointment_notification, scan_notifications as scan_appointment_notifications
+from app.appointment_notifications import process_notification as process_appointment_notification, scan_notifications as scan_appointment_notifications, cleanup_notification_payloads
 
 
 async def infrastructure_ping(ctx: dict) -> str:
@@ -116,7 +116,7 @@ async def recover_events(ctx: dict):
 
 class WorkerSettings:
     functions = [process_appointment_notification,infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,process_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message,process_email_outbox]
-    cron_jobs = [cron(scan_appointment_notifications, minute=set(range(60)), second={0,15,30,45}),
+    cron_jobs = [cron(cleanup_notification_payloads, minute={13}, second={10}),cron(scan_appointment_notifications, minute=set(range(60)), second={0,15,30,45}),
                  cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
                  cron(scan_calendar_outbox, minute=set(range(60)), second=10),
                  cron(scan_due_appointments, minute=set(range(60)), second={0,10,20,30,40,50}),

@@ -27,6 +27,29 @@ def enabled():
     return os.getenv('APPOINTMENT_COMMUNICATIONS_ENABLED', '0') == '1'
 
 
+def pilot_only():
+    return os.getenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY','1') == '1'
+
+
+def tenant_enabled(tenant):
+    if not enabled():return False
+    if not pilot_only():return True
+    try:
+        expected=UUID(os.environ['APPOINTMENT_COMMUNICATIONS_PILOT_TENANT_ID'])
+        return UUID(str(tenant))==expected
+    except (KeyError,ValueError,TypeError):return False
+
+
+def recipient_allowed(phone):
+    if not pilot_only():return True
+    configured=os.getenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','')
+    return bool(re.fullmatch(r'55[1-9][0-9]{9,10}',configured)) and phone.lstrip('+')==configured
+
+
+def require_tenant(tenant):
+    if not tenant_enabled(tenant):raise HTTPException(404,'Recurso indisponível para esta empresa')
+
+
 def require_enabled():
     if not enabled():
         raise HTTPException(404, 'Página indisponível')
@@ -60,6 +83,7 @@ def bind(identity):
 
 
 async def verify(db, tenant, digest):
+    require_tenant(tenant)
     row = (await db.execute(text('''SELECT l.appointment_id,l.customer_id
         FROM appointment_access l JOIN customers c ON c.tenant_id=l.tenant_id AND c.id=l.customer_id
         JOIN appointments a ON a.tenant_id=l.tenant_id AND a.id=l.appointment_id AND a.customer_id=l.customer_id
@@ -83,7 +107,7 @@ async def guard(db, tenant):
 
 
 async def issue(db, tenant, appointment):
-    require_enabled()
+    require_tenant(tenant)
     row = (await db.execute(text('''SELECT a.customer_id,a.end_at,c.version FROM appointments a
         JOIN customers c ON c.tenant_id=a.tenant_id AND c.id=a.customer_id
         WHERE a.tenant_id=:t AND a.id=:id AND NOT a.customer_access_blocked AND c.active AND c.deleted_at IS NULL'''),

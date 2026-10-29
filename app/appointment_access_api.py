@@ -130,6 +130,7 @@ async def customer_action(payload: CustomerAction, request: Request):
     _same_origin(request)
     await public_limit(request, 'appointment-access', 'access-ip', 120, 300)
     tenant, digest = access.parse_token(payload.token)
+    access.require_tenant(tenant)
     # Tokens aren't included in rate-limit keys or any HTTP URL.
     await public_limit(request, str(tenant), 'access-token', 60, 300, subject=digest)
     async with get_session_factory()() as db:
@@ -206,7 +207,7 @@ async def customer_action(payload: CustomerAction, request: Request):
 
 @router.post('/api/v1/tenants/{tenant_id}/appointments/{appointment_id}/revoke-links')
 async def revoke_links(tenant_id: UUID, appointment_id: UUID, actor: Actor=Depends(authenticate)):
-    access.require_enabled()
+    access.require_tenant(tenant_id)
     async with management_session(tenant_id, actor, write=True) as db:
         await read_appointment(db, tenant_id, appointment_id)
         await db.execute(text('''UPDATE appointment_access SET revoked_at=clock_timestamp()
@@ -219,7 +220,7 @@ async def revoke_links(tenant_id: UUID, appointment_id: UUID, actor: Actor=Depen
 
 @router.get('/api/v1/tenants/{tenant_id}/appointment-reviews')
 async def private_reviews(tenant_id: UUID, actor: Actor=Depends(authenticate)):
-    access.require_enabled()
+    access.require_tenant(tenant_id)
     async with management_session(tenant_id, actor) as db:
         items = (await db.execute(text('''SELECT r.rating,r.comment,r.created_at,a.protocol,p.name AS professional
             FROM appointment_reviews r JOIN appointments a ON a.tenant_id=r.tenant_id AND a.id=r.appointment_id

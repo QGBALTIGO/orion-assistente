@@ -1,5 +1,6 @@
 """Owner-scoped configuration and bounded diagnostics; never sends on a GET."""
 import re
+import os
 from uuid import UUID
 from typing import Annotated
 
@@ -47,7 +48,7 @@ class Settings(StrictModel):
 @router.get('')
 async def configuration(tenant_id:UUID,actor:Actor=Depends(authenticate)):
     await resolve_tenant_access(actor,tenant_id)
-    if not access.enabled():return {'available':False,'settings':DEFAULTS,'notifications':[],'reviews':[]}
+    if not access.tenant_enabled(tenant_id):return {'available':False,'settings':DEFAULTS,'notifications':[],'reviews':[]}
     async with management_session(tenant_id,actor) as db:
         zone=(await db.execute(text('SELECT timezone FROM tenants WHERE id=:t'),{'t':tenant_id})).scalar_one()
         settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant_id})).mappings().first()
@@ -69,14 +70,63 @@ async def configuration(tenant_id:UUID,actor:Actor=Depends(authenticate)):
         from app.qr_channels import _canonical
         channel,state=await _canonical(registry,tenant_id)
     return jsonable_encoder({'available':True,'timezone':zone,'settings':dict(settings) if settings else DEFAULTS,
+        'pilot_only':access.pilot_only(),
+        'pilot_prepared':bool(access.pilot_only() and settings and settings['enabled'] and channel is not None and
+            os.getenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','') in channel['allowed_senders']),
         'return_services':[dict(x) for x in services],'canonical_channel_id':channel['id'] if channel is not None and state=='ready' else None,
         'notifications':[dict(x) for x in notifications],'reviews':[dict(x) for x in reviews],
         'transport_limit':'Envio restrito aos contatos autorizados no canal QR; API oficial não ativada por este fluxo.'})
 
 
+class PilotPreparation(StrictModel):
+    acknowledged:StrictBool
+
+
+@router.post('/prepare-admin-pilot')
+async def prepare_admin_pilot(tenant_id:UUID,payload:PilotPreparation,actor:Actor=Depends(authenticate)):
+    """Authorize only the verified connected self number; never pair or reset it."""
+    access.require_tenant(tenant_id)
+    if not access.pilot_only() or actor.role!='admin' or not isinstance(actor.account_id,UUID) or not payload.acknowledged:
+        raise HTTPException(403,'Preparação exclusiva do administrador no piloto')
+    from app.qr_legacy import channel_id,configured_tenant
+    from app.qr_channels import _owned_channel,_bridge_control,_control_result,_owner,_require_canonical
+    if tenant_id!=configured_tenant():raise HTTPException(403,'O piloto exige a conexão preservada do admin')
+    channel=channel_id(tenant_id)
+    row=await _owned_channel(tenant_id,channel,actor)
+    observed=_control_result(row,await _bridge_control(row,'status','GET'),'status')
+    phone=observed.get('phone')
+    if not observed.get('phone_verified') or not phone or not access.recipient_allowed(phone):
+        raise HTTPException(409,'Confira o número conectado e o número autorizado do piloto')
+    async with support_session_factory()() as registry:
+        async with registry.begin():
+            await _owner(registry,tenant_id,actor)
+            current=await _require_canonical(registry,tenant_id,channel,lock=True)
+            if current['owner_account_id']!=actor.account_id or current['revision']!=row['revision'] or not current['enabled']:
+                raise HTTPException(409,'A conexão mudou. Atualize antes de preparar o piloto')
+            allowed=list(current['allowed_senders'])
+            if phone not in allowed:
+                if len(allowed)>=10:raise HTTPException(409,'O canal já possui dez contatos autorizados; revise a política')
+                import json
+                allowed.append(phone)
+                await registry.execute(text('UPDATE qr_channels SET allowed_senders=CAST(:phones AS jsonb),revision=revision+1,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:c'),
+                    {'phones':json.dumps(allowed),'t':tenant_id,'c':channel})
+    async with management_session(tenant_id,actor,write=True) as db:
+        await db.execute(text("""INSERT INTO contact_consents(tenant_id,contact_e164,operational_opt_in,marketing_opt_in,source)
+            VALUES(:t,:phone,true,true,'owner_attestation') ON CONFLICT(tenant_id,contact_e164) DO UPDATE
+            SET operational_opt_in=true,marketing_opt_in=true,source='owner_attestation',updated_at=clock_timestamp()"""),
+            {'t':tenant_id,'phone':'+'+phone})
+        current_settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant_id})).mappings().first()
+        await audit(db,tenant_id,'appointment_admin_pilot_prepared','qr_channels',channel)
+    if not current_settings or not current_settings['enabled'] or current_settings['channel_id']!=channel:
+        await save_configuration(tenant_id,Settings(expected_version=current_settings['version'] if current_settings else 0,enabled=True,channel_id=channel,
+            review=True,return_invitation=False,acknowledged=True),actor)
+    return {'prepared':True,'recipient_suffix':phone[-4:],'session_preserved':True,'messages_sent':0}
+
+
 @router.put('')
 async def save_configuration(tenant_id:UUID,payload:Settings,actor:Actor=Depends(authenticate)):
-    access.require_enabled()
+    access.require_tenant(tenant_id)
+    if access.pilot_only() and actor.role!='admin':raise HTTPException(403,'O piloto exige a conta de admin')
     await resolve_tenant_access(actor,tenant_id,'publish')
     if payload.enabled and not payload.acknowledged:
         raise HTTPException(422,'Confirme a autorização dos contatos e a revisão das mensagens antes de ativar')

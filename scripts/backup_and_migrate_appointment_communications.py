@@ -49,7 +49,8 @@ def schema_ready(raw):
             for table,column in required:
                 exists=db.execute(text("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=:table AND column_name=:column)"),{'table':table,'column':column}).scalar_one()
                 if not exists:return False
-            return previous_ready(raw)
+            cleanup=db.execute(text("SELECT to_regprocedure('public.orion_clean_appointment_payloads(integer)') IS NOT NULL")).scalar_one()
+            return bool(cleanup) and previous_ready(raw)
     finally:engine.dispose()
 
 

@@ -24,8 +24,8 @@ from app.management_models import transition_appointment
 
 
 def enabled() -> bool:
-    from app.appointment_access import enabled as communications_enabled
-    return os.getenv("ORION_AUTO_COMPLETE_APPOINTMENTS") == "1" and not communications_enabled()
+    from app.appointment_access import enabled as communications_enabled, pilot_only
+    return os.getenv("ORION_AUTO_COMPLETE_APPOINTMENTS") == "1" and not (communications_enabled() and not pilot_only())
 
 
 async def scan_due_auto_completions(ctx: dict) -> int:
@@ -42,6 +42,8 @@ async def scan_due_auto_completions(ctx: dict) -> int:
     slot = int(datetime.now(timezone.utc).timestamp() // 10)
     queued = 0
     for row in candidates:
+        from app.appointment_access import tenant_enabled
+        if tenant_enabled(row['tenant_id']):continue
         appointment_id = row["appointment_id"]
         job = await ctx["redis"].enqueue_job(
             "complete_due_appointment", str(row["tenant_id"]),
@@ -57,6 +59,8 @@ async def complete_due_appointment(ctx: dict, tenant_id: str, appointment_id: st
     if not enabled():
         return "disabled"
     tenant, identity = UUID(tenant_id), UUID(appointment_id)
+    from app.appointment_access import tenant_enabled
+    if tenant_enabled(tenant):return 'requires_actual_completion'
     try:
         async with get_session_factory()() as session:
             async with tenant_transaction(session, tenant):

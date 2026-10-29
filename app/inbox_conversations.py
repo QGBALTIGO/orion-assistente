@@ -43,6 +43,59 @@ class Message(StrictModel):
         return value
 
 
+class OpenConversation(StrictModel):
+    contact_e164: str = Field(pattern=r"^\+55[1-9][0-9]{9,10}$")
+
+
+@router.post(P+'/channels/{channel_id}/conversations')
+async def open_conversation(tenant_id: UUID, channel_id: UUID, payload: OpenConversation, actor: Actor=Depends(authenticate)):
+    """Open an authorized QR contact without sending or manufacturing inbound events."""
+    control.require_enabled()
+    if not isinstance(actor.account_id, UUID):
+        raise HTTPException(403, 'Entre novamente com uma conta de atendimento')
+    async with management_session(tenant_id, actor, write=True) as db:
+        await control.check_channel(db, tenant_id, channel_id, payload.contact_e164)
+        await control.register_channel(db, tenant_id, channel_id)
+        provider=(await db.execute(text('SELECT provider FROM inbox_channel_links WHERE tenant_id=:t AND channel_id=:c'),
+            {'t':tenant_id,'c':channel_id})).scalar_one()
+        if provider!='qr':raise HTTPException(409,'Este canal permite responder somente a conversas existentes')
+        row=await control.lock_control(db,tenant_id,channel_id,payload.contact_e164)
+        await audit(db,tenant_id,'inbox_conversation_opened','inbox_controls',row['id'])
+    return {'channel_id':channel_id,'contact_e164':payload.contact_e164,'sent':False}
+
+
+async def enqueue_preserved_manual(tenant, channel, phone, body, operation, actor):
+    """Compatibility adapter: same journal, operator guard and worker as the Central."""
+    control.require_enabled()
+    if not runtime.send_enabled():raise HTTPException(423,'O envio pela central está desativado')
+    if not isinstance(actor.account_id,UUID):raise HTTPException(403,'Entre novamente com a conta de admin')
+    # Reuse strict message validation, including UTF-16 length.
+    payload=Message(contact_e164=phone,expected_revision=1,operation_id=operation,text=body)
+    digest=runtime.fingerprint(phone,body)
+    async with management_session(tenant,actor,write=True) as db:
+        await control.check_channel(db,tenant,channel,phone)
+        row=await control.lock_control(db,tenant,channel,phone)
+        existing=(await db.execute(text('SELECT control_id,source,actor_account_id,fingerprint,status FROM inbox_messages WHERE tenant_id=:t AND id=:id'),
+            {'t':tenant,'id':operation})).mappings().first()
+        if existing:
+            if (existing['control_id'],existing['source'],existing['actor_account_id'],existing['fingerprint'])!=(row['id'],'manual',actor.account_id,digest):
+                raise HTTPException(409,'Identificação já utilizada para outra mensagem')
+            return {'managed':True,'operation_id':operation,'status':existing['status'],'accepted':existing['status'] in {'accepted','delivered','read'}}
+        if row['pending_operation'] is not None:raise HTTPException(409,'Há um envio em verificação. Consulte a Central antes de reenviar')
+        if row['mode']=='paused' or row['assigned_account_id'] not in {None,actor.account_id}:
+            raise HTTPException(409,'Atendimento pausado ou com outro operador. Confira a Central')
+        version=await runtime.operator_version(db,tenant,actor.account_id)
+        if version is None:raise HTTPException(403,'Permissão de atendimento revogada')
+        if row['mode'] not in {'human','waiting'} or row['assigned_account_id']!=actor.account_id:
+            await control.control_event(db,tenant,row,'human','operator',actor.account_id)
+            await db.execute(text("UPDATE inbox_controls SET mode='human',assigned_account_id=:a,revision=revision+1,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id"),
+                {'a':actor.account_id,'t':tenant,'id':row['id']})
+            row={**row,'mode':'human','assigned_account_id':actor.account_id,'revision':row['revision']+1}
+        await runtime.record_outbound(db,tenant,row,operation,'manual',payload.text,digest,actor=actor.account_id,auth_version=version)
+        await audit(db,tenant,'inbox_message_queued','inbox_messages',operation)
+    return {'managed':True,'operation_id':operation,'status':'queued','accepted':False}
+
+
 @router.get(P+"/channels")
 async def channels(tenant_id: UUID, actor: Actor=Depends(authenticate)):
     control.require_enabled()

@@ -23,6 +23,7 @@ PRO_PHONE='+5567999999922'
 async def comm_db(booking_db,monkeypatch):
     d=booking_db;account,channel=uuid4(),uuid4();d.update(account=account,channel=channel)
     monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY','0')
     monkeypatch.setenv('INTEGRATION_FERNET_KEY',Fernet.generate_key().decode())
     monkeypatch.setattr(notifications,'get_session_factory',lambda:d['factory'])
     monkeypatch.setattr(confirmation,'get_session_factory',lambda:d['factory'])
@@ -213,3 +214,38 @@ async def test_return_interval_must_belong_to_the_authorized_company(comm_db):
     data=await configuration(d['a'],Actor('support'))
     rule=next(item for item in data['return_services'] if item['id']==str(d['cut']))
     assert rule['days']==21
+
+
+@pytest.mark.asyncio
+async def test_pilot_sender_blocks_other_recipient_even_in_same_company(comm_db,monkeypatch):
+    d=comm_db
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY','1')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_TENANT_ID',str(d['a']))
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE',PRO_PHONE.lstrip('+'))
+    await booking(d)
+    reminder=next(r for r in await jobs(d) if r['event']=='reminder')
+    async with d['migrator'].begin() as db:
+        await db.execute(text("UPDATE appointment_notifications SET due_at=now()-interval '1 second',expires_at=now()+interval '1 minute' WHERE id=:id"),{'id':reminder['id']})
+    async def denied(*a,**k):pytest.fail('A different contact must not receive pilot messages')
+    assert await notifications.process_notification({'appointment_sender':denied},str(d['a']),str(reminder['id']))=='pilot_recipient_not_authorized'
+    assert not notifications.access.tenant_enabled(d['b'])
+
+
+@pytest.mark.asyncio
+async def test_retention_removes_old_payloads_without_erasing_booking_history(comm_db):
+    from app import appointment_access as access
+    d=comm_db;a=await booking(d)
+    notice=next(r for r in await jobs(d) if r['event']=='professional_new')
+    async with d['factory']() as db:
+        async with tenant_transaction(db,d['a']):
+            await access.issue(db,d['a'],a['id'])
+    async with d['migrator'].begin() as db:
+        await db.execute(text("UPDATE appointment_notifications SET status='unknown',due_at=now()-interval '92 days',expires_at=now()-interval '91 days',created_at=now()-interval '92 days',body_encrypted='synthetic',recipient_hash=:hash,previous=CAST(:previous AS jsonb) WHERE id=:id"),{'id':notice['id'],'hash':'a'*64,'previous':'{"test":"old"}'})
+        await db.execute(text("UPDATE appointment_access SET expires_at=now()-interval '91 days' WHERE tenant_id=:t"),{'t':d['a']})
+        await db.execute(text("INSERT INTO appointment_confirmation_receipts(tenant_id,channel_key,message_id,appointment_id,appointment_version,body_encrypted,created_at) VALUES(:t,'test','old',:id,:v,'synthetic',now()-interval '91 days')"),{'t':d['a'],'id':a['id'],'v':a['updated_at']})
+    assert await notifications.cleanup_notification_payloads({})>=3
+    old=next(r for r in await jobs(d) if r['id']==notice['id'])
+    assert old['status']=='unknown' and old['body_encrypted'] is None and old['recipient_hash'] is None and old['previous']=={}
+    async with d['migrator'].connect() as db:
+        assert (await db.execute(text('SELECT status FROM appointments WHERE id=:id'),{'id':a['id']})).scalar_one()=='confirmed'
+        assert (await db.execute(text('SELECT count(*) FROM appointment_history WHERE appointment_id=:id'),{'id':a['id']})).scalar_one()>0

@@ -121,6 +121,36 @@ def main():
       page.wait_for_function('window._settingsSaved !== null')
       assert page.evaluate('window._settingsSaved.signature')=='Orion Agenda'
       assert not errors,errors
+      page.set_content('<!doctype html><html data-theme="'+theme+'"><head><base href="'+BASE+'"><link rel="stylesheet" href="/panel-assets/orion-suite.css"><link rel="stylesheet" href="/panel-assets/orion-inbox.css"><style>*{box-sizing:border-box}body{margin:0;font:400 16px/1.5 var(--os-font)}</style></head><body><main class="os-main" data-os-current-route="inbox"><div id="central-host"></div></main></body></html>')
+      page.add_script_tag(url=BASE+'/panel-assets/orion-conversations.js')
+      page.evaluate("""async () => {
+        const channel='00000000-0000-4000-8000-000000000010',account='00000000-0000-4000-8000-000000000020';
+        let opened=false,phone='',control={mode:'ai',revision:1,assigned_account_id:null,pending_operation:null},messages=[];
+        window._manualSendCount=0;
+        await window.OrionConversations.mount({host:document.getElementById('central-host'),tenantId:'tenant',canWrite:true,request:async(path,method,body)=>{
+          if(path.endsWith('/channels'))return {items:[{id:channel,provider:'qr',label:'Canal sintético',enabled:true}],account_id:account,send_enabled:true};
+          if(method==='POST'&&path.endsWith('/conversations')){opened=true;phone=body.contact_e164;return {channel_id:channel,contact_e164:phone,sent:false};}
+          if(path.includes('/conversations?'))return {items:opened?[{channel_id:channel,contact_e164:phone,name:'Contato sintético',mode:control.mode,revision:control.revision,provider:'qr',unread_count:0,updated_at:'2026-11-15T18:00:00Z'}]:[],has_more:false};
+          if(path.includes('/messages?'))return {control,items:messages,has_more:false,preserved_history_available:false};
+          if(path.endsWith('/control')&&method==='PUT'){control={...control,mode:body.mode,assigned_account_id:account,revision:control.revision+1};return control;}
+          if(path.endsWith('/messages')&&method==='POST'){window._manualSendCount++;messages=[{id:body.operation_id,direction:'out',source:'manual',body:body.text,status:'queued',created_at:'2026-11-15T18:00:00Z'}];return {operation_id:body.operation_id,status:'queued',sent:false};}
+          if(path.endsWith('/read'))return {read:true};
+          throw Error('Unexpected synthetic path: '+path);
+        }});
+      }""")
+      page.get_by_role('button',name='Nova conversa',exact=True).click()
+      page.get_by_label('WhatsApp com DDD',exact=True).fill('+5567999999901')
+      assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),(engine,width,theme,'new conversation overflow')
+      page.get_by_role('button',name='Abrir conversa',exact=True).click()
+      page.get_by_role('button',name='Assumir atendimento',exact=True).click()
+      page.get_by_role('button',name='Enviar mensagem',exact=True).wait_for(state='visible')
+      page.locator('#centralText').fill('Teste sintético — sem envio ao WhatsApp real')
+      page.get_by_role('button',name='Enviar mensagem',exact=True).click()
+      page.get_by_text('Na fila',exact=True).wait_for()
+      assert page.evaluate('window._manualSendCount')==1
+      assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),(engine,width,theme,'central overflow')
+      page.screenshot(path=str(OUT/f'{engine}-{width}-{theme}-central.png'),full_page=True)
+      assert not errors,errors
       results.append({'engine':engine,'viewport':[width,height],'theme':theme,'result':'passed','synthetic_ui':True})
       context.close()
     browser.close()
