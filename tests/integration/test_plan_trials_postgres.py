@@ -252,3 +252,29 @@ async def test_synthetic_cakto_checkout_activates_only_verified_owner_subscripti
                               {"t": tenant})
             await con.execute(text("DELETE FROM subscriptions WHERE tenant_id=:t"),
                               {"t": tenant})
+
+
+
+@pytest.mark.asyncio
+async def test_0046_direct_payment_attempts_are_support_only_without_sensitive_fields(trial_db):
+    db, account, tenant, other = trial_db
+    async with db.connect() as con:
+        privileges=(await con.execute(text("""
+            SELECT relrowsecurity, relforcerowsecurity,
+                   has_table_privilege('app_support',oid,'SELECT,INSERT,UPDATE'),
+                   has_table_privilege('app_runtime',oid,'SELECT,INSERT,UPDATE,DELETE')
+            FROM pg_class WHERE oid='public.orion_direct_payment_attempts'::regclass
+        """))).one()
+        assert tuple(privileges)==(True,True,True,False)
+        names=set((await con.execute(text("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='orion_direct_payment_attempts'
+        """))).scalars().all())
+        assert names=={
+            'id','intent_id','tenant_id','account_id','method','state',
+            'external_order_id','created_at','updated_at',
+        }
+        assert not names.intersection({
+            'email','cpf','cnpj','document','cvv','card_number','card_token',
+            'phone','payment_payload','raw_payload',
+        })
