@@ -136,6 +136,9 @@ def public_html(template, preference, slug):
         if parsed.scheme == 'https' and parsed.hostname and not parsed.username and not parsed.password:
             structured['image'] = candidate
             metadata.append(f'<meta property="og:image" content="{escaped(candidate)}">')
+            # Start fetching the hero image during HTML parsing instead of waiting
+            # for the public catalogue API and deferred JavaScript to finish.
+            metadata.append(f'<link rel="preload" as="image" href="{escaped(candidate)}" fetchpriority="high" referrerpolicy="no-referrer">')
             break
     schema = json.dumps(structured, ensure_ascii=False, separators=(',', ':'))
     schema = schema.replace('&', '\\u0026').replace('<', '\\u003c').replace('>', '\\u003e')

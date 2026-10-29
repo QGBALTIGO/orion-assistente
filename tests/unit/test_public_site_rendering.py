@@ -113,3 +113,15 @@ def test_metadata_never_accepts_untrusted_or_invalid_origin(monkeypatch, origin)
     monkeypatch.setenv('PANEL_PUBLIC_URL', origin)
     with pytest.raises(ValueError):
         public_site_url('empresa-sintetica')
+
+
+def test_public_cover_image_is_preloaded_before_javascript(monkeypatch):
+    monkeypatch.setenv('PANEL_PUBLIC_URL', 'https://orionagenda.pro')
+    cover = f"/media/{uuid4()}/{uuid4()}.webp"
+    template = '<html><head><title>Generic</title></head><body></body></html>'
+    output, _ = public_html(template, {'title': 'Studio', 'cover_url': cover}, 'studio')
+    expected = f'<link rel="preload" as="image" href="https://orionagenda.pro{cover}" fetchpriority="high" referrerpolicy="no-referrer">'
+    assert expected in output
+    assert output.index(expected) < output.index('</head>')
+    invalid, _ = public_html(template, {'title': 'Studio', 'cover_url': 'javascript:alert(1)'}, 'studio')
+    assert 'rel="preload" as="image"' not in invalid
