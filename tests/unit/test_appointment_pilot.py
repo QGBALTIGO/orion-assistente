@@ -81,3 +81,17 @@ def test_old_self_notice_requires_current_hmac_and_preserved_identity(monkeypatc
     with pytest.raises(HTTPException):automation_runtime._notice_identity(tenant,'556781234568',identity)
     monkeypatch.setenv('QR_BRIDGE_TOKEN','rotated-synthetic-key-'+'y'*40)
     with pytest.raises(HTTPException):automation_runtime._notice_identity(tenant,phone,identity)
+
+
+@pytest.mark.parametrize('revision',['0048_appointment_notifications','0049_preserved_phone_guard'])
+def test_full_predeploy_routes_existing_appointment_schema_to_its_release(monkeypatch,revision):
+    from scripts import backup_and_migrate_registration as entry,backup_and_migrate_appointment_communications as release
+    calls=[]
+    monkeypatch.setattr(entry,'connection_values',lambda:('isolated-url','isolated-url'))
+    monkeypatch.setattr(entry,'migrated_version',lambda _:revision)
+    monkeypatch.setattr(release,'main',lambda:calls.append('appointment') or 0)
+    def unexpected():pytest.fail('An applied earlier migration must not run again')
+    for module in ('professional_phone','quick_onboarding','admin_accounts','single_whatsapp','cakto','plans','direct_checkout'):
+        import importlib
+        monkeypatch.setattr(importlib.import_module('scripts.backup_and_migrate_'+module),'main',unexpected)
+    assert entry.predeploy_main()==0 and calls==['appointment']

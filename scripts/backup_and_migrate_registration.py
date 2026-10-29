@@ -99,7 +99,7 @@ def predeploy_main():
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
-        if current == appointment.TARGET:
+        if current in {appointment.TARGET,appointment.COMMUNICATIONS_PREVIOUS}:
             return appointment.main()
         if current == direct.TARGET:
             return finish_direct()
