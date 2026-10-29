@@ -17,6 +17,7 @@ SIZES=[(320,568),(375,667),(390,844),(768,1024),(1024,768),(1440,900)]
 OUT=Path(os.getenv('APPOINTMENT_E2E_OUT','test-results/appointment-communications'))
 BASE='http://127.0.0.1:8876'
 TOKEN='00000000-0000-4000-8000-000000000001.'+'a'*43
+OTHER_TOKEN='00000000-0000-4000-8000-000000000001.'+'b'*43
 FIXTURE={'company':'Barbearia de teste','customer':'Cliente Sintético','professional':'Profissional de teste',
  'status':'confirmed','protocol':'AG-TEST22','start_at':'2026-11-15T18:00:00Z','end_at':'2026-11-15T18:40:00Z',
  'timezone':'America/Campo_Grande','updated_at':'2026-10-29T18:00:00Z','services':['Corte','Barba'],
@@ -49,6 +50,7 @@ def main():
       def respond(route):
        data=route.request.post_data_json;calls.append(data['action'])
        result=state.copy()
+       if data['token']==OTHER_TOKEN:result.update(customer='Outro cliente sintético',protocol='AG-BBBB22')
        if data['action']=='slots':result={'slots':['2026-11-16T18:00:00Z'],'timezone':state['timezone']}
        elif data['action']=='cancel':state.update(status='cancelled',can_change=False);result=state.copy()
        elif data['action']=='review':state.update(can_review=False,review={'rating':data['rating'],'comment':data.get('comment')});result=state.copy()
@@ -58,6 +60,10 @@ def main():
        route.fulfill(status=200,content_type='application/json',body=json.dumps(result))
       page.route('**/api/appointment-access',respond)
       page.goto(BASE+'/a#'+TOKEN);page.get_by_role('heading',name='Agendamento confirmado!',exact=True).wait_for()
+      page.goto(BASE+'/a#'+OTHER_TOKEN);page.get_by_text('Outro cliente sintético',exact=True).wait_for()
+      assert page.get_by_text('AG-TEST22',exact=True).count()==0
+      page.goto(BASE+'/a#'+TOKEN);page.get_by_text('AG-TEST22',exact=True).wait_for()
+      assert page.get_by_text('Outro cliente sintético',exact=True).count()==0
       assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),(engine,width,theme,'overflow')
       page.screenshot(path=str(OUT/f'{engine}-{width}-{theme}-confirmed.png'),full_page=True)
       page.get_by_role('button',name='Remarcar atendimento',exact=True).click()
