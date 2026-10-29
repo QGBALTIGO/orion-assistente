@@ -49,6 +49,8 @@ async def inspect(page,width,mode):
       });
     }""")
     assert await page.locator(".op-plan").count()==3, (width,mode)
+    assert await page.locator(".op-matrix-footnote, .op-admin-trials, .op-legal-foot").count()==0, (width,mode)
+    assert await page.evaluate("() => document.querySelector('.op-page').lastElementChild.classList.contains('op-compare')"), (width,mode)
     state=await page.evaluate("""()=>{
       return {
        total:document.documentElement.scrollWidth,
