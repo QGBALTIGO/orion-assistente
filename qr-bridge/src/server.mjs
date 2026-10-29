@@ -40,6 +40,7 @@ import {createChannelRoutes} from './channel-routes.mjs';
 import {createBaileysChannelSession} from './channel-session.mjs';
 import {createLegacyCentral} from './legacy-central.mjs';
 import {testReplyFor} from './trigger-test.mjs';
+import {makeTestButtonPayload} from './test-url-button.mjs';
 
 const legacyCentral=createLegacyCentral({
   start:(id,key)=>channelRoutes.adopt(id,key),send:(id,key,payload)=>channelRoutes.send(id,key,payload),
@@ -431,8 +432,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
             if(seen.size>2000)seen.delete(seen.values().next().value);
             try{
               if(legacyCentral.configured())await legacyCentral.resume();
-              const sent=await send(phone,replyText,{waitForCapacity:true,
-                isCurrent:()=>intakeCurrent()});
+              const sent=await sendTestUrlButton(phone,replyText,{isCurrent:()=>intakeCurrent()});
               transport.record(sent?.accepted?'trigger_test_relay_accepted':'trigger_test_unconfirmed',traceId);
             }catch(error){transport.record('trigger_test_send_failed',traceId);}
           }
@@ -743,6 +743,26 @@ async function recipientInspection(value){
 async function send(phone,text,options={}){
   if(legacyCentral.configured())return legacyCentral.automatic(phone,text,options);
   return sendLegacyRaw(phone,text,options);
+}
+async function sendTestUrlButton(phone,text,{isCurrent=()=>true}={}){
+  const target=validPhone(phone);
+  if(process.env.QR_TRIGGER_TEST_PHONE!==target)throw Error('test_button_not_allowed');
+  if(status!=='connected'||!socket)throw Error('test_button_disconnected');
+  const selectedSocket=socket,selectedGeneration=generation;
+  const current=()=>socket===selectedSocket&&generation===selectedGeneration&&status==='connected'&&isCurrent();
+  await sendCapacity.acquire({wait:true,isCurrent:current});
+  if(!current())throw Error('test_button_connection_changed');
+  const proof=await resolvePilotRecipient({phone:target,pilotPhone:pilotNumber(process.env),
+    enabled:false,socket:selectedSocket,deviceCache:socketDeviceCaches.get(selectedSocket),isCurrent:current});
+  if(!current())throw Error('test_button_connection_changed');
+  // Legacy hydrated template URL button; WhatsApp clients may suppress it.
+  const result=await selectedSocket.sendMessage(proof.jid,makeTestButtonPayload(text));
+  if(!result?.key?.id||!result?.message)return {accepted:false,delivery:'unconfirmed'};
+  retryStore.save(result.key,result.message);
+  const id='out:'+result.key.id;
+  deliveryReceipts.set(result.key.id,'pending');
+  pushMessage({id,phone:target,body:text,direction:'out',at:Date.now(),delivery:'pending'});
+  return {accepted:true,delivery:'pending',id};
 }
 async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true}={}){
   const target=validPhone(phone);
