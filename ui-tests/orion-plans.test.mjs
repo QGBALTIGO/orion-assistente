@@ -82,6 +82,7 @@ test('show only differences is default, reversible and synchronized across mobil
  try{
   const toggle=f.root.querySelector('[data-op-only-differences]');
   assert.ok(toggle.checked);
+  assert.equal(f.root.querySelectorAll('[data-op-only-differences]').length,1);
   const table=f.root.querySelector('.op-matrix');
   const mobile=f.root.querySelector('.op-mobile-comparison');
   assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,15);
