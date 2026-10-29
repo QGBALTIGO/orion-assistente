@@ -175,3 +175,14 @@ def test_signed_cakto_callback_is_reconciled_even_without_sck():
     assert len(normalized) == 1
     assert normalized[0]["callback_hash"] == hashlib.sha256(b"tenant-callback-0123456789").hexdigest()
     assert normalized[0]["amount_cents"] == 2990
+
+
+@pytest.mark.asyncio
+async def test_public_checkout_availability_tracks_real_server_flag(monkeypatch):
+    monkeypatch.setenv("CAKTO_BILLING_LIVE_ENABLED", "1")
+    result=await cakto_api.public_cakto_plans()
+    assert result["subscription_activation_enabled"] is True
+    assert [x["monthly_cents"] for x in result["plans"]] == [2990,8990,13990]
+    assert all("checkout_url" not in x for x in result["plans"])
+    monkeypatch.setenv("CAKTO_BILLING_LIVE_ENABLED", "0")
+    assert (await cakto_api.public_cakto_plans())["subscription_activation_enabled"] is False
