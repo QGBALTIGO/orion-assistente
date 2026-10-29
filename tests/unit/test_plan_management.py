@@ -94,7 +94,7 @@ async def test_checkout_denied_when_billing_flag_is_disabled(monkeypatch):
     tenant=uuid4()
     async def granted(*args,**kwargs):
         return SimpleNamespace(role="owner",account_id=account_id)
-    monkeypatch.setattr(plans, "resolve_tenant_access", granted)
+    monkeypatch.setattr(plans, "resolve_site_access", granted)
     monkeypatch.delenv("CAKTO_BILLING_LIVE_ENABLED",raising=False)
     with pytest.raises(HTTPException) as caught:
         await plans.start_plan_checkout(tenant,plans.CheckoutChoice(plan_code="profissional"),
@@ -114,7 +114,7 @@ async def test_professional_checkout_requires_exact_active_offer_even_when_flag_
         async def list_offers(self):
             return [{"id":"synthetic-offer","name":"Orion Pro","price":79.90,
                      "status":"active","type":"subscription","recurrence_period":30}]
-    monkeypatch.setattr(plans,"resolve_tenant_access",granted)
+    monkeypatch.setattr(plans,"resolve_site_access",granted)
     monkeypatch.setattr(plans,"CaktoClient",ReadOnlyCakto)
     monkeypatch.setenv("CAKTO_BILLING_LIVE_ENABLED","1")
     
@@ -164,3 +164,20 @@ def test_checkout_token_is_replayable_for_same_tenant_and_unguessable(monkeypatc
     from urllib.parse import urlsplit, parse_qs
     params = parse_qs(urlsplit(url).query)
     assert params["callback"] == params["sck"] == [first]
+
+
+def test_admin_can_buy_only_when_explicit_business_owner_membership_was_verified():
+    from app.catalog_api import Actor
+    from app.tenant_access import TenantAccess
+    owner = uuid4()
+    access = TenantAccess(role="owner", account_id=owner)
+    assert plans._owner_account(access, Actor("member", account_id=owner)) == owner
+    assert plans._owner_account(access, Actor("admin", account_id=owner)) == owner
+    for role in ("support", "viewer"):
+        with pytest.raises(HTTPException) as ex:
+            plans._owner_account(access, Actor(role, account_id=owner))
+        assert ex.value.status_code == 403
+    with pytest.raises(HTTPException) as ex:
+        plans._owner_account(TenantAccess(role="admin", account_id=owner),
+                             Actor("admin", account_id=owner))
+    assert ex.value.status_code == 403
