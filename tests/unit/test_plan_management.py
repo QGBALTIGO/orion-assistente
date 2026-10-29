@@ -188,7 +188,8 @@ def test_direct_checkout_never_enables_without_explicit_live_and_processor_flags
     for key in ("ORION_DIRECT_PAYMENTS_ENABLED", "CAKTO_BILLING_LIVE_ENABLED",
                 "CAKTO_CLIENT_ID", "CAKTO_CLIENT_SECRET", "CAKTO_WEBHOOK_SECRET",
                  "ORION_DIRECT_RECURRING_VERIFIED",
-                 "ORION_WEBHOOK_SECRET_ROTATED_CONFIRMED"):
+                 "ORION_WEBHOOK_SECRET_ROTATED_CONFIRMED",
+                 "ORION_CAKTO_LIFECYCLE_ENABLED"):
         monkeypatch.delenv(key, raising=False)
     assert not direct.checkout_enabled()
     monkeypatch.setenv("ORION_DIRECT_PAYMENTS_ENABLED", "1")
@@ -202,6 +203,8 @@ def test_direct_checkout_never_enables_without_explicit_live_and_processor_flags
     monkeypatch.setenv("ORION_DIRECT_RECURRING_VERIFIED", "1")
     assert not direct.checkout_enabled()
     monkeypatch.setenv("ORION_WEBHOOK_SECRET_ROTATED_CONFIRMED", "1")
+    assert not direct.checkout_enabled()
+    monkeypatch.setenv("ORION_CAKTO_LIFECYCLE_ENABLED", "1")
     assert direct.checkout_enabled()
 
 
