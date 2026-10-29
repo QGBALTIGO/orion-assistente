@@ -455,3 +455,91 @@ async def test_panel_v2_history_probe_is_read_only_and_bounded(monkeypatch):
     assert result["webhook_ready"]==3
     assert "customer" not in str(result)
     assert secret not in str(result)
+
+
+
+def test_cakto_rotation_synthetic_test_selects_one_owned_v2_webhook_and_checks_signature():
+    from datetime import datetime,timezone,timedelta
+    from scripts.test_cakto_webhook_rotation_once import (
+        eligible_app_id,acknowledged_test_delivery,TEST_EVENT,
+    )
+    secret="synthetic-new-webhook-secret-for-CI-32-characters"
+    now=datetime.now(timezone.utc)
+    app={"id":925,"status":"active",
+         "url":"https://orionagenda.pro/webhooks/cakto",
+         "products":[{"id":"synthetic-orion-product"}],
+         "fields":{"secret":secret}}
+    receipt={
+        "app":app,
+        "url":"https://orionagenda.pro/webhooks/cakto",
+        "payload":{"event":TEST_EVENT,"secret":secret,
+                   "data":[{"id":"synthetic-data-not-an-order"}]},
+        "event_id":TEST_EVENT,"event_status":200,
+        "sentAt":now.isoformat(),
+    }
+    assert eligible_app_id([receipt],"synthetic-orion-product")==925
+    assert eligible_app_id([receipt],"unrelated-product") is None
+    assert eligible_app_id([receipt,{**receipt,"app":{**app,"id":926}}],"synthetic-orion-product") is None
+    assert eligible_app_id([{**receipt,"url":"https://attacker.example/webhook"}],"synthetic-orion-product") is None
+    assert eligible_app_id([{**receipt,"app":{**app,"status":"disabled"}}],"synthetic-orion-product") is None
+    assert acknowledged_test_delivery([receipt],925,secret,now)
+    assert not acknowledged_test_delivery([receipt],926,secret,now)
+    assert not acknowledged_test_delivery([receipt],925,"a-different-secret-32-characters-long",now)
+    assert not acknowledged_test_delivery([{**receipt,"event_status":401}],925,secret,now)
+    assert not acknowledged_test_delivery([{**receipt,"sentAt":(now-timedelta(minutes=10)).isoformat()}],925,secret,now)
+    assert not acknowledged_test_delivery([{**receipt,"payload":{**receipt["payload"],"secret":"incorrect"}}],925,secret,now)
+    assert secret not in str({"checked":acknowledged_test_delivery([receipt],925,secret,now)})
+
+
+@pytest.mark.asyncio
+async def test_cakto_rotation_one_shot_posts_only_checkout_abandonment_synthetic(monkeypatch):
+    from datetime import datetime,timezone
+    from scripts import test_cakto_webhook_rotation_once as synthetic
+    secret="synthetic-new-webhook-secret-for-CI-32-characters"
+    monkeypatch.setenv("CAKTO_WEBHOOK_SECRET",secret)
+    now=datetime.now(timezone.utc)
+    app={"id":925,"status":"active",
+         "url":"https://orionagenda.pro/webhooks/cakto",
+         "products":["synthetic-orion-product"],"fields":{"secret":secret}}
+    old={"app":app,"url":"https://orionagenda.pro/webhooks/cakto",
+         "event_id":"purchase_approved","payload":{"event":"purchase_approved","secret":"old"},
+         "event_status":200,"sentAt":now.isoformat()}
+    delivered={"app":app,"url":"https://orionagenda.pro/webhooks/cakto",
+         "event_id":"checkout_abandonment",
+         "payload":{"event":"checkout_abandonment","secret":secret,"data":[]},
+         "event_status":200,"sentAt":now.isoformat()}
+    offers=[{"id":f"offer-{i}","name":name,"type":"subscription",
+             "price":value,"recurrence_period":30,"status":"active",
+             "product":"synthetic-orion-product"}
+            for i,(name,value) in enumerate((
+                ("Orion Essencial",29.90),("Orion Pro",89.90),("Orion Elite",139.90)))]
+    actions=[]
+    class FakeClient:
+        async def list_offers(self):return offers
+        async def token(self):return "synthetic-bearer-token"
+    class Response:
+        def raise_for_status(self):pass
+    class FakeHTTP:
+        def __init__(self,*args,**kwargs):pass
+        async def __aenter__(self):return self
+        async def __aexit__(self,*args):pass
+        async def post(self,url,**kwargs):
+            actions.append((url,kwargs))
+            assert url.endswith("/webhook/event_test/925/")
+            assert kwargs["params"]=={"event_id":"checkout_abandonment"}
+            assert "payments" not in url
+            assert "data" not in kwargs and "json" not in kwargs
+            return Response()
+    async def fake_history(_client):
+        return [old,delivered] if actions else [old]
+    async def skip_sleep(_seconds):pass
+    monkeypatch.setattr(synthetic,"CaktoClient",FakeClient)
+    monkeypatch.setattr(synthetic,"_history",fake_history)
+    monkeypatch.setattr(synthetic.httpx,"AsyncClient",FakeHTTP)
+    monkeypatch.setattr(synthetic.asyncio,"sleep",skip_sleep)
+    monkeypatch.setenv("ORION_CAKTO_SYNTHETIC_WEBHOOK_TEST","1")
+    assert await synthetic.run()==0
+    assert len(actions)==1
+    monkeypatch.delenv("ORION_CAKTO_SYNTHETIC_WEBHOOK_TEST")
+    assert await synthetic.run()==0
+    assert len(actions)==1
