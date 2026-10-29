@@ -83,19 +83,31 @@ async def public_followup(slug,result,phone):
             if requested is not True:return output
     # Only the authenticated current channel identity supplies the destination.
     # A contact number in a site's appearance settings is not proof of a channel.
+    number=await connected_channel_phone(tenant)
+    if number:
+        message='Olá, Orion! 👋\n\nAcabei de realizar um agendamento e gostaria de receber minha confirmação.\n\n🧾 Protocolo: '+result['protocol']
+        output['whatsapp_confirmation_url']='https://wa.me/'+number+'?text='+quote(message)
+    else:
+        output['communication_state']='channel_unavailable'
+    return output
+
+
+async def connected_channel_phone(tenant):
+    """Only the currently verified channel supplies a WhatsApp destination.
+
+    Site appearance numbers, professional phones and request IDs never select
+    this contact. An offline or unverified channel fails closed within 2 s.
+    """
     try:
         from app.catalog_api import support_session_factory
         from app.qr_channels import _canonical,_bridge_control,_control_result
         async with asyncio.timeout(2):
             async with support_session_factory()() as registry:
                 channel,state=await _canonical(registry,tenant)
-            if state!='ready' or channel is None:return output
+            if state!='ready' or channel is None:return None
             raw=await _bridge_control(channel,'status','GET')
             status=_control_result(channel,raw,'status')
             number=status.get('phone') if status.get('phone_verified') else None
-            if number:
-                message='Olá, Orion! 👋\n\nAcabei de realizar um agendamento e gostaria de receber minha confirmação.\n\n🧾 Protocolo: '+result['protocol']
-                output['whatsapp_confirmation_url']='https://wa.me/'+number+'?text='+quote(message)
+            return number
     except Exception:
-        output['communication_state']='channel_unavailable'
-    return output
+        return None

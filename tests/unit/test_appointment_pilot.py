@@ -95,3 +95,22 @@ def test_full_predeploy_routes_existing_appointment_schema_to_its_release(monkey
         import importlib
         monkeypatch.setattr(importlib.import_module('scripts.backup_and_migrate_'+module),'main',unexpected)
     assert entry.predeploy_main()==0 and calls==['appointment']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('state,status,verified,expected',[
+    ('ready','connected',True,'556781234567'),('ready','connected',False,None),
+    ('ready','stopped',True,None),('ambiguous','connected',True,None)])
+async def test_contact_destination_uses_only_current_verified_channel(monkeypatch,state,status,verified,expected):
+    from contextlib import asynccontextmanager
+    from app import appointment_confirmation as confirmation,catalog_api
+    tenant=uuid4();channel={'id':uuid4(),'revision':1,'enabled':True,'assistant_enabled':False};calls=[]
+    @asynccontextmanager
+    async def registry():yield object()
+    async def canonical(db,t):assert t==tenant;return channel,state
+    async def observed(row,action,method):
+        calls.append((action,method));return {'status':status,'phone':'556781234567','phone_verified':verified}
+    monkeypatch.setattr(catalog_api,'support_session_factory',lambda:registry)
+    monkeypatch.setattr(qr_channels,'_canonical',canonical);monkeypatch.setattr(qr_channels,'_bridge_control',observed)
+    assert await confirmation.connected_channel_phone(tenant)==expected
+    assert calls==([('status','GET')] if state=='ready' else [])
