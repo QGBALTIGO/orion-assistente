@@ -368,11 +368,44 @@ async def start_plan_checkout(tenant_id: UUID, payload: CheckoutChoice,
             "status": "pending_payment"}
 
 
-async def apply_verified_cakto_payment(event: dict, order: dict) -> str:
+def first_cakto_subscription_confirmed(event: dict, order: dict,
+                                       subscription: dict | None) -> bool:
+    """Subscription GET must corroborate the exact first paid order.
+
+    Never activate a tenant from the webhook and order alone; verify that the
+    processor actually created an active 30-day recurring contract.
+    """
+    if not isinstance(subscription, dict):
+        return False
+    sub_id = _subscription_id(order.get("subscription"))
+    if not (isinstance(sub_id, str) and 1 <= len(sub_id) <= 120
+            and subscription.get("id") == sub_id
+            and subscription.get("status") == "active"
+            and subscription.get("recurrence_period") in (30, "30")
+            and subscription.get("offer") == event.get("external_offer_id")
+            and subscription.get("paymentMethod") in ("pix_auto","credit_card","threeDs")):
+        return False
+    if subscription.get("parent_order") != order.get("id"):
+        return False
+    try:
+        charge = Decimal(str(subscription.get("amount"))) * 100
+        if charge != charge.to_integral_value():
+            return False
+        if int(charge) != event.get("amount_cents"):
+            return False
+    except (InvalidOperation, ValueError, TypeError):
+        return False
+    return True
+
+
+async def apply_verified_cakto_payment(event: dict, order: dict,
+                                               subscription: dict | None = None) -> str:
     """Fail-closed first-payment binding, scoped by a signed callback and API order."""
     token_hash = event.get("callback_hash")
     if not token_hash or event.get("event_type") != "purchase_approved":
         return "unlinked"
+    if not first_cakto_subscription_confirmed(event, order, subscription):
+        return "manual_review"
     order_id = event.get("external_order_id")
     subscription_id = _subscription_id(order.get("subscription"))
     if (not isinstance(subscription_id, str) or not subscription_id or len(subscription_id) > 120
