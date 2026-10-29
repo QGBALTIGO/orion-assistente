@@ -420,7 +420,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       // Explicit opt-in pilot: exact keyword, one verified phone, never fromMe.
       // Do not forward the test command to the customer-facing assistant.
       if(normalized.text?.trim().toUpperCase()==='ORIONTESTE' &&
-          process.env.QR_TRIGGER_TEST_PHONE){
+          process.env.QR_TRIGGER_TEST_PHONE && type==='notify'){
         const phone=await resolveMessagePhone(message.key,client);
         const replyText=testReplyFor({text:normalized.text,phone,
           allowedPhone:process.env.QR_TRIGGER_TEST_PHONE,fromMe:message.key.fromMe});
