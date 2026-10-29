@@ -293,6 +293,11 @@ async def test_embedded_checkout_accepts_verified_v2_history_and_denies_unproved
     from app import orion_direct_checkout as direct
     from scripts import probe_orion_webhooks_read_only as inventory
     from scripts import probe_orion_webhook_history_read_only as history
+    from scripts import probe_orion_payment_methods_read_only as methods
+    async def product_enabled(*args):
+        return {"offers_one_product":True,"methods_confirmed":True,
+                "pix_auto":True,"card":True}
+    monkeypatch.setattr(methods,"probe",product_enabled)
 
     class ReadOnlyClient:
         async def list_offers(self):
@@ -326,6 +331,14 @@ async def test_embedded_checkout_accepts_verified_v2_history_and_denies_unproved
     monkeypatch.setattr(history,"probe",history_ready)
     assert await direct.require_verified_webhooks(ReadOnlyClient()) is None
     assert calls == ["inventory","history"]
+    async def no_pix(*args):
+        return {"offers_one_product":True,"methods_confirmed":False,
+                "pix_auto":False,"card":True}
+    monkeypatch.setattr(methods,"probe",no_pix)
+    with pytest.raises(HTTPException) as missing_pix_auto:
+        await direct.require_verified_webhooks(ReadOnlyClient())
+    assert missing_pix_auto.value.status_code == 409
+    monkeypatch.setattr(methods,"probe",product_enabled)
 
     calls.clear()
     monkeypatch.setattr(inventory,"probe",inventory_ready)
