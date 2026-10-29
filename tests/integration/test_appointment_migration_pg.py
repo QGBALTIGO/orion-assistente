@@ -20,7 +20,7 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.mark.parametrize('revision',[release.PREVIOUS,release.COMMUNICATIONS_PREVIOUS])
-def test_populated_upgrade_preserves_rows_registry_and_restorable_backup(tmp_path,revision):
+def test_populated_upgrade_preserves_rows_registry_and_restorable_backup(tmp_path,revision,monkeypatch):
     owner = os.getenv('ORION_MIGRATION_TEST_OWNER_URL')
     if not owner:
         if os.getenv('ORION_REQUIRE_MIGRATION_OPS_TEST') == '1':
@@ -60,6 +60,13 @@ def test_populated_upgrade_preserves_rows_registry_and_restorable_backup(tmp_pat
                 for table in release.TABLES:
                     assert db.exec_driver_sql('SELECT count(*) FROM '+table).scalar_one() == 0
             assert release.schema_ready(source.environment()['MIGRATION_DATABASE_URL'])
+            # Execute Railway's actual predeploy entrypoint against the newly
+            # upgraded real database, including all read-only schema checks.
+            from scripts import backup_and_migrate_registration as entry
+            raw=source.environment()['MIGRATION_DATABASE_URL']
+            monkeypatch.setattr(entry,'connection_values',lambda:(raw,raw))
+            monkeypatch.setattr(release,'connection_values',lambda:(raw,raw))
+            assert entry.predeploy_main()==0
             # The previous runtime write contract still works after upgrade.
             with source.engine.begin() as db:
                 db.exec_driver_sql('SET LOCAL ROLE app_runtime')
