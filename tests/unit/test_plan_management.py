@@ -378,3 +378,100 @@ async def test_embedded_checkout_hides_processor_diagnostic_from_owner(monkeypat
     assert failure.value.status_code == 503
     assert "Cakto" not in failure.value.detail
     assert "pagamento" in failure.value.detail
+
+
+
+def test_cakto_lifecycle_decisions_are_bound_to_exact_subscription_and_latest_order():
+    from datetime import datetime, timezone
+    from app.cakto_subscription_lifecycle import lifecycle_decision
+    from uuid import uuid4
+    expected_offer="offer-orion-pro-test"
+    sub_id=str(uuid4())
+    binding={
+        "external_subscription_id":sub_id,
+        "plan_code":"profissional",
+        "plan_db_code":"orion_profissional",
+        "monthly_cents":8990,
+        "last_order_id":"initial-order",
+        "last_verified_payment_at":datetime(2026,10,1,tzinfo=timezone.utc),
+        "local_status":"active",
+    }
+    remote={
+        "id":sub_id, "offer":expected_offer, "amount":"89.90",
+        "status":"active","recurrence_period":30,
+        "paymentMethod":"pix_auto",
+    }
+    event={
+        "event_type":"subscription_renewed",
+        "external_order_id":"renewal-order",
+        "external_offer_id":expected_offer,
+        "external_subscription_id":sub_id,
+        "amount_cents":8990,"currency":"BRL",
+    }
+    order={
+        "id":"renewal-order","subscription":sub_id,
+        "offer_type":"main","type":"subscription",
+        "amount":"89.90","currency":"BRL","status":"paid",
+        "paidAt":"2026-10-29T12:00:00Z",
+    }
+    decision=lambda e=event,o=order,r=remote,b=binding: lifecycle_decision(
+        e,o,r,b,expected_offer=expected_offer)
+    assert decision()=="renewed"
+    assert decision(b={**binding,"last_order_id":"renewal-order"})=="already_verified"
+    assert decision(b={**binding,"local_status":"canceled"})=="manual_review"
+    assert decision(b={**binding,"last_verified_payment_at":
+                       datetime(2026,10,30,tzinfo=timezone.utc)})=="manual_review"
+    assert decision(e={**event,"amount_cents":2990})=="manual_review"
+    assert decision(e={**event,"external_offer_id":"wrong"})=="manual_review"
+    assert decision(o={**order,"type":"unique"})=="manual_review"
+    assert decision(o={**order,"status":"waiting_payment"})=="manual_review"
+    assert decision(o={**order,"subscription":str(uuid4())})=="manual_review"
+    assert decision(r={**remote,"offer":"another-offer"})=="manual_review"
+    assert decision(r={**remote,"recurrence_period":365})=="manual_review"
+    assert decision(r={**remote,"paymentMethod":"pix"})=="manual_review"
+    assert decision(r={**remote,"amount":"29.90"})=="manual_review"
+
+    cancellation={**event,"event_type":"subscription_canceled"}
+    assert decision(e=cancellation,r={**remote,"status":"canceled"})=="canceled"
+    assert decision(e=cancellation)=="manual_review"
+
+    refund={**event,"event_type":"refund","external_order_id":"initial-order"}
+    refund_order={**order,"id":"initial-order","status":"refunded"}
+    assert decision(e=refund,o=refund_order)=="suspended"
+    assert decision(e=refund,o=refund_order,
+                    b={**binding,"last_order_id":"newer-order"})=="manual_review"
+    chargeback={**refund,"event_type":"chargeback"}
+    assert decision(e=chargeback,o={**refund_order,"status":"MED"})=="suspended"
+    assert decision(e=chargeback,o=refund_order)=="manual_review"
+
+    refused={**event,"event_type":"purchase_refused"}
+    assert decision(e=refused,o={**order,"status":"refused"},
+                    r={**remote,"status":"late"})=="past_due"
+    assert decision(e=refused,o={**order,"status":"refused"})=="manual_review"
+    assert decision(e=refused,o={**order,"status":"refused"},
+                    b={**binding,"local_status":"canceled"},
+                    r={**remote,"status":"late"})=="manual_review"
+
+
+def test_billing_methods_probe_accepts_only_one_verified_subscription_product():
+    from scripts.probe_orion_payment_methods_read_only import (
+        check_product, product_reference,
+    )
+    offers=[
+        {"id":f"off-{i}","name":name,"type":"subscription",
+         "recurrence_period":30,"status":"active","price":price,
+         "product":"synthetic-product"}
+        for i,(name,price) in enumerate([
+            ("Orion Essencial",29.9),("Orion Pro",89.9),("Orion Elite",139.9),
+        ])
+    ]
+    assert product_reference(offers)=="synthetic-product"
+    assert product_reference([{**offers[0],"product":"different"},*offers[1:]]) is None
+    ok=check_product({"status":"active","paymentMethods":["pix_auto","credit_card"]})
+    assert ok=={"methods_confirmed":True,"pix_auto":True,"card":True}
+    assert check_product({"status":"active","paymentMethods":["pix","credit_card"]})=={
+        "methods_confirmed":False,"pix_auto":False,"card":True}
+    assert check_product({"status":"inactive","paymentMethods":["pix_auto","credit_card"]})=={
+        "methods_confirmed":False,"pix_auto":False,"card":False}
+    assert check_product({"status":"active","paymentMethods":"pix_auto"})=={
+        "methods_confirmed":False,"pix_auto":False,"card":False}
