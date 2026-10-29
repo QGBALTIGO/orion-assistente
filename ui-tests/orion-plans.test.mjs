@@ -237,6 +237,49 @@ test('card mode never sends raw PAN/CVV to application without tokenization',asy
  }finally{f.close();}
 });
 
+test('credit card SDK tokenizes in browser and Orion API receives only token, not PAN/CVV',async()=>{
+ const f=fixture({}, {directConfig:{available:true,methods:['pix','card'],sdk_client_id:'synthetic-sdk-id'}});
+ let tokenized=false,challenged=false;
+ try{
+  f.window.Cakto={CaktoSDK:class{
+   constructor(settings){assert.equal(settings.client_id,'synthetic-sdk-id');}
+   async initAntifraud(){}
+   async createToken(card){tokenized=card.cardNumber==='4111111111111111'&&card.cvv==='123';return{cardToken:'synthetic-card-token-01234567890'};}
+   async authenticate3DS(data){challenged=data.customer.amount===8990;return{success:true,cavv:'synthetic-cavv',eci:'05',xid:'synthetic-xid',referenceId:'synthetic-ref',version:'2.2.0'};}
+   async completeAntifraudProfile(){}
+   getAntifraudReference(){return 'synthetic-antifraud-reference';}
+  }};
+  f.root.querySelector('[data-op-checkout=profissional]').click();
+  await tick();await tick();
+  const dlg=f.root.querySelector('.op-checkout-dialog');
+  dlg.querySelector('[data-op-payment-method=card]').click();
+  const form=dlg.querySelector('form');
+  const fill=(key,value)=>{form.elements.namedItem(key).value=value;};
+  fill('name','Pessoa Sintética');fill('email','synthetic@example.test');
+  fill('phone','(67) 99999-1111');fill('doc_number','52998224725');
+  fill('holder','Pessoa Sintética');fill('card_number','4111111111111111');
+  fill('expiry','12/30');fill('cvv','123');
+  fill('zip','79000-000');fill('state','MS');fill('city','Campo Grande');
+  fill('street','Rua Exemplo');fill('number','100');
+  form.elements.namedItem('monthly_ack').checked=true;
+  form.elements.namedItem('processor_ack').checked=true;
+  form.dispatchEvent(new f.window.Event('submit',{bubbles:true,cancelable:true}));
+  for(let i=0;i<6;i++)await tick();
+  assert.equal(tokenized,true);
+  assert.equal(challenged,true);
+  const charge=f.calls.find(c=>c.path==='/plan-direct-charge');
+  assert.ok(charge,'synthetic card token charge created');
+  assert.equal(charge.data.method,'card');
+  assert.equal(charge.data.card_token,'synthetic-card-token-01234567890');
+  assert.equal(charge.data.three_ds.eci,'05');
+  assert.equal(charge.data.antifraud_reference,'synthetic-antifraud-reference');
+  assert.equal(form.elements.namedItem('card_number').value,'');
+  assert.equal(form.elements.namedItem('cvv').value,'');
+  assert.doesNotMatch(JSON.stringify(charge.data),/4111111111111111|(?:\\b|")cvv(?:\\b|")/i);
+  dlg.querySelector('[data-op-checkout-close]').click();
+ }finally{f.close();}
+});
+
 test('no horizontal-scroll-prone three-column layout on mobile screens',()=>{
  const widths=[320,375,390,430,768,1024,1440];
  for(const width of widths){
