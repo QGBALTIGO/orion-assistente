@@ -42,6 +42,8 @@ def start_at(day, hh, minute=0):
 
 @pytest_asyncio.fixture
 async def booking_db():
+    from plan_fixtures import seed_fixture_plan, clear_fixture_plans
+    plan_admin=None
     rurl, murl = os.getenv("APP_DATABASE_URL"), os.getenv("MIGRATION_DATABASE_URL")
     if not rurl or not murl:
         if os.getenv("REQUIRE_POSTGRES_TESTS") == "1":
@@ -65,6 +67,7 @@ async def booking_db():
                 await s.execute(text("""
                     INSERT INTO tenants (id,name,slug) VALUES (:id,:name,:slug)
                 """), {"id": tid, "name": "Piloto fictício", "slug": "booking-" + str(tid)})
+            plan_admin=await seed_fixture_plan(s,(a,b),"essencial")
             for pid in (pro, pro2):
                 await s.execute(text("""
                     INSERT INTO professionals (id,tenant_id,name) VALUES (:id,:tenant,'Barbeiro sintético')
@@ -96,6 +99,7 @@ async def booking_db():
                           "working_hours", "schedule_blocks", "time_off", "services",
                           "professionals", "tenant_audit"):
                 await s.execute(text(f"DELETE FROM {table} WHERE tenant_id=:tenant"), {"tenant": a})
+            await clear_fixture_plans(s,(a,b),(plan_admin,))
             await s.execute(text("DELETE FROM tenants WHERE id IN (:a,:b)"), {"a": a, "b": b})
         await runtime.dispose()
         await migrator.dispose()

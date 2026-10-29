@@ -170,9 +170,15 @@ async def consent(tenant_id: UUID, payload: ContactConsent, actor: Actor = Depen
         if customer is None:
             raise HTTPException(404, "Contato não encontrado neste negócio")
         await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:scope,0))"), {"scope": str(tenant_id) + ":automation-consent:" + payload.contact_e164})
-        current = (await db.execute(text("SELECT updated_at FROM contact_consents WHERE tenant_id=:t AND contact_e164=:phone FOR UPDATE"), {"t": tenant_id, "phone": payload.contact_e164})).scalar_one_or_none()
-        if current != payload.expected_updated_at:
+        current = (await db.execute(text("SELECT updated_at,marketing_opt_in,operational_opt_in,birthday_opt_in FROM contact_consents WHERE tenant_id=:t AND contact_e164=:phone FOR UPDATE"), {"t": tenant_id, "phone": payload.contact_e164})).mappings().one_or_none()
+        if (current["updated_at"] if current else None) != payload.expected_updated_at:
             raise HTTPException(409, "O consentimento mudou. Consulte o registro atual")
+        from app.plan_permissions import require_feature
+        for field,feature in (("operational_opt_in","notifications.basic"),
+                              ("marketing_opt_in","relationships.manage"),
+                              ("birthday_opt_in","relationships.manage")):
+            if getattr(payload,field) is True and not (current and current[field]):
+                await require_feature(db,tenant_id,feature)
         await db.execute(text("""INSERT INTO contact_consents(tenant_id,contact_e164,marketing_opt_in,operational_opt_in,birthday_opt_in,birthday_purpose_version,source)
           VALUES(:t,:phone,:marketing,:operational,COALESCE(:birthday,false),CASE WHEN :birthday THEN 1 ELSE 0 END,'owner_attestation') ON CONFLICT(tenant_id,contact_e164) DO UPDATE
           SET marketing_opt_in=EXCLUDED.marketing_opt_in,operational_opt_in=EXCLUDED.operational_opt_in,

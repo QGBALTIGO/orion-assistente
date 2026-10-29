@@ -9,6 +9,7 @@ from fastapi import APIRouter,Depends,HTTPException,Request
 from sqlalchemy import text
 
 from app.catalog_api import Actor,authenticate,support_only,support_session_factory
+from app.plan_permissions import lock_plan
 
 router=APIRouter(tags=["Assinatura SaaS"])
 
@@ -81,11 +82,17 @@ async def reconcile_event(event_id:str,provider=None):
     provider=provider or AsaasSandboxClient()
     async with support_session_factory()() as s:
         async with s.begin():
+            tenant = (await s.execute(text("SELECT tenant_id FROM billing_events WHERE provider_event_id=:event"),
+                                     {"event":event_id})).scalar_one_or_none()
+            if tenant is None:
+                return "unknown"
+            await lock_plan(s, tenant, exclusive=True)
             stored=(await s.execute(text("""
                 SELECT id,tenant_id,external_payment_id,status FROM billing_events
                 WHERE provider_event_id=:event FOR UPDATE
             """),{"event":event_id})).mappings().first()
             if not stored:return "unknown"
+            if stored["tenant_id"] != tenant:return "mismatch"
             if stored["status"]=="verified":return "already_verified"
             sub=(await s.execute(text("""
                 SELECT id,external_subscription_id FROM subscriptions

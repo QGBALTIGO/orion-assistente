@@ -115,6 +115,8 @@ async def test_professional_checkout_requires_exact_active_offer_even_when_flag_
             return [{"id":"synthetic-offer","name":"Orion Pro","price":79.90,
                      "status":"active","type":"subscription","recurrence_period":30}]
     monkeypatch.setattr(plans,"resolve_site_access",granted)
+    async def checkout_access(*_): pass
+    monkeypatch.setattr(plans,"check_new_checkout_access",checkout_access)
     monkeypatch.setattr(plans,"CaktoClient",ReadOnlyCakto)
     monkeypatch.setenv("CAKTO_BILLING_LIVE_ENABLED","1")
     
@@ -398,6 +400,7 @@ async def test_embedded_checkout_hides_processor_diagnostic_from_owner(monkeypat
     monkeypatch.setattr(direct, "owner", allowed)
     monkeypatch.setattr(direct, "require_verified_webhooks", ready)
     monkeypatch.setattr(direct, "start_plan_checkout", unavailable)
+    monkeypatch.setattr(direct, "check_new_checkout_access", ready)
     with pytest.raises(HTTPException) as failure:
         await direct.direct_prepare(uuid4(),
                                     direct.DirectPrepare(plan_code="essencial"),

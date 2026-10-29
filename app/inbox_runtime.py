@@ -119,6 +119,8 @@ async def provider_receipt(db,tenant,channel,phone,external,status,operation=Non
 
 
 async def manual_slot(db, tenant, row, payload):
+    from app.plan_permissions import require_feature
+    await require_feature(db, tenant, "conversations.manual")
     item = (await db.execute(text("SELECT * FROM inbox_messages WHERE tenant_id=:t AND id=:id FOR UPDATE"),
                              {"t":tenant,"id":payload.operation_id})).mappings().one_or_none()
     if (not send_enabled() or not item or item["control_id"] != row["id"] or item["source"] != "manual"
@@ -147,6 +149,12 @@ async def process_inbox_message(ctx, tenant_id, message_id):
                                     {"t":tenant,"id":operation})).mappings().one()
             if item["status"] != "queued":
                 return "already_claimed"
+            from app.plan_permissions import has_feature
+            feature = "conversations.manual" if item["source"] == "manual" else "reception.ai"
+            if not await has_feature(db, tenant, feature):
+                await db.execute(text("UPDATE inbox_messages SET status='failed',updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id"),
+                                 {"t":tenant,"id":operation})
+                return "plan_feature_unavailable"
             if row["pending_operation"] is not None:
                 return "conversation_busy"
             provider = (await db.execute(text("SELECT provider FROM inbox_channel_links WHERE tenant_id=:t AND channel_id=:c"),
@@ -196,7 +204,20 @@ async def process_inbox_message(ctx, tenant_id, message_id):
             await db.execute(text("UPDATE inbox_messages SET status='sending',updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id"), {"t":tenant,"id":operation})
             await db.execute(text("""UPDATE inbox_controls SET pending_operation=:op,pending_fingerprint=:fp,pending_since=clock_timestamp()
               WHERE tenant_id=:t AND id=:id"""), {"t":tenant,"id":row["id"],"op":operation,"fp":item["fingerprint"]})
-    # The single-attempt claim is committed before any provider I/O.
+    # The single-attempt claim is committed before any provider I/O. A plan
+    # change after queue/claim is a known no-send, not an uncertain receipt.
+    from app.plan_permissions import tenant_has_feature
+    if not await tenant_has_feature(tenant, feature):
+        async with factory() as db:
+            async with tenant_transaction(db, tenant):
+                await control.lock_control(db, tenant, header["channel_id"], header["contact_e164"])
+                await db.execute(text("UPDATE inbox_messages SET status='failed',updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id AND status='sending'"),
+                                 {"t":tenant,"id":operation})
+                await db.execute(text("""UPDATE inbox_controls SET pending_operation=NULL,
+                    pending_fingerprint=NULL,pending_since=NULL WHERE tenant_id=:t
+                    AND id=:id AND pending_operation=:operation"""),
+                    {"t":tenant,"id":row["id"],"operation":operation})
+        return "plan_feature_unavailable"
     try:
         if provider == "qr":
             from app.automation_transport import _request

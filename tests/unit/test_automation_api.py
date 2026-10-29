@@ -17,11 +17,14 @@ def test_execution_contract_is_strict(values):
 
 
 @pytest.mark.asyncio
-async def test_invalid_consent_contact_is_422_not_server_error():
+async def test_invalid_consent_contact_is_422_not_server_error(monkeypatch):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch,"essencial")
+    tenant,account=uuid4(),uuid4()
     app = FastAPI(); app.include_router(api.router)
-    app.dependency_overrides[authenticate] = lambda: Actor("member", account_id=uuid4())
+    app.dependency_overrides[authenticate] = lambda: Actor("member", tenant, account, "owner")
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test") as client:
-        response = await client.get(f"/api/v1/tenants/{uuid4()}/management/marketing/consent", params={"contact_e164": "group@g.us"})
+        response = await client.get(f"/api/v1/tenants/{tenant}/management/marketing/consent", params={"contact_e164": "group@g.us"})
     assert response.status_code == 422
 
 
@@ -30,10 +33,13 @@ async def test_invalid_consent_contact_is_422_not_server_error():
     ("consent", {"contact_e164": "+5567999999901", "marketing_opt_in": True, "operational_opt_in": False, "evidence": "Evidência sintética"}),
     ("contact-pause", {"contact_e164": "+5567999999901", "paused": True})])
 async def test_flag_off_never_mutates_or_initializes_execution(route, payload, monkeypatch):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch,"profissional")
+    tenant,account=uuid4(),uuid4()
     monkeypatch.delenv("MARKETING_EXECUTION_ENABLED", raising=False)
     monkeypatch.setattr(api, "support_session_factory", lambda: pytest.fail("disabled write accessed account storage"))
     app = FastAPI(); app.include_router(api.router)
-    app.dependency_overrides[authenticate] = lambda: Actor("member", account_id=uuid4())
+    app.dependency_overrides[authenticate] = lambda: Actor("member", tenant, account, "owner")
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test") as client:
-        response = await client.put(f"/api/v1/tenants/{uuid4()}/management/marketing/{route}", json=payload)
+        response = await client.put(f"/api/v1/tenants/{tenant}/management/marketing/{route}", json=payload)
     assert response.status_code == 423

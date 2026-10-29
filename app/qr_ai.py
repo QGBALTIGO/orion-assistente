@@ -2723,6 +2723,10 @@ async def _require_pending_review(redis, key: str):
         await redis.set(key + ":commerce", json.dumps(commerce), ex=STATE_TTL)
 
 
+from app.plan_execution import requires_plan
+
+
+@requires_plan("reception.ai")
 async def run_locked(tenant: UUID, phone: str, body: str, namespace: str,
                      message_id: str | None = None, preview: bool = False,
                      prepare=None, reset: bool = False, message_ids: list[str] | None = None,
@@ -2888,6 +2892,9 @@ async def _managed_assistant_ready(identity):
     from app.onboarding_service import require_operational_ready
     async with get_session_factory()() as db:
         async with tenant_transaction(db, identity.tenant_id):
+            from app.plan_permissions import has_feature
+            if not await has_feature(db, identity.tenant_id, "reception.ai"):
+                return False
             active = (await db.execute(text("SELECT bot_enabled AND status='active' FROM tenants WHERE id=:tenant"),
                                       {"tenant": identity.tenant_id})).scalar_one_or_none()
             if active is not True:

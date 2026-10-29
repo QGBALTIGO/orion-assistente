@@ -160,6 +160,8 @@ async def preferences(db, tenant_id):
 
 
 async def save_section(db, tenant_id, section, value, expected):
+    from app.plan_permissions import lock_plan, require_feature, has_feature
+    await lock_plan(db, tenant_id)
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:scope,0))"), {"scope": "management-preferences:" + str(tenant_id)})
     current = await preferences(db, tenant_id)
     if expected != current["version"]:
@@ -173,6 +175,40 @@ async def save_section(db, tenant_id, section, value, expected):
             else:
                 message = str(exc)
             raise HTTPException(422, message) from None
+        for field,feature in (("monthly_goal_cents","goals.manage"),
+                              ("weekly_summary_requested","finance.advanced"),
+                              ("auto_review_requested","notifications.basic")):
+            if value[field] != current["business"][field]:
+                await require_feature(db,tenant_id,feature)
+    elif section == "automations":
+        previous = current["automations"]
+        candidate = {**previous,**value}
+        from app.automation_policy import plan_feature
+        if "rules" in value:
+            old_rules = {rule["event"]:rule for rule in previous["rules"]}
+            rules = [AutomationRule.model_validate(rule).model_dump() for rule in value["rules"]]
+            supplied = {rule["event"] for rule in rules}
+            for rule in rules:
+                if rule != old_rules.get(rule["event"]):
+                    await require_feature(db,tenant_id,plan_feature(rule["event"]))
+            # A basic form may omit advanced controls after a downgrade. Keep
+            # those existing rules as data; the runtime still blocks execution.
+            for event,rule in old_rules.items():
+                if event not in supplied and not await has_feature(db,tenant_id,plan_feature(event)):
+                    rules.append(rule)
+            candidate["rules"] = rules
+        for field,feature in (("recovery_days","relationships.manage"),
+                              ("vacancy_requested","reception.automation")):
+            if candidate[field] != previous[field]:
+                await require_feature(db,tenant_id,feature)
+        if "delivery_policy" in value:
+            policy = {**previous["delivery_policy"],**value["delivery_policy"]}
+            for field,new in policy.items():
+                if new != previous["delivery_policy"][field]:
+                    feature = "relationships.manage" if field.startswith("marketing_") or field=="birthday_leap_day" else "notifications.basic"
+                    await require_feature(db,tenant_id,feature)
+            candidate["delivery_policy"] = policy
+        value = AutomationPreferences.model_validate(candidate).model_dump()
     content = {"business": current["business"], "automations": current["automations"], section: value}
     await db.execute(text("""INSERT INTO management_preferences(tenant_id,preferences) VALUES(:tenant,CAST(:content AS jsonb))
         ON CONFLICT(tenant_id) DO UPDATE SET
@@ -218,7 +254,7 @@ async def get_automations(tenant_id: UUID, actor: Actor = Depends(authenticate))
 @router.put("/marketing/automations")
 async def put_automations(tenant_id: UUID, payload: AutomationsSave, actor: Actor = Depends(authenticate)):
     async with management_session(tenant_id, actor, write=True) as db:
-        result = await save_section(db, tenant_id, "automations", payload.configuration.model_dump(), payload.expected_version)
+        result = await save_section(db, tenant_id, "automations", payload.configuration.model_dump(exclude_unset=True), payload.expected_version)
         active = await automation_active(db, tenant_id)
         return {"configuration": result["automations"], "version": result["version"], "execution_enabled": active, "mode": "reviewed_execution" if active else "draft"}
 

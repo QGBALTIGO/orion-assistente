@@ -135,6 +135,10 @@ async def queue_notification(db, tenant, settings, preference, customer, event, 
         return False
     if event not in OPERATIONAL_EVENTS | MARKETING_EVENTS:
         return False
+    from app.automation_policy import plan_feature
+    from app.plan_permissions import has_feature
+    if not await has_feature(db, tenant, plan_feature(event)):
+        return False
     now = datetime.now(timezone.utc)
     rules = (preference.get("preferences") or {}).get("automations", {})
     rule = next((r for r in rules.get("rules", []) if r["event"] == event and r.get("requested_enabled")), None)
@@ -292,6 +296,11 @@ async def campaign_audience_reason(db, tenant, customer, campaign):
 
 
 async def job_reason(db, tenant, job, settings):
+    from app.automation_policy import plan_feature
+    from app.plan_permissions import has_feature
+    feature = plan_feature(job.get("event"))
+    if feature is None or not await has_feature(db, tenant, feature):
+        return "plan_feature_unavailable"
     if 'body' in job:
         from app.automation_templates import verified_presentation
         if not verified_presentation(job):return 'presentation_changed'

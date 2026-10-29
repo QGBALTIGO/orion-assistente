@@ -93,7 +93,9 @@ async def tenant_transaction(
             await guard_meta_transaction(session, tenant_id)
             from app.appointment_access import guard as appointment_access_guard
             await appointment_access_guard(session, tenant_id)
-            yield session
+            from app.plan_permissions import plan_transaction_guard
+            async with plan_transaction_guard(session, tenant_id):
+                yield session
             await appointment_access_guard(session, tenant_id)
             await guard_meta_transaction(session, tenant_id)
             await guard_transaction(session)

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {JSDOM} from 'jsdom';
+import {planState} from './harness.mjs';
 
 const code=fs.readFileSync(new URL('../app/static/orion-plans.js',import.meta.url),'utf8');
 const css=fs.readFileSync(new URL('../app/static/orion-plans.css',import.meta.url),'utf8');
@@ -24,7 +25,9 @@ function fixture(overrides={},options={}){
   phoneValue:value=>{if(value==='+5567999991111'||value==='(67) 99999-1111')return '+5567999991111';throw Error('WhatsApp inválido');}
  };
  window.eval(code);
- const calls=[],overview={...base,...overrides};
+ const subscription=overrides.subscription;
+ const effective=subscription?planState(subscription.code?.replace('orion_','')||'essencial',{name:subscription.name,commercial_subscription:subscription,active:subscription.status==='active',limits:{max_professionals:subscription.max_professionals,active_professionals:0,excess_professionals:0}}):planState('none');
+ const calls=[],overview={...base,effective_plan:effective,...overrides};
  const ctx={user:{name:'Pessoa Sintética'},tenant:{name:'Empresa Sintética'},canManage:true,isAdmin:!!options.isAdmin,
   request:async(path,method='GET',data)=>{calls.push({path,method,data});
    if(path==='/plan-trial'){overview.trial={status:'pending',started_at:null,ends_at:null};return{status:'pending',message:'Solicitação recebida!'};}
@@ -46,6 +49,12 @@ function fixture(overrides={},options={}){
  return {window,root,calls,ctx,close:()=>dom.window.close()};
 }
 function tick(){return new Promise(resolve=>setImmediate(resolve));}
+
+test('manual Elite access is shown separately from the commercial Essencial subscription without another checkout',()=>{
+ const subscription={code:'orion_essencial',name:'Orion Essencial',monthly_cents:2990,max_professionals:2,status:'active'};
+ const f=fixture({subscription,effective_plan:planState('elite',{source:'manual',manual_assignment:{plan_code:'elite',active:true},commercial_subscription:subscription})});
+ try{assert.match(f.root.querySelector('[data-op-effective-plan]').textContent,/Elite|Liberação manual/);assert.match(f.root.querySelector('.op-account-state:not([data-op-effective-plan])').textContent,/Essencial|29,90/);assert.equal(f.root.querySelector('.op-elite [data-op-checkout]').textContent,'Plano atual');assert.equal(f.root.querySelector('.op-elite [data-op-checkout]').disabled,true);assert.equal(f.calls.some(call=>call.method==='POST'),false);}finally{f.close();}
+});
 
 test('three actual card prices, limits, recommendation and explicit AI separation',()=>{
  const f=fixture();
@@ -94,20 +103,20 @@ test('show only differences is default, reversible and synchronized across mobil
   assert.equal(f.root.querySelectorAll('[data-op-only-differences]').length,1);
   const table=f.root.querySelector('.op-matrix');
   const mobile=f.root.querySelector('.op-mobile-comparison');
-  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,15);
-  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,15);
-  assert.equal(table.querySelectorAll('tbody:not([hidden])').length,9);
-  assert.equal(mobile.querySelectorAll('.op-mobile-group:not([hidden])').length,9);
+  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,14);
+  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,14);
+  assert.equal(table.querySelectorAll('tbody:not([hidden])').length,8);
+  assert.equal(mobile.querySelectorAll('.op-mobile-group:not([hidden])').length,8);
   assert.ok(table.querySelector('[data-op-category="2"]').hidden,'identical section hidden');
   toggle.click();
   assert.equal(toggle.checked,false);
-  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,25);
-  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,25);
+  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,24);
+  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,24);
   assert.equal(table.querySelectorAll('tbody:not([hidden])').length,10);
   assert.equal(mobile.querySelectorAll('.op-mobile-group:not([hidden])').length,10);
   toggle.click();
-  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,15);
-  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,15);
+  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,14);
+  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,14);
   assert.match(f.root.querySelector('[data-op-compare-state]').textContent,/somente diferenças/);
  }finally{f.close();}
 });
@@ -180,7 +189,7 @@ test('clicking subscribe never navigates away; integrated Orion modal is fail cl
   assert.equal(f.calls.filter(c=>c.path==='/plan-direct-config').length,1);
   assert.equal(f.calls.filter(c=>c.path==='/plan-direct-charge').length,0);
   assert.equal(f.calls.filter(c=>c.path==='/plan-checkout').length,0);
-  assert.equal(f.root.querySelector('.op-account-state'),null);
+  assert.equal(f.root.querySelector('.op-account-state:not([data-op-effective-plan])'),null);
   assert.doesNotMatch(dialog.textContent,/cakto/i);
   assert.doesNotMatch(code,/window\.location\.assign\s*\(/);
   dialog.querySelector('[data-op-checkout-close]').click();
@@ -217,7 +226,7 @@ test('Pix result stays in Orion with local QR and copy code, never activates wit
   assert.equal(dialog.querySelector('[data-op-payment-result]').hidden,false);
   assert.equal(dialog.querySelector('[data-op-pix-code]').value,'00020126580014br.gov.bcb.pix.synthetic-example');
   assert.ok(dialog.querySelector('img.op-payment-qr').getAttribute('src').startsWith('data:image/png;base64,'));
-  assert.equal(f.root.querySelector('.op-account-state'),null);
+  assert.equal(f.root.querySelector('.op-account-state:not([data-op-effective-plan])'),null);
   dialog.querySelector('[data-op-checkout-close]').click();
   assert.equal(f.root.querySelector('.op-checkout-dialog'),null);
  }finally{f.close();}

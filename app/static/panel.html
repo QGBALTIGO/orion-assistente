@@ -1395,6 +1395,7 @@ $("sessionBootRetry").addEventListener("click",()=>{void restoreSession()});
 window.addEventListener("pageshow",event=>{if(event.persisted)void restoreSession()});
 let suiteUser=null,suiteTenantId="",businessContextReady=false,businessContextError="";
 let setupController=null,setupResolving=0,setupGate=false;
+let setupPlanRequested=new URLSearchParams(location.search).get('aba')==='plano';
 function setSetupGate(value){
  setupGate=Boolean(value);
  const app=$("appView");
@@ -1404,6 +1405,9 @@ function setSetupGate(value){
    $("osMenu")?.setAttribute("aria-expanded","false");
  }
  app.classList.toggle("ob-gated",setupGate);
+ let access=$("orionSetupAccess");
+ if(!access){access=document.createElement('div');access.id='orionSetupAccess';access.className='os-actions hidden';access.innerHTML='<button type="button" class="os-button os-outline" data-setup-access="plano">Ver planos</button><button type="button" class="os-button os-outline" data-setup-access="account">Minha conta</button>';app.querySelector('.content').append(access);access.addEventListener('click',event=>{const target=event.target.closest('[data-setup-access]')?.dataset.setupAccess;if(!target||!accountBusiness())return;++setupResolving;setSetupGate(false);$("orionSetup").hidden=true;void window.OrionSuite?.open(target==='plano'?'plano':'member',{force:true});});}
+ access.hidden=!setupGate||!accountBusiness();access.classList.toggle('hidden',access.hidden);
  closeSetupTheme();
 }
 function accountBusiness(){return businessContextReady&&businessRows.length===1&&businessRows[0].id===suiteTenantId?businessRows[0]:null}
@@ -1466,7 +1470,8 @@ async function resolveSetup(options={}){
  const epoch=authEpoch,sequence=++setupResolving;setSetupGate(true);
  try{const entry=await setupController.resolveEntry({force:options.force===true});
   if(epoch!==authEpoch||sequence!==setupResolving||!entry)return;
-  if(entry.kind==="business_conflict"){blockBusinessContext(entry.message||"Sua conta está vinculada a mais de uma empresa. Entre em contato com o suporte para regularizar o vínculo.");return}
+ if(entry.kind==="business_conflict"){blockBusinessContext(entry.message||"Sua conta está vinculada a mais de uma empresa. Entre em contato com o suporte para regularizar o vínculo.");return}
+ if(setupPlanRequested&&accountBusiness()){setSetupGate(false);$("orionSetup").hidden=true;await window.OrionSuite?.open('plano',{force:true});return;}
   setSetupGate(entry.kind!=="dashboard");
  }catch{if(epoch===authEpoch&&sequence===setupResolving)setSetupGate(true)}
 }

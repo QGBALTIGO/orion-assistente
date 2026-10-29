@@ -13,6 +13,14 @@ from scripts import backup_and_migrate_single_whatsapp as single
 from scripts import backup_and_migrate_cakto as cakto
 from scripts import backup_and_migrate_plans as plans
 from scripts import backup_and_migrate_direct_checkout as direct
+from scripts import backup_and_migrate_appointment_communications as appointment
+from scripts import backup_and_migrate_plan_permissions as permissions
+
+
+def reviewed_final_stages(monkeypatch, events):
+    monkeypatch.setenv('ORION_RUN_APPOINTMENT_COMMUNICATION_MIGRATION','1')
+    monkeypatch.setattr(appointment,'main',lambda:events.append('appointment') or 0)
+    monkeypatch.setattr(permissions,'main',lambda:events.append('permissions') or 0)
 
 
 def configure(monkeypatch, *, current=None, source=True, target=True, backup_error=False,
@@ -110,6 +118,7 @@ def test_existing_registration_contract_is_required_for_source_and_target(monkey
 ])
 def test_current_predeploy_entrypoint_dispatches_only_reviewed_revisions(monkeypatch, revision):
     events = []
+    reviewed_final_stages(monkeypatch,events)
     monkeypatch.setattr(registration, 'connection_values', lambda: ('synthetic', object()))
     monkeypatch.setattr(registration, 'migrated_version', lambda _: revision)
     monkeypatch.setattr(registration, 'main', lambda: events.append('registration') or 0)
@@ -125,7 +134,7 @@ def test_current_predeploy_entrypoint_dispatches_only_reviewed_revisions(monkeyp
         ['registration', 'phone', 'quick', 'accounts', 'cakto', 'single', 'plans', 'direct'] if revision == registration.PREVIOUS else
         ['phone', 'quick', 'accounts', 'cakto', 'single', 'plans', 'direct'] if revision == registration.TARGET else
         ['quick', 'accounts', 'cakto', 'single', 'plans', 'direct']
-    )
+    ) + ['appointment','permissions']
 
 
 def test_failed_prior_release_or_unknown_revision_never_runs_phone_release(monkeypatch):
@@ -148,10 +157,11 @@ def test_failed_prior_release_or_unknown_revision_never_runs_phone_release(monke
 ])
 def test_current_predeploy_stays_idempotent_after_whatsapp_and_plan_migration(monkeypatch, revision, expected):
     events = []
+    reviewed_final_stages(monkeypatch,events)
     monkeypatch.setattr(registration,'connection_values',lambda:('synthetic',object()))
     monkeypatch.setattr(registration,'migrated_version',lambda _:revision)
     monkeypatch.setattr(single,'main',lambda:events.append('single') or 0)
     monkeypatch.setattr(plans,'main',lambda:events.append('plans') or 0)
     monkeypatch.setattr(direct,'main',lambda:events.append('direct') or 0)
     assert registration.predeploy_main()==0
-    assert events==expected
+    assert events==expected+['appointment','permissions']

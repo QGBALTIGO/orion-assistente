@@ -548,6 +548,8 @@ async def _public_book_saved(slug:str,payload:PublicBooking,request:Request,_cap
                 published=await published_guard(db,tenant,slug)
                 replay=await confirmed_public_replay(db,tenant,quote,payload)
                 if replay is not None:return replay
+                from app.plan_permissions import require_feature
+                await require_feature(db,tenant,"agenda.manage")
                 check_published_selection(published,quote['professional'],quote['services'] if quote['v']==2 else [quote['service']],quote.get('addons',[]))
                 selection=(await multi_service_contract(db,tenant,quote['services'],quote['professional'])
                            if quote['v']==2 else
@@ -560,6 +562,8 @@ async def _public_book_saved(slug:str,payload:PublicBooking,request:Request,_cap
         # performs its own locked hold/confirmation transactions.
         async with get_session_factory()() as guard:
             async with tenant_transaction(guard,tenant):
+                from app.plan_permissions import require_feature
+                await require_feature(guard,tenant,"agenda.manage")
                 published=await published_guard(guard,tenant,slug)
                 check_published_selection(published,quote['professional'],quote['services'] if quote['v']==2 else [quote['service']],quote.get('addons',[]))
                 selection=(await multi_service_contract(guard,tenant,quote['services'],quote['professional'],lock=True)
@@ -594,6 +598,9 @@ async def _public_book_saved(slug:str,payload:PublicBooking,request:Request,_cap
         # normal five-minute lease. Never race a parallel confirmed replay with
         # a read-then-cancel cleanup in this anonymous endpoint.
         if isinstance(exc,IntegrityError):raise HTTPException(409,'O horário acabou de ser reservado. Escolha outro horário') from None
+        if (exc.status_code==403 and isinstance(exc.detail,dict)
+                and exc.detail.get('code')=='PLAN_FEATURE_UNAVAILABLE'):
+            raise HTTPException(409,'Agendamento temporariamente indisponível. Entre em contato com o estabelecimento.') from None
         raise
 
 

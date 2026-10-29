@@ -496,19 +496,9 @@ async def archive_marketing(tenant_id: UUID, campaign_id: UUID, payload: Version
 
 
 @router.get("/subscription")
-async def get_subscription(tenant_id: UUID, actor: Actor = Depends(authenticate)):
-    async with management_session(tenant_id, actor) as db:
-        subscription = (await db.execute(text("""
-            SELECT s.id,s.status,s.trial_ends_at,s.grace_until,s.last_verified_payment_at,s.updated_at,
-                   p.id AS plan_id,p.code,p.name,p.monthly_cents,p.max_professionals,p.max_messages_month
-            FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.tenant_id=:tenant
-        """), {"tenant": tenant_id})).mappings().one_or_none()
-        plans = (await db.execute(text("""
-            SELECT id,code,name,monthly_cents,max_professionals,max_messages_month FROM plans
-            WHERE active ORDER BY monthly_cents,name,id
-        """))).mappings().all()
-        return {"subscription": dict(subscription) if subscription else None, "plans": [dict(row) for row in plans],
-                "checkout_enabled": False}
+async def get_subscription(tenant_id: UUID, actor: Actor = Depends(authenticate), response: Response = None):
+    from app.plan_management import plan_overview
+    return await plan_overview(tenant_id, actor, response)
 
 
 @router.post("/appointments/{appointment_id}/complete")

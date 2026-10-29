@@ -65,6 +65,86 @@
   // platform administrator. Business owners use the regular workspace.
   const platformAdminOnlyPages=new Set(['conversas','ai','empresa','catalogo','cadastros']);
   const appPages=new Set([...Object.keys(routeNames),...routeAliases.keys()]);
+  const routeFeatures={dashboard:'dashboard.basic',agenda:'agenda.manage',clientes:'clients.manage',inbox:'conversations.manual',servicos:'services.manage',funcionarios:'professionals.manage',financeiro:'finance.basic',desempenho:'performance.advanced',marketing:'marketing.ai',site:'site.manage',fidelizacao:'loyalty.manage',consultor:'consultant.ai',configuracoes:'settings.manage'};
+  const platformWorkspace=()=>state.bridge.user?.role==='admin'&&!state.bridge.user?.maintenance?.active;
+  const permitted=feature=>!feature||platformWorkspace()||state.entitlements?.permissions?.[feature]===true;
+  const routePermitted=route=>route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
+  const settingsTabAllowed=tab=>['appearance','account'].includes(tab)||tab==='general'?(tab!=='general'||permitted('business.setup')||permitted('settings.manage')):tab==='ai'?(permitted('marketing.ai')||permitted('consultant.ai')):tab==='whatsapp'?permitted('conversations.manual'):tab==='hours'?permitted('agenda.manage'):tab==='calendar'?permitted('calendar.manage'):tab==='notifications'?permitted('notifications.basic'):tab==='site-requests'?canManageSiteRequests():platformWorkspace();
+  const atProfessionalLimit=()=>!platformWorkspace()&&Number.isInteger(state.entitlements?.limits?.max_professionals)&&Number(state.entitlements.limits.active_professionals)>=state.entitlements.limits.max_professionals;
+  function featureForPath(path,method='GET',data){
+    const suffix=path.split('/management/')[1]||'',resource=path.split('/api/v1/tenants/')[1]?.split('/')[1];
+    if(/^plan-|^permissions(?:$|\?)/.test(suffix))return null;
+    if(/^(performance)/.test(suffix))return 'performance.advanced';
+    if(/^goals/.test(suffix))return 'goals.manage';
+    if(/^finance\/(commissions|advances|settlements)/.test(suffix)||/^professionals\/commission-rules/.test(suffix)||/entry_type=commission_payment/.test(suffix))return 'commissions.advanced';
+    if(/^finance\/dre/.test(suffix))return 'finance.advanced';
+    if(/^finance/.test(suffix))return 'finance.basic';
+    if(/^marketing\/(execution|consent|contact-pause|jobs|automations)(?:[/?]|$)/.test(suffix))return 'notifications.basic';
+    if(/^marketing/.test(suffix))return 'marketing.campaigns';
+    if(/^loyalty/.test(suffix))return 'loyalty.manage';
+    if(/^coupons/.test(suffix))return 'coupons.manage';
+    if(/^ai\/(consult|consultant)/.test(suffix))return 'consultant.ai';
+    if(/^ai\/(campaign|marketing)/.test(suffix))return 'marketing.ai';
+    if(/^ai\//.test(suffix))return permitted('marketing.ai')?'marketing.ai':'consultant.ai';
+    if(/^customers/.test(suffix))return 'clients.manage';
+    if(/^dashboard/.test(suffix))return 'dashboard.basic';
+    if(/^professionals/.test(suffix)||resource==='professionals')return 'professionals.manage';
+    if(/^service/.test(suffix)||['services','professional_services'].includes(resource))return 'services.manage';
+    if(resource==='qr-channels')return data?.assistant_enabled===true?'reception.ai':'conversations.manual';
+    if(/^inbox/.test(suffix))return 'conversations.manual';
+    return null;
+  }
+  function dialogFeature(type){return type==='business-preferences'?'business.setup':/goal/.test(type)?'goals.manage':/campaign|marketing/.test(type)?'marketing.campaigns':/loyalty/.test(type)?'loyalty.manage':/coupon/.test(type)?'coupons.manage':/settlement|advance|commission/.test(type)?'commissions.advanced':/professional|hours/.test(type)?'professionals.manage':routeFeatures[state.route];}
+  function applyPermissionDOM(){
+    if(!state.mounted)return;
+    document.querySelectorAll('[data-os-feature]').forEach(node=>{const allowed=permitted(node.dataset.osFeature);if(!allowed){if(node.dataset.osPlanHidden===undefined)node.dataset.osPlanHidden=String(node.hidden);node.hidden=true;}else if(node.dataset.osPlanHidden!==undefined){node.hidden=node.dataset.osPlanHidden==='true';delete node.dataset.osPlanHidden;}node.querySelectorAll('input,select,textarea,button').forEach(input=>{if(!allowed){if(input.dataset.osPlanDisabled===undefined)input.dataset.osPlanDisabled=String(input.disabled);input.disabled=true;}else if(input.dataset.osPlanDisabled!==undefined){input.disabled=input.dataset.osPlanDisabled==='true';delete input.dataset.osPlanDisabled;}});});
+    document.querySelectorAll('[data-os-route]').forEach(node=>{if(!node.closest('#osNav'))node.hidden=!routePermitted(node.dataset.osRoute);});
+    const fab=$('osConsultantFab');if(fab)fab.classList.toggle('hidden',!permitted('consultant.ai')||['agenda','inbox'].includes(state.route));
+    document.querySelectorAll('[data-qc-assistant]').forEach(node=>{node.hidden=!permitted('reception.ai');});
+    document.querySelectorAll('[data-os-action=notifications]').forEach(node=>{node.hidden=!permitted('notifications.basic');});
+    document.querySelectorAll('#osDialog .os-commission-default,#osDialog .os-commission-service-controls,#osDialog [name=commission_mode]').forEach(node=>{
+      const area=node.name==='commission_mode'?node.closest('.os-field'):node;if(!area)return;area.hidden=!permitted('commissions.advanced');
+      area.querySelectorAll('input,select').forEach(input=>{if(!permitted('commissions.advanced')){if(!input.dataset.osPlanDisabled)input.dataset.osPlanDisabled=String(input.disabled);input.disabled=true;}else if(input.dataset.osPlanDisabled){input.disabled=input.dataset.osPlanDisabled==='true';delete input.dataset.osPlanDisabled;}});
+    });
+  }
+  function armPermissionExpiry(value,epoch,id){
+    clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;
+    const expires=Date.parse(value.valid_until),key=value.revision+'|'+value.valid_until;
+    if(value.active!==true||!Number.isFinite(expires)||state.permissionExpiryConsumed===key)return;
+    state.permissionExpiryTimer=setTimeout(()=>{
+      if(!state.mounted||state.epoch!==epoch||state.tenantId!==id)return;
+      if(expires<=Date.now()+50)state.permissionExpiryConsumed=key;
+      const refresh=()=>{if(state.mounted&&state.epoch===epoch&&state.tenantId===id)void refreshPermissions({reconcile:true});};
+      if(state.permissionPending)void state.permissionPending.then(refresh);else refresh();
+    },Math.min(2147483647,Math.max(0,expires-Date.now()+50)));
+  }
+  async function refreshPermissions({reconcile=false}={}){
+    if(platformWorkspace())return true;
+    if(!tenant())return false;
+    if(state.permissionPending)return state.permissionPending;
+    const epoch=state.epoch,id=state.tenantId,read=state.permissionRead=(state.permissionRead||0)+1;
+    const pending=(async()=>{
+      try{
+        const result=await Promise.resolve().then(()=>state.bridge.request(mgmt('/permissions'))),value=result?.effective_plan;
+        if(!state.mounted||epoch!==state.epoch||id!==state.tenantId||read!==state.permissionRead)return false;
+        if(!value||!value.permissions||typeof value.permissions!=='object'||Array.isArray(value.permissions)||typeof value.revision!=='string')throw Error('Não foi possível confirmar as permissões desta empresa.');
+        const changed=state.entitlements?.revision!==value.revision;state.entitlements=value;state.permissionError='';armPermissionExpiry(value,epoch,id);
+        if(changed){
+          renderSidebar();applyPermissionDOM();
+          if(state.dialog&&!permitted(state.dialog.requiredFeature)){state.busy=false;closeDialog(true);toast('Seu plano mudou. Esta ação não está mais disponível.',true);}
+          if(reconcile){
+            if(!routePermitted(state.route))await open('plano',{force:true,permissionsChecked:true});
+            else if(state.route==='configuracoes'&&!settingsTabAllowed(state.filters.settingsTab)){state.filters.settingsTab='account';await open('configuracoes',{force:true,permissionsChecked:true});}
+            else if(state.route==='financeiro'&&!permitted(financeFeature(state.filters.financeTab))){state.filters.financeTab='entries';await open('financeiro',{force:true,permissionsChecked:true});}
+            else if(!state.dialog&&!document.activeElement?.matches?.('input,select,textarea,[contenteditable=true]'))await open(state.route,{force:true,keepScroll:true,permissionsChecked:true});
+            else state.permissionRenderPending=true;
+          }
+        }
+        return true;
+      }catch(error){if(epoch===state.epoch&&id===state.tenantId){clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;state.entitlements=null;state.permissionError=error.message||'Não foi possível confirmar as permissões.';renderSidebar();applyPermissionDOM();if(reconcile){state.busy=false;closeDialog(true);await open('plano',{force:true,permissionsChecked:true});}}return false;}
+      finally{if(state.permissionPending===pending)state.permissionPending=null;}
+    })();state.permissionPending=pending;return pending;
+  }
   const defaultFilters=()=>({customerQuery:'',customerStatus:'active',customerRisk:30,customerOffset:0,agendaMode:'list',agendaDay:'',agendaTablet:false,agendaProfessional:'',agendaStatus:'all',agendaQuery:'',agendaOffset:0,financeKind:'',financeStatus:'',financeFiltersOpen:false,financeTab:'entries',performancePeriod:'month',performanceDay:'',performanceGroup:'day',staffTab:'professionals',staffStatus:'active',marketingTab:'overview',marketingQueueStatus:'all',loyaltyTab:'ranking',loyaltyOffset:0,couponStatus:'all',periodStart:'',periodEnd:'',settingsTab:'general',siteRequestStatus:'all',siteRequestIntent:'all',siteRequestQuery:'',siteRequestOffset:0,siteTab:'dashboard',helpQuery:'',helpCategory:'all',helpArticle:'',newsFilter:'all',notificationsUnread:false});
   const state={bridge:{},mounted:false,epoch:0,load:0,route:'dashboard',tenantId:'',data:{},filters:defaultFilters(),dialog:null,busy:false,imageUploading:false,searchTimer:null,drawerTrigger:null,observer:null};
   const rows = value => Array.isArray(value)?value:Array.isArray(value?.items)?value.items:[];
@@ -137,10 +217,10 @@
   const canManageSiteRequests=()=>['support','admin'].includes(state.bridge.user?.role);
   function apiPath(suffix){if(!tenant())throw Error(businessAccessError()||'Não foi possível confirmar a empresa desta conta.');return '/api/v1/tenants/'+encodeURIComponent(state.tenantId)+suffix;}
   function mgmt(suffix){return apiPath('/management'+suffix);}
-  function request(path,method='GET',data){if(typeof state.bridge.request!=='function')return Promise.reject(Error('A conexão com sua conta ainda não está pronta.'));return state.bridge.request(path,method,data);}
-  function context(){return {epoch:state.epoch,tenantId:state.tenantId,load:state.load,route:state.route};}
-  function current(c){return state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&c.route===state.route;}
-  function stillAccount(c){return state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId;}
+  function request(path,method='GET',data){if(typeof state.bridge.request!=='function')return Promise.reject(Error('A conexão com sua conta ainda não está pronta.'));if(!permitted(featureForPath(path,method,data)))return Promise.reject(Object.assign(Error('Seu plano não inclui este recurso.'),{status:403}));return state.bridge.request(path,method,data).catch(error=>{if(error.status===403&&!platformWorkspace())void refreshPermissions({reconcile:true});throw error;});}
+  function context(){return {epoch:state.epoch,tenantId:state.tenantId,load:state.load,route:state.route,accessRevision:state.entitlements?.revision};}
+  function current(c){return state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&c.route===state.route&&c.accessRevision===state.entitlements?.revision;}
+  function stillAccount(c){return state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.accessRevision===state.entitlements?.revision;}
   const query = obj => {const p=new URLSearchParams();Object.entries(obj).forEach(([k,v])=>{if(v!==''&&v!=null)p.set(k,String(v));});return p.toString();};
   const periodQuery = () => query({start_date:state.filters.periodStart,end_date:state.filters.periodEnd});
   const statusLabels={archived:'Arquivada',paused:'Pausada',approved:'Autorizada',hold:'Reserva',confirmed:'Confirmado',completed:'Atendido',cancelled:'Cancelado',no_show:'Não compareceu',pending:'Pendente',paid:'Pago',available:'Disponível',redeemed:'Usado',expired:'Expirado',draft:'Rascunho',active:'Ativo',inactive:'Inativo'};
@@ -269,11 +349,12 @@
     if(!state.data.notifications?.can_mark_read||!ids.length)return;const c=context();await request(mgmt('/notifications/read'),'POST',{ids:ids.slice(0,100)});if(!stillAccount(c))return;const now=new Date().toISOString();rows(state.data.notifications).forEach(item=>{if(ids.includes(item.id))item.read_at=now;});if(state.notificationsOpen)await loadNotifications();
   }
   function renderSidebar(){
+    const focused=document.activeElement,previousFocus=focused?.closest?.('#osNav')?{route:focused.dataset.osRoute,action:focused.dataset.osAction}:null;
     const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role);
     $('osSidebarContext').innerHTML='<div class="os-overline">Meu negócio</div><div class="os-tenant-name">'+esc(t?.name||(businessAccessError()?'Acesso pendente':state.bridge.businessContextReady===false?'Conferindo empresa…':'Sua empresa'))+'</div><div class="os-sidebar-badges"><span class="os-badge">'+esc(isAdmin?'Administração':t?.role==='viewer'?'Consulta':t?.role==='editor'?'Equipe':'Minha empresa')+'</span></div>'+(t?'<button type="button" class="os-side-site" data-os-route="site">meu site '+icon('external')+'</button>':'');
     const navItem=([route,symbol],extra='')=>'<button type="button" class="os-nav-link'+extra+'" data-os-route="'+route+'" title="'+esc(routeNames[route])+'">'+icon(symbol)+'<span>'+esc(routeNames[route])+'</span></button>';
-    let nav=isAdmin?navItem(['dispositivo','phone'],' os-nav-connection'):t?'<button type="button" class="os-nav-link os-nav-connection" data-os-action="managed-whatsapp" title="Conectar WhatsApp">'+icon('phone')+'<span>Conectar WhatsApp</span></button>':'';
-    nav+='<div class="os-nav-section">Gestão</div>'+mainNav.map(item=>navItem(item)).join('');
+    let nav=isAdmin?navItem(['dispositivo','phone'],' os-nav-connection'):t&&permitted('conversations.manual')?'<button type="button" class="os-nav-link os-nav-connection" data-os-action="managed-whatsapp" title="Conectar WhatsApp">'+icon('phone')+'<span>Conectar WhatsApp</span></button>':'';
+    nav+='<div class="os-nav-section">Gestão</div>'+mainNav.filter(([route])=>routePermitted(route)).map(item=>navItem(item)).join('');
     if(state.bridge.user?.role==='admin'){
       nav+='<div class="os-nav-section">Atendimento Orion</div>';
       const attendance=[['conversas','chat'],['ai','bot'],['empresa','settings'],['catalogo','box']];
@@ -283,7 +364,8 @@
       const label=route==='member'&&state.bridge.user?.role==='admin'?'Administração de clientes':routeNames[route];
       return '<button type="button" class="os-nav-link os-nav-utility" data-os-route="'+route+'" title="'+esc(label)+'">'+icon(symbol)+'<span>'+esc(label)+'</span></button>';
     }).join('');
-    $('osNav').innerHTML=nav;selectedNav();
+    $('osNav').innerHTML=nav;selectedNav();applyPermissionDOM();
+    if(previousFocus){const target=previousFocus.route?$('osNav').querySelector('[data-os-route="'+previousFocus.route+'"]'):$('osNav').querySelector('[data-os-action="'+previousFocus.action+'"]');(target||$('osNav').querySelector('[data-os-route=plano]'))?.focus({preventScroll:true});}
   }
   function applyThemeState(){const pref=document.documentElement.dataset.themePreference||'auto',effective=document.documentElement.dataset.theme||'light';document.querySelectorAll('[data-os-theme]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.osTheme===pref)));const toggle=$('osThemeToggle');if(toggle)toggle.innerHTML=icon(effective==='dark'?'moon':'sun');document.querySelectorAll('.os-mobile-brand [data-orion-logo]').forEach(i=>i.src='/brand/orion-brand-'+effective+'.svg');}
   function setTheme(preference){const original=document.querySelector('.theme-choice[data-theme-choice="'+preference+'"]');if(original)original.click();else{document.documentElement.dataset.themePreference=preference;document.documentElement.dataset.theme=preference==='auto'?(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):preference;try{localStorage.setItem('orion-theme',preference);}catch{}}applyThemeState();$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');}
@@ -292,6 +374,7 @@
   function legacyOpened(route){if(route==='cadastros'){void open('configuracoes',{force:true});return;}if(!state.mounted||!legacyPages.has(route))return;if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin'){void open('dashboard',{force:true});return;}clearSiteLookups();state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeNames[route]+' · Orion';}
   async function open(route,options={}){
     route=routeAliases.get(route)||route;
+    const navigationRead=state.navigationRead=(state.navigationRead||0)+1;state.pendingRoute=route;
     if(route==='cadastros')route='configuracoes';
     if(!appPages.has(route))route='dashboard';
     // Never open the legacy operator console from a member/support bookmark,
@@ -316,11 +399,18 @@
       try{const url=new URL(location.href);url.searchParams.delete('empresa');history.replaceState({},'',url.pathname+url.search);}catch{}
       return;
     }
+    const permissionEpoch=state.epoch,permissionTenant=state.tenantId;
+    if(!options.permissionsChecked&&!platformWorkspace()){
+      if(!state.entitlements){pageHTML(loading('Conferindo seu plano e permissões…'));$('osConsultantFab')?.classList.add('hidden');}
+      await refreshPermissions();
+      if(!state.mounted||permissionEpoch!==state.epoch||permissionTenant!==state.tenantId||navigationRead!==state.navigationRead)return;
+    }
+    if(!routePermitted(route))route='plano';
     if(legacyPages.has(route)){
       if(route==='dispositivo'&&!['support','admin'].includes(state.bridge.user?.role)){toast('Seu acesso não inclui a operação do WhatsApp.',true);return;}
       if(route==='member'&&['support','admin'].includes(state.bridge.user?.role)){route='configuracoes';}else{legacyOpened(route);state.bridge.openLegacy?.(route);return;}
     }
-    clearTimeout(state.agendaSearchTimer);state.route=route;state.load++;if(route!=='agenda')state.filters.agendaTablet=false;closeNotifications();closeDialog();drawer(false);state.bridge.onRouteChange?.(route);$('page-suite').dataset.osCurrentRoute=route;$('osConsultantFab')?.classList.toggle('hidden',['agenda','inbox'].includes(route));
+    state.pendingRoute=null;clearTimeout(state.agendaSearchTimer);state.route=route;state.load++;if(route!=='agenda')state.filters.agendaTablet=false;closeNotifications();closeDialog();drawer(false);state.bridge.onRouteChange?.(route);$('page-suite').dataset.osCurrentRoute=route;$('osConsultantFab')?.classList.toggle('hidden',!permitted('consultant.ai')||['agenda','inbox'].includes(route));
     document.querySelectorAll('#appView .content>.page').forEach(p=>p.classList.toggle('hidden',p.id!=='page-suite'));
     selectedNav();document.title=routeNames[route]+' · Orion';
     try{const url=new URL(location.href);url.searchParams.set('aba',route);url.searchParams.delete('empresa');history.replaceState({orionSuite:route},'',url.pathname+url.search);}catch{}
@@ -364,10 +454,12 @@
   function setMonth(value){const d=dayDate(value+'-01');d.setUTCMonth(d.getUTCMonth()+1,0);state.filters.periodStart=value+'-01';state.filters.periodEnd=d.toISOString().slice(0,10);state.filters.financeOffset=0;}
   function setPerformancePeriod(value){const today=dateKey();state.filters.performancePeriod=value;state.filters.performanceDay=today;if(value==='month'){resetPeriod();return;}state.filters.periodStart=shiftDay(today,value==='today'?0:value==='week'?-6:value==='30'?-29:-89);state.filters.periodEnd=today;}
   function performancePeriodFilters(){const f=state.filters;return '<div class="os-performance-periods"><div class="os-pill-tabs" role="tablist" aria-label="Período do desempenho">'+[['today','Hoje'],['week','7 dias'],['month','Mês'],['30','30 dias'],['90','90 dias']].map(([v,l])=>'<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(f.performancePeriod===v)+'" data-os-performance-period="'+v+'">'+l+'</button>').join('')+'</div><select id="osPerformancePeriod" aria-label="Período do relatório">'+[['today','Hoje'],['week','Últimos 7 dias'],['month','Este mês'],['30','Últimos 30 dias'],['90','Últimos 90 dias'],['custom','Personalizado']].map(([v,l])=>'<option value="'+v+'"'+(f.performancePeriod===v?' selected':'')+'>'+l+'</option>').join('')+'</select>'+button(fmtDate(f.periodStart)+' – '+fmtDate(f.periodEnd),'custom-period','os-ghost os-small','calendar')+'</div>';}
-  function financeTabs(){return '<div class="os-horizontal-tabs os-finance-tabs" role="tablist" aria-label="Relatórios financeiros">'+[['entries','Lançamentos'],['dre','DRE'],['commissions','Comissões'],['advances','Vales & Pagamentos'],['history','Histórico']].map(([v,l])=>'<button class="os-pill-tab" type="button" role="tab" data-os-finance-tab="'+v+'" aria-selected="'+(state.filters.financeTab===v)+'">'+l+'</button>').join('')+'</div>';}
+  const financeFeature=tab=>tab==='dre'?'finance.advanced':['commissions','advances'].includes(tab)?'commissions.advanced':'finance.basic';
+  function financeTabs(){return '<div class="os-horizontal-tabs os-finance-tabs" role="tablist" aria-label="Relatórios financeiros">'+[['entries','Lançamentos'],['dre','DRE'],['commissions','Comissões'],['advances','Vales & Pagamentos'],['history','Histórico']].filter(([tab])=>permitted(financeFeature(tab))).map(([v,l])=>'<button class="os-pill-tab" type="button" role="tab" data-os-finance-tab="'+v+'" aria-selected="'+(state.filters.financeTab===v)+'">'+l+'</button>').join('')+'</div>';}
   async function loadFinance(c){
+    if(!permitted(financeFeature(state.filters.financeTab)))state.filters.financeTab='entries';
     const f=state.filters,history=f.financeTab==='history';
-    const [entries,summary,commissions,dre,professionals,advances,payments,settlements]=await Promise.all([request(mgmt('/finance?'+query({start_date:f.periodStart,end_date:f.periodEnd,kind:history?'':f.financeKind,status:history?'':f.financeStatus,limit:100,offset:f.financeOffset||0}))),request(mgmt('/finance/summary?'+periodQuery())),request(mgmt('/finance/commissions?'+periodQuery())),request(mgmt('/finance/dre?'+periodQuery())),request(apiPath('/professionals')),request(mgmt('/finance/advances?'+periodQuery()+'&status='+(f.advanceStatus||'all')+'&limit=100&offset='+(f.advanceOffset||0))),request(mgmt('/finance?'+periodQuery()+'&entry_type=commission_payment&limit=100&offset='+(f.paymentOffset||0))),request(mgmt('/finance/settlements?limit=50&offset='+(f.settlementOffset||0)))]);
+    const [entries,summary,commissions,dre,professionals,advances,payments,settlements]=await Promise.all([request(mgmt('/finance?'+query({start_date:f.periodStart,end_date:f.periodEnd,kind:history?'':f.financeKind,status:history?'':f.financeStatus,limit:100,offset:f.financeOffset||0}))),request(mgmt('/finance/summary?'+periodQuery())),(permitted('commissions.advanced')?request(mgmt('/finance/commissions?'+periodQuery())):Promise.resolve({items:[]})),(permitted('finance.advanced')?request(mgmt('/finance/dre?'+periodQuery())):Promise.resolve({summary:{}})),request(apiPath('/professionals')),(permitted('commissions.advanced')?request(mgmt('/finance/advances?'+periodQuery()+'&status='+(f.advanceStatus||'all')+'&limit=100&offset='+(f.advanceOffset||0))):Promise.resolve({items:[]})),(permitted('commissions.advanced')?request(mgmt('/finance?'+periodQuery()+'&entry_type=commission_payment&limit=100&offset='+(f.paymentOffset||0))):Promise.resolve({items:[]})),(permitted('commissions.advanced')?request(mgmt('/finance/settlements?limit=50&offset='+(f.settlementOffset||0))):Promise.resolve({items:[]}))]);
     if(!current(c))return;Object.assign(state.data,{finance:entries,financeSummary:summary,commissions,dre,professionals:rows(professionals),financeAdvances:advances,financePayments:payments,settlements});renderFinance(entries);
   }
   async function loadRoute(){const c=context();try{
@@ -379,7 +471,7 @@
       case 'servicos':{const d=await request(apiPath('/services'));if(!current(c))return;state.data.services=rows(d);renderServices();break;}
       case 'funcionarios':{const [p,s,links,team]=await Promise.all([request(apiPath('/professionals')),request(apiPath('/services')),request(apiPath('/professional_services')),request(mgmt('/team'))]);if(!current(c))return;Object.assign(state.data,{professionals:rows(p),services:rows(s),professionalServices:rows(links),team});renderProfessionals();break;}
       case 'financeiro':await loadFinance(c);break;
-      case 'desempenho':{if(state.filters.performancePeriod!=='custom'&&state.filters.performanceDay!==dateKey()){setPerformancePeriod(state.filters.performancePeriod);const filters=document.querySelector('.os-performance-periods');if(filters)filters.outerHTML=performancePeriodFilters();}const [d,g,p,commissions,daily,advances,payments]=await Promise.all([request(mgmt('/performance?'+periodQuery())),request(mgmt('/goals?'+periodQuery())),request(apiPath('/professionals')),request(mgmt('/finance/commissions?'+periodQuery())),request(mgmt('/performance/daily?'+periodQuery())),request(mgmt('/finance/advances?'+periodQuery()+'&status=all&limit=100')),request(mgmt('/finance?'+periodQuery()+'&entry_type=commission_payment&limit=100'))]);if(!current(c))return;Object.assign(state.data,{performance:d,goals:rows(g),goalTemplates:rows(g.templates),professionals:rows(p),commissions,performanceDaily:daily,financeAdvances:advances,financePayments:payments});renderPerformance(d,rows(g));break;}
+      case 'desempenho':{if(state.filters.performancePeriod!=='custom'&&state.filters.performanceDay!==dateKey()){setPerformancePeriod(state.filters.performancePeriod);const filters=document.querySelector('.os-performance-periods');if(filters)filters.outerHTML=performancePeriodFilters();}const [d,g,p,commissions,daily,advances,payments]=await Promise.all([request(mgmt('/performance?'+periodQuery())),request(mgmt('/goals?'+periodQuery())),request(apiPath('/professionals')),(permitted('commissions.advanced')?request(mgmt('/finance/commissions?'+periodQuery())):Promise.resolve({items:[]})),request(mgmt('/performance/daily?'+periodQuery())),request(mgmt('/finance/advances?'+periodQuery()+'&status=all&limit=100')),request(mgmt('/finance?'+periodQuery()+'&entry_type=commission_payment&limit=100'))]);if(!current(c))return;Object.assign(state.data,{performance:d,goals:rows(g),goalTemplates:rows(g.templates),professionals:rows(p),commissions,performanceDaily:daily,financeAdvances:advances,financePayments:payments});renderPerformance(d,rows(g));break;}
       case 'marketing':await loadMarketing(c);break;
       case 'site':await loadSite(c);break;
       case 'fidelizacao':await loadLoyalty(c);break;
@@ -451,7 +543,7 @@
         button('Ver financeiro','dashboard-finance-full','os-outline os-small','chevron')+'</div>'+
       '<div id="osDashboardFinanceContent" class="os-dashboard-finance-content" aria-live="polite" aria-busy="true">'+
         loading('Consultando financeiro…')+'</div></section>'+
-      '<section id="osDashboardGoals" class="os-card os-dashboard-goals" aria-live="polite" hidden></section>';
+      '<section id="osDashboardGoals" data-os-feature="goals.manage" class="os-card os-dashboard-goals" aria-live="polite" hidden></section>';
   }
   // Integer-cent formatting avoids floating point rounding for large but safe
   // financial totals (e.g. 9.007.199.254.740.991 cents must still end in ,91).
@@ -541,7 +633,7 @@
     // suppresses today's financial figures (and vice versa).
     const [financial,goals]=await Promise.allSettled([
       request(mgmt('/finance/summary?'+period)),
-      request(mgmt('/goals?'+period))
+      permitted('goals.manage')?request(mgmt('/goals?'+period)):Promise.resolve({items:[]})
     ]);
     if(!current(c)||read!==state.dashboardFinanceRead)return;
     try{
@@ -809,7 +901,7 @@
     if(state.filters.staffTab==='permissions'){bodyHTML(renderTeam());return;}
     const active=all.filter(p=>p.active!==false),inactive=all.filter(p=>p.active===false),
       isInactive=state.filters.staffStatus==='inactive',list=isInactive?inactive:active;
-    let html='<div class="os-staff-intro"><p>Cadastre e gerencie sua equipe.</p>'+button('Novo funcionário','new-professional','','plus',can?'':'disabled')+'</div>'+
+    let html=(atProfessionalLimit()?'<p class="os-notice" role="status">Você atingiu o limite de profissionais do seu plano. '+routeButton('Conhecer planos','plano','os-outline os-small')+'</p>':'')+'<div class="os-staff-intro"><p>Cadastre e gerencie sua equipe.</p>'+button('Novo funcionário','new-professional','','plus',can?'':'disabled')+'</div>'+
       (isInactive?'':renderInvitations(true))+
       '<div class="os-staff-toolbar"><div class="os-subsection-title"><h2>PROFISSIONAIS <span class="os-badge os-neutral">'+list.length+'</span></h2></div>'+
       '<div class="os-pill-tabs os-staff-status-tabs" role="tablist" aria-label="Situação dos profissionais">'+
@@ -823,7 +915,7 @@
           photo=safePublicURL(p.image_url),
           statusButton='<button class="os-button os-ghost os-small '+(activeStatus?'os-staff-remove':'os-staff-reactivate')+'" type="button" data-os-professional-status="'+id+'" aria-label="'+(activeStatus?'Remover ':'Reativar ')+name+'" '+(can?'':'disabled')+'>'+icon(activeStatus?'trash':'refresh')+(activeStatus?'Remover':'Reativar')+'</button>';
         return '<article class="os-card os-staff-card"><button class="os-staff-open" type="button" data-os-professional="'+id+'"><span class="os-avatar" style="background:'+cleanColor(p.color,'#31ad52')+'1a;color:'+cleanColor(p.color,'#31ad52')+'">'+(photo?'<img src="'+esc(photo)+'" alt="" loading="lazy" referrerpolicy="no-referrer">':esc(initials(p.name)))+'</span><span><strong>'+name+'</strong><small>'+esc(p.specialty||'Profissional')+'</small></span>'+badge(activeStatus?'active':'inactive')+'</button>'+
-          '<div class="os-staff-details"><span>'+esc(!activeStatus||p.accepts_appointments===false?'Sem agendamentos':'Recebe agendamentos')+'</span><span>'+(p.commission_mode==='per_service'?'Comissão por serviço':'Comissão '+number(p.commission_percent).toLocaleString('pt-BR')+'%')+'</span></div>'+
+          '<div class="os-staff-details"><span>'+esc(!activeStatus||p.accepts_appointments===false?'Sem agendamentos':'Recebe agendamentos')+'</span>'+(permitted('commissions.advanced')?'<span>'+(p.commission_mode==='per_service'?'Comissão por serviço':'Comissão '+number(p.commission_percent).toLocaleString('pt-BR')+'%')+'</span>':'')+'</div>'+
           '<div class="os-item-commands">'+(activeStatus?'<button class="os-button os-ghost os-small" type="button" data-os-hours="'+id+'">'+icon('clock')+'Horários</button>':'')+
           '<button class="os-button os-ghost os-small" type="button" data-os-professional="'+id+'">'+icon('edit')+'Editar</button>'+statusButton+'</div></article>';
       }).join('')+'</div>';
@@ -1031,9 +1123,9 @@
   }
   function automationRules(){const saved=state.data.automations?.configuration?.rules||[];return automationDefinitions.map(([event,,,template])=>saved.find(rule=>rule.event===event)||(()=>{const item=state.data.automations?.templates?.find(x=>x.event===event);return item?{event,template:item.template,template_source:'library',template_revision:item.template_revision,requested_enabled:false}:{event,template,requested_enabled:false};})());}
   function marketingAutomations(){
-    const data=state.data.automations;if(!data)return loading('Carregando automações…');const tab=state.filters.automationTab||'messages',configuration=data.configuration||{},rules=automationRules(),can=writable(),executionActive=data.execution_enabled===true;
+    const data=state.data.automations;if(!data)return loading('Carregando automações…');if(state.filters.automationTab==='vacancy'&&!permitted('reception.automation'))state.filters.automationTab='messages';const tab=state.filters.automationTab||'messages',configuration=data.configuration||{},rules=automationRules(),can=writable(),executionActive=data.execution_enabled===true;
     const executionNotice=tab==='vacancy'?'O preenchimento automático de vagas continua em rascunho e não envia convites, mesmo quando outras rotinas estão autorizadas.':executionActive?'A execução destas regras foi autorizada pelo proprietário e depende dos consentimentos, do canal e dos limites revisados. Isso não comprova envio ou entrega. Salvar alterações exige nova revisão e autorização.':'As configurações abaixo são rascunhos. Salvar ou marcar uma rotina não dispara mensagens. Revise e autorize os envios separadamente.';
-    let html='<div class="os-three-col os-marketing-automation-cards">'+[['messages','chat','Mensagens automáticas','Confirmações, lembretes, aniversários, pós-atendimento e fidelidade.'],['recovery','refresh','Trazer de volta','Prepare mensagens para recuperar o relacionamento com clientes.'],['vacancy','calendarPlus','Preencher vagas','Planeje o convite para horários que ficarem disponíveis.']].map(([value,symbol,label,description])=>'<button type="button" class="os-card os-automation-choice" data-os-automation-tab="'+value+'" aria-pressed="'+(tab===value)+'"><span class="os-square-icon">'+icon(symbol)+'</span><strong>'+label+'</strong><p>'+description+'</p></button>').join('')+'</div><div class="os-notice os-section-gap">'+icon('info')+'<p>'+esc(executionNotice)+'</p></div><form class="os-form os-section-gap" data-os-form="automations" data-version="'+number(data.version)+'"><fieldset class="os-form" '+(can?'':'disabled')+'>';
+    let html='<div class="os-three-col os-marketing-automation-cards">'+[['messages','chat','Mensagens automáticas','Confirmações, lembretes, aniversários, pós-atendimento e fidelidade.'],['recovery','refresh','Trazer de volta','Prepare mensagens para recuperar o relacionamento com clientes.'],['vacancy','calendarPlus','Preencher vagas','Planeje o convite para horários que ficarem disponíveis.']].filter(([value])=>value!=='vacancy'||permitted('reception.automation')).map(([value,symbol,label,description])=>'<button type="button" class="os-card os-automation-choice" data-os-automation-tab="'+value+'" aria-pressed="'+(tab===value)+'"><span class="os-square-icon">'+icon(symbol)+'</span><strong>'+label+'</strong><p>'+description+'</p></button>').join('')+'</div><div class="os-notice os-section-gap">'+icon('info')+'<p>'+esc(executionNotice)+'</p></div><form class="os-form os-section-gap" data-os-form="automations" data-version="'+number(data.version)+'"><fieldset class="os-form" '+(can?'':'disabled')+'>';
     if(tab==='vacancy')html+='<section class="os-card"><div class="os-card-header"><div><h2>Preencher vagas</h2><p>Preferência para oferecer horários que surgirem após cancelamentos.</p></div>'+badge('draft')+'</div>'+checkField('Preparar preenchimento de vagas','vacancy_requested',configuration.vacancy_requested,'Somente planejamento: esta rotina ainda não executa convites.')+'<p class="os-help">A Agenda já permite cadastrar um novo atendimento em um horário liberado.</p><div class="os-form-actions">'+routeButton('Ver agenda','agenda','os-outline','calendar')+'</div></section>';
     else{
       if(tab==='recovery')html+='<section class="os-card"><div class="os-card-header"><div><h2>Trazer de volta</h2><p>Defina o período sem retorno e prepare a mensagem.</p></div>'+badge(executionActive?'active':'draft',executionActive?'Execução autorizada':'Rascunho')+'</div>'+selectField('Considerar clientes sem retorno há','recovery_days',[[30,'30 dias'],[45,'45 dias'],[60,'60 dias'],[90,'90 dias']],configuration.recovery_days||60)+'</section>';
@@ -1379,6 +1471,7 @@
       user:state.bridge.user,
       tenant:currentTenant,
       canManage:writable(true),
+      canPurchase:()=>platformWorkspace()||permitted('plan.manage')&&state.entitlements?.manual_assignment?.active!==true,
       isAdmin:state.bridge.user?.role==='admin'
     };
     window.OrionPlans.mount(root,data,ctx);
@@ -1462,6 +1555,7 @@
   }
   const settingsSections=[['general','settings','Negócio','Dados operacionais e fiscais'],['hours','clock','Horários','Jornada de trabalho da equipe'],['site-requests','mail','Solicitações do site','Contatos e testes solicitados'],['appearance','sun','Aparência','Tema e visual do painel'],['ai','sparkles','Uso de IA','Gerações e limite diário'],['notifications','bell','Notificações','Avisos de agendamentos'],['whatsapp','phone','WhatsApp por empresa','Conexão e atendimento'],['calendar','calendar','Google Agenda','Sincronização dos horários'],['account','shield','Minha conta','Dados de acesso ao Orion']];
   async function loadSettings(c){
+    if(!settingsTabAllowed(state.filters.settingsTab))state.filters.settingsTab='account';
     // Old bookmarks and persisted settings must not reopen the retired
     // Administration section, regardless of account role.
     if(state.filters.settingsTab==='administration')
@@ -1474,12 +1568,13 @@
     const tab=state.filters.settingsTab;
     if(tab==='general'){const data=await request(mgmt('/preferences'));if(!current(c))return;state.data.preferences=data;}
     if(tab==='hours'){const [professionals,hours,breaks]=await Promise.all([request(apiPath('/professionals')),request(apiPath('/working_hours')),request(apiPath('/working_breaks'))]);if(!current(c))return;Object.assign(state.data,{professionals:rows(professionals),workingHours:rows(hours),workingBreaks:rows(breaks)});}
-    if(tab==='ai'){const [status,history]=await Promise.all([request(mgmt('/ai/status')),request(mgmt('/ai/history'))]);if(!current(c))return;Object.assign(state.data,{aiStatus:status,aiHistory:history});}
+    if(tab==='ai'&&!permitted('marketing.ai')&&!permitted('consultant.ai')){state.filters.settingsTab='general';}
+    if(tab==='ai'&&(permitted('marketing.ai')||permitted('consultant.ai'))){const [status,history]=await Promise.all([request(mgmt('/ai/status')),request(mgmt('/ai/history'))]);if(!current(c))return;Object.assign(state.data,{aiStatus:status,aiHistory:history});}
     if(current(c))renderSettings();
   }
   function renderSettings(){
     const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role),
-      sections=settingsSections.filter(item=>item[0]!=='site-requests'||isAdmin),
+      sections=settingsSections.filter(([key])=>key==='account'||key==='appearance'||key==='general'&&(permitted('business.setup')||permitted('settings.manage'))||key==='site-requests'&&isAdmin||key==='ai'&&(permitted('marketing.ai')||permitted('consultant.ai'))||key==='hours'&&permitted('agenda.manage')||key==='calendar'&&permitted('calendar.manage')||key==='notifications'&&permitted('notifications.basic')||key==='whatsapp'&&permitted('conversations.manual')),
       tab=sections.some(item=>item[0]===state.filters.settingsTab)?state.filters.settingsTab:'general',
       definition=sections.find(item=>item[0]===tab)||sections[0];let panel='';
     if(tab==='site-requests')panel=renderSiteRequests();
@@ -1492,12 +1587,12 @@
     if(tab==='notifications')panel='<section class="os-card"><div class="os-card-header"><div><h2>Notificações</h2><p>Acompanhe as mudanças nos agendamentos.</p></div>'+icon('bell')+'</div><p class="os-help">Confirmações, reagendamentos, cancelamentos, conclusões e ausências aparecem no sino do painel. A marcação de leitura é individual para cada conta.</p><div class="os-form-actions">'+button('Ver notificações','notifications','','bell',t?'':'disabled')+'</div></section><section class="os-card os-section-gap"><h3>Avisos no celular</h3><p class="os-help os-section-gap">As notificações push ainda não estão configuradas no Orion. Os eventos da agenda continuam disponíveis dentro do painel.</p></section>';
     if(tab==='account')panel='<section class="os-card"><div class="os-card-header"><div><h2>Minha conta</h2><p>Seu acesso ao Orion.</p></div></div><div class="os-summary-row"><span>Nome</span><strong>'+esc(state.bridge.user?.name||$('sidebarAccountName')?.textContent||'Administrador')+'</strong></div><div class="os-summary-row"><span>E-mail</span><strong>'+esc(state.bridge.user?.email||'—')+'</strong></div><div class="os-summary-row"><span>Acesso</span><strong>'+esc(['support','admin'].includes(state.bridge.user?.role)?'Administração':t?.role==='viewer'?'Leitor':t?.role==='editor'?'Editor':'Proprietário')+'</strong></div><div class="os-form-actions">'+(!['support','admin'].includes(state.bridge.user?.role)?routeButton('Ver minha conta','member','os-outline','edit'):'')+button('Sair da conta','logout','os-outline','logout')+'</div></section>';
     bodyHTML('<div class="os-settings-mobile"><label class="os-sr-only" for="osSettingsSection">Seção de configurações</label><select id="osSettingsSection">'+sections.map(([value,,label])=>'<option value="'+value+'"'+(tab===value?' selected':'')+'>'+label+'</option>').join('')+'</select></div><div class="os-settings-layout"><nav class="os-settings-menu" aria-label="Seções de configurações">'+sections.map(([value,symbol,label,description])=>'<button type="button" data-os-settings="'+value+'" aria-current="'+(tab===value)+'"><span class="os-settings-icon">'+icon(symbol)+'</span><span><strong>'+label+'</strong><small>'+description+'</small></span></button>').join('')+'</nav><section class="os-settings-panel"><div class="os-settings-section-heading"><h2>'+definition[2]+'</h2><p>'+definition[3]+'</p></div>'+panel+'</section></div>');
-    if(tab==='notifications'&&t){const host=document.createElement('div');document.querySelector('.os-settings-panel')?.append(host);void window.OrionAppointmentCommunications?.mount({host,request,tenantId:state.tenantId,canWrite:isAdmin||t.role==='owner'});}
+    if(tab==='notifications'&&t){const host=document.createElement('div');document.querySelector('.os-settings-panel')?.append(host);void window.OrionAppointmentCommunications?.mount({host,request,tenantId:state.tenantId,canWrite:isAdmin||t.role==='owner',canFeature:permitted});}
     if(tab==='calendar'&&t)void loadGoogle();
     if(tab==='whatsapp'&&t)window.OrionChannels?.mount({host:$('osManagedChannels'),request,tenantId:state.tenantId});
   }
   function businessPreferencesForm(data){
-    if(!data)return loading('Carregando preferências…');const b=data.business||{},can=data.can_save===true;return '<form class="os-form os-preferences-form" data-os-form="business-preferences" data-version="'+number(data.version)+'"><fieldset class="os-form" '+(can?'':'disabled')+'><section class="os-card"><div class="os-card-header"><div><h3>Dados operacionais</h3><p>Usados internamente no sistema.</p></div></div><div class="os-form-grid">'+field('Telefone administrativo','contact_phone','tel',b.contact_phone||'','maxlength="40" placeholder="(11) 91234-5678"')+moneyField('Meta mensal (R$)','monthly_goal','text',currencyInput(b.monthly_goal_cents),'required inputmode="decimal"')+'</div><div class="os-preferences-divider"></div><div class="os-card-header"><div><h3>Cadastro da empresa</h3><p>Dados fiscais e jurídicos. Não aparecem no site público.</p></div></div><div class="os-form-grid">'+selectField('Tipo de documento','tax_document_kind',[['none','Não informar'],['cnpj','CNPJ'],['cpf','CPF']],b.tax_document_kind||'none')+taxDocumentField(b)+field('Nome fantasia','trade_name','text',b.trade_name||'','maxlength="160"')+field('Razão social (nome empresarial)','legal_name','text',b.legal_name||'','maxlength="160"')+'</div></section><section class="os-card"><div class="os-card-header"><div><h3>Avaliações no Google</h3><p>Prepare o convite para avaliação após um atendimento.</p></div>'+badge('draft')+'</div>'+field('Link de avaliação do Google','google_review_url','url',b.google_review_url||'','maxlength="2048" placeholder="https://…"')+'<p class="os-help os-section-gap">Copie o link de “Pedir avaliações” no Perfil da Empresa no Google ou o endereço público da sua empresa no Maps.</p><div class="os-section-gap">'+textField('Mensagem do convite','google_review_message',b.google_review_message||'','maxlength="1000"')+'</div>'+checkField('Preparar convite automático','auto_review_requested',b.auto_review_requested,'Preferência salva em rascunho. O envio automático ainda não está habilitado.')+'</section><section class="os-card"><div class="os-card-header"><div><h3>Relatório semanal por WhatsApp</h3><p>Preferência para receber um resumo dos resultados da empresa.</p></div>'+badge('draft')+'</div>'+checkField('Quero receber o relatório semanal','weekly_summary_requested',b.weekly_summary_requested,'A preferência fica salva. Nenhum relatório é enviado enquanto a rotina não estiver habilitada.')+'</section></fieldset><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+(can?'<button type="submit" class="os-button">'+icon('check')+'Salvar configurações</button>':'<p class="os-help">Apenas o proprietário pode alterar os dados operacionais e fiscais.</p>')+'</div></form>';
+    if(!data)return loading('Carregando preferências…');const b=data.business||{},can=data.can_save===true;return '<form class="os-form os-preferences-form" data-os-form="business-preferences" data-version="'+number(data.version)+'"><fieldset class="os-form" '+(can?'':'disabled')+'><section class="os-card"><div class="os-card-header"><div><h3>Dados operacionais</h3><p>Usados internamente no sistema.</p></div></div><div class="os-form-grid">'+field('Telefone administrativo','contact_phone','tel',b.contact_phone||'','maxlength="40" placeholder="(11) 91234-5678"')+(permitted('goals.manage')?'<div data-os-feature="goals.manage">'+moneyField('Meta mensal (R$)','monthly_goal','text',currencyInput(b.monthly_goal_cents),'required inputmode="decimal"')+'</div>':'')+'</div><div class="os-preferences-divider"></div><div class="os-card-header"><div><h3>Cadastro da empresa</h3><p>Dados fiscais e jurídicos. Não aparecem no site público.</p></div></div><div class="os-form-grid">'+selectField('Tipo de documento','tax_document_kind',[['none','Não informar'],['cnpj','CNPJ'],['cpf','CPF']],b.tax_document_kind||'none')+taxDocumentField(b)+field('Nome fantasia','trade_name','text',b.trade_name||'','maxlength="160"')+field('Razão social (nome empresarial)','legal_name','text',b.legal_name||'','maxlength="160"')+'</div></section><section class="os-card"><div class="os-card-header"><div><h3>Avaliações no Google</h3><p>Prepare o convite para avaliação após um atendimento.</p></div>'+badge('draft')+'</div>'+field('Link de avaliação do Google','google_review_url','url',b.google_review_url||'','maxlength="2048" placeholder="https://…"')+'<p class="os-help os-section-gap">Copie o link de “Pedir avaliações” no Perfil da Empresa no Google ou o endereço público da sua empresa no Maps.</p><div class="os-section-gap">'+textField('Mensagem do convite','google_review_message',b.google_review_message||'','maxlength="1000"')+'</div>'+(permitted('notifications.basic')?'<div data-os-feature="notifications.basic">'+checkField('Preparar convite automático','auto_review_requested',b.auto_review_requested,'Preferência salva em rascunho. O envio automático ainda não está habilitado.')+'</div>':'')+'</section>'+(permitted('finance.advanced')?'<section class="os-card" data-os-feature="finance.advanced"><div class="os-card-header"><div><h3>Relatório semanal por WhatsApp</h3><p>Preferência para receber um resumo dos resultados da empresa.</p></div>'+badge('draft')+'</div>'+checkField('Quero receber o relatório semanal','weekly_summary_requested',b.weekly_summary_requested,'A preferência fica salva. Nenhum relatório é enviado enquanto a rotina não estiver habilitada.')+'</section>':'')+'</fieldset><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+(can?'<button type="submit" class="os-button">'+icon('check')+'Salvar configurações</button>':'<p class="os-help">Apenas o proprietário pode alterar os dados operacionais e fiscais.</p>')+'</div></form>';
   }
   function settingsHours(){
     const professionals=state.data.professionals||[];if(!professionals.length)return '<section class="os-card">'+empty('users','Cadastre um profissional','O expediente é definido para cada profissional da empresa.',routeButton('Cadastrar profissional','funcionarios','','plus'))+'</section>';
@@ -1655,8 +1750,9 @@
   function renderNews(){const labels={feature:'Novidade',improvement:'Melhoria',fix:'Correção'},filter=state.filters.newsFilter,list=releaseNotes.filter(note=>filter==='all'||note[0]===filter);bodyHTML('<section class="os-card os-news-toolbar"><div><h2>O que mudou no Orion</h2><p>Atualizações desta versão do painel.</p></div>'+routeButton('Base de conhecimento','ajuda','os-outline os-small','book')+'</section><div class="os-help-categories os-news-filters" role="tablist" aria-label="Tipo de atualização">'+[['all','Todos'],...Object.entries(labels)].map(([value,label])=>'<button type="button" role="tab" class="os-pill-tab" aria-selected="'+(filter===value)+'" data-os-news-filter="'+value+'">'+label+'</button>').join('')+'</div><div class="os-news-list">'+list.map(note=>'<article class="os-card os-news-card"><header><span class="os-badge '+(note[0]==='feature'?'os-success':note[0]==='fix'?'os-warning':'os-neutral')+'">'+labels[note[0]]+'</span><h2>'+esc(note[1])+'</h2><p>'+esc(note[2])+'</p></header><div><ul>'+note[3].map(text=>'<li>'+esc(text)+'</li>').join('')+'</ul>'+routeButton('Abrir '+routeNames[note[4]],note[4],'os-ghost os-small','arrow')+'</div></article>').join('')+'</div>');}
   function showDialog(type,titleText,content,meta={},wide=false){
     if(state.busy)return false;
+    if(!permitted(dialogFeature(type))){toast('Seu plano não inclui este recurso.',true);return false;}
     closeDialog();const d=$('osDialog');
-    state.dialog={type,epoch:state.epoch,tenantId:state.tenantId,trigger:document.activeElement,key:crypto.randomUUID(),...meta};
+    state.dialog={type,requiredFeature:dialogFeature(type),epoch:state.epoch,tenantId:state.tenantId,trigger:document.activeElement,key:crypto.randomUUID(),...meta};
     d.className='os-dialog'+(wide?' os-dialog-wide':'')+(meta.drawer?' os-sheet':'')+(type==='customer'?' os-customer-dialog':'')+(meta.agendaSheet?' os-appointment-sheet':'');
     d.innerHTML='<button type="button" class="os-icon-button os-close" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">'+esc(titleText)+'</h2>'+content;
     window.OrionFields?.refresh(d);d.showModal();const opened=state.dialog;setTimeout(()=>{if(state.dialog!==opened)return;if(meta.focusTitle)$('osDialogTitle')?.focus({preventScroll:true});else if(meta.agendaSheet)$('osDialogTitle')?.focus();else d.querySelector('input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not(.os-close):not([disabled])')?.focus();},0);return true;
@@ -1993,6 +2089,7 @@
   function applyPackageDiscount(percent){const d=state.dialog,form=$('osDialog')?.querySelector('form');if(d?.type!=='package'||!form)return;const ids=new FormData(form).getAll('service_ids'),total=d.services.filter(s=>ids.includes(s.id)).reduce((n,s)=>n+number(s.price_cents),0);form.elements.price.value=currencyInputGrouped(Math.round(total*(100-percent)/100));d.priceTouched=true;}
   function syncProfessionalCommissionControls(form){
     if(!form||form.dataset.osForm!=='professional')return;
+    if(!form?.elements.commission_mode)return;
     const custom=form.elements.commission_mode.value==='per_service';
     const section=form.querySelector('[data-os-custom-commission]');
     if(section)section.classList.toggle('hidden',!custom);
@@ -2013,13 +2110,14 @@
     });
   }
   async function showProfessional(record=null){
+    if(!permitted('professionals.manage'))return;
     const p=record||{},c=context();
     try{
       if(!state.data.services)state.data.services=rows(await request(apiPath('/services')));
       if(!current(c))return;
       if(!state.data.professionalServices)state.data.professionalServices=rows(await request(apiPath('/professional_services')));
       if(!current(c))return;
-      state.data.commissionRules=rows(await request(mgmt('/professionals/commission-rules')));
+      state.data.commissionRules=permitted('commissions.advanced')?rows(await request(mgmt('/professionals/commission-rules'))):[];
       if(!current(c))return;
     }catch(ex){toast(ex.message,true);return;}
     const selected=(state.data.professionalServices||[]).filter(x=>x.professional_id===p.id).map(x=>x.service_id),
@@ -2034,10 +2132,10 @@
       return '<div class="os-commission-service-row" data-os-commission-row>'+
         '<label class="os-check"><input type="checkbox" name="service_ids" value="'+esc(service.id)+'" '+(selected.includes(service.id)?'checked':'')+'>'+
         '<span>'+esc(service.name)+' <small>'+number(service.duration_min)+' min · '+esc(priceLabel(service.price_cents,service.price_mode))+'</small></span></label>'+
-        '<div data-field-wrapper class="os-commission-service-controls'+(custom&&selected.includes(service.id)?'':' hidden')+'" data-os-commission-controls>'+
+        (permitted('commissions.advanced')?'<div data-field-wrapper class="os-commission-service-controls'+(custom&&selected.includes(service.id)?'':' hidden')+'" data-os-commission-controls>'+
         '<select name="commission_kind_'+esc(service.id)+'" aria-label="Tipo de comissão de '+esc(service.name)+'">'+
           [['percent','%'],['fixed','R$']].map(([v,t])=>'<option value="'+v+'"'+(kind===v?' selected':'')+'>'+t+'</option>').join('')+
-        '</select><input type="text" '+numericAttributes(kind,{min:0,max:kind==='fixed'?100000000:100})+' autocomplete="off" name="commission_value_'+esc(service.id)+'" value="'+esc(value)+'" placeholder="'+(kind==='fixed'?'0,00':'0')+'" aria-label="Comissão do serviço '+esc(service.name)+'" '+(custom&&selected.includes(service.id)?'required':'disabled')+'></div></div>';
+        '</select><input type="text" '+numericAttributes(kind,{min:0,max:kind==='fixed'?100000000:100})+' autocomplete="off" name="commission_value_'+esc(service.id)+'" value="'+esc(value)+'" placeholder="'+(kind==='fixed'?'0,00':'0')+'" aria-label="Comissão do serviço '+esc(service.name)+'" '+(custom&&selected.includes(service.id)?'required':'disabled')+'></div>':'')+'</div>';
     }).join('');
     const content=field('Nome completo','name','text',p.name||'','required maxlength="120" placeholder="Nome do profissional"')+
       field('Especialidade','specialty','text',p.specialty||'','maxlength="120" placeholder="Ex.: Cabeleireiro, Terapeuta, Consultor"')+
@@ -2045,14 +2143,15 @@
         '<input id="osField-phone_e164" name="phone_e164" type="tel" inputmode="tel" autocomplete="tel-national" data-orion-field="phone" data-os-professional-phone aria-describedby="osProfessionalPhoneHelp" placeholder="(00) 00000-0000" value="'+esc(professionalPhoneDisplay(p.phone_e164))+'">'+
         '<p id="osProfessionalPhoneHelp" class="os-help">Número de contato deste profissional, com DDD.</p></div>'+
       '<div class="os-form-grid">'+colorField('Cor na agenda','color',p.color||'#31ad52')+
-      selectField('Modelo de comissão','commission_mode',[['percent','Percentual padrão'],['per_service','Por serviço']],mode)+'</div>'+
+      (permitted('commissions.advanced')?selectField('Modelo de comissão','commission_mode',[['percent','Percentual padrão'],['per_service','Por serviço']],mode):'')+'</div>'+
+      (permitted('commissions.advanced')?
       '<div class="os-field os-commission-default" data-field-wrapper data-os-default-commission>'+
         '<label for="osField-commission_percent" data-os-default-commission-label>'+(custom?'Taxa para outros serviços (%)':'Comissão (%)')+'</label>'+
         '<input id="osField-commission_percent" name="commission_percent" type="text" data-orion-field="decimal" data-field-min="0" data-field-max="100" data-field-scale="2" inputmode="decimal" value="'+esc(sharedFields().decimalDisplay(number(p.commission_percent)))+'" placeholder="Ex.: 10,5" required>'+
-        '<p class="os-help'+(custom?'':' hidden')+'" data-os-default-commission-note>Aplicada a combos ou adicionais que ainda não tenham uma comissão específica.</p></div>'+
+        '<p class="os-help'+(custom?'':' hidden')+'" data-os-default-commission-note>Aplicada a combos ou adicionais que ainda não tenham uma comissão específica.</p></div>':'')+
       imageUploadField('Foto do profissional (opcional)','image_url',p.image_url||'','professional')+
       '<fieldset class="os-commission-services"><legend>Serviços que realiza</legend>'+
-        '<p class="os-help'+(custom?'':' hidden')+'" data-os-custom-commission>Escolha % ou R$ para cada serviço realizado por este profissional.</p>'+
+        (permitted('commissions.advanced')?'<p class="os-help'+(custom?'':' hidden')+'" data-os-custom-commission>Escolha % ou R$ para cada serviço realizado por este profissional.</p>':'')+
         (services.length?'<div class="os-commission-service-list">'+serviceRows+'</div>':'<p class="os-help">Cadastre serviços para vinculá-los ao profissional.</p>')+
       '</fieldset>'+
       checkField('Recebe agendamentos','accepts_appointments',p.accepts_appointments!==false)+
@@ -2433,14 +2532,14 @@
     if(form.id==='osAgendaFilters'){event.preventDefault();await applyAgendaFilters();return;}
     if(form.id==='osSiteRequestFilters'){event.preventDefault();await applySiteRequestFilters(form);return;}
     if(form.id==='osPeriodForm'){event.preventDefault();const f=getValues(form);if(f.start_date>f.end_date){toast('A data final deve ser igual ou posterior à inicial.',true);return;}state.filters.periodStart=f.start_date;state.filters.periodEnd=f.end_date;state.filters.performancePeriod='custom';closeDialog();await open(state.route,{keepScroll:true});return;}
-    const kind=form.dataset.osForm;if(!kind)return;event.preventDefault();if(kind==='site'){if(!siteCanEdit())return;finalizeSiteSlug(form.elements.slug);if(form.dataset.cepPending==='true'){form.querySelector('.os-form-message').textContent='Aguarde a consulta do CEP terminar antes de salvar.';return;}}if(state.imageUploading){const message=form.querySelector('.os-form-message');if(message)message.textContent='Aguarde o envio da imagem antes de salvar.';return;}if(!form.reportValidity())return;if(state.busy||!writable())return;
+    const kind=form.dataset.osForm;if(!kind)return;event.preventDefault();if(!permitted(state.dialog?.requiredFeature||dialogFeature(kind))){dialogError(Error('Seu plano não inclui este recurso.'));return;}if(kind==='site'){if(!siteCanEdit())return;finalizeSiteSlug(form.elements.slug);if(form.dataset.cepPending==='true'){form.querySelector('.os-form-message').textContent='Aguarde a consulta do CEP terminar antes de salvar.';return;}}if(state.imageUploading){const message=form.querySelector('.os-form-message');if(message)message.textContent='Aguarde o envio da imagem antes de salvar.';return;}if(!form.reportValidity())return;if(state.busy||!writable())return;
     const d=state.dialog,f=getValues(form);if(!['site','business-preferences','automations','loyalty-inline','loyalty-ideas','ai-campaign','ai-consultant'].includes(kind)&&(!d||d.epoch!==state.epoch||d.tenantId!==state.tenantId))return;
     try{
       if(kind==='appointment-action'||kind==='complete-appointment'){await submitAppointmentAction(form,d,f);return;}
       if(kind==='google-action'||kind==='google-calendar'){await submitGoogleAction(form,d,f);return;}
       if(kind==='google-email'){await submitGoogleEmail(form,d,f);return;}
-      if(kind==='automations'){const data=state.data.automations,previous=data.configuration||{},rules=automationRules().map(rule=>{const template=form.elements['rule_template_'+rule.event],enabled=form.elements['rule_enabled_'+rule.event];return {...rule,template:template?template.value:rule.template,...(template&&template.value!==rule.template?{template_source:'custom'}:{}),requested_enabled:enabled?enabled.checked:rule.requested_enabled};}),configuration={rules,...(previous.delivery_policy?{delivery_policy:previous.delivery_policy}:{}),recovery_days:f.recovery_days?Number(f.recovery_days):previous.recovery_days||60,vacancy_requested:form.elements.vacancy_requested?form.elements.vacancy_requested.checked:previous.vacancy_requested===true};await saveForm(form,()=>request(mgmt('/marketing/automations'),'PUT',{expected_version:number(form.dataset.version),configuration}),'Rascunhos das automações salvos.');return;}
-      if(kind==='business-preferences'){if(!state.data.preferences?.can_save)return;const business={approved_link_hosts:state.data.preferences?.business?.approved_link_hosts||[],contact_phone:phone(f.contact_phone)||null,monthly_goal_cents:cents(f.monthly_goal),tax_document_kind:f.tax_document_kind,tax_document:f.tax_document_kind==='none'?null:sharedFields().documentValue(f.tax_document,f.tax_document_kind,{original:state.data.preferences?.business?.tax_document,originalKind:state.data.preferences?.business?.tax_document_kind}),trade_name:f.trade_name?.trim()||'',legal_name:f.legal_name?.trim()||'',google_review_url:f.google_review_url?.trim()||null,google_review_message:f.google_review_message?.trim()||'',auto_review_requested:form.elements.auto_review_requested.checked,weekly_summary_requested:form.elements.weekly_summary_requested.checked};await saveForm(form,()=>request(mgmt('/preferences'),'PUT',{expected_version:number(form.dataset.version),business}),'Configurações salvas.');return;}
+      if(kind==='automations'){const data=state.data.automations,previous=data.configuration||{},rules=automationRules().map(rule=>{const template=form.elements['rule_template_'+rule.event],enabled=form.elements['rule_enabled_'+rule.event];return {...rule,template:template?template.value:rule.template,...(template&&template.value!==rule.template?{template_source:'custom'}:{}),requested_enabled:enabled?enabled.checked:rule.requested_enabled};}),configuration={rules,...(previous.delivery_policy?{delivery_policy:previous.delivery_policy}:{}),...(permitted('relationships.manage')?{recovery_days:f.recovery_days?Number(f.recovery_days):previous.recovery_days||60}:{}),...(permitted('reception.automation')?{vacancy_requested:form.elements.vacancy_requested?form.elements.vacancy_requested.checked:previous.vacancy_requested===true}:{})};await saveForm(form,()=>request(mgmt('/marketing/automations'),'PUT',{expected_version:number(form.dataset.version),configuration}),'Rascunhos das automações salvos.');return;}
+      if(kind==='business-preferences'){if(!state.data.preferences?.can_save)return;const business={approved_link_hosts:state.data.preferences?.business?.approved_link_hosts||[],contact_phone:phone(f.contact_phone)||null,...(permitted('goals.manage')?{monthly_goal_cents:cents(f.monthly_goal)}:{}),tax_document_kind:f.tax_document_kind,tax_document:f.tax_document_kind==='none'?null:sharedFields().documentValue(f.tax_document,f.tax_document_kind,{original:state.data.preferences?.business?.tax_document,originalKind:state.data.preferences?.business?.tax_document_kind}),trade_name:f.trade_name?.trim()||'',legal_name:f.legal_name?.trim()||'',google_review_url:f.google_review_url?.trim()||null,google_review_message:f.google_review_message?.trim()||'',...(permitted('notifications.basic')?{auto_review_requested:form.elements.auto_review_requested?.checked===true}:{}),...(permitted('finance.advanced')?{weekly_summary_requested:form.elements.weekly_summary_requested?.checked===true}:{})};await saveForm(form,()=>request(mgmt('/preferences'),'PUT',{expected_version:number(form.dataset.version),business}),'Configurações salvas.');return;}
       if(kind==='ai-campaign'){const brief=f.brief.trim(),tone=f.tone||'balanced';state.data.aiCampaignBrief=brief;state.data.aiCampaignTone=tone;const key=requestKey(form,{brief,tone});await generateAI(form,'/ai/generate-campaign',{brief,tone,idempotency_key:key},result=>{state.data.aiCampaignResult=result;const existing=rows(state.data.aiHistory).filter(item=>item.id!==result.id);state.data.aiHistory={items:[{...result,created_at:new Date().toISOString()},...existing]};renderMarketing(state.data.marketing);});return;}
       if(kind==='ai-consultant'){const question=f.question.trim(),messages=state.data.consultorMessages||[],history=messages.slice(-6).map(({role,content})=>({role,content:String(content).slice(0,3000)})),key=requestKey(form,{question,history});await generateAI(form,'/ai/consultant',{question,history,idempotency_key:key},result=>{state.data.consultorMessages=[...messages,{role:'user',content:question},{role:'assistant',content:result.output?.answer||'',actions:result.output?.actions||[],sources:result.sources}];renderConsultor();});return;}
       if(kind==='loyalty-ideas'){state.data.loyaltyGoal=f.goal?.trim()||'';const key=requestKey(form,{goal:state.data.loyaltyGoal});await generateAI(form,'/ai/loyalty-ideas',{goal:state.data.loyaltyGoal,idempotency_key:key},result=>{state.data.loyaltyIdeasResult=result;renderLoyalty(state.data.loyalty);});return;}
@@ -2455,18 +2554,18 @@
       if(kind==='package'){const r=d.record,ids=new FormData(form).getAll('service_ids');if(ids.length<2||ids.length>6)throw Error('Selecione de 2 a 6 serviços para o combo.');const payload={name:f.name.trim(),description:f.description?.trim()||null,service_ids:ids,price_cents:cents(f.price,{max:100000000}),active:form.elements.active.checked,featured:form.elements.featured.checked,sort_order:number(r?.sort_order),color:r?.color||'#8b5cf6',image_url:f.image_url?.trim()||null};await saveForm(form,()=>request(mgmt('/service-packages'+(r?'/'+encodeURIComponent(r.id):'')),r?'PATCH':'POST',{...payload,...(r?{expected_version:r.version}:{idempotency_key:d.key})}),r?'Combo atualizado.':'Combo criado.');}
       if(kind==='professional'){
         const p=d.record,selected=new FormData(form).getAll('service_ids'),
-          mode=form.elements.commission_mode.value,
-          baseRate=sharedFields().parseDecimal(form.elements.commission_percent.value,{required:true,min:0,max:100,scale:2});
+          advanced=permitted('commissions.advanced'),mode=advanced?form.elements.commission_mode.value:null,
+          baseRate=advanced?sharedFields().parseDecimal(form.elements.commission_percent.value,{required:true,min:0,max:100,scale:2}):null;
         let professionalPhone;
         try{professionalPhone=professionalPhoneValue(f.phone_e164);}
         catch(error){form.elements.phone_e164.setAttribute('aria-invalid','true');form.elements.phone_e164.focus();throw error;}
-        if(!Number.isFinite(baseRate)||baseRate<0||baseRate>100||Math.abs(Math.round(baseRate*100)-baseRate*100)>1e-7)
+        if(advanced&&(!Number.isFinite(baseRate)||baseRate<0||baseRate>100||Math.abs(Math.round(baseRate*100)-baseRate*100)>1e-7))
           throw Error('Informe um percentual padrão válido de 0 a 100, com até duas casas decimais.');
         const payload={
           name:f.name.trim(),active:form.elements.active.checked,
           specialty:f.specialty?.trim()||null,phone_e164:professionalPhone,color:f.color||'#31ad52',
           image_url:f.image_url?.trim()||null,
-          commission_mode:mode,commission_percent:baseRate,
+          ...(advanced?{commission_mode:mode,commission_percent:baseRate}:{}),
           accepts_appointments:form.elements.accepts_appointments.checked,
           service_ids:selected,commission_rules:[]
         };
@@ -2488,6 +2587,8 @@
               ?{service_id:rule.service_id,commission_kind:'fixed',commission_fixed_cents:number(rule.commission_fixed_cents)}
               :{service_id:rule.service_id,commission_kind:'percent',commission_percent:number(rule.commission_percent)});
         }
+        if(!advanced)delete payload.commission_rules;
+        if(payload.active&&(!p||p.active===false)&&atProfessionalLimit())throw Error('Você atingiu o limite de profissionais do seu plano.');
         if(p?.id)payload.expected_version=number(p.commission_config_version)||1;
         else payload.idempotency_key=d.key;
         await saveForm(form,async c=>{
@@ -2559,6 +2660,8 @@
     }catch(ex){const target=form.querySelector('.os-form-message');if(target)target.textContent=ex.message;else toast(ex.message,true);}
   }
   async function action(name,element){
+    if(name==='permissions-retry'){state.entitlements=null;await open(state.route,{force:true});return;}
+    if(name==='managed-whatsapp'&&!permitted('conversations.manual'))return;
     if(name==='managed-whatsapp'){if(state.busy)return;state.filters.settingsTab='whatsapp';await open('configuracoes');return;}
     if(['image-pick','image-remove'].includes(name)&&element.closest('#osSiteForm')&&!siteCanEdit())return;
     if(name==='image-pick'){element.closest('.os-image-upload')?.querySelector('.os-image-file')?.click();return;}
@@ -2704,7 +2807,7 @@
       if(el.dataset.osSiteSlugSuggestion){if(!siteCanEdit())return;const form=$('osSiteForm'),input=form?.elements.slug;if(!input||!el.closest('#osSiteSlugSuggestions'))return;input.value=el.dataset.osSiteSlugSuggestion;form.dataset.dirty='true';queueSiteSlugCheck(input,0);input.focus({preventScroll:true});return;}
       if(el.dataset.osSiteTab){if($('osSiteForm')?.dataset.dirty==='true'){toast('Salve as configurações antes de mudar de aba.',true);return;}state.filters.siteTab=el.dataset.osSiteTab;renderSite(state.data.site);return;}
       if(el.dataset.osSiteFix){if($('osSiteForm')?.dataset.dirty==='true'){toast('Salve as configurações antes de revisar outra área.',true);return;}const target=el.dataset.osSiteFix;if(target==='site'){state.filters.siteTab='settings';renderSite(state.data.site);}else if(target==='hours'){state.filters.settingsTab='hours';await open('configuracoes');}else if(target==='business')await action('business-setup',el);else await open(target==='services'?'servicos':'funcionarios');return;}
-      if(el.dataset.osAutomationTab){state.filters.automationTab=el.dataset.osAutomationTab;renderMarketing(state.data.marketing);return;}
+      if(el.dataset.osAutomationTab){if(el.dataset.osAutomationTab==='vacancy'&&!permitted('reception.automation'))return;state.filters.automationTab=el.dataset.osAutomationTab;renderMarketing(state.data.marketing);return;}
       if(el.dataset.osQueueStatus){state.filters.marketingQueueStatus=el.dataset.osQueueStatus;await open('marketing',{keepScroll:true});return;}
       if(el.dataset.osNotificationFilter){state.filters.notificationsUnread=el.dataset.osNotificationFilter==='true';await loadNotifications();return;}
       if(el.dataset.osNotification){const item=rows(state.data.notifications).find(item=>item.id===el.dataset.osNotification);if(!item)return;const c=context();if(!item.read_at&&state.data.notifications?.can_mark_read)await markNotificationsRead([item.id]);if(!stillAccount(c))return;closeNotifications();await showAppointmentDetail(item.appointment_id);return;}
@@ -2727,6 +2830,7 @@
          const p=(state.data.professionals||[]).find(item=>item.id===el.dataset.osProfessionalStatus);
          if(!p)return;
          const activate=p.active===false,version=Number(p.commission_config_version);
+         if(activate&&atProfessionalLimit()){toast('Você atingiu o limite de profissionais do seu plano.',true);return;}
          if(!Number.isInteger(version)||version<1){toast('Atualize a lista antes de alterar este funcionário.',true);return;}
          confirmMutation(activate?'Reativar funcionário':'Remover funcionário',
            activate?'Reativar '+p.name+'? O profissional voltará para a lista de ativos. A disponibilidade continuará respeitando as configurações dos horários e agendamentos.':
@@ -2735,7 +2839,7 @@
            activate?'Profissional reativado.':'Funcionário movido para Inativos.');
          return;
        }
-      if(el.dataset.osFinanceTab){state.filters.financeTab=el.dataset.osFinanceTab;state.filters.financeOffset=0;await open('financeiro',{keepScroll:true});return;}
+      if(el.dataset.osFinanceTab){if(!permitted(financeFeature(el.dataset.osFinanceTab)))return;state.filters.financeTab=el.dataset.osFinanceTab;state.filters.financeOffset=0;await open('financeiro',{keepScroll:true});return;}
       if(el.dataset.osPerformancePeriod){setPerformancePeriod(el.dataset.osPerformancePeriod);await open('desempenho',{keepScroll:true});return;}
       if(el.dataset.osPerformanceGroup){state.filters.performanceGroup=el.dataset.osPerformanceGroup;renderPerformance(state.data.performance,state.data.goals);return;}
       if(el.dataset.osPerformanceHistory){await showProfessionalHistory(el.dataset.osPerformanceHistory,el);return;}
@@ -2853,10 +2957,11 @@
   function sync(bridge={}){
     const oldIdentity=state.bridge.user?.email+'|'+state.bridge.user?.role,oldTenant=state.tenantId,oldReady=state.bridge.businessContextReady,oldError=businessAccessError();state.bridge={...state.bridge,...bridge};
     state.tenantId=accountTenantId();
-    const identity=state.bridge.user?.email+'|'+state.bridge.user?.role;if(oldIdentity!==identity||oldTenant!==state.tenantId){state.epoch++;state.imageUploading=false;clearSiteLookups();clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);state.data={};state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.filters.agendaDay=dateKey();resetPeriod();closeDialog(true);}
-    if(!state.mounted)return;renderSidebar();if(oldIdentity!==identity||oldTenant!==state.tenantId||oldReady!==state.bridge.businessContextReady||oldError!==businessAccessError())void open(state.route,{replace:true,force:true});
+    const identity=state.bridge.user?.email+'|'+state.bridge.user?.role;if(oldIdentity!==identity||oldTenant!==state.tenantId){clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;state.permissionExpiryConsumed=null;state.entitlements=null;state.permissionPending=null;state.permissionRead=(state.permissionRead||0)+1;state.epoch++;state.imageUploading=false;clearSiteLookups();clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);state.data={};state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.filters.agendaDay=dateKey();resetPeriod();closeDialog(true);}
+    if(!state.mounted)return;renderSidebar();if(oldIdentity!==identity||oldTenant!==state.tenantId||oldReady!==state.bridge.businessContextReady||oldError!==businessAccessError())void open(state.pendingRoute||state.route,{replace:true,force:true});
   }
   async function refreshLiveRoute(){
+    if(state.mounted&&tenant()&&document.visibilityState!=='hidden')await refreshPermissions({reconcile:true});
     if(!state.mounted||!tenant()||state.busy||state.dialog||document.visibilityState==='hidden')return;
     if(document.activeElement?.matches?.('input,select,textarea,[contenteditable=true]'))return;
     const c=context();
@@ -2867,13 +2972,14 @@
       await loadRoute();
     }
   }
+  function refreshAccess(event){if(state.mounted&&tenant()&&document.visibilityState!=='hidden')void refreshPermissions({reconcile:event?.detail?.preservePage!==true});}
   function mount(bridge){
     if(state.mounted){sync(bridge);return;}
     state.bridge=bridge||{};state.mounted=true;state.epoch++;state.load++;state.tenantId=accountTenantId();state.filters.agendaDay=dateKey();resetPeriod();
-    buildShell();clearInterval(state.liveRefreshTimer);state.liveRefreshTimer=setInterval(()=>{void refreshLiveRoute().catch(()=>{});},30000);document.addEventListener('click',handleClick);document.addEventListener('change',handleChange);document.addEventListener('input',handleInput);document.addEventListener('focusout',handleSiteFocusOut);document.addEventListener('compositionend',handleSiteCompositionEnd);document.addEventListener('submit',submitForm);document.addEventListener('keydown',handleKeydown);document.addEventListener('pointerdown',handleServicePointerDown);document.addEventListener('pointermove',handleServicePointerMove);document.addEventListener('pointerup',handleServicePointerUp);document.addEventListener('pointercancel',clearServiceDrag);$('osDialog').addEventListener('cancel',onDialogCancel);
+    buildShell();if(typeof window.BroadcastChannel==='function'){try{state.permissionChannel=new BroadcastChannel('orion-plan-access');state.permissionChannel.onmessage=event=>{if(event.data?.type!=='changed'||event.data.tenantId!==state.tenantId||!tenant())return;const epoch=state.epoch,id=state.tenantId,refresh=()=>{if(state.mounted&&state.epoch===epoch&&state.tenantId===id)void refreshPermissions({reconcile:true});};if(state.permissionPending)void state.permissionPending.then(refresh);else refresh();};}catch{state.permissionChannel=null;}}state.permissionObserver=new MutationObserver(()=>applyPermissionDOM());state.permissionObserver.observe($('page-suite'),{childList:true,subtree:true});window.addEventListener('focus',refreshAccess);document.addEventListener('visibilitychange',refreshAccess);window.addEventListener('orion:plan-changed',refreshAccess);clearInterval(state.liveRefreshTimer);state.liveRefreshTimer=setInterval(()=>{void refreshLiveRoute().catch(()=>{});},30000);document.addEventListener('click',handleClick);document.addEventListener('change',handleChange);document.addEventListener('input',handleInput);document.addEventListener('focusout',handleSiteFocusOut);document.addEventListener('compositionend',handleSiteCompositionEnd);document.addEventListener('submit',submitForm);document.addEventListener('keydown',handleKeydown);document.addEventListener('pointerdown',handleServicePointerDown);document.addEventListener('pointermove',handleServicePointerMove);document.addEventListener('pointerup',handleServicePointerUp);document.addEventListener('pointercancel',clearServiceDrag);$('osDialog').addEventListener('cancel',onDialogCancel);
     state.observer=new MutationObserver(()=>applyThemeState());state.observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-theme-preference']});
     const desired=bridge?.initialRoute||'dashboard';void open(appPages.has(desired)?desired:'dashboard');
   }
-  function destroy(){window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
+  function destroy(){window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;if(state.permissionChannel){state.permissionChannel.onmessage=null;state.permissionChannel.close();state.permissionChannel=null;}state.permissionObserver?.disconnect();state.permissionObserver=null;window.removeEventListener('focus',refreshAccess);document.removeEventListener('visibilitychange',refreshAccess);window.removeEventListener('orion:plan-changed',refreshAccess);state.entitlements=null;state.permissionPending=null;state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
   window.OrionSuite=Object.freeze({mount,sync,destroy,open,legacyOpened});
 })();

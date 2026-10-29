@@ -199,10 +199,17 @@ async def list_commission_rules(db, tenant_id):
 
 async def save_professional_configuration(db, tenant_id, payload, professional_id=None):
     """Create or replace base-service assignments and rates in one transaction."""
+    from app.plan_limits import lock_professionals, ensure_professional_activation
+    await lock_professionals(db, tenant_id)
     selected = payload.service_ids
     fields = payload.model_dump(exclude={
         "service_ids", "commission_rules", "expected_version", "idempotency_key"
     })
+    from app.plan_permissions import require_feature
+    commission_fields = {"commission_mode", "commission_percent", "commission_rules"}
+    explicit_commissions = bool(commission_fields & payload.model_fields_set)
+    if explicit_commissions:
+        await require_feature(db, tenant_id, "commissions.advanced", lock="exclusive")
     if professional_id is None:
         if not payload.idempotency_key:
             raise HTTPException(422, "Informe uma chave de operação para o novo profissional")
@@ -223,6 +230,7 @@ async def save_professional_configuration(db, tenant_id, payload, professional_i
                 raise HTTPException(409, "Cadastro anterior não encontrado")
             return dict(previous)
         professional_id = identity
+        await ensure_professional_activation(db, tenant_id, fields["active"])
         await acquire_professional_lock(db, tenant_id, professional_id)
         attrs = list(fields)
         query = """INSERT INTO professionals (id,tenant_id,""" + ",".join(attrs) + """)
@@ -237,6 +245,12 @@ async def save_professional_configuration(db, tenant_id, payload, professional_i
         # An older/cached form must not erase a phone it never displayed.
         if "phone_e164" not in payload.model_fields_set:
             fields.pop("phone_e164", None)
+        # Forms without the advanced section must not replace persisted rates
+        # with Pydantic defaults after a downgrade.
+        for name in ("commission_mode", "commission_percent"):
+            if name not in payload.model_fields_set:
+                fields.pop(name, None)
+        await ensure_professional_activation(db, tenant_id, fields["active"], professional_id)
         await acquire_professional_lock(db, tenant_id, professional_id)
         assigns = ",".join(key + "=:" + key for key in fields)
         saved = (await db.execute(text("""
@@ -285,12 +299,13 @@ async def save_professional_configuration(db, tenant_id, payload, professional_i
             """), {"tenant": tenant_id, "id": link["id"]})
     # Even while the default-percentage mode is active, keep configured rates
     # for still-selected services so toggling between modes does not erase work.
-    await db.execute(text("""
-        DELETE FROM professional_commission_rules
-        WHERE tenant_id=:tenant AND professional_id=:professional
-          AND service_id<>ALL(CAST(:ids AS uuid[]))
-    """), {"tenant": tenant_id, "professional": professional_id, "ids": selected})
-    for rule in payload.commission_rules:
+    if "commission_rules" in payload.model_fields_set:
+        await db.execute(text("""
+            DELETE FROM professional_commission_rules
+            WHERE tenant_id=:tenant AND professional_id=:professional
+              AND service_id<>ALL(CAST(:ids AS uuid[]))
+        """), {"tenant": tenant_id, "professional": professional_id, "ids": selected})
+    for rule in payload.commission_rules if "commission_rules" in payload.model_fields_set else ():
         await db.execute(text("""
             INSERT INTO professional_commission_rules
               (tenant_id,professional_id,service_id,commission_kind,
@@ -312,6 +327,8 @@ async def save_professional_configuration(db, tenant_id, payload, professional_i
 
 async def change_professional_status(db, tenant_id, professional_id, payload: ProfessionalStatusChange):
     """Hide or restore a professional without deleting history or commission rules."""
+    from app.plan_limits import ensure_professional_activation
+    await ensure_professional_activation(db, tenant_id, payload.active, professional_id)
     await acquire_professional_lock(db, tenant_id, professional_id)
     params = {"tenant": tenant_id, "id": professional_id, "version": payload.expected_version}
     current = (await db.execute(text("""

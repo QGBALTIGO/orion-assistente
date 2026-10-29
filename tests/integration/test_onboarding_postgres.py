@@ -33,6 +33,7 @@ async def save(ctx, state, step, data, *, key=None, version=None):
 
 @pytest_asyncio.fixture
 async def onboarding_db(monkeypatch):
+    from plan_fixtures import seed_fixture_plan, clear_fixture_plans
     urls = [os.getenv(k) for k in ("APP_DATABASE_URL", "MIGRATION_DATABASE_URL", "SUPPORT_DATABASE_URL")]
     if not all(urls):
         if os.getenv("REQUIRE_POSTGRES_TESTS") == "1":
@@ -52,9 +53,10 @@ async def onboarding_db(monkeypatch):
             await db.execute(text("INSERT INTO panel_accounts(id,name,email,password_hash) VALUES(:id,'Pessoa sintética',:email,'unused-synthetic')"), {"id": account, "email": f"onboarding-{account}@example.test"})
         for tenant in (a, b):
             await db.execute(text("INSERT INTO tenants(id,name,slug) VALUES(:t,'Legado sintético',:s)"), {"t": tenant, "s": "onboarding-" + tenant.hex})
+        plan_admin=await seed_fixture_plan(db,(a,b),"essencial")
         await db.execute(text("INSERT INTO tenant_memberships(tenant_id,account_id,role) VALUES(:t,:a,'owner')"), {"t": a, "a": owner})
     ctx = SimpleNamespace(actor=Actor("member", account_id=owner), new_actor=Actor("member", account_id=new_account),
-        other=other, a=a, b=b, runtime=factory, migration=migration)
+        other=other, a=a, b=b, runtime=factory, migration=migration,plan_admins=[plan_admin])
     try:
         yield ctx
     finally:
@@ -65,9 +67,11 @@ async def onboarding_db(monkeypatch):
                     "business_profile_events", "business_profile_state", "business_profile_versions", "tenant_membership_events",
                     "management_team_invitations", "tenant_memberships", "commercial_events", "commercial_inventory",
                     "commercial_variants", "commercial_products", "working_breaks", "working_hours", "professional_services",
-                    "services", "professionals", "tenant_audit", "platform_audit"):
+                    "services", "professionals", "tenant_audit", "platform_audit", "orion_plan_trial_requests"):
                     await db.execute(text(f"DELETE FROM {table} WHERE tenant_id=:t"), {"t": tenant})
+                await clear_fixture_plans(db,(tenant,),())
                 await db.execute(text("DELETE FROM tenants WHERE id=:t"), {"t": tenant})
+            await clear_fixture_plans(db,(),ctx.plan_admins)
             await db.execute(text("DELETE FROM panel_accounts WHERE id IN (:a,:b,:c)"), {"a": owner, "b": other, "c": new_account})
         await runtime.dispose()
         await migration.dispose()
@@ -79,10 +83,16 @@ def new_business_context(ctx):
     return SimpleNamespace(**{**vars(ctx), "actor": ctx.new_actor})
 
 
-async def configured(ctx, *, activity="services", state=None):
+async def configured(ctx, *, activity="services", state=None, grant_plan=True):
     payload = creation() if activity == "services" else schemas.CreateBusiness(**{**creation().model_dump(), "activity": activity})
     if state is None:
         state = await service.create_business(ctx.actor, payload)
+    # This helper prepares an operational test company, explicitly licensed;
+    # creation-only tests above still exercise the real unlicensed state.
+    from plan_fixtures import seed_fixture_plan
+    if grant_plan:
+        async with ctx.migration.begin() as db:
+            ctx.plan_admins.append(await seed_fixture_plan(db,(UUID(state["tenant_id"]),),"essencial"))
     state = await save(ctx, state, "location", {"modality": "online"})
     if activity in {"services", "both"}:
         state = await save(ctx, state, "professionals", {"item": {"name": "Pessoa sintética"}, "self_provider": True})
@@ -92,6 +102,44 @@ async def configured(ctx, *, activity="services", state=None):
     if activity in {"products", "both"}:
         state = await save(ctx, state, "catalog", {"kind": "product", "item": {"name": "Produto sintético"}, "variant": {"name": "Padrão", "price_kind": "on_request"}})
     return state
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source",["manual","trial"])
+async def test_paused_setup_requires_valid_grant_and_rolls_back_all_activations_without_it(onboarding_db,source):
+    ctx=new_business_context(onboarding_db)
+    state=await configured(ctx,grant_plan=False)
+    tenant=UUID(state["tenant_id"])
+    request=schemas.Complete(expected_version=state["version"],expected_snapshot=state["snapshot"],
+        idempotency_key=str(uuid4()),activate_catalog=True,acknowledged=True)
+    with pytest.raises(HTTPException) as error:
+        await service.complete(ctx.actor,tenant,request)
+    assert error.value.status_code == 403 and error.value.detail["code"] == "PLAN_FEATURE_UNAVAILABLE"
+    async with ctx.migration.connect() as db:
+        assert (await db.execute(text("SELECT status FROM tenants WHERE id=:t"),{"t":tenant})).scalar_one() == "paused"
+        saved=(await db.execute(text("SELECT version,completed_at FROM business_onboarding WHERE tenant_id=:t"),{"t":tenant})).mappings().one()
+        assert saved["version"] == state["version"] and saved["completed_at"] is None
+        assert (await db.execute(text("SELECT count(*) FROM professionals WHERE tenant_id=:t AND active"),{"t":tenant})).scalar_one() == 0
+        assert (await db.execute(text("SELECT count(*) FROM business_onboarding_operations WHERE tenant_id=:t AND idempotency_key=:key"),
+                                {"t":tenant,"key":request.idempotency_key})).scalar_one() == 0
+    async with ctx.migration.begin() as db:
+        if source == "manual":
+            from plan_fixtures import seed_fixture_plan
+            ctx.plan_admins.append(await seed_fixture_plan(db,(tenant,),"essencial"))
+        else:
+            await db.execute(text("""INSERT INTO orion_plan_trial_requests
+                (tenant_id,account_id,full_name,company_name,whatsapp_e164,status,started_at,ends_at)
+                VALUES(:t,:account,'Pessoa sintética','Empresa sintética','+5567999999901','active',
+                  clock_timestamp()-interval '1 minute',clock_timestamp()+interval '3 days')"""),
+                {"t":tenant,"account":ctx.actor.account_id})
+    done=await service.complete(ctx.actor,tenant,request)
+    assert done["status"] == "complete" and done["catalog"]["professionals"][0]["active"]
+    async with ctx.runtime() as db:
+        async with tenant_transaction(db,tenant):
+            from app.plan_permissions import plan_state
+            effective=await plan_state(db,tenant)
+            assert effective["active"] and effective["source"] == source
+            assert effective["code"] == "essencial" and effective["limits"]["active_professionals"] == 1
 
 
 @pytest.mark.asyncio

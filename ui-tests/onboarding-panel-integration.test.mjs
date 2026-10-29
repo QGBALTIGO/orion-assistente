@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makePanel, jsonResponse } from './panel-harness.mjs';
-import { tenantA, tenantB, flush, deferred } from './harness.mjs';
+import { tenantA, tenantB, flush, deferred, planState } from './harness.mjs';
 import { fullState } from './onboarding-harness.mjs';
 import { listing, item, runtime } from './channels-harness.mjs';
 
@@ -40,6 +40,12 @@ test('an incomplete business resumes its own stored step and does not publish ch
   assert.equal(h.window.OrionOnboarding===undefined,false);
   assert.match(h.document.querySelector('#orionSetup').textContent,/Quando você atende/);
   assert.equal(h.calls.filter(c=>c.method!=='GET').length,0);
+});
+
+test('none can leave incomplete setup for plan regularization without activating professionals or losing its draft',async t=>{
+  const h=await makePanel({role:'member',initialRoute:'dashboard',permissions:planState('none',{permissions:{'plan.manage':true,'account.manage':true,'business.setup':true}}),respond:path=>path.startsWith('/api/v1/onboarding/entry')?{enabled:true,kind:'onboarding',tenant_id:tenantA}:path.endsWith('/onboarding')?fullState({current_step:'hours'}):undefined});t.after(()=>h.close());await flush();
+  assert.equal(h.element('#appView').classList.contains('ob-gated'),true);assert.match(h.element('#orionSetup').textContent,/Quando você atende/);assert.equal(h.element('#orionSetupAccess').hidden,false);
+  h.click('[data-setup-access=plano]');await flush();assert.equal(h.element('#appView').classList.contains('ob-gated'),false);assert.equal(h.element('#page-suite').dataset.osCurrentRoute,'plano');assert.equal(h.calls.some(call=>call.method!=='GET'),false);
 });
 
 test('logout discards the wizard and a late decision cannot restore the prior account',async t=>{

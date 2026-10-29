@@ -92,15 +92,20 @@ def predeploy_main():
     from scripts import backup_and_migrate_plans as plans
     from scripts import backup_and_migrate_direct_checkout as direct
     from scripts import backup_and_migrate_appointment_communications as appointment
+    from scripts import backup_and_migrate_plan_permissions as permissions
+    def finish_permissions(result):
+        return result if result else permissions.main()
     def finish_direct():
         result=direct.main()
         if result:return result
-        return appointment.main() if os.getenv('ORION_RUN_APPOINTMENT_COMMUNICATION_MIGRATION')=='1' else 0
+        return finish_permissions(appointment.main()) if os.getenv('ORION_RUN_APPOINTMENT_COMMUNICATION_MIGRATION')=='1' else 3
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
+        if current == permissions.TARGET:
+            return permissions.main()
         if current in {appointment.TARGET,appointment.COMMUNICATIONS_PREVIOUS}:
-            return appointment.main()
+            return finish_permissions(appointment.main())
         if current == direct.TARGET:
             return finish_direct()
         if current == plans.TARGET:

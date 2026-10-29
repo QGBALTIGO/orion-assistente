@@ -26,6 +26,7 @@ def async_url(url):
 
 @pytest_asyncio.fixture
 async def management_db(monkeypatch):
+    from plan_fixtures import seed_fixture_plan, clear_fixture_plans
     names = ("APP_DATABASE_URL", "MIGRATION_DATABASE_URL", "SUPPORT_DATABASE_URL")
     if not all(os.getenv(name) for name in names):
         if os.getenv("REQUIRE_POSTGRES_TESTS") == "1":
@@ -49,6 +50,7 @@ async def management_db(monkeypatch):
         for tenant in (a, b):
             await db.execute(text("INSERT INTO tenants (id,name,slug,timezone) VALUES (:id,'Empresa sintética',:slug,'America/Sao_Paulo')"),
                              {"id": tenant, "slug": "mgmt-" + str(tenant)})
+        plan_admin=await seed_fixture_plan(db,(a,b),"elite")
         for tenant, identity in ((a, pro), (b, other_pro)):
             await db.execute(text("INSERT INTO professionals (id,tenant_id,name,commission_percent) VALUES (:id,:tenant,'Profissional de teste',25)"),
                              {"id": identity, "tenant": tenant})
@@ -72,6 +74,7 @@ async def management_db(monkeypatch):
                           "management_site_preferences", "campaigns", "appointment_history", "appointment_items", "calendar_outbox",
                           "appointments", "customers", "working_breaks", "working_hours", "professional_services", "services", "professionals", "tenant_audit", "tenant_memberships"):
                 await db.execute(text(f"DELETE FROM {table} WHERE tenant_id IN (:a,:b)"), {"a": a, "b": b})
+            await clear_fixture_plans(db,(a,b),(plan_admin,))
             await db.execute(text("DELETE FROM tenants WHERE id IN (:a,:b)"), {"a": a, "b": b})
             await db.execute(text("DELETE FROM panel_accounts WHERE id=:id"), {"id": account})
         await migrator.dispose()

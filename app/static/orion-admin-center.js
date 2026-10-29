@@ -21,6 +21,11 @@
   };
   const icon = name => '<svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'+(circles[name]||"")+'<path d="'+(paths[name]||paths.info)+'"/></svg>';
   const label = {active:"Ativa",suspended:"Suspensa",archived:"Arquivada",erased:"Excluída"};
+  const planNames={essencial:'Essencial',profissional:'Profissional',elite:'Elite'},sourceNames={manual:'Manual',cakto:'Cakto',trial:'Teste grátis',none:'Sem acesso',platform_admin:'Administração'};
+  const effective=a=>a.effective_plan||{};
+  const subscriptionLabel=subscription=>({active:'Ativa',trialing:'Em teste',past_due:'Pagamento pendente',grace:'Em carência',suspended:'Suspensa',canceled:'Cancelada',expired:'Encerrada'})[subscription?.status]||(subscription?'Estado não confirmado':'Sem assinatura');
+  const billingStatus=a=>subscriptionLabel(effective(a).commercial_subscription);
+  const contactPhone=a=>{try{return a.phone?window.OrionFields?.phoneDisplay(a.phone,{allowInternational:true})||a.phone:'Telefone não informado';}catch{return 'Telefone não confirmado';}};
   const eventLabels={edit:"Nome atualizado",suspend:"Conta suspensa",reactivate:"Conta reativada",
     archive:"Exclusão solicitada",restore:"Conta restaurada",erase:"Exclusão definitiva",
     hold:"Retenção legal",release_hold:"Retenção encerrada",maintenance_start:"Manutenção iniciada",
@@ -33,7 +38,7 @@
     hold:"A exclusão definitiva ficará pausada por obrigação legal.",
     erase_now:"Exclusão irreversível da conta de acesso agora, sem esperar 30 dias. O e-mail ficará disponível para um novo cadastro. Registros exigidos por lei poderão ser preservados."};
   const state={request:null,role:null,onMaintenanceStart:null,epoch:0,seq:0,
-    query:"",status:"all",page:1,items:[],stats:null,total:0,selected:null,
+    query:"",status:"all",plan:'all',source:'all',subscriptionStatus:'all',page:1,items:[],stats:null,total:0,selected:null,planEnvelope:null,planDraft:null,planIntent:null,modalRead:0,
     owned:false,modalType:null,modalAction:null,trigger:null,busy:false,timer:null};
   const isAdmin=()=>state.role==="admin"&&!$("page-member")?.classList.contains("hidden")&&!$("adminClientCenter")?.classList.contains("hidden");
   const btn=(title,key,opts={})=>'<button type="button" class="'+(opts.cls||"os-icon-button")+
@@ -46,6 +51,7 @@
   function isRecoverable(a){return a.state==="archived"&&a.purge_after&&Date.parse(a.purge_after)>Date.now();}
   function actions(a){
     let html=btn("Ver detalhes","view",{id:a.id,icon:"eye"});
+    if(a.company_id&&a.can_manage_plan===true&&a.state!=='erased')html+=btn('Gerenciar plano','plan',{id:a.id,icon:'shield'});
     if(a.state==="active"&&!a.registration_pending)html+=btn("Acessar conta","maintenance",{id:a.id,icon:"shield"});
     if(a.state==="active")html+=btn("Suspender conta","account-action",{id:a.id,action:"suspend",icon:"block"});
     if(a.state==="suspended")html+=btn("Reativar conta","account-action",{id:a.id,action:"reactivate",icon:"check"});
@@ -65,7 +71,8 @@
       '<div class="os-client-filters os-admin-filters"><div class="os-pill-tabs" role="tablist" aria-label="Situação dos clientes">'+
       [["all","Todas"],["active","Ativas"],["suspended","Suspensas"],["archived","Arquivadas"],["erased","Excluídas"]].map(([k,text])=>
         '<button type="button" class="os-pill-tab" role="tab" data-admin-status="'+k+'" aria-selected="'+(state.status===k)+'">'+text+'</button>').join("")+
-      '</div></div><div id="adminAccountsResults" aria-live="polite">'+
+      '</div></div><div class="os-filter-row" aria-label="Filtros de plano">'+
+      [['plan','Plano',[['all','Todos'],['none','Sem plano'],...Object.entries(planNames)]],['source','Origem',[['all','Todas'],['manual','Manual'],['cakto','Cakto'],['trial','Teste grátis'],['none','Sem acesso']]],['subscriptionStatus','Assinatura',[['all','Todas'],['active','Ativa'],['trialing','Em teste'],['past_due','Pagamento pendente'],['grace','Em carência'],['suspended','Suspensa'],['canceled','Cancelada'],['expired','Encerrada']]]].map(([key,title,options])=>'<div class="os-field"><label for="adminPlanFilter-'+key+'">'+title+'</label><select id="adminPlanFilter-'+key+'" data-admin-plan-filter="'+key+'">'+options.map(([value,text])=>'<option value="'+value+'">'+text+'</option>').join('')+'</select></div>').join('')+'</div><div id="adminAccountsResults" aria-live="polite">'+
       '<div class="os-loading" role="status">Consultando contas…</div></div>';
     updateStats();
   }
@@ -84,16 +91,16 @@
       (state.query?"Nenhuma conta corresponde a esta busca.":"Nenhuma conta encontrada neste filtro.")+
       '</div>';return;}
     const table='<div class="os-card os-no-pad os-hide-mobile"><div class="os-table-scroll"><table class="os-table"><thead>'+
-      '<tr><th>Cliente</th><th>Empresa</th><th>Situação</th><th>Cadastro</th><th><span class="os-sr-only">Ações</span></th></tr>'+
+      '<tr><th>Cliente</th><th>Empresa</th><th>Plano liberado</th><th>Situação</th><th>Cadastro</th><th><span class="os-sr-only">Ações</span></th></tr>'+
       '</thead><tbody>'+list.map(a=>'<tr><td><div class="os-person"><span class="os-avatar">'+esc(initials(a.name))+
-      '</span><div><strong>'+esc(a.name)+'</strong><small>'+esc(a.email)+'</small></div></div></td>'+
-      '<td>'+esc(a.company_name||"Sem empresa")+'</td><td>'+statusBadge(a)+'</td><td>'+when(a.created_at)+'</td>'+
+      '</span><div><strong>'+esc(a.name)+'</strong><small>'+esc(a.email)+'</small><small>'+esc(contactPhone(a))+'</small></div></div></td>'+
+      '<td>'+esc(a.company_name||"Sem empresa")+'</td><td><strong>'+esc(effective(a).name||planNames[effective(a).code]||'Sem plano ativo')+'</strong><br><small>'+esc(sourceNames[effective(a).source]||'Não informado')+(effective(a).valid_until?' · até '+when(effective(a).valid_until):'')+'</small><br><small>Assinatura: '+esc(billingStatus(a))+'</small></td><td>'+statusBadge(a)+'</td><td>'+when(a.created_at)+'<br><small>Último acesso: '+(a.last_access_at?when(a.last_access_at):'Não informado')+'</small></td>'+
       '<td><div class="os-table-actions">'+actions(a)+'</div></td></tr>').join("")+'</tbody></table></div></div>';
     const mobile='<p class="os-help os-only-mobile os-admin-swipe-tip">Toque para gerenciar. Deslize para a esquerda para revelar as ações.</p>'+
       '<div class="os-mobile-customers os-admin-mobile os-only-mobile">'+list.map(a=>
       '<div class="os-swipe-row"><div class="os-client-mobile-front"><button class="os-client-mobile-main" type="button" data-admin-control="view" data-account-id="'+esc(a.id)+'" aria-label="Ver conta de '+esc(a.name)+'">'+
       '<span class="os-avatar">'+esc(initials(a.name))+'</span><span><strong>'+esc(a.name)+'</strong><small>'+
-      esc(a.company_name||"Sem empresa")+'</small><small>'+esc(a.email)+'</small></span>'+icon("chevron")+
+      esc(a.company_name||"Sem empresa")+'</small><small>'+esc(a.email)+'</small><small>'+esc(contactPhone(a))+'</small><small>'+esc(effective(a).name||'Sem plano ativo')+' · '+esc(sourceNames[effective(a).source]||'Não informado')+'</small><small>Assinatura: '+esc(billingStatus(a))+'</small></span>'+icon("chevron")+
       '</button></div><div class="os-swipe-actions">'+actions(a)+'</div></div>').join("")+'</div>';
     const from=(state.page-1)*20;
     const pager=total>20?'<div class="os-pagination"><span>'+(from+1)+'–'+Math.min(from+list.length,total)+' de '+total+'</span>'+
@@ -108,6 +115,7 @@
     if(!isAdmin())return;
     const epoch=state.epoch,seq=++state.seq;
     const params=new URLSearchParams({q:state.query,status:state.status,page:String(state.page),page_size:"20"});
+    for(const [key,value] of [['plan',state.plan],['source',state.source],['subscription_status',state.subscriptionStatus]])if(value!=='all')params.set(key,value);
     try{
       const results=await Promise.all([
         state.request("/api/v1/admin/accounts?"+params),
@@ -134,6 +142,7 @@
   }
   function closeDialog(){
     if(state.busy)return;
+    state.modalRead++;
     const dialog=$("osDialog");if(state.owned&&dialog?.open)dialog.close();
     state.owned=false;state.selected=null;state.modalType=null;state.modalAction=null;
     const trigger=state.trigger;state.trigger=null;
@@ -141,6 +150,7 @@
   }
   function details(a,history){
     const summary=[["E-mail",a.email],["Empresa",a.company_name||"Sem empresa"],["Cadastrado em",when(a.created_at)],
+      ['Telefone',a.phone||'Não informado'],['Último acesso',a.last_access_at?when(a.last_access_at):'Não informado'],['Plano liberado',effective(a).name||'Sem plano ativo'],['Origem',sourceNames[effective(a).source]||'Não informado'],['Vencimento do acesso',when(effective(a).valid_until)],
       ["E-mail confirmado",a.verified_at?"Sim":"Não"],
       ...(a.state==="archived"?[["Prazo de recuperação",when(a.purge_after)]]:[])];
     const canEdit=["active","suspended"].includes(a.state);
@@ -151,6 +161,7 @@
       '<div class="os-client-textarea"><textarea id="adminModalReason" name="reason" required minlength="5" maxlength="500" placeholder="Ex.: Correção solicitada pelo cliente"></textarea></div></div></div>'+
       '<div class="os-form-message" role="alert"></div><div class="os-form-actions"><button type="submit" class="os-button">'+icon("check")+"Salvar nome"+'</button></div></form>':"";
     const controls='<div class="os-admin-modal-controls">'+
+      (a.company_id&&a.can_manage_plan===true?btn('Gerenciar plano','plan',{id:a.id,cls:'os-button os-outline',icon:'shield',text:'Gerenciar plano'}):'')+
       (a.state==="active"&&!a.registration_pending?btn("Acessar conta","maintenance",{id:a.id,cls:"os-button os-admin-access",icon:"shield",text:"Acessar conta"}):"")+
       (a.state==="active"?btn("Suspender","account-action",{id:a.id,action:"suspend",cls:"os-button os-outline",icon:"block",text:"Suspender"}):"")+
       (a.state==="suspended"?btn("Reativar","account-action",{id:a.id,action:"reactivate",cls:"os-button os-outline",icon:"check",text:"Reativar"}):"")+
@@ -215,6 +226,62 @@
         '<button type="submit" class="os-button os-admin-access">'+icon("shield")+'Acessar conta</button></div></form>',a);
     }catch(e){if(epoch===state.epoch)feedback(e.message,true);}
   }
+  function planPath(a){return '/api/v1/admin/accounts/'+encodeURIComponent(a.id)+'/companies/'+encodeURIComponent(a.company_id)+'/plan';}
+  function validPlanEnvelope(value,a){return value?.company?.id===a.company_id&&value.effective_plan&&Number.isInteger(value.effective_plan.version)&&/^[a-f0-9]{64}$/.test(value.effective_plan.revision);}
+  function planSummary(value){
+    const p=value.effective_plan,c=value.company,subscription=p.commercial_subscription;
+    return '<div class="os-summary">'+[['Empresa',c.name],['Plano liberado',p.name||'Sem plano ativo'],['Origem',sourceNames[p.source]||p.source],['Situação do acesso',p.active?'Ativo':'Sem acesso ativo'],['Assinatura comercial',subscription?.name||subscription?.plan_code||'Sem assinatura'],['Situação da assinatura',subscriptionLabel(subscription)],['Profissionais ativos',String(p.limits?.active_professionals??c.active_professionals??0)+' / '+String(p.limits?.max_professionals??'—')]].map(([key,text])=>'<div class="os-summary-row"><span>'+esc(key)+'</span><strong>'+esc(text||'—')+'</strong></div>').join('')+'</div>';
+  }
+  function renderPlanForm(a,value,draft){
+    const assignment=value.effective_plan.manual_assignment;
+    const expiry=assignment?.expires_at?new Date(assignment.expires_at):null;
+    const expiryInput=expiry&&!Number.isNaN(expiry.getTime())?new Date(expiry.getTime()-expiry.getTimezoneOffset()*60000).toISOString().slice(0,16):'';
+    draft=draft||{plan_code:assignment?.plan_code||value.effective_plan.code||'essencial',access_type:assignment?.expires_at?'temporary':'indefinite',expires_at:expiryInput,reason:''};
+    const history=value.history||[];
+    openDialog('plan','Gerenciar plano',planSummary(value)+'<form class="os-form" data-admin-form="plan">'+
+      '<div class="os-field"><label for="adminManualPlan">Plano</label><select id="adminManualPlan" name="plan_code" required>'+Object.entries(planNames).map(([code,name])=>'<option value="'+code+'"'+(code===draft.plan_code?' selected':'')+'>'+name+'</option>').join('')+'</select></div>'+
+      '<div class="os-field"><label for="adminManualAccess">Tipo de liberação</label><select id="adminManualAccess" name="access_type"><option value="indefinite"'+(draft.access_type==='indefinite'?' selected':'')+'>Acesso manual sem prazo definido</option><option value="temporary"'+(draft.access_type==='temporary'?' selected':'')+'>Acesso manual temporário</option></select></div>'+
+      '<div class="os-field" data-admin-expiration '+(draft.access_type==='temporary'?'':'hidden')+'><label for="adminManualExpires">Expiração (data e hora no seu fuso)</label><input id="adminManualExpires" type="datetime-local" name="expires_at" value="'+esc(draft.expires_at)+'" '+(draft.access_type==='temporary'?'required':'disabled')+'></div>'+
+      '<div class="os-field"><label for="adminManualReason">Motivo (opcional)</label><textarea id="adminManualReason" name="reason" rows="2" maxlength="500">'+esc(draft.reason)+'</textarea></div>'+
+      '<p class="os-help">Esta liberação não gera cobrança e não altera a assinatura comercial.</p><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+btn('Cancelar','close',{cls:'os-button os-outline',text:'Cancelar',icon:'close'})+'<button type="submit" class="os-button">Salvar alteração</button></div></form>'+
+      (assignment?'<div class="os-form-actions">'+btn('Remover atribuição manual','remove-plan',{cls:'os-button os-outline',text:'Remover atribuição manual',icon:'refresh'})+'</div>':'')+
+      '<details class="os-more-fields"><summary>Histórico de planos</summary><div class="os-disclosure-body">'+(history.length?history.map(event=>'<div class="os-summary-row"><span>'+esc(event.action==='manual_remove'?'Atribuição removida':'Plano alterado')+' · '+esc(new Date(event.occurred_at).toLocaleString('pt-BR'))+'</span><strong>'+esc(event.previous_plan?.name||'Sem acesso')+' → '+esc(event.new_plan?.name||'Sem acesso')+'</strong></div><p class="os-help">'+esc(event.reason||'Sem motivo informado')+' · Administrador: '+esc(event.actor_name||event.actor_id||'Não informado')+(event.expires_at?' · até '+esc(new Date(event.expires_at).toLocaleString('pt-BR')):'')+'</p>').join(''):'<p class="os-help">Nenhuma alteração manual registrada.</p>')+'</div></details>',a);
+    state.planEnvelope=value;state.planDraft=draft;state.planIntent=null;
+  }
+  async function showPlan(id){
+    const a=state.items.find(item=>item.id===id)||state.selected;
+    if(!a?.company_id||a.can_manage_plan!==true||a.id!==id)return;
+    const epoch=state.epoch,read=++state.modalRead;
+    try{const value=await state.request(planPath(a));if(epoch!==state.epoch||read!==state.modalRead||!isAdmin())return;if(!validPlanEnvelope(value,a))throw Error('Não foi possível confirmar o plano da empresa selecionada.');renderPlanForm(a,value);}
+    catch(error){if(epoch===state.epoch&&read===state.modalRead)feedback(error.message,true);}
+  }
+  function reviewPlan(remove=false){
+    const a=state.selected,value=state.planEnvelope;if(!a||!validPlanEnvelope(value,a))return;
+    const form=$('osDialog').querySelector('[data-admin-form=plan]');
+    if(!remove&&!form?.reportValidity())return;
+    const draft=form?Object.fromEntries(new FormData(form)):state.planDraft;
+    let expires=null;
+    if(!remove&&draft.access_type==='temporary'){
+      const date=new Date(draft.expires_at);if(!Number.isFinite(date.getTime())||date.getTime()<=Date.now()){feedback('Escolha uma data de expiração futura.',true);return;}expires=date.toISOString();
+    }
+    state.planDraft=draft;
+    const payload={expected_version:value.effective_plan.version,expected_revision:value.effective_plan.revision,operation_id:crypto.randomUUID(),confirmation:remove?'REMOVER ATRIBUIÇÃO':'ALTERAR PLANO',reason:(draft.reason||'').trim(),...(!remove?{plan_code:draft.plan_code,access_type:draft.access_type,expires_at:expires}:{})};
+    openDialog('plan-review',remove?'Remover atribuição manual?':'Confirmar alteração de plano',planSummary(value)+'<div class="os-notice"><p>'+esc(remove?'O plano será recalculado pela assinatura comercial ou pelo teste grátis válido.':'A empresa receberá o plano '+planNames[draft.plan_code]+(expires?' até '+new Date(expires).toLocaleString('pt-BR'): ' sem prazo definido')+'.')+'</p></div><p class="os-help">Os dados da empresa e a assinatura comercial serão preservados. Nenhuma cobrança será gerada.</p><form class="os-form" data-admin-form="plan-confirm"><div class="os-form-message" role="alert"></div><div class="os-form-actions">'+btn('Voltar','plan-back',{cls:'os-button os-outline',icon:'left',text:'Voltar'})+'<button type="submit" class="os-button">'+(remove?'Confirmar remoção':'Confirmar alteração')+'</button></div></form>',a);
+    state.planIntent={path:planPath(a),method:remove?'DELETE':'PUT',payload};
+  }
+  async function savePlan(form){
+    const intent=state.planIntent,a=state.selected;if(!intent||state.busy)return;
+    const epoch=state.epoch;state.busy=true;form.setAttribute('aria-busy','true');form.querySelectorAll('button').forEach(button=>button.disabled=true);
+    try{
+      const value=await state.request(intent.path,intent.method,intent.payload);
+      if(epoch!==state.epoch||!isAdmin())return;if(!validPlanEnvelope(value,a))throw Error('Resultado ainda não confirmado. Confira o estado antes de repetir.');
+      state.busy=false;closeDialog();state.stats=null;await load();window.dispatchEvent(new Event('orion:plan-changed'));if(typeof window.BroadcastChannel==='function'){try{const channel=new BroadcastChannel('orion-plan-access');channel.postMessage({type:'changed',tenantId:a.company_id});channel.close();}catch{}}
+    }catch(error){
+      if(epoch!==state.epoch||!isAdmin())return;state.busy=false;form.setAttribute('aria-busy','false');feedback(error.message||'Não foi possível salvar a alteração.',true);
+      const status=Number(error.status);if(status&&status<500&&status!==409){form.querySelectorAll('button').forEach(button=>button.disabled=false);}
+      else{state.planIntent=null;form.querySelector('.os-form-actions').insertAdjacentHTML('beforeend',btn('Conferir estado','plan',{id:a.id,cls:'os-button os-outline',icon:'refresh',text:'Conferir estado'}));}
+    }
+  }
   function feedback(message,error=false){
     const dialog=state.owned?$("osDialog"):null;
     const zone=dialog?.querySelector(".os-form-message");
@@ -227,6 +294,8 @@
     if(!form||!state.owned||!state.selected||!isAdmin())return;
     event.preventDefault();
     if(state.busy||!form.reportValidity())return;
+    if(form.dataset.adminForm==='plan'){reviewPlan();return;}
+    if(form.dataset.adminForm==='plan-confirm'){await savePlan(form);return;}
     const a=state.selected,kind=form.dataset.adminForm,epoch=state.epoch;
     const values=Object.fromEntries(new FormData(form));
     let path,method,payload;
@@ -267,6 +336,9 @@
     event.preventDefault();state.trigger=button;
     if(key==="close"){closeDialog();return;}
     if(key==="view"){await view(id);return;}
+    if(key==='plan'){await showPlan(id);return;}
+    if(key==='remove-plan'){reviewPlan(true);return;}
+    if(key==='plan-back'){renderPlanForm(state.selected,state.planEnvelope,state.planDraft);return;}
     if(key==="maintenance"){await showMaintenance(id);return;}
     if(key==="account-action"){await showAction(id,button.dataset.accountAction);return;}
     if(key==="refresh"){state.stats=null;await load();return;}
@@ -285,10 +357,11 @@
   function open({request,role,onMaintenanceStart}){
     if(role!=="admin"||typeof request!=="function")return;
     state.request=request;state.role=role;state.onMaintenanceStart=onMaintenanceStart;
-    state.epoch++;state.seq++;state.page=1;state.query="";state.status="all";state.stats=null;
+    state.epoch++;state.seq++;state.modalRead++;state.page=1;state.query="";state.status="all";state.plan='all';state.source='all';state.subscriptionStatus='all';state.stats=null;
     const dialog=$("osDialog");
     if(dialog&&!dialog.dataset.osAdminCloseBound){
       dialog.dataset.osAdminCloseBound="1";
+      dialog.addEventListener('cancel',event=>{if(!state.owned)return;event.preventDefault();event.stopImmediatePropagation();if(!state.busy)closeDialog();},true);
       dialog.addEventListener("close",()=>{
         if(!state.owned)return;
         state.owned=false;state.busy=false;state.selected=null;
@@ -298,7 +371,7 @@
     frame();void load();
   }
   function reset(){
-    state.epoch++;state.seq++;clearTimeout(state.timer);state.timer=null;
+    state.epoch++;state.seq++;state.modalRead++;state.planEnvelope=null;state.planDraft=null;state.planIntent=null;clearTimeout(state.timer);state.timer=null;
     if(state.owned){state.busy=false;closeDialog();}
     state.request=null;state.role=null;state.selected=null;state.items=[];state.stats=null;
   }
@@ -312,6 +385,11 @@
     const input=event.target;if(!isAdmin()||input.id!=="adminAccountsSearch")return;
     state.query=input.value;state.page=1;state.seq++;clearTimeout(state.timer);
     state.timer=setTimeout(()=>void load(),280);
+  });
+  document.addEventListener('change',event=>{
+    if(!isAdmin())return;const el=event.target;
+    if(el.matches('[data-admin-plan-filter]')){state[el.dataset.adminPlanFilter]=el.value;state.page=1;void load();}
+    if(state.owned&&el.id==='adminManualAccess'){const area=$('osDialog').querySelector('[data-admin-expiration]'),input=area.querySelector('input'),temporary=el.value==='temporary';area.hidden=!temporary;input.disabled=!temporary;input.required=temporary;}
   });
   document.addEventListener("keydown",event=>{
     const tab=event.target.closest("[data-admin-status]");

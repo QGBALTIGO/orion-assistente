@@ -26,6 +26,8 @@ def cipher():
 
 async def enqueue_event(db, tenant, appointment, event, details):
     if not access.tenant_enabled(tenant):return
+    from app.plan_permissions import has_feature
+    if not await has_feature(db, tenant, "notifications.basic"):return
     # Every committed mutation invalidates old pending facts in this SAME tx.
     if event in {'confirmed','cancelled','rescheduled','completed','no_show','hold_expired'}:
         await db.execute(text("""UPDATE appointment_notifications SET status='cancelled',
@@ -66,6 +68,9 @@ async def enqueue_event(db, tenant, appointment, event, details):
 
 
 async def eligibility(db, tenant, job):
+    from app.plan_permissions import has_feature
+    if not await has_feature(db, tenant, "notifications.basic"):
+        return 'plan_feature_unavailable',None,None,None
     settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
     if not access.tenant_enabled(tenant) or not settings or not settings['enabled']:return 'execution_paused',None,None,None
     if settings['version']!=job['settings_version'] or settings['channel_id']!=job['channel_id']:return 'settings_changed',None,None,None

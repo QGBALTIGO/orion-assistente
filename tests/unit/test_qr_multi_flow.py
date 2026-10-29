@@ -37,6 +37,8 @@ class Session:
 
 @pytest.fixture
 def flow(monkeypatch):
+    from plan_fixture import install_plan_fixture
+    install_plan_fixture(monkeypatch,"elite")
     monkeypatch.setenv("QR_AI_MULTI_INTENT_ENABLED", "1")
     tenant, cut, beard, bruno, breno, version, appointment = (uuid4() for _ in range(7))
     zone = ZoneInfo("America/Campo_Grande")
@@ -101,7 +103,7 @@ def flow(monkeypatch):
     async def preview_move(db, t, appointment_id, when, *, customer_phone):
         assert t == tenant and appointment_id == appointment and customer_phone == "+5567999999999"
         return {"services": ["Corte"], "start_at": when, "timezone": str(zone), "total_cents": 3500,
-                "professional": "Bruno", "duration_min": 40, "expected_snapshot": "synthetic-snapshot"}
+                "professional": "Bruno", "duration_min": 40, "price_mode":"fixed", "expected_snapshot": "synthetic-snapshot"}
     async def records(*_, **__):
         return [{"id": appointment, "status": "confirmed", "start_at": datetime.combine(tomorrow, datetime.min.time(), zone).replace(hour=14), "protocol": "SYNTHETIC"}]
     async def original(*_):

@@ -125,11 +125,13 @@ def test_full_predeploy_routes_existing_appointment_schema_to_its_release(monkey
     monkeypatch.setattr(entry,'connection_values',lambda:('isolated-url','isolated-url'))
     monkeypatch.setattr(entry,'migrated_version',lambda _:revision)
     monkeypatch.setattr(release,'main',lambda:calls.append('appointment') or 0)
+    from scripts import backup_and_migrate_plan_permissions as permissions
+    monkeypatch.setattr(permissions,'main',lambda:calls.append('permissions') or 0)
     def unexpected():pytest.fail('An applied earlier migration must not run again')
     for module in ('professional_phone','quick_onboarding','admin_accounts','single_whatsapp','cakto','plans','direct_checkout'):
         import importlib
         monkeypatch.setattr(importlib.import_module('scripts.backup_and_migrate_'+module),'main',unexpected)
-    assert entry.predeploy_main()==0 and calls==['appointment']
+    assert entry.predeploy_main()==0 and calls==['appointment','permissions']
 
 
 @pytest.mark.asyncio

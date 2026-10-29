@@ -22,7 +22,7 @@ const defs=[
  'Consulta de horários disponíveis*','Agendar, reagendar e cancelar via conversa*',
  'Atendimento fora do horário comercial*','Nome e estilo personalizados da assistente',
  'Assumir, pausar ou retomar atendimento*','Transferência para atendimento humano*',
- 'Relatórios da recepcionista IA*','Configuração assistida e suporte prioritário']}
+ 'Configuração da recepcionista conforme os recursos disponíveis']}
 ];
 const comparisons=[
  ['Gestão e agenda',[['Dashboard','Essencial','Avançado','Avançado'],['Agenda e agendamento online',true,true,true],['Horários, intervalos e folgas',true,true,true]]],
@@ -34,20 +34,20 @@ const comparisons=[
  ['Marketing e fidelização',[['Pontos e recompensas',false,true,true],['Cupons e benefícios',false,true,true],['Campanhas de aniversário e retorno*',false,true,true]]],
  ['Inteligência artificial',[['Marketing IA e Consultor IA de gestão*',false,true,true],['Recepcionista IA no WhatsApp*',false,false,true]]],
  ['Equipe e profissionais',[['Profissionais permitidos','Até 2','Até 6','Até 10'],['Relatórios por profissional',false,true,true]]],
- ['Suporte',[['Suporte padrão',true,true,true],['Suporte prioritário e configuração assistida',false,false,true]]]
+ ['Suporte',[['Suporte padrão',true,true,true]]]
 ];
 function compareCell(value){return value===true?'<span class="op-yes" aria-label="Incluído">'+ic('check')+'<span class="op-cell-word">Incluído</span></span>':value===false?'<span class="op-no" aria-label="Não incluído">—</span>':'<span class="op-comparison-value">'+escapeHTML(value)+'</span>';}
 function canonical(code){const s=String(code||'').toLowerCase();return s.includes('essencial')?'essencial':s.includes('profissional')||s==='pro'||s.includes('_pro')?'profissional':s.includes('elite')?'elite':'';}
 function statusOf(sub){if(!sub)return 'Sem assinatura';return ({active:'Ativa',trialing:'Em teste',trial:'Em teste',past_due:'Pagamento pendente',grace:'Em carência',suspended:'Suspensa',canceled:'Cancelada',cancelled:'Cancelada',expired:'Encerrada'})[sub.status]||'Estado não confirmado';}
 let mounted=null;
-function renderCard(def, server, currentCode, currentActive, allowed, ctx) {
+function renderCard(def, server, currentCode, currentActive, allowed, ctx, source) {
  const chosen=server.find(x=>x.code===def.code)||{};
  const same=currentActive&&currentCode===def.code;
  const badge=def.code==='profissional'?'<span class="op-recommended">Recomendado</span>':'';
  let actionLabel='Assinar '+(def.code==='profissional'?'Profissional':def.code==='essencial'?'Essencial':'Elite');
  let disabled='';
  if(same){actionLabel='Plano atual';disabled='disabled';}
- else if(currentActive){actionLabel='Regularização ou troca pelo suporte';disabled='disabled';}
+ else if(currentActive){actionLabel=source==='manual'?'Gerenciado pela administração':'Regularização ou troca pelo suporte';disabled='disabled';}
  else if(!allowed){actionLabel='Somente proprietário';disabled='disabled';}
  else if(!Number.isInteger(chosen.monthly_cents)){actionLabel='Plano indisponível';disabled='disabled';}
  const features=def.features.map(feature=>'<li>'+ic('check')+'<span>'+escapeHTML(feature)+'</span></li>').join('');
@@ -122,6 +122,11 @@ function applyComparisonFilter(root,onlyDifferences){
  if(state)state.textContent=onlyDifferences?'Exibindo somente diferenças entre os planos.':'Exibindo todos os recursos dos planos.';
 }
 
+function effectiveBanner(data){
+ const p=data.effective_plan;if(!p)return '<p class="os-notice" role="status">Não foi possível confirmar o acesso da empresa. Atualize o estado antes de continuar.</p>';
+ const origins={manual:'Liberação manual',cakto:'Assinatura Cakto',trial:'Teste grátis',none:'Sem acesso ativo',platform_admin:'Administração Orion'};
+ return '<section class="op-account-state" data-op-effective-plan aria-label="Acesso liberado à empresa"><div><span class="op-eyebrow">SEU ACESSO</span><h2>'+escapeHTML(p.active?p.name||'Plano Orion':'Sem plano ativo')+'</h2><p>'+escapeHTML(origins[p.source]||'Origem não confirmada')+(p.valid_until?' · até '+escapeHTML(localDate(p.valid_until)):'')+'</p></div><div class="op-current-metrics"><span><small>Profissionais ativos</small><strong>'+escapeHTML(p.limits?.active_professionals??data.active_professionals??0)+' de '+escapeHTML(p.limits?.max_professionals??'—')+'</strong></span></div>'+(p.source==='manual'&&p.active?'<p class="os-help">A liberação manual tem prioridade sobre compras. Para que uma contratação determine o acesso, a administração deve remover esta atribuição. A assinatura comercial permanece preservada.</p>':'')+(Number(p.limits?.excess_professionals)>0?'<p class="os-notice">Há '+escapeHTML(p.limits.excess_professionals)+' profissional(is) acima do limite. Os dados e agendamentos foram preservados. Novas ativações ficam bloqueadas até a regularização.</p>':'')+'</section>';
+}
 function subscriptionBanner(data){
  const sub=data.subscription,trial=data.trial;
  if(sub){
@@ -141,7 +146,7 @@ function subscriptionBanner(data){
 }
 function renderTrial(data,allowed){
  const trial=data.trial,sub=data.subscription;
- const eligible=allowed&&!sub&&!trial;
+ const eligible=allowed&&!sub&&!trial&&!data.effective_plan?.manual_assignment?.active;
  const label=trial?.status==='pending'?'Solicitação enviada':trial?.status==='active'?'Teste em andamento':trial?.status==='expired'?'Teste encerrado':sub?'Assinatura vinculada':!allowed?'Disponível ao proprietário':'Testar grátis por 3 dias';
  return '<section class="op-free-trial" aria-labelledby="opTrialTitle"><div class="op-trial-icon">'+ic('sparkles')+'</div><div class="op-trial-copy"><span class="op-eyebrow">EXPERIMENTE NA PRÁTICA</span><h2 id="opTrialTitle">Experimente o Orion grátis por 3 dias</h2><p>Conheça o Orion na prática! Cadastre seus dados e nossa equipe entrará em contato pelo WhatsApp para ajudar na configuração da sua empresa.</p><small>Inclui agenda, clientes, serviços, site e financeiro básico. Conexões e automações dependem de configuração.</small></div><button type="button" class="op-btn op-btn-primary" data-op-trial '+(eligible?'':'disabled')+'>'+escapeHTML(label)+'</button></section>';
 }
@@ -304,7 +309,7 @@ function renderCheckoutDialog(root,code,ctx,amount){
 
 async function checkout(root,code,ctx){
  const action=root.querySelector('[data-op-checkout="'+code+'"]');
- if(!action||action.disabled||root.dataset.busy==='true'||!checkoutPrices[code])return;
+ if(!action||action.disabled||root.dataset.busy==='true'||!checkoutPrices[code]||ctx.canPurchase?.()===false)return;
  if(root.querySelector('.op-checkout-dialog'))return;
  const modal=renderCheckoutDialog(root,code,ctx,checkoutPrices[code]);
  const status=modal.querySelector('[data-op-payment-info]');
@@ -373,7 +378,7 @@ async function checkout(root,code,ctx){
     finished=true;if(ticker)window.clearInterval(ticker);
     resultBox.innerHTML='<div class="op-payment-success">'+ic('check')+'<h3>Assinatura confirmada</h3><p>Seu acesso está sendo atualizado.</p></div>';
     const data=await ctx.request('/plan-overview');
-    if(modal.isConnected){close();render(root,data,ctx);}
+    if(modal.isConnected){close();render(root,data,ctx);window.dispatchEvent(new CustomEvent('orion:plan-changed',{detail:{preservePage:true}}));}
    }else if(answer.status==='review_required'){
     if(ticker)window.clearInterval(ticker);
     status.textContent='Pagamento em verificação. Não tente pagar novamente enquanto conferimos sua solicitação.';
@@ -386,6 +391,7 @@ async function checkout(root,code,ctx){
  form.addEventListener('submit',async event=>{
   event.preventDefault();
   if(busy||finished||!config?.available)return;
+  if(ctx.canPurchase?.()===false){feedback.textContent='Há uma liberação manual ativa. Peça à administração para removê-la antes de contratar.';return;}
   feedback.textContent='';
   const taxDocument=checkoutDocumentData(form.elements.namedItem('doc_number'));
   if(!form.reportValidity())return;
@@ -492,13 +498,14 @@ async function checkout(root,code,ctx){
 function render(root,data,ctx){
  if(!root.isConnected)return;
  const plans=Array.isArray(data.plans)?data.plans:[],sub=data.subscription,
- currentCode=canonical(sub?.code),currentActive=!!sub;
- const canManage=!!data.can_manage_plan&&!!ctx.canManage;
+ currentCode=canonical(data.effective_plan?.code),currentActive=data.effective_plan?.active===true;
+ const canManage=!!data.effective_plan&&!!data.can_manage_plan&&!!ctx.canManage;
  root.innerHTML='<div class="op-page"><header class="op-heading"><span class="op-eyebrow">PLANOS ORION</span><h2>Escolha o plano ideal para sua empresa</h2><p>Tudo o que você precisa para organizar seus agendamentos, gerenciar seu negócio e oferecer uma experiência melhor aos seus clientes.</p></header>'
- +subscriptionBanner(data)
+ +effectiveBanner(data)+subscriptionBanner(data)
  +'<div id="opPlanFeedback" class="op-feedback" role="status" aria-live="polite" hidden></div>'
- +'<section aria-label="Assinaturas mensais"><div class="op-plans-grid">'+defs.map(def=>renderCard(def,plans,currentCode,currentActive,canManage,ctx)).join('')+'</div>'
+ +'<section aria-label="Assinaturas mensais"><div class="op-plans-grid">'+defs.map(def=>renderCard(def,plans,currentCode,currentActive,canManage,ctx,data.effective_plan?.source)).join('')+'</div>'
  +'<p class="op-footnote">*Recursos de mensagens, automações e IA exigem configuração, canal conectado e disponibilidade da funcionalidade. O Marketing IA e o Consultor IA não realizam agendamentos pelo WhatsApp; essa recepcionista é exclusiva do Elite.</p></section>'
+ +(Array.isArray(data.feature_catalog)&&data.feature_catalog.some(item=>item.implemented===false)?'<p class="os-help" data-op-unavailable>'+data.feature_catalog.filter(item=>item.implemented===false).map(item=>escapeHTML(item.name)+': '+escapeHTML(item.description||'Indisponível nesta versão.')).join(' ')+'</p>':'')
  +renderTrial(data,canManage)
  +renderComparison(plans)
  +'</div>';

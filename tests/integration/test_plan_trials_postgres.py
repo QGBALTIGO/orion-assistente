@@ -64,7 +64,7 @@ async def test_real_postgres_pending_duplicate_owner_only_admin_start_3_days(tri
     db,account,tenant,other=trial_db
     app=FastAPI()
     app.include_router(plan_management.router)
-    app.dependency_overrides[authenticate]=lambda:Actor("member",account_id=account)
+    app.dependency_overrides[authenticate]=lambda:Actor("member",tenant,account,"owner")
     app.dependency_overrides[require_platform_owner]=lambda:account
     monkeypatch.delenv("CAKTO_BILLING_LIVE_ENABLED",raising=False)
     req={"full_name":"Pessoa Sintética", "company_name":"Empresa Sintética",
@@ -149,7 +149,7 @@ async def test_editor_cannot_request_trial_even_using_owner_payload(trial_db):
         """),{"tenant":tenant,"account":account})
     app=FastAPI()
     app.include_router(plan_management.router)
-    app.dependency_overrides[authenticate]=lambda:Actor("member",account_id=account)
+    app.dependency_overrides[authenticate]=lambda:Actor("member",tenant,account,"editor")
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                  base_url="https://test") as client:
         result=await client.post("/api/v1/tenants/"+str(tenant)+"/management/plan-trial",

@@ -6,6 +6,7 @@ ORION_DIRECT_PAYMENTS_ENABLED is OFF by default, until banking, payment/tokeniza
 scopes, recurring orders and signed webhooks have been confirmed in provider staging.
 """
 from __future__ import annotations
+from contextlib import asynccontextmanager
 import base64
 import io
 from decimal import Decimal, InvalidOperation
@@ -28,6 +29,7 @@ from app.cakto_api import CaktoClient, BASE, ORDER_ID
 from app.plan_management import (
     CheckoutChoice, CODES, _ensure_owner, _owner_account, _replayable_checkout_token,
     _exact_offer, start_plan_checkout,
+    check_new_checkout_access, require_checkout_available,
 )
 
 router = APIRouter(tags=["Checkout Orion"])
@@ -251,7 +253,8 @@ async def direct_config(tenant_id: UUID, actor: Actor = Depends(authenticate)):
 async def direct_prepare(tenant_id: UUID, payload: DirectPrepare,
                          actor: Actor = Depends(authenticate)):
     require_enabled()
-    await owner(tenant_id, actor)
+    account_id = await owner(tenant_id, actor)
+    await check_new_checkout_access(tenant_id, account_id)
     await require_verified_webhooks(CaktoClient())
     # Existing reviewed endpoint checks monthly offer, price, owner, current
     # subscription and ensures only one tenant/account checkout intent.
@@ -272,11 +275,13 @@ async def direct_prepare(tenant_id: UUID, payload: DirectPrepare,
     digest = hashlib.sha256(token.encode()).hexdigest()
     account_id = await owner(tenant_id, actor)
     async with support_session_factory()() as db:
-        record = (await db.execute(text("""
-            SELECT id FROM orion_cakto_checkout_intents
-            WHERE tenant_id=:tenant AND account_id=:account
-              AND callback_hash=:hash AND state='pending' AND expires_at>now()
-        """), {"tenant":tenant_id,"account":account_id,"hash":digest})).scalar_one_or_none()
+        async with db.begin():
+            await require_checkout_available(db, tenant_id, account_id)
+            record = (await db.execute(text("""
+                SELECT id FROM orion_cakto_checkout_intents
+                WHERE tenant_id=:tenant AND account_id=:account
+                  AND callback_hash=:hash AND state='pending' AND expires_at>now()
+            """), {"tenant":tenant_id,"account":account_id,"hash":digest})).scalar_one_or_none()
     if record is None:
         raise HTTPException(409, "A tentativa anterior não está mais disponível")
     return {"intent_id": str(record), "plan_code":payload.plan_code,
@@ -347,18 +352,29 @@ async def _set_attempt_state(attempt_id: UUID, state: str, order_id: str | None 
             """), {"id":attempt_id,"state":state,"order_id":order_id})
 
 
+@asynccontextmanager
+async def _provider_start_guard(tenant_id, account_id):
+    # Keep only a shared plan/membership lease during the bounded provider POST.
+    # No rights table is written here, so no shared-to-exclusive upgrade exists.
+    async with support_session_factory()() as db:
+        async with db.begin():
+            await require_checkout_available(db, tenant_id, account_id)
+            yield
+
+
 @router.post("/api/v1/tenants/{tenant_id}/management/plan-direct-charge",
              status_code=201)
 async def direct_charge(tenant_id: UUID, data: DirectCharge,
                         actor: Actor = Depends(authenticate)):
     require_enabled()
     account_id = await owner(tenant_id,actor)
+    await check_new_checkout_access(tenant_id, account_id)
     await require_verified_webhooks(CaktoClient())
     # The same tenant lock serializes embedded attempts with hosted intent creation.
     # No account details or provider token are persisted.
     async with support_session_factory()() as db:
         async with db.begin():
-            await _ensure_owner(db,tenant_id,account_id)
+            await require_checkout_available(db, tenant_id, account_id)
             await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                              {"key":"orion-checkout:"+str(tenant_id)})
             intent = (await db.execute(text("""
@@ -371,7 +387,7 @@ async def direct_charge(tenant_id: UUID, data: DirectCharge,
             if not intent or intent["state"]!="pending" or intent["expires_at"]<=datetime.now(timezone.utc):
                 raise HTTPException(409,"Tentativa indisponível. Nenhuma nova cobrança foi criada.")
             active = (await db.execute(text("""
-                SELECT 1 FROM subscriptions WHERE tenant_id=:tenant LIMIT 1 FOR UPDATE
+                SELECT 1 FROM subscriptions WHERE tenant_id=:tenant LIMIT 1
             """),{"tenant":tenant_id})).scalar_one_or_none()
             if active: raise HTTPException(409,"Esta empresa já possui uma assinatura.")
             existing = (await db.execute(text("""
@@ -398,18 +414,21 @@ async def direct_charge(tenant_id: UUID, data: DirectCharge,
         tracking = _replayable_checkout_token(tenant_id,data.intent_id,intent["plan_code"])
         payload = provider_request(intent,data,tracking)
         token = await client.token()
-        async with httpx.AsyncClient(timeout=25,follow_redirects=False) as http:
-            response = await http.post(BASE+"/payments/",json=payload,
-                                       headers={"Authorization":"Bearer "+token,
-                                                "Content-Type":"application/json",
-                                                "X-Idempotency-Key":str(attempt_id)})
-            response.raise_for_status()
-            result = response.json()
+        async with _provider_start_guard(tenant_id, account_id):
+            async with httpx.AsyncClient(timeout=25,follow_redirects=False) as http:
+                response = await http.post(BASE+"/payments/",json=payload,
+                                           headers={"Authorization":"Bearer "+token,
+                                                    "Content-Type":"application/json",
+                                                    "X-Idempotency-Key":str(attempt_id)})
+                response.raise_for_status()
+                result = response.json()
         if not verified_creation(result,intent,data.method):
             await _set_attempt_state(attempt_id,"needs_review")
             raise HTTPException(502,"Pagamento recebido para revisão. Não repita a cobrança.")
         await _set_attempt_state(attempt_id,"created",result["id"])
-    except HTTPException:
+    except HTTPException as error:
+        if isinstance(error.detail, dict) and error.detail.get("code") == "MANUAL_PLAN_ACTIVE":
+            await _set_attempt_state(attempt_id,"needs_review")
         raise
     except (httpx.HTTPError,ValueError,TypeError,RuntimeError,SQLAlchemyError):
         # A timeout may mean the PSP created the charge. Never automatically retry:

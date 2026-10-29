@@ -39,6 +39,8 @@ async def guard_transaction(db, identity=None):
     if not enabled() or scope is None:
         return
     tenant, channel, phone, revision, provider = scope
+    from app.plan_permissions import require_feature
+    await require_feature(db, tenant, "reception.ai")
     if identity is not None and (identity.tenant_id, identity.channel_id) != (tenant, channel):
         raise HTTPException(409, "O controle não corresponde ao canal autenticado")
     if identity is None:
@@ -250,6 +252,9 @@ async def get_control(tenant_id: UUID, channel_id: UUID,
 
 @router.put(PREFIX)
 async def change_control(tenant_id: UUID, channel_id: UUID, payload: Change, actor: Actor = Depends(authenticate)):
+    if payload.mode == "ai":
+        from app.plan_permissions import require_tenant_feature
+        await require_tenant_feature(tenant_id, "reception.ai")
     require_enabled()
     if not isinstance(actor.account_id, UUID):
         raise HTTPException(403, "Entre novamente com uma conta habilitada na central para assumir um atendimento")
@@ -318,6 +323,26 @@ async def bridge_control(request, payload):
 @router.post("/internal/qr/channels/{channel_id}/send-authorize", include_in_schema=False)
 async def authorize_send(channel_id: UUID, payload: SendSlot, request: Request):
     async with bridge_control(request, payload) as (db, identity, row):
+        from app.plan_permissions import require_feature
+        if payload.source == "automation":
+            # The persisted job, rather than the bridge/browser label, selects
+            # the capability. Operational messages remain part of Essencial.
+            job_event = (await db.execute(text("""SELECT event FROM automation_jobs
+                WHERE tenant_id=:t AND id=:id AND channel_id=:channel AND status='sending'"""),
+                {"t": identity.tenant_id, "id": payload.operation_id, "channel": channel_id})).scalar_one_or_none()
+            if job_event is not None:
+                from app.automation_policy import plan_feature
+                feature = plan_feature(job_event)
+            else:
+                notification = (await db.execute(text("""SELECT 1 FROM appointment_notifications
+                    WHERE tenant_id=:t AND id=:id AND channel_id=:channel AND status='sending'"""),
+                    {"t": identity.tenant_id, "id": payload.operation_id, "channel": channel_id})).scalar_one_or_none()
+                feature = "notifications.basic" if notification else None
+            if feature is None:
+                raise HTTPException(403, "Operação automática sem autorização atual")
+        else:
+            feature = "reception.ai" if payload.source == "assistant" else "conversations.manual"
+        await require_feature(db, identity.tenant_id, feature)
         if payload.source == "assistant" and not identity.assistant_enabled:
             raise HTTPException(409, "Assistente desativada")
         if payload.source == "assistant":

@@ -45,6 +45,8 @@ async def deactivate_other_rules(db, tenant_id, identity):
 
 
 async def create_rule(db, tenant_id, values, key):
+    from app.plan_permissions import require_feature
+    await require_feature(db, tenant_id, "loyalty.manage")
     data.checked_fields("loyalty_rules", values)
     await validate_reward_service(db, tenant_id, values)
     await configuration_lock(db, tenant_id)
@@ -61,6 +63,8 @@ async def create_rule(db, tenant_id, values, key):
 
 
 async def update_rule(db, tenant_id, identity, expected_version, changes, current):
+    from app.plan_permissions import require_feature
+    await require_feature(db, tenant_id, "loyalty.manage")
     await validate_reward_service(db, tenant_id, {**current, **changes})
     await configuration_lock(db, tenant_id)
     if changes.get("active") is True:
@@ -86,6 +90,8 @@ async def balance_for(db, tenant_id, customer_id):
 
 
 async def issue_reward(db, tenant_id, customer_id, rule, now, *, coupon_id=None):
+    from app.plan_permissions import require_feature
+    await require_feature(db, tenant_id, "coupons.manage")
     """Caller already holds the customer row lock. Issue exactly one reward."""
     if rule["reward_type"] == "manual":
         raise HTTPException(409, "Configure um cupom percentual, de valor fixo ou de serviço")
@@ -117,6 +123,9 @@ async def issue_reward(db, tenant_id, customer_id, rule, now, *, coupon_id=None)
 
 
 async def award_completion(db, tenant_id, appointment, now):
+    from app.plan_permissions import has_feature
+    if not await has_feature(db, tenant_id, "loyalty.manage"):
+        return {"points_earned": 0, "coupon": None}
     customer = await lock_customer(db, tenant_id, appointment["customer_id"])
     if customer.get("deleted_at") is not None or not customer["active"]:
         return {"points_earned": 0, "coupon": None}
@@ -146,6 +155,8 @@ async def award_completion(db, tenant_id, appointment, now):
 async def completion_discount(db, tenant_id, appointment, coupon_id, now, *, gross_cents=None):
     if coupon_id is None:
         return 0
+    from app.plan_permissions import require_feature
+    await require_feature(db, tenant_id, "coupons.manage")
     customer = await lock_customer(db, tenant_id, appointment["customer_id"])
     if customer.get("deleted_at") is not None:
         raise HTTPException(409, "Este cliente foi removido do diretório")
@@ -181,6 +192,8 @@ async def completion_discount(db, tenant_id, appointment, coupon_id, now, *, gro
 
 
 async def issue_manually(db, tenant_id, customer_id, key):
+    from app.plan_permissions import require_feature
+    await require_feature(db, tenant_id, "coupons.manage")
     customer = await lock_customer(db, tenant_id, customer_id)
     if customer.get("deleted_at") is not None:
         raise HTTPException(404, "Cliente não encontrado no diretório")

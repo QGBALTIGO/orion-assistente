@@ -852,6 +852,8 @@ async def marketing(db, tenant_id, limit=50, offset=0):
 
 
 async def transition_appointment(db, tenant_id, appointment_id, target, payload, operator, *, automated=False):
+    from app.plan_permissions import require_feature
+    await require_feature(db, tenant_id, "agenda.manage")
     from app.booking_service import acquire_professional_lock, history, read_appointment
     from app.appointment_lifecycle import CAS_SQL, LifecycleActor, allowed_actions, check_expected_updated_at, operation_payload
     if target not in ("completed", "no_show"):

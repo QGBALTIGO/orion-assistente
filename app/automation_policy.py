@@ -11,6 +11,19 @@ FIELDS = frozenset({"cliente", "empresa", "data", "horario", "profissional", "se
 UNAVAILABLE_AUTOMATIONS = {"vacancy": "waitlist_contract_missing"}
 
 
+def plan_feature(event):
+    """Classify persisted events, independently of navigation or channel flags."""
+    if event in OPERATIONAL_EVENTS or event == "after_service":
+        return "notifications.basic"
+    if event == "campaign":
+        return "marketing.campaigns"
+    if event == "loyalty_reward":
+        return "loyalty.manage"
+    if event in MARKETING_EVENTS:
+        return "relationships.manage"
+    return None
+
+
 def feature_status():
     """This rollout has no waitlist/preferences/offer-acceptance contract."""
     return {name: {"available": False, "enabled": False, "mode": "draft", "reason": reason}
