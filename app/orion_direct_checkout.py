@@ -173,7 +173,8 @@ async def direct_config(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     await owner(tenant_id,actor)
     return {"available": checkout_enabled(),
             "sdk_client_id": os.getenv("CAKTO_CLIENT_ID", "") if checkout_enabled() else None,
-            "methods": ["pix","card"] if checkout_enabled() else []}
+            "methods": ["pix","card"] if checkout_enabled() else [],
+            "pix_recurring": checkout_enabled()}
 
 
 @router.post("/api/v1/tenants/{tenant_id}/management/plan-direct-prepare")
@@ -206,7 +207,8 @@ async def direct_prepare(tenant_id: UUID, payload: DirectPrepare,
 
 
 def provider_request(intent, data: DirectCharge, callback: str) -> dict:
-    method = "pix" if data.method == "pix" else "threeDs"
+    # Orion plans renew monthly; a one-time Pix must never promise recurring access.
+    method = "pix_auto" if data.method == "pix" else "threeDs"
     payment = {
         "paymentMethod":method,
         "customer":{
@@ -233,7 +235,7 @@ def verified_creation(result: dict, intent: dict, method: str) -> bool:
         return False
     if not ORDER_ID.fullmatch(result["id"]):
         return False
-    if result.get("paymentMethod") != ("pix" if method=="pix" else "threeDs"):
+    if result.get("paymentMethod") != ("pix_auto" if method=="pix" else "threeDs"):
         return False
     offer = result.get("offer")
     if not isinstance(offer,dict) or str(offer.get("id")) != intent["offer_id"]:
