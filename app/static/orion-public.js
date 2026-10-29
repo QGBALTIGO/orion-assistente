@@ -1001,6 +1001,13 @@
 
   function renderSuccess(body) {
     const success = el('div', 'success'); success.append(el('div', 'success-check', '✓'), el('h3', '', 'Agendamento confirmado!'), el('p', '', 'Seu horário está reservado. Guarde o protocolo e chegue no horário combinado.'), reviewCard(booking.result));
+    if (booking.result.whatsapp_confirmation_url && /^https:\/\/wa\.me\/[1-9][0-9]{7,14}\?text=/.test(booking.result.whatsapp_confirmation_url)) {
+      const wa=el('a','pill','Receber confirmação no WhatsApp');wa.href=booking.result.whatsapp_confirmation_url;wa.target='_blank';wa.rel='noopener noreferrer';success.append(wa);
+    }
+    if (booking.result.management_url) {
+      const manage=el('a','pill outline','Gerenciar agendamento');manage.href=booking.result.management_url;manage.rel='noreferrer';success.append(manage);
+    }
+    success.append(button('Copiar protocolo', 'outline', async()=>{try{await navigator.clipboard.writeText(booking.result.protocol);showError('Protocolo copiado. Seu agendamento está salvo.');}catch{showError('Guarde o protocolo: '+booking.result.protocol);}}));
     success.append(button('Adicionar ao meu calendário', 'outline', downloadCalendar)); body.append(success);
   }
   function downloadCalendar() {

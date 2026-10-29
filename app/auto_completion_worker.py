@@ -24,7 +24,8 @@ from app.management_models import transition_appointment
 
 
 def enabled() -> bool:
-    return os.getenv("ORION_AUTO_COMPLETE_APPOINTMENTS") == "1"
+    from app.appointment_access import enabled as communications_enabled
+    return os.getenv("ORION_AUTO_COMPLETE_APPOINTMENTS") == "1" and not communications_enabled()
 
 
 async def scan_due_auto_completions(ctx: dict) -> int:

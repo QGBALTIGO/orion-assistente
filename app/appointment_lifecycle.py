@@ -40,7 +40,7 @@ def customer_can_change(appointment, now):
 
 
 async def require_customer_deadline(db, appointment, context):
-    if context.role != "customer":
+    if context.role != "customer" or appointment["status"] == "hold":
         return
     now = (await db.execute(text("SELECT clock_timestamp()"))).scalar_one()
     if not customer_can_change(appointment, now):

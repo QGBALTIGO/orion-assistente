@@ -291,6 +291,8 @@ async def history(s: AsyncSession, tenant: UUID, appointment: UUID, event: str, 
         VALUES (:tenant,:appointment,:event,:operator,CAST(:details AS jsonb),clock_timestamp())
     """), {"tenant": tenant, "appointment": appointment, "event": event,
            "operator": details["actor"]["role"], "details": json.dumps(details, ensure_ascii=False)})
+    from app.appointment_notifications import enqueue_event
+    await enqueue_event(s, tenant, appointment, event, details)
     if calendar:
         from app.calendar_sync import enqueue_calendar_sync
         await enqueue_calendar_sync(s, tenant, appointment, event)
@@ -759,7 +761,7 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
                 AND (:is_customer=false OR start_at>=clock_timestamp()+interval '60 minutes')
                 AND """ + CUSTOMER_MATCH_SQL + " AND " + CAS_SQL + " RETURNING id"),
             {"tenant": tenant, "id": item_id, "customer_phone": customer_phone,
-             "future_only": future_only, "is_customer": context.role == "customer",
+             "future_only": future_only, "is_customer": context.role == "customer" and entry["status"] != "hold",
              "expected_updated_at": expected_updated_at})).scalar_one_or_none()
         if changed is None:
             fail(409, "A reserva mudou. Confira um novo resumo antes de cancelar")

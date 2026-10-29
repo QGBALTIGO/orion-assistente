@@ -1,0 +1,205 @@
+"""Appointment transactional outbox, using existing managed QR transport receipts.
+
+No Redis timer owns the business operation. A committed 'sending' attempt is
+never reset to pending: transport ambiguity requires receipt reconciliation.
+"""
+from datetime import datetime, timedelta, timezone
+import hashlib
+import json
+import os
+from uuid import UUID
+
+from cryptography.fernet import Fernet
+from fastapi import HTTPException
+from fastapi.encoders import jsonable_encoder
+from sqlalchemy import text
+
+from app import appointment_access as access
+from app.booking_service import read_appointment
+from app.database import get_session_factory, tenant_transaction
+from app.appointment_messages import compose
+
+
+def cipher():
+    return Fernet(os.environ['INTEGRATION_FERNET_KEY'].encode())
+
+
+async def enqueue_event(db, tenant, appointment, event, details):
+    if not access.enabled():return
+    # Every committed mutation invalidates old pending facts in this SAME tx.
+    await db.execute(text("""UPDATE appointment_notifications SET status='cancelled',
+        last_error='appointment_changed',updated_at=clock_timestamp()
+        WHERE tenant_id=:t AND appointment_id=:id AND status='pending'"""), {'t':tenant,'id':appointment})
+    settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
+    if not settings or not settings['enabled'] or not settings['channel_id']:return
+    row=(await db.execute(text('SELECT * FROM appointments WHERE tenant_id=:t AND id=:id'),{'t':tenant,'id':appointment})).mappings().one()
+    now=(await db.execute(text('SELECT clock_timestamp()'))).scalar_one()
+    customer=details.get('requested_by')=='customer'
+    events=[]
+    def add(kind,recipient,due=None,expiry=None,recipient_id=None):
+        events.append((kind,recipient,recipient_id or row['professional_id' if recipient=='professional' else 'customer_id'],due or now,expiry or now+timedelta(hours=24)))
+    if event=='confirmed' and settings['professional_notice']:add('professional_new','professional')
+    if event=='cancelled' and settings['cancellation']:
+        add('professional_cancelled' if customer else 'customer_cancelled','professional' if customer else 'customer')
+    if event=='rescheduled' and settings['rescheduling']:
+        add('professional_rescheduled' if customer else 'customer_rescheduled','professional' if customer else 'customer')
+    if row['status']=='confirmed' and event in {'confirmed','rescheduled'} and settings['reminder']:
+        due=row['start_at']-timedelta(hours=1)
+        # Never invent 'one hour' for an appointment created after that instant.
+        if due>=now:add('reminder','customer',due,due+timedelta(minutes=2))
+    if event=='completed' and settings['review'] and details.get('source')!='system':
+        due=now+timedelta(minutes=settings['review_delay_min'])
+        add('review','customer',due,due+timedelta(hours=24))
+    for kind,recipient,recipient_id,due,expiry in events:
+        key=event+':'+str(appointment)+':'+row['updated_at'].isoformat()+':'+kind
+        await db.execute(text('''INSERT INTO appointment_notifications
+          (tenant_id,appointment_id,appointment_version,event,recipient_kind,recipient_id,channel_id,settings_version,
+           event_key,previous,due_at,expires_at)
+          VALUES(:t,:id,:version,:event,:kind,:recipient,:channel,:settings,:key,CAST(:previous AS jsonb),:due,:expiry)
+          ON CONFLICT DO NOTHING'''),{'t':tenant,'id':appointment,'version':row['updated_at'],'event':kind,'kind':recipient,
+          'recipient':recipient_id,'channel':settings['channel_id'],'settings':settings['version'],'key':key,
+          'previous':json.dumps(details.get('previous') or {},default=str),'due':due,'expiry':expiry})
+
+
+async def eligibility(db, tenant, job):
+    settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
+    if not access.enabled() or not settings or not settings['enabled']:return 'execution_paused',None,None,None
+    if settings['version']!=job['settings_version'] or settings['channel_id']!=job['channel_id']:return 'settings_changed',None,None,None
+    row=await read_appointment(db,tenant,job['appointment_id'])
+    if row['updated_at']!=job['appointment_version']:return 'appointment_changed',None,None,None
+    expected='completed' if job['event']=='review' else 'cancelled' if 'cancelled' in job['event'] else 'confirmed'
+    if row['status']!=expected:return 'appointment_changed',None,None,None
+    now=(await db.execute(text('SELECT clock_timestamp()'))).scalar_one()
+    if now<job['due_at']:return 'not_due',None,None,None
+    if now>=job['expires_at']:return 'expired',None,None,None
+    if job['recipient_kind']=='professional':
+        if row['professional_id']!=job['recipient_id']:return 'professional_changed',None,None,None
+        phone=(await db.execute(text('SELECT phone_e164 FROM professionals WHERE tenant_id=:t AND id=:id AND active'),
+            {'t':tenant,'id':job['recipient_id']})).scalar_one_or_none()
+        if not phone:return 'professional_contact_unavailable',None,None,None
+    else:
+        if row['customer_id']!=job['recipient_id']:return 'customer_changed',None,None,None
+        contact=(await db.execute(text('''SELECT c.whatsapp_e164,s.operational_opt_in,s.marketing_opt_in
+          FROM customers c LEFT JOIN contact_consents s ON s.tenant_id=c.tenant_id AND s.contact_e164=c.whatsapp_e164
+          WHERE c.tenant_id=:t AND c.id=:id AND c.active AND c.deleted_at IS NULL'''),{'t':tenant,'id':job['recipient_id']})).mappings().first()
+        if not contact or contact['operational_opt_in'] is not True:return 'communication_not_authorized',None,None,None
+        if job['event']=='review' and contact['marketing_opt_in'] is not True:return 'review_not_authorized',None,None,None
+        phone=contact['whatsapp_e164']
+    digest=hashlib.sha256(phone.encode()).hexdigest()
+    if job.get('recipient_hash') and job['recipient_hash']!=digest:return 'contact_changed',None,None,None
+    return None,row,phone,settings
+
+
+async def prepare_body(db,tenant,job,row,settings):
+    shop=(await db.execute(text('''SELECT t.name,p.public_slug,p.public_enabled,p.address,p.city,p.state
+        FROM tenants t LEFT JOIN management_site_preferences p ON p.tenant_id=t.id WHERE t.id=:t'''),{'t':tenant})).mappings().one()
+    customer_link=None
+    if job['recipient_kind']=='customer' and job['event'] in {'customer_rescheduled','review'}:
+        customer_link=await access.issue(db,tenant,job['appointment_id'])
+    from app.public_origins import canonical_public_origin
+    booking_link=canonical_public_origin()+'/s/'+shop['public_slug'] if shop.get('public_slug') and shop['public_enabled'] else None
+    future=(await db.execute(text("SELECT EXISTS(SELECT 1 FROM appointments WHERE tenant_id=:t AND customer_id=:customer AND id<>:id AND status='confirmed' AND start_at>now())"),
+        {'t':tenant,'customer':row['customer_id'],'id':row['id']})).scalar_one()
+    return compose(job['event'],row,company=shop['name'],signature=settings['signature'],customer_link=customer_link,
+        booking_link=booking_link,previous=job['previous'],include_return=settings['return_invitation'] and not future,
+        address=', '.join(str(shop[k]) for k in ('address','city','state') if shop.get(k)))
+
+
+async def process_notification(ctx,tenant_id,notification_id):
+    if not access.enabled():return 'disabled'
+    tenant,identity=UUID(tenant_id),UUID(notification_id)
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db,tenant):
+            job=(await db.execute(text('SELECT * FROM appointment_notifications WHERE tenant_id=:t AND id=:id FOR UPDATE SKIP LOCKED'),{'t':tenant,'id':identity})).mappings().first()
+            if not job:return 'already_claimed'
+            if job['status']=='sending':
+                if job['attempted_at']<datetime.now(timezone.utc)-timedelta(minutes=2):
+                    await db.execute(text("UPDATE appointment_notifications SET status='unknown',last_error='worker_interrupted' WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':identity})
+                return 'unknown'
+            if job['status']!='pending':return job['status']
+            reason,row,phone,settings=await eligibility(db,tenant,job)
+            if reason:
+                if reason!='not_due':
+                    await db.execute(text("UPDATE appointment_notifications SET status=:status,last_error=:error,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id"),
+                        {'t':tenant,'id':identity,'status':'cancelled' if reason in {'expired','appointment_changed','settings_changed','execution_paused'} else 'failed','error':reason})
+                return reason
+            # Reject unsupported recipients BEFORE the external attempt. This
+            # does not expand the transport allowlist or re-pair a session.
+            from app.catalog_api import support_session_factory
+            async with support_session_factory()() as registry:
+                senders=(await registry.execute(text('SELECT allowed_senders FROM qr_channels WHERE tenant_id=:t AND id=:c AND enabled'),
+                    {'t':tenant,'c':job['channel_id']})).scalar_one_or_none()
+            if not senders or phone.lstrip('+') not in senders:
+                await db.execute(text("UPDATE appointment_notifications SET status='failed',last_error='transport_recipient_not_authorized' WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':identity})
+                return 'transport_recipient_not_authorized'
+            try:body=await prepare_body(db,tenant,job,row,settings)
+            except (ValueError,KeyError):
+                await db.execute(text("UPDATE appointment_notifications SET status='failed',last_error='message_facts_invalid' WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':identity})
+                return 'message_facts_invalid'
+            encrypted=cipher().encrypt(body.encode()).decode()
+            await db.execute(text("""UPDATE appointment_notifications SET status='sending',attempts=attempts+1,
+                body_encrypted=:body,recipient_hash=:hash,attempted_at=clock_timestamp(),updated_at=clock_timestamp()
+                WHERE tenant_id=:t AND id=:id"""),{'t':tenant,'id':identity,'body':encrypted,'hash':hashlib.sha256(phone.encode()).hexdigest()})
+            job={**dict(job),'recipient_hash':hashlib.sha256(phone.encode()).hexdigest()}
+    result,error,provider='unknown','transport_result_unknown',None
+    try:
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db,tenant):
+                reason,_,_,_=await eligibility(db,tenant,job)
+        if reason:
+            result,error='cancelled',reason
+        else:
+            sender=ctx.get('appointment_sender')
+            if sender is None:
+                from app.automation_transport import _request
+                data=await _request(tenant,job['channel_id'],identity,message={'to':phone.lstrip('+'),'text':body,'operation_id':str(identity)})
+            else:data=await sender(tenant,job['channel_id'],phone,body,str(identity))
+            if data.get('accepted') is True and data.get('state')=='accepted':
+                result,error,provider='accepted',None,data.get('provider_id')
+            elif data.get('state')=='refused':result,error='failed','transport_refused'
+    except Exception:
+        pass  # Never persist provider exception strings or secrets.
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db,tenant):
+            await db.execute(text('''UPDATE appointment_notifications SET status=:status,last_error=:error,
+                provider_id=:provider,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id AND status='sending' '''),
+                {'t':tenant,'id':identity,'status':result,'error':error,'provider':provider})
+    return result
+
+
+async def scan_notifications(ctx):
+    if not access.enabled():return 'disabled'
+    from app.catalog_api import support_session_factory
+    async with support_session_factory()() as db:
+        jobs=(await db.execute(text('SELECT * FROM public.orion_due_appointment_notifications(100)'))).mappings().all()
+    for job in jobs:
+        await reconcile_notification(ctx,str(job['tenant_id']),str(job['id']))
+        await ctx['redis'].enqueue_job('process_appointment_notification',str(job['tenant_id']),str(job['id']),
+            _job_id='appointment-notice:'+str(job['id'])+':'+str(int(datetime.now(timezone.utc).timestamp()//30)))
+    return len(jobs)
+
+
+async def reconcile_notification(ctx,tenant_id,notification_id):
+    """Only inspect the original operation receipt, never resend it."""
+    if not access.enabled():return 'disabled'
+    tenant,identity=UUID(tenant_id),UUID(notification_id)
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db,tenant):
+            row=(await db.execute(text("SELECT channel_id,status FROM appointment_notifications WHERE tenant_id=:t AND id=:id AND status IN ('accepted','unknown','delivered')"),
+                {'t':tenant,'id':identity})).mappings().first()
+    if not row:return 'unavailable'
+    try:
+        reader=ctx.get('appointment_inspector')
+        if reader is None:
+            from app.automation_transport import inspect_automation
+            reader=inspect_automation
+        receipt=await reader(tenant,row['channel_id'],str(identity))
+        if receipt.get('operation_id')!=str(identity) or receipt.get('accepted') is not True:return 'unknown'
+        status=receipt['delivery'] if receipt.get('delivery') in {'read','delivered'} else 'accepted'
+        if row['status']=='delivered' and status=='accepted':status='delivered'
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db,tenant):
+                await db.execute(text("UPDATE appointment_notifications SET status=:status,last_error=NULL,provider_id=:provider,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id AND status IN ('accepted','unknown','delivered')"),
+                    {'t':tenant,'id':identity,'status':status,'provider':str(identity)})
+        return status
+    except Exception:return 'unknown'

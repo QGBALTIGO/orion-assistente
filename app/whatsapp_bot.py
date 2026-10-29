@@ -69,6 +69,9 @@ async def _reply(tenant, channel, sender, body, redis, key, state, prefs, messag
     if optout is not None:
         await redis.delete(key+':birthday-invite')
         return optout
+    from app.appointment_confirmation import confirmation_reply
+    confirmation=await confirmation_reply(tenant,sender,body,str(channel),message_id)
+    if confirmation is not None:return confirmation or None
     birthday=await birthday_turn(tenant,sender,body,redis,key)
     if birthday:
         if birthday.get('remainder'):

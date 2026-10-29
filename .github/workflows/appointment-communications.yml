@@ -84,4 +84,4 @@ jobs:
         env:
           ORION_MIGRATION_TEST_OWNER_URL: postgresql+psycopg://postgres:ci-postgres-only@localhost:5432/postgres
           ORION_REQUIRE_MIGRATION_OPS_TEST: "1"
-        run: pytest -q -ra tests/unit/test_customer_deadline.py tests/unit/test_appointment_access.py tests/integration/test_appointment_access_pg.py tests/integration/test_booking.py tests/integration/test_rls.py tests/integration/test_appointment_lifecycle.py
+        run: pytest -q -ra tests/unit/test_customer_deadline.py tests/unit/test_appointment_access.py tests/unit/test_appointment_messages.py tests/integration/test_appointment_access_pg.py tests/integration/test_appointment_notifications_pg.py tests/integration/test_booking.py tests/integration/test_rls.py tests/integration/test_appointment_lifecycle.py

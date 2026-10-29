@@ -2176,6 +2176,11 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
     if optout is not None:
         await redis.delete(state_key+':birthday-invite')
         return {'answer':optout,'step':'communication_preference'}
+    if not preview:
+        from app.appointment_confirmation import confirmation_reply
+        confirmation=await confirmation_reply(tenant,phone,body,namespace,_message_identity.get())
+        if confirmation is not None:
+            return {'answer':confirmation or None,'step':'appointment_confirmation','_literal_information':True}
     birthday=await birthday_turn(tenant,phone,body,redis,state_key,preview=preview)
     if birthday:
         if birthday.get('remainder'):
