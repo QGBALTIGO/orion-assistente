@@ -96,7 +96,7 @@ def main():
       assert page.get_by_role('button',name='Remarcar atendimento',exact=True).count()==0
       assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
       # Settings use the existing suite CSS and a deliberately synthetic API.
-      page.set_content('<!doctype html><html data-theme="'+theme+'"><head><base href="'+BASE+'"><link rel="stylesheet" href="/panel-assets/orion-suite.css"></head><body><main id="settings-host" style="max-width:900px;margin:auto;padding:16px"></main></body></html>')
+      page.set_content('<!doctype html><html data-theme="'+theme+'"><head><base href="'+BASE+'"><link rel="stylesheet" href="/panel-assets/orion-suite.css"><style>*{box-sizing:border-box}</style></head><body class="orion-suite-enabled" style="margin:0;font:400 16px/1.5 var(--os-font)"><main class="os-main" id="settings-host" style="max-width:900px;margin:auto;padding:16px"></main></body></html>')
       page.add_script_tag(url=BASE+'/panel-assets/orion-appointment-communications.js')
       page.evaluate("""async () => {
         const fixture={available:true,timezone:'America/Campo_Grande',canonical_channel_id:'00000000-0000-4000-8000-000000000010',
@@ -111,6 +111,8 @@ def main():
           request:async(path,method,body)=>{if(method==='PUT'){window._settingsSaved=body;fixture.settings.version++;return {saved:true};}return fixture;}});
       }""")
       page.get_by_role('heading',name='Comunicação de agendamentos',exact=True).wait_for()
+      page.wait_for_function("getComputedStyle(document.querySelector('#settings-host .os-button')).borderRadius === '10px'")
+      page.evaluate('document.fonts.ready')
       assert page.get_by_text('<script>alert(1)</script>',exact=True).count()==1
       assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),(engine,width,theme,'settings overflow')
       page.screenshot(path=str(OUT/f'{engine}-{width}-{theme}-settings.png'),full_page=True)
