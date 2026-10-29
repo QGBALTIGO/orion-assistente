@@ -331,7 +331,7 @@ async function checkout(root,code,ctx){
    });
    const card=modal.querySelector('[data-op-card-fields]');
    card.hidden=method!=='card';
-   card.querySelectorAll('input').forEach(input=>{input.disabled=method!=='card';input.required=method==='card'&&input.name!=='complement';});
+   card.querySelectorAll('input').forEach(input=>{input.disabled=method!=='card';input.required=method==='card';});
    submit.textContent=method==='pix'?'Gerar Pix Automático':'Pagar com cartão';
   }
   const copy=event.target.closest('[data-op-copy-pix]');
@@ -353,10 +353,8 @@ async function checkout(root,code,ctx){
   const input=event.target;
   if(input.name==='phone'){try{input.value=window.OrionFields?.phoneDisplay(input.value)||input.value;}catch{}}
   if(input.name==='doc_number'){
-   const digits=input.value.replace(/\D/g,'').slice(0,14);
-   input.value=digits.length<=11
-    ?digits.replace(/^(\d{3})(\d)/,'$1.$2').replace(/^(\d{3}\.\d{3})(\d)/,'$1.$2').replace(/^(\d{3}\.\d{3}\.\d{3})(\d)/,'$1-$2')
-    :digits.replace(/^(\d{2})(\d)/,'$1.$2').replace(/^(\d{2}\.\d{3})(\d)/,'$1.$2').replace(/^(\d{2}\.\d{3}\.\d{3})(\d)/,'$1/$2').replace(/^(\d{2}\.\d{3}\.\d{3}\/\d{4})(\d)/,'$1-$2');
+   input.value=checkoutDocumentDisplay(input.value);
+   input.setCustomValidity('');
   }
   if(input.name==='expiry'){
    const digits=input.value.replace(/\D/g,'').slice(0,4);
@@ -365,11 +363,6 @@ async function checkout(root,code,ctx){
   if(input.name==='card_number'){
    input.value=input.value.replace(/\D/g,'').slice(0,19).replace(/(.{4})/g,'$1 ').trim();
   }
-  if(input.name==='zip'){
-   const digits=input.value.replace(/\D/g,'').slice(0,8);
-   input.value=digits.length>5?digits.slice(0,5)+'-'+digits.slice(5):digits;
-  }
-  if(input.name==='state')input.value=input.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,2);
  });
  const pollStatus=async()=>{
   if(!intent||finished||!modal.isConnected)return;
@@ -394,6 +387,7 @@ async function checkout(root,code,ctx){
   event.preventDefault();
   if(busy||finished||!config?.available)return;
   feedback.textContent='';
+  const document=checkoutDocumentData(form.elements.namedItem('doc_number'));
   if(!form.reportValidity())return;
   const v=name=>form.elements.namedItem(name).value.trim();
   let cardToken=null,threeDSecure=null,antifraud_reference=null;
@@ -404,8 +398,8 @@ async function checkout(root,code,ctx){
    const prepared=await ctx.request('/plan-direct-prepare','POST',{plan_code:code});
    if(prepared.plan_code!==code||prepared.monthly_cents!==checkoutPrices[code]||prepared.status!=='ready')throw Error('Não foi possível confirmar o valor da assinatura.');
    intent=prepared;
-   const payer={name:v('name'),email:v('email'),phone:v('phone'),doc_type:v('doc_type'),
-    doc_number:v('doc_number'),fingerprint:'orion_'+(window.crypto?.randomUUID?.()||String(Date.now())+'_checkout_012345')};
+   const payer={name:v('name'),email:v('email'),phone:v('phone'),doc_type:document.kind,
+    doc_number:document.digits,fingerprint:'orion_'+(window.crypto?.randomUUID?.()||String(Date.now())+'_checkout_012345')};
    if(method==='card'){
     status.textContent='Validando o cartão com segurança…';
     const SDK=await loadCheckoutSDK();
@@ -423,9 +417,8 @@ async function checkout(root,code,ctx){
     if(!cardToken)throw Error('Não foi possível tokenizar o cartão.');
     status.textContent='Aguardando autenticação do seu banco…';
     const auth=await sdk.authenticate3DS({card,customer:{amount:checkoutPrices[code],currency:'BRL',
-     email:payer.email,name:payer.name,phone:payer.phone.slice(2),paymentMethod:'credit',
-     address:{street:v('street'),number:v('number'),complement:v('complement'),
-      city:v('city'),state:v('state').toUpperCase(),zipcode:v('zip')}}});
+     email:payer.email,name:payer.name,phone:payer.phone.slice(2),paymentMethod:'credit'}});
+    // Never invent a billing address; the bank may request additional details.
     if(!auth?.success)throw Error('A autenticação bancária não foi concluída.');
     await sdk.completeAntifraudProfile();
     antifraud_reference=sdk.getAntifraudReference();
