@@ -252,7 +252,15 @@ def test_direct_3ds_requires_only_token_and_complete_bank_authentication():
                   antifraud_reference="synthetic-antifraud-reference",
                   three_ds=secure)
     assert data.method=="card"
+    # 3DS issuer may omit optional xid without invalidating its bank challenge.
+    without_xid={key:value for key,value in secure.items() if key!="xid"}
+    without=direct.DirectCharge(**{**data.model_dump(),"three_ds":without_xid})
+    assert without.three_ds==without_xid
+    assert direct.provider_request({"offer_id":"synthetic-offer"},without,"synthetic-sck")[
+        "threeDSecure"]==without_xid
     for change in ({"three_ds":None},{"card_token":None},
+                   {"three_ds":{**without_xid,"cavv":""}},
+                   {"three_ds":{**without_xid,"xid":""}},
                    {"antifraud_reference":None},{"three_ds":{**secure,"cvv":"123"}}):
         with pytest.raises(ValidationError):
             direct.DirectCharge(**{**data.model_dump(),**change})
