@@ -366,6 +366,10 @@ async def scan_pending_cakto(_ctx):
                 # No tenancy is derived from buyer details. The callback must
                 # match a server-side owner intent and the exact verified offer.
                 linked = await apply_verified_cakto_payment(row, order)
+                if linked == "retry_later":
+                    # A direct PSP response may still be recording its order ID.
+                    # Preserve pending receipt; the bounded worker will retry.
+                    continue
                 if linked == "manual_review":
                     state = "manual_review"
         except (httpx.HTTPError, RuntimeError, ValueError):
