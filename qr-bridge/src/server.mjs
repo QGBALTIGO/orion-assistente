@@ -40,7 +40,7 @@ import {createChannelRoutes} from './channel-routes.mjs';
 import {createBaileysChannelSession} from './channel-session.mjs';
 import {createLegacyCentral} from './legacy-central.mjs';
 import {testReplyFor} from './trigger-test.mjs';
-import {makeTestFallbackText,sendTestCloudCta} from './test-url-button.mjs';
+import {makeTestFallbackText,sendTestCloudCta,selectTestCtaMode} from './test-url-button.mjs';
 
 const legacyCentral=createLegacyCentral({
   start:(id,key)=>channelRoutes.adopt(id,key),send:(id,key,payload)=>channelRoutes.send(id,key,payload),
@@ -431,17 +431,15 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
             seen.add(key);
             if(seen.size>2000)seen.delete(seen.values().next().value);
             try{
-              const officialRequested=process.env.QR_TRIGGER_CTA_PROVIDER==='meta';
-              const officialReady=officialRequested&&!!process.env.META_CLOUD_ACCESS_TOKEN&&
-                !!process.env.META_CLOUD_PHONE_NUMBER_ID;
-              if(officialReady){
+              const {useMeta,metaNotConfigured}=selectTestCtaMode(process.env);
+              if(useMeta){
                 const sent=await sendTestCloudCta({phone,text:replyText,
                   accessToken:process.env.META_CLOUD_ACCESS_TOKEN,
                   phoneNumberId:process.env.META_CLOUD_PHONE_NUMBER_ID,
                   apiVersion:process.env.META_CLOUD_API_VERSION||'v25.0'});
                 transport.record(sent?.accepted?'trigger_test_cta_api_accepted':'trigger_test_cta_api_rejected',traceId);
               }else{
-                if(officialRequested)transport.record('trigger_test_cta_not_configured',traceId);
+                if(metaNotConfigured)transport.record('trigger_test_cta_not_configured',traceId);
                 if(legacyCentral.configured())await legacyCentral.resume();
                 const sent=await send(phone,makeTestFallbackText(replyText),{
                   waitForCapacity:true,isCurrent:()=>intakeCurrent()});
