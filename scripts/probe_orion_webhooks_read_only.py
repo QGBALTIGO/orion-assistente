@@ -58,9 +58,15 @@ def detailed_coverage(offers: list, hooks: list, secret: str) -> dict:
             if str(offer.get("id")) == offer_id:
                 product_for[code] = _product_id(offer.get("product"))
 
-    target = [hook for hook in hooks
-              if isinstance(hook, dict) and hook.get("status") == "active"
-              and _exact_target(hook.get("url"))]
+    candidates = [hook for hook in hooks if isinstance(hook, dict)]
+    active = [hook for hook in candidates if hook.get("status") == "active"]
+    matching_url = [hook for hook in candidates if _exact_target(hook.get("url"))]
+    target = [hook for hook in matching_url if hook.get("status") == "active"]
+    products_seen = {
+        _product_id(item)
+        for hook in candidates if isinstance(hook.get("products"), list)
+        for item in hook["products"]
+    }
     links = 0
     linked = 0
     secret_ok = 0
@@ -112,7 +118,13 @@ def detailed_coverage(offers: list, hooks: list, secret: str) -> dict:
         "offer_matches": len(found), "webhook_ready": ready, "expected": 3,
         "offer_product_links": links,
         "distinct_products": len(set(value for value in product_for.values() if value)),
+        "webhooks_listed": len(candidates),
+        "active_hooks": len(active),
+        "matching_target_url": len(matching_url),
         "active_target_hooks": len(target),
+        "product_coverage_any_url": sum(
+            1 for code in found if product_for.get(code) in products_seen
+        ),
         "product_coverage": linked,
         "secret_coverage": secret_ok,
         "event_coverage": event_ok,

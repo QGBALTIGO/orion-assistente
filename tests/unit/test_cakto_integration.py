@@ -270,6 +270,10 @@ def test_one_product_webhook_covers_three_distinct_orion_subscription_offers():
     complete = detailed_coverage(offers,[hook],secret)
     assert complete["distinct_products"] == 1
     assert complete["active_target_hooks"] == 1
+    assert complete["webhooks_listed"] == 1
+    assert complete["active_hooks"] == 1
+    assert complete["matching_target_url"] == 1
+    assert complete["product_coverage_any_url"] == 3
     assert complete["product_coverage"] == 3
     assert complete["secret_coverage"] == 3
     assert complete["event_coverage"] == 3
@@ -327,3 +331,42 @@ async def test_diagnostic_webhook_probe_uses_only_get_and_returns_safe_counts(mo
     assert client.calls == [("/webhook/",{"page":1,"limit":100})]
     assert secret not in str(result)
     assert product_id not in str(result)
+
+
+def test_webhook_diagnostics_distinguish_no_registration_disabled_and_wrong_url():
+    from scripts.probe_orion_webhooks_read_only import detailed_coverage, REQUIRED_EVENTS
+    key="synthetic-webhook-secret-for-ci-32-char-minimum"
+    product="shared-product"
+    offers=[
+        {"id":f"off-{i}","name":name,"price":amount,
+         "type":"subscription","recurrence_period":30,"status":"active",
+         "product":product}
+        for i,(name,amount) in enumerate((
+            ("Orion Essencial",29.9),("Orion Pro",89.9),("Orion Elite",139.9)
+        ))
+    ]
+    template={
+        "status":"active","url":"https://orionagenda.pro/webhooks/cakto",
+        "products":[{"id":product}],
+        "events":[{"custom_id":event} for event in REQUIRED_EVENTS],
+        "fields":{"secret":key},
+    }
+    no_hooks=detailed_coverage(offers,[],key)
+    assert no_hooks["webhooks_listed"]==0
+    assert no_hooks["active_target_hooks"]==0
+
+    disabled=detailed_coverage(offers,[{**template,"status":"disabled"}],key)
+    assert disabled["webhooks_listed"]==1
+    assert disabled["active_hooks"]==0
+    assert disabled["matching_target_url"]==1
+    assert disabled["product_coverage_any_url"]==3
+    assert disabled["webhook_ready"]==0
+
+    wrong_url=detailed_coverage(offers,[{**template,"url":"https://example.test/webhooks/cakto"}],key)
+    assert wrong_url["webhooks_listed"]==1
+    assert wrong_url["active_hooks"]==1
+    assert wrong_url["matching_target_url"]==0
+    assert wrong_url["product_coverage_any_url"]==3
+    assert wrong_url["webhook_ready"]==0
+    assert key not in str(wrong_url)
+    assert product not in str(wrong_url)
