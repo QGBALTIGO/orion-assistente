@@ -373,6 +373,14 @@ async def scan_pending_cakto(_ctx):
                     continue
                 if linked == "manual_review":
                     state = "manual_review"
+            if row["event_type"] in {
+                    "subscription_renewed", "subscription_canceled",
+                    "purchase_refused", "refund", "chargeback"}:
+                from app.cakto_subscription_lifecycle import (
+                    reconcile_existing_cakto_subscription,
+                )
+                outcome = await reconcile_existing_cakto_subscription(row,order,client)
+                state = "verified" if outcome in ("reconciled","already_verified") else "manual_review"
         except (httpx.HTTPError, RuntimeError, ValueError):
             continue
         async with support_session_factory()() as db:
