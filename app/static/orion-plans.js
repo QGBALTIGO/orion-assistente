@@ -223,46 +223,76 @@ function loadCheckoutSDK(){
 function checkoutField(name,label,type='text',attributes=''){
  return '<label class="op-payment-field"><span>'+label+'</span><input name="'+name+'" type="'+type+'" '+attributes+'></label>';
 }
+function checkoutDocumentDigits(value){
+ return String(value||'').replace(/\D/g,'').slice(0,14);
+}
+function checkoutDocumentKind(value){
+ const count=checkoutDocumentDigits(value).length;
+ return count===11?'cpf':count===14?'cnpj':null;
+}
+function checkoutDocumentDisplay(value){
+ const digits=checkoutDocumentDigits(value);
+ if(digits.length>11)return digits.replace(/^(\d{2})(\d)/,'$1.$2')
+  .replace(/^(\d{2}\.\d{3})(\d)/,'$1.$2')
+  .replace(/^(\d{2}\.\d{3}\.\d{3})(\d)/,'$1/$2')
+  .replace(/^(\d{2}\.\d{3}\.\d{3}\/\d{4})(\d)/,'$1-$2');
+ return digits.replace(/^(\d{3})(\d)/,'$1.$2')
+  .replace(/^(\d{3}\.\d{3})(\d)/,'$1.$2')
+  .replace(/^(\d{3}\.\d{3}\.\d{3})(\d)/,'$1-$2');
+}
+function checkoutDocumentData(field){
+ const digits=checkoutDocumentDigits(field.value);
+ const kind=checkoutDocumentKind(field.value);
+ let error=kind?'':'Informe CPF com 11 dígitos ou CNPJ com 14 dígitos.';
+ if(kind&&window.OrionFields?.documentValue){
+  try{window.OrionFields.documentValue(digits,kind);}
+  catch{error='Confira os dígitos do '+kind.toUpperCase()+'.';}
+ }
+ field.setCustomValidity(error);
+ return {kind,digits};
+}
 function renderCheckoutDialog(root,code,ctx,amount){
  const title=checkoutNames[code];
  const modal=document.createElement('dialog');
  modal.className='os-dialog op-dialog op-checkout-dialog';
  modal.setAttribute('aria-label','Assinatura Orion '+title);
- modal.innerHTML='<button type="button" class="op-dialog-close" data-op-checkout-close aria-label="Fechar">'+ic('close')+'</button>'
-  +'<div class="op-payment-heading"><div class="op-payment-symbol">'+ic('shield')+'</div><div><span class="op-eyebrow">ASSINATURA ORION</span>'
-  +'<h2>Finalizar assinatura</h2><p>'+escapeHTML(title)+' · Até '+({essencial:2,profissional:6,elite:10}[code])+' profissionais</p></div></div>'
-  +'<div class="op-payment-summary"><span>Orion '+escapeHTML(title)+'<small>Mensalidade por empresa</small></span><strong>'+price(amount)+'<small>/mês</small></strong></div>'
-  +'<div class="op-payment-banner" role="status" aria-live="polite" data-op-payment-info>Verificando a disponibilidade do pagamento…</div>'
+ modal.innerHTML='<div class="op-payment-top">'
+  +'<div class="op-payment-heading"><span class="op-payment-symbol">'+ic('shield')+'</span><div class="op-payment-heading-copy">'
+  +'<span class="op-eyebrow">ORION · ASSINATURA</span><h2>Finalizar assinatura</h2>'
+  +'<p>Confira seu plano e escolha como pagar.</p></div></div>'
+  +'<button type="button" class="op-dialog-close" data-op-checkout-close aria-label="Fechar pagamento">'+ic('close')+'</button></div>'
+  +'<div class="op-payment-summary"><div class="op-payment-plan">'
+  +'<span>Plano '+escapeHTML(title)+'</span><small>Até '+({essencial:2,profissional:6,elite:10}[code])+' profissionais · Renovação mensal</small></div>'
+  +'<strong>'+price(amount)+'<small>/mês</small></strong></div>'
+  +'<div class="op-payment-banner" role="status" aria-live="polite" data-op-payment-info>Verificando o pagamento…</div>'
   +'<div class="op-payment-body" data-op-payment-body hidden>'
   +'<div class="op-payment-methods" role="group" aria-label="Forma de pagamento">'
-  +'<button type="button" class="op-payment-method active" data-op-payment-method="pix" aria-pressed="true">'+ic('credit')+' Pix Automático</button>'
-  +'<button type="button" class="op-payment-method" data-op-payment-method="card" aria-pressed="false">'+ic('shield')+' Cartão de crédito</button></div>'
+  +'<button type="button" class="op-payment-method active" data-op-payment-method="pix" aria-pressed="true">'+ic('credit')+'<span>Pix Automático</span></button>'
+  +'<button type="button" class="op-payment-method" data-op-payment-method="card" aria-pressed="false">'+ic('shield')+'<span>Cartão de crédito</span></button></div>'
   +'<form class="op-payment-form" data-op-payment-form novalidate>'
-  +'<div class="op-payment-fields">'
+  +'<div class="op-payment-fields"><h3 class="op-payment-section-title">Dados do pagador</h3>'
   +checkoutField('name','Nome completo','text','autocomplete="name" required minlength="3" maxlength="120" placeholder="Nome e sobrenome"')
-  +checkoutField('email','E-mail','email','autocomplete="email" required maxlength="254" placeholder="seuemail@exemplo.com"')
-  +checkoutField('phone','Celular com DDD','tel','autocomplete="tel" inputmode="tel" required maxlength="20" placeholder="(00) 00000-0000"')
-  +'<div class="op-payment-document">'
-  +'<label class="op-payment-field"><span>Tipo de documento</span><select name="doc_type"><option value="cpf">CPF</option><option value="cnpj">CNPJ</option></select></label>'
-  +checkoutField('doc_number','CPF ou CNPJ','text','required inputmode="numeric" minlength="11" maxlength="18" placeholder="Somente números"')+'</div></div>'
+  +checkoutField('email','E-mail','email','autocomplete="email" required maxlength="254" placeholder="nome@email.com"')
+  +checkoutField('phone','Telefone com DDD','tel','autocomplete="tel" inputmode="tel" required maxlength="20" placeholder="(00) 00000-0000"')
+  +checkoutField('doc_number','CPF ou CNPJ','text','required inputmode="numeric" autocomplete="off" minlength="11" maxlength="18" placeholder="CPF ou CNPJ"')
+  +'</div>'
   +'<div class="op-payment-card-fields" data-op-card-fields hidden>'
-  +'<div class="op-payment-card-title">'+ic('shield')+' Dados do cartão (tokenizados no navegador)</div>'
-  +checkoutField('holder','Nome no cartão','text','autocomplete="cc-name" minlength="3" maxlength="120" placeholder="Como está no cartão"')
+  +'<h3 class="op-payment-section-title">'+ic('credit')+' Dados do cartão</h3>'
+  +checkoutField('holder','Nome no cartão','text','autocomplete="cc-name" maxlength="120" placeholder="Nome impresso no cartão"')
   +checkoutField('card_number','Número do cartão','text','autocomplete="cc-number" inputmode="numeric" maxlength="23" placeholder="0000 0000 0000 0000"')
-  +'<div class="op-payment-card-row">'+checkoutField('expiry','Validade (MM/AA)','text','autocomplete="cc-exp" inputmode="numeric" maxlength="7" placeholder="MM/AA"')
-  +checkoutField('cvv','CVV','password','autocomplete="cc-csc" inputmode="numeric" maxlength="4" placeholder="•••"')+'</div>'
-  +'<p class="op-payment-subtitle">Endereço do titular para autenticação com o banco</p>'
-  +'<div class="op-payment-card-row">'+checkoutField('zip','CEP','text','autocomplete="postal-code" inputmode="numeric" maxlength="9" placeholder="00000-000"')
-  +checkoutField('state','UF','text','autocomplete="address-level1" maxlength="2" placeholder="MS"')+'</div>'
-  +'<div class="op-payment-card-row">'+checkoutField('city','Cidade','text','autocomplete="address-level2" maxlength="70" placeholder="Cidade"')
-  +checkoutField('street','Rua','text','autocomplete="address-line1" maxlength="120" placeholder="Logradouro"')+'</div>'
-  +'<div class="op-payment-card-row">'+checkoutField('number','Número','text','maxlength="12" placeholder="Número"')
-  +checkoutField('complement','Complemento','text','autocomplete="address-line2" maxlength="90" placeholder="Opcional"')+'</div></div>'
-  +'<label class="op-payment-consent"><input type="checkbox" name="monthly_ack" required><span>Confirmo o valor de <strong>'+price(amount)+'</strong> pela assinatura mensal Orion '+escapeHTML(title)+'.</span></label>'
-  +'<label class="op-payment-consent"><input type="checkbox" name="processor_ack" required><span>Autorizo o processamento seguro e a criação de uma assinatura com renovações mensais pelo método escolhido.</span></label>'
+  +'<div class="op-payment-card-row">'
+  +checkoutField('expiry','Validade','text','autocomplete="cc-exp" inputmode="numeric" maxlength="5" placeholder="MM/AA"')
+  +checkoutField('cvv','CVV','password','autocomplete="cc-csc" inputmode="numeric" maxlength="4" placeholder="000"')
+  +'</div></div>'
+  +'<div class="op-payment-confirmations">'
+  +'<label class="op-payment-consent"><input type="checkbox" name="monthly_ack" required>'
+  +'<span>Confirmo a assinatura de <strong>'+price(amount)+'/mês</strong> do Orion '+escapeHTML(title)+'.</span></label>'
+  +'<label class="op-payment-consent"><input type="checkbox" name="processor_ack" required>'
+  +'<span>Autorizo o processamento seguro e as renovações mensais pelo método escolhido.</span></label>'
+  +'</div>'
   +'<div class="op-payment-error" data-op-payment-error role="alert" aria-live="polite"></div>'
-  +'<button type="submit" class="op-btn op-btn-primary op-payment-submit" data-op-payment-submit>Gerar Pix Automático</button>'
-  +'<p class="op-payment-secure">'+ic('shield')+' A assinatura é confirmada somente após verificação bancária. Seus dados de cartão não são armazenados pelo Orion.</p>'
+  +'<div class="op-payment-actions"><button type="submit" class="op-btn op-btn-primary op-payment-submit" data-op-payment-submit>Gerar Pix Automático</button>'
+  +'<p class="op-payment-secure">'+ic('shield')+' Pagamento protegido. O Orion não armazena dados completos do cartão.</p></div>'
   +'</form></div><div class="op-payment-result" data-op-payment-result hidden></div>';
  root.appendChild(modal);
  modal.showModal();
@@ -271,6 +301,7 @@ function renderCheckoutDialog(root,code,ctx,amount){
  modal.querySelector('[name=phone]').value=window.OrionFields?.phoneDisplay(ctx.user?.phone||ctx.tenant?.contact_phone||'')||'';
  return modal;
 }
+
 async function checkout(root,code,ctx){
  const action=root.querySelector('[data-op-checkout="'+code+'"]');
  if(!action||action.disabled||root.dataset.busy==='true'||!checkoutPrices[code])return;
