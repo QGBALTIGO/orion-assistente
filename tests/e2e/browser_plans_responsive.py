@@ -65,6 +65,25 @@ async def inspect(page,width,mode):
         assert card["left"]>=-1 and card["right"]<=width+1,(width,mode,"card",card)
     if width>=1200:
         assert max(state["buttons"])-min(state["buttons"])<2,(width,mode,"footer alignment")
+    # Real browser: every feature stays aligned under the same three tier columns.
+    geometry=await page.evaluate("""()=>{
+      const matrix=document.querySelector('.op-matrix');
+      const header=[...matrix.querySelectorAll('thead th')];
+      const row=matrix.querySelector('.op-matrix-row');
+      const cells=[...row.children];
+      return {columns:header.length,bodyColumns:cells.length,
+              widths:header.map(n=>n.getBoundingClientRect().width),
+              headerX:header.map(n=>n.getBoundingClientRect().x),
+              rowX:cells.map(n=>n.getBoundingClientRect().x),
+              right:matrix.getBoundingClientRect().right};
+    }""")
+    assert geometry["columns"]==geometry["bodyColumns"]==4,(width,mode,geometry)
+    assert geometry["right"]<=width+1,(width,mode,geometry)
+    assert all(abs(a-b)<2 for a,b in zip(geometry["headerX"],geometry["rowX"])),(width,mode,geometry)
+    await page.locator('[data-op-category-toggle="0"]').click()
+    assert await page.locator('[data-op-category="0"] .op-matrix-row:visible').count()==0
+    await page.locator('[data-op-category-toggle="0"]').click()
+    assert await page.locator('[data-op-category="0"] .op-matrix-row:visible').count()>0
     await page.locator("[data-op-trial]").click()
     await page.locator(".op-dialog").wait_for(state="visible")
     rect=await page.locator(".op-dialog").bounding_box()

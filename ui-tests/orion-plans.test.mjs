@@ -52,8 +52,33 @@ test('three actual card prices, limits, recommendation and explicit AI separatio
   assert.doesNotMatch(f.root.querySelector('.op-essencial').textContent,/Recepcionista IA/);
   assert.doesNotMatch(f.root.querySelector('.op-profissional').textContent,/Recepcionista IA/);
   assert.match(f.root.querySelector('.op-elite').textContent,/Recepcionista IA/);
-  assert.equal(f.root.querySelectorAll('.op-compare-group').length,10);
-  assert.equal(f.root.querySelector('.op-compare-head').children.length,4);
+  assert.equal(f.root.querySelectorAll('.op-matrix-category').length,10);
+  assert.equal(f.root.querySelectorAll('.op-matrix thead th').length,4);
+ }finally{f.close();}
+});
+
+test('comparison is one aligned four-column table with expandable categories',()=>{
+ const f=fixture();
+ try{
+  const table=f.root.querySelector('.op-matrix');
+  assert.ok(table);
+  assert.equal(table.querySelectorAll('colgroup col').length,4);
+  assert.equal(table.querySelectorAll('thead tr').length,1);
+  const group=table.querySelector('[data-op-category="0"]');
+  const rows=group.querySelectorAll('.op-matrix-row');
+  assert.ok(rows.length>=3);
+  assert.equal(rows[0].querySelectorAll('th,td').length,4);
+  assert.equal(rows[0].querySelectorAll('td').length,3);
+  assert.equal(table.querySelectorAll('thead th').length,4);
+  assert.match(table.querySelector('thead').textContent,/R\\$\\s*89,90/);
+  const toggle=group.querySelector('[data-op-category-toggle]');
+  assert.equal(toggle.getAttribute('aria-expanded'),'true');
+  toggle.click();
+  assert.equal(toggle.getAttribute('aria-expanded'),'false');
+  assert.ok([...rows].every(row=>row.hidden));
+  toggle.click();
+  assert.equal(toggle.getAttribute('aria-expanded'),'true');
+  assert.ok([...rows].every(row=>!row.hidden));
  }finally{f.close();}
 });
 
