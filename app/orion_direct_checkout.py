@@ -152,11 +152,20 @@ class DirectCharge(BaseModel):
                 raise ValueError("Token de cartão ausente")
             if not (self.antifraud_reference and SAFE_FINGERPRINT.fullmatch(self.antifraud_reference)):
                 raise ValueError("Perfil antifraude ausente")
+            # The PSP 3DS contract allows xid to be absent (bank-dependent).
+            # Require the actual bank authorization fields; do not reject
+            # a valid 3DS challenge solely because the issuer omits xid.
+            required = ("cavv", "eci", "referenceId", "version")
             if not isinstance(self.three_ds, dict) or not all(
-                isinstance(self.three_ds.get(k), str) and 1 <= len(self.three_ds[k]) <= 255
-                for k in ("cavv", "eci", "xid", "referenceId", "version")
+                isinstance(self.three_ds.get(k), str)
+                and 1 <= len(self.three_ds[k]) <= 255
+                for k in required
             ):
                 raise ValueError("Autenticação bancária 3DS não concluída")
+            if "xid" in self.three_ds and (
+                    not isinstance(self.three_ds["xid"], str)
+                    or not 1 <= len(self.three_ds["xid"]) <= 255):
+                raise ValueError("Identificador 3DS inválido")
             if set(self.three_ds) - {"cavv","eci","xid","referenceId","version"}:
                 raise ValueError("Autenticação 3DS contém campos desconhecidos")
         return self
