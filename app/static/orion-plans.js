@@ -387,7 +387,7 @@ async function checkout(root,code,ctx){
   event.preventDefault();
   if(busy||finished||!config?.available)return;
   feedback.textContent='';
-  const document=checkoutDocumentData(form.elements.namedItem('doc_number'));
+  const taxDocument=checkoutDocumentData(form.elements.namedItem('doc_number'));
   if(!form.reportValidity())return;
   const v=name=>form.elements.namedItem(name).value.trim();
   let cardToken=null,threeDSecure=null,antifraud_reference=null;
@@ -398,8 +398,8 @@ async function checkout(root,code,ctx){
    const prepared=await ctx.request('/plan-direct-prepare','POST',{plan_code:code});
    if(prepared.plan_code!==code||prepared.monthly_cents!==checkoutPrices[code]||prepared.status!=='ready')throw Error('Não foi possível confirmar o valor da assinatura.');
    intent=prepared;
-   const payer={name:v('name'),email:v('email'),phone:v('phone'),doc_type:document.kind,
-    doc_number:document.digits,fingerprint:'orion_'+(window.crypto?.randomUUID?.()||String(Date.now())+'_checkout_012345')};
+   const payer={name:v('name'),email:v('email'),phone:v('phone'),doc_type:taxDocument.kind,
+    doc_number:taxDocument.digits,fingerprint:'orion_'+(window.crypto?.randomUUID?.()||String(Date.now())+'_checkout_012345')};
    if(method==='card'){
     status.textContent='Validando o cartão com segurança…';
     const SDK=await loadCheckoutSDK();
