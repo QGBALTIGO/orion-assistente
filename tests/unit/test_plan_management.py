@@ -478,3 +478,27 @@ def test_billing_methods_probe_accepts_only_one_verified_subscription_product():
         "methods_confirmed":False,"pix_auto":False,"card":False}
     assert check_product({"status":"active","paymentMethods":"pix_auto"})=={
         "methods_confirmed":False,"pix_auto":False,"card":False}
+
+
+
+def test_first_paid_order_must_have_real_verified_recurring_subscription():
+    from app.plan_management import first_cakto_subscription_confirmed
+    from uuid import uuid4
+    sub_id=str(uuid4());order_id=str(uuid4())
+    event={"external_offer_id":"CIProOffer","amount_cents":8990}
+    order={"id":order_id,"subscription":sub_id}
+    remote={"id":sub_id,"offer":"CIProOffer","amount":"89.90",
+            "status":"active","recurrence_period":30,
+            "parent_order":order_id,"paymentMethod":"pix_auto"}
+    assert first_cakto_subscription_confirmed(event,order,remote)
+    assert not first_cakto_subscription_confirmed(event,order,None)
+    for changed in [
+        {"status":"trial"},{"id":str(uuid4())},{"offer":"AnotherOffer"},
+        {"amount":"29.90"},{"amount":"89.901"},{"recurrence_period":365},
+        {"parent_order":str(uuid4())},{"paymentMethod":"pix"},
+    ]:
+        assert not first_cakto_subscription_confirmed(event,order,{**remote,**changed})
+    assert not first_cakto_subscription_confirmed(
+        {**event,"external_offer_id":"OtherOffer"},order,remote)
+    assert not first_cakto_subscription_confirmed(
+        {**event,"amount_cents":2990},order,remote)
