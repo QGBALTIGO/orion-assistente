@@ -415,7 +415,7 @@ def test_panel_v2_webhook_history_proves_one_product_three_offers():
     assert incomplete["required_event_coverage"]==0
     assert history_coverage(offers,records,"another-secret-with-32-characters-minimum",now=now)["webhook_ready"]==0
     assert history_coverage(offers,[{**r,"event_status":401} for r in records],secret,now=now)["webhook_ready"]==0
-    assert history_coverage(offers,[{**r,"sentAt":"2026-10-27T14:00:00+00:00"} for r in records],secret,now=now)["webhook_ready"]==0
+    assert history_coverage(offers,[{**r,"sentAt":"2026-06-01T14:00:00+00:00"} for r in records],secret,now=now)["webhook_ready"]==0
     assert history_coverage(offers,[{**r,"url":"https://orionagenda.pro.attacker.test/webhooks/cakto"} for r in records],secret,now=now)["webhook_ready"]==0
     assert history_coverage(offers,[{**r,"app":{**r["app"],"products":["another-product"]}} for r in records],secret,now=now)["webhook_ready"]==0
 
