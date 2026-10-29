@@ -168,19 +168,41 @@ async def owner(tenant_id: UUID, actor: Actor):
     return _owner_account(access,actor)
 
 
+async def require_verified_webhooks(client: CaktoClient) -> None:
+    # Read-only check: verify that every actual Orion offer has an active
+    # HMAC-matching subscription webhook to the exact HTTPS callback URL.
+    # Never display the provider's secret, webhook body or customer data.
+    from scripts.probe_orion_webhooks_read_only import probe
+    try:
+        offers = await client.list_offers()
+        result = await probe(client, offers)
+    except (httpx.HTTPError, ValueError, RuntimeError):
+        raise HTTPException(503, "A confirmação segura de pagamentos ainda não foi verificada.") from None
+    if result.get("offer_matches") != 3 or result.get("webhook_ready") != 3:
+        raise HTTPException(409, "A confirmação segura de pagamentos ainda não está configurada.")
+
+
 @router.get("/api/v1/tenants/{tenant_id}/management/plan-direct-config")
 async def direct_config(tenant_id: UUID, actor: Actor = Depends(authenticate)):
     await owner(tenant_id,actor)
-    return {"available": checkout_enabled(),
-            "sdk_client_id": os.getenv("CAKTO_CLIENT_ID", "") if checkout_enabled() else None,
-            "methods": ["pix","card"] if checkout_enabled() else [],
-            "pix_recurring": checkout_enabled()}
+    available = checkout_enabled()
+    if available:
+        try:
+            await require_verified_webhooks(CaktoClient())
+        except HTTPException:
+            available = False
+    return {"available": available,
+            "sdk_client_id": os.getenv("CAKTO_CLIENT_ID", "") if available else None,
+            "methods": ["pix","card"] if available else [],
+            "pix_recurring": available}
 
 
 @router.post("/api/v1/tenants/{tenant_id}/management/plan-direct-prepare")
 async def direct_prepare(tenant_id: UUID, payload: DirectPrepare,
                          actor: Actor = Depends(authenticate)):
     require_enabled()
+    await owner(tenant_id, actor)
+    await require_verified_webhooks(CaktoClient())
     # Existing reviewed endpoint checks monthly offer, price, owner, current
     # subscription and ensures only one tenant/account checkout intent.
     internal = await start_plan_checkout(tenant_id,
@@ -275,6 +297,7 @@ async def direct_charge(tenant_id: UUID, data: DirectCharge,
                         actor: Actor = Depends(authenticate)):
     require_enabled()
     account_id = await owner(tenant_id,actor)
+    await require_verified_webhooks(CaktoClient())
     # The same tenant lock serializes embedded attempts with hosted intent creation.
     # No account details or provider token are persisted.
     async with support_session_factory()() as db:
