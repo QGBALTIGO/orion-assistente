@@ -172,6 +172,17 @@ async def owner(tenant_id: UUID, actor: Actor):
     return _owner_account(access,actor)
 
 
+async def require_verified_payment_methods(client: CaktoClient, offers: list) -> None:
+    """One active Cakto product must explicitly accept Pix Auto and card."""
+    from scripts.probe_orion_payment_methods_read_only import probe
+    try:
+        result = await probe(client, offers)
+    except Exception:
+        raise HTTPException(503, "Os métodos de pagamento ainda não puderam ser validados.") from None
+    if not isinstance(result, dict) or not result.get("methods_confirmed"):
+        raise HTTPException(409, "Pix Automático e cartão ainda não estão disponíveis para este produto.")
+
+
 async def require_verified_webhooks(client: CaktoClient) -> None:
     """Accept verified V1 configuration OR provider-confirmed V2 delivery history.
 
@@ -194,6 +205,7 @@ async def require_verified_webhooks(client: CaktoClient) -> None:
     if (isinstance(inventory, dict)
             and inventory.get("offer_matches") == 3
             and inventory.get("webhook_ready") == 3):
+        await require_verified_payment_methods(client, offers)
         return
     try:
         history = await history_probe(client, offers)
@@ -208,6 +220,7 @@ async def require_verified_webhooks(client: CaktoClient) -> None:
         raise HTTPException(
             409, "A confirmação segura de pagamentos ainda não está validada.",
         )
+    await require_verified_payment_methods(client, offers)
 
 
 @router.get("/api/v1/tenants/{tenant_id}/management/plan-direct-config")
