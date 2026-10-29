@@ -121,6 +121,8 @@ class ChannelIdentity:
     assistant_enabled: bool = False
     legacy_transport: bool = False
     central_adopted: bool = False
+    verified_self_phone: str | None = None
+    preserved_session_fingerprint: str | None = None
 
     @property
     def context_namespace(self):
@@ -481,7 +483,9 @@ async def authenticated_channel(request: Request, *, phone: str | None = None) -
             async with tenant_transaction(journal, row['tenant_id']):
                 central = await qr_legacy.adopted(journal, row['tenant_id'], row['id'])
     return ChannelIdentity(row["id"], row["tenant_id"], row["owner_account_id"], row["provider"],
-        fence, owner, allowed, row["assistant_enabled"], legacy, central)
+        fence, owner, allowed, row["assistant_enabled"], legacy, central,
+        qr_legacy.verified_self_phone(row) if legacy else None,
+        row['request_fingerprint'] if legacy else None)
 
 
 async def outbound_channel_credentials(tenant_id: UUID, channel_id: UUID, *, read_only: bool = False) -> dict:

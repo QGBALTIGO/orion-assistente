@@ -59,3 +59,25 @@ def test_worker_registration_uses_the_exact_persistent_queue_function_name():
     from arq import func
     names=[func(f).name for f in WorkerSettings.functions]
     assert names.count('process_appointment_notification')==1
+
+
+def test_old_self_notice_requires_current_hmac_and_preserved_identity(monkeypatch):
+    import hmac,hashlib
+    from dataclasses import replace
+    from app import automation_runtime
+    tenant=uuid4();phone='556781234567';key='synthetic-session-key-'+'x'*40
+    monkeypatch.setenv('QR_CHANNELS_ENABLED','1');monkeypatch.setenv('QR_LEGACY_CENTRAL_ENABLED','1')
+    monkeypatch.setenv('QR_AI_TENANT_ID',str(tenant));monkeypatch.setenv('QR_BRIDGE_TOKEN',key)
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE',phone)
+    proof=hmac.new(key.encode(),('orion:preserved-primary-session:v1\0'+phone).encode(),hashlib.sha256).hexdigest()
+    identity=qr_channels.ChannelIdentity(qr_legacy.channel_id(tenant),tenant,uuid4(),'baileys',2,uuid4(),True,
+        False,True,True,phone,proof)
+    values=automation_runtime._notice_identity(tenant,'+'+phone,identity)
+    assert values['sender']==phone and values['session_proof']==proof
+    for candidate in (replace(identity,verified_self_phone=None),replace(identity,preserved_session_fingerprint='a'*64),
+        replace(identity,legacy_transport=False),replace(identity,central_adopted=False),replace(identity,channel_id=uuid4()),
+        replace(identity,allowed_sender=False)):
+        with pytest.raises(HTTPException):automation_runtime._notice_identity(tenant,phone,candidate)
+    with pytest.raises(HTTPException):automation_runtime._notice_identity(tenant,'556781234568',identity)
+    monkeypatch.setenv('QR_BRIDGE_TOKEN','rotated-synthetic-key-'+'y'*40)
+    with pytest.raises(HTTPException):automation_runtime._notice_identity(tenant,phone,identity)

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
+import re
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -42,22 +43,38 @@ execution_approved = execution_authorized
 def _notice_identity(tenant, phone, identity):
     """Validate a server identity without granting assistant/domain authority."""
     from app.qr_channels import ChannelIdentity, normalize_sender
-    try:
-        sender = normalize_sender(phone)
-    except ValueError:
-        raise HTTPException(403, "Remetente não autorizado neste canal") from None
     if (os.getenv("QR_CHANNELS_ENABLED", "0") != "1" or not isinstance(identity, ChannelIdentity)
             or identity.tenant_id != tenant or identity.provider != "baileys" or identity.allowed_sender is not True
             or type(identity.fence) is not int or not 1 <= identity.fence <= 2**63-1):
         raise HTTPException(409, "Autorização do canal mudou")
+    extra={}
+    try:
+        sender = normalize_sender(phone)
+    except ValueError:
+        from app import qr_legacy
+        sender=phone.removeprefix('+') if isinstance(phone,str) else ''
+        # Only authenticated_channel can supply the HMAC-verified self binding.
+        # Keep ordinary contacts and channel allowlist validation unchanged.
+        if (not identity.legacy_transport or not identity.central_adopted or not qr_legacy.enabled()
+            or sender!=identity.verified_self_phone or sender!=os.getenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','')
+            or not re.fullmatch(r'55[1-9][0-9][2-9][0-9]{7}',sender)
+            or tenant!=qr_legacy.configured_tenant() or not qr_legacy.is_alias(tenant,identity.channel_id)
+            or not isinstance(identity.preserved_session_fingerprint,str)
+            or not re.fullmatch(r'[a-f0-9]{64}',identity.preserved_session_fingerprint)
+            or sender!=qr_legacy.verified_self_phone({'tenant_id':tenant,'id':identity.channel_id,
+                'request_fingerprint':identity.preserved_session_fingerprint})):
+            raise HTTPException(403, "Remetente não autorizado neste canal") from None
+        extra={'session_proof':identity.preserved_session_fingerprint}
     return {"tenant": tenant, "channel": identity.channel_id, "account": identity.owner_account_id,
-            "owner": identity.lease_owner, "fence": identity.fence, "sender": sender}
+            "owner": identity.lease_owner, "fence": identity.fence, "sender": sender,**extra}
 
 
 async def _notice_guard(db, values):
-    if os.getenv("QR_CHANNELS_ENABLED", "0") != "1" or (await db.execute(text("""SELECT public.automation_notice_guard(
+    function='orion_preserved_notice_guard' if 'session_proof' in values else 'automation_notice_guard'
+    proof=',CAST(:session_proof AS text)' if 'session_proof' in values else ''
+    if os.getenv("QR_CHANNELS_ENABLED", "0") != "1" or (await db.execute(text("SELECT public."+function+"""(
         CAST(:tenant AS uuid),CAST(:channel AS uuid),CAST(:account AS uuid),
-        CAST(:owner AS uuid),CAST(:fence AS bigint),CAST(:sender AS text))"""), values)).scalar_one() is not True:
+        CAST(:owner AS uuid),CAST(:fence AS bigint),CAST(:sender AS text)"""+proof+")"), values)).scalar_one() is not True:
         raise HTTPException(409, "Autorização do canal mudou")
 
 

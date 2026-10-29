@@ -72,7 +72,7 @@ def main():
         raw, url = connection_values()
         with _release_lock(raw):
             current = migrated_version(raw)
-            if current in {TARGET,"0047_appointment_access","0048_appointment_notifications"}:
+            if current in {TARGET,"0047_appointment_access","0048_appointment_notifications","0049_preserved_phone_guard"}:
                 return 0 if schema_ready(raw) else 3
             if current != PREVIOUS or not plans_ready(raw):
                 print("orion_direct_unreviewed_source", file=sys.stderr)
