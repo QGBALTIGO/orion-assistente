@@ -34,7 +34,11 @@ async def check():
               + "offers:" + str(audit["offer_matches"])
               + ";product_links:" + str(audit["offer_product_links"])
               + ";distinct_products:" + str(audit["distinct_products"])
+              + ";webhooks_listed:" + str(audit["webhooks_listed"])
+              + ";active_hooks:" + str(audit["active_hooks"])
+              + ";matching_target_url:" + str(audit["matching_target_url"])
               + ";active_target_hooks:" + str(audit["active_target_hooks"])
+              + ";product_coverage_any_url:" + str(audit["product_coverage_any_url"])
               + ";product_coverage:" + str(audit["product_coverage"])
               + ";secret_coverage:" + str(audit["secret_coverage"])
               + ";event_coverage:" + str(audit["event_coverage"]),
