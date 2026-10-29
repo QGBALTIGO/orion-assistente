@@ -18,12 +18,23 @@ OUT=Path(os.getenv('APPOINTMENT_E2E_OUT','test-results/appointment-communication
 BASE='http://127.0.0.1:8876'
 TOKEN='00000000-0000-4000-8000-000000000001.'+'a'*43
 OTHER_TOKEN='00000000-0000-4000-8000-000000000001.'+'b'*43
-FIXTURE={'company':'Barbearia de teste','customer':'Cliente Sintético','professional':'Profissional de teste',
+FIXTURE={'company':'Barbearia de teste','customer':'Cliente Sintético','professional':'Profissional de teste','brand_color':'#ffc600',
  'status':'confirmed','protocol':'AG-TEST22','start_at':'2026-11-15T18:00:00Z','end_at':'2026-11-15T18:40:00Z',
  'timezone':'America/Campo_Grande','updated_at':'2026-10-29T18:00:00Z','services':['Corte','Barba'],
  'duration_min':40,'can_change':True,'can_review':False,'review':None,'has_future_booking':False,
  'new_booking_url':'https://orionagenda.pro/s/teste','contact_phone':'+5567999999922',
  'address':'Endereço sintético com informações longas para validar telas pequenas'}
+
+
+def assert_contrast(page,selector):
+ # Read the rendered colors, including each theme's actual card background.
+ ratio=page.locator(selector).first.evaluate('''element => {
+  const luminance=color=>{const rgb=color.match(/[\\d.]+/g).slice(0,3).map(Number).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2];};
+  const style=getComputedStyle(element);let parent=element,background=style.backgroundColor;
+  while(background==='rgba(0, 0, 0, 0)'&&parent.parentElement){parent=parent.parentElement;background=getComputedStyle(parent).backgroundColor;}
+  const a=luminance(style.color),b=luminance(background);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+ }''')
+ assert ratio>=4.5,(selector,ratio)
 
 
 def main():
@@ -50,7 +61,7 @@ def main():
       def respond(route):
        data=route.request.post_data_json;calls.append(data['action'])
        result=state.copy()
-       if data['token']==OTHER_TOKEN:result.update(customer='Outro cliente sintético',protocol='AG-BBBB22')
+       if data['token']==OTHER_TOKEN:result.update(customer='Outro cliente sintético',protocol='AG-BBBB22',brand_color='#112244')
        if data['action']=='slots':result={'slots':['2026-11-16T18:00:00Z'],'timezone':state['timezone']}
        elif data['action']=='cancel':state.update(status='cancelled',can_change=False);result=state.copy()
        elif data['action']=='review':state.update(can_review=False,review={'rating':data['rating'],'comment':data.get('comment')});result=state.copy()
@@ -60,8 +71,10 @@ def main():
        route.fulfill(status=200,content_type='application/json',body=json.dumps(result))
       page.route('**/api/appointment-access',respond)
       page.goto(BASE+'/a#'+TOKEN);page.get_by_role('heading',name='Agendamento confirmado!',exact=True).wait_for()
+      assert_contrast(page,'#actions button');assert_contrast(page,'#company')
       page.goto(BASE+'/a#'+OTHER_TOKEN);page.get_by_text('Outro cliente sintético',exact=True).wait_for()
       assert page.get_by_text('AG-TEST22',exact=True).count()==0
+      assert_contrast(page,'#actions button');assert_contrast(page,'#company')
       page.goto(BASE+'/a#'+TOKEN);page.get_by_text('AG-TEST22',exact=True).wait_for()
       assert page.get_by_text('Outro cliente sintético',exact=True).count()==0
       assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),(engine,width,theme,'overflow')
@@ -89,6 +102,7 @@ def main():
       page.reload();page.get_by_role('heading',name='Atendimento concluído!',exact=True).wait_for()
       assert page.get_by_role('button',name='Cancelar agendamento',exact=True).count()==0
       page.get_by_role('radio',name='5 estrelas',exact=True).check()
+      assert_contrast(page,'.stars input:checked + span')
       page.locator('#comment').fill('<script>alert(1)</script>')
       page.get_by_role('button',name='Enviar avaliação',exact=True).click()
       page.get_by_text('Sua avaliação foi recebida. Obrigado!',exact=True).wait_for()
