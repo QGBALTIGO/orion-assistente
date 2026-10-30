@@ -1,7 +1,6 @@
-"""Phone verification, per-tenant customer sessions and protected customer portal.
+"""Phone-first customer sessions backed by existing private appointment links.
 
-All tests use synthetic phones, fake Redis and a local HTTPX transport.
-Twilio/SMS is never contacted.
+All tests use synthetic phone numbers and in-memory Redis; no SMS is sent.
 """
 import base64
 from datetime import date
@@ -22,10 +21,9 @@ from app import public_customer_account_api as account
 
 def configure(monkeypatch):
     monkeypatch.setenv("ORION_CUSTOMER_PORTAL_ENABLED", "1")
-    monkeypatch.setenv("ORION_CUSTOMER_VERIFY_ACCOUNT_SID", "AC" + "a" * 32)
-    monkeypatch.setenv("ORION_CUSTOMER_VERIFY_SERVICE_SID", "VA" + "b" * 32)
-    monkeypatch.setenv("ORION_CUSTOMER_VERIFY_AUTH_TOKEN", "test-only-key-of-at-least-20-chars")
     monkeypatch.setenv("INTEGRATION_FERNET_KEY", Fernet.generate_key().decode())
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/15")
+    monkeypatch.setenv("PANEL_PUBLIC_URL", "https://orionagenda.pro")
 
 
 class MemoryRedis:
@@ -114,64 +112,53 @@ def re_fullmatch_token(value):
     return re.fullmatch(r"[A-Za-z0-9_-]{43}", value) is not None
 
 
-@pytest.mark.asyncio
-async def test_twilio_verify_http_is_fixed_origin_and_never_returns_code(monkeypatch):
+def test_old_booking_link_is_a_private_proof_not_a_public_protocol(monkeypatch):
+    import secrets
     configure(monkeypatch)
-    sent=[]
-    def receiver(request):
-        sent.append(request)
-        assert request.url.host=="verify.twilio.com"
-        assert request.method=="POST"
-        assert request.url.path.startswith("/v2/Services/VA")
-        assert request.headers["authorization"].startswith("Basic ")
-        content=request.content.decode()
-        assert "To=%2B5567999991111" in content
-        return httpx.Response(201,json={"status":"approved" if "VerificationCheck" in request.url.path else "pending"})
-    original=httpx.AsyncClient
-    def client(*args,**kwargs):
-        return original(transport=httpx.MockTransport(receiver),**kwargs)
-    monkeypatch.setattr(auth.httpx,"AsyncClient",client)
-    assert await auth.provider_request("+5567999991111")
-    assert await auth.provider_request("+5567999991111","123456")
-    assert len(sent)==2
-    assert "Code=123456" not in sent[0].content.decode()
-    assert "Code=123456" in sent[1].content.decode()
+    tenant = uuid4()
+    raw = str(tenant) + "." + secrets.token_urlsafe(32)
+    assert auth.parse_booking_proof("https://orionagenda.pro/a#" + raw)[0] == tenant
+    assert auth.parse_booking_proof(raw)[0] == tenant
+    for invalid in ("AG-G32XU5", "https://orionagenda.pro/AGG32XU5",
+                    "https://attacker.example/a#" + raw,
+                    "https://orionagenda.pro/a?redirect=x#" + raw):
+        with pytest.raises(HTTPException):
+            auth.parse_booking_proof(invalid)
 
 
-@pytest.mark.asyncio
-async def test_anonymous_request_is_uniform_and_not_a_customer_lookup(monkeypatch):
-    configure(monkeypatch)
-    tenant=uuid4()
-    queries=[]
-    monkeypatch.setattr(account,"public_limit",lambda *args,**kwargs: async_none())
-    monkeypatch.setattr(account,"resolve_public",lambda slug: result_value(tenant))
-    async def queued(slug,phone):
-        queries.append((slug,phone))
-    monkeypatch.setattr(account,"enqueue_code",queued)
-    response=await account.request_code("empresa-sintetica",account.PhoneInput(phone="+5567999991111"),request())
-    assert response.status_code==202 and "Se este número" in response.body.decode()
-    assert queries==[("empresa-sintetica","+5567999991111")]
+async def async_none(*_args, **_kwargs):
+    return None
 
 
 async def result_value(value):
     return value
 
 
-async def async_none():
-    return None
+@pytest.mark.asyncio
+async def test_phone_alone_never_reads_private_crm_or_reveals_customer_existence(monkeypatch):
+    configure(monkeypatch)
+    tenant = uuid4()
+    monkeypatch.setattr(account, "public_limit", async_none)
+    monkeypatch.setattr(account, "resolve_public", lambda _: result_value(tenant))
+    monkeypatch.setattr(account, "session_claims", lambda *_: result_value(None))
+    monkeypatch.setattr(account, "get_session_factory",
+                        lambda: pytest.fail("No private database access from phone alone"))
+    result = await account.enter("empresa-sintetica",
+                                 account.PhoneInput(phone="+5567999991111"), request())
+    assert result.status_code == 200
+    assert result.body == b'{"authenticated":false,"proof_required":true}'
 
 
 @pytest.mark.asyncio
-async def test_portal_fails_closed_without_cookie_before_database_read(monkeypatch):
+async def test_portal_denies_private_reads_without_verified_cookie(monkeypatch):
     configure(monkeypatch)
-    monkeypatch.setattr(account,"resolve_public",lambda slug:result_value(uuid4()))
-    async def no_claims(*args):
-        return None
-    monkeypatch.setattr(account,"session_claims",no_claims)
-    monkeypatch.setattr(account,"get_session_factory",lambda:pytest.fail("No database before OTP"))
-    with pytest.raises(HTTPException) as error:
-        await account.identity("empresa-sintetica",request())
-    assert error.value.status_code==401
+    monkeypatch.setattr(account, "resolve_public", lambda _: result_value(uuid4()))
+    monkeypatch.setattr(account, "session_claims", lambda *_: result_value(None))
+    monkeypatch.setattr(account, "get_session_factory",
+                        lambda: pytest.fail("No private data without existing link proof"))
+    with pytest.raises(HTTPException) as exc:
+        await account.identity("empresa-sintetica", request())
+    assert exc.value.status_code == 401
 
 
 def test_summary_omits_private_customer_and_staff_data():
