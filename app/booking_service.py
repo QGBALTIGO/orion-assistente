@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import secrets
+import os
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from uuid import UUID, uuid4
@@ -587,6 +588,9 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                     raise
         else:
             fail(503, "Não foi possível gerar protocolo único")
+        if os.getenv("APPOINTMENT_SHORT_LINKS_ENABLED","0")=="1":
+            from app.appointment_short_links import get_or_create
+            await get_or_create(s, tenant, item_id, candidate)
         for order, item in enumerate(items):
             await s.execute(text("""
                 INSERT INTO appointment_items (
@@ -740,6 +744,9 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
         """), {"tenant": tenant, "id": item_id})).mappings().one()
         if entry["professional_id"] != row["professional_id"]:
             fail(409, "O profissional mudou. Atualize o agendamento")
+        if context is not None and context.role == "professional" and (
+                context.professional_id is None or context.professional_id != entry["professional_id"]):
+            fail(403, "O profissional não está autorizado para este atendimento")
         if customer_phone is not None or expected_snapshot is not None:
             await verify_customer_snapshot(s, tenant, entry, customer_phone, expected_snapshot)
         context = resolved_actor(context, source, entry["customer_id"], verified_customer=customer_phone is not None)
@@ -825,6 +832,9 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
         """), {"tenant": tenant, "id": item_id})).mappings().one()
         if row["professional_id"] != current["professional_id"]:
             fail(409, "O profissional mudou. Atualize o agendamento")
+        if context is not None and context.role == "professional" and (
+                context.professional_id is None or context.professional_id != row["professional_id"]):
+            fail(403, "O profissional não está autorizado para este atendimento")
         if not supplied_clock:
             now = datetime.now(UTC)
         if customer_phone is not None:
