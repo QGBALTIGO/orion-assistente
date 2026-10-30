@@ -110,7 +110,7 @@ test('WhatsApp abre automaticamente somente depois de o backend confirmar, com p
   assert.equal(h.calls.filter(x=>x.options.method==='POST').length,1,'não duplicar reserva');
   assert.equal(opened.length,0,'não abrir WhatsApp enquanto a gravação estiver pendente');
 
-  const message='*Olá, Orion!* 👋\\n\\nAcabei de realizar um agendamento pelo site e gostaria de confirmar meu horário. 😊\\n\\n🧾 Protocolo: *AG-G32XU5*\\n\\n_Aguardo os detalhes da minha confirmação._';
+  const message='*Olá, Orion!* 👋\n\nAcabei de realizar um agendamento pelo site e gostaria de confirmar meu horário. 😊\n\n🧾 Protocolo: *AG-G32XU5*\n\n_Aguardo os detalhes da minha confirmação._';
   const link='https://wa.me/5567999999999?text='+encodeURIComponent(message);
   finish(response({...confirmed(),protocol:'AG-G32XU5',whatsapp_confirmation_url:link},201));
   await flush();
