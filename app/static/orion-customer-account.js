@@ -20,7 +20,7 @@
     available: false, authenticated: false, profile: null, loading: false,
     stage: "phone", loginPhone: "", tab: "upcoming", selected: null,
     lists: {upcoming:null,history:null}, zone: "America/Sao_Paulo",
-    editingPhone: false, phoneStage: "new", newPhone: "", requestNumber: 0
+    editingPhone: false, requestNumber: 0
   };
 
   function el(tag, className="", text="") {
@@ -72,7 +72,7 @@
   function clearPrivateState(){
     state.authenticated=false;state.profile=null;state.lists={upcoming:null,history:null};
     state.selected=null;state.loginPhone="";state.stage="phone";state.editingPhone=false;
-    state.newPhone="";state.phoneStage="new";state.requestNumber++;
+    state.requestNumber++;
     tabs.hidden=true;root.replaceChildren();notice();
   }
   async function withBusy(control,task){
@@ -128,62 +128,68 @@
     if(!state.available){
       wrapper.append(el("h3","","Sua conta em preparação"),
         el("p","customer-account-description",
-          "O acesso por telefone ainda não foi ativado neste estabelecimento. Seus agendamentos continuam disponíveis pelo atendimento da empresa."),
+          "A área do cliente ainda não foi ativada neste estabelecimento. O agendamento pelo site continua funcionando."),
         button("Voltar ao site","outline",()=>dialog.close()));
       body(wrapper);return;
     }
-    const byCode=state.stage==="code";
+    const needsLink=state.stage==="link";
     wrapper.append(
-      el("h3","",byCode?"Confirme seu telefone":"Seus horários, em um só lugar"),
-      el("p","customer-account-description",byCode?
-        "Digite o código enviado por SMS ao número informado. Isso protege seus agendamentos e seus dados.":
-        "Use o mesmo WhatsApp informado nos seus agendamentos. Para proteger seus dados, enviaremos um código por SMS.")
+      el("h3","",needsLink?"Acesse pelo seu agendamento":"Seus horários, em um só lugar"),
+      el("p","customer-account-description",needsLink?
+        "Neste aparelho ainda não há uma conta reconhecida. Para não mostrar os dados de outra pessoa, cole uma única vez o link exclusivo de um agendamento que você já recebeu da empresa.":
+        "Informe o mesmo telefone usado no agendamento. Se já acessou sua conta neste aparelho, a entrada é imediata, sem SMS ou senha.")
     );
     const form=el("form","customer-account-auth-form");
-    if(!byCode){
+    if(!needsLink){
       const phone=labelField("Telefone com DDD","phone","tel",state.loginPhone,true);
       form.append(phone.wrapper);
       const actions=el("div","customer-account-actions");
-      const submit=el("button","primary","Receber código");submit.type="submit";
+      const submit=el("button","primary","Entrar");submit.type="submit";
       actions.append(submit);form.append(actions);
       form.addEventListener("submit",event=>{
         event.preventDefault();
         if(!form.reportValidity())return;
-        withBusy(submit,async()=>{
+        void withBusy(submit,async()=>{
           const normalized=fields.phoneValue(phone.input.value);
-          await api("/request-code","POST",{phone:normalized});
-          state.loginPhone=normalized;state.stage="code";
-          renderLogin();
-          notice("Se houver cadastro neste número, um código de verificação será enviado.");
+          const result=await api("/enter","POST",{phone:normalized});
+          state.loginPhone=normalized;
+          if(result.authenticated){
+            state.authenticated=true;state.profile=result.profile;
+            state.tab="upcoming";state.lists={upcoming:null,history:null};
+            await openTab("upcoming");return;
+          }
+          state.stage="link";renderLogin();
         });
       });
     }else{
-      const input=labelField("Código de verificação","otp","text","",true);
-      input.input.inputMode="numeric";input.input.autocomplete="one-time-code";
-      input.input.pattern="[0-9]{4,10}";input.input.maxLength=10;
-      input.input.placeholder="000000";
-      input.input.dataset.orionField="otp";
+      const input=labelField("Link do seu agendamento","booking_link","text","",true);
+      input.input.placeholder="https://orionagenda.pro/a#...";
+      input.input.autocomplete="off";
+      input.input.maxLength=650;input.input.spellcheck=false;
       form.append(input.wrapper);
       const actions=el("div","customer-account-actions");
       const back=button("Voltar","outline",()=>{state.stage="phone";renderLogin();notice();});
-      const submit=el("button","primary","Entrar na minha conta");submit.type="submit";
+      const submit=el("button","primary","Confirmar acesso");submit.type="submit";
       actions.append(back,submit);form.append(actions);
       form.addEventListener("submit",event=>{
         event.preventDefault();
         if(!form.reportValidity())return;
-        withBusy(submit,async()=>{
-          const result=await api("/verify-code","POST",{phone:state.loginPhone,code:input.input.value.trim()});
-          state.authenticated=true;state.profile=result.profile;state.tab="upcoming";
-          state.lists={upcoming:null,history:null};await openTab("upcoming");
-          notice("Telefone confirmado. Sua conta está protegida.");
+        void withBusy(submit,async()=>{
+          const result=await api("/link-login","POST",{
+            phone:state.loginPhone,booking_link:input.input.value.trim()
+          });
+          state.authenticated=true;state.profile=result.profile;
+          state.tab="upcoming";state.lists={upcoming:null,history:null};
+          await openTab("upcoming");
+          notice("Acesso confirmado. Da próxima vez, neste aparelho, basta entrar com o telefone.");
         });
       });
     }
-    wrapper.append(form,el("p","customer-account-auth-note",
-      byCode?"Não recebeu o código? Volte e solicite outro após alguns minutos.":
-      "Se o número cadastrado estiver incorreto ou não estiver mais com você, peça ajuda à equipe do estabelecimento."));
+    wrapper.append(form,el("p","customer-account-auth-note",needsLink?
+      "O link é o mesmo que abre o gerenciamento do seu horário. Não recebeu um link? Peça à empresa. Não precisamos de código por SMS.":
+      "Por privacidade, apenas conhecer o telefone de alguém não dá acesso ao histórico dessa pessoa."));
     body(wrapper);fieldSet(form);
-    const first=form.querySelector("input");first?.focus({preventScroll:true});
+    form.querySelector("input")?.focus({preventScroll:true});
   }
 
   function renderTabs(){
@@ -393,8 +399,8 @@
     const phoneInfo=el("div");
     phoneInfo.append(el("span","customer-account-description","WhatsApp cadastrado"),
       el("strong","",fields?.phoneDisplay?.(user.whatsapp_e164)||user.whatsapp_e164));
-    phone.append(phoneInfo,button("Alterar telefone","outline",()=>{
-      state.editingPhone=true;state.phoneStage="new";renderPhoneChange();
+    phone.append(phoneInfo,button("Corrigir telefone","outline",()=>{
+      state.editingPhone=true;renderPhoneChange();
     }));
     section.append(phone);
     const actions=el("div","customer-account-profile-footer");
@@ -427,51 +433,12 @@
     const section=el("section","customer-account-section");
     section.append(button("← Voltar aos meus dados","customer-account-secondary",()=>{
       state.editingPhone=false;renderProfile();
-    }));
-    const verifying=state.phoneStage==="code";
-    section.append(el("h3","",verifying?"Confirme o novo número":"Alterar telefone"),
-      el("p","customer-account-description",verifying?
-        "Digite o código enviado por SMS ao novo telefone. Só então seu cadastro será alterado.":
-        "Para evitar acesso indevido ao seu histórico, pediremos um código no novo telefone. Você precisa ter confirmado o telefone atual recentemente."));
-    const form=el("form","customer-account-auth-form");
-    if(!verifying){
-      const phone=labelField("Novo telefone com DDD","phone","tel",state.newPhone,true);
-      form.append(phone.wrapper);
-      const actions=el("div","customer-account-actions");
-      const submit=el("button","primary","Verificar novo telefone");submit.type="submit";
-      actions.append(submit);form.append(actions);
-      form.addEventListener("submit",event=>{
-        event.preventDefault();
-        if(!form.reportValidity())return;
-        withBusy(submit,async()=>{
-          const normalized=fields.phoneValue(phone.input.value);
-          await api("/phone/request-code","POST",{phone:normalized});
-          state.newPhone=normalized;state.phoneStage="code";
-          renderPhoneChange();notice("Enviamos um código para o novo número.");
-        });
-      });
-    }else{
-      const code=labelField("Código recebido","code","text","",true);
-      code.input.inputMode="numeric";code.input.autocomplete="one-time-code";
-      code.input.maxLength=10;code.input.pattern="[0-9]{4,10}";
-      form.append(code.wrapper);
-      const actions=el("div","customer-account-actions");
-      const submit=el("button","primary","Salvar novo telefone");submit.type="submit";
-      actions.append(submit);form.append(actions);
-      form.addEventListener("submit",event=>{
-        event.preventDefault();if(!form.reportValidity())return;
-        withBusy(submit,async()=>{
-          const result=await api("/phone/confirm","POST",
-            {phone:state.newPhone,code:code.input.value.trim()});
-          state.profile=result.profile;state.editingPhone=false;state.lists={upcoming:null,history:null};
-          renderProfile();notice("Telefone alterado com segurança.");
-        });
-      });
-    }
-    section.append(form,
+    }),el("h3","","Corrigir telefone"),
+      el("p","customer-account-description",
+        "Para proteger o histórico e não associar seus horários ao número de outra pessoa, a mudança do WhatsApp deve ser conferida pela equipe do estabelecimento."),
       el("p","customer-account-privacy",
-        "Sem acesso ao telefone antigo? Solicite ajuda à equipe do estabelecimento para verificar seu cadastro."));
-    body(section);fieldSet(form);
+        "Informe à empresa seu número correto e, se tiver, o protocolo de um agendamento. Seus outros dados podem ser atualizados aqui normalmente."));
+    body(section);
   }
 
   async function loadState(){
