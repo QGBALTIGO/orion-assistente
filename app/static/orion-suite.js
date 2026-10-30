@@ -438,7 +438,7 @@
       '<div class="os-finance-title-line"><h1>Financeiro</h1></div>'+
       '<div class="os-actions os-finance-toolbar os-finance-period-row">'+financeMonthPicker()+button('Hoje','finance-today','os-outline os-small')+button('Novo lançamento','new-expense','os-finance-add','plus',can?'':'disabled')+'</div></div>'+
       readOnly+'<div id="osPageBody">'+loading('Carregando movimentações…')+'</div>';
-    if(state.route==='desempenho')html=title('Meu desempenho','Toda a empresa • comissões por profissional')+performancePeriodFilters()+'<div id="osPageBody">'+loading('Calculando o desempenho…')+'</div>';
+    if(state.route==='desempenho')html=title('Meu desempenho',state.entitlements?.code==='essencial'&&!platformWorkspace()?'Atendimentos e resultados da empresa':'Toda a empresa • comissões por profissional')+performancePeriodFilters()+'<div id="osPageBody">'+loading('Calculando o desempenho…')+'</div>';
     if(state.route==='marketing')html=title('Marketing IA','Mensagens automáticas, recuperação de clientes e campanhas em um só lugar')+readOnly+'<div id="osPageBody">'+loading('Carregando campanhas…')+'</div>';
     if(state.route==='site')html=title('Meu Site','Acompanhe os acessos e agendamentos da sua página.')+readOnly+'<div id="osPageBody">'+loading('Carregando sua página…')+'</div>';
     if(state.route==='fidelizacao')html=title('Fidelização','Programa de pontos, cupons automáticos e ações de retenção para trazer o cliente de volta.')+readOnly+'<div id="osPageBody">'+loading('Carregando o programa de fidelidade…')+'</div>';
@@ -471,7 +471,22 @@
       case 'servicos':{const d=await request(apiPath('/services'));if(!current(c))return;state.data.services=rows(d);renderServices();break;}
       case 'funcionarios':{const [p,s,links,team]=await Promise.all([request(apiPath('/professionals')),request(apiPath('/services')),request(apiPath('/professional_services')),request(mgmt('/team'))]);if(!current(c))return;Object.assign(state.data,{professionals:rows(p),services:rows(s),professionalServices:rows(links),team});renderProfessionals();break;}
       case 'financeiro':await loadFinance(c);break;
-      case 'desempenho':{if(state.filters.performancePeriod!=='custom'&&state.filters.performanceDay!==dateKey()){setPerformancePeriod(state.filters.performancePeriod);const filters=document.querySelector('.os-performance-periods');if(filters)filters.outerHTML=performancePeriodFilters();}const [d,g,p,commissions,daily,advances,payments]=await Promise.all([request(mgmt('/performance?'+periodQuery())),request(mgmt('/goals?'+periodQuery())),request(apiPath('/professionals')),(permitted('commissions.advanced')?request(mgmt('/finance/commissions?'+periodQuery())):Promise.resolve({items:[]})),request(mgmt('/performance/daily?'+periodQuery())),request(mgmt('/finance/advances?'+periodQuery()+'&status=all&limit=100')),request(mgmt('/finance?'+periodQuery()+'&entry_type=commission_payment&limit=100'))]);if(!current(c))return;Object.assign(state.data,{performance:d,goals:rows(g),goalTemplates:rows(g.templates),professionals:rows(p),commissions,performanceDaily:daily,financeAdvances:advances,financePayments:payments});renderPerformance(d,rows(g));break;}
+      case 'desempenho':{if(state.filters.performancePeriod!=='custom'&&state.filters.performanceDay!==dateKey()){setPerformancePeriod(state.filters.performancePeriod);const filters=document.querySelector('.os-performance-periods');if(filters)filters.outerHTML=performancePeriodFilters();}
+        // Essencial receives the existing performance data, not advanced goals,
+        // commissions or payout reports reserved for Profissional and Elite.
+        if(state.entitlements?.code==='essencial'&&!platformWorkspace()){
+          const [performance,professionals,daily]=await Promise.all([
+            request(mgmt('/performance?'+periodQuery())),
+            request(apiPath('/professionals')),
+            request(mgmt('/performance/daily?'+periodQuery()))
+          ]);
+          if(!current(c))return;
+          Object.assign(state.data,{performance,performanceDaily:daily,professionals:rows(professionals),
+            goals:[],goalTemplates:[],commissions:{items:[]},financeAdvances:{items:[]},financePayments:{items:[]}});
+          renderEssentialPerformance(performance);
+          break;
+        }
+        const [d,g,p,commissions,daily,advances,payments]=await Promise.all([request(mgmt('/performance?'+periodQuery())),request(mgmt('/goals?'+periodQuery())),request(apiPath('/professionals')),(permitted('commissions.advanced')?request(mgmt('/finance/commissions?'+periodQuery())):Promise.resolve({items:[]})),request(mgmt('/performance/daily?'+periodQuery())),request(mgmt('/finance/advances?'+periodQuery()+'&status=all&limit=100')),request(mgmt('/finance?'+periodQuery()+'&entry_type=commission_payment&limit=100'))]);if(!current(c))return;Object.assign(state.data,{performance:d,goals:rows(g),goalTemplates:rows(g.templates),professionals:rows(p),commissions,performanceDaily:daily,financeAdvances:advances,financePayments:payments});renderPerformance(d,rows(g));break;}
       case 'marketing':await loadMarketing(c);break;
       case 'site':await loadSite(c);break;
       case 'fidelizacao':await loadLoyalty(c);break;
@@ -1026,6 +1041,31 @@
   async function showSettlementDetail(id){const c=context();showDialog('settlement-detail','Registro de quitação',loading('Carregando registro…'));const d=state.dialog;try{const item=await request(mgmt('/finance/settlements/'+encodeURIComponent(id)));if(!stillAccount(c)||state.dialog!==d)return;const content='<div class="os-summary">'+[['Profissional',item.professional_name],['Registrada em',fmtDate(dateKey(new Date(item.settled_at)))+' às '+timeLabel(item.settled_at)],['Comissões acumuladas',money(item.earned_cents)],['Vales compensados nesta quitação',money(item.allocated_cents)],['Pagamento registrado',money(item.payment_cents)],['Identificação',item.id]].map(([label,value])=>'<div class="os-summary-row"><span>'+esc(label)+'</span><strong>'+esc(value)+'</strong></div>').join('')+'</div>'+(rows(item.allocations).length?'<h3 class="os-section-gap">Vales compensados</h3>'+rows(item.allocations).map(row=>'<div class="os-summary-row"><span>'+esc(row.description)+'</span><strong>'+money(row.amount_cents)+'</strong></div>').join(''):'')+(item.notes?'<p class="os-help os-section-gap">'+esc(item.notes)+'</p>':'')+'<p class="os-help os-section-gap">O registro e os lançamentos vinculados preservam o histórico da quitação.</p><div class="os-form-actions">'+button('Fechar','close-dialog','os-outline')+'</div>';$('osDialog').innerHTML='<button class="os-icon-button os-close" type="button" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Registro de quitação</h2>'+content;}catch(error){if(stillAccount(c)&&state.dialog===d)dialogError(error);}}
   function showLockedFinance(entry){showDialog('finance-readonly','Lançamento vinculado a uma quitação','<div class="os-summary">'+[['Descrição',entry.description],['Valor',money(entry.amount_cents)],['Data',fmtDate(dateKey(new Date(entry.occurred_at)))],['Forma de pagamento',paymentLabels[entry.payment_method]||entry.payment_method],['Status',statusLabels[entry.status]||entry.status]].map(([label,value])=>'<div class="os-summary-row"><span>'+esc(label)+'</span><strong>'+esc(value)+'</strong></div>').join('')+'</div><p class="os-help os-section-gap">Este lançamento participa de uma quitação. O histórico é preservado e não pode ser editado pelo cadastro comum.</p><div class="os-form-actions">'+button('Fechar','close-dialog','os-outline')+'</div>');}
   function performanceSeries(){const grouped=new Map(),weekly=state.filters.performanceGroup==='week';for(const row of rows(state.data.performanceDaily)){const day=String(row.date).slice(0,10),key=weekly?shiftDay(day,-((dayDate(day).getUTCDay()+6)%7)):day;if(!grouped.has(key))grouped.set(key,{date:key,completed:0,revenue_cents:0,commission_cents:0});const result=grouped.get(key);['completed','revenue_cents','commission_cents'].forEach(k=>result[k]+=number(row[k]));}return [...grouped.values()].sort((a,b)=>a.date.localeCompare(b.date));}
+  function renderEssentialPerformance(data){
+    // The same Orion styling, filters, daily series and professional history,
+    // without private advanced commission, payout or goals endpoints.
+    const list=rows(data),series=performanceSeries();
+    const total=(key)=>list.reduce((sum,item)=>sum+number(item[key]),0);
+    const completed=total('completed'),cancelled=total('cancelled'),revenue=total('revenue_cents');
+    let html='<div class="os-metrics os-performance-metrics">'+
+      metric('Atendimentos concluídos',completed,'calendar')+
+      metric('Valor vendido',money(revenue),'wallet')+
+      metric('Cancelamentos',cancelled,'close')+'</div>';
+    html+='<section class="os-card os-performance-card"><div class="os-card-header"><h2>Evolução de faturamento</h2><div class="os-pill-tabs" role="tablist" aria-label="Agrupamento do gráfico">'+
+      [['day','Por dia'],['week','Por semana']].map(([v,l])=>
+        '<button type="button" class="os-pill-tab" role="tab" aria-selected="'+(state.filters.performanceGroup===v)+'" data-os-performance-group="'+v+'">'+l+'</button>').join('')+
+      '</div></div>'+(series.length?seriesChart(series,[['revenue_cents','Receita','primary']]):'<p class="os-finance-empty">Sem atendimentos concluídos neste período.</p>')+'</section>';
+    html+='<section class="os-card os-performance-card"><div class="os-card-header"><h2>Evolução detalhada</h2></div>'+
+      (series.length?'<div class="os-table-scroll"><table class="os-table"><thead><tr><th>'+(state.filters.performanceGroup==='week'?'Semana de':'Dia')+'</th><th>Atendimentos</th><th>Valor vendido</th></tr></thead><tbody>'+
+      series.map(item=>'<tr><td>'+fmtDate(item.date)+'</td><td>'+number(item.completed)+'</td><td>'+money(item.revenue_cents)+'</td></tr>').join('')+
+      '</tbody><tfoot><tr><th>Total</th><th>'+completed+'</th><th>'+money(revenue)+'</th></tr></tfoot></table></div>':
+      '<p class="os-finance-empty">Sem movimentações neste período.</p>')+'</section>';
+    html+='<section class="os-card os-performance-card os-professional-results"><div class="os-card-header"><div><h2>Resultados por profissional</h2><p>Consulte os atendimentos de cada profissional no período selecionado.</p></div></div>'+
+      (list.length?'<div class="os-table-scroll"><table class="os-table"><thead><tr><th>Profissional</th><th>Atendidos</th><th>Cancelamentos</th><th>Valor vendido</th></tr></thead><tbody>'+
+      list.map(p=>'<tr><td><div class="os-person"><button type="button" class="os-icon-button os-professional-history-button" data-os-performance-history="'+esc(p.id)+'" aria-label="Ver histórico de '+esc(p.name)+'" title="Ver histórico">'+icon('eye')+'</button><strong>'+esc(p.name)+'</strong></div></td><td>'+number(p.completed)+'</td><td>'+number(p.cancelled)+'</td><td>'+money(p.revenue_cents)+'</td></tr>').join('')+
+      '</tbody></table></div>':'<p class="os-finance-empty">Cadastre profissionais para acompanhar os resultados.</p>')+'</section>';
+    bodyHTML(html);
+  }
   function renderPerformance(data,goals=[]){
     const list=rows(data),report=rows(state.data.commissions),sum=(items,key)=>items.reduce((n,x)=>n+number(x[key]),0),revenue=sum(list,'revenue_cents'),completed=sum(list,'completed'),earned=sum(report,'earned_cents'),advances=sum(report,'advances_cents'),payable=sum(report,'payable_cents'),series=performanceSeries();
     let html='<div class="os-metrics os-performance-metrics">'+metric('Atendimentos',completed,'calendar')+metric('Valor vendido',money(revenue),'wallet')+metric('Comissão bruta',money(earned),'chart',report.length===1&&report[0].commission_mode!=='per_service'?number(report[0].commission_percent).toLocaleString('pt-BR')+'% base':'Taxas por profissional')+metric('Vales no período',money(advances),'credit')+'</div><section class="os-card os-performance-card"><h2>Resumo a receber</h2><div class="os-performance-summary"><div><span>Comissão do período</span><strong>'+money(earned)+'</strong></div><div><span>( − ) Vales no período</span><strong>'+money(advances)+'</strong></div><div><span>Saldo acumulado a pagar</span><strong class="os-positive">'+money(payable)+'</strong></div></div><p class="os-help" style="margin-top:16px">O saldo acumulado considera todas as comissões registradas, os vales e os pagamentos anteriores.</p></section>';
