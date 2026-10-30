@@ -114,6 +114,7 @@ def qualification_server(request):
     env = {k: v for k, v in os.environ.items() if k.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "HOME", "LANG", "LC_ALL"}}
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", secrets.token_bytes(32), salt, 200_000)
+    from cryptography.fernet import Fernet
     env.update({
         "PYTHONPATH": str(ROOT), "PYTHONUNBUFFERED": "1",
         "APP_DATABASE_URL": runtime, "MIGRATION_DATABASE_URL": migration,
@@ -121,7 +122,15 @@ def qualification_server(request):
         "SUPPORT_API_TOKEN": "synthetic-e2e-only-00000000000000000000000000000000000000000000000000",
         "PANEL_ADMIN_USERNAME": "synthetic-disabled-operator",
         "PANEL_ADMIN_PASSWORD_HASH": "pbkdf2_sha256$200000$" + base64.urlsafe_b64encode(salt).decode() + "$" + base64.urlsafe_b64encode(digest).decode(),
-        "PANEL_REGISTRATION_ENABLED": "1", "PANEL_EMAIL_ENABLED": "0", "PANEL_TEST_MODE": "0",
+        # Sign-up needs mail configuration to issue the OTP, but no worker is
+        # started: outbox remains in this disposable PostgreSQL. The fake Resend
+        # credential cannot deliver; E2E never contacts a real provider.
+        "PANEL_REGISTRATION_ENABLED": "1", "PANEL_EMAIL_ENABLED": "1", "PANEL_TEST_MODE": "0",
+        "PANEL_EMAIL_LIVE_SEND": "1", "PANEL_EMAIL_TRANSPORT": "resend_https",
+        "PANEL_SMTP_PASSWORD": "synthetic-only-not-a-valid-provider-credential",
+        "PANEL_SMTP_FROM": "Orion E2E <no-reply@example.invalid>",
+        "PANEL_EMAIL_FERNET_KEY": Fernet.generate_key().decode(),
+        "PANEL_OTP_SECRET": secrets.token_urlsafe(48),
         "PANEL_PUBLIC_URL": origin, "ONBOARDING_ENABLED": "1", "BUSINESS_PROFILES_ENABLED": "1",
         "COMMERCIAL_CATALOG_ENABLED": "1", "COMMERCIAL_ORDERS_ENABLED": "0",
         "COMMERCIAL_FULFILLMENT_ENABLED": "0", "QR_CHANNELS_ENABLED": "0",

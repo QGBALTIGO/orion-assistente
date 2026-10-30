@@ -276,7 +276,10 @@ def seed_fixture_plans(sandbox, db, tenants):
     if (identity["database_name"] != sandbox.name or identity["oid"] != sandbox.oid
             or identity["role_name"] != "postgres" or identity["owner_name"] != "postgres"):
         raise ValueError("Disposable database identity changed; refusing synthetic grants")
-    if db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() != "0050_plan_permissions":
+    # Later additive protocol/phone revisions do not alter tenant_plan_controls.
+    # Refuse every unknown future revision until the CI fixture is reviewed.
+    revision = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+    if revision not in {"0050_plan_permissions", "0051_central_protocol", "0052_paraguay_phone"}:
         raise ValueError("Synthetic plan fixture requires its reviewed schema")
     actor = uuid4()
     db.execute(text("""INSERT INTO panel_accounts(id,name,email,password_hash,role)
