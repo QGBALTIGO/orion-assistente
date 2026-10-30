@@ -58,8 +58,8 @@ class StaffAction(StrictModel):
     idempotency_key: UUID | None = None
 
 
-def private_json(body):
-    return JSONResponse(jsonable_encoder(body), headers=PRIVATE_HEADERS)
+def private_json(body, status_code=200):
+    return JSONResponse(jsonable_encoder(body), status_code=status_code, headers=PRIVATE_HEADERS)
 
 
 @router.post("/api/short-appointments/{code}/request-code", status_code=202)
@@ -73,7 +73,7 @@ async def request_code(code: str, payload: DeliveryRequest, request: Request):
     resolved = await resolve_global(code)
     if resolved:
         await request_otp(resolved["tenant_id"], resolved["appointment_id"], payload.recipient_kind)
-    return private_json(GENERIC_REQUEST)
+    return private_json(GENERIC_REQUEST,status_code=202)
 
 
 @router.post("/api/short-appointments/{code}/verify-code")
