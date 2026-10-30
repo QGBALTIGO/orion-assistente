@@ -145,6 +145,35 @@ async def test_central_redirect_does_not_link_an_uncommitted_or_wrong_phone_book
 
 
 @pytest.mark.asyncio
+async def test_no_active_essencial_plan_never_redirects_to_admin(monkeypatch):
+    from app import public_site_api, plan_permissions
+    tenant, admin = uuid4(), uuid4()
+    db = BookingSession(uuid4())
+    db.tenant = tenant
+
+    async def resolve(_slug):
+        return tenant
+
+    async def unavailable(_db, target, feature):
+        assert target == tenant and feature == 'notifications.basic'
+        return False
+
+    async def forbidden(_tenant):
+        pytest.fail('Never reveal the central sender to an unentitled booking')
+
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
+    monkeypatch.setenv('ORION_CENTRAL_APPOINTMENT_WHATSAPP_ENABLED','1')
+    monkeypatch.setenv('QR_AI_TENANT_ID',str(admin))
+    monkeypatch.setattr(public_site_api,'resolve_public',resolve)
+    monkeypatch.setattr(confirmation,'get_session_factory',lambda:lambda:db)
+    monkeypatch.setattr(confirmation,'tenant_transaction',tenant_scope)
+    monkeypatch.setattr(confirmation,'connected_channel_phone',forbidden)
+    monkeypatch.setattr(plan_permissions,'has_feature',unavailable)
+    assert await confirmation.public_followup('unpaid-site',{
+        'protocol':'AG-G32XU5'},'+5567999999902') == {}
+
+
+@pytest.mark.asyncio
 async def test_central_number_never_comes_from_company_site_config(monkeypatch):
     from app import qr_legacy
     hub = uuid4()
