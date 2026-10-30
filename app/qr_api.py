@@ -1,11 +1,12 @@
 """API protegida para QR/código e caixa de conversas do dispositivo vinculado."""
 import asyncio
 import os
+import re
 import secrets
 import unicodedata
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from uuid import UUID
 
 import httpx
@@ -156,12 +157,32 @@ async def saved_chat_names(tenant_id: UUID | None, phones) -> dict[str, str]:
 
 
 def _config()->tuple[str,str]:
-    url=os.getenv("QR_BRIDGE_URL","").rstrip("/")
+    """Never send a privileged bridge token to a host hidden inside URL text.
+
+    The bridge must be a single Railway-private hostname on its fixed port.
+    Paths, user-info, redirects, query strings and arbitrary hostnames are not
+    configuration options.  Construct the canonical base from parsed parts.
+    """
+    configured=os.getenv("QR_BRIDGE_URL","")
     token=os.getenv("QR_BRIDGE_TOKEN","")
-    if (not url.startswith("http://") or not url.endswith(".railway.internal:3000")
-            or "@" in url or "?" in url or "#" in url or len(token)<32):
+    try:
+        parts=urlsplit(configured)
+        host=parts.hostname or ""
+        allowed=(
+            parts.scheme=="http"
+            and bool(re.fullmatch(r"[a-z0-9][a-z0-9-]*\.railway\.internal",host))
+            and parts.port==3000
+            and parts.netloc==host+":3000"
+            and parts.path in ("","/")
+            and not parts.query and not parts.fragment
+            and parts.username is None and parts.password is None
+            and len(token)>=32
+        )
+    except (ValueError,TypeError):
+        allowed=False
+    if not allowed:
         raise HTTPException(503,"Integração WhatsApp ainda não configurada")
-    return url,token
+    return "http://"+host+":3000",token
 
 
 async def _bridge(path:str,method:str="GET",payload:dict|None=None,query:dict|None=None)->dict:

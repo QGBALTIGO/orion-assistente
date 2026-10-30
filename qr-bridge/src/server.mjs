@@ -31,6 +31,7 @@ import {transcriberConfig,cleanPictureUrl,transcribeAudio,handleCallOffers} from
 import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
 import {forwardAssistant,registerAssistantIngress} from "./ai-forward.mjs";
 import {isBookingProtocolMessage,fetchBookingProtocolConfirmation,resolveBookingSenderPhone} from "./appointment-confirmation.mjs";
+import {makeBookingIntakeGuard} from './booking-intake-guard.mjs';
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
 import {deliveryPolicy} from "./pilot-send-policy.mjs";
 import {resolvePilotRecipient,makePilotDeviceCache} from "./pilot-recipient.mjs";
@@ -309,6 +310,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
   });
   const inboundMetadata=new Map();
   const handledBookingProtocols=new Set();
+  const bookingAdmission=makeBookingIntakeGuard();
   const intakeCurrent=()=>mine===generation&&socket===client&&status==='connected';
   const typingPresence=makeAssistantTyping({socket:client,pilotPhone:pilotNumber,isConnected:intakeCurrent,
     isAllowed:phone=>allowAssistantRecipient(phone,connectedStore.settings())});
@@ -432,6 +434,12 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
         if(handledBookingProtocols.has(key)||seen.has('wa:'+traceId)){
           transport.record('booking_protocol_duplicate',traceId);continue;
         }
+        // Bounded before PN resolution, Redis lookup, or a send-capacity wait.
+        // A burst of protocol-looking text must never create unbounded tasks.
+        const releaseAdmission=bookingAdmission.reserve();
+        if(!releaseAdmission){
+          transport.record('booking_protocol_capacity_full',traceId);continue;
+        }
         handledBookingProtocols.add(key);
         if(handledBookingProtocols.size>2000)
           handledBookingProtocols.delete(handledBookingProtocols.values().next().value);
@@ -441,8 +449,16 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
             const phone=await resolveBookingSenderPhone(message.key,client,{isCurrent:intakeCurrent});
             if(!intakeCurrent())return;
             if(!phone){
+              // A verified LID->PN mapping may arrive later for the same WA ID.
+              // This callback never sent anything, so a fresh provider retry
+              // can safely re-evaluate its sender identity.
+              handledBookingProtocols.delete(key);
               transport.record('booking_protocol_identity_unresolved',traceId,{
                 kind:String(message.key.remoteJid||'').endsWith('@lid')?'lid':'pn'});
+              return;
+            }
+            if(!bookingAdmission.allowSender(phone)){
+              transport.record('booking_protocol_rate_limited',traceId);
               return;
             }
             transport.record('booking_protocol_identity_verified',traceId);
@@ -478,7 +494,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
               error?.name==='AbortError'?'timeout':'other';
             // No phone, LID, untrusted text, token or provider exception in logs.
             transport.record('booking_protocol_failed',traceId,{category:phase,error:category});
-          }
+          }finally{releaseAdmission();}
         })();
         jobs.push(task);
         continue;

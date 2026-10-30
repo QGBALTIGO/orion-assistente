@@ -1,0 +1,69 @@
+name: Orion WhatsApp — security-critical regression
+
+on:
+  pull_request:
+    paths:
+      - 'app/qr_api.py'
+      - 'app/central_appointment_reply.py'
+      - 'qr-bridge/src/**'
+      - 'qr-bridge/test/**'
+      - 'tests/unit/test_whatsapp_bridge_url_security.py'
+      - 'tests/unit/test_central_confirmation_reply.py'
+      - '.github/workflows/whatsapp-security-audit.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/qr_api.py'
+      - 'app/central_appointment_reply.py'
+      - 'qr-bridge/src/**'
+      - 'qr-bridge/test/**'
+      - 'tests/unit/test_whatsapp_bridge_url_security.py'
+      - 'tests/unit/test_central_confirmation_reply.py'
+      - '.github/workflows/whatsapp-security-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  private-bridge:
+    name: QR authentication, intake guard and encrypted retry
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned QR dependencies for isolated tests
+        run: npm install --prefix qr-bridge --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Source syntax and targeted security contract
+        run: |
+          node --check qr-bridge/src/server.mjs
+          node --check qr-bridge/src/booking-intake-guard.mjs
+          node --check qr-bridge/src/encrypted-retry-store.mjs
+          node --test \
+            qr-bridge/test/booking-intake-guard.test.mjs \
+            qr-bridge/test/audio-inbound-routing.test.mjs \
+            qr-bridge/test/appointment-confirmation.test.mjs \
+            qr-bridge/test/assistant-typing.test.mjs \
+            qr-bridge/test/encrypted-retry-store.test.mjs \
+            qr-bridge/test/reliable-send.test.mjs \
+            qr-bridge/test/send-capacity.test.mjs
+
+  private-api:
+    name: Private URL, CSRF and central protocol quotas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned backend requirements
+        run: python -m pip install -c requirements.lock '.[test]'
+      - name: Authenticated private URL and DB-read guard
+        run: |
+          python -m pytest -q -ra \
+            tests/unit/test_whatsapp_bridge_url_security.py \
+            tests/unit/test_central_confirmation_reply.py

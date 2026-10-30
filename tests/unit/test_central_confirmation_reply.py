@@ -28,6 +28,9 @@ def enable(monkeypatch):
     monkeypatch.setenv('ORION_CENTRAL_APPOINTMENT_WHATSAPP_ENABLED','1')
     monkeypatch.setenv('ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED','1')
     monkeypatch.setenv('QR_AI_TENANT_ID',str(uuid4()))
+    async def no_network_rate_limit(_request, _phone):
+        return None
+    monkeypatch.setattr(api, '_limit_protocol_lookup', no_network_rate_limit)
 
 
 def message(phone='5567998888777'):
@@ -111,3 +114,49 @@ def test_central_token_access_still_requires_global_activation(monkeypatch):
     monkeypatch.setenv('ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED','0')
     with pytest.raises(HTTPException) as error:access.require_tenant(uuid4())
     assert error.value.status_code==404
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_is_enforced_before_cross_tenant_database_lookup(monkeypatch):
+    enable(monkeypatch)
+    called=[]
+    async def limited(_request, phone):
+        called.append(phone)
+        raise HTTPException(429,'Muitas tentativas')
+    monkeypatch.setattr(api,'_limit_protocol_lookup',limited)
+    monkeypatch.setattr(api,'support_session_factory',
+                        lambda:pytest.fail('rate-limited caller must not access database'))
+    with pytest.raises(HTTPException) as exc:
+        await api.confirm_inbound_protocol(message('595992820210'),request())
+    assert exc.value.status_code==429
+    assert called==['595992820210']
+
+
+@pytest.mark.asyncio
+async def test_empty_non_protocol_input_never_consumes_rate_limit(monkeypatch):
+    enable(monkeypatch)
+    async def unexpected(*args):
+        pytest.fail('invalid protocol cannot consume database or limiter')
+    monkeypatch.setattr(api,'_limit_protocol_lookup',unexpected)
+    monkeypatch.setattr(api,'support_session_factory',unexpected)
+    payload=api.IncomingProtocol(phone='595992820210',message_id='M-1',text='olá!')
+    assert (await api.confirm_inbound_protocol(payload,request()))['state']=='not_protocol'
+
+
+@pytest.mark.asyncio
+async def test_quotas_have_separate_phone_and_global_keys_and_are_hashed(monkeypatch):
+    monkeypatch.setenv('QR_BRIDGE_TOKEN','synthetic-limiter-hmac-key-'+'x'*40)
+    from app import public_site_api
+    captured=[]
+    async def fake_limit(_request,slug,category,limit,window,subject):
+        captured.append((slug,category,limit,window,subject))
+    monkeypatch.setattr(public_site_api,'public_limit',fake_limit)
+    await api._limit_protocol_lookup(request(),'595992820210')
+    import hashlib,hmac
+    digest=hmac.new(os.environ['QR_BRIDGE_TOKEN'].encode(),
+                    b'595992820210',hashlib.sha256).hexdigest()
+    assert captured==[
+        ('orion-central-qr','qr-protocol-phone',8,300,digest),
+        ('orion-central-qr','qr-protocol-global',120,60,'all')
+    ]
+    assert '595992820210' not in str(captured)
