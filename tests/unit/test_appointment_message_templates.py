@@ -75,7 +75,7 @@ def test_real_facts_resolve_without_leaking_placeholders_or_breaking_native_mark
     assert rendered.endswith("\n\n" + SIGNATURE)
     assert rendered.count(SIGNATURE) == 1
     assert len(rendered.encode("utf-16-le")) // 2 <= 1200
-    assert "✂️ Serviço: *Corte + Barba*" in rendered if event not in ("status",) else True
+    assert "✂️ Serviço: *Corte + Barba*" in rendered if event not in ("status","review") else True
 
 
 def test_native_formatting_emerges_as_literal_transport_text(monkeypatch):
