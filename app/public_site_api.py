@@ -107,7 +107,9 @@ def checked_slug(slug):
 
 
 def signing_key():
-    raw=os.getenv('PUBLIC_SITE_SIGNING_KEY') or os.getenv('SUPPORT_API_TOKEN','')
+    # Separate privilege domains: never derive public capabilities from the
+    # platform administrator's API token, even with HMAC domain separation.
+    raw=os.getenv('PUBLIC_SITE_SIGNING_KEY','')
     if len(raw)<32:raise HTTPException(503,'Agendamento temporariamente indisponível')
     return hmac.new(raw.encode(),b'orion-public-quotes:v1',hashlib.sha256).digest()
 
