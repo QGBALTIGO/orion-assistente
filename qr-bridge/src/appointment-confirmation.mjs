@@ -26,7 +26,7 @@ export async function resolveBookingSenderPhone(key,client,{
   const remote=String(key?.remoteJid||'');
   if(!isCurrent())return null;
   let phone=await resolver(key,client);
-  if(phone||!/^\\d{8,20}(?::\\d+)?@lid$/.test(remote))return phone;
+  if(phone||!/^\d{8,20}(?::\d+)?@lid$/.test(remote))return phone;
   for(const ms of [150,350,600]){
     if(!isCurrent())return null;
     await sleep(ms);
