@@ -81,6 +81,16 @@ async def confirm_inbound_protocol(payload:IncomingProtocol,request:Request):
 
     if result is None:
         return {'state':'unrecognized','answer':GENERIC}
+    # A valid protocol and phone do not grant a paid feature on their own.
+    # Only a company with active Essencial-or-higher notifications may use
+    # the platform WhatsApp. Fail closed on plan-store outages.
+    try:
+        from app.plan_permissions import tenant_has_feature
+        authorized = await tenant_has_feature(result['tenant_id'], 'notifications.basic')
+    except Exception:
+        return {'state':'unavailable','answer':None}
+    if not authorized:
+        return {'state':'unrecognized','answer':GENERIC}
     answer=await confirmation_reply(result['tenant_id'],payload.phone,payload.text,
                                     'central-admin-qr',payload.message_id,central=True)
     if not answer:

@@ -58,7 +58,8 @@ def require_tenant(tenant):
     # by the admin's centralized booking reception. This does not enable the
     # AI bot, automatic broadcast, or the pilot tenant's QR send permissions.
     if (enabled() and os.getenv('ORION_CENTRAL_APPOINTMENT_WHATSAPP_ENABLED')=='1'
-            and os.getenv('ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED')=='1'):return
+            and (os.getenv('ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED')=='1'
+                 or os.getenv('ORION_CENTRAL_NOTIFICATIONS_ENABLED')=='1')):return
     raise HTTPException(404,'Recurso indisponível para esta empresa')
 
 

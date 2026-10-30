@@ -48,7 +48,10 @@ class Settings(StrictModel):
 @router.get('')
 async def configuration(tenant_id:UUID,actor:Actor=Depends(authenticate)):
     await resolve_tenant_access(actor,tenant_id)
-    if not access.tenant_enabled(tenant_id):return {'available':False,'settings':DEFAULTS,'notifications':[],'reviews':[]}
+    from app.appointment_notifications import central_enabled, notification_settings, central_channel
+    central = central_enabled()
+    if not (access.tenant_enabled(tenant_id) or central):
+        return {'available':False,'settings':DEFAULTS,'notifications':[],'reviews':[]}
     async with management_session(tenant_id,actor) as db:
         zone=(await db.execute(text('SELECT timezone FROM tenants WHERE id=:t'),{'t':tenant_id})).scalar_one()
         settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant_id})).mappings().first()
@@ -66,16 +69,22 @@ async def configuration(tenant_id:UUID,actor:Actor=Depends(authenticate)):
             FROM appointment_reviews r JOIN appointments a ON a.tenant_id=r.tenant_id AND a.id=r.appointment_id
             JOIN professionals p ON p.tenant_id=r.tenant_id AND p.id=r.professional_id
             WHERE r.tenant_id=:t ORDER BY r.created_at DESC LIMIT 50'''),{'t':tenant_id})).mappings().all()
+    admin,admin_channel = central_channel() if central else (None,None)
     async with support_session_factory()() as registry:
         from app.qr_channels import _canonical
-        channel,state=await _canonical(registry,tenant_id)
-    return jsonable_encoder({'available':True,'timezone':zone,'settings':dict(settings) if settings else DEFAULTS,
-        'pilot_only':access.pilot_only(),
-        'pilot_prepared':bool(access.pilot_only() and settings and settings['enabled'] and channel is not None and
+        channel,state=await _canonical(registry,admin if central else tenant_id)
+    chosen = notification_settings(settings,central,admin_channel) if central else (dict(settings) if settings else DEFAULTS)
+    return jsonable_encoder({'available':True,'timezone':zone,'settings':chosen,
+        'central_sender':central,
+        'pilot_only':access.pilot_only() and not central,
+        'pilot_prepared':bool(not central and access.pilot_only() and settings and settings['enabled'] and channel is not None and
             os.getenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','') in channel['allowed_senders']),
-        'return_services':[dict(x) for x in services],'canonical_channel_id':channel['id'] if channel is not None and state=='ready' else None,
+        'return_services':[dict(x) for x in services],
+        'canonical_channel_id':channel['id'] if channel is not None and state=='ready' else None,
+        'channel_connected':bool(channel is not None and state=='ready'),
         'notifications':[dict(x) for x in notifications],'reviews':[dict(x) for x in reviews],
-        'transport_limit':'Envio restrito aos contatos autorizados no canal QR; API oficial não ativada por este fluxo.'})
+        'transport_limit':('Os avisos operacionais são enviados somente pelo WhatsApp conectado ao administrador do Orion.'
+            if central else 'Envio restrito aos contatos autorizados no canal QR; API oficial não ativada por este fluxo.')})
 
 
 class PilotPreparation(StrictModel):
@@ -169,20 +178,30 @@ async def prepare_admin_pilot(tenant_id:UUID,payload:PilotPreparation,actor:Acto
 @router.put('')
 async def save_configuration(tenant_id:UUID,payload:Settings,actor:Actor=Depends(authenticate)):
     access.require_tenant(tenant_id)
-    if access.pilot_only() and actor.role!='admin':raise HTTPException(403,'O piloto exige a conta de admin')
+    from app.appointment_notifications import central_enabled,central_channel
+    central=central_enabled()
+    if not central and access.pilot_only() and actor.role!='admin':
+        raise HTTPException(403,'O piloto exige a conta de admin')
     await resolve_tenant_access(actor,tenant_id,'publish')
     if payload.enabled and not payload.acknowledged:
         raise HTTPException(422,'Confirme a autorização dos contatos e a revisão das mensagens antes de ativar')
+    admin,admin_channel=central_channel() if central else (None,None)
+    if central and payload.channel_id not in {None,admin_channel}:
+        raise HTTPException(422,'O canal de notificações é definido exclusivamente pelo Orion')
     async with support_session_factory()() as registry:
         from app.qr_channels import _canonical
-        channel,state=await _canonical(registry,tenant_id)
-    if payload.enabled and (not channel or state!='ready' or channel['id']!=payload.channel_id or not channel['enabled']):
-        raise HTTPException(409,'Selecione a conexão atual da empresa')
+        channel,state=await _canonical(registry,admin if central else tenant_id)
+    expected_channel=admin_channel if central else payload.channel_id
+    if payload.enabled and (not channel or state!='ready' or channel['id']!=expected_channel or not channel['enabled']):
+        raise HTTPException(409,'Conexão do WhatsApp central indisponível' if central else 'Selecione a conexão atual da empresa')
     async with management_session(tenant_id,actor,write=True) as db:
         await db.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:key,0))'),{'key':'appointment-settings:'+str(tenant_id)})
         current=(await db.execute(text('SELECT version FROM appointment_communication_settings WHERE tenant_id=:t FOR UPDATE'),{'t':tenant_id})).scalar_one_or_none()
         if (current or 0)!=payload.expected_version:raise HTTPException(409,'A configuração mudou. Atualize antes de salvar')
         fields=payload.model_dump(exclude={'expected_version','acknowledged','return_intervals'})
+        # The source tenant may save preferences but cannot claim a channel
+        # owned by the administrator or select a different outbound phone.
+        if central:fields['channel_id']=None
         ids=list(payload.return_intervals)
         if ids:
             count=(await db.execute(text('SELECT count(*) FROM services WHERE tenant_id=:t AND id=ANY(CAST(:ids AS uuid[])) AND active'),{'t':tenant_id,'ids':ids})).scalar_one()
