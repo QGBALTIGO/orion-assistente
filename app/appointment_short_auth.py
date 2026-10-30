@@ -6,6 +6,7 @@ The OTP is stored as an HMAC, not plaintext or an unsalted six-digit digest.
 from datetime import timedelta
 from uuid import uuid4
 
+from cryptography.fernet import InvalidToken
 from fastapi import HTTPException
 from sqlalchemy import text
 
@@ -156,7 +157,7 @@ async def process_short_otp(ctx, tenant_id, challenge_id):
                 body = cipher().decrypt(job["body_encrypted"].encode()).decode()
                 if len(body) > 1200:
                     raise ValueError("invalid_body")
-            except (ValueError,AttributeError,UnicodeError):
+            except (InvalidToken,ValueError,AttributeError,UnicodeError):
                 await db.execute(text("""
                     UPDATE appointment_short_challenges SET status='failed',body_encrypted=NULL
                     WHERE tenant_id=:t AND id=:id
