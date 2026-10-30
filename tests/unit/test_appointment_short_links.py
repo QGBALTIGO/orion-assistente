@@ -81,16 +81,20 @@ def test_anonymous_unknown_request_is_indistinguishable_and_sends_nothing(monkey
     monkeypatch.setenv("APPOINTMENT_COMMUNICATIONS_ENABLED", "1")
     monkeypatch.setenv("APPOINTMENT_SHORT_LINKS_ENABLED", "1")
     async def rate(*args, **kwargs):return None
-    async def missing(code):return None
-    async def illegal(*args):raise AssertionError("Must not call delivery for unknown code")
+    accepted = []
+    async def queue_only(code, role):
+        accepted.append((code, role))
+    async def illegal(*args):
+        raise AssertionError("Public API must not query appointment existence")
     monkeypatch.setattr(api, "public_limit", rate)
-    monkeypatch.setattr(api, "resolve_global", missing)
-    monkeypatch.setattr(api, "request_otp", illegal)
+    monkeypatch.setattr(api, "resolve_global", illegal)
+    monkeypatch.setattr(api, "enqueue_request", queue_only)
     with TestClient(app) as client:
         reply = client.post("/api/short-appointments/AGABCDEF/request-code",
                             json={"recipient_kind": "customer"})
         assert reply.status_code == 202
         assert reply.json() == links.GENERIC_REQUEST
+        assert accepted == [("AGABCDEF", "customer")]
         assert "no-store" in reply.headers["cache-control"]
         failed = client.post("/api/short-appointments/AGABCDEF/verify-code",
                              json={"recipient_kind": "professional", "otp": "000001"})
