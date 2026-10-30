@@ -75,9 +75,13 @@ def test_02_services_wizard_persists_private_address_bindings_buffers_and_real_h
     state = h.service()
     tenant = state["tenant_id"]
     assert h.query("SELECT price_cents,duration_min,prep_min,cleanup_min,active FROM services WHERE tenant_id=%s", (tenant,))[0] == {"price_cents":3500,"duration_min":40,"prep_min":5,"cleanup_min":10,"active":False}
-    h.hours()
-    assert h.scalar("SELECT count(*) FROM working_hours WHERE tenant_id=%s", (tenant,)) == 2
-    assert h.scalar("SELECT count(*) FROM working_breaks WHERE tenant_id=%s", (tenant,)) == 2
+    saved_hours = h.hours()
+    days = saved_hours["configuration"]["business_opening_hours"]["days"]
+    assert sorted(day["weekday"] for day in days if day.get("open")) == [0, 2]
+    assert all(day.get("break_start") == "12:00" and day.get("break_end") == "13:00"
+               for day in days if day.get("open"))
+    assert h.scalar("SELECT count(*) FROM working_hours WHERE tenant_id=%s", (tenant,)) == 0
+    assert h.scalar("SELECT count(*) FROM working_breaks WHERE tenant_id=%s", (tenant,)) == 0
     h.step("channels")
     h.page.locator('#orionSetup [name="assistant_name"]').fill("Recepção sintética E2E")
     h.page.locator('#orionSetup [name="capabilities"][value="catalog_answers"]').check()
@@ -425,7 +429,6 @@ def test_20_completed_business_channels_remain_disabled_without_touching_any_pro
     h.location()
     h.product()
     h.complete()
-    h.page.locator('[data-ob-action="open-dashboard"]').click()
     h.page.locator('[data-os-route="configuracoes"]').first.click()
     with h.page.expect_response(lambda r: urlsplit(r.url).path.endswith("/qr-channels")) as channels:
         h.page.locator('[data-os-settings="whatsapp"]').click()

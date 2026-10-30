@@ -309,6 +309,7 @@ class Journey:
         form.locator('[name="name"]').fill(name)
         form.locator('[name="niche"]').select_option("barbearia")
         form.locator('[name="activity"]').select_option(activity)
+        form.locator('[name="contact_phone"]').fill("(67) 99999-0001")
         return self.submit("create", "/onboarding/businesses", status=201)
 
     def location(self, *, private=False):
@@ -316,9 +317,8 @@ class Journey:
         form = self.page.locator('#orionSetup [data-ob-form="location"]')
         form.locator('[name="modality"]').select_option("onsite" if private else "online")
         if private:
-            for name, value in {"street": "Rua sintética E2E", "neighborhood": "Centro E2E", "city": "Cuiabá", "state": "MT"}.items():
+            for name, value in {"street": "Rua sintética E2E", "number": "123", "neighborhood": "Centro E2E", "city": "Cuiabá", "state": "MT"}.items():
                 form.locator(f'[name="{name}"]').fill(value)
-            form.locator('[name="no_number"]').check()
         return self.submit("location", "/steps/location")
 
     def professional(self):
@@ -348,6 +348,18 @@ class Journey:
 
     def hours(self):
         self.step("hours")
+        modern = self.page.locator('#orionSetup [data-ob-form="business-hours"]')
+        if modern.count():
+            # Current onboarding collects COMPANY hours, not professional shifts.
+            for day in (0, 2):
+                modern.locator(f'[name="hours_{day}_open"]').check()
+                modern.locator(f'[name="hours_{day}_start"]').fill("09:00")
+                modern.locator(f'[name="hours_{day}_end"]').fill("18:00")
+                modern.locator(f'[name="hours_{day}_has_break"]').check()
+                modern.locator(f'[name="hours_{day}_break_start"]').fill("12:00")
+                modern.locator(f'[name="hours_{day}_break_end"]').fill("13:00")
+            return self.submit("business-hours", "/steps/hours")
+        # Legacy onboarding stays covered until all existing tenant upgrades.
         form = self.page.locator('#orionSetup [data-ob-form="hours"]')
         form.locator('[name="weekdays"][value="0"]').check()
         form.locator('[name="weekdays"][value="2"]').check()
@@ -364,7 +376,8 @@ class Journey:
         self.page.locator('#orionSetup [name="acknowledged"]').check()
         state = self.submit("complete", "/onboarding/complete")
         assert state["status"] == "complete"
-        expect(self.page.locator('[data-ob-action="open-dashboard"]')).to_be_visible()
+        # Completion redirects immediately to Dashboard; no interstitial button.
+        expect(self.page.locator('#osNav [data-os-route="dashboard"]')).to_have_attribute("aria-current", "page")
         return state
 
     def no_activation(self, tenant):
