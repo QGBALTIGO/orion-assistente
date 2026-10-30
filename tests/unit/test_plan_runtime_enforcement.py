@@ -204,12 +204,17 @@ async def test_queued_campaign_after_downgrade_is_cancelled_without_sender(monke
 
 
 @pytest.mark.asyncio
-async def test_basic_notifications_and_manual_conversations_survive_essential_downgrade():
+async def test_basic_notifications_and_performance_survive_essential_downgrade_without_manual_whatsapp():
     db = PlanDB("essencial")
     assert await permissions.has_feature(db, db.tenant, "notifications.basic")
-    assert await permissions.has_feature(db, db.tenant, "conversations.manual")
+    assert await permissions.has_feature(db, db.tenant, "performance.advanced")
+    assert not await permissions.has_feature(db, db.tenant, "conversations.manual")
     assert not await permissions.has_feature(db, db.tenant, "reception.ai")
     assert not await permissions.has_feature(db, db.tenant, "marketing.campaigns")
+    for tier in ("profissional", "elite"):
+        higher = PlanDB(tier)
+        assert await permissions.has_feature(higher, higher.tenant, "conversations.manual")
+        assert await permissions.has_feature(higher, higher.tenant, "performance.advanced")
 
 
 @pytest.mark.asyncio
