@@ -103,6 +103,10 @@ async def public_followup(slug,result,phone):
                 AND a.protocol=:protocol AND c.whatsapp_e164=:phone AND a.status='confirmed' '''),
                 {'t':tenant,'protocol':result['protocol'],'phone':phone})).scalar_one_or_none()
             if appointment is None:return {}
+            if central:
+                from app.plan_permissions import has_feature
+                if not await has_feature(db,tenant,'notifications.basic'):
+                    return {}
             # An anonymous booking can use an existing customer's phone.
             # Only a verified inbound contact may receive a capability; never
             # return it to the anonymous booking caller.
