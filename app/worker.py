@@ -123,6 +123,22 @@ async def startup_plan_permissions(ctx):
     await wait_for_schema(Settings.from_environment())
     ctx['plan_permissions_ready'] = True
     logging.getLogger(__name__).info('orion_plan_permissions_0050_worker_ready')
+    # Explicit operator-triggered, one-booking recovery only. The regular
+    # notification outbox and receipt ledger still authorize the actual send.
+    if os.getenv('ORION_ONE_TIME_PEIXOTO_RECOVERY') == '1':
+        try:
+            from app.one_time_peixoto_recovery import TENANT, recover_once
+            outcome, notification = await recover_once()
+            if notification is not None:
+                await ctx['redis'].enqueue_job(
+                    'process_appointment_notification', str(TENANT), str(notification),
+                    _job_id='orion-single-peixoto-test:' + str(notification))
+            logging.getLogger(__name__).info(
+                'orion_single_peixoto_recovery state=%s notice=%s', outcome,
+                str(notification) if notification is not None else 'none')
+        except Exception as exc:
+            logging.getLogger(__name__).error(
+                'orion_single_peixoto_recovery_failed_closed type=%s',type(exc).__name__)
 
 
 class WorkerSettings:

@@ -177,9 +177,16 @@ async def prepare_body(db,tenant,job,row,settings):
     booking_link=canonical_public_origin()+'/s/'+shop['public_slug'] if shop.get('public_slug') and shop['public_enabled'] else None
     future=(await db.execute(text("SELECT EXISTS(SELECT 1 FROM appointments WHERE tenant_id=:t AND customer_id=:customer AND id<>:id AND status='confirmed' AND start_at>now())"),
         {'t':tenant,'customer':row['customer_id'],'id':row['id']})).scalar_one()
-    return compose(job['event'],row,company=shop['name'],signature=settings['signature'],customer_link=customer_link,
+    body = compose(job['event'],row,company=shop['name'],signature=settings['signature'],customer_link=customer_link,
         booking_link=booking_link,previous=job['previous'],include_return=settings['return_invitation'] and not future,
         address=', '.join(str(shop[k]) for k in ('address','city','state') if shop.get(k)))
+    if (job['event'] == 'professional_new' and job['recipient_kind'] == 'professional'
+            and job['previous'].get('orion_test_recovery') is True):
+        from app.qr_presentation import fits_message
+        body = '🧪 *TESTE ORION — aviso recuperado*\n\n' + body
+        if not fits_message(body):
+            raise ValueError('test_message_exceeds_transport_limit')
+    return body
 
 
 async def process_notification(ctx,tenant_id,notification_id):
