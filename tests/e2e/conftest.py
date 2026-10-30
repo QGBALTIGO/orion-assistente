@@ -309,7 +309,6 @@ class Journey:
         form.locator('[name="name"]').fill(name)
         form.locator('[name="niche"]').select_option("barbearia")
         form.locator('[name="activity"]').select_option(activity)
-        form.locator('[name="timezone"]').select_option("America/Cuiaba")
         return self.submit("create", "/onboarding/businesses", status=201)
 
     def location(self, *, private=False):

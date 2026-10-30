@@ -122,6 +122,10 @@ function panelHarness(){
   assert.ok(sections[1][1].includes(initialization),"instrument the controller's actual initialization once");
   const source=sections[1][1].replace(initialization,`
     ${initialization}
+    // This is an intentionally synthetic account whose verified server-side
+    // membership authorizes only tenant-a. The real API guard remains intact.
+    businessRows=[{id:'tenant-a',name:'Empresa A',role:'owner'}];
+    suiteTenantId='tenant-a';businessContextReady=true;businessContextError='';
     globalThis.panelTest={updateStatus,refreshMessages,selectChat,aiBubble,aiCheckStatus,aiLoadProfiles,aiLoadTenants,showLogin,
       loadBusinessProfile,loadBusinesses,collectBusinessProfile,businessMutation,reviewBusinessVersion,businessChanged,loadBusinessStyleExamples,openBusinessPreview,
       loadCommerceTenant,loadCommerceTenants,commerceSelectProduct,commerceSelectVariant,commerceSave,commerceProductPayload,commerceVariantPayload,commerceStockPayload,commerceAddFields,commerceAddBasket,commerceCalculate,commerceCreateOrder,commerceConfirmOrder,commerceRead,commerceCatalogChanged,commercePlanningChanged,
