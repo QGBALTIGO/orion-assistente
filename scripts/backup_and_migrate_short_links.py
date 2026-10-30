@@ -64,6 +64,14 @@ def schema_ready(raw):
                   AND NOT has_table_privilege('app_runtime','public.appointment_short_codes','UPDATE,DELETE,TRUNCATE')
                   AND has_table_privilege('app_runtime','public.appointment_short_challenges','SELECT,INSERT,UPDATE,DELETE')
                   AND has_table_privilege('app_runtime','public.appointment_short_staff_sessions','SELECT,INSERT,UPDATE,DELETE')
+                  AND has_function_privilege('app_support',
+                        'public.orion_due_short_challenges(integer)','EXECUTE')
+                  AND has_function_privilege('app_support',
+                        'public.orion_clean_short_credentials(integer)','EXECUTE')
+                  AND NOT has_function_privilege('app_runtime',
+                        'public.orion_due_short_challenges(integer)','EXECUTE')
+                  AND NOT has_function_privilege('app_runtime',
+                        'public.orion_clean_short_credentials(integer)','EXECUTE')
             """)).scalar_one()
             return result is True
     finally:
