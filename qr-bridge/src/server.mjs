@@ -436,7 +436,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
         if(handledBookingProtocols.size>2000)
           handledBookingProtocols.delete(handledBookingProtocols.values().next().value);
         const task=(async()=>{
-          let sendAttempted=false,phase='identity';
+          let sendAttempted=false,phase='identity',presenceLease=null;
           try{
             const phone=await resolveBookingSenderPhone(message.key,client,{isCurrent:intakeCurrent});
             if(!intakeCurrent())return;
@@ -452,6 +452,13 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
               direction:'in',at:now});
             lastInboundAt=Date.now();inboundSinceConnect=true;
             phase='backend';
+            // A verified protocol sender gets genuine composing presence while
+            // its own booking is checked. This is independent of chatbot AI.
+            presenceLease=makeAssistantTyping({
+              socket:client,pilotPhone:()=>phone,isConnected:intakeCurrent,
+              isAllowed:recipient=>recipient===phone,
+              transactional:true,maxPauseMs:1500
+            }).begin({phone,chatJid:message.key.remoteJid,isCurrent:intakeCurrent});
             const response=await fetchBookingProtocolConfirmation({
               apiUrl:process.env.QR_AI_API_URL||process.env.QR_CHANNEL_BROKER_URL,
               token:KEY,phone,messageId:traceId,text:normalized.text,isCurrent:intakeCurrent,
@@ -462,6 +469,8 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
               return;
             }
             phase='send';
+            await presenceLease.beforeReply(response);
+            if(!intakeCurrent())return;
             sendAttempted=true; // Never retry after an ambiguous WhatsApp operation.
             const result=await sendLegacyRaw(phone,response,{
               waitForCapacity:true,isCurrent:intakeCurrent});
@@ -476,7 +485,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
               error?.name==='AbortError'?'timeout':'other';
             // No phone, LID, untrusted text, token or provider exception in logs.
             transport.record('booking_protocol_failed',traceId,{category:phase,error:category});
-          }
+          }finally{presenceLease?.stop();}
         })();
         jobs.push(task);
         continue;
@@ -819,7 +828,7 @@ async function send(phone,text,options={}){
   if(legacyCentral.configured())return legacyCentral.automatic(phone,text,options);
   return sendLegacyRaw(phone,text,options);
 }
-async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true}={}){
+async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false}={}){
   const target=validPhone(phone);
   if(status!=="connected"||!socket)throw Error("O WhatsApp não está conectado");
   if(typeof text!=="string"||!text.trim()||text.length>1200)
@@ -837,6 +846,19 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
   if(!current())
     throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
   const {jid,kind}=recipientProof;
+  let presenceLease=null;
+  try{
+    if(transactionalTyping){
+      // Only an admitted, destination-authorized transactional notice sends
+      // composing. Never emit it while a queue is waiting or a chat is revoked.
+      presenceLease=makeAssistantTyping({
+        socket:selectedSocket,pilotPhone:()=>target,isConnected:current,
+        isAllowed:recipient=>recipient===target,
+        transactional:true,maxPauseMs:1400
+      }).begin({phone:target,chatJid:jid,isCurrent:current});
+      await presenceLease.beforeReply(text);
+      if(!current())throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
+    }
   if(reliable){
     result=await sendStoredText({
       jid,recipientProof,text:text.trim(),store:retryStore,freshDevices,
@@ -872,6 +894,7 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
   // sendMessage resolve quando a biblioteca entrega ao transporte, não
   // quando o iPhone consegue descriptografar. Apenas receipts validam isso.
   return {accepted:true,delivery:deliveryReceipts.get(result.key.id)||"pending",id,trace:transport.tag(result.key.id)};
+  }finally{presenceLease?.stop();}
 }
 
 const server=http.createServer(async(req,res)=>{
