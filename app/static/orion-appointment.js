@@ -19,7 +19,10 @@ async function request(action,extra={}){
  const endpoint=isProfessional?'/api/short-appointments/'+shortCode+'/professional-action':'/api/appointment-access';
  const body=isProfessional?{action,...extra}:{token:token||'',code:shortCode,action,...extra};
  const response=await fetch(endpoint,{method:'POST',credentials:'same-origin',cache:'no-store',referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
- const data=await response.json();if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'Não foi possível concluir. Atualize e tente novamente.');return data;
+ const data=await response.json();if(!response.ok){
+  if(shortCode&&[401,403,404].includes(response.status))requireVerification();
+  throw Error(typeof data.detail==='string'?data.detail:'Não foi possível concluir. Atualize e tente novamente.');
+ }return data;
 }
 async function run(fn){if(busy)return;busy=true;document.querySelector('main').setAttribute('aria-busy','true');document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();}catch(e){showError(e);}finally{busy=false;document.querySelector('main').setAttribute('aria-busy','false');document.querySelectorAll('button').forEach(b=>b.disabled=false);$('confirm-reschedule').disabled=!$('slot').value;}}
 function button(text,fn,secondary=false){const n=node('button',text);n.type='button';if(secondary)n.className='secondary';n.onclick=fn;return n;}
