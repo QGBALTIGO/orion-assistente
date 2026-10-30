@@ -248,7 +248,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         if(permit?.authorized!==true||permit.operation_id!==operation_id)throw Error('inbox_send_refused');
       }
       attempted=true;
-      const result=await c.session.send(phone,text,{isCurrent:operationCurrent});requireCurrent(c);
+      const result=await c.session.send(phone,text,{isCurrent:operationCurrent,transactionalTyping:source==='automation'});requireCurrent(c);
       if(typeof result?.id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(result.id))throw Error('channel_send_unknown');
       const record={fingerprint,state:'accepted',accepted:true,delivery:'unknown',provider_id:result.id};
       c.ledger.save(operation_id,record);c.sent.set(result.id,{operation:operation_id,fingerprint,phone});
