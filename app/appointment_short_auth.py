@@ -258,7 +258,7 @@ async def redeem_otp(tenant, appointment, role, otp):
                     """), {"t": tenant, "id": challenge["id"]})).scalar_one_or_none()
                     if used:
                         if role == "customer":
-                            link = await access.issue(db, tenant, appointment)
+                            link = await access.issue(db, tenant, appointment, short_session=True)
                             cookie = link.split("#", 1)[1]
                         else:
                             cookie = opaque_token()
