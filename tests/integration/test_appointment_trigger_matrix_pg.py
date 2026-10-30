@@ -10,6 +10,7 @@ from uuid import uuid4
 import json
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import text
 from fastapi import HTTPException
 
@@ -22,6 +23,19 @@ from tests.integration.test_booking import booking_db, phone, start_at
 from tests.integration.test_appointment_notifications_pg import comm_db, booking, jobs, PRO_PHONE
 
 pytestmark=pytest.mark.integration
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def clean_extra_management_receipts(comm_db):
+    """Remove the operation receipts made by completion tests before tenant teardown.
+
+    The disposable booking fixture deletes its tenants last but does not own
+    management_requests, because ordinary booking tests don't write them.
+    """
+    yield
+    async with comm_db["migrator"].begin() as db:
+        await db.execute(text("DELETE FROM management_requests WHERE tenant_id=:t"),
+                         {"t":comm_db["a"]})
 
 
 async def single(d,event):
