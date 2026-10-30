@@ -458,7 +458,7 @@ async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
                      ids: list[UUID], target: date, now: datetime | None = None, *,
                      replace_hold_id: UUID | None = None, customer_phone: str | None = None,
                      expected_snapshot: str | None = None, appointment_id: UUID | None = None,
-                      explain_reason: bool = False):
+                      explain_reason: bool = False, customer_id: UUID | None = None):
     now = now or datetime.now(UTC)
     async with tenant_transaction(s, tenant):
         if replace_hold_id is not None:
@@ -470,10 +470,10 @@ async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
             if replace_hold_id is not None:
                 fail(422, "Selecione apenas uma operação de agenda")
             current = (await s.execute(text("""
-                SELECT professional_id,status FROM appointments WHERE tenant_id=:tenant AND id=:id
+                SELECT professional_id,status,customer_id FROM appointments WHERE tenant_id=:tenant AND id=:id
             """), {"tenant": tenant, "id": appointment_id})).mappings().one_or_none()
-            if current is None:
-                fail(404, "Agendamento não encontrado")
+            if current is None or (customer_id is not None and current["customer_id"] != customer_id):
+                fail(404, "Agendamento indisponível")
             service_ids = list((await s.execute(text("""
                 SELECT service_id FROM appointment_items WHERE tenant_id=:tenant AND appointment_id=:id ORDER BY item_order
             """), {"tenant": tenant, "id": appointment_id})).scalars().all())
