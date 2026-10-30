@@ -91,7 +91,7 @@ test("3 tabs show history and profile, never write staff-only records or innerHT
   }});t.after(()=>h.close());
   h.click("#customer-account-trigger");await flush();
   assert.equal(h.document.querySelector("#customer-account-tabs").hidden,false);
-  assert.match(h.document.querySelector("#customer-account-body").textContent,/img src=x/);
+  assert.match(h.document.querySelector("#customer-account-body").textContent,/<img/);
   assert.equal(h.document.querySelector("#customer-account-body img"),null);
   h.click('[data-customer-tab="history"]');await flush();
   assert.match(h.document.querySelector("#customer-account-body").textContent,/Histórico de atendimentos/);
