@@ -948,6 +948,35 @@
          !dateInput?.value || !dateInput.validity.valid : preview));
   }
 
+  function bookingWhatsAppURL(result) {
+    const value = result?.whatsapp_confirmation_url;
+    if (typeof value !== 'string' || !/^https:\/\/wa\.me\/[1-9][0-9]{7,14}\?text=/.test(value)) return null;
+    try {
+      const url = new URL(value);
+      if (url.protocol !== 'https:' || url.hostname !== 'wa.me' ||
+          url.username || url.password || url.port || url.hash ||
+          !/^\/[1-9][0-9]{7,14}$/.test(url.pathname) ||
+          url.searchParams.size !== 1 || !url.searchParams.get('text')) return null;
+      return url.href;
+    } catch { return null; }
+  }
+
+  function openBookingWhatsApp(url) {
+    // Only a successful reservation may open WhatsApp. A separate tab keeps the
+    // Orion receipt visible when the customer returns from the messenger.
+    try {
+      const tab = window.open('about:blank', '_blank');
+      if (tab) {
+        try { tab.opener = null; } catch { /* opener is detached when supported */ }
+        tab.location.replace(url);
+        return;
+      }
+    } catch { /* A popup blocker must not discard the completed booking. */ }
+    try { window.location.assign(url); } catch {
+      // Restricted browsers can still use the visible link on the receipt.
+    }
+  }
+
   async function submitBooking() {
     if (booking.busy || booking.step !== 3 || preview || !booking.quote || !booking.start) return;
     const form = $('customer-form');
@@ -984,6 +1013,8 @@
       booking.birthDate = '';
       booking.quote = null;
       renderBooking();
+      const whatsappURL = bookingWhatsAppURL(booking.result);
+      if (whatsappURL) openBookingWhatsApp(whatsappURL);
     } catch (error) {
       if ([404, 409, 422].includes(error.status)) {
         invalidateAvailability();
@@ -1001,8 +1032,14 @@
 
   function renderSuccess(body) {
     const success = el('div', 'success'); success.append(el('div', 'success-check', '✓'), el('h3', '', 'Agendamento confirmado!'), el('p', '', 'Seu horário está reservado. Guarde o protocolo e chegue no horário combinado.'), reviewCard(booking.result));
-    if (booking.result.whatsapp_confirmation_url && /^https:\/\/wa\.me\/[1-9][0-9]{7,14}\?text=/.test(booking.result.whatsapp_confirmation_url)) {
-      const wa=el('a','pill','Receber confirmação no WhatsApp');wa.href=booking.result.whatsapp_confirmation_url;wa.target='_blank';wa.rel='noopener noreferrer';success.append(wa);
+    const whatsappURL = bookingWhatsAppURL(booking.result);
+    if (whatsappURL) {
+      const wa = el('a', 'pill', 'Abrir WhatsApp novamente');
+      wa.href = whatsappURL; wa.target = '_blank'; wa.rel = 'noopener noreferrer';
+      success.append(wa);
+    } else {
+      success.append(el('p', 'small muted',
+        'Seu agendamento foi salvo, mas o WhatsApp do Orion está indisponível neste momento. Guarde o protocolo.'));
     }
 
     success.append(button('Copiar protocolo', 'outline', async()=>{try{await navigator.clipboard.writeText(booking.result.protocol);showError('Protocolo copiado. Seu agendamento está salvo.');}catch{showError('Guarde o protocolo: '+booking.result.protocol);}}));
