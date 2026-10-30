@@ -152,3 +152,37 @@ async def test_central_number_never_comes_from_company_site_config(monkeypatch):
     monkeypatch.delenv("QR_AI_TENANT_ID")
     assert await confirmation.central_admin_phone() is None
     assert called == [hub]
+
+
+@pytest.mark.asyncio
+async def test_switching_admin_whatsapp_changes_all_next_links_without_hardcoded_number(monkeypatch):
+    from app import public_site_api
+    company_a, company_b, admin = uuid4(), uuid4(), uuid4()
+    active = {"tenant": company_a, "number": "556781234567"}
+    db = BookingSession(uuid4())
+
+    async def resolve(_slug):
+        db.tenant = active["tenant"]
+        return db.tenant
+
+    async def admin_channel(tenant):
+        assert tenant == admin
+        return active["number"]
+
+    monkeypatch.setenv("APPOINTMENT_COMMUNICATIONS_ENABLED", "1")
+    monkeypatch.setenv("ORION_CENTRAL_APPOINTMENT_WHATSAPP_ENABLED", "1")
+    monkeypatch.setenv("QR_AI_TENANT_ID", str(admin))
+    monkeypatch.setattr(public_site_api, "resolve_public", resolve)
+    monkeypatch.setattr(confirmation, "get_session_factory", lambda: lambda: db)
+    monkeypatch.setattr(confirmation, "tenant_transaction", tenant_scope)
+    monkeypatch.setattr(confirmation, "connected_channel_phone", admin_channel)
+    first = await confirmation.public_followup("site-a", {"protocol": "AG-G32XU5"}, "+5567999999902")
+    assert urlsplit(first["whatsapp_confirmation_url"]).path == "/556781234567"
+
+    # The administrator relinks a new verified number. No per-company change.
+    active["tenant"], active["number"] = company_b, "5567912345678"
+    second = await confirmation.public_followup("site-b", {"protocol": "AG-G32XU5"}, "+5567999999902")
+    assert urlsplit(second["whatsapp_confirmation_url"]).path == "/5567912345678"
+    active["tenant"] = company_a
+    third = await confirmation.public_followup("site-a", {"protocol": "AG-G32XU5"}, "+5567999999902")
+    assert urlsplit(third["whatsapp_confirmation_url"]).path == "/5567912345678"
