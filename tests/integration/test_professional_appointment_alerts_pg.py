@@ -54,7 +54,7 @@ async def test_new_booking_notifies_only_selected_professional_with_factual_mess
     assert 'NOVO AGENDAMENTO RECEBIDO!' in body
     assert 'Cliente sintético' in body
     assert '*Corte*' in body
-    assert '*Barbeiro sintético*' not in body or 'Barbeiro sintético' in body
+    assert 'Barbeiro sintético' in body
     assert str(appointment['id']) in body
     assert '/panel?aba=agenda&agendamento=' in body
     assert '40 minutos' in body
