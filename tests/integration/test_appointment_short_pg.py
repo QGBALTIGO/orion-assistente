@@ -9,6 +9,8 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 from tests.integration.test_appointment_notifications_pg import comm_db, booking, phone, PRO_PHONE
+from tests.integration.test_booking import start_at
+from app.booking_service import book_appointment
 from app import appointment_short_auth as auth
 from app import appointment_short_links as links
 from app import qr_channels, automation_transport
@@ -34,7 +36,8 @@ async def test_aliases_are_unique_global_stable_and_tenant_fenced(comm_db,monkey
             assert (await db.execute(text('SELECT count(*) FROM appointment_short_codes WHERE code=:code'),
                 {'code':code})).scalar_one()==0
     async with d['factory']() as db:
-        held=await booking(d)
+        held=await book_appointment(db,d['a'],d['pro2'],[d['cut']],phone(924),
+            'Outro cliente sintético',start_at(d['day'],11),'short-'+str(uuid4()))
     async with d['factory']() as db:
         async with tenant_transaction(db,d['a']):
             fallback=await links.get_or_create(db,d['a'],held['id'],a['protocol'])
