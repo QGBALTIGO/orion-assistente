@@ -880,8 +880,8 @@
     const contactFields = [
       { key: 'name', title: 'Nome completo', name: 'customer_name', autocomplete: 'name',
         type: 'text', fieldKind: 'native', max: 120, placeholder: 'Nome completo' },
-      { key: 'phone', title: 'WhatsApp com DDD', name: 'customer_phone',
-        autocomplete: 'tel-national', type: 'tel', fieldKind: 'phone', placeholder: '(00) 00000-0000' },
+      { key: 'phone', title: 'WhatsApp com DDD ou DDI', name: 'customer_phone',
+        autocomplete: 'tel', type: 'tel', fieldKind: 'phone', placeholder: '(00) 00000-0000 ou +595 9...' },
       { key: 'birthDate', title: 'Data de nascimento', name: 'customer_birth_date',
         autocomplete: 'bday', type: 'date', fieldKind: 'date', placeholder: '' }
     ];
@@ -896,12 +896,13 @@
       field.autocomplete = spec.autocomplete;
       if (spec.max) field.maxLength = spec.max;
       if (spec.fieldKind) field.dataset.orionField = spec.fieldKind;
+      if (spec.key === 'phone') field.dataset.orionInternational = 'true';
       field.required = true;
       if (spec.placeholder) field.placeholder = spec.placeholder;
-      field.value = spec.key === 'phone' ? fields.phoneDisplay(booking.phone) : booking[spec.key];
+      field.value = spec.key === 'phone' ? fields.phoneDisplay(booking.phone, { allowInternational: true }) : booking[spec.key];
       if (spec.key === 'phone') {
         field.inputMode = 'tel';
-        field.addEventListener('input', () => { booking.phone = field.value; });
+        field.addEventListener('input', () => { booking.phone = field.value; field.setCustomValidity(''); });
         field.addEventListener('change', () => { booking.phone = field.value; });
       } else if (spec.key === 'birthDate') {
         field.lang = 'pt-BR';
@@ -991,7 +992,12 @@
       nameField.reportValidity();
       return;
     }
-    const canonicalPhone = fields.phoneValue(booking.phone, { required: true });
+    const canonicalPhone = fields.phoneValue(booking.phone, { required: true, allowInternational: true });
+    if (!/^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(canonicalPhone)) {
+      form.elements.customer_phone.setCustomValidity('Informe +55 com DDD ou +595 com celular paraguaio.');
+      form.elements.customer_phone.reportValidity();
+      return;
+    }
     const birthDate = fields.dateValue(booking.birthDate, { required: true, min: '1900-01-01', max: data.today });
     booking.busy = true;
     showError();

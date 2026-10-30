@@ -43,7 +43,7 @@ async def send_automation(tenant, channel_id, phone, body, operation_id):
     from app.automation_policy import text_units
     if not isinstance(body, str) or not body.strip() or not 1 <= text_units(body) <= 1200:
         raise ValueError("invalid_body")
-    if not isinstance(phone, str) or re.fullmatch(r"\+55[1-9][0-9]{9,10}", phone) is None:
+    if not isinstance(phone, str) or re.fullmatch(r"(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})", phone) is None:
         raise ValueError("invalid_recipient")
     data = await _request(tenant, channel_id, operation_id, message={"to": phone.lstrip("+"), "text": body, "operation_id": str(UUID(str(operation_id)))})
     if data.get("accepted") is not True or data.get("state") != "accepted":

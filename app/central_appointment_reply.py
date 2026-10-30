@@ -25,7 +25,7 @@ router=APIRouter(tags=['Confirmação central por WhatsApp'])
 
 
 class IncomingProtocol(StrictModel):
-    phone: str=Field(pattern=r'^55[1-9][0-9]{9,10}$',min_length=12,max_length=13)
+    phone: str=Field(pattern=r'^(?:55[1-9][0-9]{9,10}|5959[0-9]{8})$',min_length=12,max_length=13)
     message_id: str=Field(pattern=r'^[a-zA-Z0-9._:-]{1,157}$',max_length=157)
     text: str=Field(min_length=1,max_length=1500)
 

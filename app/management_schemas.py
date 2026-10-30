@@ -25,8 +25,12 @@ def normalize_phone(value: str | None) -> str | None:
     if not re.fullmatch(r"[+\d\s().-]+", value):
         raise ValueError("Telefone brasileiro inválido")
     digits = re.sub(r"\D", "", value)
+    # Foreign numbers must be explicitly prefixed with '+'. Never reinterpret a
+    # malformed Brazilian national input as a different country's phone.
+    if value.lstrip().startswith("+") and re.fullmatch(r"5959[0-9]{8}",digits):
+        return "+" + digits
     if value.lstrip().startswith("+") and (not digits.startswith("55") or len(digits) not in (12, 13)):
-        raise ValueError("Informe um telefone brasileiro com prefixo +55")
+        raise ValueError("Informe +55 com DDD ou +595 com celular paraguaio")
     if len(digits) in (10, 11):
         digits = "55" + digits
     normalized = "+" + digits

@@ -28,7 +28,7 @@ class HoldRequest(StrictModel):
     professional_id: UUID
     service_ids: list[UUID] = Field(min_length=1, max_length=6)
     customer_name: str = Field(min_length=1, max_length=120)
-    customer_phone: str = Field(pattern=r"^\+55[1-9][0-9]{9,10}$")
+    customer_phone: str = Field(pattern=r"^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$")
     start_at: AwareDatetime
     idempotency_key: str = Field(min_length=8, max_length=120, pattern=r"^[a-zA-Z0-9._:-]+$")
 
