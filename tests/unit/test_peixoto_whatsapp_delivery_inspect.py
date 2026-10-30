@@ -64,6 +64,7 @@ async def scope(db, tenant):
 @pytest.mark.asyncio
 async def test_authorized_private_lookup_requests_only_fixed_recipient(monkeypatch):
     monkeypatch.setenv("QR_BRIDGE_TOKEN", "synthetic-secret-" + "x" * 64)
+    monkeypatch.delenv("ORION_PEIXOTO_CONTROL_PHONE", raising=False)
     monkeypatch.setattr(qa, "get_session_factory", lambda: lambda: DB())
     monkeypatch.setattr(qa, "tenant_transaction", scope)
     monkeypatch.setattr(qa, "bridge_origin", lambda: "http://orion-qr-bridge.railway.internal:3000")
@@ -99,3 +100,56 @@ async def test_missing_bridge_key_fails_without_db_or_network(monkeypatch):
     monkeypatch.setattr(qa, "get_session_factory",
                         lambda: (_ for _ in ()).throw(AssertionError("not called")))
     assert await qa.inspect() == {"state": "bridge_credential_missing"}
+
+
+@pytest.mark.asyncio
+async def test_control_phone_can_calibrate_unverified_pro_without_logging_identifiers(monkeypatch):
+    monkeypatch.setenv("QR_BRIDGE_TOKEN", "synthetic-secret-" + "x" * 64)
+    control = "+5521999999922"
+    monkeypatch.setenv("ORION_PEIXOTO_CONTROL_PHONE", control)
+    monkeypatch.setattr(qa, "get_session_factory", lambda: lambda: DB())
+    monkeypatch.setattr(qa, "tenant_transaction", scope)
+    monkeypatch.setattr(qa, "bridge_origin", lambda: "http://orion-qr-bridge.railway.internal:3000")
+    called = []
+    class Response:
+        status_code = 200
+        def __init__(self, phone):
+            self.phone = phone
+        def json(self):
+            return {
+                "registered": self.phone == control.lstrip("+"),
+                "identity": "pn_confirmed" if self.phone == control.lstrip("+") else "unverified",
+                "jid": self.phone + "@s.whatsapp.net",
+                "delivery": {"count": 1, "delivered": int(self.phone == control.lstrip("+")),
+                             "lastReceipt": "delivered" if self.phone == control.lstrip("+") else "pending"}
+            }
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_):
+            pass
+        async def get(self, url, params, headers):
+            called.append(params["phone"])
+            return Response(params["phone"])
+    monkeypatch.setattr(qa.httpx, "AsyncClient", lambda **kwargs: Client())
+    result = await qa.inspect()
+    assert called == ["5567999999922", control.lstrip("+")]
+    assert result["registered"] is False
+    assert result["control_lookup"]["state"] == "inspected"
+    assert result["control_lookup"]["registered"] is True
+    assert result["control_lookup"]["identity"] == "pn_confirmed"
+    safe = json.dumps(result)
+    assert control not in safe
+    assert "5567999999922" not in safe
+    assert "@s.whatsapp.net" not in safe
+
+
+@pytest.mark.asyncio
+async def test_bad_control_phone_prevents_queries(monkeypatch):
+    monkeypatch.setenv("QR_BRIDGE_TOKEN", "synthetic-secret-" + "x" * 64)
+    monkeypatch.setenv("ORION_PEIXOTO_CONTROL_PHONE", "https://example.com")
+    monkeypatch.setattr(qa, "get_session_factory", lambda: lambda: DB())
+    monkeypatch.setattr(qa, "tenant_transaction", scope)
+    monkeypatch.setattr(qa.httpx, "AsyncClient",
+                        lambda **kwargs: (_ for _ in ()).throw(AssertionError("No network allowed")))
+    assert await qa.inspect() == {"state": "invalid_control_scope"}
