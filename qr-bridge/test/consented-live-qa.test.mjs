@@ -6,8 +6,9 @@ import path from 'node:path';
 import {runConsentedPairSmoke,SMOKE_ID} from '../src/consented-live-qa.mjs';
 
 const env={ORION_ONE_TIME_LIVE_SEND:SMOKE_ID,QR_RELIABLE_SEND_V2:'1',
-  ORION_SMOKE_TEST_MODE:'1'};
-const source='556781030648';
+  ORION_SMOKE_TEST_MODE:'1',ORION_SMOKE_SOURCE_E164:'556781234567',
+  ORION_SMOKE_BR_E164:'5521999999999',ORION_SMOKE_PY_E164:'595992000001'};
+const source='556781234567';
 const isolated=fn=>async()=>{
   const folder=fs.mkdtempSync(path.join(os.tmpdir(),'orion-live-pair-'));
   try{await fn(folder);}finally{fs.rmSync(folder,{force:true,recursive:true});}
@@ -25,12 +26,12 @@ isolated(async directory=>{
    report:event=>events.push(event)
  });
  assert.deepEqual(first,{state:'finished',attempts:2});
- assert.deepEqual(seen.map(x=>x.phone),['5521997557364','595992820210']);
+ assert.deepEqual(seen.map(x=>x.phone),['5521999999999','595992000001']);
  assert.ok(seen.every(x=>x.opts.waitForCapacity&&x.opts.transactionalTyping&&
     x.text.includes('não cria nem altera agendamentos')&&x.text.length<500));
  assert.equal(events.filter(x=>x.state==='accepted').length,2);
- assert.ok(events.every(x=>!JSON.stringify(x).includes('5521997557364')&&
-   !JSON.stringify(x).includes('595992820210')));
+ assert.ok(events.every(x=>!JSON.stringify(x).includes('5521999999999')&&
+   !JSON.stringify(x).includes('595992000001')));
  const rerun=await runConsentedPairSmoke({
    env,directory,pairedPhone:source,isCurrent:()=>true,send,
    report:event=>events.push(event)
@@ -46,7 +47,7 @@ isolated(async directory=>{
  const send=async()=>{calls++;return {accepted:true}};
  for(const params of [
    {env:{...env,ORION_ONE_TIME_LIVE_SEND:'0'},pairedPhone:source},
-   {env,pairedPhone:'5511999999999'},
+   {env,pairedPhone:'5567999999999'},
    {env:{...env,QR_RELIABLE_SEND_V2:'0'},pairedPhone:source},
    {env,pairedPhone:source,isCurrent:()=>false}
  ]){
