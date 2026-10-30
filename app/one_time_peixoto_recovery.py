@@ -20,7 +20,7 @@ TENANT = UUID("26694b4b-be15-4850-bcb9-69b184897e79")
 SITE = "barbearia-peixoto"
 START = datetime.fromisoformat("2026-10-30T21:01:30+00:00")
 END = datetime.fromisoformat("2026-10-30T21:02:20+00:00")
-PHONE = re.compile(r"^\\+(?:55[1-9][0-9]{9,10}|5959[0-9]{8})$")
+PHONE = re.compile(r"^\+(?:55[1-9][0-9]{9,10}|5959[0-9]{8})$")
 TEST_KEY = "orion_test_recovery"
 
 
