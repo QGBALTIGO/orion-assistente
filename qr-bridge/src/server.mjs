@@ -931,6 +931,10 @@ const server=http.createServer(async(req,res)=>{
   // Additional channels authenticate their own credential at the SQL broker;
   // the shared legacy pilot token never grants access to these routes.
   if(path.startsWith('/internal/channels/')&&await channelRoutes(req,res))return;
+  // A disabled local backup key cannot be mistaken for a bad operator key.
+  // The service still fails closed; never reveal actual key length.
+  if(path.startsWith('/internal/ops/database-backups/')&&Buffer.byteLength(KEY,"utf8")<32)
+    return reply(res,503,{error:"bridge_not_configured"});
   if(!auth(req))return reply(res,401,{error:"unauthorized"});
   try{
     if(path.startsWith('/internal/ops/database-backups/'))

@@ -29,8 +29,12 @@ OPERATION = "customer_merge_20261027"
 PREFIX = "production/customer-merge-20261027/"
 FK_TABLES = {"appointments", "financial_entries", "loyalty_transactions",
              "loyalty_coupons", "automation_jobs", "inbox_customer_labels"}
+# The 0047 migration added two *separate* customer FKs; allow exactly the
+# historical and the expanded reviewed layouts, never an unrecognized FK.
+NEW_FK_TABLES = {"appointment_access", "appointment_reviews"}
 EXPECTED_COUNTS = {"appointments": (18, 1), "financial_entries": (3, 1),
-                   **{table: (0, 0) for table in FK_TABLES - {"appointments", "financial_entries"}}}
+                   **{table: (0, 0) for table in (FK_TABLES | NEW_FK_TABLES)
+                      - {"appointments", "financial_entries"}}}
 CREATED = (datetime.fromisoformat("2026-10-17T17:09:31.606497+00:00"),
            datetime.fromisoformat("2026-10-26T20:43:31.324782+00:00"))
 
@@ -80,18 +84,21 @@ def verify_foreign_keys(db):
         FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
         JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE k.contype='f' AND k.confrelid='public.customers'::regclass""", {})
-    require(len(actual) == len(FK_TABLES) and {row["table_name"] for row in actual} == FK_TABLES
+    tables = {row["table_name"] for row in actual}
+    allowed = (FK_TABLES, FK_TABLES | NEW_FK_TABLES)
+    require(any(len(actual) == len(group) and tables == group for group in allowed)
             and all(row["namespace"] == "public" and row["columns"] == ["tenant_id", "customer_id"] for row in actual),
             "customer_foreign_keys_changed")
+    return tables
 
 
 def inspect(db, scope=APPROVED):
-    verify_foreign_keys(db)
+    fk_tables = verify_foreign_keys(db)
     p = scope.parameters
     people = rows(db, "SELECT * FROM customers WHERE tenant_id=:tenant AND id IN (:primary,:secondary)", p)
     require(len(people) == 2, "reviewed_customers_missing")
     state = {"customers": people}
-    for table in sorted(FK_TABLES):
+    for table in sorted(fk_tables):
         state[table] = rows(db, f"SELECT * FROM {table} WHERE tenant_id=:tenant AND customer_id IN (:primary,:secondary)", p)
     state["management_requests"] = rows(db, """SELECT * FROM management_requests WHERE tenant_id=:tenant
         AND entity_id IN (:primary,:secondary)""", p)
@@ -118,7 +125,8 @@ def people(state, scope):
 
 def counts(state, scope):
     return {table: tuple(sum(row["customer_id"] == identity for row in state[table])
-                         for identity in (scope.primary, scope.secondary)) for table in sorted(FK_TABLES)}
+                         for identity in (scope.primary, scope.secondary))
+            for table in sorted((FK_TABLES | NEW_FK_TABLES) & state.keys())}
 
 
 def validate_before(state, scope):
@@ -132,7 +140,9 @@ def validate_before(state, scope):
             "reviewed_phone_changed")
     require(primary["birth_date"] is not None and secondary["birth_date"] is None
             and secondary["birth_month"] is None and secondary["birth_day"] is None, "birthday_state_changed")
-    require(counts(state, scope) == EXPECTED_COUNTS, "reviewed_reference_counts_changed")
+    require(counts(state, scope) == {table: EXPECTED_COUNTS[table]
+                                      for table in counts(state, scope)},
+            "reviewed_reference_counts_changed")
     for field in ("instagram", "email", "city", "neighborhood", "notes"):
         require(not (primary.get(field) and secondary.get(field) and primary[field] != secondary[field]),
                 "customer_fields_conflict")
@@ -238,7 +248,8 @@ def repair(db, backup, seal_snapshot, scope=APPROVED):
     actual_primary, actual_secondary = people(after, scope)
     require(all(actual_primary[key] == primary[key] for key in ("id", "name", "whatsapp_e164", "birth_date", "birth_month", "birth_day", "created_at")),
             "primary_identity_changed")
-    require(counts(after, scope) == {table: (sum(values), 0) for table, values in EXPECTED_COUNTS.items()}
+    require(counts(after, scope) == {table: (sum(values), 0)
+                                      for table, values in counts(before, scope).items()}
             and actual_secondary["whatsapp_e164"] is None and not actual_secondary["active"] and actual_secondary["deleted_at"] is not None,
             "repair_postconditions_failed")
     db.execute(text("""INSERT INTO management_requests(tenant_id,operation,idempotency_key,fingerprint,entity_id)
