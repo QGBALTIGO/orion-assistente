@@ -11,12 +11,51 @@ test('protected navigation and reads wait for authoritative permissions without 
   pending.resolve({effective_plan:planState('essencial')});await flush();assert.equal(nav(h).includes('servicos'),true);assert.equal(nav(h).includes('marketing'),false);assert.equal(h.calls.some(call=>call.path.endsWith('/services')),true);
 });
 
-test('Essencial has a clean basic menu and direct advanced routes never fetch their data',async t=>{
+test('Essencial shows Meu desempenho but no Central de atendimento or WhatsApp connection',async t=>{
   const h=await makeSuite({initialRoute:'clientes',permissions:planState('essencial')});t.after(()=>h.close());await flush();
-  for(const name of ['dashboard','agenda','clientes','inbox','servicos','funcionarios','financeiro','site','plano','configuracoes'])assert.ok(nav(h).includes(name),name);
-  for(const name of ['desempenho','marketing','fidelizacao','consultor'])assert.equal(nav(h).includes(name),false,name);
+  for(const name of ['dashboard','agenda','clientes','desempenho','servicos','funcionarios','financeiro','site','plano','configuracoes'])assert.ok(nav(h).includes(name),name);
+  for(const name of ['inbox','marketing','fidelizacao','consultor'])assert.equal(nav(h).includes(name),false,name);
+  assert.equal(h.document.querySelector('#osNav [data-os-action="managed-whatsapp"]'),null);
+  await h.window.OrionSuite.open('configuracoes');await flush();
+  assert.equal(h.document.querySelector('[data-os-settings="whatsapp"]'),null);
+  assert.equal([...h.document.querySelectorAll('#osSettingsSection option')].some(o=>o.value==='whatsapp'),false);
+  assert.equal(h.calls.some(call=>call.path.includes('/qr-channels')),false);
+  await h.window.OrionSuite.open('inbox');await flush();
+  assert.equal(route(h),'plano');
+  assert.equal(h.calls.some(call=>call.path.includes('/management/inbox/')),false);
   assert.equal(h.document.getElementById('osConsultantFab').hidden||h.document.getElementById('osConsultantFab').classList.contains('hidden'),true);
   await h.window.OrionSuite.open('marketing');await flush();assert.equal(route(h),'plano');assert.equal(h.calls.some(call=>/\/marketing/.test(call.path)),false);
+});
+
+test('Essencial renders performance using only allowed endpoints, without advanced payment or goal reports',async t=>{
+  const id='d1000000-0000-4000-8000-000000000001';
+  const h=await makeSuite({initialRoute:'desempenho',permissions:planState('essencial'),respond:path=>{
+    if(path.includes('/management/performance/daily'))return {items:[{date:'2026-10-30',completed:5,revenue_cents:20000,commission_cents:4000}]};
+    if(path.includes('/management/performance?'))return {items:[{id,name:'Guilherme',completed:5,cancelled:1,revenue_cents:20000}]};
+    if(path.endsWith('/professionals'))return [{id,name:'Guilherme',active:true}];
+    return defaultResponse(path);
+  }});t.after(()=>h.close());await flush();
+  assert.equal(route(h),'desempenho');
+  assert.ok(h.document.querySelector('.os-professional-results'));
+  assert.match(h.document.querySelector('.os-performance-metrics').textContent,/Atendimentos concluídos|Valor vendido/);
+  assert.ok(h.document.querySelector('[data-os-performance-history]'));
+  assert.equal(h.document.querySelector('[data-os-action="new-goal"]'),null);
+  assert.doesNotMatch(h.document.getElementById('osPageBody').textContent,/Vales em aberto|Resumo a receber|Comissão do período|Metas da empresa e da equipe/);
+  assert.ok(h.calls.some(x=>x.path.includes('/management/performance?')));
+  assert.ok(h.calls.some(x=>x.path.includes('/management/performance/daily?')));
+  assert.ok(h.calls.every(x=>!/management\/goals|finance\/commissions|finance\/advances|entry_type=commission_payment|qr-channels|management\/inbox/.test(x.path)),JSON.stringify(h.calls));
+  assert.equal(h.errors.length,0,h.errors.map(x=>x.message).join(' / '));
+});
+
+test('Profissional and Elite keep all existing WhatsApp and conversational navigation',async t=>{
+  for(const code of ['profissional','elite']){
+    const h=await makeSuite({initialRoute:'clientes',permissions:planState(code)});t.after(()=>h.close());await flush();
+    assert.ok(nav(h).includes('inbox'),code);
+    assert.ok(nav(h).includes('desempenho'),code);
+    assert.ok(h.document.querySelector('#osNav [data-os-action="managed-whatsapp"]'),code);
+    await h.window.OrionSuite.open('configuracoes');await flush();
+    assert.ok(h.document.querySelector('[data-os-settings="whatsapp"]'),code);
+  }
 });
 
 test('basic Financeiro does not query DRE, commissions, advances, settlements or payment reports',async t=>{
