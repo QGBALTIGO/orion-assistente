@@ -145,7 +145,14 @@ def test_shipped_panel_plan_permissions(browser, fixture_url, size, theme, scena
         else:
             expect(page.locator('[data-op-effective-plan]')).to_be_visible()
             for target in ['marketing', 'desempenho', 'consultor', 'fidelizacao']:
-                assert page.locator(f'#osNav [data-os-route={target}]').count() == (1 if scenario in {'profissional', 'elite'} else 0)
+                allowed = scenario in {'profissional', 'elite'} or scenario == 'essencial' and target == 'desempenho'
+                assert page.locator(f'#osNav [data-os-route={target}]').count() == (1 if allowed else 0)
+            if scenario == 'essencial':
+                assert page.locator('#osNav [data-os-route=inbox]').count() == 0
+                assert page.locator('#osNav [data-os-action=managed-whatsapp]').count() == 0
+            if scenario in {'profissional','elite'}:
+                assert page.locator('#osNav [data-os-route=inbox]').count() == 1
+                assert page.locator('#osNav [data-os-action=managed-whatsapp]').count() == 1
             if scenario == 'none':
                 assert page.locator('#osNav [data-os-route=agenda]').count() == 0
                 assert page.locator('#osNav [data-os-route=configuracoes]').count() == 1
