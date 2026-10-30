@@ -287,7 +287,7 @@ def label(value, limit=160):
     """Untrusted names must not open/close native WhatsApp markup or add URLs."""
     value = " ".join(str(value or "").split())[:limit]
     value = re.sub(r"https?://\S+|www\.\S+", "[link removido]", value, flags=re.I)
-    return value.translate(str.maketrans({"*": "", "_": "", "~": "", "\`": "", "<": "", ">": ""}))
+    return value.translate(str.maketrans({"*": "", "_": "", "~": "", chr(96): "", "<": "", ">": ""}))
 
 
 def safe_link(value):
