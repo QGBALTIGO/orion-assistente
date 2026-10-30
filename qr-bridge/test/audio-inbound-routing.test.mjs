@@ -409,3 +409,33 @@ test('unresolvable WhatsApp LID cannot be guessed or get customer information',a
   assert.deepEqual(h.sent,[]);
   assert.ok(h.events.some(event=>event[0]==='booking_protocol_identity_unresolved'));
 });
+
+test('protocolo de cliente +595 mostra digitando sem liberar bot IA a contatos novos',async()=>{
+  const recipient='595992820210',statuses=[];
+  const h=harness({
+    centralEnabled:true,
+    presence:(state,jid)=>{statuses.push({state,jid});return Promise.resolve();},
+    typingConfig:{maxPauseMs:0}
+  });
+  await h.emit([h.message('PY-TRANSACTIONAL-1',{
+    remote:recipient+'@s.whatsapp.net',text:'Olá, Orion! 🧾 Protocolo: AG-GUHRPR'
+  })]);
+  assert.equal(h.centralCalls.length,1);
+  assert.equal(h.centralCalls[0].phone,recipient);
+  assert.equal(h.sent.length,1);
+  assert.deepEqual(statuses.map(s=>s.state),['composing','paused']);
+  assert.ok(statuses.every(s=>s.jid===recipient+'@s.whatsapp.net'));
+  assert.equal(h.forwarded.length,0,'chatbot IA continua restrito');
+});
+
+test('código inválido não gera presença nem resposta automática ao contato novo',async()=>{
+  const recipient='595992820210',statuses=[];
+  const h=harness({centralEnabled:true,presence:(type,jid)=>{statuses.push({type,jid});}});
+  await h.emit([h.message('PY-INVALID-1',{
+    remote:recipient+'@s.whatsapp.net',text:'Oi, quanto custa?'
+  })]);
+  assert.deepEqual(statuses,[]);
+  assert.equal(h.centralCalls.length,0);
+  assert.equal(h.sent.length,0);
+  assert.equal(h.forwarded.length,0);
+});
