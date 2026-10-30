@@ -1,3 +1,42 @@
 @font-face{font-family:Figtree;src:url('/brand/figtree-latin.woff2') format('woff2');font-weight:300 900;font-display:swap}@font-face{font-family:Outfit;src:url('/brand/outfit-latin.woff2') format('woff2');font-weight:100 900;font-display:swap}:root{font-family:Figtree,system-ui,sans-serif;--bg:#f5f8fc;--card:#fff;--text:#0f1b33;--muted:#4e5a72;--border:#dce3ee;--primary:#2e7bf6;--primary-ink:#000;color-scheme:light}html[data-theme=dark]{--bg:#080d18;--card:#111a2b;--text:#edf3ff;--muted:#a7b5cc;--border:#2a3650;color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);line-height:1.55}main{width:min(100%,640px);margin:auto;padding:24px 16px}header{display:flex;justify-content:space-between;align-items:center;margin:0 0 28px}header button{width:auto;padding:8px 14px;background:var(--card);color:var(--text);border:1px solid var(--border)}html[data-theme=dark] header img{filter:brightness(0) invert(1)}.card{border:1px solid var(--border);border-radius:20px;background:var(--card);padding:clamp(20px,5vw,36px);min-width:0;box-shadow:0 8px 32px #0f1b3308}h1,h2{font-family:Outfit,Figtree,sans-serif;line-height:1.2;overflow-wrap:anywhere}h1{font-size:clamp(25px,5vw,32px);margin:8px 0 16px}h2{font-size:21px;margin:28px 0 16px}.eyebrow{letter-spacing:.08em;font-size:11px;font-weight:700;color:var(--text);margin:0}p,footer{color:var(--muted)}dl{margin:24px 0}dl div{display:grid;grid-template-columns:minmax(80px,1fr) minmax(0,2fr);gap:16px;border-bottom:1px solid var(--border);padding:12px 0}dt{font-size:13px;color:var(--muted)}dd{margin:0;text-align:right;font-weight:600;overflow-wrap:anywhere}button,.action,input,select,textarea{font:inherit;border-radius:11px;min-height:46px;width:100%}button,.action{display:block;border:0;padding:12px 18px;background:var(--primary);color:var(--primary-ink);font-weight:650;text-align:center;text-decoration:none;cursor:pointer;margin-top:12px;overflow-wrap:anywhere}.secondary{background:transparent;color:var(--text);border:1px solid var(--border)}.danger{background:#c63240;color:#fff}button:disabled{opacity:.5;cursor:default}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--text);outline-offset:3px}label{display:block;margin:18px 0 6px;font-size:14px}input,textarea,select{padding:11px 12px;border:1px solid var(--border);background:var(--bg);color:var(--text);min-width:0}textarea{resize:vertical}fieldset{padding:0;border:0;min-width:0}legend{font-size:14px}.stars{display:flex;gap:6px}.stars label{flex:1;position:relative;margin-top:8px}.stars input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}.stars span{display:block;text-align:center;font-size:28px;border-radius:10px;border:1px solid var(--border);padding:4px}.stars input:checked+span{background:var(--primary);color:var(--primary-ink)}.stars input:focus-visible+span{outline:3px solid var(--text);outline-offset:2px}footer{text-align:center;margin:24px 0;font-size:12px}dialog{width:min(92vw,440px);border:1px solid var(--border);border-radius:18px;background:var(--card);color:var(--text);padding:24px}dialog::backdrop{background:#080d1880}.dialog-actions{display:flex;gap:12px}.dialog-actions button{flex:1}section[hidden],form[hidden],[hidden]{display:none!important}@media(max-width:359px){main{padding:16px 12px}.card{padding:20px 16px}dl div{gap:8px}.stars{gap:4px}}
 
 .company-logo{width:64px;height:64px;object-fit:cover;border:1px solid var(--border);border-radius:14px;display:block;margin:0 0 18px}
+
+/* Match /s/* theme controls: a bare sun/moon glyph with a 44px touch target.
+   The shared Orion public-theme script owns preferences and ARIA text. */
+header .appearance-trigger{
+  box-sizing:border-box;display:grid;place-items:center;flex:0 0 44px;
+  width:44px;height:44px;min-width:44px;min-height:44px;
+  margin:0;padding:0;border:0;border-radius:0;background:transparent;
+  color:var(--text);box-shadow:none;cursor:pointer;line-height:0;
+  transition:opacity .16s ease,transform .16s ease;
+}
+header .appearance-trigger:hover{opacity:.88;background:transparent}
+header .appearance-trigger:active{transform:scale(.97)}
+header .appearance-trigger:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+header .appearance-trigger .appearance-symbol{display:block;width:22px;height:22px}
+header .appearance-trigger .appearance-moon{display:none}
+:root[data-theme="dark"] header .appearance-trigger .appearance-sun{display:none}
+:root[data-theme="dark"] header .appearance-trigger .appearance-moon{display:block}
+
+/* Same footer hierarchy, credit, divider and responsive behavior as the
+   public booking site; no separate "Organizado com..." visual treatment. */
+main > .public-footer{
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  min-width:0;margin:36px 0 0;padding:36px 0;
+  border-top:1px solid var(--border);background:transparent;
+  color:var(--muted);font-size:12px;text-align:center;
+}
+main > .public-footer #footer-title{min-width:0;overflow-wrap:anywhere}
+main > .public-footer #orion-credit{min-width:0;overflow-wrap:anywhere}
+main > .public-footer a{
+  font-family:Outfit,Figtree,sans-serif;font-size:16px;font-weight:700;
+  color:var(--text);text-decoration:none;
+}
+main > .public-footer a:hover{text-decoration:underline}
+@media(min-width:640px){
+  main > .public-footer{flex-direction:row;justify-content:space-between;text-align:left}
+}
+@media(prefers-reduced-motion:reduce){
+  header .appearance-trigger{transition:none}
+}

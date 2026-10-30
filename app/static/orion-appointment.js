@@ -6,9 +6,8 @@ let current=null,busy=false,operation=null,navigating=false;
 // A second WhatsApp link can reuse this tab with a different fragment. Clear
 // the old view immediately and authenticate the new capability in a fresh page.
 window.addEventListener('hashchange',()=>{navigating=true;current=null;document.querySelector('main').hidden=true;location.reload();});
-let theme=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
-document.documentElement.dataset.theme=theme;
-$('theme').onclick=()=>{theme=theme==='dark'?'light':'dark';document.documentElement.dataset.theme=theme;};
+// Appearance is managed by the same orion-public-theme.js used on /s/*.
+// It persists the site preference, follows the system, and updates the icon.
 const statusNames={hold:'Reserva temporária',confirmed:'Agendamento confirmado!',completed:'Atendimento concluído!',cancelled:'Agendamento cancelado',no_show:'Comparecimento não registrado'};
 const node=(tag,text)=>{const n=document.createElement(tag);n.textContent=text;return n;};
 function showError(error){$('message').textContent=error.message||'Não foi possível conectar. Tente novamente em instantes.';}
@@ -28,7 +27,7 @@ function accent(value){
 }
 function render(data){
  if(navigating||token!==location.hash.slice(1))return;
- current=data;operation=null;accent(data.brand_color);const logo=$('company-logo');logo.hidden=!(data.logo_url&&/^\/media\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/.test(data.logo_url));if(!logo.hidden){logo.src=data.logo_url;logo.alt=data.company;}else logo.removeAttribute('src');$('company').textContent=data.company;$('title').textContent=statusNames[data.status]||'Seu agendamento';
+ current=data;operation=null;accent(data.brand_color);$('footer-title').textContent=data.company;const logo=$('company-logo');logo.hidden=!(data.logo_url&&/^\/media\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/.test(data.logo_url));if(!logo.hidden){logo.src=data.logo_url;logo.alt=data.company;}else logo.removeAttribute('src');$('company').textContent=data.company;$('title').textContent=statusNames[data.status]||'Seu agendamento';
  $('message').textContent=data.status==='completed'?`Obrigado pela visita, ${data.customer.split(' ')[0]}! Foi um prazer receber você.`:data.can_change?'Você pode cancelar ou remarcar até 1 hora antes do atendimento.':data.status==='confirmed'?'Seu agendamento está próximo e não pode mais ser alterado por esta página. Para solicitar ajuda, entre em contato com a empresa.':'Confira abaixo o estado atual do seu atendimento.';
  const when=new Date(data.start_at);const date=new Intl.DateTimeFormat('pt-BR',{dateStyle:'long',timeZone:data.timezone}).format(when);const time=new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:data.timezone}).format(when);
  $('details').replaceChildren();for(const [key,value] of [['Cliente',data.customer],['Serviço',data.services.join(' + ')],['Profissional',data.professional],['Data',date],['Horário',time],['Duração',data.duration_min+' minutos'],['Protocolo',data.protocol],['Endereço',data.address]]){if(!value)continue;const row=node('div','');row.append(node('dt',key),node('dd',value));$('details').append(row);}
