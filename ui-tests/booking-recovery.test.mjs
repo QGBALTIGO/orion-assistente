@@ -294,3 +294,64 @@ test('admin booking blocks other international DDI without converting to Brazili
   const field=h.document.querySelector('[data-os-form=appointment] [name=customer_phone]');
   assert.equal(field.getAttribute('aria-invalid'),'true');
 });
+
+
+test('agendar com cliente +595 ainda não listado cria hold e confirma sem seleção no autocomplete', async t => {
+  const h = await makeSuite({
+    initialRoute: 'agenda',
+    respond: bookingResponse((path, method) => {
+      if (path.includes('/management/customers?') && method === 'GET')
+        return { items: [], total: 0 };
+    }),
+  });
+  t.after(() => h.close());
+  await flush();
+  h.click('[data-os-action=new-appointment]'); await flush();
+  const name = 'Teste de QA internacional sintético';
+  h.fill('#osBookingCustomer', name);
+  h.fill('#osField-customer_phone', '+595 992 820210');
+  await change(h, '#osField-day', '2030-04-05');
+  await change(h, '#osField-professional_id', professionalId);
+  h.click('[data-os-book-service="' + serviceId + '"]'); await flush();
+  h.fill('#osBookingSlot', startAt);
+  h.submit('[data-os-form=appointment]'); await flush();
+
+  const holds = h.calls.filter(c => c.method === 'POST' && c.path.endsWith('/appointments/hold'));
+  const confirmations = h.calls.filter(c => c.method === 'POST' && c.path.endsWith('/appointments/' + appointmentId + '/confirm'));
+  const customerWrites = h.calls.filter(c => c.method === 'POST' && /\/management\/customers$/.test(c.path));
+  assert.equal(holds.length, 1, 'não precisa selecionar cadastro existente nem criar cliente separado');
+  assert.equal(holds[0].data.customer_name, name);
+  assert.equal(holds[0].data.customer_phone, '+595992820210', 'o DDI paraguaio não pode virar +55');
+  assert.equal(holds[0].data.professional_id, professionalId);
+  assert.deepEqual(holds[0].data.service_ids, [serviceId]);
+  assert.equal(holds[0].data.start_at, startAt);
+  assert.equal(confirmations.length, 1);
+  assert.equal(customerWrites.length, 0);
+  assert.equal(h.document.getElementById('osDialog').open, false);
+  assert.deepEqual(h.errors, []);
+});
+
+test('cliente fora do autocomplete não deve substituir o número informado na reserva', async t => {
+  const h = await makeSuite({
+    initialRoute: 'agenda',
+    respond: bookingResponse((path, method) => {
+      if (path.includes('/management/customers?') && method === 'GET')
+        return { items: [customer('Outro cliente visível')], total: 200 };
+    }),
+  });
+  t.after(() => h.close()); await flush();
+  h.click('[data-os-action=new-appointment]'); await flush();
+  h.fill('#osBookingCustomer', 'Cliente QA sem correspondência');
+  assert.equal(h.document.querySelectorAll('[data-os-book-customer]').length, 0);
+  h.fill('#osField-customer_phone', '+595 992 820210');
+  await change(h, '#osField-day', '2030-04-05');
+  await change(h, '#osField-professional_id', professionalId);
+  h.click('[data-os-book-service="' + serviceId + '"]'); await flush();
+  h.fill('#osBookingSlot', startAt);
+  h.submit('[data-os-form=appointment]'); await flush();
+  const hold = h.calls.find(c => c.method === 'POST' && c.path.endsWith('/appointments/hold'));
+  assert.ok(hold);
+  assert.equal(hold.data.customer_phone, '+595992820210');
+  assert.equal(hold.data.customer_name, 'Cliente QA sem correspondência');
+  assert.equal(h.calls.filter(c => c.method === 'PATCH' && c.path.includes('/management/customers/')).length, 0);
+});
