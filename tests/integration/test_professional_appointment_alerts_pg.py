@@ -180,3 +180,26 @@ async def test_pilot_scope_blocks_new_other_companies_and_unlisted_staff(comm_db
     assert not access.recipient_allowed(PRO_PHONE)
     # The confirmed booking engine works independently of these pilot gates.
     # Its outbox for another company cannot be activated just by a site link.
+
+
+@pytest.mark.asyncio
+async def test_whatsapp_receipt_progresses_accepted_to_delivered_to_read_without_resend(comm_db):
+    d=comm_db;await booking(d)
+    notice=next(n for n in await jobs(d) if n['event']=='professional_new')
+    await capture_professional(d,notice)
+    assert next(n for n in await jobs(d) if n['id']==notice['id'])['status']=='accepted'
+    seen=[]
+    async def inspect(tenant,channel,operation):
+        seen.append((tenant,channel,operation))
+        return {'operation_id':operation,'accepted':True,
+                'delivery':'delivered' if len(seen)==1 else 'read'}
+    ctx={'appointment_inspector':inspect}
+    assert await notices.reconcile_notification(ctx,str(d['a']),str(notice['id']))=='delivered'
+    assert next(n for n in await jobs(d) if n['id']==notice['id'])['status']=='delivered'
+    assert await notices.reconcile_notification(ctx,str(d['a']),str(notice['id']))=='read'
+    assert next(n for n in await jobs(d) if n['id']==notice['id'])['status']=='read'
+    assert seen==[(d['a'],d['channel'],str(notice['id']))]*2
+    async def no_resend(*args):
+        pytest.fail('A receipt cannot trigger a second WhatsApp send')
+    assert await notices.process_notification({'appointment_sender':no_resend},
+         str(d['a']),str(notice['id']))=='read'
