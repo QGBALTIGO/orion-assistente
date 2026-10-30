@@ -108,6 +108,10 @@ async def enqueue_event(db, tenant, appointment, event, details):
 
 async def eligibility(db, tenant, job):
     central = job.get('central_channel_id') is not None
+    if central_enabled() and not central:
+        # Prevent any pre-rollout tenant channel notice from bypassing the
+        # platform-only sender rule when the central lane becomes active.
+        return 'execution_paused',None,None,None
     if central:
         admin, channel = central_channel()
         if not central_enabled() or admin is None or channel != job['central_channel_id']:
