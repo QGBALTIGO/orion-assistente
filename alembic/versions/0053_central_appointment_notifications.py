@@ -49,6 +49,8 @@ def upgrade():
             JOIN public.appointments a ON a.tenant_id=n.tenant_id
               AND a.id=n.appointment_id
             JOIN public.tenants t ON t.id=n.tenant_id
+            LEFT JOIN public.appointment_communication_settings setting
+              ON setting.tenant_id=n.tenant_id
             JOIN public.qr_channels hub ON hub.id=n.central_channel_id
               AND hub.tenant_id=configured_admin AND hub.enabled
             JOIN public.tenant_memberships m ON m.tenant_id=hub.tenant_id
@@ -66,6 +68,8 @@ def upgrade():
               AND n.expires_at>clock_timestamp() AND n.due_at<=clock_timestamp()
               AND n.appointment_version=a.updated_at
               AND t.status='active'
+              AND (setting.tenant_id IS NULL OR setting.enabled)
+              AND coalesce(setting.version,0)=n.settings_version
               AND a.status=CASE WHEN n.event='review' THEN 'completed'
                 WHEN n.event LIKE '%cancelled' THEN 'cancelled' ELSE 'confirmed' END
               AND ((n.recipient_kind='professional'
