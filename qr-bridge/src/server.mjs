@@ -9,8 +9,7 @@ import http from "node:http";
 import {databaseBackup} from './database-backup-store.mjs';
 import path, {join as joinPath} from "node:path";
 import fs from "node:fs";
-import {randomUUID,createHmac} from "node:crypto";
-import {bridgeKeyAuthorized} from "./bridge-auth.mjs";
+import {timingSafeEqual,randomUUID,createHmac} from "node:crypto";
 import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import NodeCache from "@cacheable/node-cache";
@@ -211,7 +210,12 @@ function stats(){
     controlStorage:connectedStore.health(),contactNameStorage:contactNames.health()};
 }
 function auth(req){
-  return bridgeKeyAuthorized(req.headers["x-orion-bridge-key"],KEY);
+  // A blank or short secret must NEVER authorize a blank header.
+  if(typeof KEY!=="string"||Buffer.byteLength(KEY,"utf8")<32||Buffer.byteLength(KEY,"utf8")>256)return false;
+  const header=req.headers["x-orion-bridge-key"];
+  if(typeof header!=="string")return false;
+  const input=Buffer.from(header,"utf8"),expected=Buffer.from(KEY,"utf8");
+  return input.length===expected.length&&timingSafeEqual(input,expected);
 }
 function reply(res,code,data){
   res.writeHead(code,{"Content-Type":"application/json; charset=utf-8",
