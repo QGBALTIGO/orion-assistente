@@ -7,7 +7,8 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {EventEmitter} from 'node:events';
 import {normalizeFromJid} from '../src/core.mjs';
-import {SMOKE_ID,APPOINTMENT_QA_ID} from '../src/consented-live-qa.mjs';
+import {SMOKE_ID} from '../src/consented-live-qa.mjs';
+const APPOINTMENT_QA_ID='orion-transactional-owned-pair-20261030-v2';
 
 const source=fs.readFileSync(new URL('../src/server.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const connectStart=source.indexOf('async function connect(){');
