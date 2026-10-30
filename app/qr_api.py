@@ -170,7 +170,7 @@ def _config()->tuple[str,str]:
         host=parts.hostname or ""
         allowed=(
             parts.scheme=="http"
-            and bool(re.fullmatch(r"[a-z0-9][a-z0-9-]*\\.railway\\.internal",host))
+            and bool(re.fullmatch(r"[a-z0-9][a-z0-9-]*\.railway\.internal",host))
             and parts.port==3000
             and parts.netloc==host+":3000"
             and parts.path in ("","/")
