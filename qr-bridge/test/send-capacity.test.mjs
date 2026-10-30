@@ -236,3 +236,39 @@ test('fila lotada não envia presença transacional nem pacote criptografado',as
   assert.equal(h.calls.cache,0);
   assert.equal(h.calls.relay,0);
 });
+
+
+test('500 simultaneous transactional requests admit only configured throughput, never 500 encrypted sends',async()=>{
+  const c=clock(),limit=makeSendCapacity({...c,limit:5,maxWaiters:40,maxWaitMs:600000});
+  const outcome={admitted:[],refused:[]};
+  const tasks=Array.from({length:500},(_,n)=>limit.acquire({wait:true})
+    .then(()=>outcome.admitted.push({id:n,at:c.now()}))
+    .catch(error=>outcome.refused.push({id:n,reason:error.message})));
+  await tick();
+  assert.equal(limit.pending(),40);
+  assert.equal(outcome.admitted.length,5);
+  assert.equal(outcome.refused.length,455,'refuse overflow without any provider send');
+  assert.ok(outcome.refused.every(x=>/fila de mensagens/.test(x.reason)));
+  for(let minute=1;minute<=8;minute++){
+    c.advance(60000);
+    await tick();
+    assert.equal(outcome.admitted.length,5*(minute+1));
+    assert.equal(limit.pending(),40-minute*5);
+    assert.ok(outcome.admitted.every(x=>x.at%60000===0));
+  }
+  await Promise.all(tasks);
+  assert.equal(limit.pending(),0);
+  assert.equal(outcome.admitted.length,45);
+  assert.equal(outcome.refused.length,455);
+  const windows=new Map();
+  for(const x of outcome.admitted){
+    const minute=Math.floor(x.at/60000);
+    windows.set(minute,(windows.get(minute)||0)+1);
+  }
+  assert.equal(windows.size,9);
+  assert.ok([...windows.values()].every(n=>n<=5));
+  // Under this policy 500 customers needing 1-hour reminders simultaneously
+  // cannot all be notified during the two-minute validity interval. This is
+  // a capacity warning, not a suggestion to bypass WhatsApp traffic limits.
+  assert.ok(outcome.admitted.filter(x=>x.at<=120000).length<=15);
+});
