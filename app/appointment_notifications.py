@@ -57,9 +57,8 @@ def notification_settings(row, central, channel=None):
 async def enqueue_event(db, tenant, appointment, event, details):
     central = central_enabled()
     if not central and not access.tenant_enabled(tenant):return
-    if not central:
-        from app.plan_permissions import has_feature
-        if not await has_feature(db, tenant, "notifications.basic"):return
+    from app.plan_permissions import has_feature
+    if not await has_feature(db, tenant, "notifications.basic"):return
     # Every committed mutation invalidates old pending facts in this SAME tx.
     if event in {'confirmed','cancelled','rescheduled','completed','no_show','hold_expired'}:
         await db.execute(text("""UPDATE appointment_notifications SET status='cancelled',
@@ -117,10 +116,9 @@ async def eligibility(db, tenant, job):
         admin, channel = central_channel()
         if not central_enabled() or admin is None or channel != job['central_channel_id']:
             return 'execution_paused',None,None,None
-    else:
-        from app.plan_permissions import has_feature
-        if not await has_feature(db, tenant, "notifications.basic"):
-            return 'plan_feature_unavailable',None,None,None
+    from app.plan_permissions import has_feature
+    if not await has_feature(db, tenant, "notifications.basic"):
+        return 'plan_feature_unavailable',None,None,None
     saved=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
     settings=notification_settings(saved,central,job.get('central_channel_id'))
     if (not central and not access.tenant_enabled(tenant)) or not settings or not settings['enabled']:
