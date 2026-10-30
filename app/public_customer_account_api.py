@@ -181,7 +181,7 @@ async def request_code(slug: str, payload: PhoneInput, request: Request):
     await public_limit(request, slug, "customer-account-ip", 8, 3600)
     # Rate-limit by target phone across *all* sites, stopping provider abuse.
     await public_limit(request, "all", "customer-account-phone", 3, 1800,
-                       subject=payload.phone)
+                       subject=phone_fingerprint(payload.phone))
     await resolve_public(slug)
     await enqueue_code(slug, payload.phone)
     return reply(GENERIC_SENT, 202)
@@ -193,7 +193,7 @@ async def verify_code(slug: str, payload: CodeInput, request: Request):
     _same_origin(request)
     await public_limit(request, slug, "customer-account-verify-ip", 20, 900)
     await public_limit(request, "all", "customer-account-verify-phone", 8, 900,
-                       subject=payload.phone)
+                       subject=phone_fingerprint(payload.phone))
     tenant = await resolve_public(slug)
     if not await provider_request(payload.phone, payload.code):
         raise HTTPException(403, "Código inválido ou expirado. Solicite um novo código.")
@@ -295,7 +295,7 @@ async def request_new_phone(slug: str, payload: PhoneInput, request: Request):
         raise HTTPException(409, "Este já é seu telefone cadastrado.")
     await public_limit(request, str(customer["id"]), "customer-change-phone", 2, 3600)
     await public_limit(request, "all", "customer-account-phone", 3, 1800,
-                       subject=payload.phone)
+                       subject=phone_fingerprint(payload.phone))
     if not await provider_request(payload.phone):
         raise HTTPException(503, "Não foi possível enviar o código. Tente novamente mais tarde.")
     return reply({"message": "Enviamos um código para o novo telefone."}, 202)
