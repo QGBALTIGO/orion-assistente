@@ -13,7 +13,7 @@ from sqlalchemy import text
 from app import appointment_notifications as notices
 from app.appointment_lifecycle import LifecycleActor,customer_actor
 from app.booking_service import cancel_appointment,reschedule_appointment
-from tests.integration.test_booking import phone,start_at
+from tests.integration.test_booking import booking_db,phone,start_at
 from tests.integration.test_appointment_notifications_pg import (
     comm_db,booking,jobs,PRO_PHONE
 )
