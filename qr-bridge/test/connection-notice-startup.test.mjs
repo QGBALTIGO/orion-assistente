@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {EventEmitter} from 'node:events';
 import {normalizeFromJid} from '../src/core.mjs';
+import {SMOKE_ID,APPOINTMENT_QA_ID} from '../src/consented-live-qa.mjs';
 
 const source=fs.readFileSync(new URL('../src/server.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const connectStart=source.indexOf('async function connect(){');
@@ -29,6 +30,7 @@ function harness(options={}){
   const sockets=[],notices=[],timers=new Map();let serial=0;
   const auth={creds:{registered},keys:{async set(){}}};
   const context=vm.createContext({
+    SMOKE_ID,APPOINTMENT_QA_ID,
     generation:0,socket:null,timer:null,attempts:0,status:'starting',authDir:'/synthetic/preserved-auth',newLinkNoticeAuthDir:null,
     contactNames:{bindIdentity(){}},pauseContactNames(){},namesStore:{bindIdentity(){}},namesSync:{start(){}},
     connectedStore:{setIdentity(){}},refreshConnectedProfile:async()=>{},
