@@ -323,7 +323,7 @@ test('agendar com cliente +595 ainda não listado cria hold e confirma sem sele�
   assert.equal(holds[0].data.customer_name, name);
   assert.equal(holds[0].data.customer_phone, '+595992820210', 'o DDI paraguaio não pode virar +55');
   assert.equal(holds[0].data.professional_id, professionalId);
-  assert.deepEqual(holds[0].data.service_ids, [serviceId]);
+  assert.deepEqual(Array.from(holds[0].data.service_ids), [serviceId]);
   assert.equal(holds[0].data.start_at, startAt);
   assert.equal(confirmations.length, 1);
   assert.equal(customerWrites.length, 0);
