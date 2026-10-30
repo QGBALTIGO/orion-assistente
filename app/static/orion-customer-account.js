@@ -475,11 +475,14 @@
   }
 
   async function loadState(){
-    state.requestNumber++;
+    const requestId=++state.requestNumber;
     state.lists={upcoming:null,history:null};
     body(empty("Carregando sua conta","Conferindo a sessão deste estabelecimento…"));
     try{
       const data=await api();
+      // The overlay may have been closed or reopened under another session.
+      // Never resurrect personal data from an obsolete in-flight response.
+      if(requestId!==state.requestNumber||!dialog.open)return;
       state.available=data.available===true;
       state.authenticated=data.authenticated===true;
       state.profile=state.authenticated?data.profile:null;
@@ -487,7 +490,10 @@
         document.getElementById("site-title")?.textContent||"Seu espaço neste estabelecimento";
       if(state.authenticated)await openTab("upcoming");
       else renderLogin();
-    }catch(error){state.available=false;renderLogin();notice(sourceError(error),true);}
+    }catch(error){
+      if(requestId!==state.requestNumber||!dialog.open)return;
+      state.available=false;renderLogin();notice(sourceError(error),true);
+    }
   }
   function open(){
     if(dialog.open)return;
