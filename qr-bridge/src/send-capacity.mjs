@@ -2,7 +2,7 @@
  * This is backpressure, never a request to bypass WhatsApp limits.
  * No network relay or automated retry happens inside this queue.
  */
-export function makeSendCapacity({limit=5,windowMs=60000,maxWaiters=40,maxWaitMs=180000,
+export function makeSendCapacity({limit=5,windowMs=60000,maxWaiters=40,maxWaitMs=600000,
   now=Date.now,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}){
   if(!Number.isSafeInteger(limit)||limit<1||!Number.isSafeInteger(windowMs)||windowMs<1||
      !Number.isSafeInteger(maxWaiters)||maxWaiters<1||maxWaiters>200||
