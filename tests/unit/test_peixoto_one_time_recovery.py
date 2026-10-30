@@ -33,6 +33,12 @@ def test_only_correct_company_professional_and_future_booking_allowed():
     assert not repair.eligible_booking(appointment(phone_e164="+5511123"), datetime.now(timezone.utc))
     assert not repair.eligible_booking(appointment(phone_e164=None), datetime.now(timezone.utc))
     assert not repair.eligible_booking(appointment(public_enabled=False), datetime.now(timezone.utc))
+    assert repair.booking_blocker(appointment(), datetime.now(timezone.utc)) is None
+    assert repair.booking_blocker(appointment(status="completed"), datetime.now(timezone.utc)) == "booking_not_confirmed"
+    assert repair.booking_blocker(appointment(phone_e164=None), datetime.now(timezone.utc)) == "professional_phone_missing"
+    assert repair.booking_blocker(appointment(phone_e164="5567999999922"), datetime.now(timezone.utc)) == "professional_phone_invalid"
+    assert repair.booking_blocker(appointment(end_at=datetime(2025,1,1,tzinfo=timezone.utc)), datetime.now(timezone.utc)) == "booking_already_finished"
+
 
 
 class QueryResult:
