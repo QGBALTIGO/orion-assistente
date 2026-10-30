@@ -194,23 +194,26 @@ async def process_notification(ctx,tenant_id,notification_id):
                     await db.execute(text("UPDATE appointment_notifications SET status=:status,last_error=:error,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id"),
                         {'t':tenant,'id':identity,'status':'cancelled' if reason in {'expired','appointment_changed','settings_changed','execution_paused'} else 'failed','error':reason})
                 return reason
-            # Reject unsupported recipients BEFORE the external attempt. This
-            # does not expand the transport allowlist or re-pair a session.
+            # Only the verified admin sender is used for central appointment
+            # notices. Other senders keep the original explicit allowlist.
             from app.catalog_api import support_session_factory
-            async with support_session_factory()() as registry:
-                senders=(await registry.execute(text('SELECT allowed_senders FROM qr_channels WHERE tenant_id=:t AND id=:c AND enabled'),
-                    {'t':tenant,'c':job['channel_id']})).scalar_one_or_none()
-            if not senders or phone.lstrip('+') not in senders:
-                await db.execute(text("UPDATE appointment_notifications SET status='failed',last_error='transport_recipient_not_authorized' WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':identity})
-                return 'transport_recipient_not_authorized'
+            central = job.get('central_channel_id') is not None
+            send_tenant, send_channel = (central_channel() if central else (tenant,job['channel_id']))
+            if not central:
+                async with support_session_factory()() as registry:
+                    senders=(await registry.execute(text('SELECT allowed_senders FROM qr_channels WHERE tenant_id=:t AND id=:c AND enabled'),
+                        {'t':tenant,'c':job['channel_id']})).scalar_one_or_none()
+                if not senders or phone.lstrip('+') not in senders:
+                    await db.execute(text("UPDATE appointment_notifications SET status='failed',last_error='transport_recipient_not_authorized' WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':identity})
+                    return 'transport_recipient_not_authorized'
             if ctx.get('appointment_sender') is None:
                 # An observed offline channel is a definite no-send. Only this
                 # preflight can be retried; ambiguous HTTP sends never are.
                 try:
                     from app.qr_channels import _canonical, _bridge_control, _control_result
                     async with support_session_factory()() as registry:
-                        channel,state=await _canonical(registry,tenant)
-                    if channel is None or state!='ready' or channel['id']!=job['channel_id']:
+                        channel,state=await _canonical(registry,send_tenant)
+                    if channel is None or state!='ready' or channel['id']!=send_channel:
                         raise ValueError('channel_changed')
                     observed=_control_result(channel,await _bridge_control(channel,'status','GET'),'status')
                     if observed['status']!='connected' or not observed.get('phone_verified'):
@@ -227,9 +230,17 @@ async def process_notification(ctx,tenant_id,notification_id):
                 await db.execute(text("UPDATE appointment_notifications SET status='failed',last_error='message_facts_invalid' WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':identity})
                 return 'message_facts_invalid'
             encrypted=cipher().encrypt(body.encode()).decode()
+            # The support-only broker compares the exact prepared body hash,
+            # not a caller-supplied text or arbitrary phone. Legacy pilot rows
+            # retain the unchanged old update until the feature is enabled.
+            digest_sql=",body_sha256=:body_digest" if central else ""
+            values={'t':tenant,'id':identity,'body':encrypted,
+                    'hash':hashlib.sha256(phone.encode()).hexdigest()}
+            if central:values['body_digest']=hashlib.sha256(body.encode()).hexdigest()
             await db.execute(text("""UPDATE appointment_notifications SET status='sending',attempts=attempts+1,
-                body_encrypted=:body,recipient_hash=:hash,attempted_at=clock_timestamp(),updated_at=clock_timestamp()
-                WHERE tenant_id=:t AND id=:id"""),{'t':tenant,'id':identity,'body':encrypted,'hash':hashlib.sha256(phone.encode()).hexdigest()})
+                body_encrypted=:body,recipient_hash=:hash""" + digest_sql +
+                """,attempted_at=clock_timestamp(),updated_at=clock_timestamp()
+                WHERE tenant_id=:t AND id=:id"""),values)
             job={**dict(job),'recipient_hash':hashlib.sha256(phone.encode()).hexdigest()}
     result,error,provider='unknown','transport_result_unknown',None
     try:
@@ -242,8 +253,10 @@ async def process_notification(ctx,tenant_id,notification_id):
             sender=ctx.get('appointment_sender')
             if sender is None:
                 from app.automation_transport import _request
-                data=await _request(tenant,job['channel_id'],identity,message={'to':phone.lstrip('+'),'text':body,'operation_id':str(identity)})
-            else:data=await sender(tenant,job['channel_id'],phone,body,str(identity))
+                data=await _request(send_tenant,send_channel,identity,message={
+                    'to':phone.lstrip('+'),'text':body,'operation_id':str(identity),
+                    **({'source':'appointment'} if central else {})})
+            else:data=await sender(send_tenant,send_channel,phone,body,str(identity))
             if data.get('accepted') is True and data.get('state')=='accepted':
                 result,error,provider='accepted',None,data.get('provider_id')
             elif data.get('state')=='refused':result,error='failed','transport_refused'
@@ -283,7 +296,7 @@ async def reconcile_notification(ctx,tenant_id,notification_id):
     tenant,identity=UUID(tenant_id),UUID(notification_id)
     async with get_session_factory()() as db:
         async with tenant_transaction(db,tenant):
-            row=(await db.execute(text("SELECT channel_id,status FROM appointment_notifications WHERE tenant_id=:t AND id=:id AND status IN ('accepted','unknown','delivered')"),
+            row=(await db.execute(text("SELECT channel_id,central_channel_id,status FROM appointment_notifications WHERE tenant_id=:t AND id=:id AND status IN ('accepted','unknown','delivered')"),
                 {'t':tenant,'id':identity})).mappings().first()
     if not row:return 'unavailable'
     try:
@@ -291,7 +304,10 @@ async def reconcile_notification(ctx,tenant_id,notification_id):
         if reader is None:
             from app.automation_transport import inspect_automation
             reader=inspect_automation
-        receipt=await reader(tenant,row['channel_id'],str(identity))
+        channel=row.get('central_channel_id') or row['channel_id']
+        receipt_tenant=central_channel()[0] if row.get('central_channel_id') else tenant
+        if channel is None or receipt_tenant is None:return 'unknown'
+        receipt=await reader(receipt_tenant,channel,str(identity))
         if receipt.get('operation_id')!=str(identity) or receipt.get('accepted') is not True:
             # An unconfirmed inspection is not evidence of delivery. Advance
             # its inspection time so other unknown receipts get a fair turn.
