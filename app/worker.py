@@ -123,6 +123,14 @@ async def startup_plan_permissions(ctx):
     await wait_for_schema(Settings.from_environment())
     ctx['plan_permissions_ready'] = True
     logging.getLogger(__name__).info('orion_plan_permissions_0050_worker_ready')
+    if os.getenv('ORION_E2E_PEIXOTO_CLEANUP') == '1':
+        try:
+            from app.peixoto_e2e_cleanup import cancel_one
+            outcome = await cancel_one()
+            print('orion_peixoto_e2e_cleanup state=' + outcome, flush=True)
+        except Exception as exc:
+            print('orion_peixoto_e2e_cleanup_failed_closed type='
+                  + type(exc).__name__, flush=True)
     if os.getenv('ORION_ONE_TIME_PEIXOTO_PREFLIGHT') == '1':
         try:
             import json
