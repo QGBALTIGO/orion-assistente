@@ -963,18 +963,11 @@
   }
 
   function openBookingWhatsApp(url) {
-    // Only a successful reservation may open WhatsApp. A separate tab keeps the
-    // Orion receipt visible when the customer returns from the messenger.
-    try {
-      const tab = window.open('about:blank', '_blank');
-      if (tab) {
-        try { tab.opener = null; } catch { /* opener is detached when supported */ }
-        tab.location.replace(url);
-        return;
-      }
-    } catch { /* A popup blocker must not discard the completed booking. */ }
+    // A reservation is already committed at this point. Opening a new tab
+    // after the asynchronous API reply is blocked by Safari/Chrome on mobile.
+    // Navigate in the same tab instead; the receipt keeps a manual fallback.
     try { window.location.assign(url); } catch {
-      // Restricted browsers can still use the visible link on the receipt.
+      // Restricted browsers still have the visible link on the receipt.
     }
   }
 
