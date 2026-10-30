@@ -18,6 +18,8 @@ function setup({installed=true}={}) {
   Object.defineProperty(w.navigator, "standalone", {value:installed,configurable:true});
   Object.defineProperty(w.navigator, "userAgent", {value:"Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X)",configurable:true});
   w.matchMedia=()=>({matches:installed});
+  // JSDOM has no browser PushManager; install only the feature-detection stub.
+  w.PushManager=function PushManager(){};
   let permissionCalls=0,subCalls=0,existing=null;
   w.Notification={
     permission:"default",
