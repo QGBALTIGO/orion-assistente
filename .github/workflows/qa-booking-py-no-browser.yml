@@ -1,0 +1,41 @@
+name: Orion QA — agendamento internacional sem navegador pago
+
+on:
+  pull_request:
+    paths:
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-fields.js'
+      - 'ui-tests/booking-recovery.test.mjs'
+      - 'ui-tests/harness.mjs'
+      - '.github/workflows/qa-booking-py-no-browser.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-fields.js'
+      - 'ui-tests/booking-recovery.test.mjs'
+      - 'ui-tests/harness.mjs'
+      - '.github/workflows/qa-booking-py-no-browser.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  booked-new-customer:
+    name: Cliente +595 sem autocomplete nem mensagem real
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependências de teste locais
+        run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Validar sintaxe do painel
+        run: node --check app/static/orion-suite.js
+      - name: Testes focados no agendamento internacional sem cliente na lista
+        run: |
+          node --test --test-name-pattern="agendar com cliente|cliente fora do autocomplete" \
+            ui-tests/booking-recovery.test.mjs
