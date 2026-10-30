@@ -23,7 +23,7 @@ def upgrade():
            OR requested_protocol IS NULL
            OR requested_protocol !~ '^AG-[A-HJ-NP-Z2-9]{6}$'
            OR verified_phone IS NULL
-           OR verified_phone !~ '^\\+55[1-9][0-9]{9,10}$' THEN
+           OR verified_phone !~ '^\+55[1-9][0-9]{9,10}$' THEN
           RETURN;
         END IF;
 
