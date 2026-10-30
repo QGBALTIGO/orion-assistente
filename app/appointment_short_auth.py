@@ -53,24 +53,21 @@ async def target(db, tenant, appointment, role):
 
 
 async def request_otp(tenant, appointment, role):
-    """Bounded per-appointment OTP dispatch to a verified, allowed QR contact."""
+    """Persist an encrypted OTP before asynchronous send; constant public reply."""
     if not access.tenant_enabled(tenant):
         return GENERIC_REQUEST
-    from app.appointment_short_links import otp_digest
     from app.catalog_api import support_session_factory
     from app.qr_channels import _canonical
     from app.appointment_message_templates import label
-    from app.automation_transport import _request
+    from app.appointment_notifications import cipher
     import secrets
 
-    factory = get_session_factory()
-    async with factory() as db:
+    async with get_session_factory()() as db:
         async with tenant_transaction(db, tenant):
             recipient = await target(db, tenant, appointment, role)
             if not recipient:
                 return GENERIC_REQUEST
             phone = recipient["phone"]
-            # A platform-wide public link cannot change the channel or its allowlist.
             async with support_session_factory()() as registry:
                 channel, state = await _canonical(registry, tenant)
             if (not channel or state != "ready" or channel["id"] != recipient["channel_id"]
@@ -85,50 +82,134 @@ async def request_otp(tenant, appointment, role):
             """), {"t": tenant, "a": appointment, "role": role})).scalar_one()
             if recent >= 3:
                 return GENERIC_REQUEST
-            # Only the latest challenge can be redeemed.
             await db.execute(text("""
-                UPDATE appointment_short_challenges SET status='failed'
+                UPDATE appointment_short_challenges SET status='failed',body_encrypted=NULL
                 WHERE tenant_id=:t AND appointment_id=:a AND recipient_kind=:role
                   AND status IN ('pending','accepted')
             """), {"t": tenant, "a": appointment, "role": role})
             otp = f"{secrets.randbelow(1_000_000):06d}"
             challenge_id, operation_id = uuid4(), uuid4()
+            signature = label(recipient["signature"], 80)
+            body = (f"🔐 *Código de acesso ao agendamento*\n\n"
+                    f"Seu código é: *{otp}*\n\n"
+                    f"_Válido por 5 minutos. Não compartilhe com ninguém._\n\n{signature}")
+            encrypted = cipher().encrypt(body.encode()).decode()
             await db.execute(text("""
                 INSERT INTO appointment_short_challenges(
                   id,tenant_id,appointment_id,recipient_kind,recipient_id,recipient_hash,
-                  otp_hash,operation_id,expires_at)
-                VALUES(:id,:t,:a,:role,:person,:phone,:digest,:operation,
+                  otp_hash,operation_id,body_encrypted,expires_at)
+                VALUES(:id,:t,:a,:role,:person,:phone,:digest,:operation,:body,
                        clock_timestamp()+interval '5 minutes')
             """), {"id": challenge_id, "t": tenant, "a": appointment, "role": role,
                    "person": recipient["person"], "phone": recipient_hash(phone),
-                   "digest": otp_digest(challenge_id, otp), "operation": operation_id})
-            channel_id = recipient["channel_id"]
-            signature = label(recipient["signature"], 80)
-
-    # Persist first, then submit to the idempotent QR transport once. Uncertain
-    # results are NEVER replayed. No secret is exposed to the HTTP response.
-    body = (f"🔐 *Código de acesso ao agendamento*\n\n"
-            f"Seu código é: *{otp}*\n\n"
-            f"_Válido por 5 minutos. Não compartilhe com ninguém._\n\n{signature}")
-    accepted = False
-    try:
-        outcome = await _request(tenant, channel_id, operation_id,
-            message={"to": phone.lstrip("+"), "text": body, "operation_id": str(operation_id)})
-        accepted = outcome.get("accepted") is True and outcome.get("state") == "accepted"
-    except Exception:
-        pass  # No provider response, credential, number, or code enters logs.
-    finally:
-        del otp
-    async with factory() as db:
-        async with tenant_transaction(db, tenant):
-            await db.execute(text("""
-                UPDATE appointment_short_challenges SET
-                  status=:state,sent_at=CASE WHEN :accepted THEN clock_timestamp() ELSE NULL END
-                WHERE tenant_id=:t AND id=:id AND status='pending'
-            """), {"state": "accepted" if accepted else "failed", "accepted": accepted,
-                   "t": tenant, "id": challenge_id})
+                   "digest": otp_digest(challenge_id, otp), "operation": operation_id,
+                   "body": encrypted})
+    # No plaintext code, phone, existence detail, or sending latency reaches the browser.
     return GENERIC_REQUEST
 
+
+async def scan_short_otps(ctx):
+    """A durable selector is read by app_support; workers execute tenant-scoped."""
+    from app.catalog_api import support_session_factory
+    from app.appointment_short_api import enabled
+    if not enabled():
+        return 0
+    async with support_session_factory()() as db:
+        jobs = (await db.execute(text("SELECT * FROM public.orion_due_short_challenges(100)"))).mappings().all()
+    for job in jobs:
+        await ctx["redis"].enqueue_job("process_short_otp", str(job["tenant_id"]), str(job["id"]),
+              _job_id="orion-short-otp:" + str(job["id"]))
+    return len(jobs)
+
+
+async def process_short_otp(ctx, tenant_id, challenge_id):
+    """Single provider attempt, no retry after an ambiguous transport receipt."""
+    from uuid import UUID
+    from app.appointment_short_api import enabled
+    from app.appointment_notifications import cipher
+    from app.catalog_api import support_session_factory
+    from app.qr_channels import _canonical
+    from app.automation_transport import _request
+    if not enabled():
+        return "disabled"
+    tenant, identity = UUID(tenant_id), UUID(challenge_id)
+    ready = None
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db, tenant):
+            job = (await db.execute(text("""
+                SELECT * FROM appointment_short_challenges
+                WHERE tenant_id=:t AND id=:id FOR UPDATE SKIP LOCKED
+            """), {"t": tenant, "id": identity})).mappings().first()
+            if not job or job["status"] != "pending":
+                return "already_processed"
+            now = (await db.execute(text("SELECT clock_timestamp()"))).scalar_one()
+            recipient = await target(db, tenant, job["appointment_id"], job["recipient_kind"])
+            if (not recipient or now >= job["expires_at"]
+                    or recipient["person"] != job["recipient_id"]
+                    or recipient_hash(recipient["phone"]) != job["recipient_hash"]):
+                await db.execute(text("""
+                    UPDATE appointment_short_challenges SET status='failed',body_encrypted=NULL
+                    WHERE tenant_id=:t AND id=:id
+                """), {"t": tenant, "id": identity})
+                return "not_authorized"
+            try:
+                body = cipher().decrypt(job["body_encrypted"].encode()).decode()
+                if len(body) > 1200:
+                    raise ValueError("invalid_body")
+            except (ValueError,AttributeError,UnicodeError):
+                await db.execute(text("""
+                    UPDATE appointment_short_challenges SET status='failed',body_encrypted=NULL
+                    WHERE tenant_id=:t AND id=:id
+                """), {"t": tenant, "id": identity})
+                return "invalid_body"
+            async with support_session_factory()() as registry:
+                channel, state = await _canonical(registry, tenant)
+            if (not channel or state != "ready" or channel["id"] != recipient["channel_id"]
+                    or recipient["phone"].lstrip("+") not in (channel.get("allowed_senders") or [])):
+                await db.execute(text("""
+                    UPDATE appointment_short_challenges SET status='failed',body_encrypted=NULL
+                    WHERE tenant_id=:t AND id=:id
+                """), {"t": tenant, "id": identity})
+                return "channel_unavailable"
+            ready = (recipient["phone"], recipient["channel_id"], job["operation_id"], body)
+            await db.execute(text("""
+                UPDATE appointment_short_challenges SET status='sending',attempted_at=clock_timestamp()
+                WHERE tenant_id=:t AND id=:id AND status='pending'
+            """), {"t": tenant, "id": identity})
+    if ready is None:
+        return "not_ready"
+    phone, channel, operation, body = ready
+    accepted = False
+    try:
+        # Recheck the same authorized recipient before the irreversible send.
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db, tenant):
+                job = (await db.execute(text("""
+                    SELECT recipient_kind,appointment_id,recipient_hash,recipient_id,expires_at,status
+                    FROM appointment_short_challenges WHERE tenant_id=:t AND id=:id
+                """), {"t": tenant, "id": identity})).mappings().first()
+                fresh = await target(db, tenant, job["appointment_id"], job["recipient_kind"]) if job else None
+                now = (await db.execute(text("SELECT clock_timestamp()"))).scalar_one()
+                permitted = bool(job and fresh and job["status"] == "sending"
+                    and job["expires_at"] > now and fresh["person"] == job["recipient_id"]
+                    and recipient_hash(fresh["phone"]) == job["recipient_hash"]
+                    and fresh["channel_id"] == channel)
+        if permitted:
+            result = await _request(tenant, channel, operation,
+                message={"to": phone.lstrip("+"), "text": body, "operation_id": str(operation)})
+            accepted = result.get("accepted") is True and result.get("state") == "accepted"
+    except Exception:
+        pass
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db, tenant):
+            await db.execute(text("""
+                UPDATE appointment_short_challenges
+                SET status=:state,body_encrypted=NULL,
+                    sent_at=CASE WHEN :accepted THEN clock_timestamp() ELSE NULL END
+                WHERE tenant_id=:t AND id=:id AND status='sending'
+            """), {"t": tenant, "id": identity,
+                   "state": "accepted" if accepted else "failed", "accepted": accepted})
+    return "accepted" if accepted else "failed"
 
 async def redeem_otp(tenant, appointment, role, otp):
     """Returns a new opaque cookie, not personal data; wrong attempts commit."""
