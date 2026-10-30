@@ -4,7 +4,7 @@ import {resolveMessagePhone} from './core.mjs';
  * This is NOT the chatbot. No AI model, tenant ID or customer-facing URL is
  * selected by this adapter. The backend returns only an authorized response.
  */
-const VALID_PHONE=/^55[1-9][0-9]{9,10}$/;
+const VALID_PHONE=/^(?:55[1-9][0-9]{9,10}|5959[0-9]{8})$/;
 const VALID_MESSAGE=/^[a-zA-Z0-9._:-]{1,157}$/;
 const PROTOCOL=/(?:^|[^a-zA-Z0-9])(AG-[A-HJ-NP-Z2-9]{6})(?![a-zA-Z0-9])/gi;
 
