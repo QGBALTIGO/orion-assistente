@@ -266,3 +266,31 @@ test('a late-night customer visit is displayed on the date in the company timezo
   assert.match(h.document.getElementById('page-suite').textContent, /05\/04\/2030/);
   assert.doesNotMatch(h.document.getElementById('page-suite').textContent, /06\/04\/2030/);
 });
+
+
+test('admin booking preserves Paraguayan WhatsApp +595 without silently replacing the DDI with +55',async t=>{
+  const h=await makeSuite({initialRoute:'agenda',respond:bookingResponse()});t.after(()=>h.close());
+  await prepareBooking(h,{phone:'+595 992 820210'});
+  const field=h.document.querySelector('[data-os-form=appointment] [name=customer_phone]');
+  assert.equal(field.dataset.orionInternational,'true');
+  assert.equal(field.value,'+595 992 820210','foreign number stays visible, not Brazilian-masked');
+  h.submit('[data-os-form=appointment]');await flush();
+  const changed=h.calls.find(call=>call.method==='PATCH'&&call.path.includes('/management/customers/'));
+  const held=h.calls.find(call=>call.path.endsWith('/appointments/hold'));
+  assert.ok(changed,'selected customer contact updated to intended Paraguay number');
+  assert.equal(changed.data.phone,'+595992820210');
+  assert.ok(held,'booking hold created once');
+  assert.equal(held.data.customer_phone,'+595992820210');
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/appointments/hold')).length,1);
+  assert.equal(h.errors.length,0);
+});
+
+test('admin booking blocks other international DDI without converting to Brazilian phone',async t=>{
+  const h=await makeSuite({initialRoute:'agenda',respond:bookingResponse()});t.after(()=>h.close());
+  await prepareBooking(h,{phone:'+1 (202) 555-0123'});
+  h.submit('[data-os-form=appointment]');await flush();
+  assert.equal(h.calls.filter(call=>call.path.endsWith('/appointments/hold')).length,0);
+  assert.equal(h.calls.filter(call=>call.method==='PATCH'&&call.path.includes('/management/customers/')).length,0);
+  const field=h.document.querySelector('[data-os-form=appointment] [name=customer_phone]');
+  assert.equal(field.getAttribute('aria-invalid'),'true');
+});
