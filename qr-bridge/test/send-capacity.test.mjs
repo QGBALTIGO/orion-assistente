@@ -270,5 +270,5 @@ test('500 simultaneous transactional requests admit only configured throughput, 
   // Under this policy 500 customers needing 1-hour reminders simultaneously
   // cannot all be notified during the two-minute validity interval. This is
   // a capacity warning, not a suggestion to bypass WhatsApp traffic limits.
-  assert.ok(outcome.admitted.filter(x=>x.at<=120000).length<=15);
+  assert.ok(outcome.admitted.filter(x=>x.at<120000).length<=10);
 });
