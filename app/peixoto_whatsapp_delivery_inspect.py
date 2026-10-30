@@ -63,7 +63,7 @@ async def inspect():
     control_phone = os.getenv("ORION_PEIXOTO_CONTROL_PHONE", "")
     # Test owner-authorized WhatsApp number is provided only in private
     # deployment environment, never source, parameters or provider logs.
-    if control_phone and re.fullmatch(r"\\+(?:55[1-9][0-9]{9,10}|5959[0-9]{8})",control_phone) is None:
+    if control_phone and re.fullmatch(r"\+(?:55[1-9][0-9]{9,10}|5959[0-9]{8})",control_phone) is None:
         return {"state": "invalid_control_scope"}
     try:
         origin = bridge_origin()
