@@ -96,8 +96,8 @@ async def customer_view(db, identity):
     if not is_media_url(logo) or not logo.startswith('/media/'+str(tenant)+'/'):logo=None
     brand=shop.get('theme_color')
     if not isinstance(brand,str) or not re.fullmatch(r'#[0-9A-Fa-f]{6}',brand):brand='#2e7bf6'
-    from app.appointment_confirmation import connected_channel_phone
-    contact=await connected_channel_phone(tenant)
+    from app.appointment_confirmation import connected_channel_phone, central_admin_phone, central_admin_whatsapp_enabled
+    contact=await (central_admin_phone() if central_admin_whatsapp_enabled() else connected_channel_phone(tenant))
     return {'logo_url':logo,'brand_color':brand,'company': shop['name'], 'customer': row['customer_name'], 'professional': row['professional_name'],
         'status': row['status'], 'protocol': row['protocol'], 'start_at': row['start_at'], 'end_at': row['end_at'],
         'timezone': row['timezone'], 'updated_at': row['updated_at'],
