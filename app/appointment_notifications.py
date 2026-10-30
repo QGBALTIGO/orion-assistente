@@ -92,10 +92,13 @@ async def enqueue_event(db, tenant, appointment, event, details):
         add('review','customer',due,due+timedelta(hours=24))
     for kind,recipient,recipient_id,due,expiry in events:
         key=event+':'+str(appointment)+':'+row['updated_at'].isoformat()+':'+kind+':'+str((details.get('previous') or {}).get('proposal_id',''))
+        center_column=",central_channel_id" if central else ""
+        center_value=",:central_channel" if central else ""
         await db.execute(text('''INSERT INTO appointment_notifications
-          (tenant_id,appointment_id,appointment_version,event,recipient_kind,recipient_id,channel_id,central_channel_id,settings_version,
-           event_key,previous,due_at,expires_at)
-          VALUES(:t,:id,:version,:event,:kind,:recipient,:channel,:central_channel,:settings,:key,CAST(:previous AS jsonb),:due,:expiry)
+          (tenant_id,appointment_id,appointment_version,event,recipient_kind,recipient_id,channel_id''' +
+          center_column + ''',settings_version,event_key,previous,due_at,expires_at)
+          VALUES(:t,:id,:version,:event,:kind,:recipient,:channel''' +
+          center_value + ''',:settings,:key,CAST(:previous AS jsonb),:due,:expiry)
           ON CONFLICT DO NOTHING'''),{'t':tenant,'id':appointment,'version':row['updated_at'],'event':kind,'kind':recipient,
           'recipient':recipient_id,'channel':None if central else settings['channel_id'],
             'central_channel':channel if central else None,
