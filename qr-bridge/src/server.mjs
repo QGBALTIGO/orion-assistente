@@ -436,7 +436,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
         if(handledBookingProtocols.size>2000)
           handledBookingProtocols.delete(handledBookingProtocols.values().next().value);
         const task=(async()=>{
-          let sendAttempted=false,phase='identity',presenceLease=null;
+          let sendAttempted=false,phase='identity';
           try{
             const phone=await resolveBookingSenderPhone(message.key,client,{isCurrent:intakeCurrent});
             if(!intakeCurrent())return;
@@ -452,13 +452,6 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
               direction:'in',at:now});
             lastInboundAt=Date.now();inboundSinceConnect=true;
             phase='backend';
-            // A verified protocol sender gets genuine composing presence while
-            // its own booking is checked. This is independent of chatbot AI.
-            presenceLease=makeAssistantTyping({
-              socket:client,pilotPhone:()=>phone,isConnected:intakeCurrent,
-              isAllowed:recipient=>recipient===phone,
-              transactional:true,maxPauseMs:1500
-            }).begin({phone,chatJid:message.key.remoteJid,isCurrent:intakeCurrent});
             const response=await fetchBookingProtocolConfirmation({
               apiUrl:process.env.QR_AI_API_URL||process.env.QR_CHANNEL_BROKER_URL,
               token:KEY,phone,messageId:traceId,text:normalized.text,isCurrent:intakeCurrent,
@@ -469,11 +462,11 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
               return;
             }
             phase='send';
-            await presenceLease.beforeReply(response);
-            if(!intakeCurrent())return;
             sendAttempted=true; // Never retry after an ambiguous WhatsApp operation.
+            // Capacity is admitted before composing starts. Presence reflects
+            // a pending authenticated reply, never a rate-limited backlog.
             const result=await sendLegacyRaw(phone,response,{
-              waitForCapacity:true,isCurrent:intakeCurrent});
+              waitForCapacity:true,isCurrent:intakeCurrent,transactionalTyping:true});
             transport.record(result?.accepted?'booking_protocol_sent':'booking_protocol_unconfirmed',traceId);
           }catch(error){
             if(!sendAttempted)handledBookingProtocols.delete(key);
@@ -485,7 +478,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
               error?.name==='AbortError'?'timeout':'other';
             // No phone, LID, untrusted text, token or provider exception in logs.
             transport.record('booking_protocol_failed',traceId,{category:phase,error:category});
-          }finally{presenceLease?.stop();}
+          }
         })();
         jobs.push(task);
         continue;
