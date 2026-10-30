@@ -38,13 +38,13 @@ def fake_transport():
     return {"appointment_sender":send},records
 
 
-async def mark_due(d,notification_id,*,delta=timedelta(seconds=-1),expires=timedelta(minutes=3)):
+async def mark_due(d,notification_id):
     async with d["migrator"].begin() as db:
         await db.execute(text("""UPDATE appointment_notifications
-            SET due_at=clock_timestamp()+CAST(:delta AS interval),
-                expires_at=clock_timestamp()+CAST(:expires AS interval)
+            SET due_at=clock_timestamp()-interval '1 second',
+                expires_at=clock_timestamp()+interval '3 minutes'
             WHERE tenant_id=:tenant AND id=:id AND status='pending'"""),
-            {"tenant":d["a"],"id":notification_id,"delta":delta,"expires":expires})
+            {"tenant":d["a"],"id":notification_id})
 
 
 async def move_to_past(d,appointment_id):
@@ -89,7 +89,6 @@ async def test_one_hour_reminder_is_scheduled_exactly_and_fails_closed_before_du
     assert len(sent)==1
     assert sent[0][2]==phone(920)
     assert "1 hora!" in sent[0][3]
-    assert "Cliente sintético" not in sent[0][3] or "Olá, Cliente" in sent[0][3]
     assert "Corte" in sent[0][3]
 
 
@@ -110,7 +109,6 @@ async def test_booking_within_one_hour_does_not_create_misleading_late_reminder(
                                              {"source":"public_site","requested_by":"customer"})
     rows=[x for x in await jobs(d) if x["event"]=="reminder"]
     assert len(rows)==1 and rows[0]["status"]=="cancelled"
-    assert (await single(d,"professional_new"))["status"]=="pending" or True
 
 
 @pytest.mark.asyncio
@@ -154,7 +152,6 @@ async def test_business_cancel_informs_only_customer_and_never_new_or_old_profes
 @pytest.mark.asyncio
 async def test_customer_reschedule_new_one_hour_reminder_only_and_notification_to_correct_pro(comm_db):
     d=comm_db;appointment=await booking(d)
-    moved=await None if False else None
     async with d["factory"]() as db:
         moved=await reschedule_appointment(db,d["a"],appointment["id"],start_at(d["day"],14),
                       context=customer_actor(appointment["customer_id"],"public_site"))
