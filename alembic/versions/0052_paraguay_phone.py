@@ -11,7 +11,7 @@ down_revision = "0051_central_protocol"
 branch_labels = None
 depends_on = None
 
-MOBILE = r"^(\\+55[1-9][0-9]{9,10}|\\+5959[0-9]{8})$"
+MOBILE = r"^(\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$"
 
 
 def upgrade():
@@ -35,7 +35,7 @@ def upgrade():
            OR requested_protocol IS NULL
            OR requested_protocol !~ '^AG-[A-HJ-NP-Z2-9]{6}$'
            OR verified_phone IS NULL
-           OR verified_phone !~ '^(\\+55[1-9][0-9]{9,10}|\\+5959[0-9]{8})$' THEN
+           OR verified_phone !~ '^(\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$' THEN
           RETURN;
         END IF;
         RETURN QUERY WITH matches AS MATERIALIZED (
