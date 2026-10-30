@@ -46,8 +46,9 @@ def notification_settings(row, central, channel=None):
     # Every company gets safe defaults, without requiring its own QR session.
     # An explicit company opt-out is preserved; its channel cannot select
     # the platform WhatsApp number.
-    defaults = {'enabled': True, 'version': 0, 'professional_notice': True,
-        'cancellation': True, 'rescheduling': True, 'reminder': True,
+    defaults = {'enabled': True, 'version': 0, 'confirmation': True,
+        'professional_notice': True, 'cancellation': True, 'rescheduling': True,
+        'reschedule_acceptance': False, 'reminder': True,
         'review': True, 'review_delay_min': 15,
         'return_invitation': False, 'signature': 'Orion Agenda'}
     return {**defaults, **(dict(row) if row else {}), 'channel_id': channel}
