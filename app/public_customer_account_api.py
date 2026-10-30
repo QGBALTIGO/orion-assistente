@@ -28,7 +28,7 @@ from app.booking_service import (read_appointments, read_appointment, list_slots
 from app.appointment_lifecycle import customer_can_change, customer_actor
 from app.public_customer_auth import (
     COOKIE, GENERIC_SENT, enabled, require_enabled, issue_session, revoke_session,
-    session_claims, enqueue_code, provider_request, _digest,
+    session_claims, enqueue_code, provider_request, phone_fingerprint,
 )
 
 router = APIRouter(prefix="/api/v1/public/sites/{slug}/account",
@@ -124,7 +124,7 @@ async def identity(slug, request):
                   AND active AND deleted_at IS NULL
             """), {"t": tenant, "customer": customer_id})).mappings().one_or_none()
             if (not customer or customer["version"] != state["version"]
-                    or _digest(customer["whatsapp_e164"]) != state["phone_hash"]):
+                    or phone_fingerprint(customer["whatsapp_e164"]) != state["phone_hash"]):
                 raise HTTPException(401, "Sua sessão foi atualizada. Confirme o telefone novamente.")
             return tenant, dict(customer), state
 
