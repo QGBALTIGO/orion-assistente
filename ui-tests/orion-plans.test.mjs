@@ -103,22 +103,44 @@ test('show only differences is default, reversible and synchronized across mobil
   assert.equal(f.root.querySelectorAll('[data-op-only-differences]').length,1);
   const table=f.root.querySelector('.op-matrix');
   const mobile=f.root.querySelector('.op-mobile-comparison');
-  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,14);
-  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,14);
+  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,15);
+  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,15);
   assert.equal(table.querySelectorAll('tbody:not([hidden])').length,8);
   assert.equal(mobile.querySelectorAll('.op-mobile-group:not([hidden])').length,8);
   assert.ok(table.querySelector('[data-op-category="2"]').hidden,'identical section hidden');
   toggle.click();
   assert.equal(toggle.checked,false);
-  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,24);
-  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,24);
+  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,25);
+  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,25);
   assert.equal(table.querySelectorAll('tbody:not([hidden])').length,10);
   assert.equal(mobile.querySelectorAll('.op-mobile-group:not([hidden])').length,10);
   toggle.click();
-  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,14);
-  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,14);
+  assert.equal(table.querySelectorAll('.op-matrix-row:not([hidden])').length,15);
+  assert.equal(mobile.querySelectorAll('.op-mobile-feature:not([hidden])').length,15);
   assert.match(f.root.querySelector('[data-op-compare-state]').textContent,/somente diferenças/);
  }finally{f.close();}
+});
+
+test('Essencial commercial comparison removes manual WhatsApp while keeping performance; higher tiers unchanged',()=>{
+  const f=fixture();
+  try{
+    const essential=f.root.querySelector('.op-essencial').textContent;
+    assert.match(essential,/Meu desempenho: atendimentos e faturamento/);
+    assert.doesNotMatch(essential,/Central de conversas e respostas manuais/);
+    const rows=[...f.root.querySelectorAll('.op-matrix-row')];
+    const find=label=>rows.find(row=>row.textContent.includes(label));
+    const manual=find('Conversas e respostas manuais');
+    const connection=find('Conectar WhatsApp da empresa');
+    const performance=find('Relatórios por profissional');
+    for(const row of [manual,connection,performance])assert.ok(row);
+    for(const row of [manual,connection]){
+      const cells=row.querySelectorAll('td');
+      assert.ok(cells[0].querySelector('.op-no'),row.textContent);
+      assert.ok(cells[1].querySelector('.op-yes'),row.textContent);
+      assert.ok(cells[2].querySelector('.op-yes'),row.textContent);
+    }
+    assert.ok(performance.querySelectorAll('.op-yes').length===3);
+  }finally{f.close();}
 });
 
 test('plan comparison ends the page without instructional legend, admin requests card or billing disclaimer',()=>{
