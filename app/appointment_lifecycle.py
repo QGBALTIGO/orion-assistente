@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 REQUESTERS = frozenset({"customer", "professional", "business", "system", "unknown"})
 SOURCES = frozenset({"panel", "whatsapp_qr", "whatsapp_meta", "public_site", "system", "unknown"})
-ACTOR_ROLES = frozenset({"support", "admin", "owner", "editor", "viewer", "customer", "system", "unknown"})
+ACTOR_ROLES = frozenset({"support", "admin", "owner", "editor", "viewer", "customer", "professional", "system", "unknown"})
 CAS_SQL = """(CAST(:expected_updated_at AS timestamptz) IS NULL
     OR updated_at=CAST(:expected_updated_at AS timestamptz))"""
 
@@ -26,6 +26,7 @@ class LifecycleActor:
     source: str = "unknown"
     account_id: UUID | None = None
     customer_id: UUID | None = None
+    professional_id: UUID | None = None
 
 
 SYSTEM_ACTOR = LifecycleActor(role="system", source="system")
