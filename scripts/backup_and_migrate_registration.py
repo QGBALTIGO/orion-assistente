@@ -93,8 +93,11 @@ def predeploy_main():
     from scripts import backup_and_migrate_direct_checkout as direct
     from scripts import backup_and_migrate_appointment_communications as appointment
     from scripts import backup_and_migrate_plan_permissions as permissions
+    from scripts import backup_and_migrate_central_appointment_confirmation as central
     def finish_permissions(result):
-        return result if result else permissions.main()
+        if result:return result
+        checked=permissions.main()
+        return checked if checked else central.main()
     def finish_direct():
         result=direct.main()
         if result:return result
@@ -102,8 +105,10 @@ def predeploy_main():
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
+        if current == central.TARGET:
+            return central.main()
         if current == permissions.TARGET:
-            return permissions.main()
+            return finish_permissions(0)
         if current in {appointment.TARGET,appointment.COMMUNICATIONS_PREVIOUS}:
             return finish_permissions(appointment.main())
         if current == direct.TARGET:
