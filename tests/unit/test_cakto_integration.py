@@ -82,6 +82,13 @@ async def test_webhook_requires_signature_and_does_not_activate(monkeypatch):
                                 hashlib.sha256).hexdigest()
         assert (await client.post("/webhooks/cakto", content=wrong,
             headers={"X-Cakto-Timestamp": ts, "X-Cakto-Signature": sig})).status_code == 401
+        huge=b"x" * 131073
+        assert (await client.post("/webhooks/cakto", content=huge, headers=headers)).status_code == 413
+        async def oversized_chunked():
+            yield b"y" * 65000
+            yield b"z" * 65000
+            yield b"w" * 2000
+        assert (await client.post("/webhooks/cakto", content=oversized_chunked(), headers=headers)).status_code == 413
     assert len(seen) == 2
     assert seen[0]["digest"] == seen[1]["digest"]
 

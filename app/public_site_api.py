@@ -107,7 +107,9 @@ def checked_slug(slug):
 
 
 def signing_key():
-    raw=os.getenv('PUBLIC_SITE_SIGNING_KEY') or os.getenv('SUPPORT_API_TOKEN','')
+    # Separate privilege domains: never derive public capabilities from the
+    # platform administrator's API token, even with HMAC domain separation.
+    raw=os.getenv('PUBLIC_SITE_SIGNING_KEY','')
     if len(raw)<32:raise HTTPException(503,'Agendamento temporariamente indisponível')
     return hmac.new(raw.encode(),b'orion-public-quotes:v1',hashlib.sha256).digest()
 
@@ -202,27 +204,6 @@ async def record_public_booking(db,tenant,appointment_id,zone,confirmed_at=None)
             DO UPDATE SET bookings=public_site_daily_metrics.bookings+1"""),{'tenant':tenant,'day':day})
 
 
-async def store_public_birth_date(db,tenant,appointment_id,birth_date):
-    """Fill a missing birthday after confirmation; never rewrite existing PII.
-
-    Only the booked customer's tenant-scoped row may be updated.
-    Public requests do not get access to the customer's existing details.
-    """
-    if birth_date is None:
-        return
-    await db.execute(text("""
-        UPDATE customers AS c
-        SET birth_date=:birth_date,birth_month=:birth_month,birth_day=:birth_day,
-            version=c.version+1,updated_at=now()
-        WHERE c.tenant_id=:tenant AND c.birth_date IS NULL AND c.deleted_at IS NULL
-          AND ((c.birth_month IS NULL AND c.birth_day IS NULL)
-               OR (c.birth_month=:birth_month AND c.birth_day=:birth_day))
-          AND c.id=(SELECT a.customer_id FROM appointments a
-                    WHERE a.tenant_id=:tenant AND a.id=:appointment_id AND a.status='confirmed')
-    """),{'tenant':tenant,'appointment_id':appointment_id,'birth_date':birth_date,
-           'birth_month':birth_date.month,'birth_day':birth_date.day})
-
-
 async def confirmed_public_replay(db,tenant,quote,payload):
     # Recover an already committed confirmation even if the editable catalogue
     # changed after the first response was lost. The signed nonce, professional,
@@ -259,7 +240,6 @@ async def confirmed_public_replay(db,tenant,quote,payload):
             ORDER BY version DESC LIMIT 1"""),{'tenant':tenant,'stamp':row['created_at']})).scalar_one_or_none()
     ids=quote['services'] if quote['v']==2 else [quote['service'],*quote['addons']]
     labels=published_booking_labels({'public_snapshot':snapshot},quote['professional'],[{'id':item} for item in ids])
-    await store_public_birth_date(db,tenant,row['id'],payload.customer_birth_date)
     await record_public_booking(db,tenant,row['id'],row['timezone'],row['updated_at'])
     return {'status':row['status'],'protocol':row['protocol'],'start_at':row['start_at'],'end_at':row['end_at'],
             'price_cents':row['total_cents'],
@@ -584,10 +564,10 @@ async def _public_book_saved(slug:str,payload:PublicBooking,request:Request,_cap
                 async with get_session_factory()() as engine:
                     hold=await book_appointment(engine,tenant,quote['professional'],engine_services,payload.customer_phone,
                                                 payload.customer_name,payload.start_at,'public:'+quote['nonce'],source='public_site',
-                                                nonblocking_professional_lock=True)
+                                                nonblocking_professional_lock=True,
+                                                public_birth_date=payload.customer_birth_date)
                     result=await confirm_hold(engine,tenant,hold['id'],customer_phone=payload.customer_phone,source='public_site',
                                               nonblocking_professional_lock=True)
-                await store_public_birth_date(guard,tenant,result['id'],payload.customer_birth_date)
                 await record_public_booking(guard,tenant,result['id'],selection['shop']['timezone'])
                 visual_site=published
                 if quote.get('publication_version',published['public_version'])!=published['public_version']:

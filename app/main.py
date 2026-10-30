@@ -52,6 +52,9 @@ app = FastAPI(
     title="Orion Barbearias",
     description="Agenda SaaS multiempresa — desenvolvimento controlado",
     version="0.8.0",
+    openapi_url=None,
+    docs_url=None,
+    redoc_url=None,
 )
 
 
