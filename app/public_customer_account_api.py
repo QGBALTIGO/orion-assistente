@@ -343,9 +343,12 @@ async def available_reschedule_slots(slug: str, appointment_id: UUID, day: date,
             row = await owned_booking(db, tenant, customer["id"], appointment_id)
             if not customer_can_change(row, datetime.now(timezone.utc)):
                 raise HTTPException(409, "O prazo para remarcar terminou.")
-            data = await list_slots(db, tenant, row["professional_id"],
-                     [item["service_id"] for item in row["items"]], day,
-                     appointment_id=appointment_id, explain_reason=True)
+        # The engine owns its own tenant transaction and independently checks
+        # the same customer ID against the current appointment row.
+        data = await list_slots(db, tenant, row["professional_id"],
+            [item["service_id"] for item in row["items"]], day,
+            appointment_id=appointment_id, customer_id=customer["id"],
+            explain_reason=True)
     return reply(data)
 
 
@@ -358,11 +361,12 @@ async def cancel_own_booking(slug: str, appointment_id: UUID, payload: BookingMu
     async with get_session_factory()() as db:
         async with tenant_transaction(db, tenant):
             await owned_booking(db, tenant, customer["id"], appointment_id)
-            result = await cancel_appointment(
-                db, tenant, appointment_id,
-                context=customer_actor(customer["id"], "public_site"),
-                requested_by="customer", expected_updated_at=payload.expected_updated_at,
-                idempotency_key=str(payload.idempotency_key))
+        # The engine rechecks phone ownership, deadline and CAS *atomically*.
+        result = await cancel_appointment(
+            db, tenant, appointment_id, customer_phone=customer["whatsapp_e164"],
+            context=customer_actor(customer["id"], "public_site"),
+            requested_by="customer", expected_updated_at=payload.expected_updated_at,
+            idempotency_key=str(payload.idempotency_key))
     return reply({"item": summarized(result, datetime.now(timezone.utc))})
 
 
@@ -375,9 +379,10 @@ async def reschedule_own_booking(slug: str, appointment_id: UUID,
     async with get_session_factory()() as db:
         async with tenant_transaction(db, tenant):
             await owned_booking(db, tenant, customer["id"], appointment_id)
-            result = await reschedule_appointment(
-                db, tenant, appointment_id, payload.start_at,
-                context=customer_actor(customer["id"], "public_site"),
-                expected_updated_at=payload.expected_updated_at,
-                idempotency_key=str(payload.idempotency_key))
+        result = await reschedule_appointment(
+            db, tenant, appointment_id, payload.start_at,
+            customer_phone=customer["whatsapp_e164"],
+            context=customer_actor(customer["id"], "public_site"),
+            expected_updated_at=payload.expected_updated_at,
+            idempotency_key=str(payload.idempotency_key))
     return reply({"item": summarized(result, datetime.now(timezone.utc))})
