@@ -1,0 +1,220 @@
+/* Customer self-service shares Orion public-site tokens, fonts and controls.
+   Intentionally scoped: no changes to the catalogue or booking wizard. */
+.customer-account-dialog{
+  box-sizing:border-box;width:min(680px,calc(100% - 28px));
+  max-width:680px;max-height:min(760px,calc(100dvh - 32px));height:auto;
+  margin:auto;padding:0;border:1px solid var(--border);
+  border-radius:22px;background:var(--card);color:var(--text);
+  box-shadow:0 28px 100px #050e263b;overflow:hidden;
+  font-family:Figtree,system-ui,sans-serif
+}
+.customer-account-dialog::backdrop{background:#020818b8;backdrop-filter:blur(5px)}
+.customer-account-shell{display:flex;flex-direction:column;max-height:inherit;min-width:0}
+.customer-account-heading{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:22px 24px 18px;border-bottom:1px solid var(--border);
+  background:var(--card)
+}
+.customer-account-heading-copy{min-width:0}
+.customer-account-eyebrow{
+  margin:0 0 2px;color:var(--primary);
+  font-size:11px;line-height:16px;font-weight:800;letter-spacing:.11em;text-transform:uppercase
+}
+.customer-account-heading h2{
+  margin:0;font-family:Outfit,Figtree,system-ui,sans-serif;
+  font-size:25px;line-height:1.25;font-weight:700;letter-spacing:-.025em
+}
+.customer-account-heading .muted{margin:4px 0 0;font-size:12px;line-height:18px}
+.customer-account-close{
+  flex:none;display:grid;place-items:center;width:44px;height:44px;
+  padding:0;border:1px solid var(--border);border-radius:14px;
+  background:var(--card);color:var(--text)
+}
+.customer-account-close:hover{background:var(--soft)}
+.customer-account-tabs{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:5px;padding:8px 18px;border-bottom:1px solid var(--border);background:var(--card)
+}
+.customer-account-tabs[hidden]{display:none}
+.customer-account-tabs button{
+  box-sizing:border-box;min-height:43px;padding:10px 7px;
+  border:0;border-radius:11px;background:transparent;color:var(--muted);
+  font-size:12px;line-height:18px;font-weight:650;text-align:center
+}
+.customer-account-tabs button:hover{background:var(--soft);color:var(--text)}
+.customer-account-tabs button[aria-current=page]{
+  background:color-mix(in srgb,var(--primary) 12%,var(--card));
+  color:var(--primary)
+}
+.customer-account-tabs button:focus-visible,.customer-account-dialog button:focus-visible,
+.customer-account-dialog input:focus-visible{
+  outline:3px solid color-mix(in srgb,var(--primary) 55%,transparent);outline-offset:2px
+}
+.customer-account-feedback{
+  padding:0 24px;min-height:0;color:var(--text);font-size:13px;line-height:19px
+}
+.customer-account-feedback:not(:empty){
+  margin:16px 24px 0;padding:11px 12px;border-radius:11px;
+  background:var(--soft)
+}
+.customer-account-feedback[data-kind=error]:not(:empty){
+  background:color-mix(in srgb,#ec6b74 14%,var(--card));color:var(--text)
+}
+.customer-account-body{
+  min-width:0;min-height:130px;overflow-x:hidden;overflow-y:auto;
+  overscroll-behavior:contain;padding:24px;
+  scrollbar-gutter:stable
+}
+.customer-account-auth{max-width:490px;margin:0 auto;padding:12px 0 14px}
+.customer-account-auth-mark{
+  display:grid;place-items:center;width:62px;height:62px;margin:0 0 20px;
+  border:1px solid color-mix(in srgb,var(--primary) 25%,var(--border));
+  background:color-mix(in srgb,var(--primary) 10%,var(--card));
+  color:var(--primary);border-radius:18px
+}
+.customer-account-auth-mark svg{width:29px;height:29px}
+.customer-account-auth h3,.customer-account-section h3{
+  font:700 23px/1.25 Outfit,Figtree,system-ui,sans-serif;
+  letter-spacing:-.02em;margin:0 0 9px;color:var(--text)
+}
+.customer-account-description{
+  color:var(--muted);font-size:14px;line-height:22px;margin:0 0 22px
+}
+.customer-account-field{display:flex;flex-direction:column;gap:7px;min-width:0}
+.customer-account-field>span{font-size:12px;line-height:18px;font-weight:700;color:var(--text)}
+.customer-account-field>input{
+  box-sizing:border-box;width:100%;min-width:0;height:46px;padding:10px 13px;
+  border-radius:11px;border:1px solid var(--border);
+  background:var(--card);color:var(--text);font-size:16px;line-height:24px
+}
+.customer-account-field>input:disabled,.customer-account-field>input[readonly]{
+  background:var(--soft);color:var(--muted)
+}
+.customer-account-field>input::placeholder{color:var(--muted);opacity:.75}
+.customer-account-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.customer-account-actions .primary,.customer-account-actions .outline{
+  min-height:44px;border-radius:11px;padding:10px 18px;
+  font-size:13px;font-weight:700
+}
+.customer-account-actions .primary{flex:1}
+.customer-account-auth-note{font-size:12px;color:var(--muted);line-height:19px;margin:16px 0 0}
+.customer-account-intro{
+  display:flex;align-items:center;gap:12px;padding:16px;margin-bottom:19px;
+  background:var(--soft);border:1px solid var(--border);border-radius:16px
+}
+.customer-account-avatar{
+  display:grid;place-items:center;flex:none;width:45px;height:45px;
+  border-radius:15px;color:var(--primary);
+  background:color-mix(in srgb,var(--primary) 14%,var(--card));
+  font:700 21px/1 Outfit,Figtree,sans-serif
+}
+.customer-account-intro strong{display:block;font-size:15px;line-height:20px}
+.customer-account-intro p{margin:3px 0 0;color:var(--muted);font-size:12px;line-height:18px}
+.customer-account-section{min-width:0}
+.customer-account-section>h3{font-size:20px}
+.customer-account-section>.customer-account-description{margin-bottom:17px}
+.customer-account-bookings{display:grid;gap:13px}
+.customer-account-booking{
+  min-width:0;background:var(--card);border:1px solid var(--border);
+  border-radius:15px;padding:16px;display:flex;flex-direction:column;gap:11px
+}
+.customer-account-booking-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.customer-account-booking strong{font-size:15px;line-height:21px;overflow-wrap:anywhere}
+.customer-account-booking-meta{
+  display:flex;align-items:center;gap:7px 13px;flex-wrap:wrap;
+  color:var(--muted);font-size:12px;line-height:18px
+}
+.customer-account-booking-meta span{overflow-wrap:anywhere}
+.customer-account-booking-meta .customer-account-date{
+  color:var(--text);font-weight:650
+}
+.customer-account-booking-footer{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding-top:11px;border-top:1px solid var(--border)
+}
+.customer-account-booking-footer>strong{font-size:14px}
+.customer-account-booking-footer>.customer-account-actions{margin:0}
+.customer-account-booking-footer button{
+  padding:8px 13px;min-height:38px;font-size:12px
+}
+.customer-account-status{
+  border-radius:8px;background:var(--soft);color:var(--muted);
+  padding:4px 8px;font-size:11px;line-height:16px;font-weight:700;white-space:nowrap
+}
+.customer-account-status[data-status=confirmed]{
+  color:#0e784a;background:color-mix(in srgb,#44b888 16%,var(--card))
+}
+:root[data-theme=dark] .customer-account-status[data-status=confirmed]{color:#79e1af}
+.customer-account-status[data-status=cancelled],
+.customer-account-status[data-status=no_show]{
+  color:#a54354;background:color-mix(in srgb,#e76572 14%,var(--card))
+}
+:root[data-theme=dark] .customer-account-status[data-status=cancelled],
+:root[data-theme=dark] .customer-account-status[data-status=no_show]{color:#f3a6b2}
+.customer-account-empty{
+  display:grid;justify-items:center;text-align:center;gap:8px;
+  padding:30px 20px;background:var(--soft);
+  border:1px dashed var(--border);border-radius:17px
+}
+.customer-account-empty svg{width:36px;height:36px;color:var(--primary)}
+.customer-account-empty strong{font-size:15px}
+.customer-account-empty p{margin:0;color:var(--muted);font-size:13px;line-height:20px}
+.customer-account-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}
+.customer-account-form .customer-account-wide{grid-column:1/-1}
+.customer-account-phone-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--soft)
+}
+.customer-account-phone-row strong{font-size:14px}
+.customer-account-phone-row button{font-size:12px;padding:7px 10px}
+.customer-account-profile-footer{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  flex-wrap:wrap;margin-top:19px;padding-top:16px;border-top:1px solid var(--border)
+}
+.customer-account-secondary{border:0;background:none;padding:7px 0;color:var(--muted);font-size:12px}
+.customer-account-secondary:hover{color:var(--primary);text-decoration:underline}
+.customer-account-section .customer-account-privacy{
+  margin:14px 0 0;color:var(--muted);font-size:12px;line-height:19px
+}
+.customer-account-reschedule{display:grid;gap:12px}
+.customer-account-slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(95px,1fr));gap:8px}
+.customer-account-slot{
+  min-height:42px;border:1px solid var(--border);border-radius:10px;
+  background:var(--card);color:var(--text);font-size:13px;font-weight:700
+}
+.customer-account-slot[aria-pressed=true]{
+  border-color:var(--primary);background:color-mix(in srgb,var(--primary) 13%,var(--card));color:var(--primary)
+}
+.customer-account-danger{
+  border:1px solid color-mix(in srgb,#e76572 40%,var(--border));
+  background:color-mix(in srgb,#e76572 9%,var(--card));border-radius:14px;
+  padding:15px;margin-top:14px
+}
+.customer-account-danger h4{margin:0 0 8px;font-size:17px}
+.customer-account-danger p{font-size:13px;line-height:20px;color:var(--muted);margin:0}
+.customer-account-danger .customer-account-actions{justify-content:flex-end}
+.customer-account-danger .customer-account-actions .primary{
+  background:#aa3448;color:white;border-color:#aa3448;flex:0 1 auto
+}
+@media(max-width:639px){
+  .customer-account-dialog{
+    width:100%;max-width:none;height:100dvh;max-height:100dvh;
+    margin:0;border:0;border-radius:0
+  }
+  .customer-account-shell{height:100%;max-height:100dvh}
+  .customer-account-heading{padding:17px 18px 15px}
+  .customer-account-tabs{padding:8px 9px;gap:3px}
+  .customer-account-tabs button{font-size:11px;padding:9px 3px}
+  .customer-account-body{flex:1;min-height:0;padding:21px 17px max(25px,env(safe-area-inset-bottom))}
+  .customer-account-feedback:not(:empty){margin:12px 16px 0}
+  .customer-account-form{grid-template-columns:1fr}
+  .customer-account-form .customer-account-wide{grid-column:auto}
+  .customer-account-booking{padding:14px}
+}
+@media(max-width:359px){
+  .customer-account-tabs button{font-size:10px;letter-spacing:-.02em}
+  .customer-account-booking-footer{flex-wrap:wrap}
+}
+@media(prefers-reduced-motion:reduce){
+  .customer-account-dialog,.customer-account-dialog *{scroll-behavior:auto!important;transition:none!important}
+}
