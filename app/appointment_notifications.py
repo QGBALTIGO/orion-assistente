@@ -183,7 +183,7 @@ async def prepare_body(db,tenant,job,row,settings):
     if (job['event'] == 'professional_new' and job['recipient_kind'] == 'professional'
             and job['previous'].get('orion_test_recovery') is True):
         from app.qr_presentation import fits_message
-        body = '🧪 *TESTE ORION — aviso recuperado*\\n\\n' + body
+        body = '🧪 *TESTE ORION — aviso recuperado*\n\n' + body
         if not fits_message(body):
             raise ValueError('test_message_exceeds_transport_limit')
     return body
