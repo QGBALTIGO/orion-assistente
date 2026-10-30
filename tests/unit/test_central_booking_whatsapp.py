@@ -186,3 +186,39 @@ async def test_switching_admin_whatsapp_changes_all_next_links_without_hardcoded
     active["tenant"] = company_a
     third = await confirmation.public_followup("site-a", {"protocol": "AG-G32XU5"}, "+5567999999902")
     assert urlsplit(third["whatsapp_confirmation_url"]).path == "/5567912345678"
+
+
+@pytest.mark.asyncio
+async def test_public_contact_also_tracks_only_the_active_admin_number(monkeypatch):
+    from app import public_site_api as site_api
+    admin,tenant=uuid4(),uuid4()
+    db=BookingSession(uuid4())
+    db.tenant=tenant
+    active={"phone":"556781234567"}
+
+    async def no_limit(*_args):return None
+    async def resolve(_slug):return tenant
+    async def published(*_args):return None
+    async def site_catalogue(*_args):
+        return {"site":{"whatsapp_phone":"+5567999999901"},"services":[]}
+    async def admin_phone(connected_tenant):
+        assert connected_tenant==admin
+        return active["phone"]
+
+    monkeypatch.setenv("QR_AI_TENANT_ID",str(admin))
+    monkeypatch.setenv("ORION_CENTRAL_APPOINTMENT_WHATSAPP_ENABLED","1")
+    monkeypatch.setattr(site_api,"public_limit",no_limit)
+    monkeypatch.setattr(site_api,"resolve_public",resolve)
+    monkeypatch.setattr(site_api,"published_guard",published)
+    monkeypatch.setattr(site_api,"catalogue",site_catalogue)
+    monkeypatch.setattr(site_api,"get_session_factory",lambda:lambda:db)
+    monkeypatch.setattr(site_api,"tenant_transaction",tenant_scope)
+    monkeypatch.setattr(confirmation,"connected_channel_phone",admin_phone)
+    first=await site_api.public_catalogue("barbearia-peixoto",object())
+    assert first["site"]["whatsapp_phone"]=="+556781234567"
+    active["phone"]="5567912345678"
+    second=await site_api.public_catalogue("barbearia-peixoto",object())
+    assert second["site"]["whatsapp_phone"]=="+5567912345678"
+    active["phone"]=None
+    offline=await site_api.public_catalogue("barbearia-peixoto",object())
+    assert offline["site"]["whatsapp_phone"] is None
