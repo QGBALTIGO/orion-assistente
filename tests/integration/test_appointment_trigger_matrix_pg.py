@@ -68,8 +68,8 @@ async def move_to_past(d,appointment_id):
         await db.execute(text("""UPDATE appointments SET
             start_at=clock_timestamp()-interval '3 hours',
             end_at=clock_timestamp()-interval '2 hours',
-            occupied_from=clock_timestamp()-interval '3 hours',
-            occupied_until=clock_timestamp()-interval '2 hours',
+            occupied_from=clock_timestamp()-interval '3 hours 5 minutes',
+            occupied_until=clock_timestamp()-interval '1 hour 50 minutes',
             updated_at=clock_timestamp()
             WHERE tenant_id=:tenant AND id=:id AND status='confirmed'"""),
             {"tenant":d["a"],"id":appointment_id})
