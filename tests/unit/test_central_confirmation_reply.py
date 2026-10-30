@@ -75,6 +75,41 @@ async def test_all_numbers_with_matching_booking_are_eligible_without_ai(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_expired_company_plan_cannot_use_central_protocol_reply(monkeypatch):
+    enable(monkeypatch)
+    company = uuid4()
+    lookup = Lookup({'tenant_id':company,'appointment_id':uuid4()})
+    monkeypatch.setattr(api,'support_session_factory',lambda:lambda:lookup)
+    from app import plan_permissions
+    async def denied(tenant,feature):
+        assert tenant == company and feature == 'notifications.basic'
+        return False
+    monkeypatch.setattr(plan_permissions,'tenant_has_feature',denied)
+    async def forbidden(*_args,**_kwargs):
+        pytest.fail('No central WhatsApp reply for an expired company plan')
+    monkeypatch.setattr(api,'confirmation_reply',forbidden)
+    result = await api.confirm_inbound_protocol(message(),request())
+    assert result == {'state':'unrecognized','answer':api.GENERIC}
+
+
+@pytest.mark.asyncio
+async def test_plan_store_outage_fails_closed_without_whatsapp_send(monkeypatch):
+    enable(monkeypatch)
+    lookup = Lookup({'tenant_id':uuid4(),'appointment_id':uuid4()})
+    monkeypatch.setattr(api,'support_session_factory',lambda:lambda:lookup)
+    from app import plan_permissions
+    async def unavailable(*_args):
+        raise RuntimeError('synthetic plan store outage')
+    monkeypatch.setattr(plan_permissions,'tenant_has_feature',unavailable)
+    async def forbidden(*_args,**_kwargs):
+        pytest.fail('No central WhatsApp reply during plan outage')
+    monkeypatch.setattr(api,'confirmation_reply',forbidden)
+    assert await api.confirm_inbound_protocol(message(),request()) == {
+        'state':'unavailable','answer':None
+    }
+
+
+@pytest.mark.asyncio
 async def test_mismatched_phone_does_not_reveal_booking(monkeypatch):
     enable(monkeypatch)
     lookup=Lookup(None)
