@@ -772,7 +772,7 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
                 AND (:is_customer=false OR start_at>=clock_timestamp()+interval '60 minutes')
                 AND """ + CUSTOMER_MATCH_SQL + " AND " + CAS_SQL + " RETURNING id"),
             {"tenant": tenant, "id": item_id, "customer_phone": customer_phone,
-             "future_only": future_only, "is_customer": context.role == "customer" and entry["status"] != "hold",
+             "future_only": future_only, "is_customer": context.role in {"customer","professional"} and entry["status"] != "hold",
              "expected_updated_at": expected_updated_at})).scalar_one_or_none()
         if changed is None:
             fail(409, "A reserva mudou. Confira um novo resumo antes de cancelar")
@@ -886,7 +886,7 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
               AND (:is_customer=false OR start_at>=clock_timestamp()+interval '60 minutes')
               AND """ + BUNDLE_MATCH_SQL + " AND " + CUSTOMER_MATCH_SQL + " AND " + CAS_SQL + " RETURNING id"),
             {"tenant": tenant, "id": item_id, "now": now, "expected_updated_at": expected_updated_at,
-             "is_customer": context.role == "customer", **b,
+             "is_customer": context.role in {"customer","professional"}, **b,
              **bundle_guard_parameters(tenant, row["professional_id"], ids, shop, items, customer_phone)})).scalar_one_or_none()
         if changed is None:
             fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de remarcar")
