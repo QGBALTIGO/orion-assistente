@@ -151,7 +151,11 @@ async def test_quotas_have_separate_phone_and_global_keys_and_are_hashed(monkeyp
         captured.append((slug,category,limit,window,subject))
     monkeypatch.setattr(public_site_api,'public_limit',fake_limit)
     await api._limit_protocol_lookup(request(),'595992820210')
+    import hashlib,hmac
+    digest=hmac.new(os.environ['QR_BRIDGE_TOKEN'].encode(),
+                    b'595992820210',hashlib.sha256).hexdigest()
     assert captured==[
-        ('orion-central-qr','qr-protocol-phone',8,300,'595992820210'),
+        ('orion-central-qr','qr-protocol-phone',8,300,digest),
         ('orion-central-qr','qr-protocol-global',120,60,'all')
     ]
+    assert '595992820210' not in str(captured)
