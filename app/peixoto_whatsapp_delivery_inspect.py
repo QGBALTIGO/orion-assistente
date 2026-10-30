@@ -6,6 +6,7 @@ returns only safe booleans/counts. No contact, JID, message body, or secrets
 leave the trusted workers or appear in logs.
 """
 import os
+import re
 from uuid import UUID
 
 import httpx
@@ -59,18 +60,44 @@ async def inspect():
             """), {"tenant": TENANT, "professional": PROFESSIONAL})).scalar_one_or_none()
     if not isinstance(phone, str) or not phone.startswith("+"):
         return {"state": "professional_phone_missing"}
+    control_phone = os.getenv("ORION_PEIXOTO_CONTROL_PHONE", "")
+    # Test owner-authorized WhatsApp number is provided only in private
+    # deployment environment, never source, parameters or provider logs.
+    if control_phone and re.fullmatch(r"\\+(?:55[1-9][0-9]{9,10}|5959[0-9]{8})",control_phone) is None:
+        return {"state": "invalid_control_scope"}
     try:
+        origin = bridge_origin()
+        headers = {"X-Orion-Bridge-Key": key}
         # Only the Railway private QR origin is accepted; never a caller URL.
         async with httpx.AsyncClient(
                 timeout=httpx.Timeout(12, connect=4),
                 follow_redirects=False, trust_env=False) as client:
             response = await client.get(
-                bridge_origin() + "/internal/recipient",
+                origin + "/internal/recipient",
                 params={"phone": phone.lstrip("+")},
-                headers={"X-Orion-Bridge-Key": key},
+                headers=headers,
             )
-        if response.status_code != 200:
-            return {"state": "private_lookup_unavailable"}
-        return {"state": "inspected", **safe_report(response.json())}
+            if response.status_code != 200:
+                return {"state": "private_lookup_unavailable"}
+            result = {"state": "inspected", **safe_report(response.json())}
+            if control_phone and control_phone != phone:
+                try:
+                    control = await client.get(
+                        origin + "/internal/recipient",
+                        params={"phone": control_phone.lstrip("+")},
+                        headers=headers)
+                    if control.status_code == 200:
+                        safe = safe_report(control.json())
+                        result["control_lookup"] = {
+                            "state": "inspected",
+                            "registered": safe.get("registered"),
+                            "identity": safe.get("identity"),
+                            "delivery": safe.get("delivery", {}),
+                        }
+                    else:
+                        result["control_lookup"] = {"state": "unavailable"}
+                except Exception:
+                    result["control_lookup"] = {"state": "failed_closed"}
+        return result
     except Exception:
         return {"state": "private_lookup_failed_closed"}
