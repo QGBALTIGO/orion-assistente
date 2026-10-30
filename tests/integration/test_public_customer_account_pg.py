@@ -14,6 +14,7 @@ from app.booking_service import book_appointment, confirm_hold, cancel_appointme
 from app import public_customer_account_api as portal
 from app import public_customer_auth as auth
 from app.main import app
+from app.database import tenant_transaction
 
 pytestmark=pytest.mark.integration
 
