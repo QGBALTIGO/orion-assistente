@@ -2120,10 +2120,15 @@ async def turn(tenant: UUID, phone: str, body: str, redis, namespace: str, previ
     try:
         result = await _turn(tenant, phone, body, redis, namespace, preview)
         literal = result.pop("_literal_information", False)
+        # Receipt bodies are already owner-approved native WhatsApp templates.
+        # The generic QR formatter rewrites field labels and removes emojis.
+        # It must not alter an authenticated protocol receipt.
+        preserve_template = result.pop("_verbatim_appointment_template", False) is True
         service_question = result.pop("_service_reply_prompt", False) is True
         if result.get("answer"):
             before_presentation = result
-            result = {**result, "answer": presentation.render_message(result["answer"], _reply_preferences.get(), kind="message" if literal else result.get("step", "message"))}
+            if not preserve_template:
+                result = {**result, "answer": presentation.render_message(result["answer"], _reply_preferences.get(), kind="message" if literal else result.get("step", "message"))}
             if not presentation.fits_message(result["answer"]):
                 if before_presentation.get("_verified_operation") is True:
                     # Typed terminal receipts already fit their pre-write check;
@@ -2180,7 +2185,8 @@ async def _turn(tenant: UUID, phone: str, body: str, redis, namespace: str, prev
         from app.appointment_confirmation import confirmation_reply
         confirmation=await confirmation_reply(tenant,phone,body,namespace,_message_identity.get())
         if confirmation is not None:
-            return {'answer':confirmation or None,'step':'appointment_confirmation','_literal_information':True}
+            return {'answer':confirmation or None,'step':'appointment_confirmation','_literal_information':True,
+                '_verbatim_appointment_template':True}
     birthday=await birthday_turn(tenant,phone,body,redis,state_key,preview=preview)
     if birthday:
         if birthday.get('remainder'):
