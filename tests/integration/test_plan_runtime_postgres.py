@@ -181,7 +181,9 @@ async def test_runtime_snapshot_and_limit_queries_cannot_read_other_tenant(plan_
     await c.grant("elite",tenant=c.b)
     async with c.runtime() as db:
         async with tenant_transaction(db,c.a):
-            assert await has_feature(db,c.a,"conversations.manual")
+            assert not await has_feature(db,c.a,"conversations.manual")
+            assert await has_feature(db,c.a,"performance.advanced")
+            assert await has_feature(db,c.a,"notifications.basic")
             assert not await has_feature(db,c.a,"reception.ai")
         with pytest.raises(DBAPIError) as error:
             async with tenant_transaction(db,c.a): await plan_state(db,c.b)
