@@ -133,12 +133,12 @@ async def startup_plan_permissions(ctx):
                 await ctx['redis'].enqueue_job(
                     'process_appointment_notification', str(TENANT), str(notification),
                     _job_id='orion-single-peixoto-test:' + str(notification))
-            logging.getLogger(__name__).info(
-                'orion_single_peixoto_recovery state=%s notice=%s', outcome,
-                str(notification) if notification is not None else 'none')
+            print('orion_single_peixoto_recovery state=' + outcome
+                  + ' notice=' + (str(notification) if notification is not None else 'none'),
+                  flush=True)
         except Exception as exc:
-            logging.getLogger(__name__).error(
-                'orion_single_peixoto_recovery_failed_closed type=%s',type(exc).__name__)
+            print('orion_single_peixoto_recovery_failed_closed type='
+                  + type(exc).__name__, flush=True)
 
 
 class WorkerSettings:
