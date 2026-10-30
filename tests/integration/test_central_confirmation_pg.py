@@ -82,3 +82,40 @@ async def test_global_confirm_resolver_enforces_phone_uniqueness_and_role(bookin
                                 {'t':db['b'],'id':other_staff})
     finally:
         await support.dispose()
+
+
+@pytest.mark.asyncio
+async def test_public_customer_gets_real_appointment_confirmation_without_ai_pilot(monkeypatch,booking_db):
+    from cryptography.fernet import Fernet
+    from app import appointment_confirmation as confirmation,appointment_access as access
+    d=booking_db
+    contact=phone(920)
+    async with d['factory']() as s:
+        held=await book_appointment(s,d['a'],d['pro'],[d['cut']],contact,
+            'Cliente real de teste',start_at(d['day'],10),'independent-'+str(uuid4()))
+        appointment=await confirm_hold(s,d['a'],held['id'])
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_ENABLED','1')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_ONLY','1')
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_TENANT_ID',str(d['b']))
+    monkeypatch.setenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','556781234567')
+    monkeypatch.setenv('ORION_CENTRAL_APPOINTMENT_WHATSAPP_ENABLED','1')
+    monkeypatch.setenv('ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED','1')
+    monkeypatch.setenv('INTEGRATION_FERNET_KEY',Fernet.generate_key().decode())
+    monkeypatch.setattr(confirmation,'get_session_factory',lambda:d['factory'])
+    body='*Olá, Orion!* 👋\\n\\nProtocolo: *'+appointment['protocol']+'*'
+    assert not access.tenant_enabled(d['a'])
+    assert not access.recipient_allowed(contact)
+    assert await confirmation.confirmation_reply(d['a'],contact,body,'qr-legacy','pilot') is None
+    answer=await confirmation.confirmation_reply(d['a'],contact,body,
+                                                   'central-admin-qr','message-123',central=True)
+    assert 'confirmado' in answer and 'Cliente' in answer
+    assert 'Corte' in answer and '/a#' in answer
+    # Duplicate callbacks keep the same capability rather than issuing another
+    # link and querying another tenant.
+    assert await confirmation.confirmation_reply(d['a'],contact,body,
+                          'central-admin-qr','message-123',central=True)==answer
+    async with d['factory']() as s:
+        async with tenant_transaction(s,d['a']):
+            count=(await s.execute(text('SELECT count(*) FROM appointment_access WHERE tenant_id=:t'),
+                    {'t':d['a']})).scalar_one()
+            assert count==1
