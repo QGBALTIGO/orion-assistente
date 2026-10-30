@@ -17,7 +17,7 @@ from sqlalchemy import text
 
 from app import appointment_notifications as notices
 from app.booking_service import book_appointment, confirm_hold
-from tests.integration.test_booking import phone,start_at
+from tests.integration.test_booking import booking_db,phone,start_at
 from tests.integration.test_appointment_notifications_pg import comm_db, jobs, PRO_PHONE
 
 pytestmark=pytest.mark.integration
