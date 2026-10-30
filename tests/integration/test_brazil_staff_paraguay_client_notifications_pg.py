@@ -77,6 +77,10 @@ async def test_international_client_booking_notifies_only_brazilian_professional
 @pytest.mark.asyncio
 async def test_international_customer_recipients_are_not_silently_approved_for_pilot_broadcasts(comm_db):
     d=comm_db
+    async with d["migrator"].begin() as db:
+        await db.execute(text("""INSERT INTO contact_consents
+            (tenant_id,contact_e164,operational_opt_in,marketing_opt_in)
+            VALUES (:t,:phone,true,false)"""),{"t":d["a"],"phone":CLIENT_PY})
     async with d["factory"]() as db:
         held=await book_appointment(db,d["a"],d["pro"],[d["cut"]],CLIENT_PY,
             "Cliente internacional sintético",start_at(d["day"],11),
