@@ -227,11 +227,22 @@ async def process_notification(ctx,tenant_id,notification_id):
                     if observed['status']!='connected' or not observed.get('phone_verified'):
                         raise ValueError('channel_offline')
                 except Exception:
-                    await db.execute(text("""UPDATE appointment_notifications SET
-                        status=CASE WHEN attempts>=4 OR clock_timestamp()+interval '30 seconds'>=expires_at THEN 'failed' ELSE 'pending' END,
-                        attempts=attempts+1,due_at=LEAST(clock_timestamp()+interval '30 seconds',expires_at-interval '1 microsecond'),
-                        last_error='channel_unavailable',updated_at=clock_timestamp()
-                        WHERE tenant_id=:t AND id=:id"""),{'t':tenant,'id':identity})
+                    if central:
+                        # No transport attempt occurred. Keep the durable
+                        # notification queued during a temporary central outage;
+                        # expiration is still bounded by the existing 24h TTL.
+                        query="""UPDATE appointment_notifications SET
+                            status=CASE WHEN clock_timestamp()+interval '2 minutes'>=expires_at THEN 'failed' ELSE 'pending' END,
+                            due_at=LEAST(clock_timestamp()+interval '2 minutes',expires_at-interval '1 microsecond'),
+                            last_error='channel_unavailable',updated_at=clock_timestamp()
+                            WHERE tenant_id=:t AND id=:id"""
+                    else:
+                        query="""UPDATE appointment_notifications SET
+                            status=CASE WHEN attempts>=4 OR clock_timestamp()+interval '30 seconds'>=expires_at THEN 'failed' ELSE 'pending' END,
+                            attempts=attempts+1,due_at=LEAST(clock_timestamp()+interval '30 seconds',expires_at-interval '1 microsecond'),
+                            last_error='channel_unavailable',updated_at=clock_timestamp()
+                            WHERE tenant_id=:t AND id=:id"""
+                    await db.execute(text(query),{'t':tenant,'id':identity})
                     return 'channel_unavailable'
             try:body=await prepare_body(db,tenant,job,row,settings)
             except (ValueError,KeyError):
