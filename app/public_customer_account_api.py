@@ -1,15 +1,11 @@
-"""Verified customer self-service for every published Orion booking site.
+"""Public customer self-service with no SMS: phone + previously verified link.
 
-Only a tenant-scoped, phone-verified cookie can read historic bookings or
-modify a customer profile. Public pages and phone-entry responses expose no
-customer existence, appointment IDs or secrets. No new customer is created on
-login; the existing (tenant_id, phone) identity is reused.
+A phone by itself never exposes bookings, profile or mutation actions.
+Existing trusted browser sessions require no extra verification.
 """
 from datetime import date, datetime, timezone
 from uuid import UUID
-import os
 import re
-import time
 
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.encoders import jsonable_encoder
@@ -27,8 +23,8 @@ from app.booking_service import (read_appointments, read_appointment, list_slots
                                   cancel_appointment, reschedule_appointment)
 from app.appointment_lifecycle import customer_can_change, customer_actor
 from app.public_customer_auth import (
-    COOKIE, GENERIC_SENT, enabled, require_enabled, issue_session, revoke_session,
-    session_claims, enqueue_code, provider_request, phone_fingerprint,
+    COOKIE, PROOF_REQUIRED, enabled, require_enabled, issue_session, revoke_session,
+    session_claims, phone_fingerprint, parse_booking_proof, customer_for_proof,
 )
 
 router = APIRouter(prefix="/api/v1/public/sites/{slug}/account",
@@ -50,8 +46,8 @@ class PhoneInput(CleanModel):
         return normalize_phone(value)
 
 
-class CodeInput(PhoneInput):
-    code: str = Field(min_length=4, max_length=10, pattern=r"^\d{4,10}$")
+class LinkInput(PhoneInput):
+    booking_link: str = Field(min_length=20, max_length=650)
 
 
 class ProfilePatch(CleanModel):
@@ -113,7 +109,7 @@ async def identity(slug, request):
     tenant = await resolve_public(slug)
     state = await session_claims(request.cookies.get(COOKIE), tenant)
     if not state:
-        raise HTTPException(401, "Confirme seu telefone para acessar a conta")
+        raise HTTPException(401, "Acesse com o link do seu agendamento para consultar seus dados")
     customer_id = UUID(state["customer"])
     async with get_session_factory()() as db:
         async with tenant_transaction(db, tenant):
@@ -125,7 +121,7 @@ async def identity(slug, request):
             """), {"t": tenant, "customer": customer_id})).mappings().one_or_none()
             if (not customer or customer["version"] != state["version"]
                     or phone_fingerprint(customer["whatsapp_e164"]) != state["phone_hash"]):
-                raise HTTPException(401, "Sua sessão foi atualizada. Confirme o telefone novamente.")
+                raise HTTPException(401, "Sua sessão foi atualizada. Acesse novamente com seu link de agendamento.")
             return tenant, dict(customer), state
 
 
@@ -174,41 +170,52 @@ async def state(slug: str, request: Request):
     return reply({"available": True, "authenticated": True, "profile": profile_data(customer)})
 
 
-@router.post("/request-code", status_code=202)
-async def request_code(slug: str, payload: PhoneInput, request: Request):
+@router.post("/enter")
+async def enter(slug: str, payload: PhoneInput, request: Request):
+    """One field and one tap. Previously verified browsers enter immediately.
+
+    An unverified caller receives an indistinguishable link request, whether
+    the target phone exists in the tenant CRM or not.
+    """
     require_enabled()
     _same_origin(request)
-    await public_limit(request, slug, "customer-account-ip", 8, 3600)
-    # Rate-limit by target phone across *all* sites, stopping provider abuse.
-    await public_limit(request, "all", "customer-account-phone", 3, 1800,
-                       subject=phone_fingerprint(payload.phone))
-    await resolve_public(slug)
-    await enqueue_code(slug, payload.phone)
-    return reply(GENERIC_SENT, 202)
-
-
-@router.post("/verify-code")
-async def verify_code(slug: str, payload: CodeInput, request: Request):
-    require_enabled()
-    _same_origin(request)
-    await public_limit(request, slug, "customer-account-verify-ip", 20, 900)
-    await public_limit(request, "all", "customer-account-verify-phone", 8, 900,
+    await public_limit(request, slug, "customer-account-ip", 12, 3600)
+    await public_limit(request, "all", "customer-account-phone", 8, 1800,
                        subject=phone_fingerprint(payload.phone))
     tenant = await resolve_public(slug)
-    if not await provider_request(payload.phone, payload.code):
-        raise HTTPException(403, "Código inválido ou expirado. Solicite um novo código.")
+    if await session_claims(request.cookies.get(COOKIE), tenant):
+        try:
+            _, customer, _ = await identity(slug, request)
+            if customer["whatsapp_e164"] == payload.phone:
+                return reply({"authenticated": True, "profile": profile_data(customer)})
+        except HTTPException as error:
+            if error.status_code not in (401, 403):
+                raise
+    return reply(PROOF_REQUIRED)
+
+
+@router.post("/link-login")
+async def login_from_booking_link(slug: str, payload: LinkInput, request: Request):
+    """Possession of a pre-existing secret link proves access to this booking.
+
+    The link is supplied only inside the POST body, not in a public URL,
+    never returned and never used to authorize another tenant.
+    """
+    require_enabled()
+    _same_origin(request)
+    await public_limit(request, slug, "customer-link-ip", 8, 3600)
+    await public_limit(request, "all", "customer-link-phone", 5, 1800,
+                       subject=phone_fingerprint(payload.phone))
+    tenant = await resolve_public(slug)
+    token_tenant, digest = parse_booking_proof(payload.booking_link)
+    if token_tenant != tenant:
+        raise HTTPException(403, "Não foi possível confirmar esse agendamento.")
     async with get_session_factory()() as db:
         async with tenant_transaction(db, tenant):
             await published_guard(db, tenant, slug)
-            customer = (await db.execute(text("""
-                SELECT id,name,whatsapp_e164,email,instagram,birth_date,neighborhood,city,version
-                FROM customers WHERE tenant_id=:t AND whatsapp_e164=:phone
-                  AND active AND deleted_at IS NULL LIMIT 1
-            """), {"t": tenant, "phone": payload.phone})).mappings().one_or_none()
-    if customer is None:
-        # After proving control of the number, it is safe to explain that no
-        # booking exists here. Before proof, response is generic.
-        raise HTTPException(404, "Não encontramos agendamentos neste número. Você pode agendar pelo site.")
+            customer = await customer_for_proof(db, tenant, payload.phone, digest)
+    if not customer:
+        raise HTTPException(403, "Não foi possível confirmar esse agendamento.")
     response = reply({"authenticated": True, "profile": profile_data(dict(customer))})
     await issue_session(tenant, customer["id"], customer["version"],
                         payload.phone, response, previous=request.cookies.get(COOKIE))
@@ -280,57 +287,6 @@ async def update_profile(slug: str, payload: ProfilePatch, request: Request):
     await issue_session(tenant, customer["id"], updated["version"],
                         customer["whatsapp_e164"], response,
                         previous=request.cookies.get(COOKIE),
-                        verified_at=claims["verified_at"])
-    return response
-
-
-@router.post("/phone/request-code")
-async def request_new_phone(slug: str, payload: PhoneInput, request: Request):
-    _same_origin(request)
-    require_enabled()
-    tenant, customer, claims = await identity(slug, request)
-    if int(time.time()) - claims["verified_at"] > 15 * 60:
-        raise HTTPException(403, "Confirme seu telefone atual novamente antes de alterá-lo.")
-    if payload.phone == customer["whatsapp_e164"]:
-        raise HTTPException(409, "Este já é seu telefone cadastrado.")
-    await public_limit(request, str(customer["id"]), "customer-change-phone", 2, 3600)
-    await public_limit(request, "all", "customer-account-phone", 3, 1800,
-                       subject=phone_fingerprint(payload.phone))
-    if not await provider_request(payload.phone):
-        raise HTTPException(503, "Não foi possível enviar o código. Tente novamente mais tarde.")
-    return reply({"message": "Enviamos um código para o novo telefone."}, 202)
-
-
-@router.post("/phone/confirm")
-async def confirm_new_phone(slug: str, payload: CodeInput, request: Request):
-    _same_origin(request)
-    require_enabled()
-    tenant, customer, claims = await identity(slug, request)
-    if int(time.time()) - claims["verified_at"] > 15 * 60:
-        raise HTTPException(403, "Confirme seu telefone atual novamente antes de alterá-lo.")
-    await public_limit(request, str(customer["id"]), "customer-change-phone-check", 6, 900)
-    if payload.phone == customer["whatsapp_e164"] or not await provider_request(payload.phone, payload.code):
-        raise HTTPException(403, "Não foi possível confirmar o novo telefone.")
-    async with get_session_factory()() as db:
-        try:
-            async with tenant_transaction(db, tenant):
-                updated = (await db.execute(text("""
-                    UPDATE customers SET whatsapp_e164=:new,version=version+1,
-                      updated_at=clock_timestamp()
-                    WHERE tenant_id=:t AND id=:customer AND version=:expected
-                      AND NOT EXISTS(
-                        SELECT 1 FROM customers other WHERE other.tenant_id=:t
-                          AND other.whatsapp_e164=:new AND other.id<>:customer)
-                    RETURNING id,name,whatsapp_e164,email,instagram,birth_date,neighborhood,city,version
-                """), {"t": tenant, "customer": customer["id"], "new": payload.phone,
-                       "expected": customer["version"]})).mappings().one_or_none()
-        except IntegrityError:
-            raise HTTPException(409, "Este telefone já está em uso. Solicite ajuda ao estabelecimento.") from None
-    if updated is None:
-        raise HTTPException(409, "Não foi possível trocar o telefone. Ele pode pertencer a outro cadastro.")
-    response = reply({"profile": profile_data(dict(updated))})
-    await issue_session(tenant, customer["id"], updated["version"],
-                        payload.phone, response, previous=request.cookies.get(COOKIE),
                         verified_at=claims["verified_at"])
     return response
 
