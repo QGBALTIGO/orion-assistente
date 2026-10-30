@@ -137,3 +137,25 @@ test('invalid or unauthorized private response is never a customer confirmation'
     }));
   }
 });
+
+
+test('protocolo do cliente paraguaio é recebido com PN verificado e sem liberar IA',async()=>{
+  let seen;
+  const answer=await fetchBookingProtocolConfirmation({
+    apiUrl:base,token,phone:'595992000001',messageId:'synthetic-py-1',
+    text:'Olá Orion! Protocolo: AG-3SVM6N',
+    fetchImpl:async(_url,opts)=>{
+      seen=JSON.parse(opts.body);
+      return {ok:true,json:async()=>({state:'confirmed',answer:'Atendimento confirmado com segurança'})};
+    }
+  });
+  assert.equal(answer,'Atendimento confirmado com segurança');
+  assert.deepEqual(seen,{
+    phone:'595992000001',message_id:'synthetic-py-1',
+    text:'Olá Orion! Protocolo: AG-3SVM6N'
+  });
+  await assert.rejects(fetchBookingProtocolConfirmation({
+    apiUrl:base,token,phone:'595899000001',messageId:'synthetic-py-2',
+    text:'AG-3SVM6N',fetchImpl:async()=>{throw Error('Não deve consultar API');}
+  }));
+});
