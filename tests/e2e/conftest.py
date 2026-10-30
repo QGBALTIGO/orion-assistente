@@ -372,6 +372,22 @@ class Journey:
 
     def complete(self):
         from playwright.sync_api import expect
+        # Complete the current mandatory business profile and objectives via
+        # the real UI before requesting final activation.
+        if self.page.locator('#orionSetup [data-ob-step="profile"]').count():
+            self.step("profile")
+            form=self.page.locator('#orionSetup [data-ob-form="profile"]')
+            for field,value in {"operating_age":"1_to_3_years","team_size":"1_2",
+                                "monthly_revenue":"under_5k","monthly_volume":"up_to_50"}.items():
+                form.locator(f'[name="{field}"]').select_option(value)
+            self.submit("profile","/steps/profile")
+        if self.page.locator('#orionSetup [data-ob-step="goals"]').count():
+            self.step("goals")
+            form=self.page.locator('#orionSetup [data-ob-form="goals"]')
+            for field,value in {"main_challenge":"scheduling","desired_outcome":"save_time",
+                                "respondent_role":"owner"}.items():
+                form.locator(f'[name="{field}"]').select_option(value)
+            self.submit("goals","/steps/goals")
         self.step("review")
         self.page.locator('#orionSetup [name="acknowledged"]').check()
         state = self.submit("complete", "/onboarding/complete")
