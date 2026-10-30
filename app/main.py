@@ -44,6 +44,7 @@ from app.inbox_control import router as inbox_control_router
 from app.inbox_conversations import router as inbox_conversations_router
 from app.communication_api import router as communication_router
 from app.workflow_drafts import router as workflow_drafts_router
+from app.orion_pwa_api import router as orion_pwa_router
 from app.plan_routing import include_plan_router, enforce_endpoint_plan
 
 app = FastAPI(
@@ -126,6 +127,7 @@ include_plan_router(app, inbox_control_router)
 include_plan_router(app, inbox_conversations_router)
 include_plan_router(app, communication_router)
 include_plan_router(app, workflow_drafts_router)
+include_plan_router(app, orion_pwa_router)
 # Specific management paths must precede the legacy two-segment catalog path.
 include_plan_router(app, catalog_router)
 
@@ -159,6 +161,7 @@ async def panel_asset(asset: str) -> FileResponse:
                "orion-admin-center.js": "text/javascript",
                "orion-communication.js": "text/javascript",
                "orion-appointment-communications.js": "text/javascript",
+               "orion-pwa.js": "text/javascript",
                "orion-auth.css": "text/css",
                "orion-invite.css": "text/css", "orion-invite.js": "text/javascript",
                "orion-onboarding.css": "text/css", "orion-onboarding.js": "text/javascript",
