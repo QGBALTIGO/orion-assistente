@@ -6,6 +6,7 @@ WhatsApp connection or subscription. No passwords, anonymous data lookup,
 customer records, or bearer capabilities are exposed on the public site.
 """
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -63,6 +64,13 @@ def _digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def phone_fingerprint(value):
+    # E.164 phone space is enumerable. An HMAC prevents offline matching of
+    # Redis session records to real customers after an isolated cache leak.
+    key = os.environ["INTEGRATION_FERNET_KEY"].encode()
+    return hmac.new(key, ("orion:phone-proof:v1:"+value).encode(), hashlib.sha256).hexdigest()
+
+
 def _session_key(raw):
     return SCOPE + "session:" + _digest(raw)
 
@@ -74,7 +82,7 @@ def _token():
 async def issue_session(tenant, customer, version, phone, response, *, previous=None, verified_at=None):
     raw = _token()
     claims = {"tenant": str(tenant), "customer": str(customer),
-              "version": int(version), "phone_hash": _digest(phone),
+              "version": int(version), "phone_hash": phone_fingerprint(phone),
               "verified_at": verified_at if verified_at is not None else int(time.time())}
     redis = _cache()
     try:
