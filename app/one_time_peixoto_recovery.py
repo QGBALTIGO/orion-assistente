@@ -24,14 +24,29 @@ PHONE = re.compile(r"^\+(?:55[1-9][0-9]{9,10}|5959[0-9]{8})$")
 TEST_KEY = "orion_test_recovery"
 
 
+def booking_blocker(item, now):
+    """Return only a safe diagnostic code, never a name or contact value."""
+    if item is None:
+        return "booking_missing"
+    if item["status"] != "confirmed":
+        return "booking_not_confirmed"
+    if item["end_at"] <= now:
+        return "booking_already_finished"
+    if item["tenant_status"] != "active":
+        return "company_inactive"
+    if item["public_slug"] != SITE or item["public_enabled"] is not True:
+        return "site_not_published"
+    if item["professional_active"] is not True:
+        return "professional_inactive"
+    if not item["phone_e164"]:
+        return "professional_phone_missing"
+    if not isinstance(item["phone_e164"], str) or PHONE.fullmatch(item["phone_e164"]) is None:
+        return "professional_phone_invalid"
+    return None
+
+
 def eligible_booking(item, now):
-    """No expired/cancelled booking and no phone guessed from an owner account."""
-    return (item is not None and item["status"] == "confirmed"
-            and item["end_at"] > now and item["tenant_status"] == "active"
-            and item["public_slug"] == SITE and item["public_enabled"] is True
-            and item["professional_active"] is True
-            and isinstance(item["phone_e164"], str)
-            and PHONE.fullmatch(item["phone_e164"]) is not None)
+    return booking_blocker(item, now) is None
 
 
 async def recover_once():
@@ -71,8 +86,9 @@ async def recover_once():
                 return "booking_not_unique_or_missing", None
             row = candidates[0]
             now = (await db.execute(text("SELECT clock_timestamp()"))).scalar_one()
-            if not eligible_booking(row, now):
-                return "booking_changed_or_contact_unavailable", None
+            reason = booking_blocker(row, now)
+            if reason is not None:
+                return reason, None
 
             prior = (await db.execute(text("""
                 SELECT id FROM appointment_notifications
