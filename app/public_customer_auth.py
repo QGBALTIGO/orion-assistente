@@ -10,6 +10,7 @@ import json
 import os
 import re
 import secrets
+import time
 from uuid import UUID
 
 import httpx
@@ -70,10 +71,11 @@ def _token():
     return secrets.token_urlsafe(32)
 
 
-async def issue_session(tenant, customer, version, phone, response, *, previous=None):
+async def issue_session(tenant, customer, version, phone, response, *, previous=None, verified_at=None):
     raw = _token()
     claims = {"tenant": str(tenant), "customer": str(customer),
-              "version": int(version), "phone_hash": _digest(phone)}
+              "version": int(version), "phone_hash": _digest(phone),
+              "verified_at": verified_at if verified_at is not None else int(time.time())}
     redis = _cache()
     try:
         await redis.set(_session_key(raw), json.dumps(claims, separators=(",", ":")),
@@ -117,6 +119,8 @@ async def session_claims(raw, tenant):
         state = json.loads(value)
         if (state["tenant"] != str(tenant) or
                 not isinstance(state["version"], int) or state["version"] < 1 or
+                not isinstance(state.get("verified_at"), int) or
+                state["verified_at"] > int(time.time()) or
                 not re.fullmatch(r"[0-9a-f]{64}", state["phone_hash"])):
             return None
         UUID(state["customer"])
