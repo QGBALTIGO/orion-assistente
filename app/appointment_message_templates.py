@@ -343,6 +343,15 @@ def is_generic_response(value):
     return isinstance(value, str) and value.startswith("*Olá!* 👋\n\n🔐 Não foi possível confirmar o protocolo")
 
 
+def branded_signature(company, signature="Orion Agenda"):
+    """Show business name for default signature without changing custom text."""
+    chosen = label(signature, 80)
+    if chosen and chosen != "Orion Agenda":
+        return chosen
+    business = label(company, 60)
+    return business + " • via Orion Agenda" if business else "Orion Agenda"
+
+
 def compose(event, row, *, company, signature="Orion Agenda", customer_link=None,
             booking_link=None, previous=None, include_return=False, address=None, state=None,
             short_code=None):
@@ -400,7 +409,7 @@ def compose(event, row, *, company, signature="Orion Agenda", customer_link=None
         "horario_limite_aceite": expires.strftime("%H:%M") if expires else None,
         "empresa": label(company),
         "endereco_empresa": label(address, 200) or "Endereço não informado",
-        "assinatura": label(signature, 80) or "Orion Agenda",
+        "assinatura": branded_signature(company, signature),
         "link_cliente": customer_link,
         "link_profissional": professional_link,
         "link_novo_agendamento": booking_link,
