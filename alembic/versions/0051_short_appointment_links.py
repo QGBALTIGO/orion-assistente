@@ -82,19 +82,19 @@ def upgrade():
     op.execute("""
         CREATE FUNCTION public.orion_due_short_challenges(batch_limit integer)
         RETURNS TABLE(tenant_id uuid,id uuid) LANGUAGE sql STABLE SECURITY DEFINER
-        SET search_path=pg_catalog,public AS $
+        SET search_path=pg_catalog,public AS $orion_due$
           SELECT c.tenant_id,c.id FROM public.appointment_short_challenges c
           WHERE $1 BETWEEN 1 AND 100 AND c.status='pending'
             AND c.expires_at>clock_timestamp()
           ORDER BY c.created_at,c.id LIMIT LEAST(GREATEST($1,1),100)
-        $;
+        $orion_due$;
         REVOKE ALL ON FUNCTION public.orion_due_short_challenges(integer) FROM PUBLIC,app_runtime;
         GRANT EXECUTE ON FUNCTION public.orion_due_short_challenges(integer) TO app_support;
     """)
     op.execute("""
         CREATE FUNCTION public.orion_clean_short_credentials(batch_limit integer)
         RETURNS integer LANGUAGE plpgsql SECURITY DEFINER
-        SET search_path=pg_catalog,public AS $
+        SET search_path=pg_catalog,public AS $orion_clean$
         DECLARE affected integer := 0; removed integer := 0;
         BEGIN
           IF batch_limit IS NULL OR batch_limit NOT BETWEEN 1 AND 1000 THEN RETURN 0; END IF;
@@ -117,7 +117,7 @@ def upgrade():
              ORDER BY expires_at,id LIMIT batch_limit);
           GET DIAGNOSTICS removed=ROW_COUNT;
           RETURN affected+removed;
-        END $;
+        END $orion_clean$;
         REVOKE ALL ON FUNCTION public.orion_clean_short_credentials(integer)
             FROM PUBLIC,app_runtime;
         GRANT EXECUTE ON FUNCTION public.orion_clean_short_credentials(integer)
