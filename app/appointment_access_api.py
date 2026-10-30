@@ -31,6 +31,7 @@ PRIVATE_HEADERS = {'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'
 
 class CustomerAction(StrictModel):
     token: str = Field(max_length=80)
+    code: str | None = Field(default=None,max_length=18)
     action: Literal['view', 'slots', 'cancel', 'reschedule', 'review', 'accept_change', 'decline_change'] = 'view'
     expected_updated_at: AwareDatetime | None = None
     idempotency_key: UUID | None = None
@@ -131,13 +132,21 @@ async def customer_action(payload: CustomerAction, request: Request):
     access.require_enabled()
     _same_origin(request)
     await public_limit(request, 'appointment-access', 'access-ip', 120, 300)
-    tenant, digest = access.parse_token(payload.token)
+    # Legacy /a#capability remains supported. Short URLs use a secure
+    # HttpOnly step-up cookie rather than placing credentials in the URL.
+    from app.appointment_short_links import CUSTOMER_COOKIE, checked_code, belongs
+    if payload.code is not None:
+        checked_code(payload.code)
+    provided = payload.token or (request.cookies.get(CUSTOMER_COOKIE) if payload.code else None)
+    tenant, digest = access.parse_token(provided)
     access.require_tenant(tenant)
     # Tokens aren't included in rate-limit keys or any HTTP URL.
     await public_limit(request, str(tenant), 'access-token', 60, 300, subject=digest)
     async with get_session_factory()() as db:
         async with tenant_transaction(db, tenant):
             identity = await access.verify(db, tenant, digest)
+            if payload.code is not None and not await belongs(db, tenant, identity.appointment_id, payload.code):
+                raise HTTPException(404, access.UNAVAILABLE)
     with access.bind(identity):
         if payload.action in {'cancel', 'reschedule', 'accept_change'}:
             if payload.expected_updated_at is None or payload.idempotency_key is None:
