@@ -12,13 +12,17 @@ async def propose_if_required(db,tenant,appointment,payload,context):
     async with tenant_transaction(db,tenant):
         settings=(await db.execute(text('SELECT reschedule_acceptance FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).scalar_one_or_none()
         if settings is not True:return None
-        if context.role not in {'owner','editor','admin','support'} or context.source!='panel':
-            raise HTTPException(403,'Proposta exige uma conta autorizada da equipe')
+        panel_staff = context.role in {'owner','editor','admin','support'} and context.source=='panel'
+        verified_professional = context.role=='professional' and context.source=='public_site' and context.professional_id is not None
+        if not (panel_staff or verified_professional):
+            raise HTTPException(403,'Proposta exige uma identidade autorizada da equipe')
         if not payload.idempotency_key:raise HTTPException(422,'Atualize a proposta antes de confirmar')
         current=await read_appointment(db,tenant,appointment)
         await acquire_professional_lock(db,tenant,current['professional_id'])
         row=(await db.execute(text('SELECT * FROM appointments WHERE tenant_id=:t AND id=:id FOR UPDATE'),{'t':tenant,'id':appointment})).mappings().one()
         if row['professional_id']!=current['professional_id']:raise HTTPException(409,'O profissional mudou. Atualize a agenda')
+        if verified_professional and row['professional_id']!=context.professional_id:
+            raise HTTPException(403,'O profissional não está autorizado para este atendimento')
         previous=(await db.execute(text('''SELECT id,new_start_at,expires_at,status,appointment_version FROM appointment_change_proposals
             WHERE tenant_id=:t AND appointment_id=:id AND idempotency_key=:key'''),
             {'t':tenant,'id':appointment,'key':payload.idempotency_key})).mappings().first()
