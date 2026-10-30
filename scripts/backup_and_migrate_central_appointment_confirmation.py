@@ -13,7 +13,7 @@ from scripts.backup_and_migrate_commissions import connection_values,storage_val
 from scripts.backup_and_migrate_plan_permissions import schema_ready as previous_ready
 
 PREVIOUS='0050_plan_permissions'
-TARGET='0051_central_appointment_confirmation'
+TARGET='0051_central_protocol'
 FUNCTION='public.orion_resolve_central_appointment(text,text)'
 
 
