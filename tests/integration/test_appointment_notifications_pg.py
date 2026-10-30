@@ -131,6 +131,11 @@ async def test_admin_recovers_only_verified_recent_inbound_once_with_real_native
         await db.execute(text('UPDATE qr_channels SET credential_hash=:hash,credential_encrypted=:encrypted WHERE id=:c'),
             {'hash':hashlib.sha256(bridge_key.encode()).hexdigest(),'encrypted':credential,'c':d['channel']})
         await db.execute(text('UPDATE tenants SET whatsapp_channel_id=:c WHERE id=:t'),{'t':d['a'],'c':d['channel']})
+        # Manual inbox recovery is a Profissional/Elite feature after the
+        # Essencial tier loses conversations.manual. This test exercises the
+        # authorized Professional path; other tests retain Essencial basic alerts.
+        await db.execute(text("UPDATE tenant_plan_controls SET manual_plan_code='profissional' WHERE tenant_id=:t"),
+            {'t':d['a']})
     monkeypatch.setattr(qr_legacy,'channel_id',lambda t:d['channel'] if t==d['a'] else uuid4())
     monkeypatch.setattr(management_api,'get_session_factory',lambda:d['factory'])
     monkeypatch.setattr(inbox_runtime,'get_session_factory',lambda:d['factory'])

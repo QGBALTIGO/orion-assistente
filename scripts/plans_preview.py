@@ -98,6 +98,17 @@ class Handler(base.Handler):
     def do_GET(self):
         url = urlsplit(self.path)
         path, query = url.path, parse_qs(url.query)
+        # The shipped panel includes a public PWA manifest. Test browsers may
+        # fetch it even with service workers disabled; serve it as inert data.
+        if path == '/manifest.webmanifest':
+            return self.body((base.ROOT / 'app/static/orion-pwa.webmanifest').read_bytes(),
+                             mime='application/manifest+json')
+        if path in {'/pwa/icon-180.png','/pwa/icon-192.png','/pwa/icon-512.png'}:
+            from app.orion_pwa_icon import icon_png
+            return self.body(icon_png(int(path.split('icon-')[1].split('.')[0])),mime='image/png')
+        if path == '/pwa-sw.js':
+            return self.body((base.ROOT / 'app/static/orion-pwa-sw.js').read_bytes(),
+                             mime='application/javascript')
         if path in {'/', '/panel'}:
             existing = self.session()
             if existing and 'plan' in existing and 'fixtureRole' not in query and 'fixturePlan' not in query:

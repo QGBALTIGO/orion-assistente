@@ -16,11 +16,11 @@ CODES = {
 
 BASE_FEATURES = frozenset({
     "workspace.access", "dashboard.basic", "agenda.manage", "clients.manage",
-    "conversations.manual", "services.manage", "professionals.manage", "finance.basic",
+    "performance.advanced", "services.manage", "professionals.manage", "finance.basic",
     "site.manage", "notifications.basic", "settings.manage", "calendar.manage",
 })
 PRO_FEATURES = BASE_FEATURES | frozenset({
-    "performance.advanced", "goals.manage", "finance.advanced", "commissions.advanced",
+    "conversations.manual", "goals.manage", "finance.advanced", "commissions.advanced",
     "loyalty.manage", "marketing.ai", "marketing.campaigns", "coupons.manage",
     "consultant.ai", "relationships.manage",
 })

@@ -11,9 +11,9 @@ const defs=[
  {code:'essencial',name:'Orion Essencial',intro:'Tudo o que você precisa para organizar e gerenciar seu negócio.',professionals:2,features:[
  'Dashboard com indicadores essenciais','Agenda e agendamentos online','Clientes e histórico de atendimentos',
  'Serviços, combos e adicionais','Site de agendamento personalizado','Financeiro básico: receitas e despesas',
- 'Central de conversas e respostas manuais','Confirmações e lembretes pelo WhatsApp*','Convites para avaliação no Google*','Suporte padrão']},
+ 'Meu desempenho: atendimentos e faturamento','Confirmações e lembretes pelo WhatsApp*','Convites para avaliação no Google*','Suporte padrão']},
  {code:'profissional',name:'Orion Profissional',intro:'Mais ferramentas para fidelizar clientes e acelerar o crescimento da sua empresa.',professionals:6,features:[
- 'Tudo do Essencial','Financeiro avançado, DRE e relatórios','Comissões, vales e pagamentos de funcionários',
+ 'Tudo do Essencial','Central de atendimento e WhatsApp da empresa','Financeiro avançado, DRE e relatórios','Comissões, vales e pagamentos de funcionários',
  'Metas e análises por profissional','Fidelização, pontos e recompensas','Cupons e benefícios personalizados',
  'Clientes inativos e ações de retorno','Campanhas de aniversário e recuperação*',
  'Marketing IA para campanhas e mensagens*','Consultor IA de gestão*']},
@@ -29,11 +29,11 @@ const comparisons=[
  ['Clientes e serviços',[['Cadastro e histórico de clientes',true,true,true],['Serviços, combos e adicionais',true,true,true],['Identificação de clientes inativos',false,true,true]]],
  ['Site de agendamento',[['Página própria personalizada',true,true,true],['Agendamento público',true,true,true]]],
  ['Financeiro e relatórios',[['Receitas, despesas e saldo','Básico','Avançado','Avançado'],['DRE e relatórios detalhados',false,true,true],['Comissões, vales e pagamentos',false,true,true]]],
- ['Central de atendimento',[['Conversas e respostas manuais',true,true,true],['Atendimento e agendamento pela recepcionista IA',false,false,true]]],
+ ['Central de atendimento',[['Conversas e respostas manuais',false,true,true],['Conectar WhatsApp da empresa',false,true,true],['Atendimento e agendamento pela recepcionista IA',false,false,true]]],
  ['Automações e lembretes',[['Confirmação e lembretes WhatsApp*',true,true,true],['Convite para avaliação no Google*',true,true,true],['Agendamento automático por conversa*',false,false,true]]],
  ['Marketing e fidelização',[['Pontos e recompensas',false,true,true],['Cupons e benefícios',false,true,true],['Campanhas de aniversário e retorno*',false,true,true]]],
  ['Inteligência artificial',[['Marketing IA e Consultor IA de gestão*',false,true,true],['Recepcionista IA no WhatsApp*',false,false,true]]],
- ['Equipe e profissionais',[['Profissionais permitidos','Até 2','Até 6','Até 10'],['Relatórios por profissional',false,true,true]]],
+ ['Equipe e profissionais',[['Profissionais permitidos','Até 2','Até 6','Até 10'],['Relatórios por profissional',true,true,true]]],
  ['Suporte',[['Suporte padrão',true,true,true]]]
 ];
 function compareCell(value){return value===true?'<span class="op-yes" aria-label="Incluído">'+ic('check')+'<span class="op-cell-word">Incluído</span></span>':value===false?'<span class="op-no" aria-label="Não incluído">—</span>':'<span class="op-comparison-value">'+escapeHTML(value)+'</span>';}

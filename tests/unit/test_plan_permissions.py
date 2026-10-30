@@ -29,6 +29,32 @@ def test_exact_tier_matrix_and_overage_preserve_counts(code, limit):
     assert result["source"]=="manual"
 
 
+def test_only_essencial_swaps_whatsapp_manual_for_performance_without_losing_notifications():
+    # Covers manual, paid and trial plans using the same authoritative catalogue.
+    essential = derive_plan(snapshot("essencial"), NOW)
+    assert essential["permissions"]["performance.advanced"] is True
+    assert essential["permissions"]["conversations.manual"] is False
+    assert essential["permissions"]["notifications.basic"] is True
+    assert essential["permissions"]["settings.manage"] is True
+    assert essential["permissions"]["calendar.manage"] is True
+    assert essential["permissions"]["goals.manage"] is False
+    assert essential["permissions"]["commissions.advanced"] is False
+    paid = derive_plan(snapshot(commercial=commercial()), NOW)
+    trial = derive_plan(snapshot(trial={"status":"active",
+        "started_at":(NOW-timedelta(hours=1)).isoformat(),
+        "ends_at":(NOW+timedelta(days=1)).isoformat()}), NOW)
+    for state in (paid, trial):
+        assert state["code"] == "essencial"
+        assert state["permissions"]["performance.advanced"]
+        assert not state["permissions"]["conversations.manual"]
+    for code in ("profissional", "elite"):
+        state = derive_plan(snapshot(code), NOW)
+        assert state["permissions"]["performance.advanced"]
+        assert state["permissions"]["conversations.manual"]
+        assert state["permissions"]["goals.manage"]
+        assert state["permissions"]["commissions.advanced"]
+
+
 def test_manual_priority_expiration_then_cakto_then_trial_then_no_access():
     data=snapshot("elite", commercial=commercial(), trial={"status":"active", "started_at":(NOW-timedelta(days=1)).isoformat(), "ends_at":(NOW+timedelta(days=1)).isoformat()})
     assert derive_plan(data,NOW)["code"]=="elite"
