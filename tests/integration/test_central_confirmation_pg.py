@@ -38,9 +38,9 @@ async def test_global_confirm_resolver_enforces_phone_uniqueness_and_role(bookin
             assert not await lookup(item['protocol'],phone(921))
             assert not await lookup('AG-ZZZZZZ',customer_phone)
             assert not await lookup('wrong',customer_phone)
-        async with db['factory']() as s:
-            async with tenant_transaction(s,db['a']):
-                with pytest.raises(DBAPIError):
+        with pytest.raises(DBAPIError):
+            async with db['factory']() as s:
+                async with tenant_transaction(s,db['a']):
                     await s.execute(text(
                         'SELECT * FROM public.orion_resolve_central_appointment(:p,:c)'
                     ),{'p':item['protocol'],'c':customer_phone})
