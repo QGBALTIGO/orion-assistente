@@ -427,7 +427,15 @@ async def public_catalogue(slug:str,request:Request):
     async with get_session_factory()() as db:
         async with tenant_transaction(db,tenant):
             await published_guard(db,tenant,slug)
-            return await catalogue(db,tenant)
+            result=await catalogue(db,tenant)
+    from app.appointment_confirmation import central_admin_phone, central_admin_whatsapp_enabled
+    if central_admin_whatsapp_enabled():
+        # The public WhatsApp contact is the platform reception, never the
+        # company's own number. Resolve the currently verified admin connection
+        # at request time so relinking does not require editing company sites.
+        number=await central_admin_phone()
+        result['site']['whatsapp_phone']='+'+number if number else None
+    return result
 
 
 @router.get('/api/v1/tenants/{tenant_id}/management/site/preview')
