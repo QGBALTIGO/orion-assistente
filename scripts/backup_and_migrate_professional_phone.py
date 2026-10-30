@@ -102,7 +102,122 @@ def professional_contract_ready(raw, *, expect_phone):
             """)).first()
             if not expect_phone:
                 return column is None and constraint is None
-            expected_check = r"CHECK (((phone_e164 IS NULL) OR ((phone_e164)::text ~ '^\+55[1-9][0-9]{9,10}$'::text)))"
+            version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            # Migration 0052 extends this check to BR+PY. Require the exact,
+            # reviewed SQL for that revision rather than weakening the guard.
+            baseline = r"CHECK (((phone_e164 IS NULL) OR ((phone_e164)::text ~ '^\+55[1-9][0-9]{9,10}
+                    and constraint is not None and tuple(constraint[:3]) == (True, False, False)
+                    and normalized(constraint[3]) == normalized(expected_check))
+    finally:
+        engine.dispose()
+
+
+def schema_contract_ready(raw):
+    return registration_contract_ready(raw) and professional_contract_ready(raw, expect_phone=True)
+
+
+def source_contract_ready(raw):
+    return registration_contract_ready(raw) and professional_contract_ready(raw, expect_phone=False)
+
+
+def main():
+    try:
+        raw, url = connection_values()
+        with release_lock(raw):
+            current = migrated_version(raw)
+            if current not in {PREVIOUS, TARGET}:
+                print("orion_professional_phone_unreviewed_schema_revision", file=sys.stderr)
+                return 2
+            if current == TARGET:
+                if not schema_contract_ready(raw):
+                    print("orion_professional_phone_schema_contract_failed", file=sys.stderr)
+                    return 3
+                print("orion_professional_phone_schema_ready", flush=True)
+                return 0
+            if not source_contract_ready(raw):
+                print("orion_professional_phone_source_contract_failed", file=sys.stderr)
+                return 3
+            with tempfile.TemporaryDirectory(prefix="orion-professional-phone-") as folder:
+                perform_backup(url, storage_values(), Path(folder) / "backup.dump",
+                               backup_context="professional-phone-0040", schema_revision=PREVIOUS,
+                               preserve_ownership=True)
+            if migrated_version(raw) != PREVIOUS or not source_contract_ready(raw):
+                print("orion_professional_phone_source_changed_after_backup", file=sys.stderr)
+                return 3
+            result = subprocess.run([sys.executable, "-m", "alembic", "upgrade", TARGET],
+                                    env={**os.environ, "ORION_MIGRATION_SWITCH_ROLE": "1"},
+                                    check=False, timeout=600, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+            if result.returncode or migrated_version(raw) != TARGET or not schema_contract_ready(raw):
+                print("orion_professional_phone_upgrade_failed", file=sys.stderr)
+                return 3
+            print("orion_professional_phone_schema_0040_verified_after_backup", flush=True)
+            return 0
+    except Exception:
+        print("orion_professional_phone_predeploy_failed_closed", file=sys.stderr)
+        return 3
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+::text)))"
+            paraguay = r"CHECK (((phone_e164 IS NULL) OR ((phone_e164)::text ~ '^(\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})
+                    and constraint is not None and tuple(constraint[:3]) == (True, False, False)
+                    and normalized(constraint[3]) == normalized(expected_check))
+    finally:
+        engine.dispose()
+
+
+def schema_contract_ready(raw):
+    return registration_contract_ready(raw) and professional_contract_ready(raw, expect_phone=True)
+
+
+def source_contract_ready(raw):
+    return registration_contract_ready(raw) and professional_contract_ready(raw, expect_phone=False)
+
+
+def main():
+    try:
+        raw, url = connection_values()
+        with release_lock(raw):
+            current = migrated_version(raw)
+            if current not in {PREVIOUS, TARGET}:
+                print("orion_professional_phone_unreviewed_schema_revision", file=sys.stderr)
+                return 2
+            if current == TARGET:
+                if not schema_contract_ready(raw):
+                    print("orion_professional_phone_schema_contract_failed", file=sys.stderr)
+                    return 3
+                print("orion_professional_phone_schema_ready", flush=True)
+                return 0
+            if not source_contract_ready(raw):
+                print("orion_professional_phone_source_contract_failed", file=sys.stderr)
+                return 3
+            with tempfile.TemporaryDirectory(prefix="orion-professional-phone-") as folder:
+                perform_backup(url, storage_values(), Path(folder) / "backup.dump",
+                               backup_context="professional-phone-0040", schema_revision=PREVIOUS,
+                               preserve_ownership=True)
+            if migrated_version(raw) != PREVIOUS or not source_contract_ready(raw):
+                print("orion_professional_phone_source_changed_after_backup", file=sys.stderr)
+                return 3
+            result = subprocess.run([sys.executable, "-m", "alembic", "upgrade", TARGET],
+                                    env={**os.environ, "ORION_MIGRATION_SWITCH_ROLE": "1"},
+                                    check=False, timeout=600, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+            if result.returncode or migrated_version(raw) != TARGET or not schema_contract_ready(raw):
+                print("orion_professional_phone_upgrade_failed", file=sys.stderr)
+                return 3
+            print("orion_professional_phone_schema_0040_verified_after_backup", flush=True)
+            return 0
+    except Exception:
+        print("orion_professional_phone_predeploy_failed_closed", file=sys.stderr)
+        return 3
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+::text)))"
+            expected_check = paraguay if version == "0052_paraguay_phone" else baseline
             return (tuple(column or ()) == ('varchar', 'YES', 16, None)
                     and constraint is not None and tuple(constraint[:3]) == (True, False, False)
                     and normalized(constraint[3]) == normalized(expected_check))
