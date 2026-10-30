@@ -31,6 +31,11 @@ def enable(monkeypatch):
     async def no_network_rate_limit(_request, _phone):
         return None
     monkeypatch.setattr(api, '_limit_protocol_lookup', no_network_rate_limit)
+    from app import plan_permissions
+    async def entitled(_tenant, feature):
+        assert feature == 'notifications.basic'
+        return True
+    monkeypatch.setattr(plan_permissions, 'tenant_has_feature', entitled)
 
 
 def message(phone='5567998888777'):
