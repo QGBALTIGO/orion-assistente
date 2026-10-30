@@ -273,3 +273,32 @@ test('totais altos ocupam uma linha inteira e não truncam valores monetários',
   ])assert.ok(css.includes(piece),'responsividade dos indicadores: '+piece);
   assert.equal(h.errors.length,0);
 });
+
+
+test('customer creation in admin preserves a literal +595 instead of silently saving Brazilian +55',async t=>{
+  const writes=[],h=await fixture(t,{respond:fakeCustomers([],value=>writes.push(value))});
+  h.click('[data-os-action=new-customer]');
+  const field=h.document.querySelector('[data-os-form=customer] [name=phone]');
+  assert.equal(field.dataset.orionInternational,'true');
+  h.fill('[name=name]','Cliente internacional de teste');
+  h.fill('[name=phone]','+595 992 820210');
+  assert.equal(field.value,'+595 992 820210');
+  h.submit('[data-os-form=customer]');await flush();
+  assert.equal(writes.length,1);
+  assert.equal(writes[0].payload.phone,'+595992820210');
+  assert.equal(writes[0].payload.name,'Cliente internacional de teste');
+  assert.deepEqual(h.errors,[]);
+});
+
+test('editing an international client retains +595 and never converts it to +55',async t=>{
+  const record={...activeRecord,phone:'+595992820210'};
+  const writes=[],h=await fixture(t,{respond:fakeCustomers([record],value=>writes.push(value))});
+  h.click('[data-os-customer="'+customerId+'"]');
+  const field=h.document.querySelector('[data-os-form=customer] [name=phone]');
+  assert.equal(field.value,'+595992820210');
+  h.submit('[data-os-form=customer]');await flush();
+  assert.equal(writes.length,1);
+  assert.equal(writes[0].payload.phone,'+595992820210');
+  assert.equal(writes[0].method,'PATCH');
+  assert.deepEqual(h.errors,[]);
+});

@@ -200,6 +200,12 @@
     return new Date(utc).toISOString();
   }
   function phone(value){return sharedFields().phoneValue(value)||'';}
+  function customerPhoneValue(value){
+    const canonical=sharedFields().phoneValue(value,{allowInternational:true});
+    if(canonical&&!/^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(canonical))
+      throw Error('Informe telefone brasileiro com DDD ou celular paraguaio +595.');
+    return canonical;
+  }
   const sharedFields=()=>{if(!window.OrionFields)throw Error('Atualize a página para carregar os campos do formulário.');return window.OrionFields;};
   const professionalPhoneDisplay=value=>sharedFields().phoneDisplay(value);
   const professionalPhoneValue=value=>sharedFields().phoneValue(value);
@@ -229,8 +235,11 @@
   const routeButton=(text,route,kind='',symbol='')=>'<button type="button" class="os-button '+kind+'" data-os-route="'+route+'">'+(symbol?icon(symbol):'')+esc(text)+'</button>';
   function typedField(type,value,extra,name){
     if(type==='tel'){
-      value=sharedFields().phoneDisplay(value);
-      extra=extra.replace(/\s*(?:maxlength|placeholder|inputmode)="[^"]*"/g,'')+' data-orion-field="phone" inputmode="tel" placeholder="(00) 00000-0000"';
+      const internationalCustomer=name==='phone'||name==='customer_phone';
+      value=sharedFields().phoneDisplay(value,{allowInternational:internationalCustomer});
+      extra=extra.replace(/\s*(?:maxlength|placeholder|inputmode)="[^"]*"/g,'')+
+        ' data-orion-field="phone"'+(internationalCustomer?' data-orion-international="true" data-orion-phone-scope="br-py"':'')+
+        ' inputmode="tel" placeholder="(00) 00000-0000"';
       if(!/autocomplete=/.test(extra))extra+=' autocomplete="tel-national"';
     }else if(type==='email'){
       extra=extra.replace(/\s*placeholder="[^"]*"/g,'')+' data-orion-field="email" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="nome@email.com"';
@@ -2590,8 +2599,8 @@
       if(kind==='invitation'){if(!state.data.team?.can_manage)return;const c=context();markBusy(form,true);try{const result=await request(mgmt('/team/invitations'),'POST',{email:f.email?.trim()||null,role:f.role,idempotency_key:d.key});if(!stillAccount(c))return;try{state.data.team=await request(mgmt('/team'));}catch(ex){toast('O convite foi criado, mas a lista não pôde ser atualizada.',true);}if(!stillAccount(c))return;markBusy(form,false);renderProfessionals();showInvitationResult(result);}catch(ex){if(stillAccount(c))dialogError(ex);}finally{if(stillAccount(c))markBusy(form,false);}return;}
       if(kind==='team-member'){if(!state.data.team?.can_manage)return;const r=d.record;await saveForm(form,()=>request(mgmt('/team/members/'+encodeURIComponent(r.account_id)),'PATCH',{role:f.role,active:form.elements.active.checked,expected_updated_at:r.updated_at}),'Acesso atualizado.');}
       if(kind==='customer'){
-        const c=d.record,payload={name:f.name.trim(),phone:phone(f.phone)||null,email:f.email?.trim()||null,...(!c?.birth_date&&c?.birth_day&&c?.birth_month&&!f.birth_date&&form.elements.birth_date.dataset.edited!=='true'?{}:{birth_date:f.birth_date||null}),instagram:f.instagram?.trim()||null,neighborhood:f.neighborhood?.trim()||null,city:f.city?.trim()||null,notes:f.notes?.trim()||null,active:c?form.elements.active.checked:true};
-        if(payload.phone&&!/^\+55[1-9][0-9]{9,10}$/.test(payload.phone))throw Error('Informe um WhatsApp brasileiro com DDD ou deixe o campo vazio.');
+        const c=d.record,payload={name:f.name.trim(),phone:customerPhoneValue(f.phone)||null,email:f.email?.trim()||null,...(!c?.birth_date&&c?.birth_day&&c?.birth_month&&!f.birth_date&&form.elements.birth_date.dataset.edited!=='true'?{}:{birth_date:f.birth_date||null}),instagram:f.instagram?.trim()||null,neighborhood:f.neighborhood?.trim()||null,city:f.city?.trim()||null,notes:f.notes?.trim()||null,active:c?form.elements.active.checked:true};
+        if(payload.phone&&!/^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(payload.phone))throw Error('Informe telefone brasileiro com DDD ou celular paraguaio +595.');
         await saveForm(form,()=>request(mgmt('/customers'+(c?'/'+encodeURIComponent(c.id):'')),c?'PATCH':'POST',{...payload,...(c?{expected_version:c.version}:{idempotency_key:d.key})}),result=>c?'Cliente atualizado.':result?.reused_existing===true?'Cliente já cadastrado. Mantivemos as informações existentes.':'Cliente cadastrado.');
       }
       if(kind==='service'){const s=d.record,payload=servicePayload(form,s),selected=(new FormData(form).getAll('professional_ids').length?new FormData(form).getAll('professional_ids'):(state.data.professionals||[]).map(pro=>pro.id)),addonIds=new FormData(form).getAll('addon_ids'),addonItems=addonIds.map(id=>({addon_service_id:id,add_duration:form.elements['addon_duration_'+id].checked}));if(addonIds.length>5)throw Error('Escolha no máximo 5 adicionais.');await saveForm(form,async c=>{const id=s?.id||d.savedId,result=await request(apiPath('/services'+(id?'/'+encodeURIComponent(id):'')),id?'PUT':'POST',payload);if(!stillAccount(c))return;d.savedId=result?.id||id;if(!d.savedId)throw Error('O servidor não retornou a identificação do serviço.');try{const links=rows(await request(apiPath('/professional_services'))).filter(l=>l.service_id===d.savedId);for(const professionalId of selected.filter(id=>!links.some(l=>l.professional_id===id))){if(!stillAccount(c))return;await request(apiPath('/professional_services'),'POST',{professional_id:professionalId,service_id:d.savedId});}for(const link of links.filter(l=>!selected.includes(l.professional_id))){if(!stillAccount(c))return;await request(apiPath('/professional_services/'+encodeURIComponent(link.id)),'DELETE');}}catch(ex){throw Error('O serviço foi salvo, mas nem todos os profissionais foram vinculados. Revise os vínculos e tente salvar novamente. '+ex.message);}try{const result=await request(mgmt('/services/'+encodeURIComponent(d.savedId)+'/addons'),'PUT',{expected_version:d.addonVersion,items:addonItems});d.addonVersion=result.version;}catch(ex){throw Error('O serviço foi salvo, mas os adicionais não foram atualizados. '+ex.message);}},s?'Serviço atualizado.':'Serviço cadastrado.');}
@@ -2649,18 +2658,18 @@
       }
       if(['hours','hours-edit','pause','pause-edit'].includes(kind)){await submitHoursEditor(form,kind,f,d);return;}
       if(kind==='appointment'){
-        const values=d.holdForm||f,customerPhone=phone(values.customer_phone);if(!/^\+55[1-9][0-9]{9,10}$/.test(customerPhone))throw Error('Para agendar, informe o WhatsApp do cliente com DDD.');if(!d.serviceIds.length)throw Error('Selecione ao menos um serviço.');if(!d.holdForm&&!d.slots.includes(values.start_at))throw Error('Selecione um horário disponível.');
+        const values=d.holdForm||f,customerPhone=customerPhoneValue(values.customer_phone);if(!/^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(customerPhone))throw Error('Para agendar, informe WhatsApp com DDD brasileiro ou celular paraguaio +595.');if(!d.serviceIds.length)throw Error('Selecione ao menos um serviço.');if(!d.holdForm&&!d.slots.includes(values.start_at))throw Error('Selecione um horário disponível.');
         await saveForm(form,async c=>{
           let hold=d.holdId?d.holdRecord:null;
           if(!hold){
             const selected=d.customers.find(customer=>customer.id===d.customerId);
-            if(selected&&phone(selected.phone)!==customerPhone){
+            if(selected&&customerPhoneValue(selected.phone)!==customerPhone){
               const path=mgmt('/customers/'+encodeURIComponent(selected.id));let updated;
               try{updated=await request(path,'PATCH',{phone:customerPhone,expected_version:selected.version});}
               catch(error){
                 if(error.status>=400&&error.status<500&&error.status!==409)throw error;
                 try{updated=await request(path);}catch{throw error;}
-                if(updated?.id!==selected.id||phone(updated.phone)!==customerPhone)throw error;
+                if(updated?.id!==selected.id||customerPhoneValue(updated.phone)!==customerPhone)throw error;
               }
               if(!stillAccount(c))return;Object.assign(selected,updated);
             }
