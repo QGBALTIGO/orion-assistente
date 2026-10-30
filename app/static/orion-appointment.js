@@ -2,8 +2,8 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const token=location.hash.slice(1);
-const shortMatch=location.pathname.match(/^\/(?:p\/)?(AG[A-HJ-NP-Z2-9]{6,12})$/);
-const shortCode=shortMatch?shortMatch[1]:null;
+const shortMatch=location.pathname.match(/^\/(?:p\/)?(AG[A-HJ-NP-Z2-9]{6,12})$/i);
+const shortCode=shortMatch?shortMatch[1].toUpperCase():null;
 const isProfessional=Boolean(shortCode&&location.pathname.startsWith('/p/'));
 let current=null,busy=false,operation=null,navigating=false;
 // A second WhatsApp link can reuse this tab with a different fragment. Clear
