@@ -115,7 +115,15 @@ async def prepare_body(db,tenant,job,row,settings):
     shop=(await db.execute(text('''SELECT t.name,p.public_slug,p.public_enabled,p.address,p.city,p.state
         FROM tenants t LEFT JOIN management_site_preferences p ON p.tenant_id=t.id WHERE t.id=:t'''),{'t':tenant})).mappings().one()
     customer_link=None
-    if job['recipient_kind']=='customer' and job['event'] in {'customer_rescheduled','customer_proposal','review'}:
+    short_code=None
+    if os.getenv("APPOINTMENT_SHORT_LINKS_ENABLED","0")=="1":
+        # Mapping is assigned only in a tenant-scoped transaction and remains
+        # stable after every reschedule. The code itself grants no access.
+        from app.appointment_short_links import get_or_create, customer_url
+        short_code=await get_or_create(db,tenant,job['appointment_id'],row['protocol'])
+        if job['recipient_kind']=='customer' and job['event'] in {'customer_rescheduled','customer_proposal','review'}:
+            customer_link=customer_url(short_code)
+    elif job['recipient_kind']=='customer' and job['event'] in {'customer_rescheduled','customer_proposal','review'}:
         customer_link=await access.issue(db,tenant,job['appointment_id'])
     from app.public_origins import canonical_public_origin
     booking_link=canonical_public_origin()+'/s/'+shop['public_slug'] if shop.get('public_slug') and shop['public_enabled'] else None
@@ -123,7 +131,7 @@ async def prepare_body(db,tenant,job,row,settings):
         {'t':tenant,'customer':row['customer_id'],'id':row['id']})).scalar_one()
     return compose(job['event'],row,company=shop['name'],signature=settings['signature'],customer_link=customer_link,
         booking_link=booking_link,previous=job['previous'],include_return=settings['return_invitation'] and not future,
-        address=', '.join(str(shop[k]) for k in ('address','city','state') if shop.get(k)))
+        address=', '.join(str(shop[k]) for k in ('address','city','state') if shop.get(k)),short_code=short_code)
 
 
 async def process_notification(ctx,tenant_id,notification_id):

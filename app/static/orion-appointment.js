@@ -2,6 +2,9 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const token=location.hash.slice(1);
+const shortMatch=location.pathname.match(/^\/(?:p\/)?(AG[A-HJ-NP-Z2-9]{6,12})$/i);
+const shortCode=shortMatch?shortMatch[1].toUpperCase():null;
+const isProfessional=Boolean(shortCode&&location.pathname.startsWith('/p/'));
 let current=null,busy=false,operation=null,navigating=false;
 // A second WhatsApp link can reuse this tab with a different fragment. Clear
 // the old view immediately and authenticate the new capability in a fresh page.
@@ -13,8 +16,13 @@ const statusNames={hold:'Reserva temporária',confirmed:'Agendamento confirmado!
 const node=(tag,text)=>{const n=document.createElement(tag);n.textContent=text;return n;};
 function showError(error){$('message').textContent=error.message||'Não foi possível conectar. Tente novamente em instantes.';}
 async function request(action,extra={}){
- const response=await fetch('/api/appointment-access',{method:'POST',credentials:'same-origin',cache:'no-store',referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,action,...extra})});
- const data=await response.json();if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'Não foi possível concluir. Atualize e tente novamente.');return data;
+ const endpoint=isProfessional?'/api/short-appointments/'+shortCode+'/professional-action':'/api/appointment-access';
+ const body=isProfessional?{action,...extra}:{token:token||'',code:shortCode,action,...extra};
+ const response=await fetch(endpoint,{method:'POST',credentials:'same-origin',cache:'no-store',referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const data=await response.json();if(!response.ok){
+  if(shortCode&&[401,403,404].includes(response.status))requireVerification();
+  throw Error(typeof data.detail==='string'?data.detail:'Não foi possível concluir. Atualize e tente novamente.');
+ }return data;
 }
 async function run(fn){if(busy)return;busy=true;document.querySelector('main').setAttribute('aria-busy','true');document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();}catch(e){showError(e);}finally{busy=false;document.querySelector('main').setAttribute('aria-busy','false');document.querySelectorAll('button').forEach(b=>b.disabled=false);$('confirm-reschedule').disabled=!$('slot').value;}}
 function button(text,fn,secondary=false){const n=node('button',text);n.type='button';if(secondary)n.className='secondary';n.onclick=fn;return n;}
@@ -28,8 +36,12 @@ function accent(value){
 }
 function render(data){
  if(navigating||token!==location.hash.slice(1))return;
- current=data;operation=null;accent(data.brand_color);const logo=$('company-logo');logo.hidden=!(data.logo_url&&/^\/media\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/.test(data.logo_url));if(!logo.hidden){logo.src=data.logo_url;logo.alt=data.company;}else logo.removeAttribute('src');$('company').textContent=data.company;$('title').textContent=statusNames[data.status]||'Seu agendamento';
+ current=data;operation=null;accent(data.brand_color);
+ if(data.change_status==='pending_customer_acceptance'){
+  $('message').textContent='Proposta enviada ao cliente. O horário original segue válido até o aceite.';
+ }const logo=$('company-logo');logo.hidden=!(data.logo_url&&/^\/media\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/.test(data.logo_url));if(!logo.hidden){logo.src=data.logo_url;logo.alt=data.company;}else logo.removeAttribute('src');$('company').textContent=data.company;$('title').textContent=statusNames[data.status]||'Seu agendamento';
  $('message').textContent=data.status==='completed'?`Obrigado pela visita, ${data.customer.split(' ')[0]}! Foi um prazer receber você.`:data.can_change?'Você pode cancelar ou remarcar até 1 hora antes do atendimento.':data.status==='confirmed'?'Seu agendamento está próximo e não pode mais ser alterado por esta página. Para solicitar ajuda, entre em contato com a empresa.':'Confira abaixo o estado atual do seu atendimento.';
+ if(data.change_status==='pending_customer_acceptance')$('message').textContent='Proposta enviada ao cliente. O horário original segue válido até o aceite.';
  const when=new Date(data.start_at);const date=new Intl.DateTimeFormat('pt-BR',{dateStyle:'long',timeZone:data.timezone}).format(when);const time=new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:data.timezone}).format(when);
  $('details').replaceChildren();for(const [key,value] of [['Cliente',data.customer],['Serviço',data.services.join(' + ')],['Profissional',data.professional],['Data',date],['Horário',time],['Duração',data.duration_min+' minutos'],['Protocolo',data.protocol],['Endereço',data.address]]){if(!value)continue;const row=node('div','');row.append(node('dt',key),node('dd',value));$('details').append(row);}
  const actions=$('actions');actions.replaceChildren();$('reschedule').hidden=true;$('review').hidden=!data.can_review;
@@ -46,5 +58,38 @@ $('slot').onchange=()=>{$('confirm-reschedule').disabled=!$('slot').value;operat
 $('confirm-reschedule').onclick=()=>void run(async()=>{if(!$('slot').value)throw Error('Escolha um horário.');operation=operation||crypto.randomUUID();render(await request('reschedule',{expected_updated_at:current.updated_at,idempotency_key:operation,start_at:$('slot').value}));});
 for(let n=1;n<=5;n++){const label=node('label','');const input=document.createElement('input');input.type='radio';input.name='rating';input.value=String(n);input.required=true;input.setAttribute('aria-label',n+(n===1?' estrela':' estrelas'));const span=node('span','★');span.setAttribute('aria-hidden','true');label.append(input,span);$('stars').append(label);}
 $('review').onsubmit=e=>{e.preventDefault();void run(async()=>{const chosen=document.querySelector('input[name=rating]:checked');if(!chosen)throw Error('Escolha sua avaliação.');render(await request('review',{rating:Number(chosen.value),comment:$('comment').value}));});};
-if(!token){$('message').textContent='Abra o link exclusivo enviado pela empresa para acompanhar seu atendimento.';}else void run(async()=>render(await request('view')));
+async function otpCall(action,body){
+ const response=await fetch('/api/short-appointments/'+shortCode+'/'+action,{
+   method:'POST',credentials:'same-origin',cache:'no-store',referrerPolicy:'no-referrer',
+   headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const data=await response.json();
+ if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'Não foi possível validar. Tente novamente.');
+ return data;
+}
+function requireVerification(){
+ $('verification').hidden=false;
+ $('details').replaceChildren();$('actions').replaceChildren();
+ $('reschedule').hidden=true;$('review').hidden=true;
+ $('message').textContent='Confirme sua identidade para visualizar os dados do atendimento.';
+}
+if(shortCode){
+ if(isProfessional)$('verify-title').textContent='Confirme seu acesso profissional';
+ $('request-otp').onclick=()=>void run(async()=>{
+   const data=await otpCall('request-code',{recipient_kind:isProfessional?'professional':'customer'});
+   $('verify-otp').hidden=false;
+   $('verify-status').textContent=data.message||'Confira seu WhatsApp cadastrado.';
+   $('otp').focus();
+ });
+ $('verify-otp').onsubmit=e=>{e.preventDefault();void run(async()=>{
+   const code=$('otp').value.trim();
+   if(!/^[0-9]{6}$/.test(code))throw Error('Digite o código de 6 dígitos.');
+   await otpCall('verify-code',{recipient_kind:isProfessional?'professional':'customer',otp:code});
+   $('otp').value='';
+   const data=await request('view');
+   $('verification').hidden=true;render(data);
+ });};
+ void (async()=>{try{render(await request('view'));}catch{requireVerification();}})();
+}else if(!token){
+ $('message').textContent='Abra o link exclusivo enviado pela empresa para acompanhar seu atendimento.';
+}else void run(async()=>render(await request('view')));
 })();

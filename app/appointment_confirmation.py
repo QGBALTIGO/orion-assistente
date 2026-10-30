@@ -56,11 +56,18 @@ async def confirmation_reply(tenant,phone,body,channel_key,message_id):
             if previous:
                 return cipher().decrypt(previous['body_encrypted'].encode()).decode() if previous['appointment_version']==appointment['updated_at'] and previous['appointment_id']==appointment['id'] else ''
             company=(await db.execute(text('SELECT name FROM tenants WHERE id=:t'),{'t':tenant})).scalar_one()
-            link=await access.issue(db,tenant,row['id'])
-            if appointment['status']=='confirmed':
-                answer=compose('confirmation',appointment,company=company,customer_link=link,signature=signature)
+            import os
+            short_code=None
+            if os.getenv("APPOINTMENT_SHORT_LINKS_ENABLED","0")=="1":
+                from app.appointment_short_links import get_or_create, customer_url
+                short_code=await get_or_create(db,tenant,row['id'],appointment['protocol'])
+                link=customer_url(short_code)
             else:
-                answer=compose('status',appointment,company=company,customer_link=link,signature=signature)
+                link=await access.issue(db,tenant,row['id'])
+            if appointment['status']=='confirmed':
+                answer=compose('confirmation',appointment,company=company,customer_link=link,signature=signature,short_code=short_code)
+            else:
+                answer=compose('status',appointment,company=company,customer_link=link,signature=signature,short_code=short_code)
             await db.execute(text('''INSERT INTO appointment_confirmation_receipts(tenant_id,channel_key,message_id,appointment_id,appointment_version,body_encrypted)
                 VALUES(:t,:channel,:message,:id,:version,:body)'''),{'t':tenant,'channel':channel_key,'message':message_id,
                 'id':appointment['id'],'version':appointment['updated_at'],'body':cipher().encrypt(answer.encode()).decode()})

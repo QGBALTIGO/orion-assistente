@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import secrets
+import os
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from uuid import UUID, uuid4
@@ -587,6 +588,9 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                     raise
         else:
             fail(503, "Não foi possível gerar protocolo único")
+        if os.getenv("APPOINTMENT_SHORT_LINKS_ENABLED","0")=="1":
+            from app.appointment_short_links import get_or_create
+            await get_or_create(s, tenant, item_id, candidate)
         for order, item in enumerate(items):
             await s.execute(text("""
                 INSERT INTO appointment_items (
@@ -740,6 +744,9 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
         """), {"tenant": tenant, "id": item_id})).mappings().one()
         if entry["professional_id"] != row["professional_id"]:
             fail(409, "O profissional mudou. Atualize o agendamento")
+        if context is not None and context.role == "professional" and (
+                context.professional_id is None or context.professional_id != entry["professional_id"]):
+            fail(403, "O profissional não está autorizado para este atendimento")
         if customer_phone is not None or expected_snapshot is not None:
             await verify_customer_snapshot(s, tenant, entry, customer_phone, expected_snapshot)
         context = resolved_actor(context, source, entry["customer_id"], verified_customer=customer_phone is not None)
@@ -765,7 +772,7 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
                 AND (:is_customer=false OR start_at>=clock_timestamp()+interval '60 minutes')
                 AND """ + CUSTOMER_MATCH_SQL + " AND " + CAS_SQL + " RETURNING id"),
             {"tenant": tenant, "id": item_id, "customer_phone": customer_phone,
-             "future_only": future_only, "is_customer": context.role == "customer" and entry["status"] != "hold",
+             "future_only": future_only, "is_customer": context.role in {"customer","professional"} and entry["status"] != "hold",
              "expected_updated_at": expected_updated_at})).scalar_one_or_none()
         if changed is None:
             fail(409, "A reserva mudou. Confira um novo resumo antes de cancelar")
@@ -825,6 +832,9 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
         """), {"tenant": tenant, "id": item_id})).mappings().one()
         if row["professional_id"] != current["professional_id"]:
             fail(409, "O profissional mudou. Atualize o agendamento")
+        if context is not None and context.role == "professional" and (
+                context.professional_id is None or context.professional_id != row["professional_id"]):
+            fail(403, "O profissional não está autorizado para este atendimento")
         if not supplied_clock:
             now = datetime.now(UTC)
         if customer_phone is not None:
@@ -876,7 +886,7 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
               AND (:is_customer=false OR start_at>=clock_timestamp()+interval '60 minutes')
               AND """ + BUNDLE_MATCH_SQL + " AND " + CUSTOMER_MATCH_SQL + " AND " + CAS_SQL + " RETURNING id"),
             {"tenant": tenant, "id": item_id, "now": now, "expected_updated_at": expected_updated_at,
-             "is_customer": context.role == "customer", **b,
+             "is_customer": context.role in {"customer","professional"}, **b,
              **bundle_guard_parameters(tenant, row["professional_id"], ids, shop, items, customer_phone)})).scalar_one_or_none()
         if changed is None:
             fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de remarcar")

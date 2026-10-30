@@ -190,3 +190,9 @@ async def invitation_page() -> FileResponse:
     return FileResponse(Path(__file__).parent / "static" / "orion-invite.html",
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
                  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
+
+
+# Register short public paths after every fixed route; protocol validation is
+# strict and never grants access to private appointment data.
+from app.appointment_short_api import router as short_appointment_router
+include_plan_router(app, short_appointment_router)
