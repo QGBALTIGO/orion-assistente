@@ -43,7 +43,7 @@ import {createBaileysChannelSession} from './channel-session.mjs';
 import {createLegacyCentral} from './legacy-central.mjs';
 import {testReplyFor} from './trigger-test.mjs';
 import {makeTestFallbackText,sendTestCloudCta,selectTestCtaMode} from './test-url-button.mjs';
-import {runConsentedPairSmoke,SMOKE_ID} from './consented-live-qa.mjs';
+import {runConsentedPairSmoke,SMOKE_ID,APPOINTMENT_QA_ID} from './consented-live-qa.mjs';
 
 const legacyCentral=createLegacyCentral({
   start:(id,key)=>channelRoutes.adopt(id,key),send:(id,key,payload)=>channelRoutes.send(id,key,payload),
@@ -634,7 +634,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       lastError=null;console.info("Orion QR: dispositivo conectado");
       // One-time, source-bound live delivery test explicitly authorized by
       // the owner. Persistent per-recipient claims prevent any duplicate.
-      if(process.env.ORION_ONE_TIME_LIVE_SEND===SMOKE_ID){
+      if([SMOKE_ID,APPOINTMENT_QA_ID].includes(process.env.ORION_ONE_TIME_LIVE_SEND)){
         setTimeout(()=>{
           const stillCurrent=()=>mine===generation&&socket===client&&status==='connected';
           if(!stillCurrent())return;
