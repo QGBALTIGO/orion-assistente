@@ -240,7 +240,7 @@
       extra=extra.replace(/\s*(?:maxlength|placeholder|inputmode)="[^"]*"/g,'')+
         ' data-orion-field="phone"'+(internationalCustomer?' data-orion-international="true" data-orion-phone-scope="br-py"':'')+
         ' inputmode="tel" placeholder="(00) 00000-0000"';
-      if(!/autocomplete=/.test(extra))extra+=' autocomplete="'+(internationalCustomer?'tel':'tel-national')+'"';
+      if(!/autocomplete=/.test(extra))extra+=' autocomplete="tel-national"';
     }else if(type==='email'){
       extra=extra.replace(/\s*placeholder="[^"]*"/g,'')+' data-orion-field="email" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="nome@email.com"';
       if(!/autocomplete=/.test(extra))extra+=' autocomplete="email"';
