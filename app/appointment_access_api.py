@@ -106,7 +106,7 @@ async def customer_view(db, identity):
         'can_change': customer_can_change(row, now), 'pending_change':dict(pending) if pending and row['status']=='confirmed' else None,
         'can_review': row['status']=='completed' and actual_completion and review is None,
         'review': dict(review) if review else None, 'has_future_booking': future,
-        'new_booking_url': booking_url, 'return_suggestions':suggestions, 'contact_phone': '+'+contact if contact else None,
+        'new_booking_url': booking_url, 'return_suggestions':suggestions, 'contact_phone': '+'+contact if contact else None, 'central_whatsapp':central_admin_whatsapp_enabled(),
         'address': ', '.join(str(shop[k]) for k in ('address','city','state') if shop.get(k))}
 
 
