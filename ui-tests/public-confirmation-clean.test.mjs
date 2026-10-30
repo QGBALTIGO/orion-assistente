@@ -28,7 +28,7 @@ test('confirmation is compact, without duplicate price, long checkbox or privacy
   assert.equal(h.document.getElementById('booking-next').textContent,'Confirmar agendamento');
   assert.equal(h.document.getElementById('booking-next').disabled,false);
   assert.deepEqual([...body.querySelectorAll('#customer-form .field')].map(label=>label.textContent.replace(/\s+/g,' ').trim()),
-    ['Nome completo','WhatsApp com DDD','Data de nascimento']);
+    ['Nome completo','WhatsApp com DDD ou DDI','Data de nascimento']);
   const birth=body.querySelector('[name=customer_birth_date]');
   assert.equal(birth.type,'date');assert.equal(birth.required,true);
   assert.equal(birth.min,'1900-01-01');
@@ -43,7 +43,7 @@ test('Brazilian WhatsApp is masked while typing, pasting +55 and using 10-digit 
   const h=await makePublic();t.after(()=>h.close());await confirmStage(h);
   const input=h.document.querySelector('[name=customer_phone]');
   assert.equal(input.type,'tel');
-  assert.equal(input.placeholder,'(00) 00000-0000');
+  assert.equal(input.placeholder,'(00) 00000-0000 ou +595 9...');
   for(const [typed,shown] of [
     ['86','(86'],['86972','(86) 972'],
     ['86972676282','(86) 97267-6282'],
@@ -158,6 +158,38 @@ test('erro ao reservar não abre WhatsApp nem exibe comprovante de sucesso',asyn
   h.click('#booking-next');await flush();
   assert.equal(opened,0);
   assert.equal(h.document.querySelector('.success'),null);
+  assert.equal(h.calls.filter(x=>x.options.method==='POST').length,1);
+  assert.equal(h.errors.length,0);
+});
+
+
+test('celular paraguaio +595 fica intacto e vai canonicamente no payload de agendamento',async t=>{
+  const h=await makePublic();t.after(()=>h.close());await confirmStage(h);
+  const input=h.document.querySelector('[name=customer_phone]');
+  assert.equal(input.dataset.orionInternational,'true');
+  h.fill('[name=customer_name]','Cliente internacional sintético');
+  h.fill('[name=customer_phone]','+595 992 000 001');
+  assert.equal(input.value,'+595 992 000 001','não aplicar máscara brasileira no +595');
+  h.fill('[name=customer_birth_date]','1993-05-11');
+  h.click('#booking-next');await flush();
+  const posts=h.calls.filter(x=>x.options.method==='POST');
+  assert.equal(posts.length,1);
+  assert.equal(posts[0].body.customer_phone,'+595992000001');
+  assert.equal(posts[0].body.customer_name,'Cliente internacional sintético');
+  assert.match(h.document.querySelector('.success').textContent,/Agendamento confirmado!/);
+  assert.equal(h.errors.length,0);
+});
+
+test('número estrangeiro inválido não cria agendamento nem troca o destino',async t=>{
+  const h=await makePublic();t.after(()=>h.close());await confirmStage(h);
+  h.fill('[name=customer_name]','Cliente sintético');
+  h.fill('[name=customer_phone]','+595 899 000 001');
+  h.fill('[name=customer_birth_date]','1992-02-20');
+  h.click('#booking-next');await flush();
+  assert.equal(h.calls.filter(x=>x.options.method==='POST').length,0);
+  assert.equal(h.document.querySelector('[name=customer_phone]').validity.customError,true);
+  h.fill('[name=customer_phone]','+595 992 000 001');
+  h.click('#booking-next');await flush();
   assert.equal(h.calls.filter(x=>x.options.method==='POST').length,1);
   assert.equal(h.errors.length,0);
 });
