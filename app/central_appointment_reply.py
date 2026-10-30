@@ -4,6 +4,8 @@ The bridge supplies the resolved WhatsApp PN; the protocol and PN must match
 exactly one booking. This endpoint never accepts a tenant, a target phone, or
 a link from its caller and never creates/reschedules/cancels an appointment.
 """
+import hashlib
+import hmac
 import os
 import re
 import secrets
@@ -42,8 +44,12 @@ async def _limit_protocol_lookup(request, phone):
     never the customer's number, token, protocol, or message content.
     """
     from app.public_site_api import public_limit
+    # The public limiter hashes its subject once more. HMAC here prevents a
+    # leaked Redis keyspace from being brute-forced into telephone numbers.
+    secret=os.getenv('QR_BRIDGE_TOKEN','').encode()
+    digest=hmac.new(secret,phone.encode(),hashlib.sha256).hexdigest()
     await public_limit(request, 'orion-central-qr', 'qr-protocol-phone',
-                       8, 300, subject=phone)
+                       8, 300, subject=digest)
     await public_limit(request, 'orion-central-qr', 'qr-protocol-global',
                        120, 60, subject='all')
 
