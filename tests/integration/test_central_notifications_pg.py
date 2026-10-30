@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from tests.integration.test_booking import phone
+from tests.integration.test_booking import phone, booking_db
 from tests.integration.test_appointment_notifications_pg import comm_db, booking, PRO_PHONE
 from app import appointment_notifications as notifications
 
