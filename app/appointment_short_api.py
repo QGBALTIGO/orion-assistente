@@ -78,7 +78,7 @@ async def enqueue_request(code, role):
 @router.post("/api/short-appointments/{code}/request-code", status_code=202)
 async def request_code(code: str, payload: DeliveryRequest, request: Request):
     require_enabled()
-    checked_code(code)
+    code = checked_code(code)
     _same_origin(request)
     # Redis limits fail closed and use only peer IP / opaque protocol keys.
     await public_limit(request, "short-links", "short-request-ip", 10, 3600)
@@ -93,7 +93,7 @@ async def request_code(code: str, payload: DeliveryRequest, request: Request):
 @router.post("/api/short-appointments/{code}/verify-code")
 async def verify_code(code: str, payload: VerifyRequest, request: Request):
     require_enabled()
-    checked_code(code)
+    code = checked_code(code)
     _same_origin(request)
     await public_limit(request, "short-links", "short-verify-ip", 25, 600)
     await public_limit(request, "short-links", "short-verify-code", 20, 600, subject=code)
@@ -123,7 +123,7 @@ async def staff_view(db, tenant, appointment, pro):
 @router.post("/api/short-appointments/{code}/professional-action")
 async def professional_action(code: str, payload: StaffAction, request: Request):
     require_enabled()
-    checked_code(code)
+    code = checked_code(code)
     _same_origin(request)
     await public_limit(request, "short-links", "short-staff-ip", 120, 300)
     resolved = await resolve_global(code)
@@ -186,13 +186,13 @@ async def professional_action(code: str, payload: StaffAction, request: Request)
 @router.get("/p/{code}", include_in_schema=False)
 async def professional_page(code: str):
     require_enabled()
-    checked_code(code)
+    code = checked_code(code)
     return FileResponse(Path(__file__).parent / "static" / "orion-appointment.html", headers=PRIVATE_HEADERS)
 
 
 @router.get("/{code}", include_in_schema=False)
 async def customer_page(code: str):
     require_enabled()
-    checked_code(code)
+    code = checked_code(code)
     # No database lookup, redirect, OpenGraph details, or status distinction.
     return FileResponse(Path(__file__).parent / "static" / "orion-appointment.html", headers=PRIVATE_HEADERS)
