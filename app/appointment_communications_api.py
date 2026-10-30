@@ -99,7 +99,8 @@ async def recover_confirmation(tenant_id:UUID,payload:RecoverConfirmation,actor:
         raise HTTPException(403,'A confirmação manual exige o administrador autenticado')
     from app.qr_legacy import configured_tenant,channel_id
     from app.qr_channels import _owned_channel
-    from app.appointment_confirmation import confirmation_reply,detected_protocol,GENERIC
+    from app.appointment_confirmation import confirmation_reply,detected_protocol
+    from app.appointment_messages import is_generic_response
     from app.inbox_conversations import enqueue_preserved_manual
     if configured_tenant()!=tenant_id:raise HTTPException(403,'Use a conexão do admin')
     channel=channel_id(tenant_id)
@@ -120,7 +121,7 @@ async def recover_confirmation(tenant_id:UUID,payload:RecoverConfirmation,actor:
         raise HTTPException(403,'O contato ainda não está autorizado para o piloto')
     operation=uuid5(NAMESPACE_URL,'orion:appointment-confirmation-recovery:'+str(tenant_id)+':'+str(incoming['id']))
     answer=await confirmation_reply(tenant_id,incoming['contact_e164'],incoming['body'],'qr:'+str(channel),'recovery:'+str(incoming['id']))
-    if not answer or answer==GENERIC:raise HTTPException(409,'Atualize as permissões e os dados do agendamento antes de confirmar')
+    if not answer or is_generic_response(answer):raise HTTPException(409,'Atualize as permissões e os dados do agendamento antes de confirmar')
     return await enqueue_preserved_manual(tenant_id,channel,incoming['contact_e164'],answer,operation,actor)
 
 

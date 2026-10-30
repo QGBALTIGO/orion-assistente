@@ -7,11 +7,11 @@ from sqlalchemy import text
 from app import appointment_access as access
 from app.appointment_errors import sanitized_database_errors
 from app.appointment_notifications import cipher
-from app.appointment_messages import compose
+from app.appointment_messages import compose, compose_prefill, generic_response
 from app.booking_service import read_appointment
 from app.database import get_session_factory, tenant_transaction
 
-GENERIC='Não consegui confirmar esse protocolo para este contato. Envie a mensagem pelo WhatsApp cadastrado no agendamento ou solicite ajuda à empresa. Nenhum dado do atendimento foi divulgado.'
+GENERIC = generic_response()
 PROTOCOL=re.compile(r'(?<![A-Z0-9])AG-[A-HJ-NP-Z2-9]{6}(?![A-Z0-9])',re.I)
 
 
@@ -28,6 +28,7 @@ async def confirmation_reply(tenant,phone,body,channel_key,message_id):
     protocol=detected_protocol(body)
     if protocol is None:return None
     # A recognized protocol must never fall through to a generic AI reply.
+    # Reject unapproved senders *before* touching the appointment database.
     if not access.recipient_allowed(phone):return GENERIC
     if not isinstance(message_id,str) or not 1<=len(message_id)<=200:return GENERIC
     phone='+'+phone.lstrip('+')
@@ -36,13 +37,16 @@ async def confirmation_reply(tenant,phone,body,channel_key,message_id):
             # Serializes repeated library callbacks without storing plaintext secrets.
             await db.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:key,0))'),
                 {'key':str(tenant)+':appointment-confirmation:'+channel_key+':'+message_id})
+            settings=(await db.execute(text('''SELECT enabled,confirmation,signature
+                FROM appointment_communication_settings WHERE tenant_id=:t'''),{'t':tenant})).mappings().first()
+            signature=(settings['signature'] if settings else None) or 'Orion Agenda'
+            if not access.recipient_allowed(phone):return generic_response(signature)
             row=(await db.execute(text('''SELECT a.id FROM appointments a JOIN customers c
                 ON c.tenant_id=a.tenant_id AND c.id=a.customer_id
                 WHERE a.tenant_id=:t AND a.protocol=:protocol AND c.whatsapp_e164=:phone
                   AND c.active AND c.deleted_at IS NULL'''),{'t':tenant,'protocol':protocol,'phone':phone})).mappings().first()
-            if row is None:return GENERIC
-            requested=(await db.execute(text('SELECT enabled AND confirmation FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).scalar_one_or_none()
-            if requested is not True:return ''
+            if row is None:return generic_response(signature)
+            if not settings or not settings['enabled'] or not settings['confirmation']:return ''
             # Membership, channel fencing and any human pause remain guarded by
             # the existing ingress's transaction context around this operation.
             appointment=await read_appointment(db,tenant,row['id'])
@@ -54,10 +58,9 @@ async def confirmation_reply(tenant,phone,body,channel_key,message_id):
             company=(await db.execute(text('SELECT name FROM tenants WHERE id=:t'),{'t':tenant})).scalar_one()
             link=await access.issue(db,tenant,row['id'])
             if appointment['status']=='confirmed':
-                answer=compose('confirmation',appointment,company=company,customer_link=link)
+                answer=compose('confirmation',appointment,company=company,customer_link=link,signature=signature)
             else:
-                labels={'cancelled':'cancelado','completed':'concluído','no_show':'registrado como ausência','hold':'em reserva temporária'}
-                answer='Seu atendimento está '+labels.get(appointment['status'],'em atualização')+'.\n\nConfira o estado atual pelo seu link exclusivo:\n'+link+'\n\n🤖 Orion Agenda'
+                answer=compose('status',appointment,company=company,customer_link=link,signature=signature)
             await db.execute(text('''INSERT INTO appointment_confirmation_receipts(tenant_id,channel_key,message_id,appointment_id,appointment_version,body_encrypted)
                 VALUES(:t,:channel,:message,:id,:version,:body)'''),{'t':tenant,'channel':channel_key,'message':message_id,
                 'id':appointment['id'],'version':appointment['updated_at'],'body':cipher().encrypt(answer.encode()).decode()})
@@ -87,7 +90,7 @@ async def public_followup(slug,result,phone):
     # A contact number in a site's appearance settings is not proof of a channel.
     number=await connected_channel_phone(tenant)
     if number:
-        message='Olá, Orion! 👋\n\nAcabei de realizar um agendamento e gostaria de receber minha confirmação.\n\n🧾 Protocolo: '+result['protocol']
+        message=compose_prefill(result['protocol'])
         output['whatsapp_confirmation_url']='https://wa.me/'+number+'?text='+quote(message)
     else:
         output['communication_state']='channel_unavailable'
