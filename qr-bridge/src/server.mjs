@@ -7,9 +7,10 @@ import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl} from 
  */
 import http from "node:http";
 import {databaseBackup} from './database-backup-store.mjs';
-import path from "node:path";
+import path, {join as joinPath} from "node:path";
 import fs from "node:fs";
-import {timingSafeEqual,randomUUID,createHmac} from "node:crypto";
+import {randomUUID,createHmac} from "node:crypto";
+import {bridgeKeyAuthorized} from "./bridge-auth.mjs";
 import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
 import NodeCache from "@cacheable/node-cache";
@@ -210,9 +211,7 @@ function stats(){
     controlStorage:connectedStore.health(),contactNameStorage:contactNames.health()};
 }
 function auth(req){
-  const input=Buffer.from(String(req.headers["x-orion-bridge-key"]||""));
-  const expected=Buffer.from(KEY);
-  return input.length===expected.length&&timingSafeEqual(input,expected);
+  return bridgeKeyAuthorized(req.headers["x-orion-bridge-key"],KEY);
 }
 function reply(res,code,data){
   res.writeHead(code,{"Content-Type":"application/json; charset=utf-8",
@@ -1017,7 +1016,7 @@ const server=http.createServer(async(req,res)=>{
       lastInboundAt=0;pendingNotificationsReceived=false;inboundSinceConnect=false;
       recentAppends=0;
       encryptedRetry=makeEncryptedRetryStore({
-        directory:path.join(authDir,"retry-encrypted"),secret:KEY,
+        directory:joinPath(authDir,"retry-encrypted"),secret:KEY,
         serialize:obj=>JSON.stringify(obj,BufferJSON.replacer),
         deserialize:str=>JSON.parse(str,BufferJSON.reviver)
       });
