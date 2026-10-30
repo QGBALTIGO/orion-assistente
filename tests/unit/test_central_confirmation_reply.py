@@ -145,6 +145,7 @@ async def test_empty_non_protocol_input_never_consumes_rate_limit(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_quotas_have_separate_phone_and_global_keys_and_are_hashed(monkeypatch):
+    monkeypatch.setenv('QR_BRIDGE_TOKEN','synthetic-limiter-hmac-key-'+'x'*40)
     from app import public_site_api
     captured=[]
     async def fake_limit(_request,slug,category,limit,window,subject):
