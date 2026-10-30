@@ -53,7 +53,13 @@ def recipient_allowed(phone):
 
 
 def require_tenant(tenant):
-    if not tenant_enabled(tenant):raise HTTPException(404,'Recurso indisponível para esta empresa')
+    if tenant_enabled(tenant):return
+    # An actual, revocable appointment token is valid for any company served
+    # by the admin's centralized booking reception. This does not enable the
+    # AI bot, automatic broadcast, or the pilot tenant's QR send permissions.
+    if (enabled() and os.getenv('ORION_CENTRAL_APPOINTMENT_WHATSAPP_ENABLED')=='1'
+            and os.getenv('ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED')=='1'):return
+    raise HTTPException(404,'Recurso indisponível para esta empresa')
 
 
 def require_enabled():

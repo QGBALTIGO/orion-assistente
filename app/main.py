@@ -25,6 +25,7 @@ from app.groq_api import router as groq_router
 from app.groq_audio import router as groq_audio_router
 from app.groq_probe import probe_groq_provider
 from app.qr_ai import router as qr_ai_router
+from app.central_appointment_reply import router as central_appointment_reply_router
 from app.business_profile_api import router as business_profile_router, account_router as account_business_router
 from app.commercial_api import router as commercial_router
 from app.management_api import router as management_router
@@ -104,6 +105,7 @@ include_plan_router(app, admin_accounts_router)
 include_plan_router(app, groq_router)
 include_plan_router(app, groq_audio_router)
 include_plan_router(app, qr_ai_router)
+include_plan_router(app, central_appointment_reply_router)
 include_plan_router(app, business_profile_router)
 include_plan_router(app, account_business_router)
 include_plan_router(app, management_router)

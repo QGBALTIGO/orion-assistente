@@ -30,6 +30,7 @@ import {makeContactNameSync} from './contact-name-forward.mjs';
 import {transcriberConfig,cleanPictureUrl,transcribeAudio,handleCallOffers} from "./connected-features.mjs";
 import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
 import {forwardAssistant,registerAssistantIngress} from "./ai-forward.mjs";
+import {isBookingProtocolMessage,fetchBookingProtocolConfirmation} from "./appointment-confirmation.mjs";
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
 import {deliveryPolicy} from "./pilot-send-policy.mjs";
 import {resolvePilotRecipient,makePilotDeviceCache} from "./pilot-recipient.mjs";
@@ -307,6 +308,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
     }catch{console.warn("Orion QR: falha ao processar controle de chamada (dados omitidos)")}
   });
   const inboundMetadata=new Map();
+  const handledBookingProtocols=new Set();
   const intakeCurrent=()=>mine===generation&&socket===client&&status==='connected';
   const typingPresence=makeAssistantTyping({socket:client,pilotPhone:pilotNumber,isConnected:intakeCurrent,
     isAllowed:phone=>allowAssistantRecipient(phone,connectedStore.settings())});
@@ -418,6 +420,46 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       // never supplies a telephone number. Authorization still occurs below.
       const conversationKey=String(mine)+':'+(pilotNumber()||remote[1]+'@'+remote[2]);
       const normalized=normalizeInbound(message);if(normalized.silent)continue;
+      // Central booking confirmation is a separate deterministic lane.
+      // Only a new private text containing a protocol enters it, independent
+      // of the AI allowlist. Any other message follows the unchanged pilot.
+      const centralEnabled=process.env.ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED==='1';
+      const freshForCentral=type==='notify'||(type==='append'&&
+        (timestampMs(message.messageTimestamp)||0)>=Date.now()-120000);
+      if(centralEnabled&&freshForCentral&&normalized.event.kind==='text'&&
+          isBookingProtocolMessage(normalized.text)){
+        const key=String(mine)+':'+traceId;
+        if(handledBookingProtocols.has(key)||seen.has('wa:'+traceId)){
+          transport.record('booking_protocol_duplicate',traceId);continue;
+        }
+        handledBookingProtocols.add(key);
+        if(handledBookingProtocols.size>2000)
+          handledBookingProtocols.delete(handledBookingProtocols.values().next().value);
+        const task=(async()=>{
+          let sendAttempted=false;
+          try{
+            const phone=await resolveMessagePhone(message.key,client);
+            if(!intakeCurrent()||!phone)return;
+            const now=timestampMs(message.messageTimestamp)||Date.now();
+            pushMessage({id:'wa:'+traceId,phone,body:normalized.text.slice(0,2000),
+              direction:'in',at:now});
+            lastInboundAt=Date.now();inboundSinceConnect=true;
+            const response=await fetchBookingProtocolConfirmation({
+              apiUrl:process.env.QR_AI_API_URL||process.env.QR_CHANNEL_BROKER_URL,
+              token:KEY,phone,messageId:traceId,text:normalized.text,isCurrent:intakeCurrent});
+            if(!response||!intakeCurrent())return;
+            sendAttempted=true;
+            const result=await sendLegacyRaw(phone,response,{
+              waitForCapacity:true,isCurrent:intakeCurrent});
+            transport.record(result?.accepted?'booking_protocol_sent':'booking_protocol_unconfirmed',traceId);
+          }catch{
+            if(!sendAttempted)handledBookingProtocols.delete(key);
+            transport.record('booking_protocol_failed',traceId);
+          }
+        })();
+        jobs.push(task);
+        continue;
+      }
       // Explicit opt-in pilot: exact keyword, one verified phone, never fromMe.
       // Do not forward the test command to the customer-facing assistant.
       if(normalized.text?.trim().toUpperCase()==='ORIONTESTE' &&

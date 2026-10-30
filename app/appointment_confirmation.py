@@ -24,13 +24,18 @@ def detected_protocol(body):
 
 
 @sanitized_database_errors
-async def confirmation_reply(tenant,phone,body,channel_key,message_id):
-    if not access.tenant_enabled(tenant):return None
+async def confirmation_reply(tenant,phone,body,channel_key,message_id,*,central=False):
+    if central:
+        # This path is entered only through the authenticated server-side QR
+        # confirmation endpoint, after a unique protocol/phone lookup.
+        if not (access.enabled() and central_admin_whatsapp_enabled()
+                and os.getenv('ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED')=='1'):return None
+    elif not access.tenant_enabled(tenant):return None
     protocol=detected_protocol(body)
     if protocol is None:return None
     # A recognized protocol must never fall through to a generic AI reply.
     # Reject unapproved senders *before* touching the appointment database.
-    if not access.recipient_allowed(phone):return GENERIC
+    if not central and not access.recipient_allowed(phone):return GENERIC
     if not isinstance(message_id,str) or not 1<=len(message_id)<=200:return GENERIC
     phone='+'+phone.lstrip('+')
     async with get_session_factory()() as db:
@@ -41,13 +46,13 @@ async def confirmation_reply(tenant,phone,body,channel_key,message_id):
             settings=(await db.execute(text('''SELECT enabled,confirmation,signature
                 FROM appointment_communication_settings WHERE tenant_id=:t'''),{'t':tenant})).mappings().first()
             signature=(settings['signature'] if settings else None) or 'Orion Agenda'
-            if not access.recipient_allowed(phone):return generic_response(signature)
+            if not central and not access.recipient_allowed(phone):return generic_response(signature)
             row=(await db.execute(text('''SELECT a.id FROM appointments a JOIN customers c
                 ON c.tenant_id=a.tenant_id AND c.id=a.customer_id
                 WHERE a.tenant_id=:t AND a.protocol=:protocol AND c.whatsapp_e164=:phone
                   AND c.active AND c.deleted_at IS NULL'''),{'t':tenant,'protocol':protocol,'phone':phone})).mappings().first()
             if row is None:return generic_response(signature)
-            if not settings or not settings['enabled'] or not settings['confirmation']:return ''
+            if not central and (not settings or not settings['enabled'] or not settings['confirmation']):return ''
             # Membership, channel fencing and any human pause remain guarded by
             # the existing ingress's transaction context around this operation.
             appointment=await read_appointment(db,tenant,row['id'])
