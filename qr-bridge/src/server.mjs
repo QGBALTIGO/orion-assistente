@@ -425,7 +425,7 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       // of the AI allowlist. Any other message follows the unchanged pilot.
       const centralEnabled=process.env.ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED==='1';
       const freshForCentral=type==='notify'||(type==='append'&&
-        (timestampMs(message.messageTimestamp)||0)>=connectedSince);
+        (timestampMs(message.messageTimestamp)||0)>=Date.now()-120000);
       if(centralEnabled&&freshForCentral&&normalized.event.kind==='text'&&
           isBookingProtocolMessage(normalized.text)){
         const key=String(mine)+':'+traceId;
