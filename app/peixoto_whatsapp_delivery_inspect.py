@@ -1,0 +1,76 @@
+"""Private one-time recipient readiness test. Never sends a WhatsApp message.
+
+Reads one tenant-owned active professional phone under RLS, queries the
+existing fixed-origin QR bridge's read-only /internal/recipient endpoint, and
+returns only safe booleans/counts. No contact, JID, message body, or secrets
+leave the trusted workers or appear in logs.
+"""
+import os
+from uuid import UUID
+
+import httpx
+from sqlalchemy import text
+
+from app.automation_transport import bridge_origin
+from app.database import get_session_factory, tenant_transaction
+
+TENANT = UUID("26694b4b-be15-4850-bcb9-69b184897e79")
+PROFESSIONAL = UUID("fb09446d-5173-47f4-aaf5-0fc0205d25ee")
+SAFE_IDENTITIES = frozenset({"pn_confirmed", "different_identifier",
+                             "unverified", "unknown", "lookup_failed"})
+COUNTS = ("count", "pending", "serverAccepted", "delivered", "read",
+          "failed", "retryRequests", "messagesWithRetry")
+RECEIPTS = frozenset({"pending", "server_accepted", "delivered", "read",
+                      "played", "failed", "unknown", "none"})
+
+
+def safe_report(payload):
+    """Never log an arbitrary provider field, contact identifier or error."""
+    if not isinstance(payload, dict):
+        return {"registered": None, "identity": "unknown", "delivery": {}}
+    registered = payload.get("registered")
+    identity = payload.get("identity")
+    delivery = payload.get("delivery")
+    summary = {
+        "registered": registered if type(registered) is bool else None,
+        "identity": identity if identity in SAFE_IDENTITIES else "unknown",
+        "has_lid": payload.get("hasLid") if type(payload.get("hasLid")) is bool else None,
+        "delivery": {},
+    }
+    if isinstance(delivery, dict):
+        for name in COUNTS:
+            value = delivery.get(name)
+            if type(value) is int and 0 <= value <= 10000:
+                summary["delivery"][name] = value
+        last = delivery.get("lastReceipt")
+        summary["delivery"]["last_receipt"] = last if last in RECEIPTS else "unknown"
+    return summary
+
+
+async def inspect():
+    key = os.getenv("QR_BRIDGE_TOKEN", "")
+    if len(key) < 32:
+        return {"state": "bridge_credential_missing"}
+    async with get_session_factory()() as db:
+        async with tenant_transaction(db, TENANT):
+            phone = (await db.execute(text("""
+                SELECT phone_e164 FROM professionals
+                WHERE tenant_id=:tenant AND id=:professional AND active
+            """), {"tenant": TENANT, "professional": PROFESSIONAL})).scalar_one_or_none()
+    if not isinstance(phone, str) or not phone.startswith("+"):
+        return {"state": "professional_phone_missing"}
+    try:
+        # Only the Railway private QR origin is accepted; never a caller URL.
+        async with httpx.AsyncClient(
+                timeout=httpx.Timeout(12, connect=4),
+                follow_redirects=False, trust_env=False) as client:
+            response = await client.get(
+                bridge_origin() + "/internal/recipient",
+                params={"phone": phone.lstrip("+")},
+                headers={"X-Orion-Bridge-Key": key},
+            )
+        if response.status_code != 200:
+            return {"state": "private_lookup_unavailable"}
+        return {"state": "inspected", **safe_report(response.json())}
+    except Exception:
+        return {"state": "private_lookup_failed_closed"}
