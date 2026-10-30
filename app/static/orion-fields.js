@@ -383,7 +383,15 @@
     if (!isEditable(input) || !input.matches?.(selector)) return true;
     clearError(input);
     try {
-      if (input.dataset.orionField === 'phone') phoneValue(input.value, inputOptions(input));
+      if (input.dataset.orionField === 'phone') {
+        const normalized = phoneValue(input.value, inputOptions(input));
+        // This is deliberately narrower than the general international
+        // formatter: booking/customer contacts support +55 and +595 only.
+        if (normalized && input.dataset.orionPhoneScope === 'br-py' &&
+            !/^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(normalized)) {
+          throw Error('Informe telefone brasileiro com DDD ou celular paraguaio +595.');
+        }
+      }
       else if (input.dataset.orionField === 'money') parseMoney(input.value, inputOptions(input));
       else if (input.dataset.orionField === 'decimal') parseDecimal(input.value, inputOptions(input));
       else if (['cpf', 'cnpj'].includes(input.dataset.orionField)) documentValue(input.value, input.dataset.orionField, inputOptions(input));
