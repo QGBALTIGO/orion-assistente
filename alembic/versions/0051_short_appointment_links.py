@@ -35,7 +35,8 @@ def upgrade():
             otp_hash char(64) NOT NULL,
             operation_id uuid NOT NULL UNIQUE,
             status varchar(16) NOT NULL DEFAULT 'pending'
-                CHECK(status IN ('pending','accepted','failed','consumed')),
+                CHECK(status IN ('pending','sending','accepted','failed','consumed')),
+            body_encrypted text, attempted_at timestamptz,
             attempts smallint NOT NULL DEFAULT 0 CHECK(attempts BETWEEN 0 AND 5),
             expires_at timestamptz NOT NULL,
             created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -44,6 +45,8 @@ def upgrade():
             CONSTRAINT fk_appointment_short_challenge FOREIGN KEY(tenant_id,appointment_id)
                REFERENCES public.appointments(tenant_id,id) ON DELETE CASCADE
         );
+        CREATE INDEX ix_appointment_short_challenges_due ON
+            public.appointment_short_challenges(status,created_at,id);
         CREATE INDEX ix_appointment_short_challenges_recent ON
             public.appointment_short_challenges(tenant_id,appointment_id,recipient_kind,created_at DESC);
         CREATE TABLE public.appointment_short_staff_sessions (
@@ -76,6 +79,18 @@ def upgrade():
     op.execute("GRANT SELECT ON public.appointment_short_codes TO app_support")
     op.execute("GRANT SELECT,INSERT,UPDATE,DELETE ON public.appointment_short_challenges TO app_runtime")
     op.execute("GRANT SELECT,INSERT,UPDATE,DELETE ON public.appointment_short_staff_sessions TO app_runtime")
+    op.execute("""
+        CREATE FUNCTION public.orion_due_short_challenges(batch_limit integer)
+        RETURNS TABLE(tenant_id uuid,id uuid) LANGUAGE sql STABLE SECURITY DEFINER
+        SET search_path=pg_catalog,public AS $
+          SELECT c.tenant_id,c.id FROM public.appointment_short_challenges c
+          WHERE $1 BETWEEN 1 AND 100 AND c.status='pending'
+            AND c.expires_at>clock_timestamp()
+          ORDER BY c.created_at,c.id LIMIT LEAST(GREATEST($1,1),100)
+        $;
+        REVOKE ALL ON FUNCTION public.orion_due_short_challenges(integer) FROM PUBLIC,app_runtime;
+        GRANT EXECUTE ON FUNCTION public.orion_due_short_challenges(integer) TO app_support;
+    """)
     # Preserve existing protocol text. For a duplicated protocol across tenants,
     # only its first appointment keeps the natural alias; others receive a new
     # globally unique alias on first use. No ambiguous lookup is ever possible.
