@@ -620,6 +620,10 @@ test('source automation requests transactional typing, manual sends do not',asyn
   const auto=await m.send(a.id,a.key,{to:phone,text:'Aviso sintético',operation_id:randomUUID()});
   assert.equal(auto.accepted,true);
   assert.deepEqual(seen,[{to:phone,text:'Aviso sintético',typing:true}]);
+  f.broker.authorizeSend=async (_id,_key,_lease,payload)=>({
+    authorized:true,operation_id:payload.operation_id
+  });
+  f.broker.finishSend=async()=>({released:true});
   const manual=await m.send(a.id,a.key,{to:phone,text:'Mensagem manual',operation_id:randomUUID(),
     source:'manual',control_revision:1});
   assert.equal(manual.accepted,true);
