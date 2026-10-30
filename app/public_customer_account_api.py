@@ -279,6 +279,16 @@ async def update_profile(slug: str, payload: ProfilePatch, request: Request):
                     RETURNING id,name,whatsapp_e164,email,instagram,birth_date,neighborhood,city,version
                 """), {**changes, "t": tenant, "customer": customer["id"],
                        "expected": payload.expected_version})).mappings().one_or_none()
+                if updated:
+                    # Editing Instagram/name/email must not invalidate valid
+                    # booking links. Admin phone changes and explicit revocation
+                    # still invalidate them independently.
+                    await db.execute(text("""
+                        UPDATE appointment_access SET customer_version=:new_version
+                        WHERE tenant_id=:t AND customer_id=:customer
+                          AND revoked_at IS NULL
+                    """), {"new_version": updated["version"], "t": tenant,
+                           "customer": customer["id"]})
         except IntegrityError:
             raise HTTPException(409, "Não foi possível salvar. Confira os dados informados.") from None
     if updated is None:
