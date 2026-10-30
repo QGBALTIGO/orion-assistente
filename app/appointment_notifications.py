@@ -296,7 +296,8 @@ async def reconcile_notification(ctx,tenant_id,notification_id):
     tenant,identity=UUID(tenant_id),UUID(notification_id)
     async with get_session_factory()() as db:
         async with tenant_transaction(db,tenant):
-            row=(await db.execute(text("SELECT channel_id,central_channel_id,status FROM appointment_notifications WHERE tenant_id=:t AND id=:id AND status IN ('accepted','unknown','delivered')"),
+            columns='channel_id,central_channel_id,status' if central_enabled() else 'channel_id,status'
+            row=(await db.execute(text("SELECT "+columns+" FROM appointment_notifications WHERE tenant_id=:t AND id=:id AND status IN ('accepted','unknown','delivered')"),
                 {'t':tenant,'id':identity})).mappings().first()
     if not row:return 'unavailable'
     try:
