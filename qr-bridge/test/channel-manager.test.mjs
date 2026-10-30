@@ -610,3 +610,18 @@ test('old mobile PN is allowed only as the explicitly verified self number of th
   assert.equal(result.accepted,true);
   assert.equal(f.made[0].sends[0].to,old);
 });
+
+test('source automation requests transactional typing, manual sends do not',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);
+  const seen=[];
+  f.made[0].send=async(to,text,opts)=>{
+    seen.push({to,text,typing:opts.transactionalTyping});return {id:randomUUID()};
+  };
+  const auto=await m.send(a.id,a.key,{to:phone,text:'Aviso sintético',operation_id:randomUUID()});
+  assert.equal(auto.accepted,true);
+  assert.deepEqual(seen,[{to:phone,text:'Aviso sintético',typing:true}]);
+  const manual=await m.send(a.id,a.key,{to:phone,text:'Mensagem manual',operation_id:randomUUID(),
+    source:'manual',control_revision:1});
+  assert.equal(manual.accepted,true);
+  assert.equal(seen.at(-1).typing,false);
+});
