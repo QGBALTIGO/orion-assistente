@@ -25,7 +25,7 @@ test("bridge authentication accepts only the exact nonempty configured key", () 
 });
 
 test("recovery uses node:path join rather than the request pathname string", () => {
-  const file = fs.readFileSync(path.resolve("src/server.mjs"), "utf8");
+  const file = fs.readFileSync(new URL("../src/server.mjs", import.meta.url), "utf8");
   assert.match(file, /directory:joinPath\(authDir,"retry-encrypted"\),secret:KEY/);
   assert.match(file, /return bridgeKeyAuthorized\(req\.headers\["x-orion-bridge-key"\],KEY\)/);
 });
