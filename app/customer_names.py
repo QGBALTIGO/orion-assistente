@@ -18,7 +18,7 @@ from app.customer_identity import resolve_customer
 
 
 PHONE_RE = re.compile(r"^[1-9][0-9]{7,14}$")
-CUSTOMER_PHONE_RE = re.compile(r"^55[1-9][0-9]{9,10}$")
+CUSTOMER_PHONE_RE = re.compile(r"^(?:55[1-9][0-9]{9,10}|5959[0-9]{8})$")
 PLACEHOLDER_NAMES = frozenset({
     "cliente whatsapp", "cliente do whatsapp", "contato whatsapp", "contato do whatsapp", "whatsapp",
     "cliente", "contato", "sem nome", "nome nao informado", "desconhecido",
