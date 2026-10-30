@@ -94,11 +94,15 @@ def predeploy_main():
     from scripts import backup_and_migrate_appointment_communications as appointment
     from scripts import backup_and_migrate_plan_permissions as permissions
     from scripts import backup_and_migrate_central_appointment_confirmation as central
+    from scripts import backup_and_migrate_paraguay_phone as paraguay
     def finish_permissions(result):
         if result:return result
         checked=permissions.main()
         if checked:return checked
-        return central.main() if os.getenv('ORION_RUN_CENTRAL_APPOINTMENT_MIGRATION')=='1' else 0
+        if os.getenv('ORION_RUN_CENTRAL_APPOINTMENT_MIGRATION')=='1':
+            checked=central.main()
+            if checked:return checked
+        return paraguay.main() if os.getenv(paraguay.FLAG)=='1' else 0
     def finish_direct():
         result=direct.main()
         if result:return result
@@ -106,8 +110,11 @@ def predeploy_main():
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
+        if current == paraguay.TARGET:
+            return paraguay.main()
         if current == central.TARGET:
-            return central.main()
+            checked=central.main()
+            return checked if checked else paraguay.main()
         if current == permissions.TARGET:
             return finish_permissions(0)
         if current in {appointment.TARGET,appointment.COMMUNICATIONS_PREVIOUS}:
