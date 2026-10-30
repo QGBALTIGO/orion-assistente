@@ -43,6 +43,19 @@ def test_01_signup_login_and_business_create_are_separate_real_transactions(jour
     account = h.query("SELECT id,role,verified_at FROM panel_accounts WHERE email=%s", (email,))[0]
     assert account["role"] == "member" and account["verified_at"] is None
     assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (account["id"],)) == 0
+    # Decode the synthetic outbox on the pytest host, never in the browser.
+    # The real /auth/verify route still consumes the exact one-time code.
+    import json
+    from cryptography.fernet import Fernet
+    encrypted = h.query("SELECT payload_enc FROM panel_email_outbox WHERE account_id=%s AND kind='verify' ORDER BY created_at DESC LIMIT 1", (account["id"],))[0]["payload_enc"]
+    frozen = json.loads(Fernet(h.server.email_fernet_key.encode()).decrypt(encrypted.encode()))
+    codes = re.findall(r"(?m)^\\d{6}$", frozen["text"])
+    assert len(codes) == 1
+    page.locator("#verifyCode").fill(codes[0])
+    with page.expect_response(lambda r: urlsplit(r.url).path == "/auth/verify") as confirmed:
+        page.locator("#authSubmitVerify").click()
+    assert confirmed.value.status == 200
+    assert h.query("SELECT verified_at,registration_pending FROM panel_accounts WHERE id=%s", (account["id"],))[0]["verified_at"] is not None
     h.login({"email": email})
     expect(page.locator('#orionSetup [data-ob-form="create"]')).to_be_visible()
     assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (account["id"],)) == 0

@@ -779,7 +779,8 @@ async def execute(args, sandbox, report):
             pipe.set(key, json.dumps({"role": "member", "account_id": p["account"], "auth_version": 1, "csrf": p["csrf"]}), ex=7200)
         await pipe.execute()
         env = sandbox.environment(); env.update({"REDIS_URL": cache_url.render_as_string(hide_password=False),
-            "SUPPORT_API_TOKEN": secrets.token_urlsafe(48), "BUSINESS_PROFILES_ENABLED": "1", "ONBOARDING_ENABLED": "1",
+            "SUPPORT_API_TOKEN": secrets.token_urlsafe(48), "PUBLIC_SITE_SIGNING_KEY": secrets.token_urlsafe(48),
+            "BUSINESS_PROFILES_ENABLED": "1", "ONBOARDING_ENABLED": "1",
             "COMMERCIAL_CATALOG_ENABLED": "1", "MARKETING_EXECUTION_ENABLED": "0", "QR_CHANNELS_ENABLED": "0", "QR_AI_ENABLED": "0", "GROQ_PROBE_ON_START": "0"})
         env.update(api_pool_environment(args))
         profile_directory = configure_api_profile(args, env)

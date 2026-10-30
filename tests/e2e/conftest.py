@@ -120,6 +120,7 @@ def qualification_server(request):
         "APP_DATABASE_URL": runtime, "MIGRATION_DATABASE_URL": migration,
         "SUPPORT_DATABASE_URL": support, "REDIS_URL": redis_url,
         "SUPPORT_API_TOKEN": "synthetic-e2e-only-00000000000000000000000000000000000000000000000000",
+        "PUBLIC_SITE_SIGNING_KEY": secrets.token_urlsafe(48),
         "PANEL_ADMIN_USERNAME": "synthetic-disabled-operator",
         "PANEL_ADMIN_PASSWORD_HASH": "pbkdf2_sha256$200000$" + base64.urlsafe_b64encode(salt).decode() + "$" + base64.urlsafe_b64encode(digest).decode(),
         # Sign-up needs mail configuration to issue the OTP, but no worker is
@@ -176,7 +177,7 @@ def qualification_server(request):
                 else:
                     pytest.fail("Real HTTPS API did not become healthy in 45s")
                 yield SimpleNamespace(origin=origin, dsn=migration_dsn, artifacts=artifacts,
-                                      native_admin=native_admin)
+                                      native_admin=native_admin, email_fernet_key=env["PANEL_EMAIL_FERNET_KEY"])
             finally:
                 process.terminate()
                 try:
@@ -186,7 +187,7 @@ def qualification_server(request):
                     process.wait(timeout=5)
                 output.flush()
                 text = (artifacts / "api.log").read_text(encoding="utf-8", errors="replace")
-                for secret in (runtime_url.password, migration_url.password, support_url.password, env["SUPPORT_API_TOKEN"], env["PANEL_ADMIN_PASSWORD_HASH"]):
+                for secret in (runtime_url.password, migration_url.password, support_url.password, env["SUPPORT_API_TOKEN"], env["PANEL_ADMIN_PASSWORD_HASH"], env["PANEL_EMAIL_FERNET_KEY"], env["PANEL_OTP_SECRET"]):
                     if secret:
                         text = text.replace(secret, "[redacted-ci-credential]")
                 (artifacts / "api.log").write_text(redact_text(text), encoding="utf-8")
