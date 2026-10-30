@@ -25,15 +25,13 @@ async function portal({authenticated=false,available=true,path,custom}={}){
     calls.push({url,method,payload});
     if(custom){const responseValue=custom(url,method,payload);if(responseValue)return responseValue;}
     if(url===ACCOUNT)return response({available,authenticated,profile:authenticated?profile:undefined});
-    if(url.includes("/request-code"))return response({message:"Se houver cadastro, enviaremos um código."},202);
-    if(url.includes("/verify-code"))return response({authenticated:true,profile});
+    if(url.endsWith("/enter"))return response({authenticated,proof_required:!authenticated,profile:authenticated?profile:undefined});
+    if(url.endsWith("/link-login"))return response({authenticated:true,profile});
     if(url.includes("/appointments?kind=upcoming"))return response({items:[future],has_more:false,next_offset:1,timezone:"America/Sao_Paulo"});
     if(url.includes("/appointments?kind=history"))return response({items:[history],has_more:false,next_offset:1,timezone:"America/Sao_Paulo"});
     if(url.includes("/slots?"))return response({slots:["2030-01-09T10:00:00-03:00"],timezone:"America/Sao_Paulo"});
     if(url.includes("/reschedule")||url.includes("/cancel"))return response({item:future});
     if(url.endsWith("/profile"))return response({profile:{...profile,...payload,version:profile.version+1}});
-    if(url.includes("/phone/request-code"))return response({message:"SMS enviado"},202);
-    if(url.includes("/phone/confirm"))return response({profile:{...profile,whatsapp_e164:payload.phone,version:5}});
     if(url.includes("/logout"))return response({authenticated:false});
     return response({});
   }});
@@ -57,7 +55,7 @@ test("account icon shares the existing theme toolbar and is not enabled in admin
   assert.equal(v.document.querySelector("#customer-account-trigger").hidden,true);
 });
 
-test("visitor sees polished phone access but no private bookings before code approval",async t=>{
+test("visitor enters phone without SMS; unknown device requires existing private link before history",async t=>{
   const h=await portal();t.after(()=>h.close());
   h.click("#customer-account-trigger");await flush();
   assert.equal(h.document.querySelector("#customer-account-dialog").open,true);
@@ -70,14 +68,14 @@ test("visitor sees polished phone access but no private bookings before code app
   h.document.querySelector(".customer-account-auth-form").dispatchEvent(
     new h.window.Event("submit",{bubbles:true,cancelable:true}));
   await flush();
-  assert.match(h.document.querySelector("#customer-account-body").textContent,/Confirme seu telefone/);
-  assert.ok(h.accountCalls.some(c=>c.url.endsWith("/request-code")&&c.payload.phone==="+5511987654321"));
+  assert.match(h.document.querySelector("#customer-account-body").textContent,/Acesse pelo seu agendamento/);
+  assert.ok(h.accountCalls.some(c=>c.url.endsWith("/enter")&&c.payload.phone==="+5511987654321"));
   assert.equal(h.accountCalls.some(c=>c.url.includes("/appointments")),false);
-  h.fill("#customer-account-body [name=otp]","123456");
+  h.fill("#customer-account-body [name=booking_link]","https://orionagenda.pro/a#00000000-0000-4000-8000-000000000001.test-capability-token-typed-for-test");
   h.document.querySelector(".customer-account-auth-form").dispatchEvent(
     new h.window.Event("submit",{bubbles:true,cancelable:true}));
   await flush();
-  assert.ok(h.accountCalls.some(c=>c.url.endsWith("/verify-code")&&c.payload.code==="123456"));
+  assert.ok(h.accountCalls.some(c=>c.url.endsWith("/link-login")&&c.payload.booking_link.includes("/a#")));
   assert.equal(h.document.querySelector("#customer-account-tabs").hidden,false);
   assert.match(h.document.querySelector("#customer-account-body").textContent,/Corte \+ Barba/);
   assert.match(h.document.querySelector("#customer-account-body").textContent,/Guilherme/);
@@ -137,7 +135,7 @@ test("managing an active booking stays inside account and confirms cancellation"
   assert.equal(h.errors.length,0);
 });
 
-test("unconfigured SMS shows an honest unavailable state, never leaks history",async t=>{
+test("disabled portal shows honest unavailable state, never leaks history",async t=>{
   const h=await portal({available:false});t.after(()=>h.close());
   h.click("#customer-account-trigger");await flush();
   assert.match(h.document.querySelector("#customer-account-body").textContent,/em preparação/);
