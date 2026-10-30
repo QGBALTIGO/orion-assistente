@@ -28,7 +28,7 @@ isolated(async directory=>{
  assert.deepEqual(first,{state:'finished',attempts:2});
  assert.deepEqual(seen.map(x=>x.phone),['5521999999999','595992000001']);
  assert.ok(seen.every(x=>x.opts.waitForCapacity&&x.opts.transactionalTyping&&
-    x.text.includes('não cria nem altera agendamentos')&&x.text.length<500));
+    x.text.includes('Não é um agendamento e não altera dados')&&x.text.length<500));
  assert.equal(events.filter(x=>x.state==='accepted').length,2);
  assert.ok(events.every(x=>!JSON.stringify(x).includes('5521999999999')&&
    !JSON.stringify(x).includes('595992000001')));
