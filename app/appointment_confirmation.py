@@ -1,5 +1,6 @@
 """Authenticated ingress adapter: protocol + matching contact, never protocol alone."""
 import asyncio
+import os
 import re
 from urllib.parse import quote
 
@@ -67,12 +68,28 @@ async def confirmation_reply(tenant,phone,body,channel_key,message_id):
             return answer
 
 
+def central_admin_whatsapp_enabled():
+    """Independent rollout: do not redirect other companies before hub routing is ready."""
+    return os.getenv('ORION_CENTRAL_APPOINTMENT_WHATSAPP_ENABLED', '0') == '1'
+
+
+async def central_admin_phone():
+    """Never infer the platform number from a customer's company/site settings."""
+    from app.qr_legacy import configured_tenant
+    try:
+        tenant = configured_tenant()
+    except Exception:
+        return None
+    return await connected_channel_phone(tenant)
+
+
 async def public_followup(slug,result,phone):
     """Called only after the engine and public receipt transactions committed."""
     if not access.enabled():return {}
     from app.public_site_api import resolve_public
     tenant=await resolve_public(slug)
-    if not access.tenant_enabled(tenant):return {}
+    central=central_admin_whatsapp_enabled()
+    if not central and not access.tenant_enabled(tenant):return {}
     output={}
     async with get_session_factory()() as db:
         async with tenant_transaction(db,tenant):
@@ -84,11 +101,13 @@ async def public_followup(slug,result,phone):
             # An anonymous booking can use an existing customer's phone.
             # Only a verified inbound contact may receive a capability; never
             # return it to the anonymous booking caller.
-            requested=(await db.execute(text('SELECT enabled AND confirmation FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).scalar_one_or_none()
-            if requested is not True:return output
-    # Only the authenticated current channel identity supplies the destination.
-    # A contact number in a site's appearance settings is not proof of a channel.
-    number=await connected_channel_phone(tenant)
+            if not central:
+                requested=(await db.execute(text('SELECT enabled AND confirmation FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).scalar_one_or_none()
+                if requested is not True:return output
+    # For the platform-wide path, always resolve the WhatsApp authenticated on
+    # the admin tenant. Never use a company's own QR session or site number.
+    # Existing tenant-scoped links are left untouched until this rollout is ready.
+    number=await (central_admin_phone() if central else connected_channel_phone(tenant))
     if number:
         message=compose_prefill(result['protocol'])
         output['whatsapp_confirmation_url']='https://wa.me/'+number+'?text='+quote(message)
