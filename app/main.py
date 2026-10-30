@@ -33,6 +33,7 @@ from app.management_ai import router as management_ai_router
 from app.management_team import router as management_team_router, invitation_router
 from app.management_preferences import router as management_preferences_router
 from app.public_site_api import router as public_site_router
+from app.public_customer_account_api import router as public_customer_account_router
 from app.service_packages_api import router as service_packages_router
 from app.onboarding_api import router as onboarding_router
 from app.qr_channels import router as qr_channels_router
@@ -117,6 +118,7 @@ include_plan_router(app, appointment_access_router)
 from app.appointment_communications_api import router as appointment_communications_router
 include_plan_router(app, appointment_communications_router)
 include_plan_router(app, public_site_router)
+include_plan_router(app, public_customer_account_router)
 include_plan_router(app, service_packages_router)
 include_plan_router(app, qr_channels_router)
 include_plan_router(app, automation_router)
