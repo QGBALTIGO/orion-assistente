@@ -43,6 +43,7 @@ import {createBaileysChannelSession} from './channel-session.mjs';
 import {createLegacyCentral} from './legacy-central.mjs';
 import {testReplyFor} from './trigger-test.mjs';
 import {makeTestFallbackText,sendTestCloudCta,selectTestCtaMode} from './test-url-button.mjs';
+import {runConsentedPairSmoke,SMOKE_ID} from './consented-live-qa.mjs';
 
 const legacyCentral=createLegacyCentral({
   start:(id,key)=>channelRoutes.adopt(id,key),send:(id,key,payload)=>channelRoutes.send(id,key,payload),
@@ -631,6 +632,19 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       if(update.receivedPendingNotifications===true)pendingNotificationsReceived=true;
       pairedNumber=normalizeFromJid(client.user?.id)||"";
       lastError=null;console.info("Orion QR: dispositivo conectado");
+      // One-time, source-bound live delivery test explicitly authorized by
+      // the owner. Persistent per-recipient claims prevent any duplicate.
+      if(process.env.ORION_ONE_TIME_LIVE_SEND===SMOKE_ID){
+        setTimeout(()=>{
+          const stillCurrent=()=>mine===generation&&socket===client&&status==='connected';
+          if(!stillCurrent())return;
+          void runConsentedPairSmoke({
+            directory:authDir,pairedPhone:pairedNumber,isCurrent:stillCurrent,
+            send:(to,body,options)=>sendLegacyRaw(to,body,options),
+            report:event=>console.info('Orion Live QA '+JSON.stringify(event))
+          }).catch(()=>console.warn('Orion Live QA: gate_or_storage_unavailable'));
+        },1800).unref();
+      }
       if(notifyNewLink && process.env.ORION_NOTIFY_SELF_ON_LINK==="1" && notifiedGeneration!==mine){
         notifiedGeneration=mine;
         // Only the authenticated account receives a one-time confirmation.
