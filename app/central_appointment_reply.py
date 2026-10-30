@@ -35,6 +35,19 @@ def central_reply_active():
             and os.getenv('ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED','0')=='1')
 
 
+async def _limit_protocol_lookup(request, phone):
+    """Rate-limit a privileged identity lookup, including a stolen bridge key.
+
+    Reuse the existing Redis-atomic limiter. It stores only SHA-256 rate keys,
+    never the customer's number, token, protocol, or message content.
+    """
+    from app.public_site_api import public_limit
+    await public_limit(request, 'orion-central-qr', 'qr-protocol-phone',
+                       8, 300, subject=phone)
+    await public_limit(request, 'orion-central-qr', 'qr-protocol-global',
+                       120, 60, subject='all')
+
+
 @router.post('/internal/qr/appointment-confirmation',include_in_schema=False)
 async def confirm_inbound_protocol(payload:IncomingProtocol,request:Request):
     key=os.getenv('QR_BRIDGE_TOKEN','')
@@ -46,6 +59,9 @@ async def confirm_inbound_protocol(payload:IncomingProtocol,request:Request):
     protocol=detected_protocol(payload.text)
     if protocol is None:
         return {'state':'not_protocol','answer':None}
+    # Enforce the same atomic Redis quotas used by the public booking engine.
+    # A leaked transport credential must not become an unlimited lookup oracle.
+    await _limit_protocol_lookup(request, payload.phone)
     try:
         # Admin tenant is server-owned. No tenant ID may come from WhatsApp text.
         configured_tenant()
