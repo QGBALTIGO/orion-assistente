@@ -429,7 +429,9 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       if(centralEnabled&&freshForCentral&&normalized.event.kind==='text'&&
           isBookingProtocolMessage(normalized.text)){
         const key=String(mine)+':'+traceId;
-        if(handledBookingProtocols.has(key)){transport.record('booking_protocol_duplicate',traceId);continue;}
+        if(handledBookingProtocols.has(key)||seen.has('wa:'+traceId)){
+          transport.record('booking_protocol_duplicate',traceId);continue;
+        }
         handledBookingProtocols.add(key);
         if(handledBookingProtocols.size>2000)
           handledBookingProtocols.delete(handledBookingProtocols.values().next().value);
