@@ -335,6 +335,11 @@
 
   function openBooking(service = null) {
     booking = newBooking(); retainedTimeView = null; booking.service = service; booking.services = service ? [service] : []; booking.day = data.today;
+    // Once the visitor verifies the phone, reuse the same tenant-local CRM
+    // profile. Never prefill from an anonymous number or localStorage.
+    const contact = window.OrionCustomerAccount?.prefill?.();
+    if(contact){booking.name=contact.name||'';booking.phone=contact.whatsapp_e164||'';
+      booking.birthDate=contact.birth_date||'';}
     $('booking-shop').textContent = data.site.title; showError(); renderBooking();
     dialog.showModal(); document.body.classList.add('booking-open');
   }
@@ -1000,6 +1005,7 @@
   }
 
   function renderSuccess(body) {
+    window.OrionCustomerAccount?.refresh?.();
     const success = el('div', 'success'); success.append(el('div', 'success-check', '✓'), el('h3', '', 'Agendamento confirmado!'), el('p', '', 'Seu horário está reservado. Guarde o protocolo e chegue no horário combinado.'), reviewCard(booking.result));
     if (booking.result.whatsapp_confirmation_url && /^https:\/\/wa\.me\/[1-9][0-9]{7,14}\?text=/.test(booking.result.whatsapp_confirmation_url)) {
       const wa=el('a','pill','Receber confirmação no WhatsApp');wa.href=booking.result.whatsapp_confirmation_url;wa.target='_blank';wa.rel='noopener noreferrer';success.append(wa);
