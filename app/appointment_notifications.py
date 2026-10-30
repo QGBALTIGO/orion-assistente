@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
+import re
 from uuid import UUID
 
 from cryptography.fernet import Fernet
@@ -24,17 +25,50 @@ def cipher():
     return Fernet(os.environ['INTEGRATION_FERNET_KEY'].encode())
 
 
+def central_enabled():
+    return (access.enabled()
+            and os.getenv('ORION_CENTRAL_APPOINTMENT_WHATSAPP_ENABLED') == '1'
+            and os.getenv('ORION_CENTRAL_NOTIFICATIONS_ENABLED') == '1')
+
+
+def central_channel():
+    from app.qr_legacy import channel_id, configured_tenant
+    try:
+        admin = configured_tenant()
+        return admin, channel_id(admin)
+    except HTTPException:
+        return None, None
+
+
+def notification_settings(row, central, channel=None):
+    if not central:
+        return dict(row) if row else None
+    # Every company gets safe defaults, without requiring its own QR session.
+    # An explicit company opt-out is preserved; its channel cannot select
+    # the platform WhatsApp number.
+    defaults = {'enabled': True, 'version': 0, 'professional_notice': True,
+        'cancellation': True, 'rescheduling': True, 'reminder': True,
+        'review': True, 'review_delay_min': 15,
+        'return_invitation': False, 'signature': 'Orion Agenda'}
+    return {**defaults, **(dict(row) if row else {}), 'channel_id': channel}
+
+
 async def enqueue_event(db, tenant, appointment, event, details):
-    if not access.tenant_enabled(tenant):return
-    from app.plan_permissions import has_feature
-    if not await has_feature(db, tenant, "notifications.basic"):return
+    central = central_enabled()
+    if not central and not access.tenant_enabled(tenant):return
+    if not central:
+        from app.plan_permissions import has_feature
+        if not await has_feature(db, tenant, "notifications.basic"):return
     # Every committed mutation invalidates old pending facts in this SAME tx.
     if event in {'confirmed','cancelled','rescheduled','completed','no_show','hold_expired'}:
         await db.execute(text("""UPDATE appointment_notifications SET status='cancelled',
         last_error='appointment_changed',updated_at=clock_timestamp()
         WHERE tenant_id=:t AND appointment_id=:id AND status='pending'"""), {'t':tenant,'id':appointment})
     if event=='cancelled' and (details.get('previous') or {}).get('status')!='confirmed':return
-    settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
+    saved=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
+    admin,channel=central_channel() if central else (None,None)
+    if central and (admin is None or channel is None):return
+    settings=notification_settings(saved,central,channel)
     if not settings or not settings['enabled'] or not settings['channel_id']:return
     row=(await db.execute(text('SELECT * FROM appointments WHERE tenant_id=:t AND id=:id'),{'t':tenant,'id':appointment})).mappings().one()
     now=(await db.execute(text('SELECT clock_timestamp()'))).scalar_one()
@@ -59,25 +93,37 @@ async def enqueue_event(db, tenant, appointment, event, details):
     for kind,recipient,recipient_id,due,expiry in events:
         key=event+':'+str(appointment)+':'+row['updated_at'].isoformat()+':'+kind+':'+str((details.get('previous') or {}).get('proposal_id',''))
         await db.execute(text('''INSERT INTO appointment_notifications
-          (tenant_id,appointment_id,appointment_version,event,recipient_kind,recipient_id,channel_id,settings_version,
+          (tenant_id,appointment_id,appointment_version,event,recipient_kind,recipient_id,channel_id,central_channel_id,settings_version,
            event_key,previous,due_at,expires_at)
-          VALUES(:t,:id,:version,:event,:kind,:recipient,:channel,:settings,:key,CAST(:previous AS jsonb),:due,:expiry)
+          VALUES(:t,:id,:version,:event,:kind,:recipient,:channel,:central_channel,:settings,:key,CAST(:previous AS jsonb),:due,:expiry)
           ON CONFLICT DO NOTHING'''),{'t':tenant,'id':appointment,'version':row['updated_at'],'event':kind,'kind':recipient,
-          'recipient':recipient_id,'channel':settings['channel_id'],'settings':settings['version'],'key':key,
+          'recipient':recipient_id,'channel':None if central else settings['channel_id'],
+            'central_channel':channel if central else None,
+            'settings':settings['version'],'key':key,
           'previous':json.dumps(details.get('previous') or {},default=str),'due':due,'expiry':expiry})
 
 
 async def eligibility(db, tenant, job):
-    from app.plan_permissions import has_feature
-    if not await has_feature(db, tenant, "notifications.basic"):
-        return 'plan_feature_unavailable',None,None,None
-    settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
-    if not access.tenant_enabled(tenant) or not settings or not settings['enabled']:return 'execution_paused',None,None,None
-    if settings['version']!=job['settings_version'] or settings['channel_id']!=job['channel_id']:return 'settings_changed',None,None,None
+    central = job.get('central_channel_id') is not None
+    if central:
+        admin, channel = central_channel()
+        if not central_enabled() or admin is None or channel != job['central_channel_id']:
+            return 'execution_paused',None,None,None
+    else:
+        from app.plan_permissions import has_feature
+        if not await has_feature(db, tenant, "notifications.basic"):
+            return 'plan_feature_unavailable',None,None,None
+    saved=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
+    settings=notification_settings(saved,central,job.get('central_channel_id'))
+    if (not central and not access.tenant_enabled(tenant)) or not settings or not settings['enabled']:
+        return 'execution_paused',None,None,None
+    expected_channel = job.get('central_channel_id') if central else job['channel_id']
+    if settings['version']!=job['settings_version'] or settings['channel_id']!=expected_channel:
+        return 'settings_changed',None,None,None
     row=await read_appointment(db,tenant,job['appointment_id'])
     if row['updated_at']!=job['appointment_version']:return 'appointment_changed',None,None,None
     channel=(await db.execute(text('SELECT whatsapp_channel_id FROM tenants WHERE id=:t'),{'t':tenant})).scalar_one_or_none()
-    if channel is not None and channel!=job['channel_id']:return 'channel_changed',None,None,None
+    if not central and channel is not None and channel!=job['channel_id']:return 'channel_changed',None,None,None
     if job['event']=='customer_proposal':
         proposal=(await db.execute(text("""SELECT 1 FROM appointment_change_proposals WHERE tenant_id=:t
             AND appointment_id=:id AND id=CAST(:proposal AS uuid) AND status='pending' AND expires_at>clock_timestamp()"""),
@@ -105,7 +151,11 @@ async def eligibility(db, tenant, job):
         if not contact or contact['operational_opt_in'] is not True:return 'communication_not_authorized',None,None,None
         if job['event']=='review' and contact['marketing_opt_in'] is not True:return 'review_not_authorized',None,None,None
         phone=contact['whatsapp_e164']
-    if not access.recipient_allowed(phone):return 'pilot_recipient_not_authorized',None,None,None
+    if central:
+        if not isinstance(phone,str) or not re.fullmatch(r'(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})',phone):
+            return 'invalid_recipient',None,None,None
+    elif not access.recipient_allowed(phone):
+        return 'pilot_recipient_not_authorized',None,None,None
     digest=hashlib.sha256(phone.encode()).hexdigest()
     if job.get('recipient_hash') and job['recipient_hash']!=digest:return 'contact_changed',None,None,None
     return None,row,phone,settings
