@@ -193,3 +193,46 @@ test('real server send cancels during generation and never retries an uncertain 
   await assert.rejects(uncertain.send({waitForCapacity:true,isCurrent:()=>true}),/uncertain relay/);
   assert.equal(uncertain.calls.generate,1);assert.equal(uncertain.calls.cache,1);assert.equal(uncertain.calls.relay,1);
 });
+
+
+test('pico de 100 atendimentos não cria 100 esperas, admite só fila limitada e não bursta',async()=>{
+  const c=clock(),capacity=makeSendCapacity({...c,limit:1,maxWaiters:3,maxWaitMs:2000});
+  await capacity.acquire();
+  const pending=Array.from({length:3},()=>capacity.acquire({wait:true}));
+  const results=pending.map(p=>p.then(()=>({ok:true}),error=>({ok:false,error:error.message})));
+  assert.equal(capacity.pending(),3);
+  const over=await Promise.allSettled(Array.from({length:97},()=>capacity.acquire({wait:true})));
+  assert.equal(over.filter(x=>x.status==='rejected').length,97);
+  assert.equal(capacity.pending(),3);
+  c.advance(2000);await tick();
+  const settled=await Promise.all(results);
+  assert.ok(settled.every(x=>x.ok===false&&/fila de mensagens/.test(x.error)));
+  assert.equal(capacity.pending(),0);
+  assert.ok(c.durations.every(x=>x>0&&x<=1000));
+  c.advance(58000);await capacity.acquire();
+  await assert.rejects(capacity.acquire(),/Aguarde um minuto/);
+});
+
+test('envio transacional só simula digitando após admissão e cancela presença ao concluir',async()=>{
+  const c=clock(),h=serverSendHarness(c);
+  const stages=[];
+  h.context.makeAssistantTyping=()=>({begin:()=>({
+    beforeReply:async()=>{stages.push('composing');},
+    stop:()=>stages.push('paused')
+  })});
+  const result=await h.send({waitForCapacity:true,transactionalTyping:true,isCurrent:()=>true});
+  assert.equal(result.accepted,true);
+  assert.deepEqual(stages,['composing','paused']);
+  assert.equal(h.calls.relay,1);
+});
+
+test('fila lotada não envia presença transacional nem pacote criptografado',async()=>{
+  const c=clock(),h=serverSendHarness(c);
+  let typed=false;
+  h.context.makeAssistantTyping=()=>({begin:()=>{typed=true;return {beforeReply:async()=>{},stop(){}}}});
+  await fill(h.capacity);
+  await assert.rejects(h.send({transactionalTyping:true}),/Aguarde um minuto/);
+  assert.equal(typed,false);
+  assert.equal(h.calls.cache,0);
+  assert.equal(h.calls.relay,0);
+});
