@@ -1,7 +1,7 @@
 """Real PostgreSQL portal: existing CRM identity, tenant RLS and booking mutations.
 
-Only mock the Twilio provider and OTP transport; the booking engine and SQL
-run with separate app_runtime / app_migrator PostgreSQL roles.
+No messaging provider is needed. Existing private booking links are checked
+against real PostgreSQL RLS with separate runtime/migration roles.
 """
 from uuid import uuid4
 import httpx
@@ -45,10 +45,11 @@ async def test_real_customer_portal_only_reads_and_modifies_own_tenant_bookings(
     async with d["factory"]() as db:
         await cancel_appointment(db,d["a"],cancelled["id"])
     monkeypatch.setenv("ORION_CUSTOMER_PORTAL_ENABLED","1")
-    monkeypatch.setenv("ORION_CUSTOMER_VERIFY_SERVICE_SID","VA"+"b"*32)
-    monkeypatch.setenv("ORION_CUSTOMER_VERIFY_ACCOUNT_SID","AC"+"a"*32)
-    monkeypatch.setenv("ORION_CUSTOMER_VERIFY_AUTH_TOKEN","synthetic-key-at-least-twenty-characters")
     monkeypatch.setenv("INTEGRATION_FERNET_KEY",Fernet.generate_key().decode())
+    monkeypatch.setenv("PANEL_PUBLIC_URL","https://orionagenda.pro")
+    monkeypatch.setenv("REDIS_URL","redis://localhost:6379/15")
+    monkeypatch.setenv("APPOINTMENT_COMMUNICATIONS_ENABLED","1")
+    monkeypatch.setenv("APPOINTMENT_COMMUNICATIONS_PILOT_ONLY","0")
     store=RedisSession()
     monkeypatch.setattr(auth,"_cache",lambda:store)
     monkeypatch.setattr(portal,"get_session_factory",lambda:d["factory"])
@@ -60,18 +61,25 @@ async def test_real_customer_portal_only_reads_and_modifies_own_tenant_bookings(
     monkeypatch.setattr(portal,"published_guard",published)
     async def rate(*args,**kwargs):return None
     monkeypatch.setattr(portal,"public_limit",rate)
-    async def verify(number,code=None):
-        return code=="123456" and number in (identity,different)
-    monkeypatch.setattr(portal,"provider_request",verify)
+    from app import appointment_access as old_link_access
+    async with d["factory"]() as db:
+        async with tenant_transaction(db,d["a"]):
+            private_link = await old_link_access.issue(db,d["a"],first["id"])
     url="/api/v1/public/sites/test-business/account"
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                 base_url="https://orionagenda.pro") as client:
         anonymous=await client.get(url)
         assert anonymous.status_code==200 and anonymous.json()=={"available":True,"authenticated":False}
         assert (await client.get(url+"/appointments")).status_code==401
-        assert (await client.post(url+"/verify-code",json={"phone":identity,"code":"000000"})).status_code==403
-        verified=await client.post(url+"/verify-code",json={"phone":identity,"code":"123456"})
+        unknown=await client.post(url+"/enter",json={"phone":identity})
+        assert unknown.status_code==200 and unknown.json()=={"authenticated":False,"proof_required":True}
+        assert (await client.get(url+"/appointments")).status_code==401
+        wrong_phone=await client.post(url+"/link-login",json={"phone":different,"booking_link":private_link})
+        assert wrong_phone.status_code==403
+        verified=await client.post(url+"/link-login",json={"phone":identity,"booking_link":private_link})
         assert verified.status_code==200,verified.text
+        repeat=await client.post(url+"/enter",json={"phone":identity})
+        assert repeat.status_code==200 and repeat.json()["authenticated"] is True
         cookie=client.cookies.get(auth.COOKIE)
         assert cookie and cookie not in verified.text
         account=await client.get(url)
