@@ -282,8 +282,10 @@
     const section=el("section","customer-account-section");
     const back=button("← Voltar aos agendamentos","customer-account-secondary",()=>openTab("upcoming"));
     section.append(back,el("h3","","Gerenciar atendimento"));
-    const list=el("div","customer-account-bookings");list.append(renderBooking(item));
-    section.append(list);
+    const list=el("div","customer-account-bookings");
+    const summary=renderBooking(item);
+    summary.querySelector(".customer-account-actions")?.replaceChildren();
+    list.append(summary);section.append(list);
     if(!item.can_change){
       section.append(el("p","customer-account-privacy",
         "O prazo para cancelar ou remarcar pelo site terminou. Entre em contato com o estabelecimento."));
@@ -403,6 +405,7 @@
     actions.append(submit);section.append(actions,
       el("p","customer-account-privacy",
         "Informações administrativas, observações da equipe e registros financeiros internos não ficam disponíveis aqui."));
+    form.addEventListener("submit",event=>{event.preventDefault();submit.click();});
     submit.addEventListener("click",()=>{
       withBusy(submit,async()=>{
         const data={expected_version:user.version};
