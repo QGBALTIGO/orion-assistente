@@ -109,6 +109,22 @@ async def request_otp(tenant, appointment, role):
     return GENERIC_REQUEST
 
 
+async def request_short_otp(ctx, code, role):
+    """Private worker resolves a public identifier with no public timing oracle."""
+    from app.appointment_short_api import enabled
+    from app.appointment_short_links import checked_code, resolve_global
+    if not enabled() or role not in {"customer","professional"}:
+        return "disabled"
+    try:
+        checked_code(code)
+        target_mapping = await resolve_global(code)
+        if target_mapping:
+            await request_otp(target_mapping["tenant_id"], target_mapping["appointment_id"], role)
+        return "queued"  # Same result for missing, unauthorized and eligible codes.
+    except Exception:
+        return "queued"  # No sensitive exception or existence detail leaves the worker.
+
+
 async def scan_short_otps(ctx):
     """A durable selector is read by app_support; workers execute tenant-scoped."""
     from app.catalog_api import support_session_factory
