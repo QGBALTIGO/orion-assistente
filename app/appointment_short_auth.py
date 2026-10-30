@@ -109,6 +109,18 @@ async def request_otp(tenant, appointment, role):
     return GENERIC_REQUEST
 
 
+async def cleanup_short_credentials(ctx):
+    """Delete expired OTP secrets and sessions without reading personal data."""
+    from app.catalog_api import support_session_factory
+    from app.appointment_short_api import enabled
+    if not enabled():
+        return 0
+    async with support_session_factory()() as db:
+        async with db.begin():
+            return (await db.execute(text(
+                "SELECT public.orion_clean_short_credentials(1000)"))).scalar_one()
+
+
 async def request_short_otp(ctx, code, role):
     """Private worker resolves a public identifier with no public timing oracle."""
     from app.appointment_short_api import enabled
