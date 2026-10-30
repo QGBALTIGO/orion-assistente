@@ -45,6 +45,15 @@ async def tenant_scope(db, tenant):
     yield db
 
 
+@pytest.fixture(autouse=True)
+def synthetic_plan_permissions(monkeypatch):
+    from app import plan_permissions
+    async def allowed(_db, _tenant, feature):
+        assert feature == 'notifications.basic'
+        return True
+    monkeypatch.setattr(plan_permissions, 'has_feature', allowed)
+
+
 @pytest.mark.asyncio
 async def test_every_company_uses_only_the_admin_connected_whatsapp(monkeypatch):
     from app import public_site_api
