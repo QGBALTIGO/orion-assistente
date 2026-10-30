@@ -160,9 +160,27 @@ async def cakto_webhook(request: Request):
         import logging
         logging.getLogger("orion.cakto").error("cakto_webhook_503_secret_not_configured")
         raise HTTPException(503, "Integração Cakto não configurada")
-    raw = await request.body()
-    if len(raw) > 131072:
-        raise HTTPException(413, "Evento muito grande")
+    # Enforce the limit WHILE consuming the body, not after Starlette has
+    # already buffered arbitrarily large unauthenticated requests.
+    max_bytes = 131072
+    claimed = request.headers.get("content-length")
+    if claimed is not None:
+        try:
+            size = int(claimed)
+            if size < 0:
+                raise ValueError()
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Tamanho do evento inválido") from None
+        if size > max_bytes:
+            raise HTTPException(413, "Evento muito grande")
+    parts = []
+    size = 0
+    async for part in request.stream():
+        size += len(part)
+        if size > max_bytes:
+            raise HTTPException(413, "Evento muito grande")
+        parts.append(part)
+    raw = b"".join(parts)
     if not verify_cakto_signature(
         raw, request.headers.get("x-cakto-timestamp"),
         request.headers.get("x-cakto-signature"), secret
