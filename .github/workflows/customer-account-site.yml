@@ -11,6 +11,7 @@ on:
       - "app/worker.py"
       - "app/main.py"
       - "tests/unit/test_public_customer_account.py"
+      - "tests/integration/test_public_customer_account_pg.py"
       - "ui-tests/public-customer-account.test.mjs"
       - ".github/workflows/customer-account-site.yml"
   workflow_dispatch:
@@ -49,3 +50,59 @@ jobs:
           node --check app/static/orion-customer-account.js
           node --check app/static/orion-public.js
           node --test ui-tests/public-customer-account.test.mjs ui-tests/public-contact-theme.test.mjs ui-tests/public-multiservice.test.mjs
+
+  portal-postgresql:
+    name: PostgreSQL 16 real, histórico e isolamento de clientes
+    runs-on: ubuntu-24.04
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: synthetic-test-only-key-of-64-characters-0000000000000000000000000000
+      REDIS_URL: redis://localhost:6379/15
+      REQUIRE_POSTGRES_TESTS: "1"
+      PANEL_PUBLIC_URL: https://orionagenda.pro
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependências
+        run: |
+          python -m pip install -c requirements.lock ".[test]"
+          python -m pip check
+      - name: Papéis separados e RLS
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas \
+            -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only \
+            -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+      - name: Migrar banco sintético
+        run: python -m alembic upgrade head
+      - name: Testar CRM, conta, concorrência e motor único de agenda
+        run: pytest -q -ra tests/integration/test_public_customer_account_pg.py
