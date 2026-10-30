@@ -8,6 +8,7 @@
   <title>Agendamento • Orion</title>
   <script src="/public-assets/orion-public-theme.js"></script>
   <link rel="stylesheet" href="/public-assets/orion-public.css">
+  <link rel="stylesheet" href="/public-assets/orion-customer-account.css">
   <link rel="stylesheet" href="/public-assets/orion-fields.css">
   <style id="booking-confirmation-control-sizing">
     /* The mobile dialog fills the viewport; its short content must grow above
@@ -113,6 +114,7 @@
   </style>
   <script src="/public-assets/orion-fields.js" defer></script>
   <script src="/public-assets/orion-public.js" defer></script>
+  <script src="/public-assets/orion-customer-account.js" defer></script>
 </head>
 <body>
   <a class="skip" href="#servicos">Ir para serviços</a>
@@ -125,6 +127,16 @@
         <button id="public-theme-toggle" class="appearance-trigger" type="button" aria-label="Alternar tema do site" title="Alternar tema">
           <svg class="appearance-symbol appearance-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
           <svg class="appearance-symbol appearance-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20.5 14.4A8.5 8.5 0 0 1 9.6 3.5 8.5 8.5 0 1 0 20.5 14.4Z"/></svg>
+        </button>
+        <button id="customer-account-trigger" class="appearance-trigger customer-account-trigger" type="button"
+                aria-label="Acessar minha conta e meus agendamentos" aria-haspopup="dialog" aria-controls="customer-account-dialog"
+                title="Minha conta">
+          <svg class="appearance-symbol" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="8" r="3.5"/>
+            <path d="M4.5 20v-1.5a7.5 7.5 0 0 1 15 0V20"/>
+          </svg>
         </button>
       </div>
       <div class="container identity-wrap">
@@ -220,6 +232,32 @@
     <p id="booking-error" class="error-message" role="alert" hidden></p>
     <div id="booking-body" class="booking-body"></div>
     <div class="booking-footer"><button id="booking-back" class="outline" type="button">Voltar</button><div id="booking-total" class="booking-total"></div><button id="booking-next" class="primary" type="button">Continuar <span aria-hidden="true">→</span></button></div>
+  </dialog>
+  <dialog id="customer-account-dialog" class="customer-account-dialog"
+          aria-labelledby="customer-account-title">
+    <div class="customer-account-shell">
+      <header class="customer-account-heading">
+        <div class="customer-account-heading-copy">
+          <p class="customer-account-eyebrow">Área do cliente</p>
+          <h2 id="customer-account-title">Minha conta</h2>
+          <p id="customer-account-subtitle" class="muted">Seu espaço neste estabelecimento</p>
+        </div>
+        <button id="customer-account-close" class="icon-button customer-account-close"
+                type="button" aria-label="Fechar minha conta">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6 6 18"/>
+          </svg>
+        </button>
+      </header>
+      <nav id="customer-account-tabs" class="customer-account-tabs" aria-label="Seções da minha conta" hidden>
+        <button type="button" data-customer-tab="upcoming" aria-current="page">Meus agendamentos</button>
+        <button type="button" data-customer-tab="history">Histórico</button>
+        <button type="button" data-customer-tab="profile">Meus dados</button>
+      </nav>
+      <div id="customer-account-feedback" class="customer-account-feedback" role="status" aria-live="polite"></div>
+      <div id="customer-account-body" class="customer-account-body"></div>
+    </div>
   </dialog>
   <noscript><p class="page-message">Ative o JavaScript para consultar os serviços e os horários disponíveis.</p></noscript>
 </body>
