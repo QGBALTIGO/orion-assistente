@@ -505,7 +505,14 @@
   trigger.addEventListener("click",open);
   closeButton.addEventListener("click",()=>dialog.close());
   dialog.addEventListener("close",()=>{
-    document.body.classList.remove("customer-account-open");clearPrivateState();
+    document.body.classList.remove("customer-account-open");
+    state.requestNumber++;
+    state.lists={upcoming:null,history:null};
+    state.selected=null;state.editingPhone=false;
+    root.replaceChildren();notice();
+    // Closing an overlay is not signing out. Keep only the verified profile
+    // in page memory to prefill the next booking; signing out clears it.
+    if(!state.authenticated)clearPrivateState();
     trigger.focus({preventScroll:true});
   });
   dialog.addEventListener("click",event=>{
