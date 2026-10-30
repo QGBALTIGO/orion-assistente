@@ -9,6 +9,7 @@ import {makeContactNames} from '../src/contact-names.mjs';
 import {extractText,resolveMessagePhone} from '../src/core.mjs';
 import {shouldIngestUpsert,timestampMs} from '../src/linked-session-health.mjs';
 import {forwardAssistant,registerAssistantIngress} from '../src/ai-forward.mjs';
+import {isBookingProtocolMessage} from '../src/appointment-confirmation.mjs';
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from '../src/ai-pilot.mjs';
 import {makeConversationIntake} from '../src/conversation-intake.mjs';
 import {makeAssistantTyping} from '../src/assistant-typing.mjs';
@@ -29,17 +30,19 @@ const contactDirectories=[];
 after(()=>{for(const directory of contactDirectories)fs.rmSync(directory,{recursive:true,force:true});});
 
 function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answer=null,realAudio=false,legacyController,
-  revisionEnabled=false,forwardResponse,sendResponse,presence,typingConfig={maxPauseMs:0}}={}){
+  revisionEnabled=false,forwardResponse,sendResponse,presence,typingConfig={maxPauseMs:0},
+  centralEnabled=false,centralAnswer='Confirmação de agendamento'}={}){
   let listener,transcriptions=0,downloads=0;
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'orion-inbound-names-'));
   contactDirectories.push(directory);
   const namesStore=makeContactNames({directory,secret:'synthetic-local-contact-key-at-least-32-bytes'});
   namesStore.bindIdentity('5511999990000@s.whatsapp.net');
   let nameChanges=0;
-  const forwarded=[],inbox=[],sent=[],events=[],queues=new Map(),seen=new Set(),notices=[],presenceCalls=[];
+  const forwarded=[],inbox=[],sent=[],events=[],queues=new Map(),seen=new Set(),notices=[],presenceCalls=[],centralCalls=[];
   const env={QR_AI_ENABLED:'1',QR_AI_AUDIO_ENABLED:audioEnabled?'1':'0',QR_AI_GROUP_WAIT_MS:'0',
     QR_AI_PILOT_NUMBER:phone,QR_AI_API_URL:'http://orion-assistente.railway.internal/internal/qr/ai/reply'};
   if(revisionEnabled)env.QR_AI_INTAKE_REVISION_ENABLED='1';
+  if(centralEnabled)env.ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED='1';
   const handlers=new Map();const client={ev:{on(event,callback){assert.ok(['messages.upsert','messages.update','messages.delete','call'].includes(event));handlers.set(event,callback);if(event==='messages.upsert')listener=callback;}}};
   if(presence)client.sendPresenceUpdate=(type,jid)=>{
     presenceCalls.push({type,jid});events.push(['typing',type,jid]);return presence(type,jid);
@@ -66,6 +69,12 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     },downloadMediaMessage:()=>{},logger:{},persistInbox(){},
     pushMessage:row=>{inbox.push(row);seen.add(row.id);},lastInboundAt:0,inboundSinceConnect:false,recentAppends:0,
     assistantQueues:queues,KEY:'x'.repeat(32),process:{env},Date,
+    isBookingProtocolMessage,
+    fetchBookingProtocolConfirmation:async(args)=>{centralCalls.push(args);return centralAnswer;},
+    sendLegacyRaw:async(p,body,options)=>{
+      assert.equal(options.isCurrent(),true);
+      sent.push(body);return {accepted:true};
+    },
     send:async(p,text,options)=>{
       assert.equal(p,phone);assert.equal(options.isCurrent(),true);
       const result=sendResponse?await sendResponse(text,options):{accepted:true};
@@ -84,7 +93,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     key:{id,remoteJid:remote,fromMe,...(senderPn?{senderPn}:{})},pushName,messageTimestamp:Math.floor(Date.now()/1000),
     message:text===undefined?{audioMessage:{fileLength,seconds}}:{conversation:text}
   });
-  return {context,env,forwarded,inbox,sent,events,message,notices,presenceCalls,namesStore,
+  return {context,env,forwarded,inbox,sent,events,message,notices,presenceCalls,namesStore,centralCalls,
     get nameChanges(){return nameChanges;},
     emit:(messages,type='notify')=>listener({type,messages}),emitEvent:(event,value)=>handlers.get(event)(value),
     get transcriptions(){return transcriptions;},get downloads(){return downloads;}};
@@ -346,4 +355,30 @@ test('real revised batch stops the old typing lease then shows only the single c
   assert.deepEqual(h.presenceCalls.map(x=>x.type),['composing','paused','composing','paused']);
   assert.deepEqual(h.sent,['Resumo final corrigido.']);assert.equal(h.forwarded.length,2);
   assert.deepEqual(h.forwarded[1].message_ids,['OLD-TYPING','NEW-TYPING']);assert.equal(timers.size,0);
+});
+
+
+test('central QR confirms a newly arriving unknown contact without enabling chatbot',async()=>{
+  const h=harness({centralEnabled:true,centralAnswer:'Seu horário está confirmado. 📅'});
+  const newPhone='5511888888888';
+  const payload=h.message('NEW-BOOKING-1',{
+    text:'*Olá, Orion!* 👋\n\n🧾 Protocolo: *AG-3SVM6N*',
+    remote:newPhone+'@s.whatsapp.net'
+  });
+  await h.emit([payload]);
+  assert.equal(h.centralCalls.length,1);
+  assert.equal(h.centralCalls[0].phone,newPhone);
+  assert.equal(h.centralCalls[0].messageId,'NEW-BOOKING-1');
+  assert.deepEqual(h.sent,['Seu horário está confirmado. 📅']);
+  assert.equal(h.inbox.length,1);
+  assert.equal(h.forwarded.length,0,'AI remains restricted');
+  assert.equal(h.notices.length,0,'no AI ingress for public confirmation');
+  await h.emit([payload]);
+  assert.equal(h.centralCalls.length,1,'same WA id is deduplicated');
+  await h.emit([h.message('NEW-QUESTION-1',{
+    text:'Bom dia, quais serviços vocês fazem?',
+    remote:newPhone+'@s.whatsapp.net'
+  })]);
+  assert.equal(h.centralCalls.length,1,'not an appointment protocol');
+  assert.equal(h.forwarded.length,0,'unknown contact cannot activate AI');
 });
