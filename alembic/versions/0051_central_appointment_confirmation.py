@@ -5,7 +5,7 @@ only a unique (tenant, appointment) pair can be used by the runtime under RLS.
 """
 from alembic import op
 
-revision="0051_central_appointment_confirmation"
+revision="0051_central_protocol"
 down_revision="0050_plan_permissions"
 branch_labels=None
 depends_on=None
