@@ -24,7 +24,9 @@ from scripts.backup_and_migrate_commissions import (
     connection_values, migrated_version, perform_backup, storage_values,
 )
 
-SCHEMA = "0037_recurring_goals"
+# This one-time, backup-gated repair is authorized only against the reviewed
+# current schema; 0047 added appointment_access and appointment_reviews FKs.
+SCHEMA = "0052_paraguay_phone"
 OPERATION = "customer_merge_20261027"
 PREFIX = "production/customer-merge-20261027/"
 FK_TABLES = {"appointments", "financial_entries", "loyalty_transactions",
@@ -304,6 +306,11 @@ def main(argv=None):
         print("orion_customer_repair_started", flush=True)
         raw, url = connection_values()
         require(migrated_version(raw) == SCHEMA, "customer_repair_schema_not_reviewed")
+        # Do not run even on this schema if either of the new customer FKs
+        # disappeared, or if an unforeseen reference was introduced.
+        with create_engine(raw, poolclass=NullPool).connect() as check:
+            require(verify_foreign_keys(check) == FK_TABLES | NEW_FK_TABLES,
+                    "customer_foreign_keys_changed")
         engine = create_engine(raw, poolclass=NullPool)
         with engine.begin() as db:
             db.execute(text("SET TRANSACTION READ ONLY"))
