@@ -157,7 +157,9 @@ async def test_admin_recovers_only_verified_recent_inbound_once_with_real_native
     sent=[]
     async def sender(t,c,op,*,message):
         assert (t,c,message['to'])==(d['a'],d['channel'],phone(920).lstrip('+'))
-        assert a['protocol'] in message['text'] and '/a#' in message['text']
+        # Model 02 deliberately omits the protocol: validate its approved native markup and scoped link.
+        assert '✂️ Serviço: *' in message['text'] and '/a#' in message['text']
+        assert '🔗 *Gerencie seu agendamento:*' in message['text']
         sent.append(op);return {'accepted':True,'state':'accepted','provider_id':'synthetic-provider-id'}
     context={'inbox_qr_sender':sender}
     assert await inbox_runtime.process_inbox_message(context,str(d['a']),str(first['operation_id']))=='accepted'
