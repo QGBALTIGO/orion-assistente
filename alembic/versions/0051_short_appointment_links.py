@@ -91,6 +91,38 @@ def upgrade():
         REVOKE ALL ON FUNCTION public.orion_due_short_challenges(integer) FROM PUBLIC,app_runtime;
         GRANT EXECUTE ON FUNCTION public.orion_due_short_challenges(integer) TO app_support;
     """)
+    op.execute("""
+        CREATE FUNCTION public.orion_clean_short_credentials(batch_limit integer)
+        RETURNS integer LANGUAGE plpgsql SECURITY DEFINER
+        SET search_path=pg_catalog,public AS $
+        DECLARE affected integer := 0; removed integer := 0;
+        BEGIN
+          IF batch_limit IS NULL OR batch_limit NOT BETWEEN 1 AND 1000 THEN RETURN 0; END IF;
+          UPDATE public.appointment_short_challenges SET
+            status='failed',body_encrypted=NULL
+          WHERE id IN (SELECT id FROM public.appointment_short_challenges
+            WHERE expires_at<=clock_timestamp()
+              AND status IN ('pending','sending','accepted')
+            ORDER BY expires_at,id LIMIT batch_limit);
+          GET DIAGNOSTICS affected=ROW_COUNT;
+          DELETE FROM public.appointment_short_challenges WHERE id IN
+            (SELECT id FROM public.appointment_short_challenges
+             WHERE expires_at<now()-interval '7 days'
+               AND status IN ('consumed','failed')
+             ORDER BY expires_at,id LIMIT batch_limit);
+          GET DIAGNOSTICS removed=ROW_COUNT; affected:=affected+removed;
+          DELETE FROM public.appointment_short_staff_sessions WHERE id IN
+            (SELECT id FROM public.appointment_short_staff_sessions
+             WHERE expires_at<now()-interval '7 days'
+             ORDER BY expires_at,id LIMIT batch_limit);
+          GET DIAGNOSTICS removed=ROW_COUNT;
+          RETURN affected+removed;
+        END $;
+        REVOKE ALL ON FUNCTION public.orion_clean_short_credentials(integer)
+            FROM PUBLIC,app_runtime;
+        GRANT EXECUTE ON FUNCTION public.orion_clean_short_credentials(integer)
+            TO app_support;
+    """)
     # Preserve existing protocol text. For a duplicated protocol across tenants,
     # only its first appointment keeps the natural alias; others receive a new
     # globally unique alias on first use. No ambiguous lookup is ever possible.
