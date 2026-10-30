@@ -97,7 +97,8 @@ def predeploy_main():
     def finish_permissions(result):
         if result:return result
         checked=permissions.main()
-        return checked if checked else central.main()
+        if checked:return checked
+        return central.main() if os.getenv('ORION_RUN_CENTRAL_APPOINTMENT_MIGRATION')=='1' else 0
     def finish_direct():
         result=direct.main()
         if result:return result
