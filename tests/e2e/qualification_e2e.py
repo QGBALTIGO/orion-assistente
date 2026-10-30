@@ -49,7 +49,7 @@ def test_01_signup_login_and_business_create_are_separate_real_transactions(jour
     from cryptography.fernet import Fernet
     encrypted = h.query("SELECT payload_enc FROM panel_email_outbox WHERE account_id=%s AND kind='verify' ORDER BY created_at DESC LIMIT 1", (account["id"],))[0]["payload_enc"]
     frozen = json.loads(Fernet(h.server.email_fernet_key.encode()).decrypt(encrypted.encode()))
-    codes = re.findall(r"(?m)^\\d{6}$", frozen["text"])
+    codes = re.findall(r"(?m)^\d{6}$", frozen["text"])
     assert len(codes) == 1
     page.locator("#verifyCode").fill(codes[0])
     with page.expect_response(lambda r: urlsplit(r.url).path == "/auth/verify") as confirmed:
