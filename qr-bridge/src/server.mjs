@@ -30,7 +30,7 @@ import {makeContactNameSync} from './contact-name-forward.mjs';
 import {transcriberConfig,cleanPictureUrl,transcribeAudio,handleCallOffers} from "./connected-features.mjs";
 import {protectSignalSessionLogs} from "./signal-log-safety.mjs";
 import {forwardAssistant,registerAssistantIngress} from "./ai-forward.mjs";
-import {isBookingProtocolMessage,fetchBookingProtocolConfirmation} from "./appointment-confirmation.mjs";
+import {isBookingProtocolMessage,fetchBookingProtocolConfirmation,resolveBookingSenderPhone} from "./appointment-confirmation.mjs";
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
 import {deliveryPolicy} from "./pilot-send-policy.mjs";
 import {resolvePilotRecipient,makePilotDeviceCache} from "./pilot-recipient.mjs";
@@ -436,25 +436,46 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
         if(handledBookingProtocols.size>2000)
           handledBookingProtocols.delete(handledBookingProtocols.values().next().value);
         const task=(async()=>{
-          let sendAttempted=false;
+          let sendAttempted=false,phase='identity';
           try{
-            const phone=await resolveMessagePhone(message.key,client);
-            if(!intakeCurrent()||!phone)return;
+            const phone=await resolveBookingSenderPhone(message.key,client,{isCurrent:intakeCurrent});
+            if(!intakeCurrent())return;
+            if(!phone){
+              transport.record('booking_protocol_identity_unresolved',traceId,{
+                kind:String(message.key.remoteJid||'').endsWith('@lid')?'lid':'pn'});
+              return;
+            }
+            transport.record('booking_protocol_identity_verified',traceId);
+            phase='journal';
             const now=timestampMs(message.messageTimestamp)||Date.now();
             pushMessage({id:'wa:'+traceId,phone,body:normalized.text.slice(0,2000),
               direction:'in',at:now});
             lastInboundAt=Date.now();inboundSinceConnect=true;
+            phase='backend';
             const response=await fetchBookingProtocolConfirmation({
               apiUrl:process.env.QR_AI_API_URL||process.env.QR_CHANNEL_BROKER_URL,
-              token:KEY,phone,messageId:traceId,text:normalized.text,isCurrent:intakeCurrent});
-            if(!response||!intakeCurrent())return;
-            sendAttempted=true;
+              token:KEY,phone,messageId:traceId,text:normalized.text,isCurrent:intakeCurrent,
+              onStatus:state=>transport.record('booking_protocol_backend_state',traceId,{status:state})});
+            if(!intakeCurrent())return;
+            if(!response){
+              transport.record('booking_protocol_no_reply',traceId);
+              return;
+            }
+            phase='send';
+            sendAttempted=true; // Never retry after an ambiguous WhatsApp operation.
             const result=await sendLegacyRaw(phone,response,{
               waitForCapacity:true,isCurrent:intakeCurrent});
             transport.record(result?.accepted?'booking_protocol_sent':'booking_protocol_unconfirmed',traceId);
-          }catch{
+          }catch(error){
             if(!sendAttempted)handledBookingProtocols.delete(key);
-            transport.record('booking_protocol_failed',traceId);
+            const known=new Set(['invalid_confirmation_inbound','invalid_confirmation_transport',
+              'missing_confirmation_endpoint','unsafe_confirmation_endpoint',
+              'central_confirmation_auth_denied','central_confirmation_http_error',
+              'central_confirmation_unavailable','central_confirmation_invalid_response']);
+            const category=known.has(error?.message)?error.message:
+              error?.name==='AbortError'?'timeout':'other';
+            // No phone, LID, untrusted text, token or provider exception in logs.
+            transport.record('booking_protocol_failed',traceId,{category:phase,error:category});
           }
         })();
         jobs.push(task);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isBookingProtocolMessage,fetchBookingProtocolConfirmation}
+import {isBookingProtocolMessage,fetchBookingProtocolConfirmation,resolveBookingSenderPhone}
   from '../src/appointment-confirmation.mjs';
 
 const text='*Olá, Orion!* 👋\n\nAcabei de realizar um agendamento pelo site.\n\n🧾 Protocolo: *AG-3SVM6N*\n\n_Aguardo os detalhes da minha confirmação._';
@@ -67,6 +67,73 @@ test('número novo é aceito, mas resposta precisa ser do backend',async()=>{
     await assert.rejects(fetchBookingProtocolConfirmation({
       apiUrl:base,token,phone,messageId:'id',text,
       fetchImpl:async()=>{throw Error('should not send');}
+    }));
+  }
+});
+
+test('strict LID->PN resolution waits only for provider-authenticated mapping',async()=>{
+  const lid='998877665544332211@lid',key={remoteJid:lid};
+  let count=0;
+  const waits=[];
+  const valid=await resolveBookingSenderPhone(key,{},{
+    resolver:async()=>{count++;return count<3?null:'5567998888777';},
+    sleep:async ms=>{waits.push(ms);}
+  });
+  assert.equal(valid,'5567998888777');
+  assert.deepEqual(waits,[150,350]);
+  assert.equal(count,3);
+  const unresolved=await resolveBookingSenderPhone(key,{},{
+    resolver:async()=>null,sleep:async()=>{}
+  });
+  assert.equal(unresolved,null);
+  let reads=0;
+  const group=await resolveBookingSenderPhone({remoteJid:'123456789@g.us'}, {},{
+    resolver:async()=>{reads++;return null;},sleep:async()=>{throw Error('must not wait');}
+  });
+  assert.equal(group,null);
+  assert.equal(reads,1);
+});
+
+test('temporary lookup outage retries only the idempotent private API request',async()=>{
+  let count=0;const states=[];
+  const result=await fetchBookingProtocolConfirmation({
+    apiUrl:base,token,phone:'5567998888777',messageId:'same-id',text,
+    sleep:async()=>{},onStatus:status=>states.push(status),
+    fetchImpl:async(_url,options)=>{
+      count++;
+      assert.equal(JSON.parse(options.body).message_id,'same-id');
+      if(count===1)return {ok:false,status:503};
+      return {ok:true,json:async()=>({state:'confirmed',answer:'Confirmado'})};
+    }
+  });
+  assert.equal(result,'Confirmado');
+  assert.equal(count,2);
+  assert.deepEqual(states,['retrying','confirmed']);
+});
+
+test('unavailable database retries once without exposing a booking or sending to a phone',async()=>{
+  let count=0;
+  const result=await fetchBookingProtocolConfirmation({
+    apiUrl:base,token,phone:'5567998888777',messageId:'same-id',text,
+    sleep:async()=>{},
+    fetchImpl:async()=>{count++;return {ok:true,json:async()=>({
+      state:count===1?'unavailable':'unrecognized',
+      ...(count===1?{answer:null}:{answer:'Não foi possível validar o protocolo.'})
+    })};}
+  });
+  assert.equal(result,'Não foi possível validar o protocolo.');
+  assert.equal(count,2);
+});
+
+test('invalid or unauthorized private response is never a customer confirmation',async()=>{
+  for(const response of [
+    {ok:false,status:401},
+    {ok:true,json:async()=>({state:'confirmed',answer:null})},
+    {ok:true,json:async()=>({state:'unexpected',answer:'not trusted'})}
+  ]){
+    await assert.rejects(fetchBookingProtocolConfirmation({
+      apiUrl:base,token,phone:'5567998888777',messageId:'id',text,
+      fetchImpl:async()=>response,sleep:async()=>{}
     }));
   }
 });

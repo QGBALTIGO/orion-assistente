@@ -9,7 +9,7 @@ import {makeContactNames} from '../src/contact-names.mjs';
 import {extractText,resolveMessagePhone} from '../src/core.mjs';
 import {shouldIngestUpsert,timestampMs} from '../src/linked-session-health.mjs';
 import {forwardAssistant,registerAssistantIngress} from '../src/ai-forward.mjs';
-import {isBookingProtocolMessage} from '../src/appointment-confirmation.mjs';
+import {isBookingProtocolMessage,resolveBookingSenderPhone} from '../src/appointment-confirmation.mjs';
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from '../src/ai-pilot.mjs';
 import {makeConversationIntake} from '../src/conversation-intake.mjs';
 import {makeAssistantTyping} from '../src/assistant-typing.mjs';
@@ -69,7 +69,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     },downloadMediaMessage:()=>{},logger:{},persistInbox(){},
     pushMessage:row=>{inbox.push(row);seen.add(row.id);},lastInboundAt:0,inboundSinceConnect:false,recentAppends:0,
     assistantQueues:queues,KEY:'x'.repeat(32),process:{env},Date,
-    isBookingProtocolMessage,
+    isBookingProtocolMessage,resolveBookingSenderPhone,
     fetchBookingProtocolConfirmation:async(args)=>{centralCalls.push(args);return centralAnswer;},
     sendLegacyRaw:async(p,body,options)=>{
       assert.equal(options.isCurrent(),true);
@@ -381,4 +381,31 @@ test('central QR confirms a newly arriving unknown contact without enabling chat
   })]);
   assert.equal(h.centralCalls.length,1,'not an appointment protocol');
   assert.equal(h.forwarded.length,0,'unknown contact cannot activate AI');
+});
+
+test('new WhatsApp LID gets a bounded PN mapping retry, then confirmation without AI',async()=>{
+  const h=harness({centralEnabled:true,centralAnswer:'Confirmado com segurança'});
+  const lid='123456789012345678@lid';
+  let calls=0;
+  h.context.client.signalRepository={lidMapping:{getPNForLID:async value=>{
+    assert.equal(value,lid);calls++;
+    return calls===1?null:'5511888888888@s.whatsapp.net';
+  }}};
+  await h.emit([h.message('LID-NEW-CLIENT',{text:'Protocolo: AG-3SVM6N',remote:lid})]);
+  assert.equal(calls,2);
+  assert.equal(h.centralCalls.length,1);
+  assert.equal(h.centralCalls[0].phone,'5511888888888');
+  assert.deepEqual(h.sent,['Confirmado com segurança']);
+  assert.equal(h.forwarded.length,0,'chatbot still requires allowlist');
+  assert.ok(h.events.some(event=>event[0]==='booking_protocol_identity_verified'));
+});
+
+test('unresolvable WhatsApp LID cannot be guessed or get customer information',async()=>{
+  const h=harness({centralEnabled:true});
+  const lid='123456789012345679@lid';
+  h.context.client.signalRepository={lidMapping:{getPNForLID:async()=>null}};
+  await h.emit([h.message('LID-MISSING-PN',{text:'Protocolo: AG-3SVM6N',remote:lid})]);
+  assert.deepEqual(h.centralCalls,[]);
+  assert.deepEqual(h.sent,[]);
+  assert.ok(h.events.some(event=>event[0]==='booking_protocol_identity_unresolved'));
 });
