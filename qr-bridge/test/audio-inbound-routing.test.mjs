@@ -38,7 +38,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
   const namesStore=makeContactNames({directory,secret:'synthetic-local-contact-key-at-least-32-bytes'});
   namesStore.bindIdentity('5511999990000@s.whatsapp.net');
   let nameChanges=0;
-  const forwarded=[],inbox=[],sent=[],events=[],queues=new Map(),seen=new Set(),notices=[],presenceCalls=[],centralCalls=[];
+  const forwarded=[],inbox=[],sent=[],sentOptions=[],events=[],queues=new Map(),seen=new Set(),notices=[],presenceCalls=[],centralCalls=[];
   const env={QR_AI_ENABLED:'1',QR_AI_AUDIO_ENABLED:audioEnabled?'1':'0',QR_AI_GROUP_WAIT_MS:'0',
     QR_AI_PILOT_NUMBER:phone,QR_AI_API_URL:'http://orion-assistente.railway.internal/internal/qr/ai/reply'};
   if(revisionEnabled)env.QR_AI_INTAKE_REVISION_ENABLED='1';
@@ -73,7 +73,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     fetchBookingProtocolConfirmation:async(args)=>{centralCalls.push(args);return centralAnswer;},
     sendLegacyRaw:async(p,body,options)=>{
       assert.equal(options.isCurrent(),true);
-      sent.push(body);return {accepted:true};
+      sent.push(body);sentOptions.push({phone:p,transactionalTyping:options.transactionalTyping===true});return {accepted:true};
     },
     send:async(p,text,options)=>{
       assert.equal(p,phone);assert.equal(options.isCurrent(),true);
@@ -93,7 +93,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     key:{id,remoteJid:remote,fromMe,...(senderPn?{senderPn}:{})},pushName,messageTimestamp:Math.floor(Date.now()/1000),
     message:text===undefined?{audioMessage:{fileLength,seconds}}:{conversation:text}
   });
-  return {context,env,forwarded,inbox,sent,events,message,notices,presenceCalls,namesStore,centralCalls,
+  return {context,env,forwarded,inbox,sent,sentOptions,events,message,notices,presenceCalls,namesStore,centralCalls,
     get nameChanges(){return nameChanges;},
     emit:(messages,type='notify')=>listener({type,messages}),emitEvent:(event,value)=>handlers.get(event)(value),
     get transcriptions(){return transcriptions;},get downloads(){return downloads;}};
@@ -408,4 +408,34 @@ test('unresolvable WhatsApp LID cannot be guessed or get customer information',a
   assert.deepEqual(h.centralCalls,[]);
   assert.deepEqual(h.sent,[]);
   assert.ok(h.events.some(event=>event[0]==='booking_protocol_identity_unresolved'));
+});
+
+test('protocolo de cliente +595 solicita digitando ao transporte depois da fila sem liberar bot IA',async()=>{
+  const recipient='595992820210',statuses=[];
+  const h=harness({
+    centralEnabled:true,
+    presence:(state,jid)=>{statuses.push({state,jid});return Promise.resolve();},
+    typingConfig:{maxPauseMs:0}
+  });
+  await h.emit([h.message('PY-TRANSACTIONAL-1',{
+    remote:recipient+'@s.whatsapp.net',text:'Olá, Orion! 🧾 Protocolo: AG-GUHRPR'
+  })]);
+  assert.equal(h.centralCalls.length,1);
+  assert.equal(h.centralCalls[0].phone,recipient);
+  assert.equal(h.sent.length,1);
+  assert.deepEqual(statuses,[],'a presença ocorre após a admissão no transporte, não no handler');
+  assert.deepEqual(h.sentOptions,[{phone:recipient,transactionalTyping:true}]);
+  assert.equal(h.forwarded.length,0,'chatbot IA continua restrito');
+});
+
+test('código inválido não gera presença nem resposta automática ao contato novo',async()=>{
+  const recipient='595992820210',statuses=[];
+  const h=harness({centralEnabled:true,presence:(type,jid)=>{statuses.push({type,jid});}});
+  await h.emit([h.message('PY-INVALID-1',{
+    remote:recipient+'@s.whatsapp.net',text:'Oi, quanto custa?'
+  })]);
+  assert.deepEqual(statuses,[]);
+  assert.equal(h.centralCalls.length,0);
+  assert.equal(h.sent.length,0);
+  assert.equal(h.forwarded.length,0);
 });

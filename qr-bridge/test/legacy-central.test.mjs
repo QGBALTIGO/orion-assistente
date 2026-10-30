@@ -140,3 +140,17 @@ test('old self PN requires HMAC correspondence with the preserved physical sessi
     else {await assert.rejects(central.resume(),/invalid_legacy_adoption/);assert.equal(starts,0);}
   }
 });
+
+test('aviso automático autorizado propaga digitando apenas para o envio transacional',async()=>{
+  const f=fixture();await f.central.resume();
+  const adapter=f.adapter();
+  await adapter.send(phone,'Aviso transacional sintético',{transactionalTyping:true,isCurrent:()=>true});
+  const actual=f.calls.find(c=>c[0]==='raw');
+  assert.equal(actual[1],phone);
+  assert.equal(actual[3].waitForCapacity,true);
+  assert.equal(actual[3].transactionalTyping,true);
+  // A manual transport request has no implicit typing behavior.
+  await adapter.send(phone,'Mensagem manual sintética');
+  const second=f.calls.filter(c=>c[0]==='raw')[1];
+  assert.equal(second[3].transactionalTyping,false);
+});

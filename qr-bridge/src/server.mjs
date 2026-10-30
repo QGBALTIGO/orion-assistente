@@ -463,8 +463,10 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
             }
             phase='send';
             sendAttempted=true; // Never retry after an ambiguous WhatsApp operation.
+            // Capacity is admitted before composing starts. Presence reflects
+            // a pending authenticated reply, never a rate-limited backlog.
             const result=await sendLegacyRaw(phone,response,{
-              waitForCapacity:true,isCurrent:intakeCurrent});
+              waitForCapacity:true,isCurrent:intakeCurrent,transactionalTyping:true});
             transport.record(result?.accepted?'booking_protocol_sent':'booking_protocol_unconfirmed',traceId);
           }catch(error){
             if(!sendAttempted)handledBookingProtocols.delete(key);
@@ -819,7 +821,7 @@ async function send(phone,text,options={}){
   if(legacyCentral.configured())return legacyCentral.automatic(phone,text,options);
   return sendLegacyRaw(phone,text,options);
 }
-async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true}={}){
+async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false}={}){
   const target=validPhone(phone);
   if(status!=="connected"||!socket)throw Error("O WhatsApp não está conectado");
   if(typeof text!=="string"||!text.trim()||text.length>1200)
@@ -837,6 +839,19 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
   if(!current())
     throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
   const {jid,kind}=recipientProof;
+  let presenceLease=null;
+  try{
+    if(transactionalTyping){
+      // Only an admitted, destination-authorized transactional notice sends
+      // composing. Never emit it while a queue is waiting or a chat is revoked.
+      presenceLease=makeAssistantTyping({
+        socket:selectedSocket,pilotPhone:()=>target,isConnected:current,
+        isAllowed:recipient=>recipient===target,
+        transactional:true,maxPauseMs:1400
+      }).begin({phone:target,chatJid:jid,isCurrent:current});
+      await presenceLease.beforeReply(text);
+      if(!current())throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
+    }
   if(reliable){
     result=await sendStoredText({
       jid,recipientProof,text:text.trim(),store:retryStore,freshDevices,
@@ -872,6 +887,7 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
   // sendMessage resolve quando a biblioteca entrega ao transporte, não
   // quando o iPhone consegue descriptografar. Apenas receipts validam isso.
   return {accepted:true,delivery:deliveryReceipts.get(result.key.id)||"pending",id,trace:transport.tag(result.key.id)};
+  }finally{presenceLease?.stop();}
 }
 
 const server=http.createServer(async(req,res)=>{

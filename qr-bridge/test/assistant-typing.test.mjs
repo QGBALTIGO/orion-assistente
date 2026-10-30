@@ -116,3 +116,70 @@ test('refresh is bounded and the 20-second watchdog stops even if preparation re
   const count=h.calls.length;await h.clock.advance(20000);assert.equal(h.calls.length,count);
   work.resolve();await result;assert.equal(sends,1);assert.equal(h.calls.length,count);
 });
+
+
+test('transacional exibe digitando ao remetente paraguaio verificado, sem liberar o piloto de IA',async()=>{
+  const h=harness();
+  const verified='595992820210',isCurrent=()=>true;
+  const transactional=makeAssistantTyping({
+    socket:h.socket,pilotPhone:()=>verified,
+    isConnected:()=>true,isAllowed:phone=>phone===verified,
+    now:h.clock.now,schedule:h.clock.schedule,cancel:h.clock.cancel,
+    transactional:true,maxPauseMs:1500
+  });
+  const pending=transactional.run({
+    phone:verified,chatJid:'123456789012345@lid',isCurrent
+  },async lease=>{
+    await lease.beforeReply('Confirmação autorizada de agendamento '+'.'.repeat(250));
+    return 'one confirmed message';
+  });
+  assert.equal(h.calls[0].type,'composing');
+  assert.equal(h.calls[0].target,verified+'@s.whatsapp.net');
+  await h.clock.advance(1499);
+  assert.equal(h.calls.length,1);
+  await h.clock.advance(1);
+  assert.equal(await pending,'one confirmed message');
+  assert.deepEqual(h.calls.map(c=>c.type),['composing','paused']);
+  assert.equal(h.clock.count(),0);
+  // The legacy AI default is still restricted to its existing Brazilian pilot.
+  await h.typing.run({...h.options,phone:verified,chatJid:verified+'@s.whatsapp.net'},async()=>{});
+  assert.equal(h.calls.length,2);
+});
+
+test('contatos diferentes podem receber presença transacional sem se interromper',async()=>{
+  const h=harness(),other='5511999990022';
+  const maker=phone=>makeAssistantTyping({
+    socket:h.socket,pilotPhone:()=>phone,
+    isConnected:()=>true,isAllowed:value=>value===phone,
+    transactional:true,maxPauseMs:1300,
+    now:h.clock.now,schedule:h.clock.schedule,cancel:h.clock.cancel
+  });
+  const a=maker(phone),b=maker(other);
+  const resultA=a.run({phone,chatJid:jid,isCurrent:()=>true},
+    async lease=>{await lease.beforeReply('x'.repeat(200));return 'A';});
+  const resultB=b.run({phone:other,chatJid:other+'@s.whatsapp.net',isCurrent:()=>true},
+    async lease=>{await lease.beforeReply('y'.repeat(200));return 'B';});
+  assert.deepEqual(h.calls.filter(x=>x.type==='composing').map(x=>x.target).sort(),
+    [jid,other+'@s.whatsapp.net'].sort());
+  await h.clock.advance(1300);
+  assert.deepEqual(await Promise.all([resultA,resultB]),['A','B']);
+  assert.deepEqual(h.calls.filter(x=>x.type==='paused').map(x=>x.target).sort(),
+    [jid,other+'@s.whatsapp.net'].sort());
+  assert.equal(h.clock.count(),0);
+});
+
+test('presença transacional não é enviada a grupo, contato não autorizado ou sessão desconectada',async()=>{
+  for(const {phone:recipient,chatJid,connected,allow} of [
+    {phone:'595992820210',chatJid:'123@g.us',connected:true,allow:true},
+    {phone:'595992820210',chatJid:'595992820210@s.whatsapp.net',connected:true,allow:false},
+    {phone:'595992820210',chatJid:'595992820210@s.whatsapp.net',connected:false,allow:true},
+    {phone:'12025550123',chatJid:'12025550123@s.whatsapp.net',connected:true,allow:true}
+  ]){
+    const h=harness(),typing=makeAssistantTyping({
+      socket:h.socket,pilotPhone:()=>recipient,isConnected:()=>connected,isAllowed:()=>allow,
+      transactional:true,now:h.clock.now,schedule:h.clock.schedule,cancel:h.clock.cancel
+    });
+    await typing.run({phone:recipient,chatJid,isCurrent:()=>true},async()=>{});
+    assert.deepEqual(h.calls,[]);assert.equal(h.clock.count(),0);
+  }
+});
