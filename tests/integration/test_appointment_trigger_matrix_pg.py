@@ -331,3 +331,48 @@ async def test_notification_receipt_accepted_is_not_a_read_receipt(comm_db):
                  str(d["a"]),str(n["id"]))=="read"
     assert (await single(d,"professional_new"))["status"]=="read"
     assert len(sent)==1
+
+
+@pytest.mark.asyncio
+async def test_staff_proposal_rejected_by_customer_notifies_professional_and_preserves_original_slot(comm_db):
+    from app.appointment_changes import propose_if_required
+    from app.booking_api import RescheduleRequest
+    d=comm_db;original=await booking(d)
+    async with d["migrator"].begin() as db:
+        await db.execute(text("""UPDATE appointment_communication_settings
+            SET reschedule_acceptance=true WHERE tenant_id=:tenant"""),{"tenant":d["a"]})
+    payload=RescheduleRequest(start_at=start_at(d["day"],14),
+                              expected_updated_at=original["updated_at"],
+                              idempotency_key="decline-proposal-"+str(uuid4()))
+    operator=LifecycleActor(role="owner",source="panel",account_id=d["account"])
+    async with d["factory"]() as db:
+        proposal=await propose_if_required(db,d["a"],original["id"],payload,operator)
+    proposal_id=proposal["pending_change"]["id"]
+    assert proposal["change_status"]=="pending_customer_acceptance"
+    async with d["factory"]() as db:
+        async with tenant_transaction(db,d["a"]):
+            declined=(await db.execute(text("""UPDATE appointment_change_proposals
+                SET status='declined' WHERE tenant_id=:t AND appointment_id=:id
+                    AND id=:proposal AND status='pending' RETURNING id"""),
+                {"t":d["a"],"id":original["id"],"proposal":proposal_id})).scalar_one()
+            await notifications.enqueue_event(db,d["a"],original["id"],
+                 "reschedule_declined",{"source":"public_site","requested_by":"customer",
+                    "previous":{"proposal_id":str(declined)}})
+    n=await single(d,"professional_proposal_declined")
+    assert n["recipient_kind"]=="professional" and n["recipient_id"]==d["pro"]
+    ctx,sent=fake_transport()
+    assert await notifications.process_notification(ctx,str(d["a"]),str(n["id"]))=="accepted"
+    assert len(sent)==1 and sent[0][2]==PRO_PHONE
+    assert "PROPOSTA DE REMARCAÇÃO RECUSADA!" in sent[0][3]
+    assert await notifications.process_notification(ctx,str(d["a"]),str(n["id"]))=="accepted"
+    assert len(sent)==1
+    # An old proposal must never be delivered after the customer rejects it.
+    pending=await single(d,"customer_proposal")
+    assert await notifications.process_notification(ctx,str(d["a"]),str(pending["id"]))=="proposal_changed"
+    assert len(sent)==1
+    async with d["factory"]() as db:
+        async with tenant_transaction(db,d["a"]):
+            row=(await db.execute(text(
+                "SELECT status,start_at FROM appointments WHERE tenant_id=:t AND id=:id"),
+                {"t":d["a"],"id":original["id"]})).one()
+    assert row.status=="confirmed" and row.start_at==original["start_at"]
