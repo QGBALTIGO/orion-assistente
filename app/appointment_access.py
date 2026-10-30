@@ -112,7 +112,7 @@ async def guard(db, tenant):
         raise HTTPException(404, UNAVAILABLE)
 
 
-async def issue(db, tenant, appointment):
+async def issue(db, tenant, appointment, *, short_session=False):
     require_tenant(tenant)
     row = (await db.execute(text('''SELECT a.customer_id,a.end_at,c.version FROM appointments a
         JOIN customers c ON c.tenant_id=a.tenant_id AND c.id=a.customer_id
@@ -124,9 +124,12 @@ async def issue(db, tenant, appointment):
     digest = hashlib.sha256(raw.encode()).hexdigest()
     # Keep links through the post-service review period. Old links are never
     # rotated merely because a customer requests confirmation again.
+    # Existing /a# links retain their lifetime; a code-verified browser
+    # cookie has an independent, strictly short-lived database capability.
+    ttl = "clock_timestamp()+interval '2 hours'" if short_session else "GREATEST(:end,clock_timestamp())+interval '90 days'"
     await db.execute(text('''INSERT INTO appointment_access
         (tenant_id,appointment_id,customer_id,customer_version,token_hash,expires_at)
-        VALUES(:t,:id,:customer,:version,:hash,GREATEST(:end,clock_timestamp())+interval '90 days')'''),
+        VALUES(:t,:id,:customer,:version,:hash,''' + ttl + ')'),
         {'t': tenant, 'id': appointment, 'customer': row['customer_id'], 'version': row['version'],
          'hash': digest, 'end': row['end_at']})
     return canonical_public_origin() + '/a#' + raw
