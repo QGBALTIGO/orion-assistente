@@ -10,6 +10,7 @@ import {extractText,resolveMessagePhone} from '../src/core.mjs';
 import {shouldIngestUpsert,timestampMs} from '../src/linked-session-health.mjs';
 import {forwardAssistant,registerAssistantIngress} from '../src/ai-forward.mjs';
 import {isBookingProtocolMessage,resolveBookingSenderPhone} from '../src/appointment-confirmation.mjs';
+import {makeBookingIntakeGuard} from '../src/booking-intake-guard.mjs';
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from '../src/ai-pilot.mjs';
 import {makeConversationIntake} from '../src/conversation-intake.mjs';
 import {makeAssistantTyping} from '../src/assistant-typing.mjs';
@@ -69,7 +70,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     },downloadMediaMessage:()=>{},logger:{},persistInbox(){},
     pushMessage:row=>{inbox.push(row);seen.add(row.id);},lastInboundAt:0,inboundSinceConnect:false,recentAppends:0,
     assistantQueues:queues,KEY:'x'.repeat(32),process:{env},Date,
-    isBookingProtocolMessage,resolveBookingSenderPhone,
+    isBookingProtocolMessage,resolveBookingSenderPhone,makeBookingIntakeGuard,
     fetchBookingProtocolConfirmation:async(args)=>{centralCalls.push(args);return centralAnswer;},
     sendLegacyRaw:async(p,body,options)=>{
       assert.equal(options.isCurrent(),true);
@@ -438,4 +439,33 @@ test('código inválido não gera presença nem resposta automática ao contato 
   assert.equal(h.centralCalls.length,0);
   assert.equal(h.sent.length,0);
   assert.equal(h.forwarded.length,0);
+});
+
+test('um número não pode consultar o banco sem limite mesmo com vários protocolos',async()=>{
+ const h=harness({centralEnabled:true,centralAnswer:'Confirmação sintética'});
+ const entries=Array.from({length:20},(_,i)=>h.message('BOOKING-SPAM-'+i,{
+   text:'Olá Orion! Protocolo: AG-3SVM6N'
+ }));
+ await h.emit(entries);
+ assert.equal(h.centralCalls.length,8,'limite local por PN');
+ assert.equal(h.sent.length,8);
+ assert.equal(h.events.filter(e=>e[0]==='booking_protocol_rate_limited').length,12);
+ assert.equal(h.events.some(e=>e[0]==='ai_forward'),false);
+ assert.equal(h.forwarded.length,0,'não habilitar IA ao público');
+});
+
+test('contatos diferentes recebem consultas independentes e nenhuma mensagem de grupo',async()=>{
+ const h=harness({centralEnabled:true});
+ const all=[
+   h.message('SAFE-BR-1',{remote:'5511999998888@s.whatsapp.net',
+     text:'Protocolo: AG-3SVM6N'}),
+   h.message('SAFE-PY-1',{remote:'595992820210@s.whatsapp.net',
+     text:'Protocolo: AG-3SVM6N'}),
+   h.message('GROUP-INVALID',{remote:'1234567890@g.us',
+     text:'Protocolo: AG-3SVM6N'})
+ ];
+ await h.emit(all);
+ assert.deepEqual(h.centralCalls.map(c=>c.phone).sort(),['5511999998888','595992820210']);
+ assert.equal(h.sent.length,2);
+ assert.equal(h.forwarded.length,0);
 });
