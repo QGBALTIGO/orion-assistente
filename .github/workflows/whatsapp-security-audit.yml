@@ -43,6 +43,7 @@ jobs:
           node --check qr-bridge/src/booking-intake-guard.mjs
           node --check qr-bridge/src/encrypted-retry-store.mjs
           node --test \
+            qr-bridge/test/consented-live-qa.test.mjs \
             qr-bridge/test/booking-intake-guard.test.mjs \
             qr-bridge/test/audio-inbound-routing.test.mjs \
             qr-bridge/test/appointment-confirmation.test.mjs \
