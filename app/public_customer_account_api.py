@@ -233,12 +233,14 @@ async def appointments(slug: str, request: Request,
     where = ("a.status='confirmed' AND a.start_at>=clock_timestamp()"
              if kind == "upcoming" else
              "a.status<>'hold' AND NOT(a.status='confirmed' AND a.start_at>=clock_timestamp())")
+    # Closest upcoming visit first, newest historical visit first.
+    direction = "ASC" if kind == "upcoming" else "DESC"
     async with get_session_factory()() as db:
         async with tenant_transaction(db, tenant):
             rows = (await db.execute(text("""
                 SELECT a.id FROM appointments a
                 WHERE a.tenant_id=:t AND a.customer_id=:customer AND """ + where + """
-                ORDER BY a.start_at DESC,a.id DESC
+                ORDER BY a.start_at """ + direction + """,a.id """ + direction + """
                 LIMIT 26 OFFSET :offset
             """), {"t": tenant, "customer": customer["id"], "offset": offset})).scalars().all()
             details = await read_appointments(db, tenant, list(rows[:25]))
