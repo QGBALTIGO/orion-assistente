@@ -23,7 +23,7 @@ from app.appointment_short_links import (
     CUSTOMER_COOKIE, STAFF_COOKIE, GENERIC_REQUEST, checked_code,
     resolve_global, response_cookie, belongs,
 )
-from app.appointment_short_auth import request_otp, redeem_otp, verify_staff
+from app.appointment_short_auth import redeem_otp, verify_staff
 from app.booking_service import read_appointment, list_slots, cancel_appointment, reschedule_appointment
 from app.catalog_schemas import StrictModel
 from app.database import get_session_factory, tenant_transaction
@@ -62,6 +62,19 @@ def private_json(body, status_code=200):
     return JSONResponse(jsonable_encoder(body), status_code=status_code, headers=PRIVATE_HEADERS)
 
 
+async def enqueue_request(code, role):
+    """Public POST never queries whether a code exists, only queues a bounded job."""
+    from arq import create_pool
+    from arq.connections import RedisSettings
+    from uuid import uuid4
+    redis = await create_pool(RedisSettings.from_dsn(os.environ["REDIS_URL"]))
+    try:
+        await redis.enqueue_job("request_short_otp", code, role,
+                _job_id="short-link-request:" + str(uuid4()))
+    finally:
+        await redis.aclose()
+
+
 @router.post("/api/short-appointments/{code}/request-code", status_code=202)
 async def request_code(code: str, payload: DeliveryRequest, request: Request):
     require_enabled()
@@ -70,9 +83,10 @@ async def request_code(code: str, payload: DeliveryRequest, request: Request):
     # Redis limits fail closed and use only peer IP / opaque protocol keys.
     await public_limit(request, "short-links", "short-request-ip", 10, 3600)
     await public_limit(request, "short-links", "short-request-code", 5, 1800, subject=code)
-    resolved = await resolve_global(code)
-    if resolved:
-        await request_otp(resolved["tenant_id"], resolved["appointment_id"], payload.recipient_kind)
+    # Queued for *all* syntactically valid codes, including unknown ones.
+    # Lookup and delivery happen behind the private worker; HTTP response
+    # timing and body do not depend on the existence of an appointment.
+    await enqueue_request(code, payload.recipient_kind)
     return private_json(GENERIC_REQUEST,status_code=202)
 
 
