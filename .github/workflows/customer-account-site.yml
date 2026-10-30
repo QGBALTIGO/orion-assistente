@@ -19,7 +19,7 @@ permissions:
   contents: read
 jobs:
   portal-backend:
-    name: API sem SMS real e regressões de segurança
+    name: API sem SMS, prova pelo link e regressões de segurança
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -104,5 +104,5 @@ jobs:
             -f infra/postgres/init/001-roles.sql
       - name: Migrar banco sintético
         run: python -m alembic upgrade head
-      - name: Testar CRM, conta, concorrência e motor único de agenda
+      - name: Testar CRM, link existente, histórico e motor único de agenda
         run: pytest -q -ra tests/integration/test_public_customer_account_pg.py
