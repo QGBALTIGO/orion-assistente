@@ -37,3 +37,14 @@ test("all booking professional notices require cache before first relay even if 
  assert.equal(requiresPreRelayCache(),false);
  assert.equal(requiresPreRelayCache({reliable:"true",source:"unknown"}),false);
 });
+
+test("all appointment cancellations and notices bypass stale device cache without broadening identity",()=>{
+ for(const phone of ["5511999999999","595992000001"]){
+   assert.deepEqual(deliveryPolicy(phone,{...env,QR_AI_ENABLED:"0"},
+      {source:"appointment"}),{reliable:true,freshDevices:true,pilot:false});
+ }
+ assert.deepEqual(deliveryPolicy("5511999999999",{...env,QR_AI_ENABLED:"0"},
+    {source:"manual"}),{reliable:false,freshDevices:false,pilot:false});
+ assert.deepEqual(deliveryPolicy("5511999999999",{...env,QR_AI_ENABLED:"0"},
+    {source:"automation"}),{reliable:false,freshDevices:false,pilot:false});
+});

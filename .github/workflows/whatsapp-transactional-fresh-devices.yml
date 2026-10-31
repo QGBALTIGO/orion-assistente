@@ -1,0 +1,34 @@
+name: Orion - notificacoes WhatsApp e dispositivos atualizados
+on:
+  pull_request:
+    paths:
+      - 'qr-bridge/src/pilot-send-policy.mjs'
+      - 'qr-bridge/src/server.mjs'
+      - 'qr-bridge/test/pilot-send-policy.test.mjs'
+      - 'app/worker.py'
+      - 'tests/unit/test_transactional_delivery_frequency.py'
+      - '.github/workflows/whatsapp-transactional-fresh-devices.yml'
+permissions:
+  contents: read
+jobs:
+  relay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+      - name: Código do transporte
+        run: |
+          node --check qr-bridge/src/server.mjs
+          node --check qr-bridge/src/pilot-send-policy.mjs
+          node --test qr-bridge/test/pilot-send-policy.test.mjs qr-bridge/test/reliable-send.test.mjs qr-bridge/test/e2ee-retry-hardening.test.mjs qr-bridge/test/transport-diagnostics.test.mjs qr-bridge/test/message-retry-store.test.mjs qr-bridge/test/reliable-encrypted-integration.test.mjs
+      - name: Validação de cadência sem reenvio automático
+        run: |
+          python -m py_compile app/worker.py
+          python -m pytest -q tests/unit/test_transactional_delivery_frequency.py
