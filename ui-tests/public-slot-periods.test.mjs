@@ -38,11 +38,16 @@ test('morning/afternoon/evening are local-time, chronological and de-duplicated'
     section.querySelector('.slot-period-title').textContent,
     section.querySelector('.slot-period-count').textContent,
   ]),[
-    ['Manhã','3 horários'],['Tarde','3 horários'],['Noite','2 horários']
+    ['Manhã','Disponíveis'],['Tarde','Disponíveis'],['Noite','Disponíveis']
   ]);
   assert.deepEqual(groups(h).map(section=>[...section.querySelectorAll('.slot')].map(x=>x.textContent)),
     [['08:30','09:00','11:45'],['12:00','13:30','17:45'],['18:00','19:15']]);
   assert.equal(listed(h).length,8);
+  assert.ok(groups(h).every(section =>
+    section.querySelector('.slot-period-count').textContent === 'Disponíveis'));
+  assert.ok(groups(h).every(section =>
+    !/\d/.test(section.querySelector('.slot-period-count').textContent)));
+  assert.equal(h.document.querySelectorAll('.slot-period-count').length,3);
   assert.equal(h.document.getElementById('booking-next').disabled,true);
   assert.equal(h.errors.length,0);
 });
