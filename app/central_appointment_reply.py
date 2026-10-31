@@ -62,6 +62,13 @@ async def confirm_inbound_protocol(payload:IncomingProtocol,request:Request):
         raise HTTPException(401,'Acesso negado')
     if not central_reply_active():
         return {'state':'disabled','answer':None}
+    # One-time codes are requested by the actual WhatsApp sender and are
+    # deliberately processed before the legacy protocol confirmation reply.
+    if isinstance(payload.text,str) and payload.text.strip().upper().startswith('ORION VERIFICAR '):
+        await _limit_protocol_lookup(request, payload.phone)
+        from app.short_appointment_api import inbound_otp_from_verified_phone
+        answer = await inbound_otp_from_verified_phone(payload.text, payload.phone)
+        return answer if answer is not None else {'state':'unrecognized','answer':GENERIC}
     protocol=detected_protocol(payload.text)
     if protocol is None:
         return {'state':'not_protocol','answer':None}
@@ -72,9 +79,21 @@ async def confirm_inbound_protocol(payload:IncomingProtocol,request:Request):
         # Admin tenant is server-owned. No tenant ID may come from WhatsApp text.
         configured_tenant()
         async with support_session_factory()() as registry:
-            result=(await registry.execute(text(
-                'SELECT tenant_id,appointment_id FROM public.orion_resolve_central_appointment(:protocol,:phone)'
-            ),{'protocol':protocol,'phone':'+'+payload.phone})).mappings().first()
+            from app.appointment_access import short_links_enabled
+            if short_links_enabled():
+                # Prefer globally unique public aliases. A legacy base code
+                # may still resolve through the 0051 function if unambiguous
+                # for the verified sender; no cross-company guessing.
+                result=(await registry.execute(text("""
+                    SELECT tenant_id,appointment_id FROM
+                    public.orion_resolve_short_appointment(:protocol,:phone,'customer')
+                """),{'protocol':protocol,'phone':'+'+payload.phone})).mappings().first()
+            else:
+                result=None
+            if result is None and '-' not in protocol[3:]:
+                result=(await registry.execute(text(
+                    'SELECT tenant_id,appointment_id FROM public.orion_resolve_central_appointment(:protocol,:phone)'
+                ),{'protocol':protocol,'phone':'+'+payload.phone})).mappings().first()
     except (SQLAlchemyError,ValueError,RuntimeError,HTTPException):
         # A migration or database failure cannot become an unverified answer.
         return {'state':'unavailable','answer':None}

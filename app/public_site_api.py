@@ -595,13 +595,31 @@ async def _public_book_saved(slug:str,payload:PublicBooking,request:Request,_cap
 @router.post('/api/v1/public/sites/{slug}/appointments',status_code=201)
 async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=Depends(booking_capacity)):
     result=await _public_book_saved(slug,payload,request,_capacity)
+    from app import appointment_access as access
     from app.appointment_confirmation import public_followup
+    public_code=result['protocol']
+    if access.short_links_enabled():
+        # The submitted quote/phone and the confirmed transaction already
+        # established the business. Read only that booking's global alias.
+        tenant=await resolve_public(slug)
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db,tenant):
+                alias=(await db.execute(text("""
+                  SELECT s.code FROM appointment_short_codes s
+                  JOIN appointments a ON a.tenant_id=s.tenant_id AND a.id=s.appointment_id
+                  JOIN customers c ON c.tenant_id=a.tenant_id AND c.id=a.customer_id
+                  WHERE s.tenant_id=:t AND a.protocol=:protocol
+                    AND c.whatsapp_e164=:phone
+                    AND a.status='confirmed'
+                """),{'t':tenant,'protocol':result['protocol'],
+                       'phone':payload.customer_phone})).scalar_one_or_none()
+        if alias:public_code=alias
     try:
-        followup=await public_followup(slug,result,payload.customer_phone)
+        followup=await public_followup(slug,result,payload.customer_phone,display_protocol=public_code)
     except Exception:
         # A communication failure never undoes or hides a committed booking.
         followup={'communication_state':'unavailable'}
-    return {**result,**followup}
+    return {**result,**followup,'protocol':public_code}
 
 
 @router.get('/api/v1/tenants/{tenant_id}/management/site/metrics')

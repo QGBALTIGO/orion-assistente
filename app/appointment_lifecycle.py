@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 REQUESTERS = frozenset({"customer", "professional", "business", "system", "unknown"})
 SOURCES = frozenset({"panel", "whatsapp_qr", "whatsapp_meta", "public_site", "system", "unknown"})
-ACTOR_ROLES = frozenset({"support", "admin", "owner", "editor", "viewer", "customer", "system", "unknown"})
+ACTOR_ROLES = frozenset({"support", "admin", "owner", "editor", "viewer", "professional", "customer", "system", "unknown"})
 CAS_SQL = """(CAST(:expected_updated_at AS timestamptz) IS NULL
     OR updated_at=CAST(:expected_updated_at AS timestamptz))"""
 
@@ -68,7 +68,7 @@ def metadata(context=None, *, requested_by=None, reason=None, previous=None):
     context = context or LifecycleActor()
     if context.role not in ACTOR_ROLES or context.source not in SOURCES:
         raise ValueError("Unknown trusted appointment actor")
-    requester = requested_by or (context.role if context.role in {"customer", "system"} else "unknown")
+    requester = requested_by or (context.role if context.role in {"customer", "professional", "system"} else "unknown")
     if requester not in REQUESTERS:
         raise ValueError("Unknown appointment requester")
     if reason is not None and (not isinstance(reason, str) or len(reason) > 1000 or "\x00" in reason):
