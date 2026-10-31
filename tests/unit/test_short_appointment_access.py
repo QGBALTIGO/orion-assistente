@@ -20,6 +20,7 @@ from app import short_appointment_api as short, appointment_access as access
 class FakeCache:
     def __init__(self):
         self.data={}
+        self.attempts={}
     async def set(self,key,val,ex=None,nx=False):
         if nx and key in self.data:return False
         self.data[key]=val
@@ -27,6 +28,9 @@ class FakeCache:
     async def get(self,key):
         return self.data.get(key)
     async def eval(self,source,nkeys,key,*args):
+        if "INCR" in source:
+            self.attempts[key]=self.attempts.get(key,0)+1
+            return self.attempts[key]
         previous=self.data.get(key)
         if previous!=args[0]:return 0
         if len(args)==2:self.data[key]=args[1]
@@ -176,3 +180,55 @@ def test_invalid_short_alias_rejected(code):
     from fastapi import HTTPException
     with pytest.raises(HTTPException):
         short.normalized(code)
+
+
+
+def test_otp_attempts_are_per_challenge_even_when_ip_changing(api):
+    client,cache=api
+    result=client.post("/api/short-appointment/start",
+        json={"code":"AG-ABCDEF","role":"customer"},
+        headers={"Origin":"https://orionagenda.pro"}).json()
+    for number in range(1,8):
+        response=client.post("/api/short-appointment/verify",json={
+            "code":"AG-ABCDEF","role":"customer",
+            "challenge":result["challenge"],"otp":"123456"},
+            headers={"Origin":"https://orionagenda.pro","X-Forwarded-For":f"198.51.100.{number}"})
+        assert response.status_code==(400 if number<=6 else 429)
+    assert len(cache.attempts)==1 and list(cache.attempts.values())==[7]
+
+
+def test_pin_is_one_use_and_cookie_contains_no_protocol_secret(api,monkeypatch):
+    client,cache=api
+    start=client.post("/api/short-appointment/start",
+        json={"code":"AG-ABCDEF","role":"customer"},
+        headers={"Origin":"https://orionagenda.pro"}).json()
+    challenge=start["challenge"]
+    browser=client.cookies[short.CHALLENGE_COOKIE]
+    key=short.scoped_redis_key("challenge",challenge)
+    data=json.loads(cache.data[key])
+    pin="302051"
+    data.update(state="verified_whatsapp",
+                otp_hash=short.digest_code(challenge,pin),
+                tenant=str(uuid4()),appointment=str(uuid4()),
+                customer=str(uuid4()),professional=str(uuid4()),
+                phone_hash=hashlib.sha256(b"+5567999999922").hexdigest())
+    cache.data[key]=json.dumps(data,separators=(",",":"))
+    async def issue(_state,_role):
+        return {"authorized":True,"token":str(uuid4())+"."+"a"*43}
+    monkeypatch.setattr(short,"session_response",issue)
+    req={"code":"AG-ABCDEF","role":"customer","challenge":challenge,"otp":pin}
+    response=client.post("/api/short-appointment/verify",
+        json=req,headers={"Origin":"https://orionagenda.pro"})
+    assert response.status_code==200,response.text
+    assert response.json()["authorized"] is True
+    assert short.SESSION_COOKIE in client.cookies
+    assert short.CHALLENGE_COOKIE not in client.cookies
+    cookie_value=response.headers["set-cookie"]
+    assert "httponly" in cookie_value.lower()
+    assert "secure" in cookie_value.lower()
+    assert "samesite=lax" in cookie_value.lower()
+    assert pin not in cookie_value
+    assert key not in cache.data
+    duplicate=client.post("/api/short-appointment/verify",
+        json=req,headers={"Origin":"https://orionagenda.pro"})
+    assert duplicate.status_code==400
