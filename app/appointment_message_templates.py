@@ -295,7 +295,8 @@ def safe_link(value):
     if (isinstance(value, str) and not re.search(r"[\s<>]", value)
             and (value.startswith(origin + "/a#")
                  or value.startswith(origin + "/s/")
-                 or value.startswith(origin + "/panel#"))):
+                 or value.startswith(origin + "/panel#")
+                 or re.fullmatch(re.escape(origin) + r"/(?:p/)?AG-[A-HJ-NP-Z2-9]{6}(?:-[A-F0-9]{8})?", value))):
         return value
     return None
 
@@ -352,7 +353,7 @@ def branded_signature(company, signature="Orion Agenda"):
 
 
 def compose(event, row, *, company, signature="Orion Agenda", customer_link=None,
-            booking_link=None, previous=None, include_return=False, address=None, state=None):
+            professional_link=None, booking_link=None, previous=None, include_return=False, address=None, state=None):
     previous = previous or {}
     zone = ZoneInfo(row["timezone"])
     start = row["start_at"].astimezone(zone)
@@ -377,7 +378,8 @@ def compose(event, row, *, company, signature="Orion Agenda", customer_link=None
         raise ValueError("missing_previous_appointment_time")
     if event == "customer_proposal" and (proposed is None or expires is None):
         raise ValueError("missing_appointment_proposal_facts")
-    professional_link = (canonical_public_origin() + "/panel?aba=agenda&agendamento=" + str(row["id"])
+    professional_link = (safe_link(professional_link) if professional_link is not None else
+                         canonical_public_origin() + "/panel?aba=agenda&agendamento=" + str(row["id"])
                          if event.startswith("professional_") else None)
     customer_link = safe_link(customer_link)
     booking_link = safe_link(booking_link)
