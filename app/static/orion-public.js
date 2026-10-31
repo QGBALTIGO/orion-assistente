@@ -45,9 +45,12 @@
     }
     $('about-instagram-handle').textContent = '@' + profile.username;
     $('about-instagram-open').href = profile.href;
-    frame.title = 'Publicações do Instagram de @' + profile.username;
-    // Native iframe lazy loading avoids delaying images, services and booking.
-    // Instagram owns the six real public thumbnails; no scraping or fake media.
+    frame.title = 'Seis publicações recentes de @' + profile.username + ' no Instagram';
+    // The official embed is visually cropped to its six-photo gallery inside
+    // the Orion card. We do not access its cross-origin DOM, proxy third-party
+    // photos or invent thumbnails. Its original profile-header and white footer
+    // remain outside the visible crop. Open profile stays available as fallback.
+    // Loading stays lazy to avoid delaying services and the booking flow.
     if (frame.getAttribute('src') !== profile.embed) frame.src = profile.embed;
     return true;
   }

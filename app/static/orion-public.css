@@ -654,24 +654,33 @@ body{background:var(--bg);color:var(--text);min-width:0}
 }
 
 
-/* Optional official Instagram profile embed within the existing About card.
-   No image scraping or separate marketing card. The remote frame is native
-   lazy-loaded and may show a login prompt for private/blocked accounts. */
-.about-instagram{min-width:0;margin-top:22px;border-top:1px solid var(--border);padding-top:18px}
-.about-card-instagram-only .about-instagram{margin-top:0;padding-top:0;border:0}
-.about-instagram-heading{display:flex;align-items:center;gap:10px;min-width:0;margin-bottom:14px}
-.about-instagram-icon{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border-radius:12px;border:1px solid var(--border);background:var(--bg);color:var(--text)}
-.about-instagram-icon svg{display:block;width:21px;height:21px}
-.about-instagram-heading-copy{display:grid;gap:2px;min-width:0}
-.about-instagram-heading-copy strong{font:650 14px/1.35 Figtree,system-ui,sans-serif}
-.about-instagram-heading-copy>span{min-width:0;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
-.about-instagram-preview{min-width:0;overflow:hidden;border:1px solid var(--border);border-radius:14px;background:#fff}
-.about-instagram-preview>iframe{display:block;width:100%;height:auto;min-height:420px;max-height:600px;aspect-ratio:4/5;border:0;background:#fff}
-.about-instagram-open{display:flex;align-items:center;justify-content:center;gap:9px;min-height:44px;width:100%;margin-top:12px!important;padding:10px 12px;border:1px solid var(--border);border-radius:11px;background:var(--bg);color:var(--text);font-size:13px;font-weight:650;text-align:center}
-.about-instagram-open svg{display:block;flex:0 0 16px;width:16px;height:16px}
-.about-instagram-open:hover{border-color:var(--primary);color:var(--primary)}
-.about-instagram-open:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+/* Instagram gallery experiment inside the existing Sobre nós card.
+   Crops ONLY the official public profile embed's chrome, leaving its six real
+   publication thumbnails interactive. We do not download/scrape Instagram.
+   If a profile restricts embedding, the safe 'Abrir perfil' link still works. */
+.about-instagram{min-width:0;margin-top:20px;padding-top:17px;border-top:1px solid var(--border)}
+.about-card-instagram-only .about-instagram{margin-top:0;padding-top:0;border-top:0}
+.about-instagram-heading{display:flex;align-items:center;gap:10px;min-width:0;margin-bottom:12px}
+.about-instagram-icon{display:grid;place-items:center;flex:0 0 35px;width:35px;height:35px;border-radius:11px;border:1px solid var(--border);background:color-mix(in srgb,var(--primary) 7%,var(--card));color:var(--text)}
+.about-instagram-icon svg{display:block;width:19px;height:19px}
+.about-instagram-heading-copy{display:grid;align-content:center;gap:1px;min-width:0;flex:1}
+.about-instagram-eyebrow{font:600 11px/1.35 Figtree,system-ui,sans-serif;color:var(--muted);letter-spacing:.015em}
+.about-instagram-heading-copy strong{min-width:0;font:700 13px/1.35 Figtree,system-ui,sans-serif;color:var(--text);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
+#about-card .about-instagram-open{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;min-height:35px;margin:0;padding:7px 10px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font:650 12px/1.3 Figtree,system-ui,sans-serif;white-space:nowrap;transition:border-color .15s ease,background .15s ease}
+#about-card .about-instagram-open svg{display:block;flex:0 0 15px;width:15px;height:15px}
+#about-card .about-instagram-open:hover{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 8%,var(--card))}
+#about-card .about-instagram-open:focus-visible{outline:3px solid var(--primary);outline-offset:2px}
+.about-instagram-preview{position:relative;isolation:isolate;container-type:inline-size;box-sizing:border-box;min-width:0;width:100%;aspect-ratio:3/2;overflow:hidden;border:1px solid var(--border);border-radius:13px;background:var(--soft)}
+.about-instagram-preview>iframe{position:absolute;display:block;left:0;top:-130px;width:100%;max-width:none;min-width:0;height:900px;border:0;background:transparent}
+@supports (width:1cqw){
+  .about-instagram-preview>iframe{top:calc(-1 * clamp(120px,40cqw,160px))}
+}
 @media(max-width:359px){
-  .about-instagram-preview>iframe{min-height:390px}
-  .about-instagram-heading-copy>span{font-size:11px}
+  .about-instagram-heading{gap:8px}
+  .about-instagram-icon{width:33px;height:33px;flex-basis:33px}
+  #about-card .about-instagram-open{padding-inline:8px;font-size:11px}
+  .about-instagram-heading-copy strong{font-size:12px}
+}
+@media(prefers-reduced-motion:reduce){
+  #about-card .about-instagram-open{transition:none}
 }
