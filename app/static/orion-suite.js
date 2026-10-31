@@ -2826,7 +2826,7 @@
             await loadGoogle({handleReturn:false});
           }
         }catch(error){
-          if(current(source))await showGoogle({refresh:false,notice:
+          if(current(source))await showGoogle({refresh:true,notice:
             'O Google recusou a verificação: '+String(error?.message||'Confira a autorização e reconecte sua conta.')});
         }
         break;
