@@ -251,7 +251,7 @@ def test_raw_encoded_or_literal_traversal_is_denied_before_rewrite(config, path,
 
 
 @pytest.mark.parametrize("method", ["GET", "HEAD"])
-@pytest.mark.parametrize("path", ["/", "/panel-assets/orion-suite.js", "/panel-assets/orion-suite-live.js", "/panel", "/auth/me", "/health", "/health/central",
+@pytest.mark.parametrize("path", ["/", "/panel-assets/orion-suite.js", "/panel-assets/orion-suite-live.js", "/painel", "/panel", "/auth/me", "/health", "/health/central",
     "/api/v1/qr/status", "/api/v1/tenants", "/s/synthetic-studio",
     "/app/site-preview/synthetic-studio", "/brand/orion-symbol.svg",
     "/panel-assets/orion-auth.css", f"/media/{TENANT}/{TENANT}.webp"])
@@ -264,7 +264,7 @@ def test_allowlisted_reads_need_no_origin_and_have_private_edge_cache_policy(con
     assert decision.headers["x-vercel-enable-rewrite-caching"] == "0"
 
 
-@pytest.mark.parametrize("path", ["/panel/", "/convite/", "/conectar-whatsapp/"])
+@pytest.mark.parametrize("path", ["/painel/", "/panel/", "/convite/", "/conectar-whatsapp/"])
 def test_trailing_slash_is_normalized_inside_the_rewrite(config, path):
     assert decide(config, path).destination == UPSTREAM + path.rstrip("/")
 

@@ -156,7 +156,7 @@ async def shared_link(db, tenant, appointment, *, audience="customer"):
     if not short_links_enabled():
         if audience == "customer":
             return await issue(db, tenant, appointment)
-        return (canonical_public_origin() + "/panel?aba=agenda&agendamento="
+        return (canonical_public_origin() + "/painel?aba=agenda&agendamento="
                 + str(appointment))
     code = (await db.execute(text("""
         SELECT code FROM public.appointment_short_codes
