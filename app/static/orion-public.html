@@ -145,22 +145,6 @@
       </div>
     </header>
     <main class="container public-main">
-      <section id="amenities-section" class="amenities-section" aria-labelledby="amenities-title" hidden>
-        <div class="section-heading amenities-heading">
-          <div><h2 id="amenities-title">Comodidades</h2><p class="muted">Toque em um ícone para saber mais.</p></div>
-        </div>
-        <div id="amenities-grid" class="amenities-grid" aria-label="Comodidades disponíveis"></div>
-        <div id="amenity-detail" class="amenity-detail" role="region" aria-labelledby="amenity-detail-title" hidden>
-          <div class="amenity-detail-heading">
-            <strong id="amenity-detail-title"></strong>
-            <button id="amenity-detail-close" type="button" class="amenity-detail-close" aria-label="Fechar informações sobre a comodidade">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
-            </button>
-          </div>
-          <span class="amenity-available"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m7.5 12.2 3 3 6-6"/></svg>Disponível</span>
-          <p id="amenity-detail-description"></p>
-        </div>
-      </section>
       <section id="servicos" aria-labelledby="services-title">
         <div class="section-heading"><div><h2 id="services-title">Nossos serviços</h2><p class="muted">Escolha o cuidado para o seu próximo atendimento.</p></div><span id="services-count" class="count"></span></div>
         <label class="search-wrap"><span aria-hidden="true">⌕</span><input id="service-search" type="search" placeholder="Buscar serviço" aria-label="Buscar serviço" autocomplete="off"></label>
@@ -202,17 +186,31 @@
         <article id="address-card" class="info-card location-card" aria-labelledby="location-title" hidden>
           <div class="location-heading">
             <span class="section-icon" aria-hidden="true"><svg class="location-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></span>
-            <div><h2 id="location-title">Onde estamos</h2><p class="muted">Encontre nosso espaço e venha nos visitar.</p></div>
+            <div><h2 id="location-title">Onde estamos</h2><p id="location-subtitle" class="muted">Encontre nosso espaço e venha nos visitar.</p></div>
           </div>
           <div class="map-preview" id="map-preview" hidden>
             <iframe id="location-map" title="Prévia do Google Maps com a localização da barbearia" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe>
           </div>
-          <div class="location-details"><svg class="location-small-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg><p id="full-address" class="preserve-lines"></p></div>
+          <div id="location-details" class="location-details"><svg class="location-small-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg><p id="full-address" class="preserve-lines"></p></div>
           <a id="maps-link" class="outline route-action" hidden>
             <svg class="route-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4h5"/><path d="m9 7 3-4-3-3"/><circle cx="17" cy="17" r="4"/><path d="m16 17 1 1 2-2"/></svg>
             <span>Traçar rota no Google Maps</span>
             <svg class="route-external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 5h6v6M19 5l-9 9"/></svg>
           </a>
+          <section id="amenities-section" class="amenities-section" aria-labelledby="amenities-title" hidden>
+            <h3 id="amenities-title" class="amenities-heading">No local</h3>
+            <div id="amenities-grid" class="amenities-grid" aria-label="Comodidades disponíveis"></div>
+            <div id="amenity-detail" class="amenity-detail" role="region" aria-labelledby="amenity-detail-title" hidden>
+              <div class="amenity-detail-heading">
+                <strong id="amenity-detail-title"></strong>
+                <button id="amenity-detail-close" type="button" class="amenity-detail-close" aria-label="Fechar informações sobre a comodidade">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+                </button>
+              </div>
+              <span class="amenity-available"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m7.5 12.2 3 3 6-6"/></svg>Disponível</span>
+              <p id="amenity-detail-description"></p>
+            </div>
+          </section>
         </article>
       </section>
       <section id="contact-section" class="contact-card" aria-labelledby="contact-title" hidden>
