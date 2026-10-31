@@ -67,7 +67,13 @@ class Verify(Start):
     otp: str = Field(min_length=6,max_length=6)
 
 
+class OpenDirect(Start):
+    proof: str = Field(min_length=27, max_length=27, pattern=r"^[A-Za-z0-9_-]{27}$")
+
+
 class Action(Start):
+    proof: str | None = Field(default=None, min_length=27, max_length=27,
+                              pattern=r"^[A-Za-z0-9_-]{27}$")
     action: Literal["view","slots","cancel","reschedule"] = "view"
     day: date | None = None
     start_at: AwareDatetime | None = None
@@ -78,6 +84,11 @@ class Action(Start):
 def active():
     return access.short_links_enabled() and os.getenv(
         "ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED") == "1"
+
+
+def one_click_active():
+    """The OTP endpoints are retired as soon as direct-link proof is configured."""
+    return len(os.getenv("ORION_DIRECT_APPOINTMENT_KEY", "")) >= 43
 
 
 def normalized(code):
@@ -143,7 +154,7 @@ async def short_professional_page(code:str):
 
 @router.post("/api/short-appointment/start")
 async def start(payload:Start,request:Request):
-    if not active():raise HTTPException(404,"Link indisponível")
+    if not active() or one_click_active():raise HTTPException(404,"Verificação por código descontinuada")
     validate_origin(request)
     code=normalized(payload.code)
     await limited(request,code,"otp-start",6,300)
@@ -171,7 +182,7 @@ async def start(payload:Start,request:Request):
 
 async def inbound_otp_from_verified_phone(body,phone):
     """Call ONLY from the authenticated, rate-limited central QR ingress."""
-    if not active():return None
+    if not active() or one_click_active():return None
     match=INBOUND.fullmatch(body.strip()) if isinstance(body,str) and len(body)<180 else None
     if not match:return None
     letter,code,challenge=match.groups()
@@ -218,6 +229,40 @@ async def inbound_otp_from_verified_phone(body,phone):
 async def has_feature_for_tenant(tenant):
     from app.plan_permissions import tenant_has_feature
     return await tenant_has_feature(tenant,"notifications.basic")
+
+
+async def direct_state(code, role, proof):
+    """Authorize on every request using the per-recipient fragment proof.
+
+    The support-only database resolver returns internal facts but does not
+    grant access. Never return its data unless the constant-time HMAC check
+    succeeds; public protocols are enumerable and are NOT authentication.
+    """
+    if not isinstance(proof, str) or not re.fullmatch(r"[A-Za-z0-9_-]{27}", proof):
+        return None
+    async with support_session_factory()() as db:
+        row = (await db.execute(text("""
+            SELECT tenant_id,appointment_id,customer_id,professional_id,
+                customer_phone,professional_phone,customer_version,professional_active
+            FROM public.orion_resolve_direct_appointment(:code)
+        """), {"code":code})).mappings().first()
+    if not row or (role == "professional" and not row["professional_active"]):
+        return None
+    if not await has_feature_for_tenant(row["tenant_id"]):
+        return None
+    identity = row["professional_id"] if role == "professional" else row["customer_id"]
+    phone = row["professional_phone"] if role == "professional" else row["customer_phone"]
+    if not phone:
+        return None
+    expected = access.direct_link_proof(code, role, row["tenant_id"],
+        row["appointment_id"], identity, phone,
+        row["customer_version"] if role == "customer" else None)
+    if not hmac.compare_digest(proof, expected):
+        return None
+    return {"code":code,"role":role,"tenant":str(row["tenant_id"]),
+        "appointment":str(row["appointment_id"]),
+        "customer":str(row["customer_id"]),"professional":str(row["professional_id"]),
+        "phone_hash":hashlib.sha256(phone.encode()).hexdigest()}
 
 
 async def verified_session(request,code,role):
@@ -312,10 +357,22 @@ async def session(payload:Start,request:Request):
     return JSONResponse(jsonable_encoder(await session_response(state,payload.role)),headers=CSP)
 
 
+@router.post("/api/short-appointment/open")
+@sanitized_database_errors
+async def open_direct(payload:OpenDirect, request:Request):
+    if not active():raise HTTPException(404,"Link indisponível")
+    validate_origin(request)
+    code=normalized(payload.code)
+    await limited(request,code,"direct-open",30,300)
+    state=await direct_state(code,payload.role,payload.proof)
+    if not state:raise HTTPException(404,"Link indisponível ou expirado. Solicite um novo link.")
+    return JSONResponse(jsonable_encoder(await session_response(state,payload.role)),headers=CSP)
+
+
 @router.post("/api/short-appointment/verify")
 @sanitized_database_errors
 async def verify(payload:Verify,request:Request):
-    if not active():raise HTTPException(404,"Link indisponível")
+    if not active() or one_click_active():raise HTTPException(404,"Verificação por código descontinuada")
     validate_origin(request)
     code=normalized(payload.code)
     await limited(request,code,"otp-verify",6,300)
@@ -376,7 +433,8 @@ async def professional_action(payload:Action,request:Request):
     code=normalized(payload.code)
     if payload.role!="professional":raise HTTPException(403,GENERIC)
     await limited(request,code,"professional-actions",30,300)
-    session_data=await verified_session(request,code,"professional")
+    session_data=(await direct_state(code,"professional",payload.proof)
+        if payload.proof else await verified_session(request,code,"professional"))
     if not session_data:raise HTTPException(401,GENERIC)
     tenant=UUID(session_data["tenant"]);appointment=UUID(session_data["appointment"])
     if payload.action=="view":

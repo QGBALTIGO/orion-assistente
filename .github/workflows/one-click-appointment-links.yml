@@ -1,0 +1,90 @@
+name: Orion - link direto sem codigo (cliente e profissional)
+on:
+  pull_request:
+    paths:
+      - 'app/appointment_access.py'
+      - 'app/short_appointment_api.py'
+      - 'scripts/predeploy_one_click_links.py'
+      - 'app/appointment_message_templates.py'
+      - 'app/static/orion-appointment.js'
+      - 'alembic/versions/0056_one_click_appointment_links.py'
+      - 'tests/unit/test_one_click_appointment_links.py'
+      - '.github/workflows/one-click-appointment-links.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  one-click:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      REQUIRE_POSTGRES_TESTS: '1'
+      REDIS_URL: redis://localhost:6379/15
+      APPOINTMENT_COMMUNICATIONS_ENABLED: '1'
+      ORION_SHORT_APPOINTMENT_LINKS_ENABLED: '1'
+      ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dependencias fixadas
+        run: python -m pip install -c requirements.lock ".[test]"
+      - name: Sintaxe e seguranca dos links
+        run: |
+          python -m py_compile app/appointment_access.py app/short_appointment_api.py alembic/versions/0056_one_click_appointment_links.py scripts/predeploy_one_click_links.py
+          node --check app/static/orion-appointment.js
+          python - <<'PY'
+          from pathlib import Path
+          script=Path('app/static/orion-appointment.js').read_text()
+          assert "renderShortGate" not in script
+          assert "Receber código pelo WhatsApp" not in script
+          assert "shortPost('open',{proof:shortProof})" in script
+          PY
+          python -m pytest -q tests/unit/test_one_click_appointment_links.py tests/unit/test_appointment_access.py tests/unit/test_short_appointment_access.py tests/unit/test_short_appointment_links.py tests/unit/test_appointment_messages.py
+      - name: Provisionar papeis separados
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 -v db_name=barber_saas -v runtime_password=ci-runtime-only -v migrator_password=ci-migrator-only -v support_password=ci-support-only -f infra/postgres/init/001-roles.sql
+      - name: Migracao aditiva e schema restrito
+        run: |
+          python -m alembic upgrade head
+          python - <<'PY'
+          from sqlalchemy import create_engine, text
+          import os
+          url=os.environ['MIGRATION_DATABASE_URL']
+          db=create_engine(url)
+          with db.connect() as connection:
+              assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == '0056_one_click_appointment_links'
+              grants=connection.execute(text("""SELECT has_function_privilege('app_support','public.orion_resolve_direct_appointment(text)','EXECUTE'),
+                            has_function_privilege('app_runtime','public.orion_resolve_direct_appointment(text)','EXECUTE')""")).one()
+              assert grants == (True,False)
+          db.dispose()
+          PY
+      - name: Regressao de links e isolamento PostgreSQL real
+        run: python -m pytest -q tests/integration/test_appointment_access_pg.py tests/integration/test_short_appointment_links_pg.py

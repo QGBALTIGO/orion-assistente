@@ -296,7 +296,7 @@ def safe_link(value):
             and (value.startswith(origin + "/a#")
                  or value.startswith(origin + "/s/")
                  or value.startswith(origin + "/panel#")
-                 or re.fullmatch(re.escape(origin) + r"/(?:p/)?AG-[A-HJ-NP-Z2-9]{6}(?:-[A-F0-9]{8})?", value))):
+                 or re.fullmatch(re.escape(origin) + r"/(?:p/)?AG-[A-HJ-NP-Z2-9]{6}(?:-[A-F0-9]{8})?(?:#[A-Za-z0-9_-]{27})?", value))):
         return value
     return None
 
