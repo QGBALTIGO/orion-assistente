@@ -106,10 +106,12 @@ test('Gallery uses Orion dimensions, compact header and a clipped six-photo view
   const {readFile}=await import('node:fs/promises');
   const css=await readFile(new URL('../app/static/orion-public.css',import.meta.url),'utf8');
   const html=await readFile(new URL('../app/static/orion-public.html',import.meta.url),'utf8');
-  assert.match(css,/\.about-instagram-preview\{[^}]*aspect-ratio:3\/2;[^}]*overflow:hidden;/,
-    'o recorte visual deve conter exatamente duas linhas de três fotos');
-  assert.match(css,/\.about-instagram-preview>iframe\{[^}]*position:absolute;[^}]*top:-130px;/,
-    'o cabeçalho branco duplicado do iframe deve ficar fora do recorte');
+  assert.match(css,/\.about-instagram-preview\{[^}]*aspect-ratio:14\/9;[^}]*overflow:hidden;border:0;/,
+    'a grade de duas linhas deve ficar sem borda clara do contêiner');
+  assert.match(css,/\.about-instagram-preview>iframe\{[^}]*left:-3px;top:-142px;width:calc\(100% \+ 6px\);/,
+    'a grade do Instagram precisa cobrir suas margens brancas lateral e superior');
+  assert.match(css,/top:calc\(-1 \* clamp\(120px,40cqw,160px\) - clamp\(7px,2\.1cqw,14px\)\)/,
+    'recorte da margem branca deve acompanhar a largura do card no celular');
   assert.match(css,/@supports \(width:1cqw\)/,
     'escala adaptativa quando o iframe acompanha o tamanho do card');
   assert.match(css,/#about-card \.about-instagram-open\{[^}]*margin:0;/,
@@ -117,4 +119,14 @@ test('Gallery uses Orion dimensions, compact header and a clipped six-photo view
   assert.doesNotMatch(html,/Ver perfil no Instagram/,
     'botão antigo de largura total deve ser removido');
   assert.match(html,/Seis publicações recentes do perfil no Instagram/);
+});
+
+test('Instagram iframe has no bright frame, independently of light or dark Orion theme',async t=>{
+  const {readFile}=await import('node:fs/promises');
+  const css=await readFile(new URL('../app/static/orion-public.css',import.meta.url),'utf8');
+  const section=css.slice(css.indexOf('/* The Instagram embed paints a white frame'));
+  assert.ok(section.startsWith('/* The Instagram embed paints a white frame'));
+  assert.match(section,/\.about-instagram-preview\{[^}]*border:0;border-radius:13px;background:var\(--card\)/);
+  assert.doesNotMatch(section,/\.about-instagram-preview\{[^}]*border:1px/);
+  assert.doesNotMatch(section,/\.about-instagram-preview\{[^}]*background:#fff/);
 });
