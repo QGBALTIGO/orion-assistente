@@ -249,5 +249,5 @@ test('estética segue o tema, mapa tem altura adequada e cartões não se aninha
     '@media(min-width:720px)'
   ])assert.ok(css.includes(rule),'estilo ausente: '+rule);
   const source=await readFile(new URL('../app/public_site_api.py',import.meta.url),'utf8');
-  assert.match(source,/frame-src https:\/\/www\.google\.com https:\/\/maps\.google\.com;/);
+  assert.match(source,/frame-src https:\/\/www\.google\.com https:\/\/maps\.google\.com https:\/\/www\.instagram\.com;/);
 });

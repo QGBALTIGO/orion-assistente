@@ -45,7 +45,7 @@ PUBLIC_FIELDS=('title','description','slug','theme_color','logo_url','cover_url'
                'hide_orion_brand','show_prices',
                'amenity_wifi','amenity_parking','amenity_accessibility','amenity_children')
 HEADERS={"Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer",
-         "Content-Security-Policy":"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self'; connect-src 'self'; frame-src https://www.google.com https://maps.google.com; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"}
+         "Content-Security-Policy":"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self'; connect-src 'self'; frame-src https://www.google.com https://maps.google.com https://www.instagram.com; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"}
 _booking_capacity=WeakKeyDictionary()
 
 
