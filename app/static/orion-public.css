@@ -202,22 +202,43 @@ body{background:var(--bg);color:var(--text);min-width:0}
   margin:0 0 10px;color:var(--text);
   font:650 13px/19px Outfit,Figtree,sans-serif
 }
+/* A counted grid avoids uneven pill widths and a left-orphaned last row.
+   On phones: one is centered, two use 2 columns, three get a centered last
+   tile of identical width, four form a stable 2x2. On wide screens every
+   item gets the same 170px slot, with 1–4 columns according to count. */
 .location-card .amenities-grid{
-  display:flex;flex-wrap:wrap;justify-content:flex-start;
-  align-items:center;gap:8px;width:100%;min-width:0
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:stretch;gap:9px;width:100%;max-width:100%;min-width:0
 }
 .location-card .amenity-tile{
-  box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;
-  flex:0 1 auto;gap:7px;max-width:100%;min-height:38px;
-  padding:8px 11px;border:1px solid var(--border);border-radius:11px;
+  box-sizing:border-box;display:flex;align-items:center;justify-content:center;
+  width:100%;min-width:0;height:52px;min-height:52px;
+  gap:7px;padding:8px 9px;border:1px solid var(--border);border-radius:11px;
   background:var(--bg);color:var(--muted);box-shadow:none;
-  text-align:center;font:650 12px/18px Figtree,system-ui,sans-serif;
+  text-align:center;font:650 12px/16px Figtree,system-ui,sans-serif;
   transition:background .16s,border-color .16s,color .16s
 }
 .location-card .amenity-tile svg{
   display:block;flex:0 0 17px;width:17px;height:17px;overflow:visible
 }
-.location-card .amenity-label{min-width:0;overflow-wrap:anywhere}
+.location-card .amenity-label{
+  min-width:0;overflow-wrap:break-word;hyphens:auto;
+}
+.location-card .amenities-grid[data-count="1"] .amenity-tile:last-child,
+.location-card .amenities-grid[data-count="3"] .amenity-tile:last-child{
+  grid-column:1/-1;justify-self:center;width:calc((100% - 9px)/2)
+}
+@media(min-width:720px){
+  .location-card .amenities-grid[data-count="1"]{grid-template-columns:minmax(0,1fr);max-width:170px}
+  .location-card .amenities-grid[data-count="2"]{grid-template-columns:repeat(2,minmax(0,1fr));max-width:349px}
+  .location-card .amenities-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr));max-width:528px}
+  .location-card .amenities-grid[data-count="4"]{grid-template-columns:repeat(4,minmax(0,1fr));max-width:707px}
+  .location-card .amenities-grid[data-count="1"] .amenity-tile:last-child,
+  .location-card .amenities-grid[data-count="3"] .amenity-tile:last-child{
+    grid-column:auto;justify-self:stretch;width:100%
+  }
+  .location-card .amenity-tile{height:46px;min-height:46px}
+}
 .location-card .amenity-tile:hover{
   border-color:color-mix(in srgb,var(--primary) 35%,var(--border));
   background:color-mix(in srgb,var(--primary) 5%,var(--card));color:var(--text)
@@ -256,7 +277,11 @@ body{background:var(--bg);color:var(--text);min-width:0}
 .location-card .amenity-detail p{color:var(--muted);font-size:12px;line-height:19px;margin-top:6px}
 @media(max-width:359px){
   .location-card .amenities-grid{gap:7px}
-  .location-card .amenity-tile{gap:6px;padding:8px 9px;font-size:11px;min-height:36px}
+  .location-card .amenities-grid[data-count="1"] .amenity-tile:last-child,
+  .location-card .amenities-grid[data-count="3"] .amenity-tile:last-child{
+    width:calc((100% - 7px)/2)
+  }
+  .location-card .amenity-tile{gap:5px;padding:7px;font-size:11px;line-height:15px}
   .location-card .amenity-tile svg{width:16px;height:16px;flex-basis:16px}
 }
 @media(prefers-reduced-motion:reduce){

@@ -63,7 +63,7 @@ def test_public_amenities_inside_location_with_accessible_labels(engine,width,ac
                 assert page.locator('#location-subtitle').inner_text()=='Confira as comodidades disponíveis.'
                 assert not page.locator('#map-preview').is_visible()
                 assert not page.locator('#location-details').is_visible()
-                assert grid.evaluate('(el)=>getComputedStyle(el).justifyContent')=='flex-start'
+                assert grid.evaluate('(el)=>getComputedStyle(el).display')=='grid'
                 assert section.evaluate('(el)=>el.scrollWidth<=el.clientWidth+2')
                 assert [tiles.nth(i).locator('.amenity-label').inner_text() for i in range(active)] == LABELS[:active]
                 for i in range(active):
@@ -71,7 +71,7 @@ def test_public_amenities_inside_location_with_accessible_labels(engine,width,ac
                     assert tile.get_attribute('aria-expanded')=='false'
                     assert 'disponível' in tile.get_attribute('aria-label')
                     box=tile.bounding_box()
-                    assert box and box['width']>=36 and box['height']>=34
+                    assert box and box['width']>=90 and box['height']>=45
                     icon=tile.locator('svg')
                     assert icon.count()==1
                     icon_box=icon.bounding_box()
@@ -80,6 +80,29 @@ def test_public_amenities_inside_location_with_accessible_labels(engine,width,ac
                     section_box=section.bounding_box()
                     assert section_box and box['x']>=section_box['x']-1
                     assert box['x']+box['width']<=section_box['x']+section_box['width']+1
+                # All rendered tiles have an identical width/height, regardless
+                # of title length; there must be no orphan aligned left.
+                boxes=[tiles.nth(i).bounding_box() for i in range(active)]
+                assert max(box['width'] for box in boxes)-min(box['width'] for box in boxes)<=2
+                assert max(box['height'] for box in boxes)-min(box['height'] for box in boxes)<=2
+                assert grid.evaluate('(el)=>getComputedStyle(el).gridTemplateColumns.count(" ")')==(
+                    0 if width>=720 and active==1 else (active-1 if width>=720 else 1))
+                area=grid.bounding_box()
+                assert area
+                center=area['x']+area['width']/2
+                if width<720:
+                    if active==1 or active==3:
+                        last=boxes[-1]
+                        assert abs(last['x']+last['width']/2-center)<=2, 'single item on final row centered'
+                    if active>=2:
+                        assert abs(boxes[0]['y']-boxes[1]['y'])<=2, 'first row has even baseline'
+                    if active>=3:
+                        assert boxes[2]['y']>=boxes[0]['y']+boxes[0]['height']+6
+                    if active==4:
+                        assert abs(boxes[2]['y']-boxes[3]['y'])<=2
+                else:
+                    assert all(abs(box['y']-boxes[0]['y'])<=2 for box in boxes), 'desktop uses one aligned row'
+                    assert boxes[-1]['x']+boxes[-1]['width']<=area['x']+area['width']+2
                 if active>=3:
                     wheel=tiles.nth(2).locator('svg circle').last
                     assert wheel.count()==1
