@@ -583,3 +583,24 @@ async def test_google_oauth_connects_before_new_company_staff_setup(google_db, m
             await db.execute(text(
                 "DELETE FROM business_onboarding WHERE tenant_id=:t"
             ),{"t":d["a"]})
+
+
+@pytest.mark.asyncio
+async def test_disconnected_intents_drain_without_false_connection_busy(google_db):
+    """Unconnected tenant jobs should never fight over a nonexistent grant."""
+    d=google_db
+    person=await customer(d)
+    identities=[await appointment(d,person["id"],start_at=d["now"]+timedelta(days=i))
+                for i in (1,2)]
+    jobs=[await enqueue(d,item) for item in identities]
+    results=await asyncio.gather(*(
+        worker.process_calendar_outbox({},str(d["a"]),str(job["id"])) for job in jobs
+    ))
+    assert results==["not_connected","not_connected"]
+    for identity in identities:
+        row=await outbox(d,identity)
+        assert row["attempts"]==0
+        assert row["status"]=="pending"
+        assert row["last_error"]=="calendar_not_connected"
+        assert row["next_attempt_at"]>d["now"]+timedelta(minutes=14)
+    assert d["google"].calls==[]
