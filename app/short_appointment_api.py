@@ -235,6 +235,8 @@ async def verified_session(request,code,role):
         return None
     async with get_session_factory()() as db:
         async with tenant_transaction(db,tenant):
+            if not await has_feature(db,tenant,"notifications.basic"):
+                return None
             row=(await db.execute(text("""
                 SELECT a.customer_id,a.professional_id,a.status,
                   c.whatsapp_e164 AS customer_phone,c.active AS customer_active,
@@ -338,11 +340,23 @@ async def verify(payload:Verify,request:Request):
         state=json.loads(packed) if packed else {}
         if (state.get("state")!="verified_whatsapp" or state.get("code")!=code
              or state.get("role")!=payload.role
-             or not hmac.compare_digest(state["browser"],hashlib.sha256(browser.encode()).hexdigest())
-             or not hmac.compare_digest(state["otp_hash"],digest_code(payload.challenge,payload.otp))):
+             or not hmac.compare_digest(state["browser"],hashlib.sha256(browser.encode()).hexdigest())):
             raise HTTPException(400,GENERIC)
     except (KeyError,TypeError,ValueError):
         raise HTTPException(400,GENERIC) from None
+    # Bound total guesses to THIS browser-bound challenge, not just an IP.
+    # Distributed clients therefore cannot brute-force six digits in five
+    # minutes even when they share the legitimate user's cookies.
+    attempts_key=scoped_redis_key("attempts",payload.challenge)
+    async def count_attempt(cache):
+        script="""local n=redis.call('INCR',KEYS[1])
+                 if n==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end
+                 return n"""
+        return int(await cache.eval(script,1,attempts_key,TTL))
+    if await with_redis(count_attempt)>5:
+        raise HTTPException(429,GENERIC,headers={"Retry-After":"300"})
+    if not hmac.compare_digest(state["otp_hash"],digest_code(payload.challenge,payload.otp)):
+        raise HTTPException(400,GENERIC)
     async def consume(cache):
         script="""local current=redis.call('GET',KEYS[1])
                   if not current or current~=ARGV[1] then return 0 end
