@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'app/calendar_worker.py'
+      - 'app/worker.py'
       - 'app/integrations_api.py'
       - 'app/public_site_api.py'
       - 'app/static/orion-calendar-links.js'
@@ -75,7 +76,7 @@ jobs:
           python-version: '3.12'
       - run: |
           python -m pip install -c requirements.lock ".[test]"
-          python -m py_compile app/calendar_worker.py app/integrations_api.py app/public_site_api.py
+          python -m py_compile app/calendar_worker.py app/worker.py app/integrations_api.py app/public_site_api.py
       - name: Testar Google API usando MockTransport
         run: python -m pytest -q tests/unit/test_google_calendar_unit.py
       - name: Configurar papeis PostgreSQL de teste
