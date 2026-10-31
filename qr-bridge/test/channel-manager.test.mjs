@@ -44,6 +44,37 @@ test('assistant-off inbound is journaled before interaction and never forwarded'
   assert.deepEqual(calls,['journal','interaction']);assert.equal(f.forwards.length,0);assert.equal(f.made[0].ctx.assistantEnabled(),false);
 });
 
+test('central booking sends to an out-of-allowlist professional only after broker receipt grant',async t=>{
+  const f=fixture(t),a=f.add(),attempts=[];f.rows.get(a.id).inbox_control=true;
+  let approved=false;
+  f.broker.authorizeSend=async(id,key,lease,payload)=>{
+    attempts.push(payload);
+    if(!approved)throw Error('missing_committed_notification');
+    assert.equal(payload.source,'appointment');
+    assert.equal(payload.phone,other);
+    return {authorized:true,operation_id:payload.operation_id};
+  };
+  f.broker.finishSend=async()=>({released:true});
+  const m=f.manager();await m.start(a.id,a.key);
+  assert.equal(f.made[0].ctx.allowedSender(other),false,
+    'A fila de notificações nunca abre o atendimento inbound de outro número');
+  const denied=await m.send(a.id,a.key,{to:other,text:'Agendamento não autorizado',
+    operation_id:randomUUID(),source:'appointment'});
+  assert.equal(denied.state,'refused');assert.equal(f.made[0].sends.length,0);
+  approved=true;
+  const operation=randomUUID();
+  const sent=await m.send(a.id,a.key,{to:other,text:'Agendamento verificado',
+    operation_id:operation,source:'appointment'});
+  assert.equal(sent.accepted,true);
+  assert.equal(f.made[0].sends.length,1);
+  assert.equal(f.made[0].sends[0].to,other);
+  await m.send(a.id,a.key,{to:other,text:'Agendamento verificado',
+    operation_id:operation,source:'appointment'});
+  assert.equal(f.made[0].sends.length,1,'Não repetir o envio após aceite');
+  await assert.rejects(m.send(a.id,a.key,{to:other,text:'Nenhuma autorização manual',
+    operation_id:randomUUID(),source:'manual',control_revision:1}),/sender_denied/);
+});
+
 test('manual send carries the committed revision and real receipts return only to the API',async t=>{
   const f=fixture(t),a=f.add(),permits=[],finished=[],receipts=[];f.rows.get(a.id).inbox_control=true;
   f.broker.authorizeSend=async(id,key,lease,payload)=>{permits.push(payload);return {authorized:true,operation_id:payload.operation_id};};

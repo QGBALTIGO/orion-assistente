@@ -123,6 +123,80 @@ async def startup_plan_permissions(ctx):
     await wait_for_schema(Settings.from_environment())
     ctx['plan_permissions_ready'] = True
     logging.getLogger(__name__).info('orion_plan_permissions_0050_worker_ready')
+    if os.getenv('ORION_REVIEW_QA_VERIFY_7364') == '1':
+        try:
+            import json
+            from app.review_qa_verify_once import inspect_once
+            print('orion_review_qa_verify_7364='
+                  + json.dumps(await inspect_once(ctx),sort_keys=True),flush=True)
+        except Exception as error:
+            print('orion_review_qa_verify_7364_failed_closed type='
+                  + type(error).__name__,flush=True)
+    if os.getenv('ORION_REVIEW_QA_SEND_7364') == '1':
+        try:
+            import json
+            from app.review_qa_send_once import run_once
+            result = await run_once(ctx)
+            print('orion_review_qa_send_7364=' + json.dumps(result, sort_keys=True), flush=True)
+        except Exception as error:
+            from app import review_qa_send_once as qa
+            origin = getattr(error, 'orig', None)
+            code = getattr(origin, 'sqlstate', None) or getattr(origin, 'pgcode', None)
+            safe_code = code if isinstance(code, str) and len(code) == 5 and code.isalnum() else 'unknown'
+            print('orion_review_qa_send_7364_failed_closed type='
+                  + type(error).__name__ + ' phase=' + qa.PHASE
+                  + ' sqlstate=' + safe_code, flush=True)
+    if os.getenv('ORION_REVIEW_QA_7364_PREFLIGHT') == '1':
+        try:
+            import json
+            from app.review_qa_preflight import inspect
+            summary = await inspect()
+            print('orion_review_qa_7364=' + json.dumps(summary, sort_keys=True), flush=True)
+        except Exception as error:
+            print('orion_review_qa_7364_failed_closed type=' + type(error).__name__, flush=True)
+    if os.getenv('ORION_ONE_TIME_PEIXOTO_WHATSAPP_INSPECT') == '1':
+        try:
+            import json
+            from app.peixoto_whatsapp_delivery_inspect import inspect
+            print('orion_peixoto_whatsapp_inspection='
+                  + json.dumps(await inspect(), sort_keys=True), flush=True)
+        except Exception as exc:
+            print('orion_peixoto_whatsapp_inspection_failed_closed type='
+                  + type(exc).__name__, flush=True)
+    if os.getenv('ORION_E2E_PEIXOTO_CLEANUP') == '1':
+        try:
+            from app.peixoto_e2e_cleanup import cancel_one
+            outcome = await cancel_one()
+            print('orion_peixoto_e2e_cleanup state=' + outcome, flush=True)
+        except Exception as exc:
+            print('orion_peixoto_e2e_cleanup_failed_closed type='
+                  + type(exc).__name__, flush=True)
+    if os.getenv('ORION_ONE_TIME_PEIXOTO_PREFLIGHT') == '1':
+        try:
+            import json
+            from app.peixoto_notification_preflight import inspect
+            observed = await inspect()
+            print('orion_peixoto_readiness=' + json.dumps(observed, sort_keys=True),
+                  flush=True)
+        except Exception as exc:
+            print('orion_peixoto_readiness_failed_closed type='
+                  + type(exc).__name__, flush=True)
+    # Explicit operator-triggered, one-booking recovery only. The regular
+    # notification outbox and receipt ledger still authorize the actual send.
+    if os.getenv('ORION_ONE_TIME_PEIXOTO_RECOVERY') == '1':
+        try:
+            from app.one_time_peixoto_recovery import TENANT, recover_once
+            outcome, notification = await recover_once()
+            if notification is not None:
+                await ctx['redis'].enqueue_job(
+                    'process_appointment_notification', str(TENANT), str(notification),
+                    _job_id='orion-single-peixoto-test:' + str(notification))
+            print('orion_single_peixoto_recovery state=' + outcome
+                  + ' notice=' + (str(notification) if notification is not None else 'none'),
+                  flush=True)
+        except Exception as exc:
+            print('orion_single_peixoto_recovery_failed_closed type='
+                  + type(exc).__name__, flush=True)
 
 
 class WorkerSettings:

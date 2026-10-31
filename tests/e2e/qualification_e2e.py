@@ -43,6 +43,19 @@ def test_01_signup_login_and_business_create_are_separate_real_transactions(jour
     account = h.query("SELECT id,role,verified_at FROM panel_accounts WHERE email=%s", (email,))[0]
     assert account["role"] == "member" and account["verified_at"] is None
     assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (account["id"],)) == 0
+    # Decode the synthetic outbox on the pytest host, never in the browser.
+    # The real /auth/verify route still consumes the exact one-time code.
+    import json
+    from cryptography.fernet import Fernet
+    encrypted = h.query("SELECT payload_enc FROM panel_email_outbox WHERE account_id=%s AND kind='verify' ORDER BY created_at DESC LIMIT 1", (account["id"],))[0]["payload_enc"]
+    frozen = json.loads(Fernet(h.server.email_fernet_key.encode()).decrypt(encrypted.encode()))
+    codes = re.findall(r"(?m)^\d{6}$", frozen["text"])
+    assert len(codes) == 1
+    page.locator("#verifyCode").fill(codes[0])
+    with page.expect_response(lambda r: urlsplit(r.url).path == "/auth/verify") as confirmed:
+        page.locator("#authSubmitVerify").click()
+    assert confirmed.value.status == 200
+    assert h.query("SELECT verified_at,registration_pending FROM panel_accounts WHERE id=%s", (account["id"],))[0]["verified_at"] is not None
     h.login({"email": email})
     expect(page.locator('#orionSetup [data-ob-form="create"]')).to_be_visible()
     assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (account["id"],)) == 0
@@ -62,9 +75,13 @@ def test_02_services_wizard_persists_private_address_bindings_buffers_and_real_h
     state = h.service()
     tenant = state["tenant_id"]
     assert h.query("SELECT price_cents,duration_min,prep_min,cleanup_min,active FROM services WHERE tenant_id=%s", (tenant,))[0] == {"price_cents":3500,"duration_min":40,"prep_min":5,"cleanup_min":10,"active":False}
-    h.hours()
-    assert h.scalar("SELECT count(*) FROM working_hours WHERE tenant_id=%s", (tenant,)) == 2
-    assert h.scalar("SELECT count(*) FROM working_breaks WHERE tenant_id=%s", (tenant,)) == 2
+    saved_hours = h.hours()
+    days = saved_hours["configuration"]["business_opening_hours"]["days"]
+    assert sorted(day["weekday"] for day in days if day.get("open")) == [0, 2]
+    assert all(day.get("break_start") == "12:00" and day.get("break_end") == "13:00"
+               for day in days if day.get("open"))
+    assert h.scalar("SELECT count(*) FROM working_hours WHERE tenant_id=%s", (tenant,)) == 0
+    assert h.scalar("SELECT count(*) FROM working_breaks WHERE tenant_id=%s", (tenant,)) == 0
     h.step("channels")
     h.page.locator('#orionSetup [name="assistant_name"]').fill("Recepção sintética E2E")
     h.page.locator('#orionSetup [name="capabilities"][value="catalog_answers"]').check()
@@ -412,7 +429,6 @@ def test_20_completed_business_channels_remain_disabled_without_touching_any_pro
     h.location()
     h.product()
     h.complete()
-    h.page.locator('[data-ob-action="open-dashboard"]').click()
     h.page.locator('[data-os-route="configuracoes"]').first.click()
     with h.page.expect_response(lambda r: urlsplit(r.url).path.endswith("/qr-channels")) as channels:
         h.page.locator('[data-os-settings="whatsapp"]').click()

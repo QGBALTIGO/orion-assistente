@@ -276,7 +276,10 @@ def seed_fixture_plans(sandbox, db, tenants):
     if (identity["database_name"] != sandbox.name or identity["oid"] != sandbox.oid
             or identity["role_name"] != "postgres" or identity["owner_name"] != "postgres"):
         raise ValueError("Disposable database identity changed; refusing synthetic grants")
-    if db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() != "0050_plan_permissions":
+    # Later additive protocol/phone revisions do not alter tenant_plan_controls.
+    # Refuse every unknown future revision until the CI fixture is reviewed.
+    revision = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+    if revision not in {"0050_plan_permissions", "0051_central_protocol", "0052_paraguay_phone"}:
         raise ValueError("Synthetic plan fixture requires its reviewed schema")
     actor = uuid4()
     db.execute(text("""INSERT INTO panel_accounts(id,name,email,password_hash,role)
@@ -776,7 +779,8 @@ async def execute(args, sandbox, report):
             pipe.set(key, json.dumps({"role": "member", "account_id": p["account"], "auth_version": 1, "csrf": p["csrf"]}), ex=7200)
         await pipe.execute()
         env = sandbox.environment(); env.update({"REDIS_URL": cache_url.render_as_string(hide_password=False),
-            "SUPPORT_API_TOKEN": secrets.token_urlsafe(48), "BUSINESS_PROFILES_ENABLED": "1", "ONBOARDING_ENABLED": "1",
+            "SUPPORT_API_TOKEN": secrets.token_urlsafe(48), "PUBLIC_SITE_SIGNING_KEY": secrets.token_urlsafe(48),
+            "BUSINESS_PROFILES_ENABLED": "1", "ONBOARDING_ENABLED": "1",
             "COMMERCIAL_CATALOG_ENABLED": "1", "MARKETING_EXECUTION_ENABLED": "0", "QR_CHANNELS_ENABLED": "0", "QR_AI_ENABLED": "0", "GROQ_PROBE_ON_START": "0"})
         env.update(api_pool_environment(args))
         profile_directory = configure_api_profile(args, env)

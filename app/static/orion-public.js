@@ -963,18 +963,11 @@
   }
 
   function openBookingWhatsApp(url) {
-    // Only a successful reservation may open WhatsApp. A separate tab keeps the
-    // Orion receipt visible when the customer returns from the messenger.
-    try {
-      const tab = window.open('about:blank', '_blank');
-      if (tab) {
-        try { tab.opener = null; } catch { /* opener is detached when supported */ }
-        tab.location.replace(url);
-        return;
-      }
-    } catch { /* A popup blocker must not discard the completed booking. */ }
+    // A reservation is already committed at this point. Opening a new tab
+    // after the asynchronous API reply is blocked by Safari/Chrome on mobile.
+    // Navigate in the same tab instead; the receipt keeps a manual fallback.
     try { window.location.assign(url); } catch {
-      // Restricted browsers can still use the visible link on the receipt.
+      // Restricted browsers still have the visible link on the receipt.
     }
   }
 
@@ -1036,20 +1029,63 @@
     }
   }
 
+  // Confirmation actions reuse Orion's primary/outline tokens instead of an
+  // unstyled generic .pill. All SVG markup below is constant application code.
+  const SUCCESS_ACTION_ICONS = {
+    copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
+    calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>'
+  };
   function renderSuccess(body) {
-    const success = el('div', 'success'); success.append(el('div', 'success-check', '✓'), el('h3', '', 'Agendamento confirmado!'), el('p', '', 'Seu horário está reservado. Guarde o protocolo e chegue no horário combinado.'), reviewCard(booking.result));
+    const success = el('div', 'success');
+    success.append(el('div', 'success-check', '✓'),
+      el('h3', '', 'Agendamento confirmado!'),
+      el('p', '', 'Seu horário está reservado. Guarde o protocolo e chegue no horário combinado.'),
+      reviewCard(booking.result));
+
+    const actions = el('div', 'success-actions');
+    actions.setAttribute('role', 'group');
+    actions.setAttribute('aria-label', 'Ações do agendamento');
+    function addAction(control, iconSVG, label) {
+      const icon = el('span', 'success-action-icon');
+      icon.setAttribute('aria-hidden', 'true');
+      icon.innerHTML = iconSVG; // Fixed local SVG, never customer data.
+      control.replaceChildren(icon, el('span', 'success-action-label', label));
+      actions.append(control);
+      return control;
+    }
+
     const whatsappURL = bookingWhatsAppURL(booking.result);
     if (whatsappURL) {
-      const wa = el('a', 'pill', 'Abrir WhatsApp novamente');
-      wa.href = whatsappURL; wa.target = '_blank'; wa.rel = 'noopener noreferrer';
-      success.append(wa);
+      const wa = el('a', 'primary success-action success-action-primary');
+      wa.href = whatsappURL;
+      wa.target = '_blank';
+      wa.rel = 'noopener noreferrer';
+      addAction(wa, CONTACT_ICONS.whatsapp, 'Abrir WhatsApp novamente');
     } else {
       success.append(el('p', 'small muted',
         'Seu agendamento foi salvo, mas o WhatsApp do Orion está indisponível neste momento. Guarde o protocolo.'));
     }
 
-    success.append(button('Copiar protocolo', 'outline', async()=>{try{await navigator.clipboard.writeText(booking.result.protocol);showError('Protocolo copiado. Seu agendamento está salvo.');}catch{showError('Guarde o protocolo: '+booking.result.protocol);}}));
-    success.append(button('Adicionar ao meu calendário', 'outline', downloadCalendar)); body.append(success);
+    const copy = button('Copiar protocolo', 'outline success-action success-action-secondary', async () => {
+      try {
+        await navigator.clipboard.writeText(booking.result.protocol);
+        const label = copy.querySelector('.success-action-label');
+        if (label) {
+          label.textContent = 'Protocolo copiado!';
+          window.setTimeout(() => {
+            if (label.isConnected) label.textContent = 'Copiar protocolo';
+          }, 2400);
+        }
+      } catch {
+        showError('Não foi possível copiar. Guarde o protocolo: ' + booking.result.protocol);
+      }
+    });
+    addAction(copy, SUCCESS_ACTION_ICONS.copy, 'Copiar protocolo');
+    const calendar = button('Adicionar ao meu calendário',
+      'outline success-action success-action-secondary', downloadCalendar);
+    addAction(calendar, SUCCESS_ACTION_ICONS.calendar, 'Adicionar ao meu calendário');
+    success.append(actions);
+    body.append(success);
   }
   function downloadCalendar() {
     const result = booking.result; if (!result) return;

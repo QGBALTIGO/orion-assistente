@@ -130,13 +130,15 @@ async def test_only_registered_admin_device_receives_generic_push(monkeypatch):
                                      base_url="https://orionagenda.pro") as client:
             app_icon = await client.get("/pwa/icon-180.png")
             assert app_icon.status_code == 200 and app_icon.headers["content-type"] == "image/png"
-            page = await client.get("/panel")
+            page = await client.get("/painel")
             assert page.status_code == 200
             assert 'rel="apple-touch-icon"' in page.text
             assert 'href="/manifest.webmanifest"' in page.text
             manifest = await client.get("/manifest.webmanifest")
             assert manifest.json()["display"] == "standalone"
             assert manifest.json()["id"] == "/panel"
+            assert manifest.json()["start_url"] == "/painel"
+            assert manifest.json()["scope"] == "/painel"
             sw = await client.get("/pwa-sw.js")
             assert sw.status_code == 200 and "showNotification" in sw.text
             cfg = await client.get("/api/pwa/admin/config")

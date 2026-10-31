@@ -159,3 +159,24 @@ test('protocolo do cliente paraguaio é recebido com PN verificado e sem liberar
     text:'AG-3SVM6N',fetchImpl:async()=>{throw Error('Não deve consultar API');}
   }));
 });
+
+test('encaminha OTP do link curto com alias de colisão sem revelar token do atendimento',async()=>{
+  const message='ORION VERIFICAR P AG-4NNSY2-E1721F7D ' + 'K'.repeat(22);
+  assert.equal(isBookingProtocolMessage(message),true);
+  let sent=0;
+  const answer=await fetchBookingProtocolConfirmation({
+    apiUrl:base,token,phone:'5567998888777',messageId:'short-qa-1',text:message,
+    fetchImpl:async(_url,opts)=>{
+      const data=JSON.parse(opts.body);
+      assert.equal(data.phone,'5567998888777');
+      assert.equal(data.text,message);
+      assert.ok(!opts.body.includes('82552b25-d0c8-5338-8c42-49f11de59e45'));
+      sent++;
+      return {ok:true,json:async()=>({
+        state:'confirmed',answer:'Código de acesso Orion: 123456'
+      })};
+    }
+  });
+  assert.equal(answer,'Código de acesso Orion: 123456');
+  assert.equal(sent,1);
+});

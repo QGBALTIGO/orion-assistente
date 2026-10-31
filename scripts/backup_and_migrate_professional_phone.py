@@ -102,7 +102,12 @@ def professional_contract_ready(raw, *, expect_phone):
             """)).first()
             if not expect_phone:
                 return column is None and constraint is None
-            expected_check = r"CHECK (((phone_e164 IS NULL) OR ((phone_e164)::text ~ '^\+55[1-9][0-9]{9,10}$'::text)))"
+            version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            # The 0052 schema adds explicitly reviewed Paraguayan mobile support.
+            # Preserve an exact constraint check instead of accepting any regex.
+            baseline = r"CHECK (((phone_e164 IS NULL) OR ((phone_e164)::text ~ '^\+55[1-9][0-9]{9,10}$'::text)))"
+            paraguay = r"CHECK (((phone_e164 IS NULL) OR ((phone_e164)::text ~ '^(\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$'::text)))"
+            expected_check = paraguay if version == "0052_paraguay_phone" else baseline
             return (tuple(column or ()) == ('varchar', 'YES', 16, None)
                     and constraint is not None and tuple(constraint[:3]) == (True, False, False)
                     and normalized(constraint[3]) == normalized(expected_check))

@@ -7,7 +7,7 @@ import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl} from 
  */
 import http from "node:http";
 import {databaseBackup} from './database-backup-store.mjs';
-import path from "node:path";
+import path, {join as joinPath} from "node:path";
 import fs from "node:fs";
 import {timingSafeEqual,randomUUID,createHmac} from "node:crypto";
 import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
@@ -210,8 +210,11 @@ function stats(){
     controlStorage:connectedStore.health(),contactNameStorage:contactNames.health()};
 }
 function auth(req){
-  const input=Buffer.from(String(req.headers["x-orion-bridge-key"]||""));
-  const expected=Buffer.from(KEY);
+  // A blank or short secret must NEVER authorize a blank header.
+  if(typeof KEY!=="string"||Buffer.byteLength(KEY,"utf8")<32||Buffer.byteLength(KEY,"utf8")>256)return false;
+  const header=req.headers["x-orion-bridge-key"];
+  if(typeof header!=="string")return false;
+  const input=Buffer.from(header,"utf8"),expected=Buffer.from(KEY,"utf8");
   return input.length===expected.length&&timingSafeEqual(input,expected);
 }
 function reply(res,code,data){
@@ -928,6 +931,10 @@ const server=http.createServer(async(req,res)=>{
   // Additional channels authenticate their own credential at the SQL broker;
   // the shared legacy pilot token never grants access to these routes.
   if(path.startsWith('/internal/channels/')&&await channelRoutes(req,res))return;
+  // A disabled local backup key cannot be mistaken for a bad operator key.
+  // The service still fails closed; never reveal actual key length.
+  if(path.startsWith('/internal/ops/database-backups/')&&Buffer.byteLength(KEY,"utf8")<32)
+    return reply(res,503,{error:"bridge_not_configured"});
   if(!auth(req))return reply(res,401,{error:"unauthorized"});
   try{
     if(path.startsWith('/internal/ops/database-backups/'))
@@ -1017,7 +1024,7 @@ const server=http.createServer(async(req,res)=>{
       lastInboundAt=0;pendingNotificationsReceived=false;inboundSinceConnect=false;
       recentAppends=0;
       encryptedRetry=makeEncryptedRetryStore({
-        directory:path.join(authDir,"retry-encrypted"),secret:KEY,
+        directory:joinPath(authDir,"retry-encrypted"),secret:KEY,
         serialize:obj=>JSON.stringify(obj,BufferJSON.replacer),
         deserialize:str=>JSON.parse(str,BufferJSON.reviver)
       });

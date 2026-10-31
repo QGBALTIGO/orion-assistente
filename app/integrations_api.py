@@ -87,7 +87,7 @@ def current_candidate(candidate, row):
 
 
 def callback_result(tenant, outcome):
-    response = RedirectResponse("/panel?" + urlencode({"aba": "agenda", "google": outcome, "empresa": str(tenant)}),
+    response = RedirectResponse("/painel?" + urlencode({"aba": "agenda", "google": outcome, "empresa": str(tenant)}),
                                 status_code=303, headers=NO_STORE)
     response.delete_cookie(OAUTH_COOKIE, path=OAUTH_PATH, secure=True, httponly=True, samesite="lax")
     return response

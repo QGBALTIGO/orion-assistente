@@ -95,6 +95,12 @@ def predeploy_main():
     from scripts import backup_and_migrate_plan_permissions as permissions
     from scripts import backup_and_migrate_central_appointment_confirmation as central
     from scripts import backup_and_migrate_paraguay_phone as paraguay
+    from scripts import backup_and_migrate_central_notifications as central_notifications
+    from scripts import backup_and_migrate_short_links as short_links
+    def finish_notifications(result):
+        if result:return result
+        if migrated_version(raw)!=paraguay.TARGET:return 0
+        return central_notifications.main()
     def finish_permissions(result):
         if result:return result
         checked=permissions.main()
@@ -102,7 +108,7 @@ def predeploy_main():
         if os.getenv('ORION_RUN_CENTRAL_APPOINTMENT_MIGRATION')=='1':
             checked=central.main()
             if checked:return checked
-        return paraguay.main() if os.getenv(paraguay.FLAG)=='1' else 0
+        return finish_notifications(paraguay.main()) if os.getenv(paraguay.FLAG)=='1' else 0
     def finish_direct():
         result=direct.main()
         if result:return result
@@ -110,11 +116,16 @@ def predeploy_main():
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
+        if current == short_links.TARGET:
+            return short_links.main()
+        if current == central_notifications.TARGET:
+            checked=central_notifications.main()
+            return checked if checked else short_links.main()
         if current == paraguay.TARGET:
-            return paraguay.main()
+            return finish_notifications(paraguay.main())
         if current == central.TARGET:
             checked=central.main()
-            return checked if checked else paraguay.main()
+            return checked if checked else finish_notifications(paraguay.main())
         if current == permissions.TARGET:
             return finish_permissions(0)
         if current in {appointment.TARGET,appointment.COMMUNICATIONS_PREVIOUS}:

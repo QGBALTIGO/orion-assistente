@@ -58,7 +58,8 @@ def require_tenant(tenant):
     # by the admin's centralized booking reception. This does not enable the
     # AI bot, automatic broadcast, or the pilot tenant's QR send permissions.
     if (enabled() and os.getenv('ORION_CENTRAL_APPOINTMENT_WHATSAPP_ENABLED')=='1'
-            and os.getenv('ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED')=='1'):return
+            and (os.getenv('ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED')=='1'
+                 or os.getenv('ORION_CENTRAL_NOTIFICATIONS_ENABLED')=='1')):return
     raise HTTPException(404,'Recurso indisponível para esta empresa')
 
 
@@ -136,3 +137,32 @@ async def issue(db, tenant, appointment):
         {'t': tenant, 'id': appointment, 'customer': row['customer_id'], 'version': row['version'],
          'hash': digest, 'end': row['end_at']})
     return canonical_public_origin() + '/a#' + raw
+
+
+def short_links_enabled():
+    """Only activate after 0054 backup, schema checks and QR ingress are live."""
+    return enabled() and os.getenv("ORION_SHORT_APPOINTMENT_LINKS_ENABLED") == "1"
+
+
+async def shared_link(db, tenant, appointment, *, audience="customer"):
+    """Return only the global alias, never an internal UUID or bearer secret.
+
+    Old in-flight messages retain their previous capability until rollout.
+    A missing alias after enabling the feature is a fail-closed error, not
+    permission to leak a long-lived access token into new WhatsApp messages.
+    """
+    if audience not in {"customer", "professional"}:
+        raise ValueError("invalid_shared_link_audience")
+    if not short_links_enabled():
+        if audience == "customer":
+            return await issue(db, tenant, appointment)
+        return (canonical_public_origin() + "/painel?aba=agenda&agendamento="
+                + str(appointment))
+    code = (await db.execute(text("""
+        SELECT code FROM public.appointment_short_codes
+        WHERE tenant_id=:tenant AND appointment_id=:appointment
+    """), {"tenant":tenant, "appointment":appointment})).scalar_one_or_none()
+    if not code or not re.fullmatch(r"AG-[A-HJ-NP-Z2-9]{6}(?:-[A-F0-9]{8})?",code):
+        raise ValueError("short_link_alias_unavailable")
+    prefix = "/p/" if audience == "professional" else "/"
+    return canonical_public_origin() + prefix + code

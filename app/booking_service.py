@@ -497,7 +497,8 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                            now: datetime | None = None, *, replace_hold_id: UUID | None = None,
                            expected_snapshot: str | None = None,
                            context: LifecycleActor | None = None, source: str = "unknown",
-                           nonblocking_professional_lock: bool = False):
+                           nonblocking_professional_lock: bool = False,
+                           public_birth_date: date | None = None):
     """ÚNICA função para criar reservas/holds de todos os canais futuros."""
     supplied_clock = now is not None
     now = now or datetime.now(UTC)
@@ -553,7 +554,18 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
             # This cancels an unconfirmed proposal, not a published calendar event.
             await history(s, tenant, replace_hold_id, "cancelled", calendar=False, previous=previous,
                           context=resolved_actor(context, source, previous["customer_id"], verified_customer=True))
-        customer_row, _ = await resolve_customer(s, tenant, phone, customer_name)
+        # Anonymous visitors can submit any phone, so only populate a DOB on
+        # newly created customers. ON CONFLICT preserves all existing PII.
+        creation_fields = None
+        if source == "public_site" and public_birth_date is not None:
+            creation_fields = {
+                "birth_date": public_birth_date,
+                "birth_month": public_birth_date.month,
+                "birth_day": public_birth_date.day,
+            }
+        customer_row, _ = await resolve_customer(
+            s, tenant, phone, customer_name, attributes=creation_fields,
+        )
         customer = customer_row["id"]
         item_id = uuid4()
         # Retry com SAVEPOINT para colisão estatisticamente improvável do protocolo.

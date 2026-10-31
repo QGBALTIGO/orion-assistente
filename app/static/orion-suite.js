@@ -1732,7 +1732,7 @@
     if(authorizationOrigin){try{const target=new URL(authorizationOrigin);if(target.protocol!=='https:'||target.username||target.password||target.pathname!=='/'||target.search||target.hash)throw Error();authorizationOrigin=target.origin;}catch{throw Error('Não foi possível confirmar o endereço de conexão Google. Atualize a situação.');}}
     if(!authorizationOrigin&&location.hostname==='orion-painel-iota.vercel.app')authorizationOrigin='https://orion-assistente-production.up.railway.app';
     if(action==='connect'&&authorizationOrigin&&authorizationOrigin!==location.origin){
-      const originalPanel=authorizationOrigin+'/panel?aba=agenda&empresa='+encodeURIComponent(state.tenantId);
+      const originalPanel=authorizationOrigin+'/painel?aba=agenda&empresa='+encodeURIComponent(state.tenantId);
       showDialog('google-original-panel','Conectar Google Agenda','<p>Para conectar o Google Agenda, continue no painel original do Orion. Talvez seja necessário entrar novamente.</p><div class="os-form-actions">'+button('Cancelar','close-dialog','os-outline')+'<a class="os-button" href="'+esc(originalPanel)+'">Continuar no painel original</a></div>',{capability});
       return;
     }
@@ -2783,7 +2783,7 @@
       case 'agenda-page-prev':case 'agenda-page-next':{const result=state.data.agendaResult;if(!result||state.data.agendaError)return;const next=Math.max(0,f.agendaOffset+(name==='agenda-page-prev'?-50:50));if(next>=number(result.total))return;f.agendaOffset=next;await loadAgenda(context(),{catalogue:false});$('osAgendaCount')?.focus();break;}
       case 'agenda-google':await showGoogle();break;
       case 'google-refresh':await loadGoogle({handleReturn:false});break;
-      case 'google-sign-in':window.location.assign('/panel?aba=agenda');break;
+      case 'google-sign-in':window.location.assign('/painel?aba=agenda');break;
       case 'google-calendars':await showGoogleCalendars();break;
       case 'google-retry':showGoogleAction('retry');break;
       case 'appointment-back':if(d?.appointmentId||d?.record?.id)await showAppointmentDetail(d.appointmentId||d.record.id);break;

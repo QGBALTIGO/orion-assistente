@@ -49,7 +49,7 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
       else {
         const input=await body(req),required=action==='send'?['to','text','operation_id']:action==='pair'?['phone']:[],allowed=[...required,...(action==='send'?['source','control_revision']:[])];
         if(Object.keys(input).some(k=>!allowed.includes(k))||required.some(k=>!(k in input))||
-          ('source' in input&&(input.source!=='manual'||!Number.isSafeInteger(input.control_revision)||input.control_revision<1))||
+          ('source' in input&&!(input.source==='appointment'&&input.control_revision===undefined||input.source==='manual'&&Number.isSafeInteger(input.control_revision)&&input.control_revision>=1))||
           ('control_revision' in input&&input.source!=='manual')||
           (action==='pair'&&(typeof input.phone!=='string'||input.phone!==input.phone.trim()||!/^[1-9]\d{7,14}$/.test(input.phone))))throw Error('invalid_channel_request');
         if(action==='start')result=await api.start(id,key);
