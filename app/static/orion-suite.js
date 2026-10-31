@@ -1701,7 +1701,7 @@
       html+='<p class="os-google-error" role="status">O serviço de envio do Google precisa ser habilitado ou configurado pela equipe Orion.</p>';
     if(data.setup&&Array.isArray(data.setup.checks))html+='<section class="os-google-explainer" aria-label="Preparação da integração"><h4>Preparar a conexão</h4><ul>'+data.setup.checks.map(item=>'<li>'+esc(item.ready===true?'Pronto: ':'Pendente: ')+esc(item.label)+'</li>').join('')+'</ul><p>As pendências de instalação devem ser configuradas pela administração do Orion. Depois, o proprietário autoriza sua conta Google e escolhe o calendário.</p><p>Preparação concluída não significa conta conectada ou sincronização ativa.</p></section>';
     if(key!=='not_configured')html+='<div class="os-google-explainer"><h4>Do Orion para o Google</h4><p>'+esc(googleDisclosure)+'</p><p>Os eventos são privados e não incluem convidados. Cancelar no Orion remove o evento correspondente. Alterações feitas diretamente no Google não voltam para a agenda do Orion.</p>'+(data.calendar_change_locked?'<p>Este vínculo usa sempre o mesmo calendário. Reconecte a mesma conta para mantê-lo. A troca para outro calendário não está disponível.</p>':'')+'</div>';
-    html+='<div class="os-google-actions">'+(data.email_confirmation_required&&writable()&&state.bridge.user?.email?button('Confirmar meu e-mail','google-email','','mail'):'')+(googleCan('can_connect')&&(!data.connected||key==='reauthorization_required')?button(key==='reauthorization_required'?'Reconectar Google':'Conectar Google Agenda','google-connect','','link'):'')+(googleCan('can_select_calendar')&&data.selection_pending?button('Escolher calendário','google-calendars','','calendar'):'')+(googleCan('can_retry')?button('Repetir sincronização','google-retry','os-outline','refresh'):'')+button('Atualizar situação','google-refresh','os-ghost','refresh')+(googleCan('can_disconnect')?button('Desconectar','google-revoke','os-ghost os-google-disconnect','link'):'')+'</div>';
+    html+='<div class="os-google-actions">'+(data.email_confirmation_required&&writable()&&state.bridge.user?.email?button('Confirmar meu e-mail','google-email','','mail'):'')+(googleCan('can_connect')&&(!data.connected||key==='reauthorization_required')?button(key==='reauthorization_required'?'Reconectar Google':'Conectar Google Agenda','google-connect','','link'):'')+(googleCan('can_select_calendar')&&data.selection_pending?button('Escolher calendário','google-calendars','','calendar'):'')+(googleCan('can_retry')?button('Repetir sincronização','google-retry','os-outline','refresh'):'')+(googleCan('can_test')?button('Testar conexão com Google','google-test','os-outline','calendar'):'')+button('Atualizar situação','google-refresh','os-ghost','refresh')+(googleCan('can_disconnect')?button('Desconectar','google-revoke','os-ghost os-google-disconnect','link'):'')+'</div>';
     if(data.configured!==false&&!data.email_confirmation_required&&!Object.values(data.capabilities||{}).some(value=>value===true))html+='<p class="os-help">Seu acesso permite consultar a integração. O proprietário da empresa ou o suporte pode gerenciar a conexão quando ela estiver disponível.</p>';
     return html;
   }
@@ -2816,6 +2816,21 @@
       case 'agenda-page-prev':case 'agenda-page-next':{const result=state.data.agendaResult;if(!result||state.data.agendaError)return;const next=Math.max(0,f.agendaOffset+(name==='agenda-page-prev'?-50:50));if(next>=number(result.total))return;f.agendaOffset=next;await loadAgenda(context(),{catalogue:false});$('osAgendaCount')?.focus();break;}
       case 'agenda-google':await showGoogle();break;
       case 'google-refresh':await loadGoogle({handleReturn:false});break;
+      case 'google-test':{
+        if(!googleCan('can_test'))break;
+        const source=context();
+        try{
+          const result=await request(apiPath('/google/check'),'POST',{});
+          if(current(source)&&result?.verified===true){
+            toast('Conexão Google válida. O calendário permite criar e atualizar eventos.');
+            await loadGoogle({handleReturn:false});
+          }
+        }catch(error){
+          if(current(source))await showGoogle({refresh:true,notice:
+            'O Google recusou a verificação: '+String(error?.message||'Confira a autorização e reconecte sua conta.')});
+        }
+        break;
+      }
       case 'google-sign-in':window.location.assign('/painel?aba=agenda');break;
       case 'google-calendars':await showGoogleCalendars();break;
       case 'google-retry':showGoogleAction('retry');break;

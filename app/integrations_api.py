@@ -24,6 +24,7 @@ from app.google_oauth import (
     authorization_origin,
 )
 from app.tenant_access import resolve_tenant_access
+from app.panel_auth import _same_origin
 
 router = APIRouter(tags=["Integrações opcionais"])
 NO_STORE = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
@@ -183,6 +184,7 @@ async def google_status_data(tenant_id, actor, request):
             "can_connect": can_manage and configured and oauth_available and not email_pending,
             "can_disconnect": can_manage and bool(candidate or row and row["refresh_token_enc"]),
             "can_select_calendar": can_manage and configured and bool(candidate),
+            "can_test": can_manage and configured and connected,
             "can_retry": can_manage and configured and connected and enabled and bool(stats["pending"] or stats["failed"]),
         },
     }
@@ -402,6 +404,55 @@ async def select_google_calendar(tenant_id: UUID, payload: CalendarSelection, re
     finally:
         await redis.aclose()
     return await google_status_data(tenant_id, actor, request)
+
+
+@router.post("/api/v1/tenants/{tenant_id}/google/check")
+async def check_google_connection(tenant_id: UUID, request: Request,
+                                  actor: Actor = Depends(authenticate)):
+    """Opt-in read-only verification of the current Google grant and calendar.
+
+    A local 'connected' flag proves only a stored refresh token, not that Google
+    can actually edit events. Never send a test event or expose OAuth material.
+    """
+    _same_origin(request)
+    await resolve_tenant_access(actor, tenant_id, "publish")
+    from app.public_site_api import public_limit  # Delayed to avoid API import cycles.
+    await public_limit(request, str(tenant_id), "google-live-check", 6, 600)
+    _, _, _, key = oauth_config()
+    row = await connection_snapshot(tenant_id)
+    if not row or row["status"] != "active" or not row["refresh_token_enc"] or row["calendar_id"] == "primary":
+        raise HTTPException(409, "Conecte sua conta e escolha uma agenda antes de testar")
+    revision = connection_fingerprint(row)
+    try:
+        refresh = Fernet(key.encode()).decrypt(row["refresh_token_enc"]).decode()
+    except (InvalidToken, UnicodeError, ValueError):
+        raise HTTPException(409, "A autorização salva não pode ser lida. Reconecte a conta Google") from None
+    provider = GoogleCalendar()
+    try:
+        token = await provider.refresh_access_token(refresh)
+        meta = await provider.get_calendar(token, row["calendar_id"])
+    except CalendarProviderError as error:
+        if error.reauthorize:
+            # A definitive Google 401/invalid_grant must not leave the
+            # dashboard falsely claiming 'Conectado'. Recheck ownership after
+            # the external request and preserve the encrypted refresh token.
+            async with get_session_factory()() as db:
+                async with tenant_transaction(db, tenant_id):
+                    current = await connection_row(db, tenant_id, lock=True)
+                    if connection_fingerprint(current) == revision:
+                        await db.execute(text("""
+                            UPDATE google_connections SET status='error',
+                                last_error=:error, updated_at=clock_timestamp()
+                            WHERE tenant_id=:tenant
+                        """), {"tenant": tenant_id, "error": error.code})
+        raise provider_http(error) from None
+    # No stale ownership claim after a concurrent disconnect or account swap.
+    if meta["id"] != row["calendar_id"] or connection_fingerprint(
+            await connection_snapshot(tenant_id)) != revision:
+        raise HTTPException(409, "A conexão foi alterada. Atualize o painel e tente novamente")
+    return {"verified": True, "calendar_name": meta["name"],
+            "calendar_id": meta["id"], "writable": True,
+            "events_created": 0, "direction": "orion_to_google"}
 
 
 @router.get("/api/v1/tenants/{tenant_id}/google/status")

@@ -61,6 +61,22 @@ function render(data){
  if(data.can_change&&data.pending_change){const proposed=new Intl.DateTimeFormat('pt-BR',{dateStyle:'long',timeStyle:'short',timeZone:data.timezone}).format(new Date(data.pending_change.new_start_at));actions.append(node('p','A equipe propôs '+proposed+'. Seu horário atual permanece válido até você aceitar. O novo horário será conferido na confirmação.'));for(const [title,action] of [['Aceitar novo horário','accept_change'],['Manter meu horário','decline_change']])actions.append(button(title,()=>void run(async()=>{const proposal=data.pending_change;render(await request(action,{expected_updated_at:current.updated_at,idempotency_key:crypto.randomUUID(),proposal_id:proposal.id}));}),action==='decline_change'));}
  if(data.can_change){actions.append(button('Remarcar atendimento',()=>{$('reschedule').hidden=false;$('day').focus();}),button('Cancelar agendamento',()=>$('confirmation').showModal(),true));}
  if(data.review)actions.append(node('p','Sua avaliação foi recebida. Obrigado!'));
+ if(data.status==='confirmed'&&!reviewMode){
+   // A manual Google event is accessible from the WhatsApp management link,
+   // even after the public booking automatically redirects to WhatsApp.
+   const url=window.OrionCalendarLinks?.googleEventURL({
+     status:data.status,company:data.company,services:data.services,
+     professional:data.professional,start_at:data.start_at,end_at:data.end_at,
+     timezone:data.timezone,address:data.address
+   });
+   const calendar=link('Adicionar ao Google Agenda',url);
+   if(calendar){
+     calendar.classList.add('secondary');
+     calendar.referrerPolicy='no-referrer';
+     actions.append(calendar);
+     actions.append(node('p','O Google Agenda abrirá o evento para salvar. Após uma remarcação ou cancelamento, atualize sua agenda pessoal.'));
+   }
+ }
  if(!reviewMode){
    if(data.status==='completed'&&data.has_future_booking)actions.append(node('p','Seu próximo horário já está garantido!'));
    else if(['completed','cancelled','no_show'].includes(data.status)){for(const suggestion of data.return_suggestions||[]){actions.append(node('p',suggestion.service+': retorno sugerido a partir de '+new Intl.DateTimeFormat('pt-BR',{dateStyle:'long',timeZone:'UTC'}).format(new Date(suggestion.from_date+'T12:00:00Z'))));}const next=link('Agendar novamente',data.new_booking_url);if(next)actions.append(next);}

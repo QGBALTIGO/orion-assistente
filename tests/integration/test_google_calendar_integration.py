@@ -138,7 +138,7 @@ async def stage(d):
     state, intent = await start(d)
     response = await d["client"].get("/integrations/google/callback", params={"state": state, "code": "synthetic-code"})
     assert response.status_code == 303, response.text
-    assert response.headers["location"] == f"/panel?aba=agenda&google=choose&empresa={d['a']}"
+    assert response.headers["location"] == f"/painel?aba=agenda&google=choose&empresa={d['a']}"
     assert response.headers["cache-control"] == "no-store"
     return intent
 
@@ -583,3 +583,54 @@ async def test_google_oauth_connects_before_new_company_staff_setup(google_db, m
             await db.execute(text(
                 "DELETE FROM business_onboarding WHERE tenant_id=:t"
             ),{"t":d["a"]})
+
+
+@pytest.mark.asyncio
+async def test_disconnected_intents_drain_without_false_connection_busy(google_db):
+    """Unconnected tenant jobs should never fight over a nonexistent grant."""
+    d=google_db
+    person=await customer(d)
+    identities=[await appointment(d,person["id"],start_at=d["now"]+timedelta(days=i))
+                for i in (1,2)]
+    jobs=[await enqueue(d,item) for item in identities]
+    results=await asyncio.gather(*(
+        worker.process_calendar_outbox({},str(d["a"]),str(job["id"])) for job in jobs
+    ))
+    assert results==["not_connected","not_connected"]
+    for identity in identities:
+        row=await outbox(d,identity)
+        assert row["attempts"]==0
+        assert row["status"]=="pending"
+        assert row["last_error"]=="calendar_not_connected"
+        assert row["next_attempt_at"]>d["now"]+timedelta(minutes=14)
+    assert d["google"].calls==[]
+
+
+@pytest.mark.asyncio
+async def test_live_google_check_never_creates_a_test_event_or_exposes_tokens(google_db):
+    d=google_db
+    # Checking without explicit owner authorization must not contact Google.
+    unavailable=await d["client"].post(d["google_base"]+"/check")
+    assert unavailable.status_code==409
+    assert d["google"].calls==[]
+    await activate(d)
+    d["google"].calls.clear()
+    verified=await d["client"].post(d["google_base"]+"/check")
+    assert verified.status_code==200,verified.text
+    assert verified.json()=={"verified":True,"calendar_name":"Agenda sintética",
+        "calendar_id":CALENDAR,"writable":True,"events_created":0,"direction":"orion_to_google"}
+    assert [call[0] for call in d["google"].calls]==["refresh","calendar"]
+    assert "synthetic-refresh-only" not in verified.text
+    assert "synthetic-access-only" not in verified.text
+    d["google"].failure=CalendarProviderError("google_authorization_expired",reauthorize=True)
+    expired=await d["client"].post(d["google_base"]+"/check")
+    assert expired.status_code==409
+    assert "expirou" in expired.text.lower() or "reconecte" in expired.text.lower()
+    assert not any(call[0]=="apply" for call in d["google"].calls)
+    saved=await api.connection_snapshot(d["a"])
+    assert saved["status"]=="error"  # Definitive invalid_grant unlocks Reconectar.
+    assert saved["last_error"]=="google_authorization_expired"
+    assert saved["refresh_token_enc"]  # Preserve the encrypted token for review.
+    status=(await d["client"].get(d["google_base"]+"/status")).json()
+    assert status["sync_status"]=="reauthorization_required"
+    assert status["capabilities"]["can_connect"] is True
