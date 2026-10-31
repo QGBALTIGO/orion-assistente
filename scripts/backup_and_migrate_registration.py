@@ -97,6 +97,7 @@ def predeploy_main():
     from scripts import backup_and_migrate_paraguay_phone as paraguay
     from scripts import backup_and_migrate_central_notifications as central_notifications
     from scripts import backup_and_migrate_short_links as short_links
+    from scripts import backup_and_migrate_combo_duration as combo_duration
     def finish_notifications(result):
         if result:return result
         if migrated_version(raw)!=paraguay.TARGET:return 0
@@ -116,6 +117,8 @@ def predeploy_main():
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
+        if current == combo_duration.TARGET:
+            return 0 if combo_duration.schema_ready(raw) else 3
         if current == short_links.TARGET:
             return short_links.main()
         if current == central_notifications.TARGET:
