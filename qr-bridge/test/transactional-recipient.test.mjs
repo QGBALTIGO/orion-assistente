@@ -23,12 +23,12 @@ test('modern Brazilian PN needs exactly one lookup and keeps the 9 digit',async(
  assert.equal(Object.isFrozen(resolved),true);
 });
 
-test('old WhatsApp PN uses provider-proven Brazilian 8 digit only when modern PN is absent',async()=>{
- const {calls,resolved}=await attempt({[full]:[],[legacy]:[row(legacy)]});
- assert.deepEqual(calls,[full,legacy]);
- assert.equal(resolved.jid,legacy+'@s.whatsapp.net');
- assert.equal(resolved.kind,'verified_brazil_legacy');
- assert.equal(resolved.requested,full);
+test('a separately registered 8-digit PN cannot prove the 9-digit owner and is never queried',async()=>{
+ const calls=[];
+ await assert.rejects(resolveTransactionalRecipient(full,async number=>{
+   calls.push(number);return number===full?[]:[row(legacy)];
+ }),{code:'recipient_identity_unverified'});
+ assert.deepEqual(calls,[full],'no fallback to another subscriber or network query');
 });
 
 test('USync normalization of original query also resolves old PN without a second query',async()=>{
@@ -73,9 +73,9 @@ test('a changed socket cannot use a lookup proof and must fail before encryption
  assert.equal(calls,1);
 });
 
-test('self-account and legacy alias equal to self are refused',async()=>{
+test('self-account and provider-normalized alias equal to self are refused',async()=>{
  await assert.rejects(attempt({[full]:[row(full)]},{ownPhone:full}),{code:'recipient_identity_unverified'});
- await assert.rejects(attempt({[full]:[],[legacy]:[row(legacy)]},{ownPhone:legacy}),{code:'recipient_identity_unverified'});
+ await assert.rejects(attempt({[full]:[row(legacy)]},{ownPhone:legacy}),{code:'recipient_identity_unverified'});
 });
 
 test('preflight error identifies only a no-send condition',()=>{

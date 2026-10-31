@@ -1,13 +1,14 @@
 /** Strict, read-only PN resolution for Orion transactional notices.
  *
- * A Brazilian mobile number may have a legacy 8-digit WhatsApp ID. Resolve
- * it only if the provider says the requested PN is not registered AND the
- * canonical 8-digit candidate is uniquely registered. Never guess a LID,
- * never select an unrelated ID, never expose a JID in logs or API results.
+ * Some Brazilian mobile numbers have a legacy 8-digit WhatsApp PN.
+ * However, a separate successful lookup of that number does not prove it
+ * belongs to the 9-digit number's owner. Only one provider-authenticated
+ * answer to the ORIGINAL number may authorize a JID. Never guess LIDs,
+ * never send to an independently matched alias, never log a JID or number.
  *
  * This function neither sends nor changes device keys or consent state.
  */
-import {brazilLegacyPN,verifiedRecipientFromSingleLookup} from './recipient-diagnostics.mjs';
+import {verifiedRecipientFromSingleLookup} from './recipient-diagnostics.mjs';
 
 export function recipientPreflightError(){
   const error=new Error('O WhatsApp não confirmou o destinatário. Nenhuma mensagem foi enviada.');
@@ -21,23 +22,12 @@ export async function resolveTransactionalRecipient(phone,lookup,{isCurrent=()=>
   let original;
   try{original=await lookup(phone);}catch{throw recipientPreflightError();}
   if(!isCurrent()||!Array.isArray(original))throw recipientPreflightError();
-  let resolved=verifiedRecipientFromSingleLookup(phone,original);
-  let kind='verified_exact';
-  if(!resolved.verified){
-    // Never fall back when the first query contains an unrelated/ambiguous
-    // contact: that might be a different person, not an old Brazilian ID.
-    if(original.length!==0)throw recipientPreflightError();
-    const legacy=brazilLegacyPN(phone);
-    if(!legacy)throw recipientPreflightError();
-    let alternative;
-    try{alternative=await lookup(legacy);}catch{throw recipientPreflightError();}
-    if(!isCurrent()||!Array.isArray(alternative))throw recipientPreflightError();
-    resolved=verifiedRecipientFromSingleLookup(legacy,alternative);
-    if(!resolved.verified||resolved.kind!=='exact')throw recipientPreflightError();
-    kind='verified_brazil_legacy';
-  }else if(resolved.kind==='provider_normalized'){
-    kind='verified_provider_normalized';
-  }
+  const resolved=verifiedRecipientFromSingleLookup(phone,original);
+  // Do not query a guessed number: a separately registered 8-digit account
+  // might belong to someone else and must not receive customer booking data.
+  if(!resolved.verified)throw recipientPreflightError();
+  const kind=resolved.kind==='provider_normalized'
+    ?'verified_provider_normalized':'verified_exact';
   if(typeof resolved.jid!=='string'||!/^[1-9]\d{7,14}@s\.whatsapp\.net$/.test(resolved.jid))
     throw recipientPreflightError();
   if(typeof ownPhone==='string'&&resolved.jid===ownPhone+'@s.whatsapp.net')
