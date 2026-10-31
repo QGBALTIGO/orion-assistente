@@ -8,7 +8,9 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
+import base64
 import hashlib
+import hmac
 import os
 import re
 import secrets
@@ -144,12 +146,31 @@ def short_links_enabled():
     return enabled() and os.getenv("ORION_SHORT_APPOINTMENT_LINKS_ENABLED") == "1"
 
 
-async def shared_link(db, tenant, appointment, *, audience="customer"):
-    """Return only the global alias, never an internal UUID or bearer secret.
+def direct_link_proof(code, audience, tenant, appointment, identity, phone, version=None):
+    """Role-bound, unguessable URL-fragment proof (160-bit HMAC).
 
-    Old in-flight messages retain their previous capability until rollout.
-    A missing alias after enabling the feature is a fail-closed error, not
-    permission to leak a long-lived access token into new WhatsApp messages.
+    The public AG code alone never authenticates anyone.  This signing key
+    must be shared by API and notification worker, and unrelated to other
+    Orion signing/encryption keys. A phone change, customer version bump or
+    professional reassignment invalidates the corresponding old link.
+    """
+    key = os.getenv("ORION_DIRECT_APPOINTMENT_KEY", "")
+    if len(key) < 43:
+        raise RuntimeError("orion_direct_appointment_key_missing")
+    if audience not in ("customer", "professional") or not isinstance(phone, str) or not phone:
+        raise ValueError("invalid_direct_appointment_identity")
+    message = "|".join(("orion-one-click-v1", code, audience, str(tenant),
+        str(appointment), str(identity), phone, str(version) if audience == "customer" else ""))
+    digest = hmac.new(key.encode(), message.encode(), hashlib.sha256).digest()[:20]
+    return base64.urlsafe_b64encode(digest).decode().rstrip("=")
+
+
+async def shared_link(db, tenant, appointment, *, audience="customer"):
+    """Issue a one-click link; the short protocol is never a bearer secret.
+
+    A per-role 160-bit HMAC is placed in the URL fragment, so the server's
+    access logs, link previews and referer headers never receive it. Links
+    for customer and professional are not interchangeable.
     """
     if audience not in {"customer", "professional"}:
         raise ValueError("invalid_shared_link_audience")
@@ -158,11 +179,29 @@ async def shared_link(db, tenant, appointment, *, audience="customer"):
             return await issue(db, tenant, appointment)
         return (canonical_public_origin() + "/painel?aba=agenda&agendamento="
                 + str(appointment))
-    code = (await db.execute(text("""
-        SELECT code FROM public.appointment_short_codes
-        WHERE tenant_id=:tenant AND appointment_id=:appointment
-    """), {"tenant":tenant, "appointment":appointment})).scalar_one_or_none()
-    if not code or not re.fullmatch(r"AG-[A-HJ-NP-Z2-9]{6}(?:-[A-F0-9]{8})?",code):
+    row = (await db.execute(text("""
+        SELECT short.code,a.customer_id,a.professional_id,a.customer_access_blocked,
+            c.version AS customer_version,c.whatsapp_e164 AS customer_phone,
+            c.active AS customer_active,c.deleted_at AS customer_deleted,
+            p.phone_e164 AS professional_phone,p.active AS professional_active
+        FROM public.appointment_short_codes short
+        JOIN public.appointments a ON a.tenant_id=short.tenant_id
+            AND a.id=short.appointment_id
+        JOIN public.customers c ON c.tenant_id=a.tenant_id AND c.id=a.customer_id
+        JOIN public.professionals p ON p.tenant_id=a.tenant_id AND p.id=a.professional_id
+        WHERE short.tenant_id=:tenant AND short.appointment_id=:appointment
+    """), {"tenant":tenant, "appointment":appointment})).mappings().first()
+    if not row or not re.fullmatch(r"AG-[A-HJ-NP-Z2-9]{6}(?:-[A-F0-9]{8})?", row["code"]):
         raise ValueError("short_link_alias_unavailable")
+    if row["customer_access_blocked"] or not row["customer_active"] or row["customer_deleted"]:
+        raise ValueError("short_link_access_unavailable")
+    if audience == "professional" and not row["professional_active"]:
+        raise ValueError("professional_link_unavailable")
+    identity = row["professional_id"] if audience == "professional" else row["customer_id"]
+    phone = row["professional_phone"] if audience == "professional" else row["customer_phone"]
+    if not phone:
+        raise ValueError("short_link_contact_missing")
+    proof = direct_link_proof(row["code"], audience, tenant, appointment,
+        identity, phone, row["customer_version"] if audience == "customer" else None)
     prefix = "/p/" if audience == "professional" else "/"
-    return canonical_public_origin() + prefix + code
+    return canonical_public_origin() + prefix + row["code"] + "#" + proof

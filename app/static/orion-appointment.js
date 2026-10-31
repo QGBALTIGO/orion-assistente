@@ -4,6 +4,7 @@ const $=id=>document.getElementById(id);
 const shortMatch=location.pathname.match(/^\/(?:p\/)?(AG-[A-HJ-NP-Z2-9]{6}(?:-[A-F0-9]{8})?)$/i);
 const shortCode=shortMatch?.[1]?.toUpperCase()||null;
 const shortRole=location.pathname.startsWith('/p/')?'professional':'customer';
+const shortProof=shortCode?location.hash.slice(1):'';
 let token=shortCode?'':location.hash.slice(1);
 let current=null,busy=false,operation=null,navigating=false;
 // A second WhatsApp link can reuse this tab with a different fragment. Clear
@@ -20,12 +21,12 @@ async function shortPost(endpoint,payload){
    referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({code:shortCode,role:shortRole,...payload})});
  const data=await response.json();
- if(!response.ok)throw Error('Não foi possível validar. Solicite um novo código, se necessário.');
+ if(!response.ok)throw Error('Link indisponível ou expirado. Solicite um novo link à empresa.');
  return data;
 }
 async function request(action,extra={}){
  if(shortCode&&shortRole==='professional'){
-   return shortPost('professional',{action,...extra});
+   return shortPost('professional',{action,proof:shortProof,...extra});
  }
  const response=await fetch('/api/appointment-access',{method:'POST',credentials:'same-origin',cache:'no-store',referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,action,...extra})});
  const data=await response.json();if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'Não foi possível concluir. Atualize e tente novamente.');return data;
@@ -109,73 +110,24 @@ async function mountVerified(result){
    render(result.appointment);
  }
 }
-function renderShortGate(){
- const card=document.querySelector('.card');
- card.classList.remove('review-mode');card.classList.add('short-gate');
- $('company').textContent='ORION AGENDA';
- $('title').textContent=shortRole==='professional'?'Verificar acesso profissional':'Acessar meu agendamento';
- $('message').textContent='Para proteger seus dados, confirme sua identidade usando o WhatsApp cadastrado.';
- $('company-logo').hidden=true;
- $('details').replaceChildren();
- $('review').hidden=true;
- $('reschedule').hidden=true;
- const root=$('actions');root.replaceChildren();
- const storageKey='orion-short-challenge:'+shortCode+':'+shortRole;
- let challenge='';
- try{challenge=sessionStorage.getItem(storageKey)||'';}catch{}
- const box=node('div','');box.className='short-access';
- const steps=node('p','O Orion responderá com um código de 6 dígitos. Não é necessário criar uma conta.');
- steps.className='short-access-help';
- const start=button(challenge?'Solicitar outro código':'Receber código pelo WhatsApp',async()=>{
-   if(start.disabled)return;
-   start.disabled=true;message.textContent='';
-   try{
-     const result=await shortPost('start',{});
-     if(!/^https:\/\/wa\.me\/[1-9][0-9]{7,14}\?text=/.test(result.whatsapp_url))throw Error();
-     challenge=result.challenge;
-     try{sessionStorage.setItem(storageKey,challenge);}catch{}
-     whatsapp.href=result.whatsapp_url;
-     whatsapp.hidden=false;
-     otpSection.hidden=false;
-     start.textContent='Solicitar outro código';
-     message.textContent='Abra o WhatsApp e envie a mensagem pronta para receber seu código.';
-   }catch{
-     message.textContent='Não foi possível solicitar o código. Tente novamente em instantes.';
-   }finally{start.disabled=false;}
- });
- const whatsapp=node('a','Abrir WhatsApp para receber o código');
- whatsapp.className='action short-whatsapp-action';whatsapp.rel='noopener noreferrer';
- whatsapp.target='_blank';whatsapp.hidden=true;
- const otpSection=node('div','');otpSection.className='short-otp';otpSection.hidden=!challenge;
- const label=node('label','Código de 6 dígitos');label.htmlFor='short-otp-code';
- const input=document.createElement('input');input.id='short-otp-code';input.type='text';
- input.inputMode='numeric';input.autocomplete='one-time-code';input.maxLength=6;
- input.pattern='[0-9]{6}';input.placeholder='000000';input.required=true;
- const confirm=button('Confirmar código',async()=>{
-   if(confirm.disabled||!/^[0-9]{6}$/.test(input.value))return;
-   confirm.disabled=true;message.textContent='';
-   try{
-     const result=await shortPost('verify',{challenge,otp:input.value});
-     try{sessionStorage.removeItem(storageKey);}catch{}
-     await mountVerified(result);
-   }catch{
-     message.textContent='Código inválido ou expirado. Confira o WhatsApp ou solicite outro.';
-   }finally{confirm.disabled=false;}
- });
- const message=node('p','');message.className='short-access-help';
- if(challenge)message.textContent='Digite o código enviado ao seu WhatsApp.';
- otpSection.append(label,input,confirm);
- box.append(steps,start,whatsapp,otpSection,message);
- root.append(box);
-}
 if(shortCode){
- void (async()=>{
-   try{
-     const result=await shortPost('session',{});
-     if(result.authorized){await mountVerified(result);return;}
-   }catch{}
-   renderShortGate();
- })();
+ void run(async()=>{
+  if(shortProof){
+   const result=await shortPost('open',{proof:shortProof});
+   if(!result.authorized)throw Error('Link indisponível ou expirado.');
+   await mountVerified(result);
+   return;
+  }
+  // Existing verified browsers may reuse an old session. A public AG code
+  // alone must never reveal customer data or authorize professional actions.
+  try{
+   const result=await shortPost('session',{});
+   if(result.authorized){await mountVerified(result);return;}
+  }catch{}
+  $('title').textContent='Link antigo';
+  $('company').textContent='ORION AGENDA';
+  $('message').textContent='Solicite à empresa um novo link de agendamento. O novo acesso abre diretamente, sem código pelo WhatsApp.';
+ });
 }else if(!token){
  $('message').textContent='Abra o link exclusivo enviado pela empresa para acompanhar seu atendimento.';
 }else void run(async()=>render(await request('view')));
