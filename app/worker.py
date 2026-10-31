@@ -204,7 +204,7 @@ class WorkerSettings:
     functions = [func(process_appointment_notification,name='process_appointment_notification'),infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,process_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message,process_email_outbox]
     cron_jobs = [cron(cleanup_notification_payloads, minute={13}, second={10}),cron(scan_appointment_notifications, minute=set(range(60)), second=set(range(0,60,5))),
                  cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
-                 cron(scan_calendar_outbox, minute=set(range(60)), second=10),
+                 cron(scan_calendar_outbox, minute=set(range(60)), second={10,25,40,55}),
                  cron(scan_due_appointments, minute=set(range(60)), second={0,10,20,30,40,50}),
                  cron(scan_pending_billing, minute={3,13,23,33,43,53}, second=0),
                  cron(scan_pending_cakto, minute={4,14,24,34,44,54}, second=0),
