@@ -22,7 +22,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+      # Focused tests import only local modules and node: built-ins.
+      # qr-bridge intentionally has no package-lock.json; npm ci fails EUSAGE.
       - name: Código do transporte
         run: |
           node --check qr-bridge/src/server.mjs
