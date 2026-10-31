@@ -604,3 +604,28 @@ async def test_disconnected_intents_drain_without_false_connection_busy(google_d
         assert row["last_error"]=="calendar_not_connected"
         assert row["next_attempt_at"]>d["now"]+timedelta(minutes=14)
     assert d["google"].calls==[]
+
+
+@pytest.mark.asyncio
+async def test_live_google_check_never_creates_a_test_event_or_exposes_tokens(google_db):
+    d=google_db
+    # Checking without explicit owner authorization must not contact Google.
+    unavailable=await d["client"].post(d["google_base"]+"/check")
+    assert unavailable.status_code==409
+    assert d["google"].calls==[]
+    await activate(d)
+    d["google"].calls.clear()
+    verified=await d["client"].post(d["google_base"]+"/check")
+    assert verified.status_code==200,verified.text
+    assert verified.json()=={"verified":True,"calendar_name":"Agenda sintética",
+        "calendar_id":CALENDAR,"writable":True,"events_created":0,"direction":"orion_to_google"}
+    assert [call[0] for call in d["google"].calls]==["refresh","calendar"]
+    assert "synthetic-refresh-only" not in verified.text
+    assert "synthetic-access-only" not in verified.text
+    d["google"].failure=CalendarProviderError("google_authorization_expired",reauthorize=True)
+    expired=await d["client"].post(d["google_base"]+"/check")
+    assert expired.status_code==409
+    assert "expirou" in expired.text.lower() or "reconecte" in expired.text.lower()
+    assert not any(call[0]=="apply" for call in d["google"].calls)
+    saved=await api.connection_snapshot(d["a"])
+    assert saved["status"]=="active"  # A read-only check never revokes credentials.
