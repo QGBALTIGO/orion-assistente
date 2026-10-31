@@ -800,8 +800,7 @@
         title.id = 'slot-period-title-' + group.key;
         const line = el('span', 'slot-period-line');
         line.setAttribute('aria-hidden', 'true');
-        const count = el('span', 'slot-period-count',
-          group.starts.length + ' ' + (group.starts.length === 1 ? 'horário' : 'horários'));
+        const count = el('span', 'slot-period-count', 'Disponíveis');
         heading.append(title, line, count);
         const grid = el('div', 'slot-period-grid');
         grid.setAttribute('role', 'group');
