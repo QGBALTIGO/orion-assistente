@@ -670,10 +670,14 @@ body{background:var(--bg);color:var(--text);min-width:0}
 #about-card .about-instagram-open svg{display:block;flex:0 0 15px;width:15px;height:15px}
 #about-card .about-instagram-open:hover{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 8%,var(--card))}
 #about-card .about-instagram-open:focus-visible{outline:3px solid var(--primary);outline-offset:2px}
-.about-instagram-preview{position:relative;isolation:isolate;container-type:inline-size;box-sizing:border-box;min-width:0;width:100%;aspect-ratio:3/2;overflow:hidden;border:1px solid var(--border);border-radius:13px;background:var(--soft)}
-.about-instagram-preview>iframe{position:absolute;display:block;left:0;top:-130px;width:100%;max-width:none;min-width:0;height:900px;border:0;background:transparent}
+/* The Instagram embed paints a white frame around the media tiles (~2% of
+   its width on iPhone). Overscan it horizontally and crop that white top strip
+   vertically; adjust the 3x2 viewport height by the same proportion so no
+   media thumbnail gets cropped at the bottom. Never paint a white border here. */
+.about-instagram-preview{position:relative;isolation:isolate;container-type:inline-size;box-sizing:border-box;min-width:0;width:100%;aspect-ratio:14/9;overflow:hidden;border:0;border-radius:13px;background:var(--card)}
+.about-instagram-preview>iframe{position:absolute;display:block;left:-3px;top:-142px;width:calc(100% + 6px);max-width:none;min-width:0;height:900px;border:0;background:transparent}
 @supports (width:1cqw){
-  .about-instagram-preview>iframe{top:calc(-1 * clamp(120px,40cqw,160px))}
+  .about-instagram-preview>iframe{top:calc(-1 * clamp(120px,40cqw,160px) - clamp(7px,2.1cqw,14px))}
 }
 @media(max-width:359px){
   .about-instagram-heading{gap:8px}
