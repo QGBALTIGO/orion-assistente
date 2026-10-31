@@ -88,7 +88,7 @@ async def central_admin_phone():
     return await connected_channel_phone(tenant)
 
 
-async def public_followup(slug,result,phone):
+async def public_followup(slug,result,phone,*,display_protocol=None):
     """Called only after the engine and public receipt transactions committed."""
     if not access.enabled():return {}
     from app.public_site_api import resolve_public
@@ -118,7 +118,7 @@ async def public_followup(slug,result,phone):
     # Existing tenant-scoped links are left untouched until this rollout is ready.
     number=await (central_admin_phone() if central else connected_channel_phone(tenant))
     if number:
-        message=compose_prefill(result['protocol'])
+        message=compose_prefill(display_protocol or result['protocol'])
         output['whatsapp_confirmation_url']='https://wa.me/'+number+'?text='+quote(message)
     else:
         output['communication_state']='channel_unavailable'
