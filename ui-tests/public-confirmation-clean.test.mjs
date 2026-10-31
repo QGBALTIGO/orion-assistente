@@ -28,7 +28,7 @@ test('confirmation is compact, without duplicate price, long checkbox or privacy
   assert.equal(h.document.getElementById('booking-next').textContent,'Confirmar agendamento');
   assert.equal(h.document.getElementById('booking-next').disabled,false);
   assert.deepEqual([...body.querySelectorAll('#customer-form .field')].map(label=>label.textContent.replace(/\s+/g,' ').trim()),
-    ['Nome completo','WhatsApp com DDD ou DDI','Data de nascimento']);
+    ['Nome completo','WhatsApp com DDD','Data de nascimento']);
   const birth=body.querySelector('[name=customer_birth_date]');
   assert.equal(birth.type,'date');assert.equal(birth.required,true);
   assert.equal(birth.min,'1900-01-01');
@@ -43,7 +43,9 @@ test('Brazilian WhatsApp is masked while typing, pasting +55 and using 10-digit 
   const h=await makePublic();t.after(()=>h.close());await confirmStage(h);
   const input=h.document.querySelector('[name=customer_phone]');
   assert.equal(input.type,'tel');
-  assert.equal(input.placeholder,'(00) 00000-0000 ou +595 9...');
+  assert.equal(input.placeholder,'(00) 00000-0000');
+  assert.equal(input.autocomplete,'tel-national');
+  assert.equal(input.inputMode,'tel');
   for(const [typed,shown] of [
     ['86','(86'],['86972','(86) 972'],
     ['86972676282','(86) 97267-6282'],
