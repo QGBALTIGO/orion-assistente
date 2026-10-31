@@ -58,6 +58,13 @@ jobs:
         run: |
           python -m py_compile app/appointment_access.py app/short_appointment_api.py alembic/versions/0056_one_click_appointment_links.py
           node --check app/static/orion-appointment.js
+          python - <<'PY'
+          from pathlib import Path
+          script=Path('app/static/orion-appointment.js').read_text()
+          assert "renderShortGate" not in script
+          assert "Receber código pelo WhatsApp" not in script
+          assert "shortPost('open',{proof:shortProof})" in script
+          PY
           python -m pytest -q tests/unit/test_one_click_appointment_links.py tests/unit/test_appointment_access.py tests/unit/test_short_appointment_access.py tests/unit/test_short_appointment_links.py tests/unit/test_appointment_messages.py
       - name: Provisionar papeis separados
         env:

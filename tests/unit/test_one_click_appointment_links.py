@@ -53,3 +53,40 @@ async def test_short_link_uses_different_one_click_proofs_per_role(monkeypatch):
     assert customer_link.startswith(origin+"/AG-4NNSY2#")
     assert professional_link.startswith(origin+"/p/AG-4NNSY2#")
     assert customer_link.split("#")[1]!=professional_link.split("#")[1]
+
+@pytest.mark.asyncio
+async def test_direct_resolver_requires_exact_customer_or_professional_proof(monkeypatch):
+    from app import short_appointment_api as short
+    monkeypatch.setenv("ORION_DIRECT_APPOINTMENT_KEY","synthetic-testing-key-"+"x"*48)
+    tenant,appointment,customer,professional=[uuid4() for _ in range(4)]
+    row={"tenant_id":tenant,"appointment_id":appointment,
+         "customer_id":customer,"professional_id":professional,
+         "customer_phone":"+5567999999922","professional_phone":"+5567999999923",
+         "customer_version":8,"professional_active":True}
+    class Result:
+        def mappings(self):return self
+        def first(self):return row
+    class Session:
+        async def __aenter__(self):return self
+        async def __aexit__(self,*args):pass
+        async def execute(self,query,parameters):
+            assert "orion_resolve_direct_appointment" in str(query)
+            assert parameters=={"code":"AG-4NNSY2"}
+            return Result()
+    monkeypatch.setattr(short,"support_session_factory",lambda:lambda:Session())
+    async def allowed(tenant_id):return tenant_id==tenant
+    monkeypatch.setattr(short,"has_feature_for_tenant",allowed)
+    code="AG-4NNSY2"
+    cp=access.direct_link_proof(code,"customer",tenant,appointment,customer,
+                                row["customer_phone"],8)
+    pp=access.direct_link_proof(code,"professional",tenant,appointment,professional,
+                                row["professional_phone"])
+    assert (await short.direct_state(code,"customer",cp))["customer"]==str(customer)
+    assert (await short.direct_state(code,"professional",pp))["professional"]==str(professional)
+    assert await short.direct_state(code,"customer",pp) is None
+    assert await short.direct_state(code,"professional",cp) is None
+    assert await short.direct_state(code,"customer",cp[:-1]+"X") is None
+    row["customer_version"]=9
+    assert await short.direct_state(code,"customer",cp) is None
+    row["professional_active"]=False
+    assert await short.direct_state(code,"professional",pp) is None

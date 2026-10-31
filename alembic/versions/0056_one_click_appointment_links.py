@@ -39,7 +39,8 @@ def upgrade():
           JOIN public.professionals p ON p.tenant_id=a.tenant_id
             AND p.id=a.professional_id
           WHERE short.code=requested_code
-            AND a.status<>'hold' AND NOT a.customer_access_blocked;
+            AND a.status<>'hold' AND NOT a.customer_access_blocked
+            AND a.end_at > clock_timestamp() - interval '90 days';
       END $fn$;
       REVOKE ALL ON FUNCTION public.orion_resolve_direct_appointment(text)
         FROM PUBLIC,app_runtime,app_migrator;
