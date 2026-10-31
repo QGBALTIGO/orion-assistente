@@ -229,6 +229,26 @@ test('a human takeover refuses transport and uncertain operations are never auto
   assert.equal((await m.send(a.id,a.key,{to:phone,text:'synthetic',operation_id:operation})).accepted,false);
 });
 
+test('a verified no-send recipient preflight error refuses one operation instead of claiming an ambiguous send',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager(),id=randomUUID();
+  f.rows.get(a.id).inbox_control=true;
+  f.broker.authorizeSend=async()=>({authorized:true,operation_id:id});
+  await m.start(a.id,a.key);
+  let sends=0;
+  f.made[0].send=async()=>{
+    sends++;
+    const error=Error('private diagnostic must never be logged');
+    error.code='recipient_identity_unverified';
+    throw error;
+  };
+  const request={to:phone,text:'Teste sintético, sem dados de clientes',operation_id:id,source:'appointment'};
+  const reply=await m.send(a.id,a.key,request);
+  assert.deepEqual(reply,{operation_id:id,state:'refused',accepted:false,delivery:'not_sent'});
+  assert.deepEqual(await m.send(a.id,a.key,request),reply);
+  assert.equal(sends,1,'a refused operation is never replayed');
+  assert.equal(JSON.stringify(reply).includes('private'),false);
+});
+
 test('a provider exception after a durable grant never releases the uncertain slot',async t=>{
   const f=fixture(t),a=f.add();f.rows.get(a.id).inbox_control=true;let released=0;
   f.broker.authorizeSend=async(id,key,lease,payload)=>({authorized:true,operation_id:payload.operation_id});

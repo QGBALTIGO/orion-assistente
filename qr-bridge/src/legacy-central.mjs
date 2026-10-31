@@ -48,7 +48,7 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
       async send(phone,text,{isCurrent=()=>true,transactionalTyping=false,source='automation'}={}){
         if(context!==value||!value.isCurrent()||!matching()||!(value.allowedSender(phone)||source==='appointment')||!isCurrent())throw Error('legacy_send_revoked');
         await value.assertCurrent();
-        const result=await rawSend(phone,text,{waitForCapacity:true,transactionalTyping,isCurrent:()=>
+        const result=await rawSend(phone,text,{waitForCapacity:true,transactionalTyping,source,isCurrent:()=>
           context===value&&value.isCurrent()&&matching()&&(value.allowedSender(phone)||source==='appointment')&&isCurrent()});
         const id=result?.accepted===true&&typeof result.id==='string'?result.id.replace(/^out:/,''):null;
         if(!id)throw Error('legacy_send_unknown');

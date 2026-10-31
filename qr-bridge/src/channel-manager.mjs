@@ -259,8 +259,14 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
       }
       if(c.sent.size>1000)c.sent.delete(c.sent.keys().next().value);
       return publicSend(operation_id,record);
-    }catch{
-      if(!attempted){const refused={fingerprint,state:'refused',accepted:false,delivery:'not_sent'};c.ledger.save(operation_id,refused);return publicSend(operation_id,refused);}
+    }catch(error){
+      // Only this explicit, locally generated preflight error guarantees no
+      // network send occurred. Any other exception remains ambiguous and must
+      // never cause an automatic retry or a second message.
+      if(!attempted || error?.code==='recipient_identity_unverified'){
+        const refused={fingerprint,state:'refused',accepted:false,delivery:'not_sent'};
+        c.ledger.save(operation_id,refused);return publicSend(operation_id,refused);
+      }
       return publicSend(operation_id,reserved.record);
     }
   }

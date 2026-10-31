@@ -22,6 +22,7 @@ import {makeSendCapacity} from "./send-capacity.mjs";
 import {makeConversationIntake} from "./conversation-intake.mjs";
 import {makeAssistantTyping} from "./assistant-typing.mjs";
 import {inspectLookup,inspectDelivery} from "./recipient-diagnostics.mjs";
+import {resolveTransactionalRecipient} from "./transactional-recipient.mjs";
 import {makeDurableInbox} from "./durable-inbox.mjs";
 import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-health.mjs";
 import {makeConnectedStore} from "./connected-store.mjs";
@@ -854,7 +855,7 @@ async function send(phone,text,options={}){
   if(legacyCentral.configured())return legacyCentral.automatic(phone,text,options);
   return sendLegacyRaw(phone,text,options);
 }
-async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false}={}){
+async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false,source='automation'}={}){
   const target=validPhone(phone);
   if(status!=="connected"||!socket)throw Error("O WhatsApp não está conectado");
   if(typeof text!=="string"||!text.trim()||text.length>1200)
@@ -865,6 +866,18 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
   await sendCapacity.acquire({wait:waitForCapacity,isCurrent:current});
   if(!current())throw Error('A conexão ou autorização mudou antes do envio. Nenhuma mensagem foi enviada.');
   let result;
+  // Transactional notices must address the WhatsApp-verified PN, not a
+  // guessed JID reconstructed from a registered Brazilian mobile phone.
+  // The legacy 8-digit candidate is allowed only after an empty exact lookup
+  // and exactly one positive provider lookup of its regulated counterpart.
+  let verifiedRecipient=null;
+  if(source==='appointment'){
+    verifiedRecipient=await resolveTransactionalRecipient(
+      target,candidate=>selectedSocket.onWhatsApp(candidate),
+      {isCurrent:current,ownPhone:pairedNumber});
+    if(!current())throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
+    transport.record('appointment_recipient_verified',null,{kind:verifiedRecipient.kind});
+  }
   const {reliable,freshDevices}=deliveryPolicy(target);
   const recipientProof=await resolvePilotRecipient({phone:target,pilotPhone:pilotNumber(process.env),
     enabled:reliable&&process.env.QR_PILOT_USE_VERIFIED_LID==='1',socket:selectedSocket,deviceCache:socketDeviceCaches.get(selectedSocket),
@@ -872,6 +885,9 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
   if(!current())
     throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
   const {jid,kind}=recipientProof;
+  // Preserve independently verified pilot LID routing. Other appointment
+  // notices use the PN that the provider itself confirmed.
+  const destination=verifiedRecipient&&kind==='pn'?verifiedRecipient.jid:jid;
   let presenceLease=null;
   try{
     if(transactionalTyping){
@@ -881,13 +897,13 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
         socket:selectedSocket,pilotPhone:()=>target,isConnected:current,
         isAllowed:recipient=>recipient===target,
         transactional:true,maxPauseMs:1400
-      }).begin({phone:target,chatJid:jid,isCurrent:current});
+      }).begin({phone:target,chatJid:destination,isCurrent:current});
       await presenceLease.beforeReply(text);
       if(!current())throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
     }
   if(reliable){
     result=await sendStoredText({
-      jid,recipientProof,text:text.trim(),store:retryStore,freshDevices,
+      jid:destination,recipientProof,text:text.trim(),store:retryStore,freshDevices,
       isCurrent:current,
       makeMessage:async (recipient,messageText)=>generateWAMessage(
         recipient,{text:messageText},{
@@ -904,7 +920,7 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
       }
     });
   }else{
-    result=await selectedSocket.sendMessage(jid,{text:text.trim()});
+    result=await selectedSocket.sendMessage(destination,{text:text.trim()});
     if(result?.key?.id&&result?.message)retryStore.save(result.key,result.message);
   }
   if(!result?.key?.id || !result?.message){
