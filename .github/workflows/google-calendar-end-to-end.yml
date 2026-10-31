@@ -9,6 +9,7 @@ on:
       - 'app/static/orion-calendar-links.js'
       - 'app/static/orion-public.html'
       - 'app/static/orion-public.js'
+      - 'app/static/orion-public.css'
       - 'app/static/orion-appointment.html'
       - 'app/static/orion-appointment.js'
       - 'app/static/orion-suite.js'
