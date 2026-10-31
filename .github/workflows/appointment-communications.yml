@@ -50,6 +50,12 @@ jobs:
         run: |
           python -m pip install -c requirements.lock ".[test]"
           python -m pip check
+      - name: Diagnóstico sem mensagens em ambiente sintético
+        run: |
+          python -m pytest -q -ra tests/unit/test_professional_recipient_diagnostics.py
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+          node --check app/static/orion-appointment-communications.js
+          node --test ui-tests/appointment-recipient-diagnostics.test.mjs
       - name: Cliente PostgreSQL 16 para validar backup e restauração isolados
         run: |
           sudo apt-get update
@@ -104,11 +110,6 @@ jobs:
         env:
           ORION_APPOINTMENT_LOAD: "1"
         run: pytest -q -s tests/integration/test_appointment_load_pg.py
-      - name: Regressão de diagnóstico do WhatsApp sem reenvio
-        run: |
-          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
-          node --check app/static/orion-appointment-communications.js
-          node --test ui-tests/appointment-recipient-diagnostics.test.mjs
       - name: Instalar navegadores de teste
         run: |
           python -m pip install playwright
