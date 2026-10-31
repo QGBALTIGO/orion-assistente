@@ -130,7 +130,13 @@ async def startup_plan_permissions(ctx):
             result = await run_once(ctx)
             print('orion_review_qa_send_7364=' + json.dumps(result, sort_keys=True), flush=True)
         except Exception as error:
-            print('orion_review_qa_send_7364_failed_closed type=' + type(error).__name__, flush=True)
+            from app import review_qa_send_once as qa
+            origin = getattr(error, 'orig', None)
+            code = getattr(origin, 'sqlstate', None) or getattr(origin, 'pgcode', None)
+            safe_code = code if isinstance(code, str) and len(code) == 5 and code.isalnum() else 'unknown'
+            print('orion_review_qa_send_7364_failed_closed type='
+                  + type(error).__name__ + ' phase=' + qa.PHASE
+                  + ' sqlstate=' + safe_code, flush=True)
     if os.getenv('ORION_REVIEW_QA_7364_PREFLIGHT') == '1':
         try:
             import json
