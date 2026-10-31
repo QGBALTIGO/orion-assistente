@@ -79,9 +79,21 @@ async def confirm_inbound_protocol(payload:IncomingProtocol,request:Request):
         # Admin tenant is server-owned. No tenant ID may come from WhatsApp text.
         configured_tenant()
         async with support_session_factory()() as registry:
-            result=(await registry.execute(text(
-                'SELECT tenant_id,appointment_id FROM public.orion_resolve_central_appointment(:protocol,:phone)'
-            ),{'protocol':protocol,'phone':'+'+payload.phone})).mappings().first()
+            from app.appointment_access import short_links_enabled
+            if short_links_enabled():
+                # Prefer globally unique public aliases. A legacy base code
+                # may still resolve through the 0051 function if unambiguous
+                # for the verified sender; no cross-company guessing.
+                result=(await registry.execute(text("""
+                    SELECT tenant_id,appointment_id FROM
+                    public.orion_resolve_short_appointment(:protocol,:phone,'customer')
+                """),{'protocol':protocol,'phone':'+'+payload.phone})).mappings().first()
+            else:
+                result=None
+            if result is None and '-' not in protocol[3:]:
+                result=(await registry.execute(text(
+                    'SELECT tenant_id,appointment_id FROM public.orion_resolve_central_appointment(:protocol,:phone)'
+                ),{'protocol':protocol,'phone':'+'+payload.phone})).mappings().first()
     except (SQLAlchemyError,ValueError,RuntimeError,HTTPException):
         # A migration or database failure cannot become an unverified answer.
         return {'state':'unavailable','answer':None}
