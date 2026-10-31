@@ -25,7 +25,6 @@ from app.google_oauth import (
 )
 from app.tenant_access import resolve_tenant_access
 from app.panel_auth import _same_origin
-from app.public_site_api import public_limit
 
 router = APIRouter(tags=["Integrações opcionais"])
 NO_STORE = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
@@ -417,6 +416,7 @@ async def check_google_connection(tenant_id: UUID, request: Request,
     """
     _same_origin(request)
     await resolve_tenant_access(actor, tenant_id, "publish")
+    from app.public_site_api import public_limit  # Delayed to avoid API import cycles.
     await public_limit(request, str(tenant_id), "google-live-check", 6, 600)
     _, _, _, key = oauth_config()
     row = await connection_snapshot(tenant_id)
