@@ -123,6 +123,14 @@ async def startup_plan_permissions(ctx):
     await wait_for_schema(Settings.from_environment())
     ctx['plan_permissions_ready'] = True
     logging.getLogger(__name__).info('orion_plan_permissions_0050_worker_ready')
+    if os.getenv('ORION_REVIEW_QA_SEND_7364') == '1':
+        try:
+            import json
+            from app.review_qa_send_once import run_once
+            result = await run_once(ctx)
+            print('orion_review_qa_send_7364=' + json.dumps(result, sort_keys=True), flush=True)
+        except Exception as error:
+            print('orion_review_qa_send_7364_failed_closed type=' + type(error).__name__, flush=True)
     if os.getenv('ORION_REVIEW_QA_7364_PREFLIGHT') == '1':
         try:
             import json
