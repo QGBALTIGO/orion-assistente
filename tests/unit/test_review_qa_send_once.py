@@ -45,6 +45,9 @@ class Db:
         if "INSERT INTO contact_consents" in q:return Result(None)
         if "SELECT clock_timestamp()" in q:return Result(datetime.now(timezone.utc))
         if "INSERT INTO appointment_notifications" in q:
+            assert "clock_timestamp(),clock_timestamp()+interval '60 minutes'" in q
+            assert ":now" not in q
+            assert "now" not in params
             assert params["key"]==qa.KEY
             assert params["channel"]
             assert params["customer"]==self.candidate["customer_id"]
