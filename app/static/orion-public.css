@@ -74,10 +74,8 @@
 .hours-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;min-width:0;padding:10px 0;border-top:1px solid var(--border)}
 .hours-day{min-width:0;color:var(--text);font-size:13px;line-height:20px;font-weight:500}
 .hours-time{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex:0 1 auto;max-width:62%;min-width:0;text-align:right;color:var(--text);font-size:13px;line-height:20px;font-weight:650;font-variant-numeric:tabular-nums}
-.hours-shifts{display:flex;flex-wrap:wrap;justify-content:flex-end;column-gap:5px;row-gap:2px}
-.hours-shift{white-space:nowrap}
-.hours-separator{font-weight:400;color:var(--muted)}
-.hours-break{display:block;color:var(--muted);font-size:11px;line-height:17px;font-weight:500;white-space:normal;overflow-wrap:anywhere}
+.hours-shift{display:block;white-space:nowrap}
+.hours-break{display:block;color:var(--muted);font-size:11px;line-height:17px;font-weight:500;white-space:normal;overflow-wrap:normal}
 .hours-closed{color:var(--muted);font-weight:500}
 .hours-card .hours-note{font-size:11px;line-height:17px;color:var(--muted);margin:12px 0 0}
 .location-card{padding:20px;overflow:hidden}

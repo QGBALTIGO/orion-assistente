@@ -97,18 +97,19 @@
       if(!group.intervals.length) {
         times.textContent='Fechado';
       } else {
-        const shiftList=el('span','hours-shifts');
-        for(const [index,[start,end]] of group.intervals.entries()){
-          if(index)shiftList.append(el('span','hours-separator','·'));
-          shiftList.append(el('span','hours-shift',start+'–'+end));
+        // Display the first opening and final closing as one concise range.
+        // Breaks stay visible below; booking availability still uses all intervals.
+        const periods=group.intervals.slice().sort((a,b)=>a[0].localeCompare(b[0]));
+        const opening=periods[0][0],pauses=[];
+        let closing=periods[0][1];
+        for(const [start,end] of periods.slice(1)){
+          if(start>closing)pauses.push(closing+'–'+start);
+          if(end>closing)closing=end;
         }
-        times.append(shiftList);
-        const pauses=group.intervals.slice(0,-1).map(([_,end],index)=>{
-          const next=group.intervals[index+1][0];
-          return end<next?end+'–'+next:null;
-        }).filter(Boolean);
+        times.append(el('span','hours-shift',opening+'–'+closing));
         if(pauses.length)
-          times.append(el('small','hours-break','Intervalo '+pauses.join(' · ')));
+          times.append(el('small','hours-break',
+            (pauses.length===1?'Intervalo ':'Intervalos ')+pauses.join(' · ')));
       }
       row.append(name,times);return row;
     }));

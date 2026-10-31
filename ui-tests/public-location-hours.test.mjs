@@ -27,7 +27,7 @@ test('horários de funcionamento aparecem exatamente entre Sobre nós e Onde est
   assert.equal(h.errors.length,0);
 });
 
-test('mais de um período é exibido sem anunciar abertura num intervalo fechado',async t=>{
+test('dois períodos exibem só abertura e fechamento, com intervalo discreto',async t=>{
   const data=catalogue();
   data.opening_hours[0].intervals=[
     {open:'08:00',close:'12:00'},{open:'14:00',close:'18:00'}
@@ -35,13 +35,13 @@ test('mais de um período é exibido sem anunciar abertura num intervalo fechado
   const h=await fixture(t,data);
   const hours=getHours(h);
   assert.equal(hours[0].day,'Segunda-feira');
-  assert.equal(hours[0].hours,'08:00–12:00·14:00–18:00Intervalo 12:00–14:00');
-  assert.equal(h.document.querySelectorAll('.hours-row')[0].querySelectorAll('.hours-shift').length,2);
+  assert.equal(hours[0].hours,'08:00–18:00Intervalo 12:00–14:00');
+  assert.equal(h.document.querySelectorAll('.hours-row')[0].querySelectorAll('.hours-shift').length,1);
   assert.equal(h.document.querySelectorAll('.hours-row')[0].querySelector('.hours-break')?.textContent,'Intervalo 12:00–14:00');
   assert.ok(hours.some(x=>x.day==='Terça-feira a sexta-feira'));
 });
 
-test('horário de almoço é apresentado em duas faixas e pausa visível',async t=>{
+test('horário de almoço mantém abertura, fechamento e pausa sem duplicar faixas',async t=>{
   const data=catalogue();
   for(let day=0;day<5;day++)data.opening_hours[day].intervals=[
     {open:'09:00',close:'12:00'},{open:'13:00',close:'18:00'}
@@ -50,8 +50,82 @@ test('horário de almoço é apresentado em duas faixas e pausa visível',async 
   const weekdays=h.document.querySelector('#hours-list .hours-row');
   assert.equal(weekdays.querySelector('.hours-day').textContent,'Segunda-feira a sexta-feira');
   assert.deepEqual([...weekdays.querySelectorAll('.hours-shift')].map(n=>n.textContent),
-    ['09:00–12:00','13:00–18:00']);
+    ['09:00–18:00']);
   assert.equal(weekdays.querySelector('.hours-break').textContent,'Intervalo 12:00–13:00');
+  assert.equal(h.errors.length,0);
+});
+
+test('a faixa única preserva múltiplos intervalos e períodos fora de ordem',async t=>{
+  const data=catalogue();
+  data.opening_hours[0].intervals=[
+    {open:'16:00',close:'20:00'},
+    {open:'07:00',close:'12:00'},
+    {open:'14:00',close:'16:00'},
+  ];
+  const original=JSON.stringify(data.opening_hours[0].intervals);
+  const h=await fixture(t,data);
+  const monday=h.document.querySelector('#hours-list .hours-row');
+  assert.equal(monday.querySelector('.hours-shift').textContent,'07:00–20:00');
+  assert.equal(monday.querySelector('.hours-break').textContent,'Intervalo 12:00–14:00');
+  assert.equal(monday.querySelectorAll('.hours-shift').length,1);
+  assert.equal(JSON.stringify(data.opening_hours[0].intervals),original,
+    'a exibição não pode alterar os horários usados pelo agendamento');
+  assert.equal(h.errors.length,0);
+});
+
+test('períodos adjacentes ou sobrepostos não fabricam intervalos',async t=>{
+  const data=catalogue();
+  data.opening_hours[0].intervals=[
+    {open:'08:00',close:'12:00'},
+    {open:'11:00',close:'15:00'},
+    {open:'15:00',close:'19:00'}
+  ];
+  const h=await fixture(t,data);
+  const monday=h.document.querySelector('#hours-list .hours-row');
+  assert.equal(monday.querySelector('.hours-shift').textContent,'08:00–19:00');
+  assert.equal(monday.querySelector('.hours-break'),null);
+  assert.equal(h.errors.length,0);
+});
+
+test('três períodos isolados mostram todos os intervalos sob um único horário',async t=>{
+  const data=catalogue();
+  data.opening_hours[0].intervals=[
+    {open:'07:00',close:'11:00'},
+    {open:'12:00',close:'15:00'},
+    {open:'17:00',close:'20:00'}
+  ];
+  const h=await fixture(t,data);
+  const monday=h.document.querySelector('#hours-list .hours-row');
+  assert.equal(monday.querySelector('.hours-shift').textContent,'07:00–20:00');
+  assert.equal(monday.querySelector('.hours-break').textContent,
+    'Intervalos 11:00–12:00 · 15:00–17:00');
+  assert.equal(monday.querySelectorAll('.hours-shift').length,1);
+  assert.equal(h.errors.length,0);
+});
+
+test('site da barbearia mostra abertura, fechamento e almoço agrupados por dia',async t=>{
+  const data=catalogue();
+  const periods={
+    0:[['09:00','14:00'],['16:00','19:00']],
+    1:[['08:00','14:00'],['16:00','19:00']],
+    2:[['08:00','14:00'],['16:00','19:00']],
+    3:[['07:00','14:00'],['16:00','20:00']],
+    4:[['07:00','14:00'],['16:00','20:00']],
+    5:[['08:00','13:00']]
+  };
+  for(const [day,shifts] of Object.entries(periods)){
+    data.opening_hours[Number(day)].intervals=shifts.map(([open,close])=>({open,close}));
+  }
+  const h=await fixture(t,data);
+  assert.deepEqual(getHours(h),[
+    {day:'Segunda-feira',hours:'09:00–19:00Intervalo 14:00–16:00'},
+    {day:'Terça-feira a quarta-feira',hours:'08:00–19:00Intervalo 14:00–16:00'},
+    {day:'Quinta-feira a sexta-feira',hours:'07:00–20:00Intervalo 14:00–16:00'},
+    {day:'Sábado',hours:'08:00–13:00'},
+    {day:'Domingo',hours:'Fechado'}
+  ]);
+  assert.equal(h.document.querySelectorAll('.hours-shift').length,4);
+  assert.equal(h.document.querySelectorAll('.hours-break').length,3);
   assert.equal(h.errors.length,0);
 });
 
@@ -166,6 +240,8 @@ test('estética segue o tema, mapa tem altura adequada e cartões não se aninha
     '.hours-card,.location-card{border-radius:20px}',
     '.hours-list{display:grid;',
     '.hours-row{display:flex;',
+    '.hours-shift{display:block;white-space:nowrap}',
+    '.hours-break{display:block;color:var(--muted);font-size:11px;',
     '.location-card{padding:20px;overflow:hidden}',
     '.map-preview{position:relative;height:228px;min-height:220px;',
     '.map-preview>iframe{display:block;width:100%;height:100%;border:0;',
