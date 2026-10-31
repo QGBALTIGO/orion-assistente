@@ -162,7 +162,6 @@ async def prepare():
                   operational_opt_in=true,marketing_opt_in=true,
                   source=:source,updated_at=clock_timestamp()
             """), {"t":TENANT,"phone":PHONE,"source":SOURCE})
-            now = (await db.execute(text("SELECT clock_timestamp()"))).scalar_one()
             PHASE = "insert_notice"
             inserted = (await db.execute(text("""
                 INSERT INTO appointment_notifications
@@ -170,13 +169,13 @@ async def prepare():
                    recipient_kind,recipient_id,channel_id,central_channel_id,
                    settings_version,event_key,previous,due_at,expires_at)
                 VALUES (:t,:appt,:version,'review','customer',:customer,NULL,:channel,
-                  :settings,:key,CAST(:details AS jsonb),:now,:now+interval '60 minutes')
+                  :settings,:key,CAST(:details AS jsonb),
+                  clock_timestamp(),clock_timestamp()+interval '60 minutes')
                 ON CONFLICT DO NOTHING RETURNING id
             """), {"t":TENANT,"appt":row["id"],"version":row["updated_at"],
                    "customer":row["customer_id"],"channel":channel,
                    "settings":prefs["version"],"key":KEY,
-                   "details":json.dumps({MARKER:True,"qa_before":snapshot}),
-                   "now":now})).scalar_one_or_none()
+                   "details":json.dumps({MARKER:True,"qa_before":snapshot})})).scalar_one_or_none()
             if inserted is None:
                 raise ValueError("qa_notice_collision_rollback")
             return "enqueued", inserted, snapshot
