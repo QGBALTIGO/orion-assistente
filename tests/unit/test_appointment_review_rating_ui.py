@@ -13,7 +13,7 @@ HTML=(ROOT/"orion-appointment.html").read_text(encoding="utf-8")
 
 
 def test_review_only_has_three_compact_facts_and_other_receipts_stay_full():
-    assert "data.status==='completed' && data.can_review===true" in JS
+    assert "data.status==='completed' && (data.can_review===true || Boolean(data.review))" in JS
     summary=JS.split("const facts=reviewMode?",1)[1].split(";",1)[0]
     abbreviated,full=summary.split(":\n",1)
     for label in ("Serviço","Profissional","Data e horário"):
