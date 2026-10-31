@@ -172,13 +172,16 @@ async def prepare_body(db,tenant,job,row,settings):
         FROM tenants t LEFT JOIN management_site_preferences p ON p.tenant_id=t.id WHERE t.id=:t'''),{'t':tenant})).mappings().one()
     customer_link=None
     if job['recipient_kind']=='customer' and job['event'] in {'customer_rescheduled','customer_proposal','review'}:
-        customer_link=await access.issue(db,tenant,job['appointment_id'])
+        customer_link=await access.shared_link(db,tenant,job['appointment_id'],audience='customer')
     from app.public_origins import canonical_public_origin
     booking_link=canonical_public_origin()+'/s/'+shop['public_slug'] if shop.get('public_slug') and shop['public_enabled'] else None
     future=(await db.execute(text("SELECT EXISTS(SELECT 1 FROM appointments WHERE tenant_id=:t AND customer_id=:customer AND id<>:id AND status='confirmed' AND start_at>now())"),
         {'t':tenant,'customer':row['customer_id'],'id':row['id']})).scalar_one()
+    professional_link = (await access.shared_link(db,tenant,job['appointment_id'],audience='professional')
+                         if job['event'].startswith('professional_') else None)
     body = compose(job['event'],row,company=shop['name'],signature=settings['signature'],customer_link=customer_link,
-        booking_link=booking_link,previous=job['previous'],include_return=settings['return_invitation'] and not future,
+        professional_link=professional_link,booking_link=booking_link,
+        previous=job['previous'],include_return=settings['return_invitation'] and not future,
         address=', '.join(str(shop[k]) for k in ('address','city','state') if shop.get(k)))
     if (job['event'] == 'professional_new' and job['recipient_kind'] == 'professional'
             and job['previous'].get('orion_test_recovery') is True):
