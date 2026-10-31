@@ -678,6 +678,8 @@ async def preview_page(tenant_id:UUID,actor:Actor=Depends(authenticate)):
 async def public_asset(asset:str):
     allowed={'orion-public.css':'text/css','orion-public.js':'text/javascript',
              'orion-fields.css':'text/css','orion-fields.js':'text/javascript',
-             'orion-public-theme.js':'text/javascript'}
+             'orion-public-theme.js':'text/javascript',
+              'orion-customer-account.js':'text/javascript',
+              'orion-customer-account.css':'text/css'}
     if asset not in allowed:raise HTTPException(404)
     return FileResponse(STATIC/asset,media_type=allowed[asset],headers={'Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'})
