@@ -119,7 +119,8 @@ async def customer_page():
 @router.get('/appointment-assets/{asset}', include_in_schema=False)
 async def appointment_asset(asset: str):
     access.require_enabled()
-    types = {'orion-appointment.js':'text/javascript', 'orion-appointment.css':'text/css'}
+    types = {'orion-appointment.js':'text/javascript', 'orion-appointment.css':'text/css',
+             'orion-focus.css':'text/css','orion-focus.js':'text/javascript'}
     if asset not in types:
         raise HTTPException(404)
     return FileResponse(Path(__file__).parent/'static'/asset, media_type=types[asset], headers=PRIVATE_HEADERS)

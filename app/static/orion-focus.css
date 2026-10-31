@@ -1,0 +1,29 @@
+/* Orion focus across panel, public booking, links and landing.
+ * Never globally remove focus: text fields, keyboard users and assistive
+ * technology retain their native or authored indicators.
+ */
+:where(button, a[href], summary, [role="button"], [role="tab"], [role="link"], [tabindex]) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS Safari can paint :focus-visible for taps and JS .focus() on modal titles.
+ * The marker changes only after a real pointer/touch event, so keyboard Tab,
+ * arrows and assistive-technology focus keep the original accessible ring. */
+html[data-orion-input="pointer"] :is(
+  button, a[href], summary, [role="button"], [role="tab"], [role="link"], [tabindex]
+):not(input):not(textarea):not(select):not([contenteditable]):focus,
+html[data-orion-input="pointer"] :is(
+  button, a[href], summary, [role="button"], [role="tab"], [role="link"], [tabindex]
+):not(input):not(textarea):not(select):not([contenteditable]):focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+}
+
+/* These wrappers had a separate :focus-within ring after touch. Preserve
+ * border, selected, invalid, and input-focused styling; suppress only that
+ * extra outline for pointer interactions. */
+html[data-orion-input="pointer"]
+  :is(.booking-date-control, .os-agenda-date-picker, .os-color-wheel,
+      .os-site-amenity-option, .os-tone-options label):focus-within {
+  outline: none !important;
+}
