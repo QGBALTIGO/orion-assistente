@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {makeSendCapacity} from '../src/send-capacity.mjs';
 import {sendStoredText} from '../src/reliable-send.mjs';
+import {requiresPreRelayCache} from '../src/pilot-send-policy.mjs';
 import {resolvePilotRecipient,makePilotDeviceCache} from '../src/pilot-recipient.mjs';
 
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -142,7 +143,7 @@ function serverSendHarness(c){
     socket,generation:1,status:'connected',authorized:true,sendCapacity:capacity,
     validPhone:input=>input,deliveryPolicy:()=>({reliable:true,freshDevices:true}),
     pilotNumber:()=>phone,process:{env:{QR_PILOT_USE_VERIFIED_LID:'1'}},
-    resolvePilotRecipient,socketDeviceCaches:deviceCaches,sendStoredText,
+    resolvePilotRecipient,socketDeviceCaches:deviceCaches,sendStoredText,requiresPreRelayCache,
     async generateWAMessage(jid,message){calls.generate++;return {key:{id:'synthetic-id',remoteJid:jid},message}},
     generateMessageIDV2:()=> 'synthetic-id',logger:{},
     retryStore:{save(){calls.cache++;return true}},
