@@ -13,7 +13,7 @@ from app.booking_service import read_appointment
 from app.database import get_session_factory, tenant_transaction
 
 GENERIC = generic_response()
-PROTOCOL=re.compile(r'(?<![A-Z0-9])AG-[A-HJ-NP-Z2-9]{6}(?![A-Z0-9])',re.I)
+PROTOCOL=re.compile(r'(?<![A-Z0-9])AG-[A-HJ-NP-Z2-9]{6}(?:-[A-F0-9]{8})?(?![A-Z0-9])',re.I)
 
 
 def detected_protocol(body):
@@ -47,10 +47,19 @@ async def confirmation_reply(tenant,phone,body,channel_key,message_id,*,central=
                 FROM appointment_communication_settings WHERE tenant_id=:t'''),{'t':tenant})).mappings().first()
             signature=(settings['signature'] if settings else None) or 'Orion Agenda'
             if not central and not access.recipient_allowed(phone):return generic_response(signature)
-            row=(await db.execute(text('''SELECT a.id FROM appointments a JOIN customers c
+            # Short aliases are globally unique but stored separately
+            # from the original protocol. Never construct this JOIN before
+            # the 0054 migration and the feature rollout are verified.
+            alias_match = (" OR EXISTS(SELECT 1 FROM appointment_short_codes code"
+                           " WHERE code.tenant_id=a.tenant_id"
+                           " AND code.appointment_id=a.id AND code.code=:protocol)"
+                           if access.short_links_enabled() else "")
+            row=(await db.execute(text("""SELECT a.id FROM appointments a JOIN customers c
                 ON c.tenant_id=a.tenant_id AND c.id=a.customer_id
-                WHERE a.tenant_id=:t AND a.protocol=:protocol AND c.whatsapp_e164=:phone
-                  AND c.active AND c.deleted_at IS NULL'''),{'t':tenant,'protocol':protocol,'phone':phone})).mappings().first()
+                WHERE a.tenant_id=:t
+                  AND (a.protocol=:protocol""" + alias_match + """)
+                  AND c.whatsapp_e164=:phone AND c.active AND c.deleted_at IS NULL"""),
+                {'t':tenant,'protocol':protocol,'phone':phone})).mappings().first()
             if row is None:return generic_response(signature)
             if not central and (not settings or not settings['enabled'] or not settings['confirmation']):return ''
             # Membership, channel fencing and any human pause remain guarded by
