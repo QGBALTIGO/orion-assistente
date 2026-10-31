@@ -62,6 +62,13 @@ async def confirm_inbound_protocol(payload:IncomingProtocol,request:Request):
         raise HTTPException(401,'Acesso negado')
     if not central_reply_active():
         return {'state':'disabled','answer':None}
+    # One-time codes are requested by the actual WhatsApp sender and are
+    # deliberately processed before the legacy protocol confirmation reply.
+    if isinstance(payload.text,str) and payload.text.strip().upper().startswith('ORION VERIFICAR '):
+        await _limit_protocol_lookup(request, payload.phone)
+        from app.short_appointment_api import inbound_otp_from_verified_phone
+        answer = await inbound_otp_from_verified_phone(payload.text, payload.phone)
+        return answer if answer is not None else {'state':'unrecognized','answer':GENERIC}
     protocol=detected_protocol(payload.text)
     if protocol is None:
         return {'state':'not_protocol','answer':None}
