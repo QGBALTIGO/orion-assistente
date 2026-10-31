@@ -12,7 +12,10 @@ import httpx
 from app.automation_transport import bridge_origin
 
 PHONE = re.compile(r"^\+(?:55[1-9][0-9]{9,10}|5959[0-9]{8})$")
-IDENTITIES = frozenset({"pn_confirmed", "different_identifier"})
+# A changed identifier is not proof of a safe destination. The bridge
+# recognizes Brazilian legacy PN normalization only when the SAME USync query
+# returns one verified canonical phone JID.
+IDENTITIES = frozenset({"pn_confirmed", "phone_normalized"})
 
 
 async def check_professional_recipient(phone: str | None) -> str:

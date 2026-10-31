@@ -19,7 +19,8 @@ KEY = "synthetic-private-bridge-token-longer-than-32-characters"
 @pytest.mark.asyncio
 @pytest.mark.parametrize("flag,payload,expected", [
     (200, {"registered": True, "identity": "pn_confirmed"}, "registered"),
-    (200, {"registered": True, "identity": "different_identifier"}, "registered"),
+    (200, {"registered": True, "identity": "phone_normalized"}, "registered"),
+    (200, {"registered": True, "identity": "different_identifier"}, "unverified"),
     (200, {"registered": False, "identity": "unverified"}, "not_recognized"),
     (200, {"registered": None, "identity": "lookup_failed"}, "unverified"),
     (502, {"error": "private"}, "unavailable"),

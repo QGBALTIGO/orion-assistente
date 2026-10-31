@@ -17,8 +17,11 @@ from app.database import get_session_factory, tenant_transaction
 
 TENANT = UUID("26694b4b-be15-4850-bcb9-69b184897e79")
 PROFESSIONAL = UUID("fb09446d-5173-47f4-aaf5-0fc0205d25ee")
-SAFE_IDENTITIES = frozenset({"pn_confirmed", "different_identifier",
+SAFE_IDENTITIES = frozenset({"pn_confirmed", "phone_normalized", "different_identifier",
                              "unverified", "unknown", "lookup_failed"})
+SAFE_LOOKUP_KINDS = frozenset({"exact", "provider_normalized", "no_result",
+    "ambiguous_lookup", "different_identifier", "not_registered", "unavailable",
+    "invalid_lookup"})
 COUNTS = ("count", "pending", "serverAccepted", "delivered", "read",
           "failed", "retryRequests", "messagesWithRetry")
 RECEIPTS = frozenset({"pending", "server_accepted", "delivered", "read",
@@ -51,6 +54,9 @@ def safe_report(payload):
         "has_lid": payload.get("hasLid") if type(payload.get("hasLid")) is bool else None,
         "delivery": {},
     }
+    # Optional diagnostic; never include the returned PN, JID, LID or contact.
+    if payload.get("lookupKind") in SAFE_LOOKUP_KINDS:
+        summary["lookup_kind"] = payload["lookupKind"]
     if isinstance(delivery, dict):
         for name in COUNTS:
             value = delivery.get(name)
