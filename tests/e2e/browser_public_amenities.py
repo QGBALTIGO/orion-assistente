@@ -85,7 +85,7 @@ def test_public_amenities_inside_location_with_accessible_labels(engine,width,ac
                 boxes=[tiles.nth(i).bounding_box() for i in range(active)]
                 assert max(box['width'] for box in boxes)-min(box['width'] for box in boxes)<=2
                 assert max(box['height'] for box in boxes)-min(box['height'] for box in boxes)<=2
-                assert grid.evaluate('(el)=>getComputedStyle(el).gridTemplateColumns.count(" ")')==(
+                assert grid.evaluate('(el)=>getComputedStyle(el).gridTemplateColumns.trim().split(" ").filter(Boolean).length - 1')==(
                     0 if width>=720 and active==1 else (active-1 if width>=720 else 1))
                 area=grid.bounding_box()
                 assert area
