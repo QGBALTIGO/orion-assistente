@@ -97,7 +97,11 @@ async def inspect():
                 headers=headers,
             )
             if response.status_code != 200:
-                return {"state": "private_lookup_unavailable"}
+                # A fixed numeric HTTP category is safe; never expose a bridge
+                # exception, JID, URL, credential or recipient.
+                status = response.status_code
+                return {"state": "private_lookup_unavailable",
+                        "http_status": status if status in {401, 403, 409, 423, 429, 503} else None}
             result = {"state": "inspected", **safe_report(response.json())}
             if os.getenv("ORION_PEIXOTO_COMPARE_LEGACY_PN") == "1":
                 alternate = legacy_brazil_candidate(phone)

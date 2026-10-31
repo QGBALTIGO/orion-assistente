@@ -192,3 +192,21 @@ async def test_legacy_comparison_requires_explicit_operator_flag_and_redacts_con
     dump=json.dumps(result)
     assert "5567999999922" not in dump and "556799999922" not in dump
     assert "MUST_NEVER_LEAK" not in dump
+
+
+@pytest.mark.asyncio
+async def test_bridge_http_state_is_redacted_but_distinguishes_connection_issue(monkeypatch):
+    monkeypatch.setenv("QR_BRIDGE_TOKEN", "synthetic-secret-"+"x"*64)
+    monkeypatch.delenv("ORION_PEIXOTO_COMPARE_LEGACY_PN", raising=False)
+    monkeypatch.delenv("ORION_PEIXOTO_CONTROL_PHONE", raising=False)
+    monkeypatch.setattr(qa, "get_session_factory", lambda:lambda:DB())
+    monkeypatch.setattr(qa, "tenant_transaction", scope)
+    monkeypatch.setattr(qa, "bridge_origin", lambda:"http://orion-qr-bridge.railway.internal:3000")
+    class Client:
+        async def __aenter__(self):return self
+        async def __aexit__(self,*args):pass
+        async def get(self, url, **kwargs):
+            assert url.endswith("/internal/recipient")
+            return SimpleNamespace(status_code=409)
+    monkeypatch.setattr(qa.httpx,"AsyncClient",lambda **kwargs:Client())
+    assert await qa.inspect()=={"state":"private_lookup_unavailable","http_status":409}
