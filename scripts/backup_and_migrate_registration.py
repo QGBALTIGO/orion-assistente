@@ -78,6 +78,28 @@ def main():
         print('orion_registration_predeploy_failed_closed',file=sys.stderr);return 3
 
 
+def one_click_schema_ready(raw):
+    """Read-only acknowledgement of migration 0056; never replay older DDL."""
+    engine = create_engine(raw, poolclass=NullPool,
+        connect_args={'options':'-c default_transaction_read_only=on -c statement_timeout=10000'})
+    try:
+        with engine.connect() as db:
+            check = db.execute(text("""
+                SELECT p.prosecdef,
+                    pg_get_userbyid(p.proowner)='app_migrator',
+                    p.proconfig=ARRAY['search_path=pg_catalog']::text[],
+                    has_function_privilege('app_support',p.oid,'EXECUTE'),
+                    has_function_privilege('app_runtime',p.oid,'EXECUTE'),
+                    has_function_privilege('app_migrator',p.oid,'EXECUTE')
+                FROM pg_proc p
+                WHERE p.oid=to_regprocedure(
+                    'public.orion_resolve_direct_appointment(text)')
+            """)).first()
+            return check is not None and tuple(check)==(True,True,True,True,False,False)
+    finally:
+        engine.dispose()
+
+
 def predeploy_main():
     """Preserve the Railway predeploy command and use only reviewed migrations.
 
@@ -117,6 +139,15 @@ def predeploy_main():
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
+        if current == '0056_one_click_appointment_links':
+            # 0056 is an explicitly reviewed, already-applied additive release.
+            # Old 0039/0054/0055 migrators may NEVER be replayed here.
+            if (combo_duration.schema_ready(raw) and short_links.schema_ready(raw)
+                    and one_click_schema_ready(raw)):
+                print('orion_one_click_0056_schema_verified', flush=True)
+                return 0
+            print('orion_one_click_0056_schema_invalid', file=sys.stderr)
+            return 3
         if current == combo_duration.TARGET:
             return combo_duration.main()
         if current == short_links.TARGET:
