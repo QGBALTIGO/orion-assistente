@@ -157,3 +157,18 @@ test('An enterprise without an address can still show only its published ameniti
   assert.equal(h.document.querySelector('.amenity-label').textContent,'Wi-Fi');
   assert.equal(h.errors.length,0);
 });
+
+test('Grid rules keep equal-width chips and center the third item only on phones',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const css=await readFile(new URL('../app/static/orion-public.css',import.meta.url),'utf8');
+  assert.match(css,/\.location-card \.amenities-grid\{\s*display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(css,/\.location-card \.amenities-grid\[data-count="3"\] \.amenity-tile:last-child\{\s*grid-column:1\/-1;justify-self:center/);
+  assert.match(css,/@media\(min-width:720px\)/);
+  for(const [count,cols] of [[1,1],[2,2],[3,3],[4,4]]){
+    const selector='.location-card .amenities-grid[data-count="'+count+'"]';
+    assert.ok(css.includes(selector+'{grid-template-columns:'), 'layout for '+count);
+    assert.ok(css.includes('repeat('+cols+',minmax(0,1fr))')||
+      count===1, 'columns for '+count);
+  }
+  assert.doesNotMatch(css,/\.location-card \.amenities-grid\{[^}]*display:flex/);
+});
