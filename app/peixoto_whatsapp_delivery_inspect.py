@@ -25,6 +25,19 @@ RECEIPTS = frozenset({"pending", "server_accepted", "delivered", "read",
                       "played", "failed", "unknown", "none"})
 
 
+def legacy_brazil_candidate(phone: str) -> str | None:
+    """Read-only comparison, never a routing or authorization decision.
+
+    A Brazilian WhatsApp registration may still use the legacy 8-digit local
+    PN. Even a positive result NEVER proves that it is the same person.
+    """
+    if not isinstance(phone, str) or not re.fullmatch(
+        r"\+55[1-9][0-9]9[0-9]{8}", phone
+    ):
+        return None
+    return phone[:5] + phone[6:]
+
+
 def safe_report(payload):
     """Never log an arbitrary provider field, contact identifier or error."""
     if not isinstance(payload, dict):
@@ -80,6 +93,23 @@ async def inspect():
             if response.status_code != 200:
                 return {"state": "private_lookup_unavailable"}
             result = {"state": "inspected", **safe_report(response.json())}
+            if os.getenv("ORION_PEIXOTO_COMPARE_LEGACY_PN") == "1":
+                alternate = legacy_brazil_candidate(phone)
+                if alternate is None:
+                    result["legacy_pn_comparison"] = {"state": "not_applicable"}
+                else:
+                    try:
+                        check = await client.get(
+                            origin + "/internal/recipient",
+                            params={"phone": alternate.lstrip("+")}, headers=headers)
+                        result["legacy_pn_comparison"] = (
+                            {"state": "inspected",
+                             "registered": safe_report(check.json()).get("registered"),
+                             "identity": safe_report(check.json()).get("identity")}
+                            if check.status_code == 200 else {"state": "unavailable"}
+                        )
+                    except Exception:
+                        result["legacy_pn_comparison"] = {"state": "failed_closed"}
             if control_phone and control_phone != phone:
                 try:
                     control = await client.get(

@@ -153,3 +153,42 @@ async def test_bad_control_phone_prevents_queries(monkeypatch):
     monkeypatch.setattr(qa.httpx, "AsyncClient",
                         lambda **kwargs: (_ for _ in ()).throw(AssertionError("No network allowed")))
     assert await qa.inspect() == {"state": "invalid_control_scope"}
+
+
+def test_legacy_phone_comparison_is_read_only_and_never_assumed_to_be_same_person():
+    assert qa.legacy_brazil_candidate("+5567999999922") == "+556799999922"
+    assert qa.legacy_brazil_candidate("+595981234567") is None
+    assert qa.legacy_brazil_candidate("+556788888888") is None
+    assert qa.legacy_brazil_candidate("5567999999922") is None
+
+
+@pytest.mark.asyncio
+async def test_legacy_comparison_requires_explicit_operator_flag_and_redacts_contact(monkeypatch):
+    monkeypatch.setenv("QR_BRIDGE_TOKEN", "synthetic-secret-" + "x" * 64)
+    monkeypatch.setenv("ORION_PEIXOTO_COMPARE_LEGACY_PN", "1")
+    monkeypatch.delenv("ORION_PEIXOTO_CONTROL_PHONE", raising=False)
+    monkeypatch.setattr(qa, "get_session_factory", lambda: lambda: DB())
+    monkeypatch.setattr(qa, "tenant_transaction", scope)
+    monkeypatch.setattr(qa, "bridge_origin", lambda: "http://orion-qr-bridge.railway.internal:3000")
+    calls=[]
+    class Response:
+        status_code=200
+        def __init__(self, phone): self.phone=phone
+        def json(self): return {"registered":self.phone=="556799999922",
+                "identity":"pn_confirmed" if self.phone.endswith("9922") else "unverified",
+                "secret":"MUST_NEVER_LEAK"}
+    class Client:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): pass
+        async def get(self, url, params, headers):
+            assert url=="http://orion-qr-bridge.railway.internal:3000/internal/recipient"
+            calls.append(params["phone"])
+            return Response(params["phone"])
+    monkeypatch.setattr(qa.httpx,"AsyncClient",lambda **kw:Client())
+    result=await qa.inspect()
+    assert calls==["5567999999922", "556799999922"]
+    assert result["legacy_pn_comparison"]=={
+        "state":"inspected","registered":True,"identity":"pn_confirmed"}
+    dump=json.dumps(result)
+    assert "5567999999922" not in dump and "556799999922" not in dump
+    assert "MUST_NEVER_LEAK" not in dump
