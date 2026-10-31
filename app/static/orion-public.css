@@ -143,53 +143,98 @@ body{background:var(--bg);color:var(--text);min-width:0}
 :root[data-theme="dark"] .appearance-trigger .appearance-sun{display:none}
 :root[data-theme="dark"] .appearance-trigger .appearance-moon{display:block}
 
-/* Compact, recognizable contact network icons: no stacked text buttons. */
-.contact-card{display:grid;grid-template-columns:minmax(0,1fr);align-items:center;gap:18px;padding:22px;border-radius:20px;min-width:0}
+/* Contact actions: equal-size cards with a readable label. Keep the
+   site identity, outline and palette, not a floating group of icon squares.
+   Mobile: 1 centered, 2 side-by-side, 3 equal, 4 in 2x2, 5/6 in 3 columns.
+   Extra channels use the same slots and never leave an orphan at left. */
+.contact-card{
+  display:grid;grid-template-columns:minmax(0,1fr);
+  gap:15px;align-items:start;min-width:0;padding:20px;
+  border-radius:20px
+}
 .contact-heading{display:flex;align-items:center;gap:12px;min-width:0}
-.contact-heading-icon{width:44px;height:44px;flex:0 0 44px;display:grid;place-items:center;border-radius:14px;background:color-mix(in srgb,var(--primary) 10%,var(--card));color:var(--primary)}
-.contact-heading-icon svg{width:23px;height:23px;display:block}
+.contact-heading-icon{
+  width:42px;height:42px;flex:0 0 42px;
+  display:grid;place-items:center;border-radius:13px;
+  background:color-mix(in srgb,var(--primary) 10%,var(--card));
+  color:var(--primary)
+}
+.contact-heading-icon svg{display:block;width:22px;height:22px}
 .contact-heading-copy{min-width:0}
 .contact-card h2{font-size:20px;line-height:26px;letter-spacing:-.02em}
-.contact-card p{font-size:13px;line-height:19px;margin-top:3px}
-.contact-links{display:flex;flex-wrap:wrap;align-items:center;gap:9px;min-width:0}
-.social-link{
-  --social-color:var(--primary);
-  display:grid;place-items:center;flex:0 0 50px;width:50px;height:50px;min-height:50px;
-  padding:10px;border:1px solid var(--border);border-radius:14px;
-  background:color-mix(in srgb,var(--social-color) 5%,var(--card));
-  color:var(--social-color);line-height:1;
-  transition:transform .16s ease,background .16s ease,border-color .16s ease,box-shadow .16s ease
+.contact-card p{font-size:12px;line-height:18px;margin-top:3px}
+.contact-links{
+  --contact-gap:9px;
+  display:flex;flex-wrap:wrap;justify-content:center;
+  align-items:stretch;gap:var(--contact-gap);
+  width:100%;min-width:0
 }
-.social-link svg{display:block;flex:none;width:25px;height:25px;overflow:visible}
-.social-link:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--social-color) 37%,var(--border));background:color-mix(in srgb,var(--social-color) 11%,var(--card));box-shadow:0 5px 15px #00000012}
-.social-link:active{transform:scale(.97)}
-.social-link:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+.contact-links .social-link{
+  --social-color:var(--primary);
+  box-sizing:border-box;display:flex;flex-direction:column;
+  justify-content:center;align-items:center;gap:7px;
+  flex:0 1 calc((100% - 2 * var(--contact-gap))/3);
+  min-width:0;min-height:76px;padding:10px 5px;
+  border:1px solid var(--border);border-radius:13px;
+  background:color-mix(in srgb,var(--social-color) 3%,var(--bg));
+  color:var(--text);
+  text-align:center;font:650 12px/16px Figtree,system-ui,sans-serif;
+  transition:transform .16s ease,background .16s ease,border-color .16s ease
+}
+.contact-links .social-link svg{
+  display:block;flex:0 0 23px;width:23px;height:23px;
+  overflow:visible;color:var(--social-color)
+}
+.contact-links .social-link-label{
+  min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap
+}
+.contact-links[data-count="1"] .social-link{
+  flex-basis:min(100%,220px)
+}
+.contact-links[data-count="2"] .social-link,
+.contact-links[data-count="4"] .social-link{
+  flex-basis:calc((100% - var(--contact-gap))/2)
+}
+.contact-links .social-link:hover{
+  transform:translateY(-1px);
+  border-color:color-mix(in srgb,var(--social-color) 35%,var(--border));
+  background:color-mix(in srgb,var(--social-color) 8%,var(--bg))
+}
+.contact-links .social-link:active{transform:scale(.985)}
+.contact-links .social-link:focus-visible{outline:3px solid var(--primary);outline-offset:2px}
 .social-link--whatsapp{--social-color:#179f61}
 .social-link--instagram{--social-color:#cb3986}
 .social-link--facebook{--social-color:#1877f2}
-.social-link--tiktok{--social-color:#222c3e}
+.social-link--tiktok{--social-color:#344154}
 .social-link--phone{--social-color:#536e91}
 :root[data-theme="dark"] .social-link--whatsapp{--social-color:#56d990}
 :root[data-theme="dark"] .social-link--instagram{--social-color:#ff8bc8}
 :root[data-theme="dark"] .social-link--facebook{--social-color:#77b2ff}
 :root[data-theme="dark"] .social-link--tiktok{--social-color:#e4ecf8}
 :root[data-theme="dark"] .social-link--phone{--social-color:#bacbe4}
-@media(min-width:640px){
-  .contact-card{grid-template-columns:minmax(0,1fr) auto;gap:24px;padding:24px}
-  .contact-links{justify-content:flex-end;max-width:400px}
+@media(min-width:740px){
+  .contact-card{
+    grid-template-columns:minmax(0,.85fr) minmax(0,1.25fr);
+    align-items:center;gap:22px;padding:24px
+  }
+  .contact-links[data-count="4"] .social-link{
+    flex-basis:calc((100% - 3 * var(--contact-gap))/4)
+  }
 }
 @media(max-width:359px){
   .appearance-trigger{width:44px;height:44px}
-  .contact-card{padding:16px;gap:16px}
+  .contact-card{padding:16px;gap:13px}
   .contact-heading-icon{width:40px;height:40px;flex-basis:40px}
   .contact-card h2{font-size:18px}
-  .contact-links{gap:7px}
-  .social-link{flex-basis:47px;width:47px;height:47px}
+  .contact-card p{font-size:11px}
+  .contact-links{--contact-gap:7px}
+  .contact-links .social-link{min-height:72px;gap:6px;padding-inline:4px;font-size:11px}
+  .contact-links .social-link svg{flex-basis:21px;width:21px;height:21px}
 }
 @media(prefers-reduced-motion:reduce){
   .social-link,.appearance-trigger{transition:none}
 }
-
 
 /* Amenities belong to Onde estamos — compact, accessible chips rather
    than a floating section ahead of the booking catalogue. Uses existing

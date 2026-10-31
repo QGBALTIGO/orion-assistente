@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { flush } from './harness.mjs';
 import { catalogue, makePublic } from './public-harness.mjs';
 
-test('contact icons use configured safe destinations with accessible labels, not text buttons', async t => {
+test('contact cards use configured safe destinations, visible channel labels and accessible names', async t => {
   const data = catalogue();
   Object.assign(data.site, {
     contact_phone: '+551133334444',
@@ -20,10 +20,14 @@ test('contact icons use configured safe destinations with accessible labels, not
     'social-link--whatsapp','social-link--phone','social-link--instagram',
     'social-link--tiktok','social-link--facebook','social-link--website'
   ]);
+  assert.equal(h.document.getElementById('contact-links').dataset.count,'6');
+  assert.deepEqual(items.map(item=>item.querySelector('.social-link-label')?.textContent),
+    ['WhatsApp','Ligar','Instagram','TikTok','Facebook','Site']);
   for (const item of items) {
-    assert.equal(item.textContent.trim(), '');
     assert.ok(item.getAttribute('aria-label'));
-    assert.equal(item.querySelectorAll('svg[aria-hidden=true]').length, 1);
+    assert.equal(item.querySelectorAll('svg[aria-hidden=true]').length,1);
+    assert.equal(item.querySelectorAll('.social-link-label').length,1);
+    assert.equal(item.querySelector('.social-link-label').textContent,item.textContent);
   }
   assert.equal(items[0].href, 'https://wa.me/5511999999999');
   assert.equal(items[1].getAttribute('href'), 'tel:+551133334444');
@@ -39,6 +43,7 @@ test('contact icon links cannot inject javascript: URLs or markup', async t => {
   data.site.tiktok_url='https://x.invalid/?q=<img src=x onerror=alert(1)>';
   const h=await makePublic({data});t.after(()=>h.close());await flush();
   assert.equal(h.document.querySelectorAll('#contact-links a').length,2);
+  assert.equal(h.document.getElementById('contact-links').dataset.count,'2');
   assert.equal(h.document.querySelector('a[href^="javascript:"]'),null);
   assert.equal(h.document.querySelector('#contact-links img'),null);
 });
@@ -105,4 +110,44 @@ test('dark-mode phone starts automatically dark and returns to system with two t
   assert.equal(root.dataset.theme,'dark');
   assert.equal(root.dataset.themePreference,'auto');
   assert.equal(h.errors.length,0);
+});
+
+test('one to six contact channels display only configured options without empty icon slots',async t=>{
+  const options=[
+    ['whatsapp_phone','+5511999999999'],
+    ['contact_phone','+551133334444'],
+    ['instagram_url','https://www.instagram.com/orion'],
+    ['tiktok_url','https://www.tiktok.com/@orion'],
+    ['facebook_url','https://www.facebook.com/orion'],
+    ['external_url','https://example.com']
+  ];
+  const labels=['WhatsApp','Ligar','Instagram','TikTok','Facebook','Site'];
+  for(let n=0;n<=options.length;n++){
+    const data=catalogue();
+    Object.assign(data.site,{whatsapp_phone:null,contact_phone:null,instagram_url:null,
+      tiktok_url:null,facebook_url:null,external_url:null});
+    options.slice(0,n).forEach(([key,value])=>data.site[key]=value);
+    const h=await makePublic({data});await flush();
+    const section=h.document.getElementById('contact-section');
+    const nav=h.document.getElementById('contact-links');
+    const items=[...nav.querySelectorAll('.social-link')];
+    assert.equal(section.hidden,n===0);
+    assert.equal(nav.dataset.count,String(n));
+    assert.equal(items.length,n);
+    assert.deepEqual(items.map(x=>x.querySelector('.social-link-label')?.textContent),labels.slice(0,n));
+    assert.ok(items.every(x=>x.getAttribute('aria-label')&&x.querySelectorAll('svg').length===1));
+    assert.equal(h.errors.length,0);
+    h.close();
+  }
+});
+
+test('Contact card CSS balances channels, with no 50px orphan icons or extra headline text',async()=>{
+  const css=await readFile(new URL('../app/static/orion-public.css',import.meta.url),'utf8');
+  const html=await readFile(new URL('../app/static/orion-public.html',import.meta.url),'utf8');
+  assert.match(css,/\.contact-links\{[\s\S]*?display:flex;flex-wrap:wrap;justify-content:center/);
+  assert.match(css,/\.contact-links \.social-link\{[\s\S]*?flex-direction:column/);
+  assert.match(css,/\.contact-links\[data-count="4"\] \.social-link/);
+  assert.match(css,/@media\(min-width:740px\)/);
+  assert.doesNotMatch(css,/\.social-link\{[^}]*width:50px;height:50px/);
+  assert.match(html,/Escolha um canal para entrar em contato\./);
 });

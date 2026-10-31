@@ -60,6 +60,10 @@
   }
   function setLink(node, value) { const href = safeHTTPS(value); node.hidden = !href; if (href) { node.href = href; node.target = '_blank'; node.rel = 'noopener noreferrer'; } }
   const CONTACT_ICONS = {"whatsapp":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 11.7a8 8 0 0 1-11.8 7.1L3.5 20l1.4-4.5A8 8 0 1 1 20 11.7Z\"/><path d=\"M8.2 8c.4-.5.8-.4 1.1.1l.9 1.6c.2.4.1.6-.2.9l-.6.6a6.5 6.5 0 0 0 3.4 3.4l.7-.7c.2-.3.5-.3.9-.1l1.6.9c.4.2.5.6.2 1.1-.3.6-1.1 1.1-1.9 1-3.5-.7-6-3.2-6.8-6.7-.1-.8.2-1.6.7-2.1\"/></svg>","phone":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 16.7v2.8a2 2 0 0 1-2.2 2A18.3 18.3 0 0 1 2.5 5.2 2 2 0 0 1 4.5 3h2.8a2 2 0 0 1 2 1.7l.4 2.7a2 2 0 0 1-.6 1.7l-1.5 1.3a14.6 14.6 0 0 0 6 6l1.3-1.5a2 2 0 0 1 1.7-.6l2.7.4a2 2 0 0 1 1.7 2Z\"/></svg>","instagram":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"5\"/><circle cx=\"12\" cy=\"12\" r=\"4\"/><circle cx=\"17.5\" cy=\"6.5\" r=\"1\" fill=\"currentColor\" stroke=\"none\"/></svg>","facebook":"<svg viewBox=\"0 0 24 24\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M14.2 21v-7.8h2.6l.4-3.1h-3V8c0-.9.3-1.6 1.6-1.6h1.5V3.6c-.3-.1-1.3-.2-2.5-.2-2.5 0-4.2 1.5-4.2 4.2v2.5H8v3.1h2.6V21h3.6Z\"/></svg>","tiktok":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M14.2 3v11.5a4.2 4.2 0 1 1-4.2-4.2c.4 0 .9.1 1.2.2\"/><path d=\"M14.2 3c.6 3.3 2.5 5.3 5.8 5.6\"/></svg>","website":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M3 12h18M12 3c2.7 2.4 4 5.4 4 9s-1.3 6.6-4 9c-2.7-2.4-4-5.4-4-9s1.3-6.6 4-9Z\"/></svg>"};
+  const CONTACT_LABELS = {
+    whatsapp:'WhatsApp',phone:'Ligar',instagram:'Instagram',
+    tiktok:'TikTok',facebook:'Facebook',website:'Site'
+  };
   function contactAnchor(name, kind, address, isPhone = false) {
     const href = isPhone ? (/^tel:\+[1-9]\d{9,14}$/.test(address) ? address : null) : safeHTTPS(address);
     if (!href) return null;
@@ -69,6 +73,7 @@
     node.title = name;
     if (!isPhone) { node.target = '_blank'; node.rel = 'noopener noreferrer'; }
     node.innerHTML = CONTACT_ICONS[kind]; // Fixed local SVGs; untrusted site data never enters markup.
+    node.append(el('span','social-link-label',CONTACT_LABELS[kind]));
     return node;
   }
   function thumbnailURL(safe) {
@@ -398,8 +403,10 @@
     ]) {
       contacts.push(contactAnchor(name, kind, site[field]));
     }
-    $('contact-links').replaceChildren(...contacts.filter(Boolean));
-    $('contact-section').hidden = !contacts.some(Boolean);
+    const validContacts = contacts.filter(Boolean);
+    $('contact-links').replaceChildren(...validContacts);
+    $('contact-links').dataset.count = String(validContacts.length);
+    $('contact-section').hidden = validContacts.length === 0;
     $('orion-credit').hidden = !!site.hide_orion_brand; $('preview-banner').hidden = !preview;
     $('site-content').hidden = false; $('page-message').hidden = true;
   }
