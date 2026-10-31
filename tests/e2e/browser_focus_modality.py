@@ -64,6 +64,9 @@ def test_public_booking_close_has_no_touch_ring_but_preserves_keyboard(engine, w
             assert page.locator("#date-shell").evaluate(
                 "el => getComputedStyle(el).outlineStyle"
             ) == "none"
+            assert page.locator("#date").evaluate(
+                "el => getComputedStyle(el).outlineStyle"
+            ) == "none", "The invisible date input must not paint a second ring"
 
             page.keyboard.press("Tab")
             assert page.evaluate("document.documentElement.dataset.orionInput") == "keyboard"

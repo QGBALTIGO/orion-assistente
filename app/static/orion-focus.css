@@ -24,6 +24,19 @@ html[data-orion-input="pointer"] :is(
  * extra outline for pointer interactions. */
 html[data-orion-input="pointer"]
   :is(.booking-date-control, .os-agenda-date-picker, .os-color-wheel,
-      .os-site-amenity-option, .os-tone-options label):focus-within {
+      .os-site-amenity-option, .os-tone-options label,
+      .os-service-price-choice):focus-within {
   outline: none !important;
+}
+
+/* Non-text inputs also gain platform focus rings on tap, including invisible
+ * native date pickers and rating radios. Checked/invalid states remain intact. */
+html[data-orion-input="pointer"] :is(
+  input[type="checkbox"], input[type="radio"], input[type="color"],
+  input[type="date"], input[type="time"], input[type="month"],
+  input[type="range"], input[type="file"], select
+):focus-visible,
+html[data-orion-input="pointer"] .stars input:focus-visible + span {
+  outline: none !important;
+  outline-offset: 0 !important;
 }
