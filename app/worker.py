@@ -202,7 +202,7 @@ async def startup_plan_permissions(ctx):
 class WorkerSettings:
     on_startup = startup_plan_permissions
     functions = [func(process_appointment_notification,name='process_appointment_notification'),infrastructure_ping,process_inbound_event,process_message_outbox,process_calendar_outbox,process_due_appointment,reconcile_asaas_job,process_automation_job,reconcile_automation_job,process_inbox_message,process_email_outbox]
-    cron_jobs = [cron(cleanup_notification_payloads, minute={13}, second={10}),cron(scan_appointment_notifications, minute=set(range(60)), second={0,15,30,45}),
+    cron_jobs = [cron(cleanup_notification_payloads, minute={13}, second={10}),cron(scan_appointment_notifications, minute=set(range(60)), second=set(range(0,60,5))),
                  cron(recover_events, minute={0,5,10,15,20,25,30,35,40,45,50,55}, second=0),
                  cron(scan_calendar_outbox, minute=set(range(60)), second=10),
                  cron(scan_due_appointments, minute=set(range(60)), second={0,10,20,30,40,50}),

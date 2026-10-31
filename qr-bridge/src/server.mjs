@@ -901,7 +901,7 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
     if(!current())throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
     transport.record('appointment_recipient_verified',null,{kind:verifiedRecipient.kind});
   }
-  const {reliable,freshDevices}=deliveryPolicy(target);
+  const {reliable,freshDevices}=deliveryPolicy(target,process.env,{source});
   const recipientProof=await resolvePilotRecipient({phone:target,pilotPhone:pilotNumber(process.env),
     enabled:reliable&&process.env.QR_PILOT_USE_VERIFIED_LID==='1',socket:selectedSocket,deviceCache:socketDeviceCaches.get(selectedSocket),
     isCurrent:current});
