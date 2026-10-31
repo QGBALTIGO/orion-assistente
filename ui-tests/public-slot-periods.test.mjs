@@ -46,7 +46,7 @@ test('morning/afternoon/evening are local-time, chronological and de-duplicated'
   assert.ok(groups(h).every(section =>
     section.querySelector('.slot-period-count').textContent === 'Disponíveis'));
   assert.ok(groups(h).every(section =>
-    !/\\d/.test(section.querySelector('.slot-period-count').textContent)));
+    !/\d/.test(section.querySelector('.slot-period-count').textContent)));
   assert.equal(h.document.querySelectorAll('.slot-period-count').length,3);
   assert.equal(h.document.getElementById('booking-next').disabled,true);
   assert.equal(h.errors.length,0);
