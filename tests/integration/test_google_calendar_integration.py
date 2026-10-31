@@ -628,4 +628,9 @@ async def test_live_google_check_never_creates_a_test_event_or_exposes_tokens(go
     assert "expirou" in expired.text.lower() or "reconecte" in expired.text.lower()
     assert not any(call[0]=="apply" for call in d["google"].calls)
     saved=await api.connection_snapshot(d["a"])
-    assert saved["status"]=="active"  # A read-only check never revokes credentials.
+    assert saved["status"]=="error"  # Definitive invalid_grant unlocks Reconectar.
+    assert saved["last_error"]=="google_authorization_expired"
+    assert saved["refresh_token_enc"]  # Preserve the encrypted token for review.
+    status=(await d["client"].get(d["google_base"]+"/status")).json()
+    assert status["sync_status"]=="reauthorization_required"
+    assert status["capabilities"]["can_connect"] is True
