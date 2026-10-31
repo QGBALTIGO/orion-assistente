@@ -135,6 +135,10 @@ include_plan_router(app, workflow_drafts_router)
 include_plan_router(app, orion_pwa_router)
 # Specific management paths must precede the legacy two-segment catalog path.
 include_plan_router(app, catalog_router)
+# Only after named routes: a one-segment /AG-XXXXXX lookup is not a wildcard
+# that can intercept /login, /panel, /s/*, /planos or older /a# links.
+from app.short_appointment_api import router as short_appointment_router
+include_plan_router(app, short_appointment_router)
 
 
 @app.get("/brand/{asset}", include_in_schema=False)
