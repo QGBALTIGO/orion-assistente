@@ -123,6 +123,14 @@ async def startup_plan_permissions(ctx):
     await wait_for_schema(Settings.from_environment())
     ctx['plan_permissions_ready'] = True
     logging.getLogger(__name__).info('orion_plan_permissions_0050_worker_ready')
+    if os.getenv('ORION_REVIEW_QA_7364_PREFLIGHT') == '1':
+        try:
+            import json
+            from app.review_qa_preflight import inspect
+            summary = await inspect()
+            print('orion_review_qa_7364=' + json.dumps(summary, sort_keys=True), flush=True)
+        except Exception as error:
+            print('orion_review_qa_7364_failed_closed type=' + type(error).__name__, flush=True)
     if os.getenv('ORION_ONE_TIME_PEIXOTO_WHATSAPP_INSPECT') == '1':
         try:
             import json
