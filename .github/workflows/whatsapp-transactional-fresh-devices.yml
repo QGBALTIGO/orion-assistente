@@ -30,5 +30,6 @@ jobs:
           node --test qr-bridge/test/pilot-send-policy.test.mjs qr-bridge/test/reliable-send.test.mjs qr-bridge/test/e2ee-retry-hardening.test.mjs qr-bridge/test/transport-diagnostics.test.mjs qr-bridge/test/message-retry-store.test.mjs qr-bridge/test/reliable-encrypted-integration.test.mjs
       - name: Validação de cadência sem reenvio automático
         run: |
+          python -m pip install -q pytest
           python -m py_compile app/worker.py
           python -m pytest -q tests/unit/test_transactional_delivery_frequency.py
