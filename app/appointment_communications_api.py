@@ -4,7 +4,7 @@ import os
 from uuid import UUID,uuid5,NAMESPACE_URL
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import Field, StrictBool, StrictInt, field_validator
 from sqlalchemy import text
@@ -47,7 +47,7 @@ class Settings(StrictModel):
 
 @router.get('')
 async def configuration(tenant_id:UUID,actor:Actor=Depends(authenticate)):
-    await resolve_tenant_access(actor,tenant_id)
+    rights=await resolve_tenant_access(actor,tenant_id)
     from app.appointment_notifications import central_enabled, notification_settings, central_channel
     central = central_enabled()
     if not (access.tenant_enabled(tenant_id) or central):
@@ -55,7 +55,7 @@ async def configuration(tenant_id:UUID,actor:Actor=Depends(authenticate)):
     async with management_session(tenant_id,actor) as db:
         zone=(await db.execute(text('SELECT timezone FROM tenants WHERE id=:t'),{'t':tenant_id})).scalar_one()
         settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant_id})).mappings().first()
-        notifications=(await db.execute(text('''SELECT n.id,n.event,n.recipient_kind,n.status,n.due_at,n.attempted_at,
+        notifications=(await db.execute(text('''SELECT n.id,n.event,n.recipient_kind,n.recipient_id,n.status,n.due_at,n.attempted_at,
             n.updated_at,n.last_error,n.attempts,a.protocol,CASE WHEN n.recipient_kind='professional' THEN
             (SELECT p.name FROM professionals p WHERE p.tenant_id=n.tenant_id AND p.id=n.recipient_id) ELSE
             (SELECT c.name FROM customers c WHERE c.tenant_id=n.tenant_id AND c.id=n.recipient_id) END AS recipient_label
@@ -76,6 +76,7 @@ async def configuration(tenant_id:UUID,actor:Actor=Depends(authenticate)):
     chosen = notification_settings(settings,central,admin_channel) if central else (dict(settings) if settings else DEFAULTS)
     return jsonable_encoder({'available':True,'timezone':zone,'settings':chosen,
         'central_sender':central,
+        'can_check_professional_recipient':bool(central and rights.role=='owner'),
         'pilot_only':access.pilot_only() and not central,
         'pilot_prepared':bool(not central and access.pilot_only() and settings and settings['enabled'] and channel is not None and
             os.getenv('APPOINTMENT_COMMUNICATIONS_PILOT_PHONE','') in channel['allowed_senders']),
@@ -85,6 +86,39 @@ async def configuration(tenant_id:UUID,actor:Actor=Depends(authenticate)):
         'notifications':[dict(x) for x in notifications],'reviews':[dict(x) for x in reviews],
         'transport_limit':('Os avisos operacionais são enviados somente pelo WhatsApp conectado ao administrador do Orion.'
             if central else 'Envio restrito aos contatos autorizados no canal QR; API oficial não ativada por este fluxo.')})
+
+
+@router.get('/professional-recipient/{professional_id}')
+async def professional_recipient_readiness(
+        tenant_id:UUID, professional_id:UUID, request:Request, response:Response,
+        actor:Actor=Depends(authenticate)):
+    """Owner checks the one tenant-owned professional; never supply a phone.
+
+    No send, no booking change, no customer information and no provider
+    identifiers are returned. A provider lookup can be inconclusive.
+    """
+    rights=await resolve_tenant_access(actor,tenant_id)
+    if rights.role!='owner':
+        raise HTTPException(403,'Somente o proprietário pode verificar o WhatsApp do profissional')
+    from app.appointment_notifications import central_enabled
+    if not central_enabled():
+        response.headers['Cache-Control']='no-store'
+        return {'status':'sender_unavailable'}
+    from app.public_site_api import public_limit
+    await public_limit(request,str(tenant_id),'professional-whatsapp-lookup',
+                       12,300,subject=str(rights.account_id))
+    async with management_session(tenant_id,actor) as db:
+        pro=(await db.execute(text("""
+            SELECT active,phone_e164 FROM professionals
+            WHERE tenant_id=:tenant AND id=:professional
+        """),{'tenant':tenant_id,'professional':professional_id})).mappings().first()
+    if pro is None:
+        raise HTTPException(404,'Profissional não encontrado nesta empresa')
+    response.headers['Cache-Control']='no-store'
+    if pro['active'] is not True:
+        return {'status':'professional_inactive'}
+    from app.professional_recipient_diagnostics import check_professional_recipient
+    return {'status':await check_professional_recipient(pro['phone_e164'])}
 
 
 class PilotPreparation(StrictModel):

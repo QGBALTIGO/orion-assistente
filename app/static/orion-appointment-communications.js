@@ -1,6 +1,6 @@
 (function(){'use strict';
 const labels={confirmation:'Confirmação após receber o protocolo',professional_notice:'Avisar o profissional responsável',cancellation:'Notificar cancelamentos',rescheduling:'Notificar remarcações',reschedule_acceptance:'Exigir aceite do cliente nas remarcações feitas pela equipe',reminder:'Lembrete uma hora antes',review:'Pedir avaliação após conclusão',return_invitation:'Convidar para agendar novamente'};
-const states={pending:'Aguardando envio',sending:'Em processamento',accepted:'Aceito pelo transporte',delivered:'Entregue',read:'Lido',failed:'Falhou',unknown:'Resultado desconhecido',cancelled:'Cancelado'};
+const states={pending:'Aguardando envio',sending:'Em processamento',accepted:'Aceito; entrega não confirmada',delivered:'Entregue',read:'Lido',failed:'Falhou',unknown:'Resultado desconhecido',cancelled:'Cancelado'};
 const events={professional_new:'Novo agendamento',customer_proposal:'Proposta de remarcação',professional_proposal_declined:'Proposta recusada',professional_cancelled:'Cancelamento pelo cliente',professional_rescheduled:'Remarcação pelo cliente',customer_cancelled:'Cancelamento pela equipe',customer_rescheduled:'Remarcação pela equipe',reminder:'Lembrete de 1 hora',review:'Convite de avaliação'};
 const reasons={pilot_recipient_not_authorized:'Contato fora do número autorizado para o piloto',channel_unavailable:'WhatsApp indisponível; confira a próxima tentativa programada',customer_link_revoked:'Acesso do cliente bloqueado pela equipe',transport_recipient_not_authorized:'Contato sem autorização no transporte',professional_contact_unavailable:'Profissional sem contato ativo',communication_not_authorized:'Comunicação não autorizada pelo contato',review_not_authorized:'Convite de avaliação não autorizado',transport_result_unknown:'Aguardando conferência do recibo',worker_interrupted:'Processamento interrompido; sem reenvio automático',expired:'Prazo de envio expirado',appointment_changed:'Agendamento alterado',settings_changed:'Configuração alterada',transport_refused:'Transporte recusou a mensagem',message_facts_invalid:'Dados insuficientes para compor a mensagem'};
 const node=(tag,text,cls)=>{const n=document.createElement(tag);n.textContent=text||'';if(cls)n.className=cls;return n;};
@@ -27,7 +27,57 @@ async function mount({host,request,tenantId,canWrite=false,canFeature=()=>false}
  if(!data.central_sender&&data.pilot_only&&canWrite&&canFeature('conversations.manual')){const recovery=node('div','','os-section-gap');recovery.append(node('h3','Confirmação solicitada pelo cliente'),node('p','Use o protocolo de uma mensagem recebida pelo WhatsApp. A confirmação será destinada ao contato que enviou a solicitação e consta no agendamento.','os-help'));const label=node('label','Protocolo recebido');label.htmlFor='appointment-recovery-protocol';const input=document.createElement('input');input.id=label.htmlFor;input.type='text';input.maxLength=9;input.required=true;input.pattern='AG-[A-HJ-NP-Z2-9]{6}';input.placeholder='AG-XXXXXX';input.autocomplete='off';const send=node('button','Confirmar protocolo','os-button os-outline');send.type='button';const feedback=node('p','','os-help');feedback.setAttribute('role','status');send.onclick=async()=>{input.value=input.value.trim().toUpperCase();if(!input.reportValidity())return;send.disabled=true;try{await request(path+'/recover-confirmation','POST',{protocol:input.value});feedback.textContent='Confirmação registrada na Central. Consulte o histórico para verificar envio e entrega.';}catch(error){feedback.textContent=error.message||'Não foi possível conferir a solicitação.';}finally{send.disabled=false;}};const field=node('div','','os-field');field.append(label,input);const actions=node('div','','os-form-actions');actions.append(send);recovery.append(field,actions,feedback);card.append(recovery);}
  const list=node('section','','os-card os-section-gap');list.append(node('h3','Acompanhamento dos envios'),node('p',data.transport_limit,'os-help'));
  if(!data.notifications.length)list.append(node('p','Os próximos avisos aparecerão aqui.','os-help'));
- for(const item of data.notifications){const row=node('div','','os-summary-row os-comm-notification');const left=node('div','');left.append(node('strong',events[item.event]||'Aviso de agendamento'),node('p',item.protocol+' · '+(item.recipient_label||(item.recipient_kind==='professional'?'Profissional':'Cliente')),'os-help'));const right=node('div','');right.append(node('strong',states[item.status]||'Em conferência'));const date=value=>value?new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short',timeZone:data.timezone||'UTC'}).format(new Date(value)):'—';left.append(node('small','Programado: '+date(item.due_at),'os-help'));if(item.attempted_at)right.append(node('small','Última tentativa: '+date(item.attempted_at),'os-help'));if(item.last_error)right.append(node('p',reasons[item.last_error]||'Envio não concluído; consulte a configuração do canal.','os-help'));row.append(left,right);list.append(row);}host.append(list);
+ const verifiedContacts=new Set();
+ for(const item of data.notifications){
+  const row=node('div','','os-summary-row os-comm-notification'),left=node('div','');
+  left.append(node('strong',events[item.event]||'Aviso de agendamento'),
+    node('p',item.protocol+' · '+(item.recipient_label||
+      (item.recipient_kind==='professional'?'Profissional':'Cliente')),'os-help'));
+  const right=node('div','');
+  right.append(node('strong',states[item.status]||'Em conferência'));
+  const date=value=>value?new Intl.DateTimeFormat('pt-BR',{
+    dateStyle:'short',timeStyle:'short',timeZone:data.timezone||'UTC'
+  }).format(new Date(value)):'—';
+  left.append(node('small','Programado: '+date(item.due_at),'os-help'));
+  if(item.attempted_at)right.append(node('small','Última tentativa: '+date(item.attempted_at),'os-help'));
+  if(item.last_error)right.append(node('p',reasons[item.last_error]||
+    'Envio não concluído; consulte a configuração do canal.','os-help'));
+  const staff=item.recipient_kind==='professional';
+  const needsConfirmation=['accepted','unknown'].includes(item.status);
+  const elapsed=item.attempted_at?Date.now()-new Date(item.attempted_at).getTime():0;
+  if(staff&&needsConfirmation&&elapsed>=120000){
+    right.append(node('p','Sem recibo de entrega. Confira se o WhatsApp do profissional está correto; não reenvie sem verificar.','os-help'));
+  }
+  if(data.can_check_professional_recipient&&staff&&item.recipient_id&&!verifiedContacts.has(item.recipient_id)
+      &&['accepted','unknown','failed'].includes(item.status)){
+    verifiedContacts.add(item.recipient_id);
+    const check=node('button','Verificar WhatsApp','os-button os-outline os-small');
+    check.type='button';
+    const feedback=node('p','','os-help');feedback.setAttribute('role','status');
+    const explanations={
+      registered:'O número foi localizado no WhatsApp. A entrega do aviso ainda depende da confirmação.',
+      not_recognized:'O WhatsApp não localizou o número cadastrado. Confira DDI, DDD e telefone em Profissionais.',
+      missing_phone:'O profissional está sem telefone. Cadastre o WhatsApp em Profissionais.',
+      invalid_phone:'O número do profissional é inválido. Corrija o telefone no cadastro.',
+      professional_inactive:'O profissional está desativado.',
+      sender_unavailable:'A conexão central está indisponível para verificar o destinatário.',
+      unverified:'O WhatsApp não conseguiu confirmar este número. Revise o contato.',
+      unavailable:'Não foi possível consultar o WhatsApp agora. Tente novamente.'
+    };
+    check.onclick=async()=>{
+      check.disabled=true;
+      feedback.textContent='Verificando o número cadastrado, sem enviar mensagens…';
+      try{
+        const response=await request(path+'/professional-recipient/'+encodeURIComponent(item.recipient_id));
+        feedback.textContent=explanations[response.status]||explanations.unverified;
+      }catch(error){
+        feedback.textContent=error.message||explanations.unavailable;
+      }finally{check.disabled=false;}
+    };
+    right.append(check,feedback);
+  }
+  row.append(left,right);list.append(row);
+}
  const reviews=node('section','','os-card os-section-gap');reviews.append(node('h3','Avaliações privadas'));
  if(!data.reviews.length)reviews.append(node('p','Ainda não há avaliações recebidas.','os-help'));
  for(const item of data.reviews){const row=node('div','','os-summary-row os-comm-review');row.append(node('strong',item.rating+'/5 · '+item.professional),node('p',item.comment||'Sem comentário','os-help'));reviews.append(row);}host.append(reviews);
