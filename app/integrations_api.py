@@ -432,6 +432,19 @@ async def check_google_connection(tenant_id: UUID, request: Request,
         token = await provider.refresh_access_token(refresh)
         meta = await provider.get_calendar(token, row["calendar_id"])
     except CalendarProviderError as error:
+        if error.reauthorize:
+            # A definitive Google 401/invalid_grant must not leave the
+            # dashboard falsely claiming 'Conectado'. Recheck ownership after
+            # the external request and preserve the encrypted refresh token.
+            async with get_session_factory()() as db:
+                async with tenant_transaction(db, tenant_id):
+                    current = await connection_row(db, tenant_id, lock=True)
+                    if connection_fingerprint(current) == revision:
+                        await db.execute(text("""
+                            UPDATE google_connections SET status='error',
+                                last_error=:error, updated_at=clock_timestamp()
+                            WHERE tenant_id=:tenant
+                        """), {"tenant": tenant_id, "error": error.code})
         raise provider_http(error) from None
     # No stale ownership claim after a concurrent disconnect or account swap.
     if meta["id"] != row["calendar_id"] or connection_fingerprint(
