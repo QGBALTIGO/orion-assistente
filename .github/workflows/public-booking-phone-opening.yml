@@ -1,0 +1,64 @@
+name: Orion - mascara WhatsApp e primeiro horario do expediente
+on:
+  pull_request:
+    paths:
+      - 'app/booking_service.py'
+      - 'app/static/orion-public.js'
+      - 'tests/unit/test_slot_query_budget.py'
+      - 'tests/integration/test_booking.py'
+      - 'ui-tests/public-confirmation-clean.test.mjs'
+      - 'ui-tests/fields-public-consumers.test.mjs'
+      - '.github/workflows/public-booking-phone-opening.yml'
+permissions:
+  contents: read
+jobs:
+  booking-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: test-support-ci-token-of-64-characters-000000000000000000000000000
+      REQUIRE_POSTGRES_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependências testadas e sintaxe
+        run: |
+          python -m pip install -c requirements.lock ".[test]"
+          python -m pip check
+          python -m py_compile app/booking_service.py
+          node --check app/static/orion-public.js
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Máscara real do formulário, Brasil e Paraguai
+        run: node --test ui-tests/public-confirmation-clean.test.mjs ui-tests/fields-public-consumers.test.mjs ui-tests/public-slot-periods.test.mjs
+      - name: Grade 09h e intervalos sem contornar reservas
+        run: python -m pytest -q tests/unit/test_slot_query_budget.py
+      - name: Papéis separados no PostgreSQL
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 -v db_name=barber_saas -v runtime_password=ci-runtime-only -v migrator_password=ci-migrator-only -v support_password=ci-support-only -f infra/postgres/init/001-roles.sql
+      - name: Migrar banco efêmero
+        run: python -m alembic upgrade head
+      - name: Testar oferta real, persistência, confirmação, bloqueios e colisões
+        run: python -m pytest -q tests/integration/test_booking.py tests/integration/test_slot_prefetch_postgres.py

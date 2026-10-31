@@ -130,14 +130,14 @@ async def test_combined_services_buffers_shift_pause_and_blocks(booking_db):
     assert slots["prep_min"] == 5
     assert slots["cleanup_min"] == 10
     available = slots["slots"]
-    assert start_at(d["day"], 8).isoformat() not in available  # 5 min de preparação
+    assert start_at(d["day"], 8).isoformat() in available  # início do expediente sem cliente anterior
     assert start_at(d["day"], 8, 15).isoformat() in available
     assert start_at(d["day"], 11, 30).isoformat() not in available
     assert start_at(d["day"], 14, 30).isoformat() not in available
     assert start_at(d["day"], 16, 30).isoformat() not in available
     assert start_at(d["day"], 17).isoformat() not in available
-    # 13h ainda conflita com a pausa por exigir 5 min de preparação.
-    assert start_at(d["day"], 13).isoformat() not in available
+    # Após o intervalo, o primeiro atendimento pode começar às 13h.
+    assert start_at(d["day"], 13).isoformat() in available
     assert start_at(d["day"], 13, 15).isoformat() in available
     async with d["factory"]() as s:
         long = await list_slots(s, d["a"], d["pro2"], [d["platinum"]], d["day"])
@@ -733,3 +733,53 @@ async def test_customer_one_hour_rule_is_enforced_in_engine(booking_db, operatio
     async with d['migrator'].begin() as s:
         assert (await s.execute(text('SELECT status FROM appointments WHERE id=:id'),
             {'id': booking['id']})).scalar_one() == 'confirmed'
+
+
+@pytest.mark.asyncio
+async def test_first_opening_and_post_break_slot_are_persisted_without_otp_or_fake_availability(booking_db):
+    d = booking_db
+    clock = datetime.now(UTC)
+    async with d["migrator"].begin() as s:
+        await s.execute(text("""UPDATE working_hours SET start_time='09:00',end_time='19:00'
+            WHERE tenant_id=:tenant AND professional_id=:pro"""), {"tenant":d["a"],"pro":d["pro"]})
+        await s.execute(text("""UPDATE services SET prep_min=15,cleanup_min=0
+            WHERE tenant_id=:tenant AND id=:service"""), {"tenant":d["a"],"service":d["cut"]})
+        shift=(await s.execute(text("""SELECT id FROM working_hours
+            WHERE tenant_id=:tenant AND professional_id=:pro"""),
+            {"tenant":d["a"],"pro":d["pro"]})).scalar_one()
+        await s.execute(text("""INSERT INTO working_breaks
+            (tenant_id,working_hour_id,start_time,end_time)
+            VALUES(:tenant,:shift,'14:00','16:00')"""), {"tenant":d["a"],"shift":shift})
+    async with d["factory"]() as s:
+        before=await list_slots(s,d["a"],d["pro"],[d["cut"]],d["day"],now=clock)
+    assert start_at(d["day"],9).isoformat() in before["slots"]
+    assert start_at(d["day"],16).isoformat() in before["slots"]
+    assert start_at(d["day"],15,45).isoformat() not in before["slots"]
+    async with d["factory"]() as s:
+        hold=await book_appointment(s,d["a"],d["pro"],[d["cut"]],phone(91),
+            "Cliente sintético 09",start_at(d["day"],9),str(uuid4()),now=clock)
+    async with d["factory"]() as s:
+        confirmed=await confirm_hold(s,d["a"],hold["id"],now=clock)
+    assert confirmed["status"]=="confirmed"
+    async with d["migrator"].connect() as s:
+        occupied=(await s.execute(text("""SELECT occupied_from FROM appointments
+            WHERE tenant_id=:tenant AND id=:id"""),
+            {"tenant":d["a"],"id":hold["id"]})).scalar_one()
+    assert occupied == start_at(d["day"],9).astimezone(UTC)
+    async with d["factory"]() as s:
+        after=await list_slots(s,d["a"],d["pro"],[d["cut"]],d["day"],now=clock)
+    assert start_at(d["day"],9).isoformat() not in after["slots"]
+    assert start_at(d["day"],9,15).isoformat() not in after["slots"]
+    assert start_at(d["day"],16).isoformat() in after["slots"]
+    async with d["factory"]() as s:
+        afternoon=await book_appointment(s,d["a"],d["pro"],[d["cut"]],phone(92),
+            "Cliente sintético 16",start_at(d["day"],16),str(uuid4()),now=clock)
+    async with d["factory"]() as s:
+        done=await confirm_hold(s,d["a"],afternoon["id"],now=clock)
+    assert done["status"]=="confirmed"
+    async with d["migrator"].connect() as s:
+        occupied=(await s.execute(text("""SELECT occupied_from FROM appointments
+            WHERE tenant_id=:tenant AND id=:id"""),
+            {"tenant":d["a"],"id":afternoon["id"]})).scalar_one()
+    assert occupied == start_at(d["day"],16).astimezone(UTC)
+

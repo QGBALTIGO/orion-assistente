@@ -881,8 +881,8 @@
     const contactFields = [
       { key: 'name', title: 'Nome completo', name: 'customer_name', autocomplete: 'name',
         type: 'text', fieldKind: 'native', max: 120, placeholder: 'Nome completo' },
-      { key: 'phone', title: 'WhatsApp com DDD ou DDI', name: 'customer_phone',
-        autocomplete: 'tel', type: 'tel', fieldKind: 'phone', placeholder: '(00) 00000-0000 ou +595 9...' },
+      { key: 'phone', title: 'WhatsApp com DDD', name: 'customer_phone',
+        autocomplete: 'tel-national', type: 'tel', fieldKind: 'phone', placeholder: '(00) 00000-0000' },
       { key: 'birthDate', title: 'Data de nascimento', name: 'customer_birth_date',
         autocomplete: 'bday', type: 'date', fieldKind: 'date', placeholder: '' }
     ];
@@ -988,7 +988,7 @@
     }
     const canonicalPhone = fields.phoneValue(booking.phone, { required: true, allowInternational: true });
     if (!/^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(canonicalPhone)) {
-      form.elements.customer_phone.setCustomValidity('Informe +55 com DDD ou +595 com celular paraguaio.');
+      form.elements.customer_phone.setCustomValidity('Confira o número do WhatsApp informado.');
       form.elements.customer_phone.reportValidity();
       return;
     }
