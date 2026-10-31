@@ -22,10 +22,11 @@ test('Client Google Calendar link has exact UTC instants, no personal account gr
   const c=await calendar();try{
     const result=c.url(booking),u=new URL(result);
     assert.equal(u.origin,'https://calendar.google.com');
-    assert.equal(u.pathname,'/calendar/render');
+    assert.equal(u.pathname,'/calendar/r/eventedit');
     assert.equal(u.searchParams.get('action'),'TEMPLATE');
     assert.equal(u.searchParams.get('dates'),'20261102T120000Z/20261102T124000Z');
-    assert.equal(u.searchParams.get('ctz'),'America/Sao_Paulo');
+    assert.equal(u.searchParams.get('stz'),'America/Sao_Paulo');
+    assert.equal(u.searchParams.get('etz'),'America/Sao_Paulo');
     assert.equal(u.searchParams.get('text'),'Barbearia Peixoto · Corte & barba');
     assert.match(u.searchParams.get('details'),/atualize o evento manualmente/);
     assert.ok(!result.includes('customer_phone')&&!result.includes('token'));
@@ -43,7 +44,8 @@ test('Invalid, altered and canceled appointment cannot produce save link',async(
     const url=new URL(c.url({...booking,company:'<script>alert(1)</script>',
       services:['Barba & corte'],timezone:'../invalid',address:'Rua & Praca'}));
     assert.equal(url.host,'calendar.google.com');
-    assert.equal(url.searchParams.has('ctz'),false);
+    assert.equal(url.searchParams.has('stz'),false);
+    assert.equal(url.searchParams.has('etz'),false);
     assert.ok(url.searchParams.get('location').includes('&'));
   }finally{c.close();}
 });
