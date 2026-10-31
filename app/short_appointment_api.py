@@ -344,17 +344,6 @@ async def verify(payload:Verify,request:Request):
             raise HTTPException(400,GENERIC)
     except (KeyError,TypeError,ValueError):
         raise HTTPException(400,GENERIC) from None
-    # Bound total guesses to THIS browser-bound challenge, not just an IP.
-    # Distributed clients therefore cannot brute-force six digits in five
-    # minutes even when they share the legitimate user's cookies.
-    attempts_key=scoped_redis_key("attempts",payload.challenge)
-    async def count_attempt(cache):
-        script="""local n=redis.call('INCR',KEYS[1])
-                 if n==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end
-                 return n"""
-        return int(await cache.eval(script,1,attempts_key,TTL))
-    if await with_redis(count_attempt)>5:
-        raise HTTPException(429,GENERIC,headers={"Retry-After":"300"})
     if not hmac.compare_digest(state["otp_hash"],digest_code(payload.challenge,payload.otp)):
         raise HTTPException(400,GENERIC)
     async def consume(cache):
