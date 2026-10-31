@@ -133,7 +133,14 @@
         <div class="identity-card">
           <div class="identity-row">
             <div id="site-logo" class="site-logo" aria-hidden="true"></div>
-            <div class="identity-text"><h1 id="site-title"></h1><p id="hero-address" class="muted"></p><p class="online-label"><span></span> Agendamento online</p></div>
+            <div class="identity-text">
+              <h1 id="site-title"></h1>
+              <p id="hero-address" class="muted" hidden>
+                <span id="hero-address-street" class="hero-address-street" hidden></span>
+                <span id="hero-address-locality" class="hero-address-locality" hidden></span>
+              </p>
+              <p class="online-label"><span></span> Agendamento online</p>
+            </div>
           </div>
           <div class="hero-actions">
             <button class="primary pill" type="button" id="hero-book">Agendar horário <svg class="hero-book-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
