@@ -86,6 +86,11 @@ def active():
         "ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED") == "1"
 
 
+def one_click_active():
+    """The OTP endpoints are retired as soon as direct-link proof is configured."""
+    return len(os.getenv("ORION_DIRECT_APPOINTMENT_KEY", "")) >= 43
+
+
 def normalized(code):
     if not isinstance(code,str) or not CODE.fullmatch(code.upper()):
         raise HTTPException(404,"Link indisponível")
@@ -149,7 +154,7 @@ async def short_professional_page(code:str):
 
 @router.post("/api/short-appointment/start")
 async def start(payload:Start,request:Request):
-    if not active():raise HTTPException(404,"Link indisponível")
+    if not active() or one_click_active():raise HTTPException(404,"Verificação por código descontinuada")
     validate_origin(request)
     code=normalized(payload.code)
     await limited(request,code,"otp-start",6,300)
@@ -177,7 +182,7 @@ async def start(payload:Start,request:Request):
 
 async def inbound_otp_from_verified_phone(body,phone):
     """Call ONLY from the authenticated, rate-limited central QR ingress."""
-    if not active():return None
+    if not active() or one_click_active():return None
     match=INBOUND.fullmatch(body.strip()) if isinstance(body,str) and len(body)<180 else None
     if not match:return None
     letter,code,challenge=match.groups()
@@ -367,7 +372,7 @@ async def open_direct(payload:OpenDirect, request:Request):
 @router.post("/api/short-appointment/verify")
 @sanitized_database_errors
 async def verify(payload:Verify,request:Request):
-    if not active():raise HTTPException(404,"Link indisponível")
+    if not active() or one_click_active():raise HTTPException(404,"Verificação por código descontinuada")
     validate_origin(request)
     code=normalized(payload.code)
     await limited(request,code,"otp-verify",6,300)

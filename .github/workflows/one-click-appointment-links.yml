@@ -46,7 +46,6 @@ jobs:
       APPOINTMENT_COMMUNICATIONS_ENABLED: '1'
       ORION_SHORT_APPOINTMENT_LINKS_ENABLED: '1'
       ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED: '1'
-      ORION_DIRECT_APPOINTMENT_KEY: 'synthetic-ci-direct-link-key-not-for-real-users-00000000000000000'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -90,3 +90,19 @@ async def test_direct_resolver_requires_exact_customer_or_professional_proof(mon
     assert await short.direct_state(code,"customer",cp) is None
     row["professional_active"]=False
     assert await short.direct_state(code,"professional",pp) is None
+
+@pytest.mark.asyncio
+async def test_old_otp_endpoints_retired_in_one_click_mode(monkeypatch):
+    from app import short_appointment_api as short
+    monkeypatch.setenv("ORION_DIRECT_APPOINTMENT_KEY","synthetic-testing-key-"+"x"*48)
+    monkeypatch.setattr(short,"active",lambda:True)
+    assert short.one_click_active()
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as start:
+        await short.start(short.Start(code="AG-4NNSY2"),None)
+    assert start.value.status_code==404
+    with pytest.raises(HTTPException) as verify:
+        await short.verify(short.Verify(code="AG-4NNSY2",challenge="x"*22,otp="123456"),None)
+    assert verify.value.status_code==404
+    assert await short.inbound_otp_from_verified_phone(
+        "ORION VERIFICAR C AG-4NNSY2 "+"x"*22,"5567999999922") is None
