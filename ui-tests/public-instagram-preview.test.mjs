@@ -23,6 +23,13 @@ test('Sobre nós renders real lazy Instagram profile preview in the existing car
   assert.ok(frame.getAttribute('sandbox').includes('allow-scripts'));
   assert.ok(frame.getAttribute('sandbox').includes('allow-popups'));
   const link=h.document.getElementById('about-instagram-open');
+  assert.equal(link.closest('.about-instagram-heading') !== null,true);
+  assert.equal(link.textContent.trim(),'Abrir perfil');
+  assert.equal(h.document.querySelector('.about-instagram-eyebrow').textContent,'No Instagram');
+  assert.equal(h.document.querySelectorAll('.about-instagram-open').length,1,
+    'o Instagram deve ter um único botão compacto alinhado ao título');
+  assert.equal(h.document.querySelector('.about-instagram-preview').getAttribute('role'),'group');
+  assert.equal(frame.getAttribute('scrolling'),'no');
   assert.equal(link.href,'https://www.instagram.com/espacovip__barbearia/');
   assert.equal(link.target,'_blank');
   assert.ok(link.rel.includes('noopener'));
@@ -92,4 +99,22 @@ test('About remains hidden when description and valid Instagram are both missing
   const h=await makePublic({data});t.after(()=>h.close());await flush();
   assert.equal(h.document.getElementById('about-card').hidden,true);
   assert.equal(h.document.getElementById('about-instagram').hidden,true);
+});
+
+
+test('Gallery uses Orion dimensions, compact header and a clipped six-photo viewport',async t=>{
+  const {readFile}=await import('node:fs/promises');
+  const css=await readFile(new URL('../app/static/orion-public.css',import.meta.url),'utf8');
+  const html=await readFile(new URL('../app/static/orion-public.html',import.meta.url),'utf8');
+  assert.match(css,/\.about-instagram-preview\{[^}]*aspect-ratio:3\/2;[^}]*overflow:hidden;/,
+    'o recorte visual deve conter exatamente duas linhas de três fotos');
+  assert.match(css,/\.about-instagram-preview>iframe\{[^}]*position:absolute;[^}]*top:-130px;/,
+    'o cabeçalho branco duplicado do iframe deve ficar fora do recorte');
+  assert.match(css,/@supports \(width:1cqw\)/,
+    'escala adaptativa quando o iframe acompanha o tamanho do card');
+  assert.match(css,/#about-card \.about-instagram-open\{[^}]*margin:0;/,
+    'link compacto usa espaçamento do card, sem botão gigante');
+  assert.doesNotMatch(html,/Ver perfil no Instagram/,
+    'botão antigo de largura total deve ser removido');
+  assert.match(html,/Seis publicações recentes do perfil no Instagram/);
 });
