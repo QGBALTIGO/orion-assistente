@@ -1,0 +1,60 @@
+name: Orion WhatsApp - criptografia e recuperacao segura
+
+on:
+  push:
+    branches: [security/prelaunch-hardening-20261030]
+    paths:
+      - 'qr-bridge/src/server.mjs'
+      - 'qr-bridge/src/retry-capture-policy.mjs'
+      - 'qr-bridge/src/encrypted-retry-store.mjs'
+      - 'qr-bridge/src/reliable-send.mjs'
+      - 'qr-bridge/src/pilot-send-policy.mjs'
+      - 'qr-bridge/src/transport-diagnostics.mjs'
+      - 'qr-bridge/test/e2ee-retry-hardening.test.mjs'
+      - 'qr-bridge/test/pilot-send-policy.test.mjs'
+      - '.github/workflows/whatsapp-e2ee-hardening.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'qr-bridge/src/**'
+      - 'qr-bridge/test/**'
+      - 'qr-bridge/package.json'
+      - '.github/workflows/whatsapp-e2ee-hardening.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  retry-e2ee:
+    name: Baileys 6.7.24 - durabilidade, Signal retry, PN/LID e idempotencia
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dependencias Baileys e cache (sem executar scripts externos)
+        run: npm install --prefix qr-bridge --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Validar sintaxe e testes de criptografia
+        run: |
+          node --check qr-bridge/src/server.mjs
+          node --check qr-bridge/src/encrypted-retry-store.mjs
+          node --check qr-bridge/src/retry-capture-policy.mjs
+          node --check qr-bridge/src/transport-diagnostics.mjs
+          node --test \
+            qr-bridge/test/e2ee-retry-hardening.test.mjs \
+            qr-bridge/test/encrypted-retry-store.test.mjs \
+            qr-bridge/test/message-retry-store.test.mjs \
+            qr-bridge/test/reliable-send.test.mjs \
+            qr-bridge/test/reliable-encrypted-integration.test.mjs \
+            qr-bridge/test/pilot-send-policy.test.mjs \
+            qr-bridge/test/pilot-recipient.test.mjs \
+            qr-bridge/test/transport-diagnostics.test.mjs \
+            qr-bridge/test/signal-log-safety.test.mjs \
+            qr-bridge/test/channel-manager.test.mjs \
+            qr-bridge/test/channel-session.test.mjs \
+            qr-bridge/test/legacy-central.test.mjs
+      - name: Proteger contra vazamento de secrets no diff novo
+        run: |
+          ! grep -R -E 'console\\.(log|warn|error)\\(.*(privateKey|sessionKey|signalKey|authState)' qr-bridge/src

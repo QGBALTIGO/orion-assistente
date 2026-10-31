@@ -12,3 +12,10 @@ export function deliveryPolicy(phone,env=process.env){
     pilot:approvedPilot,
   };
 }
+
+// Transactional booking notifications must never reach Baileys' relay
+// before a durable, encrypted copy is available for Signal retry requests.
+// Ordinary sends retain the independently reviewed global rollout switch.
+export function requiresPreRelayCache({reliable=false,source='automation'}={}){
+  return reliable===true||source==='appointment';
+}

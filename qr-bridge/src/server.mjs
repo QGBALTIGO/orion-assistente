@@ -34,7 +34,8 @@ import {forwardAssistant,registerAssistantIngress} from "./ai-forward.mjs";
 import {isBookingProtocolMessage,fetchBookingProtocolConfirmation,resolveBookingSenderPhone} from "./appointment-confirmation.mjs";
 import {makeBookingIntakeGuard} from './booking-intake-guard.mjs';
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
-import {deliveryPolicy} from "./pilot-send-policy.mjs";
+import {deliveryPolicy,requiresPreRelayCache} from "./pilot-send-policy.mjs";
+import {shouldCacheLinkedSelfText} from "./retry-capture-policy.mjs";
 import {resolvePilotRecipient,makePilotDeviceCache} from "./pilot-recipient.mjs";
 import {transcribeAssistantAudio} from "./ai-audio.mjs";
 import {makeTransportDiagnostics,receiptDiagnosticDetails,usyncDeviceDomainCounts,encryptionTargetDetails,observeSignalRepository} from "./transport-diagnostics.mjs";
@@ -145,7 +146,8 @@ const retryStore={
   }
 };
 const retryDiagnostics={
-  cacheHits:0,cacheMisses:0,prepared:0,relayAccepted:0,
+  cacheHits:0,cacheMisses:0,cacheMissTracked:0,cacheMissUntracked:0,
+  persistedSelfTexts:0,persistFailures:0,prepared:0,relayAccepted:0,
   receiptUpdates:0,delivered:0,read:0,lastDeliveryDelayMs:null
 };
 const deliveryReceipts=new Map();
@@ -415,7 +417,18 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       if(!shouldIngestUpsert(type,message.messageTimestamp)){
         transport.record('inbound_filtered_age',traceId,{type});continue;
       }
-      if(message.key?.id&&message.message)retryMessages.save(message.key,message.message);
+      if(message.key?.id&&message.message){
+        retryMessages.save(message.key,message.message);
+        // When a message was authored in the owner's phone rather than
+        // through this bridge, Baileys may still be asked to retry its
+        // ciphertext for another linked device. Persist only our own simple
+        // text messages; never copy received customer messages or media into
+        // the durable retry cache.
+        if(shouldCacheLinkedSelfText(message)){
+          if(retryStore.save(message.key,message.message))retryDiagnostics.persistedSelfTexts++;
+          else retryDiagnostics.persistFailures++;
+        }
+      }
       if(message.key?.fromMe){transport.record('inbound_own',traceId);continue;}
       if(typeof traceId!=='string'||!/^[a-zA-Z0-9._:-]{1,157}$/.test(traceId)||!message.message){
         transport.record('inbound_no_content',traceId);continue;
@@ -763,9 +776,19 @@ async function connect(){
       maxMsgRetryCount:5,
       getMessage:async key=>{
         const content=retryStore.get(key);
-        transport.record('get_message',key?.id,{cached:!!content});
+        // The library also sends its OWN retry-control messages. A cache
+        // miss for one of those IDs is not proof that a customer-facing
+        // outgoing message is missing. Report these separately, without IDs.
+        const tracked=Boolean(key?.id && (
+          deliveryReceipts.has(key.id) || messages.some(m=>m.id==='out:'+key.id)
+        ));
+        transport.record('get_message',key?.id,{cached:!!content,tracked});
         if(content)retryDiagnostics.cacheHits++;
-        else retryDiagnostics.cacheMisses++;
+        else {
+          retryDiagnostics.cacheMisses++;
+          if(tracked)retryDiagnostics.cacheMissTracked++;
+          else retryDiagnostics.cacheMissUntracked++;
+        }
         return content;
       },
       browser:Browsers.windows("Chrome"),
@@ -901,7 +924,10 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
       await presenceLease.beforeReply(text);
       if(!current())throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
     }
-  if(reliable){
+  // An appointment is a transactional message: its exact encrypted retry
+  // source MUST exist before the first network send, regardless of the
+  // older optional global reliability flag.
+  if(requiresPreRelayCache({reliable,source})){
     result=await sendStoredText({
       jid:destination,recipientProof,text:text.trim(),store:retryStore,freshDevices,
       isCurrent:current,

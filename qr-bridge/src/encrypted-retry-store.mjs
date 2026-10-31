@@ -12,7 +12,7 @@ import {createCipheriv,createDecipheriv,createHmac,hkdfSync,randomBytes} from "n
 
 export function makeEncryptedRetryStore({
  directory,secret,serialize=JSON.stringify,deserialize=JSON.parse,
- now=Date.now,ttlMs=48*60*60*1000,max=500
+ now=Date.now,ttlMs=48*60*60*1000,max=2000
 }){
   if(!directory?.startsWith("/data/") && !process.env.ORION_RETRY_TEST_MODE)
     throw Error("Encrypted cache directory must be private /data");
@@ -49,8 +49,17 @@ export function makeEncryptedRetryStore({
         ciphertext:encrypted.toString("base64")};
       const target=file(id),tmp=target+"."+randomBytes(8).toString("hex")+".tmp";
       try{
-        fs.writeFileSync(tmp,JSON.stringify(record),{mode:0o600,flag:"wx"});
+        // A process restart or abrupt Railway container termination must not
+        // discard the only pre-relay retry copy while WhatsApp requests it.
+        const fd=fs.openSync(tmp,"wx",0o600);
+        try{
+          fs.writeFileSync(fd,JSON.stringify(record));
+          fs.fsyncSync(fd);
+        }finally{fs.closeSync(fd)}
         fs.renameSync(tmp,target);
+        // Persist the filename as well as the ciphertext on Linux volumes.
+        const directoryFd=fs.openSync(directory,"r");
+        try{fs.fsyncSync(directoryFd)}finally{fs.closeSync(directoryFd)}
       }finally{fs.rmSync(tmp,{force:true})}
       prune();
       return true;

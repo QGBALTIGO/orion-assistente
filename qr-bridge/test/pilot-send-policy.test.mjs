@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {deliveryPolicy} from "../src/pilot-send-policy.mjs";
+import {deliveryPolicy,requiresPreRelayCache} from "../src/pilot-send-policy.mjs";
 
 const env={QR_AI_ENABLED:"1", QR_AI_PILOT_NUMBER:"5567999999999",
   QR_RELIABLE_SEND_V2:"0", QR_FORCE_FRESH_DEVICES:"0"};
@@ -23,4 +23,17 @@ test("existing global flags still work without pilot",()=>{
    QR_AI_ENABLED:"0",QR_AI_PILOT_NUMBER:"",
    QR_RELIABLE_SEND_V2:"1",QR_FORCE_FRESH_DEVICES:"1"
  }),{reliable:true,freshDevices:true,pilot:false});
+});
+
+test("all booking professional notices require cache before first relay even if global switch is off",()=>{
+ for(const source of ['appointment']){
+  assert.equal(requiresPreRelayCache({reliable:false,source}),true);
+  assert.equal(requiresPreRelayCache({reliable:true,source}),true);
+ }
+ for(const source of ['manual','automation','assistant']){
+  assert.equal(requiresPreRelayCache({reliable:false,source}),false);
+  assert.equal(requiresPreRelayCache({reliable:true,source}),true);
+ }
+ assert.equal(requiresPreRelayCache(),false);
+ assert.equal(requiresPreRelayCache({reliable:"true",source:"unknown"}),false);
 });
