@@ -20,6 +20,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.catalog_api import Actor, authenticate, support_only, support_session_factory
+from app.cakto_readiness import direct_environment_ready, webhook_secret_valid
+from app.plan_catalog import CODES
 
 router = APIRouter(tags=["Cakto - infraestrutura"])
 BASE = "https://api.cakto.com.br/public_api"
@@ -28,21 +30,24 @@ EVENTS = frozenset({
     "purchase_approved", "purchase_refused", "subscription_renewed",
     "subscription_canceled", "refund", "chargeback",
 })
-PLANS = (
-    {"code": "essencial", "name": "Orion Essencial", "monthly_cents": 2990,
-     "checkout_url": "https://pay.cakto.com.br/3bdhdkc_1219844"},
-    {"code": "profissional", "name": "Orion Pro", "monthly_cents": 8990,
-     "checkout_url": "https://pay.cakto.com.br/3652fm4"},
-    {"code": "elite", "name": "Orion Elite", "monthly_cents": 13990,
-     "checkout_url": "https://pay.cakto.com.br/v4md8n3"},
+# Cakto public labels, prices and checkout URLs use the single Orion catalog.
+# Only the read-only offer matcher sees offer aliases such as "Orion Pro".
+PLANS = tuple(
+    {"code": code, "name": plan["name"], "monthly_cents": plan["price_cents"],
+     "checkout_url": plan["checkout_url"], "offer_names": plan["offer_names"]}
+    for code, plan in CODES.items()
 )
 
 
 @router.get("/api/public/cakto/plans")
 async def public_cakto_plans():
     """Only a static catalog; this endpoint NEVER asserts that payment is active."""
-    return {"plans": [{key: value for key, value in plan.items() if key != "checkout_url"}
-                      for plan in PLANS], "subscription_activation_enabled": os.getenv("CAKTO_BILLING_LIVE_ENABLED", "0") == "1"}
+    return {
+        "plans": [{key: plan[key] for key in ("code", "name", "monthly_cents")} for plan in PLANS],
+        # Environment configuration is only the first gate. A checkout also
+        # requires live provider webhook and recurring payment verification.
+        "subscription_activation_enabled": direct_environment_ready(),
+    }
 
 
 def verify_cakto_signature(raw_body: bytes, timestamp: str | None,
@@ -283,7 +288,8 @@ def match_plans(offers: list) -> list[dict]:
             if not isinstance(offer, dict):
                 continue
             name = offer.get("name")
-            if not isinstance(name, str) or name.strip().casefold() != plan["name"].casefold():
+            if not isinstance(name, str) or name.strip().casefold() not in {
+                    alias.casefold() for alias in plan["offer_names"]}:
                 continue
             if offer.get("type") != "subscription" or offer.get("recurrence_period") not in {30, "30"}:
                 continue
@@ -294,8 +300,10 @@ def match_plans(offers: list) -> list[dict]:
                 cents = int(raw_cents)
             except (ValueError, TypeError, InvalidOperation):
                 continue
-            if cents == plan["monthly_cents"] and offer.get("status") == "active":
-                ids.append(str(offer["id"]))
+            offer_id = offer.get("id")
+            if (cents == plan["monthly_cents"] and offer.get("status") == "active"
+                    and isinstance(offer_id, str) and 1 <= len(offer_id) <= 120):
+                ids.append(offer_id)
         matches.append({"code": plan["code"], "found": len(ids) == 1,
                         "offer_id": ids[0] if len(ids) == 1 else None,
                         "ambiguous": len(ids) > 1})
@@ -306,16 +314,46 @@ def match_plans(offers: list) -> list[dict]:
 async def admin_cakto_connection(actor: Actor = Depends(authenticate)):
     support_only(actor)
     client = cached_cakto_client()
+    result = {
+        "api_connected": False,
+        "webhook_secret_configured": webhook_secret_valid(),
+        "offers": [],
+        "webhook_offer_coverage": 0,
+        "webhook_status": "not_verified",
+        # A positive provider inventory is NOT proof of a signed delivery.
+        "billing_ready": False,
+    }
     if not client.configured:
-        return {"api_connected": False, "webhook_secret_configured": bool(
-            os.getenv("CAKTO_WEBHOOK_SECRET")), "offers": []}
+        return result
     try:
         offers = await client.list_offers()
     except (httpx.HTTPError, ValueError, RuntimeError):
-        return {"api_connected": False, "webhook_secret_configured": bool(
-            os.getenv("CAKTO_WEBHOOK_SECRET")), "offers": []}
-    return {"api_connected": True, "webhook_secret_configured": bool(
-        os.getenv("CAKTO_WEBHOOK_SECRET")), "offers": match_plans(offers)}
+        return result
+    result["api_connected"] = True
+    result["offers"] = match_plans(offers)
+    if not result["webhook_secret_configured"]:
+        return result
+    try:
+        from scripts.probe_orion_webhooks_read_only import probe
+        coverage = await probe(client, offers)
+    except (httpx.HTTPError, ValueError, RuntimeError):
+        result["webhook_status"] = "provider_check_unavailable"
+        return result
+    result["webhook_offer_coverage"] = coverage["webhook_ready"]
+    result["webhook_status"] = (
+        "registered" if coverage["webhook_ready"] == len(CODES) else "incomplete"
+    )
+    if direct_environment_ready():
+        try:
+            # Live payments need provider proof beyond the environment flags,
+            # including recurrent methods and validated webhook coverage.
+            from app.orion_direct_checkout import require_verified_webhooks
+            await require_verified_webhooks(client)
+        except (HTTPException, httpx.HTTPError, ValueError, RuntimeError):
+            pass
+        else:
+            result["billing_ready"] = True
+    return result
 
 
 def verify_order_event(event: dict, order: dict) -> str:

@@ -30,6 +30,7 @@ from app.account_business import account_membership_role
 from app.tenant_access import resolve_site_access
 from app.admin_accounts import require_platform_owner
 from app.plan_catalog import CODES, PLAN_FEATURES, feature_catalog
+from app.cakto_readiness import direct_environment_ready
 from app.plan_permissions import plan_state, lock_plan
 
 router = APIRouter(tags=["Planos Orion"])
@@ -172,7 +173,9 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate), r
         "trial": dict(trial) if trial else None,
         "active_professionals": effective["limits"]["active_professionals"],
         "can_manage_plan": actor.role in {"member","admin"} and access.role == "owner",
-        "checkout_enabled": os.getenv("CAKTO_BILLING_LIVE_ENABLED", "0") == "1",
+        # A single Cakto flag cannot mean checkout is ready. These flags
+        # are a necessary preflight, not a substitute for live provider probes.
+        "checkout_enabled": direct_environment_ready(),
         "trial_scope": TRIAL_SCOPE,
         "trial_requires_team_activation": True,
     }
