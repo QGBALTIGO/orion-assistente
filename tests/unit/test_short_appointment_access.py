@@ -151,7 +151,8 @@ async def test_verified_phone_generates_one_otp_and_never_reissues_on_qr_retry(a
     assert state["role"]=="customer" and state["tenant"]==str(t)
     assert "5521999999922" not in json.dumps(state)
     assert "otp_hash" in state and len(state["otp_hash"])==64
-    pin=first["answer"].split("*")[2]
+    import re
+    pin=re.search(r"\*([0-9]{6})\*", first["answer"]).group(1)
     assert len(pin)==6 and pin.isdecimal()
     assert short.digest_code(challenge,pin)==state["otp_hash"]
 
