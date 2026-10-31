@@ -186,6 +186,14 @@ async def prepare_body(db,tenant,job,row,settings):
         body = '🧪 *TESTE ORION — aviso recuperado*\n\n' + body
         if not fits_message(body):
             raise ValueError('test_message_exceeds_transport_limit')
+    if (job['event'] == 'review' and job['recipient_kind'] == 'customer'
+            and tenant == UUID('82552b25-d0c8-5338-8c42-49f11de59e45')
+            and job['previous'].get('orion_review_qa_7364') is True
+            and row.get('customer_phone') == '+5521997557364'):
+        from app.qr_presentation import fits_message
+        body = '🧪 *TESTE ORION — AVALIAÇÃO*\n\n' + body
+        if not fits_message(body):
+            raise ValueError('review_qa_exceeds_transport_limit')
     return body
 
 
