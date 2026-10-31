@@ -32,7 +32,7 @@ function render(data){
  const when=new Date(data.start_at);const date=new Intl.DateTimeFormat('pt-BR',{dateStyle:'long',timeZone:data.timezone}).format(when);const time=new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:data.timezone}).format(when);
  // Review links show only the information needed to recognize the service.
  // Other appointment states preserve the complete management receipt.
- const reviewMode=data.status==='completed' && data.can_review===true;
+ const reviewMode=data.status==='completed' && (data.can_review===true || Boolean(data.review));
  document.querySelector('.card').classList.toggle('review-mode',reviewMode);
  const conciseDate=new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:data.timezone}).format(when);
  const facts=reviewMode?
