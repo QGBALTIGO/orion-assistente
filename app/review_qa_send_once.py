@@ -20,6 +20,7 @@ PHONE = "+5521997557364"
 KEY = "orion-qa-review-7364-20261030"
 SOURCE = "orion_one_time_review_test"
 MARKER = "orion_review_qa_7364"
+PHASE = "inactive"
 
 
 def authorized():
@@ -28,6 +29,8 @@ def authorized():
 
 
 async def restore_consent(original):
+    global PHASE
+    PHASE = "restore_consent"
     """Never overwrite concurrent changes or a customer's subsequent opt-out."""
     if not isinstance(original, dict):
         return "snapshot_missing"
@@ -78,6 +81,8 @@ async def restore_consent(original):
 
 
 async def prepare():
+    global PHASE
+    PHASE = "preflight"
     """Idempotent and atomic. Never returns customer details or a raw link."""
     if not authorized():
         return "disabled", None, None
@@ -88,8 +93,10 @@ async def prepare():
         return "admin_sender_unavailable", None, None
     async with get_session_factory()() as db:
         async with tenant_transaction(db, TENANT):
+            PHASE = "advisory_lock"
             await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                              {"key": KEY})
+            PHASE = "existing_notice"
             existing = (await db.execute(text("""
                 SELECT id,status,previous FROM appointment_notifications
                 WHERE tenant_id=:t AND event_key=:key
@@ -99,12 +106,14 @@ async def prepare():
                 return "already_attempted_never_resend", None, existing["previous"].get("qa_before")
             if not await has_feature(db,TENANT,"notifications.basic"):
                 return "plan_not_entitled", None, None
+            PHASE = "settings"
             saved = (await db.execute(text("""
                 SELECT * FROM appointment_communication_settings WHERE tenant_id=:t
             """), {"t":TENANT})).mappings().first()
             prefs = notification_settings(saved,True,channel)
             if not prefs or not prefs["enabled"] or not prefs["review"]:
                 return "review_disabled", None, None
+            PHASE = "select_booking"
             # Do not reuse an appointment already reviewed or already notified.
             row = (await db.execute(text("""
                 SELECT a.id,a.customer_id,a.updated_at
@@ -129,6 +138,7 @@ async def prepare():
             """), {"t":TENANT,"phone":PHONE})).mappings().first()
             if row is None:
                 return "no_completed_unreviewed_test_booking", None, None
+            PHASE = "select_consent"
             original = (await db.execute(text("""
                 SELECT operational_opt_in,marketing_opt_in,source
                 FROM contact_consents WHERE tenant_id=:t AND contact_e164=:phone FOR UPDATE
@@ -143,6 +153,7 @@ async def prepare():
                         if original else {"missing":True})
             # The operator explicitly requested ONE evaluation test to this
             # number. Do not persist a permanent marketing opt-in.
+            PHASE = "temporary_consent"
             await db.execute(text("""
                 INSERT INTO contact_consents
                   (tenant_id,contact_e164,operational_opt_in,marketing_opt_in,source)
@@ -152,6 +163,7 @@ async def prepare():
                   source=:source,updated_at=clock_timestamp()
             """), {"t":TENANT,"phone":PHONE,"source":SOURCE})
             now = (await db.execute(text("SELECT clock_timestamp()"))).scalar_one()
+            PHASE = "insert_notice"
             inserted = (await db.execute(text("""
                 INSERT INTO appointment_notifications
                   (tenant_id,appointment_id,appointment_version,event,
@@ -182,6 +194,8 @@ async def run_once(ctx):
         return {"state":state}
     result="unknown"
     try:
+        global PHASE
+        PHASE = "process_notification"
         result = await process_notification(ctx,str(TENANT),str(notice_id))
     except Exception:
         result="transport_unknown_never_resend"
