@@ -50,6 +50,35 @@ async def process_calendar_outbox(ctx: dict, tenant_id: str, outbox_id: str):
     tenant, item = UUID(tenant_id), UUID(outbox_id)
     async with get_session_factory()() as db:
         async with tenant_transaction(db, tenant):
+            # A disconnected company has no grant to serialize. Avoid taking
+            # the advisory connection lock for pending items which cannot be
+            # exported: this reduces unnecessary connection_busy retries.
+            # Connection state is rechecked in the guarded UPDATE, ensuring
+            # newly authorized companies are never sent down this branch.
+            ready = (await db.execute(text("""
+                SELECT EXISTS(SELECT 1 FROM google_connections
+                  WHERE tenant_id=:tenant AND status='active'
+                    AND refresh_token_enc IS NOT NULL AND calendar_id IS NOT NULL)
+            """), {"tenant": tenant})).scalar_one()
+            if not ready:
+                deferred = (await db.execute(text("""
+                    UPDATE calendar_outbox SET
+                      last_error=COALESCE((
+                        SELECT CASE WHEN status='error' THEN last_error END
+                        FROM google_connections WHERE tenant_id=:tenant
+                      ),'calendar_not_connected'),
+                      next_attempt_at=clock_timestamp()+interval '15 minutes'
+                    WHERE tenant_id=:tenant AND id=:id
+                      AND status='pending' AND next_attempt_at<=clock_timestamp()
+                      AND NOT EXISTS(
+                        SELECT 1 FROM google_connections
+                        WHERE tenant_id=:tenant AND status='active'
+                          AND refresh_token_enc IS NOT NULL AND calendar_id IS NOT NULL
+                      )
+                    RETURNING id
+                """), {"tenant": tenant, "id": item})).scalar_one_or_none()
+                if deferred is not None:
+                    return "not_connected"
             # Credential changes and revoke use this same lock. A successful
             # disconnect cannot race an in-flight request using the old token.
             if not await calendar_lock(db, tenant):
