@@ -250,6 +250,7 @@ async def verified_session(request,code,role):
             if not row or not row["customer_active"] or row["deleted_at"] or row["customer_access_blocked"]:
                 return None
             if row[role+"_id"]!=expected:return None
+            if row["status"]=="hold":return None
             contact=row["professional_phone" if role=="professional" else "customer_phone"]
             if not isinstance(contact,str) or (
                 role=="professional" and not row["professional_active"]):
@@ -269,9 +270,21 @@ async def session_response(session,role):
                 return {"authorized":True,"token":url.split("/a#",1)[1]}
             row=await read_appointment(db,tenant,appointment)
             now=(await db.execute(text("SELECT clock_timestamp()"))).scalar_one()
+            company=(await db.execute(text("""
+                SELECT t.name,p.theme_color,p.logo_url
+                FROM tenants t LEFT JOIN management_site_preferences p ON p.tenant_id=t.id
+                WHERE t.id=:t
+            """),{"t":tenant})).mappings().one()
+            from app.media_paths import is_media_url
+            logo=company["logo_url"]
+            if not is_media_url(logo) or not logo.startswith("/media/"+str(tenant)+"/"):
+                logo=None
+            color=company["theme_color"]
+            if not isinstance(color,str) or not re.fullmatch(r"#[0-9a-fA-F]{6}",color):
+                color="#2e7bf6"
             change=row["status"]=="confirmed" and row["start_at"]>now
             return {"authorized":True,"appointment":{
-                "company":row.get("company_name") or "Orion",
+                "company":company["name"],"logo_url":logo,"brand_color":color,
                 "customer":row["customer_name"],"professional":row["professional_name"],
                 "services":[item["name_snapshot"] for item in row["items"]],
                 "start_at":row["start_at"],"end_at":row["end_at"],
