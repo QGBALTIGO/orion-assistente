@@ -58,8 +58,83 @@ test('seleção dinâmica muda para A partir de automaticamente, sem exigir sele
   assert.equal(writes.length,1);
   assert.deepEqual(writes[0].service_ids,ids.slice(0,2));
   assert.equal(writes[0].price_cents,6000);
+  assert.equal(writes[0].duration_override_min,null);
   assert.equal(Object.hasOwn(writes[0],'price_mode'),false,'tipo de preço deriva do servidor');
   assert.equal(h.errors.length,0);
+});
+
+test('combo novo mantém soma automática de duração por padrão',async t=>{
+  const {h,writes}=await fixture(t);
+  h.click('[data-os-action=new-package]');await flush();
+  const form=screen(h);
+  toggleService(h,ids[0]);toggleService(h,ids[1]);await flush();
+  assert.equal(form.elements.custom_duration.checked,false);
+  assert.equal(form.elements.duration_override_min.disabled,true);
+  assert.equal(h.document.querySelector('#osPackageCustomDuration').classList.contains('hidden'),true);
+  assert.match(h.document.getElementById('osPackageSummary').textContent,/70 min \(automática\)/);
+  form.elements.name.value='Combo automático';
+  h.submit('[data-os-form=package]');await flush();
+  assert.equal(writes.length,1);
+  assert.equal(writes[0].duration_override_min,null);
+  assert.equal(h.errors.length,0);
+});
+
+test('tempo personalizado pode ser menor que a soma e é enviado como minutos inteiros',async t=>{
+  const {h,writes}=await fixture(t);
+  h.click('[data-os-action=new-package]');await flush();
+  const form=screen(h);
+  toggleService(h,ids[0]);toggleService(h,ids[1]);await flush();
+  form.elements.custom_duration.checked=true;
+  form.elements.custom_duration.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  await flush();
+  assert.equal(form.elements.duration_override_min.disabled,false);
+  assert.equal(form.elements.duration_override_min.required,true);
+  assert.equal(form.elements.duration_override_min.value,'70','primeiro ajuste sugere soma');
+  form.elements.duration_override_min.value='55';
+  form.elements.duration_override_min.dispatchEvent(new h.window.Event('input',{bubbles:true}));
+  assert.match(h.document.getElementById('osPackageSummary').textContent,/55 min \(personalizada\)/);
+  assert.match(h.document.getElementById('osPackageSummary').textContent,/Soma dos serviços.*70 min/);
+  form.elements.name.value='Combo ajustado para menos';
+  h.submit('[data-os-form=package]');await flush();
+  assert.equal(writes[0].duration_override_min,55);
+  assert.equal(h.errors.length,0);
+});
+
+test('editar tempo personalizado maior que a soma e voltar ao modo automático',async t=>{
+  const pack={id:'a0000000-0000-4000-8000-000000000009',name:'Combo personalizado',
+    version:4,service_ids:ids.slice(0,2),price_cents:5500,duration_min:110,
+    automatic_duration_min:70,duration_override_min:110,active:true};
+  const {h,writes}=await fixture(t,{packs:[pack]});
+  h.click('[data-os-package="'+pack.id+'"]');await flush();
+  const form=screen(h);
+  assert.equal(form.elements.custom_duration.checked,true);
+  assert.equal(form.elements.duration_override_min.value,'110');
+  assert.match(h.document.getElementById('osPackageSummary').textContent,/110 min \(personalizada\)/);
+  form.elements.custom_duration.checked=false;
+  form.elements.custom_duration.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  await flush();
+  assert.equal(form.elements.duration_override_min.disabled,true);
+  assert.match(h.document.getElementById('osPackageSummary').textContent,/70 min \(automática\)/);
+  h.submit('[data-os-form=package]');await flush();
+  assert.equal(writes.length,1);
+  assert.equal(writes[0].duration_override_min,null,'retorno ao automático limpa override salvo');
+  assert.equal(writes[0].expected_version,4);
+  assert.equal(h.errors.length,0);
+});
+
+test('valor de duração fora de 1 a 1440 não deve ser enviado',async t=>{
+  const {h,writes}=await fixture(t);
+  h.click('[data-os-action=new-package]');await flush();
+  toggleService(h,ids[0]);toggleService(h,ids[1]);await flush();
+  const form=screen(h);
+  form.elements.custom_duration.checked=true;
+  form.elements.custom_duration.dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  form.elements.name.value='Duração inválida';
+  for(const value of ['0','1441','3.5','1e3']){
+    form.elements.duration_override_min.value=value;
+    h.submit('[data-os-form=package]');await flush();
+    assert.equal(writes.length,0,'não enviar '+value);
+  }
 });
 
 test('remover o componente variável restaura preço fixo e esconde explicação',async t=>{
