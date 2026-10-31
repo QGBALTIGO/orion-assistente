@@ -319,6 +319,16 @@ async def verify(payload:Verify,request:Request):
     await limited(request,code,"otp-verify",6,300)
     if not CHALLENGE.fullmatch(payload.challenge) or not OTP.fullmatch(payload.otp):
         raise HTTPException(400,GENERIC)
+    # Lock retries to one challenge across ALL IPs and devices. An attacker
+    # cannot bypass the six-try limit by distributing guesses across IPs.
+    attempts_key=scoped_redis_key("otp-attempts",payload.challenge)
+    lua="""local n=redis.call('INCR',KEYS[1])
+             if n==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end
+             return n"""
+    async def count_attempt(cache):
+        return await cache.eval(lua,1,attempts_key,TTL)
+    if int(await with_redis(count_attempt))>6:
+        raise HTTPException(429,GENERIC,headers={"Retry-After":"300"})
     browser=request.cookies.get(CHALLENGE_COOKIE,"")
     if len(browser)!=43:raise HTTPException(400,GENERIC)
     key=scoped_redis_key("challenge",payload.challenge)
