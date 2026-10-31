@@ -110,3 +110,37 @@ main > .public-footer a:hover{text-decoration:underline}
 @media(prefers-reduced-motion:reduce){
   #review .stars label span{transition:none}
 }
+
+
+/* Short links use the existing Orion receipt card, with one unobtrusive
+   WhatsApp verification step. Nothing about the company or appointment is
+   rendered before a verified phone+OTP. */
+.card.short-gate #details,.card.short-gate #review,.card.short-gate #reschedule{display:none}
+.card.short-gate #title{margin-bottom:12px}
+.short-access{display:flex;flex-direction:column;gap:12px;margin-top:18px;min-width:0}
+.short-access-help{margin:0;font-size:13px;line-height:1.5;color:var(--muted)}
+.short-access>button,.short-access .short-whatsapp-action,
+.short-otp>button{
+  display:flex;align-items:center;justify-content:center;min-height:50px;
+  width:100%;margin:0;padding:11px 16px;box-sizing:border-box;
+  font:650 14px/1.4 Figtree,system-ui,sans-serif;
+  border:0;border-radius:12px;background:var(--primary);color:var(--primary-ink);
+  text-decoration:none;text-align:center;overflow-wrap:anywhere;
+}
+.short-access .short-whatsapp-action{
+  background:transparent;border:1px solid var(--border);color:var(--text);
+}
+.short-otp{display:grid;gap:9px;min-width:0}
+.short-otp>label{margin:6px 0 0;font-size:13px;font-weight:600}
+.short-otp>input{
+  width:100%;min-width:0;height:51px;margin:0;padding:10px 14px;
+  border:1px solid var(--border);border-radius:11px;
+  background:var(--bg);color:var(--text);font-size:22px;
+  font-weight:700;letter-spacing:.26em;text-align:center;
+}
+.short-access [hidden]{display:none!important}
+@media(max-width:359px){
+  .short-access>button,.short-access .short-whatsapp-action,.short-otp>button{
+    padding-inline:9px;font-size:13px
+  }
+}
