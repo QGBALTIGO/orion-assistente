@@ -13,7 +13,7 @@ export function brazilLegacyPN(phone) {
 }
 
 export function verifiedRecipientFromSingleLookup(phone,rows) {
-  if(typeof phone!=='string'||!/^[1-9]\\d{7,14}$/.test(phone)||!Array.isArray(rows))
+  if(typeof phone!=='string'||!/^[1-9]\d{7,14}$/.test(phone)||!Array.isArray(rows))
     return {verified:false,reason:'invalid_lookup'};
   const candidates=rows.filter(row=>row && typeof row.jid==='string');
   if(candidates.length!==1||rows.length!==1)
@@ -25,12 +25,12 @@ export function verifiedRecipientFromSingleLookup(phone,rows) {
   if(match.exists!==true)
     return {verified:false,reason:'not_registered'};
   return {verified:true,kind:match.jid===exact?'exact':'provider_normalized',
-          jid:match.jid,lid:typeof match.lid==='string'&&/^\\d{1,30}@lid$/.test(match.lid)?match.lid:null};
+          jid:match.jid,lid:typeof match.lid==='string'&&/^\d{1,30}@lid$/.test(match.lid)?match.lid:null};
 }
 
 export function inspectLookup(requestedPhone,results,ownJid) {
   const phone=String(requestedPhone??'');
-  if(!/^[1-9]\\d{7,14}$/.test(phone))throw Error('Invalid recipient');
+  if(!/^[1-9]\d{7,14}$/.test(phone))throw Error('Invalid recipient');
   const self=typeof ownJid==='string'&&ownJid.split('@')[0].split(':')[0]===phone;
   if(!Array.isArray(results))return {registered:null,identity:'unknown',hasLid:null,self,lookupKind:'unavailable'};
   // Preserve earlier exact contact inspection behavior; the pinned 6.7.24
