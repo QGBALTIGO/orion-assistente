@@ -152,6 +152,30 @@
     }));
   }
   function siteAddressLine(site){return site.address_display||site.address;}
+
+  function renderHeroAddress(site){
+    // Keep the hero concise: street + number on one semantic line, then
+    // city/state on another. Address complement, neighborhood and CEP stay
+    // available unabridged in Onde estamos and in the accessible label.
+    const full = typeof siteAddressLine(site)==='string' ? siteAddressLine(site).trim() : '';
+    // The backend joins optional complement and neighborhood using a
+    // spaced em-dash; never let that separator dangle beside the logo.
+    const street = full.split(' — ')[0].trim();
+    const locality = [site.city,site.state].filter(v=>typeof v==='string'&&v.trim())
+      .map(v=>v.trim()).join(' · ');
+    const root=$('hero-address'),streetNode=$('hero-address-street'),
+      localityNode=$('hero-address-locality');
+    streetNode.textContent=street;
+    localityNode.textContent=locality;
+    streetNode.hidden=!street;
+    localityNode.hidden=!locality;
+    root.hidden=!street&&!locality;
+    // The complete, published address remains available to assistive tech.
+    const accessible=[full,site.city,site.state].filter(v=>typeof v==='string'&&v.trim())
+      .map(v=>v.trim()).join(', ');
+    if(accessible){root.title=accessible;root.setAttribute('aria-label',accessible);}
+    else{root.removeAttribute('title');root.removeAttribute('aria-label');}
+  }
   function mapDestination(site){
     const address=[site.title,siteAddressLine(site),site.city,site.state,site.postal_code,'Brasil']
       .filter(v=>typeof v==='string'&&v.trim()).map(v=>v.trim()).join(', ');
@@ -344,8 +368,7 @@
     const cover = safeImageURL(site.cover_url); if (cover) { const image = el('img'); image.src = cover; image.alt = ''; image.loading = 'eager'; image.fetchPriority = 'high'; image.decoding = 'async'; image.referrerPolicy = 'no-referrer'; image.style.width = '100%'; image.style.height = '100%'; $('cover').replaceChildren(image); }
     picture($('site-logo'), site.logo_url, initials(site.title), 'hero');
     $('site-title').textContent = site.title; $('footer-title').textContent = site.title;
-    $('hero-address').textContent = [siteAddressLine(site), site.city].filter(Boolean).join(' · ');
-    $('hero-address').hidden = !$('hero-address').textContent;
+    renderHeroAddress(site);
     $('about-text').textContent = site.description || '';
     $('about-text').hidden = !site.description;
     const hasInstagramPreview = renderInstagramPreview(site);

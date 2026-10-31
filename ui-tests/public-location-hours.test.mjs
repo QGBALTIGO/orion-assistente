@@ -164,13 +164,16 @@ test('mapa incorporado e botões de rota levam ao mesmo destino no Google Maps',
   assert.equal(h.errors.length,0);
 });
 
-test('endereço publicado completo aparece no cartão, destaque e destino do Maps',async t=>{
+test('endereço completo fica no cartão/mapa e o destaque mostra rua e cidade organizadas',async t=>{
   const data=catalogue();
   data.site.address='Praça da Sé';
   data.site.address_display='Praça da Sé, 12-A — Sala 2 — Sé';
   const h=await fixture(t,data);
   assert.match(h.document.getElementById('full-address').textContent,/Praça da Sé, 12-A — Sala 2 — Sé/);
-  assert.match(h.document.getElementById('hero-address').textContent,/Praça da Sé, 12-A — Sala 2 — Sé/);
+  assert.equal(h.document.getElementById('hero-address-street').textContent,'Praça da Sé, 12-A');
+  assert.equal(h.document.getElementById('hero-address-locality').textContent,'São Paulo · SP');
+  assert.match(h.document.getElementById('hero-address').getAttribute('aria-label'),
+    /Praça da Sé, 12-A — Sala 2 — Sé/);
   const destination=new URL(h.document.getElementById('maps-link').href).searchParams.get('destination');
   assert.ok(destination.includes(data.site.address_display));
   assert.equal(new URL(h.document.getElementById('location-map').src).searchParams.get('q'),destination);
