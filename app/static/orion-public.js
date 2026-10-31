@@ -204,7 +204,13 @@
       .filter(Boolean).join('\n');
     const where=$('address-card'),box=$('map-preview'),frame=$('location-map'),target=mapDestination(site);
     $('full-address').textContent=address;
-    where.hidden=!address&&!target;
+    // A company can publish amenities before adding a postal address.
+    // The same Onde estamos card still hosts them, without a fake map/pin.
+    where.hidden=!address&&!target&&$('amenities-section').hidden;
+    $('location-details').hidden=!address;
+    $('location-subtitle').textContent=address||target
+      ? 'Encontre nosso espaço e venha nos visitar.'
+      : 'Confira as comodidades disponíveis.';
     box.hidden=!target;
     if(target){
       frame.src=target.embed;
@@ -320,6 +326,7 @@
       tile.setAttribute('aria-expanded', 'false');
       tile.title = item.title;
       tile.innerHTML = AMENITY_ICONS[item.icon]; // Trusted static SVG markup only.
+      tile.append(el('span', 'amenity-label', item.title)); // Published, local labels, not user HTML.
       tile.addEventListener('click', () => toggleAmenity(item, tile));
       return tile;
     }));
@@ -345,8 +352,8 @@
     $('about-card').hidden = !site.description && !hasInstagramPreview;
     $('about-card').classList.toggle('about-card-instagram-only', !site.description && hasInstagramPreview);
     renderOpeningHours(data.opening_hours);
-    renderLocation(site);
     renderAmenities(site);
+    renderLocation(site);
     $('services-count').textContent = String(data.services.length);
     $('hero-book').disabled = !data.services.length;
     const cats = ['Todos', ...new Set(data.services.map(s => s.category || 'Serviços'))];
