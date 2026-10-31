@@ -62,7 +62,7 @@ async def confirmation_reply(tenant,phone,body,channel_key,message_id,*,central=
             if previous:
                 return cipher().decrypt(previous['body_encrypted'].encode()).decode() if previous['appointment_version']==appointment['updated_at'] and previous['appointment_id']==appointment['id'] else ''
             company=(await db.execute(text('SELECT name FROM tenants WHERE id=:t'),{'t':tenant})).scalar_one()
-            link=await access.issue(db,tenant,row['id'])
+            link=await access.shared_link(db,tenant,row['id'],audience='customer')
             if appointment['status']=='confirmed':
                 answer=compose('confirmation',appointment,company=company,customer_link=link,signature=signature)
             else:
