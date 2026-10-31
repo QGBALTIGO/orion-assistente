@@ -138,7 +138,7 @@ async def stage(d):
     state, intent = await start(d)
     response = await d["client"].get("/integrations/google/callback", params={"state": state, "code": "synthetic-code"})
     assert response.status_code == 303, response.text
-    assert response.headers["location"] == f"/panel?aba=agenda&google=choose&empresa={d['a']}"
+    assert response.headers["location"] == f"/painel?aba=agenda&google=choose&empresa={d['a']}"
     assert response.headers["cache-control"] == "no-store"
     return intent
 
