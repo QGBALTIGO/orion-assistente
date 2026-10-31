@@ -1158,9 +1158,24 @@
       }
     });
     addAction(copy, SUCCESS_ACTION_ICONS.copy, 'Copiar protocolo');
-    const calendar = button('Adicionar ao meu calendário',
+    // The client chooses which Google account receives this personal copy.
+    // No Google OAuth, customer phone or booking capability is exposed.
+    const googleURL = window.OrionCalendarLinks?.googleEventURL({
+      status: booking.result.status,company:data.site.title,
+      services:booking.result.services,professional:booking.result.professional,
+      start_at:booking.result.start_at,end_at:booking.result.end_at,
+      timezone:booking.result.timezone,
+      address:[siteAddressLine(data.site),data.site.city,data.site.state].filter(Boolean).join(', ')
+    });
+    if (googleURL) {
+      const google=el('a','outline success-action success-action-secondary');
+      google.href=googleURL;google.target='_blank';google.rel='noopener noreferrer';
+      google.referrerPolicy='no-referrer';
+      addAction(google,SUCCESS_ACTION_ICONS.calendar,'Adicionar ao Google Agenda');
+    }
+    const calendar = button('Baixar para outras agendas',
       'outline success-action success-action-secondary', downloadCalendar);
-    addAction(calendar, SUCCESS_ACTION_ICONS.calendar, 'Adicionar ao meu calendário');
+    addAction(calendar, SUCCESS_ACTION_ICONS.calendar, 'Baixar para outras agendas');
     success.append(actions);
     body.append(success);
   }
@@ -1168,8 +1183,11 @@
     const result = booking.result; if (!result) return;
     const escape = value => String(value || '').replaceAll('\\', '\\\\').replaceAll('\n', '\\n').replaceAll(';', '\\;').replaceAll(',', '\\,').replaceAll('\r', '');
     const stamp = value => new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Orion//Agendamento//PT-BR', 'BEGIN:VEVENT', `UID:${escape(result.protocol)}-${stamp(result.start_at)}@orion.invalid`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(result.start_at)}`, `DTEND:${stamp(result.end_at)}`, `SUMMARY:${escape(data.site.title)} — ${escape(result.services.join(' + '))}`, `DESCRIPTION:Protocolo ${escape(result.protocol)}. Profissional: ${escape(result.professional)}.`, `LOCATION:${escape([siteAddressLine(data.site), data.site.city, data.site.state].filter(Boolean).join(', '))}`, 'END:VEVENT', 'END:VCALENDAR'];
-    const url = URL.createObjectURL(new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/calendar;charset=utf-8' })); const anchor = el('a'); anchor.href = url; anchor.download = 'agendamento.ics'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Orion//Agendamento//PT-BR', 'BEGIN:VEVENT', `UID:${escape(result.protocol)}@orionagenda.pro`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(result.start_at)}`, `DTEND:${stamp(result.end_at)}`, `SUMMARY:${escape(data.site.title)} — ${escape(result.services.join(' + '))}`, `DESCRIPTION:Protocolo ${escape(result.protocol)}. Profissional: ${escape(result.professional)}.`, `LOCATION:${escape([siteAddressLine(data.site), data.site.city, data.site.state].filter(Boolean).join(', '))}`, 'END:VEVENT', 'END:VCALENDAR'];
+    const url = URL.createObjectURL(new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/calendar;charset=utf-8' }));
+    const anchor = el('a'); anchor.href = url; anchor.download = 'agendamento.ics';
+    document.body.append(anchor); anchor.click(); anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
   $('amenity-detail-close').addEventListener('click', () => closeAmenity(true));
