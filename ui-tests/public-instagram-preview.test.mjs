@@ -17,8 +17,8 @@ test('Sobre nós renders real lazy Instagram profile preview in the existing car
   assert.equal(h.document.getElementById('about-text').textContent,data.site.description);
   assert.equal(h.document.getElementById('about-instagram-handle').textContent,'@espacovip__barbearia');
   assert.equal(frame.getAttribute('src'),'https://www.instagram.com/espacovip__barbearia/embed/');
-  assert.equal(frame.loading,'lazy');
-  assert.equal(frame.referrerPolicy,'no-referrer');
+  assert.equal(frame.getAttribute('loading'),'lazy');
+  assert.equal(frame.getAttribute('referrerpolicy'),'no-referrer');
   assert.match(frame.title,/espacovip__barbearia/);
   assert.ok(frame.getAttribute('sandbox').includes('allow-scripts'));
   assert.ok(frame.getAttribute('sandbox').includes('allow-popups'));
