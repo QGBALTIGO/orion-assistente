@@ -4,6 +4,7 @@ on:
     paths:
       - 'app/appointment_access.py'
       - 'app/short_appointment_api.py'
+      - 'scripts/predeploy_one_click_links.py'
       - 'app/appointment_message_templates.py'
       - 'app/static/orion-appointment.js'
       - 'alembic/versions/0056_one_click_appointment_links.py'
@@ -55,7 +56,7 @@ jobs:
         run: python -m pip install -c requirements.lock ".[test]"
       - name: Sintaxe e seguranca dos links
         run: |
-          python -m py_compile app/appointment_access.py app/short_appointment_api.py alembic/versions/0056_one_click_appointment_links.py
+          python -m py_compile app/appointment_access.py app/short_appointment_api.py alembic/versions/0056_one_click_appointment_links.py scripts/predeploy_one_click_links.py
           node --check app/static/orion-appointment.js
           python - <<'PY'
           from pathlib import Path
