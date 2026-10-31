@@ -652,3 +652,26 @@ body{background:var(--bg);color:var(--text);min-width:0}
     padding-inline:10px;font-size:13px;min-height:48px;
   }
 }
+
+
+/* Optional official Instagram profile embed within the existing About card.
+   No image scraping or separate marketing card. The remote frame is native
+   lazy-loaded and may show a login prompt for private/blocked accounts. */
+.about-instagram{min-width:0;margin-top:22px;border-top:1px solid var(--border);padding-top:18px}
+.about-card-instagram-only .about-instagram{margin-top:0;padding-top:0;border:0}
+.about-instagram-heading{display:flex;align-items:center;gap:10px;min-width:0;margin-bottom:14px}
+.about-instagram-icon{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border-radius:12px;border:1px solid var(--border);background:var(--bg);color:var(--text)}
+.about-instagram-icon svg{display:block;width:21px;height:21px}
+.about-instagram-heading-copy{display:grid;gap:2px;min-width:0}
+.about-instagram-heading-copy strong{font:650 14px/1.35 Figtree,system-ui,sans-serif}
+.about-instagram-heading-copy>span{min-width:0;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.about-instagram-preview{min-width:0;overflow:hidden;border:1px solid var(--border);border-radius:14px;background:#fff}
+.about-instagram-preview>iframe{display:block;width:100%;height:auto;min-height:420px;max-height:600px;aspect-ratio:4/5;border:0;background:#fff}
+.about-instagram-open{display:flex;align-items:center;justify-content:center;gap:9px;min-height:44px;width:100%;margin-top:12px!important;padding:10px 12px;border:1px solid var(--border);border-radius:11px;background:var(--bg);color:var(--text);font-size:13px;font-weight:650;text-align:center}
+.about-instagram-open svg{display:block;flex:0 0 16px;width:16px;height:16px}
+.about-instagram-open:hover{border-color:var(--primary);color:var(--primary)}
+.about-instagram-open:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+@media(max-width:359px){
+  .about-instagram-preview>iframe{min-height:390px}
+  .about-instagram-heading-copy>span{font-size:11px}
+}

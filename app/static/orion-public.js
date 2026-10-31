@@ -17,6 +17,40 @@
   function el(tag, cls, value) { const node = document.createElement(tag); if (cls) node.className = cls; if (value !== undefined) node.textContent = value; return node; }
   function button(text, cls, handler) { const node = el('button', cls, text); node.type = 'button'; if (handler) node.addEventListener('click', handler); return node; }
   function safeHTTPS(value) { try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null; } catch { return null; } }
+  // Only a real Instagram *profile* may be embedded. Never use arbitrary
+  // site URLs as iframe sources or forward pasted Instagram tracking params.
+  function instagramProfile(value) {
+    try {
+      if (typeof value !== 'string' || !value.trim()) return null;
+      const uri = new URL(value);
+      if (uri.protocol !== 'https:' ||
+          !['instagram.com', 'www.instagram.com'].includes(uri.hostname) ||
+          uri.port || uri.username || uri.password) return null;
+      const match = uri.pathname.match(/^\/([A-Za-z0-9_](?:[A-Za-z0-9._]{0,28}[A-Za-z0-9_])?)\/?$/);
+      if (!match || /^(p|reel|reels|stories|explore|accounts|direct|tv|tags|about|api|developer|challenge)$/i.test(match[1])) return null;
+      const username = match[1];
+      const base = 'https://www.instagram.com/' + username;
+      return {username, href:base+'/', embed:base+'/embed/'};
+    } catch { return null; }
+  }
+  function renderInstagramPreview(site) {
+    const section = $('about-instagram'), frame = $('about-instagram-frame');
+    const profile = instagramProfile(site.instagram_url);
+    section.hidden = !profile;
+    if (!profile) {
+      frame.removeAttribute('src');
+      $('about-instagram-open').removeAttribute('href');
+      $('about-instagram-handle').textContent = '';
+      return false;
+    }
+    $('about-instagram-handle').textContent = '@' + profile.username;
+    $('about-instagram-open').href = profile.href;
+    frame.title = 'Publicações do Instagram de @' + profile.username;
+    // Native iframe lazy loading avoids delaying images, services and booking.
+    // Instagram owns the six real public thumbnails; no scraping or fake media.
+    if (frame.getAttribute('src') !== profile.embed) frame.src = profile.embed;
+    return true;
+  }
   function safeImageURL(value) {
     if(typeof value==='string' && /^\/media\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/.test(value))return value;
     return safeHTTPS(value);
@@ -303,7 +337,10 @@
     $('hero-address').textContent = [siteAddressLine(site), site.city].filter(Boolean).join(' · ');
     $('hero-address').hidden = !$('hero-address').textContent;
     $('about-text').textContent = site.description || '';
-    $('about-card').hidden = !site.description;
+    $('about-text').hidden = !site.description;
+    const hasInstagramPreview = renderInstagramPreview(site);
+    $('about-card').hidden = !site.description && !hasInstagramPreview;
+    $('about-card').classList.toggle('about-card-instagram-only', !site.description && hasInstagramPreview);
     renderOpeningHours(data.opening_hours);
     renderLocation(site);
     renderAmenities(site);
