@@ -118,9 +118,10 @@ def predeploy_main():
         raw, _url = connection_values()
         current = migrated_version(raw)
         if current == combo_duration.TARGET:
-            return 0 if combo_duration.schema_ready(raw) else 3
+            return combo_duration.main()
         if current == short_links.TARGET:
-            return short_links.main()
+            checked = short_links.main()
+            return checked if checked else combo_duration.main()
         if current == central_notifications.TARGET:
             checked=central_notifications.main()
             return checked if checked else short_links.main()
