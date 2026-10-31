@@ -33,14 +33,14 @@ class Db:
         if params and "t" in params:assert params["t"]==qa.TENANT
         if params and "phone" in params:assert params["phone"]==qa.PHONE
         if "pg_advisory_xact_lock" in q:return Result(None)
-        if "FROM appointment_notifications" in q:return Result(self.prior)
-        if "FROM appointment_communication_settings" in q:return Result(None)
         if "FROM appointments a" in q:
             for required in ("status='completed'","a.end_at<=clock_timestamp()",
                              "appointment_reviews","h.details->>'source'='panel'",
                              "NOT EXISTS(SELECT 1 FROM appointment_notifications"):
                 assert required in q
             return Result(self.candidate)
+        if "FROM appointment_notifications" in q:return Result(self.prior)
+        if "FROM appointment_communication_settings" in q:return Result(None)
         if "FROM contact_consents" in q:return Result(self.consent)
         if "INSERT INTO contact_consents" in q:return Result(None)
         if "SELECT clock_timestamp()" in q:return Result(datetime.now(timezone.utc))
