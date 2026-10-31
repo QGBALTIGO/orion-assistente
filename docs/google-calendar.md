@@ -71,15 +71,24 @@ privados desta integração. A listagem é paginada, com limite de mil calendár
 | `REDIS_URL` | Sessões e intenções OAuth | Fila ARQ | Infraestrutura operacional existente. |
 | `PANEL_PUBLIC_URL` | Origem pública, quando definida | Não usada pelo Google | Deve coincidir com a origem do callback. |
 
-Callback deste ambiente público:
+Callback recomendado para o domínio oficial do Orion:
 
 ```text
-https://orion-assistente-production.up.railway.app/integrations/google/callback
+https://orionagenda.pro/integrations/google/callback
 ```
 
-Registrar a URL exata nas **Authorized redirect URIs** do cliente Google, não
-`/panel`. O hostname aberto pelo usuário deve coincidir com o callback para o
-cookie de verificação de navegador funcionar.
+**Antes de trocar a configuração da Railway:** registrar exatamente essa URI
+como **Authorized redirect URI** no projeto Google Cloud que já fornece
+`GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`. Só depois configurar
+`GOOGLE_REDIRECT_URI=https://orionagenda.pro/integrations/google/callback`
+e `GOOGLE_OAUTH_PUBLIC_ORIGIN=https://orionagenda.pro` na API.
+Não mudar a chave Fernet nem apagar conexões salvas.
+
+Uma instalação antiga pode ainda usar a origem de callback da Railway. Abrir
+o painel em `orionagenda.pro` e receber callback em `*.railway.app` não
+compartilha o cookie de verificação OAuth: a autorização precisa ser iniciada
+e encerrada na **mesma origem**. O painel antigo pode servir como contingência
+até o Google Cloud registrar o domínio oficial, mas não substitui a migração.
 
 Não colocar segredo, `client_secret.json`, código de autorização, refresh token
 ou chave Fernet no repositório, navegador, exemplos de logs ou atendimento ao
@@ -199,7 +208,7 @@ convidados. Um 409 após criação incerta exige leitura e aplicação do estado
 não é sucesso cego. ETags protegem concorrência. Um 404 na exclusão só significa
 ausência após comprovar acesso ao calendário, pois pode ocultar perda de acesso.
 
-O scanner ARQ seleciona até cem intenções vencidas a cada cinco minutos. Falhas
+O scanner ARQ seleciona até cem intenções vencidas a cada quinze segundos. Falhas
 transitórias têm espera exponencial e limite de oito tentativas. A espera real
 pode superar o backoff, conforme a próxima rodada. A operação remota do worker
 tem limite total de 25 segundos.
@@ -254,3 +263,37 @@ UTF-8 BOM, separador `;` e neutralização de fórmulas.
 - [Events.patch e campos omitidos](https://developers.google.com/workspace/calendar/api/v3/reference/events/patch).
 - [Events.delete](https://developers.google.com/workspace/calendar/api/v3/reference/events/delete).
 - [Erros 404, 409, 410, quota e backoff](https://developers.google.com/workspace/calendar/api/guides/errors).
+
+
+## Diagnóstico e opção de calendário do cliente
+
+O empresário pode abrir **Agenda → Google Agenda → Testar conexão com Google**.
+Esse teste renova temporariamente o access token e verifica apenas a permissão
+de edição do calendário selecionado. Nenhum evento é criado, alterado ou
+apagado; refresh tokens permanecem cifrados. Uma conexão salva com status
+"Conectado" não prova que o Google ainda permite enviar eventos.
+
+O cliente não precisa autorizar o Orion a acessar sua conta Google: no
+recibo de confirmação e no link de gerenciamento enviado pelo WhatsApp,
+**Adicionar ao Google Agenda** abre um evento pré-preenchido para salvar
+manualmente. A opção `.ics` permanece para outras agendas e mantém o UID
+estável após remarcações. **Eventos pessoais adicionados dessa forma não
+recebem atualização automática** em cancelamentos/remarcações; o aviso está
+na própria tela. A opção não envia e-mails ou convites sem consentimento.
+
+Se os eventos não sincronizam para nenhuma empresa:
+
+1. Confirmar a publicação **Em produção** da tela de consentimento Google
+   (em modo *Teste*, refresh tokens externos com escopos do Agenda expiram
+   em sete dias).
+2. Verificar Calendar API ativa, escopos autorizados e o callback do domínio.
+3. Proprietário autentica no painel do mesmo domínio que recebe o callback,
+   conecta a conta e escolhe um calendário editável.
+4. Executar **Testar conexão com Google**; verificar o status da fila e
+   autorizar novamente se o token estiver expirado.
+5. Eventos novos serão gerados automaticamente pelo worker. Operações Google
+   exigem a conta do empresário, nunca do cliente, e respeitam a publicação
+   e o isolamento da empresa.
+
+No worker, pendências de empresas sem autorização são adiadas sem disputar
+o lock Google, evitando filas intermináveis de `connection_busy`.
