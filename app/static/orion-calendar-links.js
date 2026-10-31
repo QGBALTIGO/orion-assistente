@@ -29,7 +29,7 @@
       professional?'Profissional: '+professional+'.':'',
       'Esta é uma cópia na sua agenda pessoal. Se remarcar ou cancelar no Orion, atualize o evento manualmente.'
     ].filter(Boolean).join('\n');
-    const url=new URL('https://calendar.google.com/calendar/render');
+    const url=new URL('https://calendar.google.com/calendar/r/eventedit');
     url.searchParams.set('action','TEMPLATE');
     url.searchParams.set('text',title);
     url.searchParams.set('dates',stamp(begin)+'/'+stamp(finish));
@@ -37,7 +37,7 @@
     if (address) url.searchParams.set('location',address);
     const timezone=details.timezone;
     if (typeof timezone==='string' && timezone.length<=90) {
-      try { new Intl.DateTimeFormat('en-US',{timeZone:timezone});url.searchParams.set('ctz',timezone); }
+      try { new Intl.DateTimeFormat('en-US',{timeZone:timezone});url.searchParams.set('stz',timezone);url.searchParams.set('etz',timezone); }
       catch (_) { /* UTC instants are still unambiguous. */ }
     }
     return url.href;
