@@ -80,7 +80,7 @@ async function mount({host,request,tenantId,canWrite=false,canFeature=()=>false}
 }
  const reviews=node('section','','os-card os-section-gap');reviews.append(node('h3','Avaliações privadas'));
  if(!data.reviews.length)reviews.append(node('p','Ainda não há avaliações recebidas.','os-help'));
- for(const item of data.reviews){const row=node('div','','os-summary-row os-comm-review');row.append(node('strong',item.rating+'/5 · '+item.professional),node('p',item.comment||'Sem comentário','os-help'));reviews.append(row);}host.append(reviews);
+ for(const item of data.reviews){const row=node('div','','os-summary-row os-comm-review');row.append(node('strong',item.rating+'/5 · '+item.professional),node('p',item.comment||'Sem comentário','os-help'));reviews.append(row);}host.append(list,reviews);
 }
 window.OrionAppointmentCommunications={mount};
 })();

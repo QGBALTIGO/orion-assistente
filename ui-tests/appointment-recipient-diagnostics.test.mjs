@@ -54,6 +54,8 @@ const flush=()=>new Promise(r=>setImmediate(r));
 test('accepted is never labelled delivered; old accepted staff message shows warning',async()=>{
  const x=await fixture();
  try {
+  assert.equal(x.host.querySelectorAll(':scope > section.os-card').length,3,
+    'Configuracao, avisos e avaliacoes devem aparecer na mesma tela');
   assert.match(x.host.textContent,/Aceito; entrega não confirmada/);
   assert.match(x.host.textContent,/Sem recibo de entrega/);
   assert.match(x.host.textContent,/Entregue/);
