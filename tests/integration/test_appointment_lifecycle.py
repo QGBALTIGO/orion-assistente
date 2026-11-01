@@ -284,7 +284,7 @@ async def test_filtered_pages_include_real_total_beyond200_and_keep_legacy_attri
         rows = (await db.execute(text("""
             INSERT INTO appointments(id,tenant_id,customer_id,professional_id,protocol,idempotency_key,request_fingerprint,
                 start_at,end_at,occupied_from,occupied_until,status,total_cents)
-            SELECT gen_random_uuid(),:tenant,:customer,:pro,'AG-'||lpad(n::text,6,'0'),'page-'||n::text,repeat('a',64),
+            SELECT gen_random_uuid(),:tenant,:customer,:pro,'AG-AAAA'||substr('ABCDEFGHJKLMNPQRSTUVWXYZ23456789',((n-1)/32)::int+1,1)||substr('ABCDEFGHJKLMNPQRSTUVWXYZ23456789',(n-1)%32+1,1),'page-'||n::text,repeat('a',64),
                 CAST(:begin AS timestamptz)+n*interval '1 minute',CAST(:begin AS timestamptz)+(n+30)*interval '1 minute',
                 CAST(:begin AS timestamptz)+n*interval '1 minute',CAST(:begin AS timestamptz)+(n+30)*interval '1 minute',
                 'cancelled',10000 FROM generate_series(1,220) n RETURNING id,protocol
