@@ -8,7 +8,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import text
 
 from app.calendar_provider import CalendarProviderError, GoogleCalendar, deterministic_event_id
-from app.calendar_sync import calendar_lock
+from app.calendar_sync import NOT_CONNECTED, calendar_lock
 from app.catalog_api import support_session_factory
 from app.database import get_session_factory, tenant_transaction
 
@@ -79,14 +79,16 @@ async def process_calendar_outbox(ctx: dict, tenant_id: str, outbox_id: str):
             if row is None:
                 return "not_pending"
             if not connection or connection["status"] != "active" or not connection["refresh_token_enc"]:
-                error = connection["last_error"] if connection and connection["status"] == "error" else "calendar_not_connected"
-                # Move disconnected work behind other due tenants. It must not
-                # exhaust retries or monopolize the scanner's first 100 rows.
+                error = connection["last_error"] if connection and connection["status"] == "error" else NOT_CONNECTED
+                # Pause until an authorized connection is activated. Keeping these
+                # items pending caused the scanner to retry indefinitely although
+                # no Google token exists. The explicit connect/retry flows restore
+                # non-historical 'dead' items to 'pending' without losing updates.
                 await db.execute(text("""
-                    UPDATE calendar_outbox SET last_error=:error,
-                        next_attempt_at=now()+interval '15 minutes'
+                    UPDATE calendar_outbox SET status='dead',last_error=:error,
+                        next_attempt_at=now()+interval '15 minutes',updated_at=clock_timestamp()
                     WHERE tenant_id=:tenant AND id=:id
-                """), {"tenant": tenant, "id": item, "error": error or "calendar_not_connected"})
+                """), {"tenant": tenant, "id": item, "error": error or NOT_CONNECTED})
                 return "not_connected"
             if connection["calendar_id"] == "primary":
                 failure = CalendarProviderError("google_calendar_selection_required", reauthorize=True)

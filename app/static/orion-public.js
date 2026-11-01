@@ -1112,6 +1112,28 @@
     copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
     calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>'
   };
+  // Google Calendar template is an explicit, user-initiated import: it never
+  // grants the Orion access to a customer's Google account.
+  function googleBookingLink(result) {
+    if (!result || result.status !== 'confirmed') return null;
+    const start = new Date(result.start_at), end = new Date(result.end_at);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) return null;
+    const stamp = value => value.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    const services = Array.isArray(result.services) ? result.services.join(' + ') : '';
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      dates: stamp(start) + '/' + stamp(end),
+      text: ('Atendimento • ' + (data.site.title || '') + ' • ' + services).slice(0, 160),
+      details: ('Profissional: ' + (result.professional || '') +
+        '\nProtocolo: ' + (result.protocol || '') +
+        '\nPara remarcar ou cancelar, use o link seguro enviado pelo Orion.').slice(0, 350),
+      location: [siteAddressLine(data.site), data.site.city, data.site.state].filter(Boolean).join(', ').slice(0, 240)
+    });
+    if (typeof data.timezone === 'string' && /^[A-Za-z_]+(?:\/[A-Za-z_+-]+)+$/.test(data.timezone)) {
+      params.set('ctz', data.timezone);
+    }
+    return 'https://calendar.google.com/calendar/render?' + params.toString();
+  }
   function renderSuccess(body) {
     const success = el('div', 'success');
     success.append(el('div', 'success-check', '✓'),
@@ -1158,9 +1180,18 @@
       }
     });
     addAction(copy, SUCCESS_ACTION_ICONS.copy, 'Copiar protocolo');
-    const calendar = button('Adicionar ao meu calendário',
+    const googleURL = googleBookingLink(booking.result);
+    if (googleURL) {
+      const google = el('a', 'outline success-action success-action-secondary');
+      google.href = googleURL;
+      google.target = '_blank';
+      google.rel = 'noopener noreferrer';
+      google.referrerPolicy = 'no-referrer';
+      addAction(google, SUCCESS_ACTION_ICONS.calendar, 'Adicionar ao Google Agenda');
+    }
+    const calendar = button('Baixar para outros calendários (.ics)',
       'outline success-action success-action-secondary', downloadCalendar);
-    addAction(calendar, SUCCESS_ACTION_ICONS.calendar, 'Adicionar ao meu calendário');
+    addAction(calendar, SUCCESS_ACTION_ICONS.calendar, 'Baixar para outros calendários (.ics)');
     success.append(actions);
     body.append(success);
   }
@@ -1168,7 +1199,7 @@
     const result = booking.result; if (!result) return;
     const escape = value => String(value || '').replaceAll('\\', '\\\\').replaceAll('\n', '\\n').replaceAll(';', '\\;').replaceAll(',', '\\,').replaceAll('\r', '');
     const stamp = value => new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Orion//Agendamento//PT-BR', 'BEGIN:VEVENT', `UID:${escape(result.protocol)}-${stamp(result.start_at)}@orion.invalid`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(result.start_at)}`, `DTEND:${stamp(result.end_at)}`, `SUMMARY:${escape(data.site.title)} — ${escape(result.services.join(' + '))}`, `DESCRIPTION:Protocolo ${escape(result.protocol)}. Profissional: ${escape(result.professional)}.`, `LOCATION:${escape([siteAddressLine(data.site), data.site.city, data.site.state].filter(Boolean).join(', '))}`, 'END:VEVENT', 'END:VCALENDAR'];
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Orion//Agendamento//PT-BR', 'BEGIN:VEVENT', `UID:${escape(result.protocol)}@orionagenda.pro`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(result.start_at)}`, `DTEND:${stamp(result.end_at)}`, `SUMMARY:${escape(data.site.title)} — ${escape(result.services.join(' + '))}`, `DESCRIPTION:Protocolo ${escape(result.protocol)}. Profissional: ${escape(result.professional)}.`, `LOCATION:${escape([siteAddressLine(data.site), data.site.city, data.site.state].filter(Boolean).join(', '))}`, 'END:VEVENT', 'END:VCALENDAR'];
     const url = URL.createObjectURL(new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/calendar;charset=utf-8' })); const anchor = el('a'); anchor.href = url; anchor.download = 'agendamento.ics'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
