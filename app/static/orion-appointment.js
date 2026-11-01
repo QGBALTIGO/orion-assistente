@@ -34,6 +34,24 @@ async function request(action,extra={}){
 async function run(fn){if(busy)return;busy=true;document.querySelector('main').setAttribute('aria-busy','true');document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();}catch(e){showError(e);}finally{busy=false;document.querySelector('main').setAttribute('aria-busy','false');document.querySelectorAll('button').forEach(b=>b.disabled=false);$('confirm-reschedule').disabled=!$('slot').value;}}
 function button(text,fn,secondary=false){const n=node('button',text);n.type='button';if(secondary)n.className='secondary';n.onclick=fn;return n;}
 function link(text,url){if(!url)return;try{const u=new URL(url,location.origin);if(u.protocol!=='https:'||u.username||u.password)return;const n=node('a',text);n.href=u.href;n.className='action';n.rel='noreferrer noopener';return n;}catch{}}
+// This opens a one-time Google Calendar draft; the client chooses whether to save it.
+// Never include the private management token, URL fragment or customer phone.
+function googleAppointmentURL(appointment){
+ if(appointment?.status!=='confirmed')return null;
+ const start=new Date(appointment.start_at),end=new Date(appointment.end_at);
+ if(!Number.isFinite(start.getTime())||!Number.isFinite(end.getTime())||end<=start)return null;
+ const stamp=value=>value.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+ const params=new URLSearchParams({
+  action:'TEMPLATE',
+  dates:stamp(start)+'/'+stamp(end),
+  text:('Atendimento • '+(appointment.company||'')+' • '+(appointment.services||[]).join(' + ')).slice(0,160),
+  details:('Profissional: '+(appointment.professional||'')+'\nProtocolo: '+(appointment.protocol||'')+
+   '\nPara remarcar ou cancelar, utilize esta página do Orion.').slice(0,350),
+  location:String(appointment.address||'').slice(0,240)
+ });
+ if(typeof appointment.timezone==='string'&&/^[A-Za-z_]+(?:\/[A-Za-z_+-]+)+$/.test(appointment.timezone))params.set('ctz',appointment.timezone);
+ return 'https://calendar.google.com/calendar/render?'+params.toString();
+}
 function accent(value){
  const color=/^#[0-9a-f]{6}$/i.test(value||'')?value:'#2e7bf6';
  const rgb=[1,3,5].map(i=>parseInt(color.slice(i,i+2),16)/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);
@@ -60,6 +78,10 @@ function render(data){
  const actions=$('actions');actions.replaceChildren();$('reschedule').hidden=true;$('review').hidden=!data.can_review;
  if(data.can_change&&data.pending_change){const proposed=new Intl.DateTimeFormat('pt-BR',{dateStyle:'long',timeStyle:'short',timeZone:data.timezone}).format(new Date(data.pending_change.new_start_at));actions.append(node('p','A equipe propôs '+proposed+'. Seu horário atual permanece válido até você aceitar. O novo horário será conferido na confirmação.'));for(const [title,action] of [['Aceitar novo horário','accept_change'],['Manter meu horário','decline_change']])actions.append(button(title,()=>void run(async()=>{const proposal=data.pending_change;render(await request(action,{expected_updated_at:current.updated_at,idempotency_key:crypto.randomUUID(),proposal_id:proposal.id}));}),action==='decline_change'));}
  if(data.can_change){actions.append(button('Remarcar atendimento',()=>{$('reschedule').hidden=false;$('day').focus();}),button('Cancelar agendamento',()=>$('confirmation').showModal(),true));}
+ if(data.status==='confirmed'){
+  const google=link('Adicionar ao Google Agenda',googleAppointmentURL(data));
+  if(google){google.classList.add('secondary');google.target='_blank';google.referrerPolicy='no-referrer';actions.append(google);}
+ }
  if(data.review)actions.append(node('p','Sua avaliação foi recebida. Obrigado!'));
  if(!reviewMode){
    if(data.status==='completed'&&data.has_future_booking)actions.append(node('p','Seu próximo horário já está garantido!'));
