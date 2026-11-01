@@ -1,6 +1,6 @@
 """Regression checks for the public booking confirmation action group.
 
-The three controls share a responsive Orion component; their routes,
+The controls share a responsive Orion component; their routes,
 clipboard and calendar logic remain available without any remote assets.
 """
 from pathlib import Path
@@ -29,6 +29,10 @@ def test_success_actions_share_one_group_and_existing_handlers():
     assert "button('Copiar protocolo', 'outline success-action success-action-secondary'" in source
     assert "await navigator.clipboard.writeText(booking.result.protocol);" in source
     assert "SUCCESS_ACTION_ICONS.copy" in source
+    assert "google.href = googleURL;" in source
+    assert "google.referrerPolicy = 'no-referrer';" in source
+    assert "Adicionar ao Google Agenda" in source
+    assert "Baixar para outros calendários (.ics)" in source
     assert "'outline success-action success-action-secondary', downloadCalendar" in source
     assert "SUCCESS_ACTION_ICONS.calendar" in source
     assert "el('a', 'pill', 'Abrir WhatsApp novamente')" not in source
