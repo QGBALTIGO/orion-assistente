@@ -8,6 +8,7 @@ on:
       - 'app/static/orion-suite.css'
       - 'tests/integration/test_google_calendar_integration.py'
       - 'ui-tests/google-calendar-brand.test.mjs'
+      - 'ui-tests/google-session-context.test.mjs'
       - '.github/workflows/auto-completion-google-20261025.yml'
   push:
     branches: [main]
@@ -23,6 +24,7 @@ on:
       - 'app/static/orion-suite.js'
       - 'app/static/orion-suite.css'
       - 'ui-tests/google-calendar-brand.test.mjs'
+      - 'ui-tests/google-session-context.test.mjs'
       - 'scripts/prepare_vercel_orion.py'
       - 'alembic/versions/0031_auto_complete_appointments.py'
       - 'tests/integration/test_auto_completion_postgres.py'
@@ -106,4 +108,4 @@ jobs:
         run: |
           npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
           node --check app/static/orion-suite.js
-          node --test ui-tests/agenda-lifecycle.test.mjs ui-tests/dashboard-finance-goals.test.mjs ui-tests/google-calendar-brand.test.mjs
+          node --test ui-tests/agenda-lifecycle.test.mjs ui-tests/dashboard-finance-goals.test.mjs ui-tests/google-calendar-brand.test.mjs ui-tests/google-session-context.test.mjs
