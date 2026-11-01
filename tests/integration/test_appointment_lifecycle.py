@@ -291,7 +291,7 @@ async def test_filtered_pages_include_real_total_beyond200_and_keep_legacy_attri
         """), {"tenant": d["a"], "customer": UUID(person["id"]), "pro": d["pro"], "begin": begin})).mappings().all()
         await db.execute(text("""
             INSERT INTO appointment_history(tenant_id,appointment_id,event,operator,details)
-            SELECT tenant_id,id,'cancelled','support',CASE WHEN right(protocol,1)::int%2=0
+            SELECT tenant_id,id,'cancelled','support',CASE WHEN strpos('ABCDEFGHJKLMNPQRSTUVWXYZ23456789',right(protocol,1))%2=0
                 THEN jsonb_build_object('v',1,'requested_by','customer','source','panel') ELSE '{}'::jsonb END
             FROM appointments WHERE tenant_id=:tenant
         """), {"tenant": d["a"]})
