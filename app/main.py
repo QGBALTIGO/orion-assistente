@@ -1,7 +1,7 @@
 """API Orion: oito fatias técnicas, integrações externas opt-in."""
 from pathlib import Path
-from fastapi import Depends, FastAPI
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import FileResponse, RedirectResponse
 from app.catalog_api import router as catalog_router, list_services
 from app.booking_api import router as bookings_router
 from app.whatsapp_api import router as whatsapp_router
@@ -52,6 +52,9 @@ app = FastAPI(
     title="Orion Barbearias",
     description="Agenda SaaS multiempresa — desenvolvimento controlado",
     version="0.8.0",
+    openapi_url=None,
+    docs_url=None,
+    redoc_url=None,
 )
 
 
@@ -133,7 +136,6 @@ include_plan_router(app, orion_pwa_router)
 # Specific management paths must precede the legacy two-segment catalog path.
 include_plan_router(app, catalog_router)
 
-
 @app.get("/brand/{asset}", include_in_schema=False)
 async def branding(asset: str) -> FileResponse:
     allowed = {
@@ -159,6 +161,7 @@ async def panel_asset(asset: str) -> FileResponse:
     allowed = {"orion-suite.css": "text/css", "orion-suite.js": "text/javascript",
                "orion-plans.css": "text/css", "orion-plans.js": "text/javascript",
                "orion-fields.css": "text/css", "orion-fields.js": "text/javascript",
+               "orion-focus.css": "text/css", "orion-focus.js": "text/javascript",
                "orion-suite-live.js": "text/javascript",
                "orion-admin-center.js": "text/javascript",
                "orion-communication.js": "text/javascript",
@@ -181,8 +184,8 @@ async def panel_asset(asset: str) -> FileResponse:
     )
 
 
-@app.get("/panel", include_in_schema=False)
-async def panel() -> FileResponse:
+@app.get("/painel", include_in_schema=False)
+async def painel() -> FileResponse:
     """Painel HTML; dados protegidos por sessão HttpOnly com CSRF."""
     return FileResponse(
         Path(__file__).parent / "static" / "panel.html",
@@ -190,8 +193,21 @@ async def panel() -> FileResponse:
     )
 
 
+@app.get("/panel", include_in_schema=False)
+async def painel_legacy_redirect(request: Request) -> RedirectResponse:
+    """Preserva links antigos e parâmetros sem expor dados da sessão."""
+    suffix = "?" + request.url.query if request.url.query else ""
+    return RedirectResponse("/painel" + suffix, status_code=308,
+                            headers={"Cache-Control": "no-store"})
+
+
 @app.get("/convite", include_in_schema=False)
 async def invitation_page() -> FileResponse:
     return FileResponse(Path(__file__).parent / "static" / "orion-invite.html",
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
                  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
+
+# IMPORTANT: Register catch-all short protocol pages AFTER every fixed route.
+# Otherwise /painel, /convite and other one-segment URLs return 404.
+from app.short_appointment_api import router as short_appointment_router
+include_plan_router(app, short_appointment_router)

@@ -1,4 +1,4 @@
-"""Browser-level accessibility and layout regression for optional public amenities."""
+"""Mobile and desktop browser regression for amenities inside Onde estamos."""
 import json
 from pathlib import Path
 import pytest
@@ -13,11 +13,13 @@ JS=(ROOT/'app/static/orion-public.js').read_text(encoding='utf-8')
 THEME=(ROOT/'app/static/orion-public-theme.js').read_text(encoding='utf-8')
 URL='https://orion.test/s/empresa-sintetica'
 FIELDS=['amenity_wifi','amenity_parking','amenity_accessibility','amenity_children']
+LABELS=['Wi-Fi','Estacionamento','Acessibilidade','Atende crianças']
+
 
 @pytest.mark.parametrize('engine',['chromium','webkit'])
 @pytest.mark.parametrize('width',[320,390,768,1024])
 @pytest.mark.parametrize('active',[0,1,2,3,4])
-def test_public_amenities_all_combinations_and_info(engine,width,active):
+def test_public_amenities_inside_location_with_accessible_labels(engine,width,active):
     site={'title':'Empresa teste','theme_color':'#ffd000','show_prices':True}
     site.update({key:index<active for index,key in enumerate(FIELDS)})
     data={'timezone':'America/Sao_Paulo','today':'2030-01-07',
@@ -41,59 +43,67 @@ def test_public_amenities_all_combinations_and_info(engine,width,active):
             page.add_script_tag(content=THEME)
             page.add_script_tag(content=FIELDS_JS)
             page.add_script_tag(content=JS)
-            section=page.locator('#amenities-section')
             page.locator('#site-content').wait_for(state='visible')
+            card=page.locator('#address-card')
+            section=page.locator('#amenities-section')
             grid=page.locator('#amenities-grid')
             tiles=page.locator('#amenities-grid .amenity-tile')
+            assert page.locator('.public-main').evaluate('(el)=>el.firstElementChild.id')=='servicos'
+            assert page.locator('.public-main > #amenities-section').count()==0
+            assert card.locator('#amenities-section').count()==1
             assert tiles.count()==active
             assert grid.get_attribute('data-count')==str(active)
             if not active:
                 assert not section.is_visible()
-                assert page.locator('#servicos').evaluate(
-                    '(el)=>getComputedStyle(el).marginTop')=='0px'
+                assert not card.is_visible(), 'No address/map/amenities must hide the location card'
             else:
+                assert card.is_visible()
                 assert section.is_visible()
-                assert page.locator('#amenities-title').inner_text()=='Comodidades'
+                assert page.locator('#amenities-title').inner_text()=='No local'
+                assert page.locator('#location-subtitle').inner_text()=='Confira as comodidades disponíveis.'
+                assert not page.locator('#map-preview').is_visible()
+                assert not page.locator('#location-details').is_visible()
+                assert grid.evaluate('(el)=>getComputedStyle(el).display')=='grid'
                 assert section.evaluate('(el)=>el.scrollWidth<=el.clientWidth+2')
+                assert [tiles.nth(i).locator('.amenity-label').inner_text() for i in range(active)] == LABELS[:active]
                 for i in range(active):
                     tile=tiles.nth(i)
                     assert tile.get_attribute('aria-expanded')=='false'
+                    assert 'disponível' in tile.get_attribute('aria-label')
                     box=tile.bounding_box()
-                    # Compact square hit targets remain stable for all 1–4 options.
-                    expected=66 if width>=640 else (58 if width<360 else 62)
-                    assert box and expected-0.5<=box['width']<=expected+0.5
-                    assert expected-0.5<=box['height']<=expected+0.5
-                    icon_box=tile.locator('svg').bounding_box()
-                    icon_size=24 if width>=640 else (21 if width<360 else 23)
-                    assert icon_box and icon_size-0.5<=icon_box['width']<=icon_size+0.5
-                    assert icon_size-0.5<=icon_box['height']<=icon_size+0.5
-                    assert tile.locator('svg').count()==1
-                # The tiles remain a single row on phones and desktops, and
-                # only groups of 3 or 4 are centered inside the site container.
+                    assert box and box['width']>=90 and box['height']>=45
+                    icon=tile.locator('svg')
+                    assert icon.count()==1
+                    icon_box=icon.bounding_box()
+                    assert icon_box and 15<=icon_box['width']<=19
+                    assert 15<=icon_box['height']<=19
+                    section_box=section.bounding_box()
+                    assert section_box and box['x']>=section_box['x']-1
+                    assert box['x']+box['width']<=section_box['x']+section_box['width']+1
+                # All rendered tiles have an identical width/height, regardless
+                # of title length; there must be no orphan aligned left.
                 boxes=[tiles.nth(i).bounding_box() for i in range(active)]
-                ycoords=[round(box['y']) for box in boxes]
-                assert len(set(ycoords))==1, 'No wrapped or uneven icon rows'
-                if active>1:
-                    expected_gap=16 if width>=640 else (12 if width<360 else 14)
-                    horizontal_gaps=[boxes[i+1]['x']-(boxes[i]['x']+boxes[i]['width'])
-                                     for i in range(active-1)]
-                    assert all(abs(gap-expected_gap)<=1.5 for gap in horizontal_gaps), (
-                        'Even, comfortable spacing between active amenities', horizontal_gaps)
-                    assert boxes[-1]['x']+boxes[-1]['width'] <= section.bounding_box()['x']+section.bounding_box()['width']+1
+                assert max(box['width'] for box in boxes)-min(box['width'] for box in boxes)<=2
+                assert max(box['height'] for box in boxes)-min(box['height'] for box in boxes)<=2
+                assert grid.evaluate('(el)=>getComputedStyle(el).gridTemplateColumns.trim().split(" ").filter(Boolean).length - 1')==(
+                    0 if width>=720 and active==1 else (active-1 if width>=720 else 1))
                 area=grid.bounding_box()
                 assert area
-                group_center=(boxes[0]['x'] + boxes[-1]['x'] + boxes[-1]['width'])/2
-                if active>=3:
-                    grid_center=area['x']+area['width']/2
-                    assert abs(group_center-grid_center)<=1.5, '3/4 amenities centered horizontally'
-                    assert grid.evaluate('(el)=>getComputedStyle(el).justifyContent')=='center'
-                    page.locator('#amenity-detail').evaluate(
-                        '(el)=>getComputedStyle(el).marginLeft')
+                center=area['x']+area['width']/2
+                if width<720:
+                    if active==1 or active==3:
+                        last=boxes[-1]
+                        assert abs(last['x']+last['width']/2-center)<=2, 'single item on final row centered'
+                    if active>=2:
+                        assert abs(boxes[0]['y']-boxes[1]['y'])<=2, 'first row has even baseline'
+                    if active>=3:
+                        assert boxes[2]['y']>=boxes[0]['y']+boxes[0]['height']+6
+                    if active==4:
+                        assert abs(boxes[2]['y']-boxes[3]['y'])<=2
                 else:
-                    assert abs(boxes[0]['x']-area['x'])<=1.5, '1/2 amenities stay left-aligned'
+                    assert all(abs(box['y']-boxes[0]['y'])<=2 for box in boxes), 'desktop uses one aligned row'
+                    assert boxes[-1]['x']+boxes[-1]['width']<=area['x']+area['width']+2
                 if active>=3:
-                    # Fully closed wheel remains inside the SVG viewport,
-                    # rather than an amputated arc touching the edge.
                     wheel=tiles.nth(2).locator('svg circle').last
                     assert wheel.count()==1
                     dimensions=wheel.evaluate("""node=>{

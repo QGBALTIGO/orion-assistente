@@ -184,6 +184,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.body(source.read_bytes(), mime=mimetypes.guess_type(name)[0] or 'application/octet-stream')
         if path == '/favicon.ico':
             return self.body(b'', 204, 'image/x-icon')
+        if path == '/manifest.webmanifest':
+            # The actual PWA manifest is a public read-only shipped asset.
+            # Keep every other unexpected fixture route denied.
+            return self.body((ROOT / 'app/static/orion-pwa.webmanifest').read_bytes(),
+                             mime='application/manifest+json')
         session = self.session()
         if session is None:
             return self.reject(None, 'Open the synthetic panel URL first')

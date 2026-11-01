@@ -74,10 +74,8 @@
 .hours-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;min-width:0;padding:10px 0;border-top:1px solid var(--border)}
 .hours-day{min-width:0;color:var(--text);font-size:13px;line-height:20px;font-weight:500}
 .hours-time{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex:0 1 auto;max-width:62%;min-width:0;text-align:right;color:var(--text);font-size:13px;line-height:20px;font-weight:650;font-variant-numeric:tabular-nums}
-.hours-shifts{display:flex;flex-wrap:wrap;justify-content:flex-end;column-gap:5px;row-gap:2px}
-.hours-shift{white-space:nowrap}
-.hours-separator{font-weight:400;color:var(--muted)}
-.hours-break{display:block;color:var(--muted);font-size:11px;line-height:17px;font-weight:500;white-space:normal;overflow-wrap:anywhere}
+.hours-shift{display:block;white-space:nowrap}
+.hours-break{display:block;color:var(--muted);font-size:11px;line-height:17px;font-weight:500;white-space:normal;overflow-wrap:normal}
 .hours-closed{color:var(--muted);font-weight:500}
 .hours-card .hours-note{font-size:11px;line-height:17px;color:var(--muted);margin:12px 0 0}
 .location-card{padding:20px;overflow:hidden}
@@ -145,126 +143,195 @@ body{background:var(--bg);color:var(--text);min-width:0}
 :root[data-theme="dark"] .appearance-trigger .appearance-sun{display:none}
 :root[data-theme="dark"] .appearance-trigger .appearance-moon{display:block}
 
-/* Compact, recognizable contact network icons: no stacked text buttons. */
-.contact-card{display:grid;grid-template-columns:minmax(0,1fr);align-items:center;gap:18px;padding:22px;border-radius:20px;min-width:0}
+/* Contact actions: equal-size cards with a readable label. Keep the
+   site identity, outline and palette, not a floating group of icon squares.
+   Mobile: 1 centered, 2 side-by-side, 3 equal, 4 in 2x2, 5/6 in 3 columns.
+   Extra channels use the same slots and never leave an orphan at left. */
+.contact-card{
+  display:grid;grid-template-columns:minmax(0,1fr);
+  gap:15px;align-items:start;min-width:0;padding:20px;
+  border-radius:20px
+}
 .contact-heading{display:flex;align-items:center;gap:12px;min-width:0}
-.contact-heading-icon{width:44px;height:44px;flex:0 0 44px;display:grid;place-items:center;border-radius:14px;background:color-mix(in srgb,var(--primary) 10%,var(--card));color:var(--primary)}
-.contact-heading-icon svg{width:23px;height:23px;display:block}
+.contact-heading-icon{
+  width:42px;height:42px;flex:0 0 42px;
+  display:grid;place-items:center;border-radius:13px;
+  background:color-mix(in srgb,var(--primary) 10%,var(--card));
+  color:var(--primary)
+}
+.contact-heading-icon svg{display:block;width:22px;height:22px}
 .contact-heading-copy{min-width:0}
 .contact-card h2{font-size:20px;line-height:26px;letter-spacing:-.02em}
-.contact-card p{font-size:13px;line-height:19px;margin-top:3px}
-.contact-links{display:flex;flex-wrap:wrap;align-items:center;gap:9px;min-width:0}
-.social-link{
-  --social-color:var(--primary);
-  display:grid;place-items:center;flex:0 0 50px;width:50px;height:50px;min-height:50px;
-  padding:10px;border:1px solid var(--border);border-radius:14px;
-  background:color-mix(in srgb,var(--social-color) 5%,var(--card));
-  color:var(--social-color);line-height:1;
-  transition:transform .16s ease,background .16s ease,border-color .16s ease,box-shadow .16s ease
+.contact-card p{font-size:12px;line-height:18px;margin-top:3px}
+.contact-links{
+  --contact-gap:9px;
+  display:flex;flex-wrap:wrap;justify-content:center;
+  align-items:stretch;gap:var(--contact-gap);
+  width:100%;min-width:0
 }
-.social-link svg{display:block;flex:none;width:25px;height:25px;overflow:visible}
-.social-link:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--social-color) 37%,var(--border));background:color-mix(in srgb,var(--social-color) 11%,var(--card));box-shadow:0 5px 15px #00000012}
-.social-link:active{transform:scale(.97)}
-.social-link:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+.social-link{--social-color:var(--primary)}
+.contact-links .social-link{
+  box-sizing:border-box;display:flex;flex-direction:column;
+  justify-content:center;align-items:center;gap:7px;
+  flex:0 1 calc((100% - var(--contact-gap) - var(--contact-gap)) / 3);
+  min-width:0;min-height:76px;padding:10px 5px;
+  border:1px solid var(--border);border-radius:13px;
+  background:color-mix(in srgb,var(--social-color) 3%,var(--bg));
+  color:var(--text);
+  text-align:center;font:650 12px/16px Figtree,system-ui,sans-serif;
+  transition:transform .16s ease,background .16s ease,border-color .16s ease
+}
+.contact-links .social-link svg{
+  display:block;flex:0 0 23px;width:23px;height:23px;
+  overflow:visible;color:var(--social-color)
+}
+.contact-links .social-link-label{
+  min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap
+}
+.contact-links[data-count="1"] .social-link{
+  flex-basis:min(100%,220px)
+}
+.contact-links[data-count="2"] .social-link,
+.contact-links[data-count="4"] .social-link{
+  flex-basis:calc((100% - var(--contact-gap))/2)
+}
+.contact-links .social-link:hover{
+  transform:translateY(-1px);
+  border-color:color-mix(in srgb,var(--social-color) 35%,var(--border));
+  background:color-mix(in srgb,var(--social-color) 8%,var(--bg))
+}
+.contact-links .social-link:active{transform:scale(.985)}
+.contact-links .social-link:focus-visible{outline:3px solid var(--primary);outline-offset:2px}
 .social-link--whatsapp{--social-color:#179f61}
 .social-link--instagram{--social-color:#cb3986}
 .social-link--facebook{--social-color:#1877f2}
-.social-link--tiktok{--social-color:#222c3e}
+.social-link--tiktok{--social-color:#344154}
 .social-link--phone{--social-color:#536e91}
 :root[data-theme="dark"] .social-link--whatsapp{--social-color:#56d990}
 :root[data-theme="dark"] .social-link--instagram{--social-color:#ff8bc8}
 :root[data-theme="dark"] .social-link--facebook{--social-color:#77b2ff}
 :root[data-theme="dark"] .social-link--tiktok{--social-color:#e4ecf8}
 :root[data-theme="dark"] .social-link--phone{--social-color:#bacbe4}
-@media(min-width:640px){
-  .contact-card{grid-template-columns:minmax(0,1fr) auto;gap:24px;padding:24px}
-  .contact-links{justify-content:flex-end;max-width:400px}
+@media(min-width:740px){
+  .contact-card{
+    grid-template-columns:minmax(0,.85fr) minmax(0,1.25fr);
+    align-items:center;gap:22px;padding:24px
+  }
+  .contact-links[data-count="4"] .social-link{
+    flex-basis:calc((100% - var(--contact-gap) - var(--contact-gap) - var(--contact-gap)) / 4)
+  }
 }
 @media(max-width:359px){
   .appearance-trigger{width:44px;height:44px}
-  .contact-card{padding:16px;gap:16px}
+  .contact-card{padding:16px;gap:13px}
   .contact-heading-icon{width:40px;height:40px;flex-basis:40px}
   .contact-card h2{font-size:18px}
-  .contact-links{gap:7px}
-  .social-link{flex-basis:47px;width:47px;height:47px}
+  .contact-card p{font-size:11px}
+  .contact-links{--contact-gap:7px}
+  .contact-links .social-link{min-height:72px;gap:6px;padding-inline:4px;font-size:11px}
+  .contact-links .social-link svg{flex-basis:21px;width:21px;height:21px}
 }
 @media(prefers-reduced-motion:reduce){
   .social-link,.appearance-trigger{transition:none}
 }
 
-
-/* Compact amenities — same visual rhythm as the rest of the site. */
-#amenities-section[hidden]+#servicos{margin-top:0}
-#amenities-section:not([hidden])+#servicos{margin-top:28px}
-.amenities-section{position:relative;min-width:0}
-.amenities-heading{margin-bottom:12px}
-.amenities-heading h2{font-size:22px;line-height:1.3}
-.amenities-heading p{font-size:13px;line-height:19px}
-.amenities-grid{
-  display:flex;flex-wrap:wrap;align-items:center;
-  gap:14px;width:100%;max-width:100%;min-width:0
+/* Amenities belong to Onde estamos — compact, accessible chips rather
+   than a floating section ahead of the booking catalogue. Uses existing
+   Orion palette, gaps and card; only explicitly published flags appear. */
+.location-card .amenities-section{
+  position:relative;min-width:0;margin-top:18px;padding-top:15px;
+  border-top:1px solid var(--border)
 }
-/* Center the group as one balanced row only when 3 or 4 amenities are active.
-   One or two stay aligned with the rest of the left-anchored page content. */
-.amenities-grid[data-count="3"],
-.amenities-grid[data-count="4"]{justify-content:center}
-.amenities-grid[data-count="3"]+.amenity-detail,
-.amenities-grid[data-count="4"]+.amenity-detail{margin-inline:auto}
-.amenity-tile{
-  box-sizing:border-box;display:grid;place-items:center;flex:0 0 62px;
-  width:62px;height:62px;min-width:62px;min-height:62px;
-  padding:0;border:1px solid var(--border);border-radius:14px;
-  background:var(--card);color:var(--muted);
-  box-shadow:0 1px 4px #0f1b330a;
-  transition:background .16s,border-color .16s,transform .16s,color .16s
+.location-card .amenities-heading{
+  margin:0 0 10px;color:var(--text);
+  font:650 13px/19px Outfit,Figtree,sans-serif
 }
-.amenity-tile svg{display:block;width:23px;height:23px;overflow:visible}
-.amenity-tile:hover{
-  transform:translateY(-1px);
-  border-color:color-mix(in srgb,var(--primary) 32%,var(--border));
-  color:var(--text)
+/* A counted grid avoids uneven pill widths and a left-orphaned last row.
+   On phones: one is centered, two use 2 columns, three get a centered last
+   tile of identical width, four form a stable 2x2. On wide screens every
+   item gets the same 170px slot, with 1–4 columns according to count. */
+.location-card .amenities-grid{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:stretch;gap:9px;width:100%;max-width:100%;min-width:0
 }
-.amenity-tile[aria-expanded=true]{
-  color:var(--primary);background:color-mix(in srgb,var(--primary) 6%,var(--card));
-  border-color:color-mix(in srgb,var(--primary) 39%,var(--border))
+.location-card .amenity-tile{
+  box-sizing:border-box;display:flex;align-items:center;justify-content:center;
+  width:100%;min-width:0;height:52px;min-height:52px;
+  gap:7px;padding:8px 9px;border:1px solid var(--border);border-radius:11px;
+  background:var(--bg);color:var(--muted);box-shadow:none;
+  text-align:center;font:650 12px/16px Figtree,system-ui,sans-serif;
+  transition:background .16s,border-color .16s,color .16s
 }
-.amenity-tile:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
-.amenity-detail{
-  box-sizing:border-box;max-width:330px;min-width:0;margin-top:10px;
-  padding:14px 16px;border:1px solid var(--border);
-  border-radius:14px;background:var(--card);color:var(--text);
-  box-shadow:0 4px 14px #0f1b330c
+.location-card .amenity-tile svg{
+  display:block;flex:0 0 17px;width:17px;height:17px;overflow:visible
 }
-.amenity-detail-heading{display:flex;gap:12px;align-items:center;justify-content:space-between;min-width:0}
-.amenity-detail-heading strong{font:650 15px/22px Outfit,Figtree,sans-serif;overflow-wrap:anywhere}
-.amenity-detail-close{
+.location-card .amenity-label{
+  min-width:0;overflow-wrap:break-word;hyphens:auto;
+}
+.location-card .amenities-grid[data-count="1"] .amenity-tile:last-child,
+.location-card .amenities-grid[data-count="3"] .amenity-tile:last-child{
+  grid-column:1/-1;justify-self:center;width:calc((100% - 9px)/2)
+}
+@media(min-width:720px){
+  .location-card .amenities-grid[data-count="1"]{grid-template-columns:minmax(0,1fr);max-width:170px}
+  .location-card .amenities-grid[data-count="2"]{grid-template-columns:repeat(2,minmax(0,1fr));max-width:349px}
+  .location-card .amenities-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr));max-width:528px}
+  .location-card .amenities-grid[data-count="4"]{grid-template-columns:repeat(4,minmax(0,1fr));max-width:707px}
+  .location-card .amenities-grid[data-count="1"] .amenity-tile:last-child,
+  .location-card .amenities-grid[data-count="3"] .amenity-tile:last-child{
+    grid-column:auto;justify-self:stretch;width:100%
+  }
+  .location-card .amenity-tile{height:46px;min-height:46px}
+}
+.location-card .amenity-tile:hover{
+  border-color:color-mix(in srgb,var(--primary) 35%,var(--border));
+  background:color-mix(in srgb,var(--primary) 5%,var(--card));color:var(--text)
+}
+.location-card .amenity-tile[aria-expanded=true]{
+  color:var(--text);border-color:var(--primary);
+  background:color-mix(in srgb,var(--primary) 9%,var(--card))
+}
+.location-card .amenity-tile:focus-visible{
+  outline:3px solid var(--primary);outline-offset:2px
+}
+.location-card .amenity-detail{
+  box-sizing:border-box;max-width:100%;min-width:0;margin-top:10px;
+  padding:12px 14px;border:1px solid var(--border);
+  border-radius:12px;background:var(--bg);color:var(--text);
+  box-shadow:none
+}
+.location-card .amenity-detail-heading{
+  display:flex;gap:12px;align-items:center;justify-content:space-between;min-width:0
+}
+.location-card .amenity-detail-heading strong{
+  font:650 14px/20px Outfit,Figtree,sans-serif;overflow-wrap:anywhere
+}
+.location-card .amenity-detail-close{
   display:grid;place-items:center;flex:none;
   width:30px;height:30px;min-width:30px;min-height:30px;
   border-radius:9px;background:var(--soft);color:var(--muted)
 }
-.amenity-detail-close svg{width:16px;height:16px}
-.amenity-detail .amenity-available{
+.location-card .amenity-detail-close svg{width:16px;height:16px}
+.location-card .amenity-detail .amenity-available{
   display:flex;align-items:center;gap:6px;margin-top:7px;
   font-size:12px;line-height:18px;font-weight:650;color:#26864a
 }
-:root[data-theme=dark] .amenity-detail .amenity-available{color:#70da9a}
-.amenity-available svg{width:16px;height:16px;flex:none}
-.amenity-detail p{color:var(--muted);font-size:12px;line-height:19px;margin-top:6px}
+:root[data-theme=dark] .location-card .amenity-detail .amenity-available{color:#70da9a}
+.location-card .amenity-available svg{width:16px;height:16px;flex:none}
+.location-card .amenity-detail p{color:var(--muted);font-size:12px;line-height:19px;margin-top:6px}
 @media(max-width:359px){
-  .amenities-grid{gap:12px}
-  .amenity-tile{flex-basis:58px;width:58px;height:58px;min-width:58px;min-height:58px;border-radius:13px}
-  .amenity-tile svg{width:21px;height:21px}
-}
-@media(min-width:640px){
-  .amenities-grid{gap:16px}
-  .amenity-tile{flex-basis:66px;width:66px;height:66px;min-width:66px;min-height:66px}
-  .amenity-tile svg{width:24px;height:24px}
-  #amenities-section:not([hidden])+#servicos{margin-top:36px}
+  .location-card .amenities-grid{gap:7px}
+  .location-card .amenities-grid[data-count="1"] .amenity-tile:last-child,
+  .location-card .amenities-grid[data-count="3"] .amenity-tile:last-child{
+    width:calc((100% - 7px)/2)
+  }
+  .location-card .amenity-tile{gap:5px;padding:7px;font-size:11px;line-height:15px}
+  .location-card .amenity-tile svg{width:16px;height:16px;flex-basis:16px}
 }
 @media(prefers-reduced-motion:reduce){
-  .amenity-tile{transition:none}
+  .location-card .amenity-tile{transition:none}
 }
-
 
 /* Public booking: multiple complete services, no flickering image re-renders. */
 .booking-selection-intro{display:flex;align-items:baseline;flex-wrap:wrap;gap:5px 12px;margin-bottom:11px}
@@ -614,3 +681,108 @@ body{background:var(--bg);color:var(--text);min-width:0}
   .booking-confirmation-body .booking-form .field>input{scroll-behavior:auto}
 }
 
+/* Booking success: one action group, aligned to the same content width as
+   the appointment summary. Primary and secondary colors follow site theme. */
+#booking-dialog .success{min-width:0;padding-bottom:24px}
+#booking-dialog .success .review-card{margin-bottom:16px}
+#booking-dialog .success-actions{
+  display:grid;grid-template-columns:minmax(0,1fr);
+  gap:10px;width:100%;min-width:0;margin:0;
+}
+#booking-dialog .success .success-action{
+  box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;
+  gap:10px;width:100%;max-width:100%;min-width:0;min-height:52px;height:auto;
+  margin:0;padding:12px 16px;border-radius:12px;
+  font:600 14px/1.35 Figtree,system-ui,sans-serif;
+  text-align:center;white-space:normal;overflow-wrap:anywhere;
+  text-decoration:none;box-shadow:none;
+}
+#booking-dialog .success .success-action-primary{
+  color:var(--primary-ink);background:var(--primary);border:1px solid transparent;
+}
+#booking-dialog .success .success-action-secondary{
+  color:var(--text);background:var(--card);border:1px solid var(--border);
+}
+#booking-dialog .success .success-action-secondary:hover{
+  background:var(--bg);border-color:color-mix(in srgb,var(--primary) 24%,var(--border));
+}
+#booking-dialog .success-action-icon{
+  display:inline-flex;align-items:center;justify-content:center;
+  flex:0 0 20px;width:20px;height:20px;line-height:0;
+}
+#booking-dialog .success-action-icon svg{display:block;width:20px;height:20px}
+#booking-dialog .success-action-label{min-width:0;overflow-wrap:anywhere}
+@media(min-width:640px){
+  #booking-dialog .success-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #booking-dialog .success-action-primary{grid-column:1/-1}
+}
+@media(max-width:359px){
+  #booking-dialog .success .success-action{
+    padding-inline:10px;font-size:13px;min-height:48px;
+  }
+}
+
+
+/* Instagram gallery experiment inside the existing Sobre nós card.
+   Crops ONLY the official public profile embed's chrome, leaving its six real
+   publication thumbnails interactive. We do not download/scrape Instagram.
+   If a profile restricts embedding, the safe 'Abrir perfil' link still works. */
+.about-instagram{min-width:0;margin-top:20px;padding-top:17px;border-top:1px solid var(--border)}
+.about-card-instagram-only .about-instagram{margin-top:0;padding-top:0;border-top:0}
+.about-instagram-heading{display:flex;align-items:center;gap:10px;min-width:0;margin-bottom:12px}
+.about-instagram-icon{display:grid;place-items:center;flex:0 0 35px;width:35px;height:35px;border-radius:11px;border:1px solid var(--border);background:color-mix(in srgb,var(--primary) 7%,var(--card));color:var(--text)}
+.about-instagram-icon svg{display:block;width:19px;height:19px}
+.about-instagram-heading-copy{display:grid;align-content:center;gap:1px;min-width:0;flex:1}
+.about-instagram-eyebrow{font:600 11px/1.35 Figtree,system-ui,sans-serif;color:var(--muted);letter-spacing:.015em}
+.about-instagram-heading-copy strong{min-width:0;font:700 13px/1.35 Figtree,system-ui,sans-serif;color:var(--text);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
+#about-card .about-instagram-open{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;min-height:35px;margin:0;padding:7px 10px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font:650 12px/1.3 Figtree,system-ui,sans-serif;white-space:nowrap;transition:border-color .15s ease,background .15s ease}
+#about-card .about-instagram-open svg{display:block;flex:0 0 15px;width:15px;height:15px}
+#about-card .about-instagram-open:hover{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 8%,var(--card))}
+#about-card .about-instagram-open:focus-visible{outline:3px solid var(--primary);outline-offset:2px}
+/* The Instagram embed paints a white frame around the media tiles (~2% of
+   its width on iPhone). Overscan it horizontally and crop that white top strip
+   vertically; adjust the 3x2 viewport height by the same proportion so no
+   media thumbnail gets cropped at the bottom. Never paint a white border here. */
+.about-instagram-preview{position:relative;isolation:isolate;container-type:inline-size;box-sizing:border-box;min-width:0;width:100%;aspect-ratio:14/9;overflow:hidden;border:0;border-radius:13px;background:var(--card)}
+.about-instagram-preview>iframe{position:absolute;display:block;left:-3px;top:-142px;width:calc(100% + 6px);max-width:none;min-width:0;height:900px;border:0;background:transparent}
+@supports (width:1cqw){
+  .about-instagram-preview>iframe{top:calc(-1 * clamp(120px,40cqw,160px) - clamp(7px,2.1cqw,14px))}
+}
+@media(max-width:359px){
+  .about-instagram-heading{gap:8px}
+  .about-instagram-icon{width:33px;height:33px;flex-basis:33px}
+  #about-card .about-instagram-open{padding-inline:8px;font-size:11px}
+  .about-instagram-heading-copy strong{font-size:12px}
+}
+@media(prefers-reduced-motion:reduce){
+  #about-card .about-instagram-open{transition:none}
+}
+
+
+/* Compact address in the public hero: street and municipality do not share
+   a dangling middle dot when the company has a long neighborhood name.
+   The complete address stays in Onde estamos (map/details). */
+.identity-text #hero-address{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:1px;
+  min-width:0;margin-top:7px;color:var(--muted);line-height:1.35
+}
+.identity-text #hero-address>span{display:block;min-width:0;max-width:100%}
+.identity-text .hero-address-street{
+  color:var(--muted);font:500 12px/1.4 Figtree,system-ui,sans-serif;
+  overflow-wrap:break-word
+}
+.identity-text .hero-address-locality{
+  color:var(--muted);font:450 11px/1.4 Figtree,system-ui,sans-serif;
+  overflow-wrap:break-word
+}
+.identity-text .online-label{margin-top:8px}
+@media(min-width:640px){
+  .identity-text .hero-address-street{font-size:14px}
+  .identity-text .hero-address-locality{font-size:12px}
+}
+@media(max-width:359px){
+  .identity-text #hero-address{margin-top:5px}
+  .identity-text .hero-address-street{font-size:11px}
+  .identity-text .hero-address-locality{font-size:10px}
+  .identity-text .online-label{margin-top:6px}
+}

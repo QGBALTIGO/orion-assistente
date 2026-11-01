@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
+import re
 from uuid import UUID
 
 from cryptography.fernet import Fernet
@@ -24,8 +25,38 @@ def cipher():
     return Fernet(os.environ['INTEGRATION_FERNET_KEY'].encode())
 
 
+def central_enabled():
+    return (access.enabled()
+            and os.getenv('ORION_CENTRAL_APPOINTMENT_WHATSAPP_ENABLED') == '1'
+            and os.getenv('ORION_CENTRAL_NOTIFICATIONS_ENABLED') == '1')
+
+
+def central_channel():
+    from app.qr_legacy import channel_id, configured_tenant
+    try:
+        admin = configured_tenant()
+        return admin, channel_id(admin)
+    except HTTPException:
+        return None, None
+
+
+def notification_settings(row, central, channel=None):
+    if not central:
+        return dict(row) if row else None
+    # Every company gets safe defaults, without requiring its own QR session.
+    # An explicit company opt-out is preserved; its channel cannot select
+    # the platform WhatsApp number.
+    defaults = {'enabled': True, 'version': 0, 'confirmation': True,
+        'professional_notice': True, 'cancellation': True, 'rescheduling': True,
+        'reschedule_acceptance': False, 'reminder': True,
+        'review': True, 'review_delay_min': 15,
+        'return_invitation': False, 'signature': 'Orion Agenda'}
+    return {**defaults, **(dict(row) if row else {}), 'channel_id': channel}
+
+
 async def enqueue_event(db, tenant, appointment, event, details):
-    if not access.tenant_enabled(tenant):return
+    central = central_enabled()
+    if not central and not access.tenant_enabled(tenant):return
     from app.plan_permissions import has_feature
     if not await has_feature(db, tenant, "notifications.basic"):return
     # Every committed mutation invalidates old pending facts in this SAME tx.
@@ -34,7 +65,10 @@ async def enqueue_event(db, tenant, appointment, event, details):
         last_error='appointment_changed',updated_at=clock_timestamp()
         WHERE tenant_id=:t AND appointment_id=:id AND status='pending'"""), {'t':tenant,'id':appointment})
     if event=='cancelled' and (details.get('previous') or {}).get('status')!='confirmed':return
-    settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
+    saved=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
+    admin,channel=central_channel() if central else (None,None)
+    if central and (admin is None or channel is None):return
+    settings=notification_settings(saved,central,channel)
     if not settings or not settings['enabled'] or not settings['channel_id']:return
     row=(await db.execute(text('SELECT * FROM appointments WHERE tenant_id=:t AND id=:id'),{'t':tenant,'id':appointment})).mappings().one()
     now=(await db.execute(text('SELECT clock_timestamp()'))).scalar_one()
@@ -58,26 +92,44 @@ async def enqueue_event(db, tenant, appointment, event, details):
         add('review','customer',due,due+timedelta(hours=24))
     for kind,recipient,recipient_id,due,expiry in events:
         key=event+':'+str(appointment)+':'+row['updated_at'].isoformat()+':'+kind+':'+str((details.get('previous') or {}).get('proposal_id',''))
+        center_column=",central_channel_id" if central else ""
+        center_value=",:central_channel" if central else ""
         await db.execute(text('''INSERT INTO appointment_notifications
-          (tenant_id,appointment_id,appointment_version,event,recipient_kind,recipient_id,channel_id,settings_version,
-           event_key,previous,due_at,expires_at)
-          VALUES(:t,:id,:version,:event,:kind,:recipient,:channel,:settings,:key,CAST(:previous AS jsonb),:due,:expiry)
+          (tenant_id,appointment_id,appointment_version,event,recipient_kind,recipient_id,channel_id''' +
+          center_column + ''',settings_version,event_key,previous,due_at,expires_at)
+          VALUES(:t,:id,:version,:event,:kind,:recipient,:channel''' +
+          center_value + ''',:settings,:key,CAST(:previous AS jsonb),:due,:expiry)
           ON CONFLICT DO NOTHING'''),{'t':tenant,'id':appointment,'version':row['updated_at'],'event':kind,'kind':recipient,
-          'recipient':recipient_id,'channel':settings['channel_id'],'settings':settings['version'],'key':key,
+          'recipient':recipient_id,'channel':None if central else settings['channel_id'],
+            'central_channel':channel if central else None,
+            'settings':settings['version'],'key':key,
           'previous':json.dumps(details.get('previous') or {},default=str),'due':due,'expiry':expiry})
 
 
 async def eligibility(db, tenant, job):
+    central = job.get('central_channel_id') is not None
+    if central_enabled() and not central:
+        # Prevent any pre-rollout tenant channel notice from bypassing the
+        # platform-only sender rule when the central lane becomes active.
+        return 'execution_paused',None,None,None
+    if central:
+        admin, channel = central_channel()
+        if not central_enabled() or admin is None or channel != job['central_channel_id']:
+            return 'execution_paused',None,None,None
     from app.plan_permissions import has_feature
     if not await has_feature(db, tenant, "notifications.basic"):
         return 'plan_feature_unavailable',None,None,None
-    settings=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
-    if not access.tenant_enabled(tenant) or not settings or not settings['enabled']:return 'execution_paused',None,None,None
-    if settings['version']!=job['settings_version'] or settings['channel_id']!=job['channel_id']:return 'settings_changed',None,None,None
+    saved=(await db.execute(text('SELECT * FROM appointment_communication_settings WHERE tenant_id=:t'),{'t':tenant})).mappings().first()
+    settings=notification_settings(saved,central,job.get('central_channel_id'))
+    if (not central and not access.tenant_enabled(tenant)) or not settings or not settings['enabled']:
+        return 'execution_paused',None,None,None
+    expected_channel = job.get('central_channel_id') if central else job['channel_id']
+    if settings['version']!=job['settings_version'] or settings['channel_id']!=expected_channel:
+        return 'settings_changed',None,None,None
     row=await read_appointment(db,tenant,job['appointment_id'])
     if row['updated_at']!=job['appointment_version']:return 'appointment_changed',None,None,None
     channel=(await db.execute(text('SELECT whatsapp_channel_id FROM tenants WHERE id=:t'),{'t':tenant})).scalar_one_or_none()
-    if channel is not None and channel!=job['channel_id']:return 'channel_changed',None,None,None
+    if not central and channel is not None and channel!=job['channel_id']:return 'channel_changed',None,None,None
     if job['event']=='customer_proposal':
         proposal=(await db.execute(text("""SELECT 1 FROM appointment_change_proposals WHERE tenant_id=:t
             AND appointment_id=:id AND id=CAST(:proposal AS uuid) AND status='pending' AND expires_at>clock_timestamp()"""),
@@ -105,7 +157,11 @@ async def eligibility(db, tenant, job):
         if not contact or contact['operational_opt_in'] is not True:return 'communication_not_authorized',None,None,None
         if job['event']=='review' and contact['marketing_opt_in'] is not True:return 'review_not_authorized',None,None,None
         phone=contact['whatsapp_e164']
-    if not access.recipient_allowed(phone):return 'pilot_recipient_not_authorized',None,None,None
+    if central:
+        if not isinstance(phone,str) or not re.fullmatch(r'(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})',phone):
+            return 'invalid_recipient',None,None,None
+    elif not access.recipient_allowed(phone):
+        return 'pilot_recipient_not_authorized',None,None,None
     digest=hashlib.sha256(phone.encode()).hexdigest()
     if job.get('recipient_hash') and job['recipient_hash']!=digest:return 'contact_changed',None,None,None
     return None,row,phone,settings
@@ -116,14 +172,32 @@ async def prepare_body(db,tenant,job,row,settings):
         FROM tenants t LEFT JOIN management_site_preferences p ON p.tenant_id=t.id WHERE t.id=:t'''),{'t':tenant})).mappings().one()
     customer_link=None
     if job['recipient_kind']=='customer' and job['event'] in {'customer_rescheduled','customer_proposal','review'}:
-        customer_link=await access.issue(db,tenant,job['appointment_id'])
+        customer_link=await access.shared_link(db,tenant,job['appointment_id'],audience='customer')
     from app.public_origins import canonical_public_origin
     booking_link=canonical_public_origin()+'/s/'+shop['public_slug'] if shop.get('public_slug') and shop['public_enabled'] else None
     future=(await db.execute(text("SELECT EXISTS(SELECT 1 FROM appointments WHERE tenant_id=:t AND customer_id=:customer AND id<>:id AND status='confirmed' AND start_at>now())"),
         {'t':tenant,'customer':row['customer_id'],'id':row['id']})).scalar_one()
-    return compose(job['event'],row,company=shop['name'],signature=settings['signature'],customer_link=customer_link,
-        booking_link=booking_link,previous=job['previous'],include_return=settings['return_invitation'] and not future,
+    professional_link = (await access.shared_link(db,tenant,job['appointment_id'],audience='professional')
+                         if job['event'].startswith('professional_') else None)
+    body = compose(job['event'],row,company=shop['name'],signature=settings['signature'],customer_link=customer_link,
+        professional_link=professional_link,booking_link=booking_link,
+        previous=job['previous'],include_return=settings['return_invitation'] and not future,
         address=', '.join(str(shop[k]) for k in ('address','city','state') if shop.get(k)))
+    if (job['event'] == 'professional_new' and job['recipient_kind'] == 'professional'
+            and job['previous'].get('orion_test_recovery') is True):
+        from app.qr_presentation import fits_message
+        body = '🧪 *TESTE ORION — aviso recuperado*\n\n' + body
+        if not fits_message(body):
+            raise ValueError('test_message_exceeds_transport_limit')
+    if (job['event'] == 'review' and job['recipient_kind'] == 'customer'
+            and tenant == UUID('82552b25-d0c8-5338-8c42-49f11de59e45')
+            and job['previous'].get('orion_review_qa_7364') is True
+            and row.get('customer_phone') == '+5521997557364'):
+        from app.qr_presentation import fits_message
+        body = '🧪 *TESTE ORION — AVALIAÇÃO*\n\n' + body
+        if not fits_message(body):
+            raise ValueError('review_qa_exceeds_transport_limit')
+    return body
 
 
 async def process_notification(ctx,tenant_id,notification_id):
@@ -144,42 +218,64 @@ async def process_notification(ctx,tenant_id,notification_id):
                     await db.execute(text("UPDATE appointment_notifications SET status=:status,last_error=:error,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id"),
                         {'t':tenant,'id':identity,'status':'cancelled' if reason in {'expired','appointment_changed','settings_changed','execution_paused'} else 'failed','error':reason})
                 return reason
-            # Reject unsupported recipients BEFORE the external attempt. This
-            # does not expand the transport allowlist or re-pair a session.
+            # Only the verified admin sender is used for central appointment
+            # notices. Other senders keep the original explicit allowlist.
             from app.catalog_api import support_session_factory
-            async with support_session_factory()() as registry:
-                senders=(await registry.execute(text('SELECT allowed_senders FROM qr_channels WHERE tenant_id=:t AND id=:c AND enabled'),
-                    {'t':tenant,'c':job['channel_id']})).scalar_one_or_none()
-            if not senders or phone.lstrip('+') not in senders:
-                await db.execute(text("UPDATE appointment_notifications SET status='failed',last_error='transport_recipient_not_authorized' WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':identity})
-                return 'transport_recipient_not_authorized'
+            central = job.get('central_channel_id') is not None
+            send_tenant, send_channel = (central_channel() if central else (tenant,job['channel_id']))
+            if not central:
+                async with support_session_factory()() as registry:
+                    senders=(await registry.execute(text('SELECT allowed_senders FROM qr_channels WHERE tenant_id=:t AND id=:c AND enabled'),
+                        {'t':tenant,'c':job['channel_id']})).scalar_one_or_none()
+                if not senders or phone.lstrip('+') not in senders:
+                    await db.execute(text("UPDATE appointment_notifications SET status='failed',last_error='transport_recipient_not_authorized' WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':identity})
+                    return 'transport_recipient_not_authorized'
             if ctx.get('appointment_sender') is None:
                 # An observed offline channel is a definite no-send. Only this
                 # preflight can be retried; ambiguous HTTP sends never are.
                 try:
                     from app.qr_channels import _canonical, _bridge_control, _control_result
                     async with support_session_factory()() as registry:
-                        channel,state=await _canonical(registry,tenant)
-                    if channel is None or state!='ready' or channel['id']!=job['channel_id']:
+                        channel,state=await _canonical(registry,send_tenant)
+                    if channel is None or state!='ready' or channel['id']!=send_channel:
                         raise ValueError('channel_changed')
                     observed=_control_result(channel,await _bridge_control(channel,'status','GET'),'status')
                     if observed['status']!='connected' or not observed.get('phone_verified'):
                         raise ValueError('channel_offline')
                 except Exception:
-                    await db.execute(text("""UPDATE appointment_notifications SET
-                        status=CASE WHEN attempts>=4 OR clock_timestamp()+interval '30 seconds'>=expires_at THEN 'failed' ELSE 'pending' END,
-                        attempts=attempts+1,due_at=LEAST(clock_timestamp()+interval '30 seconds',expires_at-interval '1 microsecond'),
-                        last_error='channel_unavailable',updated_at=clock_timestamp()
-                        WHERE tenant_id=:t AND id=:id"""),{'t':tenant,'id':identity})
+                    if central:
+                        # No transport attempt occurred. Keep the durable
+                        # notification queued during a temporary central outage;
+                        # expiration is still bounded by the existing 24h TTL.
+                        query="""UPDATE appointment_notifications SET
+                            status=CASE WHEN clock_timestamp()+interval '2 minutes'>=expires_at THEN 'failed' ELSE 'pending' END,
+                            due_at=LEAST(clock_timestamp()+interval '2 minutes',expires_at-interval '1 microsecond'),
+                            last_error='channel_unavailable',updated_at=clock_timestamp()
+                            WHERE tenant_id=:t AND id=:id"""
+                    else:
+                        query="""UPDATE appointment_notifications SET
+                            status=CASE WHEN attempts>=4 OR clock_timestamp()+interval '30 seconds'>=expires_at THEN 'failed' ELSE 'pending' END,
+                            attempts=attempts+1,due_at=LEAST(clock_timestamp()+interval '30 seconds',expires_at-interval '1 microsecond'),
+                            last_error='channel_unavailable',updated_at=clock_timestamp()
+                            WHERE tenant_id=:t AND id=:id"""
+                    await db.execute(text(query),{'t':tenant,'id':identity})
                     return 'channel_unavailable'
             try:body=await prepare_body(db,tenant,job,row,settings)
             except (ValueError,KeyError):
                 await db.execute(text("UPDATE appointment_notifications SET status='failed',last_error='message_facts_invalid' WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':identity})
                 return 'message_facts_invalid'
             encrypted=cipher().encrypt(body.encode()).decode()
+            # The support-only broker compares the exact prepared body hash,
+            # not a caller-supplied text or arbitrary phone. Legacy pilot rows
+            # retain the unchanged old update until the feature is enabled.
+            digest_sql=",body_sha256=:body_digest" if central else ""
+            values={'t':tenant,'id':identity,'body':encrypted,
+                    'hash':hashlib.sha256(phone.encode()).hexdigest()}
+            if central:values['body_digest']=hashlib.sha256(body.encode()).hexdigest()
             await db.execute(text("""UPDATE appointment_notifications SET status='sending',attempts=attempts+1,
-                body_encrypted=:body,recipient_hash=:hash,attempted_at=clock_timestamp(),updated_at=clock_timestamp()
-                WHERE tenant_id=:t AND id=:id"""),{'t':tenant,'id':identity,'body':encrypted,'hash':hashlib.sha256(phone.encode()).hexdigest()})
+                body_encrypted=:body,recipient_hash=:hash""" + digest_sql +
+                """,attempted_at=clock_timestamp(),updated_at=clock_timestamp()
+                WHERE tenant_id=:t AND id=:id"""),values)
             job={**dict(job),'recipient_hash':hashlib.sha256(phone.encode()).hexdigest()}
     result,error,provider='unknown','transport_result_unknown',None
     try:
@@ -192,8 +288,10 @@ async def process_notification(ctx,tenant_id,notification_id):
             sender=ctx.get('appointment_sender')
             if sender is None:
                 from app.automation_transport import _request
-                data=await _request(tenant,job['channel_id'],identity,message={'to':phone.lstrip('+'),'text':body,'operation_id':str(identity)})
-            else:data=await sender(tenant,job['channel_id'],phone,body,str(identity))
+                data=await _request(send_tenant,send_channel,identity,message={
+                    'to':phone.lstrip('+'),'text':body,'operation_id':str(identity),
+                    **({'source':'appointment'} if central else {})})
+            else:data=await sender(send_tenant,send_channel,phone,body,str(identity))
             if data.get('accepted') is True and data.get('state')=='accepted':
                 result,error,provider='accepted',None,data.get('provider_id')
             elif data.get('state')=='refused':result,error='failed','transport_refused'
@@ -233,7 +331,8 @@ async def reconcile_notification(ctx,tenant_id,notification_id):
     tenant,identity=UUID(tenant_id),UUID(notification_id)
     async with get_session_factory()() as db:
         async with tenant_transaction(db,tenant):
-            row=(await db.execute(text("SELECT channel_id,status FROM appointment_notifications WHERE tenant_id=:t AND id=:id AND status IN ('accepted','unknown','delivered')"),
+            columns='channel_id,central_channel_id,status' if central_enabled() else 'channel_id,status'
+            row=(await db.execute(text("SELECT "+columns+" FROM appointment_notifications WHERE tenant_id=:t AND id=:id AND status IN ('accepted','unknown','delivered')"),
                 {'t':tenant,'id':identity})).mappings().first()
     if not row:return 'unavailable'
     try:
@@ -241,7 +340,10 @@ async def reconcile_notification(ctx,tenant_id,notification_id):
         if reader is None:
             from app.automation_transport import inspect_automation
             reader=inspect_automation
-        receipt=await reader(tenant,row['channel_id'],str(identity))
+        channel=row.get('central_channel_id') or row['channel_id']
+        receipt_tenant=central_channel()[0] if row.get('central_channel_id') else tenant
+        if channel is None or receipt_tenant is None:return 'unknown'
+        receipt=await reader(receipt_tenant,channel,str(identity))
         if receipt.get('operation_id')!=str(identity) or receipt.get('accepted') is not True:
             # An unconfirmed inspection is not evidence of delivery. Advance
             # its inspection time so other unknown receipts get a fair turn.

@@ -584,6 +584,8 @@ html[data-theme="light"] .member-overview{box-shadow:var(--shadow)}
 #appView.ob-gated .content > .page,#appView.ob-gated #osConsultantFab{display:none!important}
 #orionSetup[hidden]{display:none!important}
 </style>
+<link rel="stylesheet" href="/panel-assets/orion-focus.css">
+<script src="/panel-assets/orion-focus.js"></script>
 <script src="/panel-assets/orion-appointment-communications.js" defer></script>
 </head>
 <body>
@@ -1634,7 +1636,7 @@ async function checkSessionAfterUnauthorized(epoch,expectedCsrf){
  if(epoch!==authEpoch||csrf!==expectedCsrf)return;
  if(result==="expired"||result==="changed"){
    if(result==="changed"&&suiteUser?.maintenance?.active)
-     window.location.replace("/panel?aba=member");
+     window.location.replace("/painel?aba=member");
    else showLogin();
  }
 }
@@ -1864,7 +1866,7 @@ function setMaintenanceExpiry(maintenance){
  const ms=Math.max(0,expires-Date.now()+1000);
  maintenanceExpiryTimer=setTimeout(()=>{
    if(suiteUser?.maintenance?.active)
-     window.location.replace("/panel?aba=member");
+     window.location.replace("/painel?aba=member");
  },Math.min(ms,2147483647));
 }
 function showLogin(){
@@ -2124,7 +2126,7 @@ function openPage(target){
   $("page-member").classList.toggle("os-admin-center-open",platform);
   if(platform)window.OrionAdminCenter?.open({
     request:api,role:loginRole,
-    onMaintenanceStart:()=>window.location.assign("/panel?aba=dashboard"),
+    onMaintenanceStart:()=>window.location.assign("/painel?aba=dashboard"),
   });else window.OrionAdminCenter?.reset();
  }
  if(platformAdminLegacyPages.has(target)&&loginRole!=="admin"){
@@ -2152,7 +2154,7 @@ function openPage(target){
  if(target==="catalogo")void loadCommerceTenants();
  if(target==="cadastros")void loadTenants();
  if(target==="member"&&!adminOnly())void loadMemberBusiness();
- history.replaceState({}, "", "/panel?aba="+encodeURIComponent(target));
+ history.replaceState({}, "", "/painel?aba="+encodeURIComponent(target));
  window.OrionSuite?.legacyOpened(target);
 }
 document.querySelectorAll("[data-page]").forEach(x=>x.addEventListener("click",()=>openPage(x.dataset.page)));
@@ -2162,7 +2164,7 @@ $("orionMaintenanceExit").addEventListener("click",async()=>{
  button.disabled=true;button.textContent="Encerrando…";
  try{
    await api("/auth/maintenance/end","POST",{});
-   window.location.assign("/panel?aba=member");
+   window.location.assign("/painel?aba=member");
  }catch(error){
    button.disabled=false;button.textContent="Encerrar manutenção";
    const note=$("orionMaintenanceUntil");

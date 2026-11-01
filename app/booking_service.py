@@ -231,12 +231,28 @@ async def check_slot(s: AsyncSession, tenant: UUID, professional: UUID,
         fail(409, "Profissional não trabalha nesse dia")
     work_start = datetime.combine(local.date(), hours["start_time"], tzinfo=tz).astimezone(UTC)
     work_end = datetime.combine(local.date(), hours["end_time"], tzinfo=tz).astimezone(UTC)
-    if b["occupied_from"] < work_start or b["occupied_until"] > work_end:
-        fail(409, "Atendimento completo e buffers não cabem no expediente")
+    # The appointment itself must fit in the shift. Preparation is a gap
+    # BETWEEN appointments; at opening (or immediately after a break) there
+    # is no preceding customer, so that gap need not push the first booking
+    # by 5/15/30 minutes. Cleanup still fits completely before closing.
+    if b["start_at"] < work_start or b["occupied_until"] > work_end:
+        fail(409, "Atendimento completo não cabe no expediente")
     pauses = _constraints.pauses if _constraints is not None else (await s.execute(text("""
         SELECT start_time, end_time FROM working_breaks
         WHERE tenant_id=:tenant AND working_hour_id=:working_hour
     """), {"tenant": tenant, "working_hour": hours["id"]})).mappings().all()
+    open_period_start = work_start
+    for pause in pauses:
+        lo = datetime.combine(local.date(), pause["start_time"], tzinfo=tz).astimezone(UTC)
+        hi = datetime.combine(local.date(), pause["end_time"], tzinfo=tz).astimezone(UTC)
+        if lo <= b["start_at"] < hi:
+            fail(409, "Horário pertence à pausa do profissional")
+        if hi <= b["start_at"]:
+            open_period_start = max(open_period_start, hi)
+    # Persist the same clipped occupied_from that read-only availability
+    # validated. Otherwise a 09:00 hold would later fail confirmation or
+    # create a different collision interval from its offered slot.
+    b["occupied_from"] = max(b["occupied_from"], open_period_start)
     for pause in pauses:
         lo = datetime.combine(local.date(), pause["start_time"], tzinfo=tz).astimezone(UTC)
         hi = datetime.combine(local.date(), pause["end_time"], tzinfo=tz).astimezone(UTC)
@@ -497,7 +513,8 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
                            now: datetime | None = None, *, replace_hold_id: UUID | None = None,
                            expected_snapshot: str | None = None,
                            context: LifecycleActor | None = None, source: str = "unknown",
-                           nonblocking_professional_lock: bool = False):
+                           nonblocking_professional_lock: bool = False,
+                           public_birth_date: date | None = None):
     """ÚNICA função para criar reservas/holds de todos os canais futuros."""
     supplied_clock = now is not None
     now = now or datetime.now(UTC)
@@ -553,7 +570,18 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
             # This cancels an unconfirmed proposal, not a published calendar event.
             await history(s, tenant, replace_hold_id, "cancelled", calendar=False, previous=previous,
                           context=resolved_actor(context, source, previous["customer_id"], verified_customer=True))
-        customer_row, _ = await resolve_customer(s, tenant, phone, customer_name)
+        # Anonymous visitors can submit any phone, so only populate a DOB on
+        # newly created customers. ON CONFLICT preserves all existing PII.
+        creation_fields = None
+        if source == "public_site" and public_birth_date is not None:
+            creation_fields = {
+                "birth_date": public_birth_date,
+                "birth_month": public_birth_date.month,
+                "birth_day": public_birth_date.day,
+            }
+        customer_row, _ = await resolve_customer(
+            s, tenant, phone, customer_name, attributes=creation_fields,
+        )
         customer = customer_row["id"]
         item_id = uuid4()
         # Retry com SAVEPOINT para colisão estatisticamente improvável do protocolo.
@@ -672,15 +700,15 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
                 AND appointment_id=:id ORDER BY item_order
             """), {"tenant": tenant, "id": item_id})).scalars().all()
             shop, items = await load_bundle(s, tenant, hold["professional_id"], list(ids))
-            fresh = bounds(hold["start_at"], items)
+            fresh = await check_slot(s, tenant, hold["professional_id"], shop, items,
+                hold["start_at"].astimezone(ZoneInfo(shop["timezone"])), now,
+                ignore_appointment=item_id)
             # Evitar confirmação usando preço/tempo antigo se catálogo mudou
             if (fresh["end_at"] != hold["end_at"] or
                 fresh["occupied_from"] != hold["occupied_from"] or
                 fresh["occupied_until"] != hold["occupied_until"] or
                 fresh["total_cents"] != hold["total_cents"]):
                 fail(409, "O serviço mudou; escolha o horário novamente")
-            await check_slot(s, tenant, hold["professional_id"], shop, items,
-                             hold["start_at"].astimezone(ZoneInfo(shop["timezone"])), now, ignore_appointment=item_id)
             # READ COMMITTED takes a fresh snapshot for this statement. A
             # catalog edit committed after validation but before UPDATE rejects
             # the operation; no history/outbox is emitted for a rejected write.

@@ -17,12 +17,53 @@
   function el(tag, cls, value) { const node = document.createElement(tag); if (cls) node.className = cls; if (value !== undefined) node.textContent = value; return node; }
   function button(text, cls, handler) { const node = el('button', cls, text); node.type = 'button'; if (handler) node.addEventListener('click', handler); return node; }
   function safeHTTPS(value) { try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null; } catch { return null; } }
+  // Only a real Instagram *profile* may be embedded. Never use arbitrary
+  // site URLs as iframe sources or forward pasted Instagram tracking params.
+  function instagramProfile(value) {
+    try {
+      if (typeof value !== 'string' || !value.trim()) return null;
+      const uri = new URL(value);
+      if (uri.protocol !== 'https:' ||
+          !['instagram.com', 'www.instagram.com'].includes(uri.hostname) ||
+          uri.port || uri.username || uri.password) return null;
+      const match = uri.pathname.match(/^\/([A-Za-z0-9_](?:[A-Za-z0-9._]{0,28}[A-Za-z0-9_])?)\/?$/);
+      if (!match || /^(p|reel|reels|stories|explore|accounts|direct|tv|tags|about|api|developer|challenge)$/i.test(match[1])) return null;
+      const username = match[1];
+      const base = 'https://www.instagram.com/' + username;
+      return {username, href:base+'/', embed:base+'/embed/'};
+    } catch { return null; }
+  }
+  function renderInstagramPreview(site) {
+    const section = $('about-instagram'), frame = $('about-instagram-frame');
+    const profile = instagramProfile(site.instagram_url);
+    section.hidden = !profile;
+    if (!profile) {
+      frame.removeAttribute('src');
+      $('about-instagram-open').removeAttribute('href');
+      $('about-instagram-handle').textContent = '';
+      return false;
+    }
+    $('about-instagram-handle').textContent = '@' + profile.username;
+    $('about-instagram-open').href = profile.href;
+    frame.title = 'Seis publicações recentes de @' + profile.username + ' no Instagram';
+    // The official embed is visually cropped to its six-photo gallery inside
+    // the Orion card. We do not access its cross-origin DOM, proxy third-party
+    // photos or invent thumbnails. Its original profile-header and white footer
+    // remain outside the visible crop. Open profile stays available as fallback.
+    // Loading stays lazy to avoid delaying services and the booking flow.
+    if (frame.getAttribute('src') !== profile.embed) frame.src = profile.embed;
+    return true;
+  }
   function safeImageURL(value) {
     if(typeof value==='string' && /^\/media\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/.test(value))return value;
     return safeHTTPS(value);
   }
   function setLink(node, value) { const href = safeHTTPS(value); node.hidden = !href; if (href) { node.href = href; node.target = '_blank'; node.rel = 'noopener noreferrer'; } }
   const CONTACT_ICONS = {"whatsapp":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 11.7a8 8 0 0 1-11.8 7.1L3.5 20l1.4-4.5A8 8 0 1 1 20 11.7Z\"/><path d=\"M8.2 8c.4-.5.8-.4 1.1.1l.9 1.6c.2.4.1.6-.2.9l-.6.6a6.5 6.5 0 0 0 3.4 3.4l.7-.7c.2-.3.5-.3.9-.1l1.6.9c.4.2.5.6.2 1.1-.3.6-1.1 1.1-1.9 1-3.5-.7-6-3.2-6.8-6.7-.1-.8.2-1.6.7-2.1\"/></svg>","phone":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 16.7v2.8a2 2 0 0 1-2.2 2A18.3 18.3 0 0 1 2.5 5.2 2 2 0 0 1 4.5 3h2.8a2 2 0 0 1 2 1.7l.4 2.7a2 2 0 0 1-.6 1.7l-1.5 1.3a14.6 14.6 0 0 0 6 6l1.3-1.5a2 2 0 0 1 1.7-.6l2.7.4a2 2 0 0 1 1.7 2Z\"/></svg>","instagram":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"5\"/><circle cx=\"12\" cy=\"12\" r=\"4\"/><circle cx=\"17.5\" cy=\"6.5\" r=\"1\" fill=\"currentColor\" stroke=\"none\"/></svg>","facebook":"<svg viewBox=\"0 0 24 24\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M14.2 21v-7.8h2.6l.4-3.1h-3V8c0-.9.3-1.6 1.6-1.6h1.5V3.6c-.3-.1-1.3-.2-2.5-.2-2.5 0-4.2 1.5-4.2 4.2v2.5H8v3.1h2.6V21h3.6Z\"/></svg>","tiktok":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M14.2 3v11.5a4.2 4.2 0 1 1-4.2-4.2c.4 0 .9.1 1.2.2\"/><path d=\"M14.2 3c.6 3.3 2.5 5.3 5.8 5.6\"/></svg>","website":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.85\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M3 12h18M12 3c2.7 2.4 4 5.4 4 9s-1.3 6.6-4 9c-2.7-2.4-4-5.4-4-9s1.3-6.6 4-9Z\"/></svg>"};
+  const CONTACT_LABELS = {
+    whatsapp:'WhatsApp',phone:'Ligar',instagram:'Instagram',
+    tiktok:'TikTok',facebook:'Facebook',website:'Site'
+  };
   function contactAnchor(name, kind, address, isPhone = false) {
     const href = isPhone ? (/^tel:\+[1-9]\d{9,14}$/.test(address) ? address : null) : safeHTTPS(address);
     if (!href) return null;
@@ -32,6 +73,7 @@
     node.title = name;
     if (!isPhone) { node.target = '_blank'; node.rel = 'noopener noreferrer'; }
     node.innerHTML = CONTACT_ICONS[kind]; // Fixed local SVGs; untrusted site data never enters markup.
+    node.append(el('span','social-link-label',CONTACT_LABELS[kind]));
     return node;
   }
   function thumbnailURL(safe) {
@@ -97,23 +139,48 @@
       if(!group.intervals.length) {
         times.textContent='Fechado';
       } else {
-        const shiftList=el('span','hours-shifts');
-        for(const [index,[start,end]] of group.intervals.entries()){
-          if(index)shiftList.append(el('span','hours-separator','·'));
-          shiftList.append(el('span','hours-shift',start+'–'+end));
+        // Display the first opening and final closing as one concise range.
+        // Breaks stay visible below; booking availability still uses all intervals.
+        const periods=group.intervals.slice().sort((a,b)=>a[0].localeCompare(b[0]));
+        const opening=periods[0][0],pauses=[];
+        let closing=periods[0][1];
+        for(const [start,end] of periods.slice(1)){
+          if(start>closing)pauses.push(closing+'–'+start);
+          if(end>closing)closing=end;
         }
-        times.append(shiftList);
-        const pauses=group.intervals.slice(0,-1).map(([_,end],index)=>{
-          const next=group.intervals[index+1][0];
-          return end<next?end+'–'+next:null;
-        }).filter(Boolean);
+        times.append(el('span','hours-shift',opening+'–'+closing));
         if(pauses.length)
-          times.append(el('small','hours-break','Intervalo '+pauses.join(' · ')));
+          times.append(el('small','hours-break',
+            (pauses.length===1?'Intervalo ':'Intervalos ')+pauses.join(' · ')));
       }
       row.append(name,times);return row;
     }));
   }
   function siteAddressLine(site){return site.address_display||site.address;}
+
+  function renderHeroAddress(site){
+    // Keep the hero concise: street + number on one semantic line, then
+    // city/state on another. Address complement, neighborhood and CEP stay
+    // available unabridged in Onde estamos and in the accessible label.
+    const full = typeof siteAddressLine(site)==='string' ? siteAddressLine(site).trim() : '';
+    // The backend joins optional complement and neighborhood using a
+    // spaced em-dash; never let that separator dangle beside the logo.
+    const street = full.split(' — ')[0].trim();
+    const locality = [site.city,site.state].filter(v=>typeof v==='string'&&v.trim())
+      .map(v=>v.trim()).join(' · ');
+    const root=$('hero-address'),streetNode=$('hero-address-street'),
+      localityNode=$('hero-address-locality');
+    streetNode.textContent=street;
+    localityNode.textContent=locality;
+    streetNode.hidden=!street;
+    localityNode.hidden=!locality;
+    root.hidden=!street&&!locality;
+    // The complete, published address remains available to assistive tech.
+    const accessible=[full,site.city,site.state].filter(v=>typeof v==='string'&&v.trim())
+      .map(v=>v.trim()).join(', ');
+    if(accessible){root.title=accessible;root.setAttribute('aria-label',accessible);}
+    else{root.removeAttribute('title');root.removeAttribute('aria-label');}
+  }
   function mapDestination(site){
     const address=[site.title,siteAddressLine(site),site.city,site.state,site.postal_code,'Brasil']
       .filter(v=>typeof v==='string'&&v.trim()).map(v=>v.trim()).join(', ');
@@ -166,7 +233,13 @@
       .filter(Boolean).join('\n');
     const where=$('address-card'),box=$('map-preview'),frame=$('location-map'),target=mapDestination(site);
     $('full-address').textContent=address;
-    where.hidden=!address&&!target;
+    // A company can publish amenities before adding a postal address.
+    // The same Onde estamos card still hosts them, without a fake map/pin.
+    where.hidden=!address&&!target&&$('amenities-section').hidden;
+    $('location-details').hidden=!address;
+    $('location-subtitle').textContent=address||target
+      ? 'Encontre nosso espaço e venha nos visitar.'
+      : 'Confira as comodidades disponíveis.';
     box.hidden=!target;
     if(target){
       frame.src=target.embed;
@@ -282,6 +355,7 @@
       tile.setAttribute('aria-expanded', 'false');
       tile.title = item.title;
       tile.innerHTML = AMENITY_ICONS[item.icon]; // Trusted static SVG markup only.
+      tile.append(el('span', 'amenity-label', item.title)); // Published, local labels, not user HTML.
       tile.addEventListener('click', () => toggleAmenity(item, tile));
       return tile;
     }));
@@ -299,13 +373,15 @@
     const cover = safeImageURL(site.cover_url); if (cover) { const image = el('img'); image.src = cover; image.alt = ''; image.loading = 'eager'; image.fetchPriority = 'high'; image.decoding = 'async'; image.referrerPolicy = 'no-referrer'; image.style.width = '100%'; image.style.height = '100%'; $('cover').replaceChildren(image); }
     picture($('site-logo'), site.logo_url, initials(site.title), 'hero');
     $('site-title').textContent = site.title; $('footer-title').textContent = site.title;
-    $('hero-address').textContent = [siteAddressLine(site), site.city].filter(Boolean).join(' · ');
-    $('hero-address').hidden = !$('hero-address').textContent;
+    renderHeroAddress(site);
     $('about-text').textContent = site.description || '';
-    $('about-card').hidden = !site.description;
+    $('about-text').hidden = !site.description;
+    const hasInstagramPreview = renderInstagramPreview(site);
+    $('about-card').hidden = !site.description && !hasInstagramPreview;
+    $('about-card').classList.toggle('about-card-instagram-only', !site.description && hasInstagramPreview);
     renderOpeningHours(data.opening_hours);
-    renderLocation(site);
     renderAmenities(site);
+    renderLocation(site);
     $('services-count').textContent = String(data.services.length);
     $('hero-book').disabled = !data.services.length;
     const cats = ['Todos', ...new Set(data.services.map(s => s.category || 'Serviços'))];
@@ -327,8 +403,10 @@
     ]) {
       contacts.push(contactAnchor(name, kind, site[field]));
     }
-    $('contact-links').replaceChildren(...contacts.filter(Boolean));
-    $('contact-section').hidden = !contacts.some(Boolean);
+    const validContacts = contacts.filter(Boolean);
+    $('contact-links').replaceChildren(...validContacts);
+    $('contact-links').dataset.count = String(validContacts.length);
+    $('contact-section').hidden = validContacts.length === 0;
     $('orion-credit').hidden = !!site.hide_orion_brand; $('preview-banner').hidden = !preview;
     $('site-content').hidden = false; $('page-message').hidden = true;
   }
@@ -759,8 +837,7 @@
         title.id = 'slot-period-title-' + group.key;
         const line = el('span', 'slot-period-line');
         line.setAttribute('aria-hidden', 'true');
-        const count = el('span', 'slot-period-count',
-          group.starts.length + ' ' + (group.starts.length === 1 ? 'horário' : 'horários'));
+        const count = el('span', 'slot-period-count', 'Disponíveis');
         heading.append(title, line, count);
         const grid = el('div', 'slot-period-grid');
         grid.setAttribute('role', 'group');
@@ -880,8 +957,8 @@
     const contactFields = [
       { key: 'name', title: 'Nome completo', name: 'customer_name', autocomplete: 'name',
         type: 'text', fieldKind: 'native', max: 120, placeholder: 'Nome completo' },
-      { key: 'phone', title: 'WhatsApp com DDD ou DDI', name: 'customer_phone',
-        autocomplete: 'tel', type: 'tel', fieldKind: 'phone', placeholder: '(00) 00000-0000 ou +595 9...' },
+      { key: 'phone', title: 'WhatsApp com DDD', name: 'customer_phone',
+        autocomplete: 'tel-national', type: 'tel', fieldKind: 'phone', placeholder: '(00) 00000-0000' },
       { key: 'birthDate', title: 'Data de nascimento', name: 'customer_birth_date',
         autocomplete: 'bday', type: 'date', fieldKind: 'date', placeholder: '' }
     ];
@@ -963,18 +1040,11 @@
   }
 
   function openBookingWhatsApp(url) {
-    // Only a successful reservation may open WhatsApp. A separate tab keeps the
-    // Orion receipt visible when the customer returns from the messenger.
-    try {
-      const tab = window.open('about:blank', '_blank');
-      if (tab) {
-        try { tab.opener = null; } catch { /* opener is detached when supported */ }
-        tab.location.replace(url);
-        return;
-      }
-    } catch { /* A popup blocker must not discard the completed booking. */ }
+    // A reservation is already committed at this point. Opening a new tab
+    // after the asynchronous API reply is blocked by Safari/Chrome on mobile.
+    // Navigate in the same tab instead; the receipt keeps a manual fallback.
     try { window.location.assign(url); } catch {
-      // Restricted browsers can still use the visible link on the receipt.
+      // Restricted browsers still have the visible link on the receipt.
     }
   }
 
@@ -994,7 +1064,7 @@
     }
     const canonicalPhone = fields.phoneValue(booking.phone, { required: true, allowInternational: true });
     if (!/^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(canonicalPhone)) {
-      form.elements.customer_phone.setCustomValidity('Informe +55 com DDD ou +595 com celular paraguaio.');
+      form.elements.customer_phone.setCustomValidity('Confira o número do WhatsApp informado.');
       form.elements.customer_phone.reportValidity();
       return;
     }
@@ -1036,26 +1106,100 @@
     }
   }
 
+  // Confirmation actions reuse Orion's primary/outline tokens instead of an
+  // unstyled generic .pill. All SVG markup below is constant application code.
+  const SUCCESS_ACTION_ICONS = {
+    copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
+    calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>'
+  };
+  // Google Calendar template is an explicit, user-initiated import: it never
+  // grants the Orion access to a customer's Google account.
+  function googleBookingLink(result) {
+    if (!result || result.status !== 'confirmed') return null;
+    const start = new Date(result.start_at), end = new Date(result.end_at);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) return null;
+    const stamp = value => value.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    const services = Array.isArray(result.services) ? result.services.join(' + ') : '';
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      dates: stamp(start) + '/' + stamp(end),
+      text: ('Atendimento • ' + (data.site.title || '') + ' • ' + services).slice(0, 160),
+      details: ('Profissional: ' + (result.professional || '') +
+        '\nProtocolo: ' + (result.protocol || '') +
+        '\nPara remarcar ou cancelar, use o link seguro enviado pelo Orion.').slice(0, 350),
+      location: [siteAddressLine(data.site), data.site.city, data.site.state].filter(Boolean).join(', ').slice(0, 240)
+    });
+    if (typeof data.timezone === 'string' && /^[A-Za-z_]+(?:\/[A-Za-z_+-]+)+$/.test(data.timezone)) {
+      params.set('ctz', data.timezone);
+    }
+    return 'https://calendar.google.com/calendar/render?' + params.toString();
+  }
   function renderSuccess(body) {
-    const success = el('div', 'success'); success.append(el('div', 'success-check', '✓'), el('h3', '', 'Agendamento confirmado!'), el('p', '', 'Seu horário está reservado. Guarde o protocolo e chegue no horário combinado.'), reviewCard(booking.result));
+    const success = el('div', 'success');
+    success.append(el('div', 'success-check', '✓'),
+      el('h3', '', 'Agendamento confirmado!'),
+      el('p', '', 'Seu horário está reservado. Guarde o protocolo e chegue no horário combinado.'),
+      reviewCard(booking.result));
+
+    const actions = el('div', 'success-actions');
+    actions.setAttribute('role', 'group');
+    actions.setAttribute('aria-label', 'Ações do agendamento');
+    function addAction(control, iconSVG, label) {
+      const icon = el('span', 'success-action-icon');
+      icon.setAttribute('aria-hidden', 'true');
+      icon.innerHTML = iconSVG; // Fixed local SVG, never customer data.
+      control.replaceChildren(icon, el('span', 'success-action-label', label));
+      actions.append(control);
+      return control;
+    }
+
     const whatsappURL = bookingWhatsAppURL(booking.result);
     if (whatsappURL) {
-      const wa = el('a', 'pill', 'Abrir WhatsApp novamente');
-      wa.href = whatsappURL; wa.target = '_blank'; wa.rel = 'noopener noreferrer';
-      success.append(wa);
+      const wa = el('a', 'primary success-action success-action-primary');
+      wa.href = whatsappURL;
+      wa.target = '_blank';
+      wa.rel = 'noopener noreferrer';
+      addAction(wa, CONTACT_ICONS.whatsapp, 'Abrir WhatsApp novamente');
     } else {
       success.append(el('p', 'small muted',
         'Seu agendamento foi salvo, mas o WhatsApp do Orion está indisponível neste momento. Guarde o protocolo.'));
     }
 
-    success.append(button('Copiar protocolo', 'outline', async()=>{try{await navigator.clipboard.writeText(booking.result.protocol);showError('Protocolo copiado. Seu agendamento está salvo.');}catch{showError('Guarde o protocolo: '+booking.result.protocol);}}));
-    success.append(button('Adicionar ao meu calendário', 'outline', downloadCalendar)); body.append(success);
+    const copy = button('Copiar protocolo', 'outline success-action success-action-secondary', async () => {
+      try {
+        await navigator.clipboard.writeText(booking.result.protocol);
+        const label = copy.querySelector('.success-action-label');
+        if (label) {
+          label.textContent = 'Protocolo copiado!';
+          window.setTimeout(() => {
+            if (label.isConnected) label.textContent = 'Copiar protocolo';
+          }, 2400);
+        }
+      } catch {
+        showError('Não foi possível copiar. Guarde o protocolo: ' + booking.result.protocol);
+      }
+    });
+    addAction(copy, SUCCESS_ACTION_ICONS.copy, 'Copiar protocolo');
+    const googleURL = googleBookingLink(booking.result);
+    if (googleURL) {
+      const google = el('a', 'outline success-action success-action-secondary');
+      google.href = googleURL;
+      google.target = '_blank';
+      google.rel = 'noopener noreferrer';
+      google.referrerPolicy = 'no-referrer';
+      addAction(google, SUCCESS_ACTION_ICONS.calendar, 'Adicionar ao Google Agenda');
+    }
+    const calendar = button('Baixar para outros calendários (.ics)',
+      'outline success-action success-action-secondary', downloadCalendar);
+    addAction(calendar, SUCCESS_ACTION_ICONS.calendar, 'Baixar para outros calendários (.ics)');
+    success.append(actions);
+    body.append(success);
   }
   function downloadCalendar() {
     const result = booking.result; if (!result) return;
     const escape = value => String(value || '').replaceAll('\\', '\\\\').replaceAll('\n', '\\n').replaceAll(';', '\\;').replaceAll(',', '\\,').replaceAll('\r', '');
     const stamp = value => new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Orion//Agendamento//PT-BR', 'BEGIN:VEVENT', `UID:${escape(result.protocol)}-${stamp(result.start_at)}@orion.invalid`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(result.start_at)}`, `DTEND:${stamp(result.end_at)}`, `SUMMARY:${escape(data.site.title)} — ${escape(result.services.join(' + '))}`, `DESCRIPTION:Protocolo ${escape(result.protocol)}. Profissional: ${escape(result.professional)}.`, `LOCATION:${escape([siteAddressLine(data.site), data.site.city, data.site.state].filter(Boolean).join(', '))}`, 'END:VEVENT', 'END:VCALENDAR'];
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Orion//Agendamento//PT-BR', 'BEGIN:VEVENT', `UID:${escape(result.protocol)}@orionagenda.pro`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(result.start_at)}`, `DTEND:${stamp(result.end_at)}`, `SUMMARY:${escape(data.site.title)} — ${escape(result.services.join(' + '))}`, `DESCRIPTION:Protocolo ${escape(result.protocol)}. Profissional: ${escape(result.professional)}.`, `LOCATION:${escape([siteAddressLine(data.site), data.site.city, data.site.state].filter(Boolean).join(', '))}`, 'END:VEVENT', 'END:VCALENDAR'];
     const url = URL.createObjectURL(new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/calendar;charset=utf-8' })); const anchor = el('a'); anchor.href = url; anchor.download = 'agendamento.ics'; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 

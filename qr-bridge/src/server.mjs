@@ -7,7 +7,7 @@ import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl} from 
  */
 import http from "node:http";
 import {databaseBackup} from './database-backup-store.mjs';
-import path from "node:path";
+import path, {join as joinPath} from "node:path";
 import fs from "node:fs";
 import {timingSafeEqual,randomUUID,createHmac} from "node:crypto";
 import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
@@ -22,6 +22,7 @@ import {makeSendCapacity} from "./send-capacity.mjs";
 import {makeConversationIntake} from "./conversation-intake.mjs";
 import {makeAssistantTyping} from "./assistant-typing.mjs";
 import {inspectLookup,inspectDelivery} from "./recipient-diagnostics.mjs";
+import {resolveTransactionalRecipient} from "./transactional-recipient.mjs";
 import {makeDurableInbox} from "./durable-inbox.mjs";
 import {shouldIngestUpsert,timestampMs,ingestionHealth} from "./linked-session-health.mjs";
 import {makeConnectedStore} from "./connected-store.mjs";
@@ -33,7 +34,8 @@ import {forwardAssistant,registerAssistantIngress} from "./ai-forward.mjs";
 import {isBookingProtocolMessage,fetchBookingProtocolConfirmation,resolveBookingSenderPhone} from "./appointment-confirmation.mjs";
 import {makeBookingIntakeGuard} from './booking-intake-guard.mjs';
 import {allowAssistantRecipient,allowAssistantAudio,pilotNumber} from "./ai-pilot.mjs";
-import {deliveryPolicy} from "./pilot-send-policy.mjs";
+import {deliveryPolicy,requiresPreRelayCache} from "./pilot-send-policy.mjs";
+import {shouldCacheLinkedSelfText} from "./retry-capture-policy.mjs";
 import {resolvePilotRecipient,makePilotDeviceCache} from "./pilot-recipient.mjs";
 import {transcribeAssistantAudio} from "./ai-audio.mjs";
 import {makeTransportDiagnostics,receiptDiagnosticDetails,usyncDeviceDomainCounts,encryptionTargetDetails,observeSignalRepository} from "./transport-diagnostics.mjs";
@@ -144,7 +146,8 @@ const retryStore={
   }
 };
 const retryDiagnostics={
-  cacheHits:0,cacheMisses:0,prepared:0,relayAccepted:0,
+  cacheHits:0,cacheMisses:0,cacheMissTracked:0,cacheMissUntracked:0,
+  persistedSelfTexts:0,persistFailures:0,prepared:0,relayAccepted:0,
   receiptUpdates:0,delivered:0,read:0,lastDeliveryDelayMs:null
 };
 const deliveryReceipts=new Map();
@@ -210,8 +213,11 @@ function stats(){
     controlStorage:connectedStore.health(),contactNameStorage:contactNames.health()};
 }
 function auth(req){
-  const input=Buffer.from(String(req.headers["x-orion-bridge-key"]||""));
-  const expected=Buffer.from(KEY);
+  // A blank or short secret must NEVER authorize a blank header.
+  if(typeof KEY!=="string"||Buffer.byteLength(KEY,"utf8")<32||Buffer.byteLength(KEY,"utf8")>256)return false;
+  const header=req.headers["x-orion-bridge-key"];
+  if(typeof header!=="string")return false;
+  const input=Buffer.from(header,"utf8"),expected=Buffer.from(KEY,"utf8");
   return input.length===expected.length&&timingSafeEqual(input,expected);
 }
 function reply(res,code,data){
@@ -411,7 +417,18 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
       if(!shouldIngestUpsert(type,message.messageTimestamp)){
         transport.record('inbound_filtered_age',traceId,{type});continue;
       }
-      if(message.key?.id&&message.message)retryMessages.save(message.key,message.message);
+      if(message.key?.id&&message.message){
+        retryMessages.save(message.key,message.message);
+        // When a message was authored in the owner's phone rather than
+        // through this bridge, Baileys may still be asked to retry its
+        // ciphertext for another linked device. Persist only our own simple
+        // text messages; never copy received customer messages or media into
+        // the durable retry cache.
+        if(shouldCacheLinkedSelfText(message)){
+          if(retryStore.save(message.key,message.message))retryDiagnostics.persistedSelfTexts++;
+          else retryDiagnostics.persistFailures++;
+        }
+      }
       if(message.key?.fromMe){transport.record('inbound_own',traceId);continue;}
       if(typeof traceId!=='string'||!/^[a-zA-Z0-9._:-]{1,157}$/.test(traceId)||!message.message){
         transport.record('inbound_no_content',traceId);continue;
@@ -759,9 +776,19 @@ async function connect(){
       maxMsgRetryCount:5,
       getMessage:async key=>{
         const content=retryStore.get(key);
-        transport.record('get_message',key?.id,{cached:!!content});
+        // The library also sends its OWN retry-control messages. A cache
+        // miss for one of those IDs is not proof that a customer-facing
+        // outgoing message is missing. Report these separately, without IDs.
+        const tracked=Boolean(key?.id && (
+          deliveryReceipts.has(key.id) || messages.some(m=>m.id==='out:'+key.id)
+        ));
+        transport.record('get_message',key?.id,{cached:!!content,tracked});
         if(content)retryDiagnostics.cacheHits++;
-        else retryDiagnostics.cacheMisses++;
+        else {
+          retryDiagnostics.cacheMisses++;
+          if(tracked)retryDiagnostics.cacheMissTracked++;
+          else retryDiagnostics.cacheMissUntracked++;
+        }
         return content;
       },
       browser:Browsers.windows("Chrome"),
@@ -851,7 +878,7 @@ async function send(phone,text,options={}){
   if(legacyCentral.configured())return legacyCentral.automatic(phone,text,options);
   return sendLegacyRaw(phone,text,options);
 }
-async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false}={}){
+async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>true,transactionalTyping=false,source='automation'}={}){
   const target=validPhone(phone);
   if(status!=="connected"||!socket)throw Error("O WhatsApp não está conectado");
   if(typeof text!=="string"||!text.trim()||text.length>1200)
@@ -862,13 +889,28 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
   await sendCapacity.acquire({wait:waitForCapacity,isCurrent:current});
   if(!current())throw Error('A conexão ou autorização mudou antes do envio. Nenhuma mensagem foi enviada.');
   let result;
-  const {reliable,freshDevices}=deliveryPolicy(target);
+  // Transactional notices must address the WhatsApp-verified PN, not a
+  // guessed JID reconstructed from a registered Brazilian mobile phone.
+  // The legacy 8-digit candidate is allowed only after an empty exact lookup
+  // and exactly one positive provider lookup of its regulated counterpart.
+  let verifiedRecipient=null;
+  if(source==='appointment'){
+    verifiedRecipient=await resolveTransactionalRecipient(
+      target,candidate=>selectedSocket.onWhatsApp(candidate),
+      {isCurrent:current,ownPhone:pairedNumber});
+    if(!current())throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
+    transport.record('appointment_recipient_verified',null,{kind:verifiedRecipient.kind});
+  }
+  const {reliable,freshDevices}=deliveryPolicy(target,process.env,{source});
   const recipientProof=await resolvePilotRecipient({phone:target,pilotPhone:pilotNumber(process.env),
     enabled:reliable&&process.env.QR_PILOT_USE_VERIFIED_LID==='1',socket:selectedSocket,deviceCache:socketDeviceCaches.get(selectedSocket),
     isCurrent:current});
   if(!current())
     throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
   const {jid,kind}=recipientProof;
+  // Preserve independently verified pilot LID routing. Other appointment
+  // notices use the PN that the provider itself confirmed.
+  const destination=verifiedRecipient&&kind==='pn'?verifiedRecipient.jid:jid;
   let presenceLease=null;
   try{
     if(transactionalTyping){
@@ -878,13 +920,16 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
         socket:selectedSocket,pilotPhone:()=>target,isConnected:current,
         isAllowed:recipient=>recipient===target,
         transactional:true,maxPauseMs:1400
-      }).begin({phone:target,chatJid:jid,isCurrent:current});
+      }).begin({phone:target,chatJid:destination,isCurrent:current});
       await presenceLease.beforeReply(text);
       if(!current())throw Error('A conexão mudou antes do envio. Nenhuma mensagem foi enviada.');
     }
-  if(reliable){
+  // An appointment is a transactional message: its exact encrypted retry
+  // source MUST exist before the first network send, regardless of the
+  // older optional global reliability flag.
+  if(requiresPreRelayCache({reliable,source})){
     result=await sendStoredText({
-      jid,recipientProof,text:text.trim(),store:retryStore,freshDevices,
+      jid:destination,recipientProof,text:text.trim(),store:retryStore,freshDevices,
       isCurrent:current,
       makeMessage:async (recipient,messageText)=>generateWAMessage(
         recipient,{text:messageText},{
@@ -901,7 +946,7 @@ async function sendLegacyRaw(phone,text,{waitForCapacity=false,isCurrent=()=>tru
       }
     });
   }else{
-    result=await selectedSocket.sendMessage(jid,{text:text.trim()});
+    result=await selectedSocket.sendMessage(destination,{text:text.trim()});
     if(result?.key?.id&&result?.message)retryStore.save(result.key,result.message);
   }
   if(!result?.key?.id || !result?.message){
@@ -928,6 +973,10 @@ const server=http.createServer(async(req,res)=>{
   // Additional channels authenticate their own credential at the SQL broker;
   // the shared legacy pilot token never grants access to these routes.
   if(path.startsWith('/internal/channels/')&&await channelRoutes(req,res))return;
+  // A disabled local backup key cannot be mistaken for a bad operator key.
+  // The service still fails closed; never reveal actual key length.
+  if(path.startsWith('/internal/ops/database-backups/')&&Buffer.byteLength(KEY,"utf8")<32)
+    return reply(res,503,{error:"bridge_not_configured"});
   if(!auth(req))return reply(res,401,{error:"unauthorized"});
   try{
     if(path.startsWith('/internal/ops/database-backups/'))
@@ -1017,7 +1066,7 @@ const server=http.createServer(async(req,res)=>{
       lastInboundAt=0;pendingNotificationsReceived=false;inboundSinceConnect=false;
       recentAppends=0;
       encryptedRetry=makeEncryptedRetryStore({
-        directory:path.join(authDir,"retry-encrypted"),secret:KEY,
+        directory:joinPath(authDir,"retry-encrypted"),secret:KEY,
         serialize:obj=>JSON.stringify(obj,BufferJSON.replacer),
         deserialize:str=>JSON.parse(str,BufferJSON.reviver)
       });

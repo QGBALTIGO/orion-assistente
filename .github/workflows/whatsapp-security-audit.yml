@@ -7,6 +7,7 @@ on:
       - 'app/central_appointment_reply.py'
       - 'qr-bridge/src/**'
       - 'qr-bridge/test/**'
+      - 'qr-bridge/src/bridge-auth.mjs'
       - 'tests/unit/test_whatsapp_bridge_url_security.py'
       - 'tests/unit/test_central_confirmation_reply.py'
       - '.github/workflows/whatsapp-security-audit.yml'
@@ -17,6 +18,7 @@ on:
       - 'app/central_appointment_reply.py'
       - 'qr-bridge/src/**'
       - 'qr-bridge/test/**'
+      - 'qr-bridge/src/bridge-auth.mjs'
       - 'tests/unit/test_whatsapp_bridge_url_security.py'
       - 'tests/unit/test_central_confirmation_reply.py'
       - '.github/workflows/whatsapp-security-audit.yml'
@@ -43,6 +45,7 @@ jobs:
           node --check qr-bridge/src/booking-intake-guard.mjs
           node --check qr-bridge/src/encrypted-retry-store.mjs
           node --test \
+            qr-bridge/test/bridge-auth.test.mjs \
             qr-bridge/test/consented-live-qa.test.mjs \
             qr-bridge/test/booking-intake-guard.test.mjs \
             qr-bridge/test/audio-inbound-routing.test.mjs \

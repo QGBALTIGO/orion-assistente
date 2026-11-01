@@ -114,7 +114,7 @@ async def test_prefetch_preserves_each_constraint_and_its_boundaries(kind):
     if kind in ("pauses", "time_off", "schedule_blocks", "live_hold", "confirmed"): assert noon not in actual["slots"]
     elif kind != "buffers": assert noon in actual["slots"]
     if kind == "buffers":
-        assert not actual["slots"][0].endswith("09:00:00-04:00")
+        assert actual["slots"][0].endswith("09:00:00-04:00")
         assert actual["prep_min"] == 5 and actual["cleanup_min"] == 10
 
 
@@ -223,3 +223,37 @@ async def test_public_grid_refuses_to_turn_infrastructure_failure_into_no_availa
     with pytest.raises(ConnectionError):
         await booking.verified_slot_grid(
             db, TENANT, PRO, db.shop, [db.item], DAY, NOW, strict_errors=True)
+
+@pytest.mark.asyncio
+async def test_first_booking_matches_shift_opening_and_after_break_even_with_prep():
+    db = Database(start=time(9), end=time(19))
+    db.item.update(prep_min=15, cleanup_min=0, duration_min=40)
+    db.pauses = [{"start_time": time(14), "end_time": time(16)}]
+    result = await booking.list_slots(db, TENANT, PRO, [SERVICE], DAY, now=NOW)
+    opening = datetime.combine(DAY, time(9), tzinfo=ZoneInfo(db.shop["timezone"]))
+    return_start = datetime.combine(DAY, time(16), tzinfo=ZoneInfo(db.shop["timezone"]))
+    assert opening.isoformat() in result["slots"]
+    assert return_start.isoformat() in result["slots"]
+    assert result["slots"][0] == opening.isoformat()
+    async with booking.tenant_transaction(db, TENANT):
+        shop, items = await booking.load_bundle(db, TENANT, PRO, [SERVICE])
+        first = await booking.check_slot(db, TENANT, PRO, shop, items, opening, NOW)
+        returned = await booking.check_slot(db, TENANT, PRO, shop, items, return_start, NOW)
+    assert first["occupied_from"] == opening.astimezone(UTC)
+    assert returned["occupied_from"] == return_start.astimezone(UTC)
+    assert datetime.combine(DAY, time(13, 45), tzinfo=ZoneInfo(db.shop["timezone"])).isoformat() not in result["slots"]
+    assert datetime.combine(DAY, time(15, 45), tzinfo=ZoneInfo(db.shop["timezone"])).isoformat() not in result["slots"]
+
+
+@pytest.mark.asyncio
+async def test_first_opening_does_not_bypass_real_blocks_or_existing_bookings():
+    db = Database(start=time(9), end=time(19))
+    db.item.update(prep_min=15, cleanup_min=0, duration_min=40)
+    db.schedule_blocks.append(db.interval(9, 10))
+    slots = await booking.list_slots(db, TENANT, PRO, [SERVICE], DAY, now=NOW)
+    assert not any(s.endswith("09:00:00-04:00") for s in slots["slots"])
+    db.schedule_blocks.clear()
+    db.appointments.append(db.interval(9, 10, id=UUID(int=71), status="confirmed",
+        hold_expires_at=NOW + timedelta(minutes=5)))
+    slots = await booking.list_slots(db, TENANT, PRO, [SERVICE], DAY, now=NOW)
+    assert not any(s.endswith("09:00:00-04:00") for s in slots["slots"])

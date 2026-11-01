@@ -40,7 +40,7 @@ function compareCell(value){return value===true?'<span class="op-yes" aria-label
 function canonical(code){const s=String(code||'').toLowerCase();return s.includes('essencial')?'essencial':s.includes('profissional')||s==='pro'||s.includes('_pro')?'profissional':s.includes('elite')?'elite':'';}
 function statusOf(sub){if(!sub)return 'Sem assinatura';return ({active:'Ativa',trialing:'Em teste',trial:'Em teste',past_due:'Pagamento pendente',grace:'Em carência',suspended:'Suspensa',canceled:'Cancelada',cancelled:'Cancelada',expired:'Encerrada'})[sub.status]||'Estado não confirmado';}
 let mounted=null;
-function renderCard(def, server, currentCode, currentActive, allowed, ctx, source) {
+function renderCard(def, server, currentCode, currentActive, allowed, ctx, source, checkoutConfigured) {
  const chosen=server.find(x=>x.code===def.code)||{};
  const same=currentActive&&currentCode===def.code;
  const badge=def.code==='profissional'?'<span class="op-recommended">Recomendado</span>':'';
@@ -57,7 +57,7 @@ function renderCard(def, server, currentCode, currentActive, allowed, ctx, sourc
    +'<p class="op-per-company">por empresa · até '+def.professionals+' profissionais</p>'
    +'<div class="op-plan-divider"></div><ul class="op-plan-features">'+features+'</ul>'
    +'<div class="op-plan-bottom"><button class="op-btn '+(def.code==='profissional'?'op-btn-primary':'op-btn-secondary')+'" type="button" data-op-checkout="'+def.code+'" '+disabled+'>'+escapeHTML(actionLabel)+'</button>'
-   +(same?'<span class="op-plan-caption">Sua assinatura verificada</span>':'<span class="op-plan-caption">Pagamento protegido. Confirmação após validação.</span>')+'</div></article>';
+   +'<span class="op-plan-caption">'+(same?'Seu plano vigente':checkoutConfigured?'Pagamento protegido, sujeito à verificação.':'Pagamento temporariamente indisponível; nenhuma cobrança será gerada.')+'</span></div></article>';
 }
 function hasPlanDifference(feature){
  return feature[1]!==feature[2]||feature[2]!==feature[3];
@@ -503,7 +503,8 @@ function render(root,data,ctx){
  root.innerHTML='<div class="op-page"><header class="op-heading"><span class="op-eyebrow">PLANOS ORION</span><h2>Escolha o plano ideal para sua empresa</h2><p>Tudo o que você precisa para organizar seus agendamentos, gerenciar seu negócio e oferecer uma experiência melhor aos seus clientes.</p></header>'
  +effectiveBanner(data)+subscriptionBanner(data)
  +'<div id="opPlanFeedback" class="op-feedback" role="status" aria-live="polite" hidden></div>'
- +'<section aria-label="Assinaturas mensais"><div class="op-plans-grid">'+defs.map(def=>renderCard(def,plans,currentCode,currentActive,canManage,ctx,data.effective_plan?.source)).join('')+'</div>'
+ +(!data.checkout_enabled?'<p class="op-billing-notice" role="status">As contratações estão temporariamente indisponíveis enquanto a integração de pagamentos é validada. Nenhuma cobrança será gerada.</p>':'')
+ +'<section aria-label="Assinaturas mensais"><div class="op-plans-grid">'+defs.map(def=>renderCard(def,plans,currentCode,currentActive,canManage,ctx,data.effective_plan?.source,!!data.checkout_enabled)).join('')+'</div>'
  +'<p class="op-footnote">*Recursos de mensagens, automações e IA exigem configuração, canal conectado e disponibilidade da funcionalidade. O Marketing IA e o Consultor IA não realizam agendamentos pelo WhatsApp; essa recepcionista é exclusiva do Elite.</p></section>'
  +(Array.isArray(data.feature_catalog)&&data.feature_catalog.some(item=>item.implemented===false)?'<p class="os-help" data-op-unavailable>'+data.feature_catalog.filter(item=>item.implemented===false).map(item=>escapeHTML(item.name)+': '+escapeHTML(item.description||'Indisponível nesta versão.')).join(' ')+'</p>':'')
  +renderTrial(data,canManage)

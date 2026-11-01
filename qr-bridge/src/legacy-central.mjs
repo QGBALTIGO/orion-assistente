@@ -45,11 +45,11 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
     // The manager may retire this adapter; it must never close the main socket.
     return {status:()=>status()==='connected'&&matching()?'connected':'connecting',qr:()=>null,
       close(){if(context===value)context=null;},
-      async send(phone,text,{isCurrent=()=>true,transactionalTyping=false}={}){
-        if(context!==value||!value.isCurrent()||!matching()||!value.allowedSender(phone)||!isCurrent())throw Error('legacy_send_revoked');
+      async send(phone,text,{isCurrent=()=>true,transactionalTyping=false,source='automation'}={}){
+        if(context!==value||!value.isCurrent()||!matching()||!(value.allowedSender(phone)||source==='appointment')||!isCurrent())throw Error('legacy_send_revoked');
         await value.assertCurrent();
-        const result=await rawSend(phone,text,{waitForCapacity:true,transactionalTyping,isCurrent:()=>
-          context===value&&value.isCurrent()&&matching()&&value.allowedSender(phone)&&isCurrent()});
+        const result=await rawSend(phone,text,{waitForCapacity:true,transactionalTyping,source,isCurrent:()=>
+          context===value&&value.isCurrent()&&matching()&&(value.allowedSender(phone)||source==='appointment')&&isCurrent()});
         const id=result?.accepted===true&&typeof result.id==='string'?result.id.replace(/^out:/,''):null;
         if(!id)throw Error('legacy_send_unknown');
         return {id};

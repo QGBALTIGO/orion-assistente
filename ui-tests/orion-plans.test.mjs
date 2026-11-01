@@ -56,6 +56,17 @@ test('manual Elite access is shown separately from the commercial Essencial subs
  try{assert.match(f.root.querySelector('[data-op-effective-plan]').textContent,/Elite|Liberação manual/);assert.match(f.root.querySelector('.op-account-state:not([data-op-effective-plan])').textContent,/Essencial|29,90/);assert.equal(f.root.querySelector('.op-elite [data-op-checkout]').textContent,'Plano atual');assert.equal(f.root.querySelector('.op-elite [data-op-checkout]').disabled,true);assert.equal(f.calls.some(call=>call.method==='POST'),false);}finally{f.close();}
 });
 
+test('billing unavailable is explained before checkout without starting a charge',()=>{
+ const f=fixture();
+ try{
+  const notice=f.root.querySelector('.op-billing-notice');
+  assert.ok(notice);
+  assert.match(notice.textContent,/temporariamente indisponíveis/);
+  assert.match(f.root.querySelector('.op-essencial .op-plan-caption').textContent,/nenhuma cobrança/);
+  assert.equal(f.calls.some(call=>call.method==='POST'),false);
+ }finally{f.close();}
+});
+
 test('three actual card prices, limits, recommendation and explicit AI separation',()=>{
  const f=fixture();
  try{

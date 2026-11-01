@@ -226,7 +226,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     const c=contexts.get(id);if(!c)throw Error('channel_not_started');
     await validate(c,key);const phone=validPhone(to);
     if(typeof operationCurrent!=='function'||operationCurrent()!==true)throw Error('channel_operation_superseded');
-    if(!c.allowed.has(phone))throw Error('channel_sender_denied');
+    if(source!=='appointment'&&!c.allowed.has(phone))throw Error('channel_sender_denied');
     if(typeof text!=='string'||!text.trim()||text.length>1200)throw Error('invalid_channel_message');
     const fingerprint=digest(JSON.stringify([phone,text])),reserved=c.ledger.reserve(operation_id,fingerprint);
     if(!reserved.fresh)return publicSend(operation_id,reserved.record);
@@ -242,25 +242,31 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
       await validate(c,key);
       if(!c.session||operationCurrent()!==true)throw Error('channel_not_connected_or_superseded');
       const slot={phone,operation_id,fingerprint,source,text,...(['assistant','manual'].includes(source)?{control_revision}:{} )};
-      if(c.inboxControl===true||control_revision!==undefined){
+      if(c.inboxControl===true||control_revision!==undefined||source==='appointment'){
         if(typeof broker.authorizeSend!=='function')throw Error('inbox_control_unavailable');
         const permit=await broker.authorizeSend(c.id,c.key,{owner,fence:c.fence},slot);
         if(permit?.authorized!==true||permit.operation_id!==operation_id)throw Error('inbox_send_refused');
       }
       attempted=true;
-      const result=await c.session.send(phone,text,{isCurrent:operationCurrent,transactionalTyping:source==='automation'});requireCurrent(c);
+      const result=await c.session.send(phone,text,{isCurrent:operationCurrent,transactionalTyping:source==='automation'||source==='appointment',source});requireCurrent(c);
       if(typeof result?.id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(result.id))throw Error('channel_send_unknown');
       const record={fingerprint,state:'accepted',accepted:true,delivery:'unknown',provider_id:result.id};
       c.ledger.save(operation_id,record);c.sent.set(result.id,{operation:operation_id,fingerprint,phone});
-      if(c.inboxControl===true||control_revision!==undefined){
+      if(c.inboxControl===true||control_revision!==undefined||source==='appointment'){
         // A lost finish response leaves a conservative slot. It is released
         // only after the API verifies this already persisted receipt.
         try{await broker.finishSend(c.id,c.key,{owner,fence:c.fence},{...slot,accepted:true,provider_id:result.id});}catch{}
       }
       if(c.sent.size>1000)c.sent.delete(c.sent.keys().next().value);
       return publicSend(operation_id,record);
-    }catch{
-      if(!attempted){const refused={fingerprint,state:'refused',accepted:false,delivery:'not_sent'};c.ledger.save(operation_id,refused);return publicSend(operation_id,refused);}
+    }catch(error){
+      // Only this explicit, locally generated preflight error guarantees no
+      // network send occurred. Any other exception remains ambiguous and must
+      // never cause an automatic retry or a second message.
+      if(!attempted || error?.code==='recipient_identity_unverified'){
+        const refused={fingerprint,state:'refused',accepted:false,delivery:'not_sent'};
+        c.ledger.save(operation_id,refused);return publicSend(operation_id,refused);
+      }
       return publicSend(operation_id,reserved.record);
     }
   }

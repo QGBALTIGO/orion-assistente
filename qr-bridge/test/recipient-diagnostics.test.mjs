@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {inspectLookup,inspectDelivery} from "../src/recipient-diagnostics.mjs";
+import {inspectLookup,inspectDelivery,brazilLegacyPN,verifiedRecipientFromSingleLookup} from "../src/recipient-diagnostics.mjs";
 const p="5521997557364",me=p+":4@s.whatsapp.net";
 
 test("lookup validates PN and detects connected own account",()=>{
   assert.deepEqual(inspectLookup(p,[{jid:p+"@s.whatsapp.net",exists:true,
     lid:"100022233@lid"}],me),{
-    registered:true,identity:"pn_confirmed",hasLid:true,self:true
+    registered:true,identity:"pn_confirmed",hasLid:true,self:true,lookupKind:"exact"
   });
 });
 test("no LID cannot be invented from a PN",()=>{
@@ -17,7 +17,7 @@ test("no LID cannot be invented from a PN",()=>{
 });
 test("mismatched or unknown JID is unverified; do not use another recipient",()=>{
   const a=inspectLookup(p,[{jid:"5521888888888@s.whatsapp.net",exists:true}],null);
-  assert.equal(a.registered,false);
+  assert.equal(a.registered,null);
   assert.equal(a.identity,"unverified");
   assert.equal(inspectLookup(p,null,null).identity,"unknown");
 });
@@ -56,7 +56,7 @@ test("Baileys may return an object for a valid contact, not only boolean true",(
 test("identity mismatch cannot be mistaken for a valid destination",()=>{
  const r=inspectLookup(p,[{jid:"5521888888888@lid",exists:true}],null);
  assert.equal(r.identity,"unverified");
- assert.equal(r.registered,false);
+ assert.equal(r.registered,null);
 });
 
 test("retry requests are counted by sent message ID for this recipient only",()=>{
@@ -68,4 +68,28 @@ test("retry requests are counted by sent message ID for this recipient only",()=
  assert.equal(result.retryRequests,3);
  assert.equal(result.messagesWithRetry,2);
  assert.equal(result.count,2);
+});
+
+test("a canonical Brazilian legacy PN returned to the same query has bounded evidence",()=>{
+ const nine="5567999999922",eight="556799999922",lid="100022233@lid";
+ assert.equal(brazilLegacyPN(nine),eight);
+ const rows=[{jid:eight+"@s.whatsapp.net",exists:true,lid}];
+ assert.deepEqual(verifiedRecipientFromSingleLookup(nine,rows),{
+   verified:true,kind:"provider_normalized",jid:eight+"@s.whatsapp.net",lid});
+ assert.deepEqual(inspectLookup(nine,rows,null),{
+   registered:true,identity:"phone_normalized",hasLid:true,self:false,lookupKind:"provider_normalized"});
+ // A separate positive legacy lookup is NOT an identity binding for the 9-digit PN.
+ assert.equal(verifiedRecipientFromSingleLookup(nine,[]).verified,false);
+ assert.equal(inspectLookup(nine,[],null).registered,false);
+});
+test("unknown, unrelated, ambiguous and legacy-negative results cannot authorize routing",()=>{
+ const phone="5567999999922",alias="556799999922";
+ for(const rows of [
+   [],null,[{jid:alias+"@s.whatsapp.net",exists:false}],
+   [{jid:"5567888888888@s.whatsapp.net",exists:true}],
+   [{jid:alias+"@s.whatsapp.net",exists:true},{jid:phone+"@s.whatsapp.net",exists:true}],
+   [{jid:"100022233@lid",exists:true}],
+ ])assert.equal(verifiedRecipientFromSingleLookup(phone,rows).verified,false);
+ assert.equal(brazilLegacyPN("556788888888"),null);
+ assert.equal(brazilLegacyPN("595991234567"),null);
 });

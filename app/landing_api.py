@@ -58,7 +58,8 @@ async def landing(request: Request):
 
 @router.get("/landing-assets/{asset}", include_in_schema=False)
 async def landing_asset(asset: str):
-    shared = {"orion-fields.js": "text/javascript", "orion-fields.css": "text/css"}
+    shared = {"orion-fields.js": "text/javascript", "orion-fields.css": "text/css",
+              "orion-focus.css": "text/css", "orion-focus.js": "text/javascript"}
     if asset in shared:
         return FileResponse(Path(__file__).parent / "static" / asset, media_type=shared[asset],
                             headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"})

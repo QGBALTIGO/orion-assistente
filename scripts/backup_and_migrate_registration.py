@@ -78,6 +78,28 @@ def main():
         print('orion_registration_predeploy_failed_closed',file=sys.stderr);return 3
 
 
+def one_click_schema_ready(raw):
+    """Read-only acknowledgement of migration 0056; never replay older DDL."""
+    engine = create_engine(raw, poolclass=NullPool,
+        connect_args={'options':'-c default_transaction_read_only=on -c statement_timeout=10000'})
+    try:
+        with engine.connect() as db:
+            check = db.execute(text("""
+                SELECT p.prosecdef,
+                    pg_get_userbyid(p.proowner)='app_migrator',
+                    p.proconfig=ARRAY['search_path=pg_catalog']::text[],
+                    has_function_privilege('app_support',p.oid,'EXECUTE'),
+                    has_function_privilege('app_runtime',p.oid,'EXECUTE'),
+                    has_function_privilege('app_migrator',p.oid,'EXECUTE')
+                FROM pg_proc p
+                WHERE p.oid=to_regprocedure(
+                    'public.orion_resolve_direct_appointment(text)')
+            """)).first()
+            return check is not None and tuple(check)==(True,True,True,True,False,False)
+    finally:
+        engine.dispose()
+
+
 def predeploy_main():
     """Preserve the Railway predeploy command and use only reviewed migrations.
 
@@ -95,6 +117,13 @@ def predeploy_main():
     from scripts import backup_and_migrate_plan_permissions as permissions
     from scripts import backup_and_migrate_central_appointment_confirmation as central
     from scripts import backup_and_migrate_paraguay_phone as paraguay
+    from scripts import backup_and_migrate_central_notifications as central_notifications
+    from scripts import backup_and_migrate_short_links as short_links
+    from scripts import backup_and_migrate_combo_duration as combo_duration
+    def finish_notifications(result):
+        if result:return result
+        if migrated_version(raw)!=paraguay.TARGET:return 0
+        return central_notifications.main()
     def finish_permissions(result):
         if result:return result
         checked=permissions.main()
@@ -102,7 +131,7 @@ def predeploy_main():
         if os.getenv('ORION_RUN_CENTRAL_APPOINTMENT_MIGRATION')=='1':
             checked=central.main()
             if checked:return checked
-        return paraguay.main() if os.getenv(paraguay.FLAG)=='1' else 0
+        return finish_notifications(paraguay.main()) if os.getenv(paraguay.FLAG)=='1' else 0
     def finish_direct():
         result=direct.main()
         if result:return result
@@ -110,11 +139,28 @@ def predeploy_main():
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
+        if current == '0056_one_click_appointment_links':
+            # 0056 is an explicitly reviewed, already-applied additive release.
+            # Old 0039/0054/0055 migrators may NEVER be replayed here.
+            if (combo_duration.schema_ready(raw) and short_links.schema_ready(raw)
+                    and one_click_schema_ready(raw)):
+                print('orion_one_click_0056_schema_verified', flush=True)
+                return 0
+            print('orion_one_click_0056_schema_invalid', file=sys.stderr)
+            return 3
+        if current == combo_duration.TARGET:
+            return combo_duration.main()
+        if current == short_links.TARGET:
+            checked = short_links.main()
+            return checked if checked else combo_duration.main()
+        if current == central_notifications.TARGET:
+            checked=central_notifications.main()
+            return checked if checked else short_links.main()
         if current == paraguay.TARGET:
-            return paraguay.main()
+            return finish_notifications(paraguay.main())
         if current == central.TARGET:
             checked=central.main()
-            return checked if checked else paraguay.main()
+            return checked if checked else finish_notifications(paraguay.main())
         if current == permissions.TARGET:
             return finish_permissions(0)
         if current in {appointment.TARGET,appointment.COMMUNICATIONS_PREVIOUS}:

@@ -141,6 +141,19 @@ test('old self PN requires HMAC correspondence with the preserved physical sessi
   }
 });
 
+test('central passes appointment source only to verified transactional path',async()=>{
+  const f=fixture();await f.central.resume();
+  const adapter=f.adapter();
+  await adapter.send(phone,'Teste autorizado, sem dados pessoais',{
+    source:'appointment',transactionalTyping:true});
+  const call=f.calls.find(c=>c[0]==='raw');
+  assert.equal(call[3].source,'appointment');
+  assert.equal(call[3].transactionalTyping,true);
+  assert.equal(call[1],phone);
+  const next=await adapter.send(phone,'Mensagem manual');
+  assert.equal(f.calls.filter(c=>c[0]==='raw')[1][3].source,'automation');
+});
+
 test('aviso automático autorizado propaga digitando apenas para o envio transacional',async()=>{
   const f=fixture();await f.central.resume();
   const adapter=f.adapter();
