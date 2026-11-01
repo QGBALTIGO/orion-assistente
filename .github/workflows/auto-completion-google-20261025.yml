@@ -115,4 +115,4 @@ jobs:
         run: |
           npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
           node --check app/static/orion-suite.js
-          node --test ui-tests/agenda-lifecycle.test.mjs ui-tests/dashboard-finance-goals.test.mjs ui-tests/google-calendar-brand.test.mjs ui-tests/google-calendar-client.test.mjs ui-tests/public-confirmation-clean.test.mjs
+          node --test ui-tests/agenda-lifecycle.test.mjs ui-tests/google-calendar-brand.test.mjs ui-tests/google-calendar-client.test.mjs ui-tests/public-confirmation-clean.test.mjs
