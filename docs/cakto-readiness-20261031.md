@@ -1,31 +1,27 @@
-# Orion / Cakto — Estado de homologação (31/10/2026)
+# Orion / Cakto — Revisão em produção (2/11/2026)
 
-Este documento é um registro técnico; não autoriza cobranças e não contém credenciais.
+Este documento não contém segredos, dados de clientes ou ordens reais.
 
-## Evidências em produção
-- OAuth de leitura Cakto: respondendo.
-- Ofertas mensais ativas identificadas: Essencial R$ 29,90; Profissional R$ 89,90; Elite R$ 139,90.
-- Métodos no produto compartilhado: Pix Automático e cartão detectados.
-- Webhook para https://orionagenda.pro/webhooks/cakto com cobertura confirmada: 0/3 ofertas.
-- Histórico de entregas verificadas com o segredo Orion: 0.
-- CAKTO_WEBHOOK_SECRET: não passou a validação de segurança mínima; não registrar nem imprimir seu valor.
-- Checkout direto permanece bloqueado intencionalmente. Não mudar flags para contornar a checagem.
+## Estado confirmado pela API e pelo deploy
 
-## Configuração necessária no próprio provedor
-1. Entrar na Cakto da conta que possui as três ofertas de assinatura.
-2. Em Integrações > Webhooks, cadastrar um webhook para o produto dono das três ofertas, com a URL EXATA https://orionagenda.pro/webhooks/cakto.
-3. Assinar purchase_approved, purchase_refused, subscription_renewed, subscription_canceled, refund e chargeback. Confirmar que o escopo inclui todos os planos do produto.
-4. Gerar/rotacionar o segredo no provedor. Configurar o mesmo segredo como variável protegida CAKTO_WEBHOOK_SECRET na Railway, sem expor em chats, prints, logs ou repositórios.
-5. Fazer uma entrega de teste pelo provedor; verificar assinatura HMAC, timestamp, segredo do corpo e resposta HTTP 2xx. Consultar o histórico e a reconciliação sem alterar assinaturas reais.
-6. Homologar assinatura mensal com Pix Automático e cartão/3DS, incluindo cobrança, recusa, vencimento, renovação, cancelamento, reembolso e chargeback. Validar um único checkout por empresa.
-7. Somente após provas documentadas, configurar as flags de billing/reconciliação necessárias e executar novamente as verificações de ofertas, webhooks, métodos recorrentes, assinatura e isolamento.
+- OAuth Cakto: autenticação e consulta de ofertas funcionando.
+- Três ofertas mensais reconhecidas: Orion Essencial R$ 29,90; Profissional R$ 89,90; Elite R$ 139,90.
+- Um produto comum às três ofertas, com Pix Automático e cartão detectados.
+- Existe um webhook **V2**, cadastrado no painel do provedor, ativo e associado a esse produto, com destino exato `https://orionagenda.pro/webhooks/cakto`.
+- O endpoint V1 `GET /webhook/` não lista o webhook V2. O histórico `GET /webhook/event_history/` contém as entregas e dados de configuração permitidos pela API.
+- A chave do webhook V2 foi sincronizada com `CAKTO_WEBHOOK_SECRET` na Railway, sem disponibilizá-la em commits ou logs. O código de transferência temporário foi removido.
+- Após a sincronização: 26 entregas históricas HTTP 2xx com segredo validado, evidência dos seis eventos financeiros obrigatórios e cobertura de todas as três ofertas.
+- Teste da API do provedor `POST /webhook/event_test/{id}/?event=checkout_abandonment`: **entrega HTTP 2xx confirmada** pelo histórico; nenhum pagamento ou assinatura criado.
+- Flag transitória `ORION_CAKTO_SYNTHETIC_WEBHOOK_TEST` restaurada para `0`.
 
-## Salvaguardas
-- Não criar cobrança real nem habilitar pagamentos enquanto o provedor não estiver integralmente validado.
-- Webhook não é prova de assinatura ativa: GET de pedido/assinatura e vínculo inequívoco ao proprietário continuam obrigatórios.
-- O botão de assinatura pode exibir estado informativo durante a homologação; nenhuma resposta de UI libera permissões.
-- Manual grants, testes grátis e assinaturas financeiras são fontes distintas. Não substituir assinaturas existentes por engano.
-- Não inferir renovação a partir de datas locais nem ativar planos com recibos de uma compra isolada.
-- Preservar idempotência, RLS, limites de profissionais, migrações já instaladas e snapshots dos pagamentos.
+## Segurança e próximos requisitos comerciais
 
-Fontes Cakto: https://docs.cakto.com.br/conceitos/webhooks e https://docs.cakto.com.br/api-reference/webhooks/create.
+- O recebimento das notificações está funcionando. Não criar um webhook V1 duplicado para o mesmo produto.
+- A sincronização não é uma rotação de chave. Antes de liberar pagamentos reais, avaliar a necessidade de rotação no próprio provedor, sobretudo se a chave anterior teve exposição.
+- Checkout direto com Pix Automático/cartão continua desativado por precaução. Não habilitar `ORION_DIRECT_PAYMENTS_ENABLED`, `CAKTO_BILLING_LIVE_ENABLED` ou `ORION_DIRECT_RECURRING_VERIFIED` sem homologar o ciclo financeiro recorrente.
+- Falta confirmar, com staging autorizado e evidências adequadas, cobrança recorrente Pix Auto, tokenização e cartão 3DS, primeira cobrança e ativação, renovação, cancelamento, inadimplência, estorno/chargeback, deduplicação e isolamento entre empresas.
+- O worker reconciliador deve ser ativado apenas após revisar os vínculos e testes de ciclo de vida; não fazer mudanças em assinaturas a partir de dados históricos não conciliados.
+- Nunca declarar uma assinatura ativa com base somente no webhook: verificar pedido e assinatura no provedor e vincular ao checkout criado pelo titular do negócio.
+- Proibido armazenar PAN/CVV, expor chaves em logs ou alterar planos de outras empresas.
+
+Fontes: https://docs.cakto.com.br/conceitos/webhooks e https://docs.cakto.com.br/api-reference/webhooks/test-webhook.

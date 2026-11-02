@@ -333,16 +333,41 @@ async def admin_cakto_connection(actor: Actor = Depends(authenticate)):
     result["offers"] = match_plans(offers)
     if not result["webhook_secret_configured"]:
         return result
+    # Cakto V2 webhooks created in the provider dashboard are omitted from
+    # GET /webhook/ but their signed deliveries appear in event_history.
+    # Diagnose both sources, as already required by the guarded checkout.
+    from scripts.probe_orion_webhooks_read_only import probe as inventory_probe
+    from scripts.probe_orion_webhook_history_read_only import probe as history_probe
+    inventory = None
     try:
-        from scripts.probe_orion_webhooks_read_only import probe
-        coverage = await probe(client, offers)
+        inventory = await inventory_probe(client, offers)
     except (httpx.HTTPError, ValueError, RuntimeError):
-        result["webhook_status"] = "provider_check_unavailable"
-        return result
-    result["webhook_offer_coverage"] = coverage["webhook_ready"]
-    result["webhook_status"] = (
-        "registered" if coverage["webhook_ready"] == len(CODES) else "incomplete"
-    )
+        pass
+    if (isinstance(inventory, dict)
+            and inventory.get("offer_matches") == len(CODES)
+            and inventory.get("webhook_ready") == len(CODES)):
+        result["webhook_offer_coverage"] = len(CODES)
+        result["webhook_status"] = "registered"
+        result["webhook_source"] = "provider_inventory"
+    else:
+        try:
+            history = await history_probe(client, offers)
+        except (httpx.HTTPError, ValueError, RuntimeError):
+            result["webhook_status"] = "provider_check_unavailable"
+            return result
+        if (isinstance(history, dict)
+                and history.get("offer_matches") == len(CODES)
+                and history.get("webhook_ready") == len(CODES)
+                and history.get("required_event_coverage") == len(CODES)
+                and history.get("product_coverage") == len(CODES)
+                and history.get("recent_verified_deliveries", 0) >= 6):
+            result["webhook_offer_coverage"] = len(CODES)
+            result["webhook_status"] = "registered"
+            result["webhook_source"] = "verified_v2_history"
+        else:
+            result["webhook_offer_coverage"] = int(
+                inventory.get("webhook_ready", 0)) if isinstance(inventory, dict) else 0
+            result["webhook_status"] = "incomplete"
     if direct_environment_ready():
         try:
             # Live payments need provider proof beyond the environment flags,
