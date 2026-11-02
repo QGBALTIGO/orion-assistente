@@ -32,6 +32,8 @@ from app.management_api import router as management_router
 from app.management_blocks import router as management_blocks_router
 from app.management_ai import router as management_ai_router
 from app.management_team import router as management_team_router, invitation_router
+from app.professional_invites import router as professional_invites_router
+from app.professional_portal import router as professional_portal_router
 from app.management_preferences import router as management_preferences_router
 from app.public_site_api import router as public_site_router
 from app.service_packages_api import router as service_packages_router
@@ -116,6 +118,8 @@ include_plan_router(app, management_blocks_router)
 include_plan_router(app, management_ai_router)
 include_plan_router(app, management_team_router)
 include_plan_router(app, invitation_router)
+include_plan_router(app, professional_invites_router)
+include_plan_router(app, professional_portal_router)
 include_plan_router(app, management_preferences_router)
 from app.appointment_access_api import router as appointment_access_router
 include_plan_router(app, appointment_access_router)
@@ -169,6 +173,7 @@ async def panel_asset(asset: str) -> FileResponse:
                "orion-pwa.js": "text/javascript",
                "orion-auth.css": "text/css",
                "orion-invite.css": "text/css", "orion-invite.js": "text/javascript",
+               "orion-professional.css": "text/css", "orion-professional.js": "text/javascript",
                "orion-onboarding.css": "text/css", "orion-onboarding.js": "text/javascript",
                "orion-channels.css": "text/css", "orion-channels.js": "text/javascript",
                "orion-connect.js": "text/javascript",
@@ -199,6 +204,13 @@ async def painel_legacy_redirect(request: Request) -> RedirectResponse:
     suffix = "?" + request.url.query if request.url.query else ""
     return RedirectResponse("/painel" + suffix, status_code=308,
                             headers={"Cache-Control": "no-store"})
+
+
+@app.get("/profissional", include_in_schema=False)
+async def professional_page() -> FileResponse:
+    return FileResponse(Path(__file__).parent / "static" / "orion-professional.html",
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
+                 "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
 
 
 @app.get("/convite", include_in_schema=False)

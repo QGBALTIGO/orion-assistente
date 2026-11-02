@@ -483,9 +483,10 @@ async def test_recipient_and_provider_quotas_use_real_atomic_redis(mail_db, monk
 
 
 @pytest.mark.asyncio
-async def test_real_owner_invites_replay_manual_foreign_denial_and_revoke_suppression(mail_db, monkeypatch):
+async def test_legacy_support_invites_replay_manual_foreign_denial_and_revoke_suppression(mail_db, monkeypatch):
     d = mail_db
-    headers = await login(d)
+    owner_headers = await login(d)
+    headers = {**owner_headers,"Authorization":"Bearer "+os.environ["SUPPORT_API_TOKEN"]}
     base = f"/api/v1/tenants/{d['tenant']}/management/team"
     request = {"email": d["guest_email"], "role": "viewer", "idempotency_key": str(uuid4())}
     result = await d["client"].post(base + "/invitations", json=request, headers=headers)
@@ -495,7 +496,7 @@ async def test_real_owner_invites_replay_manual_foreign_denial_and_revoke_suppre
     repeated = await d["client"].post(base + "/invitations", json=request, headers=headers)
     assert repeated.status_code == 201 and repeated.json()["link"] is None
     assert repeated.json()["email_delivery"]["status"] == "queued" and len(await rows(d)) == 1
-    foreign = await d["client"].post(f"/api/v1/tenants/{d['other']}/management/team/invitations", json=request, headers=headers)
+    foreign = await d["client"].post(f"/api/v1/tenants/{d['other']}/management/team/invitations", json=request, headers=owner_headers)
     assert foreign.status_code == 403 and len(await rows(d)) == 1
     manual = await d["client"].post(base + "/invitations", json={"role": "viewer", "idempotency_key": str(uuid4())}, headers=headers)
     assert manual.status_code == 201 and manual.json()["email_delivery"]["status"] == "manual"
@@ -537,7 +538,8 @@ async def test_forgot_known_unknown_generic_reset_invalidates_cookie_and_notifie
 @pytest.mark.asyncio
 async def test_verified_invitation_claim_review_and_access_notifications_keep_authority(mail_db, monkeypatch):
     d = mail_db
-    owner_headers = await login(d)
+    original_headers = await login(d)
+    owner_headers = {**original_headers,"Authorization":"Bearer "+os.environ["SUPPORT_API_TOKEN"]}
     base = f"/api/v1/tenants/{d['tenant']}/management/team"
     created = await d["client"].post(base + "/invitations", headers=owner_headers,
         json={"email": d["guest_email"], "role": "viewer", "idempotency_key": str(uuid4())})
@@ -549,7 +551,7 @@ async def test_verified_invitation_claim_review_and_access_notifications_keep_au
     guest_headers = await login(d, guest=True)
     accepted = await d["client"].post("/api/v1/team-invitations/accept", headers=guest_headers, json={"token": token})
     assert accepted.status_code == 200 and accepted.json()["status"] == "claimed"
-    owner_headers = await login(d)
+    owner_headers = {**(await login(d)),"Authorization":"Bearer "+os.environ["SUPPORT_API_TOKEN"]}
     approved = await d["client"].patch(base + "/invitations/" + invitation["id"], headers=owner_headers,
                                       json={"action": "approve", "expected_version": 2})
     assert approved.status_code == 200, approved.text

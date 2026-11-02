@@ -3100,6 +3100,10 @@ async function loadBusinesses({resolveSetup:resolveAfter=true}={}){
    if(!Array.isArray(rows))throw Error("Não foi possível conferir a empresa desta conta. Tente novamente.");
    if(rows.length>1)throw Error("Sua conta está vinculada a mais de uma empresa. Entre em contato com o suporte para regularizar o vínculo.");
    if(rows.length===1&&(!rows[0]||typeof rows[0].id!=="string"||!rows[0].id))throw Error("Não foi possível confirmar a empresa desta conta.");
+   if(loginRole==="member"&&rows.length===1&&rows[0].role==="professional"){
+     window.location.replace("/profissional");
+     return false;
+   }
    const id=rows.length===1?rows[0].id:"";
    if(suiteTenantId!==id){resetBusinessState();resetCommerceState();resetCatalogState();resetAiConversation();clearAiProfileState();window.OrionChannels?.unmount();window.OrionAutomations?.unmount()}
    suiteTenantId=id;businessContextReady=true;businessContextError="";

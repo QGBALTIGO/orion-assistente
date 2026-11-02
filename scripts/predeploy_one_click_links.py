@@ -14,13 +14,34 @@ ORIGINAL_RAILWAY_PREDEPLOY_CHECK = "import importlib.metadata as m, subprocess, 
 
 def main():
     subprocess.run([sys.executable, "-c", ORIGINAL_RAILWAY_PREDEPLOY_CHECK], check=True)
-    migration = Path("alembic/versions/0056_one_click_appointment_links.py")
+    migration = Path("alembic/versions/0057_professional_portal.py")
     if not migration.is_file():
         raise RuntimeError("one_click_migration_missing_from_release")
-    environment = {**os.environ, "ORION_MIGRATION_SWITCH_ROLE": "1"}
-    subprocess.run([sys.executable, "-m", "alembic", "upgrade",
-        "0056_one_click_appointment_links"], env=environment, check=True)
-    print("one_click_appointment_schema_ready", flush=True)
+    from scripts.backup_and_migrate_commissions import (
+        connection_values, storage_values, perform_backup,
+    )
+    from scripts.apply_variable_combo_migration import migrated_version
+    import tempfile
+    raw, url = connection_values()
+    current = migrated_version(raw)
+    if current not in {"0056_one_click_appointment_links","0057_professional_portal"}:
+        raise RuntimeError("professional_portal_source_revision_not_approved")
+    if current == "0056_one_click_appointment_links":
+        # A private, ownership-preserving archive must be verified with a full
+        # remote checksum readback before altering memberships or invitations.
+        with tempfile.TemporaryDirectory(prefix="orion-professional-0057-") as folder:
+            perform_backup(url, storage_values(), Path(folder) / "backup.dump",
+                           backup_context="professional-portal-0057",
+                           schema_revision=current, preserve_ownership=True)
+        environment = {**os.environ, "ORION_MIGRATION_SWITCH_ROLE": "1"}
+        subprocess.run([sys.executable, "-m", "alembic", "upgrade",
+                        "0057_professional_portal"], env=environment, check=True)
+    if migrated_version(raw) != "0057_professional_portal":
+        raise RuntimeError("professional_portal_schema_not_published")
+    from scripts.backup_and_migrate_registration import portal_schema_ready
+    if not portal_schema_ready(raw):
+        raise RuntimeError("professional_portal_security_contract_invalid")
+    print("professional_portal_schema_ready", flush=True)
 
 
 if __name__ == "__main__":

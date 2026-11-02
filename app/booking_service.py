@@ -755,7 +755,7 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
                              future_only: bool = False, expected_updated_at: datetime | None = None,
                              idempotency_key: str | None = None, requested_by: str | None = None,
                              reason: str | None = None, context: LifecycleActor | None = None,
-                             source: str = "unknown"):
+                             source: str = "unknown", authorized_professional_id: UUID | None = None):
     async with tenant_transaction(s, tenant):
         row = (await s.execute(text("""
             SELECT professional_id FROM appointments WHERE tenant_id=:tenant AND id=:id
@@ -768,6 +768,8 @@ async def cancel_appointment(s: AsyncSession, tenant: UUID, item_id: UUID, *,
         """), {"tenant": tenant, "id": item_id})).mappings().one()
         if entry["professional_id"] != row["professional_id"]:
             fail(409, "O profissional mudou. Atualize o agendamento")
+        if authorized_professional_id is not None and entry["professional_id"] != authorized_professional_id:
+            fail(404, "Agendamento não encontrado na sua agenda")
         if customer_phone is not None or expected_snapshot is not None:
             await verify_customer_snapshot(s, tenant, entry, customer_phone, expected_snapshot)
         context = resolved_actor(context, source, entry["customer_id"], verified_customer=customer_phone is not None)
@@ -838,7 +840,8 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
                                  new_start: datetime, now: datetime | None = None, *,
                                  expected_snapshot: str | None = None, customer_phone: str | None = None,
                                  expected_updated_at: datetime | None = None, idempotency_key: str | None = None,
-                                 context: LifecycleActor | None = None, source: str = "unknown", proposal_id: UUID | None = None):
+                                 context: LifecycleActor | None = None, source: str = "unknown", proposal_id: UUID | None = None,
+                                 authorized_professional_id: UUID | None = None):
     supplied_clock = now is not None
     now = now or datetime.now(UTC)
     async with tenant_transaction(s, tenant):
@@ -853,6 +856,8 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
         """), {"tenant": tenant, "id": item_id})).mappings().one()
         if row["professional_id"] != current["professional_id"]:
             fail(409, "O profissional mudou. Atualize o agendamento")
+        if authorized_professional_id is not None and row["professional_id"] != authorized_professional_id:
+            fail(404, "Agendamento não encontrado na sua agenda")
         if not supplied_clock:
             now = datetime.now(UTC)
         if customer_phone is not None:

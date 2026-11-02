@@ -51,7 +51,7 @@ async def scoped_account_actor(role: str, account_id: UUID | None, route_tenant,
     else:
         async with support_session_factory()() as db:
             membership = await account_membership_role(db, account_id, tenant)
-    if membership not in {"owner", "editor", "viewer"}:
+    if membership not in {"owner", "editor", "viewer", "professional"}:
         return actor
     return Actor(role, tenant, account_id, membership)
 
