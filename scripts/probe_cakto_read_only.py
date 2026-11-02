@@ -92,10 +92,6 @@ async def check():
     print("orion_direct_billing_gated="
           + str(int(os.getenv("ORION_DIRECT_PAYMENTS_ENABLED", "0") != "1")),
           flush=True)
-    # One-release sealed-key handoff. Public-key encrypted data only; remove
-    # this call immediately after securely syncing the runtime environment.
-    from scripts.cakto_sealed_provider_key_once import export as sealed_export
-    await sealed_export()
     if __import__("os").getenv("ORION_CAKTO_SYNTHETIC_WEBHOOK_TEST", "0") == "1":
         # One-time opt-in provider synthetic test only: no real order or
         # payment. Do not print any secret, provider body or webhook ID.
