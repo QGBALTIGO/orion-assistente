@@ -64,6 +64,18 @@ async def check():
     except Exception:
         print("cakto_delivery_history_read_not_verified", flush=True)
     try:
+        from scripts.probe_orion_v2_adoption_read_only import probe as probe_v2
+        v2=await probe_v2(client,offers)
+        # Only aggregate booleans and counts; no IDs or provider payloads.
+        print("cakto_v2_linked_apps="
+              + str(v2["active_target_product_apps"])
+              + ";key_readable:" + str(v2["remote_secret_readable"])
+              + ";env_matches:" + str(v2["matches_current_env"])
+              + ";six_events:" + str(v2["full_six_event_app_coverage"])
+              + ";maximum_events:" + str(v2["max_event_count"]),flush=True)
+    except Exception:
+        print("cakto_v2_linked_apps_read_unavailable",flush=True)
+    try:
         methods = await probe_payment_methods(client, offers)
         print("cakto_orion_payment_methods="
               + "one_product:" + str(int(methods["offers_one_product"]))
