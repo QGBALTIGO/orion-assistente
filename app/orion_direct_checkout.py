@@ -203,6 +203,15 @@ async def require_verified_webhooks(client: CaktoClient) -> None:
         offers = await client.list_offers()
     except Exception:
         raise HTTPException(503, "Não foi possível verificar a confirmação dos pagamentos.") from None
+    # A working read-only OAuth token does not authorize real charging.
+    # Require actual grants returned by Cakto's token endpoint, including
+    # card tokenization, before any checkout can create a payment.
+    scopes = frozenset({"read", "write", "orders", "subscriptions",
+                         "payments", "card_tokens"})
+    if client.granted_scopes(scopes) is not True:
+        raise HTTPException(
+            409, "A chave da Cakto ainda não está autorizada para cobranças recorrentes."
+        )
     try:
         inventory = await inventory_probe(client, offers)
     except Exception:
