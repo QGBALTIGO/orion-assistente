@@ -90,6 +90,13 @@ async def check():
     except Exception:
         print("cakto_v2_linked_apps_read_unavailable",flush=True)
     try:
+        from scripts.probe_cakto_v2_management_read_only import check as probe_management
+        status=await probe_management(client,offers)
+        # One safe, known status string; no provider response content or IDs.
+        print("cakto_v2_management_api="+status,flush=True)
+    except Exception:
+        print("cakto_v2_management_api=unavailable",flush=True)
+    try:
         methods = await probe_payment_methods(client, offers)
         print("cakto_orion_payment_methods="
               + "one_product:" + str(int(methods["offers_one_product"]))

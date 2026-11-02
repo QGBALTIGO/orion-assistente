@@ -19,6 +19,8 @@ on:
       - "app/cakto_subscription_lifecycle.py"
       - "scripts/probe_cakto_read_only.py"
       - "scripts/probe_cakto_receipt_backlog_read_only.py"
+      - "scripts/probe_cakto_v2_management_read_only.py"
+      - "tests/unit/test_cakto_v2_management_probe.py"
       - "tests/unit/test_cakto_granted_scopes.py"
       - "tests/unit/test_cakto_subscription_lifecycle.py"
       - ".github/workflows/cakto-integration.yml"
@@ -67,11 +69,12 @@ jobs:
         run: alembic upgrade head
       - name: Testes sintéticos e PostgreSQL/RLS reais
         run: |
-          python -m py_compile app/cakto_api.py scripts/backup_and_migrate_cakto.py scripts/probe_cakto_read_only.py scripts/probe_cakto_receipt_backlog_read_only.py
+          python -m py_compile app/cakto_api.py scripts/backup_and_migrate_cakto.py scripts/probe_cakto_read_only.py scripts/probe_cakto_receipt_backlog_read_only.py scripts/probe_cakto_v2_management_read_only.py
           pytest -q -ra \
             tests/unit/test_cakto_integration.py \
             tests/unit/test_cakto_granted_scopes.py \
             tests/unit/test_cakto_subscription_lifecycle.py \
+            tests/unit/test_cakto_v2_management_probe.py \
             tests/unit/test_cakto_v2_admin_status.py \
             tests/unit/test_cakto_billing_readiness.py \
             tests/integration/test_cakto_postgres.py \
