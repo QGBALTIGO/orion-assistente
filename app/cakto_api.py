@@ -220,6 +220,9 @@ class CaktoClient:
         self.client_secret = os.getenv("CAKTO_CLIENT_SECRET", "")
         self._token = None
         self._expires = 0.0
+        # The OAuth response may report granted scopes. Unknown is never
+        # equivalent to an explicit write/payment permission.
+        self._oauth_scopes: frozenset[str] | None = None
 
     @property
     def configured(self):
@@ -241,11 +244,19 @@ class CaktoClient:
         token = payload.get("access_token")
         if not isinstance(token, str) or not token:
             raise RuntimeError("Token Cakto inválido")
+        raw_scope = payload.get("scope")
+        self._oauth_scopes = (frozenset(raw_scope.split())
+                              if isinstance(raw_scope, str) else None)
         self._token = token
         self._expires = time.monotonic() + min(
             max(int(payload.get("expires_in", 3600)) - 120, 30), 35000
         )
         return token
+
+    def granted_scopes(self, required: frozenset[str]) -> bool | None:
+        if self._oauth_scopes is None:
+            return None
+        return required.issubset(self._oauth_scopes)
 
     async def _get(self, path: str, **params):
         bearer = await self.token()

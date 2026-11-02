@@ -24,6 +24,20 @@ async def check():
         print("cakto_read_only_connectivity_failed", file=sys.stderr)
         return 3
     print("cakto_oauth_offers_read_ok", flush=True)
+    # Only Boolean authorization results, never raw scopes or OAuth tokens.
+    required = {
+        "write": frozenset({"write"}),
+        "payments": frozenset({"payments"}),
+        "subscriptions": frozenset({"subscriptions"}),
+        "card_tokens": frozenset({"card_tokens"}),
+        "orders": frozenset({"orders"}),
+    }
+    def verdict(needed):
+        state=client.granted_scopes(needed)
+        return "unknown" if state is None else ("yes" if state else "no")
+    print("cakto_provider_grants=" + ";".join(
+        name + ":" + verdict(scopes) for name,scopes in required.items()
+    ), flush=True)
     print("cakto_catalog_matches=" + str(sum(plan["found"] for plan in matched)) +
           "/3;cakto_ambiguous_matches=" + str(sum(plan["ambiguous"] for plan in matched)),
           flush=True)
@@ -84,6 +98,15 @@ async def check():
               + ";confirmed:" + str(int(methods["methods_confirmed"])), flush=True)
     except Exception:
         print("cakto_orion_payment_methods_unverified", flush=True)
+    try:
+        from scripts.probe_cakto_receipt_backlog_read_only import totals
+        counts=await totals()
+        # Aggregate counts only. This cannot expose or modify payment records.
+        print("cakto_local_receipts=" + ";".join(
+            key + ":" + str(value) for key,value in sorted(counts.items())
+        ),flush=True)
+    except Exception:
+        print("cakto_local_receipts_unavailable",flush=True)
     import os
     # Only a Boolean is logged. Never print/reveal any value, token or length.
     print("cakto_webhook_secret_min_length_ready="
