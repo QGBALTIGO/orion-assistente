@@ -12,6 +12,7 @@ LIFECYCLE = frozenset({
     "subscription_renewed", "subscription_canceled",
     "purchase_refused", "refund", "chargeback"
 })
+KNOWN_EVENTS = LIFECYCLE | {"purchase_approved"}
 
 
 async def totals() -> dict[str, int]:
@@ -35,7 +36,17 @@ async def totals() -> dict[str, int]:
         "failed":0,"verified":0,"bindings":int(active),
         "pending_intents":int(pending_intents)
     }
+    # Only a fixed allowlist of event types. Counts cannot expose customer
+    # data or external identifiers, even if unexpected event labels exist.
+    for event in sorted(KNOWN_EVENTS):
+        output["failed_"+event]=0
+        output["pending_"+event]=0
+        output["review_"+event]=0
     for event,state,count in rows:
+        if event in KNOWN_EVENTS and state in ("failed", "pending", "manual_review"):
+            prefix={"failed":"failed_", "pending":"pending_",
+                    "manual_review":"review_"}[state]
+            output[prefix+event]+=int(count)
         if state=="pending":
             bucket="pending_lifecycle" if event in LIFECYCLE else "pending_first"
             output[bucket]+=int(count)
