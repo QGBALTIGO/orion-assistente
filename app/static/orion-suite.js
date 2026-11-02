@@ -952,9 +952,45 @@
   }
   const teamRoles={owner:'Proprietário',editor:'Editor',viewer:'Leitor'};
   const inviteStatuses={pending:'Aguardando aceite',claimed:'Aguardando aprovação',approved:'Aprovado',revoked:'Revogado',expired:'Expirado'};
-  function renderInvitations(compact=false){const team=state.data.team||{},invitations=rows(team.invitations),pending=invitations.filter(i=>['pending','claimed'].includes(i.status)),items=compact?pending:invitations;return '<section class="os-card os-team-invites"><div class="os-card-header"><div><h2>Convites</h2><p>Gere um link de acesso para sua equipe, com aprovação.</p></div>'+button('Convidar','new-invitation','os-outline os-small','plus',team.can_manage?'':'disabled')+'</div>'+(items.length?'<div class="os-invitation-list">'+items.map(i=>'<div class="os-invitation-row"><div><strong>'+esc(i.email||'Convite por link')+'</strong><small>'+esc(teamRoles[i.role]||i.role)+' · '+esc(inviteStatuses[i.status]||i.status)+(i.claimed_by_name?' · '+esc(i.claimed_by_name):'')+'</small><small>Expira em '+fmtDate(dateKey(new Date(i.expires_at)))+'</small></div><div class="os-actions">'+(team.can_manage&&i.status==='claimed'?button('Aprovar','approve-invitation','os-small','check','data-invitation="'+esc(i.id)+'"'):'')+(team.can_manage&&['pending','claimed'].includes(i.status)?button('Revogar','revoke-invitation','os-ghost os-small','close','data-invitation="'+esc(i.id)+'"'):'')+'</div></div>').join('')+'</div>':'<p class="os-help">Nenhum convite pendente.</p>')+'</section>';}
-  function renderTeam(){const team=state.data.team||{},members=rows(team.members),selfEmail=String(state.bridge.user?.email||'').toLowerCase();return '<section class="os-card" style="margin-top:24px"><div class="os-card-header"><div><h2>Equipe & Permissões</h2><p>Gerencie quem pode consultar e editar o painel da empresa.</p></div>'+icon('shield')+'</div>'+(members.length?'<div class="os-table-scroll"><table class="os-table"><thead><tr><th>Pessoa</th><th>Perfil</th><th>Situação</th><th></th></tr></thead><tbody>'+members.map(member=>'<tr><td><div class="os-person"><span class="os-avatar">'+esc(initials(member.name||member.email))+'</span><div><strong>'+esc(member.name||member.email)+'</strong><small>'+esc(member.email)+'</small></div></div></td><td>'+esc(teamRoles[member.role]||member.role)+'</td><td>'+badge(member.active?'active':'inactive')+'</td><td>'+(team.can_manage&&member.role!=='owner'&&String(member.email).toLowerCase()!==selfEmail?'<button type="button" class="os-icon-button" data-os-team-member="'+esc(member.account_id)+'" aria-label="Editar acesso de '+esc(member.name||member.email)+'">'+icon('edit')+'</button>':'')+'</td></tr>').join('')+'</tbody></table></div>':'<p class="os-finance-empty">Nenhum membro de equipe disponível para esta empresa.</p>')+'<div class="os-team-roles"><div><strong>Proprietário</strong><p>Gerencia a empresa e aprova os acessos da equipe.</p></div><div><strong>Editor</strong><p>Edita os cadastros e os dados de gestão autorizados.</p></div><div><strong>Leitor</strong><p>Consulta os dados da empresa sem fazer alterações.</p></div></div></section>'+renderInvitations();}
-  function showInvitation(){if(!state.data.team?.can_manage)return;showDialog('invitation','Convidar funcionário',dialogForm('invitation',field('E-mail (opcional)','email','email','','maxlength="320" placeholder="nome@email.com"')+selectField('Perfil de acesso','role',[['editor','Editor'],['viewer','Leitor']],'editor')+'<p class="os-help">Você receberá um link para compartilhar. Depois do aceite, o proprietário aprova a entrada na equipe.</p>','Gerar link'));}
+  function proAccessState(p){
+    const team=state.data.team||{},link=rows(team.professional_access).find(a=>a.professional_id===p.id);
+    const invite=rows(team.invitations).filter(i=>i.role==='professional'&&i.professional_id===p.id).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)))[0];
+    const pending=invite&&invite.status==='pending'&&!invite.expired;
+    const label=link?.active?'Acesso ativo':link?.account_id?'Acesso suspenso':pending?'Convite enviado':'Sem acesso';
+    return {link,invite,pending,label};
+  }
+  function renderInvitations(compact=false){
+    const items=rows(state.data.team?.invitations).filter(i=>i.role==='professional'&&i.status==='pending'&&!i.expired);
+    if(compact&&!items.length)return '';
+    return '<section class="os-card os-team-invites"><div class="os-card-header"><div><h2>Convites profissionais</h2><p>O convite nasce dentro do cadastro de cada profissional.</p></div></div>'+
+      (items.length?'<div class="os-invitation-list">'+items.map(i=>'<div class="os-invitation-row"><div><strong>'+esc(i.email||'Profissional')+'</strong><small>Aguardando aceite · Expira em '+fmtDate(dateKey(new Date(i.expires_at)))+'</small></div>'+
+        (state.data.team?.can_manage?button('Revogar','revoke-invitation','os-ghost os-small','close','data-invitation="'+esc(i.id)+'"'):'')+'</div>').join('')+'</div>':
+        '<p class="os-help">Nenhum convite profissional aguardando aceite.</p>')+'</section>';
+  }
+  function renderTeam(){
+    const team=state.data.team||{},pros=state.data.professionals||[];
+    return '<div class="os-card os-team-access"><div class="os-card-header"><div><h2>Acesso dos profissionais</h2><p>Somente profissionais cadastrados podem receber um acesso individual. O acesso não permite consultar outros funcionários.</p></div></div>'+
+      (pros.length?'<div class="os-invitation-list">'+pros.map(p=>{
+        const access=proAccessState(p),link=access.link;
+        const commands=team.can_manage?'<div class="os-actions">'+
+          '<button class="os-button os-ghost os-small" type="button" data-os-professional="'+esc(p.id)+'">'+icon('edit')+'Editar</button>'+
+          (link?.account_id?(link.active?button('Suspender','pro-access-suspend','os-outline os-small','lock','data-professional="'+esc(p.id)+'"'):
+          button('Reativar','pro-access-reactivate','os-outline os-small','refresh','data-professional="'+esc(p.id)+'"'))+
+          button('Revogar vínculo','pro-access-revoke','os-ghost os-small','close','data-professional="'+esc(p.id)+'"'):'')+
+          '</div>':'';
+        return '<div class="os-invitation-row"><div class="os-person"><span class="os-avatar">'+esc(initials(p.name))+'</span><div><strong>'+esc(p.name)+'</strong>'+
+          '<small>'+esc(p.specialty||'Profissional')+' · '+esc(access.label)+(p.active?'':' · Inativo')+'</small>'+
+          (link?.email?'<small>'+esc(link.email)+'</small>':'')+'</div></div>'+commands+'</div>';
+      }).join('')+'</div>':'<p class="os-help">Cadastre um profissional antes de enviar um convite.</p>')+'</div>'+
+      renderInvitations()+
+      (rows(team.members).some(member=>member.role==='editor'||member.role==='viewer')?
+        '<section class="os-card os-team-access" style="margin-top:18px"><div class="os-card-header"><div><h2>Acessos anteriores</h2><p>Contas antigas são mantidas para revisão e revogação; novos convites são exclusivos dos profissionais.</p></div></div>'+
+          '<div class="os-invitation-list">'+rows(team.members).filter(member=>member.role==='editor'||member.role==='viewer').map(member=>
+            '<div class="os-invitation-row"><div><strong>'+esc(member.name||member.email)+'</strong><small>'+esc(member.email||'')+' · '+esc(teamRoles[member.role]||member.role)+' · '+esc(member.active?'Ativo':'Inativo')+'</small></div>'+
+            (team.can_manage?'<button class="os-button os-ghost os-small" type="button" data-os-team-member="'+esc(member.account_id)+'">'+icon('edit')+'Gerenciar</button>':'')+'</div>'
+          ).join('')+'</div></section>':'');
+  }
+  function showInvitation(){toast('Abra o cadastro de um profissional para enviar o convite.');}
   function invitationDeliveryNotice(result){
     const labels={queued:'Convite na fila de envio. A entrega ainda não foi confirmada.',accepted:'O provedor aceitou o envio do convite. Isso não confirma a entrega.',failed:'Não foi possível concluir o envio por e-mail.',disabled:'O envio por e-mail está indisponível.',manual:'Compartilhe o link com a pessoa convidada.',suppressed:'O envio por e-mail não foi realizado.',expired:'O envio deste convite expirou.',uncertain:'O resultado do envio não foi confirmado. Confira a situação antes de tentar novamente.'};
     const text=labels[result.email_delivery?.status];return text?'<p class="os-help" role="status">'+esc(text)+'</p>':'';
@@ -2223,11 +2259,18 @@
           [['percent','%'],['fixed','R$']].map(([v,t])=>'<option value="'+v+'"'+(kind===v?' selected':'')+'>'+t+'</option>').join('')+
         '</select><input type="text" '+numericAttributes(kind,{min:0,max:kind==='fixed'?100000000:100})+' autocomplete="off" name="commission_value_'+esc(service.id)+'" value="'+esc(value)+'" placeholder="'+(kind==='fixed'?'0,00':'0')+'" aria-label="Comissão do serviço '+esc(service.name)+'" '+(custom&&selected.includes(service.id)?'required':'disabled')+'></div>':'')+'</div>';
     }).join('');
+    const access=rows(state.data.team?.professional_access).find(a=>a.professional_id===p.id);
     const content=field('Nome completo','name','text',p.name||'','required maxlength="120" placeholder="Nome do profissional"')+
       field('Especialidade','specialty','text',p.specialty||'','maxlength="120" placeholder="Ex.: Cabeleireiro, Terapeuta, Consultor"')+
       '<div class="os-field" data-field-wrapper><label for="osField-phone_e164">Telefone/WhatsApp (opcional)</label>'+
         '<input id="osField-phone_e164" name="phone_e164" type="tel" inputmode="tel" autocomplete="tel-national" data-orion-field="phone" data-os-professional-phone aria-describedby="osProfessionalPhoneHelp" placeholder="(00) 00000-0000" value="'+esc(professionalPhoneDisplay(p.phone_e164))+'">'+
         '<p id="osProfessionalPhoneHelp" class="os-help">Número de contato deste profissional, com DDD.</p></div>'+
+      (state.data.team?.can_manage?
+        field('E-mail de acesso (opcional)','access_email','email',access?.email||'',
+          'maxlength="254" placeholder="profissional@exemplo.com" '+(access?.account_id?'disabled':'autocomplete="email"'))+
+        (access?.account_id?'<p class="os-help">Já existe uma conta vinculada. Revogue o acesso na aba Acessos antes de alterar o e-mail.</p>':
+          checkField('Enviar convite ao salvar','send_invitation',false)+'<p class="os-help">O convite libera apenas a área individual após confirmação do e-mail.</p>')
+        : '')+
       '<div class="os-form-grid">'+colorField('Cor na agenda','color',p.color||'#31ad52')+
       (permitted('commissions.advanced')?selectField('Modelo de comissão','commission_mode',[['percent','Percentual padrão'],['per_service','Por serviço']],mode):'')+'</div>'+
       (permitted('commissions.advanced')?
@@ -2677,6 +2720,10 @@
         if(payload.active&&(!p||p.active===false)&&atProfessionalLimit())throw Error('Você atingiu o limite de profissionais do seu plano.');
         if(p?.id)payload.expected_version=number(p.commission_config_version)||1;
         else payload.idempotency_key=d.key;
+        let invitationResult=null;
+        const inviteEmail=(f.access_email||'').trim();
+        const sendInvitation=form.elements.send_invitation?.checked===true;
+        if(sendInvitation&&!inviteEmail)throw Error('Informe o e-mail para enviar o convite.');
         await saveForm(form,async c=>{
           const id=p?.id||d.savedId;
           const result=await request(mgmt('/professionals/'+(id?encodeURIComponent(id)+'/':'')+'configure'),
@@ -2687,7 +2734,19 @@
           if(state.route==='funcionarios')state.filters.staffStatus=payload.active?'active':'inactive';
           state.data.commissionRules=null;
           state.data.professionalServices=null;
+          if(stillAccount(c)){
+            try{
+              if(sendInvitation){
+                invitationResult=await request(mgmt('/team/professionals/'+encodeURIComponent(d.savedId)+'/invite'),'POST',
+                   {email:inviteEmail,idempotency_key:d.inviteKey||(d.inviteKey=crypto.randomUUID())});
+              }else if(form.elements.access_email&&!form.elements.access_email.disabled&&(inviteEmail||null)!==(access?.email||null)){
+                await request(mgmt('/team/professionals/'+encodeURIComponent(d.savedId)+'/email'),'PUT',
+                   {email:inviteEmail||null});
+              }
+            }catch(error){throw Error('Profissional salvo, mas o acesso não foi atualizado: '+error.message);}
+          }
         },p?'Profissional atualizado.':'Profissional cadastrado.');
+        if(invitationResult&&state.mounted)showInvitationResult(invitationResult);
       }
       if(['hours','hours-edit','pause','pause-edit'].includes(kind)){await submitHoursEditor(form,kind,f,d);return;}
       if(kind==='appointment'){
@@ -2797,6 +2856,19 @@
       case 'custom-period':showDialog('period','Escolher período',periodFilters()+button('Fechar','close-dialog','os-ghost'));break;
       case 'new-professional':await showProfessional();break;
       case 'new-invitation':showInvitation();break;
+      case 'pro-access-suspend':case 'pro-access-reactivate':case 'pro-access-revoke':{
+        if(!state.data.team?.can_manage)return;
+        const prof=rows(state.data.professionals).find(p=>p.id===element.dataset.professional);
+        if(!prof)return;
+        const link=proAccessState(prof).link;
+        if(!link?.account_id)return;
+        const action=name==='pro-access-suspend'?'suspend':name==='pro-access-reactivate'?'reactivate':'revoke';
+        confirmMutation(action==='revoke'?'Revogar acesso de '+prof.name:action==='suspend'?'Suspender acesso de '+prof.name:'Reativar acesso de '+prof.name,
+          action==='revoke'?'Esta conta deixará de estar vinculada ao profissional. O histórico será preservado.':'A alteração vale imediatamente para a área profissional.',
+          ()=>request(mgmt('/team/professionals/'+encodeURIComponent(prof.id)+'/access'),'PATCH',
+            {action,expected_updated_at:link.updated_at}),'Acesso profissional atualizado.');
+        break;
+      }
       case 'copy-invitation':if(d?.link){await navigator.clipboard.writeText(d.link);toast('Link do convite copiado.');}break;
       case 'approve-invitation':case 'revoke-invitation':{if(!state.data.team?.can_manage)return;const invitation=rows(state.data.team.invitations).find(i=>i.id===element.dataset.invitation);if(!invitation)return;const approval=name==='approve-invitation',path=mgmt('/team/invitations/'+encodeURIComponent(invitation.id));confirmMutation(approval?'Aprovar acesso':'Revogar convite',approval?'Autorizar o acesso de '+(invitation.claimed_by_name||invitation.email||'quem aceitou o convite')+' como '+(teamRoles[invitation.role]||invitation.role)+'.':'Este convite não poderá mais ser usado para entrar na equipe.',()=>request(path,'PATCH',{action:approval?'approve':'revoke',expected_version:invitation.version}),approval?'Acesso aprovado.':'Convite revogado.');break;}
       case 'new-appointment':await showAppointment();break;

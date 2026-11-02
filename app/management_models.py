@@ -851,7 +851,7 @@ async def marketing(db, tenant_id, limit=50, offset=0):
     return {"items": [clean_row(row) for row in rows], "total": total, "limit": limit, "offset": offset, "delivery_enabled": active}
 
 
-async def transition_appointment(db, tenant_id, appointment_id, target, payload, operator, *, automated=False):
+async def transition_appointment(db, tenant_id, appointment_id, target, payload, operator, *, automated=False, authorized_professional_id=None):
     from app.plan_permissions import require_feature
     await require_feature(db, tenant_id, "agenda.manage")
     from app.booking_service import acquire_professional_lock, history, read_appointment
@@ -864,7 +864,7 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
         raise HTTPException(422, "Cupons só podem ser usados na conclusão de um atendimento")
     params = {"tenant": tenant_id, "id": appointment_id}
     professional = (await db.execute(text("SELECT professional_id FROM appointments WHERE tenant_id=:tenant AND id=:id"), params)).scalar_one_or_none()
-    if professional is None:
+    if professional is None or (authorized_professional_id is not None and professional != authorized_professional_id):
         raise HTTPException(404, "Agendamento não encontrado")
     # Match booking_service's lock order to prevent deadlocks with confirmation,
     # cancellation and rescheduling running on another worker.
@@ -872,6 +872,8 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
     row = (await db.execute(text("SELECT * FROM appointments WHERE tenant_id=:tenant AND id=:id FOR UPDATE"), params)).mappings().one()
     if row["professional_id"] != professional:
         raise HTTPException(409, "O profissional mudou. Atualize o agendamento")
+    if authorized_professional_id is not None and row["professional_id"] != authorized_professional_id:
+        raise HTTPException(404, "Agendamento não encontrado na sua agenda")
     context = LifecycleActor(role="system" if automated else operator,
                              source="system" if automated else "panel",
                              account_id=None if automated else db.info.get("management_actor_account_id"))

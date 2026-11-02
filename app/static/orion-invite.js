@@ -34,13 +34,13 @@ $('inviteVerifyForm').addEventListener('submit',async event=>{
 });
 $('inviteAccept').addEventListener('click',async()=>{
  if(busy||account?.email_verified!==true)return;lock(true);
- try{const d=await api('/api/v1/team-invitations/accept',{token});notice(d.status==='approved'?'Seu acesso já foi aprovado. Entre no Orion para continuar.':'Aceite registrado. Aguarde a aprovação do proprietário.');$('inviteAccept').hidden=true;$('inviteVerifyForm').hidden=true;clearToken();history.replaceState(null,'','/convite');}
+ try{const d=await api('/api/v1/team-invitations/accept',{token});notice(d.status==='approved'?'Acesso profissional liberado. Entre na sua área profissional.':'Aceite registrado. Aguarde a aprovação do proprietário.');if(d.status==='approved'&&invitation?.role==='professional')$('inviteProfessionalArea').hidden=false;$('inviteAccept').hidden=true;$('inviteVerifyForm').hidden=true;clearToken();history.replaceState(null,'','/convite');}
  catch(error){notice(error.message,true);}finally{lock(false);}
 });
 (async()=>{
  if(!/^[A-Za-z0-9_-]{43}$/.test(token)){notice('Este link não contém um convite válido. Peça um novo link ao proprietário.',true);return;}
- try{const d=await api('/api/v1/team-invitations/preview',{token});invitation=d;$('inviteBusiness').textContent=d.business_name;$('inviteRole').textContent=d.role==='editor'?'Editor — gestão dos dados operacionais':'Leitor — consulta dos dados da empresa';$('inviteExpiry').textContent=new Date(d.expires_at).toLocaleString('pt-BR');$('inviteDetails').hidden=false;notice(d.email_bound?'Use a conta com o e-mail indicado no convite.':'Entre com sua conta pessoal para solicitar acesso.');await refreshAccount();
-  if(d.status==='approved'){notice('Convite aprovado. Seu acesso está disponível no Orion.');clearToken();}
+ try{const d=await api('/api/v1/team-invitations/preview',{token});invitation=d;$('inviteBusiness').textContent=d.business_name;$('inviteRole').textContent=d.role==='professional'?'Profissional — sua agenda, comissões e metas':d.role==='editor'?'Editor — gestão dos dados operacionais':'Leitor — consulta dos dados da empresa';$('inviteExpiry').textContent=new Date(d.expires_at).toLocaleString('pt-BR');$('inviteApprovalHelp').textContent=d.requires_owner_approval===false?'Após confirmar e aceitar, o acesso à sua área profissional será liberado.':'Depois do aceite, o proprietário revisará o seu acesso.';$('inviteDetails').hidden=false;notice(d.email_bound?'Use a conta com o e-mail indicado no convite.':'Entre com sua conta pessoal para solicitar acesso.');await refreshAccount();
+  if(d.status==='approved'){notice('Convite aprovado. Seu acesso está disponível no Orion.');if(d.role==='professional')$('inviteProfessionalArea').hidden=false;clearToken();}
  }catch(error){notice(error.message,true);clearToken();}
 })();
 })();

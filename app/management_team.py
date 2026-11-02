@@ -99,7 +99,7 @@ async def team_session(tenant_id, actor, *, manage=False):
 
 
 def clean_invitation(row):
-    result = {key: row.get(key) for key in ("id", "email", "role", "status", "expires_at", "created_at", "version", "claimed_by_name")}
+    result = {key: row.get(key) for key in ("id", "email", "role", "status", "expires_at", "created_at", "version", "claimed_by_name", "professional_id")}
     result["expired"] = row["expires_at"] <= datetime.now(timezone.utc)
     if "email_status" in row:
         status = {"pending": "queued", "dead": "failed"}.get(row["email_status"], row["email_status"])
@@ -143,7 +143,12 @@ async def team(tenant_id: UUID, actor: Actor = Depends(authenticate)):
             LEFT JOIN panel_email_outbox o ON o.invitation_id=i.id AND o.kind='team_invite'
             WHERE i.tenant_id=:tenant
             ORDER BY i.created_at DESC LIMIT 100"""), {"tenant": tenant_id})).mappings().all() if manage else []
-        return {"members": [dict(row) if manage or row["account_id"] == actor.account_id else {**dict(row), "email": None} for row in members],
+        present = (await db.execute(text("SELECT to_regclass('public.professional_portal_links')"))).scalar_one() if manage else None
+        professional_access = (await db.execute(text("""SELECT tenant_id,professional_id,email,account_id,active,updated_at
+            FROM professional_portal_links WHERE tenant_id=:tenant ORDER BY professional_id"""),
+            {"tenant":tenant_id})).mappings().all() if present is not None else []
+        return {"professional_access": [dict(row) for row in professional_access],
+                "members": [dict(row) if manage or row["account_id"] == actor.account_id else {**dict(row), "email": None} for row in members],
                 "invitations": [clean_invitation(row) for row in invitations],
                 "roles": ["owner", "editor", "viewer"], "can_manage": manage}
 
@@ -151,6 +156,8 @@ async def team(tenant_id: UUID, actor: Actor = Depends(authenticate)):
 @router.post("/invitations", status_code=201)
 async def invite(tenant_id: UUID, payload: InvitationCreate, response: Response, actor: Actor = Depends(authenticate)):
     response.headers["Cache-Control"] = "no-store"
+    if actor.role not in {"admin", "support"}:
+        raise HTTPException(403, "Os novos convites devem ser enviados pelo cadastro do profissional")
     fingerprint = hashlib.sha256(json.dumps({"email": payload.email, "role": payload.role}, sort_keys=True).encode()).hexdigest()
     async with team_session(tenant_id, actor, manage=True) as (db, _):
         prior = (await db.execute(text("SELECT * FROM management_team_invitations WHERE tenant_id=:tenant AND idempotency_key=:key"),
@@ -243,7 +250,7 @@ async def change_member(tenant_id: UUID, account_id: UUID, payload: MemberChange
             {"tenant": tenant_id, "account": account_id})).mappings().one_or_none()
         if row is None:
             raise HTTPException(404, "Vínculo não encontrado")
-        if row["role"] == "owner":
+        if row["role"] in {"owner", "professional"}:
             raise HTTPException(403, "Este formulário não altera proprietários nem seu próprio acesso")
         if row["updated_at"] != payload.expected_updated_at:
             raise HTTPException(409, "O vínculo mudou. Atualize a equipe antes de salvar")
@@ -274,7 +281,7 @@ async def preview(payload: InvitationToken, request: Request, response: Response
     async with support_session_factory()() as db:
         row = await token_row(db, payload.token)
         return {"business_name": row["business_name"], "role": row["role"], "expires_at": row["expires_at"],
-                "status": row["status"], "email_bound": bool(row["email"]), "requires_owner_approval": True}
+                "status": row["status"], "email_bound": bool(row["email"]), "requires_owner_approval": row["role"] != "professional"}
 
 
 @invitation_router.post("/accept")
@@ -284,7 +291,14 @@ async def accept(payload: InvitationToken, response: Response, actor: Actor = De
         raise HTTPException(403, "Entre com uma conta pessoal e confirme seu e-mail para aceitar o convite")
     async with support_session_factory()() as db:
         async with db.begin():
+            peek = await token_row(db, payload.token)
+            if peek["role"] == "professional":
+                await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:scope,0))"),
+                                 {"scope": "management-team:" + str(peek["tenant_id"])})
             row = await token_row(db, payload.token, lock=True)
+            if row["role"] == "professional":
+                from app.professional_invites import accept_professional_invitation
+                return await accept_professional_invitation(db, row, actor)
             await lock_account_business(db, actor.account_id)
             await ensure_membership_target(db, actor.account_id, row["tenant_id"])
             if row["status"] in {"claimed", "approved"}:

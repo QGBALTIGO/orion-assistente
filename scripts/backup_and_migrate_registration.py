@@ -100,6 +100,36 @@ def one_click_schema_ready(raw):
         engine.dispose()
 
 
+def portal_schema_ready(raw):
+    """Verify the 0057 security boundary without reading any professional data."""
+    engine = create_engine(raw, poolclass=NullPool,
+        connect_args={'options':'-c default_transaction_read_only=on -c statement_timeout=10000'})
+    try:
+        with engine.connect() as db:
+            table = db.execute(text("""SELECT c.relrowsecurity,c.relforcerowsecurity,
+                has_table_privilege('app_support',c.oid,'SELECT,INSERT,UPDATE'),
+                has_table_privilege('app_runtime',c.oid,'SELECT'),
+                has_table_privilege('app_runtime',c.oid,'UPDATE'),
+                (SELECT count(*) FROM pg_constraint
+                 WHERE conrelid='public.professional_portal_links'::regclass
+                 AND contype='f')
+                FROM pg_class c
+                WHERE c.oid=to_regclass('public.professional_portal_links')""")).first()
+            if table is None or tuple(table)!=(True,True,True,False,False,3):
+                return False
+            roles = db.execute(text("""SELECT
+                EXISTS(SELECT 1 FROM pg_constraint WHERE
+                  conrelid='public.tenant_memberships'::regclass
+                  AND conname='ck_membership_role' AND
+                  pg_get_constraintdef(oid) LIKE '%professional%'),
+                EXISTS(SELECT 1 FROM pg_constraint WHERE
+                  conrelid='public.management_team_invitations'::regclass
+                  AND conname='ck_professional_invite_binding' AND convalidated)""")).one()
+            return tuple(roles)==(True,True)
+    finally:
+        engine.dispose()
+
+
 def predeploy_main():
     """Preserve the Railway predeploy command and use only reviewed migrations.
 
@@ -139,6 +169,13 @@ def predeploy_main():
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
+        if current == '0057_professional_portal':
+            if (combo_duration.schema_ready(raw) and short_links.schema_ready(raw)
+                    and one_click_schema_ready(raw) and portal_schema_ready(raw)):
+                print('orion_professional_0057_schema_verified', flush=True)
+                return 0
+            print('orion_professional_0057_schema_invalid', file=sys.stderr)
+            return 3
         if current == '0056_one_click_appointment_links':
             # 0056 is an explicitly reviewed, already-applied additive release.
             # Old 0039/0054/0055 migrators may NEVER be replayed here.
