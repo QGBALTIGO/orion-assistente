@@ -31,10 +31,33 @@ async def totals() -> dict[str, int]:
                 SELECT count(*) FROM orion_cakto_checkout_intents
                  WHERE state='pending' AND expires_at>now()
             """))).scalar_one()
+            purchase_links=(await db.execute(text("""
+                SELECT
+                    count(DISTINCT e.delivery_digest) FILTER
+                        (WHERE e.callback_hash IS NOT NULL) AS has_callback,
+                    count(DISTINCT e.delivery_digest) FILTER
+                        (WHERE i.id IS NOT NULL AND i.state='pending'
+                               AND i.expires_at>now()) AS matches_valid_intent,
+                    count(DISTINCT e.delivery_digest) FILTER
+                        (WHERE i.id IS NOT NULL AND
+                               (i.state!='pending' OR i.expires_at<=now())) AS stale_intent,
+                    count(DISTINCT e.delivery_digest) FILTER
+                        (WHERE i.id IS NULL) AS no_matching_intent
+                  FROM cakto_webhook_events e
+                  LEFT JOIN orion_cakto_checkout_intents i
+                    ON i.callback_hash=e.callback_hash
+                 WHERE e.event_type='purchase_approved'
+                   AND e.verification_state='failed'
+            """))).one()
     output={
         "pending_first":0,"pending_lifecycle":0,"manual_review":0,
         "failed":0,"verified":0,"bindings":int(active),
-        "pending_intents":int(pending_intents)
+        "pending_intents":int(pending_intents),
+        # Only aggregate counts. In particular, never expose callback hashes.
+        "failed_purchase_with_callback":int(purchase_links.has_callback or 0),
+        "failed_purchase_valid_intent":int(purchase_links.matches_valid_intent or 0),
+        "failed_purchase_stale_intent":int(purchase_links.stale_intent or 0),
+        "failed_purchase_no_matching_intent":int(purchase_links.no_matching_intent or 0)
     }
     # Only a fixed allowlist of event types. Counts cannot expose customer
     # data or external identifiers, even if unexpected event labels exist.

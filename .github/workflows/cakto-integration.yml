@@ -21,6 +21,7 @@ on:
       - "scripts/probe_cakto_receipt_backlog_read_only.py"
       - "scripts/probe_cakto_v2_management_read_only.py"
       - "tests/unit/test_cakto_v2_management_probe.py"
+      - "tests/integration/test_cakto_backlog_probe.py"
       - "tests/unit/test_cakto_granted_scopes.py"
       - "tests/unit/test_cakto_subscription_lifecycle.py"
       - ".github/workflows/cakto-integration.yml"
@@ -77,5 +78,6 @@ jobs:
             tests/unit/test_cakto_v2_management_probe.py \
             tests/unit/test_cakto_v2_admin_status.py \
             tests/unit/test_cakto_billing_readiness.py \
+            tests/integration/test_cakto_backlog_probe.py \
             tests/integration/test_cakto_postgres.py \
             tests/integration/test_billing.py
