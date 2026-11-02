@@ -165,26 +165,29 @@ test('consultant loads status/history without generation and requires an explici
   assert.match(h.document.getElementById('osConsultorMessages').textContent, /Resposta sintética sem envio/);
 });
 
-test('invitation replay with null link never fabricates or exposes a link', async t => {
-  const h = await makeSuite({ initialRoute: 'funcionarios', respond: (path, method) => method === 'POST' ? { link: null, expires_at: '2030-01-01T12:00:00Z', status: 'pending' } : defaultResponse(path) }); t.after(() => h.close()); await flush();
-  h.click('[data-os-action=new-invitation]'); h.submit('[data-os-form=invitation]'); await flush();
-  const dialog = h.document.getElementById('osDialog');
-  assert.match(dialog.textContent, /já havia sido criado|exibido apenas uma vez/);
-  assert.equal(dialog.querySelector('[aria-label="Link do convite"]'), null);
-  assert.equal(dialog.querySelector('[data-os-action=copy-invitation]'), null);
-  assert.equal(h.calls.filter(c => c.method === 'POST').length, 1);
+test('unbound generic team invites are not offered by the owner panel', async t => {
+  const h = await makeSuite({initialRoute:'funcionarios'});t.after(()=>h.close());await flush();
+  assert.equal(h.document.querySelector('[data-os-action=new-invitation]'),null);
+  assert.equal(h.document.querySelector('[data-os-form=invitation]'),null);
+  assert.deepEqual(h.calls.filter(call=>call.method!=='GET'),[]);
 });
 
-test('approving a claimed invitation waits for an explicit confirmation and includes version', async t => {
-  const invitationId = '40000000-0000-4000-8000-000000000004';
-  const invitation = { id: invitationId, role: 'editor', status: 'claimed', claimed_by_name: 'Pessoa sintética', expires_at: '2030-01-01T12:00:00Z', version: 3 };
-  const h = await makeSuite({ initialRoute: 'funcionarios', respond: path => path.endsWith('/management/team') ? { can_manage: true, members: [], invitations: [invitation] } : defaultResponse(path) }); t.after(() => h.close()); await flush();
-  h.click(`[data-os-action=approve-invitation][data-invitation="${invitationId}"]`); await flush();
-  assert.equal(h.calls.filter(c => c.method === 'PATCH').length, 0);
-  assert.match(h.document.getElementById('osDialog').textContent, /Pessoa sintética/);
-  h.submit('[data-os-form=confirm]'); await flush();
-  const writes = h.calls.filter(c => c.method === 'PATCH');
-  assert.equal(writes.length, 1); assert.equal(writes[0].data.action, 'approve'); assert.equal(writes[0].data.expected_version, 3);
+test('legacy claimed generic invitation cannot be approved and can be revoked by owner', async t => {
+  const invitationId='40000000-0000-4000-8000-000000000004';
+  const invitation={id:invitationId,role:'editor',status:'claimed',claimed_by_name:'Pessoa sintética',
+    expires_at:'2030-01-01T12:00:00Z',version:3};
+  const h=await makeSuite({initialRoute:'funcionarios',respond:path=>
+    path.endsWith('/management/team')?{can_manage:true,members:[],invitations:[invitation]}:defaultResponse(path)});
+  t.after(()=>h.close());await flush();
+  h.click('[data-os-staff-tab=permissions]');await flush();
+  assert.equal(h.document.querySelector('[data-os-action=approve-invitation]'),null);
+  h.click('[data-os-action=revoke-invitation][data-invitation="'+invitationId+'"]');await flush();
+  assert.equal(h.calls.filter(c=>c.method==='PATCH').length,0);
+  assert.match(h.document.getElementById('osDialog').textContent,/Revogar/);
+  h.submit('[data-os-form=confirm]');await flush();
+  const writes=h.calls.filter(c=>c.method==='PATCH');
+  assert.equal(writes.length,1);assert.equal(writes[0].data.action,'revoke');
+  assert.equal(writes[0].data.expected_version,3);
 });
 
 test('actual panel API returns null for HTTP 204 without parsing JSON', async t => {

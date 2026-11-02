@@ -10,16 +10,18 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field, AwareDatetime
+from pydantic import BaseModel, ConfigDict, Field, AwareDatetime, field_validator
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app.catalog_api import Actor, authenticate, support_session_factory
 from app.database import get_session_factory, tenant_transaction
 from app.plan_permissions import require_feature
 from app import management_models as management
 from app.booking_service import (read_appointments, read_appointment,
-    cancel_appointment, reschedule_appointment, acquire_professional_lock)
-from app.booking_api import CancellationRequest
+    cancel_appointment, reschedule_appointment, acquire_professional_lock,
+    book_appointment, confirm_hold, list_slots)
+from app.booking_api import CancellationRequest, safe_conflict
 from app.appointment_lifecycle import LifecycleActor
 from app.management_schemas import AppointmentTransition
 
@@ -329,3 +331,82 @@ async def remove_my_block(block_id: UUID, actor: Actor = Depends(authenticate)):
                 if result is None: raise HTTPException(404,"Bloqueio não encontrado")
                 await management.audit(db,tenant,"professional_block_removed","schedule_blocks",block_id)
                 return {"ok":True}
+
+
+
+class ProfessionalBooking(BaseModel):
+    """No tenant or professional ID is accepted from the browser."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    service_ids: list[UUID] = Field(min_length=1,max_length=6)
+    customer_name: str = Field(min_length=2,max_length=120)
+    customer_phone: str = Field(pattern=r"^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$")
+    start_at: AwareDatetime
+    idempotency_key: str = Field(min_length=8,max_length=120,
+        pattern=r"^[A-Za-z0-9._:-]+$")
+
+    @field_validator("service_ids")
+    @classmethod
+    def distinct_services(cls, values):
+        if len(set(values)) != len(values):
+            raise ValueError("Não repita serviços")
+        return values
+
+
+@router.get("/services")
+async def my_services(actor: Actor = Depends(authenticate)):
+    async with individual_access(actor) as (tenant,professional):
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db,tenant):
+                await profile(db,tenant,professional)
+                await require_feature(db,tenant,"services.manage")
+                rows=(await db.execute(text("""SELECT s.id,s.name,s.duration_min,
+                    s.price_cents,s.price_mode FROM professional_services ps
+                    JOIN services s ON s.tenant_id=ps.tenant_id AND s.id=ps.service_id
+                    WHERE ps.tenant_id=:t AND ps.professional_id=:p AND s.active
+                      AND COALESCE(s.catalog_kind,'base') <> 'variant'
+                    ORDER BY s.name,s.id LIMIT 150"""),
+                    {"t":tenant,"p":professional})).mappings().all()
+                return {"items":[dict(item) for item in rows]}
+
+
+@router.get("/availability")
+async def my_availability(day: date, service_ids: list[UUID] = Query(),
+                          actor: Actor = Depends(authenticate)):
+    if not 1<=len(service_ids)<=6 or len(set(service_ids))!=len(service_ids):
+        raise HTTPException(422,"Selecione de um a seis serviços diferentes")
+    async with individual_access(actor) as (tenant,professional):
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db,tenant):
+                await profile(db,tenant,professional)
+                await require_feature(db,tenant,"agenda.manage")
+        async with get_session_factory()() as db:
+            result=await list_slots(db,tenant,professional,service_ids,day)
+            return {"slots":result["slots"],"duration_min":result["duration_min"],
+                    "price_cents":result["price_cents"],"timezone":result["timezone"]}
+
+
+@router.post("/appointments",status_code=201)
+async def book_my_appointment(payload: ProfessionalBooking,actor: Actor = Depends(authenticate)):
+    """Reuse booking hold/confirmation; never manufacture a parallel appointment."""
+    from app.appointment_lifecycle import LifecycleActor
+    context=LifecycleActor(role="professional",source="panel",account_id=actor.account_id)
+    async with individual_access(actor) as (tenant,professional):
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db,tenant):
+                await profile(db,tenant,professional)
+                await require_feature(db,tenant,"agenda.manage")
+        async with get_session_factory()() as db:
+            try:
+                hold=await book_appointment(
+                    db,tenant,professional,payload.service_ids,payload.customer_phone,
+                    payload.customer_name,payload.start_at,payload.idempotency_key,
+                    context=context,
+                )
+                result=await confirm_hold(
+                    db,tenant,UUID(str(hold["id"])),
+                    idempotency_key="professional-confirm:"+payload.idempotency_key,
+                    context=context,
+                )
+                return project_appointment(result)
+            except IntegrityError as exc:
+                raise safe_conflict(exc) from None

@@ -61,7 +61,8 @@ async function changePage(page){
     if(epoch!==state.epoch)return;state.day=String(agenda.date);state.appointments=agenda.appointments;state.blocks=agenda.blocks;
     $('content').innerHTML=intro('Minha agenda','Seus atendimentos, horários e bloqueios.')+
       '<div class="page-controls"><div class="field" style="margin:0"><label for="agendaDate">Dia</label><input type="date" id="agendaDate" value="'+esc(state.day)+'"></div>'+
-      '<button type="button" class="button" data-action="new-block">Bloquear horário</button></div>'+
+      '<div class="actions"><button type="button" class="button" data-action="new-appointment">Novo agendamento</button>'+
+      '<button type="button" class="ghost-button" data-action="new-block">Bloquear horário</button></div></div>'+
       '<section class="card" style="margin-bottom:18px"><div class="section-heading"><h2>Horários bloqueados</h2></div>'+
       (state.blocks.length?'<div class="blocks">'+state.blocks.map(b=>'<div class="block">'+esc(shortTime(b.starts_at))+' às '+esc(shortTime(b.ends_at))+
        ' <button type="button" data-action="remove-block" data-id="'+esc(b.id)+'" aria-label="Remover bloqueio">×</button></div>').join('')+'</div>':
@@ -111,10 +112,18 @@ function inputField(label,name,type='text',value='',extra=''){
 }
 function openModal(action,record){
  const modal=$('modal');state.modal={action,record,key:crypto.randomUUID()};
- const titles={'new-block':'Bloquear horário','remove-block':'Remover bloqueio',cancel:'Cancelar agendamento',reschedule:'Remarcar agendamento',complete:'Concluir atendimento','no-show':'Registrar ausência'};
+ const recordKey=state.modal.key;
+ const titles={'new-appointment':'Novo agendamento','new-block':'Bloquear horário','remove-block':'Remover bloqueio',cancel:'Cancelar agendamento',reschedule:'Remarcar agendamento',complete:'Concluir atendimento','no-show':'Registrar ausência'};
  $('modalTitle').textContent=titles[action]||'Confirmar';$('modalError').textContent='';
  let fields='';
- if(action==='new-block'){
+ if(action==='new-appointment'){
+   fields='<p class="muted">Agende somente para seus clientes e horários disponíveis.</p>'+
+     inputField('Nome do cliente','customer_name','text','','required maxlength="120" minlength="2"')+
+     inputField('WhatsApp do cliente','customer_phone','tel','','required placeholder="(67) 99999-9999"')+
+     inputField('Data','day','date',state.day,'required')+
+     '<fieldset class="services-select"><legend>Serviços (até 6)</legend><div id="modalServices" class="muted">Carregando serviços…</div></fieldset>'+
+     '<div id="modalSlots" class="slots-list" aria-live="polite"></div>';
+ }else if(action==='new-block'){
    fields='<p class="muted">O bloqueio será aplicado somente à sua agenda.</p>'+
      inputField('Dia','day','date',state.day,'required')+
      '<div class="field-row">'+inputField('Início','start_time','time','','required')+
@@ -135,8 +144,19 @@ function openModal(action,record){
  }else{
    fields='<p>Confirma esta operação no seu atendimento?</p>';
  }
- $('modalFields').innerHTML=fields;modal.hidden=false;$('modalSubmit').textContent=action==='remove-block'?'Remover':'Confirmar';
+ $('modalFields').innerHTML=fields;modal.hidden=false;
+ $('modalSubmit').textContent=action==='new-appointment'?'Consultar horários':action==='remove-block'?'Remover':'Confirmar';
  $('modalSubmit').disabled=false;$('modalForm').querySelector('input')?.focus();
+ if(action==='new-appointment'){
+   api('/api/v1/professional/services').then(result=>{
+     if($('modal').hidden||state.modal?.key!==recordKey)return;
+     const items=Array.isArray(result.items)?result.items:[];
+     $('modalServices').innerHTML=items.length?items.map(item=>
+       '<label class="service-choice"><input type="checkbox" name="service_ids" value="'+esc(item.id)+'">'+
+       '<span><strong>'+esc(item.name)+'</strong><small>'+esc(item.duration_min)+' min · '+money(item.price_cents)+'</small></span></label>'
+     ).join(''):'<p>Não há serviços vinculados ao seu cadastro. Fale com o proprietário.</p>';
+   }).catch(err=>{if(state.modal?.key===recordKey)$('modalServices').textContent=err.message});
+ }
 }
 function closeModal(){
  $('modal').hidden=true;state.modal=null;
@@ -148,7 +168,36 @@ async function submitModal(event){
  const val=Object.fromEntries(new FormData(form));const base='/api/v1/professional';
  const button=$('modalSubmit');button.disabled=true;$('modalError').textContent='';
  try{
-   if(d.action==='new-block'){
+   if(d.action==='new-appointment'){
+     const service_ids=[...form.querySelectorAll('[name=service_ids]:checked')].map(e=>e.value);
+     if(!service_ids.length||service_ids.length>6)throw Error('Selecione de um a seis serviços.');
+     const keys=[val.day,service_ids.join('|'),val.customer_name,val.customer_phone].join('~');
+     const slotsNode=$('modalSlots');
+     if(d.checkedKey!==keys||!d.slots){
+       const params=new URLSearchParams({day:val.day});
+       service_ids.forEach(id=>params.append('service_ids',id));
+       const available=await api(base+'/availability?'+params.toString());
+       if(!available.slots?.length)throw Error('Não há horários disponíveis para esses serviços nesta data.');
+       d.checkedKey=keys;d.slots=available.slots;
+       slotsNode.innerHTML='<p class="muted">Selecione um horário disponível:</p><div class="slot-grid">'+
+         available.slots.map(slot=>'<label class="slot-choice"><input required type="radio" name="selected_slot" value="'+esc(slot)+'">'+
+           '<span>'+esc(shortTime(slot))+'</span></label>').join('')+'</div>';
+       button.textContent='Confirmar agendamento';
+       button.disabled=false;
+       return;
+     }
+     const slot=form.querySelector('[name=selected_slot]:checked')?.value;
+     if(!slot||!d.slots.includes(slot))throw Error('Selecione um horário válido.');
+     const onlyDigits=(val.customer_phone||'').replace(/\D/g,'');
+     const international=onlyDigits.startsWith('55')&&[12,13].includes(onlyDigits.length)?'+'+onlyDigits:
+       [10,11].includes(onlyDigits.length)?'+55'+onlyDigits:
+       onlyDigits.startsWith('5959')&&onlyDigits.length===12?'+'+onlyDigits:null;
+     if(!international)throw Error('Informe um WhatsApp válido com DDD.');
+     await api(base+'/appointments','POST',{
+       service_ids,customer_name:val.customer_name,customer_phone:international,
+       start_at:slot,idempotency_key:d.key,
+     });
+   }else if(d.action==='new-block'){
      await api(base+'/blocks','POST',{day:val.day,start_time:val.start_time,end_time:val.end_time,reason:val.reason,idempotency_key:d.key});
    }else if(d.action==='remove-block'){
      await api(base+'/blocks/'+encodeURIComponent(d.record.id),'DELETE');
@@ -192,7 +241,7 @@ document.addEventListener('click',async event=>{
  if(action==='retry'){await changePage(state.page);return;}
  const id=event.target.closest('[data-id]')?.dataset.id;
  const record=action==='remove-block'?state.blocks.find(b=>b.id===id):state.appointments.find(a=>a.id===id);
- if(action!=='new-block'&&!record)return;
+ if(!['new-block','new-appointment'].includes(action)&&!record)return;
  openModal(action,record);
 });
 $('modalClose').addEventListener('click',closeModal);$('modalCancel').addEventListener('click',closeModal);

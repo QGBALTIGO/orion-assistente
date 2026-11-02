@@ -204,6 +204,8 @@ async def review(tenant_id: UUID, invitation_id: UUID, payload: InvitationReview
             raise HTTPException(409, "O convite mudou. Atualize a equipe antes de decidir")
         if row["status"] in {"approved", "revoked"}:
             raise HTTPException(409, "Este convite já foi encerrado")
+        if payload.action == "approve" and row["role"] != "professional" and actor.role == "member":
+            raise HTTPException(403, "Convites antigos não concedem novos acessos. Revogue e convide um profissional cadastrado")
         if payload.action == "approve":
             if row["expires_at"] <= datetime.now(timezone.utc):
                 raise HTTPException(410, "O convite expirou")

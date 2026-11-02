@@ -256,12 +256,23 @@ class Journey:
             self.query("INSERT INTO working_hours(tenant_id,professional_id,weekday,start_time,end_time) VALUES(%s,%s,0,'09:00','18:00') RETURNING id", (identifier, pro))
         return {"id": str(identifier), "name": label}
 
-    def invitation(self, owner, tenant, invitee):
+    def invitation(self, owner, tenant, invitee, *, professional_id=None):
         token = secrets.token_urlsafe(32)
-        fingerprint = hashlib.sha256(json.dumps({"email": invitee["email"], "role": "editor"}, sort_keys=True).encode()).hexdigest()
-        row = self.query("""INSERT INTO management_team_invitations(tenant_id,email,role,token_digest,idempotency_key,fingerprint,expires_at,created_by)
-            VALUES(%s,%s,'editor',%s,%s,%s,now()+interval '1 day',%s) RETURNING id""",
-            (tenant["id"], invitee["email"], hashlib.sha256(token.encode()).hexdigest(), str(uuid4()), fingerprint, owner["id"]))[0]
+        role = "professional" if professional_id else "editor"
+        fields = ({"professional_id":str(professional_id),"email":invitee["email"]} if professional_id
+                  else {"email":invitee["email"],"role":role})
+        fingerprint = hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
+        if professional_id:
+            self.query("""INSERT INTO professional_portal_links
+                (tenant_id,professional_id,email,active)
+                VALUES(%s,%s,%s,false) RETURNING professional_id""",
+                (tenant["id"],professional_id,invitee["email"]))
+        row = self.query("""INSERT INTO management_team_invitations
+            (tenant_id,email,role,professional_id,token_digest,idempotency_key,
+             fingerprint,expires_at,created_by)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,now()+interval '1 day',%s) RETURNING id""",
+            (tenant["id"], invitee["email"], role, professional_id, hashlib.sha256(token.encode()).hexdigest(),
+             str(uuid4()), fingerprint, owner["id"]))[0]
         return {"id": str(row["id"]), "token": token}
 
     def login(self, account, page=None):

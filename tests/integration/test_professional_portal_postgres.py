@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import text
 from app.catalog_api import Actor
 from tests.integration.test_management_extras import extras_db
+from tests.integration.test_booking import booking_db
 
 pytestmark = pytest.mark.integration
 
@@ -167,3 +168,117 @@ async def test_professional_cannot_act_on_other_professionals_or_create_fake_inv
     finally:
         d["selected"]["actor"]=owner
         await cleanup_portal(d)
+
+
+@pytest.mark.asyncio
+async def test_owner_controls_optional_email_without_issuing_a_generic_invite(extras_db):
+    d=extras_db
+    owner=d["selected"]["actor"]
+    await plan_for_tests(d)
+    path=d["base"]+"/team/professionals/"+str(d["pro"])+"/email"
+    try:
+        generic=await d["client"].post(d["base"]+"/team/invitations",json={
+            "email":d["guest_email"],"role":"editor","idempotency_key":str(uuid4())})
+        assert generic.status_code==403
+        registered=await d["client"].put(path,json={"email":d["guest_email"]})
+        assert registered.status_code==200,registered.text
+        assert registered.json()["email"]==d["guest_email"]
+        async with d["migrator"].connect() as db:
+            stored=(await db.execute(text("""SELECT email,account_id FROM professional_portal_links
+                WHERE tenant_id=:t AND professional_id=:p"""),
+                {"t":d["tenant"],"p":d["pro"]})).one()
+            assert stored==(d["guest_email"],None)
+        cleared=await d["client"].put(path,json={"email":None})
+        assert cleared.status_code==200,cleared.text
+        async with d["migrator"].connect() as db:
+            count=(await db.execute(text("""SELECT count(*) FROM professional_portal_links
+                WHERE tenant_id=:t AND professional_id=:p"""),
+                {"t":d["tenant"],"p":d["pro"]})).scalar_one()
+            assert count==0
+    finally:
+        d["selected"]["actor"]=owner
+        await cleanup_portal(d)
+
+@pytest.mark.asyncio
+async def test_professional_creates_real_booking_only_for_own_calendar(booking_db,monkeypatch):
+    """Real booking engine and RLS, with two staff and a verified account."""
+    from app.main import app
+    from app.catalog_api import authenticate
+    from app.booking_service import book_appointment, confirm_hold
+    from tests.integration.test_booking import start_at, phone
+    from fastapi import HTTPException
+    import httpx
+
+    d=booking_db
+    monkeypatch.setenv("BUSINESS_PROFILES_ENABLED","1")
+    guest=uuid4()
+    email=f"professional-{guest}@example.invalid"
+    async with d["migrator"].begin() as db:
+        await db.execute(text("""INSERT INTO panel_accounts(id,name,email,password_hash,verified_at)
+            VALUES(:id,'Barbeiro isolado',:email,'synthetic-not-real',now())"""),
+            {"id":guest,"email":email})
+        await db.execute(text("""INSERT INTO tenant_memberships
+            (tenant_id,account_id,role) VALUES(:t,:a,'professional')"""),
+            {"t":d["a"],"a":guest})
+        await db.execute(text("""INSERT INTO professional_portal_links
+            (tenant_id,professional_id,email,account_id,active)
+            VALUES(:t,:p,:email,:a,true)"""),
+            {"t":d["a"],"p":d["pro"],"email":email,"a":guest})
+    app.dependency_overrides[authenticate]=lambda: Actor("member",account_id=guest)
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                      base_url="http://localhost") as client:
+            services=await client.get("/api/v1/professional/services")
+            assert services.status_code==200, services.text
+            assert any(row["id"]==str(d["cut"]) for row in services.json()["items"])
+            assert not any(row.get("professional_id")==str(d["pro2"])
+                           for row in services.json()["items"])
+
+            slots=await client.get("/api/v1/professional/availability",params={
+                "day":d["day"].isoformat(),"service_ids":str(d["cut"])})
+            assert slots.status_code==200,slots.text
+            grid=slots.json()["slots"]
+            assert grid
+            start=grid[0]
+            payload={"service_ids":[str(d["cut"])],"customer_name":"Cliente do profissional",
+                "customer_phone":phone(7),"start_at":start,
+                "idempotency_key":str(uuid4())}
+            created=await client.post("/api/v1/professional/appointments",json=payload)
+            assert created.status_code==201,created.text
+            assert created.json()["status"]=="confirmed"
+            booking_id=created.json()["id"]
+            repeated=await client.post("/api/v1/professional/appointments",json=payload)
+            assert repeated.status_code==201,repeated.text
+            assert repeated.json()["id"]==booking_id
+            own=await client.get("/api/v1/professional/agenda",params={
+                "day":d["day"].isoformat()})
+            assert own.status_code==200,own.text
+            assert booking_id in [row["id"] for row in own.json()["appointments"]]
+            assert (await client.get("/api/v1/tenants/"+str(d["a"])+"/appointments",params={
+                "day":d["day"].isoformat()})).status_code==403
+            forged=await client.post("/api/v1/professional/appointments",
+                json={**payload,"professional_id":str(d["pro2"]),"idempotency_key":str(uuid4())})
+            assert forged.status_code==422
+
+            # An actual other-professional record cannot be cancelled from this portal.
+            async with d["factory"]() as db:
+                hold=await book_appointment(db,d["a"],d["pro2"],[d["beard"]],phone(8),
+                    "Cliente de outro profissional",start_at(d["day"],10),str(uuid4()))
+                other=await confirm_hold(db,d["a"],hold["id"])
+            denied=await client.post("/api/v1/professional/appointments/"+str(other["id"])+"/cancel",
+                json={"expected_updated_at":other["updated_at"].isoformat(),
+                      "idempotency_key":str(uuid4()),"reason":"Tentativa indevida"})
+            assert denied.status_code==404,denied.text
+            async with d["migrator"].connect() as db:
+                status=(await db.execute(text("SELECT status FROM appointments WHERE id=:id"),
+                    {"id":other["id"]})).scalar_one()
+                assert status=="confirmed"
+    finally:
+        app.dependency_overrides.pop(authenticate,None)
+        async with d["migrator"].begin() as db:
+            await db.execute(text("DELETE FROM professional_portal_links WHERE tenant_id=:t"),
+                {"t":d["a"]})
+            await db.execute(text("DELETE FROM tenant_memberships WHERE account_id=:a"),
+                {"a":guest})
+            await db.execute(text("DELETE FROM panel_accounts WHERE id=:a"),
+                {"a":guest})

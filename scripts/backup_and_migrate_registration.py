@@ -107,7 +107,7 @@ def portal_schema_ready(raw):
     try:
         with engine.connect() as db:
             table = db.execute(text("""SELECT c.relrowsecurity,c.relforcerowsecurity,
-                has_table_privilege('app_support',c.oid,'SELECT,INSERT,UPDATE'),
+                has_table_privilege('app_support',c.oid,'SELECT,INSERT,UPDATE,DELETE'),
                 has_table_privilege('app_runtime',c.oid,'SELECT'),
                 has_table_privilege('app_runtime',c.oid,'UPDATE'),
                 (SELECT count(*) FROM pg_constraint

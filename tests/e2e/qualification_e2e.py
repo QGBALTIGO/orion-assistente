@@ -260,43 +260,27 @@ def test_12_pending_email_bound_invitation_cannot_silently_create_an_owner_busin
     assert h.scalar("SELECT count(*) FROM business_onboarding_creations WHERE account_id=%s", (invited["id"],)) == 0
 
 
-def test_13_real_invitation_requires_acceptance_then_explicit_owner_review(journey):
+def test_13_real_professional_invitation_activates_only_individual_access(journey):
     h = journey
     owner, invited = h.account(), h.account(verified=True)
     company = h.tenant(owner, configured=True)
-    invitation = h.invitation(owner, company, invited)
+    professional = h.scalar("SELECT id FROM professionals WHERE tenant_id=%s", (company["id"],))
+    invitation = h.invitation(owner, company, invited, professional_id=professional)
     h.login(invited)
     h.page.goto(h.server.origin + "/convite#token=" + invitation["token"])
     expect(h.page.locator("#inviteAccept")).to_be_visible()
+    expect(h.page.locator("#inviteApprovalHelp")).to_contain_text("acesso à sua área profissional")
     with h.page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/team-invitations/accept") as accepted:
         h.page.locator("#inviteAccept").click()
-    assert accepted.value.status == 200 and accepted.value.json()["status"] == "claimed"
-    expect(h.page.locator("#inviteMessage")).to_contain_text("Aguarde a aprovação do proprietário")
-    assert h.scalar("SELECT status FROM management_team_invitations WHERE id=%s", (invitation["id"],)) == "claimed"
-    assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (invited["id"],)) == 0
-    h.page.goto(h.server.origin + "/panel")
-    expect(h.page.locator("#orionSetup")).to_contain_text("Aguardando aprovação")
-    owner_context = h.context.browser.new_context(ignore_https_errors=True)
-    owner_context.set_default_timeout(15_000)
-    owner_context.route("**/*", h._guard_network)
-    owner_context.on("page", h._observe)
-    try:
-        owner_page = owner_context.new_page()
-        h.login(owner, page=owner_page)
-        owner_page.goto(h.server.origin + "/panel?aba=funcionarios&empresa=" + company["id"])
-        owner_page.locator(f'[data-os-action="approve-invitation"][data-invitation="{invitation["id"]}"]').click()
-        expect(owner_page.locator('#osDialog [data-os-form="confirm"]')).to_be_visible()
-        assert h.scalar("SELECT count(*) FROM tenant_memberships WHERE account_id=%s", (invited["id"],)) == 0
-        with owner_page.expect_response(lambda r: urlsplit(r.url).path.endswith("/team/invitations/" + invitation["id"]) and r.request.method == "PATCH") as approved:
-            owner_page.locator('#osDialog [data-os-form="confirm"] button[type="submit"]').click()
-        assert approved.value.status == 200
-        assert h.query("SELECT role,active FROM tenant_memberships WHERE tenant_id=%s AND account_id=%s", (company["id"], invited["id"]))[0] == {"role":"editor","active":True}
-        assert h.scalar("SELECT status FROM management_team_invitations WHERE id=%s", (invitation["id"],)) == "approved"
-    finally:
-        owner_context.close()
-    h.page.reload()
-    expect(h.page.locator("#appView")).not_to_have_class(re.compile(r"\bob-gated\b"))
-    expect(h.page.locator('[data-os-action="business-setup"]')).to_have_count(0)
+    assert accepted.value.status == 200 and accepted.value.json()["status"] == "approved"
+    assert h.scalar("SELECT status FROM management_team_invitations WHERE id=%s", (invitation["id"],)) == "approved"
+    assert h.query("SELECT role,active FROM tenant_memberships WHERE account_id=%s", (invited["id"],))[0] == {"role":"professional","active":True}
+    assert h.query("SELECT professional_id,active FROM professional_portal_links WHERE account_id=%s", (invited["id"],))[0] == {"professional_id":professional,"active":True}
+    h.page.goto(h.server.origin + "/profissional")
+    expect(h.page.locator("#portal")).to_be_visible()
+    expect(h.page.locator("#companyName")).to_contain_text(company["name"])
+    forbidden = h.api(f"/api/v1/tenants/{company['id']}/management/customers")
+    assert forbidden["status"] == 403
     assert h.scalar("SELECT count(*) FROM business_onboarding_creations WHERE account_id=%s", (invited["id"],)) == 0
 
 

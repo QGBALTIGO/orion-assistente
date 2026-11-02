@@ -99,6 +99,13 @@ async function portal(t){
    else if(path.includes('/api/v1/professional/finance'))data={professional:'Guilherme',period:{},summary:{revenue_cents:20000,
        earned_cents:5000,balance_cents:3000,advances_cents:0,payments_cents:2000,payable_cents:3000}};
    else if(path==='/api/v1/professional/goals')data={items:[]};
+   else if(path==='/api/v1/professional/services')data={items:[
+     {id:other,name:'Corte',duration_min:40,price_cents:4000,price_mode:'fixed'}]};
+   else if(path.startsWith('/api/v1/professional/availability?'))data={
+      slots:['2026-11-02T17:00:00-04:00'],duration_min:40,price_cents:4000,
+      timezone:'America/Campo_Grande'};
+   else if(path==='/api/v1/professional/appointments'&&method==='POST')
+       data={id:'d1000000-0000-4000-8000-000000000004',status:'confirmed'};
    else if(path.includes('/api/v1/professional/appointments/'))data={id:'d1000000-0000-4000-8000-000000000001'};
    else {status=404;data={detail:'Not found'}}
    return {ok:status===200,status,json:async()=>data,headers:new Map()};
@@ -117,4 +124,34 @@ test('individual portal uses dedicated scoped routes and does not expose global 
  assert.match(h.doc.getElementById('content').textContent,/R\$\s*50,00/);
  assert.ok(h.calls.every(c=>c.path==='/auth/me'||c.path.startsWith('/api/v1/professional/')));
  assert.equal(h.errors.length,0);
+});
+
+test('professional can choose own services and a server-verified time before a real booking call',async t=>{
+  const h=await portal(t);
+  h.doc.querySelector('[data-page=agenda]').click();
+  await new Promise(resolve=>setTimeout(resolve,45));
+  h.doc.querySelector('[data-action=new-appointment]').click();
+  await new Promise(resolve=>setTimeout(resolve,45));
+  const form=h.doc.getElementById('modalForm');
+  assert.ok(form);
+  assert.ok(form.querySelector('[name=customer_name]'),form.innerHTML);
+  assert.ok(form.querySelector('[name=customer_phone]'));
+  assert.equal(form.querySelectorAll('[name=service_ids]').length,1);
+  form.querySelector('[name=customer_name]').value='Cliente sintético novo';
+  form.querySelector('[name=customer_phone]').value='67999999999';
+  form.querySelector('[name=service_ids]').checked=true;
+  form.dispatchEvent(new h.w.Event('submit',{cancelable:true,bubbles:true}));
+  await new Promise(resolve=>setTimeout(resolve,50));
+  assert.equal(h.calls.filter(c=>c.method==='POST'&&c.path==='/api/v1/professional/appointments').length,0);
+  const slot=form.querySelector('[name=selected_slot]');
+  assert.ok(slot);
+  slot.checked=true;
+  form.dispatchEvent(new h.w.Event('submit',{cancelable:true,bubbles:true}));
+  await new Promise(resolve=>setTimeout(resolve,75));
+  const posted=h.calls.filter(c=>c.method==='POST'&&c.path==='/api/v1/professional/appointments');
+  assert.equal(posted.length,1);
+  assert.deepEqual(posted[0].body.service_ids,[other]);
+  assert.equal(posted[0].body.customer_phone,'+5567999999999');
+  assert.equal(posted[0].body.professional_id,undefined);
+  assert.equal(h.errors.length,0);
 });

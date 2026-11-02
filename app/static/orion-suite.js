@@ -988,7 +988,20 @@
           '<div class="os-invitation-list">'+rows(team.members).filter(member=>member.role==='editor'||member.role==='viewer').map(member=>
             '<div class="os-invitation-row"><div><strong>'+esc(member.name||member.email)+'</strong><small>'+esc(member.email||'')+' · '+esc(teamRoles[member.role]||member.role)+' · '+esc(member.active?'Ativo':'Inativo')+'</small></div>'+
             (team.can_manage?'<button class="os-button os-ghost os-small" type="button" data-os-team-member="'+esc(member.account_id)+'">'+icon('edit')+'Gerenciar</button>':'')+'</div>'
-          ).join('')+'</div></section>':'');
+          ).join('')+'</div></section>':'')+renderLegacyInvitations();
+  }
+  function renderLegacyInvitations(){
+    const pending=rows(state.data.team?.invitations).filter(i=>i.role!=='professional'&&
+      ['pending','claimed'].includes(i.status)&&!i.expired);
+    if(!pending.length)return '';
+    return '<section class="os-card os-team-invites"><div class="os-card-header"><div>'+
+      '<h2>Convites antigos</h2><p>Estes convites não podem mais ser aprovados. Revogue-os e utilize o cadastro de profissionais.</p>'+
+      '</div></div><div class="os-invitation-list">'+pending.map(i=>
+      '<div class="os-invitation-row"><div><strong>'+esc(i.email||'Convite antigo')+
+      '</strong><small>'+esc(teamRoles[i.role]||i.role)+' · '+esc(inviteStatuses[i.status]||i.status)+'</small></div>'+
+      (state.data.team?.can_manage?button('Revogar','revoke-invitation','os-ghost os-small','close',
+        'data-invitation="'+esc(i.id)+'"'):'')+'</div>'
+      ).join('')+'</div></section>';
   }
   function showInvitation(){toast('Abra o cadastro de um profissional para enviar o convite.');}
   function invitationDeliveryNotice(result){

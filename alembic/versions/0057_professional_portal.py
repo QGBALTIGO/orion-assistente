@@ -57,7 +57,7 @@ def upgrade():
         ALTER TABLE professional_portal_links ENABLE ROW LEVEL SECURITY;
         ALTER TABLE professional_portal_links FORCE ROW LEVEL SECURITY;
         REVOKE ALL ON professional_portal_links FROM PUBLIC,app_runtime,app_support;
-        GRANT SELECT,INSERT,UPDATE ON professional_portal_links TO app_support;
+        GRANT SELECT,INSERT,UPDATE,DELETE ON professional_portal_links TO app_support;
         CREATE POLICY professional_portal_support ON professional_portal_links
             FOR ALL TO app_support USING (true) WITH CHECK (true);
         CREATE POLICY professional_portal_migrator ON professional_portal_links
