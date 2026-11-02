@@ -125,7 +125,14 @@ def portal_schema_ready(raw):
                 EXISTS(SELECT 1 FROM pg_constraint WHERE
                   conrelid='public.management_team_invitations'::regclass
                   AND conname='ck_professional_invite_binding' AND convalidated)""")).one()
-            return tuple(roles)==(True,True)
+            fence = db.execute(text("""SELECT
+                EXISTS(SELECT 1 FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name='professionals'
+                    AND column_name='last_archived_at' AND data_type='timestamp with time zone'),
+                EXISTS(SELECT 1 FROM pg_trigger
+                    WHERE tgrelid='public.professionals'::regclass
+                      AND tgname='orion_professional_archive_fence' AND NOT tgisinternal)""")).one()
+            return tuple(roles)==(True,True) and tuple(fence)==(True,True)
     finally:
         engine.dispose()
 

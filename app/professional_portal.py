@@ -34,7 +34,7 @@ async def individual_access(actor: Actor):
         raise HTTPException(403, "Entre com sua conta profissional")
     async with support_session_factory()() as db:
         async with db.begin():
-            rows = (await db.execute(text("""SELECT l.tenant_id,l.professional_id
+            rows = (await db.execute(text("""SELECT l.tenant_id,l.professional_id,l.updated_at AS link_version
                 FROM professional_portal_links l
                 JOIN tenant_memberships m ON m.tenant_id=l.tenant_id
                     AND m.account_id=l.account_id AND m.active AND m.role='professional'
@@ -52,6 +52,17 @@ async def individual_access(actor: Actor):
                 {"a": actor.account_id})).scalar_one()
             if count != 1:
                 raise HTTPException(403, "Vínculo de empresa não confirmado")
+            # Runtime RLS protects operational state; a historical active
+            # membership never survives a disable/reactivate staff cycle.
+            async with get_session_factory()() as operational:
+                async with tenant_transaction(operational,tenant):
+                    status=(await operational.execute(text("""SELECT active,last_archived_at
+                        FROM professionals WHERE tenant_id=:t AND id=:p"""),
+                        {"t":tenant,"p":professional})).mappings().first()
+                    if (not status or not status["active"] or
+                            status["last_archived_at"] is not None and
+                            rows[0]["link_version"] <= status["last_archived_at"]):
+                        raise HTTPException(403,"Acesso profissional desativado; solicite reativação ao proprietário")
             yield tenant, professional
 
 

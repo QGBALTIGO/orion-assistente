@@ -15,6 +15,23 @@ def upgrade():
     op.execute("SET LOCAL lock_timeout='10s'")
     op.execute("SET LOCAL statement_timeout='120s'")
     op.execute("""
+        -- A professional archived and later reactivated must not silently
+        -- regain portal access from a previous verified invitation.
+        ALTER TABLE professionals ADD COLUMN last_archived_at timestamptz;
+        CREATE FUNCTION public.orion_professional_archive_fence()
+        RETURNS trigger LANGUAGE plpgsql
+        SET search_path=pg_catalog AS $archive$
+        BEGIN
+            IF OLD.active AND NOT NEW.active THEN
+                NEW.last_archived_at := clock_timestamp();
+            END IF;
+            RETURN NEW;
+        END $archive$;
+        REVOKE ALL ON FUNCTION public.orion_professional_archive_fence()
+            FROM PUBLIC,app_runtime,app_support;
+        CREATE TRIGGER orion_professional_archive_fence
+            BEFORE UPDATE OF active ON professionals
+            FOR EACH ROW EXECUTE FUNCTION public.orion_professional_archive_fence();
         ALTER TABLE tenant_memberships DROP CONSTRAINT ck_membership_role;
         ALTER TABLE tenant_memberships ADD CONSTRAINT ck_membership_role
             CHECK (role IN ('owner','editor','viewer','professional'));

@@ -104,9 +104,27 @@ async def test_verified_professional_invite_is_immediate_and_only_grants_own_dat
         d["selected"]["actor"]=Actor("member",account_id=d["guest"])
         assert (await d["client"].get("/api/v1/professional/me")).status_code==200
 
+        # Archiving fences out the previously approved account, even if
+        # another edit later reactivates the operational professional record.
+        async with d["migrator"].begin() as db:
+            await db.execute(text("""UPDATE professionals SET active=false
+                WHERE tenant_id=:t AND id=:p"""),
+                {"t":d["tenant"],"p":d["pro"]})
+        assert (await d["client"].get("/api/v1/professional/me")).status_code==403
+        async with d["migrator"].begin() as db:
+            await db.execute(text("""UPDATE professionals SET active=true
+                WHERE tenant_id=:t AND id=:p"""),
+                {"t":d["tenant"],"p":d["pro"]})
+        assert (await d["client"].get("/api/v1/professional/me")).status_code==403
+        d["selected"]["actor"]=owner
+        reenabled=await d["client"].patch(base+"/access",json={
+            "action":"reactivate","expected_updated_at":revived.json()["updated_at"]})
+        assert reenabled.status_code==200,reenabled.text
+        d["selected"]["actor"]=Actor("member",account_id=d["guest"])
+        assert (await d["client"].get("/api/v1/professional/me")).status_code==200
         d["selected"]["actor"]=owner
         revoked=await d["client"].patch(base+"/access",json={
-            "action":"revoke","expected_updated_at":revived.json()["updated_at"]})
+            "action":"revoke","expected_updated_at":reenabled.json()["updated_at"]})
         assert revoked.status_code==200,revoked.text
         assert revoked.json()["account_id"] is None
         d["selected"]["actor"]=Actor("member",account_id=d["guest"])
@@ -276,6 +294,10 @@ async def test_professional_creates_real_booking_only_for_own_calendar(booking_d
     finally:
         app.dependency_overrides.pop(authenticate,None)
         async with d["migrator"].begin() as db:
+            # Booking confirmation stores idempotency receipts. Remove these
+            # before the booking_db fixture deletes its synthetic tenants.
+            await db.execute(text("DELETE FROM management_requests WHERE tenant_id=:t"),
+                {"t":d["a"]})
             await db.execute(text("DELETE FROM professional_portal_links WHERE tenant_id=:t"),
                 {"t":d["a"]})
             await db.execute(text("DELETE FROM tenant_memberships WHERE account_id=:a"),

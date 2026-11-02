@@ -956,8 +956,11 @@
     const team=state.data.team||{},link=rows(team.professional_access).find(a=>a.professional_id===p.id);
     const invite=rows(team.invitations).filter(i=>i.role==='professional'&&i.professional_id===p.id).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)))[0];
     const pending=invite&&invite.status==='pending'&&!invite.expired;
-    const label=link?.active?'Acesso ativo':link?.account_id?'Acesso suspenso':pending?'Convite enviado':'Sem acesso';
-    return {link,invite,pending,label};
+    const lastArchive=p.last_archived_at&&Date.parse(p.last_archived_at);
+    const linkVersion=link?.updated_at&&Date.parse(link.updated_at);
+    const active=Boolean(link?.active&&p.active&&(!lastArchive||linkVersion>lastArchive));
+    const label=active?'Acesso ativo':link?.account_id?'Acesso suspenso':pending?'Convite enviado':'Sem acesso';
+    return {link,invite,pending,label,active};
   }
   function renderInvitations(compact=false){
     const items=rows(state.data.team?.invitations).filter(i=>i.role==='professional'&&i.status==='pending'&&!i.expired);
@@ -974,8 +977,8 @@
         const access=proAccessState(p),link=access.link;
         const commands=team.can_manage?'<div class="os-actions">'+
           '<button class="os-button os-ghost os-small" type="button" data-os-professional="'+esc(p.id)+'">'+icon('edit')+'Editar</button>'+
-          (link?.account_id?(link.active?button('Suspender','pro-access-suspend','os-outline os-small','lock','data-professional="'+esc(p.id)+'"'):
-          button('Reativar','pro-access-reactivate','os-outline os-small','refresh','data-professional="'+esc(p.id)+'"'))+
+          (link?.account_id?(access.active?button('Suspender','pro-access-suspend','os-outline os-small','lock','data-professional="'+esc(p.id)+'"'):
+          (p.active?button('Reativar','pro-access-reactivate','os-outline os-small','refresh','data-professional="'+esc(p.id)+'"'):''))+
           button('Revogar vínculo','pro-access-revoke','os-ghost os-small','close','data-professional="'+esc(p.id)+'"'):'')+
           '</div>':'';
         return '<div class="os-invitation-row"><div class="os-person"><span class="os-avatar">'+esc(initials(p.name))+'</span><div><strong>'+esc(p.name)+'</strong>'+
