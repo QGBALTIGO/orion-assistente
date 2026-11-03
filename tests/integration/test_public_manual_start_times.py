@@ -131,9 +131,11 @@ async def test_manual_public_selections_respect_effective_duration_prep_and_clea
     await publish(d)
     result = await quote(d, **selection_args)
     assert result["duration_min"] == duration
-    expected = ["08:40", "10:30", "13:05", "16:30"]
+    # Existing booking semantics clip preparation at opening and after a break.
+    # Cleanup must still fit fully before lunch and closing for every selection.
+    expected = ["08:00", "08:40", "10:30", "13:00", "13:05", "16:30"]
     if duration == 60:
-        expected = ["08:40", "10:30", "10:50", "13:05", "16:30", "16:50"]
+        expected = ["08:00", "08:40", "10:30", "10:50", "13:00", "13:05", "16:30", "16:50"]
     assert clocks(result) == expected
 
 
