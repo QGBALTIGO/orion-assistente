@@ -1,0 +1,133 @@
+name: Orion - lembretes e avaliacao por atendimento
+
+on:
+  push:
+    branches: [fix/peixoto-notifications-20261103]
+  pull_request:
+    branches: [main, security/prelaunch-hardening-20261030]
+    paths:
+      - app/appointment*.py
+      - app/booking*.py
+      - app/contact_preferences.py
+      - app/professional_portal.py
+      - app/public_site_api.py
+      - alembic/versions/0061_appointment_message_consent.py
+      - scripts/*appointment_consent*.py
+      - tests/**/*appointment*consent*.py
+      - tests/**/*appointment*review*.py
+      - .github/workflows/appointment-consent-repair.yml
+
+permissions:
+  contents: read
+concurrency:
+  group: appointment-consent-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres:
+    name: Consentimento, lembrete e avaliacao PostgreSQL 16
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: barber_saas
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-postgres-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d barber_saas"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-runtime-only@localhost:5432/barber_saas
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-migrator-only@localhost:5432/barber_saas
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-support-only@localhost:5432/barber_saas
+      SUPPORT_API_TOKEN: synthetic-appointment-consent-ci-token-20261103-000000000000000
+      REQUIRE_POSTGRES_TESTS: '1'
+      REDIS_URL: redis://localhost:6379/15
+      REQUIRE_REDIS_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned application runtime
+        run: |
+          python -m pip install -c requirements.lock '.[test]'
+          python -m pip check
+      - name: Provision isolated PostgreSQL roles
+        env:
+          PGPASSWORD: ci-postgres-only
+        run: |
+          psql -h localhost -U postgres -d barber_saas -v ON_ERROR_STOP=1 \
+            -v db_name=barber_saas -v runtime_password=ci-runtime-only \
+            -v migrator_password=ci-migrator-only -v support_password=ci-support-only \
+            -f infra/postgres/init/001-roles.sql
+      - name: Apply additive permission migration
+        run: |
+          alembic upgrade 0060_manual_start_times
+          alembic upgrade head
+          python - <<'PY'
+          import asyncio, os
+          from scripts.backup_and_migrate_appointment_consent import schema_ready
+          from scripts.wait_for_appointment_consent_schema import probe_schema, Settings
+          assert schema_ready(os.environ['MIGRATION_DATABASE_URL'])
+          assert asyncio.run(probe_schema(Settings.from_environment(), 10))
+          print('appointment_consent_schema_and_runtime_barrier_verified')
+          PY
+      - name: Verify consent and release contracts
+        run: |
+          pytest -q -ra \
+            tests/unit/test_appointment_consent_release.py \
+            tests/unit/test_manual_start_times_release.py \
+            tests/unit/test_appointment_scoped_consent.py \
+            tests/unit/test_appointment_message_eligibility.py \
+            tests/unit/test_booking_message_preferences.py \
+            tests/unit/test_appointment_message_templates.py \
+            tests/unit/test_peixoto_notification_preflight.py \
+            tests/unit/test_0056_predeploy_guard.py \
+            tests/unit/test_cakto_post_0053_predeploy.py
+      - name: Exercise real booking, outbox, broker and review transactions
+        run: |
+          pytest -q -ra \
+            tests/integration/test_appointment_scoped_consent_pg.py \
+            tests/integration/test_appointment_review_completion_pg.py \
+            tests/integration/test_appointment_consent_central_pg.py \
+            tests/integration/test_appointment_access_pg.py \
+            tests/integration/test_appointment_notifications_pg.py \
+            tests/integration/test_appointment_trigger_matrix_pg.py \
+            tests/integration/test_central_notifications_pg.py \
+            tests/integration/test_central_confirmation_pg.py \
+            tests/integration/test_professional_portal_postgres.py
+
+  ui:
+    name: Autorizacao opcional e recuperacao da reserva
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Verify existing form styles and idempotent choices
+        run: |
+          node --check app/static/orion-public.js
+          node --check app/static/orion-suite.js
+          node --check app/static/orion-professional.js
+          node --test ui-tests/orion-public.test.mjs \
+            ui-tests/booking-recovery.test.mjs \
+            ui-tests/professional-portal.test.mjs \
+            ui-tests/public-confirmation-clean.test.mjs \
+            ui-tests/fields-public-consumers.test.mjs

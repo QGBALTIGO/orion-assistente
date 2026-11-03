@@ -32,14 +32,14 @@ function config(canCheck=true){
   ]
  };
 }
-async function fixture(canCheck=true){
+async function fixture(canCheck=true,notifications=null){
  const dom=new JSDOM('<!doctype html><html><body><main id="host"></main></body></html>',
   {url:'https://orionagenda.pro/painel',runScripts:'outside-only'});
  dom.window.eval(source);
  const calls=[],host=dom.window.document.querySelector('#host');
  const req=async(path,method='GET')=>{
   calls.push({path,method});
-  if(path===prefix&&method==='GET')return config(canCheck);
+  if(path===prefix&&method==='GET')return {...config(canCheck),...(notifications?{notifications}:{})};
   if(path===prefix+'/professional-recipient/'+staff&&method==='GET')
     return {status:'not_recognized'};
   throw Error('No network is allowed: '+path);
@@ -83,5 +83,23 @@ test('read-only viewer has no provider lookup button',async()=>{
   assert.equal([...x.host.querySelectorAll('button')]
    .filter(b=>b.textContent==='Verificar WhatsApp').length,0);
   assert.equal(x.calls.length,1);
+ }finally{x.dom.window.close();}
+});
+
+test('customer preference and completion reasons have readable labels without sending messages',async()=>{
+ const labels={
+  customer_opt_out:'Cliente pediu para não receber mensagens',
+  marketing_not_authorized:'Convite de retorno não autorizado pelo cliente',
+  completion_unverified:'Conclusão do atendimento ainda não confirmada para pedir avaliação',
+ };
+ const notifications=Object.keys(labels).map((reason,index)=>({
+  id:String(index),event:'review',recipient_kind:'customer',recipient_label:'Cliente sintético',
+  protocol:'SYNTHETIC-'+index,status:'cancelled',due_at:past,last_error:reason,
+ }));
+ const x=await fixture(false,notifications);
+ try{
+  for(const label of Object.values(labels))assert.ok(x.host.textContent.includes(label));
+  for(const reason of Object.keys(labels))assert.equal(x.host.textContent.includes(reason),false);
+  assert.deepEqual(x.calls,[{path:prefix,method:'GET'}]);
  }finally{x.dom.window.close();}
 });

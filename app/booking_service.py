@@ -645,7 +645,8 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
                        expected_snapshot: str | None = None, expected_updated_at: datetime | None = None,
                        idempotency_key: str | None = None,
                        context: LifecycleActor | None = None, source: str = "unknown",
-                       nonblocking_professional_lock: bool = False):
+                       nonblocking_professional_lock: bool = False,
+                       appointment_messages_opt_in: bool = False):
     supplied_clock = now is not None
     now = now or datetime.now(UTC)
     expired = False
@@ -673,7 +674,14 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
         if customer_phone is not None or expected_snapshot is not None:
             await verify_customer_snapshot(s, tenant, hold, customer_phone, expected_snapshot)
         context = resolved_actor(context, source, hold["customer_id"], verified_customer=customer_phone is not None)
-        receipt = operation_payload(item_id, expected_updated_at, context)
+        consent_actor = None
+        if appointment_messages_opt_in is True:
+            from app.appointment_consent import staff_consent_actor
+            consent_actor = staff_consent_actor(context)
+            if consent_actor is None:
+                fail(403, "A autorização de mensagens exige a confirmação da equipe autenticada")
+        receipt = operation_payload(item_id, expected_updated_at, context,
+            **({'appointment_messages_opt_in': True} if appointment_messages_opt_in is True else {}))
         if await operation_replayed(s, tenant, "agenda_confirm", idempotency_key, receipt):
             return await read_appointment(s, tenant, item_id)
         check_expected_updated_at(hold, expected_updated_at)
@@ -726,6 +734,11 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
                  **bundle_guard_parameters(tenant, hold["professional_id"], list(ids), shop, items, customer_phone)})).scalar_one_or_none()
             if changed is None:
                 fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de confirmar")
+            if consent_actor is not None:
+                from app.appointment_consent import grant_scoped_consent
+                from app.appointment_messages import APPOINTMENT_MESSAGE_CONSENT_STATEMENT
+                await grant_scoped_consent(s, tenant, item_id, source=consent_actor[0],
+                    actor=consent_actor[1], evidence=APPOINTMENT_MESSAGE_CONSENT_STATEMENT)
             await history(s, tenant, item_id, "confirmed", context=context, previous=hold)
             await record_operation(s, tenant, item_id, "agenda_confirm", idempotency_key, receipt)
             result = await read_appointment(s, tenant, item_id)

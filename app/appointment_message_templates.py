@@ -11,6 +11,11 @@ from zoneinfo import ZoneInfo
 from app.public_origins import canonical_public_origin
 from app.qr_presentation import fits_message
 
+APPOINTMENT_MESSAGE_CONSENT_STATEMENT = (
+    'Autorizo receber no WhatsApp os avisos e o lembrete deste agendamento, '
+    'além de um convite de avaliação após o atendimento.'
+)
+
 # These are the approved, literal message bodies, WITHOUT internal instructions.
 # Model 12 is a conditional insertion into model 11; 15 is not scheduled.
 TEMPLATES = {
@@ -331,8 +336,11 @@ def render_template(event, values, *, include_return=False):
     return body
 
 
-def compose_prefill(protocol):
-    return render_template("public_prefill", {"protocolo": label(protocol, 30)})
+def compose_prefill(protocol, *, appointment_messages_opt_in=False):
+    body = render_template("public_prefill", {"protocolo": label(protocol, 30)})
+    if appointment_messages_opt_in is True:
+        body += '\n\n' + APPOINTMENT_MESSAGE_CONSENT_STATEMENT
+    return body
 
 
 def generic_response(signature="Orion Agenda"):

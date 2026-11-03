@@ -13,7 +13,7 @@
   let retainedTimeView = null; // Keep photos mounted across wizard step navigation.
   let booking = newBooking();
 
-  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', birthDate: '', consent: false }; }
+  function newBooking() { return { step: 1, service: null, services: [], addons: [], notice: '', professional: null, day: null, start: null, quote: null, availability: null, availabilityError: null, loading: false, busy: false, result: null, name: '', phone: '', birthDate: '', appointmentMessagesOptIn: false }; }
   function el(tag, cls, value) { const node = document.createElement(tag); if (cls) node.className = cls; if (value !== undefined) node.textContent = value; return node; }
   function button(text, cls, handler) { const node = el('button', cls, text); node.type = 'button'; if (handler) node.addEventListener('click', handler); return node; }
   function safeHTTPS(value) { try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null; } catch { return null; } }
@@ -943,11 +943,11 @@
   }
   function renderConfirmation(body) {
     // The confirmation button itself is the affirmative booking action.
-    // No duplicate consent checkbox, price or long explanatory paragraph.
+    // The separate message preference is optional and never confirms a booking.
     body.append(reviewCard());
     body.append(el('h3', 'booking-contact-heading', 'Seus dados'));
     const instructions = el('p', 'small muted booking-form-note',
-      'Todos os campos são obrigatórios. O nascimento registra seu aniversário no cadastro do estabelecimento.');
+      'Nome, WhatsApp e nascimento são obrigatórios. O nascimento registra seu aniversário no cadastro do estabelecimento.');
     instructions.id = 'customer-form-note';
     body.append(instructions);
     const form = el('form', 'booking-form');
@@ -996,6 +996,21 @@
       label.append(field);
       form.append(label);
     }
+    const messagesLabel = el('label', 'consent-label');
+    messagesLabel.htmlFor = 'appointment_messages_opt_in';
+    const messages = el('input');
+    messages.id = 'appointment_messages_opt_in';
+    messages.name = 'appointment_messages_opt_in';
+    messages.type = 'checkbox';
+    messages.checked = booking.appointmentMessagesOptIn;
+    messages.setAttribute('aria-describedby', 'appointment-messages-note');
+    messages.addEventListener('change', () => { booking.appointmentMessagesOptIn = messages.checked; });
+    messagesLabel.append(messages, el('span', '',
+      'Quero receber pelo WhatsApp os avisos deste agendamento, um lembrete 1 hora antes e um pedido de avaliação após o atendimento.'));
+    const messagesNote = el('p', 'privacy-note',
+      'Opcional. Para ativar, envie a mensagem que será aberta no WhatsApp após a confirmação.');
+    messagesNote.id = 'appointment-messages-note';
+    form.append(messagesLabel, messagesNote);
     body.append(form);
     fields.refresh(form);
   }
@@ -1056,6 +1071,7 @@
     booking.name = form.elements.customer_name.value;
     booking.phone = form.elements.customer_phone.value;
     booking.birthDate = form.elements.customer_birth_date.value;
+    booking.appointmentMessagesOptIn = form.elements.appointment_messages_opt_in.checked;
     if (!booking.name.trim()) {
       const nameField = form.elements.customer_name;
       nameField.setCustomValidity('Informe seu nome completo.');
@@ -1081,12 +1097,14 @@
           customer_name: booking.name.trim(),
           customer_phone: canonicalPhone,
           customer_birth_date: birthDate,
-          confirmed: true
+          confirmed: true,
+          appointment_messages_opt_in: booking.appointmentMessagesOptIn
         })
       });
       booking.name = '';
       booking.phone = '';
       booking.birthDate = '';
+      booking.appointmentMessagesOptIn = false;
       booking.quote = null;
       renderBooking();
       const whatsappURL = bookingWhatsAppURL(booking.result);

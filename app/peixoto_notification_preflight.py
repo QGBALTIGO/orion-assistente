@@ -1,7 +1,7 @@
 """Read-only readiness proof for one explicitly authorized Orion tenant.
 
-Operator opt-in via one-time worker flag. Outputs only booleans and bounded
-counts: never a customer, professional phone, token, message, or QR credential.
+Operator opt-in via one-time worker flag. Outputs only booleans, bounded
+counts and incident status codes: no names, phones, tokens or message bodies.
 """
 from uuid import UUID
 
@@ -56,6 +56,9 @@ async def inspect():
             chosen = notification_settings(preference, True, channel)
             result["notifications_configured"] = chosen.get("enabled") is True
             result["professional_notice_enabled"] = chosen.get("professional_notice") is True
+            result["reminder_enabled"] = chosen.get("reminder") is True
+            result["review_enabled"] = chosen.get("review") is True
+            result["review_delay_min"] = int(chosen["review_delay_min"])
             counts = (await db.execute(text("""
                 SELECT event,status,count(*) AS total
                 FROM appointment_notifications
@@ -68,6 +71,40 @@ async def inspect():
                 str(item["event"]) + ":" + str(item["status"]): int(item["total"])
                 for item in counts
             }
+            # Fixed incident operations supplied by production worker logs.
+            # Read the exact two notices, not an unrestricted customer export.
+            incident = (await db.execute(text("""
+                SELECT n.id,n.status,n.last_error,a.status AS appointment_status,
+                  c.active AND c.deleted_at IS NULL AS customer_active,
+                  consent.contact_e164 IS NOT NULL AS standing_consent_exists,
+                  consent.operational_opt_in IS TRUE AS operational_authorized,
+                  consent.marketing_opt_in IS TRUE AS marketing_authorized,
+                  EXISTS(SELECT 1 FROM appointment_history h WHERE h.tenant_id=a.tenant_id
+                    AND h.appointment_id=a.id AND h.event='completed'
+                    AND h.details->>'source'='system') AS automatically_completed,
+                  (SELECT count(*) FROM appointment_notifications review
+                    WHERE review.tenant_id=a.tenant_id AND review.appointment_id=a.id
+                      AND review.event='review') AS review_jobs
+                FROM appointment_notifications n
+                JOIN appointments a ON a.tenant_id=n.tenant_id AND a.id=n.appointment_id
+                JOIN customers c ON c.tenant_id=a.tenant_id AND c.id=a.customer_id
+                LEFT JOIN contact_consents consent ON consent.tenant_id=c.tenant_id
+                  AND consent.contact_e164=c.whatsapp_e164
+                WHERE n.tenant_id=:tenant AND a.professional_id=:professional
+                  AND n.event='reminder' AND n.id IN (:first,:second)
+                ORDER BY a.start_at LIMIT 2
+            """), {"tenant":TENANT,"professional":PROFESSIONAL,
+                   "first":UUID("db935626-1f60-4ea9-a329-0cb0543d0b62"),
+                   "second":UUID("b599846a-ab84-47ea-b627-f00d8faf16be")})).mappings().all()
+            result["incident_20261103"] = [
+                {key:(value if key in {"status","appointment_status"} else
+                      value if key=="last_error" and value in {
+                          "communication_not_authorized","review_not_authorized",
+                          "customer_opt_out","appointment_changed","expired"} else
+                      "other" if key=="last_error" else value)
+                 for key,value in dict(row).items() if key!="id"}
+                for row in incident
+            ]
 
     if result["sender_identity_available"]:
         try:

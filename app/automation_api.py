@@ -188,6 +188,11 @@ async def consent(tenant_id: UUID, payload: ContactConsent, actor: Actor = Depen
               birthday_purpose_version=CASE WHEN :birthday THEN 1 ELSE contact_consents.birthday_purpose_version END,
               source=EXCLUDED.source,updated_at=GREATEST(clock_timestamp(),contact_consents.updated_at+interval '1 microsecond')"""),
           {"t": tenant_id, "phone": payload.contact_e164, "marketing": payload.marketing_opt_in, "operational": payload.operational_opt_in,'birthday':payload.birthday_opt_in})
+        from app.appointment_consent import revoke_scoped_consents
+        if payload.operational_opt_in is False:
+            await revoke_scoped_consents(db,tenant_id,payload.contact_e164,'all')
+        elif payload.marketing_opt_in is False:
+            await revoke_scoped_consents(db,tenant_id,payload.contact_e164,'marketing')
         # Evidence is retained only as a hash, never echoed into logs/queue bodies.
         await audit(db, tenant_id, "consent_reviewed:" + hashlib.sha256(payload.evidence.encode()).hexdigest()[:12], "contact_consents", customer)
         await db.execute(text('''UPDATE automation_jobs j SET status='cancelled',last_error='consent_changed',updated_at=now()

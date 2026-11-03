@@ -392,3 +392,36 @@ python tests/e2e/appointment_communications.py
 ```
 
 A execução exige PostgreSQL 16 isolado com papéis runtime/migrator/support, Redis de teste e as variáveis usadas no workflow. Os valores de CI são descartáveis e não são credenciais da produção. O teste de migração usa somente bases aleatórias de loopback. A suíte ampla local foi executada com `pytest -q tests/unit --junitxml=...` na base e na branch, comparando os identificadores de falha.
+
+
+## Correção de lembretes e avaliação — 03/11/2026
+
+O registro da reserva não era uma autorização de mensagens: o formulário não
+coletava essa escolha e o lembrete era recusado por `communication_not_authorized`.
+A partir da revisão 0061, uma autorização específica do atendimento é alternativa
+às preferências globais legadas descritas acima. Nenhum registro antigo é convertido.
+
+- Site público: opção desmarcada para avisos, lembrete e uma avaliação do próprio
+  atendimento. O formulário só prepara a frase explícita no WhatsApp. O grant só
+  nasce na entrada autenticada, com protocolo, telefone do cliente e texto completo
+  correspondentes. Confirmar a reserva ou reenviar a frase antiga não concede permissão.
+- Painel e portal profissional: a equipe autenticada pode declarar a autorização
+  recebida do cliente, na mesma transação que confirma o atendimento. Ela vale apenas
+  para aquele atendimento e não cadastra o contato em campanhas ou aniversário.
+- Recusas: a retirada de todas as mensagens cancela as permissões operacionais e de
+  avaliação; a retirada promocional cancela a avaliação; aniversário mantém esses
+  propósitos. Repetir confirmação, recibo ou mensagem não restaura um grant revogado.
+- Avaliação: conclusão registrada pela equipe, inclusive pelo próprio profissional,
+  ou conclusão automática auditada após o término previsto habilitam o convite e o
+  formulário nativo de uma a cinco estrelas. Um status isolado ou data futura não basta.
+  As sugestões de intervalo de retorno continuam exigindo conclusão pela equipe.
+- Campanhas e retorno: o convite simples de avaliação aceita o grant específico.
+  Acrescentar o convite de novo agendamento continua exigindo marketing atual;
+  `requires_marketing` é persistido junto com o corpo e rechecado no remetente SQL.
+- Horários: o lembrete continua programado para uma hora antes, com a janela original
+  de dois minutos. Falha comprovada antes do envio permite nova checagem em 15 segundos;
+  um envio de resultado incerto nunca é repetido automaticamente.
+
+A migração é aditiva, precedida pelo backup já usado nas publicações. O worker
+aguarda a validação do novo schema. Não há reenvio de lembretes vencidos, criação
+retroativa de convites ou alteração dos consentimentos globais existentes.

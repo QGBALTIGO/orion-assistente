@@ -18,7 +18,8 @@ from sqlalchemy import text
 from app import appointment_access as access
 from app.booking_service import read_appointment
 from app.database import get_session_factory, tenant_transaction
-from app.appointment_messages import compose
+from app.appointment_messages import compose, safe_link
+from app.appointment_review_completion import completion_evidence
 
 
 def cipher():
@@ -87,7 +88,7 @@ async def enqueue_event(db, tenant, appointment, event, details):
         due=row['start_at']-timedelta(hours=1)
         # Never invent 'one hour' for an appointment created after that instant.
         if due>=now:add('reminder','customer',due,due+timedelta(minutes=2))
-    if event=='completed' and settings['review'] and details.get('source')!='system':
+    if event=='completed' and settings['review'] and (await completion_evidence(db,tenant,appointment)).can_review:
         due=now+timedelta(minutes=settings['review_delay_min'])
         add('review','customer',due,due+timedelta(hours=24))
     for kind,recipient,recipient_id,due,expiry in events:
@@ -104,6 +105,20 @@ async def enqueue_event(db, tenant, appointment, event, details):
             'central_channel':channel if central else None,
             'settings':settings['version'],'key':key,
           'previous':json.dumps(details.get('previous') or {},default=str),'due':due,'expiry':expiry})
+
+
+def customer_consent_reason(contact, event, *, requires_marketing=False):
+    """Keep each authorization complete within its own purpose and scope."""
+    legacy_operational=bool(contact and contact['operational_opt_in'] is True)
+    scoped_operational=bool(contact and contact['appointment_operational_opt_in'] is True)
+    if not (legacy_operational or scoped_operational):return 'communication_not_authorized'
+    if event=='review' and not (
+        legacy_operational and contact['marketing_opt_in'] is True
+        or scoped_operational and contact['appointment_review_opt_in'] is True
+    ):return 'review_not_authorized'
+    if requires_marketing and contact['marketing_opt_in'] is not True:
+        return 'marketing_not_authorized'
+    return None
 
 
 async def eligibility(db, tenant, job):
@@ -144,6 +159,8 @@ async def eligibility(db, tenant, job):
     now=(await db.execute(text('SELECT clock_timestamp()'))).scalar_one()
     if now<job['due_at']:return 'not_due',None,None,None
     if now>=job['expires_at']:return 'expired',None,None,None
+    if job['event']=='review' and not (await completion_evidence(db,tenant,job['appointment_id'])).can_review:
+        return 'completion_unverified',None,None,None
     if job['recipient_kind']=='professional':
         if row['professional_id']!=job['recipient_id']:return 'professional_changed',None,None,None
         phone=(await db.execute(text('SELECT phone_e164 FROM professionals WHERE tenant_id=:t AND id=:id AND active'),
@@ -151,11 +168,17 @@ async def eligibility(db, tenant, job):
         if not phone:return 'professional_contact_unavailable',None,None,None
     else:
         if row['customer_id']!=job['recipient_id']:return 'customer_changed',None,None,None
-        contact=(await db.execute(text('''SELECT c.whatsapp_e164,s.operational_opt_in,s.marketing_opt_in
+        contact=(await db.execute(text('''SELECT c.whatsapp_e164,s.operational_opt_in,s.marketing_opt_in,
+            scoped.operational_opt_in AS appointment_operational_opt_in,
+            scoped.review_opt_in AS appointment_review_opt_in
           FROM customers c LEFT JOIN contact_consents s ON s.tenant_id=c.tenant_id AND s.contact_e164=c.whatsapp_e164
-          WHERE c.tenant_id=:t AND c.id=:id AND c.active AND c.deleted_at IS NULL'''),{'t':tenant,'id':job['recipient_id']})).mappings().first()
-        if not contact or contact['operational_opt_in'] is not True:return 'communication_not_authorized',None,None,None
-        if job['event']=='review' and contact['marketing_opt_in'] is not True:return 'review_not_authorized',None,None,None
+          LEFT JOIN appointment_message_consents scoped ON scoped.tenant_id=c.tenant_id
+            AND scoped.appointment_id=:appointment AND scoped.customer_id=c.id
+            AND scoped.contact_e164=c.whatsapp_e164
+          WHERE c.tenant_id=:t AND c.id=:id AND c.active AND c.deleted_at IS NULL'''),
+          {'t':tenant,'id':job['recipient_id'],'appointment':job['appointment_id']})).mappings().first()
+        reason=customer_consent_reason(contact,job['event'],requires_marketing=job.get('requires_marketing',False))
+        if reason:return reason,None,None,None
         phone=contact['whatsapp_e164']
     if central:
         if not isinstance(phone,str) or not re.fullmatch(r'(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})',phone):
@@ -174,14 +197,22 @@ async def prepare_body(db,tenant,job,row,settings):
     if job['recipient_kind']=='customer' and job['event'] in {'customer_rescheduled','customer_proposal','review'}:
         customer_link=await access.shared_link(db,tenant,job['appointment_id'],audience='customer')
     from app.public_origins import canonical_public_origin
-    booking_link=canonical_public_origin()+'/s/'+shop['public_slug'] if shop.get('public_slug') and shop['public_enabled'] else None
+    booking_link=safe_link(canonical_public_origin()+'/s/'+shop['public_slug']) if shop.get('public_slug') and shop['public_enabled'] else None
     future=(await db.execute(text("SELECT EXISTS(SELECT 1 FROM appointments WHERE tenant_id=:t AND customer_id=:customer AND id<>:id AND status='confirmed' AND start_at>now())"),
         {'t':tenant,'customer':row['customer_id'],'id':row['id']})).scalar_one()
     professional_link = (await access.shared_link(db,tenant,job['appointment_id'],audience='professional')
                          if job['event'].startswith('professional_') else None)
+    requires_marketing=False
+    if job['event']=='review' and settings['return_invitation'] and not future and booking_link:
+        requires_marketing=(await db.execute(text('''SELECT EXISTS(
+            SELECT 1 FROM customers c JOIN contact_consents consent
+              ON consent.tenant_id=c.tenant_id AND consent.contact_e164=c.whatsapp_e164
+            WHERE c.tenant_id=:t AND c.id=:customer AND c.active AND c.deleted_at IS NULL
+              AND consent.marketing_opt_in IS TRUE)'''),
+            {'t':tenant,'customer':row['customer_id']})).scalar_one()
     body = compose(job['event'],row,company=shop['name'],signature=settings['signature'],customer_link=customer_link,
         professional_link=professional_link,booking_link=booking_link,
-        previous=job['previous'],include_return=settings['return_invitation'] and not future,
+        previous=job['previous'],include_return=requires_marketing,
         address=', '.join(str(shop[k]) for k in ('address','city','state') if shop.get(k)))
     if (job['event'] == 'professional_new' and job['recipient_kind'] == 'professional'
             and job['previous'].get('orion_test_recovery') is True):
@@ -197,7 +228,7 @@ async def prepare_body(db,tenant,job,row,settings):
         body = '🧪 *TESTE ORION — AVALIAÇÃO*\n\n' + body
         if not fits_message(body):
             raise ValueError('review_qa_exceeds_transport_limit')
-    return body
+    return body,requires_marketing
 
 
 async def process_notification(ctx,tenant_id,notification_id):
@@ -243,24 +274,26 @@ async def process_notification(ctx,tenant_id,notification_id):
                     if observed['status']!='connected' or not observed.get('phone_verified'):
                         raise ValueError('channel_offline')
                 except Exception:
+                    retry_seconds=15 if job['event']=='reminder' else 120 if central else 30
                     if central:
                         # No transport attempt occurred. Keep the durable
                         # notification queued during a temporary central outage;
-                        # expiration is still bounded by the existing 24h TTL.
+                        # preserve its original expiry, including the two-minute
+                        # reminder window. A short preflight retry can still fit.
                         query="""UPDATE appointment_notifications SET
-                            status=CASE WHEN clock_timestamp()+interval '2 minutes'>=expires_at THEN 'failed' ELSE 'pending' END,
-                            due_at=LEAST(clock_timestamp()+interval '2 minutes',expires_at-interval '1 microsecond'),
+                            status=CASE WHEN clock_timestamp()+CAST(:retry_seconds AS integer)*interval '1 second'>=expires_at THEN 'failed' ELSE 'pending' END,
+                            due_at=LEAST(clock_timestamp()+CAST(:retry_seconds AS integer)*interval '1 second',expires_at-interval '1 microsecond'),
                             last_error='channel_unavailable',updated_at=clock_timestamp()
                             WHERE tenant_id=:t AND id=:id"""
                     else:
                         query="""UPDATE appointment_notifications SET
-                            status=CASE WHEN attempts>=4 OR clock_timestamp()+interval '30 seconds'>=expires_at THEN 'failed' ELSE 'pending' END,
-                            attempts=attempts+1,due_at=LEAST(clock_timestamp()+interval '30 seconds',expires_at-interval '1 microsecond'),
+                            status=CASE WHEN attempts>=4 OR clock_timestamp()+CAST(:retry_seconds AS integer)*interval '1 second'>=expires_at THEN 'failed' ELSE 'pending' END,
+                            attempts=attempts+1,due_at=LEAST(clock_timestamp()+CAST(:retry_seconds AS integer)*interval '1 second',expires_at-interval '1 microsecond'),
                             last_error='channel_unavailable',updated_at=clock_timestamp()
                             WHERE tenant_id=:t AND id=:id"""
-                    await db.execute(text(query),{'t':tenant,'id':identity})
+                    await db.execute(text(query),{'t':tenant,'id':identity,'retry_seconds':retry_seconds})
                     return 'channel_unavailable'
-            try:body=await prepare_body(db,tenant,job,row,settings)
+            try:body,requires_marketing=await prepare_body(db,tenant,job,row,settings)
             except (ValueError,KeyError):
                 await db.execute(text("UPDATE appointment_notifications SET status='failed',last_error='message_facts_invalid' WHERE tenant_id=:t AND id=:id"),{'t':tenant,'id':identity})
                 return 'message_facts_invalid'
@@ -270,13 +303,14 @@ async def process_notification(ctx,tenant_id,notification_id):
             # retain the unchanged old update until the feature is enabled.
             digest_sql=",body_sha256=:body_digest" if central else ""
             values={'t':tenant,'id':identity,'body':encrypted,
-                    'hash':hashlib.sha256(phone.encode()).hexdigest()}
+                    'hash':hashlib.sha256(phone.encode()).hexdigest(),'requires_marketing':requires_marketing}
             if central:values['body_digest']=hashlib.sha256(body.encode()).hexdigest()
             await db.execute(text("""UPDATE appointment_notifications SET status='sending',attempts=attempts+1,
-                body_encrypted=:body,recipient_hash=:hash""" + digest_sql +
+                body_encrypted=:body,recipient_hash=:hash,requires_marketing=:requires_marketing""" + digest_sql +
                 """,attempted_at=clock_timestamp(),updated_at=clock_timestamp()
                 WHERE tenant_id=:t AND id=:id"""),values)
-            job={**dict(job),'recipient_hash':hashlib.sha256(phone.encode()).hexdigest()}
+            job={**dict(job),'recipient_hash':hashlib.sha256(phone.encode()).hexdigest(),
+                 'requires_marketing':requires_marketing}
     result,error,provider='unknown','transport_result_unknown',None
     try:
         async with get_session_factory()() as db:

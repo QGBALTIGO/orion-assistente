@@ -121,6 +121,8 @@ async def startup_plan_permissions(ctx):
     from scripts.wait_for_agenda_schema import Settings
     from scripts.wait_for_plan_permissions_schema import wait_for_schema
     await wait_for_schema(Settings.from_environment())
+    from scripts.wait_for_appointment_consent_schema import wait_for_schema as wait_for_appointment_consent
+    await wait_for_appointment_consent(Settings.from_environment())
     ctx['plan_permissions_ready'] = True
     logging.getLogger(__name__).info('orion_plan_permissions_0050_worker_ready')
     if os.getenv('ORION_REVIEW_QA_VERIFY_7364') == '1':

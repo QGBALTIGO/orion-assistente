@@ -619,6 +619,8 @@ body{background:var(--bg);color:var(--text);min-width:0}
   margin:0;color:var(--text);
   font:600 13px/19px Figtree,system-ui,sans-serif;
 }
+.booking-confirmation-body .booking-form .consent-label,
+.booking-confirmation-body .booking-form .privacy-note{grid-column:1/-1}
 .booking-confirmation-body .booking-form .field>input{
   box-sizing:border-box;display:block;width:100%;min-width:0;
   height:46px;min-height:46px;max-width:100%;
