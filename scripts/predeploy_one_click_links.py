@@ -24,7 +24,7 @@ def main():
     import tempfile
     raw, url = connection_values()
     current = migrated_version(raw)
-    if current not in {"0057_professional_portal","0058_professional_scope"}:
+    if current not in {"0057_professional_portal","0058_professional_scope","0059_prepaid_pix"}:
         raise RuntimeError("professional_hardening_source_revision_not_approved")
     if current == "0057_professional_portal":
         # A private, ownership-preserving archive must be verified with a full
@@ -36,7 +36,7 @@ def main():
         environment = {**os.environ, "ORION_MIGRATION_SWITCH_ROLE": "1"}
         subprocess.run([sys.executable, "-m", "alembic", "upgrade",
                         "0058_professional_scope"], env=environment, check=True)
-    if migrated_version(raw) != "0058_professional_scope":
+    if migrated_version(raw) not in {"0058_professional_scope","0059_prepaid_pix"}:
         raise RuntimeError("professional_hardening_schema_not_published")
     from scripts.backup_and_migrate_registration import (
         portal_schema_ready, professional_hardening_schema_ready,
@@ -44,6 +44,10 @@ def main():
     if not portal_schema_ready(raw) or not professional_hardening_schema_ready(raw):
         raise RuntimeError("professional_hardening_security_contract_invalid")
     print("professional_hardening_schema_ready", flush=True)
+    from scripts.backup_and_migrate_prepaid_pix import main as prepaid_migrate
+    if prepaid_migrate():
+        raise RuntimeError("prepaid_pix_schema_not_ready")
+    print("prepaid_pix_schema_ready",flush=True)
 
 
 if __name__ == "__main__":
