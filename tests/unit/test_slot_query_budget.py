@@ -53,7 +53,8 @@ class Database:
         self.calls[table] += 1
         assert params["tenant"] == TENANT
         if table == "working_hours": return Result([self.hours] if self.hours else [])
-        if table == "working_breaks": return Result(self.pauses)
+        if table == "working_breaks":
+            return Result([{"working_hour_id": self.hours["id"], **pause} for pause in self.pauses])
         assert params["professional"] == PRO
         rows = getattr(self, table)
         matching = [row for row in rows if row.get("tenant", TENANT) == TENANT and row.get("pro", PRO) == PRO

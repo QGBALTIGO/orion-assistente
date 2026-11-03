@@ -108,6 +108,14 @@ async def lock_plan(db, tenant_id, exclusive=False):
     await db.execute(text(f"SELECT {function}(hashtextextended(:key,0))"), {"key": LOCK_PREFIX + str(tenant_id)})
 
 
+async def try_lock_plan(db, tenant_id):
+    """Acquire the same shared plan lock without joining PostgreSQL's wait queue."""
+    if not isinstance(tenant_id, UUID):
+        raise ValueError("Verified tenant UUID required")
+    return (await db.execute(text("SELECT pg_try_advisory_xact_lock_shared(hashtextextended(:key,0))"),
+                             {"key": LOCK_PREFIX + str(tenant_id)})).scalar_one()
+
+
 async def plan_state(db, tenant_id, lock="shared"):
     if lock not in {"shared", "exclusive", None}:
         raise ValueError("Invalid plan lock")

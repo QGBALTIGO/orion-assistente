@@ -4,6 +4,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from app.catalog_api import router as catalog_router, list_services
 from app.booking_api import router as bookings_router
+from app.start_policies import router as start_policies_router
 from app.whatsapp_api import router as whatsapp_router
 from app.integrations_api import router as integrations_router
 from app.ops_api import router as ops_router
@@ -87,6 +88,7 @@ async def health() -> dict[str, str]:
 app.add_api_route("/api/v1/tenants/{tenant_id}/services", list_services,
                   methods=["GET"], tags=["Operação interna"], dependencies=[Depends(enforce_endpoint_plan)])
 include_plan_router(app, bookings_router)
+include_plan_router(app, start_policies_router)
 include_plan_router(app, onboarding_router)
 include_plan_router(app, commercial_router)
 include_plan_router(app, whatsapp_router)

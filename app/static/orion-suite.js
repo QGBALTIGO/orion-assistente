@@ -1671,7 +1671,13 @@
     if(!tenant()){renderSettings();return;}
     const tab=state.filters.settingsTab;
     if(tab==='general'){const data=await request(mgmt('/preferences'));if(!current(c))return;state.data.preferences=data;}
-    if(tab==='hours'){const [professionals,hours,breaks]=await Promise.all([request(apiPath('/professionals')),request(apiPath('/working_hours')),request(apiPath('/working_breaks'))]);if(!current(c))return;Object.assign(state.data,{professionals:rows(professionals),workingHours:rows(hours),workingBreaks:rows(breaks)});}
+    if(tab==='hours'){
+      const [professionals,hours,breaks]=await Promise.all([request(apiPath('/professionals')),request(apiPath('/working_hours')),request(apiPath('/working_breaks'))]);
+      if(!current(c))return;
+      Object.assign(state.data,{professionals:rows(professionals),workingHours:rows(hours),workingBreaks:rows(breaks)});
+      if(!state.data.professionals.some(p=>p.id===state.filters.hoursProfessional))state.filters.hoursProfessional=state.data.professionals[0]?.id||'';
+      if(state.filters.hoursProfessional)await loadSettingsStartPolicies(state.filters.hoursProfessional,c);
+    }
     if(tab==='ai'&&!permitted('marketing.ai')&&!permitted('consultant.ai')){state.filters.settingsTab='general';}
     if(tab==='ai'&&(permitted('marketing.ai')||permitted('consultant.ai'))){const [status,history]=await Promise.all([request(mgmt('/ai/status')),request(mgmt('/ai/history'))]);if(!current(c))return;Object.assign(state.data,{aiStatus:status,aiHistory:history});}
     if(current(c))renderSettings();
@@ -1707,7 +1713,10 @@
     if(!professionals.some(p=>p.id===state.filters.hoursProfessional))state.filters.hoursProfessional=professionals[0].id;
     const id=state.filters.hoursProfessional,person=professionals.find(p=>p.id===id),hours=(state.data.workingHours||[]).filter(h=>h.professional_id===id).sort((a,b)=>a.weekday-b.weekday||a.start_time.localeCompare(b.start_time)),breaks=state.data.workingBreaks||[],days=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo'];
     let total=0;hours.forEach(h=>total+=minuteOf(h.end_time)-minuteOf(h.start_time)-breaks.filter(b=>b.working_hour_id===h.id).reduce((sum,b)=>sum+minuteOf(b.end_time)-minuteOf(b.start_time),0));
-    return '<section class="os-card"><div class="os-card-header"><div><h2>Horários de trabalho</h2><p>Os horários disponíveis respeitam o expediente, as pausas e os bloqueios.</p></div></div><label class="os-sr-only" for="osHoursProfessional">Profissional</label><select id="osHoursProfessional">'+professionals.map(p=>'<option value="'+esc(p.id)+'"'+(p.id===id?' selected':'')+'>'+esc(p.name)+(p.active?'':' · Inativo')+'</option>').join('')+'</select><div class="os-hours-overview">'+days.map((label,weekday)=>{const periods=hours.filter(h=>h.weekday===weekday);return '<div class="os-hours-day"><strong>'+label+'</strong><span>'+ (periods.length?periods.map(h=>'<span>'+esc(h.start_time.slice(0,5)+' – '+h.end_time.slice(0,5))+breaks.filter(b=>b.working_hour_id===h.id).map(b=>'<small>Pausa '+esc(b.start_time.slice(0,5)+' – '+b.end_time.slice(0,5))+'</small>').join('')+'</span>').join(''):'<small>Não atende</small>')+'</span></div>';}).join('')+'</div><div class="os-summary-row"><span>Carga horária semanal</span><strong>'+Math.floor(total/60)+'h'+(total%60?' '+total%60+'min':'')+'</strong></div><p class="os-help os-section-gap">Horários no fuso '+esc(zone())+'.</p><div class="os-form-actions"><button type="button" class="os-button" data-os-hours="'+esc(person.id)+'" '+(writable()?'':'disabled')+'>'+icon('edit')+'Editar horários e pausas</button></div></section>';
+    const startPolicies=state.data.hoursStartPolicies?.[id];
+    return '<section class="os-card"><div class="os-card-header"><div><h2>Horários de trabalho</h2><p>Os horários disponíveis respeitam o expediente, as pausas e os bloqueios.</p></div></div><label class="os-sr-only" for="osHoursProfessional">Profissional</label><select id="osHoursProfessional">'+professionals.map(p=>'<option value="'+esc(p.id)+'"'+(p.id===id?' selected':'')+'>'+esc(p.name)+(p.active?'':' · Inativo')+'</option>').join('')+'</select>'+
+      (startPolicies?.error?'<p class="os-help os-hours-policy-error" role="status">Não foi possível carregar os horários de início. Abra a edição para tentar novamente.</p>':'')+
+      '<div class="os-hours-overview">'+days.map((label,weekday)=>{const periods=hours.filter(h=>Number(h.weekday)===weekday),policy=startPolicies?.policies?.find(p=>p.weekday===weekday);return '<div class="os-hours-day"><strong>'+label+'</strong><span>'+ (periods.length?periods.map(h=>'<span>'+esc(h.start_time.slice(0,5)+' – '+h.end_time.slice(0,5))+breaks.filter(b=>b.working_hour_id===h.id).map(b=>'<small>Pausa '+esc(b.start_time.slice(0,5)+' – '+b.end_time.slice(0,5))+'</small>').join('')+'</span>').join('')+'<small class="os-hours-mode-summary'+(policy?.mode==='manual'?' is-manual':'')+'">'+(policy?'Inícios: '+startPolicyModeLabel(policy.mode):startPolicies?.error?'Inícios não carregados':'Carregando inícios…')+'</small>':'<small>Não atende</small>')+'</span></div>';}).join('')+'</div><div class="os-summary-row"><span>Carga horária semanal</span><strong>'+Math.floor(total/60)+'h'+(total%60?' '+total%60+'min':'')+'</strong></div><p class="os-help os-section-gap">Horários no fuso '+esc(zone())+'.</p><div class="os-form-actions"><button type="button" class="os-button" data-os-hours="'+esc(person.id)+'" '+(writable()?'':'disabled')+'>'+icon('edit')+'Editar horários e pausas</button></div></section>';
   }
   const googleStatusLabels={email_confirmation_required:'Confirme seu e-mail',not_configured:'Integração indisponível',not_connected:'Não conectado',choose_calendar:'Escolha o calendário',paused:'Sincronização pausada',reauthorization_required:'Reconecte sua conta',pending:'Sincronização pendente',attention:'Requer atenção',up_to_date:'Sincronizado',idle:'Conectado'};
   const googleDisclosure='O Orion envia nome do cliente, serviço, profissional e horários para o calendário escolhido. Telefone, observações internas e motivo do cancelamento ficam no Orion.';
@@ -2316,6 +2325,161 @@
       shortClock(a.start_time).localeCompare(shortClock(b.start_time))||
       shortClock(a.end_time).localeCompare(shortClock(b.end_time))||String(a.id).localeCompare(String(b.id)));
   }
+  function startPolicyModeLabel(mode){return mode==='manual'?'Manual':'Automático';}
+  function validStartClock(value){return typeof value==='string'&&/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);}
+  function normalizeStartPolicy(policy,weekday){
+    if(!policy||policy.weekday!==weekday||!['automatic','manual'].includes(policy.mode)||
+       !Number.isSafeInteger(policy.version)||policy.version<0||!Array.isArray(policy.start_times)||
+       policy.start_times.some(time=>!validStartClock(time))||policy.mode==='manual'&&!policy.start_times.length)
+      throw Error('Não foi possível confirmar os horários de início. Tente carregar novamente.');
+    return {weekday,mode:policy.mode,start_times:[...new Set(policy.start_times)].sort(),version:policy.version};
+  }
+  async function readStartPolicies(professionalId){
+    try{
+      const result=await request(apiPath('/professionals/'+encodeURIComponent(professionalId)+'/start-policies'));
+      if(result?.professional_id!==professionalId||!Array.isArray(result.policies)||result.policies.length!==7)
+        throw Error('Não foi possível confirmar os horários de início. Tente carregar novamente.');
+      return {policies:workweekDays.map((_,weekday)=>normalizeStartPolicy(result.policies.find(p=>p.weekday===weekday),weekday)),error:null};
+    }catch(error){return {policies:null,error:error?.message||'Não foi possível carregar os horários de início.'};}
+  }
+  async function loadSettingsStartPolicies(professionalId,c=context()){
+    const cache=state.data.hoursStartPolicies||(state.data.hoursStartPolicies={}),pending={loading:true};
+    cache[professionalId]=pending;
+    const result=await readStartPolicies(professionalId);
+    if(current(c)&&state.data.hoursStartPolicies===cache&&cache[professionalId]===pending)cache[professionalId]=result;
+  }
+  function rememberHoursStartPolicies(d){
+    const cache=state.data.hoursStartPolicies||(state.data.hoursStartPolicies={});
+    cache[d.record.id]={policies:d.startPolicies,error:d.startPoliciesError||null};
+    if(state.route==='configuracoes'&&state.filters.settingsTab==='hours')renderSettings();
+  }
+  function hoursStartTimeError(d,weekday,time,hours=d.hours,breaks=d.breaks){
+    if(!validStartClock(time))return 'Informe um horário válido no formato HH:MM.';
+    const periods=(hours||[]).filter(h=>Number(h.weekday)===weekday&&time>=shortClock(h.start_time)&&time<shortClock(h.end_time));
+    if(!periods.length)return 'Escolha um horário dentro do expediente.';
+    let pause;
+    for(const hour of periods){
+      const blocked=(breaks||[]).find(b=>b.working_hour_id===hour.id&&time>=shortClock(b.start_time)&&time<shortClock(b.end_time));
+      if(!blocked)return '';
+      pause=blocked;
+    }
+    return 'Este horário está dentro da pausa de '+shortClock(pause.start_time)+' às '+shortClock(pause.end_time)+'.';
+  }
+  function hoursStartDraft(d,weekday){
+    const drafts=d.startPolicyDrafts||(d.startPolicyDrafts={});
+    if(!drafts[weekday]){
+      const policy=d.startPolicies?.find(p=>p.weekday===weekday);if(!policy)return null;
+      drafts[weekday]={mode:policy.mode,startTimes:[...policy.start_times],version:policy.version,pendingTime:'',message:'',conflict:false};
+    }
+    return drafts[weekday];
+  }
+  function validateActiveStartPolicies(d,hours,breaks){
+    for(const policy of d.startPolicies||[]){
+      if(policy.mode!=='manual')continue;
+      const invalid=policy.start_times.filter(time=>hoursStartTimeError(d,policy.weekday,time,hours,breaks));
+      if(invalid.length)throw Error('A alteração deixaria os horários de início '+invalid.join(', ')+' inválidos em '+workweekDays[policy.weekday]+'. Ajuste os horários de início ou ative o modo automático antes de salvar.');
+    }
+  }
+  function renderHoursStartPolicy(d,weekday){
+    const policy=d.startPolicies?.find(p=>p.weekday===weekday),can=writable(),
+      expanded=d.hoursEditor?.mode==='start-policy'&&d.hoursEditor.weekday===weekday,
+      panelId='osHoursStartPolicy-'+weekday;
+    if(!policy)return '<div class="os-hours-start-section"><div class="os-hours-start-heading">Horários de início</div><p class="os-help os-hours-policy-error" role="status">Não foi possível carregar esta configuração.</p><button type="button" class="os-button os-ghost os-small" data-os-start-policy-retry="'+weekday+'">'+icon('refresh')+'Tentar novamente</button></div>';
+    let content='';
+    if(expanded&&can){
+      const draft=hoursStartDraft(d,weekday),manual=draft.mode==='manual',
+        invalid=draft.startTimes.filter(time=>hoursStartTimeError(d,weekday,time));
+      content='<form class="os-form os-hours-editor os-hours-start-editor" data-os-form="hours-start-policy" data-weekday="'+weekday+'">'+
+        '<fieldset class="os-hours-start-modes"><legend>Como oferecer os horários de início</legend>'+[['automatic','Automático'],['manual','Definir manualmente']].map(([value,label])=>
+          '<label><input type="radio" name="start_mode" value="'+value+'" '+(draft.mode===value?'checked ':'')+'data-os-start-policy-mode><span>'+label+'</span></label>').join('')+'</fieldset>'+
+        (manual?'<p class="os-help">Ofereça novos agendamentos apenas nos horários que você adicionar.</p>'+
+          '<div class="os-hours-start-add"><div class="os-field"><label for="osHoursStartTime-'+weekday+'">Horário de início</label><input id="osHoursStartTime-'+weekday+'" name="start_time" type="time" step="60" value="'+esc(draft.pendingTime)+'" data-os-start-time-input aria-describedby="osHoursStartHelp-'+weekday+'"></div><button type="button" class="os-button os-outline os-small" data-os-start-time-add>'+icon('plus')+'Adicionar</button></div>'+
+          '<div class="os-hours-start-list" aria-label="Horários de início adicionados">'+(draft.startTimes.length?draft.startTimes.map(time=>{
+            const error=hoursStartTimeError(d,weekday,time);
+            return '<span class="os-hours-start-chip'+(error?' is-invalid':'')+'"'+(error?' title="'+esc(error)+'"':'')+'><span>'+esc(time)+'</span><button type="button" data-os-start-time-remove="'+esc(time)+'" aria-label="Remover horário de início '+esc(time)+'">'+icon('close')+'</button></span>';
+          }).join(''):'<p class="os-help os-hours-start-empty">Nenhum horário adicionado. Digite o primeiro horário de início.</p>')+'</div>'+
+          (invalid.length?'<p class="os-hours-policy-error" role="status">Revise os horários destacados: '+esc(invalid.join(', '))+'. Eles precisam estar dentro do expediente e fora das pausas.</p>':'')+
+          '<p id="osHoursStartHelp-'+weekday+'" class="os-help">A duração do serviço, as pausas e as reservas continuam sendo consideradas.</p>':
+          '<p class="os-help">O sistema calcula os horários de início a partir do expediente, das pausas e da duração do serviço.</p>'+
+          (policy.start_times.length?'<p class="os-help">A última lista manual salva será mantida para quando você quiser usá-la novamente.</p>':''))+
+        '<p class="os-form-message" role="alert" aria-live="polite">'+esc(draft.message)+'</p>'+
+        (draft.conflict?'<button type="button" class="os-button os-outline os-small os-hours-start-reload" data-os-start-policy-reload="'+weekday+'">Recarregar horários salvos</button><p class="os-help">Recarregar substitui este rascunho pela configuração salva.</p>':'')+
+        '<div class="os-form-actions"><button type="button" class="os-button os-outline os-small" data-os-start-policy-cancel="'+weekday+'">Cancelar</button><button type="submit" class="os-button os-small">Salvar horários</button></div></form>';
+    }else if(expanded){
+      content='<p class="os-help os-hours-start-readonly">'+(policy.mode==='manual'?'Inícios permitidos: '+esc(policy.start_times.join(' · '))+'. A duração do serviço, as pausas e as reservas continuam sendo consideradas.':'O sistema calcula os horários de início a partir do expediente, das pausas e da duração do serviço.')+'</p>';
+    }
+    return '<div class="os-hours-start-section"><button type="button" class="os-hours-start-disclosure" data-os-start-policy-toggle="'+weekday+'" aria-expanded="'+expanded+'" aria-controls="'+panelId+'"><span>Horários de início</span><span class="os-hours-start-status'+(policy.mode==='manual'?' is-manual':'')+'">'+startPolicyModeLabel(policy.mode)+'</span>'+icon('down')+'</button>'+
+      '<div id="'+panelId+'"'+(expanded?'':' hidden')+'>'+content+'</div></div>';
+  }
+  function setHoursStartMessage(d,weekday,message){
+    const draft=hoursStartDraft(d,weekday);if(draft)draft.message=message;
+    const form=$('osDialog')?.querySelector('[data-os-form="hours-start-policy"][data-weekday="'+weekday+'"]');
+    const target=form?.querySelector('.os-form-message');if(target)target.textContent=message;
+  }
+  function addHoursStartTime(form){
+    const d=state.dialog;if(d?.type!=='hours'||!writable()||state.busy||!form)return false;
+    const weekday=Number(form.dataset.weekday),draft=hoursStartDraft(d,weekday),input=form.elements.start_time;
+    if(!draft||draft.mode!=='manual'||!input)return false;
+    const time=input.value;draft.pendingTime=time;
+    const message=hoursStartTimeError(d,weekday,time)||(draft.startTimes.includes(time)?'Este horário já foi adicionado.':'');
+    if(message){setHoursStartMessage(d,weekday,message);input.focus({preventScroll:true});return false;}
+    draft.startTimes=[...draft.startTimes,time].sort();draft.pendingTime='';draft.message='';
+    renderHoursDialog();$('osHoursStartTime-'+weekday)?.focus({preventScroll:true});return true;
+  }
+  async function reloadHoursStartPolicies(d,weekday,replaceDraft=false){
+    if(d?.type!=='hours'||state.busy)return;
+    const c=context(),dialog=$('osDialog');markBusy(dialog,true);
+    try{
+      const [policies,hours,breaks]=await Promise.all([readStartPolicies(d.record.id),request(apiPath('/working_hours')),request(apiPath('/working_breaks'))]);
+      if(!current(c)||state.dialog!==d)return;
+      if(policies.error)throw Error(policies.error);
+      d.startPolicies=policies.policies;d.startPoliciesError=null;
+      d.hours=rows(hours).filter(h=>h.professional_id===d.record.id);d.breaks=rows(breaks);
+      state.data.workingHours=rows(hours);state.data.workingBreaks=rows(breaks);
+      if(replaceDraft){delete d.startPolicyDrafts?.[weekday];hoursStartDraft(d,weekday);}
+      rememberHoursStartPolicies(d);
+    }catch(error){
+      if(current(c)&&state.dialog===d){
+        if(d.startPolicies)setHoursStartMessage(d,weekday,error?.message||'Não foi possível recarregar os horários.');
+        else d.startPoliciesError=error?.message||'Não foi possível carregar os horários de início.';
+      }
+    }finally{
+      if(stillAccount(c)&&state.dialog===d){markBusy(dialog,false);renderHoursDialog();}
+      else state.busy=false;
+    }
+  }
+  async function submitHoursStartPolicy(form,d){
+    if(d?.type!=='hours'||!writable()||state.busy)return;
+    const weekday=Number(form.dataset.weekday),draft=hoursStartDraft(d,weekday);
+    if(!draft||d.hoursEditor?.mode!=='start-policy'||d.hoursEditor.weekday!==weekday)return;
+    if(draft.mode==='manual'){
+      const pending=form.elements.start_time?.value||'';
+      if(pending){if(!addHoursStartTime(form))return;form=$('osDialog').querySelector('[data-os-form="hours-start-policy"]');}
+      if(!draft.startTimes.length){setHoursStartMessage(d,weekday,'Adicione pelo menos um horário para usar a seleção manual.');return;}
+      const invalid=draft.startTimes.filter(time=>hoursStartTimeError(d,weekday,time));
+      if(invalid.length){setHoursStartMessage(d,weekday,'Revise os horários '+invalid.join(', ')+': eles precisam estar dentro do expediente e fora das pausas.');return;}
+    }
+    const c=context(),payload={mode:draft.mode,expected_version:draft.version,...(draft.mode==='manual'?{start_times:[...draft.startTimes]}:{})};
+    draft.message='';draft.conflict=false;markBusy(form,true);
+    let saved=false;
+    try{
+      const result=await request(apiPath('/professionals/'+encodeURIComponent(d.record.id)+'/start-policies/'+weekday),'PUT',payload);
+      if(!current(c)||state.dialog!==d)return;
+      saved=true;
+      const policy=normalizeStartPolicy(result,weekday);
+      d.startPolicies=d.startPolicies.map(item=>item.weekday===weekday?policy:item);
+      delete d.startPolicyDrafts[weekday];d.hoursEditor=null;
+      rememberHoursStartPolicies(d);toast('Horários de início salvos.');
+    }catch(error){
+      if(current(c)&&state.dialog===d){
+        draft.message=(saved?'Não foi possível confirmar o resultado. Recarregue os horários salvos antes de tentar novamente. ':'')+(error?.message||'Não foi possível salvar os horários de início.');
+        draft.conflict=saved||error?.status===409;
+      }
+    }finally{
+      if(stillAccount(c)&&state.dialog===d)markBusy(form,false);else state.busy=false;
+    }
+    if(current(c)&&state.dialog===d){renderHoursDialog();if(d.hoursEditor)$('osDialog').querySelector('.os-form-message')?.scrollIntoView({block:'nearest'});else $('osDialog').querySelector('[data-os-start-policy-toggle="'+weekday+'"]')?.focus({preventScroll:true});}
+  }
   function hoursEditorForm(editor,record,parentHour=null){
     if(!writable())return '';
     const mode=editor.mode,isHour=mode==='add-hour'||mode==='edit-hour',
@@ -2347,14 +2511,17 @@
   async function showHours(id){
     const p=(state.data.professionals||[]).find(x=>x.id===id);if(!p)return;
     const c=context();
-    if(!showDialog('hours','Horários de '+p.name,loading('Carregando expediente…'),{record:p,hoursEditor:null},true))return;
+    if(!showDialog('hours','Horários de '+p.name,loading('Carregando expediente…'),{record:p,hoursEditor:null,startPolicyDrafts:{}},true))return;
     $('osDialog').classList.add('os-hours-dialog');
     const activeDialog=state.dialog;
     try{
-      const [hours,breaks]=await Promise.all([request(apiPath('/working_hours')),request(apiPath('/working_breaks'))]);
+      const [hours,breaks,startPolicies]=await Promise.all([request(apiPath('/working_hours')),request(apiPath('/working_breaks')),readStartPolicies(id)]);
       if(!current(c)||state.dialog!==activeDialog)return;
       activeDialog.hours=rows(hours).filter(h=>h.professional_id===id);
       activeDialog.breaks=rows(breaks);
+      activeDialog.startPolicies=startPolicies.policies;activeDialog.startPoliciesError=startPolicies.error;
+      state.data.workingHours=rows(hours);state.data.workingBreaks=rows(breaks);
+      rememberHoursStartPolicies(activeDialog);
       renderHoursDialog();
     }catch(ex){
       if(current(c)&&state.dialog===activeDialog)dialogError(ex);
@@ -2393,6 +2560,7 @@
               (editor?.mode==='add-break'&&editor.id===hour.id?hoursEditorForm(editor,null,hour):'')+
               '</div>';
           }).join(''):'')+
+          (daily.length?renderHoursStartPolicy(d,weekday):'')+
           (editor?.mode==='add-hour'&&editor.weekday===weekday?hoursEditorForm(editor):'')+
           '</section>';
       }).join('')+'</div>'+
@@ -2423,6 +2591,7 @@
         throw Error('Há pausas fora do novo expediente. Ajuste ou remova essas pausas primeiro.');
       path=apiPath('/working_hours'+(isEdit?'/'+encodeURIComponent(original.id):''));
       payload={professional_id:d.record.id,weekday,start_time:start,end_time:end};
+      validateActiveStartPolicies(d,isEdit?d.hours.map(h=>h.id===original.id?{...h,...payload}:h):[...d.hours,{...payload,id:'new-hour'}],d.breaks);
     }else{
       const previous=isEdit?(d.breaks||[]).find(b=>b.id===edit.id):null,
         hour=(d.hours||[]).find(h=>h.id===(isEdit?previous?.working_hour_id:edit.id));
@@ -2434,6 +2603,7 @@
         throw Error('Esta pausa se sobrepõe a outra pausa do mesmo período.');
       path=apiPath('/working_breaks'+(isEdit?'/'+encodeURIComponent(previous.id):''));
       payload={working_hour_id:hour.id,start_time:start,end_time:end};
+      validateActiveStartPolicies(d,d.hours,isEdit?d.breaks.map(b=>b.id===previous.id?{...b,...payload}:b):[...d.breaks,{...payload,id:'new-break'}]);
     }
     const c=context(),message=form.querySelector('.os-form-message');
     if(message)message.textContent='';
@@ -2443,11 +2613,14 @@
       await request(path,isEdit?'PUT':'POST',payload);
       if(!current(c)||state.dialog!==d)return;
       changed=true;
-      const [newHours,newBreaks]=await Promise.all([request(apiPath('/working_hours')),request(apiPath('/working_breaks'))]);
+      const [newHours,newBreaks,startPolicies]=await Promise.all([request(apiPath('/working_hours')),request(apiPath('/working_breaks')),readStartPolicies(d.record.id)]);
       if(!current(c)||state.dialog!==d)return;
       d.hours=rows(newHours).filter(h=>h.professional_id===d.record.id);
       d.breaks=rows(newBreaks);
+      d.startPolicies=startPolicies.policies;d.startPoliciesError=startPolicies.error;
+      state.data.workingHours=rows(newHours);state.data.workingBreaks=rows(newBreaks);
       d.hoursEditor=null;
+      rememberHoursStartPolicies(d);
       toast(isHour?(isEdit?'Horário atualizado.':'Horário cadastrado.'):(isEdit?'Pausa atualizada.':'Pausa adicionada.'));
     }catch(error){
       if(current(c)&&state.dialog===d&&message){
@@ -2767,6 +2940,7 @@
         },p?'Profissional atualizado.':'Profissional cadastrado.');
         if(invitationResult&&state.mounted)showInvitationResult(invitationResult);
       }
+      if(kind==='hours-start-policy'){await submitHoursStartPolicy(form,d);return;}
       if(['hours','hours-edit','pause','pause-edit'].includes(kind)){await submitHoursEditor(form,kind,f,d);return;}
       if(kind==='appointment'){
         const values=d.holdForm||f,customerPhone=customerPhoneValue(values.customer_phone);if(!/^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(customerPhone))throw Error('Para agendar, informe WhatsApp com DDD brasileiro ou celular paraguaio +595.');if(!d.serviceIds.length)throw Error('Selecione ao menos um serviço.');if(!d.holdForm&&!d.slots.includes(values.start_at))throw Error('Selecione um horário disponível.');
@@ -3067,6 +3241,33 @@
       if(el.dataset.osBookService){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm)return;const id=el.dataset.osBookService;if(d.serviceIds.includes(id))d.serviceIds=d.serviceIds.filter(s=>s!==id);else if(d.serviceIds.length<6)d.serviceIds.push(id);else{toast('Escolha até 6 serviços por agendamento.',true);return;}el.setAttribute('aria-pressed',String(d.serviceIds.includes(id)));await updateAvailability();return;}
       if(el.dataset.osBookCustomer){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm)return;const c=d.customers.find(c=>c.id===el.dataset.osBookCustomer);if(!c)return;const form=$('osDialog').querySelector('form');form.elements.customer_name.value=c.name;form.elements.customer_phone.value=sharedFields().phoneDisplay(c.phone||'');d.customerId=c.id;$('osBookingCustomers').replaceChildren();$('osBookingCustomerHelp').textContent=c.phone?'Cliente selecionado.':'Este cliente ainda não tem WhatsApp. Ao confirmar, o número informado será salvo neste cadastro.';return;}
 
+      if(el.dataset.osStartPolicyToggle!==undefined){
+        const d=state.dialog,weekday=Number(el.dataset.osStartPolicyToggle);
+        if(d?.type!=='hours'||!d.startPolicies?.some(p=>p.weekday===weekday))return;
+        const expanded=d.hoursEditor?.mode==='start-policy'&&d.hoursEditor.weekday===weekday;
+        d.hoursEditor=expanded?null:{mode:'start-policy',weekday};
+        if(!expanded&&writable())hoursStartDraft(d,weekday);
+        renderHoursDialog();
+        const target=expanded?'[data-os-start-policy-toggle="'+weekday+'"]':'#osHoursStartPolicy-'+weekday+' input:checked';
+        $('osDialog').querySelector(target)?.focus({preventScroll:true});return;
+      }
+      if(el.dataset.osStartPolicyCancel!==undefined){
+        const d=state.dialog,weekday=Number(el.dataset.osStartPolicyCancel);
+        if(d?.type!=='hours'||!writable())return;
+        delete d.startPolicyDrafts?.[weekday];d.hoursEditor=null;renderHoursDialog();
+        $('osDialog').querySelector('[data-os-start-policy-toggle="'+weekday+'"]')?.focus({preventScroll:true});return;
+      }
+      if(el.dataset.osStartPolicyRetry!==undefined||el.dataset.osStartPolicyReload!==undefined){
+        await reloadHoursStartPolicies(state.dialog,Number(el.dataset.osStartPolicyRetry??el.dataset.osStartPolicyReload),el.dataset.osStartPolicyReload!==undefined);return;
+      }
+      if(el.dataset.osStartTimeAdd!==undefined){addHoursStartTime(el.closest('form'));return;}
+      if(el.dataset.osStartTimeRemove!==undefined){
+        const d=state.dialog,form=el.closest('[data-os-form="hours-start-policy"]'),weekday=Number(form?.dataset.weekday);
+        if(d?.type!=='hours'||!writable()||!form)return;
+        const draft=hoursStartDraft(d,weekday);if(!draft||draft.mode!=='manual')return;
+        draft.startTimes=draft.startTimes.filter(time=>time!==el.dataset.osStartTimeRemove);draft.message='';
+        draft.pendingTime=form.elements.start_time?.value||'';renderHoursDialog();$('osHoursStartTime-'+weekday)?.focus({preventScroll:true});return;
+      }
       if(el.dataset.osHoursCancel!==undefined){
         if(state.dialog?.type==='hours'){state.dialog.hoursEditor=null;renderHoursDialog();}return;
       }
@@ -3109,7 +3310,18 @@
     if(state.dialog?.action==='reschedule'&&el.name==='day'){await loadRescheduleAvailability();return;}
     if(el.id==='osSettingsSection'){state.filters.settingsTab=el.value;await open('configuracoes',{keepScroll:true});return;}
     if(['osSiteRequestStatus','osSiteRequestIntent'].includes(el.id)){await applySiteRequestFilters(el.closest('form'));return;}
-    if(el.id==='osHoursProfessional'){state.filters.hoursProfessional=el.value;renderSettings();return;}
+    if(el.id==='osHoursProfessional'){
+      const c=context(),id=el.value;state.filters.hoursProfessional=id;
+      const pending=loadSettingsStartPolicies(id,c);renderSettings();await pending;
+      if(current(c))renderSettings();return;
+    }
+    if(el.matches?.('[data-os-start-policy-mode]')){
+      const d=state.dialog,form=el.closest('[data-os-form="hours-start-policy"]'),weekday=Number(form?.dataset.weekday);
+      if(d?.type!=='hours'||!writable()||!form||!['automatic','manual'].includes(el.value))return;
+      const draft=hoursStartDraft(d,weekday);if(!draft)return;
+      draft.pendingTime=form.elements.start_time?.value||draft.pendingTime;draft.mode=el.value;draft.message='';
+      renderHoursDialog();$('osDialog').querySelector('[data-os-start-policy-mode]:checked')?.focus({preventScroll:true});return;
+    }
     if(el.name==='tax_document_kind'&&el.closest('[data-os-form=business-preferences]')){const input=el.closest('form').elements.tax_document;setTaxDocumentKind(input,el.value);return;}
     if(el.id==='osFinanceMonth'){if(/^\d{4}-\d{2}$/.test(el.value)){setMonth(el.value);await open('financeiro',{keepScroll:true});}return;}
     if(el.id==='osPerformancePeriod'){if(el.value==='custom'){await action('custom-period',el);return;}setPerformancePeriod(el.value);await open('desempenho',{keepScroll:true});return;}
@@ -3139,9 +3351,14 @@
     if(state.dialog?.type==='block'&&el.name==='block_type'){$('osBlockHours').classList.toggle('hidden',el.value==='days');$('osBlockDays').classList.toggle('hidden',el.value!=='days');const form=el.closest('form');['day','start_time','end_time'].forEach(name=>form.elements[name].required=el.value==='hours');form.elements.until_date.required=el.value==='hours'&&form.elements.repeat.checked;$('osBlockDays').querySelectorAll('input').forEach(i=>i.required=el.value==='days');}
   }
   function handleInput(event){if(!state.mounted)return;const el=event.target;markCustomerBirthChanged(el);markSiteAddressEdit(el);if(state.dialog?.type==='service'&&el.name==='duration_min')syncServiceDurationPresets(el.closest('form'));if(el.matches?.('input.os-color-native'))syncColorPicker(el);if(el.id==='osAgendaSearch'&&!state.busy){state.filters.agendaQuery=el.value;state.filters.agendaOffset=0;state.agendaRead=(state.agendaRead||0)+1;clearTimeout(state.agendaSearchTimer);state.agendaSearchTimer=setTimeout(()=>void applyAgendaFilters(),250);return;}if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';if(el.closest('#osSiteForm')&&!state.busy&&siteCanEdit()&&!event.isComposing){if(el.name==='slug')queueSiteSlugCheck(el);if(el.name==='postal_code')queueSiteCepLookup(el);if(el.name==='state')el.value=el.value.toUpperCase();}if(el.id==='osHelpSearch'){state.filters.helpQuery=el.value;renderHelpResults();}if(el.id==='osCustomerSearch'){state.filters.customerQuery=el.value;state.filters.customerOffset=0;state.customerRead=(state.customerRead||0)+1;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);const c=context();state.searchTimer=setTimeout(()=>loadCustomers(c).catch(ex=>{if(current(c))bodyHTML(errorHTML(ex));}),250);}if(el.id==='osResourceSearch')renderServices(el.value);if(el.id==='osBookingCustomer')filterBookingCustomers(el.value);if(state.dialog?.type==='appointment'&&el.name==='customer_phone'&&state.dialog.customerId){$('osBookingCustomerHelp').textContent='Ao confirmar, o WhatsApp informado será salvo no cadastro deste cliente.';}if(state.dialog?.type==='package'&&el.name==='price')state.dialog.priceTouched=true;
+    if(el.matches?.('[data-os-start-time-input]')&&state.dialog?.type==='hours'&&writable()&&!state.busy){
+      const form=el.closest('[data-os-form="hours-start-policy"]'),draft=hoursStartDraft(state.dialog,Number(form?.dataset.weekday));
+      if(draft)draft.pendingTime=el.value;
+    }
     if(state.dialog?.type==='package'&&el.name==='duration_override_min')updatePackageSummary();
     if(state.dialog?.type==='complete-appointment'&&el.name==='final_total')updateCompletionSummary();}
   function handleKeydown(event){if(!state.mounted)return;const serviceGrip=event.target.closest?.('[data-os-service-drag]');if(serviceGrip&&['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();void moveService(serviceGrip.dataset.osServiceDrag,event.key==='ArrowUp'?-1:1);return;}if(event.key==='Escape'){if(state.notificationsOpen){event.preventDefault();closeNotifications(true);}if($('appView').classList.contains('os-menu-open')){event.preventDefault();drawer(false);}if(!$('osThemeMenu').classList.contains('hidden')){$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');$('osThemeToggle').focus();}}
+    if(event.key==='Enter'&&!event.isComposing&&event.target.matches?.('[data-os-start-time-input]')){event.preventDefault();addHoursStartTime(event.target.closest('form'));return;}
     const agendaTab=event.target.closest('[data-os-day],[data-os-agenda-mode]');
     if(agendaTab&&['ArrowLeft','ArrowRight','Home','End'].includes(event.key)&&!state.busy){const tabs=[...agendaTab.closest('[role=tablist]').querySelectorAll('[role=tab]')],index=tabs.indexOf(agendaTab),next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;event.preventDefault();tabs[next].focus();tabs[next].click();return;}
     const row=event.target.closest('[data-os-appointment][role=button]');if(row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();void showAppointmentDetail(row.dataset.osAppointment,{trigger:row});}
