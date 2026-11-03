@@ -114,7 +114,7 @@ async def _product(client):
         "price":"29.90",
         "salesPage":"https://orionagenda.pro/",
         "emailAccessLink":"https://orionagenda.pro/painel",
-        "contentDeliveries":[],
+        "contentDeliveries":["external"],
         "paymentMethods":["pix"],
     })
     if not _sane_product(created):
