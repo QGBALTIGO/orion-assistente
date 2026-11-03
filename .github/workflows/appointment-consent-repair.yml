@@ -110,6 +110,12 @@ jobs:
             tests/integration/test_central_notifications_pg.py \
             tests/integration/test_central_confirmation_pg.py \
             tests/integration/test_professional_portal_postgres.py
+      - name: Preserve conservative legacy customer repair boundaries
+        # Its CLI remains intentionally locked to the previously reviewed 0052
+        # schema. Exercise helpers plus refusal of any existing scoped grant.
+        run: |
+          pytest -q -ra tests/unit/test_customer_repair_fk_contract.py \
+            tests/integration/test_customer_identity_repair.py -k 'not operational_cli'
 
   ui:
     name: Autorizacao opcional e recuperacao da reserva

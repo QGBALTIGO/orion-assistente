@@ -32,7 +32,7 @@ async def review_db(comm_db,monkeypatch):
         await db.execute(text('''UPDATE appointment_communication_settings
             SET review=true,review_delay_min=15,return_invitation=true WHERE tenant_id=:t'''),{'t':d['a']})
         await db.execute(text('''INSERT INTO management_site_preferences(tenant_id,public_slug,public_enabled)
-            VALUES(:t,:slug,true)'''),{'t':d['a'],'slug':'review-'+str(uuid4())})
+            VALUES(:t,:slug,true)'''),{'t':d['a'],'slug':'review-'+uuid4().hex[:20]})
         await db.execute(text('''INSERT INTO appointment_return_intervals(tenant_id,service_id,days)
             VALUES(:t,:service,14)'''),{'t':d['a'],'service':d['cut']})
     try:yield d
