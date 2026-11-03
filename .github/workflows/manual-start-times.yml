@@ -11,6 +11,7 @@ on:
       - app/catalog_api.py
       - app/onboarding_service.py
       - app/plan_routing.py
+      - app/plan_permissions.py
       - app/main.py
       - app/static/orion-suite.js
       - app/static/orion-suite.css
@@ -21,6 +22,8 @@ on:
       - scripts/wait_for_single_whatsapp_schema.py
       - tests/**/test*manual_start*.py
       - tests/unit/test_start_policies.py
+      - tests/unit/test_plan_permissions.py
+      - tests/integration/test_public_booking_professional_contention.py
       - ui-tests/orion-hours.test.mjs
       - .github/workflows/manual-start-times.yml
   pull_request:
@@ -30,11 +33,14 @@ on:
       - app/booking_service.py
       - app/catalog_api.py
       - app/onboarding_service.py
+      - app/plan_permissions.py
       - app/static/orion-suite.js
       - app/static/orion-suite.css
       - alembic/versions/0060_manual_start_times.py
       - scripts/*manual_start_times*.py
       - tests/**/test*manual_start*.py
+      - tests/unit/test_plan_permissions.py
+      - tests/integration/test_public_booking_professional_contention.py
       - ui-tests/orion-hours.test.mjs
       - .github/workflows/manual-start-times.yml
 
@@ -110,6 +116,7 @@ jobs:
             tests/unit/test_cakto_post_0053_predeploy.py \
             tests/unit/test_single_whatsapp_release.py \
             tests/unit/test_plan_routing.py \
+            tests/unit/test_plan_permissions.py \
             tests/unit/test_onboarding.py \
             tests/unit/test_onboarding_business_hours.py \
             tests/unit/test_onboarding_digest_compatibility.py \

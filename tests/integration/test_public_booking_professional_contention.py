@@ -102,8 +102,9 @@ async def test_public_booking_does_not_wait_on_editor_blocked_by_its_guard(publi
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["book", "confirm"])
 @pytest.mark.parametrize("writer,multiple", [("archive", False), ("configuration", False), ("configuration", True)])
-async def test_actual_plan_lock_serializes_public_booking_before_professional_edit(public_db, monkeypatch, writer, multiple):
+async def test_actual_plan_contention_returns_recoverable_conflict_without_deadlock(public_db, monkeypatch, writer, multiple, stage):
     """Observe real pg_locks; no lock or entitlement function is replaced."""
     d = public_db
     await publish(d)
@@ -116,14 +117,15 @@ async def test_actual_plan_lock_serializes_public_booking_before_professional_ed
     else:
         quoted = await availability(d)
     guard_ready, release_engine = asyncio.Event(), asyncio.Event()
-    original_engine = public_site_api.book_appointment
+    boundary = "book_appointment" if stage == "book" else "confirm_hold"
+    original_engine = getattr(public_site_api, boundary)
 
     async def paused_engine(*args, **kwargs):
         guard_ready.set()
         await asyncio.wait_for(release_engine.wait(), timeout=10)
         return await original_engine(*args, **kwargs)
 
-    monkeypatch.setattr(public_site_api, "book_appointment", paused_engine)
+    monkeypatch.setattr(public_site_api, boundary, paused_engine)
     tasks = []
     try:
         booking = asyncio.create_task(d["client"].post(d["public"] + "/appointments", json=book_body(quoted)))
@@ -156,14 +158,23 @@ async def test_actual_plan_lock_serializes_public_booking_before_professional_ed
         assert not edit.done()
         release_engine.set()
         booked, edited = await asyncio.wait_for(asyncio.gather(booking, edit), timeout=5)
-        assert booked.status_code == 201, booked.text
-        assert edited.status_code == (409 if writer == "archive" else 200), edited.text
+        assert booked.status_code == 409, booked.text
+        assert "novamente" in booked.text or "instantes" in booked.text
+        assert edited.status_code == (409 if stage == "confirm" and writer == "archive" else 200), edited.text
         async with d["migrator"].connect() as observer:
             rows = (await observer.execute(text("SELECT status FROM appointments WHERE tenant_id=:tenant"),
                                            {"tenant": d["a"]})).scalars().all()
-            assert rows == ["confirmed"]
+            assert rows == ([] if stage == "book" else ["hold"])
             assert (await observer.execute(text("SELECT count(*) FROM public_booking_receipts WHERE tenant_id=:tenant"),
-                                           {"tenant": d["a"]})).scalar_one() == 1
+                                           {"tenant": d["a"]})).scalar_one() == 0
+            assert (await observer.execute(text("""SELECT count(*) FROM customers
+                WHERE tenant_id=:tenant AND whatsapp_e164=:phone"""),
+                {"tenant": d["a"], "phone": "+5511987654321"})).scalar_one() == (0 if stage == "book" else 1)
+        if stage == "confirm" and writer == "configuration" and not multiple:
+            retry = await d["client"].post(d["public"] + "/appointments", json=book_body(quoted))
+            assert retry.status_code == 201, retry.text
+            replay = await d["client"].post(d["public"] + "/appointments", json=book_body(quoted))
+            assert replay.status_code == 201 and replay.json() == retry.json(), replay.text
     finally:
         release_engine.set()
         for task in tasks:
@@ -181,7 +192,7 @@ async def test_cancelling_bounded_confirmation_rolls_back_without_consuming_the_
     class TrackedSession(AsyncSession):
         async def execute(self, statement, *args, **kwargs):
             result = await super().execute(statement, *args, **kwargs)
-            if "pg_try_advisory_xact_lock" in str(statement):
+            if "pg_try_advisory_xact_lock(" in str(statement):
                 tried.set()
             return result
     factory = async_sessionmaker(d["runtime"], class_=TrackedSession, expire_on_commit=False)

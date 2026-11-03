@@ -64,6 +64,22 @@ async def _engine_professional_lock(s, tenant, professional, *, nonblocking=Fals
         await asyncio.sleep(min(0.025, remaining))
 
 
+async def _require_booking_feature(s, tenant, *, nonblocking=False):
+    """Public guard and engine use different connections: neither may wait.
+
+    A queued exclusive plan editor prevents a new shared lock from passing it,
+    while the public source guard still owns a shared lock and awaits this
+    engine. Take that same lock without waiting, then check the current feature
+    under the acquired lock. A 409 releases the guard and lets the editor finish.
+    """
+    from app.plan_permissions import require_feature, try_lock_plan
+    if nonblocking:
+        if not await try_lock_plan(s, tenant):
+            fail(409, "A agenda está sendo atualizada. Consulte o horário novamente em instantes")
+        return await require_feature(s, tenant, "agenda.manage", lock=None)
+    return await require_feature(s, tenant, "agenda.manage")
+
+
 # tenants intentionally grants runtime SELECT only. Read the whole contract in
 # one statement snapshot; recheck this exact query in the final UPDATE instead
 # of using FOR SHARE (which would require UPDATE privilege on tenants).
@@ -515,8 +531,7 @@ async def book_appointment(s: AsyncSession, tenant: UUID, professional: UUID,
     elif expected_snapshot is not None:
         fail(422, "A substituição exige a reserva temporária")
     async with tenant_transaction(s, tenant):
-        from app.plan_permissions import require_feature
-        await require_feature(s, tenant, "agenda.manage")
+        await _require_booking_feature(s, tenant, nonblocking=nonblocking_professional_lock)
         await _engine_professional_lock(s, tenant, professional, nonblocking=nonblocking_professional_lock)
         if not supplied_clock:
             now = datetime.now(UTC)
@@ -636,8 +651,7 @@ async def confirm_hold(s: AsyncSession, tenant: UUID, item_id: UUID,
     expired = False
     result = None
     async with tenant_transaction(s, tenant):
-        from app.plan_permissions import require_feature
-        await require_feature(s, tenant, "agenda.manage")
+        await _require_booking_feature(s, tenant, nonblocking=nonblocking_professional_lock)
         row = (await s.execute(text("""
             SELECT professional_id FROM appointments
             WHERE tenant_id=:tenant AND id=:id
