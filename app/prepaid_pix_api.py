@@ -38,7 +38,7 @@ def pix_environment_ready():
     return (os.getenv("ORION_PIX_PREPAID_ENABLED","0")=="1"
         and len(os.getenv("CAKTO_PIX_WEBHOOK_SECRET",""))>=32
         and bool(os.getenv("CAKTO_CLIENT_ID"))
-        and bool(os.getenv("CAKTO_CLIENT_SECRET"))
+        and bool(os.getenv("CAKTO_CLIENT_SECRET")))
 
 
 def cents(value):
