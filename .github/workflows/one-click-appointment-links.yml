@@ -80,7 +80,7 @@ jobs:
           url=os.environ['MIGRATION_DATABASE_URL']
           db=create_engine(url)
           with db.connect() as connection:
-              assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == '0058_professional_access_hardening'
+              assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == '0058_professional_scope'
               grants=connection.execute(text("""SELECT has_function_privilege('app_support','public.orion_resolve_direct_appointment(text)','EXECUTE'),
                             has_function_privilege('app_runtime','public.orion_resolve_direct_appointment(text)','EXECUTE')""")).one()
               assert grants == (True,False)

@@ -1,7 +1,7 @@
 """Protect professional calendar blocks and unique professional email identity."""
 from alembic import op
 
-revision = "0058_professional_access_hardening"
+revision = "0058_professional_scope"
 down_revision = "0057_professional_portal"
 branch_labels = None
 depends_on = None

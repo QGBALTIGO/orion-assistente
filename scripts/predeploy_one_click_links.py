@@ -24,7 +24,7 @@ def main():
     import tempfile
     raw, url = connection_values()
     current = migrated_version(raw)
-    if current not in {"0057_professional_portal","0058_professional_access_hardening"}:
+    if current not in {"0057_professional_portal","0058_professional_scope"}:
         raise RuntimeError("professional_hardening_source_revision_not_approved")
     if current == "0057_professional_portal":
         # A private, ownership-preserving archive must be verified with a full
@@ -35,8 +35,8 @@ def main():
                            schema_revision=current, preserve_ownership=True)
         environment = {**os.environ, "ORION_MIGRATION_SWITCH_ROLE": "1"}
         subprocess.run([sys.executable, "-m", "alembic", "upgrade",
-                        "0058_professional_access_hardening"], env=environment, check=True)
-    if migrated_version(raw) != "0058_professional_access_hardening":
+                        "0058_professional_scope"], env=environment, check=True)
+    if migrated_version(raw) != "0058_professional_scope":
         raise RuntimeError("professional_hardening_schema_not_published")
     from scripts.backup_and_migrate_registration import (
         portal_schema_ready, professional_hardening_schema_ready,
