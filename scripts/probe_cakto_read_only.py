@@ -118,6 +118,22 @@ async def check():
         ),flush=True)
     except Exception:
         print("cakto_local_receipts_unavailable",flush=True)
+    # Check the brand-new, one-time Pix contract without enabling payments:
+    # the flag override is process-local and only for a READ-only probe.
+    pix_ready=False
+    if len(__import__("os").getenv("CAKTO_PIX_WEBHOOK_SECRET",""))>=32:
+        try:
+            from scripts.probe_prepaid_pix_read_only import check as pix_check
+            pix_ready=await pix_check()
+            print("orion_pix_prepaid_catalog_ready="+str(int(pix_ready)),flush=True)
+        except Exception:
+            print("orion_pix_prepaid_catalog_unverified",flush=True)
+        if __import__("os").getenv("ORION_PIX_SYNTHETIC_TEST_ONCE","0")=="1":
+            if pix_ready:
+                from scripts.test_orion_prepaid_pix_webhook_once import run as pix_test
+                await pix_test()
+            else:
+                print("orion_pix_synthetic_skipped_catalog_unverified",flush=True)
     import os
     # Only a Boolean is logged. Never print/reveal any value, token or length.
     print("cakto_webhook_secret_min_length_ready="

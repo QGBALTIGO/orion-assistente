@@ -14,6 +14,9 @@ on:
       - "alembic/versions/0059_prepaid_pix.py"
       - "scripts/backup_and_migrate_prepaid_pix.py"
       - "scripts/provision_prepaid_pix_once.py"
+      - "scripts/probe_prepaid_pix_read_only.py"
+      - "scripts/test_orion_prepaid_pix_webhook_once.py"
+      - "tests/unit/test_prepaid_pix_webhook_synthetic.py"
       - "tests/unit/test_prepaid_pix_provision.py"
       - "tests/unit/test_prepaid_pix.py"
       - "tests/unit/test_prepaid_pix_webhook.py"
@@ -76,11 +79,12 @@ jobs:
           python -m py_compile \
             app/prepaid_pix_api.py app/prepaid_pix_reconcile.py \
             app/plan_permissions.py app/cakto_api.py \
-            scripts/backup_and_migrate_prepaid_pix.py scripts/provision_prepaid_pix_once.py
+            scripts/backup_and_migrate_prepaid_pix.py scripts/provision_prepaid_pix_once.py scripts/probe_prepaid_pix_read_only.py scripts/test_orion_prepaid_pix_webhook_once.py
           pytest -q -ra \
             tests/unit/test_prepaid_pix.py \
             tests/unit/test_prepaid_pix_webhook.py \
             tests/unit/test_prepaid_pix_provision.py \
+            tests/unit/test_prepaid_pix_webhook_synthetic.py \
             tests/unit/test_cakto_integration.py \
             tests/unit/test_plan_permissions.py \
             tests/integration/test_prepaid_pix_postgres.py \
