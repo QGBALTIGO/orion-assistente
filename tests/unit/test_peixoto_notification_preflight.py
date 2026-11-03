@@ -41,6 +41,14 @@ class Db:
             return Rows([{"active": True, "phone_valid": self.phone_valid}])
         if "FROM appointment_communication_settings" in sql:
             return Rows([])
+        if "n.id IN (:first,:second)" in sql:
+            assert params["professional"] == preflight.PROFESSIONAL
+            assert "LIMIT 2" in sql
+            return Rows([{"id":params["first"],"status":"failed",
+                "last_error":"communication_not_authorized","appointment_status":"completed",
+                "customer_active":True,"standing_consent_exists":False,
+                "operational_authorized":False,"marketing_authorized":False,
+                "automatically_completed":True,"review_jobs":0}])
         if "FROM appointment_notifications" in sql:
             return Rows([{"event": "professional_new", "status": "delivered", "total": 1}])
         raise AssertionError("Unexpected SQL or write: " + sql[:80])
@@ -94,6 +102,9 @@ async def test_verified_admin_and_professional_emits_only_bools_and_counts(monke
     assert report["notifications_configured"] is True
     assert report["sender_connected_and_verified"] is True
     assert report["last_24h_notifications"] == {"professional_new:delivered": 1}
+    assert report["incident_20261103"][0]["automatically_completed"] is True
+    assert report["incident_20261103"][0]["last_error"] == "communication_not_authorized"
+    assert "id" not in report["incident_20261103"][0]
     import json
     flattened = json.dumps(report)
     assert "phone_e164" not in flattened

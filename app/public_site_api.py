@@ -78,6 +78,7 @@ class PublicBooking(CleanModel):
     # the new public booking form collects it as a required field.
     customer_birth_date: date | None=None
     confirmed: StrictBool
+    appointment_messages_opt_in: StrictBool=False
 
     @field_validator('customer_phone')
     @classmethod
@@ -615,7 +616,8 @@ async def public_book(slug:str,payload:PublicBooking,request:Request,_capacity=D
                        'phone':payload.customer_phone})).scalar_one_or_none()
         if alias:public_code=alias
     try:
-        followup=await public_followup(slug,result,payload.customer_phone,display_protocol=public_code)
+        followup=await public_followup(slug,result,payload.customer_phone,display_protocol=public_code,
+            appointment_messages_opt_in=payload.appointment_messages_opt_in)
     except Exception:
         # A communication failure never undoes or hides a committed booking.
         followup={'communication_state':'unavailable'}

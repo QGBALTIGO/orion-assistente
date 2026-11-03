@@ -31,11 +31,13 @@ OPERATION = "customer_merge_20261027"
 PREFIX = "production/customer-merge-20261027/"
 FK_TABLES = {"appointments", "financial_entries", "loyalty_transactions",
              "loyalty_coupons", "automation_jobs", "inbox_customer_labels"}
-# The 0047 migration added two *separate* customer FKs; allow exactly the
-# historical and the expanded reviewed layouts, never an unrecognized FK.
+# The 0047 migration added two *separate* customer FKs. The 0061 reference is
+# inspected as well, but any consent for either reviewed identity blocks this
+# historical repair. The operational CLI remains pinned to SCHEMA above.
 NEW_FK_TABLES = {"appointment_access", "appointment_reviews"}
+SCOPED_CONSENT_FK_TABLES = {"appointment_message_consents"}
 EXPECTED_COUNTS = {"appointments": (18, 1), "financial_entries": (3, 1),
-                   **{table: (0, 0) for table in (FK_TABLES | NEW_FK_TABLES)
+                   **{table: (0, 0) for table in (FK_TABLES | NEW_FK_TABLES | SCOPED_CONSENT_FK_TABLES)
                       - {"appointments", "financial_entries"}}}
 CREATED = (datetime.fromisoformat("2026-10-17T17:09:31.606497+00:00"),
            datetime.fromisoformat("2026-10-26T20:43:31.324782+00:00"))
@@ -87,7 +89,8 @@ def verify_foreign_keys(db):
         JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE k.contype='f' AND k.confrelid='public.customers'::regclass""", {})
     tables = {row["table_name"] for row in actual}
-    allowed = (FK_TABLES, FK_TABLES | NEW_FK_TABLES)
+    allowed = (FK_TABLES, FK_TABLES | NEW_FK_TABLES,
+               FK_TABLES | NEW_FK_TABLES | SCOPED_CONSENT_FK_TABLES)
     require(any(len(actual) == len(group) and tables == group for group in allowed)
             and all(row["namespace"] == "public" and row["columns"] == ["tenant_id", "customer_id"] for row in actual),
             "customer_foreign_keys_changed")
@@ -128,12 +131,16 @@ def people(state, scope):
 def counts(state, scope):
     return {table: tuple(sum(row["customer_id"] == identity for row in state[table])
                          for identity in (scope.primary, scope.secondary))
-            for table in sorted((FK_TABLES | NEW_FK_TABLES) & state.keys())}
+            for table in sorted((FK_TABLES | NEW_FK_TABLES | SCOPED_CONSENT_FK_TABLES) & state.keys())}
 
 
 def validate_before(state, scope):
     primary, secondary = people(state, scope)
     require(all(row["active"] and row["deleted_at"] is None for row in (primary, secondary)), "customer_state_changed")
+    # Permission belongs to the original appointment, person and phone. This
+    # one-off identity repair must never transfer or silently discard it, even
+    # when the stored grant has already been withdrawn.
+    require(not state.get("appointment_message_consents"), "appointment_consent_requires_review")
     require((primary["created_at"], secondary["created_at"]) == CREATED, "registration_changed")
     require(" ".join(primary["name"].casefold().split()) == "kayky"
             and " ".join(secondary["name"].casefold().split()) == "kayky", "customer_name_changed")

@@ -18,7 +18,7 @@ async function api(path,method='GET',body){
    headers:{'Accept':'application/json',...(method==='GET'?{}:{'Content-Type':'application/json','X-Orion-CSRF':state.csrf})},
    ...(body===undefined?{}:{body:JSON.stringify(body)})});
  const result=await r.json().catch(()=>({}));
- if(!r.ok)throw Error(typeof result.detail==='string'?result.detail:result.detail?.message||'Não foi possível concluir esta ação.');
+ if(!r.ok){const error=Error(typeof result.detail==='string'?result.detail:result.detail?.message||'Não foi possível concluir esta ação.');error.status=r.status;throw error;}
  return result;
 }
 function intro(title,description,eyebrow='MINHA ÁREA'){return '<div class="intro"><div class="eyebrow">'+esc(eyebrow)+'</div><h1>'+esc(title)+'</h1><p>'+esc(description)+'</p></div>'}
@@ -124,6 +124,7 @@ function openModal(action,record){
      inputField('Nome do cliente','customer_name','text','','required maxlength="120" minlength="2"')+
      inputField('WhatsApp do cliente','customer_phone','tel','',
         'required placeholder="(67) 99999-9999" autocomplete="tel-national" inputmode="tel" data-orion-field="phone" data-orion-allow-international="true"')+
+     '<label class="service-choice"><input type="checkbox" name="appointment_messages_opt_in"><span>O cliente autorizou mensagens deste agendamento pelo WhatsApp<small>Inclui avisos, lembrete 1 hora antes e pedido de avaliação. Marque apenas com autorização expressa do cliente; é opcional.</small></span></label>'+
      inputField('Data','day','date',state.day,'required')+
      '<fieldset class="services-select"><legend>Serviços (até 6)</legend><div id="modalServices" class="muted">Carregando serviços…</div></fieldset>'+
      '<div id="modalSlots" class="slots-list" aria-live="polite"></div>'+
@@ -167,6 +168,12 @@ function openModal(action,record){
 function closeModal(){
  $('modal').hidden=true;state.modal=null;
 }
+function freezeBookingForm(form,pending){
+ form.querySelectorAll('input,select,textarea,[data-action=booking-back]').forEach(control=>{
+   if(pending){if(control.dataset.bookingWasDisabled===undefined)control.dataset.bookingWasDisabled=String(control.disabled);control.disabled=true;}
+   else if(control.dataset.bookingWasDisabled!==undefined){control.disabled=control.dataset.bookingWasDisabled==='true';delete control.dataset.bookingWasDisabled;}
+ });
+}
 async function submitModal(event){
  event.preventDefault();
  const d=state.modal;if(!d)return;
@@ -174,7 +181,9 @@ async function submitModal(event){
  const val=Object.fromEntries(new FormData(form));const base='/api/v1/professional';
  const button=$('modalSubmit');button.disabled=true;$('modalError').textContent='';
  try{
-   if(d.action==='new-appointment'){
+   if(d.action==='new-appointment'&&d.bookingPayload){
+     await api(base+'/appointments','POST',d.bookingPayload);
+   }else if(d.action==='new-appointment'){
      const service_ids=[...form.querySelectorAll('[name=service_ids]:checked')].map(e=>e.value);
      if(!service_ids.length||service_ids.length>6)throw Error('Selecione de um a seis serviços.');
      const keys=[val.day,service_ids.join('|'),val.customer_name,val.customer_phone].join('~');
@@ -220,10 +229,13 @@ async function submitModal(event){
        button.disabled=false;
        return;
      }
-     await api(base+'/appointments','POST',{
+     d.bookingPayload={
        service_ids,customer_name:val.customer_name,customer_phone:international,
        start_at:slot,idempotency_key:d.key,
-     });
+       appointment_messages_opt_in:form.elements.appointment_messages_opt_in.checked,
+     };
+     freezeBookingForm(form,true);
+     await api(base+'/appointments','POST',d.bookingPayload);
    }else if(d.action==='new-block'){
      await api(base+'/blocks','POST',{day:val.day,start_time:val.start_time,end_time:val.end_time,reason:val.reason,idempotency_key:d.key});
    }else if(d.action==='remove-block'){
@@ -243,7 +255,10 @@ async function submitModal(event){
      }
    }
    closeModal();notice('Alteração registrada com sucesso.');await changePage(state.page);
- }catch(error){$('modalError').textContent=error.message;button.disabled=false;}
+ }catch(error){
+   if(d.bookingPayload&&error.status>=400&&error.status<500){d.bookingPayload=null;freezeBookingForm(form,false);}
+   $('modalError').textContent=error.message;button.disabled=false;
+ }
 }
 async function boot(){
  try{
@@ -267,6 +282,7 @@ document.addEventListener('click',async event=>{
  if(!action)return;
  if(action==='retry'){await changePage(state.page);return;}
  if(action==='booking-back'&&state.modal?.action==='new-appointment'){
+   if(state.modal.bookingPayload)return;
    state.modal.reviewSlot=null;
    $('modalReview').hidden=true;$('modalSlots').hidden=false;
    $('modalSubmit').textContent='Revisar agendamento';
@@ -281,6 +297,11 @@ $('modalClose').addEventListener('click',closeModal);$('modalCancel').addEventLi
 $('modal').addEventListener('click',event=>{if(event.target===$('modal'))closeModal()});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('modal').hidden)closeModal()});
 $('modalForm').addEventListener('submit',submitModal);
+$('modalForm').addEventListener('input',event=>{
+ if(state.modal?.action==='new-appointment'&&!state.modal.bookingPayload&&['customer_name','customer_phone'].includes(event.target.name)){
+   $('modalForm').elements.appointment_messages_opt_in.checked=false;
+ }
+});
 document.addEventListener('change',event=>{
  if(event.target.id==='agendaDate'){state.day=event.target.value;void changePage('agenda')}
  if(event.target.id==='financeMonth'){state.month=event.target.value;void changePage('financeiro')}

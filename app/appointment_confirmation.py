@@ -1,5 +1,6 @@
 """Authenticated ingress adapter: protocol + matching contact, never protocol alone."""
 import asyncio
+import hashlib
 import os
 import re
 from urllib.parse import quote
@@ -70,6 +71,13 @@ async def confirmation_reply(tenant,phone,body,channel_key,message_id,*,central=
                 {'t':tenant,'channel':channel_key,'message':message_id})).mappings().first()
             if previous:
                 return cipher().decrypt(previous['body_encrypted'].encode()).decode() if previous['appointment_version']==appointment['updated_at'] and previous['appointment_id']==appointment['id'] else ''
+            from app.appointment_consent import explicit_customer_statement,grant_scoped_consent
+            if appointment['status']=='confirmed' and explicit_customer_statement(body,protocol):
+                await grant_scoped_consent(db,tenant,appointment['id'],source='customer_whatsapp',
+                    actor={'role':'customer','customer_id':str(appointment['customer_id']),
+                           'channel_hash':hashlib.sha256(channel_key.encode()).hexdigest(),
+                           'message_hash':hashlib.sha256(message_id.encode()).hexdigest()},
+                    evidence=body,customer_phone=phone)
             company=(await db.execute(text('SELECT name FROM tenants WHERE id=:t'),{'t':tenant})).scalar_one()
             link=await access.shared_link(db,tenant,row['id'],audience='customer')
             if appointment['status']=='confirmed':
@@ -97,7 +105,7 @@ async def central_admin_phone():
     return await connected_channel_phone(tenant)
 
 
-async def public_followup(slug,result,phone,*,display_protocol=None):
+async def public_followup(slug,result,phone,*,display_protocol=None,appointment_messages_opt_in=False):
     """Called only after the engine and public receipt transactions committed."""
     if not access.enabled():return {}
     from app.public_site_api import resolve_public
@@ -127,7 +135,8 @@ async def public_followup(slug,result,phone,*,display_protocol=None):
     # Existing tenant-scoped links are left untouched until this rollout is ready.
     number=await (central_admin_phone() if central else connected_channel_phone(tenant))
     if number:
-        message=compose_prefill(display_protocol or result['protocol'])
+        message=compose_prefill(display_protocol or result['protocol'],
+                                appointment_messages_opt_in=appointment_messages_opt_in)
         output['whatsapp_confirmation_url']='https://wa.me/'+number+'?text='+quote(message)
     else:
         output['communication_state']='channel_unavailable'

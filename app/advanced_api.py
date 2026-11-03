@@ -41,6 +41,8 @@ async def set_consent(tenant_id:UUID,payload:Consent,actor:Actor=Depends(authent
     authorize(actor,tenant_id,write=True)
     async with get_session_factory()() as s:
         async with tenant_transaction(s,tenant_id):
+            await s.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:scope,0))'),
+                {'scope':str(tenant_id)+':automation-consent:'+payload.contact_e164})
             await s.execute(text("""
                 INSERT INTO contact_consents
                 (tenant_id,contact_e164,marketing_opt_in,source)
@@ -50,6 +52,9 @@ async def set_consent(tenant_id:UUID,payload:Consent,actor:Actor=Depends(authent
                     source=EXCLUDED.source,updated_at=now()
             """),{"tenant":tenant_id,"phone":payload.contact_e164,
                   "allowed":payload.marketing_opt_in,"source":payload.source})
+            if payload.marketing_opt_in is False:
+                from app.appointment_consent import revoke_scoped_consents
+                await revoke_scoped_consents(s,tenant_id,payload.contact_e164,'marketing')
     return {"recorded":True}
 
 

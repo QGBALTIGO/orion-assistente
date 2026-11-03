@@ -11,15 +11,18 @@ async function confirmStage(h){
   h.click('#booking-next');
 }
 
-test('confirmation is compact, without duplicate price, long checkbox or privacy paragraph',async t=>{
+test('confirmation keeps one price and a separate optional appointment message preference',async t=>{
   const h=await makePublic();t.after(()=>h.close());await confirmStage(h);
   const body=h.document.getElementById('booking-body');
   assert.ok(body.classList.contains('booking-confirmation-body'));
   assert.equal(body.querySelectorAll('.review-card').length,1);
   assert.equal(body.querySelector('h3.booking-contact-heading').textContent,'Seus dados');
   assert.equal(body.querySelector('h3:not(.booking-contact-heading)'),body.querySelector('.review-card h3'));
-  assert.equal(body.querySelector('.consent-label'),null);
-  assert.equal(body.querySelector('.privacy-note'),null);
+  const messages=body.querySelector('.consent-label [name=appointment_messages_opt_in]');
+  assert.ok(messages);
+  assert.equal(messages.checked,false);
+  assert.equal(messages.required,false);
+  assert.match(body.querySelector('.privacy-note').textContent,/Opcional.*WhatsApp/);
   assert.equal(body.querySelector('[name=confirmed]'),null);
   assert.ok(body.querySelector('.review-row.total'));
   assert.match(body.querySelector('.review-row.total').textContent,/52,00/);
@@ -74,7 +77,8 @@ test('submits exactly once with canonical WhatsApp, real birth date and affirmat
   assert.equal(posts[0].url,publicBase+'/appointments');
   assert.deepEqual(posts[0].body,{
     quote,start_at:firstStart,customer_name:'Cliente sintética',
-    customer_phone:'+5586972676282',customer_birth_date:'1994-04-09',confirmed:true
+    customer_phone:'+5586972676282',customer_birth_date:'1994-04-09',confirmed:true,
+    appointment_messages_opt_in:false
   });
   assert.equal(h.document.querySelector('[name=customer_birth_date]'),null);
   assert.match(h.document.getElementById('booking-body').textContent,/Agendamento confirmado!/);

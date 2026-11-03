@@ -52,7 +52,9 @@ def test_actions_end_at_dialog_bottom(browser_name, width, height, theme):
                       'orion-public.js': ('text/javascript', JS),
                       'orion-public-theme.js': ('text/javascript', THEME),
                       'orion-fields.css': ('text/css', FIELDS_CSS),
-                      'orion-fields.js': ('text/javascript', FIELDS_JS)}
+                      'orion-fields.js': ('text/javascript', FIELDS_JS),
+                      'orion-focus.css': ('text/css', (ROOT / 'app/static/orion-focus.css').read_text()),
+                      'orion-focus.js': ('text/javascript', (ROOT / 'app/static/orion-focus.js').read_text())}
             def asset(route):
                 name = urlsplit(route.request.url).path.rsplit('/', 1)[-1]
                 mime, body = assets[name]
@@ -137,11 +139,12 @@ def test_actions_end_at_dialog_bottom(browser_name, width, height, theme):
                 page.wait_for_timeout(50)
                 measure('confirmation-scrolled-to-last-field')
                 assert page.evaluate("""() => {
-                  const b=document.querySelector('[name=customer_birth_date]').getBoundingClientRect();
+                  const b=document.querySelector('[name=appointment_messages_opt_in]').getBoundingClientRect();
                   const f=document.querySelector('.booking-footer').getBoundingClientRect();
                   return b.top>=-1 && b.bottom<=f.top+1;
                 }"""), measurements[-1]
             last_field_reachable()
+            page.screenshot(path=str(ARTIFACTS / f'{stem}-messages.png'))
 
             # Long names and service descriptions must scroll, not shrink inputs
             # or let the action bar fall beneath the viewport.

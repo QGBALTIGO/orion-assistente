@@ -10,7 +10,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field, AwareDatetime, field_validator
+from pydantic import BaseModel, ConfigDict, Field, AwareDatetime, StrictBool, field_validator
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
@@ -375,6 +375,7 @@ class ProfessionalBooking(BaseModel):
     start_at: AwareDatetime
     idempotency_key: str = Field(min_length=8,max_length=120,
         pattern=r"^[A-Za-z0-9._:-]+$")
+    appointment_messages_opt_in: StrictBool = False
 
     @field_validator("service_ids")
     @classmethod
@@ -437,6 +438,7 @@ async def book_my_appointment(payload: ProfessionalBooking,actor: Actor = Depend
                 result=await confirm_hold(
                     db,tenant,UUID(str(hold["id"])),
                     idempotency_key="professional-confirm:"+payload.idempotency_key,
+                    appointment_messages_opt_in=payload.appointment_messages_opt_in,
                     context=context,
                 )
                 return project_appointment(result)

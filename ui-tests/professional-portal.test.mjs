@@ -77,7 +77,7 @@ test('team view only offers invites inside registered professionals and retains 
  assert.ok(h.document.querySelector('[data-os-team-member]'));
 });
 
-async function portal(t){
+async function portal(t,{respond}={}){
  const errors=[],calls=[];
  const html=await readFile(new URL('../app/static/orion-professional.html',import.meta.url),'utf8');
  const js=await readFile(new URL('../app/static/orion-professional.js',import.meta.url),'utf8');
@@ -87,7 +87,8 @@ async function portal(t){
  t.after(()=>dom.window.close());
  const w=dom.window;Object.defineProperty(w.crypto,'randomUUID',{value:randomUUID,configurable:true});
  w.fetch=async(path,opts={})=>{
-   const method=opts.method||'GET';calls.push({path,method,body:opts.body&&JSON.parse(opts.body)});
+   const method=opts.method||'GET',request={path,method,body:opts.body&&JSON.parse(opts.body)};calls.push(request);
+   const override=await respond?.(request);if(override!==undefined)return override;
    let data,status=200;
    if(path==='/auth/me')data={authenticated:true,role:'member',csrf:'signed-csrf'};
    else if(path==='/api/v1/professional/me')data={id:pro,name:'Guilherme',business_name:'Barbearia Peixoto',role:'professional',
@@ -128,8 +129,12 @@ test('individual portal uses dedicated scoped routes and does not expose global 
  assert.equal(h.errors.length,0);
 });
 
-test('professional can choose own services and a server-verified time before a real booking call',async t=>{
-  const h=await portal(t);
+for(const messagesOptIn of [false,true])test(`professional books with optional appointment messages ${messagesOptIn}`,async t=>{
+  let attempts=0;
+  const h=await portal(t,{respond:request=>{
+    if(messagesOptIn&&request.path==='/api/v1/professional/appointments'&&request.method==='POST'&&++attempts===1)
+      throw new Error('Resposta sintética interrompida.');
+  }});
   h.doc.querySelector('[data-page=agenda]').click();
   await new Promise(resolve=>setTimeout(resolve,45));
   h.doc.querySelector('[data-action=new-appointment]').click();
@@ -138,10 +143,14 @@ test('professional can choose own services and a server-verified time before a r
   assert.ok(form);
   assert.ok(form.querySelector('[name=customer_name]'),form.innerHTML);
   assert.ok(form.querySelector('[name=customer_phone]'));
+  const messages=form.querySelector('[name=appointment_messages_opt_in]');
+  assert.equal(messages.checked,false);
+  assert.equal(messages.required,false);
   assert.equal(form.querySelectorAll('[name=service_ids]').length,1);
   form.querySelector('[name=customer_name]').value='Cliente sintético novo';
   form.querySelector('[name=customer_phone]').value='67999999999';
   form.querySelector('[name=service_ids]').checked=true;
+  messages.checked=messagesOptIn;
   form.dispatchEvent(new h.w.Event('submit',{cancelable:true,bubbles:true}));
   await new Promise(resolve=>setTimeout(resolve,50));
   assert.equal(h.calls.filter(c=>c.method==='POST'&&c.path==='/api/v1/professional/appointments').length,0);
@@ -154,12 +163,26 @@ test('professional can choose own services and a server-verified time before a r
   assert.match(h.doc.getElementById('modalReview').textContent,/Revise antes de confirmar/);
   form.dispatchEvent(new h.w.Event('submit',{cancelable:true,bubbles:true}));
   await new Promise(resolve=>setTimeout(resolve,75));
+  if(messagesOptIn){
+    assert.match(h.doc.getElementById('modalError').textContent,/interrompida/);
+    assert.equal(messages.disabled,true);
+    messages.checked=false;
+    form.querySelector('[name=customer_name]').value='Outra pessoa';
+    form.dispatchEvent(new h.w.Event('submit',{cancelable:true,bubbles:true}));
+    await new Promise(resolve=>setTimeout(resolve,75));
+  }
   const posted=h.calls.filter(c=>c.method==='POST'&&c.path==='/api/v1/professional/appointments');
-  assert.equal(posted.length,1);
+  assert.equal(posted.length,messagesOptIn?2:1);
   assert.deepEqual(posted[0].body.service_ids,[other]);
   assert.equal(posted[0].body.customer_phone,'+5567999999999');
+  assert.equal(posted[0].body.appointment_messages_opt_in,messagesOptIn);
+  assert.equal(posted[0].body.marketing_opt_in,undefined);
   assert.equal(posted[0].body.professional_id,undefined);
+  if(messagesOptIn)assert.deepEqual(posted[0].body,posted[1].body);
   assert.equal(h.errors.length,0);
+  h.doc.querySelector('[data-action=new-appointment]').click();
+  await new Promise(resolve=>setTimeout(resolve,45));
+  assert.equal(h.doc.querySelector('[name=appointment_messages_opt_in]').checked,false);
 });
 
 

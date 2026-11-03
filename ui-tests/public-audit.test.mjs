@@ -33,9 +33,11 @@ test('PUB-09: required data and birthday purpose are explained and associated wi
   h.click('#time-slots .slot');h.click('#booking-next');
   const form=h.document.querySelector('#customer-form');
   const note=h.document.getElementById(form.getAttribute('aria-describedby'));
-  assert.match(note?.textContent||'',/Todos os campos são obrigatórios/);
+  assert.match(note?.textContent||'',/Nome, WhatsApp e nascimento são obrigatórios/);
   assert.match(note.textContent,/aniversário.*cadastro/);
-  assert.ok([...form.querySelectorAll('input')].every(e=>e.required));
+  assert.ok([...form.querySelectorAll('.field input')].every(e=>e.required));
+  assert.equal(form.elements.appointment_messages_opt_in.required,false);
+  assert.equal(form.elements.appointment_messages_opt_in.checked,false);
 });
 
 test('PUB-07: lower-page booking opens the same wizard and directions stay secondary',async t=>{

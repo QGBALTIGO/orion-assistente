@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from app import appointment_access as access
 from app.appointment_errors import sanitized_database_errors
 from app.appointment_lifecycle import customer_actor, customer_can_change, require_customer_deadline
+from app.appointment_review_completion import completion_evidence
 from app.booking_service import cancel_appointment, reschedule_appointment, read_appointment, list_slots
 from app.catalog_api import Actor, authenticate
 from app.catalog_schemas import StrictModel
@@ -55,10 +56,8 @@ async def customer_view(db, identity):
     shop = (await db.execute(text('''SELECT t.name,p.public_slug,p.public_enabled,p.address,p.city,p.state,
         p.whatsapp_phone,p.contact_phone,p.logo_url,p.theme_color FROM tenants t LEFT JOIN management_site_preferences p
         ON p.tenant_id=t.id WHERE t.id=:t'''), {'t': tenant})).mappings().one()
-    completed_at = (await db.execute(text("""SELECT max(occurred_at) FROM appointment_history
-        WHERE tenant_id=:t AND appointment_id=:id AND event='completed'
-          AND details->>'source'='panel' AND details->'actor'->>'role' IN ('owner','editor','admin','support')"""),
-        {'t':tenant,'id':identity.appointment_id})).scalar_one()
+    completion=await completion_evidence(db,tenant,identity.appointment_id)
+    completed_at=completion.staff_completed_at
     actual_completion=completed_at is not None
     review = (await db.execute(text('''SELECT rating,comment FROM appointment_reviews
         WHERE tenant_id=:t AND appointment_id=:id'''), {'t': tenant, 'id': identity.appointment_id})).mappings().first()
@@ -104,7 +103,7 @@ async def customer_view(db, identity):
         'services': [i['name_snapshot'] for i in row['items']],
         'duration_min': sum(i['duration_snapshot_min'] for i in row['items']),
         'can_change': customer_can_change(row, now), 'pending_change':dict(pending) if pending and row['status']=='confirmed' else None,
-        'can_review': row['status']=='completed' and actual_completion and review is None,
+        'can_review': row['status']=='completed' and completion.can_review and review is None,
         'review': dict(review) if review else None, 'has_future_booking': future,
         'new_booking_url': booking_url, 'return_suggestions':suggestions, 'contact_phone': '+'+contact if contact else None, 'central_whatsapp':central_admin_whatsapp_enabled(),
         'address': ', '.join(str(shop[k]) for k in ('address','city','state') if shop.get(k))}
@@ -191,11 +190,8 @@ async def customer_action(payload: CustomerAction, request: Request):
                     await acquire_professional_lock(db, tenant, pro)
                     row = (await db.execute(text('SELECT status,professional_id FROM appointments WHERE tenant_id=:t AND id=:id FOR UPDATE'),
                         {'t':tenant,'id':identity.appointment_id})).mappings().one()
-                    completed_by_team=(await db.execute(text("""SELECT EXISTS(SELECT 1 FROM appointment_history
-                        WHERE tenant_id=:t AND appointment_id=:id AND event='completed' AND details->>'source'='panel'
-                        AND details->'actor'->>'role' IN ('owner','editor','admin','support'))"""),
-                        {'t':tenant,'id':identity.appointment_id})).scalar_one()
-                    if row['status'] != 'completed' or not completed_by_team:
+                    completion=await completion_evidence(db,tenant,identity.appointment_id)
+                    if row['status'] != 'completed' or not completion.can_review:
                         raise HTTPException(409, 'A avaliação fica disponível após a conclusão do atendimento')
                     inserted = (await db.execute(text('''INSERT INTO appointment_reviews
                         (tenant_id,appointment_id,customer_id,professional_id,rating,comment)

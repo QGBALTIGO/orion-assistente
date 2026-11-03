@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
-from pydantic import AwareDatetime, Field, field_validator
+from pydantic import AwareDatetime, Field, StrictBool, field_validator
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
@@ -38,6 +38,10 @@ class MutationRequest(StrictModel):
     # The current panel supplies both fields from a freshly fetched detail.
     expected_updated_at: AwareDatetime | None = None
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=120, pattern=r"^[a-zA-Z0-9._:-]+$")
+
+
+class ConfirmationRequest(MutationRequest):
+    appointment_messages_opt_in: StrictBool = False
 
 
 class CancellationRequest(MutationRequest):
@@ -113,14 +117,14 @@ async def create_hold(
 
 @router.post("/appointments/{appointment_id}/confirm")
 async def confirm(
-    tenant_id: UUID, appointment_id: UUID, payload: MutationRequest | None = Body(default=None),
+    tenant_id: UUID, appointment_id: UUID, payload: ConfirmationRequest | None = Body(default=None),
     actor: Actor = Depends(authenticate),
 ):
     authorize(actor, tenant_id, write=True)
     async with get_session_factory()() as session:
         try:
             result = await confirm_hold(session, tenant_id, appointment_id,
-                **(payload or MutationRequest()).model_dump(), context=panel_actor(actor))
+                **(payload or ConfirmationRequest()).model_dump(), context=panel_actor(actor))
         except IntegrityError as exc:
             raise safe_conflict(exc) from exc
         return json_response(appointment_payload(result, actor, tenant_id))
