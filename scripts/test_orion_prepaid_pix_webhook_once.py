@@ -99,15 +99,19 @@ async def run():
     if os.getenv("ORION_PIX_PREPAID_ENABLED","0")=="1":
         print("orion_pix_test_refused_live_checkout",flush=True)
         return
+    stage="initial"
     try:
         client=CaktoClient()
         offers=prepaid_offers(await client.list_offers())
         product_refs={product_id(v.get("product")) for v in offers.values()}
         if None in product_refs or len(product_refs)!=1:
             raise ValueError("prepaid_product_not_unique")
+        stage="find"
         webhook_id=await _find_hook(client,product_refs)
         started=datetime.now(timezone.utc)
+        stage="token"
         bearer=await client.token()
+        stage="post_synthetic"
         async with httpx.AsyncClient(timeout=16,follow_redirects=False) as http:
             response=await http.post(
                 BASE+"/webhook/event_test/"+str(webhook_id)+"/",
@@ -115,14 +119,21 @@ async def run():
                 headers={"Authorization":"Bearer "+bearer},
             )
             response.raise_for_status()
+        stage="verify_delivery"
         for attempt in range(8):
             await asyncio.sleep(2)
             if await _event_delivered(client,webhook_id,started):
                 print("orion_pix_synthetic_webhook_verified",flush=True)
                 return
         print("orion_pix_synthetic_webhook_not_verified",flush=True)
-    except Exception:
-        print("orion_pix_synthetic_webhook_unavailable",flush=True)
+    except httpx.HTTPStatusError as exc:
+        # Never log provider bodies or webhook IDs.
+        print("orion_pix_synthetic_webhook_http_error="
+              +stage+":"+str(exc.response.status_code),flush=True)
+    except Exception as exc:
+        # Only exception classes, never strings containing provider data.
+        print("orion_pix_synthetic_webhook_unavailable="
+              +stage+":"+type(exc).__name__,flush=True)
 
 
 if __name__=="__main__":
