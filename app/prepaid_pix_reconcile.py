@@ -15,6 +15,28 @@ from app.plan_management import _ensure_owner
 from fastapi import HTTPException
 
 
+def verified_paid_at(order,record,now=None):
+    """Use the bank-confirmed payment time, never webhook arrival time."""
+    now=now or datetime.now(timezone.utc)
+    raw=order.get("paidAt") if isinstance(order,dict) else None
+    if not isinstance(raw,str):
+        return None
+    try:
+        paid=datetime.fromisoformat(raw.replace("Z","+00:00"))
+    except ValueError:
+        return None
+    created=record.get("created_at")
+    expires=record.get("expires_at")
+    if not isinstance(created,datetime) or not isinstance(expires,datetime):
+        return None
+    if not (paid.tzinfo and created.tzinfo and expires.tzinfo):
+        return None
+    if not (created-timedelta(minutes=5) <= paid <= expires
+            and paid <= now+timedelta(minutes=5)):
+        return None
+    return paid
+
+
 def authenticated_pix_order(event,order,record):
     if not isinstance(order,dict) or not isinstance(record,dict):
         return False
@@ -48,7 +70,8 @@ async def _record(db,order_id,lock=False):
     suffix=" FOR UPDATE" if lock else ""
     return (await db.execute(text("""
         SELECT id,tenant_id,account_id,plan_code,offer_id,expected_cents,
-               callback_hash,external_order_id,state,previous_paid_until
+               callback_hash,external_order_id,state,previous_paid_until,
+               created_at,expires_at
         FROM orion_prepaid_pix_orders WHERE external_order_id=:order
     """+suffix),{"order":order_id})).mappings().first()
 
@@ -75,6 +98,10 @@ async def reconcile_prepaid_receipt(event,order):
                 return "manual_review"
             if CODES.get(rec["plan_code"],{}).get("price_cents")!=rec["expected_cents"]:
                 return "manual_review"
+            now=datetime.now(timezone.utc)
+            paid=verified_paid_at(order,rec,now)
+            if paid is None:
+                return "manual_review"
             # A pending Pix must not grant access when the verified purchaser
             # no longer owns this business; membership changes are serialized
             # by the existing plan lock.
@@ -87,7 +114,6 @@ async def reconcile_prepaid_receipt(event,order):
                 SELECT manual_plan_code,manual_started_at,manual_expires_at
                   FROM tenant_plan_controls WHERE tenant_id=:tenant
             """),{"tenant":rec["tenant_id"]})).mappings().first()
-            now=datetime.now(timezone.utc)
             if manual and manual["manual_plan_code"] and manual["manual_started_at"] and (
                 manual["manual_expires_at"] is None or manual["manual_expires_at"]>now):
                 return "manual_review"
@@ -102,12 +128,12 @@ async def reconcile_prepaid_receipt(event,order):
             if grant and grant["paid_until"]>now and grant["plan_code"]!=rec["plan_code"]:
                 return "manual_review"
             previous=grant["paid_until"] if grant else None
-            start=max(now,previous) if previous else now
+            start=max(paid,previous) if previous else paid
             end=start+timedelta(days=30)
             await db.execute(text("""
                 INSERT INTO orion_prepaid_pix_access
                     (tenant_id,plan_code,paid_until,last_verified_payment_at,last_order_id)
-                VALUES(:tenant,:plan,:end,now(),:order)
+                VALUES(:tenant,:plan,:end,:paid_at,:order)
                 ON CONFLICT(tenant_id) DO UPDATE SET
                     plan_code=EXCLUDED.plan_code,
                     paid_until=EXCLUDED.paid_until,
@@ -115,13 +141,13 @@ async def reconcile_prepaid_receipt(event,order):
                     last_order_id=EXCLUDED.last_order_id,
                     updated_at=now()
             """),{"tenant":rec["tenant_id"],"plan":rec["plan_code"],
-                 "end":end,"order":order_id})
+                 "end":end,"paid_at":paid,"order":order_id})
             await db.execute(text("""
                 UPDATE orion_prepaid_pix_orders SET
-                    state='paid',paid_at=now(),previous_paid_until=:old,
+                    state='paid',paid_at=:paid_at,previous_paid_until=:old,
                     updated_at=now()
                 WHERE id=:id AND state='created'
-            """),{"id":rec["id"],"old":previous})
+            """),{"id":rec["id"],"paid_at":paid,"old":previous})
             return "activated"
 
 

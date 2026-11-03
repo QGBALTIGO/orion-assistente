@@ -10,7 +10,7 @@ from app.prepaid_pix_api import (
     PIX_NAMES, PixPurchase, cents, payment_request, prepaid_offers,
     verified_pix_creation, verified_pix_catalog, pix_environment_ready,
 )
-from app.prepaid_pix_reconcile import authenticated_pix_order
+from app.prepaid_pix_reconcile import authenticated_pix_order, verified_paid_at
 from app.plan_catalog import CODES
 from app.plan_permissions import derive_plan
 
@@ -195,3 +195,23 @@ async def test_provider_approved_pix_catalog_is_required(monkeypatch):
     assert set(await verified_pix_catalog(FakeProvider()))==set(CODES)
     with pytest.raises(HTTPException) as exc:await verified_pix_catalog(FakeProvider(wrong=True))
     assert exc.value.status_code==409
+
+
+def test_prepaid_access_starts_at_verified_payment_not_webhook_arrival():
+    now=datetime(2026,11,3,16,tzinfo=timezone.utc)
+    created=now-timedelta(minutes=25)
+    record={"created_at":created,"expires_at":created+timedelta(days=1)}
+    paid=created+timedelta(minutes=12)
+    assert verified_paid_at({"paidAt":paid.isoformat()},record,now)==paid
+    assert verified_paid_at({"paidAt":(now+timedelta(days=2)).isoformat()},record,now) is None
+    assert verified_paid_at({"paidAt":(created-timedelta(days=1)).isoformat()},record,now) is None
+    assert verified_paid_at({"paidAt":"2026-11-03T15:35:00"},record,now) is None
+    assert verified_paid_at({"paidAt":"not-a-date"},record,now) is None
+    assert verified_paid_at({"status":"paid"},record,now) is None
+
+
+def test_old_paid_order_cannot_be_used_to_create_fresh_thirty_days():
+    now=datetime(2026,11,3,16,tzinfo=timezone.utc)
+    record={"created_at":now-timedelta(days=33),
+            "expires_at":now-timedelta(days=32)}
+    assert verified_paid_at({"paidAt":now.isoformat()},record,now) is None
