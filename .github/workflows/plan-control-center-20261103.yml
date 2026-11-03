@@ -1,0 +1,22 @@
+name: Orion - upgrades e central de planos
+on:
+  push:
+    branches: [feature/plan-upgrades-control-center-20261103]
+permissions:
+  contents: read
+concurrency:
+  group: plan-control-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reviewed source snapshot (no environment or credentials)
+        run: git archive --format=tar.gz --output=reviewed-source.tar.gz HEAD app scripts alembic tests ui-tests infra pyproject.toml requirements.lock Dockerfile .github
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-source
+          path: reviewed-source.tar.gz
+          retention-days: 1
