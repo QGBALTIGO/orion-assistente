@@ -93,7 +93,11 @@ def main():
         print(json.dumps({"ok": False, "error": code}))
         return 1
     print(json.dumps(result))
-    return 0
+    # The API performs the additive scheduling migration in its pre-deploy.
+    # Keep the previous worker alive until the new booking engine can safely
+    # read its optional start policy, using only runtime catalog privileges.
+    from scripts.wait_for_manual_start_times_schema import main as manual_start_wait
+    return manual_start_wait()
 
 
 if __name__ == "__main__":

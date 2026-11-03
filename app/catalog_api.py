@@ -334,6 +334,8 @@ async def create_item(
                         from app.plan_permissions import require_feature
                         await require_feature(session, tenant_id, "commissions.advanced", lock="exclusive")
                 await ensure_tenant(session, tenant_id)
+                from app.start_policies import lock_schedule_edit, validate_active_policies
+                schedule_scopes = await lock_schedule_edit(session, tenant_id, resource, values=values)
                 if resource == "professional_services":
                     from app.booking_service import acquire_professional_lock
                     await acquire_professional_lock(session, tenant_id, values["professional_id"])
@@ -343,6 +345,7 @@ async def create_item(
                 if resource == "working_breaks":
                     await validate_break(session, bind)
                 await session.execute(statement, bind)
+                await validate_active_policies(session, tenant_id, schedule_scopes)
                 if resource == "professional_services":
                     # Service editor can add a link outside the staff drawer.
                     # New base links receive an explicit percentage fallback so
@@ -394,6 +397,9 @@ async def replace_item(
                         from app.plan_permissions import require_feature
                         await require_feature(session, tenant_id, "commissions.advanced", lock="exclusive")
                 await ensure_tenant(session, tenant_id)
+                from app.start_policies import lock_schedule_edit, validate_active_policies
+                schedule_scopes = await lock_schedule_edit(session, tenant_id, resource,
+                                                           values=values, item_id=item_id)
                 if resource == "professionals":
                     from app.booking_service import acquire_professional_lock
                     await acquire_professional_lock(session, tenant_id, item_id)
@@ -425,6 +431,7 @@ async def replace_item(
                 ), bind)
                 if result.scalar_one_or_none() is None:
                     raise HTTPException(404, "Registro não encontrado")
+                await validate_active_policies(session, tenant_id, schedule_scopes)
                 await audit(session, tenant_id, "updated", resource, item_id)
     except IntegrityError as exc:
         raise HTTPException(409, "Cadastro ou vínculo inválido") from exc
@@ -443,6 +450,8 @@ async def delete_item(
         async with factory() as session:
             async with tenant_transaction(session, tenant_id):
                 await ensure_tenant(session, tenant_id)
+                from app.start_policies import lock_schedule_edit, validate_active_policies
+                schedule_scopes = await lock_schedule_edit(session, tenant_id, resource, item_id=item_id)
                 link_professional = None
                 if resource == "professional_services":
                     link_professional = (await session.execute(text("""
@@ -461,6 +470,7 @@ async def delete_item(
                 )
                 if result.scalar_one_or_none() is None:
                     raise HTTPException(404, "Registro não encontrado")
+                await validate_active_policies(session, tenant_id, schedule_scopes)
                 if resource == "professional_services" and link_professional is not None:
                     await session.execute(text("""
                         UPDATE professionals SET commission_config_version=commission_config_version+1

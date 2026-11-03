@@ -150,13 +150,14 @@ _FACT_TABLES = (("professionals", "professionals"), ("services", "services"),
                 ("links", "professional_services"), ("hours", "working_hours"),
                 ("breaks", "working_breaks"), ("products", "commercial_products"),
                 ("variants", "commercial_variants"))
+_FACT_READ_TABLES = _FACT_TABLES + (("start_policies", "professional_start_policies"),)
 # Whole-row composites preserve asyncpg's native UUID/date/time/Decimal codecs.
 # JSON aggregation would change the historical fingerprint representation.
 # Names are fixed here, never taken from a request. Every subquery retains both
 # the explicit tenant predicate and the runtime connection's RLS policies.
 _FACTS_SQL = text("SELECT business.id,business.name,business.timezone,business.status," + ",".join(
     f"ARRAY(SELECT item FROM {table} item WHERE item.tenant_id=:t ORDER BY item.id) AS {key}"
-    for key, table in _FACT_TABLES
+    for key, table in _FACT_READ_TABLES
 ) + " FROM tenants business WHERE business.id=:t")
 
 
@@ -165,8 +166,12 @@ async def _facts(db, tenant):
     if row is None:
         raise HTTPException(404, "Empresa não encontrada")
     result = {"business": {key: row[key] for key in ("id", "name", "timezone", "status")}}
-    for key, _table in _FACT_TABLES:
-        result[key] = [dict(item) for item in row[key]]
+    for key, _table in _FACT_READ_TABLES:
+        values = [dict(item) for item in row.get(key, ())]
+        # Preserve legacy snapshots byte-for-byte when this optional feature
+        # has never been configured; real policy edits enter the snapshot.
+        if key != "start_policies" or values:
+            result[key] = values
     return result
 
 
@@ -188,11 +193,12 @@ def _fitting_bindings(pros, services, facts):
     for service in services:
         duration = service.get("duration_min", 0) + service.get("prep_min", 0) + service.get("cleanup_min", 0)
         if duration > 0 and type(service.get("price_cents")) is int:
-            valid_services.append((str(service["id"]), duration))
+            valid_services.append((str(service["id"]), duration,
+                                   service.get("duration_min", 0) + service.get("cleanup_min", 0)))
     pro_ids = {str(pro["id"]) for pro in pros}
     if not pro_ids or not valid_services:
         return set(), set()
-    service_ids = {identity for identity, _duration in valid_services}
+    service_ids = {identity for identity, _duration, _manual_duration in valid_services}
     links = {}
     for link in facts.get("links", []):
         service_id, pro_id = str(link["service_id"]), str(link["professional_id"])
@@ -210,8 +216,15 @@ def _fitting_bindings(pros, services, facts):
         hour_id = str(pause["working_hour_id"])
         if hour_id in hour_ids:
             pauses.setdefault(hour_id, []).append((_minutes(pause["start_time"]), _minutes(pause["end_time"])))
+    manual_policies = {(str(policy["professional_id"]), policy["weekday"]): policy
+                       for policy in facts.get("start_policies", []) if policy["mode"] == "manual"}
     capacity = {}
+    manual_hours = {}
     for hour in hours:
+        scope = (str(hour["professional_id"]), hour.get("weekday"))
+        if scope in manual_policies:
+            manual_hours.setdefault(scope, []).append(hour)
+            continue
         cursor, end = _minutes(hour["start_time"]), _minutes(hour["end_time"])
         longest = 0
         for start, stop in sorted(pauses.get(str(hour["id"]), [])) + [(end, end)]:
@@ -219,10 +232,22 @@ def _fitting_bindings(pros, services, facts):
             cursor = max(cursor, stop)
         pro_id = str(hour["professional_id"])
         capacity[pro_id] = max(capacity.get(pro_id, 0), longest)
+    manual_capacity = {}
+    if manual_hours:
+        from app.start_policies import open_periods
+        for scope, day_hours in manual_hours.items():
+            periods = open_periods(day_hours, facts.get("breaks", []))
+            for candidate in manual_policies[scope]["start_times"]:
+                minute = _minutes(candidate)
+                for begin, end in periods:
+                    if _minutes(begin) <= minute < _minutes(end):
+                        manual_capacity[scope[0]] = max(manual_capacity.get(scope[0], 0),
+                                                       _minutes(end) - minute)
     fitting_services, fitting_professionals = set(), set()
-    for service_id, duration in valid_services:
+    for service_id, duration, manual_duration in valid_services:
         for pro_id in links.get(service_id, ()):
-            if capacity.get(pro_id, 0) >= duration:
+            if (capacity.get(pro_id, 0) >= duration
+                    or manual_capacity.get(pro_id, 0) >= manual_duration > 0):
                 fitting_services.add(service_id)
                 fitting_professionals.add(pro_id)
     return fitting_services, fitting_professionals
@@ -698,6 +723,11 @@ async def _save_simple(db, tenant, meta, table, data, expected=None):
 
 
 async def _save_hours(db, tenant, data):
+    from app.booking_service import _engine_professional_lock
+    from app.start_policies import validate_active_policies
+    # The onboarding metadata is already locked. Never wait on booking's
+    # professional lock while holding that row (booking reads it for readiness).
+    await _engine_professional_lock(db, tenant, data.professional_id, nonblocking=True)
     pro = (await db.execute(text("SELECT id FROM professionals WHERE tenant_id=:t AND id=:p FOR UPDATE"), {"t": tenant, "p": data.professional_id})).scalar_one_or_none()
     if pro is None:
         raise HTTPException(422, "Profissional não pertence à empresa")
@@ -719,6 +749,7 @@ async def _save_hours(db, tenant, data):
             await db.execute(text("INSERT INTO working_breaks(tenant_id,working_hour_id,start_time,end_time) VALUES(:t,:id,:s,:e)"), {"t": tenant, "id": item_id, "s": data.break_start, "e": data.break_end})
         await audit(db, tenant, "onboarding_saved", "working_hours", item_id)
         result.append(str(item_id))
+    await validate_active_policies(db, tenant, {(pro, day) for day in data.weekdays})
     return {"ids": result}
 
 
@@ -960,7 +991,7 @@ async def complete(actor, tenant, payload):
                 if not payload.activate_catalog:
                     raise HTTPException(422, "Confirme explicitamente a disponibilização do cadastro operacional")
                 # Serialize final readiness against normal catalog edits/deletions.
-                for table in ("professionals", "services", "commercial_products", "commercial_variants", "working_hours", "working_breaks", "professional_services"):
+                for table in ("professionals", "services", "commercial_products", "commercial_variants", "working_hours", "working_breaks", "professional_services", "professional_start_policies"):
                     await db.execute(text(f"SELECT id FROM {table} WHERE tenant_id=:t ORDER BY id FOR UPDATE"), {"t": tenant})
                 current_facts = await _facts(db, tenant)
                 if payload.expected_snapshot != _snapshot(meta["configuration"], meta["managed_ids"], current_facts):

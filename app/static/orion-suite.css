@@ -2150,6 +2150,62 @@ html:has(.os-professional-history[open]){overflow:hidden}
   flex:0 1 auto;min-height:44px;padding:9px 16px;border-radius:11px;
   font:600 13px/20px var(--os-font);white-space:nowrap;
 }
+.os-hours-mode-summary.is-manual{color:var(--os-primary)}
+.os-hours-policy-error{margin:0;color:var(--os-danger);font:400 12px/19px var(--os-font)}
+.os-hours-dialog .os-hours-start-section{
+  min-width:0;margin-top:12px;padding-top:8px;border-top:1px solid var(--os-border);
+}
+.os-hours-dialog .os-hours-start-disclosure{
+  box-sizing:border-box;display:flex;align-items:center;gap:8px;width:100%;min-width:0;
+  min-height:44px;padding:7px 0;border:0;border-radius:8px;background:transparent;
+  color:var(--os-text);text-align:left;font:500 13px/20px var(--os-font);cursor:pointer;
+}
+.os-hours-dialog .os-hours-start-disclosure>span:first-child{min-width:0;overflow-wrap:anywhere}
+.os-hours-dialog .os-hours-start-disclosure>.os-icon{flex:none;width:16px;height:16px;color:var(--os-muted)}
+.os-hours-dialog .os-hours-start-disclosure[aria-expanded=true]>.os-icon{transform:rotate(180deg)}
+.os-hours-dialog .os-hours-start-disclosure:focus-visible,
+.os-hours-dialog .os-hours-start-chip>button:focus-visible{outline:2px solid var(--os-primary);outline-offset:2px}
+.os-hours-dialog .os-hours-start-status{
+  flex:none;margin-left:auto;padding:3px 8px;border-radius:7px;background:var(--os-bg);
+  color:var(--os-muted);font:500 11px/17px var(--os-font);white-space:nowrap;
+}
+.os-hours-dialog .os-hours-start-status.is-manual{color:var(--os-primary);background:var(--os-tint)}
+.os-hours-dialog .os-hours-start-heading{padding:7px 0;font:500 13px/20px var(--os-font)}
+.os-hours-dialog .os-hours-start-readonly{margin:4px 0 8px;overflow-wrap:anywhere}
+.os-hours-dialog .os-hours-start-editor>.os-help{margin:0;font-size:12px;line-height:19px}
+.os-hours-dialog .os-hours-start-modes{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;
+  min-width:0;margin:0;padding:0;border:0;
+}
+.os-hours-dialog .os-hours-start-modes>legend{padding:0;margin-bottom:8px;font:500 12px/18px var(--os-font)}
+.os-hours-dialog .os-hours-start-modes>label{
+  box-sizing:border-box;display:flex;align-items:center;gap:8px;min-width:0;min-height:46px;
+  margin:0;padding:10px;border:1px solid var(--os-border);border-radius:10px;
+  background:var(--os-bg);font:500 12px/18px var(--os-font);cursor:pointer;
+}
+.os-hours-dialog .os-hours-start-modes>label:has(input:checked){border-color:var(--os-primary);background:var(--os-tint)}
+#osDialog.os-hours-dialog .os-hours-start-modes input[type=radio]{
+  flex:0 0 16px;display:block;width:16px;height:16px;min-width:16px;min-height:16px;
+  margin:0;padding:0;accent-color:var(--os-primary);
+}
+.os-hours-dialog .os-hours-start-add{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px;min-width:0}
+.os-hours-dialog .os-hours-start-add>.os-field{min-width:0}
+.os-hours-dialog .os-hours-start-add>.os-button{min-height:46px;margin:0;white-space:nowrap}
+.os-hours-dialog .os-hours-start-list{display:flex;flex-wrap:wrap;gap:8px;min-width:0}
+.os-hours-dialog .os-hours-start-empty{margin:0;font-size:12px;line-height:19px}
+.os-hours-dialog .os-hours-start-chip{
+  display:inline-flex;align-items:center;gap:2px;min-width:0;min-height:44px;padding-left:12px;
+  border:1px solid var(--os-border);border-radius:11px;background:var(--os-bg);
+  color:var(--os-text);font:600 13px/20px var(--os-font);font-variant-numeric:tabular-nums;
+}
+.os-hours-dialog .os-hours-start-chip>button{
+  flex:0 0 44px;display:inline-grid;place-items:center;width:44px;height:44px;padding:0;
+  border:0;border-radius:10px;background:transparent;color:var(--os-muted);cursor:pointer;
+}
+.os-hours-dialog .os-hours-start-chip>button:hover:not(:disabled){color:var(--os-danger);background:var(--os-danger-bg)}
+.os-hours-dialog .os-hours-start-chip>button>.os-icon{width:16px;height:16px}
+.os-hours-dialog .os-hours-start-chip.is-invalid{border-color:var(--os-danger);background:var(--os-danger-bg)}
+.os-hours-dialog .os-hours-start-reload{justify-self:start;max-width:100%;white-space:normal;text-align:left}
 .os-hours-dialog .os-hours-footer{
   display:flex;align-items:center;justify-content:space-between;
   flex-wrap:wrap;gap:12px;min-width:0;padding-top:16px;margin-top:18px;
@@ -2191,6 +2247,9 @@ html:has(.os-professional-history[open]){overflow:hidden}
     grid-template-columns:minmax(0,1fr);gap:12px;
   }
   .os-hours-dialog .os-hours-edit-fields-day>.os-field:first-child{grid-column:1}
+  .os-hours-dialog .os-hours-start-modes,
+  .os-hours-dialog .os-hours-start-add{grid-template-columns:minmax(0,1fr)}
+  .os-hours-dialog .os-hours-start-add>.os-button{width:100%}
   #osDialog.os-hours-dialog .os-hours-editor>.os-form-actions{
     display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;
   }

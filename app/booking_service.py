@@ -24,6 +24,7 @@ from app.appointment_lifecycle import (
 )
 from app.customer_names import useful_name
 from app.customer_identity import resolve_customer
+from app.start_policies import open_periods, policy_from_hours, read_working_day
 
 UTC = timezone.utc
 PROTOCOL_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -166,28 +167,23 @@ class _SlotConstraints:
     tenant: UUID
     professional: UUID
     day: date
-    hours: dict | None
+    hours: tuple
     pauses: tuple
     blocks: tuple
     reservations: tuple
+    start_policy: dict | None = None
 
 
 async def _read_slot_constraints(s, tenant, professional, target, tz, now, ignored):
     """Request-local inputs for a read-only grid; never reused by a mutation."""
-    hours = (await s.execute(text("""
-        SELECT id, start_time, end_time FROM working_hours
-        WHERE tenant_id=:tenant AND professional_id=:professional AND weekday=:weekday
-    """), {"tenant": tenant, "professional": professional, "weekday": target.weekday()})).mappings().first()
-    if hours is None:
-        return _SlotConstraints(tenant, professional, target, None, (), (), ())
-    pauses = (await s.execute(text("""
-        SELECT start_time, end_time FROM working_breaks
-        WHERE tenant_id=:tenant AND working_hour_id=:working_hour
-    """), {"tenant": tenant, "working_hour": hours["id"]})).mappings().all()
+    hours, pauses = await read_working_day(s, tenant, professional, target.weekday())
+    if not hours:
+        return _SlotConstraints(tenant, professional, target, (), (), (), ())
+    policy = policy_from_hours(hours)
     # A valid candidate's complete occupied interval must fit inside this
     # shift, so intervals outside it cannot reject any candidate in the grid.
-    begin = datetime.combine(target, hours["start_time"], tzinfo=tz).astimezone(UTC)
-    stop = datetime.combine(target, hours["end_time"], tzinfo=tz).astimezone(UTC)
+    begin = datetime.combine(target, min(hour["start_time"] for hour in hours), tzinfo=tz).astimezone(UTC)
+    stop = datetime.combine(target, max(hour["end_time"] for hour in hours), tzinfo=tz).astimezone(UTC)
     parameters = {"tenant": tenant, "professional": professional, "begin": begin, "stop": stop}
     blocks = []
     for table in ("time_off", "schedule_blocks"):
@@ -203,7 +199,7 @@ async def _read_slot_constraints(s, tenant, professional, target, tz, now, ignor
           AND occupied_from < :stop AND occupied_until > :begin
           AND (status <> 'hold' OR hold_expires_at > :now)
     """), {**parameters, "ignored": ignored or UUID(int=0), "now": now})).mappings().all()
-    return _SlotConstraints(tenant, professional, target, dict(hours), tuple(pauses), tuple(blocks), tuple(reservations))
+    return _SlotConstraints(tenant, professional, target, hours, pauses, tuple(blocks), tuple(reservations), policy)
 
 
 async def check_slot(s: AsyncSession, tenant: UUID, professional: UUID,
@@ -218,46 +214,34 @@ async def check_slot(s: AsyncSession, tenant: UUID, professional: UUID,
     if local.date() < now.astimezone(tz).date():
         fail(409, "Não é possível reservar no passado")
     minute = local.hour * 60 + local.minute
-    if local.second or local.microsecond or minute % shop["slot_step_minutes"]:
+    if local.second or local.microsecond:
         fail(422, "Horário fora da grade configurada")
-    b = bounds(start, items)
     if _constraints is not None and (_constraints.tenant != tenant or _constraints.professional != professional or _constraints.day != local.date()):
         raise ValueError("Slot constraints belong to another request scope")
-    hours = _constraints.hours if _constraints is not None else (await s.execute(text("""
-        SELECT id, start_time, end_time FROM working_hours
-        WHERE tenant_id=:tenant AND professional_id=:professional AND weekday=:weekday
-    """), {"tenant": tenant, "professional": professional, "weekday": local.weekday()})).mappings().first()
-    if hours is None:
+    hours, pauses = ((_constraints.hours, _constraints.pauses) if _constraints is not None
+                     else await read_working_day(s, tenant, professional, local.weekday()))
+    if not hours:
         fail(409, "Profissional não trabalha nesse dia")
-    work_start = datetime.combine(local.date(), hours["start_time"], tzinfo=tz).astimezone(UTC)
-    work_end = datetime.combine(local.date(), hours["end_time"], tzinfo=tz).astimezone(UTC)
+    policy = _constraints.start_policy if _constraints is not None else policy_from_hours(hours)
+    if policy is not None and policy["mode"] == "manual":
+        if local.time().replace(tzinfo=None) not in policy["start_times"]:
+            fail(422, "Este início não está na lista de horários manuais do profissional")
+    elif minute % shop["slot_step_minutes"]:
+        fail(422, "Horário fora da grade configurada")
+    b = bounds(start, items)
     # The appointment itself must fit in the shift. Preparation is a gap
     # BETWEEN appointments; at opening (or immediately after a break) there
     # is no preceding customer, so that gap need not push the first booking
     # by 5/15/30 minutes. Cleanup still fits completely before closing.
-    if b["start_at"] < work_start or b["occupied_until"] > work_end:
-        fail(409, "Atendimento completo não cabe no expediente")
-    pauses = _constraints.pauses if _constraints is not None else (await s.execute(text("""
-        SELECT start_time, end_time FROM working_breaks
-        WHERE tenant_id=:tenant AND working_hour_id=:working_hour
-    """), {"tenant": tenant, "working_hour": hours["id"]})).mappings().all()
-    open_period_start = work_start
-    for pause in pauses:
-        lo = datetime.combine(local.date(), pause["start_time"], tzinfo=tz).astimezone(UTC)
-        hi = datetime.combine(local.date(), pause["end_time"], tzinfo=tz).astimezone(UTC)
-        if lo <= b["start_at"] < hi:
-            fail(409, "Horário pertence à pausa do profissional")
-        if hi <= b["start_at"]:
-            open_period_start = max(open_period_start, hi)
-    # Persist the same clipped occupied_from that read-only availability
-    # validated. Otherwise a 09:00 hold would later fail confirmation or
-    # create a different collision interval from its offered slot.
-    b["occupied_from"] = max(b["occupied_from"], open_period_start)
-    for pause in pauses:
-        lo = datetime.combine(local.date(), pause["start_time"], tzinfo=tz).astimezone(UTC)
-        hi = datetime.combine(local.date(), pause["end_time"], tzinfo=tz).astimezone(UTC)
-        if lo < b["occupied_until"] and hi > b["occupied_from"]:
-            fail(409, "Horário conflita com pausa do profissional")
+    for begin, end in open_periods(hours, pauses):
+        work_start = datetime.combine(local.date(), begin, tzinfo=tz).astimezone(UTC)
+        work_end = datetime.combine(local.date(), end, tzinfo=tz).astimezone(UTC)
+        if work_start <= b["start_at"] and b["occupied_until"] <= work_end:
+            # Persist precisely the occupied interval that availability checked.
+            b["occupied_from"] = max(b["occupied_from"], work_start)
+            break
+    else:
+        fail(409, "Atendimento completo não cabe no expediente ou conflita com uma pausa")
     if _constraints is not None:
         for entry in _constraints.blocks:
             if entry["starts_at"] < b["occupied_until"] and entry["ends_at"] > b["occupied_from"]:
@@ -451,11 +435,15 @@ async def verified_slot_grid(s: AsyncSession, tenant: UUID, professional: UUID,
     """
     tz = ZoneInfo(shop["timezone"])
     constraints = await _read_slot_constraints(s, tenant, professional, target, tz, now, ignored)
-    if constraints.hours is None:
+    if not constraints.hours:
         return [], "no_working_hours"
     result = []
-    for minute in range(0, 24 * 60, shop["slot_step_minutes"]):
-        naive = datetime.combine(target, time.min) + timedelta(minutes=minute)
+    policy = constraints.start_policy
+    candidates = (sorted(policy["start_times"]) if policy is not None and policy["mode"] == "manual"
+                  else (time(minute // 60, minute % 60)
+                        for minute in range(0, 24 * 60, shop["slot_step_minutes"])))
+    for candidate in candidates:
+        naive = datetime.combine(target, candidate)
         local = naive.replace(tzinfo=tz)
         start = local.astimezone(UTC).astimezone(tz)
         if start.replace(tzinfo=None) != naive:
