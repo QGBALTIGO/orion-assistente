@@ -159,8 +159,11 @@ async def persist_events(events: list[dict]) -> None:
 
 @router.post("/webhooks/cakto")
 async def cakto_webhook(request: Request):
-    secret = os.getenv("CAKTO_WEBHOOK_SECRET", "")
-    if len(secret) < 32:
+    secrets = tuple(key for key in (
+        os.getenv("CAKTO_WEBHOOK_SECRET",""),
+        os.getenv("CAKTO_PIX_WEBHOOK_SECRET",""),
+    ) if len(key)>=32)
+    if not secrets:
         # Deliberately never log the secret or its actual length.
         import logging
         logging.getLogger("orion.cakto").error("cakto_webhook_503_secret_not_configured")
@@ -186,10 +189,14 @@ async def cakto_webhook(request: Request):
             raise HTTPException(413, "Evento muito grande")
         parts.append(part)
     raw = b"".join(parts)
-    if not verify_cakto_signature(
-        raw, request.headers.get("x-cakto-timestamp"),
-        request.headers.get("x-cakto-signature"), secret
-    ):
+    # V2 subscription webhooks and V1 one-time Pix webhooks have separate
+    # Cakto-generated secrets. Both require matching timestamped raw-body
+    # HMAC and an equal secret INSIDE the signed body.
+    secret = next((key for key in secrets if verify_cakto_signature(
+        raw,request.headers.get("x-cakto-timestamp"),
+        request.headers.get("x-cakto-signature"),key
+    )),None)
+    if secret is None:
         raise HTTPException(401, "Origem do webhook não autenticada")
     try:
         payload = json.loads(raw)
@@ -448,7 +455,12 @@ async def scan_pending_cakto(_ctx):
                   AND (:lifecycle_enabled
                        OR event_type NOT IN (
                           'subscription_renewed','subscription_canceled',
-                          'purchase_refused','refund','chargeback'))
+                          'purchase_refused','refund','chargeback')
+                       OR (event_type IN ('purchase_refused','refund','chargeback')
+                           AND EXISTS (
+                             SELECT 1 FROM orion_prepaid_pix_orders p
+                              WHERE p.external_order_id=cakto_webhook_events.external_order_id
+                           )))
                 ORDER BY received_at LIMIT 30 FOR UPDATE SKIP LOCKED
             """), {"lifecycle_enabled":
                     os.getenv("ORION_CAKTO_LIFECYCLE_ENABLED", "0") == "1"}
@@ -467,7 +479,17 @@ async def scan_pending_cakto(_ctx):
         try:
             order = await client.get_order(row["external_order_id"])
             state = verify_order_event(row, order)
-            if state == "verified" and row["callback_hash"] and row["event_type"] == "purchase_approved":
+            prepaid_outcome="not_prepaid"
+            if state=="verified" and row["event_type"]=="purchase_approved":
+                from app.prepaid_pix_reconcile import reconcile_prepaid_receipt
+                prepaid_outcome=await reconcile_prepaid_receipt(row,order)
+                if prepaid_outcome=="retry_later":
+                    continue
+                if prepaid_outcome!="not_prepaid":
+                    state=("verified" if prepaid_outcome in
+                           ("activated","already_verified") else "manual_review")
+            if (state == "verified" and prepaid_outcome=="not_prepaid"
+                    and row["callback_hash"] and row["event_type"] == "purchase_approved"):
                 from app.plan_management import apply_verified_cakto_payment
                 # No tenancy is derived from buyer details. The callback must
                 # match a server-side owner intent and the exact verified offer.
@@ -484,15 +506,24 @@ async def scan_pending_cakto(_ctx):
                     continue
                 if linked == "manual_review":
                     state = "manual_review"
-            if os.getenv("ORION_CAKTO_LIFECYCLE_ENABLED", "0") == "1" and row["event_type"] in {
-                    "subscription_renewed", "subscription_canceled",
-                    "purchase_refused", "refund", "chargeback"}:
-                from app.cakto_subscription_lifecycle import (
-                    reconcile_existing_cakto_subscription,
-                )
-                outcome = await reconcile_existing_cakto_subscription(row,order,client)
-                state = "verified" if outcome in ("reconciled","already_verified") else "manual_review"
-        except (httpx.HTTPError, RuntimeError, ValueError):
+            if row["event_type"] in {"purchase_refused","refund","chargeback"}:
+                from app.prepaid_pix_reconcile import reconcile_prepaid_reversal
+                prepaid_reversal=await reconcile_prepaid_reversal(row,order)
+                if prepaid_reversal!="not_prepaid":
+                    state=("verified" if prepaid_reversal in
+                           ("reconciled","already_verified") else "manual_review")
+                elif os.getenv("ORION_CAKTO_LIFECYCLE_ENABLED","0")=="1":
+                    from app.cakto_subscription_lifecycle import reconcile_existing_cakto_subscription
+                    outcome=await reconcile_existing_cakto_subscription(row,order,client)
+                    state=("verified" if outcome in
+                           ("reconciled","already_verified") else "manual_review")
+            elif os.getenv("ORION_CAKTO_LIFECYCLE_ENABLED","0")=="1" and row["event_type"] in {
+                    "subscription_renewed","subscription_canceled"}:
+                from app.cakto_subscription_lifecycle import reconcile_existing_cakto_subscription
+                outcome=await reconcile_existing_cakto_subscription(row,order,client)
+                state=("verified" if outcome in
+                       ("reconciled","already_verified") else "manual_review")
+        except (httpx.HTTPError, RuntimeError, ValueError, SQLAlchemyError):
             continue
         async with support_session_factory()() as db:
             async with db.begin():

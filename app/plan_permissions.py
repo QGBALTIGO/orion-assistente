@@ -63,9 +63,23 @@ def derive_plan(snapshot, now=None):
             until = commercial.get("grace_until") if commercial.get("status") == "past_due" else None
         else:
             status = commercial.get("status") if commercial.get("status") in {"past_due", "suspended", "canceled"} else "no_access"
+    # Prepaid Pix is a separate verified commercial grant, never a provider
+    # subscription. Manual admin grants and active recurring contracts win.
+    prepaid = snapshot.get("prepaid")
+    if (source == "none" and isinstance(prepaid, dict)
+            and prepaid.get("plan_code") in CODES
+            and _date(prepaid.get("last_verified_payment_at")) is not None
+            and _date(prepaid["last_verified_payment_at"]) <= now
+            and _future(prepaid.get("paid_until"), now)):
+        code, source, status, until = prepaid["plan_code"], "pix_prepaid", "active", prepaid["paid_until"]
     if source == "none" and isinstance(trial, dict) and trial.get("status") == "active" and _future(trial.get("ends_at"), now):
         if _date(trial.get("started_at")) is not None and _date(trial["started_at"]) <= now:
             code, source, status, until = "essencial", "trial", "active", trial["ends_at"]
+    if (source == "none" and status == "no_access"
+            and isinstance(prepaid,dict) and prepaid.get("plan_code") in CODES
+            and _date(prepaid.get("paid_until")) is not None
+            and not _future(prepaid["paid_until"],now)):
+        status = "expired"
     if source == "none" and status == "no_access" and ((manual_view and not manual_valid) or
             isinstance(trial, dict) and trial.get("status") in {"expired", "active"}):
         status = "expired"
@@ -102,7 +116,13 @@ async def plan_state(db, tenant_id, lock="shared"):
     snapshot = (await db.execute(text("SELECT public.orion_plan_snapshot(:tenant)"), {"tenant": tenant_id})).scalar_one()
     if snapshot is None:
         raise HTTPException(404, "Empresa não encontrada")
-    return derive_plan(snapshot)
+    # Provider-neutral prepaid access is SECURITY DEFINER + tenant scoped;
+    # app_runtime never receives direct SELECT on billing tables.
+    prepaid = (await db.execute(
+        text("SELECT public.orion_prepaid_plan_snapshot(:tenant)"),
+        {"tenant":tenant_id}
+    )).scalar_one_or_none()
+    return derive_plan({**snapshot,"prepaid":prepaid})
 
 
 @dataclass(frozen=True)

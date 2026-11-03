@@ -17,7 +17,7 @@ TENANT_PREFIX = "/api/v1/tenants/{tenant_id}"
 def feature_for_path(relative, method="GET", *, resource=None, step_id=None):
     """Explicit classification; an unclassified future tenant API fails closed."""
     if relative in {"/management/permissions", "/management/plan-overview", "/management/subscription",
-                    "/management/plan-trial", "/management/plan-checkout"} or relative.startswith("/management/plan-direct-"):
+                    "/management/plan-trial", "/management/plan-checkout"} or relative.startswith(("/management/plan-direct-","/management/plan-pix-")):
         return "plan.manage"
     if relative.startswith("/onboarding"):
         return "business.setup"
@@ -113,7 +113,7 @@ def exclusive_professional_operation(relative, method, params):
         return False
     return (relative.startswith("/management/professionals") or
             relative in {"/management/plan-trial", "/management/plan-checkout"} or
-            relative.startswith("/management/plan-direct-") or
+            relative.startswith(("/management/plan-direct-","/management/plan-pix-")) or
             relative.startswith("/onboarding/complete") or
             relative.startswith("/onboarding/steps/") and params.get("step_id") == "professionals" or
             params.get("resource") == "professionals")

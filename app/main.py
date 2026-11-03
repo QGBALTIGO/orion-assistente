@@ -13,6 +13,7 @@ from app.billing_api import router as billing_router
 from app.cakto_api import router as cakto_router
 from app.plan_management import router as plan_management_router
 from app.orion_direct_checkout import router as direct_checkout_router
+from app.prepaid_pix_api import router as prepaid_pix_router
 from app.metrics_api import router as metrics_router
 from app.advanced_api import router as advanced_router
 from app.qr_api import router as qr_router
@@ -97,6 +98,7 @@ include_plan_router(app, billing_router)
 include_plan_router(app, cakto_router)
 include_plan_router(app, plan_management_router)
 include_plan_router(app, direct_checkout_router)
+include_plan_router(app, prepaid_pix_router)
 include_plan_router(app, metrics_router)
 include_plan_router(app, advanced_router)
 include_plan_router(app, qr_router)

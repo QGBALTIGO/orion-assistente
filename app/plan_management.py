@@ -175,7 +175,10 @@ async def plan_overview(tenant_id: UUID, actor: Actor = Depends(authenticate), r
         "can_manage_plan": actor.role in {"member","admin"} and access.role == "owner",
         # A single Cakto flag cannot mean checkout is ready. These flags
         # are a necessary preflight, not a substitute for live provider probes.
-        "checkout_enabled": direct_environment_ready(),
+        # New initial commercial channel: single Pix, prepaid 30 days,
+        # not a recurring subscription or automatic monthly debit.
+        "checkout_enabled": __import__("app.prepaid_pix_api",fromlist=["pix_environment_ready"]).pix_environment_ready(),
+        "payment_mode": "pix_manual_30_days",
         "trial_scope": TRIAL_SCOPE,
         "trial_requires_team_activation": True,
     }
