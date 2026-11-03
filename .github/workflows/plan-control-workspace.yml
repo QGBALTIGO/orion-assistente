@@ -1,0 +1,44 @@
+name: Orion - workspace isolado da central de planos
+on:
+  push:
+    branches: [fix/plan-control-20261103]
+    paths: [.github/workflows/plan-control-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fonte revisada sem credenciais Git
+        run: git archive --format=tar HEAD | gzip > /tmp/orion-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orion-source-plan-control
+          path: /tmp/orion-source.tar.gz
+          retention-days: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - run: tar -czf /tmp/orion-ui-deps.tar.gz ui-tests/node_modules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orion-ui-deps-plan-control
+          path: /tmp/orion-ui-deps.tar.gz
+          retention-days: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Dependencias versionadas para testes locais sem acesso externo
+        run: |
+          python -m pip wheel -c requirements.lock '.[test]' --wheel-dir /tmp/orion-wheels
+          tar -czf /tmp/orion-python-deps.tar.gz -C /tmp orion-wheels
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orion-python-deps-plan-control
+          path: /tmp/orion-python-deps.tar.gz
+          retention-days: 1
