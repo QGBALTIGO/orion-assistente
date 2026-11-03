@@ -44,7 +44,35 @@ async def _post(client:CaktoClient,path:str,data:dict):
             "Authorization":"Bearer "+bearer,
             "Content-Type":"application/json",
         })
-        response.raise_for_status()
+        if response.status_code>=400:
+            # Diagnostic is fixed-key only. Never print response bodies, buyer
+            # identities, product IDs, tokens, or webhook secrets.
+            try:
+                detail=response.json()
+            except (ValueError,TypeError):
+                detail=None
+            keys=set()
+            if isinstance(detail,dict):
+                keys.update(str(k) for k in detail.keys())
+                for field,value in detail.items():
+                    if isinstance(value,dict):
+                        keys.update(str(k) for k in value.keys())
+            allowed=frozenset({
+                "name","description","price","salesPage","emailAccessLink",
+                "contentDeliveries","paymentMethods","product","products",
+                "events","category","status","code","error","errors","detail",
+                "message","amount","id","validation","fields","non_field_errors",
+            })
+            signals=tuple(word for word in (
+                "banking","pix","minimum","limit","category","currency",
+                "payment","invalid","required","not_found","not_allowed",
+                "active","permission","delivery","checkout","product",
+                "support","domain","email","already","price","content",
+            ) if word in response.text.lower())
+            print("orion_pix_provider_write_denied="+str(response.status_code)
+                +";fields="+",".join(sorted(keys & allowed))
+                +";signals="+",".join(signals),flush=True)
+            raise RuntimeError("cakto_provider_write_rejected")
         return response.json()
 
 
