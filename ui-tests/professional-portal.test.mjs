@@ -73,6 +73,7 @@ test('team view only offers invites inside registered professionals and retains 
  assert.match(h.document.getElementById('osPageBody').textContent,/Acessos anteriores/);
  assert.equal(h.document.querySelector('[data-os-action=new-invitation]'),null);
  assert.ok(h.document.querySelector('[data-os-action=pro-access-suspend]'));
+ assert.ok(h.document.querySelector('[data-os-action=pro-block-permission]'));
  assert.ok(h.document.querySelector('[data-os-team-member]'));
 });
 
@@ -80,6 +81,7 @@ async function portal(t){
  const errors=[],calls=[];
  const html=await readFile(new URL('../app/static/orion-professional.html',import.meta.url),'utf8');
  const js=await readFile(new URL('../app/static/orion-professional.js',import.meta.url),'utf8');
+ const shared=await readFile(new URL('../app/static/orion-fields.js',import.meta.url),'utf8');
  const c=new VirtualConsole();c.on('jsdomError',e=>errors.push(String(e)));
  const dom=new JSDOM(html,{url:'https://orionagenda.pro/profissional',runScripts:'outside-only',virtualConsole:c});
  t.after(()=>dom.window.close());
@@ -110,7 +112,7 @@ async function portal(t){
    else {status=404;data={detail:'Not found'}}
    return {ok:status===200,status,json:async()=>data,headers:new Map()};
  };
- w.eval(js);
+ w.eval(shared);w.eval(js);
  for(let i=0;i<10;i++)await new Promise(r=>setTimeout(r,12));
  return {w,doc:w.document,calls,errors};
 }
@@ -147,6 +149,10 @@ test('professional can choose own services and a server-verified time before a r
   assert.ok(slot);
   slot.checked=true;
   form.dispatchEvent(new h.w.Event('submit',{cancelable:true,bubbles:true}));
+  await new Promise(resolve=>setTimeout(resolve,40));
+  assert.equal(h.calls.filter(c=>c.method==='POST'&&c.path==='/api/v1/professional/appointments').length,0);
+  assert.match(h.doc.getElementById('modalReview').textContent,/Revise antes de confirmar/);
+  form.dispatchEvent(new h.w.Event('submit',{cancelable:true,bubbles:true}));
   await new Promise(resolve=>setTimeout(resolve,75));
   const posted=h.calls.filter(c=>c.method==='POST'&&c.path==='/api/v1/professional/appointments');
   assert.equal(posted.length,1);
@@ -154,4 +160,28 @@ test('professional can choose own services and a server-verified time before a r
   assert.equal(posted[0].body.customer_phone,'+5567999999999');
   assert.equal(posted[0].body.professional_id,undefined);
   assert.equal(h.errors.length,0);
+});
+
+
+test('owner explicitly grants removal of company-created blocks to a linked professional',async t=>{
+ const pro='c1000000-0000-4000-8000-000000000001';
+ const h=await makeSuite({initialRoute:'funcionarios',respond:(path,method)=>{
+   if(path.endsWith('/professionals')&&method==='GET')return [{id:pro,name:'Guilherme',specialty:'Barbeiro',active:true}];
+   if(path.endsWith('/services')||path.endsWith('/professional_services'))return [];
+   if(path.endsWith('/management/team'))return {can_manage:true,members:[],invitations:[],
+     professional_access:[{professional_id:pro,account_id:'a1000000-0000-4000-8000-000000000001',
+       email:'guilherme@example.invalid',active:true,can_manage_owner_blocks:false,
+       updated_at:'2026-11-02T12:00:00Z'}]};
+   if(method==='PATCH'&&path.endsWith('/block-permissions'))return {can_manage_owner_blocks:true};
+   return defaultResponse(path);
+ }});
+ t.after(()=>h.close());await flush();
+ h.click('[data-os-staff-tab=permissions]');await flush();
+ h.click('[data-os-action=pro-block-permission]');await flush();
+ assert.equal(h.calls.some(x=>x.method==='PATCH'),false,'no permission is granted without confirmation');
+ h.submit('[data-os-form=confirm]');await flush();
+ const posted=h.calls.find(x=>x.method==='PATCH'&&x.path.endsWith('/team/professionals/'+pro+'/block-permissions'));
+ assert.ok(posted);
+ assert.equal(posted.data.can_manage_owner_blocks,true);
+ assert.equal(posted.data.expected_updated_at,'2026-11-02T12:00:00Z');
 });

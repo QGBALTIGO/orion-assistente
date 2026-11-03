@@ -304,3 +304,144 @@ async def test_professional_creates_real_booking_only_for_own_calendar(booking_d
                 {"a":guest})
             await db.execute(text("DELETE FROM panel_accounts WHERE id=:a"),
                 {"a":guest})
+
+
+@pytest.mark.asyncio
+async def test_duplicate_email_is_blocked_in_api_and_postgres(extras_db, monkeypatch):
+    from sqlalchemy.exc import IntegrityError
+    d=extras_db
+    monkeypatch.setenv("PANEL_EMAIL_ENABLED","0")
+    monkeypatch.setenv("PANEL_PUBLIC_URL","https://orionagenda.pro")
+    original=d["selected"]["actor"]
+    second=uuid4()
+    await plan_for_tests(d)
+    try:
+        async with d["migrator"].begin() as db:
+            await db.execute(text("""INSERT INTO professionals(id,tenant_id,name)
+                VALUES(:id,:t,'Outro barbeiro sintético')"""),
+                {"id":second,"t":d["tenant"]})
+        first=d["base"]+"/team/professionals/"+str(d["pro"])+"/email"
+        other=d["base"]+"/team/professionals/"+str(second)
+        assert (await d["client"].put(first,json={"email":d["guest_email"]})).status_code==200
+        duplicated=await d["client"].put(other+"/email",json={"email":d["guest_email"]})
+        assert duplicated.status_code==409,duplicated.text
+        invite=await d["client"].post(other+"/invite",json={
+            "email":d["guest_email"],"idempotency_key":str(uuid4())})
+        assert invite.status_code==409,invite.text
+        with pytest.raises(IntegrityError):
+            async with d["migrator"].begin() as db:
+                await db.execute(text("""INSERT INTO professional_portal_links
+                    (tenant_id,professional_id,email) VALUES(:t,:p,:email)"""),
+                    {"t":d["tenant"],"p":second,"email":d["guest_email"]})
+        async with d["migrator"].connect() as db:
+            count=(await db.execute(text("""SELECT count(*) FROM professional_portal_links
+                WHERE tenant_id=:t AND email=:email"""),
+                {"t":d["tenant"],"email":d["guest_email"]})).scalar_one()
+            assert count==1
+    finally:
+        d["selected"]["actor"]=original
+        await cleanup_portal(d)
+        async with d["migrator"].begin() as db:
+            await db.execute(text("DELETE FROM professionals WHERE tenant_id=:t AND id=:p"),
+                {"t":d["tenant"],"p":second})
+
+
+@pytest.mark.asyncio
+async def test_reopen_approved_invitation_reports_revoked_after_access_revocation(extras_db, monkeypatch):
+    d=extras_db
+    monkeypatch.setenv("PANEL_EMAIL_ENABLED","0")
+    monkeypatch.setenv("PANEL_PUBLIC_URL","https://orionagenda.pro")
+    owner=d["selected"]["actor"]
+    await plan_for_tests(d)
+    base=d["base"]+"/team/professionals/"+str(d["pro"])
+    try:
+        invited=await d["client"].post(base+"/invite",json={
+            "email":d["guest_email"],"idempotency_key":str(uuid4())})
+        assert invited.status_code==201,invited.text
+        token=invited.json()["link"].split("#token=",1)[1]
+        d["selected"]["actor"]=Actor("member",account_id=d["guest"])
+        accepted=await d["client"].post("/api/v1/team-invitations/accept",json={"token":token})
+        assert accepted.status_code==200,accepted.text
+        d["selected"]["actor"]=owner
+        detail=(await d["client"].get(d["base"]+"/team")).json()
+        link=next(x for x in detail["professional_access"] if x["professional_id"]==str(d["pro"]))
+        revoked=await d["client"].patch(base+"/access",json={
+            "action":"revoke","expected_updated_at":link["updated_at"]})
+        assert revoked.status_code==200,revoked.text
+        preview=await d["client"].post("/api/v1/team-invitations/preview",json={"token":token})
+        assert preview.status_code==200,preview.text
+        assert preview.json()["status"]=="revoked"
+        d["selected"]["actor"]=Actor("member",account_id=d["guest"])
+        replay=await d["client"].post("/api/v1/team-invitations/accept",json={"token":token})
+        assert replay.status_code==410,replay.text
+        assert "revogado" in replay.text.lower()
+    finally:
+        d["selected"]["actor"]=owner
+        await cleanup_portal(d)
+
+
+@pytest.mark.asyncio
+async def test_professional_cannot_delete_company_block_without_owner_grant(extras_db, monkeypatch):
+    from zoneinfo import ZoneInfo
+    d=extras_db
+    monkeypatch.setenv("PANEL_EMAIL_ENABLED","0")
+    monkeypatch.setenv("PANEL_PUBLIC_URL","https://orionagenda.pro")
+    owner=d["selected"]["actor"]
+    await plan_for_tests(d)
+    base=d["base"]+"/team/professionals/"+str(d["pro"])
+    company_block=uuid4()
+    try:
+        start=(datetime.now(timezone.utc)+timedelta(days=3)).replace(
+            hour=15,minute=0,second=0,microsecond=0)
+        end=start+timedelta(hours=1)
+        async with d["migrator"].begin() as db:
+            await db.execute(text("""INSERT INTO schedule_blocks
+                (id,tenant_id,professional_id,starts_at,ends_at,reason)
+                VALUES(:id,:t,:p,:start,:end,'Bloqueio da empresa')"""),
+                {"id":company_block,"t":d["tenant"],"p":d["pro"],"start":start,"end":end})
+        invited=await d["client"].post(base+"/invite",json={
+            "email":d["guest_email"],"idempotency_key":str(uuid4())})
+        assert invited.status_code==201,invited.text
+        d["selected"]["actor"]=Actor("member",account_id=d["guest"])
+        accepted=await d["client"].post("/api/v1/team-invitations/accept",
+            json={"token":invited.json()["link"].split("#token=",1)[1]})
+        assert accepted.status_code==200,accepted.text
+        own_day=start.astimezone(ZoneInfo("America/Campo_Grande")).date()
+        agenda=await d["client"].get("/api/v1/professional/agenda",
+            params={"day":str(own_day)})
+        assert agenda.status_code==200,agenda.text
+        row=next(x for x in agenda.json()["blocks"] if x["id"]==str(company_block))
+        assert row["can_remove"] is False and row["origin"]=="company"
+        blocked=await d["client"].delete(
+            "/api/v1/professional/blocks/"+str(company_block))
+        assert blocked.status_code==404,blocked.text
+        own_start=(start+timedelta(hours=2)).astimezone(ZoneInfo("America/Campo_Grande"))
+        own_end=own_start+timedelta(minutes=30)
+        own=await d["client"].post("/api/v1/professional/blocks",json={
+            "day":str(own_start.date()),
+            "start_time":own_start.strftime("%H:%M"),
+            "end_time":own_end.strftime("%H:%M"),
+            "reason":"Pausa sintética","idempotency_key":str(uuid4())})
+        assert own.status_code==201,own.text
+        own_id=own.json()["id"]
+        assert (await d["client"].delete(
+            "/api/v1/professional/blocks/"+own_id)).status_code==200
+        d["selected"]["actor"]=owner
+        team=(await d["client"].get(d["base"]+"/team")).json()
+        link=next(x for x in team["professional_access"] if x["professional_id"]==str(d["pro"]))
+        allowed=await d["client"].patch(base+"/block-permissions",json={
+            "can_manage_owner_blocks":True,"expected_updated_at":link["updated_at"]})
+        assert allowed.status_code==200,allowed.text
+        d["selected"]["actor"]=Actor("member",account_id=d["guest"])
+        permitted=await d["client"].get("/api/v1/professional/agenda",
+            params={"day":str(own_day)})
+        assert permitted.status_code==200
+        assert next(x for x in permitted.json()["blocks"] if x["id"]==str(company_block))["can_remove"]
+        assert (await d["client"].delete(
+            "/api/v1/professional/blocks/"+str(company_block))).status_code==200
+    finally:
+        d["selected"]["actor"]=owner
+        await cleanup_portal(d)
+        async with d["migrator"].begin() as db:
+            await db.execute(text("DELETE FROM schedule_blocks WHERE tenant_id=:t AND id=:id"),
+                {"t":d["tenant"],"id":company_block})

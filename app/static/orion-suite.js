@@ -979,7 +979,10 @@
           '<button class="os-button os-ghost os-small" type="button" data-os-professional="'+esc(p.id)+'">'+icon('edit')+'Editar</button>'+
           (link?.account_id?(access.active?button('Suspender','pro-access-suspend','os-outline os-small','lock','data-professional="'+esc(p.id)+'"'):
           (p.active?button('Reativar','pro-access-reactivate','os-outline os-small','refresh','data-professional="'+esc(p.id)+'"'):''))+
-          button('Revogar vínculo','pro-access-revoke','os-ghost os-small','close','data-professional="'+esc(p.id)+'"'):'')+
+          button('Revogar vínculo','pro-access-revoke','os-ghost os-small','close','data-professional="'+esc(p.id)+'"')+
+          button(link.can_manage_owner_blocks?'Proteger bloqueios da empresa':'Permitir remover bloqueios da empresa',
+            'pro-block-permission','os-ghost os-small',link.can_manage_owner_blocks?'lock':'unlock',
+            'data-professional="'+esc(p.id)+'"'):'')+
           '</div>':'';
         return '<div class="os-invitation-row"><div class="os-person"><span class="os-avatar">'+esc(initials(p.name))+'</span><div><strong>'+esc(p.name)+'</strong>'+
           '<small>'+esc(p.specialty||'Profissional')+' · '+esc(access.label)+(p.active?'':' · Inativo')+'</small>'+
@@ -2883,6 +2886,21 @@
           action==='revoke'?'Esta conta deixará de estar vinculada ao profissional. O histórico será preservado.':'A alteração vale imediatamente para a área profissional.',
           ()=>request(mgmt('/team/professionals/'+encodeURIComponent(prof.id)+'/access'),'PATCH',
             {action,expected_updated_at:link.updated_at}),'Acesso profissional atualizado.');
+        break;
+      }
+      case 'pro-block-permission':{
+        if(!state.data.team?.can_manage)return;
+        const prof=rows(state.data.professionals).find(p=>p.id===element.dataset.professional);
+        if(!prof)return;
+        const link=proAccessState(prof).link;
+        if(!link?.account_id)return;
+        const grant=!link.can_manage_owner_blocks;
+        confirmMutation(grant?'Permitir remover bloqueios da empresa':'Proteger bloqueios da empresa',
+          grant?'O profissional poderá remover bloqueios criados pela empresa em sua própria agenda. Não terá acesso aos horários de colegas.':
+            'O profissional ficará limitado aos bloqueios que ele mesmo criou.',
+          ()=>request(mgmt('/team/professionals/'+encodeURIComponent(prof.id)+'/block-permissions'),
+            'PATCH',{can_manage_owner_blocks:grant,expected_updated_at:link.updated_at}),
+            'Permissão de bloqueios atualizada.');
         break;
       }
       case 'copy-invitation':if(d?.link){await navigator.clipboard.writeText(d.link);toast('Link do convite copiado.');}break;

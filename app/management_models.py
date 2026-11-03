@@ -979,9 +979,15 @@ async def daily_performance(db, tenant_id, start_date=None, end_date=None, profe
     return {"period": period, "items": [dict(row) for row in rows], "legacy_rate_source": "current_profile"}
 
 
-async def commission_report(db, tenant_id, start_date=None, end_date=None):
+async def commission_report(db, tenant_id, start_date=None, end_date=None, *, professional_id=None):
+    """Optional server-authorized professional filter prevents reading colleagues' rows."""
     period, lower, upper = await period_for(db, tenant_id, start_date, end_date)
     params = {"tenant": tenant_id, "lower": lower, "upper": upper}
+    if professional_id is not None:
+        params["professional_id"] = professional_id
+    professional_where = " AND p.id=:professional_id" if professional_id is not None else ""
+    appointment_where = " AND a.professional_id=:professional_id" if professional_id is not None else ""
+    movement_where = " AND professional_id=:professional_id" if professional_id is not None else ""
     rows = (await db.execute(text("""
         SELECT p.id,p.name,p.commission_percent,p.commission_mode,
             count(a.id) FILTER (WHERE a.status='completed' AND a.start_at>=:lower AND a.start_at<:upper) AS completed,
@@ -993,7 +999,7 @@ async def commission_report(db, tenant_id, start_date=None, end_date=None):
                 (WHERE a.status='confirmed' AND a.start_at>=:lower AND a.start_at<:upper
                     AND a.start_at>=now() AND p.commission_mode='percent'),0) AS scheduled_cents
         FROM professionals p LEFT JOIN appointments a ON a.tenant_id=p.tenant_id AND a.professional_id=p.id
-        WHERE p.tenant_id=:tenant GROUP BY p.id,p.name,p.commission_percent,p.commission_mode ORDER BY p.name,p.id
+        WHERE p.tenant_id=:tenant""" + professional_where + """ GROUP BY p.id,p.name,p.commission_percent,p.commission_mode ORDER BY p.name,p.id
     """), params)).mappings().all()
     # Forecasts for per-service professionals use each service's actual rule.
     # These are estimates for upcoming appointments, not accrued earnings.
@@ -1010,7 +1016,7 @@ async def commission_report(db, tenant_id, start_date=None, end_date=None):
             AND r.professional_id=a.professional_id AND r.service_id=i.service_id
         WHERE a.tenant_id=:tenant AND a.status='confirmed'
           AND a.start_at>=:lower AND a.start_at<:upper AND a.start_at>=now()
-          AND p.commission_mode='per_service'
+          AND p.commission_mode='per_service'""" + appointment_where + """
         ORDER BY a.id,i.item_order,i.id
     """), params)).mappings().all()
     forecasts = {}
@@ -1034,7 +1040,7 @@ async def commission_report(db, tenant_id, start_date=None, end_date=None):
           COALESCE(sum(amount_cents) FILTER (WHERE entry_type='advance' AND occurred_at>=:lower AND occurred_at<:upper),0) AS advances_cents,
           COALESCE(sum(amount_cents) FILTER (WHERE entry_type='commission_payment' AND occurred_at>=:lower AND occurred_at<:upper),0) AS payments_cents
         FROM financial_entries WHERE tenant_id=:tenant AND kind='expense' AND status='paid'
-            AND entry_type IN ('advance','commission_payment') GROUP BY professional_id
+            AND entry_type IN ('advance','commission_payment')""" + movement_where + """ GROUP BY professional_id
     """), params)).mappings().all()
     by_professional = {row["professional_id"]: row for row in movements}
     today = datetime.now(timezone.utc).astimezone(ZoneInfo(period["timezone"])).date()
