@@ -48,6 +48,11 @@ def main():
     if prepaid_migrate():
         raise RuntimeError("prepaid_pix_schema_not_ready")
     print("prepaid_pix_schema_ready",flush=True)
+    # Explicit one-time merchant catalog provisioning; no customer payments.
+    # Refuses to run if the prepaid checkout is already live.
+    if os.getenv("ORION_PIX_PROVISION_ONCE","0")=="1":
+        subprocess.run([sys.executable,"-m",
+                        "scripts.provision_prepaid_pix_once"],check=True)
 
 
 if __name__ == "__main__":

@@ -38,6 +38,10 @@ async def check():
     print("cakto_provider_grants=" + ";".join(
         name + ":" + verdict(scopes) for name,scopes in required.items()
     ), flush=True)
+    print("cakto_catalog_write_grants="+";".join(
+        scope+":"+verdict(frozenset({"write",scope}))
+        for scope in ("products","offers","webhooks")
+    ),flush=True)
     print("cakto_catalog_matches=" + str(sum(plan["found"] for plan in matched)) +
           "/3;cakto_ambiguous_matches=" + str(sum(plan["ambiguous"] for plan in matched)),
           flush=True)
