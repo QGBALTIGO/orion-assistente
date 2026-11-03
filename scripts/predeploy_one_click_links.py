@@ -14,7 +14,7 @@ ORIGINAL_RAILWAY_PREDEPLOY_CHECK = "import importlib.metadata as m, subprocess, 
 
 def main():
     subprocess.run([sys.executable, "-c", ORIGINAL_RAILWAY_PREDEPLOY_CHECK], check=True)
-    migration = Path("alembic/versions/0057_professional_portal.py")
+    migration = Path("alembic/versions/0058_professional_access_hardening.py")
     if not migration.is_file():
         raise RuntimeError("one_click_migration_missing_from_release")
     from scripts.backup_and_migrate_commissions import (
@@ -24,24 +24,26 @@ def main():
     import tempfile
     raw, url = connection_values()
     current = migrated_version(raw)
-    if current not in {"0056_one_click_appointment_links","0057_professional_portal"}:
-        raise RuntimeError("professional_portal_source_revision_not_approved")
-    if current == "0056_one_click_appointment_links":
+    if current not in {"0057_professional_portal","0058_professional_access_hardening"}:
+        raise RuntimeError("professional_hardening_source_revision_not_approved")
+    if current == "0057_professional_portal":
         # A private, ownership-preserving archive must be verified with a full
         # remote checksum readback before altering memberships or invitations.
-        with tempfile.TemporaryDirectory(prefix="orion-professional-0057-") as folder:
+        with tempfile.TemporaryDirectory(prefix="orion-professional-0058-") as folder:
             perform_backup(url, storage_values(), Path(folder) / "backup.dump",
-                           backup_context="professional-portal-0057",
+                           backup_context="professional-access-0058",
                            schema_revision=current, preserve_ownership=True)
         environment = {**os.environ, "ORION_MIGRATION_SWITCH_ROLE": "1"}
         subprocess.run([sys.executable, "-m", "alembic", "upgrade",
-                        "0057_professional_portal"], env=environment, check=True)
-    if migrated_version(raw) != "0057_professional_portal":
-        raise RuntimeError("professional_portal_schema_not_published")
-    from scripts.backup_and_migrate_registration import portal_schema_ready
-    if not portal_schema_ready(raw):
-        raise RuntimeError("professional_portal_security_contract_invalid")
-    print("professional_portal_schema_ready", flush=True)
+                        "0058_professional_access_hardening"], env=environment, check=True)
+    if migrated_version(raw) != "0058_professional_access_hardening":
+        raise RuntimeError("professional_hardening_schema_not_published")
+    from scripts.backup_and_migrate_registration import (
+        portal_schema_ready, professional_hardening_schema_ready,
+    )
+    if not portal_schema_ready(raw) or not professional_hardening_schema_ready(raw):
+        raise RuntimeError("professional_hardening_security_contract_invalid")
+    print("professional_hardening_schema_ready", flush=True)
 
 
 if __name__ == "__main__":

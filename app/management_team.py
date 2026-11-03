@@ -144,7 +144,8 @@ async def team(tenant_id: UUID, actor: Actor = Depends(authenticate)):
             WHERE i.tenant_id=:tenant
             ORDER BY i.created_at DESC LIMIT 100"""), {"tenant": tenant_id})).mappings().all() if manage else []
         present = (await db.execute(text("SELECT to_regclass('public.professional_portal_links')"))).scalar_one() if manage else None
-        professional_access = (await db.execute(text("""SELECT tenant_id,professional_id,email,account_id,active,updated_at
+        professional_access = (await db.execute(text("""SELECT tenant_id,professional_id,email,account_id,active,updated_at,
+                   can_manage_owner_blocks
             FROM professional_portal_links WHERE tenant_id=:tenant ORDER BY professional_id"""),
             {"tenant":tenant_id})).mappings().all() if present is not None else []
         return {"professional_access": [dict(row) for row in professional_access],
@@ -282,8 +283,13 @@ async def preview(payload: InvitationToken, request: Request, response: Response
     response.headers["Cache-Control"] = "no-store"
     async with support_session_factory()() as db:
         row = await token_row(db, payload.token)
+        status=row["status"]
+        if status=="approved" and row["role"]=="professional":
+            from app.professional_invites import approved_invitation_is_active
+            if not await approved_invitation_is_active(db,row):
+                status="revoked"
         return {"business_name": row["business_name"], "role": row["role"], "expires_at": row["expires_at"],
-                "status": row["status"], "email_bound": bool(row["email"]), "requires_owner_approval": row["role"] != "professional"}
+                "status": status, "email_bound": bool(row["email"]), "requires_owner_approval": row["role"] != "professional"}
 
 
 @invitation_router.post("/accept")

@@ -151,3 +151,18 @@ test('an unavailable code queue keeps the user on the invitation without automat
   assert.equal(h.calls.filter(c=>c.path==='/auth/verify/resend').length,1);
   assert.equal(h.window.location.hash,'#token='+invitation);
 });
+
+
+test('revoked approved professional invitation never offers login, OTP or accept again',async t=>{
+ const h=await setup(t,{verified:true,respond:path=>
+   path.endsWith('/preview')?{business_name:'Barbearia sintética',
+     role:'professional',expires_at:'2030-01-01T12:00:00Z',
+     status:'revoked',email_bound:true,requires_owner_approval:false}:undefined});
+ assert.match(h.document.getElementById('inviteMessage').textContent,/Acesso revogado/);
+ assert.equal(h.document.getElementById('inviteAccept').hidden,true);
+ assert.equal(h.document.getElementById('inviteVerifyForm').hidden,true);
+ assert.equal(h.document.getElementById('inviteLogin').hidden,true);
+ h.click('inviteAccept');await flush();
+ assert.equal(h.calls.some(c=>c.path.endsWith('/accept')),false);
+ assert.equal(h.errors.length,0);
+});

@@ -66,6 +66,15 @@ async def individual_access(actor: Actor):
             yield tenant, professional
 
 
+async def may_manage_company_blocks(tenant, professional, account_id):
+    """Only an owner-authorized override may remove company-origin blocks."""
+    async with support_session_factory()() as db:
+        return bool((await db.execute(text("""SELECT can_manage_owner_blocks
+            FROM professional_portal_links WHERE tenant_id=:t
+            AND professional_id=:p AND account_id=:a AND active"""),
+            {"t":tenant,"p":professional,"a":account_id})).scalar_one_or_none())
+
+
 async def profile(db, tenant, professional):
     row = (await db.execute(text("""SELECT p.id,p.name,p.specialty,p.active,
         t.name AS business_name,t.timezone FROM professionals p JOIN tenants t
@@ -150,10 +159,15 @@ async def my_agenda(day: date | None = None, actor: Actor = Depends(authenticate
                     ORDER BY start_at,id LIMIT 150"""),
                     {"t":tenant,"p":professional,"lo":lower,"hi":upper})).scalars().all()
                 details = await read_appointments(db,tenant,list(ids))
-                blocks = (await db.execute(text("""SELECT id,starts_at,ends_at,reason FROM schedule_blocks
+                permission=await may_manage_company_blocks(tenant,professional,actor.account_id)
+                blocks = (await db.execute(text("""SELECT id,starts_at,ends_at,reason,origin,
+                      (origin='professional' AND created_by_account_id=:actor
+                       OR :permission) AS can_remove
+                    FROM schedule_blocks
                     WHERE tenant_id=:t AND professional_id=:p AND starts_at<:hi AND ends_at>:lo
                     ORDER BY starts_at,id LIMIT 100"""),
-                    {"t":tenant,"p":professional,"lo":lower,"hi":upper})).mappings().all()
+                    {"t":tenant,"p":professional,"actor":actor.account_id,
+                     "permission":permission,"lo":lower,"hi":upper})).mappings().all()
                 return {"date":chosen,"appointments":[project_appointment(r) for r in details],
                         "blocks":[dict(b) for b in blocks]}
 
@@ -174,8 +188,9 @@ async def my_finance(month: str | None = Query(default=None,pattern=r"^\d{4}-(0[
                 if abs((first-today).days)>400:
                     raise HTTPException(422,"Mês fora do período permitido")
                 last = (first.replace(day=28)+timedelta(days=4)).replace(day=1)-timedelta(days=1)
-                report = await management.commission_report(db,tenant,first,last)
-                mine = next((x for x in report["items"] if x["id"]==professional),None)
+                report = await management.commission_report(
+                    db,tenant,first,last,professional_id=professional)
+                mine = report["items"][0] if report["items"] else None
                 # Never include other professionals, company totals, expenses or transfers.
                 return {"professional":p["name"],"period":report["period"],
                     "summary":{key:mine.get(key,0) if mine else 0 for key in (
@@ -319,11 +334,11 @@ async def create_my_block(payload: BlockRequest, actor: Actor = Depends(authenti
                     {"t":tenant,"p":professional,"start":start,"end":end})).scalar_one_or_none()
                 if overlap: raise HTTPException(409,"Horário já bloqueado")
                 row=(await db.execute(text("""INSERT INTO schedule_blocks
-                    (id,tenant_id,professional_id,starts_at,ends_at,reason)
-                    VALUES(:id,:t,:p,:start,:end,:reason)
-                    RETURNING id,starts_at,ends_at,reason"""),
+                    (id,tenant_id,professional_id,starts_at,ends_at,reason,origin,created_by_account_id)
+                    VALUES(:id,:t,:p,:start,:end,:reason,'professional',:actor)
+                    RETURNING id,starts_at,ends_at,reason,origin"""),
                     {"id":identity,"t":tenant,"p":professional,"start":start,
-                     "end":end,"reason":payload.reason})).mappings().one()
+                     "end":end,"reason":payload.reason,"actor":actor.account_id})).mappings().one()
                 await management.audit(db,tenant,"professional_block_created","schedule_blocks",identity)
                 return dict(row)
 
@@ -336,10 +351,16 @@ async def remove_my_block(block_id: UUID, actor: Actor = Depends(authenticate)):
                 await profile(db,tenant,professional)
                 await require_feature(db,tenant,"agenda.manage")
                 await acquire_professional_lock(db,tenant,professional)
+                owner_override=await may_manage_company_blocks(
+                    tenant,professional,actor.account_id)
                 result=(await db.execute(text("""DELETE FROM schedule_blocks
-                    WHERE tenant_id=:t AND professional_id=:p AND id=:id RETURNING id"""),
-                    {"t":tenant,"p":professional,"id":block_id})).scalar_one_or_none()
-                if result is None: raise HTTPException(404,"Bloqueio não encontrado")
+                    WHERE tenant_id=:t AND professional_id=:p AND id=:id
+                    AND ((origin='professional' AND created_by_account_id=:actor)
+                         OR :override)
+                    RETURNING id"""),
+                    {"t":tenant,"p":professional,"id":block_id,
+                     "actor":actor.account_id,"override":owner_override})).scalar_one_or_none()
+                if result is None: raise HTTPException(404,"Bloqueio não encontrado ou protegido pela empresa")
                 await management.audit(db,tenant,"professional_block_removed","schedule_blocks",block_id)
                 return {"ok":True}
 

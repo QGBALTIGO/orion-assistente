@@ -121,3 +121,47 @@ def test_portal_has_no_broad_data_endpoints():
     assert "/tenants/" not in ui
     assert "data-page=" in ui
     assert "professional_portal_links" in (BASE/"alembic"/"versions"/"0057_professional_portal.py").read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_professional_commission_queries_are_sql_scoped_not_filtered_after_fetch(monkeypatch):
+    from datetime import date, datetime, timezone
+    from app import management_models
+    professional,tenant=uuid4(),uuid4()
+    stamp=datetime(2026,11,1,tzinfo=timezone.utc)
+    async def fake_period(*_):
+        return ({"start_date":date(2026,11,1),"end_date":date(2026,11,30),
+                 "timezone":"America/Campo_Grande"},stamp,datetime(2026,12,1,tzinfo=timezone.utc))
+    monkeypatch.setattr(management_models,"period_for",fake_period)
+    class Rows:
+        def mappings(self):return self
+        def all(self):return []
+    class DB:
+        def __init__(self):self.statements=[]
+        async def execute(self,query,params):
+            self.statements.append((str(query),dict(params)))
+            return Rows()
+    scoped=DB()
+    result=await management_models.commission_report(
+        scoped,tenant,date(2026,11,1),date(2026,11,30),
+        professional_id=professional)
+    assert result["items"]==[]
+    assert len(scoped.statements)==3
+    assert "p.id=:professional_id" in scoped.statements[0][0]
+    assert "a.professional_id=:professional_id" in scoped.statements[1][0]
+    assert "professional_id=:professional_id" in scoped.statements[2][0]
+    assert all(parameters["professional_id"]==professional for _,parameters in scoped.statements)
+    global_report=DB()
+    await management_models.commission_report(
+        global_report,tenant,date(2026,11,1),date(2026,11,30))
+    assert all("professional_id=:professional_id" not in q for q,_ in global_report.statements)
+
+
+def test_0058_schema_migration_has_fail_closed_constraints():
+    sql=(BASE/"alembic"/"versions"/"0058_professional_access_hardening.py").read_text(encoding="utf-8")
+    assert "uq_professional_portal_email UNIQUE(tenant_id,email)" in sql
+    assert "origin='professional' AND created_by_account_id IS NOT NULL" in sql
+    assert "can_manage_owner_blocks boolean NOT NULL DEFAULT false" in sql
+    source=(BASE/"app"/"professional_portal.py").read_text(encoding="utf-8")
+    assert "created_by_account_id=:actor" in source
+    assert "OR :override" in source

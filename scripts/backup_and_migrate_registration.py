@@ -137,6 +137,36 @@ def portal_schema_ready(raw):
         engine.dispose()
 
 
+def professional_hardening_schema_ready(raw):
+    """Read-only proof that owner blocks and professional email are isolated."""
+    engine=create_engine(raw,poolclass=NullPool,connect_args={
+        'options':'-c default_transaction_read_only=on -c statement_timeout=10000'})
+    try:
+        with engine.connect() as db:
+            flags=db.execute(text("""SELECT
+                EXISTS(SELECT 1 FROM information_schema.columns WHERE
+                    table_schema='public' AND table_name='schedule_blocks'
+                    AND column_name='origin' AND column_default IS NOT NULL),
+                EXISTS(SELECT 1 FROM information_schema.columns WHERE
+                    table_schema='public' AND table_name='schedule_blocks'
+                    AND column_name='created_by_account_id'),
+                EXISTS(SELECT 1 FROM information_schema.columns WHERE
+                    table_schema='public' AND table_name='professional_portal_links'
+                    AND column_name='can_manage_owner_blocks'
+                    AND column_default='false'),
+                EXISTS(SELECT 1 FROM pg_constraint WHERE conname='ck_schedule_block_origin'
+                    AND conrelid='public.schedule_blocks'::regclass AND convalidated),
+                EXISTS(SELECT 1 FROM pg_constraint WHERE conname='uq_professional_portal_email'
+                    AND conrelid='public.professional_portal_links'::regclass
+                    AND contype='u' AND convalidated),
+                (SELECT relrowsecurity AND relforcerowsecurity
+                    FROM pg_class WHERE oid='public.professional_portal_links'::regclass)
+            """)).one()
+            return tuple(flags)==(True,True,True,True,True,True)
+    finally:
+        engine.dispose()
+
+
 def predeploy_main():
     """Preserve the Railway predeploy command and use only reviewed migrations.
 
@@ -176,6 +206,14 @@ def predeploy_main():
     try:
         raw, _url = connection_values()
         current = migrated_version(raw)
+        if current == '0058_professional_access_hardening':
+            if (combo_duration.schema_ready(raw) and short_links.schema_ready(raw)
+                    and one_click_schema_ready(raw) and portal_schema_ready(raw)
+                    and professional_hardening_schema_ready(raw)):
+                print('orion_professional_0058_schema_verified',flush=True)
+                return 0
+            print('orion_professional_0058_schema_invalid',file=sys.stderr)
+            return 3
         if current == '0057_professional_portal':
             if (combo_duration.schema_ready(raw) and short_links.schema_ready(raw)
                     and one_click_schema_ready(raw) and portal_schema_ready(raw)):

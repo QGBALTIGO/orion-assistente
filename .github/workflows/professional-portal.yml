@@ -13,6 +13,7 @@ on:
       - 'app/static/orion-suite.js'
       - 'app/static/orion-invite.*'
       - 'alembic/versions/0057_professional_portal.py'
+      - 'alembic/versions/0058_professional_access_hardening.py'
       - 'scripts/predeploy_one_click_links.py'
       - 'scripts/backup_and_migrate_registration.py'
       - 'tests/unit/test_professional_portal.py'
@@ -99,11 +100,17 @@ jobs:
           from sqlalchemy import create_engine, text
           db=create_engine(os.environ['MIGRATION_DATABASE_URL'])
           with db.connect() as session:
-              assert session.execute(text("SELECT version_num FROM alembic_version")).scalar_one()=='0057_professional_portal'
+              assert session.execute(text("SELECT version_num FROM alembic_version")).scalar_one()=='0058_professional_access_hardening'
               assert session.execute(text("""SELECT relrowsecurity AND relforcerowsecurity
                   FROM pg_class WHERE oid='public.professional_portal_links'::regclass""")).scalar_one()
               assert session.execute(text("""SELECT has_table_privilege('app_support','public.professional_portal_links','SELECT,INSERT,UPDATE')""")).scalar_one()
               assert not session.execute(text("""SELECT has_table_privilege('app_runtime','public.professional_portal_links','SELECT')""")).scalar_one()
+              assert session.execute(text("""SELECT EXISTS(SELECT 1 FROM pg_constraint
+                  WHERE conrelid='public.professional_portal_links'::regclass
+                  AND conname='uq_professional_portal_email' AND convalidated)""")).scalar_one()
+              assert session.execute(text("""SELECT EXISTS(SELECT 1 FROM pg_constraint
+                  WHERE conrelid='public.schedule_blocks'::regclass
+                  AND conname='ck_schedule_block_origin' AND convalidated)""")).scalar_one()
           db.dispose()
           PY
       - name: Convite verdadeiro com contas sinteticas, isolamento e revogacao
