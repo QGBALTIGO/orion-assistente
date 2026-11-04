@@ -18,7 +18,7 @@ import threading
 from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import uuid4
 
-from playwright.sync_api import expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, expect
 import pytest
 
 from app import subscription_chatbot_rules as rules_engine
@@ -503,7 +503,11 @@ def test_library_forms_private_preview_crud_and_existing_chatbot_simulator(brows
 
 
 def test_real_synthetic_media_decodes_and_document_download_is_explicit(browser, fixture_url):
+    engine, _ = browser
     context, page, external, errors = setup(browser, fixture_url)
+    console_errors, failed_requests = [], []
+    page.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
+    page.on("requestfailed", lambda request: failed_requests.append({"url": request.url, "failure": request.failure}))
     try:
         page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=elite&aba=templates")
         expect(page.locator("[data-st-count]")).to_have_text("0 / 100 templates")
@@ -518,7 +522,30 @@ def test_real_synthetic_media_decodes_and_document_download_is_explicit(browser,
             card(page, "Mídia " + kind).locator('[data-st-action="preview"]').click()
             element = "img" if kind == "sticker" else "audio" if kind == "audio" else "video"
             expect(page.locator("[data-st-preview] " + element)).to_have_attribute("src", re.compile("^blob:"))
-            page.wait_for_function("kind=>{const root=document.querySelector('[data-st-preview]');if(kind==='sticker'){const image=root?.querySelector('img');return image?.complete&&image.naturalWidth===512;}const media=root?.querySelector(kind==='audio'?'audio':'video');return media?.readyState>=1&&media.duration>0&&(kind!=='ptv'||media.videoWidth===512);}", arg=kind)
+            try:
+                page.wait_for_function("kind=>{const root=document.querySelector('[data-st-preview]');if(kind==='sticker'){const image=root?.querySelector('img');return image?.complete&&image.naturalWidth===512;}const media=root?.querySelector(kind==='audio'?'audio':'video');return media?.readyState>=1&&media.duration>0&&(kind!=='ptv'||media.videoWidth===512);}", arg=kind)
+            except PlaywrightTimeoutError as error:
+                diagnostics = {"engine": engine, "kind": kind, "console_errors": console_errors,
+                    "failed_requests": failed_requests, "external_requests": external, "page_errors": errors,
+                    "player": page.evaluate("""kind => {
+                        const root=document.querySelector('[data-st-preview]');
+                        const node=root?.querySelector(kind==='sticker'?'img':kind==='audio'?'audio':'video');
+                        const video=document.createElement('video'),audio=document.createElement('audio');
+                        return {src:node?.getAttribute('src'),currentSrc:node?.currentSrc,
+                            readyState:node?.readyState,networkState:node?.networkState,
+                            duration:Number.isFinite(node?.duration)?node.duration:String(node?.duration),
+                            error:node?.error?{code:node.error.code,message:node.error.message}:null,
+                            complete:node?.complete,naturalWidth:node?.naturalWidth,
+                            videoWidth:node?.videoWidth,videoHeight:node?.videoHeight,
+                            mp3Support:audio.canPlayType('audio/mpeg'),
+                            h264Support:video.canPlayType('video/mp4; codecs="avc1.42E01E"'),
+                            previewText:root?.textContent};
+                    }""", kind)}
+                ARTIFACTS.mkdir(parents=True, exist_ok=True)
+                (ARTIFACTS / f"{engine}-{kind}-decode-failure.json").write_text(
+                    json.dumps(diagnostics, ensure_ascii=False, indent=2), encoding="utf-8")
+                page.screenshot(path=str(ARTIFACTS / f"{engine}-{kind}-decode-failure.png"), animations="disabled")
+                raise AssertionError("Synthetic media did not decode: " + json.dumps(diagnostics, ensure_ascii=False)) from error
             if kind == "audio":
                 expect(page.locator("[data-st-preview]")).to_contain_text("Legenda enviada depois do áudio")
                 expect(page.locator("[data-st-preview]")).to_contain_text("Mensagem depois do áudio")

@@ -56,8 +56,8 @@ O processo de inspeção aceita até **10.000.000 bytes**, **20.000 objetos**,
 streams decodificados pelo parser têm limite de **20.000.000 bytes**. No Linux,
 o processo tem limites de **384 MiB de espaço de endereçamento**, **5 segundos
 de CPU** e **10 segundos de tempo total**. Os bytes do documento não são
-reescritos. PDFs protegidos por senha são recusados porque seu conteúdo não
-pode ser inspecionado por esse fluxo.
+reescritos. Este fluxo aceita PDFs sem criptografia; PDFs criptografados,
+inclusive os protegidos por senha, são recusados.
 
 As regressões usam PDFs completos, com conteúdo, metadados, objetos nulos e
 atualização incremental, além de casos truncados, referências inválidas e
@@ -92,6 +92,33 @@ passaram após esses ajustes. Nenhuma dessas operações enviou mensagens reais.
 
 O PostgreSQL e o WebKit continuam dependentes do CI. Os resultados locais
 não substituem esses gates nem comprovam uma publicação.
+
+A primeira rodada da [PR 251](https://github.com/QGBALTIGO/orion-assistente/pull/251),
+[run 41858318390](https://github.com/QGBALTIGO/orion-assistente/actions/runs/41858318390),
+passou com 1.198 casos Python, 309 da ponte, 226 DOM e 33 WebKit. O PostgreSQL
+teve 145 aprovações e duas divergências nas expectativas: arquivo com conteúdo
+inválido retorna 415, e o ACK terminal não inclui uma lista de efeitos. As
+asserções foram alinhadas ao contrato, mantendo a verificação independente da
+fila vazia e todos os controles de ordem, isolamento e mídia privada.
+
+O Chromium distribuído pelo Playwright não concluiu a decodificação de uma
+mídia; a saída original não identificava o tipo. O cenário agora conserva as
+mesmas exigências e registra o estado/erro nativo do player em caso de falha.
+O job passa a verificar os codecs e executar com o Chrome oficial, de acordo
+com a [orientação do Playwright para codecs](https://playwright.dev/python/docs/browsers#media-codecs).
+Essa preparação não altera arquivos de mídia nem o código do produto.
+Os gates precisam passar novamente antes da publicação.
+
+A comparação da suíte geral no mesmo código identificou 19 diferenças novas:
+14 ocorrências por ausência de FFmpeg/FFprobe no ambiente geral, a expectativa
+415/422 já corrigida e quatro testes unitários afetados pela ordem de importação.
+O workflow geral agora instala o mesmo decoder exigido pelo runtime. A unidade
+de autorização monta as rotas a partir dos endpoints declarados, preservando
+`Depends(authenticate)`, sem herdar dependências de plano adicionadas globalmente
+por outros testes. A interferência foi reproduzida antes da correção; depois,
+os 99 casos da unidade e as quatro variantes executadas após a inclusão prévia
+dos guards passaram. A integração PostgreSQL mantém o router e os guards reais.
+Não foram removidas asserções nem acrescentadas exclusões de testes.
 
 O workflow `subscription-chatbot.yml` inclui a nova biblioteca e mantém os
 contratos das etapas 01–03: Python, ponte Node, DOM, PostgreSQL 16/Redis 7 e

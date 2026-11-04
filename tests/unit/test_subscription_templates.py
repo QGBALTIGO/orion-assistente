@@ -167,7 +167,13 @@ def test_template_permission_stays_inside_active_subscription_workspace(niche, s
     ("DELETE", f"/{TEMPLATE}"), ("POST", "/assets")])
 async def test_owner_is_checked_before_json_or_base64_decoding(monkeypatch, method, suffix):
     application = FastAPI()
-    application.include_router(api.router)
+    # Isolate the endpoint's owner/body ordering from the shared router's plan
+    # dependency, which app.main may already have attached during collection.
+    # Endpoint-declared authentication still runs; PostgreSQL integration tests
+    # exercise the complete router with its real plan and ownership checks.
+    for route in api.router.routes:
+        if isinstance(route, APIRoute):
+            application.add_api_route(route.path, route.endpoint, methods=route.methods)
     application.dependency_overrides[authenticate] = lambda: OWNER
     calls = []
 

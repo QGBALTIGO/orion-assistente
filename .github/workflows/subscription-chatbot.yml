@@ -280,6 +280,36 @@ jobs:
           # The synthetic server validates the real DTOs and renders a real JPEG.
           python -m pip install -c requirements.lock -r tests/e2e/requirements.txt pytest pytest-asyncio pydantic Pillow
           python -m playwright install --with-deps ${{ matrix.engine }}
+      - name: Chrome oficial para os codecs de midia publicados
+        if: matrix.engine == 'chromium'
+        run: |
+          # Playwright's Chromium does not bundle every licensed media codec.
+          # Test the actual H.264/MP3 contract with Google's official binary.
+          # https://playwright.dev/python/docs/browsers#media-codecs
+          python -m playwright install --with-deps chrome
+          python - <<'PY'
+          import json
+          import os
+          import shutil
+          from playwright.sync_api import sync_playwright
+          executable = shutil.which('google-chrome') or shutil.which('google-chrome-stable')
+          if not executable:
+              raise SystemExit('Official Chrome executable was not installed')
+          with sync_playwright() as playwright:
+              for name, options in [('bundled-chromium', {}), ('official-chrome', {'executable_path': executable})]:
+                  instance = playwright.chromium.launch(**options)
+                  page = instance.new_page()
+                  codecs = page.evaluate('''() => ({
+                      h264: document.createElement('video').canPlayType('video/mp4; codecs="avc1.64001f"'),
+                      mp3: document.createElement('audio').canPlayType('audio/mpeg')
+                  })''')
+                  print(json.dumps({'browser': name, 'version': instance.version, 'codecs': codecs}))
+                  instance.close()
+                  if name == 'official-chrome' and not all(codecs.values()):
+                      raise SystemExit('Official Chrome is missing required H.264/MP3 codecs')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as environment:
+              environment.write('ORION_TEST_CHROMIUM_EXECUTABLE=' + executable + '\n')
+          PY
       - name: Fluxos no painel real - celular, tablet, desktop e dois temas
         run: |
           python -m pytest -q -ra --maxfail=1 \

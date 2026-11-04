@@ -435,7 +435,7 @@ async def test_upload_rejects_cross_tenant_or_wrong_kind_assets_and_enforces_dur
     assert other_tenant.json() == unknown.json()
     wrong_file = await c.client.post(c.templates + "/assets", json=versioned(c, kind="document", filename="documento.pdf",
         content_base64=base64.b64encode(png_bytes()).decode()))
-    assert wrong_file.status_code == 422, wrong_file.text
+    assert_code(wrong_file, 415, "CHATBOT_MEDIA_INVALID")
     too_large = await c.client.post(c.templates + "/assets", json=versioned(c, kind="sticker", filename="figurinha.png",
         content_base64=base64.b64encode(b"x" * 200001).decode()))
     assert too_large.status_code == 413, too_large.text
@@ -627,7 +627,11 @@ async def test_audio_caption_and_followup_are_admitted_only_after_previous_accep
     third, = chat_effects(await accepted(c, second))
     followup = await grant(c, third)
     assert followup["authorized"] and followup["payload"]["action"] == {"type": "text", "text": "Mensagem posterior"}
-    assert chat_effects(await accepted(c, third)) == []
+    # The terminal ACK reports the accepted operation; effects are included
+    # only when a successor becomes available. Check the queue independently.
+    finished = await accepted(c, third)
+    assert finished == {"operation_id": third["operation_id"], "state": "accepted"}
+    assert chat_effects(await pending(c)) == []
 
 
 @pytest.mark.asyncio
