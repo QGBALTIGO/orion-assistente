@@ -109,6 +109,78 @@ O gate Python completo voltou a passar após este ajuste: 1.393 aprovados em
 Esta revisão intermediária não autoriza merge: o próximo head precisa concluir
 todos os gates, incluindo o caso PG preservado.
 
+### Terceira revisão e correção de recuperação antes do merge
+
+O head `e59ddbd7c1ae853b8fdc4cb0cf6dd66532c7de37`, árvore
+`f6f722aa581132713905107fb599ba7e0497ccf4`, foi executado no checkout
+`923633f0fa8ae8022334a8b48c3b6f386db7ed09` pelo workflow `41897526778`.
+Os seis gates específicos passaram: Python 1.393, ponte 375, DOM 281,
+PostgreSQL 244, Chrome 52 e WebKit 52. O caso PG de recibo da empresa pausada
+passou inteiro, sem alterar sua asserção. Os artefatos finais foram conferidos
+por SHA-256 e inspecionados em celular, tablet e desktop.
+
+Na suíte geral, o pytest principal concluiu 8.075 aprovados, 170 falhas,
+43 erros e nove skips. As 213 ocorrências de falha/erro, em 203 IDs únicos,
+coincidem em fase, identidade e multiplicidade com a base publicada; houve
+189 aprovações adicionais. A suíte Node geral concluiu 657 aprovados e as mesmas
+49 falhas históricas. Esses resultados não significam CI geral inteiramente verde.
+
+Fields Chromium apresentou uma ocorrência adicional em
+`test_site_address_slug[chromium-768-1024-dark]`: largura interna 435 px
+para área útil de 432 px, um pixel além da tolerância já existente. Os 13
+arquivos relevantes ao formulário eram idênticos à revisão anterior, na qual
+o mesmo caso passou. Uma única repetição do job, sem alterar código ou teste,
+concluiu 169 aprovados e as mesmas 29 falhas históricas. A primeira ocorrência
+foi preservada; a causa da variação geométrica permanece não comprovada.
+
+O ASR Docker teve quatro testes unitários/API e build aprovados, mas seu smoke
+foi cancelado no limite de 25 minutos. Não houve saída entre a entrada no script
+e o cancelamento. Os mesmos arquivos e imagem base passaram na produção e nas
+duas revisões anteriores; isso não prova a causa do bloqueio. Não foi solicitada
+repetição desse job nesta revisão.
+
+Antes do merge, a revisão da PR identificou um bloqueio funcional na recuperação
+de uma intenção rejeitada por versão antiga: o servidor devolvia 409 sem criar
+registro, mas a UI conservava a chave; após GET 404, a repetição usava novamente
+a mesma versão antiga. O bloqueio foi reproduzido em dois testes DOM, um para
+preparação e outro para proxy. Esta revisão não foi publicada.
+
+A correção adiciona uma evidência de rejeição exclusivamente à comparação de
+versão sob lock, depois de verificar a ausência da chave e antes de inserir.
+Ela vincula motivo, chave, dispositivo, espécie e versão recebida. A interface
+só descarta a intenção se todos esses valores coincidirem e a chamada for de
+admissão; atualiza então o relatório por GET. Erros genéricos, confirmação,
+conflitos posteriores ao dispatch e respostas ambíguas conservam a recuperação.
+As revisões de configuração são monotônicas, e a preparação revalida a versão
+depois do I/O, impedindo que um POST atrasado com a mesma versão antiga crie uma
+intenção após essa rejeição. O contrato detalha os limites desse marcador.
+
+Após o ajuste, os 38 testes DOM de Diagnósticos passaram, incluindo oito novas
+regressões; o gate DOM completo concluiu 289 aprovados. O smoke HTTP real em
+loopback passou seus seis cenários, sem banco, provedor ou envio externo.
+Os três casos unitários de rejeição falharam antes da mudança do backend pela
+ausência do marcador; depois passaram os 121 casos de Diagnósticos (14 novos).
+O gate Python completo concluiu 1.407 aprovados em 59,95 s, com os mesmos seis
+avisos antigos. Foram coletados 51 casos PG funcionais (seis novos), incluindo
+preparação em voo, replay de intenção já admitida e conflito após dispatch.
+O gate PG passa a ter 250 casos; a coleta não substitui sua execução no CI.
+Foram coletados 34 casos de navegador (17 por engine, seis novos em cada);
+o gate dedicado passará a 58 por engine, mas sua execução depende do novo CI.
+Um teste existente de troca de contexto passou a aguardar o GET
+observável de recuperação, em vez de presumir o término do hash assíncrono após
+um número fixo de ciclos. Suas exigências de isolamento e limpeza foram mantidas.
+Uma revisão independente encontrou ainda uma corrida na atualização passiva:
+depois de rejeitar A, sua consulta atrasada poderia executar o cleanup enquanto
+o usuário confirmava uma nova intenção B. O contador de leitura descartava o
+relatório antigo, mas o `finally` antigo liberava os botões de B. Um teste
+determinístico reproduziu esse estado. O cleanup agora exige que a intenção
+pendente ainda seja a mesma da mutação. O teste passou mantendo os botões
+desabilitados, o evento de cancelamento prevenido, a chave de B e um único POST
+de confirmação. O gate DOM final concluiu **290 aprovados** (39 de Diagnósticos)
+em 11,06 s; backend, PostgreSQL e browsers permaneceram inalterados neste ajuste.
+O próximo head deve concluir novamente todos os gates; nenhuma evidência de
+revisão intermediária substitui essa qualificação.
+
 ## Gates obrigatórios do CI
 
 O workflow `subscription-chatbot.yml` inclui os seis grupos anteriores e os

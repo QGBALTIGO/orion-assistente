@@ -82,12 +82,15 @@ class Handler(ChatbotHandler):
         return (session and session["workspace_profile"] == "subscription_services"
                 and not session["chatbot_readonly"] and not session["dg_revoked"])
 
-    def error(self, code, status=409):
-        return self.body({"detail": {"code": code, "message": {
+    def error(self, code, status=409, *, rejection=None):
+        detail = {"code": code, "message": {
             "DIAGNOSTIC_NOT_FOUND": "Diagnóstico não encontrado.",
             "DIAGNOSTIC_CONTEXT_CHANGED": "O dispositivo mudou. Atualize antes de continuar.",
             "WORKSPACE_FEATURE_UNAVAILABLE": "O acesso aos diagnósticos foi revogado.",
-        }.get(code, "Não foi possível concluir a consulta sintética.")}}, status)
+        }.get(code, "Não foi possível concluir a consulta sintética.")}
+        if rejection is not None:
+            detail["rejection"] = rejection
+        return self.body({"detail": detail}, status)
 
     def do_GET(self):
         url, session = urlsplit(self.path), self.session()
@@ -126,8 +129,13 @@ class Handler(ChatbotHandler):
         if session and path == "/__fixture/diagnostics-control" and self.command == "POST":
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
             mode = data["mode"]
-            if mode in {"lost_prepare", "lost_confirm", "lost_proxy", "missing_prepare", "conflict"}:
+            if mode in {"lost_prepare", "lost_confirm", "lost_proxy", "missing_prepare", "missing_proxy",
+                        "conflict", "admitted_conflict", "marked_confirm_conflict"}:
                 session["dg_next"] = mode
+            elif mode == "bump_revision":
+                revision = sha256(session["dg_detail"]["device"]["version"].encode()).hexdigest()
+                session["dg_detail"]["device"]["version"] = revision
+                session["dg_detail"]["proxy"]["configuration_version"] = sha256(("proxy:" + revision).encode()).hexdigest()
             elif mode == "revoke":
                 session["dg_revoked"] = True
             elif mode == "disconnected":
@@ -206,6 +214,13 @@ class Handler(ChatbotHandler):
             session["dg_effects"].append(effect)
             result.update(status="pending", expires_at=stamp(current_time() + timedelta(seconds=120)),
                 message={"effect_id": effect["id"], "status": "pending", "outcome": "pending", "error_code": None, "reason": None})
+            if session["dg_next"] == "marked_confirm_conflict":
+                session["dg_next"] = None
+                # A marker on this endpoint must be ignored by both the real
+                # panel wrapper and controller, even when its identity matches.
+                return self.error("DIAGNOSTIC_CONTEXT_CHANGED", rejection={
+                    "reason": "stale_device_version", "idempotency_key": key, "device_id": DEVICE_ID,
+                    "kind": "message_test", "expected_version": saved["data"]["expected_version"]})
             if session["dg_next"] == "lost_confirm":
                 session["dg_next"] = None
                 return self.error("SYNTHETIC_REPLY_LOST", 503)
@@ -215,8 +230,12 @@ class Handler(ChatbotHandler):
                 return self.error("DIAGNOSTIC_KEY_CONFLICT")
             return self.body({**deepcopy(saved["result"]), "replayed": True}, 201 if prepare else 202)
         if data["expected_version"] != session["dg_detail"]["device"]["version"]:
-            return self.error("DIAGNOSTIC_CONTEXT_CHANGED")
-        if session["dg_next"] == "missing_prepare" and prepare:
+            # Exactly the backend's fenced rejection: no existing key, before
+            # creating an intent or dispatching a synthetic proxy operation.
+            return self.error("DIAGNOSTIC_CONTEXT_CHANGED", rejection={
+                "reason": "stale_device_version", "idempotency_key": key, "device_id": DEVICE_ID,
+                "kind": kind, "expected_version": data["expected_version"]})
+        if session["dg_next"] == ("missing_prepare" if prepare else "missing_proxy"):
             session["dg_next"] = None
             return self.error("SYNTHETIC_REPLY_LOST", 503)
         at = current_time()
@@ -241,6 +260,11 @@ class Handler(ChatbotHandler):
             session["dg_detail"]["proxy"]["last_test"] = {**deepcopy(result["proxy"]),
                 "request_id": result["request_id"], "freshness": "current"}
         session["dg_operations"][key] = {"path": path, "data": deepcopy(data), "result": result}
+        if session["dg_next"] == "admitted_conflict":
+            session["dg_next"] = None
+            # scope can fail after proxy dispatch; this generic 409 carries no
+            # proof that the operation was absent and must retain recovery.
+            return self.error("DIAGNOSTIC_CONTEXT_CHANGED")
         if session["dg_next"] == ("lost_prepare" if prepare else "lost_proxy"):
             session["dg_next"] = None
             return self.error("SYNTHETIC_REPLY_LOST", 503)
@@ -446,6 +470,134 @@ def test_read_only_selection_status_proxy_and_confirmed_message(browser, fixture
         expect(page.locator("[data-dg-field=device]")).to_be_enabled()
         assert not page.evaluate("Boolean(history.state.orionDiagnosticRecovery)")
         assert_layout(page, size[0])
+        assert not errors, errors
+        assert not external, external
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("phase", ["prepare", "proxy"])
+@pytest.mark.parametrize("lost_first", [False, True], ids=["direct", "after-missing-response"])
+def test_stale_version_rejection_releases_only_after_proof_and_never_reposts(browser, fixture_url, phase, lost_first):
+    context, page, external, errors = setup_page(browser, fixture_url)
+    try:
+        open_diagnostics(page, fixture_url)
+        selected(page)
+        entered_phone = "+5567999999903"
+        page.locator("[data-dg-field=phone]").fill(entered_phone)
+        ending = "/prepare" if phase == "prepare" else "/proxy-tests"
+        if lost_first:
+            control(page, fixture_url, "missing_" + phase)
+            with page.expect_response(lambda response: response.request.method == "POST"
+                    and response.url.endswith(ending) and response.status == 503):
+                action(page, "prepare" if phase == "prepare" else "proxy-test").click()
+            expect(page.locator("[data-dg-feedback]")).to_contain_text("Não foi possível confirmar a solicitação")
+            missing = report(page, fixture_url)
+            original, = writes(missing)
+            assert missing["operations"] == missing["effects"] == missing["proxy_calls"] == []
+            assert_private_recovery(page, original["data"]["idempotency_key"], entered_phone)
+            reload_same_session(page)
+            expect(page.locator("[data-dg-operation]")).to_contain_text("não foi encontrada")
+            assert writes(report(page, fixture_url)) == [original]
+            operation_action(page, "recover").click()
+            expect(page.locator("[data-dg-dialog]")).to_have_attribute("data-dg-view", "missing")
+            assert_private_recovery(page, original["data"]["idempotency_key"], entered_phone)
+        control(page, fixture_url, "bump_revision")
+        if lost_first and phase == "prepare":
+            action(page, "repeat-prepare").click()
+            expect(page.locator("[data-dg-field=phone]")).to_be_enabled()
+            page.locator("[data-dg-field=phone]").fill(entered_phone)
+        with page.expect_response(lambda response: response.request.method == "POST"
+                and response.url.endswith(ending) and response.status == 409) as response_info:
+            action(page, "repeat-proxy" if lost_first and phase == "proxy" else
+                   "prepare" if phase == "prepare" else "proxy-test").click()
+        payload = response_info.value.json()
+        expect(page.locator("[data-dg-feedback]")).to_contain_text("solicitação não foi criada")
+        expect(page.locator("[data-dg-field=device]")).to_be_enabled()
+        expect(action(page, "prepare")).to_be_enabled()
+        expect(action(page, "proxy-test")).to_be_enabled()
+        expect(page.locator("[data-dg-field=phone]")).to_have_value("")
+        expect(page.locator("[data-dg-dialog]")).to_have_count(0)
+        expect(page.locator("[data-dg-operation]")).to_have_count(0)
+        assert not page.evaluate("Boolean(history.state.orionDiagnosticRecovery)")
+        rejected = report(page, fixture_url)
+        attempted = writes(rejected)
+        assert len(attempted) == (2 if lost_first else 1)
+        if lost_first:
+            assert attempted[0] == attempted[1]
+        previous = attempted[-1]
+        assert payload["detail"]["code"] == "DIAGNOSTIC_CONTEXT_CHANGED"
+        assert payload["detail"]["rejection"] == {
+            "reason": "stale_device_version", "idempotency_key": previous["data"]["idempotency_key"],
+            "device_id": DEVICE_ID, "kind": "message_test" if phase == "prepare" else "proxy_test",
+            "expected_version": previous["data"]["expected_version"],
+        }
+        last_write = max(i for i, call in enumerate(rejected["calls"]) if call["method"] == "POST")
+        assert [(call["method"], call["path"]) for call in rejected["calls"][last_write + 1:]] == [
+            ("GET", DIAGNOSTICS_BASE), ("GET", DEVICE_PATH)]
+        assert rejected["operations"] == rejected["effects"] == rejected["proxy_calls"] == []
+
+        # Reload must not revive the rejected key. A fresh admission occurs
+        # only after a further deliberate click using the updated report.
+        page.evaluate("history.replaceState(history.state, '', '/panel?aba=diagnosticos&device_id=' + " + json.dumps(DEVICE_ID) + ")")
+        page.reload()
+        expect(page.locator("[data-dg-section=connection]")).to_be_visible()
+        expect(action(page, "prepare")).to_be_enabled()
+        expect(page.locator("[data-dg-operation]")).to_have_count(0)
+        assert not page.evaluate("Boolean(history.state.orionDiagnosticRecovery)")
+        assert writes(report(page, fixture_url)) == attempted
+        action(page, "prepare" if phase == "prepare" else "proxy-test").click()
+        if phase == "prepare":
+            expect(page.locator("[data-dg-dialog]")).to_have_attribute("data-dg-view", "confirm")
+        else:
+            expect(operation_action(page, "acknowledge")).to_be_enabled()
+        admitted = report(page, fixture_url)
+        assert len(writes(admitted)) == len(attempted) + 1
+        new = writes(admitted)[-1]
+        assert new["data"]["idempotency_key"] != previous["data"]["idempotency_key"]
+        assert new["data"]["expected_version"] != previous["data"]["expected_version"]
+        assert len(admitted["operations"]) == 1 and admitted["effects"] == []
+        assert len(admitted["proxy_calls"]) == (1 if phase == "proxy" else 0)
+        assert not errors, errors
+        assert not external, external
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("phase", ["proxy", "confirm"])
+def test_conflict_after_admission_keeps_http_recovery_and_never_repeats(browser, fixture_url, phase):
+    context, page, external, errors = setup_page(browser, fixture_url)
+    try:
+        open_diagnostics(page, fixture_url)
+        selected(page)
+        if phase == "confirm":
+            action(page, "prepare").click()
+            expect(page.locator("[data-dg-dialog]")).to_have_attribute("data-dg-view", "confirm")
+        control(page, fixture_url, "marked_confirm_conflict" if phase == "confirm" else "admitted_conflict")
+        ending = "/confirm" if phase == "confirm" else "/proxy-tests"
+        with page.expect_response(lambda response: response.request.method == "POST"
+                and response.url.endswith(ending) and response.status == 409) as response_info:
+            action(page, phase if phase == "confirm" else "proxy-test").click()
+        payload = response_info.value.json()
+        assert ("rejection" in payload["detail"]) == (phase == "confirm")
+        expect(page.locator("[data-dg-feedback]")).to_contain_text("contexto do dispositivo mudou")
+        admitted = report(page, fixture_url)
+        before = writes(admitted)
+        key = before[-1]["data"]["idempotency_key"]
+        assert len(before) == (2 if phase == "confirm" else 1)
+        assert len(admitted["operations"]) == 1
+        assert len(admitted["effects"]) == (1 if phase == "confirm" else 0)
+        assert len(admitted["proxy_calls"]) == (1 if phase == "proxy" else 0)
+        assert_private_recovery(page, key)
+        reload_same_session(page)
+        expect(page.locator("[data-dg-operation]")).to_contain_text(
+            "aguarda o resultado do transporte" if phase == "confirm" else "conexão pelo proxy")
+        recovered = report(page, fixture_url)
+        assert writes(recovered) == before
+        assert len(recovered["operations"]) == 1
+        assert recovered["effects"] == admitted["effects"]
+        assert recovered["proxy_calls"] == admitted["proxy_calls"]
+        assert_private_recovery(page, key)
         assert not errors, errors
         assert not external, external
     finally:

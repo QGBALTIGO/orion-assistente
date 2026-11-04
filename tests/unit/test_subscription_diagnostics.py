@@ -364,6 +364,122 @@ def test_shared_fixture_has_one_key_and_the_fixed_server_text():
     assert FIXTURE["detail_response"]["recent_messages"]["limit"] == 3
 
 
+def intention_request(key, version):
+    raw = json.dumps({"idempotency_key": str(key), "expected_version": version}).encode()
+    async def receive(): return {"type": "http.request", "body": raw, "more_body": False}
+    return Request({"type": "http", "method": "POST", "headers": [(b"content-type", b"application/json")]}, receive)
+
+
+@pytest.fixture
+def admission_boundary(monkeypatch):
+    class AdmissionDB(DB):
+        async def execute(self, query, params=None):
+            if "r.execution_expires_at>" in str(query):
+                self.calls.append((str(query), params))
+                return Rows([context["busy"]])
+            return await super().execute(query, params)
+
+    context = {"db": AdmissionDB(), "row": device(), "reads": 0, "change_during_read": False,
+        "scope_error": None, "busy": False, "locked": False,
+        "live": {"status": "connected", "phone": OWN, "phone_verified": True, "applied_revision": 3}}
+    @asynccontextmanager
+    async def owned(tenant, actor):
+        assert tenant == TENANT and actor == ACTOR and not context["locked"]
+        context["locked"] = True
+        try: yield context["db"]
+        finally: context["locked"] = False
+    async def scoped(db, tenant, identity, actor, **kwargs):
+        assert context["locked"] and db is context["db"] and (tenant, identity, actor) == (TENANT, DEVICE, ACTOR)
+        if context["scope_error"]:
+            raise context["scope_error"]
+        return deepcopy(context["row"]), {"enabled": True}
+    async def read(transport, row):
+        assert not context["locked"]
+        context["reads"] += 1
+        if context["change_during_read"]:
+            context["row"]["revision"] += 1
+        return context["live"]
+    async def forbidden(*args, **kwargs): pytest.fail("A rejected or replayed intention cannot dispatch work")
+    monkeypatch.setattr(api, "owner_transaction", owned)
+    monkeypatch.setattr(api, "scope", scoped)
+    monkeypatch.setattr(api, "read_status", read)
+    monkeypatch.setattr(api.channels, "_bridge_control", forbidden)
+    return context
+
+
+async def admit_intention(kind, version):
+    endpoint = api.prepare_message if kind == "message_test" else api.test_proxy
+    return await endpoint(TENANT, DEVICE, intention_request(KEY, version), Response(), ACTOR)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("point,kind", [("prepare_first", "message_test"), ("prepare_second", "message_test"), ("proxy", "proxy_test")])
+async def test_stale_version_rejection_binds_only_absent_pre_admission_intention(admission_boundary, point, kind):
+    context = admission_boundary
+    version = api.device_version(context["row"])
+    if point == "prepare_second": context["change_during_read"] = True
+    else: context["row"]["revision"] += 1
+    with pytest.raises(HTTPException) as denied:
+        await admit_intention(kind, version)
+    assert denied.value.status_code == 409 and denied.value.detail == {
+        **api.fail("DIAGNOSTIC_CONTEXT_CHANGED").detail,
+        "rejection": {"reason": "stale_device_version", "idempotency_key": str(KEY),
+            "device_id": str(DEVICE), "kind": kind, "expected_version": version}}
+    assert context["reads"] == (1 if point == "prepare_second" else 0)
+    assert context["db"].operation is None and all(sql.startswith("SELECT") for sql, _ in context["db"].calls)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["message_test", "proxy_test"])
+async def test_existing_intention_replays_before_stale_version_can_produce_rejection(admission_boundary, kind):
+    context = admission_boundary
+    version = api.device_version(context["row"])
+    request = {"kind": kind, "device_id": DEVICE, "expected_version": version}
+    if kind == "message_test": request["phone"] = None
+    operation = intention() if kind == "message_test" else proxy_operation()
+    operation["request_fingerprint"] = api.store.fingerprint(request)
+    context["db"].operation = operation
+    context["row"]["revision"] += 1
+    original = deepcopy(operation)
+    result = await admit_intention(kind, version)
+    assert result["replayed"] is True and result["request_id"] == str(REQUEST) and "rejection" not in result
+    assert context["reads"] == 0 and context["db"].operation == original
+    assert all(sql.startswith("SELECT") for sql, _ in context["db"].calls)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind,reason,code", [
+    ("message_test", "scope", "DIAGNOSTIC_CONTEXT_CHANGED"),
+    ("proxy_test", "scope", "DIAGNOSTIC_CONTEXT_CHANGED"),
+    ("proxy_test", "removing", "DIAGNOSTIC_CONTEXT_CHANGED"),
+    ("proxy_test", "not_configured", "PROXY_NOT_CONFIGURED"),
+    ("proxy_test", "busy", "DIAGNOSTIC_BUSY"),
+    ("message_test", "self", "DIAGNOSTIC_SELF_IDENTITY_UNVERIFIED"),
+    ("message_test", "key_conflict", "DIAGNOSTIC_KEY_CONFLICT"),
+    ("proxy_test", "key_conflict", "DIAGNOSTIC_KEY_CONFLICT"),
+])
+async def test_other_rejections_never_claim_absence_of_an_intention(admission_boundary, kind, reason, code):
+    context = admission_boundary
+    if reason == "scope": context["scope_error"] = api.fail("DIAGNOSTIC_CONTEXT_CHANGED")
+    elif reason == "removing": context["row"]["status"] = "removing"
+    elif reason == "busy":
+        context["row"]["settings"]["proxy"]["enabled"] = True
+        context["busy"] = True
+    elif reason == "self": context["live"]["phone_verified"] = False
+    elif reason == "key_conflict": context["db"].operation = intention() if kind == "message_test" else proxy_operation()
+    with pytest.raises(HTTPException) as denied:
+        await admit_intention(kind, api.device_version(context["row"]))
+    assert denied.value.detail["code"] == code and "rejection" not in denied.value.detail
+    assert all(sql.startswith("SELECT") for sql, _ in context["db"].calls)
+
+
+def test_confirmation_context_error_never_claims_an_absent_intention():
+    payload = ConfirmMessage(idempotency_key=KEY, confirmation_version="a"*64, confirmation="ENVIAR")
+    with pytest.raises(HTTPException) as denied:
+        api.confirm_context(intention(), device(revision=4), payload, NOW)
+    assert denied.value.detail["code"] == "DIAGNOSTIC_CONTEXT_CHANGED" and "rejection" not in denied.value.detail
+
+
 def receipt_request(action="receipt", *, method="POST", credential="synthetic-channel-key", channel=CHANNEL):
     return Request({"type": "http", "method": method, "scheme": "https", "server": ("synthetic", 443),
         "path": api.INTERNAL.format(channel_id=channel)+"/proxy/"+action, "query_string": b"",

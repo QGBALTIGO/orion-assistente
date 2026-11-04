@@ -80,6 +80,15 @@ def fail(code, status=409):
     return HTTPException(status, {"code": code, "message": ERRORS.get(code, "Diagnóstico indisponível.")})
 
 
+def stale_device_version(payload, device_id, kind):
+    """Only after a locked lookup proves this intention has not been admitted."""
+    error = fail("DIAGNOSTIC_CONTEXT_CHANGED")
+    error.detail["rejection"] = {"reason": "stale_device_version",
+        "idempotency_key": str(payload.idempotency_key), "device_id": str(device_id),
+        "kind": kind, "expected_version": payload.expected_version}
+    return error
+
+
 def owner_transaction(tenant, actor):
     # write=True enforces the feature and active tenant; this context itself
     # only SELECTs/locks. GET handlers never invoke a mutating service helper.
@@ -390,7 +399,7 @@ async def prepare_message(tenant_id: UUID, device_id: UUID, request: Request, re
             same_intent(existing, row, "message_test", fingerprint)
             return jsonable_encoder(await operation_dto(db, existing, await clock(db), replayed=True))
         if device_version(row) != payload.expected_version:
-            raise fail("DIAGNOSTIC_CONTEXT_CHANGED")
+            raise stale_device_version(payload, device_id, "message_test")
         original = row
     live = await read_status(transport, original)
     async with owner_transaction(tenant_id, actor) as db:
@@ -400,7 +409,7 @@ async def prepare_message(tenant_id: UUID, device_id: UUID, request: Request, re
             same_intent(existing, row, "message_test", fingerprint)
             return jsonable_encoder(await operation_dto(db, existing, await clock(db), replayed=True))
         if device_version(row) != payload.expected_version:
-            raise fail("DIAGNOSTIC_CONTEXT_CHANGED")
+            raise stale_device_version(payload, device_id, "message_test")
         own = verified_self(row, transport, live)
         now, identity = await clock(db), uuid4()
         snapshot = {"phone": payload.phone or own, "recipient_mode": "self" if payload.phone in (None, own) else "explicit",
@@ -514,7 +523,9 @@ async def test_proxy(tenant_id: UUID, device_id: UUID, request: Request, respons
         if existing:
             same_intent(existing, row, "proxy_test", fingerprint)
             return jsonable_encoder(await operation_dto(db, existing, await clock(db), replayed=True))
-        if device_version(row) != payload.expected_version or row["status"] in {"removing", "removed"}:
+        if device_version(row) != payload.expected_version:
+            raise stale_device_version(payload, device_id, "proxy_test")
+        if row["status"] in {"removing", "removed"}:
             raise fail("DIAGNOSTIC_CONTEXT_CHANGED")
         if not row["settings"].get("proxy", {}).get("enabled"):
             raise fail("PROXY_NOT_CONFIGURED")

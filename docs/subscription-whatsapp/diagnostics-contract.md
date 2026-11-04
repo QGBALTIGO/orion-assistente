@@ -102,6 +102,39 @@ preparar explicitamente com a mesma chave. Se a intenção existe, sua recupera�
 dispensa reconstruir qualquer dado privado do navegador. Uma preparação
 expirada permanece expirada; uma intenção nova requer ação explícita.
 
+Há uma exceção limitada para a rejeição definitiva por versão antiga. Depois
+de confirmar, sob os mesmos locks, que a chave ainda não existe, os endpoints
+de preparação e proxy comparam `expected_version` com a versão atual. Somente
+essa divergência devolve HTTP 409 com `detail.code=DIAGNOSTIC_CONTEXT_CHANGED`
+e a evidência vinculada à solicitação:
+
+```json
+{
+  "rejection": {
+    "reason": "stale_device_version",
+    "idempotency_key": "UUID da chave recebida",
+    "device_id": "UUID do dispositivo",
+    "kind": "message_test ou proxy_test",
+    "expected_version": "hash recebido"
+  }
+}
+```
+
+Essa prova permite ao navegador descartar a intenção local, limpar a prévia e
+o telefone e atualizar o relatório por GET. Um novo teste exige outro gesto.
+A interface compara todos os identificadores e a versão com a intenção pendente;
+um marcador ausente, malformado ou incompatível não libera a recuperação.
+O adaptador do painel propaga somente os campos acima, para os dois endpoints
+de admissão. A confirmação nunca usa essa exceção.
+
+A revisão da configuração cresce mesmo quando seus valores anteriores são
+restaurados. Uma preparação atrasada revalida a versão imediatamente antes do
+INSERT. Portanto, após essa rejeição, outra tentativa ainda em voo com a versão
+antiga também não pode criar a intenção. Erros transitórios, `scope` genérico,
+conflitos após dispatch, perda de resposta e GET 404 não fornecem essa prova.
+Eles conservam a chave; uma repetição explícita da mesma chave antiga pode
+receber a rejeição definitiva, mas não é iniciada automaticamente.
+
 ## Operação pública
 
 Campos comuns:

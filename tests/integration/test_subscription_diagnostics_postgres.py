@@ -814,3 +814,120 @@ async def test_paused_tenant_cannot_grant_proxy_network_but_can_preserve_existin
         receipt = await proxy_callback(c, "receipt", {"request_id": operation["request_id"]})
         assert receipt.status_code == 200 and receipt.json()["read_only"] is True, receipt.text
     assert len(c.diag_proxy_dispatches) == 1
+
+
+def stale_rejection(response, c, key, version, kind):
+    rejected(response, 409, "DIAGNOSTIC_CONTEXT_CHANGED")
+    assert response.json()["detail"]["rejection"] == {"reason": "stale_device_version",
+        "idempotency_key": str(key), "device_id": c.device["id"], "kind": kind, "expected_version": version}
+
+
+@pytest.mark.parametrize("kind", ["message_test", "proxy_test"])
+async def test_stale_admission_proves_exact_key_absent_without_creating_work(diagnostic_case, monkeypatch, kind):
+    c = diagnostic_case
+    await setup_device(c, connected=kind == "message_test", proxy=kind == "proxy_test")
+    key, version = uuid4(), await device_version(c)
+    await settings(c, lambda value: value.update(name="Revisão posterior à intenção do navegador"))
+    assert await device_version(c) != version
+    endpoint = prepare if kind == "message_test" else proxy_test
+    reads = list(c.diag_reads)
+    async with no_work(c, monkeypatch, unchanged=True):
+        responses = await asyncio.gather(*(endpoint(c, key=key, version=version) for _ in range(2)))
+        for response in responses:
+            stale_rejection(response, c, key, version, kind)
+        missing = await c.client.get(c.diagnostics + "/requests/" + str(key))
+        rejected(missing, 404, "DIAGNOSTIC_NOT_FOUND")
+        assert "rejection" not in missing.json()["detail"]
+    assert c.diag_reads == reads and not c.diag_proxy_dispatches
+
+
+async def test_inflight_prepare_with_rejected_stale_key_cannot_commit_after_version_change(diagnostic_case, monkeypatch):
+    c = diagnostic_case
+    await setup_device(c)
+    key, version = uuid4(), await device_version(c)
+    entered, resume = asyncio.Event(), asyncio.Event()
+    reads = []
+
+    async def held_status(transport, row):
+        reads.append(row["revision"])
+        entered.set()
+        await asyncio.wait_for(resume.wait(), timeout=20)
+        return await c.diag_status_reader(transport, row)
+
+    monkeypatch.setattr(api, "read_status", held_status)
+    pending = asyncio.create_task(prepare(c, key=key, version=version))
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=20)
+        # This real settings request acquires the same tenant/device locks and
+        # increases revision while the earlier prepare is outside its SQL lock.
+        await settings(c, lambda value: value.update(name="Mudança durante a leitura de status"))
+        assert await device_version(c) != version
+        async with no_work(c, monkeypatch, unchanged=True):
+            stale_rejection(await prepare(c, key=key, version=version), c, key, version, "message_test")
+            resume.set()
+            stale_rejection(await asyncio.wait_for(pending, timeout=20), c, key, version, "message_test")
+            missing = await c.client.get(c.diagnostics + "/requests/" + str(key))
+            rejected(missing, 404, "DIAGNOSTIC_NOT_FOUND")
+        assert len(reads) == 1 and not c.diag_proxy_dispatches
+    finally:
+        resume.set()
+        if not pending.done():
+            pending.cancel()
+        await asyncio.gather(pending, return_exceptions=True)
+
+
+@pytest.mark.parametrize("kind", ["message_test", "proxy_test"])
+async def test_existing_intention_with_old_version_replays_without_rejection_proof(diagnostic_case, monkeypatch, kind):
+    c = diagnostic_case
+    await setup_device(c, connected=kind == "message_test", proxy=kind == "proxy_test")
+    key, version = uuid4(), await device_version(c)
+    endpoint = prepare if kind == "message_test" else proxy_test
+    first = await endpoint(c, key=key, version=version)
+    assert first.status_code == (201 if kind == "message_test" else 202), first.text
+    original = first.json()
+    await settings(c, lambda value: value.update(name="Configuração após admissão da intenção"))
+    assert await device_version(c) != version
+    reads, dispatches = list(c.diag_reads), list(c.diag_proxy_dispatches)
+    async with no_work(c, monkeypatch, unchanged=True):
+        response = await endpoint(c, key=key, version=version)
+        assert response.status_code == first.status_code, response.text
+        replay = response.json()
+        assert replay["request_id"] == original["request_id"] and replay["replayed"] is True
+        assert "rejection" not in replay
+    assert c.diag_reads == reads and c.diag_proxy_dispatches == dispatches
+
+
+async def test_proxy_scope_error_after_admission_never_releases_recovery_key(diagnostic_case, monkeypatch):
+    c = diagnostic_case
+    await setup_device(c, connected=False, proxy=True)
+    key, version = uuid4(), await device_version(c)
+    original_transport = qr_channels._bridge_control
+
+    async def change_policy_after_dispatch(transport, name, method, payload=None):
+        result = await original_transport(transport, name, method, payload)
+        if name == "device/diagnostics/proxy":
+            async with c.ctx.migration.begin() as db:
+                await db.execute(text("UPDATE qr_channels SET allowed_senders=CAST(:senders AS jsonb) WHERE tenant_id=:t AND id=:c"),
+                    {"senders": json.dumps([OTHER_PHONE]), "t": c.tenant, "c": c.row["id"]})
+        return result
+
+    monkeypatch.setattr(qr_channels, "_bridge_control", change_policy_after_dispatch)
+    try:
+        async with no_work(c, monkeypatch, proxy_dispatch=True):
+            response = await proxy_test(c, key=key, version=version)
+        rejected(response, 409, "DIAGNOSTIC_CONTEXT_CHANGED")
+        assert "rejection" not in response.json()["detail"] and len(c.diag_proxy_dispatches) == 1
+    finally:
+        async with c.ctx.migration.begin() as db:
+            await db.execute(text("UPDATE qr_channels SET allowed_senders=CAST(:senders AS jsonb) WHERE tenant_id=:t AND id=:c"),
+                {"senders": json.dumps(c.row["allowed_senders"]), "t": c.tenant, "c": c.row["id"]})
+    identity = c.diag_proxy_dispatches[0]["request_id"]
+    saved = await request_record(c, {"request_id": identity})
+    assert saved["status"] == "pending" and saved["effect_id"] is None
+    async with no_work(c, monkeypatch, unchanged=True, receipts=True):
+        recovered = await recover(c, {"idempotency_key": str(key)})
+        replay = await proxy_test(c, key=key, version=version)
+        assert recovered["request_id"] == identity and recovered["status"] == "pending"
+        assert replay.status_code == 202 and replay.json()["request_id"] == identity
+        assert replay.json()["replayed"] is True and "rejection" not in replay.json()
+    assert len(c.diag_proxy_dispatches) == 1

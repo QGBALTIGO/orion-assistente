@@ -12,6 +12,189 @@ const tenant={id:tenantA,name:'Empresa sintética',role:'owner',timezone:'Americ
 async function prepare(h,phone=''){h.fill(field('phone'),phone);h.submit();await flush();assert.equal(h.element('[data-dg-dialog]').dataset.dgView,'confirm');}
 function crypto(window){Object.defineProperty(window.crypto,'subtle',{value:webcrypto.subtle});window.TextEncoder=TextEncoder;window.eval(source);}
 
+function staleRejection(payload,kind,extra={}) {
+  return Object.assign(failure(409),{code:'DIAGNOSTIC_CONTEXT_CHANGED',diagnosticRejection:{
+    reason:'stale_device_version',idempotency_key:payload.idempotency_key,device_id:device,
+    kind,expected_version:payload.expected_version,...extra,
+  }});
+}
+
+for(const phase of ['prepare','proxy'])test('a marked stale '+phase+' rejection releases the intention and refreshes without another POST',async t=>{
+  const suffix=phase==='prepare'?'/prepare':'/proxy-tests',kind=phase==='prepare'?'message_test':'proxy_test';
+  let attempts=0;
+  const h=await makeDiagnostics({respond(path,method,data,server){
+    if(path.endsWith(suffix)&&++attempts===1){
+      server.data.device.version='b'.repeat(64);server.devices.devices[0].version='b'.repeat(64);
+      throw staleRejection(data,kind);
+    }
+  }});t.after(()=>h.close());
+  h.fill(field('phone'),'+5567999999917');
+  if(phase==='prepare')h.submit();else h.click(action('proxy-test'));
+  await flush();
+  const first=writes(h)[0];assert.equal(writes(h).length,1);
+  assert.equal(h.window.history.state.orionDiagnosticRecovery,undefined);
+  assert.equal(h.document.querySelector('[data-dg-dialog]'),null);
+  assert.equal(h.document.querySelector('[data-dg-operation]'),null);
+  assert.equal(h.element(field('device')).disabled,false);
+  assert.equal(h.element(field('phone')).value,'');
+  assert.equal(h.element(action('prepare')).disabled,false);
+  assert.equal(h.element(action('proxy-test')).disabled,false);
+  assert.match(h.element('[data-dg-feedback]').textContent,/configuração do dispositivo mudou/i);
+  assert.match(h.element('[data-dg-feedback]').textContent,/solicitação não foi criada/i);
+  assert.deepEqual(h.calls.slice(h.calls.indexOf(first)+1).map(call=>[call.method,call.path]),[['GET',base],['GET',base+'/'+device]]);
+  assert.equal(h.server.requests.size,0);assert.equal(confirms(h).length,0);
+  if(phase==='prepare')h.submit();else h.click(action('proxy-test'));
+  await flush();assert.equal(writes(h).length,2);
+  assert.notEqual(writes(h)[1].data.idempotency_key,first.data.idempotency_key);
+  assert.equal(writes(h)[1].data.expected_version,'b'.repeat(64));
+  assert.equal(h.server.requests.size,1);assert.equal(confirms(h).length,0);
+});
+
+test('a late refresh from rejected device A cannot unlock or cancel device B confirmation in flight',async t=>{
+  const second='40000000-0000-4000-8000-000000000002';
+  const secondReport=report({device:{id:second,name:'Segundo dispositivo',version:'c'.repeat(64)}});
+  const lateRead=deferred(),readStarted=deferred(),confirmation=deferred(),confirmStarted=deferred();
+  let firstReads=0,confirmPayload;
+  const h=await makeDiagnostics({devices:listing({devices:[report().device,secondReport.device]}),
+    respond(path,method,data,server){
+      if(method==='GET'&&path===base+'/'+device&&++firstReads===2){readStarted.resolve();return lateRead.promise;}
+      if(method==='GET'&&path===base+'/'+second)return secondReport;
+      if(path===base+'/'+device+'/test-messages/prepare')throw staleRejection(data,'message_test');
+      if(path===base+'/'+second+'/test-messages/prepare'){
+        const value=operation('prepare_response',{device_id:second,idempotency_key:data.idempotency_key});
+        server.requests.set(data.idempotency_key,value);return value;
+      }
+      if(path.startsWith(base+'/'+second+'/test-messages/')&&path.endsWith('/confirm')){
+        confirmPayload=copy(data);confirmStarted.resolve();
+        return confirmation.promise.then(()=>{
+          const value=operation('confirm_response',{device_id:second,idempotency_key:data.idempotency_key,
+            preview:copy(server.requests.get(data.idempotency_key).preview)});
+          server.requests.set(data.idempotency_key,value);return value;
+        });
+      }
+    }});
+  t.after(()=>{lateRead.resolve(report());confirmation.resolve();h.close();});
+  h.submit();await readStarted.promise;await flush();
+  assert.equal(h.window.history.state.orionDiagnosticRecovery,undefined);
+  assert.equal(h.element(field('device')).disabled,false);
+  h.change(field('device'),second);await flush();
+  assert.equal(h.element(field('device')).value,second);
+  assert.match(h.element('[data-dg-section=message]').textContent,/Mensagem de Teste/);
+  await prepare(h);const saved=copy(h.window.history.state.orionDiagnosticRecovery);
+  assert.equal(saved.device_id,second);assert.equal(saved.expected_version,'c'.repeat(64));
+  h.click(action('confirm'));await confirmStarted.promise;await flush();
+  assert.equal(confirms(h).length,1);
+  assert.equal(h.element('[data-dg-dialog]').getAttribute('aria-busy'),'true');
+  lateRead.resolve(report());await flush();
+  assert.equal(h.element('[data-dg-dialog]').getAttribute('aria-busy'),'true');
+  assert.equal(h.element(action('confirm')).disabled,true);
+  assert.equal(h.element(action('cancel')).disabled,true);
+  assert.equal(h.element(field('device')).disabled,true);
+  assert.deepEqual(copy(h.window.history.state.orionDiagnosticRecovery),saved);
+  const cancelEvent=new h.window.Event('cancel',{cancelable:true});
+  h.element('[data-dg-dialog]').dispatchEvent(cancelEvent);h.click(action('cancel'));h.click(action('confirm'));await flush();
+  assert.equal(cancelEvent.defaultPrevented,true);
+  assert.equal(h.element('[data-dg-dialog]').getAttribute('aria-busy'),'true');
+  assert.deepEqual(copy(h.window.history.state.orionDiagnosticRecovery),saved);
+  assert.equal(confirms(h).length,1);assert.equal(confirmPayload.idempotency_key,saved.idempotency_key);
+  confirmation.resolve();await flush();
+  assert.equal(h.element('[data-dg-dialog]').dataset.dgView,'pending');
+  assert.equal(h.element('[data-dg-dialog]').getAttribute('aria-busy'),'false');
+  assert.deepEqual(copy(h.window.history.state.orionDiagnosticRecovery),saved);
+  assert.equal(h.document.querySelector(action('confirm')),null);assert.equal(confirms(h).length,1);
+  assert.equal(writes(h).length,3);assert.equal(h.server.requests.size,1);
+});
+
+for(const phase of ['prepare','proxy'])test('an unproven or mismatched '+phase+' rejection keeps the exact recovery intention',async t=>{
+  const suffix=phase==='prepare'?'/prepare':'/proxy-tests',kind=phase==='prepare'?'message_test':'proxy_test';
+  const changes=[
+    ['generic conflict',error=>{delete error.diagnosticRejection;}],
+    ['timeout',error=>{error.status=0;}],
+    ['server error',error=>{error.status=503;}],
+    ['wrong code',error=>{error.code='DIAGNOSTIC_BUSY';}],
+    ['wrong reason',error=>{error.diagnosticRejection.reason='not_found';}],
+    ['wrong key',error=>{error.diagnosticRejection.idempotency_key=contract.prepare_request.idempotency_key;}],
+    ['wrong device',error=>{error.diagnosticRejection.device_id='40000000-0000-4000-8000-000000000002';}],
+    ['wrong kind',error=>{error.diagnosticRejection.kind=kind==='message_test'?'proxy_test':'message_test';}],
+    ['wrong version',error=>{error.diagnosticRejection.expected_version='f'.repeat(64);}],
+    ['missing version',error=>{delete error.diagnosticRejection.expected_version;}],
+    ['invalid shape',error=>{error.diagnosticRejection=[];}],
+  ];
+  for(const [label,change] of changes){
+    const h=await makeDiagnostics({respond(path,method,data){if(path.endsWith(suffix)){const error=staleRejection(data,kind);change(error);throw error;}}});
+    try{
+      if(phase==='prepare')h.submit();else h.click(action('proxy-test'));
+      await flush();const first=writes(h)[0],saved=copy(h.window.history.state.orionDiagnosticRecovery);
+      assert.equal(saved.idempotency_key,first.data.idempotency_key,label);
+      assert.equal(saved.expected_version,first.data.expected_version,label);
+      assert.equal(h.element(field('device')).disabled,true,label);
+      assert.equal(h.element(action('prepare')).disabled,true,label);
+      assert.equal(h.element(action('proxy-test')).disabled,true,label);
+      assert.equal(writes(h).length,1,label);
+      assert.equal(h.calls.slice(h.calls.indexOf(first)+1).length,0,label);
+      if(phase==='prepare')h.click('[data-dg-dialog] '+action('close'));
+      h.click('[data-dg-operation] '+action('recover'));await flush();
+      assert.equal(h.element('[data-dg-dialog]').dataset.dgView,'missing',label);
+      assert.deepEqual(copy(h.window.history.state.orionDiagnosticRecovery),saved,label);
+      assert.equal(writes(h).length,1,label);
+      assert.equal(h.server.requests.size,0,label);
+    }finally{h.close();}
+  }
+});
+
+for(const phase of ['prepare','proxy'])test('an ambiguous '+phase+' response remains recoverable until an explicit same-key retry proves its stale version',async t=>{
+  const suffix=phase==='prepare'?'/prepare':'/proxy-tests',kind=phase==='prepare'?'message_test':'proxy_test';
+  let attempts=0;
+  const h=await makeDiagnostics({respond(path,method,data,server){
+    if(path.endsWith(suffix)){
+      attempts++;
+      if(attempts===1)throw failure(503);
+      if(attempts===2){server.data.device.version='b'.repeat(64);server.devices.devices[0].version='b'.repeat(64);throw staleRejection(data,kind);}
+    }
+  }});t.after(()=>h.close());
+  if(phase==='prepare')h.submit();else h.click(action('proxy-test'));
+  await flush();const original=copy(writes(h)[0].data),saved=copy(h.window.history.state.orionDiagnosticRecovery);
+  h.click((phase==='prepare'?'[data-dg-dialog] ':'[data-dg-operation] ')+action('recover'));await flush();
+  assert.equal(h.element('[data-dg-dialog]').dataset.dgView,'missing');
+  assert.deepEqual(copy(h.window.history.state.orionDiagnosticRecovery),saved);assert.equal(writes(h).length,1);
+  h.click(action(phase==='prepare'?'repeat-prepare':'repeat-proxy'));
+  if(phase==='prepare'){await flush();h.submit();}
+  await flush();assert.equal(writes(h).length,2);assert.deepEqual(writes(h)[1].data,original);
+  assert.equal(h.window.history.state.orionDiagnosticRecovery,undefined);
+  assert.equal(h.element(field('device')).disabled,false);assert.equal(h.element(action('prepare')).disabled,false);
+  assert.equal(h.element(action('proxy-test')).disabled,false);assert.equal(h.server.requests.size,0);
+  const retry=writes(h)[1];assert.deepEqual(h.calls.slice(h.calls.indexOf(retry)+1).map(call=>[call.method,call.path]),[['GET',base],['GET',base+'/'+device]]);
+});
+
+test('a generic conflict after proxy admission preserves recovery and does not dispatch a second test',async t=>{
+  let dispatches=0;
+  const h=await makeDiagnostics({respond(path,method,data,server){if(path.endsWith('/proxy-tests')){
+    dispatches++;server.requests.set(data.idempotency_key,operation('proxy_response',{idempotency_key:data.idempotency_key}));
+    throw Object.assign(failure(409),{code:'DIAGNOSTIC_CONTEXT_CHANGED'});
+  }}});t.after(()=>h.close());h.click(action('proxy-test'));await flush();
+  const saved=copy(h.window.history.state.orionDiagnosticRecovery);assert.equal(dispatches,1);
+  h.click('[data-dg-operation] '+action('recover'));await flush();
+  assert.equal(h.element('[data-dg-dialog]').dataset.dgView,'result');
+  assert.deepEqual(copy(h.window.history.state.orionDiagnosticRecovery),saved);
+  assert.equal(writes(h).length,1);assert.equal(dispatches,1);assert.equal(h.server.requests.size,1);
+});
+
+test('even an apparently matching stale marker on confirmation cannot discard an admitted message',async t=>{
+  let admitted=0;
+  const h=await makeDiagnostics({respond(path,method,data,server){if(path.endsWith('/confirm')){
+    admitted++;const preview=copy(server.requests.get(data.idempotency_key).preview);
+    server.requests.set(data.idempotency_key,operation('confirm_response',{idempotency_key:data.idempotency_key,preview}));
+    throw staleRejection({...data,expected_version:server.data.device.version},'message_test');
+  }}});t.after(()=>h.close());await prepare(h);const saved=copy(h.window.history.state.orionDiagnosticRecovery);
+  h.click(action('confirm'));await flush();assert.equal(admitted,1);
+  assert.deepEqual(copy(h.window.history.state.orionDiagnosticRecovery),saved);
+  assert.equal(h.element('[data-dg-dialog]').dataset.dgView,'pending');
+  h.click('[data-dg-dialog] '+action('recover'));await flush();
+  assert.equal(h.element('[data-dg-dialog]').dataset.dgView,'pending');
+  assert.equal(h.document.querySelector(action('confirm')),null);
+  assert.equal(confirms(h).length,1);assert.equal(admitted,1);assert.equal(writes(h).length,2);
+});
+
 test('opening diagnostics requires a deliberate device selection and performs only the SQL list read',async t=>{
   const h=await makeDiagnostics({url:'https://orion.test/panel?aba=diagnosticos'});t.after(()=>h.close());
   assert.deepEqual(h.calls.map(c=>[c.method,c.path]),[['GET',base]]);assert.match(h.element('[data-dg-empty]').textContent,/Selecione um dispositivo/);assert.equal(h.document.querySelector('[data-dg-section]'),null);assert.equal(h.element(field('device')).value,'');assert.deepEqual(h.errors,[]);
@@ -152,7 +335,7 @@ test('leaving diagnostics removes only its selected device URL and keeps same-ac
 
 test('account, business and niche changes clear private diagnostics and recovery before the next context',async t=>{
   for(const next of [{user:{role:'member',email:'another@example.invalid'},tenants:[{...tenant,id:tenantB}],tenantId:tenantB},{tenants:[{...tenant,workspace_profile:'standard'}]}]){
-    const saved=recovery();const h=await makeSuite({initialRoute:'diagnosticos',url:selectedURL,permissions,bridge:{tenants:[tenant]},configureWindow:window=>{crypto(window);window.history.replaceState({orionDiagnosticRecovery:saved},'',window.location.href);},respond:path=>path===base?listing():path===base+'/'+device?report():path.includes('/requests/')?operation():defaultResponse(path)});t.after(()=>h.close());await flush();
+    const saved=recovery(),recovered=deferred();const h=await makeSuite({initialRoute:'diagnosticos',url:selectedURL,permissions,bridge:{tenants:[tenant]},configureWindow:window=>{crypto(window);window.history.replaceState({orionDiagnosticRecovery:saved},'',window.location.href);},respond:path=>{if(path.includes('/requests/')){recovered.resolve();return operation();}return path===base?listing():path===base+'/'+device?report():defaultResponse(path);}});t.after(()=>h.close());await recovered.promise;await flush();
     assert.ok(h.document.querySelector('[data-dg-row]'));h.window.OrionSuite.sync(next);await flush();assert.equal(h.window.history.state.orionDiagnosticRecovery,undefined);assert.equal(new URL(h.window.location.href).searchParams.has('device_id'),false);assert.equal(h.document.querySelector('[data-dg-row]'),null);assert.equal(h.document.querySelector('[data-dg-dialog]'),null);assert.doesNotMatch(h.document.querySelector('#page-suite').textContent,/5567999999902|Sua assinatura está ativa/);assert.equal(writes(h).length,0);
   }
 });

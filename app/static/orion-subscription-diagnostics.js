@@ -50,6 +50,12 @@
     return value;
   }
   function recoveryRecord(value) { return object(value)&&uuid(value.tenant_id)&&version(value.account_scope)&&uuid(value.idempotency_key)&&uuid(value.device_id)&&['message_test','proxy_test'].includes(value.kind)&&version(value.expected_version); }
+  function staleRejection(error,intent) {
+    const value=error?.diagnosticRejection;
+    return Number(error?.status)===409&&error.code==='DIAGNOSTIC_CONTEXT_CHANGED'&&object(value)&&value.reason==='stale_device_version'
+      &&value.idempotency_key===intent.idempotency_key&&value.device_id===intent.device_id
+      &&value.kind===intent.kind&&value.expected_version===intent.expected_version;
+  }
   function navigationState() {
     try { const value=history.state?.[historyKey];return recoveryRecord(value)?{[historyKey]:Object.fromEntries(recoveryFields.map(key=>[key,value[key]]))}:{}; } catch { return {}; }
   }
@@ -158,22 +164,30 @@
       const operation=operationDTO(value,pending);state.operation=operation;state.missing=false;state.notice='';state.phone='';state.busy=false;render();if(show)openDialog();else renderDialog();
     }
     function pending(kind) {return {kind,device_id:state.selected,idempotency_key:crypto.randomUUID(),expected_version:state.report.device.version};}
-    async function mutate(intent,suffix,payload,{show=false}={}) {
+    async function mutate(intent,suffix,payload,{show=false,admission=false}={}) {
       if(!writable()||state.busy)return;
       state.pending=intent;state.missing=false;state.retryPreparation=false;state.busy=true;state.notice='Registrando a solicitação…';persist();render();renderDialog();
       try {const value=await request(suffix,'POST',payload);if(!current()||state.pending!==intent)return;receive(value,intent,show);}
       catch(error){if(!current()||state.pending!==intent)return;state.busy=false;
         if([401,403].includes(Number(error?.status))){revoke();state.error=errorMessage(error);render();return;}
+        // Only an identity-bound stale-version rejection proves that neither
+        // this request nor an earlier delayed admission can create the intent.
+        // A generic 409 can also happen after a proxy was already dispatched.
+        if(admission&&staleRejection(error,intent)){
+          state.pending=null;state.operation=null;state.missing=false;state.retryPreparation=false;state.phone='';
+          state.notice='A configuração do dispositivo mudou e esta solicitação não foi criada. Confira os dados atualizados antes de iniciar outro teste.';
+          clearRecovery();closeDialog(true);await load();return;
+        }
         if([400,422].includes(Number(error?.status))&&!state.operation){state.pending=null;clearRecovery();state.notice=errorMessage(error);}
         else{state.operation=null;state.notice=Number(error?.status)>=400&&Number(error?.status)<500?errorMessage(error):'Não foi possível confirmar a solicitação. Consulte o resultado; nenhum novo teste será iniciado automaticamente.';}
         render();if(show&&state.pending)openDialog();else renderDialog();
-      }finally{if(current()){state.busy=false;render();renderDialog();}}
+      }finally{if(current()&&state.pending===intent){state.busy=false;render();renderDialog();}}
     }
     async function prepare(repeat=false) {
       if(!writable()||state.busy||!state.report?.test_message.can_prepare||state.pending&&!repeat)return;
       const intent=repeat?state.pending:pending('message_test');if(!intent||intent.kind!=='message_test'||intent.device_id!==state.selected)return;
       const number=state.phone.trim();state.operation=null;
-      await mutate(intent,'/'+intent.device_id+'/test-messages/prepare',{idempotency_key:intent.idempotency_key,expected_version:intent.expected_version,phone:number||null},{show:true});
+      await mutate(intent,'/'+intent.device_id+'/test-messages/prepare',{idempotency_key:intent.idempotency_key,expected_version:intent.expected_version,phone:number||null},{show:true,admission:true});
     }
     async function confirm() {
       const op=state.operation,intent=state.pending;
@@ -183,7 +197,7 @@
     async function proxyTest(repeat=false) {
       if(!writable()||state.busy||!state.report?.proxy.can_test||state.pending&&!repeat)return;
       const intent=repeat?state.pending:pending('proxy_test');if(!intent||intent.kind!=='proxy_test'||intent.device_id!==state.selected)return;state.operation=null;
-      await mutate(intent,'/'+intent.device_id+'/proxy-tests',{idempotency_key:intent.idempotency_key,expected_version:intent.expected_version});
+      await mutate(intent,'/'+intent.device_id+'/proxy-tests',{idempotency_key:intent.idempotency_key,expected_version:intent.expected_version},{admission:true});
     }
     async function recover(show=true) {
       const intent=state.pending;if(!current()||!intent||state.busy||state.revoked)return;state.busy=true;state.notice='Consultando a solicitação registrada…';state.missing=false;state.retryPreparation=false;render();renderDialog();
