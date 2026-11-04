@@ -117,7 +117,11 @@ def main():
     if result:
         return result
     from scripts.wait_for_subscription_sent_messages_schema import main as sent_messages_wait
-    return sent_messages_wait()
+    result = sent_messages_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_diagnostics_schema import main as diagnostics_wait
+    return diagnostics_wait()
 
 
 if __name__ == "__main__":

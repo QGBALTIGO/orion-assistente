@@ -165,6 +165,8 @@ def test_worker_requires_both_schema_barriers(monkeypatch, manual_result, consen
     from scripts import wait_for_subscription_templates_schema as templates_wait
     from scripts import wait_for_subscription_sent_messages_schema as sent_messages_wait
     monkeypatch.setattr(sent_messages_wait, "main", lambda: 0)
+    from scripts import wait_for_subscription_diagnostics_schema as diagnostics_wait
+    monkeypatch.setattr(diagnostics_wait, "main", lambda: 0)
     monkeypatch.setattr(templates_wait, "main", lambda: 0)
     assert worker_barrier.main()==expected
     assert calls==(["manual"] if manual_result else ["manual","consent"])

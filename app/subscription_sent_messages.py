@@ -280,7 +280,8 @@ def item_dto(row, now, *, detail=False):
         failure = {"code": code if code in FAILURE_MESSAGES else "MESSAGE_OUTCOME_UNCERTAIN" if status == "uncertain" else "MESSAGE_FAILED",
             "message": "Não foi possível confirmar o resultado do envio." if status == "uncertain" else FAILURE_MESSAGES.get(code, "A mensagem não pôde ser enviada.")}
     origin = {"transcription_reply": ("transcription", "Transcrição"), "absence": ("absence", "Fora do horário"),
-              "call_reply": ("call_reply", "Resposta a ligação")}.get(row["purpose"],
+              "call_reply": ("call_reply", "Resposta a ligação"),
+              "diagnostic_test": ("diagnostic_test", "Teste de diagnóstico")}.get(row["purpose"],
               {"test_response": ("test_response", "Teste de resposta"), "owner_command": ("owner_command", "Comando do aparelho")}.get(row.get("run_origin"), ("chatbot", "Chatbot")))
     blocked = row.get("resend_block")
     eligible = blocked is None and status == "failed"
@@ -365,7 +366,8 @@ async def list_messages(tenant_id: UUID, response: Response, actor: Actor = Depe
                 FROM jsonb_array_elements(COALESCE(payload->'action'->'cards','[]'::jsonb)) card),
               message_type,
               CASE purpose WHEN 'chatbot_reply' THEN 'Chatbot' WHEN 'transcription_reply' THEN 'Transcrição'
-                WHEN 'absence' THEN 'Fora do horário' WHEN 'call_reply' THEN 'Resposta a ligação' ELSE '' END,
+                WHEN 'absence' THEN 'Fora do horário' WHEN 'call_reply' THEN 'Resposta a ligação'
+                WHEN 'diagnostic_test' THEN 'Teste de diagnóstico' ELSE '' END,
               CASE run_origin WHEN 'test_response' THEN 'Teste de resposta' WHEN 'owner_command' THEN 'Comando do aparelho' ELSE '' END,
               CASE message_type WHEN 'text' THEN 'texto' WHEN 'list' THEN 'lista' WHEN 'image' THEN 'imagem'
                 WHEN 'sticker' THEN 'figurinha' WHEN 'video' THEN 'vídeo' WHEN 'ptv' THEN 'recado de vídeo'
