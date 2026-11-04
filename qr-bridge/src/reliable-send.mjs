@@ -1,3 +1,4 @@
+import {nativeRelayOptions} from './native-relay-options.mjs';
 /**
  * Generate + cache the EXACT proto.IMessage BEFORE relay.
  * The recipient may issue a Signal retry while relayMessage is still pending.
@@ -21,7 +22,7 @@ export async function sendStoredProtocol({jid,recipientProof,makeMessage,relay,s
   await withVerifiedPilotDevices(recipientProof,async()=>{
     await assertAuthorized();if(!isCurrent())throw Error('chatbot_operation_superseded');
     onRelayAttempt(msg);
-    return relay(jid,msg.message,{messageId:msg.key.id,useUserDevicesCache:isVerifiedPilotLid(recipientProof,jid)});
+    return relay(jid,msg.message,{messageId:msg.key.id,useUserDevicesCache:isVerifiedPilotLid(recipientProof,jid),...nativeRelayOptions(msg.message)});
   });
   return msg;
 }

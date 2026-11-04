@@ -217,7 +217,7 @@ test('settings save exact scoped values, schedule copies and write-only proxy se
   }});t.after(()=>h.close());
   h.click(act('settings'));await flush();
   h.fill(field('name'),'Dispositivo revisado');h.fill(field('test_phone_e164'),'(67) 99999-9901');
-  h.check(field('proxy.enabled'));h.fill(field('proxy.url'),'http://proxy.example.invalid:8080');h.fill(field('proxy.username'),'synthetic-user');
+  h.check(field('proxy.enabled'));h.fill(field('proxy.url'),'https://proxy.example.invalid:8080');h.fill(field('proxy.username'),'synthetic-user');
   h.fill('[data-sd-secret]','synthetic-secret');
   h.check(field('webhook.enabled'));h.fill(field('webhook.url'),'https://hooks.example.invalid/events');
   h.check(field('transcription.enabled'));h.fill(field('transcription.max_minutes'),'30');h.check(field('transcription.reply_enabled'));

@@ -154,7 +154,7 @@ async def setup_device(c, *, connected=True, proxy=False):
     await create(c)
     await settings(c, lambda value: (
         value.update(timezone="America/Cuiaba", test_phone_e164="+5567999999907"),
-        value["proxy"].update(enabled=True, url="http://proxy.example.com:8080",
+        value["proxy"].update(enabled=True, url="https://proxy.example.com:8080",
             username="SYNTHETIC_PRIVATE_PROXY_USER", password="SYNTHETIC_PRIVATE_PROXY_PASSWORD") if proxy else None))
     c.diag_status = "connected" if connected else "stopped"
     if connected:
@@ -626,7 +626,7 @@ async def test_proxy_claim_is_independent_of_whatsapp_and_idempotent_after_respo
         claim, grant = await claim_proxy(c, operation)
         assert grant["claim_fence"] == 1 and 0 < grant["expires_in_ms"] <= 30000
         assert grant["owner"] != str(c.bridge.owner) and grant["kind"] == "proxy_test"
-        assert grant["proxy"]["url"] == "http://proxy.example.com:8080"
+        assert grant["proxy"]["url"] == "https://proxy.example.com:8080"
         assert grant["proxy_secret"] == {"password": "SYNTHETIC_PRIVATE_PROXY_PASSWORD"}
         duplicate = await proxy_callback(c, "authorize", {**claim, "recheck": False})
         assert duplicate.status_code == 200 and duplicate.json()["authorized"] is False
@@ -718,7 +718,7 @@ async def test_proxy_configuration_change_revokes_probe_and_labels_old_receipt(d
     await setup_device(c, connected=False, proxy=True)
     operation = (await proxy_test(c)).json()
     claim, grant = await claim_proxy(c, operation)
-    await settings(c, lambda value: value["proxy"].update(url="http://proxy2.example.com:8080"))
+    await settings(c, lambda value: value["proxy"].update(url="https://proxy2.example.com:8080"))
     async with no_work(c, monkeypatch, unchanged=True):
         rejected(await proxy_callback(c, "authorize", {**claim, "claim_fence": 1, "recheck": True}),
             409, "DIAGNOSTIC_CONTEXT_CHANGED")

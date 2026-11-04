@@ -140,7 +140,7 @@ export async function buildChatbotContent(action,{sdk,loadAsset,prepareCarouselI
       }
       // This is the actual interactive carousel proto. Rendering depends on
       // WhatsApp client capabilities; there is intentionally no text fallback.
-      content={viewOnceMessage:{message:{interactiveMessage:{body:{text:text(action.body,1024)},carouselMessage:{cards,messageVersion:1}}}}};
+      content={interactiveMessage:{body:{text:text(action.body,1024)},carouselMessage:{cards,messageVersion:1}}};
     }else throw invalid();
     await guard();return {content:sdk.proto.Message.fromObject(content),dispose};
   }catch(error){dispose();throw error;}

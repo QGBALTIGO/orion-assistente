@@ -21,12 +21,12 @@ def test_urls_never_accept_private_addresses_credentials_or_non_http(url):
         destination(url)
 
 
-def test_proxy_has_separate_credentials_and_fixed_http_connect_scheme():
-    assert destination("http://proxy.example.com:8080", proxy=True) == "http://proxy.example.com:8080"
-    for url in ("https://proxy.example.com", "http://proxy.example.com/path", "http://proxy.example.com?x=1"):
+def test_proxy_has_separate_credentials_and_tls_connect_scheme():
+    assert destination("https://proxy.example.com:8080", proxy=True) == "https://proxy.example.com:8080"
+    for url in ("http://proxy.example.com", "https://proxy.example.com/path", "https://proxy.example.com?x=1"):
         with pytest.raises(ValueError):
             destination(url, proxy=True)
-    settings = DeviceSettings(proxy={"enabled": True, "url": "http://proxy.example.com:8080",
+    settings = DeviceSettings(proxy={"enabled": True, "url": "https://proxy.example.com:8080",
         "username": "synthetic", "password": "synthetic-password"})
     assert "password" not in settings.model_dump()["proxy"]
     assert "synthetic-password" not in json.dumps(settings.model_dump())

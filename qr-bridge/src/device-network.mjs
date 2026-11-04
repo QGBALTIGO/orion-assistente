@@ -35,7 +35,7 @@ export function isPublicAddress(value){
 export function publicDestination(value,{proxy=false}={}){
   if(typeof value!=='string'||value.length>2048||value!==value.trim()||/[\u0000-\u0020\u007f\\]/.test(value))throw unsafe();
   let url;try{url=new URL(value);}catch{throw unsafe();}
-  if(!(proxy?url.protocol==='http:':['http:','https:'].includes(url.protocol))||url.username||url.password||url.hash||
+  if(url.protocol!=='https:'||url.username||url.password||url.hash||
       (proxy&&(url.search||url.pathname!=='/'))||url.port==='0')throw unsafe();
   const host=bare(url.hostname).toLowerCase();
   if(isIP(host)){if(!isPublicAddress(host))throw unsafe();}
@@ -81,7 +81,7 @@ export async function postDeviceWebhook({url,payload,eventId,signal,isCurrent=()
     };
     try{
       const requestFn=target.url.protocol==='https:'?requestHttps:requestHttp;
-      request=requestFn(target.url,{method:'POST',agent:false,lookup:pinnedLookup,
+      request=requestFn(target.url,{method:'POST',agent:false,minVersion:'TLSv1.2',rejectUnauthorized:true,lookup:pinnedLookup,
         headers:{'Content-Type':'application/json','Content-Length':String(bytes.length),
           'User-Agent':'Orion-Dispositivos/1','X-Orion-Event-Id':eventId}},response=>{
         const status=Number(response.statusCode);
@@ -108,7 +108,8 @@ export async function prepareDeviceProxy(config,{secret,lookup=dnsLookup,signal}
   if(typeof username!=='string'||typeof password!=='string'||username.length>256||password.length>1024||/[\r\n\u0000]/.test(username+password))throw Error('device_proxy_invalid');
   const pinned=new URL(target.url);pinned.hostname=target.family===6?'['+target.address+']':target.address;
   const headers=username||password?()=>({'Proxy-Authorization':'Basic '+Buffer.from(username+':'+password).toString('base64')}):()=>({});
-  return {address:target.address,family:target.family,port:Number(target.url.port||80),url:pinned,headers};
+  return {address:target.address,family:target.family,port:Number(target.url.port||443),url:pinned,headers,
+    servername:isIP(bare(target.url.hostname))?undefined:target.url.hostname};
 }
 
 export async function createDeviceProxy(config,{secret,lookup=dnsLookup,signal,assertCurrent=async()=>{},
@@ -117,7 +118,8 @@ export async function createDeviceProxy(config,{secret,lookup=dnsLookup,signal,a
   if(!target)return {socket:{},download:{},close(){}};
   const {HttpsProxyAgent}=await loadAgent();await assertCurrent();
   if(signal?.aborted)throw Error('device_request_aborted');
-  const agent=new HttpsProxyAgent(target.url,{headers:target.headers,keepAlive:false,timeout:15000});
+  const agent=new HttpsProxyAgent(target.url,{headers:target.headers,keepAlive:false,timeout:15000,
+    servername:target.servername,minVersion:'TLSv1.2',rejectUnauthorized:true});
   return {socket:{agent,fetchAgent:agent,options:{proxy:false,httpsAgent:agent,httpAgent:agent,maxRedirects:0}},
     download:{proxy:false,httpsAgent:agent,httpAgent:agent,maxRedirects:0},close(){agent.destroy();}};
 }

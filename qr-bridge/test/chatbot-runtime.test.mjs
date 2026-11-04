@@ -49,7 +49,7 @@ async function fixture(t){
       sendMessage:()=>assert.fail('No direct or automatic send'),rejectCall:async()=>{},
       waUploadToServer:async()=>({mediaUrl:'https://mmg.whatsapp.net/synthetic',directPath:'/synthetic'}),
       relayMessage:async(jid,proto,options)=>{
-        assert.deepEqual(await config.getMessage({id:options.messageId}),JSON.parse(JSON.stringify(proto,sdk.BufferJSON.replacer),sdk.BufferJSON.reviver));
+        assert.deepEqual(await config.getMessage({id:options.messageId,remoteJid:jid,fromMe:true}),JSON.parse(JSON.stringify(proto,sdk.BufferJSON.replacer),sdk.BufferJSON.reviver));
         const item={jid,proto:sdk.proto.Message.decode(sdk.proto.Message.encode(proto).finish()),id:options.messageId};sends.push(item);await behavior.send(item);
       }};
     const mod={...sdk,default:options=>{config=options;return client;},downloadMediaMessage:async()=>{const buffer=Buffer.from('OggS synthetic');downloads.push(buffer);return buffer;}};
@@ -115,7 +115,7 @@ test('carousel image decoder envelope is unwrapped and every normalized asset re
   f.behavior.finish=async receipt=>{completed.resolve(receipt);return {effects:[]};};
   f.behavior.event=async row=>row.kind==='text'?[action]:[];f.receive('carousel-envelope');const receipt=await completed.promise;
   assert.equal(receipt.operation_id,action.operation_id);assert.equal(receipt.state,'accepted');assert.deepEqual(prepared,[0,1,2]);assert.equal(loaded.length,6);assert.equal(f.sends.length,1);
-  assert.equal(f.sends[0].proto.viewOnceMessage.message.interactiveMessage.carouselMessage.cards.length,3);
+  assert.equal(f.sends[0].proto.interactiveMessage.carouselMessage.cards.length,3);
   assert.ok(raw.every(buffer=>buffer.every(byte=>byte===0)));
 });
 
@@ -131,7 +131,7 @@ test('manual carousel resend uses private frozen images without fetching or prep
   f.behavior.finish=async receipt=>{done.resolve(receipt);return {effects:[]};};
   f.behavior.event=async row=>row.kind==='text'?[action]:[];f.receive('frozen-carousel');
   assert.equal((await done.promise).state,'accepted');assert.equal(loaded.length,6);assert.equal(f.sends.length,1);
-  const cards=f.sends[0].proto.viewOnceMessage.message.interactiveMessage.carouselMessage.cards;
+  const cards=f.sends[0].proto.interactiveMessage.carouselMessage.cards;
   assert.equal(cards.length,3);assert.deepEqual(cards.map(card=>JSON.parse(card.nativeFlowMessage.buttons[0].buttonParamsJson).id),assets.map((_,i)=>'ocb:new-resend-token-'+i));
 });
 

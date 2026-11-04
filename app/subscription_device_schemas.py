@@ -28,7 +28,7 @@ def destination(value, *, proxy=False):
         parts = urlsplit(value)
         port = parts.port
         host = (parts.hostname or "").rstrip(".").lower()
-        if (parts.scheme not in ({"http"} if proxy else {"http", "https"})
+        if (parts.scheme != "https"
                 or not host or parts.username is not None or parts.password is not None
                 or parts.fragment or (port is not None and not 1 <= port <= 65535)
                 or host == "localhost" or host.endswith((".localhost", ".local", ".internal"))
@@ -43,7 +43,7 @@ def destination(value, *, proxy=False):
             if not address.is_global:
                 raise ValueError()
     except (ValueError, TypeError):
-        raise ValueError("Informe uma URL pública, sem usuário ou senha no endereço") from None
+        raise ValueError("Informe uma URL pública HTTPS, sem usuário ou senha no endereço") from None
     # DNS and the actual connected IP are rechecked/pinned by the bridge for
     # every attempt. Validation here never makes a future DNS answer trusted.
     return value
@@ -124,7 +124,7 @@ class Proxy(StrictModel):
     @model_validator(mode="after")
     def complete(self):
         if self.enabled and not self.url:
-            raise ValueError("Informe o endereço HTTP do proxy")
+            raise ValueError("Informe o endereço HTTPS do proxy")
         if self.clear_password and self.password is not None:
             raise ValueError("Escolha substituir ou limpar a senha")
         if self.password is not None and (not self.password or not self.username):

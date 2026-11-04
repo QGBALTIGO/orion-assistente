@@ -31,7 +31,7 @@ function fixture(t){
       else assert.deepEqual({owner:input.owner,claim_token:input.claim_token,claim_fence:input.claim_fence},claimed);
       return behavior.grant({authorized:true,kind:'proxy_test',channel_id:id,tenant_id:tenant,...request,...claimed,
         configuration_version,expires_in_ms:30000-time,expires_at:'2099-01-01T00:00:00.000Z',
-        proxy:{enabled:true,url:'http://proxy.example.com:8080',username:'synthetic-user'},proxy_secret:{password:'synthetic-password'}},input);
+        proxy:{enabled:true,url:'https://proxy.example.com:8080',username:'synthetic-user'},proxy_secret:{password:'synthetic-password'}},input);
     },
     async deviceProxyFinish(channel,secret,input){assert.equal(channel,id);assert.equal(secret,key);finishes.push(input);await behavior.finish();return {recorded:true};}
   };

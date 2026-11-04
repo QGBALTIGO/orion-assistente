@@ -1,3 +1,5 @@
+import {shouldCacheLinkedSelfText} from '../src/retry-capture-policy.mjs';
+import {makeMessageRetryStore} from '../src/message-retry-store.mjs';
 import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl} from '../src/inbound-event.mjs';
 import test,{after} from 'node:test';
 import assert from 'node:assert/strict';
@@ -53,6 +55,7 @@ function harness({transcribe=async()=> 'Synthetic speech',audioEnabled=true,answ
     namesStore,namesSync:{changed(){nameChanges++;}},
     normalizeInbound,updateEvent,callEvent,safetyControl,queueControl,extractText,resolveMessagePhone,shouldIngestUpsert,timestampMs,makeConversationIntake,
     makeAssistantTyping:options=>makeAssistantTyping({...options,...typingConfig}),
+    shouldCacheLinkedSelfText,retryStore:makeMessageRetryStore(),retryDiagnostics:{persistedSelfTexts:0,persistFailures:0},
     pilotNumber:()=>pilotNumber(env),transport:{record:(...args)=>events.push(args)},retryMessages:{save(){}},seen,
     connectedStore:{record(){},settings:()=>({chatbot:false,transcription:false})},
     assistantAudioEnabled:()=>audioEnabled,

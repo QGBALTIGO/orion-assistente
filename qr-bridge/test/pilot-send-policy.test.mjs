@@ -8,9 +8,9 @@ test("approved single pilot uses pre-cached retry and fresh recipient devices",(
  const policy=deliveryPolicy("5567999999999",env);
  assert.deepEqual(policy,{reliable:true,freshDevices:true,pilot:true});
 });
-test("other clients retain the existing sending strategy",()=>{
+test("every client receives the same durable pre-relay protection",()=>{
  assert.deepEqual(deliveryPolicy("5511999999999",env),
-   {reliable:false,freshDevices:false,pilot:false});
+   {reliable:true,freshDevices:true,pilot:false});
 });
 test("disabled or invalid pilot never enables pilot delivery mode",()=>{
  for(const change of [
@@ -31,11 +31,11 @@ test("all booking professional notices require cache before first relay even if 
   assert.equal(requiresPreRelayCache({reliable:true,source}),true);
  }
  for(const source of ['manual','automation','assistant']){
-  assert.equal(requiresPreRelayCache({reliable:false,source}),false);
+  assert.equal(requiresPreRelayCache({reliable:false,source}),true);
   assert.equal(requiresPreRelayCache({reliable:true,source}),true);
  }
- assert.equal(requiresPreRelayCache(),false);
- assert.equal(requiresPreRelayCache({reliable:"true",source:"unknown"}),false);
+ assert.equal(requiresPreRelayCache(),true);
+ assert.equal(requiresPreRelayCache({reliable:"true",source:"unknown"}),true);
 });
 
 test("all appointment cancellations and notices bypass stale device cache without broadening identity",()=>{
@@ -44,7 +44,7 @@ test("all appointment cancellations and notices bypass stale device cache withou
       {source:"appointment"}),{reliable:true,freshDevices:true,pilot:false});
  }
  assert.deepEqual(deliveryPolicy("5511999999999",{...env,QR_AI_ENABLED:"0"},
-    {source:"manual"}),{reliable:false,freshDevices:false,pilot:false});
+    {source:"manual"}),{reliable:true,freshDevices:true,pilot:false});
  assert.deepEqual(deliveryPolicy("5511999999999",{...env,QR_AI_ENABLED:"0"},
-    {source:"automation"}),{reliable:false,freshDevices:false,pilot:false});
+    {source:"automation"}),{reliable:true,freshDevices:true,pilot:false});
 });

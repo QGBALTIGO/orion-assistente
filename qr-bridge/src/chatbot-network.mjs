@@ -60,7 +60,7 @@ async function publicRequest({url,method='GET',body,signal,isCurrent=()=>true,as
     };
     try{
       const requestFn=target.url.protocol==='https:'?requestHttps:requestHttp;
-      request=requestFn(target.url,{method,agent:false,lookup:pinnedLookup,
+      request=requestFn(target.url,{method,agent:false,minVersion:'TLSv1.2',rejectUnauthorized:true,lookup:pinnedLookup,
         headers:{'Accept':accept,'Accept-Encoding':'identity','User-Agent':'Orion-Chatbot/1',
           ...(requestId?{'X-Orion-Operation-Id':requestId}:{}),
           ...(body?{'Content-Type':'application/json','Content-Length':String(body.length)}:{})}},res=>{

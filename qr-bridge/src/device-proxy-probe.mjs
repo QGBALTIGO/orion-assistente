@@ -1,6 +1,6 @@
 /** A configured-proxy TLS probe. It never creates or borrows a WhatsApp socket,
  * follows a redirect, or takes a destination from an API request. */
-import http from 'node:http';
+import https from 'node:https';
 import tls from 'node:tls';
 import {lookup as dnsLookup} from 'node:dns/promises';
 import {performance} from 'node:perf_hooks';
@@ -14,7 +14,7 @@ export const safeProxyError=value=>categories.has(value)?value:undefined;
 export const proxyProbeError=code=>Object.assign(Error(safeProxyError(code)||'PROXY_PROBE_FAILED'),{code:safeProxyError(code)||'PROXY_PROBE_FAILED'});
 
 export async function probeDeviceProxy(config,{secret,signal,assertCurrent=async()=>{},lookup=dnsLookup,
-  requestHttp=http.request,connectTls=tls.connect,now=()=>performance.now(),timeoutMs=10000,onNetworkAttempt=()=>{}}={}){
+  requestHttps=https.request,connectTls=tls.connect,now=()=>performance.now(),timeoutMs=10000,onNetworkAttempt=()=>{}}={}){
   if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>15000)throw proxyProbeError('PROXY_CONFIGURATION_INVALID');
   await assertCurrent();
   if(signal?.aborted)throw proxyProbeError('PROXY_ABORTED');
@@ -45,10 +45,11 @@ export async function probeDeviceProxy(config,{secret,signal,assertCurrent=async
       controller.signal.addEventListener('abort',onAbort,{once:true});
       const authority=(target.family===6?'['+target.address+']':target.address)+':'+PROXY_PROBE_TARGET.port;
       try{
-        // Native bounded HTTP parsing avoids accumulating an unbounded CONNECT
+        // Native bounded HTTPS parsing avoids accumulating an unbounded CONNECT
         // response. The only host used for TCP is the validated proxy IP.
         onNetworkAttempt();
-        request=requestHttp({protocol:'http:',hostname:proxy.address,port:proxy.port,family:proxy.family,
+        request=requestHttps({protocol:'https:',hostname:proxy.address,port:proxy.port,family:proxy.family,
+          servername:proxy.servername,minVersion:'TLSv1.2',rejectUnauthorized:true,
           method:'CONNECT',path:authority,agent:false,maxHeaderSize:8192,insecureHTTPParser:false,
           headers:{Host:authority,...proxy.headers()}});
         request.once('error',()=>finish('PROXY_CONNECT_REFUSED'));

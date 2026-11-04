@@ -30,7 +30,7 @@ async function session(t,{audio=false,assistant=true,typingFactory,notifySelf=fa
     onConnected(){},onDisconnected(){},onReceipt:async()=>{},onMessage:async value=>messages.push(value)};
   const mod={
     default:options=>{config=options;return client;},BufferJSON:{},initAuthCreds:()=>({synthetic:'private-auth',registered}),
-    generateMessageIDV2:()=> 'provider-id',generateWAMessage:async(jid,{text})=>({key:{id:'provider-id',remoteJid:jid},message:{conversation:text}}),
+    generateMessageIDV2:()=> 'provider-id',generateWAMessage:async(jid,{text})=>({key:{id:'provider-id',remoteJid:jid,fromMe:true},message:{conversation:text}}),
     downloadMediaMessage:async()=>Buffer.from('OggS synthetic media'),
     Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},proto:{Message:{AppStateSyncKeyData:{fromObject:v=>v}}}};
   const open=()=>createBaileysChannelSession(context,{now:()=>now,loadBaileys:async()=>mod,intakeOptions:{settleMs:0,maxGroupMs:0},...(typingFactory?{typingFactory}:{}),...(schedule?{schedule,cancel}:{})});
@@ -179,7 +179,7 @@ test('managed connection notice goes only to socket self, caches its exact proto
   s.client.ev.emit('connection.update',{connection:'open'});await flush();assert.equal(timers.length,1);
   await timers.shift()();assert.equal(s.sent.length,1);assert.equal(s.sent[0].jid,self+'@s.whatsapp.net');
   assert.match(s.sent[0].body.conversation,/Dispositivo Conectado/);
-  assert.deepEqual(await s.config.getMessage({id:'provider-id'}),s.sent[0].body);
+  assert.deepEqual(await s.config.getMessage({id:'provider-id',remoteJid:self+'@s.whatsapp.net',fromMe:true}),s.sent[0].body);
   await assert.rejects(s.result.send(self,'cannot send arbitrary self message'));
   s.result.close();const reopened=await s.open();t.after(()=>reopened.close());
   s.client.ev.emit('connection.update',{connection:'open'});await flush();await timers.shift()();
@@ -214,7 +214,7 @@ test('actual socket factory uses per-channel auth and refuses group, self, histo
 test('exact outgoing proto is encrypted before relay and survives a new channel socket',async t=>{
   const s=await session(t);s.client.ev.emit('connection.update',{connection:'open'});
   s.client.relayMessage=async(jid,body,options)=>{
-    assert.equal(jid,phone+'@s.whatsapp.net');assert.deepEqual(await s.config.getMessage({id:options.messageId}),body);
+    assert.equal(jid,phone+'@s.whatsapp.net');assert.deepEqual(await s.config.getMessage({id:options.messageId,remoteJid:jid,fromMe:true}),body);
     s.sent.push({jid,body,options});
   };
   assert.deepEqual(await s.result.send(phone,'private synthetic payload'),{id:'provider-id'});
@@ -222,9 +222,9 @@ test('exact outgoing proto is encrypted before relay and survives a new channel 
   const retryDir=path.join(s.context.directory,'retry-proto');
   assert.equal(fs.readdirSync(retryDir).length,1);
   assert.equal(fs.readFileSync(path.join(retryDir,fs.readdirSync(retryDir)[0])).includes(Buffer.from('private synthetic payload')),false);
-  s.result.close();assert.equal(await s.config.getMessage({id:'provider-id'}),undefined);
+  s.result.close();assert.equal(await s.config.getMessage({id:'provider-id',remoteJid:phone+'@s.whatsapp.net',fromMe:true}),undefined);
   const reopened=await s.open();t.after(()=>reopened.close());
-  assert.deepEqual(await s.config.getMessage({id:'provider-id'}),{conversation:'private synthetic payload'});
+  assert.deepEqual(await s.config.getMessage({id:'provider-id',remoteJid:phone+'@s.whatsapp.net',fromMe:true}),{conversation:'private synthetic payload'});
 });
 
 test('a different channel cannot recover another channels proto even with the same message id',async t=>{
@@ -245,7 +245,7 @@ test('an ambiguous relay is attempted once with the prepared proto retained for 
   const s=await session(t);s.client.ev.emit('connection.update',{connection:'open'});let attempts=0;
   s.client.relayMessage=async()=>{attempts++;throw Error('uncertain relay');};
   await assert.rejects(s.result.send(phone,'one attempt'));assert.equal(attempts,1);
-  assert.deepEqual(await s.config.getMessage({id:'provider-id'}),{conversation:'one attempt'});
+  assert.deepEqual(await s.config.getMessage({id:'provider-id',remoteJid:phone+'@s.whatsapp.net',fromMe:true}),{conversation:'one attempt'});
 });
 
 test('audio records interaction before download/ASR and passes only the bounded transcript',async t=>{
@@ -295,7 +295,7 @@ test('verified LID/device proof belongs to this socket and uses the same reliabl
   s.context.verifiedLid=()=>true;s.client.user={id:self+':4@s.whatsapp.net',lid:'100000000000001:4@lid'};
   s.client.onWhatsApp=async pn=>[{exists:true,jid:pn+'@s.whatsapp.net',lid:'100000000000002@lid'}];s.client.getUSyncDevices=async()=>[];
   await s.result.send(phone,'verified channel');assert.equal(s.sent[0].jid,'100000000000002@lid');assert.equal(s.sent[0].options.useUserDevicesCache,true);
-  assert.deepEqual(await s.config.getMessage({id:'provider-id'}),{conversation:'verified channel'});
+  assert.deepEqual(await s.config.getMessage({id:'provider-id',remoteJid:'100000000000002@lid',fromMe:true}),{conversation:'verified channel'});
 });
 test('verified recipient PN required and lease is rechecked after provider lookup',async t=>{
   const s=await session(t);s.client.ev.emit('connection.update',{connection:'open'});
@@ -355,4 +355,42 @@ test('a single large decorative batch does not discard its final useful message'
  messages.push({key:{id:'bulk-final',fromMe:false,remoteJid:phone+'@s.whatsapp.net'},message:{conversation:'Qual o preço do corte?'},messageTimestamp:100});
  s.client.ev.emit('messages.upsert',{type:'notify',messages});await flush();await flush();
  assert.equal(s.messages.length,1);assert.equal(s.messages[0].text,'Qual o preço do corte?');assert.equal(s.notices.length,1);
+});
+
+test('creds.update immediately followed by close persists updated keys before reconnect',async t=>{
+  const s=await session(t);
+  s.config.auth.creds.registered=true;s.config.auth.creds.nextPreKeyId=733;
+  s.client.ev.emit('creds.update');s.result.close();
+  const reopened=await s.open();t.after(()=>reopened.close());
+  assert.equal(s.config.auth.creds.registered,true);
+  assert.equal(s.config.auth.creds.nextPreKeyId,733);
+});
+
+test('crypto storage does not await a broker roundtrip or lose an accepted key write during close',async t=>{
+  const s=await session(t);
+  s.context.assertCurrent=()=>new Promise(()=>{});
+  const saved=s.config.auth.keys.set({session:{fixture:{ratchet:'accepted'}}});
+  s.result.close();await saved;
+  s.context.assertCurrent=async()=>{};
+  const reopened=await s.open();t.after(()=>reopened.close());
+  assert.deepEqual(await s.config.auth.keys.get('session',['fixture']),{fixture:{ratchet:'accepted'}});
+});
+
+test('managed encrypted key journal restores the whole interrupted batch',async t=>{
+  const s=await session(t),rename=fs.renameSync;
+  const {digest}=await import('../src/channel-storage.mjs');
+  fs.renameSync=(from,to)=>{if(to.endsWith(digest('key:session:second')+'.enc'))throw Error('synthetic disk fault');return rename(from,to);};
+  try{await assert.rejects(s.config.auth.keys.set({session:{first:{ratchet:1},second:{ratchet:2}}}));}
+  finally{fs.renameSync=rename;}
+  assert.equal(s.result.status(),'stopped');
+  const reopened=await s.open();t.after(()=>reopened.close());
+  assert.deepEqual(await s.config.auth.keys.get('session',['first','second']),{first:{ratchet:1},second:{ratchet:2}});
+});
+
+test('managed keys without their identity cannot create a fresh account',async t=>{
+  const s=await session(t);await s.config.auth.keys.set({session:{old:{ratchet:1}}});s.result.close();
+  const {digest}=await import('../src/channel-storage.mjs');
+  fs.unlinkSync(path.join(s.context.directory,'auth',digest('creds')+'.enc'));
+  s.mod.initAuthCreds=()=>assert.fail('must not replace the lost identity');
+  await assert.rejects(s.open(),/channel_auth_unavailable/);
 });

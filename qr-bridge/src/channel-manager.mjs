@@ -1,3 +1,4 @@
+import {makeBoundedCache} from './bounded-cache.mjs';
 import {safetyControl} from './inbound-event.mjs';
 /** Per-channel lifecycle; SQL broker owns the distributed fence, not this Map. */
 import {randomUUID,timingSafeEqual} from 'node:crypto';
@@ -133,7 +134,8 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
     }
     try{
       const session=await createSession({channelId:c.id,tenantId:c.tenant,owner,fence:c.fence,
-        directory:c.directory,secret:c.key,assertCurrent,isCurrent,resumeOnly:c.resumeOnly,
+        directory:c.directory,secret:c.key,assertCurrent,isCurrent,
+        retryCounterCache:c.retryCounterCache||(c.retryCounterCache=makeBoundedCache({max:10000,ttlMs:600000})),resumeOnly:c.resumeOnly,
         notifySelf:!c.device&&!c.resumeOnly&&!c.legacyTransport&&process.env.ORION_NOTIFY_SELF_ON_LINK!=='0',
         newLinkNotice:c.newLinkNotice,
         legacyTransport:c.legacyTransport,
