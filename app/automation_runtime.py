@@ -130,6 +130,14 @@ async def contact_facts(db, tenant, phone):
     return dict(consent) if consent else None, dict(state) if state else None
 
 
+async def newer_historical_service(db, tenant, customer, trigger_at):
+    """A recorded visit cancels an old win-back trigger without creating one."""
+    return bool((await db.execute(text("""SELECT EXISTS (
+        SELECT 1 FROM appointments WHERE tenant_id=:t AND customer_id=:customer
+          AND status='completed' AND booking_mode='retroactive' AND end_at>:trigger
+    )"""), {"t": tenant, "customer": customer, "trigger": trigger_at})).scalar_one())
+
+
 async def queue_notification(db, tenant, settings, preference, customer, event, event_key, facts, labels, *, campaign_id=None):
     if not execution_enabled() or not execution_authorized(settings):
         return False
@@ -151,6 +159,9 @@ async def queue_notification(db, tenant, settings, preference, customer, event, 
     elif rule:
         template = rule["template"]
     else:
+        return False
+    if (event in {"inactive_60d", "cancelled_7d"} and facts.get("occurred_at")
+            and await newer_historical_service(db, tenant, customer["id"], facts["occurred_at"])):
         return False
     consent, contact = await contact_facts(db, tenant, customer["whatsapp_e164"])
     required = 'birthday_opt_in' if event.startswith('birthday_') else "operational_opt_in" if event in OPERATIONAL_EVENTS else "marketing_opt_in"
@@ -351,6 +362,8 @@ async def job_reason(db, tenant, job, settings):
     if job["event"] in {"inactive_60d", "cancelled_7d"}:
         if not job.get("trigger_at"):
             return "trigger_changed"
+        if await newer_historical_service(db, tenant, job["customer_id"], job["trigger_at"]):
+            return "new_activity"
         completed = (await db.execute(text("""SELECT max(h.occurred_at) FROM appointment_history h
             JOIN appointments a ON a.tenant_id=h.tenant_id AND a.id=h.appointment_id
             WHERE a.tenant_id=:t AND a.customer_id=:customer AND a.status='completed' AND h.event='completed'

@@ -80,6 +80,55 @@ async def test_historical_job_already_queued_is_cancelled_before_any_attempt(aut
     assert not ctx.sent
 
 
+@pytest.mark.asyncio
+async def test_recent_historical_visit_suppresses_old_inactivity_without_starting_new_trigger(automation_db):
+    ctx = automation_db
+    old = await completed_history(ctx, "standard")
+    now = datetime.now(timezone.utc)
+    old_completion = now-timedelta(days=60, minutes=1)
+    rules = json.dumps([{"event": "inactive_60d", "requested_enabled": True,
+                         "template": "Olá {cliente}, esperamos sua próxima visita."}])
+    async with ctx.migration.begin() as db:
+        await db.execute(text("""UPDATE appointments SET start_at=:start,end_at=:end,
+            occupied_from=:start,occupied_until=:end WHERE tenant_id=:t AND id=:id"""),
+            {"t": ctx.tenant, "id": old["id"], "start": old_completion-timedelta(minutes=30), "end": old_completion})
+        await db.execute(text("""UPDATE appointment_history SET occurred_at=:occurred
+            WHERE tenant_id=:t AND appointment_id=:id AND event='completed'"""),
+            {"t": ctx.tenant, "id": old["id"], "occurred": old_completion})
+        await db.execute(text("""UPDATE management_preferences SET preferences=jsonb_set(
+            preferences,'{automations,rules}',CAST(:rules AS jsonb)) WHERE tenant_id=:t"""),
+            {"t": ctx.tenant, "rules": rules})
+        await db.execute(text("UPDATE automation_execution SET approved_at=:approved WHERE tenant_id=:t"),
+                         {"t": ctx.tenant, "approved": now-timedelta(days=1)})
+    assert await runtime.plan_tenant(ctx.tenant) == 1
+    async with ctx.migration.connect() as db:
+        job = dict((await db.execute(text("SELECT * FROM automation_jobs WHERE tenant_id=:t AND event='inactive_60d'"),
+                                    {"t": ctx.tenant})).mappings().one())
+    recent = await completed_history(ctx, "retroactive")
+    async with ctx.migration.begin() as db:
+        await db.execute(text("""UPDATE appointments SET start_at=:start,end_at=:end,
+            occupied_from=:start,occupied_until=:end WHERE tenant_id=:t AND id=:id"""),
+            {"t": ctx.tenant, "id": recent["id"], "start": now-timedelta(days=1, minutes=30),
+             "end": now-timedelta(days=1)})
+        await db.execute(text("""UPDATE management_preferences SET preferences=jsonb_set(
+            preferences,'{automations,rules}',CAST(:rules AS jsonb)) WHERE tenant_id=:t"""),
+            {"t": ctx.tenant, "rules": rules})
+    assert await process(ctx, job) == "new_activity"
+    async with ctx.migration.begin() as db:
+        saved = (await db.execute(text("""SELECT status,attempted_at FROM automation_jobs
+            WHERE tenant_id=:t AND id=:id"""), {"t": ctx.tenant, "id": job["id"]})).mappings().one()
+        assert dict(saved) == {"status": "cancelled", "attempted_at": None}
+        # Remove this synthetic receipt so deduplication cannot hide a planner
+        # regression. The historical visit must independently suppress the job.
+        await db.execute(text("DELETE FROM automation_jobs WHERE tenant_id=:t AND id=:id"),
+                         {"t": ctx.tenant, "id": job["id"]})
+    assert await runtime.plan_tenant(ctx.tenant) == 0
+    async with ctx.migration.connect() as db:
+        assert (await db.execute(text("SELECT count(*) FROM automation_jobs WHERE tenant_id=:t"),
+                                {"t": ctx.tenant})).scalar_one() == 0
+    assert not ctx.sent
+
+
 async def preserved_booking(d, actual_minutes, added_minutes):
     person = await customer(d)
     identity = UUID(await appointment(d, person["id"], start_at=d["now"]-timedelta(minutes=45)))

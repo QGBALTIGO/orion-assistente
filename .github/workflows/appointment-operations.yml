@@ -10,6 +10,11 @@ on:
       - 'app/booking_service.py'
       - 'app/professional_portal.py'
       - 'app/appointment_lifecycle.py'
+      - 'app/appointment_notifications.py'
+      - 'app/auto_completion_worker.py'
+      - 'app/automation_runtime.py'
+      - 'app/management_models.py'
+      - 'app/loyalty_rewards.py'
       - 'app/static/orion-suite.js'
       - 'app/static/orion-professional.*'
       - 'app/static/panel.html'
@@ -65,6 +70,7 @@ jobs:
             tests/unit/test_automation_runtime.py \
             tests/unit/test_professional_portal.py \
             tests/unit/test_professional_commissions.py \
+            tests/unit/test_management_unit.py \
             tests/unit/test_auto_completion.py \
             tests/unit/test_auto_completion_communications_gate.py \
             tests/unit/test_appointment_consent_release.py \

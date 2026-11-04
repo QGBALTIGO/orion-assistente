@@ -161,7 +161,7 @@ async def _manual_customer(db, tenant, payload):
     customer_id = getattr(payload, "customer_id", None)
     if customer_id is not None:
         row = (await db.execute(text("""SELECT * FROM customers
-            WHERE tenant_id=:t AND id=:id FOR SHARE"""),
+            WHERE tenant_id=:t AND id=:id FOR UPDATE"""),
             {"t": tenant, "id": customer_id})).mappings().one_or_none()
         if row is None:
             raise HTTPException(404, "Cliente não encontrado nesta empresa")
