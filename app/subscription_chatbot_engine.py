@@ -412,6 +412,9 @@ async def authorize_effect(db, device, effect, owner, fence, payload):
             return denied
     elif effect["status"] != "pending":
         return denied
+    from app.subscription_sent_messages import message_authority
+    if not await message_authority(db, device, effect):
+        return denied
     if (effect["settings_revision"] != device["revision"] or effect["generation"] != device["generation"]
             or effect["expires_at"] <= datetime.now(timezone.utc) or not await policy_allows(db, device, effect)):
         if not recheck:

@@ -18,8 +18,8 @@ não observado ou testado.
 | 01 | Dispositivos | Publicado — PR 248, produção `976fa7a095b053e5589bab52eb058187ebba858c` |
 | 02 | Chatbot | Publicado — PR 249, produção `112e92ea79240a1980f484bf2787c4400bd5418d` |
 | 03 | Testar Chatbot | Publicado — PR 250, produção `8146d5f7f50bb778d188f74b7e52452394870c50` |
-| 04 | Templates | Observado em 2026-11-04; implementação e qualificação em andamento |
-| 05 | Mensagens Enviadas | Não iniciado |
+| 04 | Templates | Publicado e conferido ao vivo em 2026-11-04 — PR 251, produção `7164ce5ca9e4c795910ca5255f510f625dad0a11` |
+| 05 | Mensagens Enviadas | Observação concluída; implementação e qualificação em andamento |
 | 06 | Diagnósticos | Não iniciado |
 | 07 | Campanhas | Não iniciado |
 | 08 | Mensagens Programadas | Não iniciado |
@@ -35,6 +35,21 @@ não observado ou testado.
 | 18 | Verificador de números WhatsApp | Não iniciado |
 | 19 | Link e QR do WhatsApp | Não iniciado |
 
+A etapa 04 passou nos seis grupos específicos de CI: 1.198 casos Python,
+147 PostgreSQL, 309 da ponte, 226 DOM, 33 no Chrome oficial e 33 no WebKit.
+A comparação das suítes gerais não encontrou novos IDs de falha ou erro em
+relação à base; as falhas anteriores permanecem discriminadas no
+[registro de validação](templates-validation.md). O merge tem a mesma árvore
+testada, `ef30f3c3a5d0507c2f7dc25619bcb7f2b66d91ec`.
+
+Templates foi encerrado após confirmação dos deployments de API, worker e
+ponte na mesma revisão, backup privado verificado, migração 0063 → 0064 e
+conferência no Chrome conectado da empresa BaltigoFlix. A biblioteca e os
+cinco formulários foram inspecionados sem criar dados nem enviar mensagens
+reais. Os identificadores dos deployments e os limites dessa conferência
+estão no registro de validação. A observação de Mensagens Enviadas começou
+após essa confirmação.
+
 ## Método e fontes
 
 O registro detalhado da etapa 02 está em [chatbot-observation.md](chatbot-observation.md).
@@ -43,6 +58,8 @@ O registro da etapa 03 está em [chatbot-test-observation.md](chatbot-test-obser
 A qualificação da etapa 03 está em [chatbot-test-validation.md](chatbot-test-validation.md).
 O registro da etapa 04 está em [templates-observation.md](templates-observation.md).
 A qualificação da etapa 04 está em [templates-validation.md](templates-validation.md).
+O registro da etapa 05 está em [sent-messages-observation.md](sent-messages-observation.md).
+A qualificação da etapa 05 está em [sent-messages-validation.md](sent-messages-validation.md).
 
 Observação iniciada no Chrome conectado do usuário em 2026-11-03
 (America/Cuiaba) e continuada em 2026-11-04, pela extensão autorizada.

@@ -119,6 +119,57 @@ test('carousel image decoder envelope is unwrapped and every normalized asset re
   assert.ok(raw.every(buffer=>buffer.every(byte=>byte===0)));
 });
 
+test('manual carousel resend uses private frozen images without fetching or preparing remote replacements',{timeout:10_000},async t=>{
+  const f=await fixture(t),done=defer(),original=Buffer.from('frozen private image'),thumbnail=Buffer.from('frozen private thumbnail'),loaded=[];
+  const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+  const assets=Array.from({length:3},()=>({id:randomUUID(),kind:'image',mime:'image/jpeg',size:original.length,sha256:hash(original),width:512,height:512,
+    thumbnail:{mime:'image/jpeg',size:thumbnail.length,sha256:hash(thumbnail)}}));
+  const action=f.effect({type:'carousel',body:'Conteúdo preservado',cards:assets.map((asset,i)=>({title:'Card '+i,body:i?'':'Primeiro',
+    button_text:'Selecionar',selection_id:'ocb:new-resend-token-'+i,asset}))});
+  f.behavior.asset=async payload=>{loaded.push(payload);assert.equal(payload.operation_id,action.operation_id);
+    assert.ok(assets.some(asset=>asset.id===payload.asset.id));return Buffer.from(payload.variant==='thumbnail'?thumbnail:original);};
+  f.behavior.finish=async receipt=>{done.resolve(receipt);return {effects:[]};};
+  f.behavior.event=async row=>row.kind==='text'?[action]:[];f.receive('frozen-carousel');
+  assert.equal((await done.promise).state,'accepted');assert.equal(loaded.length,6);assert.equal(f.sends.length,1);
+  const cards=f.sends[0].proto.viewOnceMessage.message.interactiveMessage.carouselMessage.cards;
+  assert.equal(cards.length,3);assert.deepEqual(cards.map(card=>JSON.parse(card.nativeFlowMessage.buttons[0].buttonParamsJson).id),assets.map((_,i)=>'ocb:new-resend-token-'+i));
+});
+
+test('definite recipient refusal retains a sanitized reason across lost acknowledgement and restart',async t=>{
+  const f=await fixture(t),action=f.effect({type:'text',text:'Mensagem preservada'});let lose=true,finishes=0,lookups=0;
+  f.behavior.onWhatsApp=async pn=>{lookups++;return [{exists:false,jid:pn+'@s.whatsapp.net'}];};
+  f.behavior.finish=async receipt=>{finishes++;assert.equal(receipt.error_code,'RECIPIENT_NOT_REGISTERED');if(lose)throw Error('lost response');return {effects:[]};};
+  f.behavior.event=async row=>row.kind==='text'?[action]:[];f.receive('definite-refusal');
+  await until(()=>finishes===1&&f.session.deviceDiagnostics().pending===0);
+  assert.equal(f.sends.length,0);assert.equal(f.finished.length,0);
+  f.session.close();await f.open();lose=false;
+  f.behavior.pending=async()=>({effects:[],reconcile:[{...action,device_id:f.state.id,generation:f.state.generation,settings_revision:1}]});
+  await f.poll();assert.equal(f.finished.length,1);assert.equal(f.finished[0].state,'not_sent');assert.equal(f.finished[0].reconcile,true);
+  assert.equal(lookups,1);assert.equal(f.sends.length,0);
+});
+
+test('provider text is not exposed and a code named preflight after relay is still uncertain',async t=>{
+  const f=await fixture(t),before=f.effect({type:'text',text:'Preparar'});
+  f.behavior.onWhatsApp=async()=>{throw Error('synthetic-secret-provider-token');};
+  f.behavior.event=async row=>row.kind==='text'?[before]:[];f.receive('preparation-error');await until(()=>f.finished.length===1);
+  assert.equal(f.finished[0].state,'not_sent');assert.equal(f.finished[0].error_code,'MESSAGE_PREPARATION_FAILED');
+  const after=f.effect({type:'text',text:'Tentativa ambígua'});
+  f.behavior.onWhatsApp=async pn=>[{exists:true,jid:pn+'@s.whatsapp.net'}];
+  f.behavior.send=async()=>{throw Object.assign(Error('synthetic-secret-provider-token'),{code:'recipient_identity_unverified'});};
+  f.behavior.event=async row=>row.kind==='text'?[after]:[];f.receive('relay-error');await until(()=>f.finished.length===2);
+  assert.equal(f.finished[1].state,'uncertain');assert.equal(f.finished[1].error_code,'MESSAGE_OUTCOME_UNCERTAIN');
+  assert.equal(JSON.stringify(f.finished).includes('synthetic-secret-provider-token'),false);assert.equal(f.sends.length,1);
+});
+
+test('device text cannot classify a provider-supplied preflight code after relay as not sent',async t=>{
+  const f=await fixture(t),action=f.deviceEffect('send_text',{phone,text:'Tentativa do dispositivo'});
+  f.behavior.send=async()=>{throw Object.assign(Error('recipient_identity_unverified'),{code:'recipient_identity_unverified'});};
+  f.behavior.event=async row=>row.kind==='text'?[action]:[];f.receive('device-relay-error');await until(()=>f.finished.length===1);
+  assert.equal(f.finished[0].state,'uncertain');assert.equal(f.finished[0].error_code,'MESSAGE_OUTCOME_UNCERTAIN');assert.equal(f.sends.length,1);
+  f.session.close();await f.open();f.receive('same-device-effect');await until(()=>f.session.deviceDiagnostics().pending===0);
+  assert.equal(f.sends.length,1);
+});
+
 test('human owner !commands are admitted but generated echoes are excluded before acknowledgement and after restart',async t=>{
   const f=await fixture(t),action=f.effect({type:'text',text:'!automated content'});
   f.behavior.event=async row=>row.origin==='owner_command'?[action]:[];

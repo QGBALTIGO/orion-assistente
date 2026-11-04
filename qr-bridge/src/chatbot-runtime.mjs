@@ -2,6 +2,7 @@
  * assistant, arbitrary send endpoint or automatic retry of external effects. */
 import {channelId,digest} from './channel-storage.mjs';
 import {requestChatbotJSON} from './chatbot-network.mjs';
+import {messageFailureCode,safeMessageFailureCode} from './device-message-failure.mjs';
 
 const phone=value=>typeof value==='string'&&/^[1-9]\d{7,14}$/.test(value);
 const providerId=value=>typeof value==='string'&&/^[a-zA-Z0-9._:-]{1,160}$/.test(value);
@@ -50,7 +51,8 @@ export function createChatbotRuntime(context,{ledger,capacity,sendChatbot,
       return;
     }
     if(record.accepted||record.state==='refused')await finish({...expected,settings_revision:record.settings_revision},item,
-      record.accepted?'accepted':'not_sent',{...(reconcile?{reconcile:true}:{}),...(record.provider_id?{provider_id:record.provider_id}:{})});
+      record.accepted?'accepted':'not_sent',{...(reconcile?{reconcile:true}:{}),...(record.provider_id?{provider_id:record.provider_id}:{}),
+        ...(!record.accepted&&safeMessageFailureCode(record.error_code)?{error_code:record.error_code}:{})});
   }
   async function execute(item,{expected}={}){
     if(!isChatbotEffect(item)||!types.has(item.action_type)||!current(expected,item.chatbot_revision)||inflight.has(item.operation_id))return;
@@ -120,8 +122,10 @@ export function createChatbotRuntime(context,{ledger,capacity,sendChatbot,
         // A durable HTTP response remains available for result reconciliation.
         const old=ledger.get(id);
         if(old?.state!=='http_result'&&!old?.accepted){
-          if(reserved?.fresh&&!attempted)ledger.save(id,{...reserved.record,state:'refused',accepted:false,delivery:'not_sent'});
-          await finish(expected,item,attempted?'uncertain':'not_sent',{error_code:current(expected,rev)?'CHATBOT_EFFECT_FAILED':'CHATBOT_REVOKED'});
+          const error_code=item.action_type==='http'?(current(expected,rev)?'CHATBOT_EFFECT_FAILED':'CHATBOT_REVOKED'):
+            messageFailureCode(failure,{beforeSend:!attempted,current:current(expected,rev),chatbot:true});
+          if(reserved?.fresh&&!attempted)ledger.save(id,{...reserved.record,state:'refused',accepted:false,delivery:'not_sent',error_code});
+          await finish(expected,item,attempted?'uncertain':'not_sent',{error_code});
         }
       }
     }finally{abort.abort();controllers.delete(entry);inflight.delete(id);}

@@ -124,9 +124,15 @@ export async function buildChatbotContent(action,{sdk,loadAsset,prepareCarouselI
         const title=text(card.title,60),body=text(card.body,1024,{optional:index!==0}),button=text(card.button_text,20);
         await guard();let original;
         try{
-          original=await fetchImage({url:card.image_url,signal,isCurrent,assertCurrent:guard});
-          if(!Buffer.isBuffer(original?.buffer)||original.buffer.length<1||original.buffer.length>8_000_000)throw invalid();
-          await guard();const asset=await prepareCarouselImage(index,original.buffer,{signal});await guard();
+          // Manual resends use the immutable private asset from the original
+          // attempt. A changed remote URL must never change its visible image.
+          let asset=card.asset;
+          if(asset==null){
+            original=await fetchImage({url:card.image_url,signal,isCurrent,assertCurrent:guard});
+            if(!Buffer.isBuffer(original?.buffer)||original.buffer.length<1||original.buffer.length>8_000_000)throw invalid();
+            await guard();asset=await prepareCarouselImage(index,original.buffer,{signal});
+          }else if(card.image_url!=null)throw invalid();
+          await guard();
           const prepared=await media(asset,'image');
           cards.push({header:{title,hasMediaAttachment:true,imageMessage:prepared.imageMessage},body:{text:body},
             nativeFlowMessage:{buttons:[{name:'quick_reply',buttonParamsJson:JSON.stringify({display_text:button,id:card.selection_id})}],messageVersion:1}});

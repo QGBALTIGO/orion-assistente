@@ -12,6 +12,7 @@ import {deviceAudioMetadata,withDeviceAudio,DEVICE_TEXT_MAX_CHARS} from './devic
 import {postDeviceWebhook} from './device-network.mjs';
 import {createChatbotRuntime,isChatbotEffect} from './chatbot-runtime.mjs';
 import {normalizeChatbotInput,createOrderedIngress} from './chatbot-input.mjs';
+import {knownMessagePreflight,messageFailureCode,safeMessageFailureCode} from './device-message-failure.mjs';
 
 const privateJid=/^[1-9]\d{7,19}(?::\d+)?@(s\.whatsapp\.net|lid)$/;
 const phonePattern=/^[1-9]\d{7,14}$/;
@@ -71,7 +72,8 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
       const record=ledger.get(item.operation_id);if(!record||!record.accepted&&record.state!=='refused')continue;
       await guard(expected);
       await finish({id:item.device_id,generation:item.generation,settings_revision:item.settings_revision},item.operation_id,
-        record.accepted?'accepted':'not_sent',{reconcile:true,...(record.provider_id?{provider_id:record.provider_id}:{})});
+        record.accepted?'accepted':'not_sent',{reconcile:true,...(record.provider_id?{provider_id:record.provider_id}:{}),
+          ...(!record.accepted&&safeMessageFailureCode(record.error_code)?{error_code:record.error_code}:{})});
     }
   }
   async function execute(item,{expected,message}={}){
@@ -105,7 +107,8 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
         if(!reserved.fresh){
           const old=reserved.record;
           await finish(expected,id,old.accepted?'accepted':old.state==='refused'?'not_sent':'uncertain',
-            ...(old.provider_id?[{provider_id:old.provider_id}]:[{}]));return;
+            {...(old.provider_id?{provider_id:old.provider_id}:{}),
+              ...(!old.accepted&&safeMessageFailureCode(old.error_code)?{error_code:old.error_code}:{})});return;
         }
       }
       abort=controller(expected);
@@ -145,14 +148,15 @@ export function createDeviceRuntime(context,{client,downloadMediaMessage,logger,
         await finish(expected,id,'accepted');
       }
     }catch(error){
-      const definitelyUnsent=!attempted||error?.code==='recipient_identity_unverified';
+      const definitelyUnsent=!attempted||item.type==='send_text'&&knownMessagePreflight(error)!==null;
       const state=definitelyUnsent?'not_sent':'uncertain';
-      if(reserved?.fresh&&definitelyUnsent)ledger.save(id,{...reserved.record,state:'refused',accepted:false,delivery:'not_sent'});
+      const error_code=item.type==='send_text'?messageFailureCode(error,{beforeSend:definitelyUnsent,current:current(expected)}):
+        !current(expected)?'DEVICE_REVOKED':item.type==='webhook'?'DEVICE_WEBHOOK_FAILED':item.type==='transcribe'?'DEVICE_AUDIO_FAILED':'DEVICE_EFFECT_FAILED';
+      if(reserved?.fresh&&definitelyUnsent)ledger.save(id,{...reserved.record,state:'refused',accepted:false,delivery:'not_sent',error_code});
       if(permit?.authorized===true){
         // HTTP delivery is at-least-once and may be retried by its SQL outbox.
         // WhatsApp sends/rejections and paid ASR never retry an ambiguous attempt.
-        await finish(expected,id,item.type==='webhook'?'failed':state,{error_code:
-          !current(expected)?'DEVICE_REVOKED':item.type==='webhook'?'DEVICE_WEBHOOK_FAILED':item.type==='transcribe'?'DEVICE_AUDIO_FAILED':'DEVICE_EFFECT_FAILED'});
+        await finish(expected,id,item.type==='webhook'?'failed':state,{error_code});
       }
     }finally{
       if(abort){abort.abort();releaseController(abort);}inflight.delete(id);

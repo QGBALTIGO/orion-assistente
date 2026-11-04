@@ -783,6 +783,9 @@ async def _reserve_cooldown(db, row, effect):
     phone = effect["payload"]["phone"]
     if phone == (row["settings"].get("test_phone_e164") or "").lstrip("+"):
         return True  # Only the 24h notice suppression is bypassed for testing.
+    from app.subscription_sent_messages import transfer_retry_cooldown
+    if await transfer_retry_cooldown(db, row, effect):
+        return True
     reserved = (await db.execute(text("""INSERT INTO subscription_device_cooldowns(tenant_id,device_id,phone,effect_id)
         VALUES(:t,:d,:phone,:effect) ON CONFLICT(tenant_id,device_id,phone) DO UPDATE
           SET reserved_at=clock_timestamp(),effect_id=EXCLUDED.effect_id
@@ -804,6 +807,9 @@ async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Re
         denied = {"authorized": False, "operation_id": str(effect["id"])}
         eligible = effect["status"] == "pending" or (effect["type"] == "webhook" and effect["status"] == "failed" and effect["attempts"] < 3)
         if not eligible or effect["due_at"] > datetime.now(timezone.utc):
+            return denied
+        from app.subscription_sent_messages import message_authority
+        if not await message_authority(db, row, effect):
             return denied
         if not _current_effect(row, effect) or not await _policy_still_allows(db, row, effect):
             await db.execute(text("UPDATE subscription_device_effects SET status='not_sent',finished_at=clock_timestamp(),error_code='policy_changed' WHERE id=:o"), {"o": effect["id"]})
@@ -943,7 +949,12 @@ async def device_audio(channel_id: UUID, request: Request):
             previous = await _insert_effect(db, row, effect["event_id"], f"transcript:{index}",
                 {"type": "send_text", "purpose": "transcription_reply", "payload": {"phone": event["phone"], "text": part}},
                 previous=previous)
-        await db.execute(text("UPDATE subscription_device_effects SET status='accepted',finished_at=clock_timestamp() WHERE id=:o"), {"o": operation_id})
+        duration = result.get("duration_seconds")
+        if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or not 0 < duration <= minutes * 60:
+            raise fail("DEVICE_CAPABILITY_UNAVAILABLE")
+        await db.execute(text("""UPDATE subscription_device_effects SET status='accepted',finished_at=clock_timestamp(),
+            audio_duration_seconds=:duration,audio_completed_at=clock_timestamp() WHERE id=:o"""),
+            {"o": operation_id, "duration": duration})
         # Matching uses only the authenticated ASR result. The formatted
         # transcription keeps its own independent enable switch and ledger.
         from app.subscription_chatbot_engine import complete_transcript

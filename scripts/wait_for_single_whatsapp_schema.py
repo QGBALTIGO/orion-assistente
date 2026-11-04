@@ -113,7 +113,11 @@ def main():
     if result:
         return result
     from scripts.wait_for_subscription_templates_schema import main as templates_wait
-    return templates_wait()
+    result = templates_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_sent_messages_schema import main as sent_messages_wait
+    return sent_messages_wait()
 
 
 if __name__ == "__main__":

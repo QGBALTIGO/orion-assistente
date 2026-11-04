@@ -158,6 +158,8 @@ def test_worker_must_cross_every_read_only_schema_barrier(monkeypatch, results, 
     from scripts import wait_for_subscription_chatbot_schema as chatbot_wait
     monkeypatch.setattr(chatbot_wait, "main", lambda: 0)
     from scripts import wait_for_subscription_templates_schema as templates_wait
+    from scripts import wait_for_subscription_sent_messages_schema as sent_messages_wait
+    monkeypatch.setattr(sent_messages_wait, "main", lambda: 0)
     monkeypatch.setattr(templates_wait, "main", lambda: 0)
     events = []
 

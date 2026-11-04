@@ -46,6 +46,7 @@ from app.subscription_chatbot import router as subscription_chatbot_router
 from app.subscription_chatbot_broker import router as subscription_chatbot_broker_router
 from app.subscription_chatbot_test import router as subscription_chatbot_test_router
 from app.subscription_templates import router as subscription_templates_router
+from app.subscription_sent_messages import router as subscription_sent_messages_router
 from app.automation_api import router as automation_router
 from app.qr_channel_audio import router as qr_channel_audio_router
 from app.media_api import router as media_router
@@ -142,6 +143,7 @@ include_plan_router(app, subscription_chatbot_router)
 include_plan_router(app, subscription_chatbot_broker_router)
 include_plan_router(app, subscription_chatbot_test_router)
 include_plan_router(app, subscription_templates_router)
+include_plan_router(app, subscription_sent_messages_router)
 include_plan_router(app, automation_router)
 include_plan_router(app, qr_channel_audio_router)
 include_plan_router(app, media_router)
@@ -194,6 +196,7 @@ async def panel_asset(asset: str) -> FileResponse:
                "orion-subscription-chatbot.css": "text/css", "orion-subscription-chatbot.js": "text/javascript",
                "orion-subscription-chatbot-test.css": "text/css", "orion-subscription-chatbot-test.js": "text/javascript",
                "orion-subscription-templates.css": "text/css", "orion-subscription-templates.js": "text/javascript",
+               "orion-subscription-sent-messages.css": "text/css", "orion-subscription-sent-messages.js": "text/javascript",
                "orion-connect.js": "text/javascript",
                "orion-automations.js": "text/javascript",
                "orion-inbox.js": "text/javascript", "orion-conversations.js": "text/javascript", "orion-flows.js": "text/javascript", "orion-inbox.css": "text/css"}

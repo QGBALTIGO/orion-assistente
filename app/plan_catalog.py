@@ -29,8 +29,9 @@ ELITE_FEATURES = PRO_FEATURES | frozenset({
 })
 PLAN_FEATURES = {"essencial": BASE_FEATURES, "profissional": PRO_FEATURES, "elite": ELITE_FEATURES}
 RECOVERY_FEATURES = frozenset({"plan.manage", "account.manage", "business.setup"})
-ALL_FEATURES = ELITE_FEATURES | RECOVERY_FEATURES | {"commerce.admin", "devices.manage", "chatbot.manage", "templates.manage"}
+ALL_FEATURES = ELITE_FEATURES | RECOVERY_FEATURES | {"commerce.admin", "devices.manage", "chatbot.manage", "templates.manage", "sent_messages.manage"}
 FEATURE_LABELS = {
+    "sent_messages.manage": "Mensagens enviadas de assinaturas",
     "workspace.access": "Acesso ao painel",
     "dashboard.basic": "Dashboard e indicadores básicos",
     "agenda.manage": "Agenda e agendamentos com vários serviços",
