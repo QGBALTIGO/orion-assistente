@@ -65,6 +65,52 @@ objetos de armazenamento usados na qualificação são sintéticos. Os testes de
 navegador geram capturas de celular, tablet e desktop, claro/escuro, incluindo
 revisão e recuperação após perda da resposta.
 
+## Primeira execução no CI: bloqueios encontrados e corrigidos
+
+A PR258 foi aberta com head `da7280fc334bed8cc26e53c8021839d0662210f2`,
+árvore `2c8e4043e88b6bd8d5d32d8caaada61789b72646`. O checkout dos testes foi
+`023b94e55d099544776bda2d584271c004b810bd`, merge sintético com a produção
+5699297 e a mesma árvore. Essa revisão **não foi qualificada para publicação**.
+
+| Gate dedicado, execução 41927000238 | Resultado final |
+| --- | --- |
+| Python | 1.743 aprovados, seis avisos |
+| Ponte | 411 aprovados, zero falhas/skips |
+| DOM | 342 aprovados, zero falhas/skips |
+| PostgreSQL | 312 aprovados e 25 falhas; migração e 51 casos de catálogo aprovados |
+| Chrome | 60 aprovados e uma falha; execução interrompida no primeiro erro |
+| WebKit | 60 aprovados e uma falha; execução interrompida no primeiro erro |
+
+Os 25 traces do PostgreSQL identificam duas consultas: vinte falhas na projeção
+de destinatários e cinco no controle de intervalo usado por polls anteriores.
+O parâmetro sem tipo em `:now - interval` era inferido como intervalo, impedindo
+a comparação com timestamps. Quatro expressões passam a usar
+`CAST(:now AS timestamptz)`. Uma regressão funcional adicional prepara essas
+consultas com audiência vazia e verifica o poll ordinário e a leitura de rascunho.
+Não houve alteração de schema ou de permissões para resolver essa falha.
+
+No Chrome, um debounce de pesquisa ainda pendente invalidava a leitura de
+detalhe iniciada por uma ação explícita. Três testes com timer controlado
+reproduziram a perda da revisão, antes de qualquer confirmação; o controller
+cancela esse timer ao iniciar a leitura ou ação explícita. No WebKit, o mesmo
+cenário chegou a uma etapa posterior: revogar acesso enquanto a carga passiva
+do detalhe ainda estava em curso removia corretamente a rota antes do clique
+do teste. O cenário passa a aguardar o estado observável de carga concluída
+antes de revogar, mantendo a resposta 403, a remoção do menu e a ausência de
+novas escritas, confirmações e efeitos. Os timeouts não foram aumentados.
+
+A inspeção de 36 capturas do Chrome, em três tamanhos e dois temas, encontrou
+abas de destinatários com aparência nativa e palavras quebradas no celular e
+tablet. O componente passa a usar as abas existentes do Orion, com quebra
+entre botões e rótulos inteiros; o cenário visual mede a quantidade de linhas
+de cada rótulo, a altura e a contenção. As novas capturas verificarão o ajuste.
+Depois das correções, passaram 137 unitários do backend e 55 testes DOM de
+Campanhas. Foram coletados 33 casos funcionais de PostgreSQL e 32 de navegador,
+sem declarar essa coleta como execução. A revisão independente dos quatro
+casts e do cancelamento do timer não encontrou novo bloqueio.
+Os resultados finais da nova árvore devem substituir qualquer conclusão de
+prontidão; os erros desta primeira execução ficam preservados como evidência.
+
 ## Critério de publicação
 
 Exigir os seis gates dedicados e comparar cada workflow geral executado com a

@@ -202,6 +202,21 @@ async def ledger(c):
             WHERE tenant_id=:t AND type='campaign_action' ORDER BY created_at,campaign_part_index"""), {"t": c.tenant})).mappings().all()]
 
 
+async def test_empty_clock_queries_preserve_ordinary_poll_and_draft_reads(campaign_case, monkeypatch):
+    c = campaign_case
+    # PostgreSQL prepares these statements even when no campaign is admitted.
+    # The timestamp must be typed before subtracting the 60/180 s intervals;
+    # an untyped bind can otherwise resolve to interval and break ordinary polls.
+    assert await poll(c) == []
+    row = await draft(c)
+    assert await poll(c) == [] and await ledger(c) == []
+    async with no_external(c, monkeypatch, readonly=True):
+        current = await detail(c, row)
+        assert current["progress"]["total"] == 0 and current["recipients"]["items"] == []
+        response = await c.client.get(c.campaigns+"/"+row["id"]+"/recipients", params={"status": "failed"})
+        assert response.status_code == 200 and response.json()["total"] == 0, response.text
+
+
 async def test_draft_groups_options_and_every_read_are_pure(campaign_case, monkeypatch):
     c = campaign_case
     async with no_external(c, monkeypatch):

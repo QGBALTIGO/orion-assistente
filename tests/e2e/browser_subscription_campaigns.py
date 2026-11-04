@@ -530,6 +530,15 @@ def test_campaign_list_complete_editor_review_confirmation_and_true_progress(bro
                 expect(page.locator("[data-cp-recipient] details")).to_contain_text("Imagem · Aceito pelo transporte")
                 expect(page.locator("[data-cp-recipient] details")).to_contain_text("Texto · Não enviado")
                 expect(page.locator("[data-cp-recipient] td").last).to_contain_text("Falhou")
+        tabs = page.locator("[data-cp-recipient-tab]").evaluate_all("""nodes => nodes.map(node => {
+          const text = document.createRange(); text.selectNodeContents(node);
+          const box = node.getBoundingClientRect(), parent = node.parentElement.getBoundingClientRect();
+          return {label:node.textContent,lines:text.getClientRects().length,height:box.height,
+            left:box.left,right:box.right,parentLeft:parent.left,parentRight:parent.right};
+        })""")
+        assert len(tabs) == 5
+        assert all(tab["lines"] == 1 and tab["height"] >= 42 for tab in tabs), tabs
+        assert all(tab["left"] >= tab["parentLeft"] - 1 and tab["right"] <= tab["parentRight"] + 1 for tab in tabs), tabs
         assert len(report(page, fixture_url)["confirmations"]) == 1
         assert_layout(page, size[0])
         page.screenshot(path=str(ARTIFACTS / (label + "-progress.png")), full_page=True, animations="disabled")
@@ -625,6 +634,8 @@ def test_lost_response_reload_recovers_existing_identity_without_replaying(brows
             action(page, "commit-action").click()
         expect(page.locator("[data-cp-feedback]")).to_contain_text("Não foi possível confirmar")
         expect(page.locator("[data-cp-dialog]")).to_have_attribute("data-cp-view", "pending")
+        ARTIFACTS.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(ARTIFACTS / f"{browser[0]}-recovery-{phase}-pending.png"), full_page=True, animations="disabled")
         before = writes(report(page, fixture_url))
         key = before[-1]["data"]["idempotency_key"]
         assert_recovery(page, key)
@@ -636,6 +647,7 @@ def test_lost_response_reload_recovers_existing_identity_without_replaying(brows
         assert len(after["confirmations"]) == (1 if phase == "confirm" else 0)
         if phase == "review":
             expect(page.locator("[data-cp-confirm-consent]")).not_to_be_checked()
+        page.screenshot(path=str(ARTIFACTS / f"{browser[0]}-recovery-{phase}-resolved.png"), full_page=True, animations="disabled")
         assert not external, external
         assert not errors, errors
     finally:
@@ -722,10 +734,20 @@ def test_filters_expiry_revocation_empty_and_other_niche_do_not_admit(browser, f
         expect(page.locator("[data-cp-dialog]")).to_have_attribute("data-cp-view", "result")
         expect(page.locator("[data-cp-dialog]")).to_contain_text("expirou")
         action(page, "acknowledge").click()
+        # Acknowledge reads the detail and then its recipient page. Finish
+        # those reads before making a distinct revocation/refresh scenario;
+        # otherwise an in-flight read may correctly remove this route first.
+        expect(page.locator(".os-cp-summary")).to_be_visible()
+        expect(page.locator("[data-cp-recipient-empty]")).to_be_visible()
+        expect(page.locator("#osSubscriptionCampaigns")).to_have_attribute("aria-busy", "false")
+        before_revocation = writes(report(page, fixture_url))
         control(page, fixture_url, "revoke")
-        action(page, "refresh").click()
+        with page.expect_response(lambda response: response.status == 403 and CAMPAIGNS_BASE in response.url):
+            action(page, "refresh").click()
         expect(page.locator('#osNav [data-os-route="campanhas"]')).to_have_count(0)
-        assert not report(page, fixture_url)["confirmations"]
+        revoked = report(page, fixture_url)
+        assert writes(revoked) == before_revocation
+        assert not revoked["confirmations"] and not revoked["effects"]
         for extra in ["&fixtureProfile=standard", "&fixtureReadonly=1"]:
             page.goto(fixture_url + "/panel?fixtureRole=owner&fixturePlan=elite&aba=campanhas" + extra)
             expect(page.locator('#osNav [data-os-route="campanhas"]')).to_have_count(0)

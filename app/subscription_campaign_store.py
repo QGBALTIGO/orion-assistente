@@ -322,8 +322,8 @@ RECIPIENT_STATES_SQL = """WITH states AS (
        FROM jsonb_array_elements(r.plan) p), E'\\n') AS message
  FROM subscription_campaign_recipients r LEFT JOIN LATERAL (
    SELECT count(*) AS parts,count(*) FILTER(WHERE e.status='accepted') AS accepted,
-     bool_or(e.status='uncertain' OR e.status='running' AND e.authorized_at<:now-interval '180 seconds') AS uncertain,
-     bool_or(e.status='running' AND e.authorized_at>=:now-interval '180 seconds') AS running,
+     bool_or(e.status='uncertain' OR e.status='running' AND e.authorized_at<CAST(:now AS timestamptz)-interval '180 seconds') AS uncertain,
+     bool_or(e.status='running' AND e.authorized_at>=CAST(:now AS timestamptz)-interval '180 seconds') AS running,
      bool_or(e.status IN ('failed','not_sent') OR e.status='pending' AND e.expires_at<=:now) AS failed,
      (array_agg(CASE WHEN e.status='pending' AND e.expires_at<=:now THEN 'CAMPAIGN_EFFECT_EXPIRED' ELSE e.error_code END
          ORDER BY e.campaign_part_index) FILTER(WHERE (e.status IN ('failed','not_sent') AND e.error_code IS NOT NULL)

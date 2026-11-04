@@ -49,9 +49,11 @@
 .os-cp-metrics span{font-size:12px;color:var(--os-muted)}
 .os-cp-metrics strong{display:block;font:600 27px/36px var(--os-display);margin-top:10px}
 .os-cp-recipients>header,.os-cp-groups>header{padding:22px 24px 0}
-.os-cp-recipients .os-tabs{overflow-x:auto;max-width:100%;margin:20px 0 16px}
-.os-cp-recipients .os-tabs button{flex:0 0 auto;min-height:42px}
-.os-cp-recipients .os-tabs [aria-selected=true]{color:var(--os-primary);border-bottom-color:var(--os-primary);font-weight:600}
+.os-cp-recipients .os-tabs{display:flex;flex-wrap:wrap;gap:6px;width:fit-content;max-width:100%;margin:20px 0 16px}
+.os-cp-recipients .os-tab{appearance:none;flex:0 0 auto;min-height:42px;padding:8px 12px;white-space:nowrap;overflow-wrap:normal;word-break:normal}
+.os-cp-recipients .os-tab[aria-selected=true]{color:var(--os-primary);font-weight:600}
+.os-cp-recipients .os-tab:focus-visible{outline:2px solid var(--os-primary);outline-offset:2px}
+.os-cp-recipients .os-tab:disabled{opacity:.65;cursor:wait}
 .os-cp-recipient-search{display:flex;gap:12px;align-items:flex-end;margin:16px 0 20px}
 .os-cp-recipient-search .os-field{flex:1 1 240px}
 .os-cp-recipient-table{min-width:920px;table-layout:fixed;width:100%}

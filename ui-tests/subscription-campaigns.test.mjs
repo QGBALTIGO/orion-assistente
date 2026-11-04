@@ -63,6 +63,15 @@ test('title filtering, status and pagination are real requests without putting p
   h.change(field('status'),'completed');h.submit('filters');await flush();assert.ok(h.document.querySelector('[data-cp-empty]'));h.click(action('reset'));await flush();assert.equal(h.document.querySelectorAll('[data-cp-row]').length,30);
 });
 
+for(const followup of ['filter','reset','review'])test('pending search debounce cannot cancel an explicit '+followup+' then review',async t=>{
+  const timers=new Map(),entered=deferred(),detail=deferred();let sequence=8000;
+  const h=await makeCampaigns({configureWindow(window){const schedule=window.setTimeout.bind(window),cancel=window.clearTimeout.bind(window);window.setTimeout=(callback,delay,...args)=>{if(delay!==300)return schedule(callback,delay,...args);const id=++sequence;timers.set(id,()=>callback(...args));return id;};window.clearTimeout=id=>{if(!timers.delete(id))cancel(id);};},respond(path,method,payload,server){if(method==='GET'&&path===base+'/'+campaignId){entered.resolve();return detail.promise.then(()=>server.execute(path,method,payload));}}});t.after(()=>h.close());
+  h.fill(field('q'),contract.detail_response.campaign.title.slice(0,5));if(followup!=='review'){h.click(action(followup));await flush();}
+  h.click(rowAction('review'));await entered.promise;const reads=h.calls.filter(call=>call.method==='GET').length;
+  for(const callback of [...timers.values()])callback();timers.clear();await flush();detail.resolve();await flush();
+  assert.equal(h.element('[data-cp-dialog]').dataset.cpView,'review');assert.equal(writes(h).length,1);assert.match(writes(h)[0].path,/\/review$/);assert.equal(h.calls.filter(call=>call.method==='GET').length,reads);assert.equal(h.server.confirmations.length,0);assertPrivateHistory(h);
+});
+
 test('detail keeps sent, pending, failed, uncertain and cancelled recipients separate with partial parts',async t=>{
   const server=syntheticServer();server.campaigns.set(campaignId,copy(contract.scheduled_detail_response.campaign));server.recipients=copy(Object.values(contract.recipient_examples));server.recipients[0].message='<img src=x onerror=alert(1)>Texto';server.recipients[2].parts=[{type:'image',status:'accepted',text:null},{type:'text',status:'not_sent',text:'Legenda não enviada'}];
   const h=await makeCampaigns({server});t.after(()=>h.close());h.click(rowAction('detail'));await flush();

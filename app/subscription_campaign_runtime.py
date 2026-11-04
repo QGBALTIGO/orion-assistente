@@ -185,7 +185,7 @@ async def reap_campaigns(db, tenant, now):
         error_code=CASE WHEN status='running' THEN 'MESSAGE_OUTCOME_UNCERTAIN' ELSE 'CAMPAIGN_EFFECT_EXPIRED' END,
         finished_at=:now WHERE tenant_id=:t AND type='campaign_action'
           AND (status='pending' AND expires_at<=:now
-            OR status='running' AND authorized_at<:now-interval '180 seconds')
+            OR status='running' AND authorized_at<CAST(:now AS timestamptz)-interval '180 seconds')
         RETURNING campaign_recipient_id"""), {"t": tenant, "now": now})).scalars().all()
     for identity in set(affected):
         await refresh_recipient(db, tenant, identity, now=now)
@@ -205,7 +205,7 @@ async def admit_due_campaigns(db, device):
     if live is not None:
         return []
     pace = (await db.execute(text("""SELECT max(finished_at) AS finished,
-        count(*) FILTER(WHERE admitted_at>:now-interval '60 seconds') AS recent
+        count(*) FILTER(WHERE admitted_at>CAST(:now AS timestamptz)-interval '60 seconds') AS recent
         FROM subscription_campaign_recipients WHERE tenant_id=:t AND admitted_at IS NOT NULL"""),
         {"t": tenant, "now": now})).mappings().one()
     if not policy.admission_ready(now, pace["finished"], None, 30, pace["recent"]):
