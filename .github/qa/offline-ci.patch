@@ -1,0 +1,92 @@
+diff --git a/.github/workflows/appointment-communications.yml b/.github/workflows/appointment-communications.yml
+index 4414250..e2e84b9 100644
+--- a/.github/workflows/appointment-communications.yml
++++ b/.github/workflows/appointment-communications.yml
+@@ -72,7 +72,9 @@ jobs:
+         # The historical panel VM harness is compared separately against baseline.
+         # Current panel behavior is exercised below in real Chromium/WebKit.
+         run: |
+-          npm install --prefix qr-bridge --ignore-scripts --no-audit --no-fund
++          npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
++          node qr-bridge/scripts/patch-baileys.mjs
++          node qr-bridge/scripts/patch-baileys.mjs --check
+           python - <<'PYTEST'
+           import subprocess
+           from pathlib import Path
+diff --git a/.github/workflows/subscription-chatbot.yml b/.github/workflows/subscription-chatbot.yml
+index 844bdbc..6d02ea5 100644
+--- a/.github/workflows/subscription-chatbot.yml
++++ b/.github/workflows/subscription-chatbot.yml
+@@ -121,7 +121,10 @@ jobs:
+         with:
+           node-version: '22'
+       - name: Dependencias do transporte publicado
+-        run: npm install --prefix qr-bridge --ignore-scripts --no-audit --no-fund
++        run: |
++          npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
++          node qr-bridge/scripts/patch-baileys.mjs
++          node qr-bridge/scripts/patch-baileys.mjs --check
+       - name: Transporte afetado com sockets, eventos e providers sinteticos
+         run: |
+           node --check qr-bridge/src/channel-session.mjs
+ diff --git a/.github/workflows/subscription-devices.yml b/.github/workflows/subscription-devices.yml
+index bf86808..8c29fdb 100644
+--- a/.github/workflows/subscription-devices.yml
++++ b/.github/workflows/subscription-devices.yml
+@@ -88,7 +88,10 @@ jobs:
+         with:
+           node-version: '22'
+       - name: Dependencias do transporte publicado
+-        run: npm install --prefix qr-bridge --ignore-scripts --no-audit --no-fund
++        run: |
++          npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
++          node qr-bridge/scripts/patch-baileys.mjs
++          node qr-bridge/scripts/patch-baileys.mjs --check
+       - name: Transporte afetado com sockets, eventos e providers sinteticos
+         run: |
+           node --check qr-bridge/src/channel-session.mjs
+ diff --git a/.github/workflows/whatsapp-e2ee-hardening.yml b/.github/workflows/whatsapp-e2ee-hardening.yml
+index 1eb2aeb..b7863d8 100644
+--- a/.github/workflows/whatsapp-e2ee-hardening.yml
++++ b/.github/workflows/whatsapp-e2ee-hardening.yml
+@@ -35,7 +35,10 @@ jobs:
+         with:
+           node-version: '22'
+       - name: Dependencias Baileys e cache (sem executar scripts externos)
+-        run: npm install --prefix qr-bridge --omit=dev --ignore-scripts --no-audit --no-fund
++        run: |
++          npm ci --prefix qr-bridge --omit=dev --ignore-scripts --no-audit --no-fund
++          node qr-bridge/scripts/patch-baileys.mjs
++          node qr-bridge/scripts/patch-baileys.mjs --check
+       - name: Validar sintaxe e testes de criptografia
+         run: |
+           node --check qr-bridge/src/server.mjs
+ diff --git a/.github/workflows/whatsapp-security-audit.yml b/.github/workflows/whatsapp-security-audit.yml
+index 7c7eb9a..28f350a 100644
+--- a/.github/workflows/whatsapp-security-audit.yml
++++ b/.github/workflows/whatsapp-security-audit.yml
+@@ -38,7 +38,10 @@ jobs:
+         with:
+           node-version: '22'
+       - name: Install pinned QR dependencies for isolated tests
+-        run: npm install --prefix qr-bridge --omit=dev --ignore-scripts --no-audit --no-fund
++        run: |
++          npm ci --prefix qr-bridge --omit=dev --ignore-scripts --no-audit --no-fund
++          node qr-bridge/scripts/patch-baileys.mjs
++          node qr-bridge/scripts/patch-baileys.mjs --check
+       - name: Source syntax and targeted security contract
+         run: |
+           node --check qr-bridge/src/server.mjs
+ diff --git a/.github/workflows/whatsapp-transport-hardening.yml b/.github/workflows/whatsapp-transport-hardening.yml
+index a9ab8a9..167a353 100644
+--- a/.github/workflows/whatsapp-transport-hardening.yml
++++ b/.github/workflows/whatsapp-transport-hardening.yml
+@@ -39,7 +39,7 @@ jobs:
+         run: |
+           mkdir -p /tmp/orion-wa-base
+           git archive 5699297d4b873a411275c767109bab77c1afc5b6 | tar -x -C /tmp/orion-wa-base
+-          ln -s "$PWD/qr-bridge/node_modules" /tmp/orion-wa-base/qr-bridge/node_modules
++          npm ci --prefix /tmp/orion-wa-base/qr-bridge --ignore-scripts --no-audit --no-fund
+           set +e
+           (cd /tmp/orion-wa-base && node --test qr-bridge/test/*.test.mjs) > /tmp/bridge-baseline.log 2>&1
+           baseline_status=$?
