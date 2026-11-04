@@ -1,0 +1,541 @@
+{
+  "schema_version": 1,
+  "base": "/api/v1/tenants/{tenant_id}/subscription-whatsapp/sent-messages",
+  "feature": "sent_messages.manage",
+  "route": "mensagens-enviadas",
+  "routes": {
+    "list": "GET /api/v1/tenants/{tenant_id}/subscription-whatsapp/sent-messages?page={page}&status={status}&device_id={device_id}&contact={contact}&q={query}&snapshot={snapshot}",
+    "detail": "GET /api/v1/tenants/{tenant_id}/subscription-whatsapp/sent-messages/{effect_id}",
+    "resend": "POST /api/v1/tenants/{tenant_id}/subscription-whatsapp/sent-messages/{effect_id}/resend",
+    "recovery": "GET /api/v1/tenants/{tenant_id}/subscription-whatsapp/sent-messages/resend-requests/{idempotency_key}"
+  },
+  "policy": {
+    "owner_only": true,
+    "per_page": 30,
+    "read_has_operational_effects": false,
+    "snapshot": "UTC creation boundary preserved only while paginating the same filters",
+    "uncertain_resendable": false,
+    "original_immutable": true,
+    "resend_new_effect": true,
+    "frozen_action": true,
+    "recompile_on_resend": false,
+    "http_or_asr_on_resend": false,
+    "automatic_tail_reactivation": false,
+    "daily_asr_timezone": "UTC",
+    "historic_missing_duration": "unknown, never zero or reserved seconds"
+  },
+  "list_response": {
+    "items": [
+      {
+        "id": "81000000-0000-4000-8000-000000000001",
+        "root_effect_id": "81000000-0000-4000-8000-000000000001",
+        "retry_of_effect_id": null,
+        "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "origin": {
+          "code": "chatbot",
+          "label": "Chatbot",
+          "is_resend": false
+        },
+        "device": {
+          "id": "40000000-0000-4000-8000-000000000001",
+          "name": "Dispositivo sintético",
+          "removed": false,
+          "phone_e164": "+5567999999902"
+        },
+        "recipient": {
+          "phone_e164": "+5567999999901",
+          "display_name": "Contato sintético"
+        },
+        "received": {
+          "type": "text",
+          "text": "Quero renovar minha assinatura.",
+          "truncated": false
+        },
+        "sent": {
+          "type": "text",
+          "type_label": "Texto",
+          "text": "Olá! Sua renovação está disponível.",
+          "caption": null,
+          "media": null,
+          "truncated": false
+        },
+        "status": "sent",
+        "status_label": "Enviada",
+        "outcome": "accepted",
+        "failure": null,
+        "created_at": "2026-11-04T15:00:00Z",
+        "finished_at": "2026-11-04T15:00:02Z",
+        "actions": [],
+        "resend": {
+          "eligible": false,
+          "blocked_reason": "Esta mensagem já foi aceita pelo WhatsApp."
+        }
+      },
+      {
+        "id": "81000000-0000-4000-8000-000000000002",
+        "root_effect_id": "81000000-0000-4000-8000-000000000002",
+        "retry_of_effect_id": null,
+        "version": "2222222222222222222222222222222222222222222222222222222222222222",
+        "origin": {
+          "code": "chatbot",
+          "label": "Chatbot",
+          "is_resend": false
+        },
+        "device": {
+          "id": "40000000-0000-4000-8000-000000000001",
+          "name": "Dispositivo sintético",
+          "removed": false,
+          "phone_e164": "+5567999999902"
+        },
+        "recipient": {
+          "phone_e164": "+5567999999901",
+          "display_name": "Contato sintético"
+        },
+        "received": {
+          "type": "text",
+          "text": "Quero renovar minha assinatura.",
+          "truncated": false
+        },
+        "sent": {
+          "type": "text",
+          "type_label": "Texto",
+          "text": "Sua assinatura pode ser renovada hoje.",
+          "caption": null,
+          "media": null,
+          "truncated": false
+        },
+        "status": "failed",
+        "status_label": "Falhou",
+        "outcome": "not_sent",
+        "failure": {
+          "code": "TRANSPORT_UNAVAILABLE_BEFORE_SEND",
+          "message": "A conexão não estava disponível antes do envio."
+        },
+        "created_at": "2026-11-04T14:02:00Z",
+        "finished_at": "2026-11-04T14:02:02Z",
+        "actions": [
+          {
+            "type": "resend",
+            "label": "Reenviar"
+          }
+        ],
+        "resend": {
+          "eligible": true,
+          "blocked_reason": null
+        }
+      },
+      {
+        "id": "81000000-0000-4000-8000-000000000003",
+        "root_effect_id": "81000000-0000-4000-8000-000000000003",
+        "retry_of_effect_id": null,
+        "version": "3333333333333333333333333333333333333333333333333333333333333333",
+        "origin": {
+          "code": "chatbot",
+          "label": "Chatbot",
+          "is_resend": false
+        },
+        "device": {
+          "id": "40000000-0000-4000-8000-000000000001",
+          "name": "Dispositivo sintético",
+          "removed": false,
+          "phone_e164": "+5567999999902"
+        },
+        "recipient": {
+          "phone_e164": "+5567999999901",
+          "display_name": "Contato sintético"
+        },
+        "received": {
+          "type": "text",
+          "text": "Quero renovar minha assinatura.",
+          "truncated": false
+        },
+        "sent": {
+          "type": "text",
+          "type_label": "Texto",
+          "text": "Resultado ainda não confirmado.",
+          "caption": null,
+          "media": null,
+          "truncated": false
+        },
+        "status": "uncertain",
+        "status_label": "Resultado incerto",
+        "outcome": "uncertain",
+        "failure": {
+          "code": "MESSAGE_OUTCOME_UNCERTAIN",
+          "message": "Não foi possível confirmar o resultado do envio."
+        },
+        "created_at": "2026-11-04T14:03:00Z",
+        "finished_at": "2026-11-04T14:03:02Z",
+        "actions": [],
+        "resend": {
+          "eligible": false,
+          "blocked_reason": "O resultado é incerto. Um novo envio poderia duplicar a mensagem."
+        }
+      },
+      {
+        "id": "81000000-0000-4000-8000-000000000004",
+        "root_effect_id": "81000000-0000-4000-8000-000000000004",
+        "retry_of_effect_id": null,
+        "version": "4444444444444444444444444444444444444444444444444444444444444444",
+        "origin": {
+          "code": "chatbot",
+          "label": "Chatbot",
+          "is_resend": false
+        },
+        "device": {
+          "id": "40000000-0000-4000-8000-000000000001",
+          "name": "Dispositivo sintético",
+          "removed": false,
+          "phone_e164": "+5567999999902"
+        },
+        "recipient": {
+          "phone_e164": "+5567999999901",
+          "display_name": "Contato sintético"
+        },
+        "received": {
+          "type": "text",
+          "text": "Quero renovar minha assinatura.",
+          "truncated": false
+        },
+        "sent": {
+          "type": "text",
+          "type_label": "Texto",
+          "text": "Mensagem aguardando autorização.",
+          "caption": null,
+          "media": null,
+          "truncated": false
+        },
+        "status": "pending",
+        "status_label": "Pendente",
+        "outcome": "pending",
+        "failure": null,
+        "created_at": "2026-11-04T14:04:00Z",
+        "finished_at": null,
+        "actions": [],
+        "resend": {
+          "eligible": false,
+          "blocked_reason": "A tentativa ainda está em andamento."
+        }
+      }
+    ],
+    "page": 1,
+    "per_page": 30,
+    "filtered_total": 4,
+    "total_pages": 1,
+    "timezone": "America/Cuiaba",
+    "generated_at": "2026-11-04T16:00:00Z",
+    "snapshot": "2026-11-04T16:00:00Z",
+    "counts": {
+      "total": 4,
+      "today": 4,
+      "last_30_days": 4,
+      "scope": "message_attempts"
+    },
+    "transcription": {
+      "total": {
+        "known_seconds": 125.25,
+        "unknown_completions": 1,
+        "complete": false
+      },
+      "month": {
+        "known_seconds": 65.25,
+        "unknown_completions": 0,
+        "complete": true
+      },
+      "daily": {
+        "limit_seconds": 21600,
+        "reserved_seconds": 120,
+        "remaining_seconds": 21480,
+        "reset_at": "2026-11-05T00:00:00Z",
+        "label": "Limite diário de transcrição (UTC)"
+      }
+    },
+    "devices": [
+      {
+        "id": "40000000-0000-4000-8000-000000000001",
+        "name": "Dispositivo sintético",
+        "removed": false
+      }
+    ],
+    "status_options": [
+      {
+        "value": "",
+        "label": "Todos"
+      },
+      {
+        "value": "failed",
+        "label": "Falharam"
+      },
+      {
+        "value": "failed_resendable",
+        "label": "Falharam e podem ser reenviadas"
+      }
+    ],
+    "capabilities": {
+      "resend": true
+    }
+  },
+  "item_examples": {
+    "sent": {
+      "id": "81000000-0000-4000-8000-000000000001",
+      "root_effect_id": "81000000-0000-4000-8000-000000000001",
+      "retry_of_effect_id": null,
+      "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "origin": {
+        "code": "chatbot",
+        "label": "Chatbot",
+        "is_resend": false
+      },
+      "device": {
+        "id": "40000000-0000-4000-8000-000000000001",
+        "name": "Dispositivo sintético",
+        "removed": false,
+        "phone_e164": "+5567999999902"
+      },
+      "recipient": {
+        "phone_e164": "+5567999999901",
+        "display_name": "Contato sintético"
+      },
+      "received": {
+        "type": "text",
+        "text": "Quero renovar minha assinatura.",
+        "truncated": false
+      },
+      "sent": {
+        "type": "text",
+        "type_label": "Texto",
+        "text": "Olá! Sua renovação está disponível.",
+        "caption": null,
+        "media": null,
+        "truncated": false
+      },
+      "status": "sent",
+      "status_label": "Enviada",
+      "outcome": "accepted",
+      "failure": null,
+      "created_at": "2026-11-04T15:00:00Z",
+      "finished_at": "2026-11-04T15:00:02Z",
+      "actions": [],
+      "resend": {
+        "eligible": false,
+        "blocked_reason": "Esta mensagem já foi aceita pelo WhatsApp."
+      }
+    },
+    "failed": {
+      "id": "81000000-0000-4000-8000-000000000002",
+      "root_effect_id": "81000000-0000-4000-8000-000000000002",
+      "retry_of_effect_id": null,
+      "version": "2222222222222222222222222222222222222222222222222222222222222222",
+      "origin": {
+        "code": "chatbot",
+        "label": "Chatbot",
+        "is_resend": false
+      },
+      "device": {
+        "id": "40000000-0000-4000-8000-000000000001",
+        "name": "Dispositivo sintético",
+        "removed": false,
+        "phone_e164": "+5567999999902"
+      },
+      "recipient": {
+        "phone_e164": "+5567999999901",
+        "display_name": "Contato sintético"
+      },
+      "received": {
+        "type": "text",
+        "text": "Quero renovar minha assinatura.",
+        "truncated": false
+      },
+      "sent": {
+        "type": "text",
+        "type_label": "Texto",
+        "text": "Sua assinatura pode ser renovada hoje.",
+        "caption": null,
+        "media": null,
+        "truncated": false
+      },
+      "status": "failed",
+      "status_label": "Falhou",
+      "outcome": "not_sent",
+      "failure": {
+        "code": "TRANSPORT_UNAVAILABLE_BEFORE_SEND",
+        "message": "A conexão não estava disponível antes do envio."
+      },
+      "created_at": "2026-11-04T14:02:00Z",
+      "finished_at": "2026-11-04T14:02:02Z",
+      "actions": [
+        {
+          "type": "resend",
+          "label": "Reenviar"
+        }
+      ],
+      "resend": {
+        "eligible": true,
+        "blocked_reason": null
+      }
+    },
+    "uncertain": {
+      "id": "81000000-0000-4000-8000-000000000003",
+      "root_effect_id": "81000000-0000-4000-8000-000000000003",
+      "retry_of_effect_id": null,
+      "version": "3333333333333333333333333333333333333333333333333333333333333333",
+      "origin": {
+        "code": "chatbot",
+        "label": "Chatbot",
+        "is_resend": false
+      },
+      "device": {
+        "id": "40000000-0000-4000-8000-000000000001",
+        "name": "Dispositivo sintético",
+        "removed": false,
+        "phone_e164": "+5567999999902"
+      },
+      "recipient": {
+        "phone_e164": "+5567999999901",
+        "display_name": "Contato sintético"
+      },
+      "received": {
+        "type": "text",
+        "text": "Quero renovar minha assinatura.",
+        "truncated": false
+      },
+      "sent": {
+        "type": "text",
+        "type_label": "Texto",
+        "text": "Resultado ainda não confirmado.",
+        "caption": null,
+        "media": null,
+        "truncated": false
+      },
+      "status": "uncertain",
+      "status_label": "Resultado incerto",
+      "outcome": "uncertain",
+      "failure": {
+        "code": "MESSAGE_OUTCOME_UNCERTAIN",
+        "message": "Não foi possível confirmar o resultado do envio."
+      },
+      "created_at": "2026-11-04T14:03:00Z",
+      "finished_at": "2026-11-04T14:03:02Z",
+      "actions": [],
+      "resend": {
+        "eligible": false,
+        "blocked_reason": "O resultado é incerto. Um novo envio poderia duplicar a mensagem."
+      }
+    },
+    "pending": {
+      "id": "81000000-0000-4000-8000-000000000004",
+      "root_effect_id": "81000000-0000-4000-8000-000000000004",
+      "retry_of_effect_id": null,
+      "version": "4444444444444444444444444444444444444444444444444444444444444444",
+      "origin": {
+        "code": "chatbot",
+        "label": "Chatbot",
+        "is_resend": false
+      },
+      "device": {
+        "id": "40000000-0000-4000-8000-000000000001",
+        "name": "Dispositivo sintético",
+        "removed": false,
+        "phone_e164": "+5567999999902"
+      },
+      "recipient": {
+        "phone_e164": "+5567999999901",
+        "display_name": "Contato sintético"
+      },
+      "received": {
+        "type": "text",
+        "text": "Quero renovar minha assinatura.",
+        "truncated": false
+      },
+      "sent": {
+        "type": "text",
+        "type_label": "Texto",
+        "text": "Mensagem aguardando autorização.",
+        "caption": null,
+        "media": null,
+        "truncated": false
+      },
+      "status": "pending",
+      "status_label": "Pendente",
+      "outcome": "pending",
+      "failure": null,
+      "created_at": "2026-11-04T14:04:00Z",
+      "finished_at": null,
+      "actions": [],
+      "resend": {
+        "eligible": false,
+        "blocked_reason": "A tentativa ainda está em andamento."
+      }
+    }
+  },
+  "detail_response": {
+    "item": {
+      "id": "81000000-0000-4000-8000-000000000002",
+      "root_effect_id": "81000000-0000-4000-8000-000000000002",
+      "retry_of_effect_id": null,
+      "version": "2222222222222222222222222222222222222222222222222222222222222222",
+      "origin": {
+        "code": "chatbot",
+        "label": "Chatbot",
+        "is_resend": false
+      },
+      "device": {
+        "id": "40000000-0000-4000-8000-000000000001",
+        "name": "Dispositivo sintético",
+        "removed": false,
+        "phone_e164": "+5567999999902"
+      },
+      "recipient": {
+        "phone_e164": "+5567999999901",
+        "display_name": "Contato sintético"
+      },
+      "received": {
+        "type": "text",
+        "text": "Quero renovar minha assinatura.",
+        "truncated": false
+      },
+      "sent": {
+        "type": "text",
+        "type_label": "Texto",
+        "text": "Sua assinatura pode ser renovada hoje.",
+        "caption": null,
+        "media": null,
+        "truncated": false
+      },
+      "status": "failed",
+      "status_label": "Falhou",
+      "outcome": "not_sent",
+      "failure": {
+        "code": "TRANSPORT_UNAVAILABLE_BEFORE_SEND",
+        "message": "A conexão não estava disponível antes do envio."
+      },
+      "created_at": "2026-11-04T14:02:00Z",
+      "finished_at": "2026-11-04T14:02:02Z",
+      "actions": [
+        {
+          "type": "resend",
+          "label": "Reenviar"
+        }
+      ],
+      "resend": {
+        "eligible": true,
+        "blocked_reason": null
+      }
+    },
+    "timezone": "America/Cuiaba",
+    "generated_at": "2026-11-04T16:00:00Z"
+  },
+  "resend_request": {
+    "expected_version": "2222222222222222222222222222222222222222222222222222222222222222",
+    "idempotency_key": "82000000-0000-4000-8000-000000000001"
+  },
+  "resend_response": {
+    "request_id": "83000000-0000-4000-8000-000000000001",
+    "original_effect_id": "81000000-0000-4000-8000-000000000002",
+    "effect_id": "81000000-0000-4000-8000-000000000005",
+    "root_effect_id": "81000000-0000-4000-8000-000000000002",
+    "replayed": false,
+    "status": "pending",
+    "outcome": "pending"
+  }
+}

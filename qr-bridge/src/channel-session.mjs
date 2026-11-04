@@ -17,6 +17,7 @@ import {makeConversationIntake} from './conversation-intake.mjs';
 import {sendConnectionNoticeOnce} from './connection-alert.mjs';
 import {normalizeInbound,priorityText,updateEvent,callEvent,queueControl} from './inbound-event.mjs';
 import {createDeviceRuntime} from './device-runtime.mjs';
+import {messagePreflightError} from './device-message-failure.mjs';
 import {createDeviceProxy} from './device-network.mjs';
 
 const silent={level:'silent',trace(){},debug(){},info(){},warn(){},error(){},fatal(){},child(){return this;}};
@@ -109,10 +110,12 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     await guarded();const self=normalizeFromJid(client.user?.id);
     const sendCurrent=()=>{try{return current()&&operationCurrent()===true;}catch{return false;}};
     if(!sendCurrent())throw Error('channel_operation_superseded');
-    if(state!=='connected'||!self||phone===self||(!device&&!context.allowedSender(phone))||device&&!context.deviceSnapshot?.())throw Error('channel_send_denied');
+    if(state!=='connected')throw messagePreflightError('TRANSPORT_UNAVAILABLE_BEFORE_SEND');
+    if(!self||phone===self||(!device&&!context.allowedSender(phone))||device&&!context.deviceSnapshot?.())throw Error('channel_send_denied');
     const exists=await client.onWhatsApp(phone);await guarded();
     const recipient=exists?.find(row=>row.exists&&normalizeFromJid(row.jid)===phone);
-    if(!recipient){const error=Error('channel_recipient_unverified');error.code='recipient_identity_unverified';throw error;}
+    if(!recipient)throw messagePreflightError(Array.isArray(exists)&&exists.some(row=>row?.exists===false&&normalizeFromJid(row.jid)===phone)
+      ?'RECIPIENT_NOT_REGISTERED':'RECIPIENT_IDENTITY_UNVERIFIED');
     const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:!device&&context.verifiedLid?.()===true,
       socket:client,deviceCache,isCurrent:current});await guarded();
     const sent=await sendStoredText({jid:proof.jid,recipientProof:proof,text,store:retryStore,freshDevices:true,isCurrent:sendCurrent,maxTextChars,preserveWhitespace:device,
@@ -125,9 +128,11 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     const sendCurrent=()=>{try{return current()&&operationCurrent()===true&&!signal?.aborted;}catch{return false;}};
     const authorize=async()=>{await guarded();if(!sendCurrent()||typeof assertAuthorized!=='function')throw Error('chatbot_operation_superseded');await assertAuthorized();if(!sendCurrent())throw Error('chatbot_operation_superseded');};
     await authorize();const self=normalizeFromJid(client.user?.id);
-    if(state!=='connected'||!context.deviceSnapshot?.()||!self||phone===self||!/^\d{8,15}$/.test(phone))throw Error('channel_send_denied');
+    if(state!=='connected')throw messagePreflightError('TRANSPORT_UNAVAILABLE_BEFORE_SEND');
+    if(!context.deviceSnapshot?.()||!self||phone===self||!/^\d{8,15}$/.test(phone))throw Error('channel_send_denied');
     const exists=await client.onWhatsApp(phone);await authorize();
-    if(!exists?.some(row=>row.exists&&normalizeFromJid(row.jid)===phone))throw Object.assign(Error('channel_recipient_unverified'),{code:'recipient_identity_unverified'});
+    if(!exists?.some(row=>row.exists&&normalizeFromJid(row.jid)===phone))throw messagePreflightError(Array.isArray(exists)&&exists.some(row=>row?.exists===false&&normalizeFromJid(row.jid)===phone)
+      ?'RECIPIENT_NOT_REGISTERED':'RECIPIENT_IDENTITY_UNVERIFIED');
     const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:false,socket:client,deviceCache,isCurrent:sendCurrent});await authorize();
     let built;
     try{

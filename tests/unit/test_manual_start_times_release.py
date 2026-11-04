@@ -163,5 +163,7 @@ def test_existing_worker_predeploy_waits_for_both_releases(monkeypatch, manual_r
     from scripts import wait_for_subscription_chatbot_schema as chatbot_barrier
     monkeypatch.setattr(chatbot_barrier, "main", lambda: 0)
     from scripts import wait_for_subscription_templates_schema as templates_wait
+    from scripts import wait_for_subscription_sent_messages_schema as sent_messages_wait
+    monkeypatch.setattr(sent_messages_wait, "main", lambda: 0)
     monkeypatch.setattr(templates_wait, "main", lambda: 0)
     assert worker_barrier.main() == manual_result

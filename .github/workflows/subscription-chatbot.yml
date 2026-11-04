@@ -6,6 +6,7 @@ on:
       - 'app/subscription_device*.py'
       - 'app/subscription_chatbot*.py'
       - 'app/subscription_template*.py'
+      - 'app/subscription_sent_messages*.py'
       - 'app/qr_channels.py'
       - 'app/plan_catalog.py'
       - 'app/plan_permissions.py'
@@ -16,24 +17,30 @@ on:
       - 'app/static/orion-subscription-devices.*'
       - 'app/static/orion-subscription-chatbot*.*'
       - 'app/static/orion-subscription-templates.*'
+      - 'app/static/orion-subscription-sent-messages.*'
       - 'app/static/orion-suite.js'
       - 'app/static/panel.html'
       - 'alembic/versions/0063_subscription_chatbot.py'
       - 'alembic/versions/0064_subscription_templates.py'
+      - 'alembic/versions/0065_subscription_sent_messages.py'
       - 'qr-bridge/**'
       - 'scripts/*subscription_devices*'
       - 'scripts/*subscription_chatbot*'
       - 'scripts/*subscription_templates*'
+      - 'scripts/*subscription_sent_messages*'
       - 'scripts/backup_and_migrate_*.py'
       - 'scripts/predeploy_one_click_links.py'
       - 'scripts/wait_for_single_whatsapp_schema.py'
       - 'tests/**/test_subscription_device*.py'
       - 'tests/**/test_subscription_chatbot*.py'
       - 'tests/**/test_subscription_template*.py'
+      - 'tests/**/test_subscription_sent_messages*.py'
       - 'tests/fixtures/subscription_chatbot*_contract.json'
       - 'tests/fixtures/subscription_templates*.json'
+      - 'tests/fixtures/subscription_sent_messages*.json'
       - 'tests/e2e/browser_subscription_chatbot*.py'
       - 'tests/e2e/browser_subscription_templates.py'
+      - 'tests/e2e/browser_subscription_sent_messages.py'
       - 'ui-tests/*subscription*'
       - 'Dockerfile'
       - 'pyproject.toml'
@@ -78,6 +85,7 @@ jobs:
           python -m pytest -q -ra \
             tests/unit/test_subscription_chatbot*.py \
             tests/unit/test_subscription_template*.py \
+            tests/unit/test_subscription_sent_messages*.py \
             tests/unit/test_subscription_devices.py \
             tests/unit/test_subscription_device_rules.py \
             tests/unit/test_subscription_device_audio.py \
@@ -110,6 +118,7 @@ jobs:
           node --check qr-bridge/src/channel-manager.mjs
           node --check qr-bridge/src/channel-routes.mjs
           node --check qr-bridge/src/device-runtime.mjs
+          node --check qr-bridge/src/device-message-failure.mjs
           node --check qr-bridge/src/chatbot-runtime.mjs
           node --check qr-bridge/src/chatbot-message.mjs
           node --check qr-bridge/src/chatbot-input.mjs
@@ -152,12 +161,14 @@ jobs:
           node --check app/static/orion-subscription-chatbot.js
           node --check app/static/orion-subscription-chatbot-test.js
           node --check app/static/orion-subscription-templates.js
+          node --check app/static/orion-subscription-sent-messages.js
           node --check app/static/orion-subscription-devices.js
           node --check app/static/orion-suite.js
           node --test \
             ui-tests/subscription-chatbot.test.mjs \
             ui-tests/subscription-chatbot-test.test.mjs \
             ui-tests/subscription-templates.test.mjs \
+            ui-tests/subscription-sent-messages.test.mjs \
             ui-tests/subscription-devices.test.mjs \
             ui-tests/subscription-workspace.test.mjs \
             ui-tests/channels.test.mjs \
@@ -253,6 +264,7 @@ jobs:
           raise SystemExit(pytest.main(['-q', '-ra',
               *sorted(glob.glob('tests/integration/test_subscription_chatbot*_postgres.py')),
               *sorted(glob.glob('tests/integration/test_subscription_templates*_postgres.py')),
+              *sorted(glob.glob('tests/integration/test_subscription_sent_messages*_postgres.py')),
               'tests/integration/test_subscription_devices_postgres.py',
               'tests/integration/test_subscription_devices_release_postgres.py',
               'tests/integration/test_subscription_workspace_postgres.py',
@@ -316,6 +328,7 @@ jobs:
             tests/e2e/browser_subscription_chatbot.py \
             tests/e2e/browser_subscription_chatbot_simulator.py \
             tests/e2e/browser_subscription_templates.py \
+            tests/e2e/browser_subscription_sent_messages.py \
             tests/e2e/browser_subscription_devices.py \
             tests/e2e/browser_subscription_workspace.py -k '${{ matrix.engine }}'
       - uses: actions/upload-artifact@v4
@@ -326,6 +339,7 @@ jobs:
             test-artifacts/subscription-chatbot/
             test-artifacts/subscription-chatbot-test/
             test-artifacts/subscription-templates/
+            test-artifacts/subscription-sent-messages/
             test-artifacts/subscription-devices/
             test-artifacts/subscription-workspace/
           if-no-files-found: warn
