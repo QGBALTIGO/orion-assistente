@@ -135,6 +135,9 @@ def validate_graph(rules, templates, *, require_enabled=False, root_ids=None):
                 required = {"sticker": "sticker", "shortvideo": "ptv"}.get(kind)
                 if required and template["kind"] != required:
                     raise ValueError("O template não corresponde ao tipo de mídia selecionado")
+                extra = bool(template.get("followup_body", template.get("followup_text", "")))
+                caption = bool(template.get("body", template.get("text", ""))) if template["kind"] == "audio" else False
+                return 1 + int(extra) + int(caption), action["delay_seconds"]
             return 1, action["delay_seconds"]
 
         if response["kind"] == "sequence":
@@ -220,6 +223,13 @@ def compile_plan(rule_id, rules, templates, facts, http_context, *, selected_act
             text = render_contact(template.get("body", template.get("text", "")), facts)
             if template["kind"] == "text":
                 transport = {"type": "text", "text": text}
+            elif template["kind"] == "location":
+                location = template.get("location")
+                if (text or not isinstance(location, dict) or set(location) != {"latitude", "longitude"}
+                        or any(type(location[key]) not in {int, float} or not math.isfinite(location[key])
+                               or abs(location[key]) > limit for key, limit in (("latitude", 90), ("longitude", 180)))):
+                    raise ValueError("A localização do template é inválida")
+                transport = {"type": "location", **deepcopy(location)}
             else:
                 asset = template.get("asset")
                 if not asset:
@@ -228,8 +238,21 @@ def compile_plan(rule_id, rules, templates, facts, http_context, *, selected_act
                     raise ValueError("Esse tipo de mídia não aceita legenda; use uma ação Texto separada")
                 if text:
                     text = clean_text(text, maximum=1024)
-                transport = {"type": template["kind"], "asset": deepcopy(asset), "caption": text,
-                             "file_name": asset["file_name"]}
+                transport = {"type": template["kind"], "asset": deepcopy(asset),
+                             "caption": "" if template["kind"] == "audio" else text,
+                             "file_name": template.get("file_name") or asset["file_name"]}
+            # WhatsApp audio has no native caption. Preserve it as a separate
+            # text action; the engine admits each successor only after the
+            # previous effect is confirmed. No extra timing window is consumed.
+            result = [{"delay_seconds": delay, "action": transport}]
+            if template["kind"] == "audio" and text:
+                result.append({"delay_seconds": 0, "action": {"type": "text", "text": text}})
+            followup = template.get("followup_body", template.get("followup_text", ""))
+            if followup:
+                if template["kind"] in {"text", "location", "sticker", "ptv"}:
+                    raise ValueError("Este tipo de template não aceita mensagem posterior")
+                result.append({"delay_seconds": 0, "action": {"type": "text", "text": render_contact(followup, facts)}})
+            return result
         elif kind == "url":
             transport = {"type": "http", "url": action["url"], "method": action["method"],
                          "data": deepcopy(http_context), "custom_template": action["custom_template"],

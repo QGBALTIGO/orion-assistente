@@ -81,6 +81,23 @@ test('ingress to a native list uses a current effect, exact encrypted proto and 
   const incoming=f.events.find(row=>row.message_id==='native-list');assert.equal(incoming.origin,'contact');assert.equal(incoming.chatbot_revision,1);assert.ok(Number.isSafeInteger(incoming.ingress_order));
 });
 
+test('audio, its caption and followup, then location traverse the authorized native runtime in receipt order',{timeout:10_000},async t=>{
+ const f=await fixture(t),done=defer(),bytes=Buffer.from('synthetic private audio bytes');
+ const asset={id:randomUUID(),kind:'audio',mime:'audio/mpeg',size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),
+  width:null,height:null,thumbnail:null,duration_ms:1000,file_name:'audio.mp3'};
+ const effects=[f.effect({type:'audio',asset,caption:''}),f.effect({type:'text',text:'Legenda do áudio'}),
+  f.effect({type:'text',text:'Mensagem posterior'}),f.effect({type:'location',latitude:-22.9,longitude:-43.2})];
+ const receipts=[];
+ f.behavior.asset=async payload=>{assert.equal(payload.operation_id,effects[0].operation_id);assert.equal(payload.asset.id,asset.id);assert.equal(payload.variant,'original');return Buffer.from(bytes);};
+ f.behavior.finish=async receipt=>{const index=effects.findIndex(effect=>effect.operation_id===receipt.operation_id);assert.equal(index,receipts.length);assert.equal(receipt.state,'accepted');receipts.push(receipt.operation_id);
+  if(index===effects.length-1)done.resolve();return {effects:index<effects.length-1?[effects[index+1]]:[]};};
+ f.behavior.event=async row=>row.kind==='text'?[effects[0]]:[];f.receive('template-sequence');await done.promise;
+ assert.equal(f.sends.length,4);assert.equal(f.sends[0].proto.audioMessage.mimetype,'audio/mpeg');assert.equal(f.sends[0].proto.audioMessage.ptt,false);
+ assert.equal(f.sends[1].proto.extendedTextMessage.text,'Legenda do áudio');assert.equal(f.sends[2].proto.extendedTextMessage.text,'Mensagem posterior');
+ assert.equal(f.sends[3].proto.locationMessage.degreesLatitude,-22.9);assert.equal(f.sends[3].proto.locationMessage.degreesLongitude,-43.2);
+ assert.ok(f.sends.every(send=>send.jid===phone+'@s.whatsapp.net'));assert.deepEqual(receipts,effects.map(effect=>effect.operation_id));
+});
+
 test('carousel image decoder envelope is unwrapped and every normalized asset remains scoped to the effect',{timeout:10_000},async t=>{
   const f=await fixture(t),completed=defer(),original=Buffer.from('synthetic normalized image'),thumbnail=Buffer.from('synthetic normalized thumbnail'),prepared=[],loaded=[],raw=[];
   const hash=bytes=>createHash('sha256').update(bytes).digest('hex');

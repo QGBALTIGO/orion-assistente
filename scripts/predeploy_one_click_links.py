@@ -24,7 +24,7 @@ def main():
     import tempfile
     raw, url = connection_values()
     current = migrated_version(raw)
-    if current not in {"0057_professional_portal","0058_professional_scope","0059_prepaid_pix","0060_manual_start_times", "0061_appointment_consent", "0062_subscription_devices", "0063_subscription_chatbot"}:
+    if current not in {"0057_professional_portal","0058_professional_scope","0059_prepaid_pix","0060_manual_start_times", "0061_appointment_consent", "0062_subscription_devices", "0063_subscription_chatbot", "0064_subscription_templates"}:
         raise RuntimeError("professional_hardening_source_revision_not_approved")
     if current == "0057_professional_portal":
         # A private, ownership-preserving archive must be verified with a full
@@ -36,7 +36,7 @@ def main():
         environment = {**os.environ, "ORION_MIGRATION_SWITCH_ROLE": "1"}
         subprocess.run([sys.executable, "-m", "alembic", "upgrade",
                         "0058_professional_scope"], env=environment, check=True)
-    if migrated_version(raw) not in {"0058_professional_scope","0059_prepaid_pix","0060_manual_start_times", "0061_appointment_consent", "0062_subscription_devices", "0063_subscription_chatbot"}:
+    if migrated_version(raw) not in {"0058_professional_scope","0059_prepaid_pix","0060_manual_start_times", "0061_appointment_consent", "0062_subscription_devices", "0063_subscription_chatbot", "0064_subscription_templates"}:
         raise RuntimeError("professional_hardening_schema_not_published")
     from scripts.backup_and_migrate_registration import (
         portal_schema_ready, professional_hardening_schema_ready,
@@ -64,6 +64,10 @@ def main():
     if subscription_chatbot_migrate():
         raise RuntimeError("subscription_chatbot_schema_not_ready")
     print("subscription_chatbot_schema_ready", flush=True)
+    from scripts.backup_and_migrate_subscription_templates import main as subscription_templates_migrate
+    if subscription_templates_migrate():
+        raise RuntimeError("subscription_templates_schema_not_ready")
+    print("subscription_templates_schema_ready", flush=True)
     # Explicit one-time merchant catalog provisioning; no customer payments.
     # Refuses to run if the prepaid checkout is already live.
     if os.getenv("ORION_PIX_PROVISION_ONCE","0")=="1":

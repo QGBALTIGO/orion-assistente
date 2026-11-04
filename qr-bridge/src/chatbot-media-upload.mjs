@@ -9,7 +9,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 
 export async function awaitChatbotEncryptedMedia(file,metadata,{signal,isCurrent=()=>true,timeoutMs=2500}={}){
   if(typeof file!=='string'||path.dirname(path.resolve(file))!==path.resolve(os.tmpdir())||
-      !/^(image|sticker|video|document)[A-F0-9]{16,80}-enc$/.test(path.basename(file))||
+      !/^(image|sticker|video|audio|document)[A-F0-9]{16,80}-enc$/.test(path.basename(file))||
       typeof metadata?.fileEncSha256B64!=='string'||!/^[A-Za-z0-9+/]{43}=$/.test(metadata.fileEncSha256B64))throw Error('chatbot_upload_invalid');
   const deadline=Date.now()+timeoutMs;
   for(;;){

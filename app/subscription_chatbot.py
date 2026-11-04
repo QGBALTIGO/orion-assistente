@@ -93,7 +93,7 @@ async def catalog(db, tenant, actor, *, graph=None):
     return {"chatbot_revision": await store.revision(db, tenant),
         "devices": [dict(row) for row in devices],
         "templates": [{"id": row["id"], "revision": row["revision"], "name": row["name"], "kind": row["kind"],
-                       "available": row["kind"] == "text" or row["asset"] is not None} for row in templates.values()],
+                       "available": row["kind"] in {"text", "location"} or row["asset"] is not None} for row in templates.values()],
         "rules": [{key: row[key] for key in ("id", "keyword", "device_id", "enabled", "revision")}
                   | {"response_kind": row["response"]["kind"]} for row in sorted(rules.values(), key=lambda item: item["creation_order"], reverse=True)],
         "capabilities": capabilities(bool(state.get("permissions", {}).get("chatbot.manage"))),

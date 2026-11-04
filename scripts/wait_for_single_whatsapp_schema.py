@@ -109,7 +109,11 @@ def main():
     if result:
         return result
     from scripts.wait_for_subscription_chatbot_schema import main as chatbot_wait
-    return chatbot_wait()
+    result = chatbot_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_templates_schema import main as templates_wait
+    return templates_wait()
 
 
 if __name__ == "__main__":

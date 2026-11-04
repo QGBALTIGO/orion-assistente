@@ -60,7 +60,7 @@ async def effect_transaction(request, scope, *, receipt=False):
 
 def _referenced_asset(effect, asset_id):
     action = effect["payload"]["action"]
-    if action["type"] in {"image", "sticker", "video", "ptv", "document"}:
+    if action["type"] in {"image", "sticker", "video", "ptv", "document", "audio"}:
         return str((action.get("asset") or {}).get("id")) == str(asset_id)
     if action["type"] == "carousel":
         return str(asset_id) in ((effect.get("result") or {}).get("carousel_assets") or {}).values()

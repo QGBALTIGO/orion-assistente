@@ -7,7 +7,7 @@
   const paths={bot:'M8 4h8v3H8zM4 7h16v13H4zM8 11h.01M16 11h.01M8 16h8M12 1v3M1 11h3m16 0h3',trash:'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7',send:'m22 2-7 20-4-9-9-4 20-7M22 2 11 13',expand:'M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5',collapse:'M3 8h5V3m8 0v5h5M8 21v-5H3m18 0h-5v5',refresh:'M20 11a8 8 0 1 0-2.4 6M20 4v7h-7'};
   const icon=name=>'<svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="'+(paths[name]||paths.bot)+'"/></svg>';
   const button=(label,action,symbol,extra='')=>'<button type="button" class="os-button os-outline" data-sct-action="'+action+'" '+extra+'>'+icon(symbol)+'<span>'+esc(label)+'</span></button>';
-  const mediaTypes={image:{mime:'image/jpeg',limit:5000000,label:'Imagem'},sticker:{mime:'image/webp',limit:500000,label:'Figurinha'},video:{mime:'video/mp4',limit:16000000,label:'Vídeo'},ptv:{mime:'video/mp4',limit:16000000,label:'Recado de vídeo'},document:{mime:'text/plain',limit:1000000,label:'Arquivo de texto'}};
+  const mediaTypes={image:{mime:'image/jpeg',limit:5000000,label:'Imagem'},sticker:{mime:'image/webp',limit:500000,label:'Figurinha'},video:{mime:'video/mp4',limit:16000000,label:'Vídeo'},ptv:{mime:'video/mp4',limit:16000000,label:'Recado de vídeo'},audio:{mime:'audio/mpeg',limit:16000000,label:'Áudio'},document:{mimes:['text/plain','application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.android.package-archive'],limit:10000000,label:'Documento'}};
   const matchLabels={equal:'Exata',like:'Contém',array:'Lista'};
   const string=(value,max=65536)=>typeof value==='string'&&value.length<=max*2&&[...value].length<=max;
   const positive=value=>Number.isSafeInteger(value)&&value>0;
@@ -37,8 +37,10 @@
       if(rows.length>10||new Set(rows).size!==rows.length)throw Error('invalid_rows');
     }else if(value.type==='media'){
       const type=mediaTypes[value.kind],asset=value.asset;
-      if(!type||!string(value.caption,4096)||!object(asset)||!uuid(asset.id)||asset.kind!==value.kind||mime(asset.mime)!==type.mime||!positive(asset.size)||asset.size>type.limit||!string(asset.file_name,255)||!string(asset.content_url,16384))throw Error('invalid_asset');
+      if(!type||!string(value.caption,4096)||!object(asset)||!uuid(asset.id)||asset.kind!==value.kind||!(type.mimes||[type.mime]).includes(mime(asset.mime))||!positive(asset.size)||asset.size>type.limit||!string(asset.file_name,255)||!string(asset.content_url,16384))throw Error('invalid_asset');
       if(asset.thumbnail_url!==null&&asset.thumbnail_url!==undefined&&(!string(asset.thumbnail_url,16384)||mime(asset.thumbnail_mime)!=='image/jpeg'||!positive(asset.thumbnail_size)||asset.thumbnail_size>100000))throw Error('invalid_thumbnail');
+    }else if(value.type==='location'){
+      if(!Number.isFinite(value.latitude)||!Number.isFinite(value.longitude)||Math.abs(value.latitude)>90||Math.abs(value.longitude)>180)throw Error('invalid_location');
     }else if(value.type==='carousel'){
       if(!string(value.body,4096)||!string(value.notice,4096)||!Array.isArray(value.cards)||!value.cards.length||value.cards.length>10||value.cards.some(card=>!object(card)||['title','body','button_text'].some(key=>!string(card[key],4096))||card.image_status!=='not_requested'))throw Error('invalid_carousel');
     }else if(value.type==='external_request'){
@@ -91,7 +93,7 @@
       return url.pathname+url.search;
     }
     async function readAsset(asset,variant,signal){
-      const thumbnail=variant==='thumbnail',type=thumbnail?{mime:'image/jpeg',limit:100000}:mediaTypes[asset.kind],expected=thumbnail?asset.thumbnail_size:asset.size;
+      const thumbnail=variant==='thumbnail',type=thumbnail?{mime:'image/jpeg',limit:100000}:{...mediaTypes[asset.kind],mime:mime(asset.mime)},expected=thumbnail?asset.thumbnail_size:asset.size;
       if(!positive(expected)||expected>type.limit)throw Error('invalid_asset_size');
       const response=await fetch(assetURL(asset,variant),{method:'GET',credentials:'same-origin',mode:'same-origin',cache:'no-store',redirect:'error',headers:{Accept:type.mime},signal});
       if(!response.ok||response.status!==200){await response.body?.cancel();throw Error('asset_http_error');}
@@ -107,6 +109,9 @@
       const data=new Uint8Array(size);let offset=0;for(const chunk of chunks){data.set(chunk,offset);offset+=chunk.byteLength;}
       if(type.mime==='image/jpeg'&&(data[0]!==0xff||data[1]!==0xd8||data[2]!==0xff)||type.mime==='image/webp'&&(new TextDecoder().decode(data.slice(0,4))!=='RIFF'||new TextDecoder().decode(data.slice(8,12))!=='WEBP')||type.mime==='video/mp4'&&new TextDecoder().decode(data.slice(4,8))!=='ftyp')throw Error('asset_format_error');
       if(type.mime==='text/plain')new TextDecoder('utf-8',{fatal:true}).decode(data);
+      if(type.mime==='audio/mpeg'&&!(new TextDecoder().decode(data.slice(0,3))==='ID3'||data[0]===0xff&&(data[1]&0xe0)===0xe0))throw Error('asset_format_error');
+      if(type.mime==='application/pdf'&&new TextDecoder().decode(data.slice(0,5))!=='%PDF-')throw Error('asset_format_error');
+      if(['application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.android.package-archive'].includes(type.mime)&&!(data[0]===0x50&&data[1]===0x4b&&data[2]===3&&data[3]===4))throw Error('asset_format_error');
       return new Blob([data],{type:type.mime});
     }
     function renderMedia(entry){
@@ -118,6 +123,7 @@
       const value=entry.message;let element;
       if(value.kind==='image'||value.kind==='sticker'){element=document.createElement('img');element.src=entry.mediaURL;element.alt=value.caption||mediaTypes[value.kind].label;element.loading='lazy';element.decoding='async';if(value.kind==='sticker')element.className='os-chatbot-test-sticker';}
       else if(value.kind==='video'||value.kind==='ptv'){element=document.createElement('video');element.src=entry.mediaURL;element.controls=true;element.preload='metadata';element.setAttribute('playsinline','');element.setAttribute('aria-label',value.caption||mediaTypes[value.kind].label);if(entry.thumbnailURL)element.poster=entry.thumbnailURL;if(value.kind==='ptv')element.className='os-chatbot-test-ptv';}
+      else if(value.kind==='audio'){element=document.createElement('audio');element.src=entry.mediaURL;element.controls=true;element.preload='metadata';element.setAttribute('aria-label','Áudio do template');}
       else{element=document.createElement('a');element.href=entry.mediaURL;element.download=value.asset.file_name.split(/[\\/]/).pop().replace(/[\u0000-\u001f\u007f]/g,'')||'arquivo.txt';element.className='os-button os-outline';element.textContent='Baixar '+(value.asset.file_name||'arquivo de texto');}
       container.appendChild(element);
     }
@@ -168,6 +174,7 @@
       if(['text','unavailable'].includes(value.type))return '<p>'+esc(value.text)+'</p>';
       if(value.type==='list')return '<div class="os-chatbot-test-list"><strong>'+esc(value.title)+'</strong><p>'+esc(value.description)+'</p>'+(value.footer?'<small>'+esc(value.footer)+'</small>':'')+'<details><summary>'+esc(value.button_text)+'</summary>'+value.sections.map(section=>'<section>'+(section.title?'<h3>'+esc(section.title)+'</h3>':'')+section.rows.map(row=>'<button type="button" class="os-chatbot-test-menu-row" data-sct-action="select-row" data-sct-entry="'+entry.id+'" data-sct-row="'+row.id+'"><span>'+esc(row.title)+'</span>'+(row.description?'<small>'+esc(row.description)+'</small>':'')+'</button>').join('')+'</section>').join('')+'</details><p class="os-chatbot-test-rich-notice" data-sct-menu-notice hidden></p></div>';
       if(value.type==='media')return '<div class="os-chatbot-test-media"><span class="os-chatbot-test-media-label">'+esc(mediaTypes[value.kind].label)+'</span><div data-sct-media-content><p class="os-chatbot-test-rich-notice">Carregando arquivo…</p></div>'+(value.caption?'<p>'+esc(value.caption)+'</p>':'')+'</div>';
+      if(value.type==='location')return '<div class="os-chatbot-test-location"><strong>Localização</strong><p>Latitude: '+esc(value.latitude)+'<br>Longitude: '+esc(value.longitude)+'</p></div>';
       if(value.type==='carousel')return '<div class="os-chatbot-test-carousel"><p>'+esc(value.body)+'</p><div class="os-chatbot-test-carousel-cards">'+value.cards.map(card=>'<section><strong>'+esc(card.title)+'</strong><p>'+esc(card.body)+'</p>'+(card.button_text?'<span class="os-chatbot-test-declared-button">'+esc(card.button_text)+'</span>':'')+'</section>').join('')+'</div><p class="os-chatbot-test-rich-notice">'+esc(value.notice)+'</p></div>';
       if(value.type==='external_request')return '<div class="os-chatbot-test-external"><strong>'+esc(value.method)+' · URL</strong><code>'+esc(value.url)+'</code><p>'+esc(value.text)+'</p>'+(value.custom_template?'<p>'+esc(value.custom_template)+'</p>':'')+(value.as_file?'<small>Retorno configurado como arquivo de texto.</small>':'')+'</div>';
       return '';

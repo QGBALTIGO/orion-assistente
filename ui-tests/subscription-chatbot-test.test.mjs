@@ -168,3 +168,30 @@ test('an empty or unavailable catalog never enables the composer and a read retr
  const empty=await makeChatbotTest({data:bootstrap({devices:[]})});t.after(()=>empty.close());assert.equal(empty.element('[data-sct-input]').disabled,true);assert.match(empty.element('[data-sct-feedback]').textContent,/Nenhum dispositivo/);assert.equal(posts(empty).length,0);
  let unavailable=true;const h=await makeChatbotTest({respond(path,method){if(method==='GET'&&unavailable)throw failure(503);}});t.after(()=>h.close());assert.equal(h.element('[data-sct-input]').disabled,true);unavailable=false;h.click(action('reload'));await flush();assert.equal(h.controller.getState().loaded,true);assert.equal(h.element('[data-sct-input]').disabled,true);assert.equal(posts(h).length,0);assert.deepEqual(h.errors,[]);
 });
+
+test('new template audio uses a private player without autoplay and location never loads a map',async t=>{
+ const bytes=Uint8Array.from([0xff,0xfb,0x90,0x64]),audio=media('image',bytes,{kind:'audio',mime:'audio/mpeg',file_name:'audio.mp3'});audio.value.kind='audio';audio.value.caption='';
+ const location={id:randomUUID(),delay_seconds:0,type:'location',latitude:-22.9,longitude:-43.2};
+ const h=await makeChatbotTest({respond(path,method,payload){if(method==='POST')return response(payload,{messages:[audio.value,message('text',{text:'Depois do áudio'}),location]});},respondBinary:()=>binary(bytes,'audio/mpeg')});t.after(()=>h.close());h.select(deviceId);await h.send('template');
+ const player=h.element('audio');assert.equal(player.controls,true);assert.equal(player.autoplay,false);assert.equal(player.preload,'metadata');assert.match(player.src,/^blob:/);
+ assert.equal(h.objectURLs.get(player.src).type,'audio/mpeg');assert.equal(h.binaryCalls.length,1);assert.match(h.element('[data-type="location"]').textContent,/Latitude: -22.9.*Longitude: -43.2/);
+ assert.equal(h.document.querySelector('[data-type="location"] :is(iframe,img,a)'),null);assert.equal(h.controller.getState().messages,4);h.click(action('clear'));assert.equal(h.objectURLs.size,0);assert.deepEqual(h.errors,[]);
+});
+
+for(const [mime,name,bytes]of [['application/pdf','arquivo.pdf',new TextEncoder().encode('%PDF-1.4 synthetic')],
+ ['application/vnd.openxmlformats-officedocument.wordprocessingml.document','arquivo.docx',Uint8Array.from([0x50,0x4b,3,4])],
+ ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','arquivo.xlsx',Uint8Array.from([0x50,0x4b,3,4])],
+ ['application/vnd.android.package-archive','arquivo.apk',Uint8Array.from([0x50,0x4b,3,4])],
+ ['text/plain; charset=utf-8','tabela.csv',new TextEncoder().encode('nome,valor\nTeste,2\n')]]){
+ test(`private ${name} is an explicit download with its exact name, never embedded or executed`,async t=>{
+  const file=media('document',bytes,{mime,file_name:name}),h=await makeChatbotTest({respond(path,method,payload){if(method==='POST')return response(payload,{messages:[file.value]});},respondBinary:()=>binary(bytes,mime)});t.after(()=>h.close());h.select(deviceId);await h.send('arquivo');
+  const link=h.element('[data-sct-media-content] a');assert.equal(link.download,name);assert.match(link.href,/^blob:/);assert.equal(h.objectURLs.get(link.href).type,mime.split(';')[0]);assert.equal(h.document.querySelector('[data-sct-media-content] :is(iframe,object,embed,script)'),null);assert.equal(h.binaryCalls.length,1);assert.deepEqual(h.errors,[]);
+ });
+}
+
+test('impossible location and forged audio MIME cannot create an incoming message or media request',async t=>{
+ const fake=media('image');fake.value.kind='audio';fake.value.asset.kind='audio';fake.value.asset.mime='text/html';
+ for(const value of [{id:randomUUID(),delay_seconds:0,type:'location',latitude:91,longitude:0},fake.value]){
+  const h=await makeChatbotTest({respond(path,method,payload){if(method==='POST')return response(payload,{messages:[value]});}});t.after(()=>h.close());h.select(deviceId);await h.send('inválido');assert.equal(h.controller.getState().messages,1);assert.equal(h.binaryCalls.length,0);assert.equal(h.objectURLs.size,0);assert.deepEqual(h.errors,[]);
+ }
+});

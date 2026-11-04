@@ -96,3 +96,37 @@ interrompido pelo limite de 12 minutos enquanto ainda avançava. A execução
 anterior completa havia levado 578,98 segundos; o limite do mesmo passo
 foi ampliado para 20 minutos para obter o resumo final com a suíte ampliada.
 O comando, a seleção de testes e as assertions permanecem iguais.
+
+## Qualificação final e publicação
+
+O head `63e215a27b83ca9638ea43ee4d5dc379e7060253` passou nos seis jobs do
+[run 41840922434](https://github.com/QGBALTIGO/orion-assistente/actions/runs/41840922434):
+936 Python, 300 Node, 196 DOM, 109 PostgreSQL, 25 Chromium e 25 WebKit —
+**1.591 execuções aprovadas**. A árvore qualificada é
+`f911128ea29637f7a1f3af326e01f764f597158e`.
+
+O pytest geral terminou no
+[run 41840922375](https://github.com/QGBALTIGO/orion-assistente/actions/runs/41840922375)
+em 729,68 segundos: 7.474 aprovados, 176 falhas, 43 erros e 12 ignorados.
+A base da PR 249 tinha 7.395 aprovados e os mesmos 176 testes falhos,
+43 erros e 12 ignorados. Os 79 aprovados adicionais correspondem aos 62 testes
+unitários e 17 PostgreSQL desta etapa. A comparação dos identificadores não
+encontrou falha ou erro novo; três diagnósticos diferiram apenas em UUIDs/hashes
+da fixture, mantendo a mesma assertion, arquivo e linha. As falhas compartilhadas
+de Node, Planos, cadastro/histórico, Campos e schema de acesso profissional
+também coincidiram com a base, sem enfraquecer os gates.
+
+A [PR 250](https://github.com/QGBALTIGO/orion-assistente/pull/250) foi publicada
+em `8146d5f7f50bb778d188f74b7e52452394870c50`; sua árvore foi comparada com
+a árvore qualificada. API `f82ff217-a711-4156-bbaa-8caccd002b5b` e worker
+`bc17b905-f29b-4d92-8b07-b2139cfdd79c` concluíram com sucesso. A ponte permaneceu
+no deployment saudável `ec2ec483-c877-4437-9214-50afab4f2986`, pois sua subárvore
+`a170cdb7553d9b2d7c3dadf2935b74da31d32f78` não mudou. O ambiente apresentou cinco
+serviços online, nenhuma réplica caída e nenhum trabalho de deploy pendente.
+
+No Chrome conectado, a aba publicada foi aberta sem alterar os rascunhos do
+usuário em outras abas. Foram confirmados: dispositivo obrigatório, ativação
+do campo após seleção, envio local por Enter, duas bolhas e resultado sem
+correspondência quando a empresa não tem regras, contador, limpeza imediata
+preservando dispositivo e entrada/saída de tela cheia por Escape. Foi capturada
+a tela real do Orion. Não foi criada regra de teste nem enviada mensagem real.

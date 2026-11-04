@@ -17,9 +17,9 @@ function assets(){
   const entries=new Map(),copies=[],uploads=[];
   function add(kind,{size=40,thumbnailSize=40}={}){
     const buffer=Buffer.alloc(size,kind==='document'?65:83),thumbnail=['image','video','ptv'].includes(kind)?Buffer.alloc(thumbnailSize,74):null;
-    const descriptor={id:randomUUID(),kind,mime:{image:'image/jpeg',sticker:'image/webp',video:'video/mp4',ptv:'video/mp4',document:'text/plain; charset=utf-8'}[kind],
-      size:buffer.length,sha256:sha(buffer),...(kind!=='document'?{width:512,height:512}:{}),
-      ...(['video','ptv'].includes(kind)?{duration_ms:2000}:{}),...(kind==='document'?{file_name:'resposta.txt'}:{}),
+    const descriptor={id:randomUUID(),kind,mime:{image:'image/jpeg',sticker:'image/webp',video:'video/mp4',ptv:'video/mp4',audio:'audio/mpeg',document:'text/plain; charset=utf-8'}[kind],
+      size:buffer.length,sha256:sha(buffer),...(!['document','audio'].includes(kind)?{width:512,height:512}:{}),
+      ...(['video','ptv','audio'].includes(kind)?{duration_ms:2000}:{}),...(kind==='document'?{file_name:'resposta.txt'}:{}),
       thumbnail:thumbnail?{mime:'image/jpeg',size:thumbnail.length,sha256:sha(thumbnail)}:null};
     entries.set(descriptor.id,{buffer,thumbnail});return descriptor;
   }
@@ -49,7 +49,7 @@ test('native list limits and duplicate/forged row identities fail before any upl
   assert.equal(f.uploads.length,0);
 });
 
-for(const kind of ['image','sticker','video','ptv','document'])test(`real encrypted ${kind} protocol uses normalized private bytes and retains the exact type`,async()=>{
+for(const kind of ['image','sticker','video','ptv','audio','document'])test(`real encrypted ${kind} protocol uses normalized private bytes and retains the exact type`,async()=>{
   const f=assets(),asset=f.add(kind);
   const built=await buildChatbotContent({type:kind,asset,...(['image','video'].includes(kind)?{caption:'Legenda'}:{})},f.options);
   try{
@@ -60,9 +60,38 @@ for(const kind of ['image','sticker','video','ptv','document'])test(`real encryp
     assert.ok(!f.uploads[0].bytes.includes(Buffer.alloc(40,kind==='document'?65:83)),'Upload is encrypted by the actual pinned SDK');
     if(kind==='ptv')assert.equal(decoded.videoMessage,null);
     if(kind==='document')assert.equal(value.fileName,'resposta.txt');
+    if(kind==='audio'){assert.equal(value.ptt,false);assert.equal(value.seconds,2);assert.equal(decoded.documentMessage,null);}
     if(asset.thumbnail)assert.equal(value.jpegThumbnail.length,asset.thumbnail.size);
   }finally{built.dispose();}
   assert.ok(f.copies.every(buffer=>buffer.every(byte=>byte===0)));
+});
+
+for(const [mime,name]of [['application/pdf','arquivo.pdf'],
+  ['application/vnd.openxmlformats-officedocument.wordprocessingml.document','arquivo.docx'],
+  ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','arquivo.xlsx'],
+  ['application/vnd.android.package-archive','arquivo.apk'],['text/plain; charset=utf-8','tabela.csv']]){
+ test(`document protocol preserves ${name} and its canonical MIME without opening the file`,async()=>{
+  const f=assets(),asset=f.add('document');asset.mime=mime;asset.file_name=name;
+  const result=await buildChatbotContent({type:'document',asset,caption:'Legenda',file_name:'outro-'+name},f.options);
+  try{const value=wire(result.content).documentMessage;assert.equal(value.mimetype,mime);assert.equal(value.fileName,'outro-'+name);assert.equal(value.caption,'Legenda');assert.equal(f.uploads.length,1);}finally{result.dispose();}
+ });
+}
+
+test('native location serializes geographic coordinates without fetching a map or uploading media',async()=>{
+ const f=assets();const result=await buildChatbotContent({type:'location',latitude:-22.9,longitude:-43.2},f.options);
+ try{const value=wire(result.content);assert.equal(value.locationMessage.degreesLatitude,-22.9);assert.equal(value.locationMessage.degreesLongitude,-43.2);assert.equal(value.extendedTextMessage,null);assert.equal(f.uploads.length,0);}finally{result.dispose();}
+ for(const action of [{type:'location',latitude:91,longitude:0},{type:'location',latitude:0,longitude:-181},
+   {type:'location',latitude:NaN,longitude:0},{type:'location',latitude:'0',longitude:0},{type:'location',latitude:false,longitude:0}]){
+  await assert.rejects(buildChatbotContent(action,f.options),/invalid/);
+ }
+});
+
+test('audio captions, active document MIME and mismatched filename cannot be silently delivered',async()=>{
+ const f=assets(),audio=f.add('audio'),document=f.add('document');
+ await assert.rejects(buildChatbotContent({type:'audio',asset:audio,caption:'must be a separate text action'},f.options),/invalid/);
+ await assert.rejects(buildChatbotContent({type:'document',asset:{...document,mime:'text/html'},file_name:'arquivo.html'},f.options),/invalid/);
+ await assert.rejects(buildChatbotContent({type:'document',asset:{...document,mime:'application/pdf',file_name:'arquivo.pdf'},file_name:'arquivo.exe'},f.options),/invalid/);
+ assert.equal(f.uploads.length,0);
 });
 
 test('three-card carousel encodes actual interactive protocol with images and bound quick-reply IDs',async()=>{

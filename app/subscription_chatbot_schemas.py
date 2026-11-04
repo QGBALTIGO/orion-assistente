@@ -1,5 +1,6 @@
 """Versioned, strictly declarative configuration for the subscription chatbot."""
 from datetime import date
+import math
 import re
 from typing import Annotated, Literal, Union
 from uuid import UUID, uuid4
@@ -322,15 +323,36 @@ class HttpResult(StrictModel):
 
 
 class AssetUpload(StrictModel):
-    kind: Literal["image", "sticker", "video", "ptv", "document"]
+    kind: Literal["image", "sticker", "video", "ptv", "document", "audio"]
     content_base64: str = Field(min_length=1, max_length=23_000_000)
+
+
+class TemplateLocation(StrictModel):
+    latitude: float
+    longitude: float
+
+    @field_validator("latitude", "longitude", mode="before")
+    @classmethod
+    def numeric_coordinate(cls, value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ValueError("Coordenada inválida")
+        return value
+
+    @model_validator(mode="after")
+    def ranges(self):
+        if not -90 <= self.latitude <= 90 or not -180 <= self.longitude <= 180:
+            raise ValueError("Coordenada fora dos limites")
+        return self
 
 
 class TemplateDefinition(StrictModel):
     name: str = Field(min_length=1, max_length=100)
-    kind: Literal["text", "image", "sticker", "video", "ptv", "document"]
+    kind: Literal["text", "image", "sticker", "video", "ptv", "document", "audio", "location"]
     text: str = Field(default="", max_length=32000)
+    followup_text: str = Field(default="", max_length=32000)
     asset_id: UUID | None = None
+    location: TemplateLocation | None = None
+    file_name: str | None = Field(default=None, max_length=120)
 
     @field_validator("name")
     @classmethod
@@ -339,9 +361,25 @@ class TemplateDefinition(StrictModel):
 
     @model_validator(mode="after")
     def template_content(self):
+        if self.file_name is not None:
+            self.file_name = clean_text(self.file_name, maximum=120)
+            if (any(char in self.file_name for char in '/\\:')
+                    or re.search(r"[\x00-\x1f\x7f]", self.file_name)
+                    or self.file_name in {".", ".."} or self.file_name.endswith(".")):
+                raise ValueError("Nome de arquivo inválido")
+        if self.followup_text:
+            self.followup_text = contact_template(self.followup_text)
+        if self.kind in {"text", "location", "sticker", "ptv"} and self.followup_text:
+            raise ValueError("Esse formato não usa mensagem complementar")
+        if self.kind == "location":
+            if self.location is None or self.asset_id is not None or self.text or self.file_name:
+                raise ValueError("Preencha somente as coordenadas da localização")
+            return self
+        if self.location is not None:
+            raise ValueError("Somente templates de localização usam coordenadas")
         if self.kind == "text":
             self.text = contact_template(self.text)
-            if self.asset_id is not None:
+            if self.asset_id is not None or self.file_name is not None:
                 raise ValueError("Template de texto não usa arquivo")
         elif self.asset_id is None:
             raise ValueError("Selecione o arquivo do template")

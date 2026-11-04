@@ -27,6 +27,8 @@ from pydantic import Field, ValidationError
 from app.catalog_schemas import StrictModel
 from app.subscription_chatbot_schemas import RuleDefinition, TemplateDefinition, IMPORT_BYTES, MAX_RULES, MAX_ASSETS
 from app.subscription_chatbot_rules import validate_graph
+from app.subscription_template_documents import DOCUMENT_MIMES
+from app.subscription_templates_schemas import media_filename
 
 
 FORMAT = "orion.subscription-chatbot"
@@ -39,9 +41,9 @@ MAX_JSON_NODES = 200_000
 _COMMON = {"format", "version", "exported_at", "rules", "templates", "assets"}
 _META = {"id", "kind", "mime", "size", "sha256", "width", "height", "duration_ms", "thumbnail"}
 _SHA = re.compile(r"[a-f0-9]{64}")
-_KINDS = {"image": ("image/jpeg", 5_000_000), "sticker": ("image/webp", 500_000),
-          "video": ("video/mp4", 16_000_000), "ptv": ("video/mp4", 16_000_000),
-          "document": ("text/plain; charset=utf-8", 1_000_000)}
+_KINDS = {"image": ({"image/jpeg"}, 5_000_000), "sticker": ({"image/webp"}, 500_000),
+          "video": ({"video/mp4"}, 16_000_000), "ptv": ({"video/mp4"}, 16_000_000),
+          "audio": ({"audio/mpeg"}, 16_000_000), "document": (DOCUMENT_MIMES, 10_000_000)}
 
 
 class RuleRecord(StrictModel):
@@ -94,13 +96,17 @@ def _asset_metadata(value):
     kind = value["kind"]
     if not isinstance(kind, str) or kind not in _KINDS:
         raise _invalid("O tipo de mídia do arquivo é inválido.")
-    mime, limit = _KINDS[kind]
+    mimes, limit = _KINDS[kind]
     size = _integer(value["size"], 1, limit)
     checksum = value["sha256"]
-    if value["mime"] != mime or not isinstance(checksum, str) or not _SHA.fullmatch(checksum):
+    if value["mime"] not in mimes or not isinstance(checksum, str) or not _SHA.fullmatch(checksum):
         raise _invalid("Os metadados da mídia são inválidos.")
     width, height, duration = value["width"], value["height"], value["duration_ms"]
-    if kind == "document":
+    if kind == "audio":
+        if width is not None or height is not None or value["thumbnail"] is not None:
+            raise _invalid("Os metadados do áudio são inválidos.")
+        _integer(duration, 1, 1_800_000)
+    elif kind == "document":
         if width is not None or height is not None or duration is not None or value["thumbnail"] is not None:
             raise _invalid("Os metadados do documento são inválidos.")
     else:
@@ -149,7 +155,15 @@ def _base(document):
             raise _invalid("A exportação ultrapassa o limite de registros.")
     try:
         rules = [RuleRecord.model_validate(value).model_dump(mode="json") for value in document["rules"]]
-        templates = [TemplateRecord.model_validate(value).model_dump(mode="json") for value in document["templates"]]
+        templates = []
+        for value in document["templates"]:
+            normalized = TemplateRecord.model_validate(value).model_dump(mode="json")
+            # Old version-1 archives retain their exact empty/default shape;
+            # the newly optional fields travel only when explicitly present.
+            for field in ("followup_text", "location", "file_name"):
+                if field not in value["definition"]:
+                    normalized["definition"].pop(field)
+            templates.append(normalized)
     except (ValidationError, ValueError, TypeError, OverflowError):
         raise _invalid("As definições das respostas ou templates são inválidas.") from None
     for records in (rules, templates):
@@ -171,6 +185,9 @@ def _closed_graph(document):
         identity = template["asset_id"]
         if identity is not None and (identity not in assets or assets[identity]["kind"] != template["kind"]):
             raise _invalid("Um template aponta para um arquivo ausente ou incompatível.")
+        if identity is not None and template.get("file_name"):
+            if media_filename(template["file_name"], assets[identity]["mime"]) != template["file_name"]:
+                raise _invalid("O nome do arquivo não corresponde ao formato da mídia.")
     rules = {item["id"]: {"id": item["id"], "creation_order": item["creation_order"], **item["definition"]}
              for item in document["rules"]}
     try:

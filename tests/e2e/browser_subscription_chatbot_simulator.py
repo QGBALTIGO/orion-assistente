@@ -35,7 +35,7 @@ DEVICE["name"] = "Atendimento sintético"
 DEVICE["phone_e164"] = "+5511900000001"
 DEVICE_ID = DEVICE["id"]
 ASSET_ID = CONTRACT["message_examples"]["media"]["asset"]["id"]
-ROUTES = ["dispositivos", "chatbot", "testar-chatbot", "novidades", "ajuda", "member"]
+ROUTES = ["dispositivos", "chatbot", "testar-chatbot", "templates", "novidades", "ajuda", "member"]
 KEYWORDS = [{"rule_id": RULE_ID, "keyword": "Olá", "match_mode": "equal", "enabled": True},
     {"rule_id": "60000000-0000-4000-8000-000000000002", "keyword": "menu", "match_mode": "equal", "enabled": True},
     {"rule_id": "60000000-0000-4000-8000-000000000003", "keyword": "imagem", "match_mode": "equal", "enabled": True},

@@ -5,6 +5,7 @@ on:
     paths:
       - 'app/subscription_device*.py'
       - 'app/subscription_chatbot*.py'
+      - 'app/subscription_template*.py'
       - 'app/qr_channels.py'
       - 'app/plan_catalog.py'
       - 'app/plan_permissions.py'
@@ -14,21 +15,29 @@ on:
       - 'app/worker.py'
       - 'app/static/orion-subscription-devices.*'
       - 'app/static/orion-subscription-chatbot*.*'
+      - 'app/static/orion-subscription-templates.*'
       - 'app/static/orion-suite.js'
       - 'app/static/panel.html'
       - 'alembic/versions/0063_subscription_chatbot.py'
+      - 'alembic/versions/0064_subscription_templates.py'
       - 'qr-bridge/**'
       - 'scripts/*subscription_devices*'
       - 'scripts/*subscription_chatbot*'
+      - 'scripts/*subscription_templates*'
       - 'scripts/backup_and_migrate_*.py'
       - 'scripts/predeploy_one_click_links.py'
       - 'scripts/wait_for_single_whatsapp_schema.py'
       - 'tests/**/test_subscription_device*.py'
       - 'tests/**/test_subscription_chatbot*.py'
+      - 'tests/**/test_subscription_template*.py'
       - 'tests/fixtures/subscription_chatbot*_contract.json'
+      - 'tests/fixtures/subscription_templates*.json'
       - 'tests/e2e/browser_subscription_chatbot*.py'
+      - 'tests/e2e/browser_subscription_templates.py'
       - 'ui-tests/*subscription*'
       - 'Dockerfile'
+      - 'pyproject.toml'
+      - 'requirements.lock'
       - '.github/workflows/subscription-chatbot.yml'
   workflow_dispatch:
 
@@ -68,6 +77,7 @@ jobs:
         run: |
           python -m pytest -q -ra \
             tests/unit/test_subscription_chatbot*.py \
+            tests/unit/test_subscription_template*.py \
             tests/unit/test_subscription_devices.py \
             tests/unit/test_subscription_device_rules.py \
             tests/unit/test_subscription_device_audio.py \
@@ -141,11 +151,13 @@ jobs:
         run: |
           node --check app/static/orion-subscription-chatbot.js
           node --check app/static/orion-subscription-chatbot-test.js
+          node --check app/static/orion-subscription-templates.js
           node --check app/static/orion-subscription-devices.js
           node --check app/static/orion-suite.js
           node --test \
             ui-tests/subscription-chatbot.test.mjs \
             ui-tests/subscription-chatbot-test.test.mjs \
+            ui-tests/subscription-templates.test.mjs \
             ui-tests/subscription-devices.test.mjs \
             ui-tests/subscription-workspace.test.mjs \
             ui-tests/channels.test.mjs \
@@ -240,6 +252,7 @@ jobs:
           socket.getaddrinfo = getaddrinfo
           raise SystemExit(pytest.main(['-q', '-ra',
               *sorted(glob.glob('tests/integration/test_subscription_chatbot*_postgres.py')),
+              *sorted(glob.glob('tests/integration/test_subscription_templates*_postgres.py')),
               'tests/integration/test_subscription_devices_postgres.py',
               'tests/integration/test_subscription_devices_release_postgres.py',
               'tests/integration/test_subscription_workspace_postgres.py',
@@ -267,11 +280,42 @@ jobs:
           # The synthetic server validates the real DTOs and renders a real JPEG.
           python -m pip install -c requirements.lock -r tests/e2e/requirements.txt pytest pytest-asyncio pydantic Pillow
           python -m playwright install --with-deps ${{ matrix.engine }}
+      - name: Chrome oficial para os codecs de midia publicados
+        if: matrix.engine == 'chromium'
+        run: |
+          # Playwright's Chromium does not bundle every licensed media codec.
+          # Test the actual H.264/MP3 contract with Google's official binary.
+          # https://playwright.dev/python/docs/browsers#media-codecs
+          python -m playwright install --with-deps chrome
+          python - <<'PY'
+          import json
+          import os
+          import shutil
+          from playwright.sync_api import sync_playwright
+          executable = shutil.which('google-chrome') or shutil.which('google-chrome-stable')
+          if not executable:
+              raise SystemExit('Official Chrome executable was not installed')
+          with sync_playwright() as playwright:
+              for name, options in [('bundled-chromium', {}), ('official-chrome', {'executable_path': executable})]:
+                  instance = playwright.chromium.launch(**options)
+                  page = instance.new_page()
+                  codecs = page.evaluate('''() => ({
+                      h264: document.createElement('video').canPlayType('video/mp4; codecs="avc1.64001f"'),
+                      mp3: document.createElement('audio').canPlayType('audio/mpeg')
+                  })''')
+                  print(json.dumps({'browser': name, 'version': instance.version, 'codecs': codecs}))
+                  instance.close()
+                  if name == 'official-chrome' and not all(codecs.values()):
+                      raise SystemExit('Official Chrome is missing required H.264/MP3 codecs')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as environment:
+              environment.write('ORION_TEST_CHROMIUM_EXECUTABLE=' + executable + '\n')
+          PY
       - name: Fluxos no painel real - celular, tablet, desktop e dois temas
         run: |
           python -m pytest -q -ra --maxfail=1 \
             tests/e2e/browser_subscription_chatbot.py \
             tests/e2e/browser_subscription_chatbot_simulator.py \
+            tests/e2e/browser_subscription_templates.py \
             tests/e2e/browser_subscription_devices.py \
             tests/e2e/browser_subscription_workspace.py -k '${{ matrix.engine }}'
       - uses: actions/upload-artifact@v4
@@ -281,6 +325,7 @@ jobs:
           path: |
             test-artifacts/subscription-chatbot/
             test-artifacts/subscription-chatbot-test/
+            test-artifacts/subscription-templates/
             test-artifacts/subscription-devices/
             test-artifacts/subscription-workspace/
           if-no-files-found: warn

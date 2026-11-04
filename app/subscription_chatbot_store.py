@@ -55,20 +55,20 @@ def fingerprint(value):
                                     separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 
-async def workspace(db, tenant, *, write=True):
+async def workspace(db, tenant, *, write=True, feature="chatbot.manage"):
     state = await plan_state(db, tenant, lock="shared")
     if (state.get("workspace_profile") != SUBSCRIPTION_WORKSPACE
-            or write and not state.get("permissions", {}).get("chatbot.manage")):
+            or write and not state.get("permissions", {}).get(feature)):
         raise fail("WORKSPACE_FEATURE_UNAVAILABLE", 403,
                    "O Chatbot está disponível somente para Serviço de assinaturas.")
     return state
 
 
 @asynccontextmanager
-async def owner_transaction(tenant, actor, *, write=True):
+async def owner_transaction(tenant, actor, *, write=True, feature="chatbot.manage"):
     async with support_session_factory()() as db:
         async with db.begin():
-            await workspace(db, tenant, write=write)
+            await workspace(db, tenant, write=write, feature=feature)
             await channels._owner(db, tenant, actor)
             status = (await db.execute(text("SELECT status FROM tenants WHERE id=:t FOR UPDATE"),
                                        {"t": tenant})).scalar_one_or_none()
@@ -145,7 +145,15 @@ async def check_device(db, tenant, device_id, *, actor_id=None, live=False):
 
 def asset_descriptor(row):
     names = {"image": "imagem.jpg", "sticker": "figurinha.webp", "video": "video.mp4",
-             "ptv": "recado.mp4", "document": "resposta.txt"}
+             "ptv": "recado.mp4", "document": "resposta.txt", "audio": "audio.mp3"}
+    if row["kind"] == "document":
+        extensions = {"application/pdf": "pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+            "application/vnd.android.package-archive": "apk", "text/plain; charset=utf-8": "txt"}
+        names["document"] = "arquivo." + extensions.get(row["mime"], "txt")
+        if row["mime"] == "text/plain; charset=utf-8":
+            names["document"] = "resposta.txt"
     thumb = ({"mime": row["thumbnail_mime"], "size": row["thumbnail_size"], "sha256": row["thumbnail_sha256"]}
              if row.get("thumbnail_size") else None)
     return {key: row[key] for key in ("id", "kind", "mime", "size", "sha256", "width", "height", "duration_ms")} | {
@@ -157,7 +165,8 @@ async def load_graph(db, tenant):
         COALESCE(sum(octet_length(response::text)+octet_length(keyword)+512),0) AS bytes
         FROM subscription_chatbot_rules WHERE tenant_id=:t AND removed_at IS NULL"""), {"t": tenant})).mappings().one()
     templates_budget = (await db.execute(text("""SELECT count(*) AS count,
-        COALESCE(sum(octet_length(body)+octet_length(name)+512),0) AS bytes
+        COALESCE(sum(octet_length(body)+octet_length(followup_body)+octet_length(name)
+          +COALESCE(octet_length(location::text),0)+COALESCE(octet_length(file_name),0)+512),0) AS bytes
         FROM subscription_chatbot_templates WHERE tenant_id=:t AND removed_at IS NULL"""), {"t": tenant})).mappings().one()
     if (budget["count"] > MAX_RULES or templates_budget["count"] > MAX_RULES
             or budget["bytes"] + templates_budget["bytes"] > MAX_GRAPH_BYTES):

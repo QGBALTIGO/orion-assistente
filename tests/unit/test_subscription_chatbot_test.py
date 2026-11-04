@@ -234,7 +234,7 @@ def test_normalized_media_has_private_scoped_paths_and_canonical_mime(kind):
     descriptor = {"id": uid(300), "kind": kind, "mime": mime, "size": 10, "sha256": "a"*64,
         "width": 32, "height": 24, "duration_ms": None, "file_name": "resposta.txt" if kind == "document" else "arquivo",
         "thumbnail": {"mime": "image/jpeg", "size": 5, "sha256": "b"*64}}
-    template = {"id": uid(400), "kind": kind, "body": "" if kind in {"sticker", "ptv"} else "Legenda", "asset": descriptor}
+    template = {"id": uid(400), "kind": kind, "body": "" if kind in {"sticker", "ptv", "audio"} else "Legenda", "asset": descriptor}
     entry = rule(response={"kind": "sequence", "actions": [action("template", template_id=str(template["id"]))]})
     message, = engine.compile_messages(entry, graph(entry, templates={str(template["id"]): template}), SCOPE, FACTS, {}, BASE)
     assert message["type"] == "media" and message["kind"] == kind

@@ -162,5 +162,7 @@ def test_worker_requires_both_schema_barriers(monkeypatch, manual_result, consen
     monkeypatch.setattr(devices_barrier, "main", lambda: 0)
     from scripts import wait_for_subscription_chatbot_schema as chatbot_barrier
     monkeypatch.setattr(chatbot_barrier, "main", lambda: 0)
+    from scripts import wait_for_subscription_templates_schema as templates_wait
+    monkeypatch.setattr(templates_wait, "main", lambda: 0)
     assert worker_barrier.main()==expected
     assert calls==(["manual"] if manual_result else ["manual","consent"])

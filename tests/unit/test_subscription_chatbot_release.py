@@ -154,6 +154,8 @@ def test_worker_waits_for_all_four_contracts_and_stops_at_first_failure(monkeypa
     from scripts import wait_for_manual_start_times_schema as hours
     from scripts import wait_for_appointment_consent_schema as notifications
     from scripts import wait_for_subscription_devices_schema as devices
+    from scripts import wait_for_subscription_templates_schema as templates_wait
+    monkeypatch.setattr(templates_wait, "main", lambda: 0)
     events = []
 
     async def ready(_):
