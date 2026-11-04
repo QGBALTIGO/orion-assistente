@@ -102,7 +102,7 @@ test('three-card carousel encodes actual interactive protocol with images and bo
     fetchImage:async({url})=>{assert.match(url,/^https:\/\/images\.example\.com\/card-[012]\.jpg$/);const buffer=Buffer.from('raw image');raw.push(buffer);return {buffer};},
     prepareCarouselImage:async(index,buffer)=>{assert.equal(buffer.toString(),'raw image');return descriptors[index];}});
   try{
-    const decoded=wire(built.content),interactive=decoded.viewOnceMessage.message.interactiveMessage;
+    const decoded=wire(built.content),interactive=decoded.interactiveMessage;
     assert.equal(interactive.body.text,action.body);assert.equal(interactive.carouselMessage.cards.length,3);
     for(const [i,card]of interactive.carouselMessage.cards.entries()){
       assert.ok(card.header.imageMessage.mediaKey);assert.equal(card.header.title,'Card '+i);

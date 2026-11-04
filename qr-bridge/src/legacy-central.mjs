@@ -19,7 +19,7 @@ export function createLegacyCentral({env=process.env,fetchImpl=fetch,start,send,
           base.username||base.password||base.search||base.hash)throw Error('unsafe_legacy_broker');
       const response=await fetchImpl(new URL('/internal/qr/legacy/identity',base),{method:'GET',redirect:'error',
         headers:{'X-Orion-Bridge-Key':env.QR_BRIDGE_TOKEN},signal:AbortSignal.timeout(5000)});
-      if(!response.ok)throw Error('legacy_adoption_not_ready');
+      if(!response.ok)throw Object.assign(Error('legacy_adoption_not_ready'),{status:response.status});
       const row=await response.json();
       const self=row?.verified_self_phone;
       const selfProof=typeof self==='string'&&/^55[1-9]\d[2-9]\d{7}$/.test(self)&&

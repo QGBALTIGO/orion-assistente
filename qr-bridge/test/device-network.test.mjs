@@ -14,7 +14,9 @@ test('device egress accepts global addresses and rejects private, metadata, mapp
     'https://example.com/#part','https://example.com:0/','https://example.com./',' https://example.com/',
     'https://example.com\\@127.0.0.1/'])assert.throws(()=>publicDestination(url),/destination_refused/,url);
   assert.equal(publicDestination('https://hooks.example.com/path?token=fixture').hostname,'hooks.example.com');
-  assert.throws(()=>publicDestination('https://proxy.example.com/',{proxy:true}),/destination_refused/);
+  assert.equal(publicDestination('https://proxy.example.com/',{proxy:true}).protocol,'https:');
+  assert.throws(()=>publicDestination('http://proxy.example.com/',{proxy:true}),/destination_refused/);
+  assert.throws(()=>publicDestination('http://hooks.example.com/'),/destination_refused/);
   assert.throws(()=>publicDestination('http://proxy.example.com/hidden',{proxy:true}),/destination_refused/);
 });
 
@@ -62,14 +64,14 @@ test('revocation while DNS resolves suppresses HTTP and explicit cancellation te
   await assert.rejects(running,/aborted/);assert.equal(req.destroyed,true);
 });
 
-test('HTTP proxy is per-device, pins its public IP and covers websocket, upload and download without exposing credentials in URL',async()=>{
+test('TLS proxy is per-device, pins its public IP and covers websocket, upload and download without exposing credentials in URL',async()=>{
   const built=[];
   class Agent{constructor(url,options){this.url=url;this.options=options;built.push(this);}destroy(){this.destroyed=true;}}
   const disabled=await createDeviceProxy({enabled:false},{loadAgent:()=>assert.fail('inactive dependency'),lookup:()=>assert.fail('inactive DNS')});
   assert.deepEqual(disabled.socket,{});
-  const proxy=await createDeviceProxy({enabled:true,url:'http://proxy.example.com:8080',username:'synthetic-user'},
+  const proxy=await createDeviceProxy({enabled:true,url:'https://proxy.example.com:8080',username:'synthetic-user'},
     {secret:'synthetic-password',lookup:publicLookup,loadAgent:async()=>({HttpsProxyAgent:Agent})});
-  assert.equal(built.length,1);assert.equal(built[0].url.hostname,'8.8.8.8');assert.equal(built[0].url.username,'');assert.equal(built[0].url.password,'');
+  assert.equal(built.length,1);assert.equal(built[0].options.servername,'proxy.example.com');assert.equal(built[0].options.minVersion,'TLSv1.2');assert.equal(built[0].options.rejectUnauthorized,true);assert.equal(built[0].url.hostname,'8.8.8.8');assert.equal(built[0].url.username,'');assert.equal(built[0].url.password,'');
   assert.equal(built[0].options.headers()['Proxy-Authorization'],'Basic '+Buffer.from('synthetic-user:synthetic-password').toString('base64'));
   assert.equal(proxy.socket.agent,proxy.socket.fetchAgent);assert.equal(proxy.download.httpsAgent,proxy.socket.agent);
   assert.equal(proxy.download.proxy,false);assert.equal(proxy.download.maxRedirects,0);

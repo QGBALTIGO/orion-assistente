@@ -263,7 +263,7 @@ async def test_real_auth_csrf_membership_niche_and_rls_are_not_bypassed(device_c
 async def test_settings_revision_proxy_secret_preservation_and_stale_permit(device_case):
     c = device_case
     await create(c)
-    updated = await settings(c, lambda value: value["proxy"].update(enabled=True, url="http://proxy.example.test:8080",
+    updated = await settings(c, lambda value: value["proxy"].update(enabled=True, url="https://proxy.example.test:8080",
         username="fixture", password="never-public-fixture"))
     assert updated["settings"]["proxy"]["password_configured"] and "never-public-fixture" not in json.dumps(updated)
     async with c.ctx.migration.connect() as db:

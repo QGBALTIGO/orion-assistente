@@ -1,8 +1,12 @@
+import {makeBoundedCache} from './bounded-cache.mjs';
+import {makeTransportDiagnostics} from './transport-diagnostics.mjs';
+import {readAuthorizedRetry} from './retry-identity.mjs';
 /** A Baileys instance per context; shared helpers, no copy of the legacy server.
  * Private allowlisted text and opt-in bounded audio; no legacy AI routing.
  * Calls/history importing remain disabled. ASR never grants booking authority.
  */
 import path from 'node:path';
+import fs from 'node:fs';
 import {encryptedChannelStore,privateDirectory} from './channel-storage.mjs';
 import {resolveMessagePhone,normalizeFromJid,freshQR} from './core.mjs';
 import {shouldIngestUpsert,timestampMs} from './linked-session-health.mjs';
@@ -20,15 +24,29 @@ import {createDeviceRuntime} from './device-runtime.mjs';
 import {messagePreflightError} from './device-message-failure.mjs';
 import {createDeviceProxy} from './device-network.mjs';
 
-const silent={level:'silent',trace(){},debug(){},info(){},warn(){},error(){},fatal(){},child(){return this;}};
 export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),now=Date.now,typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout,deviceOptions={}}={}){
   if(context.legacyTransport===true)throw Error('legacy_requires_existing_socket');
   await context.assertCurrent();
   const mod=await loadBaileys();await context.assertCurrent();
   const makeSocket=mod.default,openedAt=now();
+  const diagnostics=makeTransportDiagnostics({secret:context.secret,now,emit:event=>{
+    if(['decrypt_failed','retry_received','retry_send_failed','retry_content_missing','get_message','server_rejected','auth_write_failed'].includes(event.stage))
+      console.info(JSON.stringify({component:'orion-managed-transport',...event}));
+  }});
+  const silent=diagnostics.logger;
   const store=encryptedChannelStore({directory:privateDirectory(path.join(context.directory,'auth')),secret:context.secret,
     serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver)});
-  const creds=store.get('creds')||mod.initAuthCreds();
+  const savedCreds=store.get('creds');
+  if(!savedCreds&&fs.readdirSync(path.join(context.directory,'auth')).some(name=>name.endsWith('.enc')))throw Error('channel_auth_unavailable');
+  const creds=savedCreds||mod.initAuthCreds();
+  // Never pair a replacement identity after a partial/corrupted restore.
+  if(!savedCreds)store.set('creds',creds);
+  const pendingKeys=store.get('auth-key-transaction');
+  if(pendingKeys!==null){
+    if(!Array.isArray(pendingKeys)||pendingKeys.length>10000||pendingKeys.some(row=>!row||typeof row.id!=='string'||!row.id.startsWith('key:')||row.id.length>2048))throw Error('channel_auth_unavailable');
+    for(const row of pendingKeys)store.set(row.id,row.value);
+    store.set('auth-key-transaction',null);
+  }
   if(context.resumeOnly===true&&creds.registered!==true)throw Error('channel_auth_unavailable');
   // A new link may require a provider restart before its first open. Carry
   // only this process's new-link intent; restored registered auth never arms it.
@@ -89,13 +107,27 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       }
     })().catch(()=>{}).finally(()=>overflowNotices.delete(peer));
   }
-  const write=job=>{const next=queue.then(async()=>{await guarded();job();});queue=next.catch(()=>{});return next;};
+  // Signal persistence must complete in the event turn. Awaiting broker I/O
+  // here loses a creds.update followed immediately by restartRequired/close.
+  // isCurrent is the manager's monotonic, fenced lease, not an optimistic flag.
+  const write=job=>{
+    try{if(!current())throw Error('channel_socket_replaced');job();return Promise.resolve();}
+    catch(error){if(current()){diagnostics.record('auth_write_failed');close();context.onDisconnected('disconnected');}return Promise.reject(error);}
+  };
   const auth={creds,keys:{
-    async get(type,ids){await guarded();return Object.fromEntries(ids.map(id=>{
+    async get(type,ids){if(!current())throw Error('channel_socket_replaced');return Object.fromEntries(ids.map(id=>{
       let value=store.get('key:'+type+':'+id);
       if(type==='app-state-sync-key'&&value)value=mod.proto.Message.AppStateSyncKeyData.fromObject(value);
       return [id,value];}));},
-    set:data=>write(()=>{for(const [type,entries] of Object.entries(data))for(const [id,value] of Object.entries(entries))store.set('key:'+type+':'+id,value);})}};
+    set:data=>write(()=>{
+      const batch=[];
+      for(const [type,entries] of Object.entries(data))for(const [id,value] of Object.entries(entries))batch.push({id:'key:'+type+':'+id,value:value??null});
+      if(batch.length>10000||batch.some(row=>row.id.length>2048))throw Error('channel_key_batch_invalid');
+      if(!batch.length)return;
+      store.set('auth-key-transaction',batch);
+      for(const row of batch)store.set(row.id,row.value);
+      store.set('auth-key-transaction',null);
+    })}};
   const deviceSnapshot=context.deviceSnapshot?.();
   if(deviceSnapshot?.settings.proxy?.enabled===true&&deviceSnapshot.capabilities.proxy!==true)throw Error('device_proxy_unavailable');
   const proxyTransport=deviceSnapshot?await (deviceOptions.createProxy||createDeviceProxy)(deviceSnapshot.settings.proxy,
@@ -103,8 +135,14 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   await guarded();
   const client=makeSocket({auth,logger:silent,browser:mod.Browsers.windows('Chrome'),
     printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,userDevicesCache:deviceCache,maxMsgRetryCount:5,
+    msgRetryCounterCache:context.retryCounterCache||makeBoundedCache({max:10000,ttlMs:600000,now}),
+    placeholderResendCache:makeBoundedCache({max:5000,ttlMs:600000,now}),
+    callOfferCache:makeBoundedCache({max:1000,ttlMs:300000,now}),
     ...proxyTransport?.socket,
-    shouldSyncHistoryMessage:()=>false,getMessage:async key=>{try{await guarded();const message=retryStore.get(key);return current()?message:undefined;}catch{return undefined;}}});
+    shouldSyncHistoryMessage:()=>false,getMessage:async key=>{
+      const message=await readAuthorizedRetry(retryStore,key,{socket:client,isCurrent:current,assertCurrent:guarded});
+      diagnostics.record('get_message',key?.id,{cached:!!message});return message;
+    }});
   const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);abort.abort();deviceRuntime?.close();proxyTransport?.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
   async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false}={}){
     await guarded();const self=normalizeFromJid(client.user?.id);
@@ -168,7 +206,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
         ...(entries.some(item=>item.event)?{envelope:entries.findLast(item=>item.event)?.event}:{})},{noticeProofs:entries.map(item=>item.proof),isCurrent:batchCurrent,
         beforeReply:value=>entries.at(-1)?.lease?.beforeReply(value)});
     }});
-  client.ev.on('creds.update',()=>{write(()=>store.set('creds',creds)).catch(close);});
+  client.ev.on('creds.update',()=>{write(()=>store.set('creds',creds)).catch(()=>{diagnostics.record('auth_write_failed');close();});});
   client.ev.on('connection.update',event=>{
     if(!current())return close();
     if(event.qr){expirePairing();qrValue=event.qr;qrAt=now();if(!pairAttempt)state='qr_ready';}

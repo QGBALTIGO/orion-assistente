@@ -220,7 +220,7 @@ test('device resume intent binds logical device and proxy config, never a later 
 
 test('proxy edits close the running socket and cancel restart intent until an explicit connection action',async t=>{
   const f=managerFixture(t),m=f.manager();await m.deviceControl(f.id,f.key,'connect',f.action('connect'));
-  f.device.settings.proxy={enabled:true,url:'http://proxy.example.com:8080'};f.device.settings_revision++;
+  f.device.settings.proxy={enabled:true,url:'https://proxy.example.com:8080'};f.device.settings_revision++;
   await assert.rejects(m.deviceStatus(f.id,f.key),/proxy_restart_required/);assert.equal(f.made[0].closed,true);assert.equal(f.stored.list().length,0);
   assert.deepEqual(await f.manager().resume(),{resumed:0});assert.equal(f.made.length,1);
 });

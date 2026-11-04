@@ -1,3 +1,4 @@
+import {retryIdentity,retryIdentityMatches,sameRetryIdentity} from './retry-identity.mjs';
 /**
  * Encrypted, bounded and automatically expiring Baileys retry cache.
  * Stores only retryable proto.IMessage objects, not chat exports.
@@ -24,13 +25,16 @@ export function makeEncryptedRetryStore({
   const key=Buffer.from(hkdfSync("sha256",Buffer.from(secret),
     Buffer.from("orion/baileys/message-retry/v1"),Buffer.from("aes-256-gcm"),32));
   fs.mkdirSync(directory,{recursive:true,mode:0o700});
+  const directoryStat=fs.lstatSync(directory);
+  if(!directoryStat.isDirectory()||directoryStat.isSymbolicLink())throw Error('unsafe_retry_directory');
+  fs.chmodSync(directory,0o700);
   function file(id){
     const hash=createHmac("sha256",key).update(String(id)).digest("hex");
     return path.join(directory,hash+".enc");
   }
   function prune(){
     const list=fs.readdirSync(directory).filter(x=>/^[a-f0-9]{64}\.enc$/.test(x));
-    const sorted=list.map(name=>{const stat=fs.statSync(path.join(directory,name));return {name,mtime:stat.mtimeMs,size:stat.size};}).sort((a,b)=>a.mtime-b.mtime);
+    const sorted=list.map(name=>{const stat=fs.lstatSync(path.join(directory,name));return {name,mtime:stat.mtimeMs,size:stat.size};}).sort((a,b)=>a.mtime-b.mtime);
     for(const entry of [...sorted]){
       if(entry.mtime<now()-ttlMs){
         fs.rmSync(path.join(directory,entry.name),{force:true});
@@ -46,13 +50,16 @@ export function makeEncryptedRetryStore({
     if(!keyData?.id || !message || typeof message!=="object")return false;
     try{
       const id=String(keyData.id);
-      const payload=Buffer.from(serialize({expires:now()+ttlMs,message}),"utf8");
-      if(payload.length>maxPayloadBytes)return false;
+      const identity=retryIdentity(keyData),old=entry(keyData);
+      if(old?.identity?.peer&&!sameRetryIdentity(old.identity,identity))return false;
+      const payload=Buffer.from(serialize({expires:now()+ttlMs,message,identity}),"utf8");
+      if(payload.length>maxPayloadBytes){payload.fill(0);return false;}
       const iv=randomBytes(12);
       const cipher=createCipheriv("aes-256-gcm",key,iv);
-      cipher.setAAD(Buffer.from("orion-retry-v1"));
+      cipher.setAAD(Buffer.from("orion-retry-v2\0"+path.resolve(directory)+"\0"+id));
       const encrypted=Buffer.concat([cipher.update(payload),cipher.final()]);
-      const record={v:1,iv:iv.toString("base64"),tag:cipher.getAuthTag().toString("base64"),
+      payload.fill(0);
+      const record={v:2,iv:iv.toString("base64"),tag:cipher.getAuthTag().toString("base64"),
         ciphertext:encrypted.toString("base64")};
       const target=file(id),tmp=target+"."+randomBytes(8).toString("hex")+".tmp";
       try{
@@ -75,28 +82,32 @@ export function makeEncryptedRetryStore({
       return false;
     }
   }
-  function get(keyData){
+  function entry(keyData){
     if(!keyData?.id)return undefined;
     const target=file(keyData.id);
     try{
-      const record=JSON.parse(fs.readFileSync(target,"utf8"));
-      if(record.v!==1)return undefined;
+      const fd=fs.openSync(target,fs.constants.O_RDONLY|(fs.constants.O_NOFOLLOW||0));let record;
+      try{const stat=fs.fstatSync(fd);if(!stat.isFile()||stat.size>maxPayloadBytes*2+2048)return undefined;
+        record=JSON.parse(fs.readFileSync(fd,'utf8'));
+      }finally{fs.closeSync(fd);}
+      if(![1,2].includes(record.v))return undefined;
       const decipher=createDecipheriv("aes-256-gcm",key,Buffer.from(record.iv,"base64"));
-      decipher.setAAD(Buffer.from("orion-retry-v1"));
+      decipher.setAAD(Buffer.from(record.v===2?"orion-retry-v2\0"+path.resolve(directory)+"\0"+String(keyData.id):"orion-retry-v1"));
       decipher.setAuthTag(Buffer.from(record.tag,"base64"));
       const plaintext=Buffer.concat([
         decipher.update(Buffer.from(record.ciphertext,"base64")),decipher.final()]);
-      const parsed=deserialize(plaintext.toString("utf8"));
+      let parsed;try{parsed=deserialize(plaintext.toString("utf8"));}finally{plaintext.fill(0);}
       if(!Number.isFinite(parsed.expires)||parsed.expires<=now()){
         fs.rmSync(target,{force:true});
         return undefined;
       }
-      return parsed.message;
+      return {message:parsed.message,identity:parsed.identity,expires:parsed.expires};
     }catch{
       return undefined;
     }
   }
-  return {save,get,prune,clear(){
+  function get(keyData){const row=entry(keyData);return row&&retryIdentityMatches(row.identity,keyData)?row.message:undefined;}
+  return {save,get,entry,prune,clear(){
     for(const name of fs.readdirSync(directory)){
       if(/^[a-f0-9]{64}\.enc$/.test(name))fs.rmSync(path.join(directory,name),{force:true});
     }

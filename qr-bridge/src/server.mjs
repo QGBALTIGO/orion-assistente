@@ -1,3 +1,6 @@
+import {makeBoundedCache} from './bounded-cache.mjs';
+import {readAuthorizedRetry} from './retry-identity.mjs';
+import {useDurableAuthState} from './durable-auth.mjs';
 import {normalizeInbound,updateEvent,callEvent,safetyControl,queueControl} from './inbound-event.mjs';
 /**
  * Orion Linked Device — aparelho de teste único, transporte não oficial.
@@ -10,9 +13,8 @@ import {databaseBackup} from './database-backup-store.mjs';
 import path, {join as joinPath} from "node:path";
 import fs from "node:fs";
 import {timingSafeEqual,randomUUID,createHmac} from "node:crypto";
-import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,useMultiFileAuthState,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
+import makeWASocket,{DisconnectReason,Browsers,DEFAULT_CONNECTION_CONFIG,proto,initAuthCreds,fetchLatestWaWebVersion,makeCacheableSignalKeyStore,generateWAMessage,generateMessageIDV2,BufferJSON,downloadMediaMessage} from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
-import NodeCache from "@cacheable/node-cache";
 import {validPhone,normalizeFromJid,extractText,resolveMessagePhone,freshQR,formatPairingCode,connectionPhase,reconnectPlan} from "./core.mjs";
 import {sendConnectionNoticeOnce,noticeState} from "./connection-alert.mjs";
 import {makeMessageRetryStore,deliveryFromAck,advanceDelivery} from "./message-retry-store.mjs";
@@ -65,9 +67,7 @@ const logger=transport.logger;
 protectSignalSessionLogs();
 // Baileys 6.7.24 accepts CacheStore here. A bounded TTL protects against
 // stale Signal retry state; it does NOT change long-lived auth credentials.
-const msgRetryCounterCache=new NodeCache({
-  stdTTL:600,checkperiod:120,useClones:false
-});
+const msgRetryCounterCache=makeBoundedCache({max:10000,ttlMs:600000});
 if(Buffer.byteLength(KEY)<32 || !SESSION_DIR.startsWith("/data/")){
   throw Error("Configuração segura do bridge não encontrada");
 }
@@ -79,7 +79,7 @@ try {
   if(candidate.startsWith(SESSION_DIR+"-renew-")&&candidate.startsWith("/data/"))authDir=candidate;
 } catch {}
 const authBackup=backupAuth({directory:authDir,backupDirectory:'/data/orion-auth-backups',
-  secret:KEY,label:'before-transport-diagnostics-v1'});
+  secret:KEY,label:'before-durable-auth-v2'});
 console.info('Orion auth backup '+JSON.stringify(authBackup));
 const socketDeviceCaches=new WeakMap();
 let newLinkNoticeAuthDir=null;
@@ -132,6 +132,7 @@ let encryptedRetry=makeEncryptedRetryStore({
   deserialize:str=>JSON.parse(str,BufferJSON.reviver)
 });
 const retryStore={
+  entry:key=>retryMessages.entry(key)||encryptedRetry.entry(key),
   save(key,message){
     const memory=retryMessages.save(key,message);
     const encrypted=encryptedRetry.save(key,message);
@@ -141,7 +142,9 @@ const retryStore={
     const cached=retryMessages.get(key);
     if(cached)return cached;
     const persisted=encryptedRetry.get(key);
-    if(persisted)retryMessages.save(key,persisted);
+    // Never bind a legacy cache entry to untrusted caller-supplied addressing.
+    const entry=encryptedRetry.entry(key);
+    if(persisted&&entry?.identity?.peer)retryMessages.save({id:entry.identity.id,remoteJid:entry.identity.peer,fromMe:entry.identity.fromMe},persisted);
     return persisted;
   }
 };
@@ -270,10 +273,12 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
   // Persist auth state before starting the replacement socket.
   client.ev.on("creds.update",()=>{
     transport.record('creds_update');
-    saveQueue=saveQueue.then(()=>saveCreds()).catch(()=>{
-      lastError="Falha ao salvar sessão WhatsApp. Não tente novo vínculo sem verificar o volume.";
+    if(mine!==generation)return;
+    try{saveCreds();saveQueue=Promise.resolve();}
+    catch{
+      lastError="Falha ao salvar sessão WhatsApp. Envios interrompidos; credenciais não foram reiniciadas.";
       console.warn("Orion QR: falha ao salvar credenciais (dados omitidos)");
-    });
+    }
   });
   client.ev.on("messages.update",updates=>{
     if(mine!==generation)return;
@@ -676,9 +681,9 @@ function installListeners(client,mine,saveCreds,notifyNewLink=false){
               authDir,
               client,
               sendText:async (jid,text)=>{
-                if(process.env.QR_RELIABLE_SEND_V2!=="1")return client.sendMessage(jid,{text});
                 return sendStoredText({
-                  jid,text,store:retryStore,freshDevices:false,
+                  jid,text,store:retryStore,freshDevices:true,
+                  isCurrent:()=>mine===generation&&status==="connected"&&socket===client,
                   makeMessage:async (recipient,messageText)=>generateWAMessage(
                     recipient,{text:messageText},{
                       userJid:client.user?.id,logger,
@@ -742,7 +747,16 @@ async function connect(){
   status="connecting";connectStartedAt=Date.now();pairingRequestedForGeneration=-1;
   pendingNotificationsReceived=false;inboundSinceConnect=false;
   try{
-    const {state,saveCreds}=await useMultiFileAuthState(selectedAuthDir);
+    const {state,saveCreds}=useDurableAuthState(selectedAuthDir,{
+      secret:KEY,sdk:{BufferJSON,proto,initAuthCreds},
+      backupVerified:['created_verified','verified_existing'].includes(authBackup.state),
+      isCurrent:()=>mine===generation&&selectedAuthDir===authDir,
+      onFailure:()=>{
+        transport.record('auth_write_failed');
+        if(mine!==generation)return;
+        status='error';lastError='Falha de persistência da sessão. Os envios foram interrompidos para proteger as chaves.';
+        ++generation;clearTimeout(timer);timer=null;pauseContactNames();try{socket?.end(undefined);}catch{}
+      }});
     if(mine!==generation||namesForConnection!==contactNames||selectedAuthDir!==authDir)return;
     namesForConnection.bindIdentity(state.creds.me);
     const originalSet=state.keys.set;
@@ -765,7 +779,7 @@ async function connect(){
       }catch{}
     }
     if(mine!==generation||namesForConnection!==contactNames||selectedAuthDir!==authDir)return;
-    const deviceCache=makePilotDeviceCache(new NodeCache({stdTTL:300,useClones:false}));
+    const deviceCache=makePilotDeviceCache(makeBoundedCache({max:5000,ttlMs:300000}));
     const client=makeWASocket({
       userDevicesCache:deviceCache,
       auth:{creds:state.creds,keys:makeCacheableSignalKeyStore(state.keys,logger)},
@@ -775,7 +789,8 @@ async function connect(){
       msgRetryCounterCache,
       maxMsgRetryCount:5,
       getMessage:async key=>{
-        const content=retryStore.get(key);
+        const content=await readAuthorizedRetry(retryStore,key,{socket:client,
+          isCurrent:()=>mine===generation&&socket===client&&status==='connected'});
         // The library also sends its OWN retry-control messages. A cache
         // miss for one of those IDs is not proof that a customer-facing
         // outgoing message is missing. Report these separately, without IDs.
@@ -1149,7 +1164,7 @@ server.listen({port:PORT, host:"::", ipv6Only:false},()=>{
   console.info("Orion QR: serviço privado em IPv6/dual-stack, porta "+PORT);
   connect().catch(()=>{});
   const resumeChannels=async()=>{
-    if(legacyCentral.configured())await legacyCentral.resume().catch(()=>console.warn('Orion QR: adoção da sessão principal pendente'));
+    if(legacyCentral.configured())await legacyCentral.resume().catch(error=>console.warn('Orion QR: adoção da sessão principal pendente '+JSON.stringify({category:['legacy_adoption_not_ready','invalid_legacy_adoption','unsafe_legacy_broker'].includes(error?.message)?error.message:'unavailable',httpStatus:Number.isInteger(error?.status)&&error.status>=400&&error.status<=599?error.status:null})));
     await channelRoutes.resume().catch(()=>console.warn('Orion QR: retomada dos dispositivos pendente'));
   };
   void resumeChannels();

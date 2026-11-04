@@ -35,7 +35,7 @@ export function isPublicAddress(value){
 export function publicDestination(value,{proxy=false}={}){
   if(typeof value!=='string'||value.length>2048||value!==value.trim()||/[\u0000-\u0020\u007f\\]/.test(value))throw unsafe();
   let url;try{url=new URL(value);}catch{throw unsafe();}
-  if(!(proxy?url.protocol==='http:':['http:','https:'].includes(url.protocol))||url.username||url.password||url.hash||
+  if(url.protocol!=='https:'||url.username||url.password||url.hash||
       (proxy&&(url.search||url.pathname!=='/'))||url.port==='0')throw unsafe();
   const host=bare(url.hostname).toLowerCase();
   if(isIP(host)){if(!isPublicAddress(host))throw unsafe();}
@@ -81,7 +81,7 @@ export async function postDeviceWebhook({url,payload,eventId,signal,isCurrent=()
     };
     try{
       const requestFn=target.url.protocol==='https:'?requestHttps:requestHttp;
-      request=requestFn(target.url,{method:'POST',agent:false,lookup:pinnedLookup,
+      request=requestFn(target.url,{method:'POST',agent:false,minVersion:'TLSv1.2',rejectUnauthorized:true,lookup:pinnedLookup,
         headers:{'Content-Type':'application/json','Content-Length':String(bytes.length),
           'User-Agent':'Orion-Dispositivos/1','X-Orion-Event-Id':eventId}},response=>{
         const status=Number(response.statusCode);
@@ -111,7 +111,8 @@ export async function createDeviceProxy(config,{secret,lookup=dnsLookup,signal,a
   if(signal?.aborted)throw Error('device_request_aborted');
   const pinned=new URL(target.url);pinned.hostname=target.family===6?'['+target.address+']':target.address;
   const headers=username||password?()=>({'Proxy-Authorization':'Basic '+Buffer.from(username+':'+password).toString('base64')}):()=>({});
-  const agent=new HttpsProxyAgent(pinned,{headers,keepAlive:false,timeout:15000});
+  const agent=new HttpsProxyAgent(pinned,{headers,keepAlive:false,timeout:15000,
+    servername:isIP(target.url.hostname)?undefined:target.url.hostname,minVersion:'TLSv1.2',rejectUnauthorized:true});
   return {socket:{agent,fetchAgent:agent,options:{proxy:false,httpsAgent:agent,httpAgent:agent,maxRedirects:0}},
     download:{proxy:false,httpsAgent:agent,httpAgent:agent,maxRedirects:0},close(){agent.destroy();}};
 }

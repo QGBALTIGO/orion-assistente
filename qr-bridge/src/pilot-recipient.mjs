@@ -1,3 +1,4 @@
+import {makeBoundedCache} from './bounded-cache.mjs';
 // Only a contemporary, exact PN lookup may authorize a LID for the pilot.
 // Keep the phone as application metadata; never derive it from an opaque LID.
 import {AsyncLocalStorage} from 'node:async_hooks';
@@ -10,7 +11,7 @@ const identityError=()=>Error('Não foi possível confirmar a identidade do dest
 
 // Baileys does not cache empty USync results. Scope a checked snapshot to this
 // relay, including empty lists, without changing cache behavior for other work.
-export function makePilotDeviceCache(base=new Map()){
+export function makePilotDeviceCache(base=makeBoundedCache()){
   const scope=new AsyncLocalStorage();
   const cache={
     get(key){const snapshot=scope.getStore();return snapshot?.has(key)?snapshot.get(key):base.get(key);},
