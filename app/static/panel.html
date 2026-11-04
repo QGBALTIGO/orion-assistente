@@ -1673,7 +1673,7 @@ async function api(url,method="GET",data){
  if(!response.ok){
    const json=await response.json().catch(()=>({}));
    if(response.status===401&&requestAuthEpoch===authEpoch&&requestCsrf===csrf&&url!=="/auth/login"&&url!=="/auth/me")await checkSessionAfterUnauthorized(requestAuthEpoch,requestCsrf);
-   const error=Error(errorMessage(json,response.status));error.status=response.status;throw error;
+   const error=Error(errorMessage(json,response.status));error.status=response.status;error.detail=json.detail;throw error;
  }
  return response.status===204?null:response.json();
 }

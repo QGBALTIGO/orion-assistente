@@ -115,6 +115,12 @@ async def test_inbound_rejects_non_whatsapp_contact_and_never_authenticates_brow
     monkeypatch.setenv("ORION_SHORT_APPOINTMENT_LINKS_ENABLED","1")
     monkeypatch.setenv("ORION_CENTRAL_CONFIRMATION_REPLY_ENABLED","1")
     nonce="K"*22
+    class Cache:
+        async def get(self, key):
+            return json.dumps({"state":"waiting","code":SAMPLE,"role":"customer"})
+    async def redis(operation):
+        return await operation(Cache())
+    monkeypatch.setattr(short,"with_redis",redis)
     invalid=await short.inbound_otp_from_verified_phone(
         "ORION VERIFICAR C "+SAMPLE+" "+nonce,"+5567999999921")
     assert invalid["state"]=="unrecognized"

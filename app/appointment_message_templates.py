@@ -400,7 +400,7 @@ def compose(event, row, *, company, signature="Orion Agenda", customer_link=None
         "horario": start.strftime("%H:%M"),
         "data_atual": start.strftime("%d/%m/%Y"),
         "horario_atual": start.strftime("%H:%M"),
-        "duracao_minutos": sum(item["duration_snapshot_min"] for item in row["items"]),
+        "duracao_minutos": row.get("reserved_duration_min", sum(item["duration_snapshot_min"] for item in row["items"])),
         "nova_data": start.strftime("%d/%m/%Y") if event != "customer_proposal" else proposed.strftime("%d/%m/%Y"),
         "novo_horario": start.strftime("%H:%M") if event != "customer_proposal" else proposed.strftime("%H:%M"),
         "data_anterior": before.strftime("%d/%m/%Y") if before else None,

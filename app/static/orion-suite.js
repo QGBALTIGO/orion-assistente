@@ -757,8 +757,9 @@
   }
   function appointmentBadge(a){
     const key=appointmentState(a),spec=agendaStates[key];
-    return '<span class="os-appointment-status os-status-'+key+'">'+icon(spec.symbol)+'<span>'+esc(spec.label)+'</span></span>';
+    return '<span class="os-appointment-status os-status-'+key+'">'+icon(spec.symbol)+'<span>'+esc(spec.label)+'</span></span>'+appointmentOrigin(a);
   }
+  function appointmentOrigin(a){const label={exceptional:'Excepcional',retroactive:'Registrado depois'}[a.booking_mode];return label?'<span class="os-appointment-origin">'+esc(label)+'</span>':'';}
   function appointmentName(a){return customerDisplayName({name:a.customer_name,display_name:a.customer_display_name,whatsapp_name:a.whatsapp_name,phone:a.customer_phone});}
   function appointmentProfessional(a){return a.professional_name||(state.data.professionals||[]).find(p=>p.id===a.professional_id)?.name||'Profissional';}
   function appointmentDuration(a){return Math.max(0,Math.round((Date.parse(a.end_at)-Date.parse(a.start_at))/60000));}
@@ -2677,9 +2678,46 @@
       Object.assign(state.dialog,{customers:rows(customers),services:rows(services).filter(s=>s.active),professionals:rows(professionals).filter(p=>p.active&&p.accepts_appointments!==false),links:rows(links)});renderAppointmentForm();
     }catch(ex){if(stillAccount(c)&&state.dialog===activeDialog)$('osDialog').innerHTML='<button class="os-icon-button os-close" type="button" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Novo agendamento</h2>'+errorHTML(ex)+button('Fechar','close-dialog','os-outline');}
   }
-  function renderAppointmentForm(){const d=state.dialog;if(d?.type!=='appointment')return;const noServices=!d.services.length,noPros=!d.professionals.length;const content='<div class="os-field"><label for="osBookingCustomer">Cliente</label><div class="os-search" style="max-width:none">'+icon('search')+'<input id="osBookingCustomer" name="customer_name" type="search" placeholder="Buscar por nome ou telefone, ou digite um novo" required maxlength="120" autocomplete="off" aria-autocomplete="list" aria-controls="osBookingCustomers"></div><div id="osBookingCustomers" class="os-customer-results"></div><p id="osBookingCustomerHelp" class="os-help" style="margin-top:8px">'+(d.customers.length?'Selecione um cliente ou preencha os dados para um novo cadastro.':'Nenhum cliente cadastrado ainda.')+'</p></div>'+field('WhatsApp do cliente','customer_phone','tel','','required placeholder="(11) 91234-5678"')+field('Data','day','date',state.filters.agendaDay||dateKey(),'required')+'<fieldset><legend style="font:500 14px/20px var(--os-font);margin:0 0 6px">Serviço</legend><div id="osBookingServices" class="os-service-options">'+(noServices?'<p class="os-help">Cadastre um serviço ativo antes de agendar.</p>':d.services.map(s=>'<button type="button" class="os-service-option" data-os-book-service="'+esc(s.id)+'" aria-pressed="false"><strong>'+esc(s.name)+'</strong><small>'+esc(priceLabel(s.price_cents,s.price_mode))+' · '+number(s.duration_min)+' min</small></button>').join(''))+'</div></fieldset><div id="osBookingAddons" class="hidden"></div>'+selectField('Profissional','professional_id',[['',noPros?'Nenhum profissional disponível':'Selecionar'],...d.professionals.map(p=>[p.id,p.name])],d.preset?.professionalId||'','required')+'<div class="os-field"><label for="osBookingSlot">Horário</label><select id="osBookingSlot" name="start_at" required disabled><option value="">Escolha profissional e serviço</option></select><p id="osBookingSlotHelp" class="os-help" style="margin-top:6px"></p></div><div id="osBookingSummary" class="os-summary hidden"></div>';
-    $('osDialog').innerHTML='<button class="os-icon-button os-close" type="button" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Novo agendamento</h2>'+dialogForm('appointment',content+checkField('O cliente autorizou mensagens deste agendamento pelo WhatsApp','appointment_messages_opt_in',false,'Inclui avisos, lembrete 1 hora antes e pedido de avaliação. Marque apenas com autorização expressa do cliente; é opcional.'),'Agendar');
+  function renderAppointmentForm(){
+    const d=state.dialog;if(d?.type!=='appointment')return;
+    const noServices=!d.services.length,noPros=!d.professionals.length;
+    const content=selectField('Tipo de registro','booking_mode',[
+      ['regular','Agendamento normal'],['exceptional','Horário excepcional'],['retroactive','Registrar atendimento realizado']
+    ],'regular')+'<p id="osBookingModeHelp" class="os-help">Escolha um horário disponível na agenda.</p>'+
+      '<div class="os-field"><label for="osBookingCustomer">Cliente</label><div class="os-search" style="max-width:none">'+icon('search')+'<input id="osBookingCustomer" name="customer_name" type="search" placeholder="Buscar por nome ou telefone, ou digite um novo" required maxlength="120" autocomplete="off" aria-autocomplete="list" aria-controls="osBookingCustomers"></div><div id="osBookingCustomers" class="os-customer-results"></div><p id="osBookingCustomerHelp" class="os-help" style="margin-top:8px">'+(d.customers.length?'Selecione um cliente ou preencha os dados para um novo cadastro.':'Nenhum cliente cadastrado ainda.')+'</p></div>'+
+      '<div id="osBookingWalkIn" hidden>'+checkField('Cliente avulso, sem WhatsApp','walk_in',false)+'</div>'+
+      '<div id="osBookingPhone">'+field('WhatsApp do cliente','customer_phone','tel','','required placeholder="(11) 91234-5678"')+'</div>'+
+      '<div id="osBookingWhen" class="os-form">'+field('Data','day','date',state.filters.agendaDay||dateKey(),'required')+
+      '<div id="osBookingClock" hidden>'+field('Horário','clock','time',d.preset?.time||'','disabled')+'</div></div>'+
+      '<fieldset><legend style="font:500 14px/20px var(--os-font);margin:0 0 6px">Serviço</legend><div id="osBookingServices" class="os-service-options">'+(noServices?'<p class="os-help">Cadastre um serviço ativo antes de agendar.</p>':d.services.map(service=>'<button type="button" class="os-service-option" data-os-book-service="'+esc(service.id)+'" aria-pressed="false"><strong>'+esc(service.name)+'</strong><small>'+esc(priceLabel(service.price_cents,service.price_mode))+' · '+number(service.duration_min)+' min</small></button>').join(''))+'</div></fieldset>'+
+      '<div id="osBookingAddons" class="hidden"></div>'+selectField('Profissional','professional_id',[['',noPros?'Nenhum profissional disponível':'Selecionar'],...d.professionals.map(pro=>[pro.id,pro.name])],d.preset?.professionalId||'','required')+
+      '<div id="osBookingSlotField" class="os-field"><label for="osBookingSlot">Horário</label><select id="osBookingSlot" name="start_at" required disabled><option value="">Escolha profissional e serviço</option></select><p id="osBookingSlotHelp" class="os-help" style="margin-top:6px"></p></div>'+
+      '<div id="osBookingSummary" class="os-summary hidden"></div>'+
+      '<div id="osBookingCompleted" class="os-form" hidden><div class="os-form-grid">'+moneyField('Valor final (R$)','final_total','text','','disabled inputmode="decimal" placeholder="0,00"')+
+      field('Duração realizada (min, opcional)','actual_duration_min','number','','disabled min="1" max="1440" step="1"')+'</div><p class="os-help">Será salvo como Concluído na data do atendimento. O recebimento será acompanhado no Financeiro.</p></div>'+
+      '<div id="osBookingMessages">'+checkField('O cliente autorizou mensagens deste agendamento pelo WhatsApp','appointment_messages_opt_in',false,'Inclui avisos, lembrete 1 hora antes e pedido de avaliação. Marque apenas com autorização expressa do cliente; é opcional.')+'</div>';
+    $('osDialog').innerHTML='<button class="os-icon-button os-close" type="button" data-os-action="close-dialog" aria-label="Fechar">'+icon('close')+'</button><h2 id="osDialogTitle">Novo agendamento</h2>'+dialogForm('appointment',content,'Agendar');
+    d.bookingMode='regular';syncBookingMode();
     if(noServices||noPros)$('osDialog').querySelector('button[type=submit]').disabled=true;
+    window.OrionFields?.refresh($('osDialog'));
+  }
+  function syncBookingMode(){
+    const d=state.dialog,form=$('osDialog')?.querySelector('[data-os-form=appointment]');if(d?.type!=='appointment'||!form||d.holdForm||d.manualOperation)return;
+    const mode=form.elements.booking_mode.value,manual=mode!=='regular',retro=mode==='retroactive';
+    d.bookingMode=mode;$('osBookingWhen').classList.toggle('os-form-grid',manual);
+    $('osBookingModeHelp').textContent=retro?'Registre um atendimento que já terminou. Nenhum aviso ou lembrete será enviado.':manual?'Informe um horário fora do expediente. A agenda continuará verificando conflitos e bloqueios.':'Escolha um horário disponível na agenda.';
+    $('osBookingWalkIn').hidden=!manual;form.elements.walk_in.disabled=!manual;if(!manual)form.elements.walk_in.checked=false;
+    const selected=d.customers.find(customer=>customer.id===d.customerId);
+    if(manual&&form.elements.walk_in.checked&&selected?.phone)form.elements.walk_in.checked=false;
+    const walkIn=manual&&form.elements.walk_in.checked;
+    $('osBookingPhone').hidden=walkIn;form.elements.customer_phone.disabled=walkIn;form.elements.customer_phone.required=!walkIn;
+    $('osBookingClock').hidden=!manual;form.elements.clock.disabled=!manual;form.elements.clock.required=manual;
+    $('osBookingSlotField').hidden=manual;form.elements.start_at.required=!manual;form.elements.start_at.disabled=manual||!d.slots.length;
+    $('osBookingCompleted').hidden=!retro;form.elements.final_total.disabled=!retro;form.elements.final_total.required=retro;form.elements.actual_duration_min.disabled=!retro;
+    $('osBookingMessages').hidden=retro||walkIn;form.elements.appointment_messages_opt_in.disabled=retro||walkIn;
+    if(retro||walkIn)form.elements.appointment_messages_opt_in.checked=false;
+    form.elements.day.max=retro?dateKey():'';
+    const submit=form.querySelector('[type=submit]');if(submit)submit.textContent=retro?'Registrar atendimento':'Agendar';
   }
   function renderBookingAddons(d){const target=$('osBookingAddons');if(!target)return;const options=d.addons||[];target.classList.toggle('hidden',!options.length);target.innerHTML=options.length?'<fieldset><legend>Adicionais (opcional)</legend><div class="os-booking-addon-options">'+options.map(item=>'<label class="os-check"><input type="checkbox" data-os-book-addon="'+esc(item.addon_service_id)+'" '+(d.addonIds.includes(item.addon_service_id)?'checked':'')+'><span>'+esc(item.name)+'<small>'+esc(priceLabel(item.price_cents,item.price_mode))+' · '+(item.add_duration?'+ '+number(item.duration_min)+' min':'sem tempo extra')+'</small></span></label>').join('')+'</div></fieldset>':'';}
   function renderBookingSummary(d,selected,prepared=null){
@@ -2690,6 +2728,8 @@
         addons.reduce((sum,item)=>sum+(item.add_duration?number(item.duration_min):0),0),
       variable=prepared?.price_mode==='from'||selected.some(x=>x.price_mode==='from')||
         addons.some(x=>x.price_mode==='from');
+    d.estimatedTotal=total;d.estimatedDuration=duration;
+    const completedTotal=$('osDialog')?.querySelector('[name=final_total]');if(completedTotal&&!d.finalTotalTouched)completedTotal.value=selected.length?currencyInput(total):'';
     $('osBookingSummary').classList.toggle('hidden',!selected.length);
     $('osBookingSummary').innerHTML='<div class="os-summary-row"><span>Serviços e adicionais</span><strong>'+
       (selected.length+addons.length)+'</strong></div><div class="os-summary-row"><span>Duração</span><strong>'+
@@ -2698,23 +2738,97 @@
       '</strong></div>'+(variable?'<p class="os-help">O valor final será confirmado pela equipe ao concluir o atendimento. O mínimo não é uma cobrança definitiva.</p>':'');
   }
   async function updateAvailability(){
-    const d=state.dialog,form=$('osDialog')?.querySelector('form');if(d?.type!=='appointment'||!form||d.holdForm)return;
-    const professional=form.elements.professional_id.value,day=form.elements.day.value,slot=$('osBookingSlot'),version=++d.availabilityVersion,c=context(),selected=d.services.filter(service=>d.serviceIds.includes(service.id));d.slots=[];d.engineServiceIds=[...d.serviceIds];slot.replaceChildren(new Option('Escolha profissional e serviço',''));slot.disabled=true;$('osBookingSlotHelp').textContent='';
-    const base=selected.length===1?selected[0].id:'';if(d.addonBase!==base){d.addonBase=base;d.addonIds=[];d.addons=[];}renderBookingAddons(d);renderBookingSummary(d,selected);
+    const d=state.dialog,form=$('osDialog')?.querySelector('form');if(d?.type!=='appointment'||!form||d.holdForm||d.manualOperation)return;
+    const professional=form.elements.professional_id.value,day=form.elements.day.value,slot=$('osBookingSlot'),version=++d.availabilityVersion,c=context(),selected=d.services.filter(service=>d.serviceIds.includes(service.id));
+    d.slots=[];d.engineServiceIds=[...d.serviceIds];d.selectionPending=true;d.selectionError='';
+    slot.replaceChildren(new Option('Escolha profissional e serviço',''));slot.disabled=true;$('osBookingSlotHelp').textContent='';
+    const base=selected.length===1?selected[0].id:'';
+    if(d.addonBase!==base){d.addonBase=base;d.addonIds=[];d.addons=[];}
+    renderBookingAddons(d);renderBookingSummary(d,selected);
     try{
-      if(base){if(!d.addonCache[base]){const data=await request(mgmt('/services/'+encodeURIComponent(base)+'/addons'));if(!stillAccount(c)||state.dialog!==d||version!==d.availabilityVersion)return;d.addonCache[base]=rows(data).filter(item=>item.active!==false);}
+      if(base){
+        if(!d.addonCache[base]){const data=await request(mgmt('/services/'+encodeURIComponent(base)+'/addons'));if(!stillAccount(c)||state.dialog!==d||version!==d.availabilityVersion)return;d.addonCache[base]=rows(data).filter(item=>item.active!==false);}
         d.addons=d.addonCache[base];d.addonIds=d.addonIds.filter(id=>d.addons.some(item=>item.addon_service_id===id));renderBookingAddons(d);renderBookingSummary(d,selected);
       }
-      if(!professional||!day||!selected.length)return;slot.replaceChildren(new Option('Consultando horários…',''));
-      if(base&&d.addonIds.length){const prepared=await request(mgmt('/booking-selection'),'POST',{service_id:base,professional_id:professional,addon_ids:[...d.addonIds]});if(!stillAccount(c)||state.dialog!==d||version!==d.availabilityVersion)return;if(!prepared.engine_service_id)throw Error('Não foi possível preparar os adicionais deste atendimento.');d.engineServiceIds=[prepared.engine_service_id];renderBookingSummary(d,selected,prepared);}
-      const params=new URLSearchParams({professional_id:professional,day});d.engineServiceIds.forEach(id=>params.append('service_ids',id));const data=await request(apiPath('/availability?'+params));if(!stillAccount(c)||state.dialog!==d||version!==d.availabilityVersion)return;d.slots=data.slots||[];slot.replaceChildren(new Option(d.slots.length?'Selecionar horário':'Sem horários disponíveis',''));d.slots.forEach(value=>slot.add(new Option(timeLabel(value),value)));slot.disabled=!d.slots.length;if(d.preset?.time){const preferred=d.slots.find(value=>timeLabel(value)===d.preset.time);if(preferred)slot.value=preferred;}$('osBookingSlotHelp').textContent=d.slots.length?'Horários no fuso '+(data.timezone||zone())+'.':'Tente outro dia ou profissional.';
-    }catch(error){if(stillAccount(c)&&state.dialog===d&&version===d.availabilityVersion){slot.replaceChildren(new Option('Não foi possível carregar',''));$('osBookingSlotHelp').textContent=error.message;}}
+      if(!professional||!day||!selected.length)return;
+      if(base&&d.addonIds.length){
+        const prepared=await request(mgmt('/booking-selection'),'POST',{service_id:base,professional_id:professional,addon_ids:[...d.addonIds]});
+        if(!stillAccount(c)||state.dialog!==d||version!==d.availabilityVersion)return;
+        if(!prepared.engine_service_id)throw Error('Não foi possível preparar os adicionais deste atendimento.');
+        d.engineServiceIds=[prepared.engine_service_id];renderBookingSummary(d,selected,prepared);
+      }
+      if(d.bookingMode!=='regular')return;
+      slot.replaceChildren(new Option('Consultando horários…',''));
+      const params=new URLSearchParams({professional_id:professional,day});d.engineServiceIds.forEach(id=>params.append('service_ids',id));
+      const data=await request(apiPath('/availability?'+params));if(!stillAccount(c)||state.dialog!==d||version!==d.availabilityVersion)return;
+      d.slots=data.slots||[];slot.replaceChildren(new Option(d.slots.length?'Selecionar horário':'Sem horários disponíveis',''));
+      d.slots.forEach(value=>slot.add(new Option(timeLabel(value),value)));slot.disabled=!d.slots.length;
+      if(d.preset?.time){const preferred=d.slots.find(value=>timeLabel(value)===d.preset.time);if(preferred)slot.value=preferred;}
+      $('osBookingSlotHelp').textContent=d.slots.length?'Horários no fuso '+(data.timezone||zone())+'.':'Tente outro dia ou profissional.';
+    }catch(error){
+      if(stillAccount(c)&&state.dialog===d&&version===d.availabilityVersion){
+        d.selectionError=error.message;slot.replaceChildren(new Option('Não foi possível carregar',''));$('osBookingSlotHelp').textContent=error.message;
+        if(d.bookingMode!=='regular'){const message=form.querySelector('.os-form-message');if(message)message.textContent=error.message;}
+      }
+    }finally{if(stillAccount(c)&&state.dialog===d&&version===d.availabilityVersion)d.selectionPending=false;}
+  }
+  async function submitManualAppointment(form,d,values){
+    if(state.busy||!writable())return;
+    let operation=d.manualOperation;
+    if(!operation){
+      if(d.selectionPending)throw Error('Aguarde a conferência dos serviços.');
+      if(d.selectionError)throw Error(d.selectionError);
+      if(!d.serviceIds.length)throw Error('Selecione ao menos um serviço.');
+      const mode=form.elements.booking_mode.value,walkIn=form.elements.walk_in.checked;
+      if(!['exceptional','retroactive'].includes(mode))throw Error('Selecione o tipo de registro.');
+      const customerPhone=walkIn?null:customerPhoneValue(values.customer_phone);
+      if(!walkIn&&!customerPhone)throw Error('Informe o WhatsApp ou marque Cliente avulso.');
+      if(!values.day||!/^\d{2}:\d{2}$/.test(values.clock||''))throw Error('Informe a data e o horário do atendimento.');
+      const start=localISO(values.day,values.clock),retro=mode==='retroactive';
+      const actual=retro&&values.actual_duration_min?Number(values.actual_duration_min):null;
+      if(actual!==null&&(!Number.isInteger(actual)||actual<1||actual>1440))throw Error('Informe uma duração entre 1 e 1440 minutos.');
+      const payload={mode,professional_id:values.professional_id,service_ids:[...d.engineServiceIds],customer_id:d.customerId||null,
+        customer_name:values.customer_name.trim(),customer_phone:customerPhone,walk_in:walkIn,start_at:start,
+        final_total_cents:retro?cents(values.final_total):null,actual_duration_min:actual,
+        appointment_messages_opt_in:!retro&&!walkIn&&form.elements.appointment_messages_opt_in.checked};
+      const selected=d.customers.find(customer=>customer.id===d.customerId);
+      operation={payload:{...payload,idempotency_key:requestKey(form,payload)},day:values.day,customerUpdate:selected&&customerPhone&&customerPhoneValue(selected.phone)!==customerPhone?{id:selected.id,phone:customerPhone,version:selected.version}:null};
+    }
+    const c=context(),message=form.querySelector('.os-form-message'),submit=form.querySelector('[type=submit]');
+    message.textContent='';d.manualOperation=operation;markBusy(form,true);let result=null;
+    try{
+      if(operation.customerUpdate){
+        const update=operation.customerUpdate,path=mgmt('/customers/'+encodeURIComponent(update.id));let updated;
+        try{updated=await request(path,'PATCH',{phone:update.phone,expected_version:update.version});}
+        catch(error){
+          if(error.status>=400&&error.status<500&&error.status!==409)throw error;
+          try{updated=await request(path);}catch{throw error;}
+          if(updated?.id!==update.id||customerPhoneValue(updated.phone)!==update.phone)throw error;
+        }
+        if(!stillAccount(c)||state.dialog!==d)return;
+        const selected=d.customers.find(customer=>customer.id===update.id);if(selected)Object.assign(selected,updated);operation.customerUpdate=null;
+      }
+      result=await request(apiPath('/appointments/manual'),'POST',operation.payload);
+      if(!current(c)||state.dialog!==d)return;
+      const expected=operation.payload.mode==='retroactive'?'completed':'confirmed';
+      if(!result?.id||result.status!==expected)throw Error('Não foi possível confirmar o registro. Tente novamente para verificar a mesma solicitação.');
+      d.manualOperation=null;state.filters.agendaDay=operation.day;
+    }catch(error){
+      result=null;if(!stillAccount(c)||state.dialog!==d)return;
+      if(error.status>=400&&error.status<500&&![408,429].includes(error.status))d.manualOperation=null;
+      message.textContent=(error.message||'Não foi possível registrar.')+(d.manualOperation?' Os dados foram preservados. Tente novamente para conferir a mesma solicitação.':'');
+    }finally{
+      if(stillAccount(c)){markBusy(form,false);if(state.dialog===d){form.querySelector('fieldset').disabled=!!d.manualOperation;submit.textContent=d.manualOperation?'Verificar este registro':operation.payload.mode==='retroactive'?'Registrar atendimento':'Agendar';}}
+      else state.busy=false;
+    }
+    if(!current(c)||state.dialog!==d)return;
+    if(result){closeDialog();toast(operation.payload.mode==='retroactive'?'Atendimento registrado como concluído. O recebimento está pendente no Financeiro.':'Agendamento excepcional registrado.');await open(state.route,{keepScroll:true});}
   }
   function freezePendingBooking(form,d){
     form.querySelectorAll('fieldset').forEach(fieldset=>fieldset.disabled=true);const submit=form.querySelector('button[type=submit]');if(submit){submit.disabled=!writable();submit.textContent=d.holdId?'Tentar confirmar a mesma reserva':'Verificar e confirmar esta reserva';}
     if(!$('osPendingBooking'))form.insertAdjacentHTML('afterbegin','<div id="osPendingBooking" class="os-notice os-warning">'+icon('info')+'<p>Os dados foram preservados para verificar a mesma reserva. '+(d.holdId?'Protocolo: '+esc(d.holdRecord?.protocol||d.holdId)+'. ':'')+'Tente confirmar novamente ou consulte a Agenda antes de criar outro agendamento.</p></div>');
   }
-  function filterBookingCustomers(value){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm)return;const q=value.toLocaleLowerCase('pt-BR').trim(),digits=q.replace(/\D/g,'');d.customerId='';const list=q?d.customers.filter(c=>c.name.toLocaleLowerCase('pt-BR').includes(q)||(digits&&(c.phone||'').replace(/\D/g,'').includes(digits))).slice(0,8):[];
+  function filterBookingCustomers(value){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const q=value.toLocaleLowerCase('pt-BR').trim(),digits=q.replace(/\D/g,'');d.customerId='';const list=q?d.customers.filter(c=>c.name.toLocaleLowerCase('pt-BR').includes(q)||(digits&&(c.phone||'').replace(/\D/g,'').includes(digits))).slice(0,8):[];
     $('osBookingCustomers').innerHTML=list.map(c=>'<button type="button" data-os-book-customer="'+esc(c.id)+'"><span>'+esc(c.name)+'</span><small>'+esc(c.phone||'Sem WhatsApp')+'</small></button>').join('');}
   function appointmentCan(a,action){return writable()&&typeof a?.updated_at==='string'&&Array.isArray(a.allowed_actions)&&a.allowed_actions.includes(action);}
   function appointmentMoment(value){return value?fmtDate(dateKey(new Date(value)))+' às '+timeLabel(value):'Não informado';}
@@ -2730,14 +2844,16 @@
   function appointmentForm(type,content,submitLabel){
     return '<form class="os-appointment-form" data-os-form="'+type+'"><div class="os-appointment-scroll"><fieldset class="os-form">'+content+'</fieldset><div class="os-form-message" role="alert" tabindex="-1"></div></div><footer class="os-appointment-sheet-footer">'+button('Voltar aos detalhes','appointment-back','os-outline')+'<button type="submit" class="os-button">'+esc(submitLabel)+'</button></footer></form>';
   }
-  const appointmentEventLabels={hold_created:'Reserva criada',hold_expired:'Reserva expirada',confirmed:'Agendamento confirmado',rescheduled:'Agendamento remarcado',cancelled:'Agendamento cancelado',completed:'Atendimento finalizado',no_show:'Falta registrada'};
+  const appointmentEventLabels={exceptional_created:'Agendamento excepcional criado',retroactive_created:'Atendimento passado registrado',services_added:'Serviços adicionados',hold_created:'Reserva criada',hold_expired:'Reserva expirada',confirmed:'Agendamento confirmado',rescheduled:'Agendamento remarcado',cancelled:'Agendamento cancelado',completed:'Atendimento finalizado',no_show:'Falta registrada'};
   const appointmentSourceLabels={panel:'Painel Orion',public_site:'Site de agendamento',whatsapp:'WhatsApp',whatsapp_qr:'WhatsApp',whatsapp_meta:'WhatsApp',system:'Sistema',unknown:'Origem não informada'};
   function appointmentHistory(a){
-    const history=rows(a.history);return '<section class="os-appointment-section"><div class="os-appointment-section-title"><h3>Histórico</h3><span>'+number(a.history_total??history.length)+' registros</span></div>'+(history.length?'<ol class="os-appointment-history">'+history.map(item=>{const attribution=item.event==='cancelled'?({customer:'Solicitado pelo cliente',professional:'Solicitado pelo profissional',business:'Solicitado pela empresa',system:'Cancelamento automático'}[item.requested_by]||'Quem solicitou não foi registrado'):'';return '<li><span class="os-history-dot" aria-hidden="true"></span><div><strong>'+esc(appointmentEventLabels[item.event]||'Atualização do agendamento')+'</strong><time datetime="'+esc(item.occurred_at)+'">'+esc(appointmentMoment(item.occurred_at))+'</time><small>'+esc(appointmentSourceLabels[item.source]||'Origem não informada')+({support:'Suporte',admin:'Administração',owner:'Proprietário',editor:'Equipe',customer:'Cliente',system:'Sistema'}[item.actor?.role]?' · Registro: '+esc({support:'Suporte',admin:'Administração',owner:'Proprietário',editor:'Equipe',customer:'Cliente',system:'Sistema'}[item.actor?.role]):'')+(attribution?' · '+esc(attribution):'')+'</small>'+(item.event==='rescheduled'&&item.previous?.start_at?'<p>Horário anterior: '+esc(appointmentMoment(item.previous.start_at))+'</p>':'')+(item.reason?'<p class="os-appointment-reason">'+esc(item.reason)+'</p>':'')+'</div></li>';}).join('')+'</ol>':'<p class="os-help">Não há eventos disponíveis para este registro.</p>')+(a.history_has_more?'<p class="os-help">Exibindo os 100 eventos mais recentes deste agendamento.</p>':'')+'</section>';
+    const history=rows(a.history);return '<section class="os-appointment-section"><div class="os-appointment-section-title"><h3>Histórico</h3><span>'+number(a.history_total??history.length)+' registros</span></div>'+(history.length?'<ol class="os-appointment-history">'+history.map(item=>{const attribution=item.event==='cancelled'?({customer:'Solicitado pelo cliente',professional:'Solicitado pelo profissional',business:'Solicitado pela empresa',system:'Cancelamento automático'}[item.requested_by]||'Quem solicitou não foi registrado'):'';return '<li><span class="os-history-dot" aria-hidden="true"></span><div><strong>'+esc(appointmentEventLabels[item.event]||'Atualização do agendamento')+'</strong><time datetime="'+esc(item.occurred_at)+'">'+esc(appointmentMoment(item.occurred_at))+'</time><small>'+esc(appointmentSourceLabels[item.source]||'Origem não informada')+({support:'Suporte',admin:'Administração',owner:'Proprietário',editor:'Equipe',professional:'Profissional',customer:'Cliente',system:'Sistema'}[item.actor?.role]?' · Registro: '+esc({support:'Suporte',admin:'Administração',owner:'Proprietário',editor:'Equipe',professional:'Profissional',customer:'Cliente',system:'Sistema'}[item.actor?.role]):'')+(attribution?' · '+esc(attribution):'')+'</small>'+(item.event==='rescheduled'&&item.previous?.start_at?'<p>Horário anterior: '+esc(appointmentMoment(item.previous.start_at))+'</p>':'')+(item.reason?'<p class="os-appointment-reason">'+esc(item.reason)+'</p>':'')+'</div></li>';}).join('')+'</ol>':'<p class="os-help">Não há eventos disponíveis para este registro.</p>')+(a.history_has_more?'<p class="os-help">Exibindo os 100 eventos mais recentes deste agendamento.</p>':'')+'</section>';
   }
   function renderAppointmentDetail(d,notice=''){
     const a=d.record,can=action=>appointmentCan(a,action),items=rows(a.items),name=appointmentName(a),phoneValue=typeof a.customer_phone==='string'?a.customer_phone:'',cancel=a.cancellation;
-    let content='<div class="os-appointment-scroll">'+(notice?'<div class="os-notice os-appointment-notice" role="status">'+icon('info')+'<p>'+esc(notice)+'</p></div>':'')+'<div class="os-appointment-state-row">'+appointmentBadge(a)+'<span>'+appointmentDuration(a)+' min</span></div><div class="os-appointment-customer"><span class="os-avatar">'+esc(initials(name))+'</span><div><h3>'+esc(name)+'</h3><p>'+esc(phoneValue||'WhatsApp não informado')+'</p></div>'+(phoneValue?button('','appointment-copy-phone','os-icon-button','copy','aria-label="Copiar WhatsApp do cliente"'):'')+'</div><section class="os-appointment-section"><div class="os-appointment-when">'+icon('calendar')+'<div><strong>'+esc(longDay(dateKey(new Date(a.start_at))))+'</strong><span>'+esc(timeLabel(a.start_at))+' a '+esc(timeLabel(a.end_at))+' · '+esc(a.timezone||zone())+'</span></div></div><div class="os-appointment-when">'+icon('users')+'<div><strong>'+esc(appointmentProfessional(a))+'</strong><span>Profissional responsável</span></div></div></section><section class="os-appointment-section"><h3>Serviços</h3><ul class="os-appointment-services">'+items.map(item=>'<li><div><strong>'+esc(item.name_snapshot||'Serviço registrado')+'</strong><small>'+number(item.duration_snapshot_min)+' min</small></div><span>'+esc(priceLabel(item.price_snapshot_cents,item.price_mode_snapshot))+'</span></li>').join('')+'</ul><dl class="os-appointment-totals"><div><dt>'+(a.price_mode==='from'&&a.status!=='completed'?'Valor mínimo previsto':'Valor dos serviços')+'</dt><dd>'+esc(priceLabel(a.original_total_cents??a.total_cents,a.status==='completed'?'fixed':a.price_mode))+'</dd></div><div><dt>Desconto</dt><dd>'+money(a.discount_cents)+'</dd></div><div class="os-appointment-net"><dt>'+(a.price_mode==='from'&&a.status!=='completed'?'Mínimo estimado':'Total líquido')+'</dt><dd>'+esc(priceLabel(a.total_cents,a.status==='completed'?'fixed':a.price_mode))+'</dd></div></dl>'+(a.status==='completed'?'<p class="os-help">Atendimento finalizado. O recebimento do valor é acompanhado separadamente no Financeiro.</p>':a.price_mode==='from'?'<p class="os-help">Preço mínimo, não definitivo. A equipe define o valor final na conclusão. Este atendimento não é finalizado automaticamente.</p>':'')+'</section>';
+    let content='<div class="os-appointment-scroll">'+(notice?'<div class="os-notice os-appointment-notice" role="status">'+icon('info')+'<p>'+esc(notice)+'</p></div>':'')+'<div class="os-appointment-state-row">'+appointmentBadge(a)+'<span>'+appointmentDuration(a)+' min</span></div><div class="os-appointment-customer"><span class="os-avatar">'+esc(initials(name))+'</span><div><h3>'+esc(name)+'</h3><p>'+esc(phoneValue||'WhatsApp não informado')+'</p></div>'+(phoneValue?button('','appointment-copy-phone','os-icon-button','copy','aria-label="Copiar WhatsApp do cliente"'):'')+'</div><section class="os-appointment-section"><div class="os-appointment-when">'+icon('calendar')+'<div><strong>'+esc(longDay(dateKey(new Date(a.start_at))))+'</strong><span>'+esc(timeLabel(a.start_at))+' a '+esc(timeLabel(a.end_at))+' · '+esc(a.timezone||zone())+'</span></div></div><div class="os-appointment-when">'+icon('users')+'<div><strong>'+esc(appointmentProfessional(a))+'</strong><span>Profissional responsável</span></div></div></section><section class="os-appointment-section"><div class="os-appointment-section-title"><h3>Serviços</h3>'+(can('add_services')?button('Adicionar serviços','appointment-extras','os-outline os-small','plus'):'')+'</div><ul class="os-appointment-services">'+items.map(item=>'<li><div><strong>'+esc(item.name_snapshot||'Serviço registrado')+'</strong><small>'+number(item.duration_snapshot_min)+' min'+(item.item_origin==='extra'?' · Adicionado no atendimento':'')+(item.item_origin==='extra'&&item.added_duration_min===0?' · Sem tempo extra':'')+'</small></div><span>'+esc(priceLabel(item.price_snapshot_cents,item.price_mode_snapshot))+'</span></li>').join('')+'</ul><dl class="os-appointment-totals"><div><dt>'+(a.price_mode==='from'&&a.status!=='completed'?'Valor mínimo previsto':'Valor dos serviços')+'</dt><dd>'+esc(priceLabel(a.original_total_cents??a.total_cents,a.status==='completed'?'fixed':a.price_mode))+'</dd></div><div><dt>Desconto</dt><dd>'+money(a.discount_cents)+'</dd></div><div class="os-appointment-net"><dt>'+(a.price_mode==='from'&&a.status!=='completed'?'Mínimo estimado':'Total líquido')+'</dt><dd>'+esc(priceLabel(a.total_cents,a.status==='completed'?'fixed':a.price_mode))+'</dd></div></dl>'+(a.status==='completed'?'<p class="os-help">Atendimento finalizado. O recebimento do valor é acompanhado separadamente no Financeiro.</p>':a.price_mode==='from'?'<p class="os-help">Preço mínimo, não definitivo. A equipe define o valor final na conclusão. Este atendimento não é finalizado automaticamente.</p>':'')+'</section>';
+    if(a.booking_mode==='retroactive')content+='<section class="os-appointment-section"><h3>Registro do atendimento</h3><p class="os-help">Realizado em '+esc(appointmentMoment(a.start_at))+'. Registrado em '+esc(appointmentMoment(a.created_at))+'.</p></section>';
+    if(a.actual_duration_min||a.services_duration_min&&a.services_duration_min!==appointmentDuration(a))content+='<section class="os-appointment-section"><h3>Duração</h3><dl class="os-appointment-totals"><div><dt>Horário reservado</dt><dd>'+appointmentDuration(a)+' min</dd></div>'+(a.services_duration_min?'<div><dt>Tempo dos serviços</dt><dd>'+number(a.services_duration_min)+' min</dd></div>':'')+(a.actual_duration_min?'<div><dt>Duração realizada</dt><dd>'+number(a.actual_duration_min)+' min</dd></div>':'')+'</dl></section>';
     if(a.status==='cancelled')content+='<section class="os-appointment-section"><h3>'+(a.cancellation?.event==='hold_expired'?'Reserva expirada':'Cancelamento')+'</h3><p>'+esc(a.cancellation?.event==='hold_expired'?'A reserva não foi confirmada dentro do prazo. O horário foi liberado.':{customer:'Solicitado pelo cliente ou paciente.',professional:'Solicitado pelo profissional.',business:'Solicitado pela empresa.',system:'Cancelamento registrado pelo sistema.'}[cancel?.requested_by]||'Este registro não informa quem solicitou o cancelamento.')+'</p>'+(cancel?.reason?'<p class="os-appointment-reason">'+esc(cancel.reason)+'</p>':'')+(cancel?.occurred_at?'<small class="os-help">'+esc(appointmentMoment(cancel.occurred_at))+'</small>':'')+'</section>';
     content+='<section class="os-appointment-section"><div class="os-appointment-section-title"><h3>Google Agenda</h3>'+'<button type="button" class="os-icon-button os-appointment-google-refresh" data-os-action="appointment-google-refresh" aria-label="Atualizar sincronização deste agendamento">'+icon('refresh')+'</button>'+'</div><div id="osAppointmentGoogle" aria-live="polite">'+loading('Consultando sincronização...')+'</div></section>'+appointmentHistory(a)+'<section class="os-appointment-protocol"><div><span>Protocolo</span><strong>'+esc(a.protocol||'Não informado')+'</strong></div>'+(a.protocol?button('Copiar','appointment-copy-protocol','os-ghost os-small','copy'):'')+'</section></div>';
     const actions=(can('confirm')?button('Confirmar reserva','confirm-appointment','','check'):'')+(can('complete')?button('Finalizar atendimento','complete-appointment','','check'):'')+(can('reschedule')?button('Remarcar','reschedule-appointment','os-outline','calendar'):'')+(can('no_show')?button('Registrar falta','no-show-appointment','os-outline','block'):'')+(can('cancel')?button('Cancelar agendamento','cancel-appointment','os-outline os-appointment-cancel','close'):'');
@@ -2747,6 +2863,97 @@
     if(!id||state.busy)return;const c=context(),d=beginAppointmentSheet('appointment-detail','Detalhes do agendamento','<div class="os-appointment-scroll">'+loading('Atualizando o agendamento...')+'</div>',{appointmentId:id,...(trigger?.isConnected?{trigger}:{})});if(!d)return;
     try{const record=await request(apiPath('/appointments/'+encodeURIComponent(id)));if(!current(c)||state.dialog!==d)return;if(!record||String(record.id)!==String(id)||!record.status)throw Error('Não foi possível confirmar os dados deste agendamento.');d.record=record;renderAppointmentDetail(d,notice);$('osDialogTitle')?.focus();void loadAppointmentGoogle(d);}
     catch(error){if(!current(c)||state.dialog!==d)return;setAppointmentSheet('Detalhes do agendamento','<div class="os-appointment-scroll"><div class="os-agenda-error" role="alert"><h3>Não foi possível consultar o agendamento</h3><p>'+esc(error.message||'Confira a conexão e tente novamente.')+'</p>'+button('Tentar novamente','appointment-back','os-outline','refresh')+'</div></div>');$('osDialogTitle')?.focus();}
+  }
+  function appointmentExtraItems(items){
+    return '<ul class="os-appointment-services">'+rows(items).map(item=>'<li><div><strong>'+esc(item.name_snapshot||'Serviço registrado')+'</strong><small>'+(item.item_origin==='extra'?'Adicionado no atendimento':'Serviço original')+'</small></div><span>'+esc(priceLabel(item.price_snapshot_cents,item.price_mode_snapshot))+'</span></li>').join('')+'</ul>';
+  }
+  async function showAppointmentExtras(){
+    const a=state.dialog?.record;if(!appointmentCan(a,'add_services'))return;
+    const c=context(),d=beginAppointmentSheet('appointment-extras','Adicionar serviços','<div class="os-appointment-scroll">'+loading('Carregando serviços disponíveis…')+'</div>',{record:a,appointmentId:a.id,extraIds:[],extraPreview:null});if(!d)return;
+    try{
+      const data=await request(apiPath('/appointments/'+encodeURIComponent(a.id)+'/extras-catalog'));
+      if(!current(c)||state.dialog!==d)return;
+      if(!data?.appointment||String(data.appointment.id)!==String(a.id)||!Array.isArray(data.services))throw Error('Não foi possível confirmar os serviços deste atendimento.');
+      d.record=data.appointment;
+      if(!appointmentCan(d.record,'add_services')){await showAppointmentDetail(a.id,{notice:'Este atendimento não está disponível para adicionar serviços.'});return;}
+      d.extraServices=data.services;d.extraLimit=Math.max(0,Math.min(6,number(data.max_items)||6)-rows(d.record.items).length);
+      const recommended=data.services.filter(item=>item.recommended),others=data.services.filter(item=>!item.recommended);
+      const choices=(items,label)=>items.length?'<fieldset class="os-extra-options"><legend>'+esc(label)+'</legend>'+items.map(item=>'<label class="os-check"><input type="checkbox" name="extra_service_ids" data-os-extra-service="'+esc(item.id)+'" value="'+esc(item.id)+'"><span><strong>'+esc(item.name)+'</strong><small>'+esc(priceLabel(item.price_cents,item.price_mode))+' · '+(item.add_duration===false?'sem tempo extra':number(item.duration_min)+' min')+'</small></span></label>').join('')+'</fieldset>':'';
+      const available=d.extraLimit>0&&d.extraServices.length>0;
+      const content=appointmentBrief(d.record)+'<section class="os-appointment-section"><h3>Serviços registrados</h3>'+appointmentExtraItems(d.record.items)+'</section>'+
+        (available?choices(recommended,'Adicionais deste atendimento')+choices(others,recommended.length?'Outros serviços':'Serviços disponíveis')+
+          '<p class="os-help">Selecione até '+d.extraLimit+' serviço'+(d.extraLimit===1?'':'s')+'. Os itens já registrados serão preservados.</p>'+
+          (Date.parse(d.record.start_at)<=Date.now()?field('Duração realizada (min, opcional)','actual_duration_min','number','','min="1" max="1440" step="1"'):'')+
+          '<div id="osExtraPreview" class="os-summary" hidden aria-live="polite"></div>'+
+          '<div id="osExtraConflict" class="os-extra-conflict" hidden><p id="osExtraConflictMessage" class="os-help" aria-live="polite" aria-atomic="true"></p>'+checkField('Manter o horário reservado e registrar os extras','preserve_reserved_time',false,'Os horários dos demais clientes permanecem como estão.')+'</div>':
+          '<p class="os-help">'+(d.extraLimit?'Não há outros serviços disponíveis para este profissional.':'Este atendimento já contém o limite de serviços.')+'</p>');
+      setAppointmentSheet('Adicionar serviços',appointmentForm('appointment-extras',content,'Conferir serviços'));
+      const form=$('osDialog').querySelector('form');form.querySelector('[type=submit]').disabled=!available;
+      if(form.elements.preserve_reserved_time)form.elements.preserve_reserved_time.disabled=true;
+      window.OrionFields?.refresh($('osDialog'));$('osDialogTitle')?.focus();
+    }catch(error){if(current(c)&&state.dialog===d)setAppointmentSheet('Adicionar serviços','<div class="os-appointment-scroll">'+errorHTML(error)+button('Tentar novamente','appointment-extras','os-outline','refresh')+button('Voltar aos detalhes','appointment-back','os-ghost')+'</div>');}
+  }
+  function resetExtrasPreview(d=state.dialog){
+    if(d?.type!=='appointment-extras'||d.pendingExtras)return;
+    d.extraPreview=null;d.extraPreviewSignature=null;
+    const form=$('osDialog')?.querySelector('form');if(!form)return;
+    if($('osExtraPreview'))$('osExtraPreview').hidden=true;
+    if($('osExtraConflict'))$('osExtraConflict').hidden=true;
+    if(form.elements.preserve_reserved_time){form.elements.preserve_reserved_time.checked=false;form.elements.preserve_reserved_time.required=false;form.elements.preserve_reserved_time.disabled=true;}
+    form.querySelector('[type=submit]').textContent='Conferir serviços';
+  }
+  function renderExtrasPreview(d){
+    const preview=d.extraPreview,form=$('osDialog')?.querySelector('form'),target=$('osExtraPreview');if(!preview||!target||!form)return;
+    target.hidden=false;
+    const selected=[...form.querySelectorAll('[name=extra_service_ids]:checked')].map(input=>input.value),variable=d.record.price_mode==='from'||d.extraServices.some(item=>selected.includes(item.id)&&item.price_mode==='from');
+    target.innerHTML='<div class="os-summary-row"><span>Tempo dos serviços</span><strong>'+number(preview.services_duration_min)+' min</strong></div>'+
+      '<div class="os-summary-row"><span>Horário reservado</span><strong>'+esc(timeLabel(d.record.start_at))+' a '+esc(timeLabel(preview.duration_conflict?d.record.end_at:preview.new_end_at||d.record.end_at))+'</strong></div>'+
+      '<div class="os-summary-row os-total"><span>'+(variable?'Mínimo atualizado':'Total atualizado')+'</span><strong>'+esc(priceLabel(preview.total_cents,variable?'from':'fixed'))+'</strong></div>';
+    $('osExtraConflict').hidden=!preview.duration_conflict;
+    $('osExtraConflictMessage').textContent=preview.conflict_message||'Não é possível ampliar o horário deste atendimento. Você pode registrar os serviços mantendo o horário já reservado.';
+    const preserve=form.elements.preserve_reserved_time;preserve.disabled=!preview.duration_conflict;preserve.required=!!preview.duration_conflict;preserve.setAttribute('aria-describedby','osExtraConflictMessage');
+    form.querySelector('[type=submit]').textContent='Adicionar serviços';
+  }
+  async function submitAppointmentExtras(form,d,values){
+    if(state.busy||!appointmentCan(d.record,'add_services'))return;
+    let payload=d.pendingExtras,signature=null,previewOnly=false;
+    if(!payload){
+      const ids=[...form.querySelectorAll('[name=extra_service_ids]:checked')].map(input=>input.value);
+      if(!ids.length||ids.length>d.extraLimit)throw Error('Selecione de 1 a '+d.extraLimit+' serviços disponíveis.');
+      const actual=Date.parse(d.record.start_at)<=Date.now()&&values.actual_duration_min?Number(values.actual_duration_min):null;
+      if(actual!==null&&(!Number.isInteger(actual)||actual<1||actual>1440))throw Error('Informe uma duração entre 1 e 1440 minutos.');
+      const intent={service_ids:ids,expected_updated_at:d.record.updated_at,actual_duration_min:actual};
+      signature=JSON.stringify(intent);previewOnly=!d.extraPreview||d.extraPreviewSignature!==signature;
+      const preserve=!previewOnly&&d.extraPreview.duration_conflict&&form.elements.preserve_reserved_time.checked;
+      if(!previewOnly&&d.extraPreview.duration_conflict&&!preserve)throw Error('Confirme se deseja manter o horário reservado.');
+      payload={...intent,preserve_reserved_time:preserve===true,idempotency_key:requestKey(form,{...intent,preserve_reserved_time:preserve===true})};
+    }
+    const c=context(),error=form.querySelector('.os-form-message');error.textContent='';markBusy(form,true);
+    let saved=false,changed=false,showPreview=false;
+    if(!previewOnly)d.pendingExtras=payload;
+    try{
+      const result=await request(apiPath('/appointments/'+encodeURIComponent(d.record.id)+'/extras'+(previewOnly?'/preview':'')),'POST',payload);
+      if(!current(c)||state.dialog!==d)return;
+      if(previewOnly){
+        if(!result?.appointment||String(result.appointment.id)!==String(d.record.id)||!Number.isFinite(result.total_cents))throw Error('Não foi possível conferir os valores deste atendimento.');
+        d.extraPreview=result;d.extraPreviewSignature=signature;showPreview=true;
+      }else{
+        if(!result?.id||String(result.id)!==String(d.record.id))throw Error('Não foi possível confirmar a atualização. Tente novamente para conferir a mesma solicitação.');
+        d.pendingExtras=null;saved=true;
+      }
+    }catch(ex){
+      if(!current(c)||state.dialog!==d)return;
+      if(ex.status>=400&&ex.status<500&&![408,429].includes(ex.status))d.pendingExtras=null;
+      if(ex.status===409&&ex.detail?.code==='extra_duration_conflict'&&d.extraPreview){
+        d.extraPreview={...d.extraPreview,duration_conflict:true,conflict_message:ex.message};form.elements.preserve_reserved_time.checked=false;showPreview=true;
+      }else if(ex.status===409){changed=true;}
+      else error.textContent=(ex.message||'Não foi possível atualizar.')+(d.pendingExtras?' Os dados desta tentativa foram preservados. Tente novamente para verificar o resultado.':'');
+    }finally{
+      if(stillAccount(c)){markBusy(form,false);if(state.dialog===d){form.querySelector('fieldset').disabled=!!d.pendingExtras;form.querySelector('[type=submit]').textContent=d.pendingExtras?'Verificar atualização':d.extraPreview?'Adicionar serviços':'Conferir serviços';if(showPreview)renderExtrasPreview(d);}}
+      else state.busy=false;
+    }
+    if(!current(c)||state.dialog!==d)return;
+    if(saved||changed){await showAppointmentDetail(d.record.id,{notice:saved?(payload.preserve_reserved_time?'Serviços adicionados. Total atualizado e horário reservado mantido.':'Serviços adicionados ao atendimento. Total atualizado.'):'O atendimento mudou. Confira os dados atualizados antes de adicionar serviços.'});if(current(c)&&state.route==='agenda')void loadAgenda(c,{catalogue:false});}
   }
   async function showAppointmentAction(action){
     const a=state.dialog?.record;if(!appointmentCan(a,action))return;
@@ -2893,6 +3100,7 @@
     const kind=form.dataset.osForm;if(!kind)return;event.preventDefault();if(!permitted(state.dialog?.requiredFeature||dialogFeature(kind))){dialogError(Error('Seu plano não inclui este recurso.'));return;}if(kind==='site'){if(!siteCanEdit())return;finalizeSiteSlug(form.elements.slug);if(form.dataset.cepPending==='true'){form.querySelector('.os-form-message').textContent='Aguarde a consulta do CEP terminar antes de salvar.';return;}}if(state.imageUploading){const message=form.querySelector('.os-form-message');if(message)message.textContent='Aguarde o envio da imagem antes de salvar.';return;}if(!form.reportValidity())return;if(state.busy||!writable())return;
     const d=state.dialog,f=getValues(form);if(!['site','business-preferences','automations','loyalty-inline','loyalty-ideas','ai-campaign','ai-consultant'].includes(kind)&&(!d||d.epoch!==state.epoch||d.tenantId!==state.tenantId))return;
     try{
+      if(kind==='appointment-extras'){await submitAppointmentExtras(form,d,f);return;}
       if(kind==='appointment-action'||kind==='complete-appointment'){await submitAppointmentAction(form,d,f);return;}
       if(kind==='google-action'||kind==='google-calendar'){await submitGoogleAction(form,d,f);return;}
       if(kind==='google-email'){await submitGoogleEmail(form,d,f);return;}
@@ -2980,6 +3188,9 @@
       if(kind==='hours-start-policy'){await submitHoursStartPolicy(form,d);return;}
       if(['hours','hours-edit','pause','pause-edit'].includes(kind)){await submitHoursEditor(form,kind,f,d);return;}
       if(kind==='appointment'){
+        if(d.manualOperation||form.elements.booking_mode.value!=='regular'){await submitManualAppointment(form,d,f);return;}
+        if(d.selectionPending)throw Error('Aguarde a conferência dos serviços e horários.');
+        if(d.selectionError)throw Error(d.selectionError);
         if(!d.holdForm)f.appointment_messages_opt_in=form.elements.appointment_messages_opt_in.checked;
         const values=d.holdForm||f,customerPhone=customerPhoneValue(values.customer_phone);if(!/^(?:\+55[1-9][0-9]{9,10}|\+5959[0-9]{8})$/.test(customerPhone))throw Error('Para agendar, informe WhatsApp com DDD brasileiro ou celular paraguaio +595.');if(!d.serviceIds.length)throw Error('Selecione ao menos um serviço.');if(!d.holdForm&&!d.slots.includes(values.start_at))throw Error('Selecione um horário disponível.');
         await saveForm(form,async c=>{
@@ -3137,6 +3348,7 @@
       case 'google-sign-in':window.location.assign('/painel?aba=agenda');break;
       case 'google-calendars':await showGoogleCalendars();break;
       case 'google-retry':showGoogleAction('retry');break;
+      case 'appointment-extras':await showAppointmentExtras();break;
       case 'appointment-back':if(d?.appointmentId||d?.record?.id)await showAppointmentDetail(d.appointmentId||d.record.id);break;
       case 'appointment-google-refresh':await loadAppointmentGoogle();break;
       case 'reschedule-reload':await loadRescheduleAvailability();break;
@@ -3276,8 +3488,8 @@
       if(el.dataset.osLoyalty){const r=rows(state.data.loyalty?.rules).find(r=>r.id===el.dataset.osLoyalty);if(r)showLoyalty(r);return;}
       if(el.dataset.osGoal){const key=el.dataset.osGoal,r=key.startsWith('template:')?rows(state.data.goalTemplates).find(g=>'template:'+g.id===key):rows(state.data.goals).find(g=>goalKey(g)===key);if(r)await showGoal(r);return;}
       if(el.dataset.osDuration){const form=$('osDialog')?.querySelector('[data-os-form=service]');const input=form?.elements?.duration_min;if(input){input.value=el.dataset.osDuration;syncServiceDurationPresets(form);}return;}
-      if(el.dataset.osBookService){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm)return;const id=el.dataset.osBookService;if(d.serviceIds.includes(id))d.serviceIds=d.serviceIds.filter(s=>s!==id);else if(d.serviceIds.length<6)d.serviceIds.push(id);else{toast('Escolha até 6 serviços por agendamento.',true);return;}el.setAttribute('aria-pressed',String(d.serviceIds.includes(id)));await updateAvailability();return;}
-      if(el.dataset.osBookCustomer){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm)return;const c=d.customers.find(c=>c.id===el.dataset.osBookCustomer);if(!c)return;const form=$('osDialog').querySelector('form');form.elements.customer_name.value=c.name;form.elements.customer_phone.value=sharedFields().phoneDisplay(c.phone||'');form.elements.appointment_messages_opt_in.checked=false;d.customerId=c.id;$('osBookingCustomers').replaceChildren();$('osBookingCustomerHelp').textContent=c.phone?'Cliente selecionado.':'Este cliente ainda não tem WhatsApp. Ao confirmar, o número informado será salvo neste cadastro.';return;}
+      if(el.dataset.osBookService){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const id=el.dataset.osBookService;if(d.serviceIds.includes(id))d.serviceIds=d.serviceIds.filter(s=>s!==id);else if(d.serviceIds.length<6)d.serviceIds.push(id);else{toast('Escolha até 6 serviços por agendamento.',true);return;}el.setAttribute('aria-pressed',String(d.serviceIds.includes(id)));await updateAvailability();return;}
+      if(el.dataset.osBookCustomer){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const c=d.customers.find(c=>c.id===el.dataset.osBookCustomer);if(!c)return;const form=$('osDialog').querySelector('form');form.elements.customer_name.value=c.name;form.elements.customer_phone.value=sharedFields().phoneDisplay(c.phone||'');form.elements.appointment_messages_opt_in.checked=false;d.customerId=c.id;syncBookingMode();$('osBookingCustomers').replaceChildren();$('osBookingCustomerHelp').textContent=c.phone?'Cliente selecionado.':d.bookingMode!=='regular'?'Cliente selecionado sem WhatsApp. Informe o contato ou marque Cliente avulso.':'Este cliente ainda não tem WhatsApp. Ao confirmar, o número informado será salvo neste cadastro.';return;}
 
       if(el.dataset.osStartPolicyToggle!==undefined){
         const d=state.dialog,weekday=Number(el.dataset.osStartPolicyToggle);
@@ -3382,13 +3594,16 @@
     if(el.id==='osAdvanceStatus'){state.filters.advanceStatus=el.value;state.filters.advanceOffset=0;await open('financeiro',{keepScroll:true});return;}
     if(el.id==='osFinanceKind'){state.filters.financeKind=el.value;state.filters.financeOffset=0;state.filters.financeFiltersOpen=true;await open('financeiro',{keepScroll:true});return;}
     if(el.id==='osFinanceStatus'){state.filters.financeStatus=el.value;state.filters.financeOffset=0;state.filters.financeFiltersOpen=true;await open('financeiro',{keepScroll:true});return;}
-    if(el.dataset.osBookAddon){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm)return;const id=el.dataset.osBookAddon;if(!d.addons?.some(item=>item.addon_service_id===id))return;d.addonIds=el.checked?[...new Set([...d.addonIds,id])]:d.addonIds.filter(value=>value!==id);await updateAvailability();return;}
+    if(state.dialog?.type==='appointment-extras'&&el.dataset.osExtraService){const d=state.dialog;if(d.pendingExtras)return;const selected=el.form.querySelectorAll('[name=extra_service_ids]:checked');if(selected.length>d.extraLimit){el.checked=false;toast('Este atendimento permite mais '+d.extraLimit+' serviços.',true);return;}resetExtrasPreview(d);return;}
+    if(state.dialog?.type==='appointment-extras'&&el.name==='actual_duration_min'){resetExtrasPreview();return;}
+    if(el.dataset.osBookAddon){const d=state.dialog;if(d?.type!=='appointment'||d.holdForm||d.manualOperation)return;const id=el.dataset.osBookAddon;if(!d.addons?.some(item=>item.addon_service_id===id))return;d.addonIds=el.checked?[...new Set([...d.addonIds,id])]:d.addonIds.filter(value=>value!==id);await updateAvailability();return;}
+    if(state.dialog?.type==='appointment'&&['booking_mode','walk_in'].includes(el.name)){syncBookingMode();await updateAvailability();return;}
     if(state.dialog?.type==='appointment'&&['professional_id','day'].includes(el.name)){await updateAvailability();return;}
     if(state.dialog?.type==='block'&&el.name==='repeat'){$('osBlockRepeat').classList.toggle('hidden',!el.checked);$('osField-until_date').required=el.checked;return;}
     if(state.dialog?.type==='block'&&el.name==='frequency'){$('osBlockWeekdays').classList.toggle('hidden',el.value!=='weekdays');return;}
     if(state.dialog?.type==='block'&&el.name==='block_type'){$('osBlockHours').classList.toggle('hidden',el.value==='days');$('osBlockDays').classList.toggle('hidden',el.value!=='days');const form=el.closest('form');['day','start_time','end_time'].forEach(name=>form.elements[name].required=el.value==='hours');form.elements.until_date.required=el.value==='hours'&&form.elements.repeat.checked;$('osBlockDays').querySelectorAll('input').forEach(i=>i.required=el.value==='days');}
   }
-  function handleInput(event){if(!state.mounted)return;const el=event.target;markCustomerBirthChanged(el);markSiteAddressEdit(el);if(state.dialog?.type==='service'&&el.name==='duration_min')syncServiceDurationPresets(el.closest('form'));if(el.matches?.('input.os-color-native'))syncColorPicker(el);if(el.id==='osAgendaSearch'&&!state.busy){state.filters.agendaQuery=el.value;state.filters.agendaOffset=0;state.agendaRead=(state.agendaRead||0)+1;clearTimeout(state.agendaSearchTimer);state.agendaSearchTimer=setTimeout(()=>void applyAgendaFilters(),250);return;}if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';if(el.closest('#osSiteForm')&&!state.busy&&siteCanEdit()&&!event.isComposing){if(el.name==='slug')queueSiteSlugCheck(el);if(el.name==='postal_code')queueSiteCepLookup(el);if(el.name==='state')el.value=el.value.toUpperCase();}if(el.id==='osHelpSearch'){state.filters.helpQuery=el.value;renderHelpResults();}if(el.id==='osCustomerSearch'){state.filters.customerQuery=el.value;state.filters.customerOffset=0;state.customerRead=(state.customerRead||0)+1;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);const c=context();state.searchTimer=setTimeout(()=>loadCustomers(c).catch(ex=>{if(current(c))bodyHTML(errorHTML(ex));}),250);}if(el.id==='osResourceSearch')renderServices(el.value);if(state.dialog?.type==='appointment'&&!state.dialog.holdForm&&['customer_name','customer_phone'].includes(el.name)){const messages=el.form?.elements.appointment_messages_opt_in;if(messages)messages.checked=false;}if(el.id==='osBookingCustomer')filterBookingCustomers(el.value);if(state.dialog?.type==='appointment'&&el.name==='customer_phone'&&state.dialog.customerId){$('osBookingCustomerHelp').textContent='Ao confirmar, o WhatsApp informado será salvo no cadastro deste cliente.';}if(state.dialog?.type==='package'&&el.name==='price')state.dialog.priceTouched=true;
+  function handleInput(event){if(!state.mounted)return;const el=event.target;markCustomerBirthChanged(el);markSiteAddressEdit(el);if(state.dialog?.type==='service'&&el.name==='duration_min')syncServiceDurationPresets(el.closest('form'));if(el.matches?.('input.os-color-native'))syncColorPicker(el);if(el.id==='osAgendaSearch'&&!state.busy){state.filters.agendaQuery=el.value;state.filters.agendaOffset=0;state.agendaRead=(state.agendaRead||0)+1;clearTimeout(state.agendaSearchTimer);state.agendaSearchTimer=setTimeout(()=>void applyAgendaFilters(),250);return;}if(el.closest('#osSiteForm'))el.closest('form').dataset.dirty='true';if(el.closest('#osSiteForm')&&!state.busy&&siteCanEdit()&&!event.isComposing){if(el.name==='slug')queueSiteSlugCheck(el);if(el.name==='postal_code')queueSiteCepLookup(el);if(el.name==='state')el.value=el.value.toUpperCase();}if(el.id==='osHelpSearch'){state.filters.helpQuery=el.value;renderHelpResults();}if(el.id==='osCustomerSearch'){state.filters.customerQuery=el.value;state.filters.customerOffset=0;state.customerRead=(state.customerRead||0)+1;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);const c=context();state.searchTimer=setTimeout(()=>loadCustomers(c).catch(ex=>{if(current(c))bodyHTML(errorHTML(ex));}),250);}if(el.id==='osResourceSearch')renderServices(el.value);if(state.dialog?.type==='appointment'&&!state.dialog.holdForm&&!state.dialog.manualOperation&&['customer_name','customer_phone'].includes(el.name)){const messages=el.form?.elements.appointment_messages_opt_in;if(messages)messages.checked=false;}if(state.dialog?.type==='appointment-extras'&&el.name==='actual_duration_min')resetExtrasPreview();if(state.dialog?.type==='appointment'&&el.name==='final_total')state.dialog.finalTotalTouched=true;if(el.id==='osBookingCustomer')filterBookingCustomers(el.value);if(state.dialog?.type==='appointment'&&el.name==='customer_phone'&&state.dialog.customerId){$('osBookingCustomerHelp').textContent='Ao confirmar, o WhatsApp informado será salvo no cadastro deste cliente.';}if(state.dialog?.type==='package'&&el.name==='price')state.dialog.priceTouched=true;
     if(el.matches?.('[data-os-start-time-input]')&&state.dialog?.type==='hours'&&writable()&&!state.busy){
       const form=el.closest('[data-os-form="hours-start-policy"]'),draft=hoursStartDraft(state.dialog,Number(form?.dataset.weekday));
       if(draft)draft.pendingTime=el.value;

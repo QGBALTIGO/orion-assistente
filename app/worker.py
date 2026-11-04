@@ -132,6 +132,8 @@ async def startup_plan_permissions(ctx):
     await wait_for_subscription_templates(Settings.from_environment())
     from scripts.wait_for_subscription_sent_messages_schema import wait_for_schema as wait_for_sent_messages
     await wait_for_sent_messages(Settings.from_environment())
+    from scripts.wait_for_appointment_operations_schema import wait_for_schema as wait_for_appointment_operations
+    await wait_for_appointment_operations(Settings.from_environment())
     ctx['plan_permissions_ready'] = True
     logging.getLogger(__name__).info('orion_plan_permissions_0050_worker_ready')
     if os.getenv('ORION_REVIEW_QA_VERIFY_7364') == '1':
