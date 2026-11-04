@@ -1,0 +1,86 @@
+name: QA - apply verified WhatsApp transport changes
+on:
+  push:
+    branches: [qa/whatsapp-transport-apply-20261104]
+    paths: ['.github/workflows/apply-whatsapp-transport.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: apply-whatsapp-transport-20261104
+  cancel-in-progress: false
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TARGET: fix/whatsapp-transport-hardening-20261104
+      BASE: 7bc8c879967e48909b6e80eba761bb46dd5d4fe2
+      EXPECTED_TREE: c33731bc1cabab94a54d2f4d1af0a1f7c361334c
+      META_LIVE_SEND: '0'
+      QR_AI_ENABLED: '0'
+      INBOX_SEND_ENABLED: '0'
+      MARKETING_EXECUTION_ENABLED: '0'
+      CAKTO_BILLING_LIVE_ENABLED: '0'
+      ORION_DIRECT_PAYMENTS_ENABLED: '0'
+      ORION_NOTIFY_SELF_ON_LINK: '0'
+      QR_BRIDGE_URL: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validar bytes revisados antes de alterar qualquer branch
+        run: |
+          python - <<'PY'
+          import base64, lzma, hashlib
+          from pathlib import Path
+          encoded = ''.join(Path(f'.github/qa/whatsapp-transport-{n}.b64').read_text().strip() for n in (1,2,3))
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == 'c6cdf8597e680821d5099f0f1c4cd4656497373bfd37acd5a6c426c29d095910'
+          Path('/tmp/whatsapp-transport.patch').write_bytes(patch)
+          PY
+      - name: Recuperar o lockfile exato auditado na primeira rodada
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download 41911172992 --repo QGBALTIGO/orion-assistente --name whatsapp-hardening-evidence --dir /tmp/whatsapp-baseline-evidence
+      - name: Aplicar somente na branch de trabalho se a base nao mudou
+        run: |
+          git fetch origin "refs/heads/$TARGET"
+          test "$(git rev-parse FETCH_HEAD)" = "$BASE"
+          git checkout -B "$TARGET" "$BASE"
+          git apply --check --unidiff-zero /tmp/whatsapp-transport.patch
+          git apply --index --unidiff-zero /tmp/whatsapp-transport.patch
+          python - <<'PY'
+          import hashlib, tarfile
+          from pathlib import Path
+          with tarfile.open('/tmp/whatsapp-baseline-evidence/bridge-deps.tar.gz') as archive:
+              lock = archive.extractfile('package-lock.json').read()
+          assert hashlib.sha256(lock).hexdigest() == 'e1a3732a470b1e07b45c56b50b6b3187b313c43aa937baa81d43f7a3d610eca6'
+          Path('qr-bridge/package-lock.json').write_bytes(lock)
+          PY
+          git add qr-bridge/package-lock.json
+          git diff --cached --check
+          test "$(git write-tree)" = "$EXPECTED_TREE"
+          node --check qr-bridge/src/server.mjs
+          node --check qr-bridge/src/channel-session.mjs
+      - name: Validar transporte, chaves reais sinteticas, URLs e recuperacao
+        run: |
+          npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+          mapfile -t tests < <(find qr-bridge/test -name '*.test.mjs' ! -name 'panel-ui.test.mjs' | sort)
+          node --test "${tests[@]}" > /tmp/whatsapp-transport-preparation.log 2>&1
+      - name: Salvar candidato sem alterar producao
+        run: |
+          test "$(git write-tree)" = "$EXPECTED_TREE"
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix: harden shared WhatsApp auth, native relays, retry identity and HTTPS'
+          git push origin "HEAD:refs/heads/$TARGET"
+          echo "CANDIDATE_COMMIT=$(git rev-parse HEAD)"
+          echo "CANDIDATE_TREE=$(git rev-parse HEAD^{tree})"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: whatsapp-transport-preparation
+          path: /tmp/whatsapp-transport-preparation.log
+          retention-days: 7
