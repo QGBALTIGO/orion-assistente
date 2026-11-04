@@ -16,7 +16,7 @@ async function upload(h,contents='{}',name='orion-chatbot.json',size){await h.fi
 test('Chatbot is subscription-only, reads scoped endpoints and leaves other modules closed',async t=>{
  const h=await makeSuite({initialRoute:'chatbot',permissions,bridge:{tenants:[{id:tenantA,name:'Empresa sintética',role:'owner',workspace_profile:'subscription_services'}]},configureWindow:w=>w.eval(source),respond:path=>path.startsWith(base+'?')?listing():path===base+'/catalog'?catalog():defaultResponse(path)});t.after(()=>h.close());await flush();
  assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'chatbot');assert.equal(h.document.querySelectorAll('[data-sc-card]').length,1);
- assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')].map(n=>n.dataset.osRoute),['dispositivos','chatbot','novidades','ajuda','member']);assert.equal(writes(h).length,0);assert.equal(h.calls.some(c=>/testar.chatbot|templates|plan-|management\/dashboard/.test(c.path)),false);
+ assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')].map(n=>n.dataset.osRoute),['dispositivos','chatbot','testar-chatbot','novidades','ajuda','member']);assert.equal(writes(h).length,0);assert.equal(h.calls.some(c=>/testar.chatbot|templates|plan-|management\/dashboard/.test(c.path)),false);
  await h.window.OrionSuite.open('inbox');await flush();assert.equal(h.document.querySelector('#page-suite').dataset.osCurrentRoute,'novidades');assert.equal(h.document.querySelector('#osSubscriptionChatbot'),null);assert.deepEqual(h.errors,[]);
 });
 
@@ -77,6 +77,25 @@ test('copy creates an inactive rule only after confirmation; destructive dialogs
 
 test('test response requires an explicit modal submit and never sends on opening',async t=>{
  const h=await makeChatbot();t.after(()=>h.close());await h.expand();h.click(act('test'));assert.match(h.element(form('test')).textContent,/telefone real/);h.fill(field('test_phone'),'+55 11 99999-9999');h.click(form('test')+' '+act('close-dialog'));assert.equal(writes(h).length,0);
+});
+
+test('the simulator shortcut preserves the real-send test and resolves only actual device choices',async t=>{
+ const secondDevice='20000000-0000-4000-8000-000000000002';
+ for(const [scope,deviceCount,expected] of [[deviceId,2,deviceId],[null,1,deviceId],[null,2,null],[null,0,null]]){
+  const configuration=catalog(),rule=detail(),opened=[];rule.rule.device_id=scope;
+  configuration.devices=deviceCount===0?[]:configuration.devices.slice(0,1);
+  if(deviceCount===2)configuration.devices.push({id:secondDevice,name:'Segundo dispositivo sintético',status:'offline'});
+  const h=await makeChatbot({configuration,rule,openTester:value=>opened.push(copy(value))});t.after(()=>h.close());
+  await h.expand();assert.equal(h.element(act('simulate')).textContent,'Testar Chatbot');assert.equal(h.element(act('test')).textContent,'Testar Resposta');
+  h.click(act('simulate'));assert.deepEqual(opened,[{deviceId:expected,ruleId}]);assert.equal(writes(h).length,0);assert.equal(h.document.querySelector(form('test')),null);
+  h.click(act('test'));assert.ok(h.element(form('test')));assert.equal(writes(h).length,0);assert.deepEqual(h.errors,[]);
+ }
+});
+
+test('the simulator shortcut respects the operational capability without removing read-only previews',async t=>{
+ const configuration=catalog(),opened=[];configuration.capabilities.manage=false;
+ const h=await makeChatbot({configuration,openTester:value=>opened.push(value)});t.after(()=>h.close());await h.expand();
+ assert.ok(h.element('.os-chatbot-preview'));assert.equal(h.element(act('simulate')).disabled,true);h.click(act('simulate'));assert.equal(opened.length,0);assert.equal(writes(h).length,0);
 });
 
 test('URL tag inspection is explicit and pauses on an uncertain command with the identical retry key',async t=>{

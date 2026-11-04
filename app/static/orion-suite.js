@@ -57,22 +57,22 @@
   const circles={users:'<circle cx="9" cy="7" r="4"/>',userPlus:'<circle cx="9" cy="7" r="4"/>',scissors:'<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>',clock:'<circle cx="12" cy="12" r="10"/>',search:'<circle cx="10.5" cy="10.5" r="7.5"/>',sun:'<circle cx="12" cy="12" r="4"/>',info:'<circle cx="12" cy="12" r="10"/>',help:'<circle cx="12" cy="12" r="10"/>',globe:'<circle cx="12" cy="12" r="10"/>',block:'<circle cx="12" cy="12" r="10"/>',target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/>',instagram:'<circle cx="12" cy="12" r="4"/>'};
   const icon = name => '<svg class="os-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'+(circles[name]||'')+'<path d="'+(paths[name]||paths.info)+'"/></svg>';
   const compactDisclosureSummary = label => '<summary><span class="os-detail-toggle-icon" aria-hidden="true">'+icon('plus')+icon('minus')+'</span><span>'+esc(label)+'</span></summary>';
-  const routeNames={dispositivos:'Dispositivos',chatbot:'Chatbot',inbox:'Central de atendimento',dashboard:'Dashboard',agenda:'Agenda',clientes:'Clientes',servicos:'Serviços',funcionarios:'Funcionários',financeiro:'Financeiro',desempenho:'Meu desempenho',marketing:'Marketing IA',site:'Meu site',fidelizacao:'Fidelização',consultor:'Consultor IA',plano:'Plano',configuracoes:'Configurações',novidades:'Novidades',ajuda:'Base de conhecimento',dispositivo:'Conectar WhatsApp',conversas:'Conversas',ai:'Testar atendimento',empresa:'Configurar atendimento',catalogo:'Catálogo e pedidos',cadastros:'Administração do atendimento',member:'Minha conta'};
+  const routeNames={dispositivos:'Dispositivos',chatbot:'Chatbot','testar-chatbot':'Testar Chatbot',inbox:'Central de atendimento',dashboard:'Dashboard',agenda:'Agenda',clientes:'Clientes',servicos:'Serviços',funcionarios:'Funcionários',financeiro:'Financeiro',desempenho:'Meu desempenho',marketing:'Marketing IA',site:'Meu site',fidelizacao:'Fidelização',consultor:'Consultor IA',plano:'Plano',configuracoes:'Configurações',novidades:'Novidades',ajuda:'Base de conhecimento',dispositivo:'Conectar WhatsApp',conversas:'Conversas',ai:'Testar atendimento',empresa:'Configurar atendimento',catalogo:'Catálogo e pedidos',cadastros:'Administração do atendimento',member:'Minha conta'};
   const routeAliases=new Map([['acelerar','dashboard']]);
-  const mainNav=[['dispositivos','phone'],['chatbot','bot'],['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['inbox','chat'],['servicos','scissors'],['funcionarios','users'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','bot'],['plano','credit'],['configuracoes','settings']];
+  const mainNav=[['dispositivos','phone'],['chatbot','bot'],['testar-chatbot','chat'],['dashboard','dashboard'],['agenda','calendar'],['clientes','users'],['inbox','chat'],['servicos','scissors'],['funcionarios','users'],['financeiro','wallet'],['desempenho','chart'],['marketing','sparkles'],['site','globe'],['fidelizacao','gift'],['consultor','bot'],['plano','credit'],['configuracoes','settings']];
   const legacyPages=new Set(['dispositivo','conversas','ai','empresa','catalogo','cadastros','member']);
   // The original Orion operator console is restricted to the authenticated
   // platform administrator. Business owners use the regular workspace.
   const platformAdminOnlyPages=new Set(['conversas','ai','empresa','catalogo','cadastros']);
   const appPages=new Set([...Object.keys(routeNames),...routeAliases.keys()]);
-  const routeFeatures={dispositivos:'devices.manage',chatbot:'account.manage',dashboard:'dashboard.basic',agenda:'agenda.manage',clientes:'clients.manage',inbox:'conversations.manual',servicos:'services.manage',funcionarios:'professionals.manage',financeiro:'finance.basic',desempenho:'performance.advanced',marketing:'marketing.ai',site:'site.manage',fidelizacao:'loyalty.manage',consultor:'consultant.ai',configuracoes:'settings.manage'};
+  const routeFeatures={dispositivos:'devices.manage',chatbot:'account.manage','testar-chatbot':'chatbot.manage',dashboard:'dashboard.basic',agenda:'agenda.manage',clientes:'clients.manage',inbox:'conversations.manual',servicos:'services.manage',funcionarios:'professionals.manage',financeiro:'finance.basic',desempenho:'performance.advanced',marketing:'marketing.ai',site:'site.manage',fidelizacao:'loyalty.manage',consultor:'consultant.ai',configuracoes:'settings.manage'};
   const platformWorkspace=()=>state.bridge.user?.role==='admin'&&!state.bridge.user?.maintenance?.active;
   const subscriptionRoutes=new Set(['novidades','ajuda','member']);
   const workspaceProfile=()=>platformWorkspace()?'standard':state.workspaceProfile||tenant()?.workspace_profile||null;
   const subscriptionWorkspace=()=>workspaceProfile()==='subscription_services';
   const fallbackRoute=()=>subscriptionWorkspace()?'novidades':'plano';
   const permitted=feature=>!feature||platformWorkspace()||(!subscriptionWorkspace()||['account.manage','business.setup','devices.manage','chatbot.manage'].includes(feature))&&state.entitlements?.permissions?.[feature]===true;
-  const routePermitted=route=>['dispositivos','chatbot'].includes(route)?(subscriptionWorkspace()&&permitted(routeFeatures[route])):subscriptionWorkspace()?subscriptionRoutes.has(route):route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
+  const routePermitted=route=>['dispositivos','chatbot','testar-chatbot'].includes(route)?(subscriptionWorkspace()&&permitted(routeFeatures[route])):subscriptionWorkspace()?subscriptionRoutes.has(route):route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
   const settingsTabAllowed=tab=>['appearance','account'].includes(tab)||tab==='general'?(tab!=='general'||permitted('business.setup')||permitted('settings.manage')):tab==='ai'?(permitted('marketing.ai')||permitted('consultant.ai')):tab==='whatsapp'?permitted('conversations.manual'):tab==='hours'?permitted('agenda.manage'):tab==='calendar'?permitted('calendar.manage'):tab==='notifications'?permitted('notifications.basic'):tab==='site-requests'?canManageSiteRequests():platformWorkspace();
   const atProfessionalLimit=()=>!platformWorkspace()&&Number.isInteger(state.entitlements?.limits?.max_professionals)&&Number(state.entitlements.limits.active_professionals)>=state.entitlements.limits.max_professionals;
   function featureForPath(path,method='GET',data){
@@ -95,6 +95,7 @@
     if(/^professionals/.test(suffix)||resource==='professionals')return 'professionals.manage';
     if(/^service/.test(suffix)||['services','professional_services'].includes(resource))return 'services.manage';
     if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/devices(?:[/?]|$)/.test(path))return 'devices.manage';
+    if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/chatbot-test(?:[/?]|$)/.test(path))return 'chatbot.manage';
     if(resource==='subscription-whatsapp'&&/\/subscription-whatsapp\/chatbot(?:[/?]|$)/.test(path))return method==='GET'||method==='POST'&&/\/chatbot\/exports$/.test(path)?'account.manage':'chatbot.manage';
     if(resource==='qr-channels')return data?.assistant_enabled===true?'reception.ai':'conversations.manual';
     if(/^inbox/.test(suffix))return 'conversations.manual';
@@ -338,7 +339,7 @@
   function errorHTML(error){return '<div class="os-notice os-error" role="alert">'+icon('info')+'<p>'+esc(error?.message||'Não foi possível consultar os dados. Tente novamente.')+'</p>'+button('Tentar novamente','reload','os-ghost os-small','refresh')+'</div>';}
   function toast(message,error=false){const r=$('osToastRegion');if(!r)return;const n=document.createElement('div');n.className='os-toast'+(error?' os-error':'');n.innerHTML=icon(error?'info':'check')+'<span>'+esc(message)+'</span>';r.appendChild(n);setTimeout(()=>n.remove(),6000);}
   function title(titleText,subtitle,actions=''){return '<div class="os-title-row"><div><h1>'+esc(titleText)+'</h1>'+(subtitle?'<p>'+esc(subtitle)+'</p>':'')+'</div>'+(actions?'<div class="os-actions">'+actions+'</div>':'')+'</div>';}
-  function bodyHTML(html){clearSiteLookups();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();const body=$('osPageBody');if(body){body.innerHTML=html;window.OrionFields?.refresh(body);}}
+  function bodyHTML(html){clearSiteLookups();window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();const body=$('osPageBody');if(body){body.innerHTML=html;window.OrionFields?.refresh(body);}}
   function pageHTML(html){$('page-suite').innerHTML=html;window.OrionFields?.refresh($('page-suite'));}
   function selectedNav(){const activeRoute=state.route==='cadastros'?'configuracoes':state.route,channels=activeRoute==='configuracoes'&&state.filters.settingsTab==='whatsapp'&&!!document.querySelector('#osNav [data-os-action="managed-whatsapp"]');document.querySelectorAll('.os-nav-link').forEach(a=>{if(channels?a.dataset.osAction==='managed-whatsapp':a.dataset.osRoute===activeRoute)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});}
 
@@ -410,7 +411,7 @@
       return;
     }
     clearSiteLookups();
-    window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
+    window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();
     if(!tenant()){
       state.route=route;state.load++;closeNotifications();closeDialog(true);drawer(false);
       document.querySelectorAll('#appView .content>.page').forEach(p=>p.classList.toggle('hidden',p.id!=='page-suite'));$('osConsultantFab')?.classList.add('hidden');selectedNav();
@@ -426,6 +427,9 @@
       if(!state.mounted||permissionEpoch!==state.epoch||permissionTenant!==state.tenantId||navigationRead!==state.navigationRead)return;
     }
     if(!routePermitted(route))route=fallbackRoute();
+    if(route!=='testar-chatbot'){
+      try{const url=new URL(location.href);if(state.route==='testar-chatbot'||url.searchParams.get('aba')==='testar-chatbot'){url.searchParams.delete('device_id');url.searchParams.delete('reply_id');history.replaceState(history.state,'',url.pathname+url.search);}}catch{}
+    }
     if(legacyPages.has(route)){
       if(route==='dispositivo'&&!['support','admin'].includes(state.bridge.user?.role)){toast('Seu acesso não inclui a operação do WhatsApp.',true);return;}
       if(route==='member'&&['support','admin'].includes(state.bridge.user?.role)){route='configuracoes';}else{legacyOpened(route);state.bridge.openLegacy?.(route);return;}
@@ -450,6 +454,7 @@
     let html='';
     if(state.route==='dispositivos')html='<div id="osPageBody"><section id="osSubscriptionDevices"></section></div>';
     if(state.route==='chatbot')html='<div id="osPageBody"><section id="osSubscriptionChatbot"></section></div>';
+    if(state.route==='testar-chatbot')html='<div id="osPageBody"><section id="osSubscriptionChatbotTest"></section></div>';
     if(state.route==='inbox')html=title('Central de atendimento','Acompanhe suas conversas e atendimentos.')+'<div id="osPageBody"><div id="osInboxHost"></div></div>';
     if(state.route==='dashboard'){html='<div id="osPageBody">'+loading('Carregando o resumo do seu negócio…')+'</div>';}
     if(state.route==='agenda')html=agendaFrame(readOnly);
@@ -486,7 +491,17 @@
   }
   async function loadRoute(){const c=context();try{
     switch(state.route){
-      case 'chatbot':if(!window.OrionSubscriptionChatbot)throw Error('Não foi possível abrir Chatbot. Atualize o painel.');await window.OrionSubscriptionChatbot.mount({host:$('osSubscriptionChatbot'),request,tenantId:state.tenantId});break;
+      case 'chatbot':if(!window.OrionSubscriptionChatbot)throw Error('Não foi possível abrir Chatbot. Atualize o painel.');await window.OrionSubscriptionChatbot.mount({host:$('osSubscriptionChatbot'),request,tenantId:state.tenantId,openTester:({deviceId,ruleId})=>{
+        if(!current(c)||!routePermitted('testar-chatbot')||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ruleId||''))return;
+        const url=new URL(location.href);url.searchParams.set('reply_id',ruleId);
+        if(deviceId)url.searchParams.set('device_id',deviceId);else url.searchParams.delete('device_id');
+        history.replaceState(history.state,'',url.pathname+url.search);void open('testar-chatbot');
+      }});break;
+      case 'testar-chatbot':{
+        if(!window.OrionSubscriptionChatbotTest)throw Error('Não foi possível abrir Testar Chatbot. Atualize o painel.');
+        const params=new URLSearchParams(location.search);
+        await window.OrionSubscriptionChatbotTest.mount({host:$('osSubscriptionChatbotTest'),request,tenantId:state.tenantId,initialDeviceId:params.get('device_id'),initialRuleId:params.get('reply_id')});break;
+      }
       case 'dispositivos':if(!window.OrionSubscriptionDevices)throw Error('Não foi possível abrir Dispositivos. Atualize o painel.');await window.OrionSubscriptionDevices.mount({host:$('osSubscriptionDevices'),request,tenantId:state.tenantId});break;
       case 'dashboard':{const today=dateKey();const d=await request(mgmt('/dashboard?'+query({start_date:today,end_date:today})));if(!current(c))return;state.data.dashboard=d;renderDashboard(d,today);await Promise.all([loadDashboardAgenda(c,today),loadDashboardFinance(c,today)]);break;}
       case 'agenda':void loadGoogle();await loadAgenda(c);break;
@@ -3409,6 +3424,6 @@
     state.observer=new MutationObserver(()=>applyThemeState());state.observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-theme-preference']});
     const desired=bridge?.initialRoute||'dashboard';void open(appPages.has(desired)?desired:'dashboard');
   }
-  function destroy(){window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.workspaceProfile=null;state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;if(state.permissionChannel){state.permissionChannel.onmessage=null;state.permissionChannel.close();state.permissionChannel=null;}state.permissionObserver?.disconnect();state.permissionObserver=null;window.removeEventListener('focus',refreshAccess);document.removeEventListener('visibilitychange',refreshAccess);window.removeEventListener('orion:plan-changed',refreshAccess);state.entitlements=null;state.permissionPending=null;state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
+  function destroy(){window.OrionSubscriptionChatbotTest?.unmount();window.OrionSubscriptionChatbot?.unmount();window.OrionSubscriptionDevices?.unmount();window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.workspaceProfile=null;state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;if(state.permissionChannel){state.permissionChannel.onmessage=null;state.permissionChannel.close();state.permissionChannel=null;}state.permissionObserver?.disconnect();state.permissionObserver=null;window.removeEventListener('focus',refreshAccess);document.removeEventListener('visibilitychange',refreshAccess);window.removeEventListener('orion:plan-changed',refreshAccess);state.entitlements=null;state.permissionPending=null;state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
   window.OrionSuite=Object.freeze({mount,sync,destroy,open,legacyOpened,workspaceProfile});
 })();

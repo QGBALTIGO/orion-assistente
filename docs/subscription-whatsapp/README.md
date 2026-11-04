@@ -16,8 +16,8 @@ não observado ou testado.
 | Ordem | Módulo | Estado |
 |---|---|---|
 | 01 | Dispositivos | Publicado — PR 248, produção `976fa7a095b053e5589bab52eb058187ebba858c` |
-| 02 | Chatbot | Implementado — PR 249 em qualificação para publicação |
-| 03 | Testar Chatbot | Não iniciado |
+| 02 | Chatbot | Publicado — PR 249, produção `112e92ea79240a1980f484bf2787c4400bd5418d` |
+| 03 | Testar Chatbot | Observado em 2026-11-04; implementação e qualificação em andamento |
 | 04 | Templates | Não iniciado |
 | 05 | Mensagens Enviadas | Não iniciado |
 | 06 | Diagnósticos | Não iniciado |
@@ -39,9 +39,12 @@ não observado ou testado.
 
 O registro detalhado da etapa 02 está em [chatbot-observation.md](chatbot-observation.md).
 A qualificação técnica está em [chatbot-validation.md](chatbot-validation.md).
+O registro da etapa 03 está em [chatbot-test-observation.md](chatbot-test-observation.md).
+A qualificação da etapa 03 está em [chatbot-test-validation.md](chatbot-test-validation.md).
 
-Observação feita no Chrome conectado do usuário em 2026-11-03
-(America/Cuiaba), pela extensão autorizada. Nenhum envio, reinício, exclusão,
+Observação iniciada no Chrome conectado do usuário em 2026-11-03
+(America/Cuiaba) e continuada em 2026-11-04, pela extensão autorizada.
+Nenhum envio real, reinício, exclusão,
 desconexão ou salvamento de configurações foi executado no BotBot.
 
 O repositório [morluto/rea](https://github.com/morluto/rea) foi examinado no

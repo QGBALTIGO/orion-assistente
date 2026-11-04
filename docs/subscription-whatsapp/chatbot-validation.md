@@ -93,3 +93,27 @@ Os testes de protocolo e do SDK não comprovam entrega nem renderização em
 todos os clientes WhatsApp, especialmente carrosséis. As simulações de
 largura dos navegadores não substituem um teste em aparelho físico. Nenhum
 resultado sintético é apresentado como mensagem entregue a uma pessoa.
+
+## Publicação verificada
+
+PR 249 mesclada em `112e92ea79240a1980f484bf2787c4400bd5418d`, com árvore
+`46e94a41fa12f7b01e05fc3d002ff37babffc0ba`, idêntica à revisão qualificada.
+O [run final 41828950795](https://github.com/QGBALTIGO/orion-assistente/actions/runs/41828950795)
+passou em 874 testes Python, 300 Node, 171 DOM, 92 PostgreSQL, 18 Chromium
+e 18 WebKit: 1.473 execuções aprovadas. Os dois gates Node compartilhados
+repetiram somente as 30/49 falhas legadas, com o novo teste de carrossel aprovado.
+
+Em 2026-11-04, os três serviços Railway estavam em `SUCCESS`, na revisão
+acima, cada um com uma réplica em execução e nenhuma réplica caída. Não havia
+operações de deploy pendentes. A API registrou
+`orion_subscription_chatbot_schema_ready`.
+
+| Serviço | Deployment |
+|---|---|
+| API | `c72c2058-e6b6-4016-9772-0cd6f6b9b29b` |
+| Worker | `1a24952a-7a12-4628-bd3b-f1b7592ce781` |
+| Ponte | `ec2ec483-c877-4437-9214-50afab4f2986` |
+
+No Chrome autorizado, a empresa do nicho de assinaturas carregou a navegação
+com Dispositivos e Chatbot, métricas reais, catálogo de dispositivos e o editor
+completo. Nenhuma regra de teste foi salva nessa conta para essa conferência.
