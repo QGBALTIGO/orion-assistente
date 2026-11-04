@@ -224,6 +224,38 @@ seis gates de assinaturas, os cinco de Agenda e todos os workflows gerais
 acionados pelo diff contra a nova base, inclusive fresh-devices pela alteração
 real no startup do worker.
 
+### Integração da correção publicada do menu de assinaturas
+
+A PR 256 avançou a produção novamente às 20:39:15 UTC para
+`2d20427f23d3e380880de734d11998b56de7305b`, árvore
+`c0c1dbe93cc181b588fbbf0a64c33e454fe1fc7a`. Ela remove somente a altura
+reservada ao atalho de site no perfil de assinaturas, com uma classe explícita,
+regressões de perfil/conta e um gate próprio de geometria em dois navegadores.
+Os cinco arquivos dessa alteração publicada foram integrados sem conflito.
+
+A revisão anterior de Diagnósticos, `9d2e3f8e`, havia concluído os seis grupos
+no checkout `5987191629fa8a652714e2832b03c19aa52a1f5a`, árvore
+`b968b57571b3fa6f78ce8133f71d6f9a04648563`: Python 1.416, ponte 375,
+DOM 290, PostgreSQL 254, Chrome 58 e WebKit 58. Os cinco gates da Agenda
+passaram (407 regras, 74 DOM, 150 PG e 40 por navegador). Capturas atuais tiveram
+seus ZIPs conferidos por SHA-256; confirmação mobile, relatório tablet e desktop
+foram inspecionados sem novo defeito. O ASR concluiu os quatro testes unitários
+e os smokes reais WAV e OGG; os marcadores finais de instalação aparecem
+imediatamente antes das inferências aprovadas.
+Isso não explica retroativamente o cancelamento da revisão `e59ddbd`.
+
+Na comparação geral, 59 de 61 jobs tinham logs finais sem novas ocorrências de
+falha em relação à base PR 254. O pytest amplo e o navegador de workspace ainda
+estavam pendentes quando a produção avançou. Essa revisão torna-se evidência
+intermediária; resultados não concluídos não são contados como aprovados.
+A nova combinação deve executar também o gate de espaçamento da PR 256,
+preservando seu comportamento e a qualificação de Diagnósticos.
+
+Os quatro grupos DOM diretamente pertinentes (espaçamento, workspace, contexto
+de conta e Diagnósticos) passaram juntos: 67 casos em 5,34 s, sem falha ou skip.
+A sintaxe de `orion-suite.js` foi conferida. Não houve mudança de backend,
+migração ou transporte nesta segunda integração.
+
 ## Gates obrigatórios do CI
 
 O workflow `subscription-chatbot.yml` inclui os seis grupos anteriores e os

@@ -375,6 +375,7 @@
   function renderSidebar(){
     const focused=document.activeElement,previousFocus=focused?.closest?.('#osNav')?{route:focused.dataset.osRoute,action:focused.dataset.osAction}:null;
     const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role);
+    $('osSidebarContext').classList.toggle('os-sidebar-context--subscription',subscriptionWorkspace());
     $('osSidebarContext').innerHTML='<div class="os-overline">Meu negócio</div><div class="os-tenant-name">'+esc(t?.name||(businessAccessError()?'Acesso pendente':state.bridge.businessContextReady===false?'Conferindo empresa…':'Sua empresa'))+'</div><div class="os-sidebar-badges"><span class="os-badge">'+esc(isAdmin?'Administração':t?.role==='viewer'?'Consulta':t?.role==='editor'?'Equipe':'Minha empresa')+'</span></div>'+(t&&!subscriptionWorkspace()?'<button type="button" class="os-side-site" data-os-route="site">meu site '+icon('external')+'</button>':'');
     const navItem=([route,symbol],extra='')=>'<button type="button" class="os-nav-link'+extra+'" data-os-route="'+route+'" title="'+esc(routeNames[route])+'">'+icon(symbol)+'<span>'+esc(routeNames[route])+'</span></button>';
     let nav=subscriptionWorkspace()?'':isAdmin?navItem(['dispositivo','phone'],' os-nav-connection'):t&&permitted('conversations.manual')?'<button type="button" class="os-nav-link os-nav-connection" data-os-action="managed-whatsapp" title="Conectar WhatsApp">'+icon('phone')+'<span>Conectar WhatsApp</span></button>':'';
