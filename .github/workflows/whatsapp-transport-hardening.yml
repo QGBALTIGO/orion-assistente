@@ -1,0 +1,50 @@
+name: WhatsApp transport hardening
+on:
+  push:
+    branches: [fix/whatsapp-transport-hardening-20261104]
+  pull_request:
+    paths: ['qr-bridge/**', 'app/qr_channel*', 'app/subscription*', '.github/workflows/whatsapp-transport-hardening.yml']
+permissions:
+  contents: read
+concurrency:
+  group: whatsapp-hardening-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  bridge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      META_LIVE_SEND: '0'
+      QR_AI_ENABLED: '0'
+      INBOX_SEND_ENABLED: '0'
+      MARKETING_EXECUTION_ENABLED: '0'
+      CAKTO_BILLING_LIVE_ENABLED: '0'
+      ORION_DIRECT_PAYMENTS_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Snapshot source for offline review
+        run: git archive --format=tar.gz HEAD > /tmp/orion-source.tar.gz
+      - name: Install pinned bridge dependencies
+        run: npm install --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+      - name: Security dependency report
+        run: npm audit --prefix qr-bridge --omit=dev --json > /tmp/bridge-audit.json || true
+      - name: Bridge regression
+        run: node --test qr-bridge/test/*.test.mjs > /tmp/bridge-tests.log 2>&1
+      - name: Package offline dependencies
+        if: always()
+        run: tar -czf /tmp/bridge-deps.tar.gz -C qr-bridge node_modules package-lock.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: whatsapp-hardening-evidence
+          path: |
+            /tmp/orion-source.tar.gz
+            /tmp/bridge-deps.tar.gz
+            /tmp/bridge-tests.log
+            /tmp/bridge-audit.json
+          retention-days: 3
