@@ -1605,8 +1605,12 @@ $("settingsAllowedCallers").addEventListener("beforeinput",event=>{
 });
 $("settingsAllowedCallers").addEventListener("focusout",()=>{const input=$("settingsAllowedCallers");if(input.disabled||input.matches(":disabled")||input.readOnly)return;try{legacyPhoneListValue(input.value);legacyCallerError();}catch(error){legacyCallerError(error.message);}});
 for(const key of ["authorized_staff","time_off"])$("resource").add(new Option(descriptions[key],key));
-function errorMessage(data,code){return typeof data?.detail==="string"?data.detail:(typeof data?.error==="string"?data.error:
-  "O servidor retornou HTTP "+code+".")}
+function errorMessage(data,code){
+ const detail=data?.detail;
+ return typeof detail==="string"?detail:
+  typeof detail?.message==="string"&&detail.message.trim()?detail.message:
+  typeof data?.error==="string"?data.error:"O servidor retornou HTTP "+code+".";
+}
 // A 401 on an optional tenant integration is not proof that Orion's login expired.
 // Only the first-party /auth/me route may confirm that the active session is gone.
 let authProbePending=null;
