@@ -2,6 +2,10 @@
 import os
 import sys
 
+SSH_KEYS = frozenset({
+    "ORION_ORIGIN_SSH_HOST", "ORION_ORIGIN_SSH_PRIVATE_KEY", "ORION_ORIGIN_SSH_KNOWN_HOSTS",
+})
+
 ONE_TIME_KEYS = frozenset({
     "ORION_RUN_CENTRAL_NOTIFICATIONS_MIGRATION", "ORION_RUN_PLAN_PERMISSIONS_MIGRATION", "ORION_RUN_APPOINTMENT_COMMUNICATION_MIGRATION", "MIGRATION_DATABASE_URL", "ORION_RUN_BUSINESS_MIGRATION", "ORION_RUN_ACCOUNT_MIGRATION",
     "ORION_MIGRATION_SWITCH_ROLE", "ORION_BUSINESS_MIGRATION_RUN_ID",
@@ -27,6 +31,13 @@ def main():
     port = environment.get("PORT", "8000")
     if not port.isdigit() or not 1 <= int(port) <= 65535:
         raise RuntimeError("Invalid API port")
+    if any(environment.get(key, "") for key in SSH_KEYS):
+        # Keep execve as the credential boundary, even when a supervisor is
+        # needed. Merely clearing os.environ leaves the original process's
+        # initial environment (including owner credentials) in /proc.
+        os.execve(sys.executable, [sys.executable, "-m", "scripts.reverse_ingress"], environment)
+        return
+    environment = {key: value for key, value in environment.items() if key not in SSH_KEYS}
     # The OAuth callback carries a one-use authorization code and state in its
     # query string. Uvicorn's ordinary access log records the complete target.
     # Keep application/error logging, without persisting request credentials.

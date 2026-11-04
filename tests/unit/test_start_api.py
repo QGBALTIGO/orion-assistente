@@ -61,3 +61,45 @@ def test_invalid_port_cannot_become_a_startup_argument(monkeypatch, value):
     monkeypatch.setattr(start_api.os, "execve", lambda *_: pytest.fail("Must not execute invalid port"))
     with pytest.raises(RuntimeError, match="Invalid API port"):
         start_api.main()
+
+
+def test_reverse_mode_execs_a_new_sanitized_supervisor_before_any_child(monkeypatch):
+    source = {key: "owner-only" for key in start_api.ONE_TIME_KEYS}
+    source.update(PORT="8080", APP_DATABASE_URL="runtime", WEB_CONCURRENCY="3",
+                  ORION_ORIGIN_SSH_HOST="187.77.255.164",
+                  ORION_ORIGIN_SSH_PRIVATE_KEY="synthetic-key",
+                  ORION_ORIGIN_SSH_KNOWN_HOSTS="synthetic-pin")
+    monkeypatch.setattr(start_api.os, "environ", source)
+    executed = []
+    monkeypatch.setattr(start_api.os, "execve", lambda *args: executed.append(args))
+    start_api.main()
+    executable, arguments, environment = executed[0]
+    assert executable == start_api.sys.executable
+    assert arguments == [executable, "-m", "scripts.reverse_ingress"]
+    assert not set(environment) & start_api.ONE_TIME_KEYS
+    assert environment["WEB_CONCURRENCY"] == "3"
+    assert environment["ORION_ORIGIN_SSH_PRIVATE_KEY"] == "synthetic-key"
+    assert source["MIGRATION_DATABASE_URL"] == "owner-only"
+
+
+def test_partial_reverse_mode_still_crosses_exec_boundary_for_safe_validation(monkeypatch):
+    monkeypatch.setattr(start_api.os, "environ", {
+        "MIGRATION_DATABASE_URL": "owner-only", "ORION_ORIGIN_SSH_HOST": "187.77.255.164",
+    })
+    executed = []
+    monkeypatch.setattr(start_api.os, "execve", lambda *args: executed.append(args))
+    start_api.main()
+    assert executed[0][1][2] == "scripts.reverse_ingress"
+    assert "MIGRATION_DATABASE_URL" not in executed[0][2]
+
+
+def test_empty_reverse_settings_keep_original_uvicorn_command_and_runtime_env(monkeypatch):
+    source = {key: "" for key in start_api.SSH_KEYS}
+    source.update(PORT="8000", WEB_CONCURRENCY="2", QR_BRIDGE_TOKEN="unchanged")
+    monkeypatch.setattr(start_api.os, "environ", source)
+    executed = []
+    monkeypatch.setattr(start_api.os, "execve", lambda *args: executed.append(args))
+    start_api.main()
+    assert executed[0][1] == [start_api.sys.executable, "-m", "uvicorn", "app.main:app",
+                              "--no-access-log", "--host", "0.0.0.0", "--port", "8000"]
+    assert executed[0][2] == {"PORT": "8000", "WEB_CONCURRENCY": "2", "QR_BRIDGE_TOKEN": "unchanged"}
