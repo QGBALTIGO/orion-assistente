@@ -125,7 +125,11 @@ def main():
     if result:
         return result
     from scripts.wait_for_subscription_diagnostics_schema import main as diagnostics_wait
-    return diagnostics_wait()
+    result = diagnostics_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_campaigns_schema import main as campaigns_wait
+    return campaigns_wait()
 
 
 if __name__ == "__main__":

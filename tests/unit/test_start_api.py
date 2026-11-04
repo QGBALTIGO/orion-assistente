@@ -26,7 +26,23 @@ def test_api_exec_has_runtime_roles_but_no_owner_migration_environment(monkeypat
                   QR_BRIDGE_TOKEN="existing-bridge-secret", PORT="8080")
     monkeypatch.setattr(start_api.os, "environ", source)
     executed = []
-    monkeypatch.setattr(start_api.os, "execve", lambda *args: executed.append(args))
+    barriers = []
+
+    def wait(command, **kwargs):
+        assert command == [start_api.sys.executable, "-m", "scripts.wait_for_subscription_campaigns_schema"]
+        assert kwargs["check"] is True and kwargs["timeout"] == 95
+        assert not set(kwargs["env"]) & migration_keys
+        assert not set(kwargs["env"]) & start_api.ONE_TIME_KEYS
+        assert kwargs["env"]["APP_DATABASE_URL"] == "runtime-only"
+        assert executed == []
+        barriers.append(kwargs["env"])
+
+    def execute(*args):
+        assert len(barriers) == 1
+        executed.append(args)
+
+    monkeypatch.setattr(start_api.subprocess, "run", wait)
+    monkeypatch.setattr(start_api.os, "execve", execute)
     start_api.main()
     executable, args, environment = executed[0]
     assert executable == start_api.sys.executable
@@ -39,6 +55,7 @@ def test_api_exec_has_runtime_roles_but_no_owner_migration_environment(monkeypat
     assert environment["APP_DATABASE_URL"] == "runtime-only"
     assert environment["SUPPORT_DATABASE_URL"] == "support-only"
     assert environment["QR_BRIDGE_TOKEN"] == "existing-bridge-secret"
+    assert barriers == [environment]
     assert "MIGRATION_DATABASE_URL" in source  # Do not mutate the deployment helper's environment.
 
 
@@ -59,5 +76,22 @@ def test_docker_and_railway_start_the_environment_sanitizing_launcher():
 def test_invalid_port_cannot_become_a_startup_argument(monkeypatch, value):
     monkeypatch.setattr(start_api.os, "environ", {"PORT": value})
     monkeypatch.setattr(start_api.os, "execve", lambda *_: pytest.fail("Must not execute invalid port"))
+    monkeypatch.setattr(start_api.subprocess, "run", lambda *_a, **_k: pytest.fail("Invalid port must fail before the catalog probe"))
     with pytest.raises(RuntimeError, match="Invalid API port"):
+        start_api.main()
+
+
+@pytest.mark.parametrize("timed_out", [False, True])
+def test_api_never_serves_when_the_campaign_or_predecessor_catalog_is_not_ready(monkeypatch, timed_out):
+    monkeypatch.setattr(start_api.os, "environ", {"PORT": "8080", "APP_DATABASE_URL": "synthetic-runtime"})
+    monkeypatch.setattr(start_api.os, "execve", lambda *_: pytest.fail("API cannot serve before the read-only schema barrier"))
+
+    def fail(command, **kwargs):
+        if timed_out:
+            raise start_api.subprocess.TimeoutExpired(command, kwargs["timeout"])
+        raise start_api.subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(start_api.subprocess, "run", fail)
+    expected = start_api.subprocess.TimeoutExpired if timed_out else start_api.subprocess.CalledProcessError
+    with pytest.raises(expected):
         start_api.main()

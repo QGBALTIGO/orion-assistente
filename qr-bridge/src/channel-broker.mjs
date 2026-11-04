@@ -27,7 +27,7 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
   async function request(id,key,operation,body,{owner,fence,signal,phone,mediaType,device,method='POST',binary,cardIndex}={}){
     if(!channelId(id)||typeof key!=='string'||key.length<32||key.length>256)throw Error('invalid_channel');
     const deviceAudio=operation==='device/audio',audio=operation==='audio'||deviceAudio;
-    const carouselImage=operation==='device/chatbot/carousel-image',chatbot=operation.startsWith('device/chatbot/'),raw=audio||carouselImage;
+    const carouselImage=operation==='device/chatbot/carousel-image',chatbot=operation.startsWith('device/chatbot/'),campaign=operation.startsWith('device/campaigns/'),raw=audio||carouselImage;
     if(audio&&((!deviceAudio&&env.QR_AI_AUDIO_ENABLED!=='1')||!channelId(owner)||!Number.isSafeInteger(fence)||fence<1||
         !(deviceAudio?/^[1-9]\d{7,14}$/:/^55[1-9]\d(?:9\d{8}|[2-5]\d{7})$/).test(phone)||!Buffer.isBuffer(body)||body.length<1||body.length>(deviceAudio?25_000_000:2_000_000)||
         !(deviceAudio?DEVICE_AUDIO_MEDIA_TYPES:['audio/ogg','audio/webm']).includes(mediaType)))throw Error('channel_audio_disabled_or_invalid');
@@ -36,11 +36,13 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
     if(deviceAudio&&!device)throw Error('invalid_device_request');
     if(chatbot&&operation!=='device/chatbot/http-result'&&(!device||!channelId(device.operation_id)||
         !Number.isSafeInteger(device.chatbot_revision)||device.chatbot_revision<1||!channelId(owner)||!Number.isSafeInteger(fence)||fence<1))throw Error('invalid_chatbot_request');
+    if(campaign&&(!device||!channelId(device.operation_id)||device.chatbot_revision!==undefined||
+        !channelId(owner)||!Number.isSafeInteger(fence)||fence<1))throw Error('invalid_campaign_request');
     if(carouselImage&&(!Buffer.isBuffer(body)||body.length<1||body.length>8_000_000||!Number.isSafeInteger(cardIndex)||cardIndex<0||cardIndex>2))throw Error('invalid_carousel_image');
     if(binary&&(!Number.isSafeInteger(binary.size)||binary.size<1||binary.size>16_000_000||typeof binary.mime!=='string'||binary.mime.length>80))throw Error('invalid_chatbot_asset');
     if(signal?.aborted)throw Error('channel_request_aborted');
     const target=new URL(`/internal/qr/channels/${id}/${operation}`,base);
-    const controller=new AbortController(),abort=()=>controller.abort(),timer=setTimeout(abort,deviceAudio?125000:audio?35000:chatbot?30000:operation==='ai/reply'?19000:5000);
+    const controller=new AbortController(),abort=()=>controller.abort(),timer=setTimeout(abort,deviceAudio?125000:audio?35000:chatbot||campaign?30000:operation==='ai/reply'?19000:5000);
     signal?.addEventListener('abort',abort,{once:true});
     try{
       const response=await fetchImpl(target,{method,redirect:'error',signal:controller.signal,
@@ -74,6 +76,15 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
       if(!channelId(asset?.id)||!['original','thumbnail'].includes(variant))throw Error('invalid_chatbot_asset');
       const meta=variant==='thumbnail'?asset.thumbnail:asset;if(!meta)throw Error('invalid_chatbot_asset');
       return request(id,key,`device/chatbot/assets/${asset.id}/content?variant=${variant}`,undefined,{...lease,signal,device,method:'GET',binary:meta});
+    },
+    deviceCampaignAsset:(id,key,lease,{asset,variant='original',signal,...device})=>{
+      if(!channelId(asset?.id)||!['original','thumbnail'].includes(variant))throw Error('invalid_campaign_asset');
+      const meta=variant==='thumbnail'?asset.thumbnail:asset;if(!meta)throw Error('invalid_campaign_asset');
+      if(!channelId(device.device_id)||!channelId(device.generation)||!channelId(device.operation_id)||
+          !Number.isSafeInteger(device.settings_revision)||device.settings_revision<1)throw Error('invalid_campaign_request');
+      const query=new URLSearchParams({device_id:device.device_id,generation:device.generation,
+        settings_revision:String(device.settings_revision),operation_id:device.operation_id,variant});
+      return request(id,key,`device/campaigns/assets/${asset.id}?${query}`,undefined,{...lease,signal,device,method:'GET',binary:meta});
     },
     deviceChatbotCarouselImage:(id,key,lease,{buffer,card_index,signal,...device})=>request(id,key,'device/chatbot/carousel-image',buffer,{...lease,signal,device,cardIndex:card_index}),
     deviceChatbotHttpResult:(id,key,lease,payload)=>request(id,key,'device/chatbot/http-result',payload,lease),

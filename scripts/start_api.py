@@ -1,5 +1,6 @@
 """Start the ordinary API after discarding one-time deployment credentials."""
 import os
+import subprocess
 import sys
 
 ONE_TIME_KEYS = frozenset({
@@ -27,6 +28,11 @@ def main():
     port = environment.get("PORT", "8000")
     if not port.isdigit() or not 1 <= int(port) <= 65535:
         raise RuntimeError("Invalid API port")
+    # The API pre-deploy is the only process allowed to migrate. The serving
+    # process verifies 0068 and every predecessor using runtime-only catalogs,
+    # with the one-time credentials already excluded from the child environment.
+    subprocess.run([sys.executable, "-m", "scripts.wait_for_subscription_campaigns_schema"],
+                   env=environment, check=True, timeout=95)
     # The OAuth callback carries a one-use authorization code and state in its
     # query string. Uvicorn's ordinary access log records the complete target.
     # Keep application/error logging, without persisting request credentials.

@@ -60,7 +60,7 @@ test('all operational deep links return to News before any module request',async
   const h=await subscriptionPanel({initialRoute:'site',permissions:subscriptionPlan('elite')});
   t.after(()=>h.close());
   const routes=['dashboard','agenda','clientes','inbox','servicos','funcionarios',
-    'financeiro','desempenho','marketing','site','fidelizacao','consultor','plano',
+    'financeiro','desempenho','marketing','campanhas','site','fidelizacao','consultor','plano',
     'configuracoes','dispositivo','conversas','ai','empresa','catalogo','cadastros','acelerar'];
   for(const route of routes){
     await h.window.OrionSuite.open(route,{force:true});await flush();

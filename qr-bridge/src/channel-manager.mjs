@@ -157,6 +157,7 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
         deviceEffectsPending:payload=>deviceRequest('deviceEffectsPending',payload),
         deviceTranscribe:payload=>deviceRequest('deviceTranscribe',payload),
         deviceChatbotAsset:payload=>deviceRequest('deviceChatbotAsset',payload),
+        deviceCampaignAsset:payload=>deviceRequest('deviceCampaignAsset',payload),
         deviceChatbotCarouselImage:payload=>deviceRequest('deviceChatbotCarouselImage',payload),
         deviceChatbotHttpResult:async payload=>{
           if(payload.reconcile!==true)return deviceRequest('deviceChatbotHttpResult',payload);
