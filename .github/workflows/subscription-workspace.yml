@@ -12,6 +12,9 @@ on:
       - 'app/onboarding_service.py'
       - 'app/static/orion-suite.js'
       - 'app/static/panel.html'
+      - 'scripts/plan_fixture.py'
+      - 'scripts/plans_preview.py'
+      - 'tests/unit/test_plan_preview_fixture.py'
       - 'tests/unit/test_subscription_workspace.py'
       - 'tests/integration/test_subscription_workspace_postgres.py'
       - 'tests/e2e/browser_subscription_workspace.py'
@@ -29,6 +32,9 @@ on:
       - 'app/onboarding_service.py'
       - 'app/static/orion-suite.js'
       - 'app/static/panel.html'
+      - 'scripts/plan_fixture.py'
+      - 'scripts/plans_preview.py'
+      - 'tests/unit/test_plan_preview_fixture.py'
       - 'tests/unit/test_subscription_workspace.py'
       - 'tests/integration/test_subscription_workspace_postgres.py'
       - 'tests/e2e/browser_subscription_workspace.py'
@@ -61,6 +67,7 @@ jobs:
         run: |
           python -m pytest -q -ra \
             tests/unit/test_subscription_workspace.py \
+            tests/unit/test_plan_preview_fixture.py \
             tests/unit/test_plan_permissions.py \
             tests/unit/test_plan_routing.py \
             tests/unit/test_account_business.py \
