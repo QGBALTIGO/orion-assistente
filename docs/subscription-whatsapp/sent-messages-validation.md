@@ -54,6 +54,36 @@ O ambiente local não tem PostgreSQL/Redis descartáveis nem executáveis dos
 navegadores; esses grupos serão executados no CI isolado, com Chrome oficial
 para os codecs da aplicação e WebKit.
 
+## Primeira execução do CI
+
+O [run 41877434304](https://github.com/QGBALTIGO/orion-assistente/actions/runs/41877434304)
+executou o merge de teste `1aec349b1715100a90bcbd068eebc0b7d25f3fc0`, cuja
+árvore `134c3b7ac283a4135af025ebf2ddad26ba97ddc0` coincide com a implementação
+local. Os logs finais confirmaram 1.262 testes Python, 314 da ponte e 250 de
+DOM aprovados, sem falhas nesses três grupos.
+
+Chrome e WebKit chegaram a 21 aprovações e pararam no primeiro cenário novo
+de celular: o teste tentava fechar a barra lateral pelo botão do cabeçalho,
+coberto pelo drawer aberto. A correção usa o controle visível “Recolher menu”
+dentro da barra e mantém a asserção de fechamento. Não altera o produto nem
+reduz a cobertura; os cenários restantes e a correção exigem nova execução.
+Os resultados finais da revisão qualificada serão registrados na PR antes
+do merge; esta primeira execução não é evidência de aprovação dos navegadores.
+
+PostgreSQL concluiu 185 aprovações e uma falha na expectativa de um teste:
+`app_runtime` não tem SELECT no ledger privado de efeitos, enquanto a fixture
+esperava receber zero linhas. A expectativa foi corrigida para exigir a
+negação por privilégio, sem ampliar grants. Os demais contratos de migração,
+RLS, concorrência e reenvio passaram nessa execução.
+
+A revisão dos cenários restantes também identificou que o shell inicial,
+antes de carregar a empresa, apagava o estado de recuperação da resposta
+perdida. O ajuste preserva somente os identificadores validados e mantém a
+checagem de conta/empresa antes de qualquer consulta. Um teste DOM reproduziu
+a falha antes da correção e passou depois, incluindo contextos divergentes,
+remoção de campos extras e ausência de POST. O gate DOM completo passou com
+251 testes após o ajuste; a execução E2E continua exigida.
+
 ## Banco e publicação
 
 Migração aditiva `0065_subscription_sent_messages` sobre 0064:

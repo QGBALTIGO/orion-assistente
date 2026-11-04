@@ -279,15 +279,17 @@ async def test_real_session_csrf_tenant_ownership_and_runtime_grants(messages_ca
         assert (await c.client.get(c.messages.replace(str(c.tenant), str(c.ctx.b)))).status_code == 403
         assert (await resend(c, foreign, version=item["version"])).status_code == 404
     async with c.ctx.runtime() as db:
-        async with tenant_transaction(db, c.tenant):
-            visible = (await db.execute(text("SELECT id FROM subscription_device_effects WHERE id=:id"), {"id": foreign})).scalar_one_or_none()
-            assert visible is None
-        with pytest.raises(DBAPIError):
-            async with tenant_transaction(db, c.tenant):
-                await db.execute(text("SELECT payload FROM subscription_device_effects"))
-        with pytest.raises(DBAPIError):
-            async with tenant_transaction(db, c.tenant):
-                await db.execute(text("SELECT source_snapshot_hash FROM subscription_sent_message_resends"))
+        # These ledgers have no runtime SELECT grant, including identity-only
+        # reads. Each denial rolls back before checking the next private field.
+        for statement, params, table in (
+            ("SELECT id FROM subscription_device_effects WHERE id=:id", {"id": foreign}, "subscription_device_effects"),
+            ("SELECT payload FROM subscription_device_effects", {}, "subscription_device_effects"),
+            ("SELECT source_snapshot_hash FROM subscription_sent_message_resends", {}, "subscription_sent_message_resends"),
+        ):
+            with pytest.raises(DBAPIError, match=f"permission denied for table {table}") as denied:
+                async with tenant_transaction(db, c.tenant):
+                    await db.execute(text(statement), params)
+            assert denied.value.orig.sqlstate == "42501"
 
 
 @pytest.mark.parametrize("change", ["owner", "viewer", "niche"])

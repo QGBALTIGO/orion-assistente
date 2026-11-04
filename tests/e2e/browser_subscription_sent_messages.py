@@ -316,7 +316,9 @@ def test_history_snapshot_filters_details_and_explicit_resend(browser, fixture_u
         expect(page.locator('#osNav [data-os-route="mensagens-enviadas"]')).to_be_visible()
         menu = page.locator("#osMenu")
         if menu.is_visible() and menu.get_attribute("aria-expanded") == "true":
-            menu.click()
+            # The open drawer intentionally covers the header menu trigger.
+            # Use its visible closing control, as a user does on a phone.
+            page.locator("#osCollapse").click()
             expect(menu).to_have_attribute("aria-expanded", "false")
         assert_layout(page, size[0])
         assert page.locator("[data-sm-results] img, [data-sm-results] script").count() == 0
@@ -406,6 +408,7 @@ def test_lost_admission_response_recovers_after_reload_by_get_only(browser, fixt
         control(page, fixture_url, "lost")
         action(page, "confirm-resend").click()
         expect(page.locator("[data-sm-dialog]")).to_have_attribute("data-sm-view", "pending")
+        expect(page.locator("[data-sm-dialog]")).to_contain_text("Não foi possível confirmar a solicitação")
         initial = report(page, fixture_url)
         request, = writes(initial)
         assert len(initial["ledger"]) == 1

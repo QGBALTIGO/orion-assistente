@@ -419,7 +419,7 @@
       document.querySelectorAll('#appView .content>.page').forEach(p=>p.classList.toggle('hidden',p.id!=='page-suite'));$('osConsultantFab')?.classList.add('hidden');selectedNav();
       const error=businessAccessError();
       pageHTML(error?title('Acesso à sua empresa','Confira o vínculo da sua conta.')+'<div class="os-card"><p class="os-notice os-error" role="alert">'+esc(error)+'</p>'+button('Verificar novamente','business-context-retry','os-outline','refresh')+'</div>':state.bridge.businessContextReady===false?loading('Conferindo o acesso à sua empresa…'):title('Sua empresa','Conclua o cadastro do negócio para continuar.')+'<div class="os-card">'+empty('users','Nenhuma empresa vinculada','Esta conta ainda não possui uma empresa disponível.')+'</div>');
-      try{const url=new URL(location.href);url.searchParams.delete('empresa');history.replaceState({},'',url.pathname+url.search);}catch{}
+      try{const url=new URL(location.href);url.searchParams.delete('empresa');history.replaceState(window.OrionSubscriptionSentMessages?.navigationState?.()||{},'',url.pathname+url.search);}catch{}
       return;
     }
     const permissionEpoch=state.epoch,permissionTenant=state.tenantId;

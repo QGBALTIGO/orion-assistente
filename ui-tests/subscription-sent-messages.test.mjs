@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {webcrypto} from 'node:crypto';
 import {makeSuite,planState,defaultResponse} from './harness.mjs';
 import {makeMessages,source,contract,base,accountKey,copy,item,listing,detail,operation,recovery,failure,flush,deferred,tenantA,tenantB} from './subscription-sent-messages-harness.mjs';
 const field=name=>'[data-sm-field="'+name+'"]';
@@ -119,6 +120,22 @@ test('recovery 404 permits only an explicit repeat with the exact original key a
 test('a reload recovers only IDs scoped to the same account and tenant, using GET before another send',async t=>{
   const saved=recovery(),historyState={orionSentRecovery:saved},h=await makeMessages({historyState,respond(path){if(path.includes('/resend-requests/'))return operation(saved);}});t.after(()=>h.close());assert.equal(writes(h).length,0);assert.ok(h.calls.some(call=>call.path.endsWith('/resend-requests/'+saved.idempotency_key)));assert.equal(h.window.history.state.orionSentRecovery,undefined);assert.match(h.element('[data-sm-feedback]').textContent,/Reenvio registrado/);
   for(const override of [{tenant_id:tenantB},{account_scope:'b'.repeat(64)}]){const foreign=await makeMessages({historyState:{orionSentRecovery:{...saved,...override}}});t.after(()=>foreign.close());assert.equal(foreign.calls.some(call=>call.path.includes('/resend-requests/')),false);assert.equal(foreign.window.history.state.orionSentRecovery,undefined);assert.equal(writes(foreign).length,0);}
+});
+
+test('bootstrap preserves sanitized recovery while loading the business, then checks account and tenant before GET',async t=>{
+  for(const override of [{},{tenant_id:tenantB},{account_scope:'b'.repeat(64)}]){
+    const saved=recovery(override),loaded=deferred();
+    const h=await makeSuite({initialRoute:'mensagens-enviadas',url:'https://orion.test/panel?aba=mensagens-enviadas',permissions,bridge:{tenants:[],tenantId:'',businessContextReady:false},configureWindow:window=>{
+      Object.defineProperty(window.crypto,'subtle',{value:webcrypto.subtle});window.TextEncoder=TextEncoder;window.eval(source);
+      window.history.replaceState({unrelated:'Discard this value',orionSentRecovery:{...saved,unexpected:'Private content must not survive'}},'',window.location.href);
+    },respond:path=>{if(path.startsWith(base+'?')){loaded.resolve();return listing();}if(path.endsWith('/resend-requests/'+saved.idempotency_key))return operation(saved);return defaultResponse(path);}});t.after(()=>h.close());
+    assert.deepEqual(copy(h.window.history.state),{orionSentRecovery:saved});assert.equal(h.calls.length,0);
+    h.window.OrionSuite.sync({tenants:[tenant],tenantId:tenantA,businessContextReady:true});await loaded.promise;await flush();
+    const recoveries=h.calls.filter(call=>call.path.includes('/resend-requests/'));
+    assert.equal(recoveries.length,Object.keys(override).length?0:1);assert.ok(recoveries.every(call=>call.method==='GET'&&call.path===base+'/resend-requests/'+saved.idempotency_key));
+    assert.equal(h.window.history.state.orionSentRecovery,undefined);assert.equal(writes(h).length,0);assert.equal(h.document.querySelector('[data-sm-dialog]'),null);assert.equal(h.document.querySelectorAll('[data-sm-row]').length,4);assert.deepEqual(h.errors,[]);
+    if(!Object.keys(override).length)assert.match(h.document.querySelector('[data-sm-feedback]').textContent,/Reenvio registrado/);
+  }
 });
 
 test('persisted recovery contains no contact, message, device or raw account identity',async t=>{
