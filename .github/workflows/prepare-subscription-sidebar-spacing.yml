@@ -1,0 +1,109 @@
+name: QA - preparar correcao pontual do menu de assinaturas
+on:
+  push:
+    branches: [qa/subscription-sidebar-spacing-20261104]
+    paths: ['.github/workflows/prepare-subscription-sidebar-spacing.yml']
+permissions:
+  contents: read
+jobs:
+  prepare:
+    if: github.repository == 'QGBALTIGO/orion-assistente' && github.ref == 'refs/heads/qa/subscription-sidebar-spacing-20261104'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      BASE: 7d2aa7fc5af1bacb5fc9b973e9dcc9efdeeadb13
+      TARGET: fix/subscription-sidebar-spacing-20261104
+      META_LIVE_SEND: '0'
+      QR_AI_ENABLED: '0'
+      INBOX_SEND_ENABLED: '0'
+      MARKETING_EXECUTION_ENABLED: '0'
+      CAKTO_BILLING_LIVE_ENABLED: '0'
+      ORION_DIRECT_PAYMENTS_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Preparar navegadores e dependencias de teste
+        run: |
+          python -m pip install -r tests/e2e/requirements.txt pytest
+          python -m playwright install --with-deps chromium webkit
+          npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - name: Reproduzir o defeito antes da correcao
+        run: |
+          python - <<'PY'
+          import os, subprocess, xml.etree.ElementTree as ET
+          assert subprocess.check_output(['git','hash-object','app/static/orion-suite.js'], text=True).strip() == 'bffc7d913c46796c8219c78b2131a5aa1fbfdecc'
+          result = subprocess.run(['python','-m','pytest','-q','-ra','tests/e2e/browser_subscription_sidebar_spacing.py','--junitxml=sidebar-before.xml'], env={**os.environ, 'ORION_SIDEBAR_SCREENSHOT_PHASE':'before'})
+          root = ET.parse('sidebar-before.xml').getroot()
+          cases = root.findall('.//testcase')
+          failures = root.findall('.//failure')
+          assert result.returncode == 1 and len(cases) == 24 and len(failures) == 12 and not root.findall('.//error'), (result.returncode, len(cases), len(failures))
+          assert all('space left for removed site shortcut' in ''.join(f.itertext()) for f in failures)
+          print('BASELINE_CONFIRMED: 12 subscription spacing failures; 12 standard layouts passed.')
+          PY
+      - name: Aplicar somente a classe de perfil e sua altura automatica
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          js = Path('app/static/orion-suite.js')
+          text = js.read_text(encoding='utf-8')
+          needle = "    $('osSidebarContext').innerHTML="
+          assert text.count(needle) == 1
+          text = text.replace(needle, "    $('osSidebarContext').classList.toggle('os-sidebar-context--subscription',subscriptionWorkspace());\n" + needle)
+          js.write_text(text, encoding='utf-8')
+          css = Path('app/static/orion-suite.css')
+          text = css.read_text(encoding='utf-8')
+          assert text.count('.os-sidebar-context{min-height:136px}') == 2
+          assert 'os-sidebar-context--subscription' not in text
+          text += '\n/* Subscription businesses have no site shortcut: keep the regular padding without its reserved height. */\n.os-sidebar-context.os-sidebar-context--subscription{min-height:0}\n'
+          css.write_text(text, encoding='utf-8')
+          PY
+          node --check app/static/orion-suite.js
+          git diff --check
+      - name: Validar a correcao e a geometria inalterada dos demais perfis
+        run: |
+          python -m pytest -q -ra tests/e2e/browser_subscription_sidebar_spacing.py --junitxml=sidebar-after.xml
+          node --test ui-tests/subscription-workspace.test.mjs ui-tests/single-business-context.test.mjs
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('test-artifacts/subscription-sidebar-spacing')
+          for path in sorted((root/'after').glob('*.json')):
+              current = json.loads(path.read_text())
+              before = json.loads((root/'before'/path.name).read_text())
+              print(path.stem, json.dumps({'height_before':before['height'],'height_after':current['height'],'gap_before':before['bottomGap'],'gap_after':current['bottomGap']}))
+          PY
+      - name: Publicar apenas o candidato revisavel, nunca producao
+        run: |
+          test -z "$(git ls-remote --heads origin "$TARGET")"
+          git rm .github/workflows/prepare-subscription-sidebar-spacing.yml
+          git add app/static/orion-suite.js app/static/orion-suite.css tests/e2e/browser_subscription_sidebar_spacing.py
+          python - <<'PY'
+          import os, subprocess
+          paths = set(subprocess.check_output(['git','diff','--cached','--name-only',os.environ['BASE']], text=True).splitlines())
+          assert paths == {'app/static/orion-suite.js','app/static/orion-suite.css','tests/e2e/browser_subscription_sidebar_spacing.py'}, paths
+          PY
+          TREE=$(git write-tree)
+          COMMIT=$(printf '%s\n' 'fix: remove reserved website height from subscription sidebar' | git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit-tree "$TREE" -p "$BASE")
+          git push origin "$COMMIT:refs/heads/$TARGET"
+          echo "CANDIDATE_COMMIT=$COMMIT"
+          echo "CANDIDATE_TREE=$TREE"
+          echo "Candidato: $COMMIT. Producao nao alterada; correcao de interface validada em 24 combinacoes." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: subscription-sidebar-spacing-proof
+          path: |
+            test-artifacts/subscription-sidebar-spacing/
+            sidebar-before.xml
+            sidebar-after.xml
+          retention-days: 7
+          if-no-files-found: warn
