@@ -1,0 +1,56 @@
+name: QA - verificar publicacao do espaco do menu
+on:
+  push:
+    branches: [qa/subscription-sidebar-spacing-20261104]
+    paths: ['.github/workflows/verify-subscription-sidebar-spacing.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 2d20427f23d3e380880de734d11998b56de7305b
+          persist-credentials: false
+      - name: Verificar health e arquivos publicos da revisao exata
+        run: |
+          python - <<'PY'
+          import hashlib, json, time, urllib.request
+          from pathlib import Path
+          release = '2d20427f23d3e380880de734d11998b56de7305b'
+          paths = {'/health': None, '/brand/orion-suite.css': 'app/static/orion-suite.css', '/brand/orion-suite.js': 'app/static/orion-suite.js'}
+          checks = []
+          for attempt in range(15):
+              checks = []
+              try:
+                  for endpoint, local in paths.items():
+                      request = urllib.request.Request('https://orionagenda.pro' + endpoint, headers={'User-Agent':'Orion-release-verification/1.0','Cache-Control':'no-cache','Accept-Encoding':'identity'})
+                      with urllib.request.urlopen(request, timeout=15) as response:
+                          body = response.read(3_000_000)
+                          entry = {'path':endpoint,'status':response.status,'cache_control':response.headers.get('Cache-Control'),'nosniff':response.headers.get('X-Content-Type-Options')}
+                          assert response.status == 200
+                          if local:
+                              expected = Path(local).read_bytes()
+                              entry.update(sha256=hashlib.sha256(body).hexdigest(), expected_sha256=hashlib.sha256(expected).hexdigest())
+                              assert body == expected, endpoint + ' not on expected release yet'
+                              assert entry['nosniff'] == 'nosniff'
+                          else:
+                              entry['health'] = json.loads(body).get('status')
+                              assert entry['health'] == 'ok'
+                          checks.append(entry)
+                  break
+              except Exception as exc:
+                  print('Attempt', attempt + 1, type(exc).__name__, str(exc)[:160])
+                  if attempt == 14: raise
+                  time.sleep(10)
+          proof = {'release':release,'passed':True,'checks':checks}
+          Path('sidebar-public-proof.json').write_text(json.dumps(proof, indent=2))
+          print(json.dumps(proof, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: subscription-sidebar-public-proof
+          path: sidebar-public-proof.json
+          retention-days: 7
