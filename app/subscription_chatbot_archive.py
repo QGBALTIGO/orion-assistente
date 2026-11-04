@@ -102,7 +102,8 @@ def _graph_fingerprint(graph):
     current_rules, templates, _ = graph
     value = {"rules": [{key: row.get(key) for key in ("id", "origin_id", "revision", "creation_order", *_FIELDS)}
                        for row in sorted(current_rules.values(), key=lambda row: str(row["id"]))],
-             "templates": [{key: row.get(key) for key in ("id", "origin_id", "revision", "name", "kind", "body", "asset_id")}
+             "templates": [{key: row.get(key) for key in ("id", "origin_id", "revision", "name", "kind", "body", "asset_id",
+                            "followup_body", "location", "file_name")}
                            for row in sorted(templates.values(), key=lambda row: str(row["id"]))]}
     return store.fingerprint(value)
 
@@ -141,7 +142,9 @@ def _snapshot(graph, selected=None):
         if asset:
             asset_keys.add(asset)
         document["templates"].append({"id": template_ids[key], "definition": {
-            "name": row["name"], "kind": row["kind"], "text": row["body"], "asset_id": asset}})
+            "name": row["name"], "kind": row["kind"], "text": row["body"], "asset_id": asset,
+            "followup_text": row.get("followup_body", ""), "location": row.get("location"),
+            "file_name": row.get("file_name")}})
     if not asset_keys <= assets.keys():
         raise store.fail("CHATBOT_CAPABILITY_UNAVAILABLE", 409, "Uma mídia necessária não está disponível.")
     document["assets"] = [_asset_metadata(assets[key]) for key in sorted(asset_keys)]
@@ -173,8 +176,9 @@ def _preview_dto(row):
         "can_apply": bool(row["snapshot"].get("plan", {}).get("can_apply"))}, "chatbot_revision": row["revision"]})
 
 
-def _template_signature(kind, body, asset, name):
+def _template_signature(kind, body, asset, name, *, followup_body="", location=None, file_name=None):
     return store.fingerprint({"kind": kind, "body": body, "name": name,
+        "followup_body": followup_body, "location": location, "file_name": file_name,
         "asset": {"kind": asset["kind"], "sha256": asset["sha256"]} if asset else None})
 
 
@@ -196,6 +200,8 @@ def _materialize(document, plan, graph):
         asset = source_assets.get(source["asset_id"])
         value = {"id": item["id"], "origin_id": item["origin_id"], "revision": 1,
                  "name": source["name"], "kind": source["kind"], "body": source["text"],
+                 "followup_body": source.get("followup_text", ""), "location": source.get("location"),
+                 "file_name": source.get("file_name"),
                  "asset_id": source["asset_id"], "asset": asset}
         merged_templates[item["id"]] = value
         template_writes.append(value)
@@ -211,6 +217,10 @@ def _materialize(document, plan, graph):
                  "creation_order": source["creation_order"], **definition}
         merged[item["id"]] = value
         writes.append((item, value))
+    from app.subscription_templates_schemas import MAX_TEMPLATES
+    if len(merged_templates) > max(MAX_TEMPLATES, len(templates)):
+        raise store.fail("CHATBOT_INVALID_GRAPH", 409,
+                         "A restauração ultrapassaria o limite de 100 templates da biblioteca.")
     store.check_graph_budget(merged, merged_templates)
     try:
         # A saved graph may deliberately contain an enabled parent whose
@@ -270,14 +280,18 @@ async def _plan(db, tenant, actor, document, mode, device_id, graph):
         plan["rules"].append({"source_id": item["id"], "id": str(old["id"]) if old else str(uuid4()), "operation": operation})
         if operation != "skip":
             needed_templates.update(rules.template_references(item["definition"]["response"]))
-    signatures = {_template_signature(row["kind"], row["body"], row.get("asset"), row["name"]): row
+    signatures = {_template_signature(row["kind"], row["body"], row.get("asset"), row["name"],
+                      followup_body=row.get("followup_body", ""), location=row.get("location"),
+                      file_name=row.get("file_name")): row
                   for row in sorted(templates.values(), key=lambda row: str(row["id"]))
-                  if row["kind"] == "text" or row.get("asset") is not None}
+                  if row["kind"] in {"text", "location"} or row.get("asset") is not None}
     occupied_origins = {str(row["origin_id"]) for row in templates.values()}
     for identity in sorted(needed_templates):
         value = source_templates[identity]
         asset = source_assets.get(value["asset_id"])
-        signature = _template_signature(value["kind"], value["text"], asset, value["name"])
+        signature = _template_signature(value["kind"], value["text"], asset, value["name"],
+            followup_body=value.get("followup_text", ""), location=value.get("location"),
+            file_name=value.get("file_name"))
         candidate = signatures.get(signature)
         if candidate:
             item = {"source_id": identity, "id": str(candidate["id"]), "origin_id": str(candidate["origin_id"]), "operation": "reuse"}
@@ -744,10 +758,14 @@ async def _apply_graph(db, tenant, actor, preview, document, asset_rows):
         safety = await _insert_backup(db, tenant, _snapshot(graph), preview["revision"], source="safety")
     for value in template_writes:
         asset = asset_rows[value["asset_id"]]["id"] if value["asset_id"] else None
-        await db.execute(text("""INSERT INTO subscription_chatbot_templates(id,tenant_id,origin_id,name,kind,body,asset_id)
-            VALUES(:id,:t,:origin,:name,:kind,:body,:asset)"""),
+        await db.execute(text("""INSERT INTO subscription_chatbot_templates
+            (id,tenant_id,origin_id,name,kind,body,asset_id,followup_body,location,file_name)
+            VALUES(:id,:t,:origin,:name,:kind,:body,:asset,:followup,CAST(:location AS jsonb),:filename)"""),
             {"id": UUID(value["id"]), "t": tenant, "origin": UUID(value["origin_id"]),
-             "name": value["name"], "kind": value["kind"], "body": value["body"], "asset": asset})
+             "name": value["name"], "kind": value["kind"], "body": value["body"], "asset": asset,
+             "followup": value.get("followup_body", ""),
+             "location": store.encode(value["location"]) if value.get("location") is not None else None,
+             "filename": value.get("file_name")})
     for identity in plan["delete_ids"]:
         await db.execute(text("""UPDATE subscription_chatbot_rules SET removed_at=clock_timestamp(),enabled=false,
             revision=revision+1,updated_at=clock_timestamp() WHERE tenant_id=:t AND id=:id AND removed_at IS NULL"""),

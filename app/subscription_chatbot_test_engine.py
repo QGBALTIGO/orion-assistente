@@ -16,6 +16,7 @@ from uuid import uuid4
 
 from app import subscription_chatbot_rules as rules
 from app.subscription_chatbot_test_schemas import TOKEN_CHARS
+from app.subscription_template_documents import DOCUMENT_MIMES
 
 
 CONTEXT_TTL = 1800
@@ -26,7 +27,8 @@ MEDIA_TYPES = {
     "sticker": ("image/webp", 500_000),
     "video": ("video/mp4", 16_000_000),
     "ptv": ("video/mp4", 16_000_000),
-    "document": ("text/plain; charset=utf-8", 1_000_000),
+    "audio": ("audio/mpeg", 16_000_000),
+    "document": ("text/plain; charset=utf-8", 10_000_000),
 }
 DOMAIN = b"orion:subscription-chatbot-test:v1"
 SCOPE_KEYS = ("tenant_id", "actor_id", "device_id", "generation", "device_revision", "chatbot_revision", "context_id")
@@ -126,7 +128,7 @@ def keyword_catalog(graph, device_id):
 def asset_reference(asset):
     kind = asset["kind"]
     expected = MEDIA_TYPES.get(kind)
-    if (not expected or asset["mime"] != expected[0] or not 1 <= asset["size"] <= expected[1]
+    if (not expected or asset["mime"] not in (DOCUMENT_MIMES if kind == "document" else {expected[0]}) or not 1 <= asset["size"] <= expected[1]
             or asset.get("thumbnail") and (asset["thumbnail"]["mime"] != "image/jpeg"
                 or not 1 <= asset["thumbnail"]["size"] <= 100_000)):
         raise ValueError("Unsupported normalized media")
@@ -162,12 +164,14 @@ def compile_messages(root, graph, scope, facts, http_context, base, *, selected_
             path = base + "/assets/" + str(asset["id"]) + "/content?"
             thumbnail = asset.get("thumbnail")
             value = {key: reference[key] for key in ("id", "kind", "mime", "size", "width", "height", "duration_ms")}
-            value.update(file_name=asset["file_name"],
+            value.update(file_name=action.get("file_name") or asset["file_name"],
                 content_url=path + urlencode({"ticket": ticket, "variant": "original"}),
                 thumbnail_url=path + urlencode({"ticket": ticket, "variant": "thumbnail"}) if thumbnail else None,
                 thumbnail_mime=thumbnail["mime"] if thumbnail else None,
                 thumbnail_size=thumbnail["size"] if thumbnail else None)
             message.update(type="media", kind=kind, caption=action.get("caption") or "", asset=value)
+        elif kind == "location":
+            message.update(type="location", latitude=action["latitude"], longitude=action["longitude"])
         elif kind == "http":
             message.update(type="external_request", **{key: action[key] for key in ("url", "method", "as_file", "custom_template")},
                 executed=False, text="Etapa de URL não executada na simulação. O retorno do servidor não foi consultado.")

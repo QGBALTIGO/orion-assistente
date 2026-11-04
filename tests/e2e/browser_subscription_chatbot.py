@@ -34,7 +34,7 @@ BACKUP_ID = CONTRACT["backups_response"]["items"][0]["id"]
 EXPORT_ID = CONTRACT["export_response"]["export"]["id"]
 SIZES = [(390, 844), (768, 1024), (1440, 900)]
 PROFILE = "subscription_services"
-ALLOWED_ROUTES = ["dispositivos", "chatbot", "testar-chatbot", "novidades", "ajuda", "member"]
+ALLOWED_ROUTES = ["dispositivos", "chatbot", "testar-chatbot", "templates", "novidades", "ajuda", "member"]
 
 
 def now():
@@ -66,11 +66,11 @@ class Handler(PlansHandler):
             if session["workspace_profile"] == PROFILE:
                 plan["features"] = ["account.manage", "business.setup", "devices.manage"]
                 if not session["chatbot_readonly"]:
-                    plan["features"].append("chatbot.manage")
+                    plan["features"].extend(["chatbot.manage", "templates.manage"])
                 plan["permissions"] = {key: key in plan["features"] for key in
-                    {*plan["permissions"], "devices.manage", "chatbot.manage"}}
+                    {*plan["permissions"], "devices.manage", "chatbot.manage", "templates.manage"}}
             else:
-                plan["permissions"].update({"devices.manage": False, "chatbot.manage": False})
+                plan["permissions"].update({"devices.manage": False, "chatbot.manage": False, "templates.manage": False})
             plan["revision"] = hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest()
             value = {"effective_plan": plan}
         return super().body(value, status, mime, cookie)
@@ -443,7 +443,7 @@ def test_chatbot_editor_transfer_and_workspace_isolation(browser, fixture_url, s
 
         page.goto(f"{fixture_url}/panel?fixtureRole=owner&fixturePlan=none&fixtureReadonly=1&aba=chatbot")
         expect(page.locator("[data-sc-card]")).to_have_count(2)
-        assert page.locator("#osNav [data-os-route]").evaluate_all("nodes=>nodes.map(n=>n.dataset.osRoute)") == [route for route in ALLOWED_ROUTES if route != "testar-chatbot"]
+        assert page.locator("#osNav [data-os-route]").evaluate_all("nodes=>nodes.map(n=>n.dataset.osRoute)") == [route for route in ALLOWED_ROUTES if route not in {"testar-chatbot", "templates"}]
         expect(a("create")).to_be_disabled()
         expect(a("import")).to_be_disabled()
         a("backups").click()

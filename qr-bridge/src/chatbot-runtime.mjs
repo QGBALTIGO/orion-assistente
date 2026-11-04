@@ -9,7 +9,7 @@ const revision=value=>Number.isSafeInteger(value)&&value>=1;
 const scope=(expected,chatbot_revision)=>({device_id:expected.id,generation:expected.generation,
   settings_revision:expected.settings_revision,chatbot_revision});
 export const isChatbotEffect=item=>item?.type==='chatbot_action'&&channelId(item.operation_id)&&revision(item.chatbot_revision);
-const types=new Set(['text','list','image','sticker','video','ptv','document','carousel','http']);
+const types=new Set(['text','list','image','sticker','video','ptv','audio','document','location','carousel','http']);
 const error=code=>Object.assign(Error(code),{code});
 
 export function createChatbotRuntime(context,{ledger,capacity,sendChatbot,

@@ -17,29 +17,37 @@ function text(value,max,{optional=false}={}){
 }
 const limits={image:{mime:'image/jpeg',max:5_000_000},sticker:{mime:'image/webp',max:500_000},
   video:{mime:'video/mp4',max:16_000_000,seconds:180},ptv:{mime:'video/mp4',max:16_000_000,seconds:60},
-  document:{mime:'text/plain; charset=utf-8',max:1_000_000}};
+  audio:{mime:'audio/mpeg',max:16_000_000,seconds:1800},
+  document:{mimes:['text/plain; charset=utf-8','application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.android.package-archive'],max:10_000_000}};
 
 export function validateChatbotAsset(asset,kind){
   const limit=limits[kind];
-  if(!limit||!plain(asset)||!channelId(asset.id)||asset.kind!==kind||asset.mime!==limit.mime||
+  if(!limit||!plain(asset)||!channelId(asset.id)||asset.kind!==kind||!(limit.mimes||[limit.mime]).includes(asset.mime)||
       !Number.isSafeInteger(asset.size)||asset.size<1||asset.size>limit.max||!sha(asset.sha256))throw invalid();
-  if(kind!=='document'){
+  if(!['document','audio'].includes(kind)){
     if(!Number.isSafeInteger(asset.width)||!Number.isSafeInteger(asset.height)||asset.width<1||asset.height<1||asset.width>4096||asset.height>4096)throw invalid();
     if(['sticker','ptv'].includes(kind)&&(asset.width!==512||asset.height!==512))throw invalid();
   }
+  if(['document','audio'].includes(kind)&&(asset.width!=null||asset.height!=null||asset.thumbnail!=null))throw invalid();
+  if(kind==='document'&&asset.duration_ms!=null)throw invalid();
   if(limit.seconds&&(!Number.isSafeInteger(asset.duration_ms)||asset.duration_ms<1||asset.duration_ms>limit.seconds*1000))throw invalid();
   if(kind==='sticker'&&asset.duration_ms!=null&&(!Number.isSafeInteger(asset.duration_ms)||asset.duration_ms<1||asset.duration_ms>6000))throw invalid();
   if(kind==='sticker'&&asset.duration_ms==null&&asset.size>100_000)throw invalid();
   if(asset.thumbnail!=null&&(!plain(asset.thumbnail)||asset.thumbnail.mime!=='image/jpeg'||!sha(asset.thumbnail.sha256)||
       !Number.isSafeInteger(asset.thumbnail.size)||asset.thumbnail.size<1||asset.thumbnail.size>100_000))throw invalid();
   if(['image','video','ptv'].includes(kind)&&!asset.thumbnail)throw invalid();
-  if(kind==='document'&&asset.file_name!=null)fileName(asset.file_name);
+  if(kind==='document'&&asset.file_name!=null)fileName(asset.file_name,asset.mime);
   return asset;
 }
 
-function fileName(value){
+function fileName(value,mime){
   const clean=text(value,120);
-  if(!/\.txt$/i.test(clean)||/[\/\\\u0000-\u001f\u007f]/.test(clean)||clean==='..')throw invalid();
+  const extensions={'text/plain; charset=utf-8':['txt','csv'],'application/pdf':['pdf'],
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document':['docx'],
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['xlsx'],
+    'application/vnd.android.package-archive':['apk']};
+  if(!(extensions[mime]||[]).includes(clean.split('.').pop().toLowerCase())||/[\/\\\u0000-\u001f\u007f]/.test(clean)||clean==='..')throw invalid();
   return clean;
 }
 function verifyBytes(value,meta){
@@ -63,13 +71,14 @@ export async function buildChatbotContent(action,{sdk,loadAsset,prepareCarouselI
   }
   async function media(asset,kind,caption,documentName){
     validateChatbotAsset(asset,kind);
-    if(['sticker','ptv'].includes(kind)&&caption)throw invalid();
+    if(['sticker','ptv','audio'].includes(kind)&&caption)throw invalid();
     const buffer=await assetBytes(asset,'original');
     const thumbnail=asset.thumbnail?await assetBytes(asset,'thumbnail'):undefined;
     const mediaKind=kind==='ptv'?'video':kind;
     const input={[mediaKind]:buffer,mimetype:asset.mime,
       ...(kind==='ptv'?{ptv:true}:{}),
-      ...(kind==='document'?{fileName:fileName(documentName??asset.file_name??'resposta.txt')}:{}),
+      ...(kind==='document'?{fileName:fileName(documentName??asset.file_name??'resposta.txt',asset.mime)}:{}),
+      ...(kind==='audio'?{ptt:false}:{}),
       ...(asset.width?{width:asset.width,height:asset.height}:{}),
       ...(asset.duration_ms?{seconds:Math.max(1,Math.ceil(asset.duration_ms/1000))}:{}),
       ...(kind==='sticker'?{isAnimated:asset.duration_ms!=null}:{}),
@@ -90,6 +99,10 @@ export async function buildChatbotContent(action,{sdk,loadAsset,prepareCarouselI
     if(!plain(action)||typeof sdk?.proto?.Message?.fromObject!=='function')throw invalid();
     await guard();let content;
     if(action.type==='text')content={extendedTextMessage:{text:text(action.text,32000)}};
+    else if(action.type==='location'){
+      if(!Number.isFinite(action.latitude)||!Number.isFinite(action.longitude)||Math.abs(action.latitude)>90||Math.abs(action.longitude)>180)throw invalid();
+      content={locationMessage:{degreesLatitude:action.latitude,degreesLongitude:action.longitude}};
+    }
     else if(action.type==='list'){
       if(!Array.isArray(action.sections)||action.sections.length<1||action.sections.length>10)throw invalid();
       const ids=new Set();let count=0;

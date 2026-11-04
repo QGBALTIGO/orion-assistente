@@ -22,8 +22,8 @@
 .os-chatbot-test-message code{font:400 12px/20px ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap}
 .os-chatbot-test-message-meta{display:flex;justify-content:space-between;gap:12px;margin-bottom:5px;color:var(--os-muted);font-size:11px;line-height:17px}
 .os-chatbot-test-message-meta>time{white-space:nowrap}
-.os-chatbot-test-message :is(.os-chatbot-test-list,.os-chatbot-test-media,.os-chatbot-test-carousel,.os-chatbot-test-external){display:grid;gap:10px;min-width:0}
-.os-chatbot-test-message :is(.os-chatbot-test-list,.os-chatbot-test-media,.os-chatbot-test-carousel,.os-chatbot-test-external) p{margin:0;color:var(--os-text);font:400 14px/22px var(--os-font);white-space:pre-wrap;overflow-wrap:anywhere}
+.os-chatbot-test-message :is(.os-chatbot-test-list,.os-chatbot-test-media,.os-chatbot-test-carousel,.os-chatbot-test-external,.os-chatbot-test-location){display:grid;gap:10px;min-width:0}
+.os-chatbot-test-message :is(.os-chatbot-test-list,.os-chatbot-test-media,.os-chatbot-test-carousel,.os-chatbot-test-external,.os-chatbot-test-location) p{margin:0;color:var(--os-text);font:400 14px/22px var(--os-font);white-space:pre-wrap;overflow-wrap:anywhere}
 .os-chatbot-test-message .os-chatbot-test-rich-notice{color:var(--os-muted);font:400 12px/19px var(--os-font)}
 .os-chatbot-test-rich-notice{margin:0;color:var(--os-muted);font:400 12px/19px var(--os-font);overflow-wrap:anywhere}
 .os-chatbot-test-list>small{color:var(--os-muted);font-size:12px;line-height:18px}
@@ -43,6 +43,7 @@
 .os-chatbot-test-media .os-chatbot-test-sticker{width:200px;max-height:200px;background:transparent}
 .os-chatbot-test-media .os-chatbot-test-ptv{width:240px;height:240px;border-radius:50%;object-fit:contain}
 .os-chatbot-test-media a{max-width:100%;font-size:12px}
+.os-chatbot-test-media audio{display:block;width:360px;max-width:100%}
 .os-chatbot-test-carousel-cards{display:flex;gap:10px;min-width:0;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:6px;scrollbar-width:thin}
 .os-chatbot-test-carousel-cards>section{display:flex;flex-direction:column;gap:8px;flex:0 0 min(240px,85%);min-width:0;padding:12px;border:1px solid var(--os-border);border-radius:10px;background:var(--os-bg);overflow-wrap:anywhere}
 .os-chatbot-test-declared-button{display:block;margin-top:auto;padding:8px;border:1px solid var(--os-border);border-radius:8px;color:var(--os-muted);text-align:center;font-size:12px;line-height:18px}

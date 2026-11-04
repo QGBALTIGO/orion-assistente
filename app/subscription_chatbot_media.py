@@ -1,4 +1,4 @@
-"""Bounded, metadata-free media for the subscription WhatsApp chatbot.
+"""Bounded private media for the subscription WhatsApp chatbot.
 
 This library has no HTTP fetch, public route or tenant authorization shortcut.
 Callers authenticate, enforce durable quotas and reauthorize before publishing
@@ -27,15 +27,16 @@ from uuid import UUID
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import HTTPException
 from PIL import Image, ImageOps, UnidentifiedImageError
+from app.subscription_template_documents import DOCUMENT_MIMES, inspect_document
 
 
-MediaKind = Literal["image", "sticker", "video", "ptv", "document"]
-KINDS = frozenset({"image", "sticker", "video", "ptv", "document"})
+MediaKind = Literal["image", "sticker", "video", "ptv", "document", "audio"]
+KINDS = frozenset({"image", "sticker", "video", "ptv", "document", "audio"})
 MAX_INPUT_BYTES = 16_000_000
-MAX_IMAGE_INPUT_BYTES = 8_000_000
+MAX_IMAGE_INPUT_BYTES = 10_000_000
 MAX_OUTPUT_BYTES = 16_000_000
 MAX_IMAGE_BYTES = 5_000_000
-MAX_DOCUMENT_BYTES = 1_000_000
+MAX_DOCUMENT_BYTES = 10_000_000
 MAX_THUMBNAIL_BYTES = 100_000
 MAX_IMAGE_PIXELS = 18_000_000
 MAX_VIDEO_PIXELS = 9_000_000
@@ -45,6 +46,7 @@ MAX_STICKER_SECONDS = 6
 MAX_STICKER_FRAMES = 150
 MAX_STICKER_STATIC_BYTES = 100_000
 MAX_STICKER_ANIMATED_BYTES = 500_000
+MAX_AUDIO_SECONDS = 1800
 _slot = BoundedSemaphore(1)
 
 
@@ -261,10 +263,81 @@ def _video(raw: bytes, *, ptv: bool) -> PreparedMedia:
                        thumbnail=thumbnail)
 
 
-def prepare_media(raw: bytes, kind: MediaKind) -> PreparedMedia:
+def _probe_audio(path: Path, demuxer: str, executable: str) -> dict:
+    data = _run([executable, "-v", "error", "-max_alloc", "33554432", "-protocol_whitelist", "file",
+                 "-f", demuxer, "-show_entries", "format=duration:stream=codec_type,codec_name,channels,sample_rate:stream_disposition=attached_pic",
+                 "-of", "json", str(path)], capture=True, timeout=10)
+    try:
+        value = json.loads(data)
+        streams = value["streams"]
+        duration = float(value["format"]["duration"])
+        # Attached album artwork is not audio and is never retained. Other
+        # non-audio streams or multiple audio tracks are not flattened silently.
+        audios = [stream for stream in streams if stream.get("codec_type") == "audio"]
+        if (len(audios) != 1 or len(streams) > 2 or not math.isfinite(duration) or duration <= 0
+                or any(stream.get("codec_type") != "audio"
+                       and not (stream.get("codec_type") == "video"
+                                and stream.get("disposition", {}).get("attached_pic") == 1)
+                       for stream in streams)):
+            raise ValueError()
+        audio = audios[0]
+        if not 1 <= int(audio["channels"]) <= 8 or not 8000 <= int(audio["sample_rate"]) <= 192000:
+            raise ValueError()
+        return {"duration": duration, "codec": audio["codec_name"]}
+    except (ValueError, TypeError, KeyError, OverflowError):
+        raise _error(415, "CHATBOT_MEDIA_INVALID", "Não foi possível verificar o áudio completo.") from None
+
+
+def _audio(raw: bytes) -> PreparedMedia:
+    ffmpeg, ffprobe = shutil.which("ffmpeg"), shutil.which("ffprobe")
+    if not ffmpeg or not ffprobe:
+        raise _error(503, "CHATBOT_MEDIA_UNAVAILABLE", "O preparo de áudio está indisponível.")
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WAVE":
+        demuxer = "wav"
+    elif raw[:4] == b"OggS":
+        demuxer = "ogg"
+    elif raw[:3] == b"ID3" or len(raw) >= 2 and raw[0] == 255 and raw[1] & 224 == 224:
+        demuxer = "mp3"
+    else:
+        raise _error(415, "CHATBOT_MEDIA_FORMAT", "Escolha um áudio MP3, WAV, OGG ou OPUS.")
+    with tempfile.TemporaryDirectory(prefix="orion-template-audio-") as directory:
+        source, target = Path(directory) / "source.bin", Path(directory) / "audio.mp3"
+        for path, data in ((source, raw), (target, b"")):
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(data)
+        original = _probe_audio(source, demuxer, ffprobe)
+        if original["duration"] > MAX_AUDIO_SECONDS + .05:
+            raise _error(413, "CHATBOT_MEDIA_DURATION", "O áudio deve ter até 30 minutos.")
+        _run([ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-xerror", "-y",
+              "-max_alloc", "33554432", "-protocol_whitelist", "file", "-err_detect", "explode",
+              "-threads", "1", "-f", demuxer, "-i", str(source), "-map", "0:a:0", "-vn", "-sn", "-dn",
+              "-map_metadata", "-1", "-map_chapters", "-1", "-c:a", "libmp3lame", "-b:a", "64k",
+              "-ac", "1", "-ar", "44100", "-threads", "1", "-id3v2_version", "0", "-write_id3v1", "0",
+              "-t", str(MAX_AUDIO_SECONDS + 1), "-fs", str(MAX_OUTPUT_BYTES * 2), "-f", "mp3", str(target)], timeout=90)
+        if target.stat().st_size > MAX_OUTPUT_BYTES:
+            raise _error(413, "CHATBOT_MEDIA_TOO_LARGE", "O áudio preparado ultrapassa 16 MB.")
+        verified = _probe_audio(target, "mp3", ffprobe)
+        if (verified["codec"] != "mp3" or verified["duration"] > MAX_AUDIO_SECONDS + .1
+                or abs(verified["duration"] - original["duration"]) > max(.1, original["duration"] * .005)):
+            raise _error(415, "CHATBOT_MEDIA_INCOMPLETE", "O áudio não pôde ser preparado por completo.")
+        return _result(target.read_bytes(), "audio/mpeg", duration_ms=min(MAX_AUDIO_SECONDS * 1000, round(verified["duration"] * 1000)))
+
+
+def prepare_media(raw: bytes, kind: MediaKind, *, filename: str | None = None) -> PreparedMedia:
     """Normalize actual contents, never MIME labels, paths, URLs or extensions."""
     if not isinstance(kind, str) or kind not in KINDS or not isinstance(raw, bytes) or not raw:
         raise _error(422, "CHATBOT_MEDIA_INVALID", "Escolha um arquivo e um tipo de mídia válidos.")
+    extension = None
+    if filename is not None:
+        if not isinstance(filename, str) or not filename or len(filename) > 120 or re.search(r"[/\\\x00-\x1f\x7f]", filename):
+            raise _error(422, "CHATBOT_MEDIA_INVALID", "O nome do arquivo é inválido.")
+        extension = Path(filename).suffix.lower()
+        allowed = {"image": {".jpg", ".jpeg", ".png", ".webp"}, "sticker": {".jpg", ".jpeg", ".png"},
+                   "video": {".mp4"}, "ptv": {".mp4"}, "audio": {".mp3", ".wav", ".ogg", ".opus"},
+                   "document": {".pdf", ".docx", ".xlsx", ".csv", ".txt", ".apk"}}
+        if extension not in allowed[kind]:
+            raise _error(415, "CHATBOT_MEDIA_FORMAT", "Escolha um dos formatos de arquivo indicados.")
     limit = (MAX_IMAGE_INPUT_BYTES if kind in {"image", "sticker"}
              else MAX_DOCUMENT_BYTES if kind == "document" else MAX_INPUT_BYTES)
     if len(raw) > limit:
@@ -276,13 +349,15 @@ def prepare_media(raw: bytes, kind: MediaKind) -> PreparedMedia:
             return _photo(raw, sticker=kind == "sticker")
         if kind in {"video", "ptv"}:
             return _video(raw, ptv=kind == "ptv")
-        try:
-            text = raw.decode("utf-8-sig")
-            if not text.strip() or any(ord(c) < 32 and c not in "\t\n\r" for c in text):
-                raise ValueError()
-        except (UnicodeDecodeError, ValueError):
-            raise _error(415, "CHATBOT_MEDIA_INVALID", "O documento deve conter texto UTF-8 válido.") from None
-        return _result(text.encode("utf-8"), "text/plain; charset=utf-8")
+        if kind == "audio":
+            return _audio(raw)
+        data, mime = inspect_document(raw)
+        expected = {".pdf": "application/pdf", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    ".apk": "application/vnd.android.package-archive", ".csv": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8"}
+        if extension and mime != expected[extension]:
+            raise _error(415, "CHATBOT_MEDIA_FORMAT", "O conteúdo do arquivo não corresponde ao formato indicado.")
+        return _result(data, mime)
     finally:
         _slot.release()
 
@@ -304,7 +379,7 @@ def put_media(tenant: UUID, asset: UUID, prepared: PreparedMedia) -> None:
     if (not isinstance(prepared, PreparedMedia) or not isinstance(prepared.data, bytes)
             or not 0 < prepared.size <= MAX_OUTPUT_BYTES or prepared.size != len(prepared.data)
             or prepared.sha256 != sha256(prepared.data).hexdigest()
-            or prepared.mime not in {"image/jpeg", "image/webp", "video/mp4", "text/plain; charset=utf-8"}):
+            or prepared.mime not in {"image/jpeg", "image/webp", "video/mp4", "audio/mpeg", *DOCUMENT_MIMES}):
         raise _error(422, "CHATBOT_MEDIA_INVALID", "A mídia não foi preparada corretamente.")
     variants = [(original, prepared.data, prepared.mime, prepared.sha256)]
     if prepared.thumbnail:
