@@ -41,6 +41,7 @@ on:
       - 'scripts/predeploy_one_click_links.py'
       - 'scripts/wait_for_single_whatsapp_schema.py'
       - 'scripts/start_api.py'
+      - 'scripts/reverse_ingress.py'
       - 'scripts/wait_for_appointment_operations_schema.py'
       - 'tests/**/test_subscription_device*.py'
       - 'tests/**/test_subscription_chatbot*.py'
@@ -49,6 +50,8 @@ on:
       - 'tests/**/test_subscription_diagnostics*.py'
       - 'tests/**/test_subscription_campaign*.py'
       - 'tests/unit/test_start_api.py'
+      - 'tests/unit/test_reverse_ingress.py'
+      - 'tests/unit/test_reverse_proxy_contract.py'
       - 'tests/unit/test_appointment_operations_release.py'
       - 'tests/fixtures/subscription_chatbot*_contract.json'
       - 'tests/fixtures/subscription_templates*.json'
@@ -116,6 +119,8 @@ jobs:
             tests/unit/test_manual_start_times_release.py \
             tests/unit/test_appointment_operations_release.py \
             tests/unit/test_start_api.py \
+            tests/unit/test_reverse_ingress.py \
+            tests/unit/test_reverse_proxy_contract.py \
             tests/unit/test_plan_permissions.py \
             tests/unit/test_plan_routing.py \
             tests/unit/test_qr_channels.py \

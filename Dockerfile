@@ -8,7 +8,7 @@ WORKDIR /srv/app
 # PostgreSQL 16 matches the production server. These clients are used only by
 # the explicit one-time migration script; the normal startup remains unchanged.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && apt-get install -y --no-install-recommends ca-certificates curl openssh-client \
     && install -d /usr/share/postgresql-common/pgdg \
     && curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
        --http1.1 --retry 5 --retry-all-errors --retry-delay 2 \

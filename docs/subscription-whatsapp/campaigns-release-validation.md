@@ -1,7 +1,8 @@
 # Etapa 07 — publicação e validação de catálogo
 
-Estado: implementação local. A migração e os testes de PostgreSQL real ainda
-precisam passar no CI da revisão final. Nenhuma operação de produção, envio,
+Estado: em qualificação. A migração e os 338 testes de PostgreSQL real passaram
+na revisão intermediária 427b0cff; a revisão integrada à produção 01d99bb ainda
+precisa de seus próprios resultados finais. Nenhuma operação de produção, envio,
 teste de proxy ou agendamento real foi executado por esta integração.
 
 ## Cadeia de publicação
@@ -52,8 +53,21 @@ privado. A consulta de readiness lê somente catálogos PostgreSQL.
 
 ## Startup da API e do worker
 
-Antes de abrir Uvicorn, `scripts/start_api.py` executa a barreira 0068 com o
-ambiente já sem credenciais e flags de migração. A barreira inclui os contratos
+Antes de abrir Uvicorn, a entrada normal de `scripts/start_api.py` executa a
+barreira 0068. Quando o ambiente inicial contém credenciais ou flags de migração,
+o launcher primeiro se reexecuta com essas chaves removidas; assim o ambiente
+inicial do processo pai também fica limpo antes de criar o filho da barreira.
+A segunda entrada não contém as chaves e não repete a reexecução.
+
+O modo SSH publicado em 01d99bb mantém sua fronteira de `execve` diretamente
+para `scripts.reverse_ingress`. Depois dessa limpeza e da validação da
+configuração, a entrada do supervisor chama a mesma barreira com ambiente
+também sem as três chaves SSH. A supervisão da API e do túnel só começa depois
+do sucesso; erro, timeout ou falha ao criar o processo interrompe a inicialização
+com um marcador finito. Argumentos de rede, pinning, workers e lifecycle do
+supervisor permanecem como publicados.
+
+A barreira inclui os contratos
 anteriores, exige identidade autenticada `app_runtime`, conexão somente leitura,
 `search_path=pg_catalog`, tentativas de até três segundos e prazo total de
 90 segundos; o launcher limita o subprocesso a 95 segundos. Falha ou timeout
@@ -75,6 +89,13 @@ de backup com subprocessos e armazenamento sintéticos: arquivo inválido,
 upload recusado, metadados incorretos e conteúdo remoto divergente impedem DDL;
 o stream remoto é encerrado mesmo quando o checksum falha.
 
+Depois de incorporar o commit de produção 01d99bb, passaram outros **115 testes
+focados em 0,79 s**, com `test_start_api.py`, `test_reverse_ingress.py`,
+`test_reverse_proxy_contract.py` e `test_subscription_campaigns_release.py`.
+Eles verificam a fronteira limpa antes do probe, a ausência de SSH no ambiente
+do probe e a interrupção antes de servir quando ele falha. O gate Python do
+CI passa a incluir também os dois arquivos de testes de ingress.
+
 Comando executado no ambiente Python de testes:
 
 ```sh
@@ -93,13 +114,14 @@ python -m pytest -q -ra \
   tests/unit/test_cakto_post_0053_predeploy.py
 ```
 
-O arquivo `test_subscription_campaigns_release_postgres.py` coleta **51 casos**.
+O arquivo `test_subscription_campaigns_release_postgres.py` executou seus
+**51 casos com sucesso** na árvore intermediária 427b0cff.
 Eles verificam o catálogo sob as identidades reais e negam SELECT do runtime
 nas sete tabelas, mesmo com tenant configurado. As provas de alteração de
 grants, RLS, checks, FKs, chaves e índices usam transações no banco descartável
-de loopback, sempre revertidas. A fixture rejeita hosts externos. A coleta não
-substitui execução em PostgreSQL; não há servidor PG/Docker disponível neste
-ambiente local.
+de loopback, sempre revertidas. A fixture rejeita hosts externos. A execução foi
+no PostgreSQL descartável do CI; não há servidor PG/Docker disponível neste
+ambiente local. A árvore final integrada precisa repetir o gate completo.
 
 ## Integração no CI
 
@@ -119,7 +141,7 @@ externa e exige PostgreSQL/Redis descartáveis.
 
 Para qualificar a revisão final ainda são necessários os resultados executados
 de PG, ponte, DOM e navegadores, o gate Python completo e a comparação dos
-workflows gerais com a produção efetiva. O baseline da etapa 6 contém falhas
+workflows gerais com a produção efetiva 01d99bb. O baseline observado contém falhas
 históricas explícitas; esta nota não declara o conjunto geral verde. Backup,
 migração, deploy e verificação somente de leitura em produção permanecem para
 a fase de publicação autorizada da revisão qualificada.

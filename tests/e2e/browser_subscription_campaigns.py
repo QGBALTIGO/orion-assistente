@@ -699,9 +699,15 @@ def test_generic_post_admission_or_confirm_conflict_preserves_recovery(browser, 
             review(page)
             page.locator("[data-cp-confirm-consent]").check()
         control(page, fixture_url, mode)
-        action(page, "confirm" if mode == "marker_confirm" else "review").click()
+        suffix = "/confirm" if mode == "marker_confirm" else "/review"
+        with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/" + CAMPAIGN_ID + suffix)) as submitted:
+            action(page, "confirm" if mode == "marker_confirm" else "review").click()
+        assert submitted.value.status == 409
+        assert submitted.value.json()["detail"]["code"] == "CAMPAIGN_CONFLICT"
         expect(page.locator("[data-cp-dialog]")).to_have_attribute("data-cp-view", "pending")
+        expect(page.locator("[data-cp-dialog]")).to_have_attribute("aria-busy", "false")
         before = writes(report(page, fixture_url))
+        assert len(before) == (2 if mode == "marker_confirm" else 1)
         assert_recovery(page, before[-1]["data"]["idempotency_key"])
         page.locator('[data-cp-dialog] [data-cp-action="recover"]').click()
         expect(page.locator("[data-cp-dialog]")).to_have_attribute("data-cp-view", "result" if mode == "marker_confirm" else "review")

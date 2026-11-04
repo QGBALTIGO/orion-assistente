@@ -111,6 +111,43 @@ casts e do cancelamento do timer não encontrou novo bloqueio.
 Os resultados finais da nova árvore devem substituir qualquer conclusão de
 prontidão; os erros desta primeira execução ficam preservados como evidência.
 
+## Atualização concorrente da produção e composição da inicialização
+
+A revisão corrigida `427b0cff44d2432279f8f80407eb803f386587ea`, árvore
+`c14036ae5a96f86e9c27383f8a0c9f7cc43c77b8`, executou 1.743 testes Python,
+345 DOM e **338 PostgreSQL aprovados**. Estes últimos incluem 33 funcionais de
+Campanhas, 51 de catálogo e 254 regressões anteriores. As 25 falhas SQL foram
+resolvidas, com execução das etapas antes bloqueadas pela preparação das
+consultas. O checkout foi `311dcf5bb4e42f77020a0d2656a48524fb986d5e`.
+
+Durante essa rodada, a produção avançou diretamente para
+`01d99bb0341bc4f3d91910930a4f5c64d263421b`, árvore
+`57fb69f63939471e83a342c03502729f3c7bfd1f`. Esse commit acrescenta a conexão
+opcional por SSH com a Hostinger e preserva a porta existente. Seus oito
+arquivos publicados foram incorporados; a PR255 permanece aberta e não foi
+tratada como merge. A qualificação final precisa usar essa nova base.
+
+A composição mantém o `execve` que remove as credenciais temporárias antes de
+criar qualquer subprocesso. No modo normal, a presença de uma dessas chaves
+provoca uma única reexecução limpa do launcher. No modo SSH, o launcher entra
+diretamente no supervisor sanitizado. Ambos executam a checagem somente leitura
+de 0068 antes da API; o supervisor também exclui as chaves SSH do ambiente da
+checagem e só inicia API/túnel após sucesso. Timeout, erro e impossibilidade de
+iniciar a checagem impedem a supervisão. Pinning, argumentos de rede, sinais,
+reconexão, workers e lifecycle publicados permanecem preservados.
+
+Passaram **115 testes focados** de inicialização, proxy e release nessa
+composição. A revisão independente comparou as funções do supervisor com a
+produção e confirmou que somente sua entrada foi composta com a barreira.
+
+O WebKit da revisão intermediária também revelou uma corrida no teste de
+resposta 409: a tela indica operação pendente antes de o POST chegar à fixture.
+O teste passa a aguardar o POST exato e sua resposta `409/CAMPAIGN_CONFLICT`,
+além do fim da carga, antes de ler o ledger. Conserva a mesma chave, uma única
+recuperação por GET e a igualdade de todas as escritas. Os timeouts permanecem
+iguais. As capturas dessa revisão confirmam as abas corrigidas e a recuperação;
+a nova árvore integrada ainda exige seus próprios logs e capturas finais.
+
 ## Critério de publicação
 
 Exigir os seis gates dedicados e comparar cada workflow geral executado com a
