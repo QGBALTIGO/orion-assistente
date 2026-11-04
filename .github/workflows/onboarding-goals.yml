@@ -9,7 +9,9 @@ on:
       - 'app/static/orion-onboarding.css'
       - 'ui-tests/onboarding-*.test.mjs'
       - 'tests/unit/test_onboarding_goals.py'
+      - 'tests/unit/test_onboarding_subscription_niche.py'
       - 'tests/integration/test_onboarding_goals_postgres.py'
+      - 'tests/integration/test_onboarding_subscription_niche_postgres.py'
       - 'tests/e2e/browser_onboarding_goals_review.py'
       - '.github/workflows/onboarding-goals.yml'
   push:
@@ -21,7 +23,9 @@ on:
       - 'app/static/orion-onboarding.css'
       - 'ui-tests/onboarding-*.test.mjs'
       - 'tests/unit/test_onboarding_goals.py'
+      - 'tests/unit/test_onboarding_subscription_niche.py'
       - 'tests/integration/test_onboarding_goals_postgres.py'
+      - 'tests/integration/test_onboarding_subscription_niche_postgres.py'
       - 'tests/e2e/browser_onboarding_goals_review.py'
       - '.github/workflows/onboarding-goals.yml'
 
@@ -44,6 +48,7 @@ jobs:
       - name: Testar respostas, revisao e fluxos anteriores
         run: |
           node --test \
+            ui-tests/onboarding-subscription-niche.test.mjs \
             ui-tests/onboarding-goals-review.test.mjs \
             ui-tests/onboarding-business-hours.test.mjs \
             ui-tests/onboarding-profile.test.mjs \
@@ -64,6 +69,7 @@ jobs:
       - name: Validar enums, compatibilidade e protecoes
         run: |
           python -m pytest -q -ra \
+            tests/unit/test_onboarding_subscription_niche.py \
             tests/unit/test_onboarding_goals.py \
             tests/unit/test_onboarding_profile.py \
             tests/unit/test_onboarding.py \
@@ -116,7 +122,10 @@ jobs:
       - name: Migrar banco descartavel
         run: python -m alembic upgrade head
       - name: Provar persistencia e isolamento reais
-        run: python -m pytest -q -ra tests/integration/test_onboarding_goals_postgres.py
+        run: |
+          python -m pytest -q -ra \
+            tests/integration/test_onboarding_goals_postgres.py \
+            tests/integration/test_onboarding_subscription_niche_postgres.py
 
   browser:
     name: Chromium e WebKit - 8 larguras e 2 temas

@@ -284,6 +284,10 @@ def readiness(configuration, facts, managed=None, *, staged=True,
         pending.append({"step": step, "code": code, "message": message})
     if not all(configuration.get(key) for key in ("niche", "activity")):
         add("business", "identity", "Informe o ramo e a atividade da empresa")
+    if (configuration.get("niche") == schemas.SUBSCRIPTION_NICHE
+            and (configuration.get("activity") != "products"
+                 or configuration.get("subscription_offering") not in schemas.SUBSCRIPTION_OFFERINGS)):
+        add("business", "subscription_offering", "Escolha o que sua empresa oferece")
     mode = configuration.get("modality")
     if mode not in {"onsite", "online", "client_address", "hybrid"}:
         add("location", "modality", "Escolha como a empresa atende")
@@ -783,6 +787,8 @@ async def _apply_step(db, tenant, meta, step, data, access):
     config = meta["configuration"]
     if step == "business":
         await db.execute(text("SELECT public.onboarding_update_identity(:t,:name,:tz)"), {"t": tenant, "name": data.name, "tz": data.timezone})
+        if data.niche != schemas.SUBSCRIPTION_NICHE:
+            config.pop("subscription_offering", None)
         config.update(data.model_dump(mode="json", exclude={"name", "timezone"}))
     elif step == "location":
         config.update(modality=data.modality, private_address=data.address.model_dump(mode="json") if data.address else None)

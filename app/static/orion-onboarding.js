@@ -19,7 +19,28 @@
   const field = (name,label,value='',attrs='',help='') => {const input='<input id="ob-'+esc(name)+'" name="'+esc(name)+'" value="'+esc(value)+'" '+attrs+(help?' aria-describedby="ob-'+esc(name)+'-help"':'')+'>';return '<div class="ob-field" data-field-wrapper><label for="ob-'+esc(name)+'">'+esc(label)+'</label>'+(attrs.includes('data-orion-field="money"')?'<div class="os-field-unit" data-field-wrapper><span aria-hidden="true">R$</span>'+input+'</div>':input)+(help?'<p id="ob-'+esc(name)+'-help" class="ob-help">'+esc(help)+'</p>':'')+'</div>';};
   const select = (name,label,choices,current='',attrs='') => '<div class="ob-field"><label for="ob-'+esc(name)+'">'+esc(label)+'</label><select id="ob-'+esc(name)+'" name="'+esc(name)+'" '+attrs+'>'+choices.map(([value,text])=>option(value,text,current,value===''&&String(text).startsWith('Selecione '))).join('')+'</select></div>';
   const check = (name,label,checked=false,help='',value='on') => '<label class="ob-check"><input type="checkbox" name="'+esc(name)+'" value="'+esc(value)+'"'+(checked?' checked':'')+'><span><strong>'+esc(label)+'</strong>'+(help?'<small>'+esc(help)+'</small>':'')+'</span></label>';
-  const niches = [['','Selecione o nicho'],['barbearia','Barbearia'],['salao','Salão de beleza'],['odontologia','Odontologia'],['estetica','Estética'],['clinica','Clínica'],['pet_shop','Pet shop'],['aulas','Aulas'],['outro','Outro']];
+  const subscriptionNiche = 'servico_assinaturas';
+  const niches = [['','Selecione o nicho'],['barbearia','Barbearia'],['salao','Salão de beleza'],['odontologia','Odontologia'],['estetica','Estética'],['clinica','Clínica'],['pet_shop','Pet shop'],['aulas','Aulas'],[subscriptionNiche,'Serviço de assinaturas'],['outro','Outro']];
+  const activities = [['','Selecione a atividade'],['services','Serviços com agendamento'],['products','Produtos'],['both','Serviços e produtos']];
+  const subscriptionOfferings = [['','Selecione a atividade'],['subscriptions','Assinaturas'],['one_time_sales','Vendas avulsas'],['both','Assinaturas e vendas avulsas']];
+  const activityChoices = niche => niche===subscriptionNiche?subscriptionOfferings:activities;
+  const activityGroup = niche => niche===subscriptionNiche?'subscriptions':'standard';
+  const businessNicheLabel = c => ['outro','other'].includes(c.niche)?c.other_niche:niches.find(([value])=>value&&value===c.niche)?.[1]||c.niche;
+  const businessActivityValue = c => c.niche===subscriptionNiche?c.subscription_offering:c.activity;
+  const businessActivityLabel = c => activityChoices(c.niche).find(([value])=>value&&value===businessActivityValue(c))?.[1]||'Não informado';
+  function syncBusinessActivity(form, restoredValue) {
+    const niche=form.elements.niche,activity=form.elements.activity;
+    if(!niche||!activity)return;
+    const group=activityGroup(niche.value),choices=activityChoices(niche.value);
+    const selected=choices.some(([value])=>value===restoredValue)?restoredValue:'';
+    if(activity.dataset.obActivityGroup!==group){
+      // "both" is shared by the groups but describes different choices.
+      // A niche change must ask again, while restoring a draft keeps its intent.
+      activity.innerHTML=choices.map(([value,label])=>option(value,label,selected,value==='')).join('');
+      activity.dataset.obActivityGroup=group;
+    }
+    if(restoredValue!==undefined)activity.value=selected;
+  }
   const startingTimezone = 'America/Sao_Paulo'; // Provisional only until a location is saved.
   const businessNameValue = value => String(value ?? '').normalize('NFC').replace(/\s+/gu,' ').trim();
   // Address text is not a numeric mask: preserve spelling, accents and street names.
@@ -47,7 +68,7 @@
       !(state.data?.configuration?.activity==='products'&&['professionals','hours'].includes(step.id)));
     const draftKey = () => (state.tenantId||'new')+':'+state.step+':'+(state.editor?.kind||'')+':'+((state.editor?.id||state.editor?.professional_id||'new')+':'+(state.editor?.variant_id||''));
     function capture() {const form=host.querySelector('form');if(form)state.drafts.set(draftKey(),[...new FormData(form)].map(([name,value])=>[name,String(value)]));}
-    function restore() {const form=host.querySelector('form'),draft=state.drafts.get(draftKey());if(!form||!draft)return;for(const element of form.elements){if(!element.name)continue;const values=draft.filter(([name])=>name===element.name).map(([,value])=>value);if(element.type==='checkbox'||element.type==='radio')element.checked=values.includes(element.value);else if(values.length)element.value=values[0];}conditionalFields();}
+    function restore() {const form=host.querySelector('form'),draft=state.drafts.get(draftKey());if(!form||!draft)return;const niche=draft.find(([name])=>name==='niche');if(form.elements.niche&&niche){form.elements.niche.value=niche[1];syncBusinessActivity(form,draft.find(([name])=>name==='activity')?.[1]);}for(const element of form.elements){if(!element.name)continue;const values=draft.filter(([name])=>name===element.name).map(([,value])=>value);if(element.type==='checkbox'||element.type==='radio')element.checked=values.includes(element.value);else if(values.length)element.value=values[0];}conditionalFields();}
     function focus() {host.querySelector('[data-ob-title]')?.focus();}
     function showFeedback(message,error=false) {state.feedback=message;state.error=error;const node=host.querySelector('[data-ob-feedback]');if(node){node.className='ob-note'+(error?' ob-error':'');node.hidden=!message;node.textContent=message;if(error){node.setAttribute('tabindex','-1');node.focus();}}}
     function busy(value) {state.busy=value;host.setAttribute('aria-busy',String(value));for(const element of host.querySelectorAll('button,input,select,textarea')){if(value){element.dataset.obWasDisabled=String(element.disabled);element.disabled=true;}else if(element.dataset.obWasDisabled!==undefined){element.disabled=element.dataset.obWasDisabled==='true';delete element.dataset.obWasDisabled;}}}
@@ -71,7 +92,20 @@
     }
     function navigation() {const steps=stepRows(),index=Math.max(0,steps.findIndex(step=>step.id===state.step));return '<div class="ob-progress"><span>Etapa '+(index+1)+' de '+steps.length+'</span><progress value="'+(index+1)+'" max="'+steps.length+'" aria-label="Progresso das etapas"></progress></div><div class="ob-layout"><nav aria-label="Etapas da configuração"><ol class="ob-steps">'+steps.map((step,i)=>'<li><button type="button" class="ob-step" data-ob-step="'+esc(step.id)+'" data-complete="'+(step.complete===true)+'" aria-label="Etapa '+(i+1)+': '+esc(step.label||definitions[step.id][0])+'"'+(state.step===step.id?' aria-current="step"':'')+'><span class="ob-step-number">'+(step.complete?icon('check'):i+1)+'</span><span>'+esc(step.label||definitions[step.id][0])+'</span></button></li>').join('')+'</ol></nav><div>';}
     function form(body,label='Salvar e continuar',type=state.step) {return '<form class="ob-form" data-ob-form="'+esc(type)+'"><fieldset '+(state.data?.can_edit===false?'disabled':'')+'>'+body+'<div class="ob-actions">'+button('Voltar','back')+'<button type="submit" class="ob-button" data-ob-write>'+esc(label)+'</button></div></fieldset></form>';}
-    function businessForm(create=false) {const c=state.data?.configuration||{},name=state.data?.name||'',currentNiche=String(c.niche||'').toLowerCase()==='other'?'outro':c.niche||'',nicheChoices=niches.some(([value])=>value===currentNiche)?niches:[...niches,[currentNiche,currentNiche]];return form('<div class="ob-fields ob-business-fields">'+field('name','Nome do negócio',name,'required maxlength="160" autocomplete="organization" autocapitalize="words" placeholder="Ex.: Barbearia Peixoto" data-ob-business-name','Como sua empresa será identificada no Orion.')+select('niche','Nicho principal',nicheChoices,currentNiche,'required')+'<div class="ob-field" data-ob-other-niche><label for="ob-other_niche">Qual é o seu negócio?</label><input id="ob-other_niche" name="other_niche" maxlength="120" value="'+esc(c.other_niche||'')+'"></div>'+select('activity','O que você oferece',[['','Selecione a atividade'],['services','Serviços com agendamento'],['products','Produtos'],['both','Serviços e produtos']],c.activity||'','required')+field('contact_phone','WhatsApp comercial',c.contact_phone||'','type="tel" required autocomplete="tel" inputmode="tel" placeholder="(00) 00000-0000" data-orion-field="phone"')+'</div>',create?'Criar meu negócio':'Salvar e continuar',create?'create':'business');}
+    function businessForm(create=false) {
+      const c=state.data?.configuration||{},name=state.data?.name||'',
+        currentNiche=String(c.niche||'').toLowerCase()==='other'?'outro':c.niche||'',
+        nicheChoices=niches.some(([value])=>value===currentNiche)?niches:[...niches,[currentNiche,currentNiche]],
+        choices=activityChoices(currentNiche),storedActivity=businessActivityValue(c),
+        currentActivity=choices.some(([value])=>value===storedActivity)?storedActivity:'';
+      return form('<div class="ob-fields ob-business-fields">'+
+        field('name','Nome do negócio',name,'required maxlength="160" autocomplete="organization" autocapitalize="words" placeholder="Ex.: Barbearia Peixoto" data-ob-business-name','Como sua empresa será identificada no Orion.')+
+        select('niche','Nicho principal',nicheChoices,currentNiche,'required')+
+        '<div class="ob-field" data-ob-other-niche><label for="ob-other_niche">Qual é o seu negócio?</label><input id="ob-other_niche" name="other_niche" maxlength="120" value="'+esc(c.other_niche||'')+'"></div>'+
+        select('activity','O que você oferece',choices,currentActivity,'required data-ob-activity-group="'+activityGroup(currentNiche)+'"')+
+        field('contact_phone','WhatsApp comercial',c.contact_phone||'','type="tel" required autocomplete="tel" inputmode="tel" placeholder="(00) 00000-0000" data-orion-field="phone"')+
+        '</div>',create?'Criar meu negócio':'Salvar e continuar',create?'create':'business');
+    }
     function addressForm() {
       const c=state.data.configuration||{},address=c.private_address||{};
       return form(
@@ -242,8 +276,8 @@
       const profile=c.business_metrics||{};
       const overview=[
         ['business','Negócio',[
-          ['Nome',state.data.name],['Nicho',c.niche==='outro'?c.other_niche:c.niche],
-          ['Atividade',{services:'Serviços com agendamento',products:'Produtos',both:'Serviços e produtos'}[c.activity]],
+          ['Nome',state.data.name],['Nicho',businessNicheLabel(c)],
+          ['Atividade',businessActivityLabel(c)],
           ['Fuso',state.data.timezone]
         ]],
         ['location','Local de atendimento',[
@@ -307,8 +341,8 @@
       const sections=[
         reviewSection('business','Empresa','store',[
           ['Nome',state.data.name],
-          ['Nicho',c.niche==='outro'?c.other_niche:c.niche],
-          ['Atividade',{services:'Serviços com agendamento',products:'Produtos',both:'Serviços e produtos'}[c.activity]],
+          ['Nicho',businessNicheLabel(c)],
+          ['Atividade',businessActivityLabel(c)],
           ['WhatsApp comercial',fieldTools.phoneDisplay(c.contact_phone||'')||'Não informado']
         ]),
         reviewSection('location','Atendimento','pin',[
@@ -428,7 +462,7 @@
       if(['street','neighborhood','city','state'].includes(element.name))element.dataset.obEdit=String(Number(element.dataset.obEdit||0)+1);
       if(element.name==='postal_code')queueCepLookup(element);
     }
-    function conditionalFields() {const form=host.querySelector('form');if(!form)return;const elements=form.elements,niche=host.querySelector('[data-ob-other-niche]');if(niche){niche.hidden=elements.niche?.value!=='outro';elements.other_niche.required=!niche.hidden;elements.other_niche.disabled=niche.hidden;}const address=host.querySelector('[data-ob-address]');if(address){address.hidden=!['onsite','hybrid'].includes(elements.modality?.value);for(const input of address.querySelectorAll('input,select'))input.disabled=address.hidden;for(const name of ['street','neighborhood','city','state'])if(elements[name])elements[name].required=!address.hidden;elements.number.disabled=address.hidden;elements.number.required=!address.hidden;}const pause=host.querySelector('[data-ob-break]');if(pause){pause.hidden=!elements.has_break?.checked;for(const input of pause.querySelectorAll('input')){input.disabled=pause.hidden;input.required=!pause.hidden;}}const price=host.querySelector('[data-ob-product-price]');if(price){price.hidden=!['fixed','from'].includes(elements.price_kind?.value);const input=price.querySelector('input');input.required=!price.hidden;input.disabled=price.hidden;input.dataset.fieldMin='0';if(price.hidden)fieldTools.clearError(input);}}
+    function conditionalFields() {const form=host.querySelector('form');if(!form)return;syncBusinessActivity(form);const elements=form.elements,niche=host.querySelector('[data-ob-other-niche]');if(niche){niche.hidden=elements.niche?.value!=='outro';elements.other_niche.required=!niche.hidden;elements.other_niche.disabled=niche.hidden;}const address=host.querySelector('[data-ob-address]');if(address){address.hidden=!['onsite','hybrid'].includes(elements.modality?.value);for(const input of address.querySelectorAll('input,select'))input.disabled=address.hidden;for(const name of ['street','neighborhood','city','state'])if(elements[name])elements[name].required=!address.hidden;elements.number.disabled=address.hidden;elements.number.required=!address.hidden;}const pause=host.querySelector('[data-ob-break]');if(pause){pause.hidden=!elements.has_break?.checked;for(const input of pause.querySelectorAll('input')){input.disabled=pause.hidden;input.required=!pause.hidden;}}const price=host.querySelector('[data-ob-product-price]');if(price){price.hidden=!['fixed','from'].includes(elements.price_kind?.value);const input=price.querySelector('input');input.required=!price.hidden;input.disabled=price.hidden;input.dataset.fieldMin='0';if(price.hidden)fieldTools.clearError(input);}}
     async function loadTenant(id,preferred,epoch=++state.epoch) {cancelCep();if(!uuid(id))throw Error('Selecione um negócio válido.');state.tenantId=id;state.data=null;state.editor=null;state.pending=null;state.conflict=false;state.feedback='';host.hidden=false;host.innerHTML='<div class="ob-loading" role="status">Conferindo a configuração do negócio…</div>';const data=await request('/api/v1/tenants/'+encodeURIComponent(id)+'/onboarding');if(!current(epoch))return null;accept(data,preferred);render();focus();await notify('onTenantChange',id,clone(data));return data;}
     async function resolveEntry({force=false}={}) {
       if(!state.mounted||!bridge.user||bridge.user.authenticated===false)return {kind:'blocked',reason:'authentication_required'};
@@ -437,7 +471,7 @@
       catch(error){if(current(epoch)){state.entry={kind:'blocked'};state.feedback=error.message||'Não foi possível conferir a configuração.';state.error=true;renderEntry();}throw error;}
     }
     function price(raw) {return fieldTools.parseMoney(raw,{required:true,min:0,max:100000000});}
-    function formData(form) {const data=Object.fromEntries(new FormData(form));const type=form.dataset.obForm;if(type==='business'||type==='create')return {name:businessNameValue(data.name),timezone:state.data?.timezone||startingTimezone,niche:data.niche,other_niche:data.niche==='outro'?data.other_niche?.trim()||null:null,activity:data.activity,contact_phone:fieldTools.phoneValue(data.contact_phone)};if(type==='location'){const result={modality:data.modality};if(['onsite','hybrid'].includes(data.modality))result.address={postal_code:fieldTools.postalCodeValue(data.postal_code),street:addressTextValue(data.street),number:addressNumberValue(data.number),no_number:false,complement:addressTextValue(data.complement)||null,neighborhood:addressTextValue(data.neighborhood),city:addressTextValue(data.city),state:data.state.trim().toUpperCase()};return result;}
+    function formData(form) {const data=Object.fromEntries(new FormData(form));const type=form.dataset.obForm;if(type==='business'||type==='create'){const result={name:businessNameValue(data.name),timezone:state.data?.timezone||startingTimezone,niche:data.niche,other_niche:data.niche==='outro'?data.other_niche?.trim()||null:null,activity:data.activity,contact_phone:fieldTools.phoneValue(data.contact_phone)};if(data.niche===subscriptionNiche){result.activity='products';result.subscription_offering=data.activity;}return result;}if(type==='location'){const result={modality:data.modality};if(['onsite','hybrid'].includes(data.modality))result.address={postal_code:fieldTools.postalCodeValue(data.postal_code),street:addressTextValue(data.street),number:addressNumberValue(data.number),no_number:false,complement:addressTextValue(data.complement)||null,neighborhood:addressTextValue(data.neighborhood),city:addressTextValue(data.city),state:data.state.trim().toUpperCase()};return result;}
       if(type==='profile')return Object.fromEntries(
         ['operating_age','team_size','monthly_revenue','monthly_volume'].map(name=>[name,data[name]])
       );
