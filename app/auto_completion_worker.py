@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 from app.catalog_api import support_session_factory
+from app.appointment_lifecycle import completion_due_at
 from app.database import get_session_factory, tenant_transaction
 from app.management_models import transition_appointment
 
@@ -65,7 +66,7 @@ async def complete_due_appointment(ctx: dict, tenant_id: str, appointment_id: st
         async with get_session_factory()() as session:
             async with tenant_transaction(session, tenant):
                 row = (await session.execute(text("""
-                    SELECT status,end_at,updated_at FROM appointments
+                    SELECT status,start_at,end_at,actual_duration_min,updated_at FROM appointments
                     WHERE tenant_id=:tenant AND id=:id
                 """), {"tenant": tenant, "id": identity})).mappings().first()
                 if row is None or row["status"] != "confirmed":
@@ -77,13 +78,18 @@ async def complete_due_appointment(ctx: dict, tenant_id: str, appointment_id: st
                 """), {"tenant": tenant, "id": identity})).scalar_one()
                 if variable:
                     return "requires_actual_price"
+                service_minutes = (await session.execute(text("""
+                    SELECT COALESCE(sum(COALESCE(added_duration_min,duration_snapshot_min)),0)
+                    FROM appointment_items WHERE tenant_id=:tenant AND appointment_id=:id
+                """), {"tenant": tenant, "id": identity})).scalar_one()
+                due_at = completion_due_at(row, service_minutes)
                 # Recheck against the tenant's durable activation boundary.
                 allowed = (await session.execute(text("""
                     SELECT (t.status='active' AND a.end_at >= t.auto_complete_after
-                            AND a.end_at<=clock_timestamp()) AS allowed
+                            AND CAST(:completion_due_at AS timestamptz)<=clock_timestamp()) AS allowed
                     FROM appointments a JOIN tenants t ON t.id=a.tenant_id
                     WHERE a.tenant_id=:tenant AND a.id=:id
-                """), {"tenant": tenant, "id": identity})).scalar_one_or_none()
+                """), {"tenant": tenant, "id": identity, "completion_due_at": due_at})).scalar_one_or_none()
                 if not allowed:
                     return "not_due"
                 payload = SimpleNamespace(
