@@ -656,12 +656,22 @@ identity remain mandatory, including for historical device tombstones.
             # have those two bits masked by the plan resolver by definition.
             state = await store.workspace(db, tenant, write=False, feature="diagnostics.manage")
             await channels._lock_membership(db, channel_id)
-            status = (await db.execute(text("SELECT status FROM tenants WHERE id=:t FOR UPDATE"), {"t": tenant})).scalar_one_or_none()
+            tenant_row = (await db.execute(text("SELECT id,status,whatsapp_channel_id FROM tenants WHERE id=:t FOR UPDATE"),
+                {"t": tenant})).mappings().one_or_none()
+            status = tenant_row["status"] if tenant_row is not None else None
             if (status not in {"active", "paused"} or status == "active"
                     and not all(state.get("permissions", {}).get(key) for key in ("devices.manage", "diagnostics.manage"))):
                 raise devices.fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
             transport = await channels._channel(db, channel_id, request.headers.get("x-orion-channel-key"), receipt_only=True)
-            await channels._require_canonical(db, tenant, channel_id)
+            # The generic canonical guard also requires an active tenant. This
+            # receipt-only boundary has already checked the exact status policy;
+            # reuse its identity selector without granting execution or repairing
+            # an absent/broken pointer. Alias channels remain forbidden below.
+            candidates = (await db.execute(text("SELECT id,tenant_id,enabled FROM qr_channels WHERE tenant_id=:tenant ORDER BY id"),
+                {"tenant": tenant})).mappings().all()
+            canonical, canonical_state = channels._canonical_candidate(candidates, tenant_row["whatsapp_channel_id"])
+            if canonical_state != "ready" or canonical is None or canonical["id"] != channel_id:
+                raise HTTPException(409, "Conexão única indisponível; atualize o estado ou solicite revisão")
             operation = await request_row(db, tenant, identity=request_id)
             if operation is None or operation["kind"] != "proxy_test":
                 raise fail("DIAGNOSTIC_NOT_FOUND", 404)

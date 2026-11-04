@@ -364,10 +364,10 @@ def test_shared_fixture_has_one_key_and_the_fixed_server_text():
     assert FIXTURE["detail_response"]["recent_messages"]["limit"] == 3
 
 
-def receipt_request(action="receipt", *, method="POST", credential="synthetic-channel-key"):
+def receipt_request(action="receipt", *, method="POST", credential="synthetic-channel-key", channel=CHANNEL):
     return Request({"type": "http", "method": method, "scheme": "https", "server": ("synthetic", 443),
-        "path": api.INTERNAL.format(channel_id=CHANNEL)+"/proxy/"+action, "query_string": b"",
-        "path_params": {"channel_id": str(CHANNEL)}, "headers": [(b"x-orion-channel-key", credential.encode())]})
+        "path": api.INTERNAL.format(channel_id=channel)+"/proxy/"+action, "query_string": b"",
+        "path_params": {"channel_id": str(channel)}, "headers": [(b"x-orion-channel-key", credential.encode())]})
 
 
 @pytest.fixture
@@ -376,6 +376,8 @@ def receipt_boundary(monkeypatch):
         def __init__(self):
             super().__init__(proxy_operation(), tenant_status="paused")
             self.row = device()
+            self.pointer = CHANNEL
+            self.channels = [{"id": CHANNEL, "tenant_id": TENANT, "enabled": False}]
         async def __aenter__(self): return self
         async def __aexit__(self, *args): pass
         @asynccontextmanager
@@ -385,6 +387,14 @@ def receipt_boundary(monkeypatch):
             if sql.startswith("SELECT tenant_id FROM qr_channels"):
                 self.calls.append((sql, params))
                 return Rows([TENANT])
+            if sql.startswith("SELECT id,status,whatsapp_channel_id FROM tenants"):
+                self.calls.append((sql, params))
+                assert params.get("t", params.get("tenant")) == TENANT
+                return Rows([{"id": TENANT, "status": self.tenant_status, "whatsapp_channel_id": self.pointer}]
+                    if self.tenant_status is not None else [])
+            if sql.startswith(("SELECT * FROM qr_channels WHERE tenant_id=", "SELECT id,tenant_id,enabled FROM qr_channels WHERE tenant_id=")):
+                self.calls.append((sql, params))
+                return Rows([row for row in self.channels if row["tenant_id"] == params["tenant"]])
             if sql.startswith("SELECT * FROM subscription_devices"):
                 self.calls.append((sql, params))
                 return Rows([self.row] if params["t"] == self.row["tenant_id"] and params["d"] == self.row["id"]
@@ -396,7 +406,7 @@ def receipt_boundary(monkeypatch):
             return await super().execute(query, params)
 
     db = ReceiptDB()
-    context = {"db": db, "niche": "servico_assinaturas", "owner": True, "canonical": True, "deny_feature": False,
+    context = {"db": db, "niche": "servico_assinaturas", "owner": True, "deny_feature": False, "channel_id": CHANNEL,
         "transport": {"owner_account_id": OWNER, "assistant_enabled": False, "allowed_senders": [], "credential_encrypted": "SYNTHETIC_PRIVATE"}}
     async def state(database, tenant, lock):
         assert database is db and tenant == TENANT and lock == "shared"
@@ -406,19 +416,15 @@ def receipt_boundary(monkeypatch):
         return derived
     async def membership(*args): pass
     async def channel(database, identity, key, *, receipt_only):
-        assert database is db and identity == CHANNEL and receipt_only is True
+        assert database is db and identity == context["channel_id"] and receipt_only is True
         if key != "synthetic-channel-key" or not context["owner"]:
             raise HTTPException(401, "Canal não autorizado")
         return context["transport"]
-    async def canonical(*args):
-        if not context["canonical"]:
-            raise HTTPException(409, "Canonical channel required")
     async def forbidden(*args, **kwargs): pytest.fail("Receipt preservation cannot grant or perform network work")
     monkeypatch.setattr(api, "support_session_factory", lambda: lambda: db)
     monkeypatch.setattr(api.store, "plan_state", state)
     monkeypatch.setattr(api.channels, "_lock_membership", membership)
     monkeypatch.setattr(api.channels, "_channel", channel)
-    monkeypatch.setattr(api.channels, "_require_canonical", canonical)
     monkeypatch.setattr(api.channels, "_bridge_control", forbidden)
     monkeypatch.setattr(api, "read_status", forbidden)
     monkeypatch.setattr(api, "read_server", forbidden)
@@ -430,6 +436,11 @@ async def test_paused_receipt_read_keeps_real_plan_mask_and_returns_no_capabilit
     db = receipt_boundary["db"]
     plan = derive_plan({"tenant_id": TENANT, "tenant_status": "paused", "niche": "servico_assinaturas"}, NOW)
     assert not plan["permissions"]["devices.manage"] and not plan["permissions"]["diagnostics.manage"]
+    # Exercise the actual shared helper: its active-only execution boundary
+    # remains intact, while this authenticated receipt uses the pure selector.
+    with pytest.raises(HTTPException) as unavailable:
+        await api.channels._require_canonical(db, TENANT, CHANNEL)
+    assert unavailable.value.status_code == 404 and unavailable.value.detail == "Empresa indisponível"
     before = deepcopy(db.operation)
     result = await api.proxy_receipt(CHANNEL, ProxyReceipt(request_id=REQUEST), receipt_request())
     assert result["read_only"] is True and result["request_id"] == str(REQUEST)
@@ -490,7 +501,7 @@ async def test_paused_receipt_does_not_bypass_owner_niche_channel_or_intention_b
     request = receipt_request()
     if change == "owner": receipt_boundary["owner"] = False
     elif change == "niche": receipt_boundary["niche"] = "barbearia"
-    elif change == "canonical": receipt_boundary["canonical"] = False
+    elif change == "canonical": db.pointer = uuid4()
     elif change == "actor": db.operation["actor_account_id"] = uuid4()
     elif change == "device_channel": db.row["channel_id"] = uuid4()
     elif change == "assistant": receipt_boundary["transport"]["assistant_enabled"] = True
@@ -510,3 +521,46 @@ async def test_active_receipt_still_requires_enabled_features(receipt_boundary):
     with pytest.raises(HTTPException) as denied:
         await api.proxy_receipt(CHANNEL, ProxyReceipt(request_id=REQUEST), receipt_request())
     assert denied.value.status_code == 403 and denied.value.detail["code"] == "WORKSPACE_FEATURE_UNAVAILABLE"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("registry", ["missing", "ambiguous", "other_channel"])
+async def test_receipt_real_canonical_selection_rejects_unresolved_or_other_identity(receipt_boundary, registry):
+    db = receipt_boundary["db"]
+    other = {"id": uuid4(), "tenant_id": TENANT, "enabled": False}
+    db.pointer = None
+    if registry == "missing": db.channels = []
+    elif registry == "ambiguous": db.channels.append(other)
+    else:
+        db.channels.append(other)
+        db.pointer = other["id"]
+    pointer = db.pointer
+    with pytest.raises(HTTPException) as denied:
+        await api.proxy_receipt(CHANNEL, ProxyReceipt(request_id=REQUEST), receipt_request())
+    assert denied.value.status_code == 409
+    assert db.pointer == pointer and all(sql.startswith("SELECT") for sql, _ in db.calls)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tenant_status", ["active", "paused"])
+async def test_receipt_can_resolve_unique_disabled_identity_without_repairing_pointer(receipt_boundary, tenant_status):
+    db = receipt_boundary["db"]
+    db.tenant_status, db.pointer = tenant_status, None
+    response = await api.proxy_receipt(CHANNEL, ProxyReceipt(request_id=REQUEST), receipt_request())
+    assert response["read_only"] is True and response["channel_id"] == str(CHANNEL)
+    assert db.pointer is None and all(sql.startswith("SELECT") for sql, _ in db.calls)
+
+
+@pytest.mark.asyncio
+async def test_receipt_real_canonical_selection_never_accepts_legacy_alias(receipt_boundary):
+    from app import qr_legacy
+
+    db = receipt_boundary["db"]
+    alias = qr_legacy.channel_id(TENANT)
+    receipt_boundary["channel_id"] = alias
+    db.pointer = db.row["channel_id"] = alias
+    db.channels = [{"id": alias, "tenant_id": TENANT, "enabled": False}]
+    with pytest.raises(HTTPException) as denied:
+        await api.proxy_receipt(alias, ProxyReceipt(request_id=REQUEST), receipt_request(channel=alias))
+    assert denied.value.status_code == 403 and denied.value.detail["code"] == "DIAGNOSTIC_REVOKED"
+    assert db.pointer == alias and all(sql.startswith("SELECT") for sql, _ in db.calls)

@@ -76,7 +76,38 @@ redução/rolagem apenas quando a altura disponível exige. O teste de navegador
 passa a verificar a área útil do corpo e a visibilidade do destinatário e do
 texto. Os cartões de status passam a uma coluna abaixo de 1.000 px, após a
 captura de tablet evidenciar quebra desnecessária do número da conexão.
-As novas capturas e todos os gates ainda precisam validar essas correções.
+Essas correções foram encaminhadas à segunda revisão abaixo.
+
+### Segunda revisão
+
+O head `b4a2e1616d430db500297ca2d280c630853c1123`, árvore
+`3ff8fc5fbd57561ec649fc6685110832bb7426f9`, foi executado no checkout
+`be3c5eadb548082478c7223ab40318a4e6c43323` pelo workflow `41895285372`.
+Passaram Python (1.387), ponte (375), DOM (281), Chrome (52) e WebKit (52).
+As novas capturas de WebKit mostram destinatário e mensagem inteiros; o tablet
+mostra os cartões de status em uma coluna. A asserção geométrica passou.
+
+PostgreSQL concluiu 243 aprovados e uma falha. Os dois cenários interrompidos
+pelo seed e o teste de proxy independente passaram. O recibo da empresa pausada
+continuou bloqueado: `_require_canonical` chama `_canonical`, que exige empresa
+ativa e devolve `404 Empresa indisponível`. A conclusão ainda não foi aprovada,
+e a exigência de `finish`/`receipt` com sucesso e nenhum efeito adicional permanece.
+Os helpers genéricos de autorização continuam exigindo empresa ativa. A
+transação privada de recibos agora lê o ponteiro e as identidades sob o bloqueio
+da empresa e usa o seletor canônico puro compartilhado, sem reparar o ponteiro
+nem dispensar a recusa de alias, ambiguidade ou identidade diferente.
+
+A regressão foi reproduzida antes do ajuste com o helper genérico real: dois
+testes falharam com o mesmo 404. Depois, passaram os 107 casos unitários de
+Diagnósticos e os 35 de conexão canônica (142 no total), incluindo seis casos
+novos. O teste PG não foi alterado. A sessão de suporte, a política RLS e os
+helpers posteriores também foram revistos: não existe outra exigência de empresa
+ativa nesse caminho; `finish` atualiza apenas o resultado da intenção reclamada,
+e `receipt` usa apenas SELECT/locks e uma projeção de identidade.
+O gate Python completo voltou a passar após este ajuste: 1.393 aprovados em
+60,28 s, com os mesmos seis avisos de depreciação.
+Esta revisão intermediária não autoriza merge: o próximo head precisa concluir
+todos os gates, incluindo o caso PG preservado.
 
 ## Gates obrigatórios do CI
 
