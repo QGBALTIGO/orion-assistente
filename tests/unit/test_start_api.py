@@ -103,3 +103,20 @@ def test_empty_reverse_settings_keep_original_uvicorn_command_and_runtime_env(mo
     assert executed[0][1] == [start_api.sys.executable, "-m", "uvicorn", "app.main:app",
                               "--no-access-log", "--host", "0.0.0.0", "--port", "8000"]
     assert executed[0][2] == {"PORT": "8000", "WEB_CONCURRENCY": "2", "QR_BRIDGE_TOKEN": "unchanged"}
+
+
+@pytest.mark.parametrize("key", ["ORION_ORIGIN_HTTPS_AUTH", "ORION_ORIGIN_HTTPS_FINGERPRINT"])
+def test_even_partial_https_settings_cross_exec_boundary_before_validation(monkeypatch, key):
+    source = {"MIGRATION_DATABASE_URL": "owner-only", "PORT": "8080", key: "synthetic-transport"}
+    monkeypatch.setattr(start_api.os, "environ", source)
+    executed = []
+    monkeypatch.setattr(start_api.os, "execve", lambda *args: executed.append(args))
+    start_api.main()
+    assert executed[0][1] == [start_api.sys.executable, "-m", "scripts.reverse_ingress"]
+    assert "MIGRATION_DATABASE_URL" not in executed[0][2]
+    assert executed[0][2][key] == "synthetic-transport"
+
+
+def test_https_transport_keys_are_explicitly_sanitized_from_api_environment():
+    assert {"ORION_ORIGIN_SSH_HOST", "ORION_ORIGIN_SSH_PRIVATE_KEY", "ORION_ORIGIN_SSH_KNOWN_HOSTS",
+            "ORION_ORIGIN_HTTPS_FINGERPRINT", "ORION_ORIGIN_HTTPS_AUTH"} == start_api.SSH_KEYS
