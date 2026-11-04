@@ -127,6 +127,12 @@ def test_group_import_does_not_accept_a_consent_override_and_permission_is_separ
     assert schemas.CreateGroup(idempotency_key=KEY, name="Grupo", members=[]).members == []
 
 
+@pytest.mark.parametrize("version", [0, 2**63-1])
+def test_permission_versions_preserve_the_complete_postgres_bigint_domain(version):
+    value = schemas.PermissionContact(phone="5567999999901", version=version)
+    assert value.version == version
+
+
 @pytest.mark.parametrize("expected,marker", [(1, True), (2, False), (9, False)])
 def test_only_proven_stale_version_has_bound_final_rejection(expected, marker):
     request = schemas.ReviewCampaign(idempotency_key=KEY, expected_version=expected)

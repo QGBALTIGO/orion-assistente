@@ -170,7 +170,7 @@ class ArchiveGroup(Operation):
 
 class PermissionContact(StrictModel):
     phone: str = Field(min_length=1, max_length=40)
-    version: StrictInt = Field(ge=0)
+    version: StrictInt = Field(ge=0, le=2**63-1)
 
     @field_validator("phone")
     @classmethod

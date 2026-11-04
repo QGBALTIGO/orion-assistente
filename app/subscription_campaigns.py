@@ -46,7 +46,7 @@ async def timezone_for(db, tenant):
 
 @router.get(BASE)
 async def list_campaigns(tenant_id: UUID, response: Response, actor: Actor = Depends(authenticate),
-                         q: str = Query(default="", max_length=255), status: str = "", page: int = Query(default=1, ge=1)):
+                         q: str = Query(default="", max_length=255), status: str = "", page: int = Query(default=1, ge=1, le=10000)):
     if status and status not in schemas.STATES:
         raise store.fail("CAMPAIGN_INVALID", 422)
     async with store.owner_transaction(tenant_id, actor) as db:
@@ -394,7 +394,7 @@ async def campaign_action(tenant_id: UUID, campaign_id: UUID, request: Request, 
 
 @router.get(BASE + "/{campaign_id}/recipients")
 async def campaign_recipients(tenant_id: UUID, campaign_id: UUID, response: Response, actor: Actor = Depends(authenticate),
-                              status: str = "", q: str = Query(default="", max_length=255), page: int = Query(default=1, ge=1)):
+                              status: str = "", q: str = Query(default="", max_length=255), page: int = Query(default=1, ge=1, le=10000)):
     if status and status not in policy.RECIPIENT_LABELS:
         raise store.fail("CAMPAIGN_INVALID", 422)
     async with store.owner_transaction(tenant_id, actor) as db:

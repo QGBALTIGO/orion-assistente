@@ -67,6 +67,51 @@ async def test_ownership_is_checked_before_malformed_json_or_large_body(monkeypa
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("version", [2**63, 10**100])
+async def test_permission_version_overflow_is_rejected_before_group_mutation(monkeypatch, version):
+    boundaries, mutations = [], []
+    @asynccontextmanager
+    async def boundary(tenant, actor):
+        boundaries.append((tenant, actor))
+        yield RequestDB()
+    async def mutate(*args, **kwargs):
+        mutations.append((args, kwargs))
+        raise OverflowError("value exceeds the PostgreSQL bigint domain")
+    monkeypatch.setattr(store, "owner_transaction", boundary)
+    monkeypatch.setattr(api, "mutate_group", mutate)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=public_app(), raise_app_exceptions=False),
+                                 base_url="https://test") as client:
+        result = await client.post(f"/api/v1/tenants/{TENANT}/subscription-whatsapp/campaigns/groups/{uuid4()}/permissions",
+            json={"idempotency_key": str(KEY), "expected_version": 1,
+                  "contacts": [{"phone": "5567999999901", "version": version}],
+                  "evidence": "Autorização recebida hoje", "confirmation": "AUTORIZAR"})
+    assert result.status_code == 422
+    assert result.json()["detail"]["code"] == "CAMPAIGN_INVALID"
+    assert result.headers["cache-control"] == "no-store"
+    assert boundaries == [(TENANT, ACTOR)]
+    assert mutations == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("suffix", ["", f"/{CAMPAIGN}/recipients"])
+@pytest.mark.parametrize("page", [10001, 10**100])
+async def test_campaign_pagination_rejects_excessive_offset_before_database(monkeypatch, suffix, page):
+    boundaries = []
+    @asynccontextmanager
+    async def boundary(*args):
+        boundaries.append(args)
+        raise AssertionError("invalid pagination must not reach the database")
+        yield
+    monkeypatch.setattr(store, "owner_transaction", boundary)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=public_app(), raise_app_exceptions=False),
+                                 base_url="https://test") as client:
+        result = await client.get(f"/api/v1/tenants/{TENANT}/subscription-whatsapp/campaigns{suffix}",
+                                  params={"page": page})
+    assert result.status_code == 422
+    assert boundaries == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("state", ["missing", "prepared", "expired", "succeeded"])
 async def test_get_recovery_is_readonly_and_negative_lookup_is_never_cached(monkeypatch, state):
     row = None if state == "missing" else operation()

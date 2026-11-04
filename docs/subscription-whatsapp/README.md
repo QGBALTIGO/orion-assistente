@@ -20,8 +20,8 @@ não observado ou testado.
 | 03 | Testar Chatbot | Publicado — PR 250, produção `8146d5f7f50bb778d188f74b7e52452394870c50` |
 | 04 | Templates | Publicado e conferido ao vivo em 2026-11-04 — PR 251, produção `7164ce5ca9e4c795910ca5255f510f625dad0a11` |
 | 05 | Mensagens Enviadas | Publicado e conferido ao vivo em 2026-11-04 — PR 252, produção `f58730ac8e380bd2c12286c69c1db3873d3cbf0f` |
-| 06 | Diagnósticos | Observação concluída; implementação em qualificação, após o encerramento da etapa 05 |
-| 07 | Campanhas | Não iniciado |
+| 06 | Diagnósticos | Publicado e conferido ao vivo em 2026-11-04 — PR 253, produção `81cf127c51c3fae015568d16d79724ebe0f00db8` |
+| 07 | Campanhas | Implementado na PR 258; qualificação da revisão final e publicação pendentes |
 | 08 | Mensagens Programadas | Não iniciado |
 | 09 | Mensagem em Massa | Não iniciado |
 | 10 | Atribuições de Chat | Não iniciado |

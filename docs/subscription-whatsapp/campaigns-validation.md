@@ -159,3 +159,21 @@ Depois do merge da árvore qualificada, verificar backup e catálogo 0068, start
 da API e do worker, deploy dos três serviços no mesmo commit e o formulário no
 painel publicado. Consultas ao vivo não criam grupos, campanhas ou envios reais.
 A observação de Mensagens Programadas só começa depois dessa conclusão.
+# Revisão de continuidade — limites numéricos da API
+
+A retomada conferiu a árvore `c14036ae5a96f86e9c27383f8a0c9f7cc43c77b8`
+da PR 258 e encontrou dois limites de entrada ausentes. A versão de autorização
+de contato podia exceder o `bigint` usado no SQL. A página das listas também
+podia produzir um `OFFSET` fora desse domínio. Esses valores inválidos podiam
+chegar ao banco e causar erro interno; não foi executada nenhuma requisição
+desse tipo em produção.
+
+A versão agora aceita de zero até `2**63-1`. As duas rotas de listagem aceitam
+páginas de 1 a 10.000, seguindo o limite já publicado de Chatbot e Mensagens
+Enviadas. Seis casos HTTP demonstram rejeição 422 antes de consulta ou mutação,
+e dois casos preservam as extremidades válidas da versão. Os seis casos de
+rejeição falharam antes da correção. Após o ajuste, **182 testes de API,
+política, runtime e integração passaram em 1,37 s**, sem envios externos.
+
+Esta correção exige qualificação do novo commit; os resultados da árvore
+anterior não são apresentados como testes executados da nova revisão.
