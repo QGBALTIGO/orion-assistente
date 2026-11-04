@@ -1,0 +1,120 @@
+name: QA - qualify offline WhatsApp transport
+on:
+  push:
+    branches: [qa/whatsapp-offline-delivery-20261104]
+    paths: ['.github/workflows/prepare-whatsapp-offline.yml']
+permissions:
+  contents: write
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      BASE: 5699297d4b873a411275c767109bab77c1afc5b6
+      EXPECTED_TREE: b7f6036fe201caa5c1fa0825ebcff76590a0176a
+      META_LIVE_SEND: '0'
+      QR_AI_ENABLED: '0'
+      INBOX_SEND_ENABLED: '0'
+      MARKETING_EXECUTION_ENABLED: '0'
+      CAKTO_BILLING_LIVE_ENABLED: '0'
+      ORION_DIRECT_PAYMENTS_ENABLED: '0'
+      ORION_NOTIFY_SELF_ON_LINK: '0'
+      QR_BRIDGE_URL: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify reviewed patches and exact resulting source tree
+        run: |
+          python - <<'PY'
+          import base64, hashlib, lzma
+          from pathlib import Path
+          encoded=''.join(Path(f'.github/qa/offline-{i}.b64').read_text().strip() for i in (1,2,3))
+          patch=lzma.decompress(base64.b64decode(encoded,validate=True))
+          assert hashlib.sha256(patch).hexdigest()=='390c2367d5e8f91f2059d43c064bf8f0efa4f0e366ae17aefb8a3d9f9fe727e9'
+          Path('/tmp/offline.patch').write_bytes(patch)
+          ci=Path('.github/qa/offline-ci.patch').read_text().replace('\n diff --git ','\ndiff --git ').encode()
+          assert hashlib.sha256(ci).hexdigest()=='616745c6c5679de0543876183f9022daa3429b96508e129d0af0e6a8af225ccd'
+          Path('/tmp/offline-ci.patch').write_bytes(ci)
+          PY
+          git checkout --detach "$BASE"
+          git apply --check /tmp/offline.patch
+          git apply --index /tmp/offline.patch
+          git apply --check /tmp/offline-ci.patch
+          git apply --index /tmp/offline-ci.patch
+          git diff --cached --check
+          test "$(git write-tree)" = "$EXPECTED_TREE"
+      - name: Reproduce SDK defects before the compatibility correction
+        run: |
+          npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+          set +e
+          node --test qr-bridge/test/baileys-offline-compat.test.mjs > /tmp/offline-before.log 2>&1
+          before=$?
+          set -e
+          test "$before" -eq 1
+      - name: Validate all transport and real synthetic Signal after correction
+        run: |
+          node qr-bridge/scripts/patch-baileys.mjs
+          node qr-bridge/scripts/patch-baileys.mjs --check
+          node --test qr-bridge/test/baileys-offline-compat.test.mjs > /tmp/offline-after.log 2>&1
+          mapfile -t tests < <(find qr-bridge/test -name '*.test.mjs' ! -name 'panel-ui.test.mjs' | sort)
+          node --test "${tests[@]}" > /tmp/offline-transport.log 2>&1
+          node --check qr-bridge/src/server.mjs
+          node --check qr-bridge/src/channel-session.mjs
+      - name: Compare complete tests against independent unmodified production SDK
+        run: |
+          mkdir -p /tmp/offline-base
+          git archive "$BASE" | tar -x -C /tmp/offline-base
+          npm ci --prefix /tmp/offline-base/qr-bridge --ignore-scripts --no-audit --no-fund
+          set +e
+          (cd /tmp/offline-base && node --test qr-bridge/test/*.test.mjs) > /tmp/offline-baseline.log 2>&1
+          baseline=$?
+          node --test qr-bridge/test/*.test.mjs > /tmp/offline-candidate.log 2>&1
+          candidate=$?
+          set -e
+          test "$baseline" -le 1
+          test "$candidate" -le 1
+          python scripts/check_whatsapp_regression.py /tmp/offline-baseline.log /tmp/offline-candidate.log /tmp/offline-regression.json
+      - name: Verify dependency audit and published image integrity
+        run: |
+          npm audit --prefix qr-bridge --omit=dev --audit-level=high --json > /tmp/offline-audit.json
+          docker build -t orion-offline-transport qr-bridge
+          docker run --rm --network none orion-offline-transport node scripts/patch-baileys.mjs --check
+      - name: Record exact Git objects without changing branches or deploying
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, urllib.request
+          from pathlib import Path
+          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+          def post(endpoint,data):
+              request=urllib.request.Request('https://api.github.com/repos/QGBALTIGO/orion-assistente/'+endpoint,data=json.dumps(data).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
+              with urllib.request.urlopen(request,timeout=30) as response:return json.load(response)
+          assert git('write-tree')==os.environ['EXPECTED_TREE']
+          entries=[]
+          for file in git('diff','--cached','--name-only',os.environ['BASE']).splitlines():
+              mode,sha,_=git('ls-files','--stage',file).split('\t')[0].split()
+              result=post('git/blobs',{'content':Path(file).read_text(),'encoding':'utf-8'})
+              assert result['sha']==sha,file
+              entries.append({'path':file,'mode':mode,'type':'blob','sha':sha})
+          result=post('git/trees',{'base_tree':git('rev-parse',os.environ['BASE']+'^{tree}'),'tree':entries})
+          assert result['sha']==os.environ['EXPECTED_TREE']
+          print('VALIDATED_OFFLINE_TREE='+result['sha'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: offline-whatsapp-qualification
+          path: /tmp/offline-*.log
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: offline-whatsapp-reports
+          path: /tmp/offline-*.json
+          retention-days: 7
