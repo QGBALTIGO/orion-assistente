@@ -45,9 +45,6 @@ async def test_choice_persists_replays_completes_and_is_cleared_after_niche_chan
     assert replay["configuration"]["subscription_offering"] == alternate
     assert replay["last_operation_key"] == key
 
-    from plan_fixtures import seed_fixture_plan
-    async with ctx.migration.begin() as db:
-        ctx.plan_admins.append(await seed_fixture_plan(db, (tenant,), "essencial"))
     state = await save(ctx, changed, "location", {"modality": "online"})
     state = await save(ctx, state, "profile", METRICS)
     state = await save(ctx, state, "goals", GOALS)

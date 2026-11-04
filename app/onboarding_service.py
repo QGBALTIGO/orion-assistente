@@ -1003,6 +1003,12 @@ async def complete(actor, tenant, payload):
                 if payload.expected_snapshot != _snapshot(meta["configuration"], meta["managed_ids"], current_facts):
                     conflict("O catálogo ou expediente mudou. Revise os dados atuais antes de concluir")
                 quick_setup = _uses_quick_profile(meta)
+                # A private questionnaire needs no operating plan. However,
+                # quick-profile answers may coexist with staged catalogue rows;
+                # activating any such batch retains the original paid gate.
+                requires_operational_plan = not quick_setup or any(
+                    meta["managed_ids"].get(table) for table in
+                    ("professionals", "services", "commercial_products", "commercial_variants"))
                 pending = readiness(meta["configuration"], current_facts, meta["managed_ids"],
                                     profile_only=quick_setup,
                                     goals_required=bool(quick_setup and not meta["completed_at"]))
@@ -1029,12 +1035,14 @@ async def complete(actor, tenant, payload):
                     else:
                         await db.execute(text("SELECT public.onboarding_activate_tenant(:t)"),
                                          {"t": tenant})
-                # A new business is intentionally paused while drafts are
-                # prepared. The activation and entitlement/capacity check are
-                # one transaction: no grant or an expired grant rolls back
-                # every staged activation and keeps the company paused.
+                # Real catalogue activation and its entitlement/capacity check
+                # remain atomic: a missing/expired grant rolls back every row.
+                # Completing only the private profile grants no paid features,
+                # plan or trial; their own API/domain gates still apply.
                 from app.plan_permissions import require_feature
-                await require_feature(db, tenant, "professionals.manage", lock="exclusive")
+                await require_feature(db, tenant,
+                    "professionals.manage" if requires_operational_plan else "business.setup",
+                    lock="exclusive")
                 return await _state(db, tenant, access)
 
 
