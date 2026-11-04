@@ -1,3 +1,4 @@
+import {isTransientLeaseFailure} from './lease-failure.mjs';
 import {makeBoundedCache} from './bounded-cache.mjs';
 import {safetyControl} from './inbound-event.mjs';
 /** Per-channel lifecycle; SQL broker owns the distributed fence, not this Map. */
@@ -75,18 +76,26 @@ export function createChannelManager({broker,createSession,root='/data/orion-cha
       requireCurrent(c);acceptLease(c,result,started);return c;
     }catch(error){
       if(c.device&&([401,403,404,423].includes(error?.status)||['device_identity_changed','device_profile_changed'].includes(error?.message)))try{resumeStore?.forget(c.id,c.key);}catch{}
-      retire(c);throw error;
+      // Fail the operation closed, but do not destroy a still-valid fenced
+      // socket because the control plane briefly timed out. The original
+      // expiry timer remains authoritative and is never extended here.
+      if(!current(c)||!isTransientLeaseFailure(error))retire(c);
+      throw error;
     }
   }
-  function renewLater(c){
+  function renewLater(c,retry=false){
     c.renewal=timer(async()=>{
       if(!current(c))return retire(c);
       const started=clock();
       try{
         const result=await broker.lease(c.id,c.key,'renew',owner,c.fence);
-        requireCurrent(c);acceptLease(c,result,started,{renew:true});renewLater(c);
-      }catch{retire(c);}
-    },Math.max(100,Math.min(8000,(c.deadline-clock())/3)));
+        requireCurrent(c);acceptLease(c,result,started,{renew:true});c.renewFailures=0;renewLater(c);
+      }catch(error){
+        if(current(c)&&isTransientLeaseFailure(error)){c.renewFailures=(c.renewFailures||0)+1;renewLater(c,true);}
+        else retire(c);
+      }
+    },Math.max(100,Math.min(retry?Math.min(4000,1000*2**Math.min((c.renewFailures||1)-1,2)):8000,
+      retry?c.deadline-clock():(c.deadline-clock())/3)));
   }
   function disconnected(c,generation,reason){
     if(!current(c)||generation!==c.generation)return;

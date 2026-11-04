@@ -680,3 +680,58 @@ test('source automation requests transactional typing, manual sends do not',asyn
   assert.equal(manual.accepted,true);
   assert.equal(seen.at(-1).typing,false);
 });
+
+// Regression: control-plane availability must not destroy a still-fenced socket.
+for(const status of [429,502,503,504])test(`offline-hardening: transient ${status} rejects an operation without discarding the valid session`,async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);
+  const session=f.made[0],lease=f.broker.lease;
+  f.broker.lease=async()=>{throw Object.assign(Error('channel_broker_refused'),{status});};
+  await assert.rejects(session.ctx.assertCurrent());
+  assert.equal(session.closed,false,'temporary API error must not destroy valid auth/socket');
+  assert.equal(m.size,1);
+  await assert.rejects(m.send(a.id,a.key,{to:phone,text:'synthetic',operation_id:randomUUID()}));
+  assert.equal(session.sends.length,0,'no authorization bypass during an outage');
+  f.broker.lease=lease;await session.ctx.assertCurrent();
+  assert.equal(f.made.length,1,'recovery reuses the existing socket, not a new QR/session');
+});
+test('offline-hardening: failed renewal retries within the original lease and preserves its deadline',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);
+  const session=f.made[0],lease=f.broker.lease;let fail=true,renewals=0;
+  f.broker.lease=async(...args)=>{if(args[2]==='renew'){renewals++;if(fail)throw Object.assign(Error('channel_broker_refused'),{status:503});}return lease(...args);};
+  await f.advance(8000);assert.equal(session.closed,false);assert.equal(renewals,1);
+  fail=false;await f.advance(1000);assert.equal(renewals,2);assert.equal(session.closed,false);
+  assert.equal(f.made.length,1);await session.ctx.assertCurrent();
+});
+test('offline-hardening: an outage never extends a lease past its real expiry',async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);
+  const session=f.made[0];f.broker.lease=async()=>{throw Object.assign(Error('channel_broker_refused'),{status:503});};
+  await f.advance(8000);assert.equal(session.closed,false);
+  await f.advance(22000);assert.equal(session.closed,true);assert.equal(m.size,0);
+  assert.equal(session.ctx.isCurrent(),false);
+});
+for(const status of [401,403,404,409,423])test(`offline-hardening: explicit ${status} revocation or fence refusal still closes immediately`,async t=>{
+  const f=fixture(t),a=f.add(),m=f.manager();await m.start(a.id,a.key);
+  const session=f.made[0];f.broker.lease=async()=>{throw Object.assign(Error('channel_broker_refused'),{status});};
+  await assert.rejects(session.ctx.assertCurrent());assert.equal(session.closed,true);assert.equal(m.size,0);
+});
+
+// Transport errors are classified without converting revocation or bad data
+// into a successful authorization or a renewed lease.
+for(const code of ['ECONNRESET','ECONNREFUSED','ETIMEDOUT','EAI_AGAIN','ENOTFOUND'])test('broker sanitizes temporary network failure '+code,async()=>{
+  const broker=createChannelBroker({apiUrl:'http://api.railway.internal',fetchImpl:async()=>{
+    throw Object.assign(new TypeError('fetch failed'),{cause:{code}});
+  }});
+  await assert.rejects(broker.lease(randomUUID(),'synthetic-key-not-a-production-secret','check',randomUUID(),1),
+    error=>error.code==='CHANNEL_BROKER_TEMPORARILY_UNAVAILABLE'&&error.message==='channel_broker_temporarily_unavailable'&&!error.cause);
+});
+test('broker never relabels malformed successful JSON as temporary transport failure',async()=>{
+  const broker=createChannelBroker({apiUrl:'http://api.railway.internal',fetchImpl:async()=>({ok:true,status:200,
+    json:async()=>{throw new SyntaxError('synthetic invalid response');}})});
+  await assert.rejects(broker.lease(randomUUID(),'synthetic-key-not-a-production-secret','check',randomUUID(),1),
+    error=>error instanceof SyntaxError&&error.code!=='CHANNEL_BROKER_TEMPORARILY_UNAVAILABLE');
+});
+test('broker preserves a rejected credential as HTTP 403',async()=>{
+  const broker=createChannelBroker({apiUrl:'http://api.railway.internal',fetchImpl:async()=>({ok:false,status:403})});
+  await assert.rejects(broker.lease(randomUUID(),'synthetic-key-not-a-production-secret','check',randomUUID(),1),
+    error=>error.status===403&&error.message==='channel_broker_refused'&&error.code!=='CHANNEL_BROKER_TEMPORARILY_UNAVAILABLE');
+});

@@ -38,3 +38,27 @@ test('encrypted records are bound to id and session directory, not just a shared
  sa.save({...key,id:'second'},{conversation:'second'});const second=fs.readdirSync(a).find(x=>x!==name);
  fs.copyFileSync(path.join(a,name),path.join(a,second));assert.equal(sa.get({...key,id:'second'}),undefined);
 });
+
+for(const persistent of [false,true])test(`offline-hardening: verified PN/LID participant alias recovers ${persistent?'persisted':'memory'} message with a synthetic provider proof`,async t=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'orion-retry-alias-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const create=()=>persistent?makeEncryptedRetryStore({directory:root,secret:'synthetic-key-'.repeat(4)}):makeMessageRetryStore();
+  let store=create();store.save(key,msg);if(persistent)store=create();
+  const socket={onWhatsApp:async value=>{assert.equal(value,pn.split('@')[0]);return [{exists:true,jid:pn,lid}];}};
+  assert.deepEqual(await readAuthorizedRetry(store,{...key,participant:lid.replace('@',':3@')},{socket}),msg);
+});
+test('offline-hardening: provider mapping resolves retry aliases without depending on a new network lookup',async()=>{
+  const store=makeMessageRetryStore();store.save(key,msg);
+  const socket={onWhatsApp:()=>assert.fail('persisted provider identity should not need phone-online resolution'),signalRepository:{lidMapping:{
+    getLIDForPN:async value=>value===pn?lid:null,getPNForLID:async value=>value===lid?pn:null}}};
+  assert.deepEqual(await readAuthorizedRetry(store,{...key,remoteJid:lid,participant:pn.replace('@',':2@')},{socket}),msg);
+});
+test('offline-hardening: contradictory provider mappings cannot authorize another recipient',async()=>{
+  const store=makeMessageRetryStore();store.save(key,msg);
+  const socket={signalRepository:{lidMapping:{getLIDForPN:async()=>lid,getPNForLID:async()=>other}}};
+  assert.equal(await readAuthorizedRetry(store,{...key,remoteJid:lid},{socket}),undefined);
+});
+test('offline-hardening: an unrelated participant cannot obtain a correctly addressed message',async()=>{
+  const store=makeMessageRetryStore();store.save(key,msg);
+  const socket={signalRepository:{lidMapping:{getLIDForPN:async value=>value===pn?lid:null,getPNForLID:async value=>value===lid?pn:null}}};
+  assert.equal(await readAuthorizedRetry(store,{...key,remoteJid:lid,participant:other},{socket}),undefined);
+});

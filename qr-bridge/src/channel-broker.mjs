@@ -43,7 +43,8 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
     const controller=new AbortController(),abort=()=>controller.abort(),timer=setTimeout(abort,deviceAudio?125000:audio?35000:chatbot?30000:operation==='ai/reply'?19000:5000);
     signal?.addEventListener('abort',abort,{once:true});
     try{
-      const response=await fetchImpl(target,{method,redirect:'error',signal:controller.signal,
+      let response;
+      try{response=await fetchImpl(target,{method,redirect:'error',signal:controller.signal,
         headers:{'Content-Type':audio?mediaType:carouselImage?'application/octet-stream':'application/json','X-Orion-Channel-Key':key,
           ...(owner?{'X-Orion-Channel-Owner':owner,'X-Orion-Channel-Fence':String(fence)}:{}),
           ...(audio?{'X-Orion-Phone':phone}:{}),
@@ -52,6 +53,16 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
             ...(device.chatbot_revision?{'X-Orion-Chatbot-Revision':String(device.chatbot_revision)}:{})}:{}),
           ...(carouselImage?{'X-Orion-Chatbot-Card':String(cardIndex)}:{})},
         ...(method==='GET'?{}:{body:raw?body:JSON.stringify(body)})});
+      }catch(error){
+        if(signal?.aborted)throw Error('channel_request_aborted');
+        // Only a transport failure is transient. Invalid successful responses,
+        // rejected credentials, changed fences and malformed JSON remain fatal.
+        const code=error?.cause?.code||error?.code;
+        if(controller.signal.aborted||['ECONNRESET','ECONNREFUSED','ETIMEDOUT','EAI_AGAIN','ENOTFOUND',
+            'UND_ERR_CONNECT_TIMEOUT','UND_ERR_SOCKET'].includes(code)||error instanceof TypeError&&error.message==='fetch failed')
+          throw Object.assign(Error('channel_broker_temporarily_unavailable'),{code:'CHANNEL_BROKER_TEMPORARILY_UNAVAILABLE'});
+        throw error;
+      }
       if(!response.ok||controller.signal.aborted){const error=Error('channel_broker_refused');error.status=response.status;throw error;}
       return binary?await readPrivateAsset(response,binary,controller.signal):await response.json();
     }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
