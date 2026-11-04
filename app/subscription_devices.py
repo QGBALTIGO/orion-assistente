@@ -570,8 +570,8 @@ async def _private_transaction(request, *, live=True, device_id=None, allow_remo
                 channels._current(transport, owner, fence)
             await channels._require_canonical(db, tenant, channel_id)
             row = (await db.execute(text("""SELECT * FROM subscription_devices WHERE tenant_id=:t AND channel_id=:c
-                AND (:d IS NULL OR id=CAST(:d AS uuid)) AND (:removed OR removed_at IS NULL) FOR UPDATE"""),
-                {"t": tenant, "c": channel_id, "d": str(device_id) if device_id else None,
+                AND (CAST(:d AS uuid) IS NULL OR id=CAST(:d AS uuid)) AND (:removed OR removed_at IS NULL) FOR UPDATE"""),
+                {"t": tenant, "c": channel_id, "d": device_id,
                  "removed": allow_removed})).mappings().one_or_none()
             if (not row or transport["assistant_enabled"] or transport["allowed_senders"]
                     or is_alias(tenant, channel_id) or row["owner_account_id"] != transport["owner_account_id"]):

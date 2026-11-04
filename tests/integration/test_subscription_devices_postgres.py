@@ -18,7 +18,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-from app import qr_channels as channels, subscription_devices as devices
+from app import catalog_api, qr_channels as channels, subscription_devices as devices
 from app import subscription_device_audio
 from app.database import tenant_transaction
 from app.plan_routing import include_plan_router
@@ -110,7 +110,9 @@ async def device_case(new_owner_http, monkeypatch):
     monkeypatch.setattr(subscription_device_audio, "audio_available", lambda: True)
     # The production app puts explicitly classified modules before the generic
     # catalog routes. Keep the same ordering in this real-auth fixture.
-    generic = [route for route in case.app.router.routes if "{resource}" in getattr(route, "path", "")]
+    generic = [route for route in case.app.router.routes
+               if getattr(route, "original_router", None) is catalog_api.router
+               or "{resource}" in getattr(route, "path", "")]
     case.app.router.routes[:] = [route for route in case.app.router.routes if route not in generic]
     include_plan_router(case.app, channels.router)
     include_plan_router(case.app, devices.router)
