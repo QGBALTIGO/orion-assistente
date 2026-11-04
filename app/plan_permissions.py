@@ -15,6 +15,9 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 from app.plan_catalog import ALL_FEATURES, CODES, PLAN_FEATURES, RECOVERY_FEATURES
+from app.workspace_policy import (SUBSCRIPTION_WORKSPACE, SUBSCRIPTION_WORKSPACE_FEATURES,
+                                  require_standard_workspace, workspace_profile,
+                                  workspace_unavailable)
 
 LOCK_PREFIX = "orion-plan-v1:"
 
@@ -88,10 +91,16 @@ def derive_plan(snapshot, now=None):
         status = "tenant_inactive"
     features = sorted(ALL_FEATURES if platform and active else
                       (PLAN_FEATURES.get(code, frozenset()) if active else frozenset()) | RECOVERY_FEATURES)
+    profile = workspace_profile(snapshot.get("niche"), platform=platform)
+    if profile == SUBSCRIPTION_WORKSPACE:
+        # Keep commercial history intact. A grant never enables another
+        # niche's operations while its own workspace is being prepared.
+        features = sorted(SUBSCRIPTION_WORKSPACE_FEATURES)
     maximum = CODES[code]["max_professionals"] if code else None
     result = {"code": code, "name": "Administração Orion" if platform else CODES[code]["name"] if code else "Sem plano ativo",
         "source": source, "status": status, "active": active, "valid_until": until,
         "version": int(snapshot.get("version") or 0), "platform_workspace": platform,
+        "workspace_profile": profile,
         "features": features, "permissions": {key: key in features for key in sorted(ALL_FEATURES)},
         "limits": {"max_professionals": maximum, "active_professionals": used,
                    "excess_professionals": max(0, used - maximum) if maximum is not None else 0},
@@ -121,7 +130,10 @@ async def plan_state(db, tenant_id, lock="shared"):
         raise ValueError("Invalid plan lock")
     if lock:
         await lock_plan(db, tenant_id, exclusive=lock == "exclusive")
-    snapshot = (await db.execute(text("SELECT public.orion_plan_snapshot(:tenant)"), {"tenant": tenant_id})).scalar_one()
+    snapshot = (await db.execute(text("""SELECT public.orion_plan_snapshot(:tenant)
+        || jsonb_build_object('niche', (SELECT configuration->>'niche'
+            FROM public.business_onboarding WHERE tenant_id=:tenant))"""),
+        {"tenant": tenant_id})).scalar_one()
     if snapshot is None:
         raise HTTPException(404, "Empresa não encontrada")
     # Provider-neutral prepaid access is SECURITY DEFINER + tenant scoped;
@@ -139,12 +151,13 @@ class PlanScope:
     features: frozenset[str]
     exclusive: bool = False
     bypass: bool = False
+    workspace_allowed: bool = True
 
 
 _scope = ContextVar("orion_plan_scope", default=None)
 
 
-def bind_feature(tenant_id, feature, exclusive=False, bypass=False):
+def bind_feature(tenant_id, feature, exclusive=False, bypass=False, workspace_allowed=True):
     if not isinstance(tenant_id, UUID) or feature not in ALL_FEATURES:
         raise ValueError("Verified plan context required")
     current = _scope.get()
@@ -152,7 +165,8 @@ def bind_feature(tenant_id, feature, exclusive=False, bypass=False):
         raise HTTPException(403, "Contexto de empresa inválido")
     features = (current.features if current else frozenset()) | {feature}
     return _scope.set(PlanScope(tenant_id, frozenset(features), exclusive or bool(current and current.exclusive),
-                               bypass or bool(current and current.bypass)))
+                               bypass or bool(current and current.bypass),
+                               workspace_allowed and (current is None or current.workspace_allowed)))
 
 
 def reset_feature(token):
@@ -169,6 +183,8 @@ async def require_feature(db, tenant_id, feature, lock="shared"):
         raise HTTPException(403, "Funcionalidade não disponível")
     state = await plan_state(db, tenant_id, lock=lock)
     if not _bypass(tenant_id) and not state["permissions"].get(feature, False):
+        if state.get("workspace_profile") == SUBSCRIPTION_WORKSPACE:
+            raise workspace_unavailable(feature)
         if state["status"] == "tenant_inactive":
             raise HTTPException(409, {"code": "TENANT_INACTIVE", "message":
                 "Esta empresa ainda não está ativa para operar. Confira a configuração ou fale com a administração."})
@@ -215,8 +231,12 @@ async def plan_transaction_guard(db, tenant_id):
     if not scope.bypass:
         await lock_plan(db, tenant_id, exclusive=scope.exclusive)
         for feature in sorted(scope.features):
-            await require_feature(db, tenant_id, feature, lock=None)
+            state = await require_feature(db, tenant_id, feature, lock=None)
+            if not scope.workspace_allowed:
+                require_standard_workspace(state, feature)
     yield
     if not scope.bypass:
         for feature in sorted(scope.features):
-            await require_feature(db, tenant_id, feature, lock=None)
+            state = await require_feature(db, tenant_id, feature, lock=None)
+            if not scope.workspace_allowed:
+                require_standard_workspace(state, feature)

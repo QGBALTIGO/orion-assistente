@@ -67,8 +67,12 @@
   const appPages=new Set([...Object.keys(routeNames),...routeAliases.keys()]);
   const routeFeatures={dashboard:'dashboard.basic',agenda:'agenda.manage',clientes:'clients.manage',inbox:'conversations.manual',servicos:'services.manage',funcionarios:'professionals.manage',financeiro:'finance.basic',desempenho:'performance.advanced',marketing:'marketing.ai',site:'site.manage',fidelizacao:'loyalty.manage',consultor:'consultant.ai',configuracoes:'settings.manage'};
   const platformWorkspace=()=>state.bridge.user?.role==='admin'&&!state.bridge.user?.maintenance?.active;
-  const permitted=feature=>!feature||platformWorkspace()||state.entitlements?.permissions?.[feature]===true;
-  const routePermitted=route=>route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
+  const subscriptionRoutes=new Set(['novidades','ajuda','member']);
+  const workspaceProfile=()=>platformWorkspace()?'standard':state.workspaceProfile||tenant()?.workspace_profile||null;
+  const subscriptionWorkspace=()=>workspaceProfile()==='subscription_services';
+  const fallbackRoute=()=>subscriptionWorkspace()?'novidades':'plano';
+  const permitted=feature=>!feature||platformWorkspace()||(!subscriptionWorkspace()||['account.manage','business.setup'].includes(feature))&&state.entitlements?.permissions?.[feature]===true;
+  const routePermitted=route=>subscriptionWorkspace()?subscriptionRoutes.has(route):route==='configuracoes'?(permitted('settings.manage')||permitted('business.setup')||permitted('account.manage')):permitted(routeFeatures[route]);
   const settingsTabAllowed=tab=>['appearance','account'].includes(tab)||tab==='general'?(tab!=='general'||permitted('business.setup')||permitted('settings.manage')):tab==='ai'?(permitted('marketing.ai')||permitted('consultant.ai')):tab==='whatsapp'?permitted('conversations.manual'):tab==='hours'?permitted('agenda.manage'):tab==='calendar'?permitted('calendar.manage'):tab==='notifications'?permitted('notifications.basic'):tab==='site-requests'?canManageSiteRequests():platformWorkspace();
   const atProfessionalLimit=()=>!platformWorkspace()&&Number.isInteger(state.entitlements?.limits?.max_professionals)&&Number(state.entitlements.limits.active_professionals)>=state.entitlements.limits.max_professionals;
   function featureForPath(path,method='GET',data){
@@ -102,6 +106,7 @@
     const fab=$('osConsultantFab');if(fab)fab.classList.toggle('hidden',!permitted('consultant.ai')||['agenda','inbox'].includes(state.route));
     document.querySelectorAll('[data-qc-assistant]').forEach(node=>{node.hidden=!permitted('reception.ai');});
     document.querySelectorAll('[data-os-action=notifications]').forEach(node=>{node.hidden=!permitted('notifications.basic');});
+    const notifications=$('osNotificationsToggle')?.closest('.os-notifications');if(notifications)notifications.hidden=subscriptionWorkspace();
     document.querySelectorAll('#osDialog .os-commission-default,#osDialog .os-commission-service-controls,#osDialog [name=commission_mode]').forEach(node=>{
       const area=node.name==='commission_mode'?node.closest('.os-field'):node;if(!area)return;area.hidden=!permitted('commissions.advanced');
       area.querySelectorAll('input,select').forEach(input=>{if(!permitted('commissions.advanced')){if(!input.dataset.osPlanDisabled)input.dataset.osPlanDisabled=String(input.disabled);input.disabled=true;}else if(input.dataset.osPlanDisabled){input.disabled=input.dataset.osPlanDisabled==='true';delete input.dataset.osPlanDisabled;}});
@@ -128,12 +133,16 @@
         const result=await Promise.resolve().then(()=>state.bridge.request(mgmt('/permissions'))),value=result?.effective_plan;
         if(!state.mounted||epoch!==state.epoch||id!==state.tenantId||read!==state.permissionRead)return false;
         if(!value||!value.permissions||typeof value.permissions!=='object'||Array.isArray(value.permissions)||typeof value.revision!=='string')throw Error('Não foi possível confirmar as permissões desta empresa.');
-        const changed=state.entitlements?.revision!==value.revision;state.entitlements=value;state.permissionError='';armPermissionExpiry(value,epoch,id);
+        const previousProfile=workspaceProfile(),nextProfile=['standard','subscription_services'].includes(value.workspace_profile)?value.workspace_profile:tenant()?.workspace_profile||previousProfile;
+        const profileChanged=previousProfile!==nextProfile,changed=state.entitlements?.revision!==value.revision||profileChanged;
+        state.workspaceProfile=nextProfile;state.entitlements=value;state.permissionError='';armPermissionExpiry(value,epoch,id);
+        if(profileChanged){state.load++;state.data={};state.busy=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeNotifications();closeDialog(true);}
+        state.bridge.onWorkspaceProfile?.();
         if(changed){
           renderSidebar();applyPermissionDOM();
           if(state.dialog&&!permitted(state.dialog.requiredFeature)){state.busy=false;closeDialog(true);toast('Seu plano mudou. Esta ação não está mais disponível.',true);}
           if(reconcile){
-            if(!routePermitted(state.route))await open('plano',{force:true,permissionsChecked:true});
+            if(!routePermitted(state.route))await open(fallbackRoute(),{force:true,permissionsChecked:true});
             else if(state.route==='configuracoes'&&!settingsTabAllowed(state.filters.settingsTab)){state.filters.settingsTab='account';await open('configuracoes',{force:true,permissionsChecked:true});}
             else if(state.route==='financeiro'&&!permitted(financeFeature(state.filters.financeTab))){state.filters.financeTab='entries';await open('financeiro',{force:true,permissionsChecked:true});}
             else if(!state.dialog&&!document.activeElement?.matches?.('input,select,textarea,[contenteditable=true]'))await open(state.route,{force:true,keepScroll:true,permissionsChecked:true});
@@ -141,7 +150,7 @@
           }
         }
         return true;
-      }catch(error){if(epoch===state.epoch&&id===state.tenantId){clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;state.entitlements=null;state.permissionError=error.message||'Não foi possível confirmar as permissões.';renderSidebar();applyPermissionDOM();if(reconcile){state.busy=false;closeDialog(true);await open('plano',{force:true,permissionsChecked:true});}}return false;}
+      }catch(error){if(epoch===state.epoch&&id===state.tenantId){clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;state.entitlements=null;state.permissionError=error.message||'Não foi possível confirmar as permissões.';renderSidebar();applyPermissionDOM();if(reconcile){state.busy=false;closeDialog(true);await open(fallbackRoute(),{force:true,permissionsChecked:true});}}return false;}
       finally{if(state.permissionPending===pending)state.permissionPending=null;}
     })();state.permissionPending=pending;return pending;
   }
@@ -223,7 +232,7 @@
   const canManageSiteRequests=()=>['support','admin'].includes(state.bridge.user?.role);
   function apiPath(suffix){if(!tenant())throw Error(businessAccessError()||'Não foi possível confirmar a empresa desta conta.');return '/api/v1/tenants/'+encodeURIComponent(state.tenantId)+suffix;}
   function mgmt(suffix){return apiPath('/management'+suffix);}
-  function request(path,method='GET',data){if(typeof state.bridge.request!=='function')return Promise.reject(Error('A conexão com sua conta ainda não está pronta.'));if(!permitted(featureForPath(path,method,data)))return Promise.reject(Object.assign(Error('Seu plano não inclui este recurso.'),{status:403}));return state.bridge.request(path,method,data).catch(error=>{if(error.status===403&&!platformWorkspace())void refreshPermissions({reconcile:true});throw error;});}
+  function request(path,method='GET',data){if(typeof state.bridge.request!=='function')return Promise.reject(Error('A conexão com sua conta ainda não está pronta.'));if(subscriptionWorkspace()&&path.startsWith('/api/v1/tenants/')&&!path.endsWith('/management/permissions'))return Promise.reject(Object.assign(Error('Esta função ainda não está disponível para este tipo de negócio.'),{status:403}));if(!permitted(featureForPath(path,method,data)))return Promise.reject(Object.assign(Error('Seu plano não inclui este recurso.'),{status:403}));return state.bridge.request(path,method,data).catch(error=>{if(error.status===403&&!platformWorkspace())void refreshPermissions({reconcile:true});throw error;});}
   function context(){return {epoch:state.epoch,tenantId:state.tenantId,load:state.load,route:state.route,accessRevision:state.entitlements?.revision};}
   function current(c){return state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.load===state.load&&c.route===state.route&&c.accessRevision===state.entitlements?.revision;}
   function stillAccount(c){return state.mounted&&c.epoch===state.epoch&&c.tenantId===state.tenantId&&c.accessRevision===state.entitlements?.revision;}
@@ -232,7 +241,7 @@
   const statusLabels={archived:'Arquivada',paused:'Pausada',approved:'Autorizada',hold:'Reserva',confirmed:'Confirmado',completed:'Atendido',cancelled:'Cancelado',no_show:'Não compareceu',pending:'Pendente',paid:'Pago',available:'Disponível',redeemed:'Usado',expired:'Expirado',draft:'Rascunho',active:'Ativo',inactive:'Inativo'};
   function badge(status,label){const cls=['completed','paid','active','available','redeemed'].includes(status)?'os-success':['cancelled','no_show','expired'].includes(status)?'os-danger':['hold','pending'].includes(status)?'os-warning':'os-neutral';return '<span class="os-badge '+cls+'">'+esc(label||statusLabels[status]||status)+'</span>';}
   const button=(text,action,kind='',symbol='',extra='')=>'<button type="button" class="os-button '+kind+'" data-os-action="'+action+'" '+extra+'>'+(symbol?icon(symbol):'')+esc(text)+'</button>';
-  const routeButton=(text,route,kind='',symbol='')=>'<button type="button" class="os-button '+kind+'" data-os-route="'+route+'">'+(symbol?icon(symbol):'')+esc(text)+'</button>';
+  const routeButton=(text,route,kind='',symbol='')=>subscriptionWorkspace()&&!routePermitted(route)?'':'<button type="button" class="os-button '+kind+'" data-os-route="'+route+'">'+(symbol?icon(symbol):'')+esc(text)+'</button>';
   function typedField(type,value,extra,name){
     if(type==='tel'){
       const internationalCustomer=name==='phone'||name==='customer_phone';
@@ -360,27 +369,27 @@
   function renderSidebar(){
     const focused=document.activeElement,previousFocus=focused?.closest?.('#osNav')?{route:focused.dataset.osRoute,action:focused.dataset.osAction}:null;
     const t=tenant(),isAdmin=['support','admin'].includes(state.bridge.user?.role);
-    $('osSidebarContext').innerHTML='<div class="os-overline">Meu negócio</div><div class="os-tenant-name">'+esc(t?.name||(businessAccessError()?'Acesso pendente':state.bridge.businessContextReady===false?'Conferindo empresa…':'Sua empresa'))+'</div><div class="os-sidebar-badges"><span class="os-badge">'+esc(isAdmin?'Administração':t?.role==='viewer'?'Consulta':t?.role==='editor'?'Equipe':'Minha empresa')+'</span></div>'+(t?'<button type="button" class="os-side-site" data-os-route="site">meu site '+icon('external')+'</button>':'');
+    $('osSidebarContext').innerHTML='<div class="os-overline">Meu negócio</div><div class="os-tenant-name">'+esc(t?.name||(businessAccessError()?'Acesso pendente':state.bridge.businessContextReady===false?'Conferindo empresa…':'Sua empresa'))+'</div><div class="os-sidebar-badges"><span class="os-badge">'+esc(isAdmin?'Administração':t?.role==='viewer'?'Consulta':t?.role==='editor'?'Equipe':'Minha empresa')+'</span></div>'+(t&&!subscriptionWorkspace()?'<button type="button" class="os-side-site" data-os-route="site">meu site '+icon('external')+'</button>':'');
     const navItem=([route,symbol],extra='')=>'<button type="button" class="os-nav-link'+extra+'" data-os-route="'+route+'" title="'+esc(routeNames[route])+'">'+icon(symbol)+'<span>'+esc(routeNames[route])+'</span></button>';
-    let nav=isAdmin?navItem(['dispositivo','phone'],' os-nav-connection'):t&&permitted('conversations.manual')?'<button type="button" class="os-nav-link os-nav-connection" data-os-action="managed-whatsapp" title="Conectar WhatsApp">'+icon('phone')+'<span>Conectar WhatsApp</span></button>':'';
+    let nav=subscriptionWorkspace()?'':isAdmin?navItem(['dispositivo','phone'],' os-nav-connection'):t&&permitted('conversations.manual')?'<button type="button" class="os-nav-link os-nav-connection" data-os-action="managed-whatsapp" title="Conectar WhatsApp">'+icon('phone')+'<span>Conectar WhatsApp</span></button>':'';
     nav+='<div class="os-nav-section">Gestão</div>'+mainNav.filter(([route])=>routePermitted(route)).map(item=>navItem(item)).join('');
-    if(state.bridge.user?.role==='admin'){
+    if(state.bridge.user?.role==='admin'&&!subscriptionWorkspace()){
       nav+='<div class="os-nav-section">Atendimento Orion</div>';
       const attendance=[['conversas','chat'],['ai','bot'],['empresa','settings'],['catalogo','box']];
       attendance.forEach(item=>{nav+=navItem(item);});
     }
     nav+='<div class="os-nav-section">Ajuda e conta</div>'+[['novidades','bell'],['ajuda','book'],['member','shield']].map(([route,symbol])=>{
-      const label=route==='member'&&state.bridge.user?.role==='admin'?'Administração de clientes':routeNames[route];
+      const label=route==='member'&&state.bridge.user?.role==='admin'&&!subscriptionWorkspace()?'Administração de clientes':routeNames[route];
       return '<button type="button" class="os-nav-link os-nav-utility" data-os-route="'+route+'" title="'+esc(label)+'">'+icon(symbol)+'<span>'+esc(label)+'</span></button>';
     }).join('');
     $('osNav').innerHTML=nav;selectedNav();applyPermissionDOM();
-    if(previousFocus){const target=previousFocus.route?$('osNav').querySelector('[data-os-route="'+previousFocus.route+'"]'):$('osNav').querySelector('[data-os-action="'+previousFocus.action+'"]');(target||$('osNav').querySelector('[data-os-route=plano]'))?.focus({preventScroll:true});}
+    if(previousFocus){const target=previousFocus.route?$('osNav').querySelector('[data-os-route="'+previousFocus.route+'"]'):$('osNav').querySelector('[data-os-action="'+previousFocus.action+'"]');(target||$('osNav').querySelector('[data-os-route="'+fallbackRoute()+'"]'))?.focus({preventScroll:true});}
   }
   function applyThemeState(){const pref=document.documentElement.dataset.themePreference||'auto',effective=document.documentElement.dataset.theme||'light';document.querySelectorAll('[data-os-theme]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.osTheme===pref)));const toggle=$('osThemeToggle');if(toggle)toggle.innerHTML=icon(effective==='dark'?'moon':'sun');document.querySelectorAll('.os-mobile-brand [data-orion-logo]').forEach(i=>i.src='/brand/orion-brand-'+effective+'.svg');}
   function setTheme(preference){const original=document.querySelector('.theme-choice[data-theme-choice="'+preference+'"]');if(original)original.click();else{document.documentElement.dataset.themePreference=preference;document.documentElement.dataset.theme=preference==='auto'?(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):preference;try{localStorage.setItem('orion-theme',preference);}catch{}}applyThemeState();$('osThemeMenu').classList.add('hidden');$('osThemeToggle').setAttribute('aria-expanded','false');}
   function drawer(open){const app=$('appView'),side=$('osSidebar');if(!app||!side)return;app.classList.toggle('os-menu-open',open);$('osMenu').setAttribute('aria-expanded',String(open));if(open){state.drawerTrigger=document.activeElement;side.querySelector('button')?.focus();}else state.drawerTrigger?.focus?.();}
   function resetPeriod(){const today=dateKey(),d=dayDate(today);d.setUTCMonth(d.getUTCMonth()+1,0);state.filters.periodStart=today.slice(0,8)+'01';state.filters.periodEnd=d.toISOString().slice(0,10);state.filters.performancePeriod='month';state.filters.performanceDay=today;}
-  function legacyOpened(route){if(route==='cadastros'){void open('configuracoes',{force:true});return;}if(!state.mounted||!legacyPages.has(route))return;if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin'){void open('dashboard',{force:true});return;}clearSiteLookups();state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeNames[route]+' · Orion';}
+  function legacyOpened(route){if(state.mounted&&subscriptionWorkspace()&&!routePermitted(route)){void open(fallbackRoute(),{force:true});return;}if(route==='cadastros'){void open('configuracoes',{force:true});return;}if(!state.mounted||!legacyPages.has(route))return;if(platformAdminOnlyPages.has(route)&&state.bridge.user?.role!=='admin'){void open('dashboard',{force:true});return;}clearSiteLookups();state.route=route;state.load++;state.filters.agendaTablet=false;clearInterval(state.clockTimer);$('appView')?.classList.remove('os-tablet-mode');closeNotifications();closeDialog();selectedNav();$('page-suite').classList.add('hidden');$('osConsultantFab')?.classList.add('hidden');drawer(false);document.title=routeNames[route]+' · Orion';}
   async function open(route,options={}){
     route=routeAliases.get(route)||route;
     const navigationRead=state.navigationRead=(state.navigationRead||0)+1;state.pendingRoute=route;
@@ -410,11 +419,11 @@
     }
     const permissionEpoch=state.epoch,permissionTenant=state.tenantId;
     if(!options.permissionsChecked&&!platformWorkspace()){
-      if(!state.entitlements){pageHTML(loading('Conferindo seu plano e permissões…'));$('osConsultantFab')?.classList.add('hidden');}
+      if(!state.entitlements){pageHTML(loading(subscriptionWorkspace()?'Conferindo o acesso à sua empresa…':'Conferindo seu plano e permissões…'));$('osConsultantFab')?.classList.add('hidden');}
       await refreshPermissions();
       if(!state.mounted||permissionEpoch!==state.epoch||permissionTenant!==state.tenantId||navigationRead!==state.navigationRead)return;
     }
-    if(!routePermitted(route))route='plano';
+    if(!routePermitted(route))route=fallbackRoute();
     if(legacyPages.has(route)){
       if(route==='dispositivo'&&!['support','admin'].includes(state.bridge.user?.role)){toast('Seu acesso não inclui a operação do WhatsApp.',true);return;}
       if(route==='member'&&['support','admin'].includes(state.bridge.user?.role)){route='configuracoes';}else{legacyOpened(route);state.bridge.openLegacy?.(route);return;}
@@ -1867,6 +1876,7 @@
   function renderNews(){const labels={feature:'Novidade',improvement:'Melhoria',fix:'Correção'},filter=state.filters.newsFilter,list=releaseNotes.filter(note=>filter==='all'||note[0]===filter);bodyHTML('<section class="os-card os-news-toolbar"><div><h2>O que mudou no Orion</h2><p>Atualizações desta versão do painel.</p></div>'+routeButton('Base de conhecimento','ajuda','os-outline os-small','book')+'</section><div class="os-help-categories os-news-filters" role="tablist" aria-label="Tipo de atualização">'+[['all','Todos'],...Object.entries(labels)].map(([value,label])=>'<button type="button" role="tab" class="os-pill-tab" aria-selected="'+(filter===value)+'" data-os-news-filter="'+value+'">'+label+'</button>').join('')+'</div><div class="os-news-list">'+list.map(note=>'<article class="os-card os-news-card"><header><span class="os-badge '+(note[0]==='feature'?'os-success':note[0]==='fix'?'os-warning':'os-neutral')+'">'+labels[note[0]]+'</span><h2>'+esc(note[1])+'</h2><p>'+esc(note[2])+'</p></header><div><ul>'+note[3].map(text=>'<li>'+esc(text)+'</li>').join('')+'</ul>'+routeButton('Abrir '+routeNames[note[4]],note[4],'os-ghost os-small','arrow')+'</div></article>').join('')+'</div>');}
   function showDialog(type,titleText,content,meta={},wide=false){
     if(state.busy)return false;
+    if(subscriptionWorkspace()){toast('Esta função ainda não está disponível para este tipo de negócio.',true);return false;}
     if(!permitted(dialogFeature(type))){toast('Seu plano não inclui este recurso.',true);return false;}
     closeDialog();const d=$('osDialog');
     state.dialog={type,requiredFeature:dialogFeature(type),epoch:state.epoch,tenantId:state.tenantId,trigger:document.activeElement,key:crypto.randomUUID(),...meta};
@@ -3367,10 +3377,11 @@
   }
   function onDialogCancel(event){if(state.busy){event.preventDefault();return;}event.preventDefault();closeDialog();}
   function sync(bridge={}){
-    const oldIdentity=state.bridge.user?.email+'|'+state.bridge.user?.role,oldTenant=state.tenantId,oldReady=state.bridge.businessContextReady,oldError=businessAccessError();state.bridge={...state.bridge,...bridge};
+    const oldIdentity=state.bridge.user?.email+'|'+state.bridge.user?.role,oldTenant=state.tenantId,oldReady=state.bridge.businessContextReady,oldError=businessAccessError(),oldProfile=tenant()?.workspace_profile;state.bridge={...state.bridge,...bridge};
     state.tenantId=accountTenantId();
-    const identity=state.bridge.user?.email+'|'+state.bridge.user?.role;if(oldIdentity!==identity||oldTenant!==state.tenantId){clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;state.permissionExpiryConsumed=null;state.entitlements=null;state.permissionPending=null;state.permissionRead=(state.permissionRead||0)+1;state.epoch++;state.imageUploading=false;clearSiteLookups();clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);state.data={};state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.filters.agendaDay=dateKey();resetPeriod();closeDialog(true);}
-    if(!state.mounted)return;renderSidebar();if(oldIdentity!==identity||oldTenant!==state.tenantId||oldReady!==state.bridge.businessContextReady||oldError!==businessAccessError())void open(state.pendingRoute||state.route,{replace:true,force:true});
+    const nextProfile=tenant()?.workspace_profile,profileChanged=!!nextProfile&&oldProfile!==nextProfile;
+    const identity=state.bridge.user?.email+'|'+state.bridge.user?.role;if(oldIdentity!==identity||oldTenant!==state.tenantId||profileChanged){state.workspaceProfile=nextProfile||null;clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;state.permissionExpiryConsumed=null;state.entitlements=null;state.permissionPending=null;state.permissionRead=(state.permissionRead||0)+1;state.epoch++;state.imageUploading=false;clearSiteLookups();clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);state.data={};state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');state.filters.agendaDay=dateKey();resetPeriod();closeDialog(true);}
+    if(!state.mounted)return;renderSidebar();state.bridge.onWorkspaceProfile?.();if(oldIdentity!==identity||oldTenant!==state.tenantId||profileChanged||oldReady!==state.bridge.businessContextReady||oldError!==businessAccessError())void open(state.pendingRoute||state.route,{replace:true,force:true});
   }
   async function refreshLiveRoute(){
     if(state.mounted&&tenant()&&document.visibilityState!=='hidden')await refreshPermissions({reconcile:true});
@@ -3387,11 +3398,11 @@
   function refreshAccess(event){if(state.mounted&&tenant()&&document.visibilityState!=='hidden')void refreshPermissions({reconcile:event?.detail?.preservePage!==true});}
   function mount(bridge){
     if(state.mounted){sync(bridge);return;}
-    state.bridge=bridge||{};state.mounted=true;state.epoch++;state.load++;state.tenantId=accountTenantId();state.filters.agendaDay=dateKey();resetPeriod();
+    state.bridge=bridge||{};state.mounted=true;state.epoch++;state.load++;state.tenantId=accountTenantId();state.workspaceProfile=tenant()?.workspace_profile||null;state.filters.agendaDay=dateKey();resetPeriod();
     buildShell();if(typeof window.BroadcastChannel==='function'){try{state.permissionChannel=new BroadcastChannel('orion-plan-access');state.permissionChannel.onmessage=event=>{if(event.data?.type!=='changed'||event.data.tenantId!==state.tenantId||!tenant())return;const epoch=state.epoch,id=state.tenantId,refresh=()=>{if(state.mounted&&state.epoch===epoch&&state.tenantId===id)void refreshPermissions({reconcile:true});};if(state.permissionPending)void state.permissionPending.then(refresh);else refresh();};}catch{state.permissionChannel=null;}}state.permissionObserver=new MutationObserver(()=>applyPermissionDOM());state.permissionObserver.observe($('page-suite'),{childList:true,subtree:true});window.addEventListener('focus',refreshAccess);document.addEventListener('visibilitychange',refreshAccess);window.addEventListener('orion:plan-changed',refreshAccess);clearInterval(state.liveRefreshTimer);state.liveRefreshTimer=setInterval(()=>{void refreshLiveRoute().catch(()=>{});},30000);document.addEventListener('click',handleClick);document.addEventListener('change',handleChange);document.addEventListener('input',handleInput);document.addEventListener('focusout',handleSiteFocusOut);document.addEventListener('compositionend',handleSiteCompositionEnd);document.addEventListener('submit',submitForm);document.addEventListener('keydown',handleKeydown);document.addEventListener('pointerdown',handleServicePointerDown);document.addEventListener('pointermove',handleServicePointerMove);document.addEventListener('pointerup',handleServicePointerUp);document.addEventListener('pointercancel',clearServiceDrag);$('osDialog').addEventListener('cancel',onDialogCancel);
     state.observer=new MutationObserver(()=>applyThemeState());state.observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-theme-preference']});
     const desired=bridge?.initialRoute||'dashboard';void open(appPages.has(desired)?desired:'dashboard');
   }
-  function destroy(){window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;if(state.permissionChannel){state.permissionChannel.onmessage=null;state.permissionChannel.close();state.permissionChannel=null;}state.permissionObserver?.disconnect();state.permissionObserver=null;window.removeEventListener('focus',refreshAccess);document.removeEventListener('visibilitychange',refreshAccess);window.removeEventListener('orion:plan-changed',refreshAccess);state.entitlements=null;state.permissionPending=null;state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
-  window.OrionSuite=Object.freeze({mount,sync,destroy,open,legacyOpened});
+  function destroy(){window.OrionChannels?.unmount();window.OrionAutomations?.unmount();window.OrionCommunication?.unmount();window.OrionInbox?.unmount();state.mounted=false;clearInterval(state.clockTimer);clearInterval(state.liveRefreshTimer);state.epoch++;state.load++;state.busy=false;state.imageUploading=false;clearTimeout(state.searchTimer);clearTimeout(state.agendaSearchTimer);clearSiteLookups();closeDialog(true);state.data={};state.bridge={};state.tenantId='';state.workspaceProfile=null;state.filters=defaultFilters();closeNotifications();$('osNotificationsPanel')?.replaceChildren();$('osNotificationDot')?.classList.add('hidden');clearTimeout(state.permissionExpiryTimer);state.permissionExpiryTimer=null;if(state.permissionChannel){state.permissionChannel.onmessage=null;state.permissionChannel.close();state.permissionChannel=null;}state.permissionObserver?.disconnect();state.permissionObserver=null;window.removeEventListener('focus',refreshAccess);document.removeEventListener('visibilitychange',refreshAccess);window.removeEventListener('orion:plan-changed',refreshAccess);state.entitlements=null;state.permissionPending=null;state.observer?.disconnect();state.observer=null;document.removeEventListener('click',handleClick);document.removeEventListener('change',handleChange);document.removeEventListener('input',handleInput);document.removeEventListener('focusout',handleSiteFocusOut);document.removeEventListener('compositionend',handleSiteCompositionEnd);document.removeEventListener('submit',submitForm);document.removeEventListener('keydown',handleKeydown);document.removeEventListener('pointerdown',handleServicePointerDown);document.removeEventListener('pointermove',handleServicePointerMove);document.removeEventListener('pointerup',handleServicePointerUp);document.removeEventListener('pointercancel',clearServiceDrag);clearServiceDrag();$('osDialog')?.removeEventListener('cancel',onDialogCancel);$('page-suite')?.replaceChildren();$('osNav')?.replaceChildren();$('osSidebarContext')?.replaceChildren();$('osToastRegion')?.replaceChildren();$('appView')?.classList.remove('os-menu-open','os-tablet-mode');}
+  window.OrionSuite=Object.freeze({mount,sync,destroy,open,legacyOpened,workspaceProfile});
 })();

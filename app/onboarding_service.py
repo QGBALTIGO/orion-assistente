@@ -27,6 +27,7 @@ from app.onboarding_timezone import timezone_from_address
 from app import business_profile_service as profiles
 from app.business_profile_schemas import BusinessProfile
 from app.http_json import ordinary_json_tree
+from app.workspace_policy import SUBSCRIPTION_NICHE
 from app.commercial_service import audit as commercial_audit
 from app.account_business import (
     account_membership_role, lock_account_business, ensure_can_create_business,
@@ -49,6 +50,17 @@ def enabled():
 def require_enabled():
     if not enabled():
         raise HTTPException(423, "A configuração inicial ainda não está habilitada")
+
+
+async def _require_workspace_operation(db, tenant, configuration, feature=None):
+    if configuration.get("niche") != SUBSCRIPTION_NICHE:
+        return
+    # The effective resolver preserves the platform workspace exception. Do not
+    # acquire a plan lock after metadata: tenant routes already hold theirs, and
+    # direct callers must retain the existing metadata/plan lock order.
+    from app.plan_permissions import plan_state
+    from app.workspace_policy import require_standard_workspace
+    require_standard_workspace(await plan_state(db, tenant, lock=None), feature)
 
 
 _DIGEST_SCALARS = frozenset((str, int, float, bool, type(None), bytes, date, datetime, time, timedelta, Decimal, UUID, DriverUUID))
@@ -896,6 +908,8 @@ async def _save_hours_by_mode(actor, tenant, step, payload):
                     quick = _uses_quick_profile(meta)
                     model = schemas.BusinessOpeningHours if quick else schemas.Hours
                     data = model.model_validate(payload.data)
+                    if not isinstance(data, schemas.BusinessOpeningHours):
+                        await _require_workspace_operation(db, tenant, meta["configuration"], "agenda.manage")
                     fingerprint = digest({"actor": actor.account_id, "step": step,
                                           "data": data.model_dump(mode="json"),
                                           "supplied": payload.data})
@@ -945,7 +959,14 @@ async def save_step(actor, tenant, step, payload):
         async with access_session(actor, tenant, write=True) as access:
             async with get_session_factory()() as db:
                 async with tenant_transaction(db, tenant):
+                    if step == "business":
+                        # Niche changes alter effective permissions. Serialize
+                        # them before metadata locks, matching plan mutations.
+                        from app.plan_permissions import lock_plan
+                        await lock_plan(db, tenant, exclusive=True)
                     meta = await _lock_meta(db, tenant, actor)
+                    if step in {"professionals", "catalog", "channels"}:
+                        await _require_workspace_operation(db, tenant, meta["configuration"])
                     replay = await _replay(db, tenant, actor, payload.idempotency_key, fingerprint)
                     if not replay:
                         if meta["version"] != payload.expected_version:
@@ -1060,16 +1081,20 @@ async def require_operational_ready(db, tenant, capability):
     """Use in the caller's existing RLS transaction, before an operational write.
 
     Setup edits, reads and cancellation of existing appointments do not call it.
-    Legacy companies and a disabled rollout retain their previous engine gates.
+    A disabled setup rollout keeps its existing no-query contract. Operational
+    features still use the plan resolver, which applies the workspace policy.
     """
     if not enabled():
         return
     row = (await db.execute(text("SELECT is_new,completed_at,configuration FROM business_onboarding WHERE tenant_id=:t FOR SHARE"), {"t": tenant})).mappings().first()
-    if not row or not row["is_new"]:
+    if not row:
+        return
+    configuration = dict(row["configuration"])
+    await _require_workspace_operation(db, tenant, configuration, capability)
+    if not row["is_new"]:
         return
     if row["completed_at"] is None:
         raise HTTPException(409, "Conclua a configuração da empresa antes desta operação")
-    configuration = dict(row["configuration"])
     if capability in {"appointments", "rescheduling", "public_site", "google"}:
         if configuration.get("activity") not in {"services", "both"}:
             raise HTTPException(409, "Esta empresa não tem agenda configurada")

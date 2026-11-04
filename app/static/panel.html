@@ -1405,6 +1405,12 @@ window.addEventListener("pageshow",event=>{if(event.persisted)void restoreSessio
 let suiteUser=null,suiteTenantId="",businessContextReady=false,businessContextError="";
 let setupController=null,setupResolving=0,setupGate=false;
 let setupPlanRequested=new URLSearchParams(location.search).get('aba')==='plano';
+function syncSetupAccess(profile){
+ const subscription=!(suiteUser?.role==='admin'&&!suiteUser?.maintenance?.active)&&
+  (profile||window.OrionSuite?.workspaceProfile?.()||accountBusiness()?.workspace_profile)==='subscription_services';
+ const plan=document.querySelector('#orionSetupAccess [data-setup-access="plano"]');
+ if(plan)plan.hidden=subscription;
+}
 function setSetupGate(value){
  setupGate=Boolean(value);
  const app=$("appView");
@@ -1417,6 +1423,7 @@ function setSetupGate(value){
  let access=$("orionSetupAccess");
  if(!access){access=document.createElement('div');access.id='orionSetupAccess';access.className='os-actions hidden';access.innerHTML='<button type="button" class="os-button os-outline" data-setup-access="plano">Ver planos</button><button type="button" class="os-button os-outline" data-setup-access="account">Minha conta</button>';app.querySelector('.content').append(access);access.addEventListener('click',event=>{const target=event.target.closest('[data-setup-access]')?.dataset.setupAccess;if(!target||!accountBusiness())return;++setupResolving;setSetupGate(false);$("orionSetup").hidden=true;void window.OrionSuite?.open(target==='plano'?'plano':'member',{force:true});});}
  access.hidden=!setupGate||!accountBusiness();access.classList.toggle('hidden',access.hidden);
+ syncSetupAccess();
  closeSetupTheme();
 }
 function accountBusiness(){return businessContextReady&&businessRows.length===1&&businessRows[0].id===suiteTenantId?businessRows[0]:null}
@@ -1487,6 +1494,7 @@ async function resolveSetup(options={}){
 function suiteBridge(initialRoute){
  return {request:api,uploadImage:uploadImage,user:suiteUser,tenants:businessRows,tenantId:suiteTenantId,
   businessContextReady,businessContextError,
+  onWorkspaceProfile:syncSetupAccess,
   initialRoute:initialRoute||"dashboard",
   openSetup(){void resolveSetup({force:true})},
   retryBusinessContext(){void loadBusinesses().then(ok=>{if(ok)startBusinessSession()})},
@@ -3112,6 +3120,7 @@ async function loadBusinesses({resolveSetup:resolveAfter=true}={}){
    if(suiteTenantId!==id){resetBusinessState();resetCommerceState();resetCatalogState();resetAiConversation();clearAiProfileState();window.OrionChannels?.unmount();window.OrionAutomations?.unmount()}
    suiteTenantId=id;businessContextReady=true;businessContextError="";
    businessRows=rows;
+   syncSetupAccess(rows[0]?.workspace_profile);
    const showOperatorConsole=loginRole==="admin"&&rows.length===1;
    for(const id of ["businessNav","aiNav","commerceNav","catalogNav"])$(id).classList.toggle("hidden",!showOperatorConsole);
    renderAccountBusiness();

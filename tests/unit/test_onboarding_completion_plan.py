@@ -100,7 +100,8 @@ def completion_case(monkeypatch):
     async def read_plan(session, scope, lock="shared"):
         assert session is db and scope == tenant
         return plan_permissions.derive_plan({"tenant_id": str(tenant),
-            "tenant_status": db.status, "active_professionals": 0, **case.plan})
+            "tenant_status": db.status, "niche": db.meta["configuration"]["niche"],
+            "active_professionals": 0, **case.plan})
 
     async def lock_plan(session, scope, exclusive=False):
         assert session is db and scope == tenant and exclusive is True
@@ -147,7 +148,7 @@ async def test_private_profile_completes_without_an_operational_plan(completion_
         with pytest.raises(HTTPException) as blocked:
             await plan_permissions.require_feature(case.db, case.tenant, feature)
         assert blocked.value.status_code == 403
-        assert blocked.value.detail["code"] == "PLAN_FEATURE_UNAVAILABLE"
+        assert blocked.value.detail["code"] == "WORKSPACE_FEATURE_UNAVAILABLE"
 
 
 @pytest.mark.asyncio
@@ -160,6 +161,6 @@ async def test_profile_answers_never_authorize_staged_catalog_writes(completion_
     with pytest.raises(HTTPException) as blocked:
         await case.finish()
     assert blocked.value.status_code == 403
-    assert blocked.value.detail["code"] == "PLAN_FEATURE_UNAVAILABLE"
+    assert blocked.value.detail["code"] == "WORKSPACE_FEATURE_UNAVAILABLE"
     assert blocked.value.detail["feature"] == "professionals.manage"
     assert case.db.meta == saved and case.db.status == "paused" and case.db.updates == []

@@ -22,7 +22,10 @@ function quickReview() {
 
 async function reviewPanel(onComplete) {
   const state=quickReview();
-  return makePanel({role:'member',permissions:planState('none'),respond(path,method,payload){
+  return makePanel({role:'member',permissions:planState('none',{
+    workspace_profile:'subscription_services',features:['account.manage','business.setup'],
+    permissions:{'account.manage':true,'business.setup':true}
+  }),respond(path,method,payload){
     if(path==='/api/v1/onboarding/entry')return {enabled:true,kind:'onboarding',tenant_id:tenantA};
     if(path.endsWith('/onboarding')&&method==='GET')return state;
     if(path.endsWith('/onboarding/complete')&&method==='POST')return onComplete(state,payload);
@@ -71,8 +74,9 @@ test('structured completion denial keeps the review and permits an explicit retr
   assert.equal(h.element('#appView').classList.contains('ob-gated'),false);
   assert.equal(h.element('#orionSetup').hidden,true);
   // A successful questionnaire does not confer paid operational permissions.
-  assert.equal(h.element('#page-suite').dataset.osCurrentRoute,'plano');
+  assert.equal(h.element('#page-suite').dataset.osCurrentRoute,'novidades');
   assert.equal(h.calls.slice(before).some(call=>/\/management\/dashboard/.test(call.path)),false);
+  assert.equal(h.calls.slice(before).some(call=>/\/management\/plan-/.test(call.path)),false);
   assert.deepEqual(h.errors,[]);
 });
 
