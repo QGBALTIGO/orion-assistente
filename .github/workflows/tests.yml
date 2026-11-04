@@ -80,7 +80,9 @@ jobs:
           dropdb -h localhost -U postgres orion_restore
           rm -f /tmp/orion-smoke.dump
       - name: Rodar suite incluindo RLS real
-        timeout-minutes: 12
+        # The full suite includes the PostgreSQL simulator cases; keep every
+        # assertion and allow the run to reach its final regression summary.
+        timeout-minutes: 20
         env:
           ORION_MIGRATION_TEST_OWNER_URL: postgresql+psycopg://postgres:ci-postgres-only@localhost:5432/postgres
           ORION_REQUIRE_MIGRATION_OPS_TEST: "1"

@@ -13,7 +13,7 @@ on:
       - 'app/main.py'
       - 'app/worker.py'
       - 'app/static/orion-subscription-devices.*'
-      - 'app/static/orion-subscription-chatbot.*'
+      - 'app/static/orion-subscription-chatbot*.*'
       - 'app/static/orion-suite.js'
       - 'app/static/panel.html'
       - 'alembic/versions/0063_subscription_chatbot.py'
@@ -25,8 +25,8 @@ on:
       - 'scripts/wait_for_single_whatsapp_schema.py'
       - 'tests/**/test_subscription_device*.py'
       - 'tests/**/test_subscription_chatbot*.py'
-      - 'tests/fixtures/subscription_chatbot_contract.json'
-      - 'tests/e2e/browser_subscription_chatbot.py'
+      - 'tests/fixtures/subscription_chatbot*_contract.json'
+      - 'tests/e2e/browser_subscription_chatbot*.py'
       - 'ui-tests/*subscription*'
       - 'Dockerfile'
       - '.github/workflows/subscription-chatbot.yml'
@@ -140,10 +140,12 @@ jobs:
       - name: Componentes reais com API sintetica
         run: |
           node --check app/static/orion-subscription-chatbot.js
+          node --check app/static/orion-subscription-chatbot-test.js
           node --check app/static/orion-subscription-devices.js
           node --check app/static/orion-suite.js
           node --test \
             ui-tests/subscription-chatbot.test.mjs \
+            ui-tests/subscription-chatbot-test.test.mjs \
             ui-tests/subscription-devices.test.mjs \
             ui-tests/subscription-workspace.test.mjs \
             ui-tests/channels.test.mjs \
@@ -262,13 +264,14 @@ jobs:
           python-version: '3.12'
       - name: Instalar o navegador de teste
         run: |
-          # The synthetic Chatbot server validates requests with the real DTOs.
-          python -m pip install -c requirements.lock -r tests/e2e/requirements.txt pytest pytest-asyncio pydantic
+          # The synthetic server validates the real DTOs and renders a real JPEG.
+          python -m pip install -c requirements.lock -r tests/e2e/requirements.txt pytest pytest-asyncio pydantic Pillow
           python -m playwright install --with-deps ${{ matrix.engine }}
       - name: Fluxos no painel real - celular, tablet, desktop e dois temas
         run: |
           python -m pytest -q -ra --maxfail=1 \
             tests/e2e/browser_subscription_chatbot.py \
+            tests/e2e/browser_subscription_chatbot_simulator.py \
             tests/e2e/browser_subscription_devices.py \
             tests/e2e/browser_subscription_workspace.py -k '${{ matrix.engine }}'
       - uses: actions/upload-artifact@v4
@@ -277,6 +280,7 @@ jobs:
           name: subscription-chatbot-${{ matrix.engine }}
           path: |
             test-artifacts/subscription-chatbot/
+            test-artifacts/subscription-chatbot-test/
             test-artifacts/subscription-devices/
             test-artifacts/subscription-workspace/
           if-no-files-found: warn

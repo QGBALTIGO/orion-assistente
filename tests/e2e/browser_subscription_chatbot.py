@@ -34,7 +34,7 @@ BACKUP_ID = CONTRACT["backups_response"]["items"][0]["id"]
 EXPORT_ID = CONTRACT["export_response"]["export"]["id"]
 SIZES = [(390, 844), (768, 1024), (1440, 900)]
 PROFILE = "subscription_services"
-ALLOWED_ROUTES = ["dispositivos", "chatbot", "novidades", "ajuda", "member"]
+ALLOWED_ROUTES = ["dispositivos", "chatbot", "testar-chatbot", "novidades", "ajuda", "member"]
 
 
 def now():
@@ -443,6 +443,7 @@ def test_chatbot_editor_transfer_and_workspace_isolation(browser, fixture_url, s
 
         page.goto(f"{fixture_url}/panel?fixtureRole=owner&fixturePlan=none&fixtureReadonly=1&aba=chatbot")
         expect(page.locator("[data-sc-card]")).to_have_count(2)
+        assert page.locator("#osNav [data-os-route]").evaluate_all("nodes=>nodes.map(n=>n.dataset.osRoute)") == [route for route in ALLOWED_ROUTES if route != "testar-chatbot"]
         expect(a("create")).to_be_disabled()
         expect(a("import")).to_be_disabled()
         a("backups").click()
