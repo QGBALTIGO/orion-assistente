@@ -1,0 +1,30 @@
+name: Orion - agenda excepcional e servicos extras
+on:
+  push:
+    branches: [feat/agenda-exceptions-extras-20261104]
+  pull_request:
+    branches: [security/prelaunch-hardening-20261030]
+    paths:
+      - app/internal_appointments.py
+      - app/internal_appointments_api.py
+      - tests/**/test_internal_appointments*.py
+      - .github/workflows/agenda-exceptions-extras.yml
+permissions:
+  contents: read
+concurrency:
+  group: agenda-exceptions-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source:
+    name: Snapshot exato para revisao e validacao
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export versioned sources only
+        run: git archive --format=tar.gz -o orion-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agenda-exceptions-source
+          path: orion-source.tar.gz
+          retention-days: 3
