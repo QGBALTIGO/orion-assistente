@@ -19,8 +19,15 @@ function boundedJSON(value){
     // Never round an external identifier or turn an overflowing JSON number
     // into null while persisting the response for tags. Such values need strings.
     if(typeof item==='number'&&(!Number.isFinite(item)||(Number.isInteger(item)&&!Number.isSafeInteger(item))))throw error('CHATBOT_HTTP_JSON_NUMBER');
+    // PostgreSQL jsonb cannot store NUL or isolated UTF-16 surrogates. Reject
+    // them before a response becomes durable reconciliation evidence. The u
+    // regex treats a valid surrogate pair as its complete Unicode code point.
+    if(typeof item==='string'&&/[\u0000\uD800-\uDFFF]/u.test(item))throw error('CHATBOT_HTTP_JSON_STRING');
     if(item&&typeof item==='object'){
-      for(const child of Object.values(item))stack.push([child,depth+1]);
+      for(const [key,child] of Object.entries(item)){
+        if(!Array.isArray(item)&&(/[\u0000\uD800-\uDFFF]/u.test(key)||key.length>4096||[...key].length>2048))throw error('CHATBOT_HTTP_JSON_KEY');
+        stack.push([child,depth+1]);
+      }
     }
   }
   return value;

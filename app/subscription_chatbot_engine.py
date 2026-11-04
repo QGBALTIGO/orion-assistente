@@ -27,6 +27,42 @@ async def snapshot(db, tenant):
     return {"revision": await store.revision(db, tenant)}
 
 
+async def reap_unreachable(db, device):
+    """Close impossible pending tails, without changing uncertain evidence.
+
+    Each fresh contact input must be able to recover after an old attempt's
+    TTL. Linking every new run behind a dead tail would otherwise extend the
+    blockage indefinitely. Nothing in this sweep authorizes or repeats I/O.
+    """
+    rows = (await db.execute(text("""WITH RECURSIVE doomed(id) AS (
+        SELECT e.id FROM subscription_device_effects e
+        LEFT JOIN subscription_device_effects p ON p.tenant_id=e.tenant_id AND p.id=e.previous_effect
+        LEFT JOIN subscription_chatbot_runs r ON r.tenant_id=e.tenant_id AND r.id=e.chatbot_run_id
+        LEFT JOIN subscription_device_effects a ON a.tenant_id=e.tenant_id
+            AND a.id=CAST(r.input_context->>'transcription_predecessor' AS uuid)
+        WHERE e.tenant_id=:t AND e.device_id=:d AND e.type='chatbot_action' AND e.status='pending'
+          AND (e.expires_at<=clock_timestamp() OR p.status IN ('failed','not_sent')
+            OR p.expires_at<=clock_timestamp() AND p.status<>'accepted'
+            OR r.input_context->>'transcription_predecessor' IS NOT NULL AND
+              (a.id IS NULL OR a.status IN ('failed','not_sent')
+               OR a.expires_at<=clock_timestamp() AND a.status<>'accepted'))
+        UNION
+        SELECT child.id FROM subscription_device_effects child JOIN doomed parent ON child.previous_effect=parent.id
+        WHERE child.tenant_id=:t AND child.device_id=:d AND child.type='chatbot_action' AND child.status='pending'
+    ) UPDATE subscription_device_effects e SET status='not_sent',finished_at=clock_timestamp(),
+        error_code='CHATBOT_PREDECESSOR_UNAVAILABLE' FROM doomed
+        WHERE e.id=doomed.id AND e.tenant_id=:t RETURNING e.*"""),
+        {"t": device["tenant_id"], "d": device["id"]})).mappings().all()
+    # A run has one sequential tail; one terminal update per affected run is
+    # sufficient after the recursive SQL has closed all dependent children.
+    handled = set()
+    for effect in rows:
+        if effect["chatbot_run_id"] not in handled:
+            await after_effect_finish(db, device, effect, "not_sent")
+            handled.add(effect["chatbot_run_id"])
+    return len(rows)
+
+
 async def available_effects(db, device_id, event_id=None):
     values = {"d": device_id}
     event_filter = ""
@@ -129,6 +165,7 @@ async def record_event(db, device, transport, event_id, data, fence):
     if data["kind"] not in {"text", "audio"} or data.get("chatbot_revision") is None or not data.get("phone"):
         return
     await store.workspace(db, device["tenant_id"])
+    await reap_unreachable(db, device)
     run = await _input(db, device, event_id, data, fence)
     if run:
         await drain_contact(db, device, run["phone"])

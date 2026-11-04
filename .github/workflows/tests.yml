@@ -130,6 +130,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Instalar o transporte usado pelos testes de protocolo
+        run: npm install --prefix qr-bridge --ignore-scripts --no-audit --no-fund
       - name: Sintaxe Node do conector
         run: |
           node --check qr-bridge/src/server.mjs

@@ -1,5 +1,6 @@
 """Durable archive work and terminal bookkeeping; never retries a WhatsApp/HTTP effect."""
 import logging
+import time
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -44,7 +45,7 @@ async def scan_subscription_chatbot(ctx):
         # The SQL processor owns the durable claim, including safe recovery.
         # ARQ uniqueness merely reduces duplicate delivery to that processor.
         await ctx["redis"].enqueue_job("process_subscription_chatbot_restore", str(row["tenant_id"]), str(row["id"]),
-                                      _job_id="subscription-chatbot-restore:" + str(row["id"]))
+                                      _job_id=f"subscription-chatbot-restore:{row['id']}:{int(time.time()) // 60}")
     return len(rows)
 
 

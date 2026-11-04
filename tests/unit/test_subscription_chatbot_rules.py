@@ -188,6 +188,13 @@ def test_url_response_template_accepts_only_flat_scalar_tags(custom):
     assert UrlAction(url="https://example.com/reply", custom_template="{{value}} — {{_status2}}").method == "POST"
 
 
+@pytest.mark.parametrize("name", ["\x00", "a\ud800b", "😀" * 51, " " * 4])
+def test_template_names_fit_postgres_and_the_visible_utf16_limit(name):
+    with pytest.raises(ValueError):
+        TemplateDefinition(name=name, kind="text", text="Resposta")
+    assert TemplateDefinition(name="😀" * 50, kind="text", text="Resposta").name == "😀" * 50
+
+
 @pytest.mark.parametrize("kind", ["sticker", "ptv"])
 def test_sticker_and_ptv_never_silently_drop_captions(kind):
     asset_id = "80000000-0000-4000-8000-000000000001"

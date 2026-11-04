@@ -728,6 +728,7 @@ async def pending_effects(channel_id: UUID, request: Request):
             RETURNING *"""), {"d": row["id"]})).mappings().all()
         for effect in interrupted:
             await chatbot.after_effect_finish(db, row, effect, effect["status"])
+        await chatbot.reap_unreachable(db, row)
         effects = (await db.execute(text("""SELECT e.* FROM subscription_device_effects e
             LEFT JOIN subscription_device_effects p ON p.tenant_id=e.tenant_id AND p.id=e.previous_effect
             LEFT JOIN subscription_chatbot_runs r ON r.tenant_id=e.tenant_id AND r.id=e.chatbot_run_id

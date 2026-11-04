@@ -262,7 +262,8 @@ jobs:
           python-version: '3.12'
       - name: Instalar o navegador de teste
         run: |
-          python -m pip install -r tests/e2e/requirements.txt pytest
+          # The synthetic Chatbot server validates requests with the real DTOs.
+          python -m pip install -c requirements.lock -r tests/e2e/requirements.txt pytest pytest-asyncio pydantic
           python -m playwright install --with-deps ${{ matrix.engine }}
       - name: Fluxos no painel real - celular, tablet, desktop e dois temas
         run: |

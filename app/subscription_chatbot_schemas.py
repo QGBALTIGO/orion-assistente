@@ -332,6 +332,11 @@ class TemplateDefinition(StrictModel):
     text: str = Field(default="", max_length=32000)
     asset_id: UUID | None = None
 
+    @field_validator("name")
+    @classmethod
+    def valid_name(cls, value):
+        return clean_text(value, maximum=100)
+
     @model_validator(mode="after")
     def template_content(self):
         if self.kind == "text":

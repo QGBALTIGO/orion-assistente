@@ -47,7 +47,8 @@ def test_http_receipt_accepts_json_types_without_evaluating_templates_or_urls():
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"),
-    {1: SECRET}, {"x" * 2049: SECRET}, (SECRET,), {SECRET}, b"private", "\ud800"])
+    {1: SECRET}, {"x" * 2049: SECRET}, (SECRET,), {SECRET}, b"private", "\ud800",
+    "a\x00b", {"key": "a\x00b"}, {"\x00key": "value"}, {"😀" * 2049: "value"}])
 def test_invalid_http_receipt_shape_is_refused_without_reflecting_content(value):
     with pytest.raises(HTTPException) as error:
         broker.checked_result(value)
@@ -60,6 +61,7 @@ def test_http_receipt_limits_depth_nodes_and_key_length_at_the_boundary():
     assert broker.checked_result(nested(16)) == nested(16)
     assert broker.checked_result([None] * 8191) == [None] * 8191
     assert broker.checked_result({"x" * 2048: None}) == {"x" * 2048: None}
+    assert broker.checked_result({"😀" * 2048: None}) == {"😀" * 2048: None}
     for value in (nested(17), [None] * 8192):
         with pytest.raises(HTTPException) as error:
             broker.checked_result(value)

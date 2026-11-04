@@ -154,6 +154,14 @@ async def carousel_image(channel_id: UUID, request: Request):
 
 def checked_result(value):
     """Bound JSON shape as well as bytes; never evaluate expressions or URLs."""
+    def valid_string(item, *, key=False):
+        if "\x00" in item:
+            return False  # PostgreSQL jsonb/text cannot represent NUL.
+        try:
+            item.encode("utf-8")
+            return not key or len(item) <= 2048
+        except UnicodeError:
+            return False
     stack, nodes = [(value, 0)], 0
     while stack:
         item, depth = stack.pop()
@@ -161,11 +169,13 @@ def checked_result(value):
         if nodes > 8192 or depth > 16:
             raise store.fail("CHATBOT_HTTP_RESULT_INVALID", 422)
         if isinstance(item, dict):
-            if any(not isinstance(key, str) or len(key) > 2048 for key in item):
+            if any(not isinstance(key, str) or not valid_string(key, key=True) for key in item):
                 raise store.fail("CHATBOT_HTTP_RESULT_INVALID", 422)
             stack.extend((child, depth + 1) for child in item.values())
         elif isinstance(item, list):
             stack.extend((child, depth + 1) for child in item)
+        elif isinstance(item, str) and not valid_string(item):
+            raise store.fail("CHATBOT_HTTP_RESULT_INVALID", 422)
         elif item is not None and not isinstance(item, (str, bool, int, float)):
             raise store.fail("CHATBOT_HTTP_RESULT_INVALID", 422)
         elif isinstance(item, float) and not math.isfinite(item):

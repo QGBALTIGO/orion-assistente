@@ -126,10 +126,13 @@ async def test_crud_idempotency_newest_creation_order_filters_and_inactive_copy(
     newer = await rule_create(c, definition(value="Mais recente"))
     old_version = c.chat_revision
     key = uuid4()
-    saved = await edit(c, first, definition(value="Editada, mas não recriada"), key=key)
+    edited_definition = definition(value="Editada, mas não recriada")
+    saved = await edit(c, first, edited_definition, key=key)
     assert saved.status_code == 200, saved.text
-    replay = await edit(c, first, definition(value="Editada, mas não recriada"), key=key, expected=old_version)
+    replay = await edit(c, first, edited_definition, key=key, expected=old_version)
     assert replay.status_code == 200 and replay.json() == saved.json()
+    different_action_id = await edit(c, first, definition(value="Editada, mas não recriada"), key=key, expected=old_version)
+    assert different_action_id.status_code == 409
     assert saved.json()["rule"]["creation_order"] < newer["creation_order"]
     listing = await c.client.get(c.chat, params={"q": "recente", "search_in": "response", "status": "active"})
     assert listing.status_code == 200 and listing.json()["filtered_total"] == 1, listing.text
@@ -248,6 +251,38 @@ async def test_native_sequence_waits_for_accepted_predecessor_and_can_reconcile_
     two, = chat_effects(finished)
     assert (await grant(c, two))["payload"]["action"]["text"] == "Dois"
     await accepted(c, two)
+
+
+@pytest.mark.asyncio
+async def test_expired_unknown_attempt_cancels_impossible_tails_and_allows_future_contact_input(chatbot_case):
+    c = chatbot_case
+    actions = [{"id": str(uuid4()), "type": "text", "text": value, "delay_seconds": 1} for value in ("Primeira", "Cauda")]
+    await rule_create(c, definition(response={"kind": "sequence", "actions": actions}))
+    first, = chat_effects(await input_event(c))
+    assert (await grant(c, first))["authorized"]
+    async with c.ctx.migration.begin() as db:
+        await db.execute(text("UPDATE subscription_device_effects SET authorized_at=clock_timestamp()-interval '181 seconds' WHERE id=:id"),
+                         {"id": UUID(first["operation_id"])})
+    assert (await pending(c))["reconcile"][0]["operation_id"] == first["operation_id"]
+    assert chat_effects(await input_event(c)) == []
+    async with c.ctx.migration.begin() as db:
+        original_run = (await db.execute(text("SELECT chatbot_run_id FROM subscription_device_effects WHERE id=:id"),
+                                        {"id": UUID(first["operation_id"])})).scalar_one()
+        await db.execute(text("UPDATE subscription_device_effects SET expires_at=clock_timestamp()-interval '1 second' WHERE chatbot_run_id=:run"),
+                         {"run": original_run})
+    swept = await pending(c)
+    assert chat_effects(swept) == []
+    async with c.ctx.migration.connect() as db:
+        evidence = (await db.execute(text("SELECT id,status,attempts FROM subscription_device_effects WHERE tenant_id=:t AND type='chatbot_action'"),
+                                    {"t": c.tenant})).mappings().all()
+    original, = [row for row in evidence if str(row["id"]) == first["operation_id"]]
+    assert original["status"] == "uncertain" and original["attempts"] == 1
+    assert len(evidence) == 4 and all(row["status"] == "not_sent" and row["attempts"] == 0
+        for row in evidence if row["id"] != original["id"])
+    fresh, = chat_effects(await input_event(c))
+    assert fresh["operation_id"] != first["operation_id"]
+    assert (await grant(c, fresh))["authorized"]
+    assert not (await grant(c, first))["authorized"]
 
 
 @pytest.mark.asyncio

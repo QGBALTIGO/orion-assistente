@@ -58,8 +58,12 @@ test('JSON response bounds reject wrong types, encoding, truncation, depth and e
     {headers:{'content-length':String(CHATBOT_HTTP_MAX_BYTES+1)}}, {headers:{'content-length':'100'}},
     {chunks:[Buffer.alloc(CHATBOT_HTTP_MAX_BYTES+1,65)]}, {chunks:[Buffer.from('["not object"]')]},
     {chunks:[Buffer.from([0xff,0xfe])]}, {chunks:[Buffer.from('{"x":'.repeat(18)+'{}'+'}'.repeat(18))]},
-    {chunks:[Buffer.from('{"n":1e9999}')]}, {chunks:[Buffer.from('{"id":9007199254740993}')]}];
+    {chunks:[Buffer.from('{"n":1e9999}')]}, {chunks:[Buffer.from('{"id":9007199254740993}')]},
+    ...[{reply:'before\u0000after'},{reply:'\ud800'},{reply:'\udfff'},
+        {'bad\u0000key':'value'},{'\ud800':'value'},{['x'.repeat(2049)]:'value'}].map(value=>({chunks:[Buffer.from(JSON.stringify(value))]}))];
   for(const spec of cases){const f=network(spec);await assert.rejects(requestChatbotJSON({url:'https://public.example.com/',...f.options}));assert.equal(f.calls.length,1);}
+  const valid=network({chunks:[Buffer.from(JSON.stringify({reply:'Ação 🙂 completa',['🙂'.repeat(2048)]:'value'}))]});
+  assert.equal((await requestChatbotJSON({url:'https://public.example.com/',...valid.options})).json.reply,'Ação 🙂 completa');
 });
 
 test('revocation after DNS or while awaiting response prevents results; timeout makes one attempt',async()=>{
