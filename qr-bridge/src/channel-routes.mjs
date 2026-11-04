@@ -28,6 +28,23 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
     const uri=new URL(req.url||'/','http://internal');
     if(!uri.pathname.startsWith('/internal/channels/'))return false;
     if(env.QR_CHANNELS_ENABLED!=='1'){response(res,423,{error:'channels_disabled'});return true;}
+    const diagnosticMatch=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/device\/diagnostics\/(proxy|operations\/([0-9a-f-]{36}))$/);
+    if(diagnosticMatch&&!uri.search){
+      const [,id,action,requestId]=diagnosticMatch,key=req.headers['x-orion-channel-key'];
+      if(typeof key!=='string'||key.length<32||key.length>256){response(res,401,{error:'channel_unauthorized'});return true;}
+      if(req.method!==(requestId?'GET':'POST')){response(res,405,{error:'method_not_allowed'});return true;}
+      try{
+        const api=getManager();let result;
+        if(requestId)result=await api.deviceDiagnosticOperation(id,key,requestId);
+        else{
+          const input=await body(req),fields=['request_id','device_id','generation','settings_revision'];
+          if(Object.keys(input).some(field=>!fields.includes(field))||fields.some(field=>!(field in input)))throw Error('invalid_device_diagnostic');
+          result=await api.deviceProxyTest(id,key,input);
+        }
+        response(res,requestId?200:202,result);
+      }catch{response(res,409,{error:'device_diagnostic_unavailable'});}
+      return true;
+    }
     const deviceMatch=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/device\/(status|qr|diagnostics|connect|pair|restart|relink|remove|operations\/([0-9a-f-]{36}))$/);
     if(deviceMatch&&!uri.search){
       const [,id,action,operationId]=deviceMatch,key=req.headers['x-orion-channel-key'];

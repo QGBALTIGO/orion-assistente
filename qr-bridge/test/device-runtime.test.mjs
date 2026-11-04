@@ -28,7 +28,7 @@ async function fixture(t){
   let state=snapshot(),alive=true,serial=0,current,client,config;
   const events=[],sends=[],finished=[],authorizations=[],audioCalls=[],downloads=[],rejections=[],webhooks=[],tasks=new Map(),permits=new Map(),instances=[];
   const behavior={event:async()=>[],transcribe:async()=>({text:'voz',truncated:false,effects:[]}),send:async()=>{},finish:async()=>{},
-    pending:async()=>({effects:[],reconcile:[]}),webhook:async()=>{},lookupCall:async()=>null};
+    pending:async()=>({effects:[],reconcile:[]}),webhook:async()=>{},lookupCall:async()=>null,prepare:async()=>{}};
   const context={channelId:randomUUID(),tenantId:randomUUID(),directory,deviceDirectory,secret:'synthetic-device-secret-'.repeat(3),
     deviceSnapshot:()=>state,isCurrent:()=>alive,assertCurrent:async()=>{if(!alive)throw Error('revoked');},
     allowedSender:()=>false,assistantEnabled:()=>false,audioEnabled:()=>false,notifySelf:false,
@@ -52,7 +52,7 @@ async function fixture(t){
       relayMessage:async(jid,body)=>{sends.push({jid,text:body.conversation});await behavior.send();}};
     const mod={default:options=>{config=options;return client;},BufferJSON:{},initAuthCreds:()=>({registered:true}),
       Browsers:{windows:()=>['synthetic']},DisconnectReason:{loggedOut:401},proto:{Message:{AppStateSyncKeyData:{fromObject:value=>value}}},
-      generateMessageIDV2:()=> 'provider-'+(++serial),generateWAMessage:async(jid,{text},options)=>({key:{id:options.messageId,remoteJid:jid},message:{conversation:text}}),
+      generateMessageIDV2:()=> 'provider-'+(++serial),generateWAMessage:async(jid,{text},options)=>{await behavior.prepare();return {key:{id:options.messageId,remoteJid:jid},message:{conversation:text}};},
       downloadMediaMessage:async()=>{const buffer=Buffer.from('OggS synthetic audio');downloads.push(buffer);return buffer;}};
     current=await createBaileysChannelSession(context,{loadBaileys:async()=>mod,now:()=>1000000,schedule,cancel,
       deviceOptions:{runtimeOptions:{capacity:{acquire:async()=>{}},postWebhook:async payload=>{webhooks.push(payload);return behavior.webhook(payload);}}}});
@@ -240,4 +240,104 @@ test('device audio uses only its fenced private route and own identity headers w
   assert.equal(calls[0].options.headers['X-Orion-Device-Effect'],operation_id);assert.equal(calls[0].options.headers['X-Orion-Channel-Fence'],'3');
   await broker.deviceEffectsPending(id,key,{owner,fence:3},{device_id,generation,settings_revision:2});
   assert.equal(calls[1].options.method,'GET');assert.equal('body' in calls[1].options,false);
+});
+
+function diagnosticEffect(f,{recipient=self,mode='self',...extra}={}){
+  return f.effect('send_text',{phone:recipient,text:'Teste confirmado sintético'},
+    {purpose:'diagnostic_test',diagnostic_request_id:randomUUID(),confirmed:true,recipient_mode:mode,self_phone:self,...extra});
+}
+async function pollEffect(f,effect){f.behavior.pending=async()=>({effects:[effect],reconcile:[]});await f.poll();}
+
+test('a confirmed diagnostic effect alone can address the verified current self PN, once across restart',async t=>{
+  const f=await fixture(t),effect=diagnosticEffect(f);await pollEffect(f,effect);
+  assert.equal(f.sends.length,1);assert.equal(f.sends[0].jid,self+'@s.whatsapp.net');
+  assert.equal(f.finished.at(-1).state,'accepted');assert.ok(f.authorizations.filter(value=>value.recheck).length>=2);
+  assert.equal(f.authorizations.at(-1).recheck,true);
+  const claims=f.authorizations.filter(value=>!value.recheck).length;
+  f.session.close();await f.open();await f.poll();assert.equal(f.sends.length,1);assert.equal(f.finished.at(-1).state,'accepted');
+  assert.equal(f.authorizations.filter(value=>!value.recheck).length,claims+1,'A new session reconciles the durable reserved effect, without relaying it');
+});
+
+test('ordinary send_text and generic/public send options retain their self-send prohibition',async t=>{
+  const f=await fixture(t);await pollEffect(f,f.effect('send_text',{phone:self,text:'ordinary self bypass'}));
+  assert.equal(f.sends.length,0);assert.notEqual(f.finished.at(-1).state,'accepted');
+  await assert.rejects(f.session.send(self,'forged',{allowSelf:true,diagnostic:{purpose:'diagnostic_test',confirmed:true}}),/effect_grant/);
+  assert.equal(f.sends.length,0);
+});
+
+test('ordinary text cannot become a self-send if the active PN changes while preparing the message',async t=>{
+  const f=await fixture(t);f.behavior.prepare=async()=>{f.client.user.id=phone+'@s.whatsapp.net';};
+  await pollEffect(f,f.effect('send_text',{phone,text:'ordinary after identity change'}));assert.equal(f.sends.length,0);
+});
+
+for(const [label,extra] of [
+  ['unconfirmed',{confirmed:false}],['missing request',{diagnostic_request_id:null}],['missing purpose',{purpose:undefined}],
+  ['unknown mode',{recipient_mode:'phone'}],['missing verified self',{self_phone:null}],['wrong self',{self_phone:phone}],
+  ['generic explicit self',{recipient_mode:'explicit'}],['another device',{device_id:randomUUID()}],
+  ['another generation',{generation:randomUUID()}],['another revision',{settings_revision:2}]
+]){
+  test('diagnostic message refuses '+label+' before any relay',async t=>{
+    const f=await fixture(t);await pollEffect(f,diagnosticEffect(f,extra));
+    assert.equal(f.sends.length,0);assert.notEqual(f.finished.at(-1)?.state,'accepted');
+  });
+}
+
+test('self identity changing during recipient lookup cannot fall through into a regular external send',async t=>{
+  for(const mode of ['self','explicit']){
+    const f=await fixture(t),recipient=mode==='self'?self:phone;
+    f.client.onWhatsApp=async pn=>{f.client.user.id='5567999999903@s.whatsapp.net';return [{exists:true,jid:pn+'@s.whatsapp.net'}];};
+    await pollEffect(f,diagnosticEffect(f,{recipient,mode}));assert.equal(f.sends.length,0);assert.equal(f.finished.at(-1).state,'not_sent');
+  }
+});
+
+test('a LID, missing PN or changed own PN at message construction never grants the self exception',async t=>{
+  for(const next of ['9999999999999999@lid',null,'5567999999903@s.whatsapp.net']){
+    const f=await fixture(t);f.behavior.prepare=async()=>{f.client.user.id=next;};
+    await pollEffect(f,diagnosticEffect(f));assert.equal(f.sends.length,0);assert.equal(f.finished.at(-1).state,'not_sent');
+  }
+});
+
+test('final SQL recheck after message construction blocks revoked intent immediately before relay',async t=>{
+  const f=await fixture(t),original=f.context.deviceEffectAuthorize;let prepared=false,checkedAfterPreparation=false;
+  f.behavior.prepare=async()=>{prepared=true;};
+  f.context.deviceEffectAuthorize=async input=>{
+    if(prepared&&input.recheck){checkedAfterPreparation=true;throw Error('confirmed intent revoked');}
+    return original(input);
+  };
+  await pollEffect(f,diagnosticEffect(f));assert.equal(prepared,true);assert.equal(checkedAfterPreparation,true);
+  assert.equal(f.sends.length,0);assert.equal(f.finished.at(-1).state,'not_sent');
+});
+
+test('lease/revision changes and altered recheck payloads cannot relay a previously confirmed diagnostic',async t=>{
+  for(const phase of ['revision','lease','payload','request','mode']){
+    const f=await fixture(t),original=f.context.deviceEffectAuthorize;let prepared=false;
+    f.behavior.prepare=async()=>{prepared=true;if(phase==='revision')f.update();if(phase==='lease')f.revoke();};
+    f.context.deviceEffectAuthorize=async input=>{
+      const result=await original(input);
+      if(prepared&&input.recheck){
+        if(phase==='payload')result.payload={...result.payload,text:'Changed after confirmation'};
+        if(phase==='request')result.diagnostic_request_id=randomUUID();
+        if(phase==='mode')result.recipient_mode='explicit';
+      }
+      return result;
+    };
+    await pollEffect(f,diagnosticEffect(f));assert.equal(f.sends.length,0,phase);assert.equal(f.finished.at(-1).state,'not_sent',phase);
+  }
+});
+
+test('confirmed explicit diagnostic preserves target and self identity; timeout after relay stays uncertain without retry',async t=>{
+  const f=await fixture(t),effect=diagnosticEffect(f,{recipient:phone,mode:'explicit'});f.behavior.send=async()=>{throw Error('Lost provider acknowledgement');};
+  await pollEffect(f,effect);assert.equal(f.sends.length,1);assert.equal(f.sends[0].jid,phone+'@s.whatsapp.net');
+  assert.equal(f.finished.at(-1).state,'uncertain');
+  f.session.close();await f.open();await f.poll();assert.equal(f.sends.length,1);assert.equal(f.finished.at(-1).state,'uncertain');
+});
+
+test('lost diagnostic finish ACK reconciles an accepted receipt without another grant or message',async t=>{
+  const f=await fixture(t),effect=diagnosticEffect(f);let lost=true;
+  f.behavior.finish=async()=>{if(lost)throw Error('ACK lost');};await pollEffect(f,effect);assert.equal(f.sends.length,1);
+  const count=f.authorizations.length;lost=false;
+  f.behavior.pending=async()=>({effects:[],reconcile:[{operation_id:effect.operation_id,device_id:f.snapshot.id,
+    generation:f.snapshot.generation,settings_revision:f.snapshot.settings_revision}]});
+  await f.poll();assert.equal(f.authorizations.length,count);assert.equal(f.sends.length,1);
+  assert.equal(f.finished.at(-1).state,'accepted');assert.equal(f.finished.at(-1).reconcile,true);
 });
