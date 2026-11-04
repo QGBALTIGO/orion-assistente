@@ -81,8 +81,8 @@ test('ingress to a native list uses a current effect, exact encrypted proto and 
   const incoming=f.events.find(row=>row.message_id==='native-list');assert.equal(incoming.origin,'contact');assert.equal(incoming.chatbot_revision,1);assert.ok(Number.isSafeInteger(incoming.ingress_order));
 });
 
-test('carousel image decoder envelope is unwrapped and every normalized asset remains scoped to the effect',async t=>{
-  const f=await fixture(t),original=Buffer.from('synthetic normalized image'),thumbnail=Buffer.from('synthetic normalized thumbnail'),prepared=[],loaded=[],raw=[];
+test('carousel image decoder envelope is unwrapped and every normalized asset remains scoped to the effect',{timeout:10_000},async t=>{
+  const f=await fixture(t),completed=defer(),original=Buffer.from('synthetic normalized image'),thumbnail=Buffer.from('synthetic normalized thumbnail'),prepared=[],loaded=[],raw=[];
   const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
   const descriptors=Array.from({length:3},()=>({id:randomUUID(),kind:'image',mime:'image/jpeg',size:original.length,sha256:hash(original),width:512,height:512,
     thumbnail:{mime:'image/jpeg',size:thumbnail.length,sha256:hash(thumbnail)}}));
@@ -93,8 +93,11 @@ test('carousel image decoder envelope is unwrapped and every normalized asset re
     assert.equal(payload.buffer.toString(),'untrusted image input');return {asset:descriptors[payload.card_index]};};
   f.behavior.asset=async payload=>{loaded.push(payload);assert.ok(descriptors.some(asset=>asset.id===payload.asset.id));assert.equal(payload.operation_id,action.operation_id);
     assert.equal(payload.device_id,f.state.id);return Buffer.from(payload.variant==='thumbnail'?thumbnail:original);};
-  f.behavior.event=async row=>row.kind==='text'?[action]:[];f.receive('carousel-envelope');await until(()=>f.finished.length===1);
-  assert.equal(f.finished[0].state,'accepted');assert.deepEqual(prepared,[0,1,2]);assert.equal(loaded.length,6);assert.equal(f.sends.length,1);
+  // The real SDK encrypts media through asynchronous files. Wait for its
+  // explicit effect receipt, not a number of event-loop turns under CI load.
+  f.behavior.finish=async receipt=>{completed.resolve(receipt);return {effects:[]};};
+  f.behavior.event=async row=>row.kind==='text'?[action]:[];f.receive('carousel-envelope');const receipt=await completed.promise;
+  assert.equal(receipt.operation_id,action.operation_id);assert.equal(receipt.state,'accepted');assert.deepEqual(prepared,[0,1,2]);assert.equal(loaded.length,6);assert.equal(f.sends.length,1);
   assert.equal(f.sends[0].proto.viewOnceMessage.message.interactiveMessage.carouselMessage.cards.length,3);
   assert.ok(raw.every(buffer=>buffer.every(byte=>byte===0)));
 });

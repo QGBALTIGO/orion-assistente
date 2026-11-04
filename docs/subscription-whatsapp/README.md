@@ -16,7 +16,7 @@ não observado ou testado.
 | Ordem | Módulo | Estado |
 |---|---|---|
 | 01 | Dispositivos | Publicado — PR 248, produção `976fa7a095b053e5589bab52eb058187ebba858c` |
-| 02 | Chatbot | Observado em 2026-11-04; implementação em andamento |
+| 02 | Chatbot | Implementado — PR 249 em qualificação para publicação |
 | 03 | Testar Chatbot | Não iniciado |
 | 04 | Templates | Não iniciado |
 | 05 | Mensagens Enviadas | Não iniciado |
@@ -38,6 +38,7 @@ não observado ou testado.
 ## Método e fontes
 
 O registro detalhado da etapa 02 está em [chatbot-observation.md](chatbot-observation.md).
+A qualificação técnica está em [chatbot-validation.md](chatbot-validation.md).
 
 Observação feita no Chrome conectado do usuário em 2026-11-03
 (America/Cuiaba), pela extensão autorizada. Nenhum envio, reinício, exclusão,

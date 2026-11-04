@@ -10,12 +10,14 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import hashlib
 from http.server import ThreadingHTTPServer
+from io import BytesIO
 import json
 import os
 from pathlib import Path
 import threading
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
+import zipfile
 
 from playwright.sync_api import expect, sync_playwright
 import pytest
@@ -142,10 +144,24 @@ class Handler(PlansHandler):
                 result["items"][0]["download_url"] = CHATBOT_BASE + "/backups/" + BACKUP_ID + "/download"
                 return self.body(result)
             if suffix == "/backups/" + BACKUP_ID + "/download" or suffix == "/exports/" + EXPORT_ID:
-                data = json.dumps({"format": "orion-chatbot", "schema_version": 1, "rules": session["chatbot_rules"]}).encode()
+                exported = session["chatbot_exports"].get(EXPORT_ID)
+                format = exported["format"] if suffix.startswith("/exports/") and exported else "zip"
+                selected = exported["ids"] if suffix.startswith("/exports/") and exported else None
+                document = {"format": "orion.subscription-chatbot", "version": 1, "exported_at": now(),
+                    "rules": [{"id": rule["id"], "creation_order": rule["creation_order"],
+                        "definition": {key: rule[key] for key in ["device_id", "enabled", "match_mode", "keyword", "response"]}}
+                        for rule in session["chatbot_rules"] if selected is None or rule["id"] in selected],
+                    "templates": [], "assets": []}
+                data = json.dumps(document).encode()
+                if format == "zip":
+                    output = BytesIO()
+                    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                        archive.writestr("chatbot.json", data)
+                    data = output.getvalue()
+                filename = "orion-chatbot-backup.zip" if suffix.startswith("/backups/") else "orion-chatbot." + format
                 self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Disposition", 'attachment; filename="orion-chatbot.json"')
+                self.send_header("Content-Type", "application/json" if format == "json" else "application/zip")
+                self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
@@ -200,8 +216,9 @@ class Handler(PlansHandler):
                     return self.reject(session, "Invalid synthetic selection")
                 call["selected_count"] = len(ids)
                 session["chatbot_calls"].append(call)
+                session["chatbot_exports"][EXPORT_ID] = {"format": parsed.format, "ids": sorted(ids)}
                 return self.body({"export": {**CONTRACT["export_response"]["export"],
-                    "filename": "orion-chatbot.json", "url": CHATBOT_BASE + "/exports/" + EXPORT_ID}})
+                    "filename": "orion-chatbot." + parsed.format, "url": CHATBOT_BASE + "/exports/" + EXPORT_ID}})
             if suffix == "/imports/preview" and self.command == "POST":
                 parsed = ImportPreview.model_validate(payload)
                 source, mode = "import", parsed.mode
@@ -378,9 +395,10 @@ def test_chatbot_editor_transfer_and_workspace_isolation(browser, fixture_url, s
             page.locator("[data-sc-form=export] button[type=submit]").click()
         assert download_info.value.suggested_filename == "orion-chatbot.json"
         assert download_info.value.failure() is None
+        assert json.loads(Path(download_info.value.path()).read_text())["format"] == "orion.subscription-chatbot"
         a("import").click()
         page.locator("[data-sc-import-file]").set_input_files({"name": "orion-chatbot.json",
-            "mimeType": "application/json", "buffer": b'{"format":"orion-chatbot","schema_version":1,"rules":[]}'} )
+            "mimeType": "application/json", "buffer": Path(download_info.value.path()).read_bytes()} )
         page.locator("[data-sc-form=import] button[type=submit]").click()
         expect(page.locator(".os-chatbot-preview-counts>div")).to_have_count(6)
         assert_layout(page, width)
@@ -430,12 +448,20 @@ def test_chatbot_editor_transfer_and_workspace_isolation(browser, fixture_url, s
         a("backups").click()
         expect(a("backup-restore")).to_be_disabled()
         expect(a("backup-download")).to_be_enabled()
+        with page.expect_download() as download_info:
+            a("backup-download").click()
+        assert download_info.value.suggested_filename == "orion-chatbot-backup.zip"
+        with zipfile.ZipFile(download_info.value.path()) as archive:
+            assert json.loads(archive.read("chatbot.json"))["version"] == 1
         close_modal(page, "backups")
         a("export").click()
         page.locator("[data-sc-export-all]").check()
         with page.expect_download() as download_info:
             page.locator("[data-sc-form=export] button[type=submit]").click()
         assert download_info.value.failure() is None
+        assert download_info.value.suggested_filename == "orion-chatbot.zip"
+        with zipfile.ZipFile(download_info.value.path()) as archive:
+            assert json.loads(archive.read("chatbot.json"))["format"] == "orion.subscription-chatbot"
         readonly = page.request.get(fixture_url + "/__fixture/chatbot-calls").json()
         assert [call["path"] for call in readonly["calls"] if call["method"] != "GET"] == [CHATBOT_BASE + "/exports"]
         assert not readonly["unexpected"]

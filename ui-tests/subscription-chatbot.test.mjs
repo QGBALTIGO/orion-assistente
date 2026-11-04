@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {makeSuite,planState,defaultResponse} from './harness.mjs';
-import {makeChatbot,base,ruleId,deviceId,backupId,jobId,previewId,listing,catalog,detail,preview,job,copy,contract,failure,flush,deferred,tenantA} from './subscription-chatbot-harness.mjs';
+import {makeChatbot,base,ruleId,deviceId,backupId,jobId,previewId,listing,catalog,detail,preview,job,copy,contract,failure,flush,deferred,tenantA,tenantB,archiveDocument,archiveZip,archiveResponse} from './subscription-chatbot-harness.mjs';
 const field=path=>'[data-sc-field="'+path+'"]',act=name=>'[data-sc-action="'+name+'"]',form=name=>'[data-sc-form="'+name+'"]';
 const writes=h=>h.calls.filter(call=>call.method!=='GET');
 const source=await readFile(new URL('../app/static/orion-subscription-chatbot.js',import.meta.url),'utf8');
@@ -86,11 +86,43 @@ test('URL tag inspection is explicit and pauses on an uncertain command with the
 test('read-only accounts keep backup download and selected export while every mutation is unavailable',async t=>{
  const config=catalog();config.capabilities={...config.capabilities,manage:false,test_response:false,import:false,restore:false,read_url_tags:false};const h=await makeChatbot({configuration:config,respond(path,method){if(path===base+'/exports'&&method==='POST')return {export:{...copy(contract.export_response.export),url:base+'/exports/'+jobId}};}});t.after(()=>h.close());assert.equal(h.element(act('create')).disabled,true);assert.equal(h.element(act('import')).disabled,true);assert.equal(h.element(act('edit')).disabled,true);
  h.click(act('export'));await flush();assert.equal(h.element(form('export')+' button[type=submit]').disabled,true);h.check('[data-sc-select-id="'+ruleId+'"]');h.submit(form('export'));await flush();assert.deepEqual(writes(h)[0].data,{ids:[ruleId],format:'zip'});assert.equal(h.downloads.length,1);
- h.click(act('backups'));await flush();assert.equal(h.element(act('backup-restore')).disabled,true);h.click(act('backup-download'));assert.equal(h.downloads.length,2);assert.equal(writes(h).length,1);assert.deepEqual(h.errors,[]);
+ h.click(act('backups'));await flush();assert.equal(h.element(act('backup-restore')).disabled,true);h.click(act('backup-download'));await flush();assert.equal(h.downloads.length,2);assert.equal(writes(h).length,1);assert.deepEqual(h.errors,[]);
+ for(const saved of h.downloads){assert.match(saved.href,/^blob:/);assert.equal(saved.blob.type,'application/zip');assert.deepEqual(Buffer.from(await saved.blob.arrayBuffer()),archiveZip);}
+ for(const {options} of h.downloadCalls){assert.equal(options.method,'GET');assert.equal(options.credentials,'same-origin');assert.equal(options.mode,'same-origin');assert.equal(options.redirect,'error');assert.equal(options.cache,'no-store');}
+ assert.equal(h.downloads[1].download,'orion-chatbot-backup.zip');await h.tick(1000);assert.equal(h.objectURLs.size,0);assert.equal(h.revokedURLs.length,2);
 });
 
-test('cross-tenant download responses are rejected',async t=>{
- const h=await makeChatbot({respond(path,method){if(path===base+'/exports'&&method==='POST')return {export:{id:jobId,url:'https://example.invalid/download'}};}});t.after(()=>h.close());h.click(act('export'));await flush();h.check('[data-sc-export-all]');h.submit(form('export'));await flush();assert.equal(h.downloads.length,0);assert.ok(h.element('[data-sc-pending]'));assert.equal(writes(h).length,1);
+test('external, cross-tenant and query-bearing archive URLs are refused before fetch',async t=>{
+ for(const url of ['https://example.invalid/download',base.replace(tenantA,tenantB)+'/exports/'+jobId,base+'/exports/'+jobId+'?redirect=external']){
+  const h=await makeChatbot({respond(path,method){if(path===base+'/exports'&&method==='POST')return {export:{id:jobId,url}};}});t.after(()=>h.close());h.click(act('export'));await flush();h.check('[data-sc-export-all]');h.submit(form('export'));await flush();assert.equal(h.downloads.length,0);assert.equal(h.downloadCalls.length,0);assert.equal(h.controller.getState().pending,null);assert.match(h.element('[data-sc-dialog-error]').textContent,/endereço do arquivo/);assert.equal(writes(h).length,1);
+ }
+});
+
+test('JSON export waits for the validated response before announcing or saving the archive',async t=>{
+ const ready=deferred();const h=await makeChatbot({respond(path,method){if(path===base+'/exports'&&method==='POST')return {export:{id:jobId,url:base+'/exports/'+jobId}};},respondDownload:()=>ready.promise});t.after(()=>h.close());h.click(act('export'));await flush();h.check('[data-sc-export-all]');h.change(field('export_format'),'json');h.submit(form('export'));await flush();assert.equal(h.downloads.length,0);assert.equal(h.controller.getState().busy,true);assert.equal(h.element('[data-sc-feedback]').textContent,'');ready.resolve(archiveResponse('json'));await flush();assert.equal(h.downloads.length,1);assert.deepEqual(JSON.parse(await h.downloads[0].blob.text()),archiveDocument);assert.equal(h.downloads[0].download,'orion-chatbot.json');assert.equal(h.document.querySelector(form('export')),null);assert.match(h.element('[data-sc-feedback]').textContent,/Download.*iniciado/);
+});
+
+test('HTTP failures from export and backup remain visible and never become downloaded files or pending commands',async t=>{
+ for(const [kind,status] of [['export',413],['backups',409]]){
+  const message='Falha sintética: confira o arquivo antes de tentar novamente.';const h=await makeChatbot({respond(path,method){if(path===base+'/exports'&&method==='POST')return {export:{id:jobId,url:base+'/exports/'+jobId}};},respondDownload:()=>new Response(JSON.stringify({detail:{code:'CHATBOT_INVALID_GRAPH',message}}),{status,headers:{'Content-Type':'application/json'}})});t.after(()=>h.close());h.click(act(kind));await flush();if(kind==='export'){h.check('[data-sc-export-all]');h.submit(form('export'));}else h.click(act('backup-download'));await flush();assert.equal(h.downloads.length,0);assert.equal(h.objectURLs.size,0);assert.equal(h.controller.getState().pending,null);assert.equal(h.controller.getState().busy,false);assert.equal(h.element(form(kind)+' [data-sc-dialog-error]').textContent,message);assert.equal(h.element('[data-sc-feedback]').textContent,'');await h.tick(10000);assert.equal(h.downloadCalls.length,1);
+ }
+});
+
+test('wrong archive MIME, partial bodies and successful JSON error payloads are not saved',async t=>{
+ for(const response of [archiveResponse('zip','{"detail":"not a zip"}',{headers:{'Content-Type':'application/json'}}),archiveResponse('zip',archiveZip,{headers:{'Content-Length':String(archiveZip.length+1)}}),archiveResponse('json','{"detail":"not an export"}')]){
+  const h=await makeChatbot({respond(path,method){if(path===base+'/exports'&&method==='POST')return {export:{id:jobId,url:base+'/exports/'+jobId}};},respondDownload:()=>response});t.after(()=>h.close());h.click(act('export'));await flush();h.check('[data-sc-export-all]');if(response.headers.get('Content-Type')==='application/json; charset=utf-8')h.change(field('export_format'),'json');h.submit(form('export'));await flush();assert.equal(h.downloads.length,0);assert.equal(h.objectURLs.size,0);assert.match(h.element('[data-sc-dialog-error]').textContent,/formato esperado|incompleto|não é um arquivo/);assert.equal(h.controller.getState().pending,null);
+ }
+});
+
+test('archive streams cannot exceed the byte budget when Content-Length is missing or false',async t=>{
+ for(const length of [null,'1','10485761']){
+  let cancelled=false;const stream=new ReadableStream({start(controller){controller.enqueue(new Uint8Array(10*1024*1024));controller.enqueue(new Uint8Array([0]));},cancel(){cancelled=true;}});
+  const h=await makeChatbot({respondDownload:()=>new Response(stream,{headers:{'Content-Type':'application/zip',...(length===null?{}:{'Content-Length':length})}})});t.after(()=>h.close());h.click(act('backups'));await flush();h.click(act('backup-download'));await flush();assert.equal(h.downloads.length,0);assert.equal(h.objectURLs.size,0);assert.match(h.element('[data-sc-dialog-error]').textContent,/tamanho permitido/);if(length!=='10485761')assert.equal(cancelled,true);assert.equal(h.controller.getState().busy,false);
+ }
+});
+
+test('unmount aborts an archive request and ignores its late response',async t=>{
+ const ready=deferred();const h=await makeChatbot({respondDownload:()=>ready.promise});t.after(()=>h.close());h.click(act('backups'));await flush();h.click(act('backup-download'));await flush();const signal=h.downloadCalls[0].options.signal;assert.equal(signal.aborted,false);h.controller.unmount();assert.equal(signal.aborted,true);ready.resolve(archiveResponse());await flush();assert.equal(h.downloads.length,0);assert.equal(h.objectURLs.size,0);assert.equal(h.document.querySelector('dialog'),null);assert.deepEqual(h.errors,[]);
 });
 
 test('import uploads only a bounded file for preview, changing assignment invalidates that preview',async t=>{

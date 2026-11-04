@@ -49,7 +49,7 @@
     const request=(suffix='',method='GET',payload)=>bridge.request(base+suffix,method,payload);
     const current=(epoch,read)=>state.mounted&&state.epoch===epoch&&(read===undefined||state.read===read);
     const fields=window.OrionFields,releaseFields=fields.bind(host);
-    let operationTimer=null;
+    let operationTimer=null;const downloads=new Set();
     const deviceName=id=>id===null?'Todos os Dispositivos':state.catalog?.devices.find(item=>item.id===id)?.name||'Dispositivo indisponível';
     const canManage=()=>state.loaded&&state.catalog?.capabilities?.manage===true;
     const canWrite=()=>canManage()&&!state.busy&&!state.pending&&!state.stale;
@@ -179,10 +179,48 @@
     }
     function cancelDialog(event){event.preventDefault();closeDialog(dialogFor(event.target));}
     function dialogError(entry,message){const node=entry?.element.querySelector('[data-sc-dialog-error]');if(node?.isConnected){node.textContent=message;node.tabIndex=-1;node.focus();node.scrollIntoView({block:'nearest'});}else feedback(message,true);}
-    function download(url,filename){
-      const target=new URL(url,location.origin),relative=target.pathname;
-      if(target.origin!==location.origin||target.search||target.hash||!relative.startsWith(base+'/')||!/^\/(?:exports\/[0-9a-f-]{36}|backups\/[0-9a-f-]{36}\/download)$/i.test(relative.slice(base.length)))throw Error('invalid_download_url');
-      const link=document.createElement('a');link.href=relative;link.download=String(filename||'orion-chatbot.zip').replace(/[\/\\]/g,'-');link.rel='noopener';document.body.append(link);link.click();link.remove();
+    async function responseBytes(response,maximum){
+      if(!response.body?.getReader)throw Error('invalid_download_body');
+      const reader=response.body.getReader(),chunks=[];let size=0;
+      try{while(true){const {done,value}=await reader.read();if(done)break;if(size+value.byteLength>maximum)throw Object.assign(Error('O arquivo excede o tamanho permitido.'),{status:413});size+=value.byteLength;chunks.push(value);}}
+      catch(error){void reader.cancel().catch(()=>{});throw error;}
+      finally{reader.releaseLock();}
+      const content=new Uint8Array(size);let offset=0;for(const chunk of chunks){content.set(chunk,offset);offset+=chunk.byteLength;}return content;
+    }
+    async function download(url,filename,format,entry){
+      if(!state.mounted||state.busy)return false;
+      const epoch=state.epoch,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),180000),maximum=10*1024*1024;
+      downloads.add(controller);setBusy(true);feedback('');entry.element.querySelector('[data-sc-dialog-error]').textContent='';
+      try{
+        const target=new URL(url,location.origin),relative=target.pathname,mime=format==='json'?'application/json':format==='zip'?'application/zip':null;
+        if(!mime||target.origin!==location.origin||target.username||target.password||target.search||target.hash||!relative.startsWith(base+'/')||!/^\/(?:exports\/[0-9a-f-]{36}|backups\/[0-9a-f-]{36}\/download)$/i.test(relative.slice(base.length)))throw Object.assign(Error('Não foi possível confirmar o endereço do arquivo. Atualize a lista.'),{status:422});
+        const response=await fetch(relative,{method:'GET',headers:{Accept:mime},credentials:'same-origin',mode:'same-origin',cache:'no-store',redirect:'error',signal:controller.signal});
+        if(!current(epoch)||!entry.element.isConnected)return false;
+        const type=(response.headers.get('Content-Type')||'').split(';')[0].trim().toLowerCase(),length=response.headers.get('Content-Length');
+        if(!response.ok){
+          let message='O servidor retornou HTTP '+response.status;
+          if(type==='application/json'&&(!length||/^\d{1,9}$/.test(length)&&Number(length)<=16384))try{const data=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await responseBytes(response,16384))),detail=data?.detail;const text=typeof detail==='string'?detail:detail?.message;if(typeof text==='string'&&text.trim())message=text.slice(0,1000);}catch{}
+          throw Object.assign(Error(message),{status:response.status});
+        }
+        if(response.status!==200||response.redirected||type!==mime)throw Object.assign(Error('O servidor não retornou o arquivo no formato esperado. Tente baixar novamente.'),{status:415});
+        if(length!==null&&(!/^[1-9]\d{0,8}$/.test(length)||Number(length)>maximum))throw Object.assign(Error('O arquivo excede o tamanho permitido ou está incompleto.'),{status:413});
+        const content=await responseBytes(response,maximum),encoding=response.headers.get('Content-Encoding');
+        if(!current(epoch)||!entry.element.isConnected)return false;
+        if(!content.length||length!==null&&(!encoding||encoding==='identity')&&content.length!==Number(length))throw Object.assign(Error('O arquivo recebido está incompleto. Tente baixar novamente.'),{status:422});
+        let valid;
+        if(format==='zip')valid=content.length>=4&&content[0]===80&&content[1]===75&&content[2]===3&&content[3]===4;
+        else try{const data=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(content));valid=object(data)&&data.format==='orion.subscription-chatbot'&&data.version===1&&['rules','templates','assets'].every(key=>Array.isArray(data[key]));}catch{}
+        if(!valid)throw Object.assign(Error('O conteúdo recebido não é um arquivo do Chatbot Orion. Tente baixar novamente.'),{status:422});
+        const objectURL=URL.createObjectURL(new Blob([content],{type:mime})),link=document.createElement('a');
+        try{link.href=objectURL;link.download=filename;link.rel='noopener';document.body.append(link);link.click();}
+        finally{link.remove();setTimeout(()=>URL.revokeObjectURL(objectURL),1000);}
+        return true;
+      }catch(error){if(current(epoch)&&entry.element.isConnected)dialogError(entry,Number(error?.status)?errorMessage(error):'Não foi possível concluir o download. Tente baixar novamente.');return false;}
+      finally{controller.abort();downloads.delete(controller);clearTimeout(timeout);if(current(epoch))setBusy(false);}
+    }
+    async function downloadBackup(entry,backup){
+      if(!canRead('backups')||state.pending||backup.status!=='ready')return;
+      if(await download(backup.download_url,'orion-chatbot-backup.zip','zip',entry))feedback('Download do backup iniciado.');
     }
     function exportFiltersHTML(entry){
       const f=entry.filters,devices=[['','Todos os escopos'],['all','Todos os Dispositivos'],...state.catalog.devices.map(item=>[item.id,item.name])];
@@ -202,7 +240,8 @@
     }
     async function submitExport(entry){
       if(!canRead('export')||!entry.selected.size)return;
-      await execute({kind:'export',entry,suffix:'/exports',method:'POST',payload:{ids:[...entry.selected],format:entry.format},accept:async result=>{if(!object(result?.export)||!uuid(result.export.id)||typeof result.export.url!=='string')throw Error('invalid_export_response');download(result.export.url,result.export.filename);closeDialog(entry,true);feedback('Arquivo do Orion preparado para download.');}});
+      const format=entry.format;
+      await execute({kind:'export',entry,suffix:'/exports',method:'POST',payload:{ids:[...entry.selected],format},accept:async result=>{if(!object(result?.export)||!uuid(result.export.id)||typeof result.export.url!=='string')throw Error('invalid_export_response');if(await download(result.export.url,'orion-chatbot.'+format,format,entry)){closeDialog(entry,true);feedback('Download do arquivo do Orion iniciado.');}}});
     }
     function backupDTO(value){if(!object(value)||!Array.isArray(value.items)||value.items.some(item=>!uuid(item.id)||typeof item.status!=='string'))throw Error('invalid_backups_response');return copy(value);}
     function renderBackups(entry){
@@ -543,7 +582,7 @@
       if(action==='export-search'){filterValues(entry.element,'export',entry.filters);if(!validFilterDates(entry.filters,entry))return;entry.filters.page=1;void loadExport(entry);return;}
       if(action==='export-previous'||action==='export-next'){entry.filters.page+=action==='export-next'?1:-1;void loadExport(entry);return;}
       if(action==='backups-previous'||action==='backups-next'){entry.page+=action==='backups-next'?1:-1;void loadBackups(entry);return;}
-      if(action==='backup-download'||action==='backup-restore'){const backup=entry.data?.items.find(item=>item.id===id);if(!backup)return;if(action==='backup-restore')showRestore(backup);else try{download(backup.download_url,'orion-chatbot-backup.zip');}catch{dialogError(entry,'Não foi possível confirmar o endereço do backup. Atualize o histórico.');}return;}
+      if(action==='backup-download'||action==='backup-restore'){const backup=entry.data?.items.find(item=>item.id===id);if(!backup)return;if(action==='backup-restore')showRestore(backup);else void downloadBackup(entry,backup);return;}
       if(action==='new-preview'){invalidatePreview(entry);void generatePreview(entry);return;}
       editorAction(action,node);
     }
@@ -589,7 +628,7 @@
     function toggle(event){const target=event.target;if(target.matches('[data-sc-advanced]'))state.advanced=target.open;if(target.dataset.scDetails){const id=target.dataset.scDetails;if(target.open){state.expanded.add(id);if(!state.details.has(id))void readRule(id);}else state.expanded.delete(id);}}
     host.classList.add('os-chatbot');
     host.addEventListener('click',click);host.addEventListener('input',inputChanged);host.addEventListener('change',change);host.addEventListener('submit',submit);host.addEventListener('toggle',toggle,true);document.addEventListener('visibilitychange',visibilityChanged);
-    const controller={load:()=>load(),unmount(){if(!state.mounted)return;state.mounted=false;state.epoch++;clearTimeout(operationTimer);releaseFields();for(const entry of [...state.dialogs])closeDialog(entry,true);host.removeEventListener('click',click);host.removeEventListener('input',inputChanged);host.removeEventListener('change',change);host.removeEventListener('submit',submit);host.removeEventListener('toggle',toggle,true);document.removeEventListener('visibilitychange',visibilityChanged);host.replaceChildren();host.classList.remove('os-chatbot');host.removeAttribute('aria-busy');state.details.clear();state.catalog=null;state.data=null;state.pending=null;},getState:()=>({loaded:state.loaded,busy:state.busy,pending:state.pending?.kind||null,editor:!!state.editor,dirty:state.editor?.dirty===true})};
+    const controller={load:()=>load(),unmount(){if(!state.mounted)return;state.mounted=false;state.epoch++;clearTimeout(operationTimer);for(const download of downloads)download.abort();downloads.clear();releaseFields();for(const entry of [...state.dialogs])closeDialog(entry,true);host.removeEventListener('click',click);host.removeEventListener('input',inputChanged);host.removeEventListener('change',change);host.removeEventListener('submit',submit);host.removeEventListener('toggle',toggle,true);document.removeEventListener('visibilitychange',visibilityChanged);host.replaceChildren();host.classList.remove('os-chatbot');host.removeAttribute('aria-busy');state.details.clear();state.catalog=null;state.data=null;state.pending=null;},getState:()=>({loaded:state.loaded,busy:state.busy,pending:state.pending?.kind||null,editor:!!state.editor,dirty:state.editor?.dirty===true})};
     active=controller;render();void load();return controller;
   }
   function unmount(){active?.unmount();active=null;}
