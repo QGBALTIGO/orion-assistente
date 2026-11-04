@@ -1,0 +1,26 @@
+name: QA - inspect WhatsApp integration
+on:
+  push:
+    branches: [qa/whatsapp-transport-apply-20261104]
+    paths: ['.github/workflows/inspect-whatsapp-integration.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Preserve exact histories without changing any branch
+        run: |
+          git rev-parse refs/remotes/origin/security/prelaunch-hardening-20261030
+          git rev-parse refs/remotes/origin/fix/whatsapp-transport-hardening-20261104
+          git bundle create /tmp/whatsapp-integration.bundle refs/remotes/origin/security/prelaunch-hardening-20261030 refs/remotes/origin/fix/whatsapp-transport-hardening-20261104
+      - uses: actions/upload-artifact@v4
+        with:
+          name: whatsapp-integration-history
+          path: /tmp/whatsapp-integration.bundle
+          retention-days: 3
