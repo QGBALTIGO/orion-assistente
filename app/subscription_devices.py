@@ -550,7 +550,7 @@ async def device_lease_snapshot(db, transport):
 
 
 @asynccontextmanager
-async def _private_transaction(request, *, live=True, device_id=None, allow_removed=False, diagnostic_request_id=None):
+async def _private_transaction(request, *, live=True, device_id=None, allow_removed=False):
     try:
         channel_id = UUID(str(request.path_params["channel_id"]))
         owner = UUID(request.headers["x-orion-channel-owner"]) if live else None
@@ -571,14 +571,6 @@ async def _private_transaction(request, *, live=True, device_id=None, allow_remo
             if live:
                 channels._current(transport, owner, fence)
             await channels._require_canonical(db, tenant, channel_id)
-            if diagnostic_request_id is not None:
-                # Receipt lookup has only an opaque request ID. Resolve its
-                # historical device after authenticating this channel, rather
-                # than selecting every tombstone sharing the channel.
-                device_id = (await db.execute(text("""SELECT device_id FROM subscription_diagnostic_requests
-                    WHERE tenant_id=:t AND id=:id"""), {"t": tenant, "id": diagnostic_request_id})).scalar_one_or_none()
-                if device_id is None:
-                    raise fail("DEVICE_NOT_FOUND", 404)
             row = (await db.execute(text("""SELECT * FROM subscription_devices WHERE tenant_id=:t AND channel_id=:c
                 AND (CAST(:d AS uuid) IS NULL OR id=CAST(:d AS uuid)) AND (:removed OR removed_at IS NULL) FOR UPDATE"""),
                 {"t": tenant, "c": channel_id, "d": device_id,

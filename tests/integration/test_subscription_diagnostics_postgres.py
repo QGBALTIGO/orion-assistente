@@ -220,9 +220,9 @@ async def seed_message(c, *, state="accepted", phone=OTHER_PHONE, seconds=0, mes
         await db.execute(text("""INSERT INTO subscription_device_effects
           (id,tenant_id,device_id,generation,settings_revision,event_id,effect_key,type,purpose,payload,
            status,error_code,created_at,finished_at)
-          VALUES(:id,:t,:d,:g,:r,:event,:key,:kind,:purpose,CAST(:payload AS jsonb),:state,:error,
+          VALUES(:id,:t,:d,:g,:r,:event,:key,:kind,:purpose,CAST(:payload AS jsonb),CAST(:state AS varchar(20)),:error,
             statement_timestamp()-(:seconds * interval '1 second'),
-            CASE WHEN :state IN ('pending','running') THEN NULL ELSE statement_timestamp() END)"""),
+            CASE WHEN CAST(:state AS varchar(20)) IN ('pending','running') THEN NULL ELSE statement_timestamp() END)"""),
           {"id": identity, "t": c.tenant, "d": UUID(c.device["id"]), "g": c.saved["generation"], "r": c.device["revision"],
            "event": source, "key": identity.hex, "kind": kind, "purpose": "absence" if kind == "send_text" else "webhook",
            "payload": json.dumps({"phone": phone, "text": message, "private_token": "SYNTHETIC_PRIVATE_OUTPUT_TOKEN"}),
@@ -649,7 +649,10 @@ async def test_proxy_claim_is_independent_of_whatsapp_and_idempotent_after_respo
         assert recovered["proxy"]["scope"] == "configured" and recovered["proxy"]["applied_to_session"] == "no"
         assert recovered["proxy"]["latency_ms"] == 17
         data = await report(c)
-        assert data["connection"]["state"] == "stopped" and data["proxy"]["last_test"]["freshness"] == "current"
+        # Creation leaves the canonical device disabled; a synthetic stopped
+        # transport must not imply that the proxy test connected WhatsApp.
+        assert data["connection"]["state"] == "disabled"
+        assert data["proxy"]["last_test"]["freshness"] == "current"
         assert data["test_message"]["can_prepare"] is False
         assert not any(value in json.dumps([data, recovered]) for value in
             ("SYNTHETIC_PRIVATE", "claim_token", "claimed_owner", "proxy_secret", "credential_encrypted"))
@@ -794,14 +797,16 @@ async def test_paused_tenant_cannot_grant_proxy_network_but_can_preserve_existin
     async with c.ctx.migration.begin() as db:
         await db.execute(text("UPDATE tenants SET status='paused' WHERE id=:t"), {"t": c.tenant})
     async with no_work(c, monkeypatch, unchanged=True):
-        rejected(await proxy_callback(c, "authorize", {**claim, "recheck": False}), 403, "DIAGNOSTIC_REVOKED")
+        # Execution still goes through the normal plan guard: a paused tenant
+        # loses devices.manage before diagnostic-specific authority is reached.
+        rejected(await proxy_callback(c, "authorize", {**claim, "recheck": False}), 403, "WORKSPACE_FEATURE_UNAVAILABLE")
     async with c.ctx.migration.begin() as db:
         await db.execute(text("UPDATE tenants SET status='active' WHERE id=:t"), {"t": c.tenant})
     claim, grant = await claim_proxy(c, operation)
     async with c.ctx.migration.begin() as db:
         await db.execute(text("UPDATE tenants SET status='paused' WHERE id=:t"), {"t": c.tenant})
     async with no_work(c, monkeypatch, unchanged=True):
-        rejected(await proxy_callback(c, "authorize", {**claim, "claim_fence": 1, "recheck": True}), 403, "DIAGNOSTIC_REVOKED")
+        rejected(await proxy_callback(c, "authorize", {**claim, "claim_fence": 1, "recheck": True}), 403, "WORKSPACE_FEATURE_UNAVAILABLE")
     async with no_work(c, monkeypatch, unchanged=True, include_requests=False):
         response = await proxy_callback(c, "finish", {**claim, "claim_fence": 1, "status": "succeeded", "result": proxy_result(grant)})
         assert response.status_code == 200 and response.json()["status"] == "succeeded", response.text

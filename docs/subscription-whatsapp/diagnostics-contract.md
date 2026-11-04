@@ -171,6 +171,22 @@ Ponte → API, prefixo `/internal/qr/channels/{channel_id}/device/diagnostics`:
 - `POST /proxy/receipt`: `{request_id}`; apesar do método privado, concede apenas
   leitura, retorna `read_only:true` com scope, sem writes, lease ou claim novo.
 
+Os callbacks privados `finish` e `receipt` possuem uma transação exclusiva para
+preservar evidência de uma intenção já autenticada quando a empresa passa a
+`paused`. Essa exceção é limitada a esses dois paths e a esse estado: mantém o
+nicho atual, a associação ativa do proprietário, a credencial e o canal canônico,
+e os vínculos de empresa, intenção, dispositivo e ator. `finish` também exige o
+claim/token/fence original e prova produzida dentro de seu prazo. Não devolve
+configuração, senha ou autorização de rede, e não cria/renova claim.
+
+Uma empresa ativa continua sujeita a `devices.manage` e `diagnostics.manage`;
+estados diferentes de `active` e `paused` são recusados. `authorize` e recheck
+permanecem na guarda original, que recusa a empresa pausada antes de conceder rede
+com 403 `WORKSPACE_FEATURE_UNAVAILABLE`. A recuperação pública também continua
+sujeita às permissões atuais; a exceção é somente dos callbacks privados de
+preservação de evidência. Uma mudança de proprietário, nicho ou canal nunca é
+dispensada por essa exceção.
+
 Resultado privado:
 `{scope:"configured_proxy",configuration_version,applied_to_session:boolean|null,state:reachable|not_configured|failed|uncertain,latency_ms,target:"tls_reference",observed_at,error_code}`.
 Não aceita campos extras, exceção bruta, URL, host escolhido ou credenciais.

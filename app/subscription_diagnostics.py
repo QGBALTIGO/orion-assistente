@@ -4,6 +4,7 @@ Preparing a test only records an intention. Confirmation inserts one immutable
 effect; the existing fenced broker is the sole path to message transport.
 """
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
@@ -20,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import text
 
-from app.catalog_api import Actor, authenticate
+from app.catalog_api import Actor, authenticate, support_session_factory
 from app import qr_channels as channels
 from app import subscription_chatbot_store as store
 from app import subscription_devices as devices
@@ -604,27 +605,75 @@ async def authorize_diagnostic_effect(db, row, effect, owner, fence, payload):
         "settings_revision": row["revision"], "payload": effect["payload"]})
 
 
-async def proxy_authority(db, row, operation, payload, now, *, final=False):
-    await store.workspace(db, row["tenant_id"], feature="diagnostics.manage")
+def same_proxy_request(row, operation, payload):
     if (operation is None or operation["kind"] != "proxy_test" or operation["device_id"] != payload.device_id
+            or operation["id"] != payload.request_id or operation["tenant_id"] != row["tenant_id"]
             or operation["device_id"] != row["id"] or operation["generation"] != payload.generation
             or operation["settings_revision"] != payload.settings_revision
             or operation["actor_account_id"] != row["owner_account_id"]):
         raise fail("DIAGNOSTIC_REVOKED")
+
+
+async def proxy_authority(db, row, operation, payload, now):
+    """Network authority has no inactive-tenant or historical-receipt mode."""
+    await store.workspace(db, row["tenant_id"], feature="diagnostics.manage")
+    same_proxy_request(row, operation, payload)
     if not await channels._owner_authorized(db, row["tenant_id"], Actor("member", account_id=operation["actor_account_id"])):
         raise fail("DIAGNOSTIC_REVOKED", 403)
-    if not final:
-        # The private receipt boundary intentionally accepts disabled channels
-        # and inactive tenants. A new network grant needs the tenant guard,
-        # while retaining independence from a WhatsApp connection/lease.
-        status = (await db.execute(text("SELECT status FROM tenants WHERE id=:t"), {"t": row["tenant_id"]})).scalar_one_or_none()
-        if status != "active":
-            raise fail("DIAGNOSTIC_REVOKED", 403)
-    if not final and (row["removed_at"] is not None or row["status"] in {"removing", "removed"}
+    status = (await db.execute(text("SELECT status FROM tenants WHERE id=:t"), {"t": row["tenant_id"]})).scalar_one_or_none()
+    if status != "active":
+        raise fail("DIAGNOSTIC_REVOKED", 403)
+    if (row["removed_at"] is not None or row["status"] in {"removing", "removed"}
             or row["generation"] != operation["generation"] or row["revision"] != operation["settings_revision"]
             or operation["snapshot"]["configuration_version"] != configuration_version(row)
             or operation["execution_expires_at"] <= now):
         raise fail("DIAGNOSTIC_CONTEXT_CHANGED")
+
+
+@asynccontextmanager
+async def proxy_receipt_transaction(request, request_id):
+    """Only these two authenticated callbacks may preserve a paused receipt.
+
+This boundary never returns proxy configuration, secrets or a network grant.
+It cannot be used by an authorize/recheck or public endpoint. The sole tenant
+state exception is paused; owner, niche, canonical channel and immutable intent
+identity remain mandatory, including for historical device tombstones.
+"""
+    try:
+        channel_id = UUID(str(request.path_params["channel_id"]))
+        prefix = INTERNAL.format(channel_id=channel_id) + "/proxy/"
+        if request.method != "POST" or request.url.path not in {prefix+"finish", prefix+"receipt"}:
+            raise ValueError()
+    except (ValueError, TypeError, KeyError):
+        raise HTTPException(401, "Canal não autorizado") from None
+    async with support_session_factory()() as db:
+        async with db.begin():
+            tenant = (await db.execute(text("SELECT tenant_id FROM qr_channels WHERE id=:c"), {"c": channel_id})).scalar_one_or_none()
+            if tenant is None:
+                raise HTTPException(401, "Canal não autorizado")
+            # write=False retains the persisted niche and shared plan lock.
+            # Active tenants must still have both capabilities; paused tenants
+            # have those two bits masked by the plan resolver by definition.
+            state = await store.workspace(db, tenant, write=False, feature="diagnostics.manage")
+            await channels._lock_membership(db, channel_id)
+            status = (await db.execute(text("SELECT status FROM tenants WHERE id=:t FOR UPDATE"), {"t": tenant})).scalar_one_or_none()
+            if (status not in {"active", "paused"} or status == "active"
+                    and not all(state.get("permissions", {}).get(key) for key in ("devices.manage", "diagnostics.manage"))):
+                raise devices.fail("WORKSPACE_FEATURE_UNAVAILABLE", 403)
+            transport = await channels._channel(db, channel_id, request.headers.get("x-orion-channel-key"), receipt_only=True)
+            await channels._require_canonical(db, tenant, channel_id)
+            operation = await request_row(db, tenant, identity=request_id)
+            if operation is None or operation["kind"] != "proxy_test":
+                raise fail("DIAGNOSTIC_NOT_FOUND", 404)
+            row = (await db.execute(text("""SELECT * FROM subscription_devices
+              WHERE tenant_id=:t AND id=:d AND channel_id=:c FOR UPDATE"""),
+              {"t": tenant, "d": operation["device_id"], "c": channel_id})).mappings().one_or_none()
+            if (row is None or operation["actor_account_id"] != row["owner_account_id"]
+                    or row["owner_account_id"] != transport["owner_account_id"]
+                    or transport["assistant_enabled"] or transport["allowed_senders"]
+                    or devices.is_alias(tenant, channel_id)):
+                raise fail("DIAGNOSTIC_REVOKED", 403)
+            yield db, dict(row), operation
 
 
 def valid_proxy_result(operation, status, result, now):
@@ -682,10 +731,9 @@ async def authorize_proxy(channel_id: UUID, payload: ProxyAuthorize, request: Re
 
 @router.post(INTERNAL + "/proxy/finish")
 async def finish_proxy(channel_id: UUID, payload: ProxyFinish, request: Request):
-    async with devices._private_transaction(request, live=False, device_id=payload.device_id, allow_removed=True) as (db, row, _, _, _):
-        operation = await request_row(db, row["tenant_id"], identity=payload.request_id)
+    async with proxy_receipt_transaction(request, payload.request_id) as (db, row, operation):
         now = await clock(db)
-        await proxy_authority(db, row, operation, payload, now, final=True)
+        same_proxy_request(row, operation, payload)
         if (operation["claimed_owner"] != payload.owner or operation["claim_token"] != payload.claim_token
                 or operation["claim_fence"] != payload.claim_fence or operation["started_at"] is None):
             raise fail("DIAGNOSTIC_REVOKED")
@@ -709,13 +757,7 @@ async def finish_proxy(channel_id: UUID, payload: ProxyFinish, request: Request)
 async def proxy_receipt(channel_id: UUID, payload: ProxyReceipt, request: Request):
     # Although the private transport uses POST, this endpoint grants reads only
     # and cannot change a request, claim, connection or effect.
-    async with devices._private_transaction(request, live=False, allow_removed=True,
-                                           diagnostic_request_id=payload.request_id) as (db, row, _, _, _):
-        await store.workspace(db, row["tenant_id"], feature="diagnostics.manage")
-        operation = await request_row(db, row["tenant_id"], identity=payload.request_id)
-        if (operation is None or operation["kind"] != "proxy_test" or operation["device_id"] != row["id"]
-                or operation["actor_account_id"] != row["owner_account_id"]):
-            raise fail("DIAGNOSTIC_NOT_FOUND", 404)
+    async with proxy_receipt_transaction(request, payload.request_id) as (_, row, operation):
         return jsonable_encoder({"read_only": True, "kind": "proxy_test", "request_id": operation["id"],
             "channel_id": channel_id, "tenant_id": row["tenant_id"], "device_id": operation["device_id"],
             "generation": operation["generation"], "settings_revision": operation["settings_revision"]})

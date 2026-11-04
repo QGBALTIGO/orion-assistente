@@ -287,9 +287,33 @@ def selected(page):
 
 def assert_dialog_layout(page, width, height):
     assert_layout(page, width)
-    metrics = page.locator("[data-dg-dialog]").evaluate(
-        "node => {const r=node.getBoundingClientRect();return {top:r.top,bottom:r.bottom};}")
-    assert metrics["top"] >= -1 and metrics["bottom"] <= height + 1, metrics
+    metrics = page.locator("[data-dg-dialog]").evaluate("""node => {
+        const box = element => {
+            const r = element.getBoundingClientRect();
+            return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,height:r.height};
+        };
+        const body = node.querySelector('.os-dg-dialog-body'), dialog = box(node), rect = box(body);
+        const header = box(node.querySelector('.os-dg-dialog-header')), footer = box(node.querySelector('.os-dg-dialog-footer'));
+        const visible = {
+            top:Math.max(rect.top + body.clientTop, header.bottom, dialog.top, 0),
+            bottom:Math.min(rect.top + body.clientTop + body.clientHeight, footer.top, dialog.bottom, innerHeight),
+            left:Math.max(rect.left + body.clientLeft, dialog.left, 0),
+            right:Math.min(rect.left + body.clientLeft + body.clientWidth, dialog.right, innerWidth)
+        };
+        return {dialog,body:rect,header,footer,visible,scrollTop:body.scrollTop,scrollHeight:body.scrollHeight,
+            recipient:box(node.querySelector('[data-dg-preview-recipient]')),
+            preview:box(node.querySelector('.os-dg-preview-text'))};
+    }""")
+    dialog, visible = metrics["dialog"], metrics["visible"]
+    assert dialog["top"] >= -1 and dialog["bottom"] <= height + 1, metrics
+    # All fixture viewports have room for this bounded preview. WebKit must
+    # not collapse a flex body into a tiny scroll strip while the dialog fits.
+    assert visible["bottom"] - visible["top"] >= 200, metrics
+    for name in ("recipient", "preview"):
+        target = metrics[name]
+        assert target["height"] > 0, (name, metrics)
+        assert visible["top"] - 1 <= target["top"] and target["bottom"] <= visible["bottom"] + 1, (name, metrics)
+        assert visible["left"] - 1 <= target["left"] and target["right"] <= visible["right"] + 1, (name, metrics)
 
 
 def operation_action(page, name):

@@ -31,7 +31,7 @@ dos runners isolados do CI; coleta e compilação locais não substituem execuç
 | PostgreSQL e navegadores | 80 casos coletados | 45 PG funcionais, 13 PG de release, 22 browsers (11 por engine); execução pendente no CI. |
 | Servidor HTTP sintético | Smoke em loopback concluído | Assets e contratos reais, preparação/confirmação/proxy com resposta perdida e recuperação GET; um efeito e um probe sintéticos. |
 
-O conjunto Python completo foi executado sobre a árvore final em 60,71 s.
+O conjunto Python completo foi executado sobre a árvore da primeira revisão em 60,71 s.
 Os números de grupos sobrepostos não devem ser somados como casos únicos.
 Os testes de ponte usam sockets falsos ou proxy/TLS de loopback com certificado
 descartável; não consultam o alvo externo real.
@@ -40,6 +40,43 @@ Foi eliminada uma corrida no teste DOM de permissão: a asserção de primeira
 consulta passou a aguardar a chamada observável, em vez de presumir que o hash
 assíncrono da identidade terminou depois de um número fixo de ciclos do event loop.
 Não foi reduzida a asserção nem alterado o comportamento do produto para passá-la.
+
+## Primeira revisão do CI e correções
+
+A PR 253 foi aberta sobre a base publicada, com head
+`0a7a2c705d6f3df1ff9b45b02ec2d3348c6a0479` e checkout sintético
+`c919fec158582f02107b8cc9feab799fd59ddf8a`; ambos têm a árvore
+`b82221ff93022879ba766f6951a3cac1c0c79d6f`. O workflow
+`41892887386` concluiu Python (1.368), ponte (375), DOM (281), Chrome (52)
+e WebKit (52) sem falhas. PostgreSQL concluiu 240 aprovados e quatro falhas.
+Esses resultados pertencem à primeira revisão e não qualificam o head corrigido.
+
+As quatro falhas foram rastreadas antes de modificar suas expectativas:
+
+- Duas eram a mesma inferência ambígua de tipo no helper SQL de dados sintéticos,
+  antes de entrar nos handlers. O estado recebe agora cast explícito para
+  `varchar(20)` no valor e no `CASE`; as exigências funcionais foram preservadas.
+- O cenário de proxy independente completou autorização, recheck, conclusão
+  duplicada e recuperação. Seu estado final correto é `disabled`, pois o
+  dispositivo sintético foi criado e nunca conectado; o probe não o ativa.
+- A empresa pausada é bloqueada primeiro pela guarda normal de plano. O teste
+  agora exige esse código, mantendo a exigência de preservar o recibo existente.
+  A transação genérica anterior também bloquearia essa preservação. Foi criada
+  uma transação exclusiva de `finish`/`receipt`, com exceção somente para o estado
+  `paused`, sem conceder rede ou dispensar proprietário, nicho, credencial, canal
+  canônico ou vínculo imutável da intenção. Foram acrescentadas 19 regressões
+  unitárias; os 182 testes diretamente afetados passaram. O gate Python completo
+  foi repetido após a correção: 1.387 aprovados em 65,77 s, com os mesmos seis
+  avisos de depreciação existentes.
+
+A inspeção visual dos artefatos encontrou um problema adicional no WebKit:
+o corpo flexível do diálogo de confirmação colapsava mesmo com os testes
+funcionais aprovados. A base de tamanho agora acompanha o conteúdo e mantém
+redução/rolagem apenas quando a altura disponível exige. O teste de navegador
+passa a verificar a área útil do corpo e a visibilidade do destinatário e do
+texto. Os cartões de status passam a uma coluna abaixo de 1.000 px, após a
+captura de tablet evidenciar quebra desnecessária do número da conexão.
+As novas capturas e todos os gates ainda precisam validar essas correções.
 
 ## Gates obrigatórios do CI
 
