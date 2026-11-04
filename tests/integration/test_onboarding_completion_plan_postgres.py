@@ -20,6 +20,7 @@ from app import plan_management, plan_permissions
 from app.database import tenant_transaction
 from app.panel_auth import COOKIE, _hash_cookie
 from app.plan_catalog import RECOVERY_FEATURES
+from app.workspace_policy import SUBSCRIPTION_WORKSPACE_FEATURES
 from app.plan_routing import include_plan_router
 from test_onboarding_postgres import onboarding_db, new_business_context  # noqa: F401
 
@@ -72,7 +73,7 @@ async def new_owner_http(onboarding_db, monkeypatch):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application),
             base_url="https://test", cookies={COOKIE: token},
             headers={"Origin": "https://test", "x-orion-csrf": csrf}) as client:
-            yield SimpleNamespace(ctx=ctx, client=client)
+            yield SimpleNamespace(ctx=ctx, client=client, app=application)
     finally:
         await cache.delete(key)
         await cache.aclose()
@@ -117,20 +118,27 @@ async def assert_no_operational_access(case, state):
     permissions = await case.client.get(prefix + "/management/permissions")
     assert permissions.status_code == 200, permissions.text
     effective = permissions.json()["effective_plan"]
+    subscription = state["configuration"].get("niche") == "servico_assinaturas"
+    denied_code = "WORKSPACE_FEATURE_UNAVAILABLE" if subscription else "PLAN_FEATURE_UNAVAILABLE"
     assert effective["source"] == "none" and effective["code"] is None
-    assert effective["active"] is False and set(effective["features"]) == RECOVERY_FEATURES
+    assert effective["active"] is False
+    assert set(effective["features"]) == (SUBSCRIPTION_WORKSPACE_FEATURES if subscription else RECOVERY_FEATURES)
+    assert effective["workspace_profile"] == ("subscription_services" if subscription else "standard")
     assert effective["limits"]["active_professionals"] == 0
     assert effective["trial"] is None and effective["manual_assignment"] is None
     overview = await case.client.get(prefix + "/management/plan-overview")
-    assert overview.status_code == 200 and overview.json()["can_manage_plan"] is True
-    assert overview.json()["trial"] is None and overview.json()["subscription"] is None
+    if subscription:
+        assert overview.status_code == 403 and overview.json()["detail"]["code"] == denied_code
+    else:
+        assert overview.status_code == 200 and overview.json()["can_manage_plan"] is True
+        assert overview.json()["trial"] is None and overview.json()["subscription"] is None
     for suffix, feature in (("/professionals", "professionals.manage"),
                             ("/working_hours", "agenda.manage"),
                             ("/appointments", "agenda.manage"),
                             ("/commerce/products", "commerce.admin")):
         denied = await case.client.get(prefix + suffix)
         assert denied.status_code == 403, denied.text
-        assert denied.json()["detail"]["code"] == "PLAN_FEATURE_UNAVAILABLE"
+        assert denied.json()["detail"]["code"] == denied_code
         assert denied.json()["detail"]["feature"] == feature
     tenant = UUID(state["tenant_id"])
     async with case.ctx.runtime() as db:
@@ -138,7 +146,7 @@ async def assert_no_operational_access(case, state):
             with pytest.raises(HTTPException) as pending:
                 async with tenant_transaction(db, tenant):
                     await onboarding_service.require_operational_ready(db, tenant, capability)
-            assert pending.value.status_code == 409
+            assert pending.value.status_code == (403 if subscription else 409)
         for feature in ("site.manage", "notifications.basic", "reception.ai"):
             with pytest.raises(HTTPException) as denied:
                 async with tenant_transaction(db, tenant):
@@ -225,7 +233,9 @@ async def test_completion_keeps_csrf_current_owner_and_tenant_guards(new_owner_h
 @pytest.mark.parametrize("kind", ["professional", "service", "product"])
 async def test_quick_answers_cannot_activate_staged_catalog_without_plan(new_owner_http, kind):
     case = new_owner_http
-    state = await ready(case, offering="both")
+    # Standard quick profiles retain the existing staged catalogue contract.
+    # Subscription workspaces reject these writes before any draft is created.
+    state = await ready(case, activity="products")
     if kind in {"professional", "service"}:
         state = await save(case, state, "professionals", {"item": {"name": "Pessoa sintética"}})
         if kind == "service":

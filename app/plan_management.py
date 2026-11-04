@@ -32,6 +32,7 @@ from app.admin_accounts import require_platform_owner
 from app.plan_catalog import CODES, PLAN_FEATURES, feature_catalog
 from app.cakto_readiness import direct_environment_ready
 from app.plan_permissions import plan_state, lock_plan
+from app.workspace_policy import require_standard_workspace
 
 router = APIRouter(tags=["Planos Orion"])
 BRAZIL_DDDS = frozenset({
@@ -107,6 +108,7 @@ async def require_checkout_available(db, tenant_id: UUID, account_id: UUID):
     """A manual grant has priority; a new payment cannot replace it."""
     state = await plan_state(db, tenant_id, lock="shared")
     await _ensure_owner(db, tenant_id, account_id)
+    require_standard_workspace(state, "plan.manage")
     manual = state.get("manual_assignment")
     if isinstance(manual, dict) and manual.get("active") is True:
         raise HTTPException(409, {"code": "MANUAL_PLAN_ACTIVE", "message":
@@ -211,6 +213,7 @@ async def request_plan_trial(tenant_id: UUID, payload: TrialRequest,
             async with db.begin():
                 current_access = await plan_state(db, tenant_id, lock="exclusive")
                 await _ensure_owner(db, tenant_id, account_id)
+                require_standard_workspace(current_access, "plan.manage")
                 if current_access["source"] in {"manual", "cakto", "platform_admin"} and current_access["active"]:
                     raise HTTPException(409, "Sua empresa já possui acesso ativo ao Orion")
                 tenant = (await db.execute(text("""

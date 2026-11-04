@@ -10,13 +10,16 @@ from fastapi.routing import APIRoute
 
 from app.catalog_api import Actor, authenticate
 from app.plan_permissions import bind_feature, reset_feature, require_tenant_feature
+from app.workspace_policy import require_standard_workspace
 
 TENANT_PREFIX = "/api/v1/tenants/{tenant_id}"
 
 
 def feature_for_path(relative, method="GET", *, resource=None, step_id=None):
     """Explicit classification; an unclassified future tenant API fails closed."""
-    if relative in {"/management/permissions", "/management/plan-overview", "/management/subscription",
+    if relative == "/management/permissions":
+        return "account.manage"
+    if relative in {"/management/plan-overview", "/management/subscription",
                     "/management/plan-trial", "/management/plan-checkout"} or relative.startswith(("/management/plan-direct-","/management/plan-pix-")):
         return "plan.manage"
     if relative.startswith("/onboarding"):
@@ -118,8 +121,20 @@ def exclusive_professional_operation(relative, method, params):
             relative in {"/management/plan-trial", "/management/plan-checkout"} or
             relative.startswith(("/management/plan-direct-","/management/plan-pix-")) or
             relative.startswith("/onboarding/complete") or
-            relative.startswith("/onboarding/steps/") and params.get("step_id") == "professionals" or
+            relative.startswith("/onboarding/steps/") and params.get("step_id") in {"business", "professionals"} or
             params.get("resource") == "professionals")
+
+
+def subscription_workspace_route(relative, method, params):
+    """Only metadata and the private questionnaire belong to this workspace."""
+    if method in {"GET", "HEAD", "OPTIONS"}:
+        return relative in {"/management/permissions", "/onboarding"}
+    if relative == "/onboarding/complete":
+        return method == "POST"
+    if relative.startswith("/onboarding/steps/"):
+        return method == "PUT" and params.get("step_id") in {
+            "business", "location", "profile", "goals", "review", "hours"}
+    return False
 
 
 async def enforce_endpoint_plan(request: Request, tenant_id: UUID, actor: Actor = Depends(authenticate)):
@@ -140,11 +155,15 @@ async def enforce_endpoint_plan(request: Request, tenant_id: UUID, actor: Actor 
             raise HTTPException(404, "Recurso não encontrado")
         raise HTTPException(403, "Recurso indisponível para este plano")
     bypass = actor.role in {"admin", "support"} and not getattr(actor, "maintenance", False)
+    workspace_allowed = subscription_workspace_route(relative, request.method, request.path_params)
     token = bind_feature(tenant_id, feature,
-        exclusive=exclusive_professional_operation(relative, request.method, request.path_params), bypass=bypass)
+        exclusive=exclusive_professional_operation(relative, request.method, request.path_params),
+        bypass=bypass, workspace_allowed=workspace_allowed)
     try:
         if not bypass:
-            await require_tenant_feature(tenant_id, feature)
+            state = await require_tenant_feature(tenant_id, feature)
+            if not workspace_allowed:
+                require_standard_workspace(state, feature)
         yield
     finally:
         reset_feature(token)

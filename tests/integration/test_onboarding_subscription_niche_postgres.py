@@ -59,7 +59,8 @@ async def test_choice_persists_replays_completes_and_is_cleared_after_niche_chan
         with pytest.raises(HTTPException) as no_agenda:
             async with tenant_transaction(db, tenant):
                 await service.require_operational_ready(db, tenant, "appointments")
-        assert no_agenda.value.status_code == 409
+        assert no_agenda.value.status_code == 403
+        assert no_agenda.value.detail["code"] == "WORKSPACE_FEATURE_UNAVAILABLE"
 
     async with ctx.migration.connect() as db:
         config = (await db.execute(text(
