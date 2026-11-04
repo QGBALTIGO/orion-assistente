@@ -5,19 +5,20 @@ import {makePanel,jsonResponse} from './panel-harness.mjs';
 import {fullState} from './onboarding-harness.mjs';
 
 const profile='subscription_services';
-const utility=['novidades','ajuda','member'];
-const subscriptionPlan=(code='none',extra={})=>planState(code,{
-  workspace_profile:profile,revision:'subscription-'+code,...extra
-});
+const utility=['dispositivos','novidades','ajuda','member'];
+const subscriptionPlan=(code='none',extra={})=>{
+  const value=planState(code,{workspace_profile:profile,revision:'subscription-'+code,...extra});
+  return {...value,features:[...value.features,'devices.manage'],permissions:{...value.permissions,'devices.manage':true}};
+};
 const business=(extra={})=>({id:tenantA,name:'Empresa de assinaturas',role:'owner',
   slug:'assinaturas-sinteticas',timezone:'America/Sao_Paulo',workspace_profile:profile,...extra});
 const scopedCalls=h=>h.calls.filter(call=>call.path.startsWith('/api/v1/tenants/'));
 const operationalCalls=h=>scopedCalls(h).filter(call=>!call.path.endsWith('/management/permissions'));
 const visible=node=>!node.hidden&&!node.classList.contains('hidden');
 
-function assertSubscriptionShell(h){
+function assertSubscriptionShell(h,devices=true){
   assert.deepEqual([...h.document.querySelectorAll('#osNav [data-os-route]')]
-    .map(node=>node.dataset.osRoute),utility);
+    .map(node=>node.dataset.osRoute),devices?utility:utility.slice(1));
   assert.deepEqual([...h.document.querySelectorAll('#osNav .os-nav-section')]
     .map(node=>node.textContent),['Gestão','Ajuda e conta']);
   assert.equal(h.document.querySelector('#osSidebarContext .os-side-site'),null);
@@ -146,10 +147,10 @@ test('early business profile suppresses plan shortcuts while permissions are unr
     if(path==='/api/v1/onboarding/entry')return {enabled:true,kind:'onboarding',tenant_id:tenantA};
     if(path.endsWith('/onboarding')&&method==='GET')return state;
   }});t.after(()=>h.close());
-  assertSubscriptionShell(h);
+  assertSubscriptionShell(h,false);
   assert.equal(h.element('[data-setup-access=plano]').hidden,true);
   permission.resolve(jsonResponse({detail:'Consulta temporariamente indisponível'},503));await flush();
-  assertSubscriptionShell(h);
+  assertSubscriptionShell(h,false);
   assert.equal(h.element('[data-setup-access=plano]').hidden,true);
   assert.equal(h.calls.some(call=>/\/management\/(?:plan-|dashboard)/.test(call.path)),false);
   assert.deepEqual(h.errors,[]);
@@ -161,7 +162,7 @@ test('permission refresh failure retains the known subscription workspace withou
     ?jsonResponse({detail:'Sem conexão'},503):{effective_plan:subscriptionPlan('elite')}});
   t.after(()=>h.close());failed=true;
   h.window.dispatchEvent(new h.window.Event('focus'));await flush();
-  assertSubscriptionShell(h);
+  assertSubscriptionShell(h,false);
   assert.equal(h.element('#page-suite').dataset.osCurrentRoute,'novidades');
   assert.equal(operationalCalls(h).length,0);
   assert.deepEqual(h.errors,[]);

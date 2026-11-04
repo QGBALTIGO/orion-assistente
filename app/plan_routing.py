@@ -19,6 +19,8 @@ def feature_for_path(relative, method="GET", *, resource=None, step_id=None):
     """Explicit classification; an unclassified future tenant API fails closed."""
     if relative == "/management/permissions":
         return "account.manage"
+    if relative == "/subscription-whatsapp/devices" or relative.startswith("/subscription-whatsapp/devices/"):
+        return "devices.manage"
     if relative in {"/management/plan-overview", "/management/subscription",
                     "/management/plan-trial", "/management/plan-checkout"} or relative.startswith(("/management/plan-direct-","/management/plan-pix-")):
         return "plan.manage"
@@ -127,6 +129,8 @@ def exclusive_professional_operation(relative, method, params):
 
 def subscription_workspace_route(relative, method, params):
     """Only metadata and the private questionnaire belong to this workspace."""
+    if relative == "/subscription-whatsapp/devices" or relative.startswith("/subscription-whatsapp/devices/"):
+        return True
     if method in {"GET", "HEAD", "OPTIONS"}:
         return relative in {"/management/permissions", "/onboarding"}
     if relative == "/onboarding/complete":

@@ -316,23 +316,29 @@ async def provision_connection(tenant_id: UUID, payload: ProvisionConnection, re
     response.headers["Cache-Control"] = "no-store"
     async with support_session_factory()() as db:
         async with db.begin():
-            await _owner(db, tenant_id, actor)
-            row, state = await _canonical(db, tenant_id, lock=True)
-            if state == "ambiguous":
-                raise HTTPException(409, "Conexões existentes precisam de revisão; nenhum vínculo foi alterado")
-            if row is None:
-                credential = secrets.token_urlsafe(48)
-                row = (await db.execute(text("""INSERT INTO qr_channels
-                    (tenant_id,owner_account_id,provider,label,credential_hash,credential_encrypted,allowed_senders,idempotency_key,request_fingerprint)
-                    VALUES (:tenant,:account,'baileys','WhatsApp',:digest,:encrypted,'[]'::jsonb,:key,:fingerprint) RETURNING *"""),
-                    {"tenant": tenant_id, "account": actor.account_id, "digest": credential_hash(credential),
-                     "encrypted": _cipher().encrypt(credential.encode()).decode(), "key": payload.idempotency_key,
-                     "fingerprint": hashlib.sha256(b"orion:single-whatsapp-provision:v1").hexdigest()})).mappings().one()
-                await db.execute(text("UPDATE tenants SET whatsapp_channel_id=:id WHERE id=:tenant"),
-                    {"id": row["id"], "tenant": tenant_id})
-            if row["owner_account_id"] != actor.account_id:
-                raise HTTPException(409, "Conexão existente requer revisão do proprietário")
+            row = await provision_owned_connection(db, tenant_id, payload.idempotency_key, actor)
     return jsonable_encoder(_connection_envelope(row, "ready", True, actor))
+
+
+async def provision_owned_connection(db, tenant_id, idempotency_key, actor):
+    """Provision inside the caller's transaction; never connect or expose a key."""
+    await _owner(db, tenant_id, actor)
+    row, state = await _canonical(db, tenant_id, lock=True)
+    if state == "ambiguous":
+        raise HTTPException(409, "Conexões existentes precisam de revisão; nenhum vínculo foi alterado")
+    if row is None:
+        credential = secrets.token_urlsafe(48)
+        row = (await db.execute(text("""INSERT INTO qr_channels
+            (tenant_id,owner_account_id,provider,label,credential_hash,credential_encrypted,allowed_senders,idempotency_key,request_fingerprint)
+            VALUES (:tenant,:account,'baileys','WhatsApp',:digest,:encrypted,'[]'::jsonb,:key,:fingerprint) RETURNING *"""),
+            {"tenant": tenant_id, "account": actor.account_id, "digest": credential_hash(credential),
+             "encrypted": _cipher().encrypt(credential.encode()).decode(), "key": idempotency_key,
+             "fingerprint": hashlib.sha256(b"orion:single-whatsapp-provision:v1").hexdigest()})).mappings().one()
+        await db.execute(text("UPDATE tenants SET whatsapp_channel_id=:id WHERE id=:tenant"),
+            {"id": row["id"], "tenant": tenant_id})
+    if row["owner_account_id"] != actor.account_id:
+        raise HTTPException(409, "Conexão existente requer revisão do proprietário")
+    return row
 
 
 @router.patch(BASE + "/{channel_id}")
@@ -397,6 +403,8 @@ async def lease_operation(db, channel_id, credential, payload, operation):
     if operation not in {"claim", "renew", "release", "check", "inspect", "receipt"}:
         raise HTTPException(404)
     async with db.begin():
+        from app.subscription_devices import prepare_device_lease, device_lease_snapshot
+        device = await prepare_device_lease(db, channel_id, operation)
         row = await _channel(db, channel_id, credential, receipt_only=operation == "receipt")
         if operation == "receipt":
             # Historical receipt lookup grants no lease, current AI identity,
@@ -435,6 +443,7 @@ async def lease_operation(db, channel_id, credential, payload, operation):
                 "allowed_senders": row["allowed_senders"], "assistant_enabled": row["assistant_enabled"],
                 "legacy_transport": legacy,
                 "verified_self_phone":qr_legacy.verified_self_phone(row) if legacy else None,
+                **({"device": await device_lease_snapshot(db, row)} if device else {}),
                 **({"inbox_control": True} if central or os.getenv("INBOX_CONTROL_ENABLED", "0") == "1" else {})}
 
 

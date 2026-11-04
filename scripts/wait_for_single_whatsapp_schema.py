@@ -101,7 +101,11 @@ def main():
     if result:
         return result
     from scripts.wait_for_appointment_consent_schema import main as consent_wait
-    return consent_wait()
+    result = consent_wait()
+    if result:
+        return result
+    from scripts.wait_for_subscription_devices_schema import main as devices_wait
+    return devices_wait()
 
 
 if __name__ == "__main__":

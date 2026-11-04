@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS = ROOT / "test-artifacts" / "subscription-workspace"
 SIZES = [(390, 844), (768, 1024), (1440, 900)]
 PROFILE = "subscription_services"
-ALLOWED_ROUTES = ["novidades", "ajuda", "member"]
+ALLOWED_ROUTES = ["dispositivos", "novidades", "ajuda", "member"]
 IDENTITY = {"name": "Empresa sintética de assinaturas", "contact_phone": "+5511900000001"}
 
 
@@ -43,8 +43,9 @@ class Handler(PlansHandler):
                       "name": session["business_identity"]["name"]} for item in value]
         if session and path.endswith("/management/permissions") and isinstance(value, dict):
             plan = {**value["effective_plan"], "workspace_profile": PROFILE}
-            plan["features"] = ["account.manage", "business.setup"]
-            plan["permissions"] = {key: key in plan["features"] for key in plan["permissions"]}
+            plan["features"] = ["account.manage", "business.setup", "devices.manage"]
+            plan["permissions"] = {key: key in plan["features"] for key in
+                                   {*plan["permissions"], "devices.manage"}}
             plan["revision"] = hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest()
             value = {"effective_plan": plan}
         return super().body(value, status, mime, cookie)
@@ -113,13 +114,15 @@ def browser(request):
 
 
 def open_navigation(page):
-    if not page.locator("#osNav [data-os-route=novidades]").is_visible():
-        page.locator("#osMenu").click()
+    menu = page.locator("#osMenu")
+    if menu.is_visible() and menu.get_attribute("aria-expanded") != "true":
+        menu.click()
+        expect(menu).to_have_attribute("aria-expanded", "true")
     expect(page.locator("#osNav [data-os-route=novidades]")).to_be_visible()
 
 
 def assert_shell(page, width):
-    expect(page.locator("#osNav [data-os-route]")).to_have_count(3)
+    expect(page.locator("#osNav [data-os-route]")).to_have_count(4)
     assert page.locator("#osNav [data-os-route]").evaluate_all(
         "nodes => nodes.map(node => node.dataset.osRoute)"
     ) == ALLOWED_ROUTES
@@ -136,7 +139,7 @@ def assert_shell(page, width):
       forbidden: [...document.querySelectorAll('#page-suite [data-os-route]')]
         .filter(node => node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden')
         .map(node => node.dataset.osRoute)
-        .filter(route => !['novidades','ajuda','member'].includes(route))
+        .filter(route => !['dispositivos','novidades','ajuda','member'].includes(route))
     })""")
     assert measured["viewport"] == width and measured["scroll"] <= width + 1, measured
     assert not measured["forbidden"], measured
@@ -144,7 +147,7 @@ def assert_shell(page, width):
 
 @pytest.mark.parametrize("size", SIZES, ids=lambda size: f"{size[0]}x{size[1]}")
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_subscription_shell_keeps_only_help_and_account(browser, fixture_url, size, theme):
+def test_subscription_shell_keeps_only_enabled_devices_help_and_account(browser, fixture_url, size, theme):
     engine, instance = browser
     width, height = size
     context = instance.new_context(viewport={"width": width, "height": height},

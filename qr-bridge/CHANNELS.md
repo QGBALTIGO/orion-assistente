@@ -1,5 +1,75 @@
 # Canais QR adicionais (opt-in)
 
+## Dispositivos de Serviço de assinaturas
+
+O módulo `subscription-whatsapp/devices` acrescenta uma identidade lógica por
+dispositivo ao canal canônico de uma empresa desse nicho. O broker inclui
+`device={id,generation,settings_revision,settings,capabilities}` no lease. Esse
+ramo exige `assistant_enabled=false`, allowlist do piloto vazia e transporte
+gerenciado; uma associação ao singleton legado é recusada. Os contratos de IA
+e as limitações de áudio descritos abaixo continuam iguais para os demais
+canais.
+
+`channel-session` encaminha os eventos desse dispositivo exclusivamente para
+`device/event`. A API decide horários, pausas, fuso, feriados, lista de exceções,
+supressão de avisos por 24 horas e efeitos permitidos. Nenhum evento passa pelo
+journal, `ai/reply`, intake de agenda ou token compartilhado. Chamadas privadas
+com LID oculto podem ser rejeitadas pelo ID/JID original; não se adivinha um
+telefone para enviar uma mensagem ou aplicar a lista de exceções.
+
+Os efeitos são `send_text`, `reject_call`, `transcribe` e `webhook`. Cada efeito
+exige `/device/effects/authorize`, com operação, identidade lógica, revisão e
+lease/fence atuais. O ledger local cifrado é reservado antes de qualquer envio,
+rejeição ou ASR. Respostas ambíguas de WhatsApp e de ASR não geram nova tentativa.
+`/device/effects/finish` registra o resultado. O polling de
+`/device/effects/pending` pode entregar partes ainda não iniciadas e tentativas
+de webhook devidas. Sua lista `reconcile` só permite apresentar recibos locais
+ao servidor; nunca cria um novo efeito. Áudio sem a mensagem original em memória
+não é baixado nem autorizado pelo polling.
+
+A transcrição é independente das flags `QR_AI_*`. Só está disponível quando a
+API anuncia infraestrutura e orçamento reais, além da configuração explícita do
+dispositivo. O download limita a mídia a 25 MB e a duração declarada a 30 minutos;
+a API mede a duração real antes da reserva de orçamento e do provedor. Formatos
+do ramo de dispositivos: OGG/Opus, WebM, WAV, MPEG e MP4. O prazo externo cobre
+até 30 segundos de download e 125 segundos de chamada privada, dentro de 160
+segundos; fechar a sessão ou mudar a revisão cancela imediatamente os sinais.
+Os buffers do módulo são apagados no `finally`. A API devolve transcrição inteira
+de até 120 mil caracteres Unicode e efeitos encadeados de até 32 mil unidades
+UTF-16 por mensagem, cada parte com identidade/recibo próprio. Não há corte
+silencioso nem remoção de separadores entre partes. O limite legado de envio
+permanece 1200 caracteres. `reply_enabled` pertence à futura busca de regras de
+resposta: não condiciona o envio da transcrição formatada e não ativa IA legada.
+
+Proxy é HTTP CONNECT por instância, através de `https-proxy-agent@7.0.6`, cobrindo
+WebSocket, upload e download. A senha chega somente na concessão privada do
+broker e não integra a URL nem respostas públicas. DNS deve resolver
+exclusivamente endereços públicos; o IP validado é fixado no socket. Falha de
+proxy nunca muda o transporte para conexão direta. Alterar proxy encerra o
+socket e elimina sua intenção de retomada até uma ação explícita de conexão.
+Webhook usa HTTP(S) público com o mesmo controle de destino, nenhum redirect,
+prazo de cinco segundos e corpo de até 64 KiB. A API guarda a fila, autoriza cada
+tentativa, limita a três e aplica a opção de desativar após falhas. Seu evento
+tem identidade estável: o consumidor deve deduplicar entrega HTTP repetida.
+
+As rotas privadas do bridge são
+`/internal/channels/{channel}/device/{status|qr|diagnostics|operations/{operation}}`
+para leitura e `.../device/{connect|pair|restart|relink|remove}` para ações
+explícitas. A API autoriza cada ação em `/device/control/authorize`; o bridge
+confirma em `/device/control/finish`. Reiniciar preserva o epoch de autenticação;
+reconectar faz logout e cria outro epoch cifrado. Remover usa a autorização
+exclusiva de controle, pois os efeitos normais já estão bloqueados. Os diretórios
+são separados por empresa, canal, dispositivo, geração e epoch. O ledger de
+controle permanece fora das chaves removidas para reconciliar uma resposta
+perdida. Códigos de pareamento não são gravados nele. A retomada automática exige
+o mesmo dispositivo, geração e configuração de proxy que já estiveram
+efetivamente conectados.
+
+Os testes `device-*.test.mjs` usam sockets, provedores, DNS e servidores HTTP
+sintéticos. Eles não conectam contas, enviam mensagens reais ou consomem ASR.
+Pareamento físico e entrega em aparelho continuam exigindo uma ação autorizada
+na conta que será conectada.
+
 Este contrato acrescenta contextos independentes ao processo do bridge. Não
 importa, move, limpa nem reativa a sessão legada de `/data/auth`. A allowlist e o
 piloto do servidor legado continuam intactos. A configuração padrão não cria

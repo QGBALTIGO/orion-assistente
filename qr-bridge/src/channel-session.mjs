@@ -15,9 +15,11 @@ import {withAssistantAudio} from './ai-audio.mjs';
 import {makeConversationIntake} from './conversation-intake.mjs';
 import {sendConnectionNoticeOnce} from './connection-alert.mjs';
 import {normalizeInbound,priorityText,updateEvent,callEvent,queueControl} from './inbound-event.mjs';
+import {createDeviceRuntime} from './device-runtime.mjs';
+import {createDeviceProxy} from './device-network.mjs';
 
 const silent={level:'silent',trace(){},debug(){},info(){},warn(){},error(){},fatal(){},child(){return this;}};
-export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),now=Date.now,typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout}={}){
+export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),now=Date.now,typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout,deviceOptions={}}={}){
   if(context.legacyTransport===true)throw Error('legacy_requires_existing_socket');
   await context.assertCurrent();
   const mod=await loadBaileys();await context.assertCurrent();
@@ -36,6 +38,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   const retryStore=makeEncryptedRetryStore({directory:privateDirectory(path.join(context.directory,'retry-proto')),secret:context.secret,
     serialize:value=>JSON.stringify(value,mod.BufferJSON.replacer),deserialize:value=>JSON.parse(value,mod.BufferJSON.reviver),now});
   const deviceCache=makePilotDeviceCache();
+  let deviceRuntime=null;
   const overflowNotices=new Map(),overflowEpoch=new Map();
   const current=()=>!closed&&context.isCurrent();
   const guarded=async()=>{if(!current())throw Error('channel_socket_replaced');await context.assertCurrent();if(!current())throw Error('channel_socket_replaced');};
@@ -90,10 +93,35 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       if(type==='app-state-sync-key'&&value)value=mod.proto.Message.AppStateSyncKeyData.fromObject(value);
       return [id,value];}));},
     set:data=>write(()=>{for(const [type,entries] of Object.entries(data))for(const [id,value] of Object.entries(entries))store.set('key:'+type+':'+id,value);})}};
+  const deviceSnapshot=context.deviceSnapshot?.();
+  if(deviceSnapshot?.settings.proxy?.enabled===true&&deviceSnapshot.capabilities.proxy!==true)throw Error('device_proxy_unavailable');
+  const proxyTransport=deviceSnapshot?await (deviceOptions.createProxy||createDeviceProxy)(deviceSnapshot.settings.proxy,
+    {secret:deviceSnapshot.proxy_secret?.password,signal:abort.signal,assertCurrent:guarded,...deviceOptions.proxyOptions}):null;
+  await guarded();
   const client=makeSocket({auth,logger:silent,browser:mod.Browsers.windows('Chrome'),
     printQRInTerminal:false,markOnlineOnConnect:false,syncFullHistory:false,userDevicesCache:deviceCache,maxMsgRetryCount:5,
+    ...proxyTransport?.socket,
     shouldSyncHistoryMessage:()=>false,getMessage:async key=>{try{await guarded();const message=retryStore.get(key);return current()?message:undefined;}catch{return undefined;}}});
-  const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);abort.abort();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
+  const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);abort.abort();deviceRuntime?.close();proxyTransport?.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
+  async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false}={}){
+    await guarded();const self=normalizeFromJid(client.user?.id);
+    const sendCurrent=()=>{try{return current()&&operationCurrent()===true;}catch{return false;}};
+    if(!sendCurrent())throw Error('channel_operation_superseded');
+    if(state!=='connected'||!self||phone===self||(!device&&!context.allowedSender(phone))||device&&!context.deviceSnapshot?.())throw Error('channel_send_denied');
+    const exists=await client.onWhatsApp(phone);await guarded();
+    const recipient=exists?.find(row=>row.exists&&normalizeFromJid(row.jid)===phone);
+    if(!recipient){const error=Error('channel_recipient_unverified');error.code='recipient_identity_unverified';throw error;}
+    const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:!device&&context.verifiedLid?.()===true,
+      socket:client,deviceCache,isCurrent:current});await guarded();
+    const sent=await sendStoredText({jid:proof.jid,recipientProof:proof,text,store:retryStore,freshDevices:true,isCurrent:sendCurrent,maxTextChars,preserveWhitespace:device,
+      makeMessage:(jid,body)=>mod.generateWAMessage(jid,{text:body},{userJid:client.user.id,logger:silent,messageId:mod.generateMessageIDV2(client.user.id)}),
+      relay:async(jid,body,options)=>{await guarded();if(!sendCurrent())throw Error('channel_operation_superseded');return client.relayMessage(jid,body,options);}});
+    return {id:sent?.key?.id};
+  }
+  if(deviceSnapshot)deviceRuntime=createDeviceRuntime(context,{client,downloadMediaMessage:mod.downloadMediaMessage,logger:silent,
+    now,openedAt,schedule,cancel,downloadOptions:proxyTransport.download,
+    capacity:context.deviceSendCapacity,
+    sendText:(phone,text,options)=>relayText(phone,text,{...options,device:true}),...deviceOptions.runtimeOptions});
   const groupSetting=(name,fallback,max)=>{const raw=process.env[name],value=Number(raw);
     return raw!==undefined&&Number.isSafeInteger(value)&&value>=0&&value<=max?value:fallback;};
   const settleMs=groupSetting('QR_AI_GROUP_WAIT_MS',350,2000);
@@ -118,6 +146,7 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       state='connected';qrValue=null;pairAttempt=null;cancel(pairTimer);pairTimer=null;
       if(!opened){opened=true;
         void Promise.resolve().then(()=>context.onConnected()).then(()=>{
+          if(deviceRuntime){void deviceRuntime.onConnected().catch(()=>{});return;}
           if(!notifyNewLink||!current())return;
           noticeTimer=schedule(async()=>{
             try{
@@ -140,17 +169,20 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     }
   });
   client.ev.on('messages.update',updates=>{
+    if(deviceRuntime){deviceRuntime.receipts(updates);return;}
     for(const item of updates){const delivery=deliveryFromAck(item.update?.status);
       if(current()&&['delivered','read'].includes(delivery))context.onReceipt(item.key?.id,delivery).catch(()=>{});
       const edited=updateEvent(item.key,item.update,now);if(current()&&edited)receive({messages:[edited],type:'notify'});}
   });
   client.ev.on('messages.delete',({keys=[]}={})=>{
+    if(deviceRuntime)return;
     for(const key of keys.slice(0,100))if(key?.fromMe===false&&key.id)
       receive({type:'notify',messages:[{key:{...key,id:'deleted:'+key.id.slice(0,145)},messageTimestamp:now()/1000,
         message:{protocolMessage:{type:0,key}}}]});
   });
-  client.ev.on('call',calls=>{for(const call of (calls||[]).slice(0,20)){const event=callEvent(call,now);if(event)receive({messages:[event],type:'notify'});}});
+  client.ev.on('call',calls=>{if(deviceRuntime){deviceRuntime.calls(calls);return;}for(const call of (calls||[]).slice(0,20)){const event=callEvent(call,now);if(event)receive({messages:[event],type:'notify'});}});
   function receive({messages=[],type}){
+    if(deviceRuntime){deviceRuntime.receive({messages,type});return;}
     for(const message of messages){
       const id=message.key?.id,at=timestampMs(message.messageTimestamp);
       if(!current()||message.key?.fromMe||typeof id!=='string'||!/^[a-zA-Z0-9._:-]{1,160}$/.test(id)||seen.has(id)||
@@ -208,6 +240,17 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
   }
   client.ev.on('messages.upsert',receive);
   return {close,status:()=>{expirePairing();return state;},
+    deviceSettingsChanged:()=>deviceRuntime?.sync(),
+    deviceDiagnostics:()=>deviceRuntime?.diagnostics()||null,
+    async logout({authorize}={}){
+      if(!deviceRuntime||typeof authorize!=='function')throw Error('device_logout_unavailable');
+      // Removing revokes normal device effects/leases before the provider call.
+      // Only the already-recorded control operation may finish this logout.
+      deviceRuntime.close();await authorize();
+      if(closed||state!=='connected')return {remote_logout:false};
+      if(typeof client.logout!=='function')throw Error('device_logout_unavailable');
+      await client.logout();return {remote_logout:true};
+    },
     phone:()=>state==='connected'?(normalizeFromJid(client.user?.id)||null):null,
     supportsPairing:()=>current()&&context.resumeOnly!==true&&creds.registered!==true&&state!=='connected'&&typeof client.requestPairingCode==='function',
     qr:()=>{expirePairing();return !pairAttempt&&['qr_ready','pair_expired'].includes(state)&&freshQR(qrAt,now())?
@@ -243,18 +286,6 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
       })();
       return attempt.promise;
     },
-    async send(phone,text,{isCurrent:operationCurrent=()=>true}={}){await guarded();const self=normalizeFromJid(client.user?.id);
-      const sendCurrent=()=>{try{return current()&&operationCurrent()===true;}catch{return false;}};
-      if(!sendCurrent())throw Error('channel_operation_superseded');
-      if(state!=='connected'||!self||!context.allowedSender(phone)||phone===self)throw Error('channel_send_denied');
-      const exists=await client.onWhatsApp(phone);await guarded();
-      const recipient=exists?.find(row=>row.exists&&normalizeFromJid(row.jid)===phone);
-      if(!recipient)throw Error('channel_recipient_unverified');
-      const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:context.verifiedLid?.()===true,
-        socket:client,deviceCache,isCurrent:current});await guarded();
-      const sent=await sendStoredText({jid:proof.jid,recipientProof:proof,text,store:retryStore,freshDevices:true,isCurrent:sendCurrent,
-        makeMessage:(jid,body)=>mod.generateWAMessage(jid,{text:body},{userJid:client.user.id,logger:silent,messageId:mod.generateMessageIDV2(client.user.id)}),
-        relay:async(jid,body,options)=>{await guarded();if(!sendCurrent())throw Error('channel_operation_superseded');return client.relayMessage(jid,body,options);}});
-      return {id:sent?.key?.id};}
+    async send(phone,text,options){if(deviceRuntime)throw Error('device_requires_effect_grant');return relayText(phone,text,options);}
   };
 }

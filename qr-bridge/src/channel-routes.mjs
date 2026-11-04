@@ -28,6 +28,34 @@ export function createChannelRoutes({env=process.env,managerFactory=createChanne
     const uri=new URL(req.url||'/','http://internal');
     if(!uri.pathname.startsWith('/internal/channels/'))return false;
     if(env.QR_CHANNELS_ENABLED!=='1'){response(res,423,{error:'channels_disabled'});return true;}
+    const deviceMatch=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/device\/(status|qr|diagnostics|connect|pair|restart|relink|remove|operations\/([0-9a-f-]{36}))$/);
+    if(deviceMatch&&!uri.search){
+      const [,id,action,operationId]=deviceMatch,key=req.headers['x-orion-channel-key'];
+      if(typeof key!=='string'||key.length<32||key.length>256){response(res,401,{error:'channel_unauthorized'});return true;}
+      const read=['status','qr','diagnostics'].includes(action)||!!operationId;
+      if(req.method!==(read?'GET':'POST')){response(res,405,{error:'method_not_allowed'});return true;}
+      try{
+        const api=getManager();let result;
+        if(action==='status')result=await api.deviceStatus(id,key);
+        else if(action==='diagnostics')result=await api.deviceDiagnostics(id,key);
+        else if(operationId)result=await api.deviceOperation(id,key,operationId);
+        else if(action==='qr'){
+          const scope=await api.deviceStatus(id,key),qr=await api.qr(id,key);
+          result={device_id:scope.device_id,generation:scope.generation,settings_revision:scope.settings_revision,image:null,expires_in_ms:0};
+          if(qr?.value&&qr.expires_in_ms>0){
+            const image=await renderQr(qr.value),fresh=await api.qr(id,key),latest=await api.deviceStatus(id,key);
+            if(fresh?.value===qr.value&&fresh.expires_in_ms>0&&latest.device_id===scope.device_id&&latest.generation===scope.generation&&latest.settings_revision===scope.settings_revision)
+              result={...result,image,expires_in_ms:Math.floor(fresh.expires_in_ms)};
+          }
+        }else{
+          const input=await body(req),fields=['device_id','generation','settings_revision','operation_id',...(action==='pair'?['phone']:[])];
+          if(Object.keys(input).some(k=>!fields.includes(k))||fields.some(k=>!(k in input)))throw Error('invalid_device_request');
+          result=await api.deviceControl(id,key,action,input);
+        }
+        response(res,200,result);
+      }catch{response(res,409,{error:'device_operation_unavailable'});}
+      return true;
+    }
     const match=uri.pathname.match(/^\/internal\/channels\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(status|start|stop|qr|pair|send|operations\/([0-9a-f-]{36}))$/);
     if(!match||uri.search){response(res,404,{error:'not_found'});return true;}
     const [,id,action,operationId]=match,key=req.headers['x-orion-channel-key'];
