@@ -127,6 +127,8 @@ jobs:
       REQUIRE_POSTGRES_TESTS: '1'
       REQUIRE_REDIS_TESTS: '1'
       REDIS_URL: redis://127.0.0.1:6379/15
+      ORION_INTAKE_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+      ORION_REQUIRE_INTAKE_REDIS_TEST: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

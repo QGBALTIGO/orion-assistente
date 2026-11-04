@@ -159,22 +159,26 @@ async def test_subscription_setup_cannot_create_operational_drafts_even_with_exi
 async def test_niche_edit_serializes_with_operations_and_restores_existing_plan_and_catalog(
         workspace_http, monkeypatch):
     case = workspace_http
-    state = await ready(case, activity="products")
+    state = await ready(case, activity="services")
     tenant = UUID(state["tenant_id"])
     await grant(case, tenant)
-    state = await save(case, state, "catalog", {"kind": "product",
-        "item": {"name": "Produto que deve permanecer"},
-        "variant": {"name": "Padrão", "price_kind": "on_request"}})
+    state = await save(case, state, "professionals", {"item": {"name": "Pessoa sintética"}})
+    professional = state["result"]["id"]
+    state = await save(case, state, "catalog", {"kind": "service",
+        "item": {"name": "Serviço que deve permanecer", "price_cents": 3000, "duration_min": 30},
+        "professional_ids": [professional]})
     done = await case.client.post(path(state) + "/complete", json=completion(state))
     assert done.status_code == 200, done.text
     state = done.json()
     before = await permissions(case, tenant)
-    assert before["workspace_profile"] == "standard" and before["permissions"]["commerce.admin"]
+    assert before["workspace_profile"] == "standard" and before["permissions"]["services.manage"]
+    assert before["code"] == "elite" and before["source"] == "manual" and before["active"]
+    assert (await case.client.get(f"/api/v1/tenants/{tenant}/services")).status_code == 200
     async with case.ctx.migration.connect() as db:
         original_plan = dict((await db.execute(text("SELECT * FROM tenant_plan_controls WHERE tenant_id=:t"),
                                                {"t": tenant})).mappings().one())
         original_catalog = [dict(row) for row in (await db.execute(text(
-            "SELECT * FROM commercial_products WHERE tenant_id=:t ORDER BY id"), {"t": tenant})).mappings().all()]
+            "SELECT * FROM services WHERE tenant_id=:t ORDER BY id"), {"t": tenant})).mappings().all()]
     assert original_catalog and original_catalog[0]["active"]
 
     operation_locked, release_operation, edit_waiting = (asyncio.Event() for _ in range(3))
@@ -188,7 +192,7 @@ async def test_niche_edit_serializes_with_operations_and_restores_existing_plan_
     monkeypatch.setattr(plan_permissions, "lock_plan", observe_lock)
 
     async def in_flight_operation():
-        token = plan_permissions.bind_feature(tenant, "commerce.admin")
+        token = plan_permissions.bind_feature(tenant, "services.manage")
         try:
             async with case.ctx.runtime() as db:
                 async with tenant_transaction(db, tenant):
@@ -224,20 +228,20 @@ async def test_niche_edit_serializes_with_operations_and_restores_existing_plan_
     restricted = await permissions(case, tenant)
     assert restricted["workspace_profile"] == "subscription_services"
     assert restricted["revision"] != before["revision"]
-    assert_workspace_denied(await case.client.get(f"/api/v1/tenants/{tenant}/commerce/products"))
+    assert_workspace_denied(await case.client.get(f"/api/v1/tenants/{tenant}/services"))
 
     restored = await save(case, changed.json(), "business", {"name": state["name"],
         "timezone": state["timezone"], "niche": "outro", "other_niche": "Empresa sintética",
-        "activity": "products", "contact_phone": "+5567999999901"})
+        "activity": "services", "contact_phone": "+5567999999901"})
     assert restored["status"] == "complete"
     assert "subscription_offering" not in restored["configuration"]
     final = await permissions(case, tenant)
     assert final["workspace_profile"] == "standard"
     assert final["features"] == before["features"] and final["code"] == "elite"
-    assert (await case.client.get(f"/api/v1/tenants/{tenant}/commerce/products")).status_code == 200
+    assert (await case.client.get(f"/api/v1/tenants/{tenant}/services")).status_code == 200
     async with case.ctx.migration.connect() as db:
         assert dict((await db.execute(text("SELECT * FROM tenant_plan_controls WHERE tenant_id=:t"),
                                       {"t": tenant})).mappings().one()) == original_plan
         assert [dict(row) for row in (await db.execute(text(
-            "SELECT * FROM commercial_products WHERE tenant_id=:t ORDER BY id"),
+            "SELECT * FROM services WHERE tenant_id=:t ORDER BY id"),
             {"t": tenant})).mappings().all()] == original_catalog
