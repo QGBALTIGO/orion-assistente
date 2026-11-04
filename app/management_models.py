@@ -855,7 +855,7 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
     from app.plan_permissions import require_feature
     await require_feature(db, tenant_id, "agenda.manage")
     from app.booking_service import acquire_professional_lock, history, read_appointment
-    from app.appointment_lifecycle import CAS_SQL, LifecycleActor, allowed_actions, check_expected_updated_at, operation_payload
+    from app.appointment_lifecycle import CAS_SQL, LifecycleActor, allowed_actions, check_expected_updated_at, operation_payload, completion_due_at
     if target not in ("completed", "no_show"):
         raise ValueError("Unsupported management appointment transition")
     if target == "no_show" and payload.final_total_cents is not None:
@@ -895,7 +895,14 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
         raise HTTPException(409, "Somente agendamentos confirmados podem receber este resultado")
     if row["start_at"] > now:
         raise HTTPException(409, "Aguarde o horário de início para registrar o resultado")
-    if automated and row["end_at"] > now:
+    completion_facts = None
+    if target == "completed":
+        completion_facts = (await db.execute(text("""SELECT
+            COALESCE(bool_or(item_origin='extra'),false) AS has_extras,
+            COALESCE(sum(COALESCE(added_duration_min,duration_snapshot_min)),0)::integer AS service_minutes
+            FROM appointment_items WHERE tenant_id=:tenant AND appointment_id=:id"""), params)).mappings().one()
+    due_at = completion_due_at(row, completion_facts["service_minutes"] if completion_facts else None)
+    if automated and due_at > now:
         raise HTTPException(409, "Aguarde o término previsto do atendimento")
     percent = None
     commission = None
@@ -934,7 +941,7 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
             commission_cents=:commission,
             total_cents=CAST(:net AS integer),original_total_cents=:gross,discount_cents=:discount
         WHERE tenant_id=:tenant AND id=:id AND status=:expected AND start_at<=clock_timestamp()
-          AND (NOT :automated OR end_at<=clock_timestamp())
+          AND (NOT :automated OR CAST(:completion_due_at AS timestamptz)<=clock_timestamp())
           AND """ + CAS_SQL + " RETURNING *"),
         {**params, "target": target, "now": now, "percent": percent,
          "mode": commission["mode"] if commission else None,
@@ -942,7 +949,7 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
          "expected": payload.expected_status,
          "expected_updated_at": payload.expected_updated_at, "net": gross-discount,
          "gross": gross if target == "completed" else None, "discount": discount,
-         "automated": automated})).mappings().one_or_none()
+         "automated": automated, "completion_due_at": due_at})).mappings().one_or_none()
     if changed is None:
         raise HTTPException(409, "O agendamento mudou. Atualize os detalhes antes de continuar")
     await history(db, tenant_id, appointment_id, target, context=context, previous=row)
@@ -953,7 +960,7 @@ async def transition_appointment(db, tenant_id, appointment_id, target, payload,
         from app.loyalty_rewards import award_completion
         from app.appointment_finance import record_service_receivable
         result["loyalty"] = await award_completion(db, tenant_id, changed, now)
-        if automated or variable:
+        if automated or variable or row.get("booking_mode") == "exceptional" or completion_facts["has_extras"]:
             await record_service_receivable(db, tenant_id, changed)
     return result
 

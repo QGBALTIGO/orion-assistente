@@ -278,7 +278,9 @@ async def create_manual_appointment(db, tenant, professional, payload, *, contex
             from app.appointment_finance import record_service_receivable
             from app.loyalty_rewards import award_completion
             await record_service_receivable(db, tenant, saved)
-            await award_completion(db, tenant, saved, now)
+            # Historical service credits remain available for redemption, but
+            # must not issue a new automatic coupon/message from an old visit.
+            await award_completion(db, tenant, saved, now, issue_rewards=False)
         else:
             if payload.appointment_messages_opt_in:
                 from app.appointment_consent import grant_scoped_consent, staff_consent_actor

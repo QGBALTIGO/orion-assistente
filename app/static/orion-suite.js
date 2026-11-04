@@ -2885,7 +2885,7 @@
           '<p class="os-help">Selecione até '+d.extraLimit+' serviço'+(d.extraLimit===1?'':'s')+'. Os itens já registrados serão preservados.</p>'+
           (Date.parse(d.record.start_at)<=Date.now()?field('Duração realizada (min, opcional)','actual_duration_min','number','','min="1" max="1440" step="1"'):'')+
           '<div id="osExtraPreview" class="os-summary" hidden aria-live="polite"></div>'+
-          '<div id="osExtraConflict" class="os-extra-conflict" hidden><p id="osExtraConflictMessage" class="os-help"></p>'+checkField('Manter o horário reservado e registrar os extras','preserve_reserved_time',false,'Os horários dos demais clientes permanecem como estão.')+'</div>':
+          '<div id="osExtraConflict" class="os-extra-conflict" hidden><p id="osExtraConflictMessage" class="os-help" aria-live="polite" aria-atomic="true"></p>'+checkField('Manter o horário reservado e registrar os extras','preserve_reserved_time',false,'Os horários dos demais clientes permanecem como estão.')+'</div>':
           '<p class="os-help">'+(d.extraLimit?'Não há outros serviços disponíveis para este profissional.':'Este atendimento já contém o limite de serviços.')+'</p>');
       setAppointmentSheet('Adicionar serviços',appointmentForm('appointment-extras',content,'Conferir serviços'));
       const form=$('osDialog').querySelector('form');form.querySelector('[type=submit]').disabled=!available;
@@ -2905,12 +2905,13 @@
   function renderExtrasPreview(d){
     const preview=d.extraPreview,form=$('osDialog')?.querySelector('form'),target=$('osExtraPreview');if(!preview||!target||!form)return;
     target.hidden=false;
+    const selected=[...form.querySelectorAll('[name=extra_service_ids]:checked')].map(input=>input.value),variable=d.record.price_mode==='from'||d.extraServices.some(item=>selected.includes(item.id)&&item.price_mode==='from');
     target.innerHTML='<div class="os-summary-row"><span>Tempo dos serviços</span><strong>'+number(preview.services_duration_min)+' min</strong></div>'+
       '<div class="os-summary-row"><span>Horário reservado</span><strong>'+esc(timeLabel(d.record.start_at))+' a '+esc(timeLabel(preview.duration_conflict?d.record.end_at:preview.new_end_at||d.record.end_at))+'</strong></div>'+
-      '<div class="os-summary-row os-total"><span>Total atualizado</span><strong>'+esc(money(preview.total_cents))+'</strong></div>';
+      '<div class="os-summary-row os-total"><span>'+(variable?'Mínimo atualizado':'Total atualizado')+'</span><strong>'+esc(priceLabel(preview.total_cents,variable?'from':'fixed'))+'</strong></div>';
     $('osExtraConflict').hidden=!preview.duration_conflict;
     $('osExtraConflictMessage').textContent=preview.conflict_message||'Não é possível ampliar o horário deste atendimento. Você pode registrar os serviços mantendo o horário já reservado.';
-    const preserve=form.elements.preserve_reserved_time;preserve.disabled=!preview.duration_conflict;preserve.required=!!preview.duration_conflict;
+    const preserve=form.elements.preserve_reserved_time;preserve.disabled=!preview.duration_conflict;preserve.required=!!preview.duration_conflict;preserve.setAttribute('aria-describedby','osExtraConflictMessage');
     form.querySelector('[type=submit]').textContent='Adicionar serviços';
   }
   async function submitAppointmentExtras(form,d,values){
@@ -2952,7 +2953,7 @@
       else state.busy=false;
     }
     if(!current(c)||state.dialog!==d)return;
-    if(saved||changed){await showAppointmentDetail(d.record.id,{notice:saved?'Serviços adicionados ao atendimento. Total e duração foram atualizados.':'O atendimento mudou. Confira os dados atualizados antes de adicionar serviços.'});if(current(c)&&state.route==='agenda')void loadAgenda(c,{catalogue:false});}
+    if(saved||changed){await showAppointmentDetail(d.record.id,{notice:saved?(payload.preserve_reserved_time?'Serviços adicionados. Total atualizado e horário reservado mantido.':'Serviços adicionados ao atendimento. Total atualizado.'):'O atendimento mudou. Confira os dados atualizados antes de adicionar serviços.'});if(current(c)&&state.route==='agenda')void loadAgenda(c,{catalogue:false});}
   }
   async function showAppointmentAction(action){
     const a=state.dialog?.record;if(!appointmentCan(a,action))return;

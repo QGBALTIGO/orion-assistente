@@ -133,6 +133,10 @@ async def contact_facts(db, tenant, phone):
 async def queue_notification(db, tenant, settings, preference, customer, event, event_key, facts, labels, *, campaign_id=None):
     if not execution_enabled() or not execution_authorized(settings):
         return False
+    # Historical entry records accounting facts without starting a new customer
+    # interaction. Keep this fence even when called outside the tenant scanner.
+    if facts.get("booking_mode") == "retroactive":
+        return False
     if event not in OPERATIONAL_EVENTS | MARKETING_EVENTS:
         return False
     from app.automation_policy import plan_feature
@@ -244,6 +248,7 @@ async def plan_tenant(tenant):
                     AND h.appointment_id=a.id AND h.event=a.status) AS occurred_at
                   FROM appointments a JOIN professionals p ON p.tenant_id=a.tenant_id AND p.id=a.professional_id
                   WHERE a.tenant_id=:t AND a.customer_id=:customer AND a.updated_at>now()-interval '100 days'
+                    AND a.booking_mode<>'retroactive'
                   ORDER BY a.updated_at DESC,a.id LIMIT 40"""), {"t": tenant, "customer": customer["id"]})).mappings().all()
                 future = bool((await db.execute(text("""SELECT 1 FROM appointments WHERE tenant_id=:t AND customer_id=:customer
                   AND status='confirmed' AND start_at>now() LIMIT 1"""), {"t": tenant, "customer": customer["id"]})).first())
@@ -262,7 +267,8 @@ async def plan_tenant(tenant):
                         queued += await queue_notification(db, tenant, settings, preference, customer, event, key, event_facts, known)
                 completed_at = (await db.execute(text("""SELECT max(h.occurred_at) FROM appointment_history h
                   JOIN appointments a ON a.tenant_id=h.tenant_id AND a.id=h.appointment_id
-                  WHERE a.tenant_id=:t AND a.customer_id=:customer AND a.status='completed' AND h.event='completed'"""),
+                  WHERE a.tenant_id=:t AND a.customer_id=:customer AND a.status='completed' AND h.event='completed'
+                    AND a.booking_mode<>'retroactive'"""),
                   {"t": tenant, "customer": customer["id"]})).scalar_one_or_none()
                 for event in ("inactive_60d", "birthday_7d", "birthday_2d"):
                     facts = {"occurred_at": completed_at, "birth_date": customer["birth_date"],
@@ -309,7 +315,9 @@ async def job_reason(db, tenant, job, settings):
     appointment = None
     campaign = None
     if job["appointment_id"]:
-        appointment = (await db.execute(text("SELECT status,updated_at,start_at FROM appointments WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": job["appointment_id"]})).mappings().one_or_none()
+        appointment = (await db.execute(text("SELECT status,updated_at,start_at,booking_mode FROM appointments WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": job["appointment_id"]})).mappings().one_or_none()
+        if appointment and appointment["booking_mode"] == "retroactive":
+            return "retroactive_appointment"
     if job["campaign_id"]:
         campaign = (await db.execute(text("SELECT status,version,audience FROM campaigns WHERE tenant_id=:t AND id=:id"), {"t": tenant, "id": job["campaign_id"]})).mappings().one_or_none()
     if not settings or not settings.get("owner_active") or settings.get("tenant_status") != "active":
@@ -345,7 +353,8 @@ async def job_reason(db, tenant, job, settings):
             return "trigger_changed"
         completed = (await db.execute(text("""SELECT max(h.occurred_at) FROM appointment_history h
             JOIN appointments a ON a.tenant_id=h.tenant_id AND a.id=h.appointment_id
-            WHERE a.tenant_id=:t AND a.customer_id=:customer AND a.status='completed' AND h.event='completed'"""),
+            WHERE a.tenant_id=:t AND a.customer_id=:customer AND a.status='completed' AND h.event='completed'
+              AND a.booking_mode<>'retroactive'"""),
             {"t": tenant, "customer": job["customer_id"]})).scalar_one_or_none()
         if (job["event"] == "inactive_60d" and completed != job.get("trigger_at")) or (
                 job["event"] == "cancelled_7d" and completed and completed > job.get("trigger_at")):

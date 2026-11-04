@@ -47,6 +47,40 @@ def upgrade():
     # Keep all existing tenant FKs, FORCE RLS policies and grants unchanged.
     # In particular, future exceptional bookings still use the original GiST
     # overlap constraint, and existing item duration snapshots remain > 0.
+    # A preserved reservation can end before the recorded services do. Filter
+    # at discovery time as well as under the motor lock so those not-yet-due
+    # rows cannot occupy every slot in the bounded worker page.
+    op.execute("""
+        CREATE OR REPLACE FUNCTION public.orion_due_auto_completions(batch_limit integer DEFAULT 100)
+          RETURNS TABLE(tenant_id uuid,appointment_id uuid)
+          LANGUAGE sql STABLE SECURITY DEFINER
+          SET search_path=pg_catalog,public
+        AS $func$
+          SELECT a.tenant_id,a.id
+          FROM public.appointments a
+          JOIN public.tenants t ON t.id=a.tenant_id
+          CROSS JOIN LATERAL (
+            SELECT GREATEST(a.end_at,a.start_at+make_interval(mins => COALESCE(
+              a.actual_duration_min,
+              (SELECT sum(COALESCE(i.added_duration_min,i.duration_snapshot_min))::integer
+                 FROM public.appointment_items i
+                 WHERE i.tenant_id=a.tenant_id AND i.appointment_id=a.id),0))) AS completion_due_at
+          ) timing
+          WHERE a.status='confirmed' AND t.status='active'
+            AND a.end_at <= now()
+            AND timing.completion_due_at <= now()
+            AND a.end_at >= t.auto_complete_after
+            AND NOT EXISTS (
+              SELECT 1 FROM public.appointment_items i
+              WHERE i.tenant_id=a.tenant_id AND i.appointment_id=a.id
+                AND i.price_mode_snapshot='from')
+            AND $1 BETWEEN 1 AND 200
+          ORDER BY timing.completion_due_at,a.tenant_id,a.id
+          LIMIT LEAST(GREATEST($1,1),200)
+        $func$;
+        REVOKE ALL ON FUNCTION public.orion_due_auto_completions(integer) FROM PUBLIC,app_runtime;
+        GRANT EXECUTE ON FUNCTION public.orion_due_auto_completions(integer) TO app_support;
+    """)
 
 
 def downgrade():

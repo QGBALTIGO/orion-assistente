@@ -126,6 +126,7 @@ test('adicionais recomendados aparecem primeiro; a primeira submissão apenas co
   assert.equal(extrasWrites(h).length,1);const data=extrasWrites(h)[0].data;
   assert.deepEqual(plain(data.service_ids),[extraId]);assert.equal(data.expected_updated_at,stamp);assert.equal(data.preserve_reserved_time,false);
   assert.ok(data.idempotency_key);assert.equal(data.customer_phone,undefined);assert.equal(data.total_cents,undefined);
+  assert.equal(h.document.querySelector('.os-appointment-notice p').textContent,'Serviços adicionados ao atendimento. Total atualizado.');
 });
 
 test('conflito de duração exige escolha explícita para manter o horário reservado',async t=>{
@@ -133,10 +134,13 @@ test('conflito de duração exige escolha explícita para manter o horário rese
   h.click(`[data-os-extra-service="${secondExtraId}"]`);h.fill('[name=actual_duration_min]','65');
   h.submit('[data-os-form=appointment-extras]');await flush();
   assert.equal(form.elements.preserve_reserved_time.required,true);assert.equal(form.elements.preserve_reserved_time.checked,false);
+  assert.equal(form.elements.preserve_reserved_time.getAttribute('aria-describedby'),'osExtraConflictMessage');
+  assert.equal(h.document.getElementById('osExtraConflictMessage').getAttribute('aria-live'),'polite');
   assert.equal(h.document.getElementById('osExtraConflict').hidden,false);
   h.submit('[data-os-form=appointment-extras]');await flush();assert.equal(extrasWrites(h).length,0);
   h.click('[name=preserve_reserved_time]');h.submit('[data-os-form=appointment-extras]');await flush();
   assert.equal(extrasWrites(h).length,1);assert.equal(extrasWrites(h)[0].data.preserve_reserved_time,true);assert.equal(extrasWrites(h)[0].data.actual_duration_min,65);
+  assert.equal(h.document.querySelector('.os-appointment-notice p').textContent,'Serviços adicionados. Total atualizado e horário reservado mantido.');
 });
 
 test('novo conflito após prévia não força gravação: pede novamente escolha explícita',async t=>{

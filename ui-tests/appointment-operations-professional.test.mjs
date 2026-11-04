@@ -112,16 +112,19 @@ test('extras profissionais mantêm itens originais e precisam de prévia antes d
   assert.equal(saves(h).length,0);assert.match(h.doc.getElementById('modalExtraPreview').textContent,/55,00/);
   h.submit();await flush();assert.equal(saves(h).length,1);const body=saves(h)[0].body;
   assert.deepEqual(body.service_ids,[extraId]);assert.equal(body.expected_updated_at,stamp);assert.equal(body.preserve_reserved_time,false);assert.equal(body.professional_id,undefined);
+  assert.equal(h.doc.getElementById('toast').textContent,'Serviços adicionados ao atendimento. Total atualizado.');
 });
 
 test('profissional precisa autorizar manter horário quando duração extra conflita',async t=>{
   const h=await portal(t,{conflict:true,record:initial({start_at:'2020-10-10T12:00:00Z',end_at:'2020-10-10T12:40:00Z'})});const form=await openExtras(h);
   h.click(`[name=extra_service_ids][value="${secondExtraId}"]`);h.fill('actual_duration_min','65');h.submit();await flush();
   assert.equal(form.elements.preserve_reserved_time.required,true);assert.equal(form.elements.preserve_reserved_time.checked,false);
+  assert.equal(form.elements.preserve_reserved_time.getAttribute('aria-describedby'),'modalExtraConflictMessage');
+  assert.equal(h.doc.getElementById('modalExtraConflictMessage').getAttribute('aria-live'),'polite');
   h.submit();await flush();assert.equal(saves(h).length,0);
   h.click('[name=preserve_reserved_time]');h.submit();await flush();assert.equal(saves(h).length,1);
   assert.equal(saves(h)[0].body.preserve_reserved_time,true);assert.equal(saves(h)[0].body.actual_duration_min,65);
-  assert.match(h.doc.getElementById('toast').textContent,/horário reservado foi mantido/);
+  assert.equal(h.doc.getElementById('toast').textContent,'Serviços adicionados. Total atualizado e horário reservado mantido.');
 });
 
 test('409 estruturado de conflito novo pede decisão profissional, sem reenvio automático',async t=>{
@@ -144,4 +147,26 @@ test('agenda profissional identifica retroativo concluído sem liberar extras',a
   const h=await portal(t,{record:initial({status:'completed',allowed_actions:[],booking_mode:'retroactive',created_at:'2030-04-06T12:00:00Z',actual_duration_min:70})});
   assert.match(h.doc.getElementById('content').textContent,/Registrado depois/);assert.match(h.doc.getElementById('content').textContent,/Duração realizada: 70 min/);
   assert.equal(h.doc.querySelector('[data-action=extras]'),null);assert.equal(posts(h).length,0);
+});
+
+
+test('modal profissional mantém navegação por Tab dentro do formulário e devolve foco ao fechar',async t=>{
+  const h=await portal(t),trigger=h.doc.querySelector('[data-action=new-appointment]');trigger.focus();trigger.click();await flush();
+  assert.equal(h.doc.activeElement,h.doc.querySelector('[name=booking_mode]'));
+  const last=h.doc.getElementById('modalSubmit'),first=h.doc.getElementById('modalClose');last.focus();
+  last.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));
+  assert.equal(h.doc.activeElement,first);
+  first.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true}));
+  assert.equal(h.doc.activeElement,last);
+  last.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+  assert.equal(h.doc.getElementById('modal').hidden,true);assert.equal(h.doc.activeElement,trigger);
+});
+
+test('catálogo profissional assíncrono coloca foco no modal durante a consulta e no primeiro serviço ao carregar',async t=>{
+  const late=deferred();const h=await portal(t,{override:path=>path.endsWith('/extras-catalog')?late.promise:undefined});
+  const trigger=h.doc.querySelector('[data-action=extras]');trigger.focus();trigger.click();
+  assert.equal(h.doc.activeElement,h.doc.getElementById('modalClose'));
+  late.resolve({appointment:initial(),services:extras,max_items:6});await flush();
+  assert.equal(h.doc.activeElement,h.doc.querySelector('[name=extra_service_ids]'));
+  h.click('#modalCancel');assert.equal(h.doc.activeElement,trigger);
 });

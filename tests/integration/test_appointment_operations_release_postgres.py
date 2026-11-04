@@ -5,6 +5,7 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
+from app.booking_service import protocol
 from test_subscription_devices_release_postgres import isolated_settings  # noqa: F401
 from scripts import backup_and_migrate_appointment_operations as release
 from scripts import wait_for_appointment_operations_schema as barrier
@@ -73,7 +74,7 @@ async def legacy_rows(isolated_settings):
           protocol,idempotency_key,request_fingerprint,start_at,end_at,occupied_from,occupied_until,status,total_cents)
           VALUES($1,$2,$3,$4,$5,$6,$7,'2020-01-01 12:00Z','2020-01-01 12:30Z',
                  '2020-01-01 12:00Z','2020-01-01 12:30Z','completed',1000)""",
-          appointment, tenant, customer, professional, "AG-" + uuid4().hex[:6].upper(),
+          appointment, tenant, customer, professional, protocol(),
           "release-" + str(appointment), "a" * 64)
         await db.execute("""INSERT INTO appointment_items(id,tenant_id,appointment_id,service_id,
           name_snapshot,duration_snapshot_min,price_snapshot_cents,prep_snapshot_min,cleanup_snapshot_min,item_order)

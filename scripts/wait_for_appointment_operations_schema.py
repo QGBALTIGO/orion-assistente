@@ -95,6 +95,22 @@ CONTRACT_QUERY = """
        AND ARRAY(SELECT a.attname::text FROM unnest(c.confkey) WITH ORDINALITY x(num,pos)
          JOIN pg_catalog.pg_attribute a ON a.attrelid=c.confrelid AND a.attnum=x.num
          ORDER BY x.pos)=ARRAY['tenant_id','id'])
+   AND EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
+     WHERE p.oid=pg_catalog.to_regprocedure('public.orion_due_auto_completions(integer)')
+       AND p.prosecdef AND p.provolatile='s'
+       AND pg_catalog.pg_get_userbyid(p.proowner)='app_migrator'
+       AND 'search_path=pg_catalog, public'=ANY(p.proconfig)
+       AND pg_catalog.has_function_privilege('app_support',p.oid,'EXECUTE')
+       AND NOT pg_catalog.has_function_privilege('app_runtime',p.oid,'EXECUTE')
+       AND NOT EXISTS (SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,
+         pg_catalog.acldefault('f',p.proowner))) acl WHERE acl.grantee=0)
+       AND pg_catalog.pg_get_functiondef(p.oid) LIKE '%actual_duration_min%'
+       AND pg_catalog.pg_get_functiondef(p.oid) LIKE '%added_duration_min%'
+       AND pg_catalog.pg_get_functiondef(p.oid) LIKE '%duration_snapshot_min%'
+       AND pg_catalog.pg_get_functiondef(p.oid) LIKE '%a.end_at <= now()%'
+       AND pg_catalog.pg_get_functiondef(p.oid) LIKE '%timing.completion_due_at <= now()%'
+       AND pg_catalog.pg_get_functiondef(p.oid) LIKE '%a.end_at >= t.auto_complete_after%'
+       AND pg_catalog.pg_get_functiondef(p.oid) LIKE '%price_mode_snapshot%')
  AS ready
 """
 

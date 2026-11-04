@@ -313,13 +313,18 @@ async def test_started_appointment_records_actual_duration_and_commission_withou
     assert saved.status_code == 200, saved.text
     changed = saved.json()
     assert changed["end_at"] == original["end_at"] and changed["actual_duration_min"] == 60
-    completed = await d["client"].post(d["base"] + f"/appointments/{row['id']}/complete", json={
-        "expected_updated_at": changed["updated_at"], "idempotency_key": str(uuid4())})
+    finish = {"expected_updated_at": changed["updated_at"], "idempotency_key": str(uuid4())}
+    completed = await d["client"].post(d["base"] + f"/management/appointments/{row['id']}/complete", json=finish)
     assert completed.status_code == 200, completed.text
+    replay = await d["client"].post(d["base"] + f"/management/appointments/{row['id']}/complete", json=finish)
+    assert replay.status_code == 200, replay.text
     async with d["migrator"].connect() as db:
         commission = (await db.execute(text("SELECT commission_cents FROM appointments WHERE tenant_id=:t AND id=:id"),
             {"t": d["a"], "id": UUID(row["id"])})).scalar_one()
         assert commission == 1375
+        finance = (await db.execute(text("SELECT amount_cents,status FROM financial_entries WHERE tenant_id=:t AND appointment_id=:id"),
+            {"t": d["a"], "id": UUID(row["id"])})).mappings().one()
+        assert finance["amount_cents"] == 5500 and finance["status"] == "pending"
 
 
 @pytest.mark.asyncio
@@ -328,6 +333,8 @@ async def test_extras_idempotency_stale_versions_and_terminal_states(operations_
     row = await create_normal(d)
     request = extras_payload(d, row)
     url = d["base"] + f"/appointments/{row['id']}/extras"
+    future_actual = await d["client"].post(url, json={**request, "actual_duration_min": 60})
+    assert future_actual.status_code == 422, future_actual.text
     replies = await asyncio.gather(*(d["client"].post(url, json=request) for _ in range(3)))
     assert all(reply.status_code == 200 for reply in replies), [reply.text for reply in replies]
     assert all(len(reply.json()["items"]) == 2 and reply.json()["total_cents"] == 5500 for reply in replies)

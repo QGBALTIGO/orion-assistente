@@ -31,6 +31,22 @@ class LifecycleActor:
 SYSTEM_ACTOR = LifecycleActor(role="system", source="system")
 
 
+def completion_due_at(appointment, service_minutes=None):
+    """Automatic completion never precedes either reserved or performed time.
+
+    A preserved slot can be shorter than its service composition. An explicitly
+    entered actual duration supersedes that estimate, while the booked end
+    remains a lower bound. Manual staff completion has its separate policy.
+    """
+    minutes = appointment.get("actual_duration_min")
+    if minutes is None:
+        minutes = service_minutes
+    if minutes is None:
+        return appointment["end_at"]
+    return max(appointment["end_at"],
+               appointment["start_at"] + timedelta(minutes=int(minutes)))
+
+
 def customer_can_change(appointment, now):
     """Inclusive deadline. The caller supplies a trusted server/database clock."""
     if now.tzinfo is None or appointment["start_at"].tzinfo is None:

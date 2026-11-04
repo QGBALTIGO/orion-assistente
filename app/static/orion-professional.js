@@ -126,8 +126,8 @@ async function changePage(page){
 function inputField(label,name,type='text',value='',extra=''){
  return '<div class="field"><label for="f_'+name+'">'+esc(label)+'</label><input id="f_'+name+'" name="'+name+'" type="'+type+'" value="'+esc(value)+'" '+extra+'></div>';
 }
-function openModal(action,record){
- const modal=$('modal');state.modal={action,record,key:crypto.randomUUID()};
+function openModal(action,record,trigger=null){
+ const modal=$('modal');state.modal={action,record,key:crypto.randomUUID(),trigger:trigger||document.activeElement};
  const recordKey=state.modal.key;
  const titles={'new-appointment':'Novo agendamento','new-block':'Bloquear horário','remove-block':'Remover bloqueio',extras:'Adicionar serviços',cancel:'Cancelar agendamento',reschedule:'Remarcar agendamento',complete:'Concluir atendimento','no-show':'Registrar ausência'};
  $('modalTitle').textContent=titles[action]||'Confirmar';$('modalError').textContent='';
@@ -172,7 +172,9 @@ function openModal(action,record){
  }
  $('modalFields').innerHTML=fields;modal.hidden=false;
  $('modalSubmit').textContent=action==='new-appointment'?'Consultar horários':action==='remove-block'?'Remover':'Confirmar';
- $('modalSubmit').disabled=action==='extras';$('modalForm').querySelector('input')?.focus();
+ $('modalSubmit').disabled=action==='extras';
+ const firstField=$('modalForm').querySelector('input:not([disabled]),select:not([disabled]),textarea:not([disabled])');
+ (firstField||$('modalClose')).focus();
  sharedFields?.refresh($('modalFields'));
  if(action==='extras')void loadProfessionalExtras(state.modal);
  if(action==='new-appointment'){
@@ -191,7 +193,8 @@ function openModal(action,record){
 }
 function closeModal(force=false){
  if(state.modal?.submitting&&!force)return;
- $('modal').hidden=true;state.modal=null;
+ const trigger=state.modal?.trigger;$('modal').hidden=true;state.modal=null;
+ if(trigger?.isConnected)trigger.focus();
 }
 function updateProfessionalBookingTotal(){
  const d=state.modal,form=$('modalForm');if(d?.action!=='new-appointment'||d.bookingPayload)return;
@@ -242,7 +245,7 @@ async function submitProfessionalManual(form,d,val){
      '<div><span>Cliente</span><strong>'+esc(payload.customer_name)+(walkIn?' · Avulso':'')+'</strong></div>'+
      '<div><span>Serviços</span><strong>'+esc(selected.map(item=>item.name).join(' • '))+'</strong></div>'+
      '<div><span>Data e horário</span><strong>'+esc(shortDate(payload.start_at)+' às '+shortTime(payload.start_at))+'</strong></div>'+
-     '<div><span>Valor'+(retro?' final':' previsto')+'</span><strong>'+esc(money(total))+'</strong></div>'+
+     '<div><span>Valor'+(retro?' final':' previsto')+'</span><strong>'+esc((!retro&&selected.some(item=>item.price_mode==='from')?'A partir de ':'')+money(total))+'</strong></div>'+
      '<div><span>Situação</span><strong>'+(retro?'Concluído':'Confirmado · Excepcional')+'</strong></div></div>'+
      (retro?'<p class="notice">O atendimento ficará na data informada, com recebimento pendente no Financeiro. Não serão enviados avisos ou lembretes.</p>':'');
    $('modalSubmit').textContent=retro?'Registrar atendimento':'Confirmar agendamento';$('modalSubmit').disabled=false;return false;
@@ -266,15 +269,16 @@ async function loadProfessionalExtras(d){
    const available=d.record.allowed_actions?.includes('add_services')&&d.extraLimit>0&&d.extraServices.length>0;
    const choices=(items,label)=>items.length?'<fieldset class="services-select"><legend>'+esc(label)+'</legend>'+items.map(item=>'<label class="service-choice"><input type="checkbox" name="extra_service_ids" value="'+esc(item.id)+'"><span><strong>'+esc(item.name)+'</strong><small>'+esc(money(item.price_cents))+(item.price_mode==='from'?' · A partir de':'')+' · '+(item.add_duration===false?'sem tempo extra':Number(item.duration_min)+' min')+'</small></span></label>').join('')+'</fieldset>':'';
    $('modalFields').innerHTML='<div class="booking-summary"><div><span>Cliente</span><strong>'+esc(d.record.customer_name||'Cliente')+'</strong></div><div><span>Horário reservado</span><strong>'+esc(shortTime(d.record.start_at)+' a '+shortTime(d.record.end_at))+'</strong></div><div><span>Total atual</span><strong>'+esc(money(d.record.total_cents))+'</strong></div></div>'+
-     '<h3>Serviços registrados</h3><ul class="recorded-services">'+(d.record.items||[]).map(item=>'<li><span><strong>'+esc(item.name_snapshot||'Serviço')+'</strong><small>'+(item.item_origin==='extra'?'Adicionado no atendimento':'Serviço original')+'</small></span><span>'+esc(money(item.price_snapshot_cents))+'</span></li>').join('')+'</ul>'+
+     '<h3>Serviços registrados</h3><ul class="recorded-services">'+(d.record.items||[]).map(item=>'<li><span><strong>'+esc(item.name_snapshot||'Serviço')+'</strong><small>'+(item.item_origin==='extra'?'Adicionado no atendimento':'Serviço original')+'</small></span><span>'+esc((item.price_mode_snapshot==='from'?'A partir de ':'')+money(item.price_snapshot_cents))+'</span></li>').join('')+'</ul>'+
      (available?choices(d.extraServices.filter(item=>item.recommended),'Adicionais deste atendimento')+
        choices(d.extraServices.filter(item=>!item.recommended),d.extraServices.some(item=>item.recommended)?'Outros serviços':'Serviços disponíveis')+
        '<p class="muted">Selecione até '+d.extraLimit+' serviço'+(d.extraLimit===1?'':'s')+'. Os itens já registrados serão preservados.</p>'+
        (Date.parse(d.record.start_at)<=Date.now()?inputField('Duração realizada (min, opcional)','actual_duration_min','number','','min="1" max="1440" step="1"'):'')+
        '<div id="modalExtraPreview" class="booking-summary" aria-live="polite" hidden></div>'+
-       '<div id="modalExtraConflict" class="notice" hidden><p id="modalExtraConflictMessage"></p><label class="service-choice"><input type="checkbox" name="preserve_reserved_time" disabled><span>Manter o horário reservado e registrar os extras<small>Os horários dos demais clientes permanecem como estão.</small></span></label></div>':
+       '<div id="modalExtraConflict" class="notice" hidden><p id="modalExtraConflictMessage" aria-live="polite" aria-atomic="true"></p><label class="service-choice"><input type="checkbox" name="preserve_reserved_time" disabled><span>Manter o horário reservado e registrar os extras<small>Os horários dos demais clientes permanecem como estão.</small></span></label></div>':
        '<p class="muted">'+(d.record.status!=='confirmed'?'Este atendimento não pode receber serviços extras.':d.extraLimit?'Não há outros serviços disponíveis no seu cadastro.':'Este atendimento já contém o limite de serviços.')+'</p>');
    $('modalSubmit').textContent='Conferir serviços';$('modalSubmit').disabled=!available;sharedFields?.refresh($('modalFields'));
+   if(available)$('modalFields').querySelector('input:not([disabled])')?.focus();
  }catch(error){
    if(state.modal!==d)return;
    $('modalFields').innerHTML='<p class="muted">Não foi possível carregar os serviços.</p><button type="button" class="ghost-button small" data-action="extras-retry">Tentar novamente</button>';
@@ -293,12 +297,13 @@ function resetProfessionalExtrasPreview(){
 function renderProfessionalExtrasPreview(d){
  const preview=d.extraPreview,target=$('modalExtraPreview');if(!preview||!target)return;
  target.hidden=false;
+ const selected=[...$('modalForm').querySelectorAll('[name=extra_service_ids]:checked')].map(input=>input.value),variable=d.record.price_mode==='from'||d.extraServices.some(item=>selected.includes(item.id)&&item.price_mode==='from');
  target.innerHTML='<div><span>Tempo dos serviços</span><strong>'+Number(preview.services_duration_min)+' min</strong></div>'+
    '<div><span>Horário reservado</span><strong>'+esc(shortTime(d.record.start_at)+' a '+shortTime(preview.duration_conflict?d.record.end_at:preview.new_end_at||d.record.end_at))+'</strong></div>'+
-   '<div><span>Total atualizado</span><strong>'+esc(money(preview.total_cents))+'</strong></div>';
+   '<div><span>'+(variable?'Mínimo atualizado':'Total atualizado')+'</span><strong>'+esc((variable?'A partir de ':'')+money(preview.total_cents))+'</strong></div>';
  $('modalExtraConflict').hidden=!preview.duration_conflict;
  $('modalExtraConflictMessage').textContent=preview.conflict_message||'Não é possível ampliar o horário. Você pode registrar os serviços mantendo o horário já reservado.';
- const preserve=$('modalForm').elements.preserve_reserved_time;preserve.disabled=!preview.duration_conflict;preserve.required=!!preview.duration_conflict;
+ const preserve=$('modalForm').elements.preserve_reserved_time;preserve.disabled=!preview.duration_conflict;preserve.required=!!preview.duration_conflict;preserve.setAttribute('aria-describedby','modalExtraConflictMessage');
  $('modalSubmit').textContent='Adicionar serviços';$('modalSubmit').disabled=false;
 }
 async function submitProfessionalExtras(form,d,val){
@@ -327,7 +332,7 @@ async function submitProfessionalExtras(form,d,val){
      d.extraPreview=result;d.extraPreviewSignature=signature;freezeBookingForm(form,false);renderProfessionalExtrasPreview(d);return false;
    }
    if(!result?.id||String(result.id)!==String(d.record.id))throw Error('Não foi possível confirmar a atualização. Tente novamente para conferir a mesma solicitação.');
-   d.extrasPayload=null;d.successNotice=payload.preserve_reserved_time?'Serviços adicionados. O horário reservado foi mantido.':'Serviços adicionados ao atendimento.';return true;
+   d.extrasPayload=null;d.successNotice=payload.preserve_reserved_time?'Serviços adicionados. Total atualizado e horário reservado mantido.':'Serviços adicionados ao atendimento. Total atualizado.';return true;
  }catch(error){
    if(state.modal!==d)return false;
    if(previewOnly)freezeBookingForm(form,false);
@@ -474,11 +479,20 @@ document.addEventListener('click',async event=>{
  const id=event.target.closest('[data-id]')?.dataset.id;
  const record=action==='remove-block'?state.blocks.find(b=>b.id===id):state.appointments.find(a=>a.id===id);
  if(!['new-block','new-appointment'].includes(action)&&!record)return;
- openModal(action,record);
+ openModal(action,record,event.target.closest('[data-action]'));
 });
 $('modalClose').addEventListener('click',()=>closeModal());$('modalCancel').addEventListener('click',()=>closeModal());
 $('modal').addEventListener('click',event=>{if(event.target===$('modal'))closeModal()});
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('modal').hidden)closeModal()});
+document.addEventListener('keydown',event=>{
+ if($('modal').hidden)return;
+ if(event.key==='Escape'){event.preventDefault();closeModal();return;}
+ if(event.key!=='Tab')return;
+ const dialog=$('modal').querySelector('.dialog'),controls=[...dialog.querySelectorAll('button:not(:disabled),input:not(:disabled):not([type=hidden]),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex]:not([tabindex="-1"])')].filter(el=>!el.closest('[hidden]')&&el.getAttribute('aria-hidden')!=='true');
+ const first=controls[0],last=controls.at(-1),active=document.activeElement;
+ if(!first)return;
+ if(event.shiftKey&&(active===first||!dialog.contains(active))){event.preventDefault();last.focus();}
+ else if(!event.shiftKey&&(active===last||!dialog.contains(active))){event.preventDefault();first.focus();}
+});
 $('modalForm').addEventListener('submit',submitModal);
 $('modalForm').addEventListener('input',event=>{
  if(state.modal?.action==='new-appointment'&&!state.modal.bookingPayload&&event.target.name==='final_total'){state.modal.finalTotalTouched=true;resetProfessionalBookingReview();}

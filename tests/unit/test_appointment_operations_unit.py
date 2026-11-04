@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 import pytest
 
-from app.appointment_lifecycle import LifecycleActor
+from app.appointment_lifecycle import LifecycleActor, completion_due_at
 from app.appointment_operations import (
     CompanyManualBooking, ExtraServicesRequest, ManualBooking,
     extra_interval, require_staff_context, validate_manual_period,
@@ -230,3 +230,47 @@ def test_professional_message_uses_reservation_duration_after_explicit_preservat
                      {"name_snapshot": "Barba", "duration_snapshot_min": 20}]}
     message = compose("professional_new", row, company="Empresa sintética", signature="Orion Agenda")
     assert "*40 minutos*" in message and "*60 minutos*" not in message
+
+
+@pytest.mark.asyncio
+async def test_historical_completion_credits_loyalty_points_without_issuing_a_new_coupon(monkeypatch):
+    from app import loyalty_rewards, plan_permissions
+    from unittest.mock import AsyncMock
+    now = datetime(2030, 1, 7, 12, tzinfo=UTC)
+    monkeypatch.setattr(plan_permissions, "has_feature", AsyncMock(return_value=True))
+    monkeypatch.setattr(loyalty_rewards, "lock_customer", AsyncMock(return_value={"active": True}))
+    rule = {"id": uuid4(), "earning_mode": "visit", "points_per_visit": 1,
+            "reward_type": "fixed", "reward_points": 10}
+    monkeypatch.setattr(loyalty_rewards, "active_rule", AsyncMock(return_value=rule))
+    monkeypatch.setattr(loyalty_rewards, "balance_for", AsyncMock(return_value=10))
+    monkeypatch.setattr(loyalty_rewards, "audit", AsyncMock())
+    issue = AsyncMock(return_value={"id": str(uuid4())})
+    monkeypatch.setattr(loyalty_rewards, "issue_reward", issue)
+
+    class Result:
+        def scalar_one_or_none(self):
+            return uuid4()
+
+    class Database:
+        async def execute(self, *args):
+            return Result()
+
+    appointment = {"id": uuid4(), "customer_id": uuid4(), "total_cents": 4000}
+    result = await loyalty_rewards.award_completion(Database(), uuid4(), appointment, now, issue_rewards=False)
+    assert result == {"points_earned": 1, "points_balance": 10, "coupon": None}
+    issue.assert_not_awaited()
+    ordinary = await loyalty_rewards.award_completion(Database(), uuid4(), appointment, now)
+    issue.assert_awaited_once()
+    assert ordinary["coupon"] is not None and ordinary["points_balance"] == 0
+
+
+@pytest.mark.parametrize("actual,services,expected", [
+    (None, 60, 60), (None, 40, 40), (None, 0, 40),
+    (60, 40, 60), (30, 60, 40), (45, 60, 45),
+])
+def test_automatic_completion_uses_performed_or_estimated_duration_without_moving_slot(actual, services, expected):
+    start = datetime(2030, 1, 7, 12, tzinfo=UTC)
+    appointment = {"start_at": start, "end_at": start + timedelta(minutes=40),
+                   "actual_duration_min": actual}
+    assert completion_due_at(appointment, services) == start + timedelta(minutes=expected)
+    assert appointment["end_at"] == start + timedelta(minutes=40)
