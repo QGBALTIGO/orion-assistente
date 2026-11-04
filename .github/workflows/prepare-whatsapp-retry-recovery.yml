@@ -1,0 +1,104 @@
+name: QA - WhatsApp retry recovery
+on:
+  push:
+    branches: [qa/whatsapp-retry-recovery-20261104]
+    paths: ['.github/workflows/prepare-whatsapp-retry-recovery.yml']
+permissions:
+  contents: write
+concurrency:
+  group: prepare-whatsapp-retry-recovery-20261104
+  cancel-in-progress: false
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      BASE: dbcb10f689551a56c62431c2c7cf95e9b77e22d3
+      TARGET: fix/whatsapp-retry-recovery-20261104
+      META_LIVE_SEND: '0'
+      QR_AI_ENABLED: '0'
+      INBOX_SEND_ENABLED: '0'
+      MARKETING_EXECUTION_ENABLED: '0'
+      CAKTO_BILLING_LIVE_ENABLED: '0'
+      ORION_DIRECT_PAYMENTS_ENABLED: '0'
+      ORION_NOTIFY_SELF_ON_LINK: '0'
+      QR_BRIDGE_URL: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify transferred plaintext patch
+        run: |
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          p=Path('.github/qa/whatsapp-retry-recovery.patch').read_bytes().replace(b'\n diff --git ',b'\ndiff --git ')
+          assert hashlib.sha256(p).hexdigest()=='292060c2870626cd48579161e3f88be8e8f07e773afc49942ee71743b4555991'
+          Path('/tmp/recovery.patch').write_bytes(p)
+          PY
+      - name: Apply to isolated branch at unchanged base
+        run: |
+          git fetch origin "refs/heads/$TARGET"
+          test "$(git rev-parse FETCH_HEAD)" = "$BASE"
+          git checkout -B "$TARGET" "$BASE"
+          git apply --check /tmp/recovery.patch
+          git apply --index /tmp/recovery.patch
+          git diff --cached --check
+          python - <<'PY'
+          import subprocess
+          expected={
+           'qr-bridge/src/channel-broker.mjs':'7475d0be6d10ac56602b034778193625ea73612f',
+           'qr-bridge/src/channel-manager.mjs':'c13910c9f29efd21938a4e112fc6dbb7c0680b55',
+           'qr-bridge/src/lease-failure.mjs':'f55fb4caa37b218c3bf3accbf37ac55909edbc40',
+           'qr-bridge/src/retry-identity.mjs':'d6619765eec471fd3dc5ddbc51605cf6f35a84cb',
+           'qr-bridge/test/channel-manager.test.mjs':'58cb660af2331e7ddf9d82fdb73ed17f6219c8ef',
+           'qr-bridge/test/retry-identity.test.mjs':'1d1d190b26f477a8e11f6d6a59ebeaaddd3537f0'}
+          changed=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert sorted(changed)==sorted(expected)
+          for path,sha in expected.items():
+              assert subprocess.check_output(['git','hash-object',path],text=True).strip()==sha,path
+          PY
+      - name: Install locked dependencies and run focused tests
+        run: |
+          npm ci --prefix qr-bridge --ignore-scripts --no-audit --no-fund
+          node --test qr-bridge/test/channel-manager.test.mjs qr-bridge/test/retry-identity.test.mjs > /tmp/recovery-targeted.tap 2>&1
+          tail -9 /tmp/recovery-targeted.tap
+      - name: Compare complete suite with exact production baseline
+        run: |
+          mkdir -p /tmp/orion-recovery-base
+          git archive "$BASE" | tar -x -C /tmp/orion-recovery-base
+          ln -s "$PWD/qr-bridge/node_modules" /tmp/orion-recovery-base/qr-bridge/node_modules
+          set +e
+          (cd /tmp/orion-recovery-base && node --test qr-bridge/test/*.test.mjs) > /tmp/recovery-baseline.tap 2>&1
+          baseline_status=$?
+          node --test qr-bridge/test/*.test.mjs > /tmp/recovery-candidate.tap 2>&1
+          candidate_status=$?
+          set -e
+          test "$baseline_status" -le 1
+          test "$candidate_status" -le 1
+          python scripts/check_whatsapp_regression.py /tmp/recovery-baseline.tap /tmp/recovery-candidate.tap /tmp/recovery-comparison.json
+          mapfile -t tests < <(find qr-bridge/test -name '*.test.mjs' ! -name 'panel-ui.test.mjs' | sort)
+          node --test "${tests[@]}" > /tmp/recovery-transport.tap 2>&1
+          tail -9 /tmp/recovery-transport.tap
+      - name: Publish qualified candidate, never production
+        run: |
+          git fetch origin "refs/heads/$TARGET"
+          test "$(git rev-parse FETCH_HEAD)" = "$BASE"
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(whatsapp): preserve valid sessions on temporary control outages and verify retry aliases'
+          git push origin "HEAD:refs/heads/$TARGET"
+          echo "CANDIDATE_COMMIT=$(git rev-parse HEAD)"
+          echo "CANDIDATE_TREE=$(git rev-parse HEAD^{tree})"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: whatsapp-retry-recovery-evidence
+          path: |
+            /tmp/recovery-targeted.tap
+            /tmp/recovery-baseline.tap
+            /tmp/recovery-candidate.tap
+            /tmp/recovery-comparison.json
+            /tmp/recovery-transport.tap
+          retention-days: 7
