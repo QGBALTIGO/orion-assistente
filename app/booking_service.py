@@ -143,6 +143,32 @@ async def load_bundle(s: AsyncSession, tenant: UUID, professional: UUID, ids: li
     return dict(contract["shop"]), ordered
 
 
+async def rescheduling_items(s, tenant, appointment, catalogue_items):
+    """Keep an expanded appointment's agreed snapshots when its clock changes.
+
+    The live catalogue still authorizes the professional/service relationship.
+    Its prices and durations cannot silently replace items already charged as
+    extras, nor turn a configured no-time add-on into a longer reservation.
+    Legacy appointments without extras retain their existing re-quote policy.
+    """
+    saved = (await s.execute(text("""SELECT service_id,name_snapshot,duration_snapshot_min,
+        price_snapshot_cents,price_mode_snapshot,prep_snapshot_min,cleanup_snapshot_min,
+        item_origin,added_duration_min FROM appointment_items
+        WHERE tenant_id=:t AND appointment_id=:id ORDER BY item_order"""),
+        {"t": tenant, "id": appointment})).mappings().all()
+    if not any(item["item_origin"] == "extra" for item in saved):
+        return catalogue_items, False
+    if [item["service_id"] for item in saved] != [item["id"] for item in catalogue_items]:
+        fail(409, "Os serviços deste atendimento mudaram. Atualize os detalhes")
+    items = [{"id": item["service_id"], "name": item["name_snapshot"],
+              "duration_min": (item["added_duration_min"] if item["added_duration_min"] is not None
+                               else item["duration_snapshot_min"]),
+              "price_cents": item["price_snapshot_cents"], "price_mode": item["price_mode_snapshot"],
+              "prep_min": item["prep_snapshot_min"], "cleanup_min": item["cleanup_snapshot_min"]}
+             for item in saved]
+    return items, True
+
+
 def amounts(items: list[dict]):
     duration = sum(i["duration_min"] for i in items)
     prep = sum(i["prep_min"] for i in items)
@@ -300,15 +326,17 @@ async def expire_holds(s: AsyncSession, tenant: UUID, professional: UUID, now: d
 
 
 async def history(s: AsyncSession, tenant: UUID, appointment: UUID, event: str, *, calendar: bool = True,
-                  context: LifecycleActor | None = None, requested_by=None, reason=None, previous=None):
+                  context: LifecycleActor | None = None, requested_by=None, reason=None, previous=None,
+                  notifications: bool = True):
     details = metadata(context, requested_by=requested_by, reason=reason, previous=previous)
     await s.execute(text("""
         INSERT INTO appointment_history (tenant_id,appointment_id,event,operator,details,occurred_at)
         VALUES (:tenant,:appointment,:event,:operator,CAST(:details AS jsonb),clock_timestamp())
     """), {"tenant": tenant, "appointment": appointment, "event": event,
            "operator": details["actor"]["role"], "details": json.dumps(details, ensure_ascii=False)})
-    from app.appointment_notifications import enqueue_event
-    await enqueue_event(s, tenant, appointment, event, details)
+    if notifications:
+        from app.appointment_notifications import enqueue_event
+        await enqueue_event(s, tenant, appointment, event, details)
     if calendar:
         from app.calendar_sync import enqueue_calendar_sync
         await enqueue_calendar_sync(s, tenant, appointment, event)
@@ -335,6 +363,7 @@ async def read_appointments(s: AsyncSession, tenant: UUID, item_ids: list[UUID])
     rows = (await s.execute(text("""
         SELECT a.id, a.tenant_id, a.customer_id, a.professional_id, a.protocol,
                a.start_at, a.end_at, a.status, a.total_cents, a.hold_expires_at, a.updated_at,
+               a.created_at, a.booking_mode, a.created_by_account_id, a.actual_duration_min,
                a.original_total_cents, a.discount_cents,
                a.commission_percent_snapshot, a.commission_cents, a.commission_mode_snapshot,
                c.name AS customer_name, c.whatsapp_e164 AS customer_phone,
@@ -357,6 +386,7 @@ async def read_appointments(s: AsyncSession, tenant: UUID, item_ids: list[UUID])
     items = (await s.execute(text("""
         SELECT appointment_id, service_id, name_snapshot, duration_snapshot_min, price_snapshot_cents,
                price_mode_snapshot,prep_snapshot_min, cleanup_snapshot_min,
+               item_origin,added_at,added_by_account_id,added_duration_min,
                commission_kind_snapshot,commission_source_snapshot,
                commission_percent_snapshot,commission_fixed_cents_snapshot,
                commission_base_cents,commission_cents
@@ -370,6 +400,10 @@ async def read_appointments(s: AsyncSession, tenant: UUID, item_ids: list[UUID])
     results = {}
     for row in rows:
         result = {**dict(row), "items": by_appointment.get(row["id"], [])}
+        result["reserved_duration_min"] = int((row["end_at"] - row["start_at"]).total_seconds() // 60)
+        result["services_duration_min"] = sum(
+            item["added_duration_min"] if item.get("added_duration_min") is not None
+            else item["duration_snapshot_min"] for item in result["items"])
         result["price_mode"] = "from" if any(
             item["price_mode_snapshot"] == "from" for item in result["items"]
         ) else "fixed"
@@ -490,7 +524,7 @@ async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
             if replace_hold_id is not None:
                 fail(422, "Selecione apenas uma operação de agenda")
             current = (await s.execute(text("""
-                SELECT professional_id,status FROM appointments WHERE tenant_id=:tenant AND id=:id
+                SELECT professional_id,status,total_cents FROM appointments WHERE tenant_id=:tenant AND id=:id
             """), {"tenant": tenant, "id": appointment_id})).mappings().one_or_none()
             if current is None:
                 fail(404, "Agendamento não encontrado")
@@ -500,12 +534,17 @@ async def list_slots(s: AsyncSession, tenant: UUID, professional: UUID,
             if current["status"] != "confirmed" or current["professional_id"] != professional or service_ids != ids:
                 fail(409, "A consulta de remarcação exige o profissional e os serviços do agendamento confirmado")
         shop, items = await load_bundle(s, tenant, professional, ids)
+        preserve_items = False
+        if appointment_id is not None:
+            items, preserve_items = await rescheduling_items(s, tenant, appointment_id, items)
         local_now = now.astimezone(ZoneInfo(shop["timezone"]))
         if target < local_now.date() or target > local_now.date() + timedelta(days=shop["booking_horizon_days"]):
             fail(422, "Data fora do horizonte de agendamento")
         result, availability_reason = await verified_slot_grid(s, tenant, professional,
             shop, items, target, now, ignored=appointment_id or replace_hold_id)
         duration, prep, cleanup, price = amounts(items)
+        if preserve_items:
+            price = current["total_cents"]
         return {"slots": result, "duration_min": duration, "prep_min": prep,
                 "cleanup_min": cleanup, "price_cents": price, "timezone": shop["timezone"],
                 **({"availability_reason": availability_reason} if explain_reason else {})}
@@ -842,8 +881,11 @@ async def preview_reschedule(s: AsyncSession, tenant: UUID, item_id: UUID, new_s
         ids = list((await s.execute(text("SELECT service_id FROM appointment_items WHERE tenant_id=:t AND appointment_id=:id ORDER BY item_order"),
             {"t": tenant, "id": item_id})).scalars())
         shop, items = await load_bundle(s, tenant, current["professional_id"], ids)
+        items, preserve_items = await rescheduling_items(s, tenant, item_id, items)
         contract = await check_slot(s, tenant, current["professional_id"], shop, items, new_start,
                                    datetime.now(UTC), ignore_appointment=item_id)
+        if preserve_items:
+            contract["total_cents"] = current["total_cents"]
         return {"id": item_id, "protocol": current["protocol"], "start_at": contract["start_at"],
                 "timezone": shop["timezone"], "total_cents": contract["total_cents"],
                 "duration_min": amounts(items)[0], "professional": shop["professional_name"], "services": [item["name"] for item in items],
@@ -899,7 +941,8 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
             SELECT service_id FROM appointment_items WHERE tenant_id=:tenant
             AND appointment_id=:id ORDER BY item_order
         """), {"tenant": tenant, "id": item_id})).scalars().all())
-        shop, items = await load_bundle(s, tenant, row["professional_id"], ids)
+        shop, catalogue_items = await load_bundle(s, tenant, row["professional_id"], ids)
+        items, preserve_items = await rescheduling_items(s, tenant, item_id, catalogue_items)
         if proposal_id is not None:
             # PostgreSQL returns timestamptz in UTC. The slot engine validates
             # the submitted local offset, so restore the business IANA zone.
@@ -916,6 +959,8 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
                 fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de remarcar")
         b = await check_slot(s, tenant, row["professional_id"], shop, items, new_start,
                              now, ignore_appointment=item_id)
+        if preserve_items:
+            b["total_cents"] = row["total_cents"]
         changed = (await s.execute(text("""
             UPDATE appointments SET start_at=:start_at,end_at=:end_at,
                 occupied_from=:occupied_from,occupied_until=:occupied_until,
@@ -925,11 +970,11 @@ async def reschedule_appointment(s: AsyncSession, tenant: UUID, item_id: UUID,
               AND """ + BUNDLE_MATCH_SQL + " AND " + CUSTOMER_MATCH_SQL + " AND " + CAS_SQL + " RETURNING id"),
             {"tenant": tenant, "id": item_id, "now": now, "expected_updated_at": expected_updated_at,
              "is_customer": context.role == "customer", **b,
-             **bundle_guard_parameters(tenant, row["professional_id"], ids, shop, items, customer_phone)})).scalar_one_or_none()
+             **bundle_guard_parameters(tenant, row["professional_id"], ids, shop, catalogue_items, customer_phone)})).scalar_one_or_none()
         if changed is None:
             fail(409, "A reserva ou os serviços mudaram. Confira um novo resumo antes de remarcar")
         # Snapshot acompanha o novo contrato da remarcação.
-        for order, item in enumerate(items):
+        for order, item in enumerate([] if preserve_items else items):
             await s.execute(text("""
                 UPDATE appointment_items SET name_snapshot=:name,
                     duration_snapshot_min=:duration,price_snapshot_cents=:price,

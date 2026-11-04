@@ -60,6 +60,26 @@ async def enqueue_event(db, tenant, appointment, event, details):
     if not central and not access.tenant_enabled(tenant):return
     from app.plan_permissions import has_feature
     if not await has_feature(db, tenant, "notifications.basic"):return
+    if event == 'services_added':
+        # Adding services changes the version, but not the appointment's start.
+        # Keep only initial/reschedule notices that have never been attempted:
+        # they will compose their body from the new facts. Never duplicate a
+        # delivered or ambiguous transport operation to announce this edit.
+        await db.execute(text("""UPDATE appointment_notifications n
+            SET appointment_version=a.updated_at,body_encrypted=NULL,
+                updated_at=clock_timestamp()
+            FROM appointments a WHERE a.tenant_id=:t AND a.id=:id
+              AND n.tenant_id=a.tenant_id AND n.appointment_id=a.id
+              AND n.status='pending' AND n.attempts=0 AND n.attempted_at IS NULL
+              AND n.event IN ('professional_new','customer_rescheduled','professional_rescheduled')
+              AND n.recipient_id=CASE WHEN n.recipient_kind='professional'
+                    THEN a.professional_id ELSE a.customer_id END"""), {'t':tenant,'id':appointment})
+        await db.execute(text("""UPDATE appointment_notifications n
+            SET status='cancelled',last_error='appointment_changed',updated_at=clock_timestamp()
+            FROM appointments a WHERE a.tenant_id=:t AND a.id=:id
+              AND n.tenant_id=a.tenant_id AND n.appointment_id=a.id AND n.status='pending'
+              AND (n.event NOT IN ('professional_new','customer_rescheduled','professional_rescheduled')
+                   OR n.appointment_version<>a.updated_at)"""), {'t':tenant,'id':appointment})
     # Every committed mutation invalidates old pending facts in this SAME tx.
     if event in {'confirmed','cancelled','rescheduled','completed','no_show','hold_expired'}:
         await db.execute(text("""UPDATE appointment_notifications SET status='cancelled',
@@ -84,7 +104,7 @@ async def enqueue_event(db, tenant, appointment, event, details):
     if event=='reschedule_declined' and settings['rescheduling']:add('professional_proposal_declined','professional')
     if event=='rescheduled' and settings['rescheduling']:
         add('professional_rescheduled' if customer else 'customer_rescheduled','professional' if customer else 'customer')
-    if row['status']=='confirmed' and event in {'confirmed','rescheduled'} and settings['reminder']:
+    if row['status']=='confirmed' and event in {'confirmed','rescheduled','services_added'} and settings['reminder']:
         due=row['start_at']-timedelta(hours=1)
         # Never invent 'one hour' for an appointment created after that instant.
         if due>=now:add('reminder','customer',due,due+timedelta(minutes=2))

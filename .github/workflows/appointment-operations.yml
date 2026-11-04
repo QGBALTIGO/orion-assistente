@@ -1,0 +1,211 @@
+name: Orion - agendamentos excepcionais e servicos extras
+
+on:
+  push:
+    branches: ['feat/agenda-exceptions-extras-20261104', 'feat/agenda-exceptions-extras-resume-20261104']
+  pull_request:
+    paths:
+      - 'app/appointment_operations.py'
+      - 'app/booking_api.py'
+      - 'app/booking_service.py'
+      - 'app/professional_portal.py'
+      - 'app/appointment_lifecycle.py'
+      - 'app/static/orion-suite.js'
+      - 'app/static/orion-professional.*'
+      - 'app/static/panel.html'
+      - 'alembic/versions/*appointment_operations*'
+      - 'scripts/*appointment_operations*'
+      - 'scripts/backup_and_migrate_*.py'
+      - 'scripts/predeploy_one_click_links.py'
+      - 'scripts/wait_for_single_whatsapp_schema.py'
+      - 'tests/**/*appointment_operations*'
+      - 'ui-tests/*appointment-operations*'
+      - '.github/workflows/appointment-operations.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: appointment-operations-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CAKTO_BILLING_LIVE_ENABLED: '0'
+  ORION_DIRECT_PAYMENTS_ENABLED: '0'
+  META_LIVE_SEND: '0'
+  QR_AI_ENABLED: '0'
+  INBOX_SEND_ENABLED: '0'
+  MARKETING_EXECUTION_ENABLED: '0'
+  GOOGLE_LIVE_SYNC: '0'
+  ORION_NOTIFY_SELF_ON_LINK: '0'
+  QR_BRIDGE_URL: ''
+
+jobs:
+  contracts:
+    name: Regras, autorizacao e migracao
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c requirements.lock '.[test]'
+      - run: python -m pip check
+      - name: Contratos novos e consumidores existentes
+        run: |
+          python -m pytest -q -ra \
+            tests/unit/test_appointment_operations*.py \
+            tests/unit/test_appointment_lifecycle_unit.py \
+            tests/unit/test_professional_portal.py \
+            tests/unit/test_professional_commissions.py \
+            tests/unit/test_auto_completion.py \
+            tests/unit/test_auto_completion_communications_gate.py \
+            tests/unit/test_appointment_consent_release.py \
+            tests/unit/test_manual_start_times_release.py \
+            tests/unit/test_subscription_sent_messages_release.py \
+            tests/unit/test_plan_permissions.py \
+            tests/unit/test_plan_routing.py
+
+  dom:
+    name: Formularios e compatibilidade do painel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix ui-tests --ignore-scripts --no-audit --no-fund
+      - run: node --check app/static/orion-suite.js && node --check app/static/orion-professional.js
+      - name: Interacao com os componentes publicados
+        run: |
+          node --test \
+            ui-tests/appointment-operations*.test.mjs \
+            ui-tests/booking-recovery.test.mjs \
+            ui-tests/professional-portal.test.mjs \
+            ui-tests/professional-commissions.test.mjs \
+            ui-tests/orion-suite.test.mjs \
+            ui-tests/public-multiservice.test.mjs
+
+  postgres:
+    name: PostgreSQL real - agenda, financeiro, concorrencia e RLS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: orion_appointment_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-appointment-postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d orion_appointment_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      APP_DATABASE_URL: postgresql+asyncpg://app_runtime:ci-appointment-runtime@127.0.0.1:5432/orion_appointment_ci
+      MIGRATION_DATABASE_URL: postgresql+psycopg://app_migrator:ci-appointment-migrator@127.0.0.1:5432/orion_appointment_ci
+      SUPPORT_DATABASE_URL: postgresql+asyncpg://app_support:ci-appointment-support@127.0.0.1:5432/orion_appointment_ci
+      SUPPORT_API_TOKEN: synthetic-appointment-ci-token-at-least-32-characters
+      REQUIRE_POSTGRES_TESTS: '1'
+      REQUIRE_REDIS_TESTS: '1'
+      BUSINESS_PROFILES_ENABLED: '1'
+      PANEL_EMAIL_ENABLED: '0'
+      PANEL_EMAIL_LIVE_SEND: '0'
+      REDIS_URL: redis://127.0.0.1:6379/15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c requirements.lock '.[test]'
+      - name: Banco descartavel com papeis separados
+        env:
+          PGPASSWORD: ci-only-appointment-postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d orion_appointment_ci -v ON_ERROR_STOP=1 \
+            -v db_name=orion_appointment_ci -v runtime_password=ci-appointment-runtime \
+            -v migrator_password=ci-appointment-migrator -v support_password=ci-appointment-support \
+            -f infra/postgres/init/001-roles.sql
+          python -m alembic upgrade head
+          python -m alembic current --check-heads
+      - name: Casos reais sem qualquer rede externa
+        run: |
+          python - <<'PY'
+          import glob, ipaddress, socket, pytest
+          original_connect = socket.socket.connect
+          original_connect_ex = socket.socket.connect_ex
+          original_getaddrinfo = socket.getaddrinfo
+          def local(address):
+              if not isinstance(address, tuple):
+                  return
+              host = str(address[0])
+              if host == 'localhost':
+                  return
+              try:
+                  if ipaddress.ip_address(host).is_loopback:
+                      return
+              except ValueError:
+                  pass
+              raise AssertionError('External network forbidden in appointment qualification')
+          def connect(sock, address):
+              local(address)
+              return original_connect(sock, address)
+          def connect_ex(sock, address):
+              local(address)
+              return original_connect_ex(sock, address)
+          def getaddrinfo(host, *args, **kwargs):
+              if host is not None:
+                  local((host, 0))
+              return original_getaddrinfo(host, *args, **kwargs)
+          socket.socket.connect = connect
+          socket.socket.connect_ex = connect_ex
+          socket.getaddrinfo = getaddrinfo
+          raise SystemExit(pytest.main(['-q', '-ra',
+              *sorted(glob.glob('tests/integration/test_appointment_operations*_postgres.py')),
+              'tests/integration/test_booking.py',
+              'tests/integration/test_appointment_lifecycle.py',
+              'tests/integration/test_professional_portal_postgres.py',
+              'tests/integration/test_public_manual_start_times.py',
+              'tests/integration/test_public_booking_professional_contention.py',
+          ]))
+          PY
+
+  browser:
+    name: Agenda no navegador - ${{ matrix.browser }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Ferramentas do navegador
+        run: |
+          python -m pip install -c requirements.lock -r tests/e2e/requirements.txt pytest
+          python -m playwright install --with-deps ${{ matrix.browser }}
+      - name: Fluxo e layout em celular, tablet e desktop
+        env:
+          ORION_UI_BROWSER: ${{ matrix.browser }}
+        run: python -m pytest -q -ra tests/e2e/test_appointment_operations_responsive.py tests/e2e/test_manual_start_times_responsive.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: appointment-operations-${{ matrix.browser }}
+          path: |
+            test-results/appointment-operations/
+            test-results/manual-start-times/
+          if-no-files-found: warn
+          retention-days: 7

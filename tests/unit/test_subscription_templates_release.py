@@ -156,6 +156,8 @@ def test_worker_waits_for_all_five_contracts_and_stops_at_first_failure(monkeypa
     from scripts import wait_for_subscription_devices_schema as devices
     from scripts import wait_for_subscription_chatbot_schema as chatbot
     from scripts import wait_for_subscription_sent_messages_schema as sent_messages_wait
+    from scripts import wait_for_appointment_operations_schema as operations_wait
+    monkeypatch.setattr(operations_wait, "main", lambda: 0)
     monkeypatch.setattr(sent_messages_wait, "main", lambda: 0)
     events = []
 

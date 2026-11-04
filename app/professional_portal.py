@@ -22,8 +22,12 @@ from app.booking_service import (read_appointments, read_appointment,
     cancel_appointment, reschedule_appointment, acquire_professional_lock,
     book_appointment, confirm_hold, list_slots)
 from app.booking_api import CancellationRequest, safe_conflict
-from app.appointment_lifecycle import LifecycleActor
+from app.appointment_lifecycle import LifecycleActor, allowed_actions
 from app.management_schemas import AppointmentTransition
+from app.appointment_operations import (
+    ManualBooking, ExtraServicesRequest, create_manual_appointment,
+    extra_services_catalogue, preview_extra_services, add_extra_services,
+)
 
 router = APIRouter(prefix="/api/v1/professional", tags=["Área do profissional"])
 
@@ -90,10 +94,22 @@ def project_appointment(row):
     return {key: row.get(key) for key in (
         "id","protocol","start_at","end_at","status","updated_at",
         "customer_name","total_cents","price_mode","cancellation",
+        "booking_mode","created_at","actual_duration_min","services_duration_min",
+        "reserved_duration_min","timezone","original_total_cents","discount_cents",
     )} | {"services": [
         {"name": item.get("name_snapshot"),"duration_min":item.get("duration_snapshot_min")}
         for item in row.get("items", [])
-    ]}
+    ], "items": [{key: item.get(key) for key in (
+        "service_id","name_snapshot","duration_snapshot_min","price_snapshot_cents",
+        "price_mode_snapshot","item_origin","added_at","added_duration_min",
+    )} for item in row.get("items", [])],
+        "history": [{key: entry.get(key) for key in (
+            "id","event","occurred_at","requested_by","reason","source","previous",
+        )} | {"actor": {"role": (entry.get("actor") or {}).get("role")}}
+        for entry in row.get("history", [])],
+        "history_total": row.get("history_total", 0),
+        "allowed_actions": allowed_actions(row, can_write=True),
+    }
 
 
 async def day_period(db, tenant, requested=None):
@@ -269,6 +285,67 @@ async def reschedule_my_appointment(
                 context=LifecycleActor(role="professional",source="panel",
                     account_id=actor.account_id),authorized_professional_id=professional)
             return project_appointment(result)
+
+
+@router.get("/appointments/{appointment_id}")
+async def my_appointment_detail(appointment_id: UUID, actor: Actor = Depends(authenticate)):
+    async with _own_appointment(actor, appointment_id, "read") as (tenant, professional):
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db, tenant):
+                result = await read_appointment(db, tenant, appointment_id, include_history=True)
+                if result["professional_id"] != professional:
+                    raise HTTPException(404, "Agendamento não encontrado na sua agenda")
+                return project_appointment(result)
+
+
+@router.get("/appointments/{appointment_id}/extras-catalog")
+async def my_extra_catalogue(appointment_id: UUID, actor: Actor = Depends(authenticate)):
+    async with _own_appointment(actor, appointment_id, "extras") as (tenant, professional):
+        async with get_session_factory()() as db:
+            result = await extra_services_catalogue(db, tenant, appointment_id,
+                                                    authorized_professional_id=professional)
+            result["appointment"] = project_appointment(result["appointment"])
+            return result
+
+
+@router.post("/appointments/{appointment_id}/extras/preview")
+async def my_extra_preview(appointment_id: UUID, payload: ExtraServicesRequest,
+                           actor: Actor = Depends(authenticate)):
+    async with _own_appointment(actor, appointment_id, "extras") as (tenant, professional):
+        async with get_session_factory()() as db:
+            result = await preview_extra_services(db, tenant, appointment_id, payload,
+                                                  authorized_professional_id=professional)
+            result["appointment"] = project_appointment(result["appointment"])
+            return result
+
+
+@router.post("/appointments/{appointment_id}/extras")
+async def add_my_extra_services(appointment_id: UUID, payload: ExtraServicesRequest,
+                                actor: Actor = Depends(authenticate)):
+    async with _own_appointment(actor, appointment_id, "extras") as (tenant, professional):
+        async with get_session_factory()() as db:
+            try:
+                result = await add_extra_services(db, tenant, appointment_id, payload,
+                    context=LifecycleActor(role="professional", source="panel", account_id=actor.account_id),
+                    authorized_professional_id=professional)
+                return project_appointment(result)
+            except IntegrityError as exc:
+                raise safe_conflict(exc) from None
+
+
+@router.post("/appointments/manual", status_code=201)
+async def create_my_manual_appointment(payload: ManualBooking, actor: Actor = Depends(authenticate)):
+    async with individual_access(actor) as (tenant, professional):
+        async with get_session_factory()() as db:
+            async with tenant_transaction(db, tenant):
+                await profile(db, tenant, professional)
+        async with get_session_factory()() as db:
+            try:
+                result = await create_manual_appointment(db, tenant, professional, payload,
+                    context=LifecycleActor(role="professional", source="panel", account_id=actor.account_id))
+                return project_appointment(result)
+            except IntegrityError as exc:
+                raise safe_conflict(exc) from None
 
 
 @router.post("/appointments/{appointment_id}/{outcome}")

@@ -20,6 +20,10 @@ from app.booking_service import (
 )
 from app.database import get_session_factory, tenant_transaction
 from app.http_json import json_response
+from app.appointment_operations import (
+    CompanyManualBooking, ExtraServicesRequest, add_extra_services,
+    create_manual_appointment, extra_services_catalogue, preview_extra_services,
+)
 
 router = APIRouter(prefix="/api/v1/tenants/{tenant_id}", tags=["Agendamentos internos"])
 
@@ -113,6 +117,58 @@ async def create_hold(
         except IntegrityError as exc:
             raise safe_conflict(exc) from exc
         return json_response(appointment_payload(result, actor, tenant_id), status_code=201)
+
+
+@router.post("/appointments/manual", status_code=201)
+async def create_manual(
+    tenant_id: UUID, payload: CompanyManualBooking, actor: Actor = Depends(authenticate),
+):
+    authorize(actor, tenant_id, write=True)
+    async with get_session_factory()() as session:
+        try:
+            result = await create_manual_appointment(session, tenant_id, payload.professional_id,
+                                                     payload, context=panel_actor(actor))
+        except IntegrityError as exc:
+            raise safe_conflict(exc) from None
+        return json_response(appointment_payload(result, actor, tenant_id), status_code=201)
+
+
+@router.get("/appointments/{appointment_id}/extras-catalog")
+async def extra_catalogue(
+    tenant_id: UUID, appointment_id: UUID, actor: Actor = Depends(authenticate),
+):
+    authorize(actor, tenant_id, write=True)
+    async with get_session_factory()() as session:
+        result = await extra_services_catalogue(session, tenant_id, appointment_id)
+        result["appointment"] = appointment_payload(result["appointment"], actor, tenant_id)
+        return json_response(result)
+
+
+@router.post("/appointments/{appointment_id}/extras/preview")
+async def preview_extras(
+    tenant_id: UUID, appointment_id: UUID, payload: ExtraServicesRequest,
+    actor: Actor = Depends(authenticate),
+):
+    authorize(actor, tenant_id, write=True)
+    async with get_session_factory()() as session:
+        result = await preview_extra_services(session, tenant_id, appointment_id, payload)
+        result["appointment"] = appointment_payload(result["appointment"], actor, tenant_id)
+        return json_response(result)
+
+
+@router.post("/appointments/{appointment_id}/extras")
+async def append_extras(
+    tenant_id: UUID, appointment_id: UUID, payload: ExtraServicesRequest,
+    actor: Actor = Depends(authenticate),
+):
+    authorize(actor, tenant_id, write=True)
+    async with get_session_factory()() as session:
+        try:
+            result = await add_extra_services(session, tenant_id, appointment_id, payload,
+                                             context=panel_actor(actor))
+        except IntegrityError as exc:
+            raise safe_conflict(exc) from None
+        return json_response(appointment_payload(result, actor, tenant_id))
 
 
 @router.post("/appointments/{appointment_id}/confirm")

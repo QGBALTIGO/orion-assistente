@@ -153,7 +153,7 @@ def allowed_actions(appointment, *, can_write, now=None):
         return ["confirm", "cancel"]
     if status != "confirmed":
         return []
-    actions = ["cancel", "reschedule"]
+    actions = ["cancel", "reschedule", "add_services"]
     if appointment["start_at"] <= now:
         actions.extend(["complete", "no_show"])
     return actions

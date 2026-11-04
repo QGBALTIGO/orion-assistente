@@ -101,7 +101,7 @@ async def customer_view(db, identity):
         'status': row['status'], 'protocol': row['protocol'], 'start_at': row['start_at'], 'end_at': row['end_at'],
         'timezone': row['timezone'], 'updated_at': row['updated_at'],
         'services': [i['name_snapshot'] for i in row['items']],
-        'duration_min': sum(i['duration_snapshot_min'] for i in row['items']),
+        'duration_min': row.get('reserved_duration_min', sum(i['duration_snapshot_min'] for i in row['items'])),
         'can_change': customer_can_change(row, now), 'pending_change':dict(pending) if pending and row['status']=='confirmed' else None,
         'can_review': row['status']=='completed' and completion.can_review and review is None,
         'review': dict(review) if review else None, 'has_future_booking': future,
