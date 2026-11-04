@@ -804,6 +804,9 @@ async def authorize_effect(channel_id: UUID, payload: EffectRequest, request: Re
         if effect["type"] == "chatbot_action":
             from app.subscription_chatbot_engine import authorize_effect as authorize_chatbot
             return await authorize_chatbot(db, row, effect, owner, fence, payload)
+        if effect["purpose"] == "diagnostic_test":
+            from app.subscription_diagnostics import authorize_diagnostic_effect
+            return await authorize_diagnostic_effect(db, row, effect, owner, fence, payload)
         denied = {"authorized": False, "operation_id": str(effect["id"])}
         eligible = effect["status"] == "pending" or (effect["type"] == "webhook" and effect["status"] == "failed" and effect["attempts"] < 3)
         if not eligible or effect["due_at"] > datetime.now(timezone.utc):

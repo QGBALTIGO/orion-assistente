@@ -19,8 +19,8 @@ não observado ou testado.
 | 02 | Chatbot | Publicado — PR 249, produção `112e92ea79240a1980f484bf2787c4400bd5418d` |
 | 03 | Testar Chatbot | Publicado — PR 250, produção `8146d5f7f50bb778d188f74b7e52452394870c50` |
 | 04 | Templates | Publicado e conferido ao vivo em 2026-11-04 — PR 251, produção `7164ce5ca9e4c795910ca5255f510f625dad0a11` |
-| 05 | Mensagens Enviadas | Observação concluída; implementação e qualificação em andamento |
-| 06 | Diagnósticos | Não iniciado |
+| 05 | Mensagens Enviadas | Publicado e conferido ao vivo em 2026-11-04 — PR 252, produção `f58730ac8e380bd2c12286c69c1db3873d3cbf0f` |
+| 06 | Diagnósticos | Observação concluída; implementação em qualificação, após o encerramento da etapa 05 |
 | 07 | Campanhas | Não iniciado |
 | 08 | Mensagens Programadas | Não iniciado |
 | 09 | Mensagem em Massa | Não iniciado |
@@ -50,6 +50,21 @@ reais. Os identificadores dos deployments e os limites dessa conferência
 estão no registro de validação. A observação de Mensagens Enviadas começou
 após essa confirmação.
 
+A etapa 05 passou nos seis grupos específicos: 1.262 casos Python, 186
+PostgreSQL, 314 da ponte, 251 DOM, 41 no Chrome oficial e 41 no WebKit. Os 56
+jobs dos 23 workflows gerais foram comparados à produção anterior, sem novos
+IDs de falha nem diferenças de fase ou multiplicidade. O passivo histórico e
+a repetição bem-sucedida de uma instalação interrompida estão discriminados
+no [registro de validação de Mensagens Enviadas](sent-messages-validation.md).
+O merge preserva a árvore testada, `28ac47dc292556b77b80fbc80607077265011a41`.
+
+A etapa 05 foi encerrada após os três serviços em `SUCCESS`/Online,
+backup privado verificado, migração 0064 → 0065 e conferência no Chrome
+conectado até 18:18:08Z de 2026-11-04. A lista, o detalhe somente leitura, os
+filtros e os totais globais foram conferidos sem reenvio real. O histórico de
+áudio sem duração aparece como “Não informado”. A observação de Diagnósticos
+começou depois dessa confirmação.
+
 ## Método e fontes
 
 O registro detalhado da etapa 02 está em [chatbot-observation.md](chatbot-observation.md).
@@ -60,11 +75,23 @@ O registro da etapa 04 está em [templates-observation.md](templates-observation
 A qualificação da etapa 04 está em [templates-validation.md](templates-validation.md).
 O registro da etapa 05 está em [sent-messages-observation.md](sent-messages-observation.md).
 A qualificação da etapa 05 está em [sent-messages-validation.md](sent-messages-validation.md).
+A observação da etapa 06 está em [diagnostics-observation.md](diagnostics-observation.md).
+O contrato da etapa 06 está em [diagnostics-contract.md](diagnostics-contract.md).
+A qualificação da etapa 06 está em [diagnostics-validation.md](diagnostics-validation.md).
 
 Observação iniciada no Chrome conectado do usuário em 2026-11-03
 (America/Cuiaba) e continuada em 2026-11-04, pela extensão autorizada.
-Nenhum envio real, reinício, exclusão,
-desconexão ou salvamento de configurações foi executado no BotBot.
+Nas etapas 01–05, nenhum envio real, reinício, exclusão, desconexão ou
+salvamento de configurações foi executado no BotBot.
+
+Na etapa 06, a primeira seleção de um dispositivo em Diagnósticos iniciou
+automaticamente uma mensagem de teste para o próprio número associado ao
+dispositivo; depois, a interface informou sucesso. O botão “Enviar” não foi
+acionado, e a página foi deixada após identificar esse comportamento. A
+ocorrência e a decisão de exigir ação explícita no Orion estão no
+[registro de observação de Diagnósticos](diagnostics-observation.md), sem
+telefone ou conteúdo da mensagem. A conferência da etapa 05 permaneceu
+somente leitura e sem envio real.
 
 O repositório [morluto/rea](https://github.com/morluto/rea) foi examinado no
 commit `c3647ade1e557c4179a8b825a37e0c2193cd2526`. Usamos seu método de

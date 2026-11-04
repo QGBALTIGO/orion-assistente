@@ -36,7 +36,7 @@ def main():
     try:
         raw, url = connection_values()
         current = migrated_version(raw)
-        if current in {TARGET, "0066_appointment_operations"}:
+        if current in {TARGET, "0066_appointment_operations", "0067_subscription_diagnostics"}:
             valid = schema_ready(raw)
             print("orion_subscription_sent_messages_schema_ready" if valid else "orion_subscription_sent_messages_schema_invalid", flush=True)
             return 0 if valid else 3
@@ -52,7 +52,7 @@ def main():
                            backup_context="subscription-sent-messages-0065",
                            schema_revision=PREVIOUS, preserve_ownership=True)
         current = migrated_version(raw)
-        if current in {TARGET, "0066_appointment_operations"}:
+        if current in {TARGET, "0066_appointment_operations", "0067_subscription_diagnostics"}:
             return 0 if schema_ready(raw) else 3
         if current != PREVIOUS:
             return 3

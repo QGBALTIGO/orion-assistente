@@ -78,6 +78,9 @@ export function createChannelBroker({apiUrl,fetchImpl=fetch,env=process.env}){
     deviceChatbotCarouselImage:(id,key,lease,{buffer,card_index,signal,...device})=>request(id,key,'device/chatbot/carousel-image',buffer,{...lease,signal,device,cardIndex:card_index}),
     deviceChatbotHttpResult:(id,key,lease,payload)=>request(id,key,'device/chatbot/http-result',payload,lease),
     deviceControlAuthorize:(id,key,payload)=>request(id,key,'device/control/authorize',payload),
-    deviceControlFinish:(id,key,payload)=>request(id,key,'device/control/finish',payload)
+    deviceControlFinish:(id,key,payload)=>request(id,key,'device/control/finish',payload),
+    deviceProxyAuthorize:(id,key,payload)=>request(id,key,'device/diagnostics/proxy/authorize',payload),
+    deviceProxyFinish:(id,key,payload)=>request(id,key,'device/diagnostics/proxy/finish',payload),
+    deviceProxyReceipt:(id,key,payload)=>request(id,key,'device/diagnostics/proxy/receipt',payload)
   };
 }

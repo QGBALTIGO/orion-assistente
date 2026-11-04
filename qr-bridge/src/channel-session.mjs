@@ -19,6 +19,7 @@ import {normalizeInbound,priorityText,updateEvent,callEvent,queueControl} from '
 import {createDeviceRuntime} from './device-runtime.mjs';
 import {messagePreflightError} from './device-message-failure.mjs';
 import {createDeviceProxy} from './device-network.mjs';
+import {currentDiagnosticMessage} from './device-diagnostic-message.mjs';
 
 const silent={level:'silent',trace(){},debug(){},info(){},warn(){},error(){},fatal(){},child(){return this;}};
 export async function createBaileysChannelSession(context,{loadBaileys=()=>import('@whiskeysockets/baileys'),now=Date.now,typingFactory=makeAssistantTyping,intakeOptions={},schedule=setTimeout,cancel=clearTimeout,deviceOptions={}}={}){
@@ -106,21 +107,41 @@ export async function createBaileysChannelSession(context,{loadBaileys=()=>impor
     ...proxyTransport?.socket,
     shouldSyncHistoryMessage:()=>false,getMessage:async key=>{try{await guarded();const message=retryStore.get(key);return current()?message:undefined;}catch{return undefined;}}});
   const close=()=>{if(closed)return;closed=true;state='stopped';qrValue=null;pairAttempt=null;cancel(pairTimer);cancel(noticeTimer);abort.abort();deviceRuntime?.close();proxyTransport?.close();for(const lease of typingLeases)lease.stop();typingLeases.clear();client.ev.removeAllListeners();try{client.end(undefined);}catch{}};
-  async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false}={}){
+  async function relayText(phone,text,{isCurrent:operationCurrent=()=>true,maxTextChars=1200,device=false,
+    diagnostic=null,assertAuthorized,onRelayAttempt}={}){
     await guarded();const self=normalizeFromJid(client.user?.id);
     const sendCurrent=()=>{try{return current()&&operationCurrent()===true;}catch{return false;}};
+    const checkDiagnostic=()=>{
+      const own=normalizeFromJid(client.user?.id);
+      if(!own||!diagnostic&&phone===own)throw Error('channel_send_denied');
+      if(diagnostic&&(!device||typeof assertAuthorized!=='function'||typeof onRelayAttempt!=='function'||
+        !currentDiagnosticMessage(diagnostic,{phone,text,self:own,snapshot:context.deviceSnapshot?.()})))throw Error('diagnostic_message_refused');
+    };
+    const authorize=async()=>{
+      await guarded();if(!sendCurrent())throw Error('channel_operation_superseded');checkDiagnostic();
+      if(diagnostic){await assertAuthorized();if(!sendCurrent())throw Error('channel_operation_superseded');checkDiagnostic();}
+    };
     if(!sendCurrent())throw Error('channel_operation_superseded');
     if(state!=='connected')throw messagePreflightError('TRANSPORT_UNAVAILABLE_BEFORE_SEND');
-    if(!self||phone===self||(!device&&!context.allowedSender(phone))||device&&!context.deviceSnapshot?.())throw Error('channel_send_denied');
-    const exists=await client.onWhatsApp(phone);await guarded();
+    checkDiagnostic();
+    if(!self||phone===self&&!diagnostic||(!device&&!context.allowedSender(phone))||device&&!context.deviceSnapshot?.())throw Error('channel_send_denied');
+    await authorize();
+    const exists=await client.onWhatsApp(phone);await authorize();
     const recipient=exists?.find(row=>row.exists&&normalizeFromJid(row.jid)===phone);
     if(!recipient)throw messagePreflightError(Array.isArray(exists)&&exists.some(row=>row?.exists===false&&normalizeFromJid(row.jid)===phone)
       ?'RECIPIENT_NOT_REGISTERED':'RECIPIENT_IDENTITY_UNVERIFIED');
     const proof=await resolvePilotRecipient({phone,pilotPhone:phone,enabled:!device&&context.verifiedLid?.()===true,
-      socket:client,deviceCache,isCurrent:current});await guarded();
+      socket:client,deviceCache,isCurrent:current});await authorize();
     const sent=await sendStoredText({jid:proof.jid,recipientProof:proof,text,store:retryStore,freshDevices:true,isCurrent:sendCurrent,maxTextChars,preserveWhitespace:device,
       makeMessage:(jid,body)=>mod.generateWAMessage(jid,{text:body},{userJid:client.user.id,logger:silent,messageId:mod.generateMessageIDV2(client.user.id)}),
-      relay:async(jid,body,options)=>{await guarded();if(!sendCurrent())throw Error('channel_operation_superseded');return client.relayMessage(jid,body,options);}});
+      relay:async(jid,body,options)=>{
+        await authorize();
+        if(state!=='connected')throw messagePreflightError('TRANSPORT_UNAVAILABLE_BEFORE_SEND');
+        // Both the intended self PN and the active device/lease are checked
+        // after the last async preparation, immediately before the relay.
+        checkDiagnostic();if(diagnostic)onRelayAttempt();
+        return client.relayMessage(jid,body,options);
+      }});
     return {id:sent?.key?.id};
   }
   async function relayChatbot(phone,action,{isCurrent:operationCurrent=()=>true,assertAuthorized,signal,

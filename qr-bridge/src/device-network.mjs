@@ -101,17 +101,23 @@ export async function postDeviceWebhook({url,payload,eventId,signal,isCurrent=()
 
 /** HTTP CONNECT proxy, confined to this socket and its media requests. Password
  * never appears in a URL, error, debug constructor output or global environment. */
-export async function createDeviceProxy(config,{secret,lookup=dnsLookup,signal,assertCurrent=async()=>{},
-  loadAgent=()=>import('https-proxy-agent')}={}){
-  if(config?.enabled!==true)return {socket:{},download:{},close(){}};
+export async function prepareDeviceProxy(config,{secret,lookup=dnsLookup,signal}={}){
+  if(config?.enabled!==true)return null;
   const target=await resolvePublicDestination(config.url,{proxy:true,lookup,signal});
   const username=config.username??'',password=secret??'';
   if(typeof username!=='string'||typeof password!=='string'||username.length>256||password.length>1024||/[\r\n\u0000]/.test(username+password))throw Error('device_proxy_invalid');
-  const {HttpsProxyAgent}=await loadAgent();await assertCurrent();
-  if(signal?.aborted)throw Error('device_request_aborted');
   const pinned=new URL(target.url);pinned.hostname=target.family===6?'['+target.address+']':target.address;
   const headers=username||password?()=>({'Proxy-Authorization':'Basic '+Buffer.from(username+':'+password).toString('base64')}):()=>({});
-  const agent=new HttpsProxyAgent(pinned,{headers,keepAlive:false,timeout:15000});
+  return {address:target.address,family:target.family,port:Number(target.url.port||80),url:pinned,headers};
+}
+
+export async function createDeviceProxy(config,{secret,lookup=dnsLookup,signal,assertCurrent=async()=>{},
+  loadAgent=()=>import('https-proxy-agent')}={}){
+  const target=await prepareDeviceProxy(config,{secret,lookup,signal});
+  if(!target)return {socket:{},download:{},close(){}};
+  const {HttpsProxyAgent}=await loadAgent();await assertCurrent();
+  if(signal?.aborted)throw Error('device_request_aborted');
+  const agent=new HttpsProxyAgent(target.url,{headers:target.headers,keepAlive:false,timeout:15000});
   return {socket:{agent,fetchAgent:agent,options:{proxy:false,httpsAgent:agent,httpAgent:agent,maxRedirects:0}},
     download:{proxy:false,httpsAgent:agent,httpAgent:agent,maxRedirects:0},close(){agent.destroy();}};
 }

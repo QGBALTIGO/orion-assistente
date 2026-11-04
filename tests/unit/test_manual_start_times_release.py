@@ -167,5 +167,7 @@ def test_existing_worker_predeploy_waits_for_both_releases(monkeypatch, manual_r
     from scripts import wait_for_appointment_operations_schema as operations_wait
     monkeypatch.setattr(operations_wait, "main", lambda: 0)
     monkeypatch.setattr(sent_messages_wait, "main", lambda: 0)
+    from scripts import wait_for_subscription_diagnostics_schema as diagnostics_wait
+    monkeypatch.setattr(diagnostics_wait, "main", lambda: 0)
     monkeypatch.setattr(templates_wait, "main", lambda: 0)
     assert worker_barrier.main() == manual_result
